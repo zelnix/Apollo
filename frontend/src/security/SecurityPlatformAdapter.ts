@@ -47,7 +47,7 @@ export interface NativeUrlAnalysis {
 export interface BlockResult {
   /** True ONLY when the platform confirmed the destination is now blocked. */
   verified: boolean;
-  method: "network_extension" | "vpn_service" | "dns_filter" | "simulated" | "none";
+  method: "network_extension" | "vpn_service" | "dns_filter" | "content_blocker" | "simulated" | "none";
   detail: string;
   adapterLabel: string;
   blockedAt: string | null;

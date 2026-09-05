@@ -1,8 +1,8 @@
 import * as Clipboard from "expo-clipboard";
-import { Redirect, useRouter } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import ClipboardPaste from "lucide-react-native/icons/clipboard-paste";
 import X from "lucide-react-native/icons/x";
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import Animated, { FadeInDown } from "react-native-reanimated";
@@ -37,20 +37,29 @@ export default function CheckLink() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { checkLink, events, isMock, ready, setupDone } = useApollo();
-  const [input, setInput] = useState("");
+  const params = useLocalSearchParams<{ url?: string; source?: string }>();
+  const [input, setInput] = useState(params.url ? String(params.url) : "");
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<CheckOutcome | null>(null);
-  if (ready && !setupDone) return <Redirect href="/onboarding" />;
+  const autoRan = useRef(false);
 
   const liveEvent = outcome?.event ? events.find((e) => e.event_id === outcome.event!.event_id) ?? outcome.event : null;
   const state = liveEvent?.state ?? outcome?.decision.state;
 
-  const run = async () => {
-    if (!input.trim()) return;
+  const run = useCallback(async (value: string) => {
+    if (!value.trim()) return;
     setBusy(true); setOutcome(null);
-    try { setOutcome(await checkLink(input)); } finally { setBusy(false); }
-  };
+    try { setOutcome(await checkLink(value)); } finally { setBusy(false); }
+  }, [checkLink]);
+
+  // Shared / deep-linked / clipboard links run automatically once setup is complete.
+  useEffect(() => {
+    if (params.url && ready && setupDone && !autoRan.current) { autoRan.current = true; void run(String(params.url)); }
+  }, [params.url, ready, setupDone, run]);
+
+  if (ready && !setupDone) return <Redirect href="/onboarding" />;
   const paste = async () => { const t = await Clipboard.getStringAsync(); if (t) setInput(t.trim()); };
+  const sourceLabel = params.source === "share" ? "Shared into Apollo" : params.source === "clipboard" ? "From your clipboard" : params.source === "link" ? "Opened via link" : null;
 
   return (
     <View style={s.root}>
@@ -72,11 +81,12 @@ export default function CheckLink() {
               autoCorrect={false}
               keyboardType="url"
               returnKeyType="go"
-              onSubmitEditing={run}
+              onSubmitEditing={() => run(input)}
             />
             <Pressable testID="check-paste-button" accessibilityLabel="Paste" onPress={paste} style={s.paste}><ClipboardPaste size={20} color={colors.onSurfaceSecondary} /></Pressable>
           </View>
-          <Button testID="check-submit-button" label={busy ? "Checking…" : "Check with Apollo"} onPress={run} disabled={busy || !input.trim()} icon={busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : undefined} />
+          {sourceLabel ? <Pill tone="neutral" label={sourceLabel} testID="check-source-pill" /> : null}
+          <Button testID="check-submit-button" label={busy ? "Checking…" : "Check with Apollo"} onPress={() => run(input)} disabled={busy || !input.trim()} icon={busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : undefined} />
           <Text style={s.hint}>Checked on your device first. Only the link itself (no page content) is sent for a reputation check.</Text>
 
           {outcome && state ? (

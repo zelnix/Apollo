@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Platform, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiGet } from "@/src/api/client";
@@ -48,6 +48,23 @@ export default function SettingsScreen() {
               <Text style={s.label}>Anonymous device ID</Text>
               <Text style={s.mono} testID="settings-device-id">{deviceId ? `${deviceId.slice(0, 8)}…` : "—"}</Text>
             </View>
+            <Button testID="settings-privacy-disclosure" variant="secondary" label="Read the full privacy disclosure" onPress={() => router.push("/privacy-disclosure")} style={{ marginTop: spacing.sm }} />
+          </Card>
+        </View>
+
+        <View>
+          <SectionTitle>Share links into Apollo</SectionTitle>
+          <Card style={{ gap: spacing.sm }} testID="settings-share">
+            <Body>From Messages, Mail or a browser, tap Share → Apollo to check a link instantly. Apollo also notices links on your clipboard when you open it, and opens links sent to apollo://check?url=… — nothing is checked until you confirm.</Body>
+            <Pill tone={Platform.OS === "web" ? "unknown" : "growling"} label={Platform.OS === "web" ? "Share sheet: needs a native build" : "Share sheet: available after a native build"} />
+          </Card>
+        </View>
+
+        <View>
+          <SectionTitle>Launch gates</SectionTitle>
+          <Card style={{ gap: spacing.sm }}>
+            <Body>Run the labelled threat corpus and clean set against Apollo&apos;s engine to check the ≥90% detection and &lt;2% false-positive gates.</Body>
+            <Button testID="settings-benchmark" variant="secondary" label="Run threat benchmark" onPress={() => router.push("/benchmark")} />
           </Card>
         </View>
 

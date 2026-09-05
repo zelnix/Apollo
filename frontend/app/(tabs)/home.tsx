@@ -6,6 +6,7 @@ import { RefreshControl, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApolloHero } from "@/src/components/ApolloHero";
+import { ClipboardLinkBanner } from "@/src/components/ClipboardLinkBanner";
 import { PatrolItem } from "@/src/components/PatrolItem";
 import { Body, Button, Card, Pill, ScreenHeader, SectionTitle, capabilityTone } from "@/src/components/ui";
 import { CAPABILITY_STATUS_LABEL, visibilityFrom } from "@/src/domain/capability";
@@ -39,6 +40,7 @@ export default function Home() {
       </View>
       <ScrollView contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={verifyNow} tintColor={colors.resting} />} testID="home-scroll">
         <ApolloHero resolution={resolution} visibility={visibility} adapterLabel={adapterLabel} isMock={isMock} />
+        <ClipboardLinkBanner />
 
         <View style={s.actions}>
           <Button testID="home-check-link-button" label="Check a link" onPress={() => router.push("/check")} icon={<Link2 size={18} color={colors.onBrandPrimary} />} style={{ flex: 1 }} />

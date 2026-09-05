@@ -1,0 +1,6 @@
+[
+  {
+    "trigger": { "url-filter": ".*", "if-domain": ["*phishing.apollo.test", "*malware.apollo.test"] },
+    "action": { "type": "block" }
+  }
+]

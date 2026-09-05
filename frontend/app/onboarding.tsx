@@ -2,8 +2,8 @@ import { useRouter } from "expo-router";
 import Eye from "lucide-react-native/icons/eye";
 import Lock from "lucide-react-native/icons/lock";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
-import React, { useState } from "react";
-import { ActivityIndicator, ScrollView, Text, View } from "react-native";
+import React from "react";
+import { ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Body, Button, Card, Pill } from "@/src/components/ui";
@@ -32,16 +32,7 @@ export default function Onboarding() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { completeSetup, isMock, adapterLabel } = useApollo();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const start = async () => {
-    setBusy(true); setError(null);
-    try { await completeSetup(); router.replace("/(tabs)/home"); }
-    catch (e) { setError(e instanceof Error ? e.message : "Setup failed"); }
-    finally { setBusy(false); }
-  };
+  const { isMock, adapterLabel } = useApollo();
 
   return (
     <View style={s.root}>
@@ -76,11 +67,10 @@ export default function Onboarding() {
         </Card>
 
         {isMock ? <Pill tone="unknown" label={`${adapterLabel} · development build`} testID="onboarding-mock-pill" /> : null}
-        {error ? <Text style={{ color: colors.barking, fontFamily: fonts.textMedium }} testID="onboarding-error">{error}</Text> : null}
       </ScrollView>
       <View style={[s.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
-        <Button testID="onboarding-start-button" label={busy ? "Setting up…" : "Set up Apollo"} onPress={start} disabled={busy} icon={busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : <ShieldCheck size={18} color={colors.onBrandPrimary} />} />
-        <Text style={s.note}>Creates an anonymous device identity. No account needed.</Text>
+        <Button testID="onboarding-start-button" label="Continue" onPress={() => router.push("/privacy-disclosure")} icon={<ShieldCheck size={18} color={colors.onBrandPrimary} />} />
+        <Text style={s.note}>Next: the privacy disclosure — exactly what leaves your device and when.</Text>
       </View>
     </View>
   );

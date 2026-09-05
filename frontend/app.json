@@ -21,7 +21,10 @@
         "backgroundColor": "#0B1220"
       },
       "package": "com.emergent.threatpatrol.hynln9",
-      "permissions": ["android.permission.ACCESS_NETWORK_STATE", "android.permission.INTERNET"]
+      "permissions": [
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.INTERNET"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -43,10 +46,41 @@
       "expo-image",
       "expo-secure-store",
       "expo-web-browser",
-      "expo-status-bar"
+      "expo-status-bar",
+      [
+        "expo-share-intent",
+        {
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
+            "NSExtensionActivationSupportsText": true
+          },
+          "androidIntentFilters": ["text/*"],
+          "androidMultiIntentFilters": []
+        }
+      ],
+      "./plugins/withApolloSiteGuard"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "targetName": "ApolloContentBlocker",
+                  "bundleIdentifier": "com.emergent.threatpatrol.hynln9.contentblocker",
+                  "entitlements": {
+                    "com.apple.security.application-groups": ["group.com.emergent.threatpatrol.hynln9.apollo"]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
     }
   }
 }

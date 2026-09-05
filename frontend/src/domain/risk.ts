@@ -68,13 +68,21 @@ export function analyseUrlLocally(raw: string): LocalAnalysis {
   if (/%[0-9a-f]{2}/i.test(u.hostname) || (path.match(/%[0-9a-f]{2}/gi) ?? []).length > 6) add("encoded_chars", 10, "Parts of the link are encoded, which can hide where it goes.");
   if (normalizedUrl.length > 200) add("long_url", 8, "The link is very long.");
 
-  const brandInHost = BRANDS.find((b) => hostLower.replace(/-/g, "").includes(b.replace(/\s/g, "")));
+  const tokens = hostLower.split(/[.-]/);
+  const brandInHost = BRANDS.map((b) => b.replace(/\s/g, "")).find((b) => tokens.some((t) => t === b || (b.length >= 5 && t.includes(b))));
+  let lookalike = false;
   if (brandInHost) {
-    const brandDomain = regDomain.replace(/-/g, "").startsWith(brandInHost.replace(/\s/g, ""));
-    if (!brandDomain) add("brand_lookalike", 40, `The address mentions "${brandInHost}" but is not that organisation's own domain.`);
+    const firstLabel = regDomain.split(".")[0];
+    const compact = firstLabel.replace(/-/g, "");
+    const brandDomain = compact === brandInHost || (brandInHost.length >= 5 && compact.includes(brandInHost) && !firstLabel.includes("-") && !SUSPICIOUS_TLDS.has(tld));
+    lookalike = !brandDomain;
+    if (lookalike) add("brand_lookalike", 40, `The address mentions "${brandInHost}" but is not that organisation's own domain.`);
   }
+  const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(hostLower);
+  const brandInPath = BRANDS.map((b) => b.replace(/\s/g, "")).find((b) => b.length >= 4 && path.includes(b));
+  if (!brandInHost && brandInPath && (isIp || SUSPICIOUS_TLDS.has(tld) || SHORTENERS.has(regDomain))) add("brand_in_path", 25, `The link mentions "${brandInPath}" but points somewhere unrelated.`);
   const credWord = CRED_WORDS.find((w) => hostLower.includes(w) || path.includes(w));
-  if (credWord && (brandInHost || SUSPICIOUS_TLDS.has(tld) || labels.length >= 4)) add("credential_lure", 20, `Words like "${credWord}" combined with other signals suggest a login or payment lure.`);
+  if (credWord && (lookalike || brandInPath || SUSPICIOUS_TLDS.has(tld) || labels.length >= 5 || isIp)) add("credential_lure", 20, `Words like "${credWord}" combined with other signals suggest a login or payment lure.`);
   else if (credWord && !brandInHost) add("credential_word", 6, `The link mentions "${credWord}". On its own this is normal.`);
 
   const score = Math.min(100, signals.reduce((s, sig) => s + sig.weight, 0));

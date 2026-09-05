@@ -12,6 +12,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/src/components/error-boundary";
 import { ToastHost } from "@/src/components/Toast";
 import { queryClient } from "@/src/query-client";
+import { ShareIntakeListener } from "@/src/share/ShareIntakeListener";
 import { ApolloProvider } from "@/src/store/ApolloContext";
 import { useTheme } from "@/src/theme";
 
@@ -46,7 +47,10 @@ export default function RootLayout() {
                   <Stack.Screen name="check" options={{ presentation: "modal" }} />
                   <Stack.Screen name="patrol/[id]" options={{ presentation: "modal" }} />
                   <Stack.Screen name="dev-tools" options={{ presentation: "modal" }} />
+                  <Stack.Screen name="benchmark" options={{ presentation: "modal" }} />
+                  <Stack.Screen name="privacy-disclosure" options={{ presentation: "modal" }} />
                 </Stack>
+                <ShareIntakeListener />
                 <ToastHost />
               </ApolloProvider>
             </KeyboardProvider>

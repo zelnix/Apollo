@@ -246,6 +246,9 @@ _sb_probe: dict[str, Any] = {"status": None, "checked_at": None, "detail": ""}
 async def safe_browsing_lookup(url: str) -> tuple[IntelSource, Optional[datetime]]:
     if not SAFE_BROWSING_API_KEY:
         return IntelSource(name="google_safe_browsing", status="not_configured", detail="No Safe Browsing key configured."), None
+    # Short-circuit while the key is known-bad (re-probed every 10 minutes) to avoid hammering Google.
+    if _sb_probe["status"] == "auth_error" and _sb_probe["checked_at"] and now_utc() - _sb_probe["checked_at"] < timedelta(minutes=10):
+        return IntelSource(name="google_safe_browsing", status="unavailable", detail="Safe Browsing key was rejected; reputation check unavailable."), None
     payload = {
         "client": {"clientId": "apollo-v1", "clientVersion": "1.0"},
         "threatInfo": {
@@ -331,8 +334,35 @@ async def intel_status():
 
 @api.post("/intel/check", response_model=IntelCheckResponse)
 async def intel_check(body: IntelCheckRequest):
-    url, host = sanitize_url(body.value)
-    indicator = host if body.indicator_type == "domain" else url
+    return await run_intel_check(body.indicator_type, body.value)
+
+
+class IntelBatchRequest(BaseModel):
+    indicator_type: Literal["url", "domain"] = "url"
+    values: list[str] = Field(min_length=1, max_length=200)
+
+
+class IntelBatchItem(BaseModel):
+    value: str
+    result: Optional[IntelCheckResponse] = None
+    error: Optional[str] = None
+
+
+@api.post("/intel/check-batch", response_model=list[IntelBatchItem])
+async def intel_check_batch(body: IntelBatchRequest):
+    """Benchmark support: check many indicators in one round-trip. Same privacy rules as /intel/check."""
+    out: list[IntelBatchItem] = []
+    for value in body.values:
+        try:
+            out.append(IntelBatchItem(value=value, result=await run_intel_check(body.indicator_type, value)))
+        except HTTPException as exc:
+            out.append(IntelBatchItem(value=value, error=str(exc.detail)))
+    return out
+
+
+async def run_intel_check(indicator_type: str, value: str) -> IntelCheckResponse:
+    url, host = sanitize_url(value)
+    indicator = host if indicator_type == "domain" else url
     dg = digest(indicator)
     ts = now_utc()
     cached = await db.reputation_cache.find_one({"indicator_digest": dg})
@@ -344,7 +374,7 @@ async def intel_check(body: IntelCheckRequest):
                 indicator_digest=dg, checked_at=rc.checked_at, cached=True, coverage=rc.coverage,  # type: ignore[arg-type]
             )
     sources = [await blocklist_check(host)]
-    sb_source, sb_expiry = await safe_browsing_lookup(url if body.indicator_type == "url" else f"http://{host}/")
+    sb_source, sb_expiry = await safe_browsing_lookup(url if indicator_type == "url" else f"http://{host}/")
     sources.append(sb_source)
     verdict, threats, coverage = combine(sources)
     expires = sb_expiry or (ts + timedelta(minutes=5 if verdict != "unknown" else 1))
