@@ -985,6 +985,51 @@ async def get_shared_incident(scent_id: str, device_id: str = Query(min_length=8
     return _incident_out(d, links)
 
 
+# Family Reassurance Note — a guardian sends a short "I'm here" note back onto a shared incident. Preset kinds
+# keep it calm and quick; a custom line is capped short. Never carries passwords/codes (protected user is told so).
+NOTE_TEXT = {"here": "I'm here — call me when you're ready.", "calling": "I'm calling you now.", "on_way": "I'm on my way over.", "together": "Don't worry, we'll sort this out together."}
+
+
+class IncidentNoteIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)  # guardian device
+    kind: Literal["here", "calling", "on_way", "together", "custom"] = "here"
+    text: str = Field(default="", max_length=140)
+    from_name: str = Field(default="", max_length=40)
+
+
+@api.post("/family/incidents/{scent_id}/notes", status_code=201)
+async def add_incident_note(scent_id: str, body: IncidentNoteIn):
+    inc = await db.shared_incidents.find_one({"scent_id": scent_id, "guardian_device_id": body.device_id})
+    if not inc:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    text = body.text.strip() if body.kind == "custom" else NOTE_TEXT[body.kind]
+    if not text:
+        raise HTTPException(status_code=422, detail="Write a short note first.")
+    link_q = {"guardian_device_id": body.device_id, "protected_device_id": inc["protected_device_id"], "deleted_at": None}
+    link = await db.family_links.find_one(link_q)
+    from_name = body.from_name.strip()
+    if from_name and link:
+        await db.family_links.update_one({"_id": link["_id"]}, {"$set": {"guardian_label": from_name}})
+    guardian_label = from_name or (link or {}).get("guardian_label") or "A family member"
+    note = {"note_id": uuid.uuid4().hex, "scent_id": scent_id, "protected_device_id": inc["protected_device_id"], "guardian_device_id": body.device_id,
+            "guardian_label": guardian_label, "kind": body.kind, "text": text, "created_at": now_utc()}
+    await db.incident_notes.insert_one(dict(note))
+    try:
+        await send_push(recipients=[inc["protected_device_id"]],
+                        data={"title": f"{guardian_label}: {text}", "message": inc["headline"], "action_url": f"/patrol/scent/{scent_id}", **PUSH_FAMILY},
+                        idempotency_key=f"note-{note['note_id']}")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("note push failed (non-blocking): %s", type(exc).__name__)
+    return note
+
+
+@api.get("/family/incidents/{scent_id}/notes")
+async def list_incident_notes(scent_id: str, device_id: str = Query(min_length=8, max_length=64)):
+    """Protected user sees every guardian's notes; a guardian sees only the notes they sent."""
+    docs = await db.incident_notes.find({"scent_id": scent_id, "$or": [{"protected_device_id": device_id}, {"guardian_device_id": device_id}]}).sort("created_at", 1).to_list(50)
+    return [{k: v for k, v in d.items() if k != "_id"} for d in docs]
+
+
 @api.get("/family/acks")
 async def list_acks(device_id: str = Query(min_length=8, max_length=64)):
     docs = await db.family_acks.find({"protected_device_id": device_id}).sort("acknowledged_at", -1).to_list(50)
