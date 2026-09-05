@@ -323,6 +323,46 @@ async def register_device(body: DeviceRegister):
     return {"device_id": body.device_id, "registered": True}
 
 
+# --------------------------------------------------------------------------- Quiet hours (device settings)
+# Growling (non-urgent) pushes are silenced inside the window; Barking/Biting always come through.
+class QuietHours(BaseModel):
+    enabled: bool = False
+    start_minutes: int = Field(default=22 * 60, ge=0, le=1439)  # local minutes since midnight
+    end_minutes: int = Field(default=7 * 60, ge=0, le=1439)
+    tz_offset_minutes: int = Field(default=0, ge=-840, le=840)  # local = UTC + offset
+
+
+class DeviceSettingsIn(BaseModel):
+    quiet_hours: QuietHours
+
+
+def in_quiet_hours(qh: Optional[dict[str, Any]], at: Optional[datetime] = None) -> bool:
+    if not qh or not qh.get("enabled"):
+        return False
+    local = (at or now_utc()) + timedelta(minutes=int(qh.get("tz_offset_minutes", 0)))
+    m = local.hour * 60 + local.minute
+    start, end = int(qh.get("start_minutes", 1320)), int(qh.get("end_minutes", 420))
+    return start <= m < end if start <= end else (m >= start or m < end)
+
+
+@api.put("/devices/{device_id}/settings")
+async def put_device_settings(device_id: str, body: DeviceSettingsIn):
+    await db.devices.update_one({"device_id": device_id}, {"$set": {"settings": body.model_dump(), "last_seen_at": now_utc()}}, upsert=True)
+    return body
+
+
+@api.get("/devices/{device_id}/settings")
+async def get_device_settings(device_id: str):
+    doc = await db.devices.find_one({"device_id": device_id})
+    settings = (doc or {}).get("settings") or {"quiet_hours": QuietHours().model_dump()}
+    return {**settings, "quiet_now": in_quiet_hours(settings.get("quiet_hours"))}
+
+
+async def device_quiet_now(device_id: str) -> bool:
+    doc = await db.devices.find_one({"device_id": device_id}, {"settings": 1})
+    return in_quiet_hours(((doc or {}).get("settings") or {}).get("quiet_hours"))
+
+
 # --------------------------------------------------------------------------- Routes: intel
 @api.get("/intel/status")
 async def intel_status():
@@ -409,6 +449,8 @@ async def upsert_event(body: PatrolEventIn):
         asyncio.create_task(notify_guardians(event))
         if event.background:
             asyncio.create_task(push_owner_alert(event))
+    elif event.state == "growling" and event.background:
+        asyncio.create_task(push_owner_alert(event))  # respects quiet hours
     return event
 
 
@@ -464,7 +506,7 @@ async def revoke_trust(trust_id: str, device_id: str = Query(min_length=8, max_l
 # --------------------------------------------------------------------------- Routes: Ask Apollo
 APOLLO_SYSTEM_PROMPT = """You are Apollo, a calm, plain-language security guide inside a privacy-first mobile app for everyday people in Australia.
 Your role is explanation and guidance only. You do not decide whether something is safe, and you never claim Apollo blocked or verified anything unless the provided event context says so.
-Apollo's four states mean exactly: Resting = safe within the checks Apollo can see; Growling = unusual or uncertain, not confirmed; Barking = the person needs to decide or act; Biting = Apollo verified and blocked a threat.
+Apollo's four states mean exactly: Patrolling (internally "resting") = on the lookout, safe within the checks Apollo can see; Growling = unusual or uncertain, not confirmed; Barking = the person needs to decide or act; Biting = Apollo verified and blocked a threat.
 Rules: no fear theatrics, no jargon without a one-line explanation, no fake certainty. If something is uncertain, say so plainly. Never ask for passwords, codes or personal details. Keep answers short (under 150 words) with clear next steps. If asked about things outside online safety, gently redirect."""
 
 
@@ -637,7 +679,7 @@ async def notify_guardians(event: PatrolEvent) -> None:
         # fan out to paired guardian devices (in-app + push)
         for ln in links:
             await db.shared_events.update_one({"event_id": event.event_id, "guardian_device_id": ln["guardian_device_id"]}, {"$set": {
-                "event_id": event.event_id, "guardian_device_id": ln["guardian_device_id"], "from_label": ln.get("owner_name") or "Family member",
+                "event_id": event.event_id, "guardian_device_id": ln["guardian_device_id"], "protected_device_id": event.device_id, "from_label": ln.get("owner_name") or "Family member",
                 "state": event.state, "headline": event.headline, "what_to_do": event.what_to_do, "indicator_host": event.indicator_host, "occurred_at": event.occurred_at, "created_at": now_utc()}}, upsert=True)
         if links:
             who = links[0].get("owner_name") or "A family member"
@@ -645,7 +687,7 @@ async def notify_guardians(event: PatrolEvent) -> None:
             try:
                 await send_push(
                     recipients=[ln["guardian_device_id"] for ln in links][:100],
-                    data={"title": f"Apollo: {who} {verb}", "message": event.headline, "subtext": "A quick call is usually the most helpful response.", "action_url": "/family"},
+                    data={"title": f"Apollo: {who} {verb}", "message": event.headline, "subtext": "Tap to see the alert and call them.", "action_url": f"/family/alert/{event.event_id}", **PUSH_THREAT},
                     idempotency_key=f"guardian-{event.event_id}",
                 )
             except Exception as exc:  # noqa: BLE001
@@ -669,6 +711,7 @@ async def notify_guardians(event: PatrolEvent) -> None:
 class PairRequest(BaseModel):
     device_id: str = Field(min_length=8, max_length=64)
     owner_name: str = Field(default="", max_length=60)
+    phone: str = Field(default="", max_length=24)  # optional; shared only with the family member who links
 
 
 class LinkRequest(BaseModel):
@@ -676,10 +719,23 @@ class LinkRequest(BaseModel):
     code: str = Field(min_length=6, max_length=6)
 
 
+_PHONE_OK = set("+0123456789 ()-")
+
+
+def _clean_phone(p: str) -> str:
+    p = p.strip()
+    if p and (any(ch not in _PHONE_OK for ch in p) or sum(ch.isdigit() for ch in p) < 6):
+        raise HTTPException(status_code=400, detail="Enter a valid phone number")
+    return p
+
+
 @api.post("/family/pair")
 async def create_pair_code(body: PairRequest):
+    phone = _clean_phone(body.phone)
     code = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(6))
-    await db.pair_codes.insert_one({"code": code, "protected_device_id": body.device_id, "owner_name": body.owner_name, "created_at": now_utc(), "expires_at": now_utc() + timedelta(hours=24), "used": False})
+    await db.pair_codes.insert_one({"code": code, "protected_device_id": body.device_id, "owner_name": body.owner_name, "owner_phone": phone, "created_at": now_utc(), "expires_at": now_utc() + timedelta(hours=24), "used": False})
+    if phone:  # keep existing links in sync so watchers always have the latest number
+        await db.family_links.update_many({"protected_device_id": body.device_id, "deleted_at": None}, {"$set": {"owner_phone": phone}})
     return {"code": code, "expires_in_hours": 24}
 
 
@@ -692,21 +748,42 @@ async def link_device(body: LinkRequest):
         raise HTTPException(status_code=400, detail="You can't link a device to itself")
     await db.pair_codes.update_one({"_id": pc["_id"]}, {"$set": {"used": True}})
     await db.family_links.update_one({"protected_device_id": pc["protected_device_id"], "guardian_device_id": body.device_id},
-                                     {"$set": {"protected_device_id": pc["protected_device_id"], "guardian_device_id": body.device_id, "owner_name": pc.get("owner_name", ""), "created_at": now_utc(), "deleted_at": None}}, upsert=True)
+                                     {"$set": {"protected_device_id": pc["protected_device_id"], "guardian_device_id": body.device_id, "owner_name": pc.get("owner_name", ""), "owner_phone": pc.get("owner_phone", ""), "created_at": now_utc(), "deleted_at": None}}, upsert=True)
     return {"linked": True, "owner_name": pc.get("owner_name", "")}
+
+
+class PhoneIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)  # caller (guardian)
+    protected_device_id: str = Field(min_length=8, max_length=64)
+    phone: str = Field(default="", max_length=24)
+
+
+@api.post("/family/links/phone")
+async def set_link_phone(body: PhoneIn):
+    """Watcher edits/adds the number they call for a person they watch (overrides the owner-supplied one)."""
+    phone = _clean_phone(body.phone)
+    r = await db.family_links.update_one({"protected_device_id": body.protected_device_id, "guardian_device_id": body.device_id, "deleted_at": None}, {"$set": {"guardian_phone": phone}})
+    if not r.matched_count:
+        raise HTTPException(status_code=404, detail="Link not found")
+    return {"phone": phone}
+
+
+def _link_phone(ln: dict[str, Any]) -> str:
+    return ln.get("guardian_phone") or ln.get("owner_phone") or ""
 
 
 @api.get("/family/links")
 async def list_links(device_id: str = Query(min_length=8, max_length=64)):
     protecting = await db.family_links.find({"guardian_device_id": device_id, "deleted_at": None}).to_list(20)
     watched_by = await db.family_links.find({"protected_device_id": device_id, "deleted_at": None}).to_list(20)
-    return {"i_watch": [{"owner_name": l.get("owner_name", ""), "since": l["created_at"]} for l in protecting], "watching_me": len(watched_by)}
+    return {"i_watch": [{"owner_name": l.get("owner_name", ""), "protected_device_id": l["protected_device_id"], "phone": _link_phone(l), "since": l["created_at"]} for l in protecting], "watching_me": len(watched_by)}
 
 
 @api.get("/family/shared-events")
 async def shared_events(device_id: str = Query(min_length=8, max_length=64)):
     docs = await db.shared_events.find({"guardian_device_id": device_id}).sort("occurred_at", -1).to_list(100)
-    return [{k: v for k, v in d.items() if k != "_id"} for d in docs]
+    links = {l["protected_device_id"]: l for l in await db.family_links.find({"guardian_device_id": device_id, "deleted_at": None}).to_list(20)}
+    return [{**{k: v for k, v in d.items() if k != "_id"}, "phone": _link_phone(links.get(d.get("protected_device_id", ""), {}))} for d in docs]
 
 
 class AckIn(BaseModel):
@@ -735,7 +812,7 @@ async def ack_shared_event(event_id: str, body: AckIn):
         try:
             await send_push(
                 recipients=[ev["device_id"]],
-                data={"title": f"{guardian_label} replied: {ACK_LABEL[body.reply]}", "message": ev["headline"], "action_url": "/family"},
+                data={"title": f"{guardian_label} replied: {ACK_LABEL[body.reply]}", "message": ev["headline"], "action_url": "/family", **PUSH_FAMILY},
                 idempotency_key=f"ack-{event_id}-{body.device_id}",
             )
         except Exception as exc:  # noqa: BLE001
@@ -755,6 +832,9 @@ async def list_acks(device_id: str = Query(min_length=8, max_length=64)):
 PUSH_BASE_URL = "https://integrations.emergentagent.com"
 PUSH_KEY = os.environ.get("EMERGENT_PUSH_KEY", "placeholder")
 _push_client = httpx.AsyncClient(base_url=PUSH_BASE_URL, headers={"X-Push-Key": PUSH_KEY}, timeout=10.0)
+# Sound routing — Android channel id + iOS aps.sound. Files bundled via expo-notifications `sounds` in app.json.
+PUSH_THREAT = {"channel_id": "threats", "sound": "apollo_bark.wav"}   # Apollo barks: threat alerts (owner + family)
+PUSH_FAMILY = {"channel_id": "family", "sound": "apollo_chime.wav"}   # softer chime: family replies
 
 
 class RegisterPushBody(BaseModel):
@@ -794,14 +874,18 @@ async def send_push(recipients: list[str], data: dict, idempotency_key: Optional
 
 
 async def push_owner_alert(event: PatrolEvent) -> None:
-    """Tell the protected person the moment Apollo barks/bites while the app is closed."""
+    """Tell the protected person the moment Apollo barks/bites while the app is closed.
+    Growling is a non-urgent nudge → default channel, silenced during the device's quiet hours."""
     try:
-        verb = "Apollo is barking" if event.state == "barking" else "Apollo blocked a threat"
-        await send_push(
-            recipients=[event.device_id],
-            data={"title": verb, "message": event.headline, "subtext": event.what_to_do[:120], "action_url": f"/patrol/{event.event_id}"},
-            idempotency_key=f"owner-{event.event_id}",
-        )
+        if event.state == "growling":
+            if await device_quiet_now(event.device_id):
+                logger.info("growling push suppressed by quiet hours")
+                return
+            data = {"title": "Apollo is growling", "message": event.headline, "subtext": event.what_to_do[:120], "action_url": f"/patrol/{event.event_id}", "channel_id": "growling"}
+        else:
+            verb = "Apollo is barking" if event.state == "barking" else "Apollo blocked a threat"
+            data = {"title": verb, "message": event.headline, "subtext": event.what_to_do[:120], "action_url": f"/patrol/{event.event_id}", **PUSH_THREAT}
+        await send_push(recipients=[event.device_id], data=data, idempotency_key=f"owner-{event.event_id}")
     except Exception as exc:  # noqa: BLE001
         logger.warning("owner push failed (non-blocking): %s", type(exc).__name__)
 

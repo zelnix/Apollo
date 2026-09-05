@@ -4,15 +4,18 @@
 export type ApolloState = "resting" | "growling" | "barking" | "biting";
 
 /** Semantically exact wording for each state. Never paraphrase these in the UI. */
+/** User-facing state names. The internal key stays `resting`; on the lookout it reads as "Patrolling". */
+export const STATE_NAME: Record<ApolloState, string> = { resting: "Patrolling", growling: "Growling", barking: "Barking", biting: "Biting" };
+
 export const STATE_LABEL: Record<ApolloState, string> = {
-  resting: "Apollo is resting",
+  resting: "Apollo is patrolling",
   growling: "Apollo is growling",
   barking: "Apollo is barking",
   biting: "Apollo is biting",
 };
 
 export const STATE_MEANING: Record<ApolloState, string> = {
-  resting: "Safe within the checks Apollo can currently see.",
+  resting: "On the lookout. Safe within the checks Apollo can currently see.",
   growling: "Something looks unusual or uncertain. Not confirmed.",
   barking: "You need to decide or act.",
   biting: "Apollo verified a threat and blocked it.",

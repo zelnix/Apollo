@@ -1,19 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
+import Phone from "lucide-react-native/icons/phone";
 import X from "lucide-react-native/icons/x";
 import React, { useState } from "react";
-import { Platform, Pressable, Text, TextInput, View } from "react-native";
+import { Linking, Platform, Pressable, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiDelete, apiGet, apiPost } from "@/src/api/client";
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
+import { STATE_NAME, type ApolloState } from "@/src/domain/types";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 
 interface GuardianRow { guardian_id: string; email: string; name: string; confirmed: boolean }
-interface SharedEvent { event_id: string; from_label: string; state: string; headline: string; what_to_do: string; indicator_host: string | null; occurred_at: string; acknowledged_at?: string; ack_label?: string }
+interface SharedEvent { event_id: string; protected_device_id?: string; from_label: string; state: string; headline: string; what_to_do: string; indicator_host: string | null; occurred_at: string; acknowledged_at?: string; ack_label?: string; phone?: string }
+interface WatchLink { owner_name: string; protected_device_id: string; phone: string }
 interface Ack { event_id: string; guardian_label: string; ack_label: string; headline: string; acknowledged_at: string }
 
 const useStyles = makeStyles((c) => ({
@@ -38,9 +42,10 @@ export default function Family() {
   const { deviceId, showToast } = useApollo();
   const [email, setEmail] = useState(""); const [name, setName] = useState(""); const [owner, setOwner] = useState("");
   const [code, setCode] = useState(""); const [pairCode, setPairCode] = useState<string | null>(null); const [err, setErr] = useState<string | null>(null);
+  const [phone, setPhone] = useState("");
 
   const guardians = useQuery({ queryKey: ["guardians", deviceId], enabled: !!deviceId, queryFn: () => apiGet<GuardianRow[]>(`/family/guardians?device_id=${deviceId}`) });
-  const links = useQuery({ queryKey: ["family-links", deviceId], enabled: !!deviceId, queryFn: () => apiGet<{ i_watch: { owner_name: string }[]; watching_me: number }>(`/family/links?device_id=${deviceId}`) });
+  const links = useQuery({ queryKey: ["family-links", deviceId], enabled: !!deviceId, queryFn: () => apiGet<{ i_watch: WatchLink[]; watching_me: number }>(`/family/links?device_id=${deviceId}`) });
   const shared = useQuery({ queryKey: ["shared-events", deviceId], enabled: !!deviceId, queryFn: () => apiGet<SharedEvent[]>(`/family/shared-events?device_id=${deviceId}`), refetchInterval: 30000 });
   const acks = useQuery({ queryKey: ["family-acks", deviceId], enabled: !!deviceId, queryFn: () => apiGet<Ack[]>(`/family/acks?device_id=${deviceId}`), refetchInterval: 30000 });
   const ack = useMutation({
@@ -55,7 +60,11 @@ export default function Family() {
     onError: (e) => setErr(e instanceof Error ? e.message : "Could not add"),
   });
   const remove = useMutation({ mutationFn: (id: string) => apiDelete(`/family/guardians/${id}?device_id=${deviceId}`), onSuccess: () => { invalidate(); showToast("Removed", "neutral"); } });
-  const makeCode = useMutation({ mutationFn: () => apiPost<{ code: string }>("/family/pair", "family", { device_id: deviceId, owner_name: owner.trim() }), onSuccess: (r) => setPairCode(r.code) });
+  const makeCode = useMutation({
+    mutationFn: () => apiPost<{ code: string }>("/family/pair", "family", { device_id: deviceId, owner_name: owner.trim(), phone: phone.trim() }),
+    onSuccess: (r) => { setErr(null); setPairCode(r.code); },
+    onError: (e) => setErr(e instanceof Error ? e.message : "Could not create code"),
+  });
   const link = useMutation({
     mutationFn: () => apiPost<{ owner_name: string }>("/family/link", "family", { device_id: deviceId, code: code.trim().toUpperCase() }),
     onSuccess: (r) => { setCode(""); setErr(null); invalidate(); showToast(`Now watching ${r.owner_name || "a family member"}`, "resting"); },
@@ -98,6 +107,7 @@ export default function Family() {
           <SectionTitle>Pair another Apollo device</SectionTitle>
           <Card style={{ gap: spacing.md }} testID="family-pair-card">
             <Body>Give this code to a family member who also uses Apollo. Your Barking/Biting alerts will appear in their app.</Body>
+            <TextInput testID="family-owner-phone" style={s.input} value={phone} onChangeText={setPhone} placeholder="Your phone number (optional) — so they can call you in one tap" placeholderTextColor={colors.muted} keyboardType="phone-pad" autoCorrect={false} />
             {pairCode ? <Text style={s.code} selectable testID="family-pair-code">{pairCode}</Text> : null}
             <Button testID="family-make-code" variant="secondary" label={pairCode ? "New code" : "Create pairing code"} onPress={() => makeCode.mutate()} disabled={makeCode.isPending} />
             <Body>{links.data?.watching_me ? `${links.data.watching_me} device${links.data.watching_me > 1 ? "s" : ""} receive your alerts.` : "No devices linked yet."}</Body>
@@ -109,14 +119,22 @@ export default function Family() {
         <View>
           <SectionTitle>Alerts from people you watch</SectionTitle>
           <Card testID="family-shared">
-            {(links.data?.i_watch ?? []).length ? <Body style={{ marginBottom: spacing.sm }}>Watching: {links.data!.i_watch.map((l) => l.owner_name || "Family member").join(", ")}</Body> : null}
+            {(links.data?.i_watch ?? []).map((l) => (
+              <View key={l.protected_device_id} style={s.row} testID={`family-watch-${l.protected_device_id}`}>
+                <View style={{ flex: 1 }}><Text style={s.name}>{l.owner_name || "Family member"}</Text><Body>{l.phone ? l.phone : "No phone number yet — add one from any of their alerts"}</Body></View>
+                {l.phone ? <Button testID={`family-watch-call-${l.protected_device_id}`} variant="secondary" label="Call" icon={<Phone size={16} color={colors.onSurface} />} onPress={() => void Linking.openURL(`tel:${l.phone.replace(/[^+\d]/g, "")}`)} /> : null}
+              </View>
+            ))}
             {(shared.data ?? []).length === 0 ? <Body>No alerts. That&apos;s good news.</Body> : shared.data!.map((e) => (
               <View key={e.event_id} style={{ paddingVertical: spacing.sm, gap: 4, borderBottomWidth: 1, borderBottomColor: colors.divider }} testID={`family-shared-${e.event_id}`}>
-                <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}><Pill tone={e.state as "barking"} label={e.state} /><Body>{e.from_label} · {new Date(e.occurred_at).toLocaleString()}</Body></View>
-                <Text style={s.name}>{e.headline}</Text>
-                <Body>{e.what_to_do}</Body>
+                <Pressable onPress={() => router.push(`/family/alert/${e.event_id}`)} testID={`family-shared-open-${e.event_id}`} accessibilityRole="button" style={{ gap: 4 }}>
+                  <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}><Pill tone={e.state as "barking"} label={STATE_NAME[e.state as ApolloState]} /><Body>{e.from_label} · {new Date(e.occurred_at).toLocaleString()}</Body><ChevronRight size={16} color={colors.muted} /></View>
+                  <Text style={s.name}>{e.headline}</Text>
+                  <Body>{e.what_to_do}</Body>
+                </Pressable>
                 {e.acknowledged_at ? <Pill tone="resting" label={`${e.ack_label} · ${new Date(e.acknowledged_at).toLocaleDateString()}`} testID={`family-ack-done-${e.event_id}`} /> : (
                   <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}>
+                    {e.phone ? <Button testID={`family-call-${e.event_id}`} label="Call" icon={<Phone size={16} color={colors.onBrandPrimary} />} onPress={() => { void Linking.openURL(`tel:${e.phone!.replace(/[^+\d]/g, "")}`); ack.mutate({ event_id: e.event_id, reply: "called" }); }} /> : null}
                     <Button testID={`family-ack-called-${e.event_id}`} variant="secondary" label="I called them" onPress={() => ack.mutate({ event_id: e.event_id, reply: "called" })} />
                     <Button testID={`family-ack-messaged-${e.event_id}`} variant="ghost" label="I messaged them" onPress={() => ack.mutate({ event_id: e.event_id, reply: "messaged" })} />
                   </View>

@@ -122,3 +122,27 @@ frontend:
 agent_communication:
   - agent: "main"
     message: "EMERGENT_PUSH_KEY is 'placeholder' in dev so /api/register-push returns 500 'EMERGENT_PUSH_KEY missing or invalid' (expected) and send_push failures are logged non-blocking — event/ack endpoints must still return 200. Web preview shows push as 'Native build only'."
+
+## Iteration 7 — Bark sounds, Family alert tap + call, Quiet hours, Battery saver/minimise, hero animations, "Patrolling" rename, Guard sheet fix
+backend:
+  - task: "PUT/GET /api/devices/{id}/settings quiet_hours; growling background push suppressed in quiet hours; push payloads carry channel_id/sound (threats=apollo_bark.wav, family=apollo_chime.wav); /family/pair accepts phone; /family/links/phone (guardian override); /family/links + /family/shared-events expose phone + protected_device_id; guardian push action_url=/family/alert/{event_id}"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+    needs_retesting: true
+frontend:
+  - task: "Family alert detail screen /family/alert/[id] with Call/Message/save number/ack; family.tsx rows tappable, phone field in pairing, watched-people list"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/family/alert/[id].tsx, frontend/app/family.tsx"
+    needs_retesting: true
+  - task: "Settings: Quiet hours (switch + TimeStepper) and Battery saver (switch + Minimise); Home background card; hero animations per state; state label 'Patrolling'"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/(tabs)/settings.tsx, frontend/app/(tabs)/home.tsx, frontend/src/components/ApolloHero.tsx, frontend/src/domain/types.ts"
+    needs_retesting: true
+  - task: "Guard: capability 'What's needed' → permission sheet now a single Modal (fix for sheet not opening on device); capability card tappable when permission required"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/(tabs)/guard.tsx"
+    needs_retesting: true

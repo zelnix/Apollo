@@ -30,7 +30,11 @@ if (Notifications) {
     handleNotification: async () => ({ shouldShowAlert: true, shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }),
   });
   if (Platform.OS === "android") {
+    // Channels are frozen once created on-device; sound/priority live here, not in the payload.
     void Notifications.setNotificationChannelAsync("default", { name: "Apollo alerts", importance: Notifications.AndroidImportance.MAX, sound: "default" });
+    void Notifications.setNotificationChannelAsync("threats", { name: "Threat alerts (Apollo barks)", importance: Notifications.AndroidImportance.MAX, sound: "apollo_bark.wav", vibrationPattern: [0, 250, 120, 250] });
+    void Notifications.setNotificationChannelAsync("family", { name: "Family replies", importance: Notifications.AndroidImportance.HIGH, sound: "apollo_chime.wav" });
+    void Notifications.setNotificationChannelAsync("growling", { name: "Growling nudges", importance: Notifications.AndroidImportance.DEFAULT, sound: "default" });
   }
 }
 
@@ -100,6 +104,7 @@ export default function RootLayout() {
                   <Stack.Screen name="privacy-disclosure" options={{ presentation: "modal" }} />
                   <Stack.Screen name="digest" options={{ presentation: "modal" }} />
                   <Stack.Screen name="family" options={{ presentation: "modal" }} />
+                  <Stack.Screen name="family/alert/[id]" options={{ presentation: "modal" }} />
                 </Stack>
                 <ShareIntakeListener />
                 <ToastHost />

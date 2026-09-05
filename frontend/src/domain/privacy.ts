@@ -3,10 +3,10 @@
 // Raw personal content (page text, messages, contacts, photos, identifiers
 // beyond the anonymous device id) never leaves the device.
 
-export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "device_register" | "family" | "push_register";
+export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "device_register" | "family" | "push_register" | "device_settings";
 
 const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
-  family: new Set(["device_id", "email", "name", "owner_name", "code", "reply"]),
+  family: new Set(["device_id", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id"]),
   intel_check: new Set(["indicator_type", "value", "values", "device_id"]),
   patrol_sync: new Set([
     "event_id", "device_id", "category", "state", "status", "headline", "what_happened", "why", "what_to_do",
@@ -17,6 +17,8 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   device_register: new Set(["device_id", "platform", "adapter_mode", "app_version"]),
   // Alert notifications: the push token is an opaque delivery address (FCM/APNs), relayed and not stored by us.
   push_register: new Set(["user_id", "platform", "device_token"]),
+  // Quiet hours window (local minutes + UTC offset) so the server can hold growling pushes at night.
+  device_settings: new Set(["quiet_hours"]),
 };
 
 /** Keys that must never appear in any outbound payload, regardless of endpoint. */
@@ -52,6 +54,6 @@ export const PRIVACY_POLICY_SUMMARY = [
   "Links you check are analysed on your device first.",
   "Only the link itself (no page content, no messages) is sent for reputation checks, stripped of credentials and fragments.",
   "Patrol sync stores event summaries and the website domain only. The full link stays on your device.",
-  "Apollo uses an anonymous device ID. No account, no email, no phone number.",
+  "Apollo uses an anonymous device ID. No account, no email. A phone number is shared only if you choose to add one so family can call you.",
   "Ask Apollo sends only your question and, if you choose, a short event summary.",
 ];

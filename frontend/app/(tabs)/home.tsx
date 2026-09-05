@@ -1,4 +1,5 @@
 import { useRouter } from "expo-router";
+import BatteryCharging from "lucide-react-native/icons/battery-charging";
 import Link2 from "lucide-react-native/icons/link-2";
 import RefreshCw from "lucide-react-native/icons/refresh-cw";
 import React from "react";
@@ -14,6 +15,7 @@ import { CAPABILITY_STATUS_LABEL, visibilityFrom } from "@/src/domain/capability
 import { buildWeeklyDigest } from "@/src/domain/digest";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
+import { minimiseApp } from "@/src/utils/minimise";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -31,7 +33,7 @@ export default function Home() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { resolution, capabilities, protection, adapterLabel, isMock, refreshing, verifyNow, events, lastVerifiedAt } = useApollo();
+  const { resolution, capabilities, protection, adapterLabel, isMock, refreshing, verifyNow, events, lastVerifiedAt, lowPower, quietNow, showToast } = useApollo();
   const visibility = visibilityFrom(capabilities, !!protection?.running);
   const recent = events.slice(0, 4);
   const digest = buildWeeklyDigest(events);
@@ -42,8 +44,15 @@ export default function Home() {
         <ScreenHeader title="Apollo" testID="home-header" right={<View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>{isMock ? <Pill tone="unknown" label="Mock" testID="home-mock-pill" /> : null}<ApolloLogo size={40} testID="home-logo" /></View>} />
       </View>
       <ScrollView contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={verifyNow} tintColor={colors.resting} />} testID="home-scroll">
-        <ApolloHero resolution={resolution} visibility={visibility} adapterLabel={adapterLabel} isMock={isMock} />
+        <ApolloHero resolution={resolution} visibility={visibility} adapterLabel={adapterLabel} isMock={isMock} animate={!lowPower} quietNow={quietNow} />
         <ClipboardLinkBanner />
+        {protection?.running ? (
+          <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }} testID="home-background-card">
+            <BatteryCharging size={20} color={colors.resting} />
+            <View style={{ flex: 1 }}><Body>Guarding in the background — minimise to save battery.</Body></View>
+            <Button testID="home-minimise" variant="ghost" label="Minimise" onPress={() => void minimiseApp(showToast)} />
+          </Card>
+        ) : null}
 
         <View style={s.actions}>
           <Button testID="home-check-link-button" label="Check a link" onPress={() => router.push("/check")} icon={<Link2 size={18} color={colors.onBrandPrimary} />} style={{ flex: 1 }} />

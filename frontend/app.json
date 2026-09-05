@@ -43,7 +43,11 @@
         "expo-notifications",
         {
           "color": "#0B1220",
-          "defaultChannel": "default"
+          "defaultChannel": "default",
+          "sounds": [
+            "./assets/sounds/apollo_bark.wav",
+            "./assets/sounds/apollo_chime.wav"
+          ]
         }
       ],
       [

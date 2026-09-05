@@ -26,7 +26,7 @@ export function patrolHtml(events: PatrolEvent[], deviceId: string | null): stri
   </style></head><body>
     <h1>Apollo Patrol history</h1>
     <div class="meta">Exported ${esc(new Date().toLocaleString())} · ${events.length} event${events.length === 1 ? "" : "s"} · Anonymous device ${esc(deviceId ? deviceId.slice(0, 8) : "n/a")}…</div>
-    <div class="legend"><b>Resting</b> = safe within supported checks · <b>Growling</b> = unusual, not confirmed · <b>Barking</b> = action needed · <b>Biting</b> = verified block. Apollo only records links the user checked or shared and Wi‑Fi facts reported by the phone; it never scans messages or browsing.</div>
+    <div class="legend"><b>Patrolling</b> = safe within supported checks · <b>Growling</b> = unusual, not confirmed · <b>Barking</b> = action needed · <b>Biting</b> = verified block. Apollo only records links the user checked or shared and Wi‑Fi facts reported by the phone; it never scans messages or browsing.</div>
     <table><thead><tr><th>When</th><th>Apollo state</th><th>What happened / why</th><th>What to do</th></tr></thead><tbody>${rows || "<tr><td colspan=4>No events.</td></tr>"}</tbody></table>
     <p class="meta" style="margin-top:16px">Generated on-device by Apollo. This document is a record of the app's observations and is not a forensic report.</p>
   </body></html>`;

@@ -67,7 +67,7 @@ export function resolveApolloState(input: StateInput): StateResolution {
       // Hold at growling (lowest alert) rather than snapping back to resting.
       return {
         state: "growling",
-        reason: "A recent event was resolved. Apollo is waiting for a fresh check before resting.",
+        reason: "A recent event was resolved. Apollo is waiting for a fresh check before returning to patrol.",
         recovering: true,
         visibilityLost: false,
         drivingEvent: recentlyResolved,

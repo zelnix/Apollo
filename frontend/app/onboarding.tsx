@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApolloLogo } from "@/src/components/ApolloLogo";
 import { Body, Button, Card, Pill } from "@/src/components/ui";
 import { PRIVACY_POLICY_SUMMARY } from "@/src/domain/privacy";
-import { STATE_LABEL, STATE_MEANING, type ApolloState } from "@/src/domain/types";
+import { STATE_LABEL, STATE_MEANING, STATE_NAME, type ApolloState } from "@/src/domain/types";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
@@ -48,7 +48,7 @@ export default function Onboarding() {
         <Card>
           {STATES.map((st) => (
             <View key={st} style={s.stateRow}>
-              <Pill tone={st} label={st.charAt(0).toUpperCase() + st.slice(1)} />
+              <Pill tone={st} label={STATE_NAME[st]} />
               <View style={s.stateText}>
                 <Text style={s.stateName}>{STATE_LABEL[st]}</Text>
                 <Body>{STATE_MEANING[st]}</Body>

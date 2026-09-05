@@ -2,18 +2,20 @@ import { useQuery } from "@tanstack/react-query";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import { Platform, ScrollView, Text, View } from "react-native";
+import { Platform, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiGet } from "@/src/api/client";
 import { Sheet } from "@/src/components/Sheet";
+import { TimeStepper } from "@/src/components/TimeStepper";
 import { Body, Button, Card, Pill, ScreenHeader, SectionTitle } from "@/src/components/ui";
 import { APP_ENV } from "@/src/config/appEnvironment";
 import { PRIVACY_POLICY_SUMMARY } from "@/src/domain/privacy";
 import type { PushStatus } from "@/src/push/notifications";
 import { SECURECORE_LABEL, IS_MOCK_SECURECORE } from "@/src/security/securecore/SecureCore";
 import { useApollo } from "@/src/store/ApolloContext";
-import { fonts, makeStyles, spacing } from "@/src/theme";
+import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
+import { minimiseApp } from "@/src/utils/minimise";
 
 interface IntelStatus { safe_browsing: { status: string; detail: string }; blocklist: { status: string; entries: number } }
 const PUSH_LABEL: Record<PushStatus, string> = { granted: "On", denied: "Off", undetermined: "Not set", blocked: "Blocked in Settings", unsupported: "Native build only" };
@@ -32,7 +34,8 @@ export default function SettingsScreen() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { deviceId, trust, revokeTrust, clearPatrol, adapterLabel, isMock, pushStatus, enablePush } = useApollo();
+  const { deviceId, trust, revokeTrust, clearPatrol, adapterLabel, isMock, pushStatus, enablePush, quietHours, quietNow, setQuietHours, lowPower, setLowPower, showToast } = useApollo();
+  const { colors } = useTheme();
   const [confirmClear, setConfirmClear] = useState(false);
   const intel = useQuery({ queryKey: ["intel-status"], queryFn: () => apiGet<IntelStatus>("/intel/status"), staleTime: 60_000 });
   const sb = intel.data?.safe_browsing;
@@ -75,6 +78,36 @@ export default function SettingsScreen() {
             {pushStatus === "unsupported" ? <Pill tone="unknown" label="Needs a native build (not available in Expo Go or web)" /> : null}
             {pushStatus === "denied" || pushStatus === "undetermined" ? <Button testID="settings-push-enable" variant="secondary" label="Turn on alert notifications" onPress={() => void enablePush()} /> : null}
             {pushStatus === "blocked" ? <Button testID="settings-push-settings" variant="secondary" label="Open Settings to allow notifications" onPress={() => void Linking.openSettings()} /> : null}
+          </Card>
+        </View>
+
+        <View>
+          <SectionTitle>Quiet hours</SectionTitle>
+          <Card style={{ gap: spacing.sm }} testID="settings-quiet">
+            <View style={s.row}>
+              <Text style={s.label}>Hold growling nudges at night</Text>
+              <Switch testID="settings-quiet-switch" value={quietHours.enabled} onValueChange={(v) => void setQuietHours({ ...quietHours, enabled: v })} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} />
+            </View>
+            <Body>Non-urgent Growling notifications and in-app nudges stay silent in this window. Barking and Biting alerts always come through.</Body>
+            {quietHours.enabled ? (
+              <View style={{ flexDirection: "row", gap: spacing.md }}>
+                <TimeStepper testID="settings-quiet-start" label="From" minutes={quietHours.start_minutes} onChange={(m) => void setQuietHours({ ...quietHours, start_minutes: m })} />
+                <TimeStepper testID="settings-quiet-end" label="Until" minutes={quietHours.end_minutes} onChange={(m) => void setQuietHours({ ...quietHours, end_minutes: m })} />
+              </View>
+            ) : null}
+            {quietHours.enabled ? <Pill tone={quietNow ? "unknown" : "resting"} label={quietNow ? "Quiet hours active now" : "Outside quiet hours"} testID="settings-quiet-now" /> : null}
+          </Card>
+        </View>
+
+        <View>
+          <SectionTitle>Battery</SectionTitle>
+          <Card style={{ gap: spacing.sm }} testID="settings-battery">
+            <View style={s.row}>
+              <Text style={s.label}>Battery saver</Text>
+              <Switch testID="settings-lowpower-switch" value={lowPower} onValueChange={(v) => void setLowPower(v)} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} />
+            </View>
+            <Body>Pauses Apollo&apos;s animations and checks status less often while the app is open. Protection is unaffected — Apollo keeps guarding in the background, so you can minimise the app whenever you like.</Body>
+            <Button testID="settings-minimise" variant="secondary" label="Minimise Apollo now" onPress={() => void minimiseApp(showToast)} />
           </Card>
         </View>
 

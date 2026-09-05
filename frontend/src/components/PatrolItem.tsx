@@ -2,7 +2,7 @@ import { useRouter } from "expo-router";
 import React from "react";
 import { Pressable, Text, View } from "react-native";
 
-import type { PatrolEvent } from "@/src/domain/types";
+import { STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { Pill, toneColor } from "./ui";
 
@@ -39,7 +39,7 @@ export function PatrolItem({ event, isLast }: { event: PatrolEvent; isLast?: boo
         style={({ pressed }) => [s.card, { opacity: pressed ? 0.85 : 1 }]}
       >
         <View style={s.top}>
-          <Pill tone={contained ? "resting" : event.state} label={contained ? "Blocked & contained" : event.state.charAt(0).toUpperCase() + event.state.slice(1)} testID={contained ? `patrol-item-contained-${event.event_id}` : undefined} />
+          <Pill tone={contained ? "resting" : event.state} label={contained ? "Blocked & contained" : STATE_NAME[event.state]} testID={contained ? `patrol-item-contained-${event.event_id}` : undefined} />
           <Text style={s.meta}>{time}</Text>
         </View>
         <Text style={s.headline} numberOfLines={2}>{event.headline}</Text>

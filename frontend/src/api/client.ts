@@ -28,6 +28,9 @@ export function apiPost<T>(path: string, endpoint: EgressEndpoint, body: Record<
 export function apiPatch<T>(path: string, body: Record<string, unknown>) {
   return request<T>(path, { method: "PATCH", body: JSON.stringify(body) });
 }
+export function apiPut<T>(path: string, endpoint: EgressEndpoint, body: Record<string, unknown>) {
+  return request<T>(path, { method: "PUT", body: JSON.stringify(enforceEgress(endpoint, body)) });
+}
 
 /** SSE streaming over XHR — works on native and web without ReadableStream. */
 export function streamPost(path: string, endpoint: EgressEndpoint, body: Record<string, unknown>, onDelta: (t: string) => void, onDone: (err?: string) => void) {

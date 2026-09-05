@@ -7,7 +7,7 @@ import * as Crypto from "expo-crypto";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Platform } from "react-native";
 
-import { apiDelete, apiGet, apiPost } from "@/src/api/client";
+import { apiDelete, apiGet, apiPost, apiPut } from "@/src/api/client";
 import { visibilityFrom } from "@/src/domain/capability";
 import { assessConnection } from "@/src/domain/connection";
 import { decide } from "@/src/domain/decision";
@@ -21,7 +21,7 @@ import { SecureCore } from "@/src/security/securecore/SecureCore";
 import { getPushStatus, registerForPush, type PushStatus } from "@/src/push/notifications";
 import { storage } from "@/src/utils/storage";
 
-const K = { setup: "apollo.setup.done", events: "apollo.patrol.events", trust: "apollo.trust.entries", verified: "apollo.lastVerifiedAt", protection: "apollo.protection.on", wifi: "apollo.wifi.trusted" };
+const K = { setup: "apollo.setup.done", events: "apollo.patrol.events", trust: "apollo.trust.entries", verified: "apollo.lastVerifiedAt", protection: "apollo.protection.on", wifi: "apollo.wifi.trusted", quiet: "apollo.quiet.hours", lowPower: "apollo.lowPower" };
 
 export interface TrustEntry { trust_id: string; device_id: string; indicator_type: "url" | "domain"; indicator_digest: string; indicator_host: string; event_id: string | null; created_at: string; local_indicator?: string }
 
@@ -60,6 +60,21 @@ interface ApolloContextValue {
   showToast(message: string, tone?: ApolloState | "neutral"): void;
   pushStatus: PushStatus;
   enablePush(): Promise<PushStatus>;
+  quietHours: QuietHours;
+  quietNow: boolean;
+  setQuietHours(next: QuietHours): Promise<void>;
+  lowPower: boolean;
+  setLowPower(on: boolean): Promise<void>;
+}
+
+export interface QuietHours { enabled: boolean; start_minutes: number; end_minutes: number }
+const DEFAULT_QUIET: QuietHours = { enabled: false, start_minutes: 22 * 60, end_minutes: 7 * 60 };
+
+/** Local-time check; mirrors backend `in_quiet_hours`. */
+export function isQuietNow(q: QuietHours, at = new Date()): boolean {
+  if (!q.enabled) return false;
+  const m = at.getHours() * 60 + at.getMinutes();
+  return q.start_minutes <= q.end_minutes ? m >= q.start_minutes && m < q.end_minutes : m >= q.start_minutes || m < q.end_minutes;
 }
 
 const Ctx = createContext<ApolloContextValue | null>(null);
@@ -79,9 +94,31 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const [trust, setTrust] = useState<TrustEntry[]>([]);
   const [toast, setToast] = useState<ApolloContextValue["toast"]>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [, setTick] = useState(0);
+  const [tick, setTick] = useState(0);
+
+  // Quiet hours (local + synced to backend so growling pushes are held) and battery saver.
+  const [quietHours, setQuietHoursState] = useState<QuietHours>(DEFAULT_QUIET);
+  const [lowPower, setLowPowerState] = useState(false);
+  useEffect(() => {
+    void storage.getItem<string | null>(K.quiet, null).then((raw) => { if (raw) setQuietHoursState({ ...DEFAULT_QUIET, ...(JSON.parse(raw) as QuietHours) }); });
+    void storage.getItem<boolean>(K.lowPower, false).then((v) => setLowPowerState(!!v));
+  }, []);
+  const quietNow = useMemo(() => isQuietNow(quietHours), [quietHours, tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const quietRef = useRef(quietHours);
+  useEffect(() => { quietRef.current = quietHours; }, [quietHours]);
+  const syncQuiet = useCallback(async (q: QuietHours, id: string | null) => {
+    if (!id) return;
+    try { await apiPut(`/devices/${id}/settings`, "device_settings", { quiet_hours: { ...q, tz_offset_minutes: -new Date().getTimezoneOffset() } }); } catch { /* offline: local copy still silences in-app nudges */ }
+  }, []);
+  const setQuietHours = useCallback(async (next: QuietHours) => {
+    setQuietHoursState(next); quietRef.current = next;
+    await storage.setItem(K.quiet, JSON.stringify(next));
+    await syncQuiet(next, deviceIdRef.current);
+  }, [syncQuiet]);
+  const setLowPower = useCallback(async (on: boolean) => { setLowPowerState(on); await storage.setItem(K.lowPower, on); }, []);
 
   const showToast = useCallback((message: string, tone: ApolloState | "neutral" = "neutral") => {
+    if (tone === "growling" && isQuietNow(quietRef.current)) return; // quiet hours: hold non-urgent nudges
     setToast({ message, tone });
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), 3200);
@@ -159,8 +196,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     })();
   }, [refresh]);
 
-  // Re-resolve state over time so cooldown/freshness windows expire visibly.
-  useEffect(() => { const t = setInterval(() => setTick((n) => n + 1), 30000); return () => clearInterval(t); }, []);
+  // Re-resolve state over time so cooldown/freshness windows expire visibly (slower in battery saver).
+  useEffect(() => { const t = setInterval(() => setTick((n) => n + 1), lowPower ? 120000 : 30000); return () => clearInterval(t); }, [lowPower]);
 
   // Alert notifications: re-register on every launch once the device identity exists (tokens rotate).
   // Only ask for permission once setup completes (completeSetup → enablePush); silent re-register otherwise.
@@ -168,7 +205,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!deviceId) return;
     void registerForPush(deviceId, { ask: false }).then(setPushStatus).catch(() => getPushStatus().then(setPushStatus));
-  }, [deviceId]);
+    if (quietRef.current.enabled) void syncQuiet(quietRef.current, deviceId);
+  }, [deviceId, syncQuiet]);
   const enablePush = useCallback(async () => {
     const id = deviceIdRef.current;
     const st = id ? await registerForPush(id, { ask: true }) : await getPushStatus();
@@ -318,7 +356,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const value: ApolloContextValue = {
     ready, setupDone, deviceId, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label, isMock: IS_MOCK_SECURITY,
     refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, trustedSsids, trustNetwork, forgetNetwork, toast, showToast,
-    pushStatus, enablePush,
+    pushStatus, enablePush, quietHours, quietNow, setQuietHours, lowPower, setLowPower,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

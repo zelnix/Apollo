@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import { Linking, ScrollView, Switch, Text, View } from "react-native";
+import { Linking, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Sheet } from "@/src/components/Sheet";
@@ -34,16 +34,20 @@ export default function Guard() {
   const router = useRouter();
   const { capabilities, protection, permissions, network, toggleProtection, requestPermission, adapterLabel, isMock, showToast, trustedSsids, trustNetwork, forgetNetwork } = useApollo();
   const [busy, setBusy] = useState(false);
-  const [explain, setExplain] = useState<ProtectionPermission | null>(null);
-  const [selected, setSelected] = useState<Capability | null>(null);
+  // One sheet, two views. Closing one Modal and opening another in the same tick fails on iOS/Android
+  // (the second never presents), so capability → permission switches content inside the same Modal.
+  const [sheet, setSheet] = useState<{ kind: "cap"; cap: Capability } | { kind: "perm"; perm: ProtectionPermission } | null>(null);
+  const explain = sheet?.kind === "perm" ? sheet.perm : null;
+  const selected = sheet?.kind === "cap" ? sheet.cap : null;
+  const needsSettings = (p: ProtectionPermission) => p.status === "blocked" || (p.status === "denied" && !p.canAskAgain);
 
   const onToggle = async (on: boolean) => { setBusy(true); try { await toggleProtection(on); } finally { setBusy(false); } };
 
   const ask = async (perm: ProtectionPermission) => {
-    setExplain(null);
-    if (perm.status === "blocked" || (perm.status === "denied" && !perm.canAskAgain)) { void Linking.openSettings(); return; }
+    setSheet(null);
+    if (needsSettings(perm)) { void Linking.openSettings(); return; }
     const result = await requestPermission(perm.id);
-    showToast(result.status === "granted" ? `${perm.title} permission granted` : `${perm.title} permission not granted`, result.status === "granted" ? "resting" : "growling");
+    showToast(result.status === "granted" ? `${perm.title} permission granted` : `${perm.title} permission not granted`, result.status === "granted" ? "resting" : "barking");
   };
 
   return (
@@ -66,13 +70,13 @@ export default function Guard() {
           <SectionTitle>Capabilities</SectionTitle>
           {capabilities.map((cap) => (
             <Card key={cap.id} style={s.capCard} testID={`guard-cap-${cap.id}`}>
-              <View style={s.capTop}>
+              <Pressable disabled={cap.status !== "permission_required"} onPress={() => setSheet({ kind: "cap", cap })} testID={`guard-cap-${cap.id}-press`} accessibilityRole={cap.status === "permission_required" ? "button" : undefined} style={s.capTop}>
                 <Text style={s.capTitle}>{cap.title}</Text>
                 <Pill tone={capabilityTone(cap.status)} label={CAPABILITY_STATUS_LABEL[cap.status]} testID={`guard-cap-${cap.id}-status`} />
-              </View>
+              </Pressable>
               <Body>{cap.detail}</Body>
               {cap.status === "permission_required" ? (
-                <Button testID={`guard-cap-${cap.id}-fix`} variant="secondary" label="What's needed" onPress={() => setSelected(cap)} />
+                <Button testID={`guard-cap-${cap.id}-fix`} variant="secondary" label="What's needed" onPress={() => setSheet({ kind: "cap", cap })} />
               ) : null}
             </Card>
           ))}
@@ -90,7 +94,7 @@ export default function Guard() {
                 {p.status === "granted" || p.status === "not_applicable" ? (
                   <Pill tone={PERMISSION_TONE[p.status]} label={p.status === "granted" ? "Granted" : "N/A"} />
                 ) : (
-                  <Button testID={`guard-perm-${p.id}-request`} variant={p.status === "blocked" ? "warning" : "secondary"} label={p.status === "blocked" || (p.status === "denied" && !p.canAskAgain) ? "Open Settings" : "Allow"} onPress={() => setExplain(p)} />
+                  <Button testID={`guard-perm-${p.id}-request`} variant={p.status === "blocked" ? "warning" : "secondary"} label={needsSettings(p) ? "Open Settings" : "Allow"} onPress={() => setSheet({ kind: "perm", perm: p })} />
                 )}
               </View>
             ))}
@@ -115,20 +119,24 @@ export default function Guard() {
         <Button testID="guard-check-link" label="Check a link" onPress={() => router.push("/check")} />
       </ScrollView>
 
-      <Sheet visible={!!explain} onClose={() => setExplain(null)} title={explain?.title ?? ""} testID="permission-sheet">
-        <Body>{explain?.why}</Body>
-        <Body>{explain?.status === "blocked" || (explain?.status === "denied" && !explain?.canAskAgain) ? "This permission was declined before. You can enable it in your device settings." : "Apollo only asks when you choose to enable a protection. You can change this any time."}</Body>
-        {explain ? <Button testID="permission-sheet-continue" label={explain.status === "blocked" || (explain.status === "denied" && !explain.canAskAgain) ? "Open Settings" : "Continue"} onPress={() => ask(explain)} /> : null}
-        <Button testID="permission-sheet-cancel" variant="ghost" label="Not now" onPress={() => setExplain(null)} />
-      </Sheet>
-
-      <Sheet visible={!!selected} onClose={() => setSelected(null)} title={selected?.title ?? ""} testID="capability-sheet">
-        <Body>{selected?.detail}</Body>
-        <Body>Grant the permission below to enable this protection. Until then, Apollo shows it as not active.</Body>
-        {permissions.filter((p) => p.status !== "granted" && p.status !== "not_applicable").map((p) => (
-          <Button key={p.id} testID={`capability-sheet-perm-${p.id}`} label={`Allow ${p.title}`} onPress={() => { setSelected(null); setExplain(p); }} />
-        ))}
-        <Button testID="capability-sheet-close" variant="ghost" label="Close" onPress={() => setSelected(null)} />
+      <Sheet visible={!!sheet} onClose={() => setSheet(null)} title={explain?.title ?? selected?.title ?? ""} testID={explain ? "permission-sheet" : "capability-sheet"}>
+        {explain ? (
+          <>
+            <Body>{explain.why}</Body>
+            <Body>{needsSettings(explain) ? "This permission was declined before. You can enable it in your device settings." : "Apollo only asks when you choose to enable a protection. You can change this any time."}</Body>
+            <Button testID="permission-sheet-continue" label={needsSettings(explain) ? "Open Settings" : "Continue"} onPress={() => void ask(explain)} />
+            <Button testID="permission-sheet-cancel" variant="ghost" label="Not now" onPress={() => setSheet(null)} />
+          </>
+        ) : selected ? (
+          <>
+            <Body>{selected.detail}</Body>
+            <Body>Grant the permission below to enable this protection. Until then, Apollo shows it as not active.</Body>
+            {permissions.filter((p) => p.status !== "granted" && p.status !== "not_applicable").map((p) => (
+              <Button key={p.id} testID={`capability-sheet-perm-${p.id}`} label={needsSettings(p) ? `Open Settings for ${p.title}` : `Allow ${p.title}`} onPress={() => setSheet({ kind: "perm", perm: p })} />
+            ))}
+            <Button testID="capability-sheet-close" variant="ghost" label="Close" onPress={() => setSheet(null)} />
+          </>
+        ) : null}
       </Sheet>
     </View>
   );

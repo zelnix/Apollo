@@ -20,7 +20,7 @@ let mod: NotificationsModule | null | undefined;
 export function loadNotifications(): NotificationsModule | null {
   if (!PUSH_SUPPORTED) return null;
   if (mod === undefined) {
-    try { mod = require("expo-notifications") as NotificationsModule; } catch { mod = null; }
+    try { mod = require("expo-notifications") as NotificationsModule; } catch { mod = null; } // eslint-disable-line @typescript-eslint/no-require-imports
   }
   return mod;
 }
