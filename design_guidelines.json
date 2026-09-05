@@ -1,0 +1,191 @@
+{
+  "app_name": "Apollo V1",
+  "personality": "6 Glass / Luxe DARK",
+  "personality_one_liner": "A calm, watchful protector—like a high-end automotive dashboard or loyal guard dog, relying on deep navy, charcoal, and state-driven indicators instead of paranoid hacker aesthetics.",
+  "color": {
+    "surface": "#0B1220",
+    "onSurface": "#F4F7FA",
+    "surfaceSecondary": "#141A22",
+    "onSurfaceSecondary": "#9EABB8",
+    "surfaceTertiary": "#1C242F",
+    "onSurfaceTertiary": "#9EABB8",
+    "surfaceInverse": "#F4F7FA",
+    "onSurfaceInverse": "#0B1220",
+    "brand": "#263241",
+    "onBrand": "#F4F7FA",
+    "brandPrimary": "#4FAF83",
+    "onBrandPrimary": "#0B1220",
+    "brandSecondary": "#141A22",
+    "onBrandSecondary": "#F4F7FA",
+    "brandTertiary": "#1C242F",
+    "onBrandTertiary": "#F4F7FA",
+    "success": "#4FAF83",
+    "onSuccess": "#0B1220",
+    "warning": "#D9A441",
+    "onWarning": "#0B1220",
+    "error": "#D9534F",
+    "onError": "#0B1220",
+    "info": "#4FAF83",
+    "onInfo": "#0B1220",
+    "border": "#263241",
+    "borderStrong": "#3A4B5F",
+    "divider": "#263241",
+    "muted": "#9EABB8",
+    "resting": "#4FAF83",
+    "growling": "#D9A441",
+    "barking": "#E47A3F",
+    "biting": "#D9534F"
+  },
+  "typography": {
+    "displayFontFamily": "Outfit",
+    "textFontFamily": "Geist",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Handle spacing correctly dont have extra spaces where its not required, handle padding and margin corectly and subtle for buttons and components. Generous outer margins for cards, tight grouping for internal metadata.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "1",
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": true,
+    "do's": [
+      "Use subtle glass over dark navy background for the top header and bottom tabs.",
+      "Use blur on bottom-sheet headers or full-screen modal overlays.",
+      "Float the primary action CTA over scrolling content using a glass container."
+    ],
+    "dont's": [
+      "Don't use blur on standard cards or list rows; rely on solid surfaceSecondary.",
+      "Don't blur form inputs or timeline metadata.",
+      "Don't use glass without a ≥75% tinted background to guarantee text readability in dark mode."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Home",
+      "purpose": "A premium dashboard showing the current Apollo state as a prominent hero, followed by a summary of capabilities and recent timeline events.",
+      "states": {
+        "loading": "Dark navy screen with an abstract glowing pulse (using state color) at the center.",
+        "empty": "Apollo state reads Resting; 'Recent Patrols' shows a quiet, minimal graphic emphasizing safety.",
+        "error": "Card showing 'Connection Interrupted' in Muted Silver with a subtle Slate border and a retry button."
+      },
+      "layout": "Top app bar with title and settings access. Below, a large Hero section featuring the dark navy abstract texture layered with a radial gradient matching the current state color (Resting Green, Growling Amber, etc.). Below the hero, horizontal scroll or grid for 'Capabilities Summary', followed by a list of 'Recent Patrol Events' using layered surfaceSecondary cards."
+    },
+    {
+      "name": "Guard",
+      "purpose": "List of Apollo's protection capabilities displaying their active status and required permissions.",
+      "states": {
+        "loading": "Skeleton rows reflecting the toggle-list layout.",
+        "empty": "No capabilities available graphic (unlikely, but fallback illustration).",
+        "error": "Error fetching protection status, retry CTA."
+      },
+      "layout": "Vertical list of elevated cards (surfaceSecondary). Each card represents a capability (e.g., Network Guard, Link Guard). The status (Available, Permission Required, Unsupported, Coming Later) is shown via a pill/badge. Active protections have a clear toggle switch."
+    },
+    {
+      "name": "Check a Link",
+      "purpose": "A dedicated utility to manually paste and scan a URL for threats, delivering a clear risk verdict.",
+      "states": {
+        "loading": "Scanning animation: a line sweeping over the URL container with a subtle glow.",
+        "empty": "Clean input field with a prominent 'Paste Link' button, centered on the screen.",
+        "error": "Invalid URL format or network failure message."
+      },
+      "layout": "Single-column utility layout. Large form input at the top. Once analyzed, results appear in a dynamic surfaceSecondary card. If 'Growling', show an Amber card with 'Trust This' and 'Block' actions. If 'Biting', show a Red card with 'Dismiss' and reasons for blocking."
+    },
+    {
+      "name": "Patrol",
+      "purpose": "A chronological timeline of security events showing exactly what Apollo did, marked by state colors.",
+      "states": {
+        "loading": "Skeleton of the timeline rail and event cards.",
+        "empty": "Minimal abstract illustration (e.g., quiet radar) with text 'No recent security events. Apollo is watching.'",
+        "error": "Failed to load timeline events, subtle retry button."
+      },
+      "layout": "Sticky date groupings (e.g., 'Today'). A vertical rail runs down the left edge. Event cards sit to the right of the rail, featuring a colored dot/icon on the rail corresponding to the state (Green, Amber, Orange, Red). Tapping a card opens a bottom sheet with detailed explanations (What happened, Why, What to do)."
+    },
+    {
+      "name": "Ask Apollo",
+      "purpose": "An AI chat interface dedicated to explaining security concepts clearly without fear theatrics.",
+      "states": {
+        "loading": "Typing indicator with three soft glowing dots.",
+        "empty": "Suggested prompts in surfaceSecondary chips ('What is Link Guard?', 'Why was that site blocked?').",
+        "error": "Message failed to send banner."
+      },
+      "layout": "Standard chat layout. Messages from Apollo use surfaceTertiary, user messages use surfaceSecondary with subtle Slate borders. Input field pinned to the bottom above the keyboard (KeyboardAvoidingView) using a glass container."
+    },
+    {
+      "name": "Settings",
+      "purpose": "Controls for privacy, data egress, and app configuration.",
+      "states": {
+        "loading": "Skeleton rows.",
+        "empty": "N/A",
+        "error": "Failed to load settings."
+      },
+      "layout": "Grouped list layout (iOS native style adapted for dark mode). Sections for Privacy, Data Controls, About. Includes the mock adapter dev label subtly at the bottom in Muted Silver."
+    }
+  ],
+  "images": {
+    "hero_background": {
+      "url": "https://images.unsplash.com/photo-1629197521865-4946b4acd2b0?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2MzR8MHwxfHNlYXJjaHwzfHxkYXJrJTIwbmF2eSUyMGFic3RyYWN0JTIwdGV4dHVyZXxlbnwwfHx8fDE3ODg1OTUyMjV8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "Dark navy abstract texture for Hero sections"
+    },
+    "state_resting_glow": {
+      "url": "https://images.unsplash.com/photo-1634976276568-9ea10353a8cd?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTN8MHwxfHNlYXJjaHwxfHxjYWxtJTIwZ3JlZW4lMjBnbG93aW5nJTIwYWJzdHJhY3QlMjBiYWNrZ3JvdW5kfGVufDB8fHx8MTc4ODU5NTIyNXww&ixlib=rb-4.1.0&q=85",
+      "alt": "Calm green glowing abstract"
+    },
+    "state_growling_glow": {
+      "url": "https://images.unsplash.com/photo-1559765801-d0dbdb3b2366?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzh8MHwxfHNlYXJjaHwxfHxhbWJlciUyMGdsb3dpbmclMjBhYnN0cmFjdCUyMGJhY2tncm91bmR8ZW58MHx8fHwxNzg4NTk1MjI1fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Amber glowing abstract background"
+    }
+  },
+  "haptics": {
+    "events": {
+      "primary_action": "impactMedium",
+      "tab_change": "selection",
+      "toggle_switch": "impactLight",
+      "state_change_alert": "notificationWarning",
+      "state_change_threat": "notificationError",
+      "state_change_safe": "notificationSuccess"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Applies a strict Dark-mode only theme based on the 6 Glass / Luxe DARK personality combined with the provided exact color palette (Sentinel Navy, Deep Charcoal, Slate, etc.).",
+    "Utilize 'Outfit' for all headings and metrics to give an automotive-dashboard premium feel, and 'Geist' for high readability in body text and logs.",
+    "Do not use generic hacker aesthetics (no pure black backgrounds, no monospace green matrix text). Rely on surface elevation (surfaceSecondary, surfaceTertiary) to create depth over the Sentinel Navy base.",
+    "The Home screen Hero must visually communicate the four states (Resting, Growling, Barking, Biting). Accomplish this by tinting the hero background or applying a radial gradient of the state color over the dark navy abstract texture.",
+    "For the Patrol timeline, strictly implement the vertical rail pattern with colored dots representing the event state. Event cards must use surfaceSecondary.",
+    "Ensure all text rendered over backgrounds/images is readable. When placing text over the state hero backgrounds, use a linear gradient scrim fading to the surface color at the bottom.",
+    "Use Phosphor icons with consistent weights. Ensure touch targets are at least 44x44pt.",
+    "No indigo, violet, or pure purple hues allowed. Stick exactly to the provided palette.",
+    "Never display emoji in the UI."
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "expo": {
+    "name": "Apollo",
+    "slug": "frontend",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "apollo",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0B1220",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.emergent.threatpatrol.hynln9",
+      "infoPlist": {
+        "NSUserNotificationsUsageDescription": "Tell you when Apollo barks about a threat"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#0B1220"
+      },
+      "package": "com.emergent.threatpatrol.hynln9",
+      "permissions": ["android.permission.ACCESS_NETWORK_STATE", "android.permission.INTERNET"]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-image.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#0B1220"
+        }
+      ],
+      "expo-font",
+      "expo-image",
+      "expo-secure-store",
+      "expo-web-browser",
+      "expo-status-bar"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

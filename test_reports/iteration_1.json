@@ -1,0 +1,42 @@
+{
+  "summary": "First-pass testing of Apollo V1. Backend: 12/13 pytest cases pass (health, intel/status auth_error + 4 blocklist entries, intel/check malicious/unknown/cached, devices register, patrol upsert+idempotent+patch+soft-delete, trust CRUD, ask SSE with delta+done events, ask history). One backend bug: POST /api/intel/check with value 'javascript:alert(1)' returns HTTP 500 (uncaught ValueError from urlparse port parsing) instead of 422 as required. Frontend: onboarding flow works, home renders with Apollo-is-resting hero + Limited visibility + MOCK adapter pills; Check-a-link modal works for all three verdicts (malicious→barking→Block→biting→Contained + toast, growling→Trust button shown, clean→resting, no block/trust). Settings dev tools open and adapter chips present. Bottom-tab navigation could not be verified via text selectors (Patrol/Guard/Ask sub-screens never rendered when clicking their label text — filter/switch/msg testIDs were not found). Trust persistence to Settings could not be verified — TRUSTED ITEMS shows 0 after tapping event-trust-button and Settings shows 'Anonymous device ID: —'. No deprecated Expo packages or React Native red-screen errors detected.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/intel/check", "issue": "Value 'javascript:alert(1)' triggers uncaught ValueError in sanitize_url (urlparse port cast for 'alert(1)') → 500 Internal Server Error. Expected 422 per spec. Fix: catch ValueError in sanitize_url (around urlparse call) and raise HTTPException(422).", "priority": "HIGH"}
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Bottom tab navigation", "issue": "Clicking bottom tab labels (Patrol/Guard/Ask/Settings) via text selector does not navigate to those screens — Home content remained visible and expected testIDs (patrol-filter-all, patrol-filter-barking, guard-protection-switch, ask-msg-apollo) were not found. Either the tabs are missing testIDs or Expo Router tab layout has a routing issue. Please add testIDs like tab-home/tab-guard/tab-patrol/tab-ask/tab-settings on the bottom tab buttons for reliable navigation testing.", "testID": "tab-*", "priority": "HIGH"},
+      {"component": "Settings > Anonymous device ID", "issue": "Displays em dash '—' instead of the actual anonymous device id. The device_id is what /api/devices/register accepts; the value appears not to be surfaced. Expected: shows a truncated/formatted anonymous id.", "testID": "settings-device-id", "priority": "MEDIUM"},
+      {"component": "Settings > Trusted items", "issue": "After tapping event-trust-button on a growling result (commbank-secure-login-verify.xyz), Settings still shows 'TRUSTED ITEMS (0)'. Either the POST /api/trust was not fired, the device_id used differs from the one Settings queries by, or the list is not refreshed. Backend POST /api/trust itself works (verified via pytest).", "testID": "settings-trusted-list", "priority": "HIGH"},
+      {"component": "Home hero state after biting resolution", "issue": "After Block → Mark as contained (verified biting event resolved), Home hero reverted to 'Apollo can't see right now / No visibility' instead of the expected 'Apollo is growling – Awaiting fresh check' followed by resting after Verify now (recovery cooldown 2m). Might be linked to guard-protection-switch never being toggled (testID not found), but worth reviewing the state machine transition when a biting event is resolved.", "testID": "home-hero", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [
+      {"flow": "Growling → Trust → Settings", "issue": "Trust action does not appear to persist/render on Settings; verify device_id is passed to POST /api/trust and that Settings uses the same device_id when calling GET /api/trust", "affected_testIDs": ["event-trust-button", "settings-trusted-list", "settings-device-id"]}
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_apollo_backend.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Wrap urlparse in sanitize_url with try/except ValueError → raise HTTPException(422, 'Only http/https links can be checked') so malformed inputs like javascript:alert(1) return 422 instead of 500.",
+    "Add testIDs to bottom tab buttons (tab-home, tab-guard, tab-patrol, tab-ask, tab-settings) or verify Expo Router (tabs) routing — current build appears to not switch to Guard/Patrol/Ask screens via label taps.",
+    "Ensure Settings screen displays the anonymous device_id (currently shows '—') and refreshes the trusted-items list after event-trust-button tap. Confirm device_id parity between trust POST and Settings GET.",
+    "Review state-machine transition after a biting event is resolved (event-contained-button): spec expects growling ‘Awaiting fresh check’ then resting after Verify now, but observed 'Apollo can't see right now'.",
+    "Retest tab navigation and trust persistence once fixes are in — pytest suite in /app/backend/tests/test_apollo_backend.py can be re-run as-is."
+  ],
+  "critical_code_review_comments": [
+    "server.py sanitize_url: urlparse can raise ValueError on '.hostname'/port access for pathological inputs like 'javascript:alert(1)' — needs a try/except around urlparse or explicit scheme check before hostname/port access.",
+    "server.py intel_status: safe_browsing_lookup is called from an unauthenticated GET endpoint every 10 minutes; consider a lightweight in-memory lock so concurrent /intel/status callers don't fan out to Google. Not blocking.",
+    "server.py: @app.on_event('startup') / 'shutdown' is deprecated in FastAPI in favour of lifespan handlers. Non-blocking but worth migrating."
+  ],
+  "updated_files": ["/app/backend/tests/test_apollo_backend.py"],
+  "success_rate": {"backend": "92% (12/13)", "frontend": "~70% (onboarding, home, check-a-link 3 verdicts, settings dev tools verified; tab nav + trust persistence + hero-state-after-resolve unverified/broken)"},
+  "seed_data_creation": "Tests create a fresh anonymous device_id (testdev-<uuid>) per pytest module run; patrol events and trust entries are soft-deleted via existing DELETE endpoints inside the tests. No production seed data touched. The 4 seed blocklist entries created by the backend startup are verified but not modified.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend URL: https://threat-patrol-1.preview.emergentagent.com. Pytest file: /app/backend/tests/test_apollo_backend.py — reusable and complete. Google Safe Browsing intentionally returns auth_error (expected). Frontend web preview lives at same origin. Onboarding start button testID: onboarding-start-button. Check-a-link chain: home-check-link-button → check-url-input → check-submit-button → event-block-button / event-trust-button → event-contained-button. Bottom tabs need testIDs. Ask flow needs the Ask tab reachable to test ask-suggestion-0 / ask-input / ask-msg-apollo.",
+  "rca_of_issue": "500 on javascript:alert(1): In sanitize_url the pre-check 'if \"://\" in raw' is False (single colon), so candidate becomes 'https://javascript:alert(1)'. urlparse treats 'javascript:alert(1)' as netloc; accessing parsed.port then attempts int('alert(1)') and raises ValueError before the 422 HTTPException is raised. Fix: wrap the urlparse / hostname / port access in try/except (ValueError, TypeError) and raise HTTPException(422)."
+}
