@@ -1,0 +1,50 @@
+{
+  "summary": "Apollo V1 Iteration 13 (Gate 6 Files & Downloads + idempotent /api/patrol/events race fix) PASSED. Backend race fix verified: 3/3 new tests in test_iter13_patrol_race.py green — 2 concurrent asyncio POSTs (same event_id+device_id, different headlines) both return 200 with GET showing exactly one event; 5-thread stress → all 200, one row; sequential repeat 200 + updated fields visible. Frontend unit tests: gate6 17/17, plus regression gate2 20/20, gate3 18/18, gate3page 15/15, gate4 25/25, gate5 19/19 — all green (114/114). UI acceptance on 390x844 web preview (https://threat-patrol-1.preview.emergentagent.com) via onboarding-start-button → disclosure-accept-button: Home shows home-check-file-button → /file. A1 file-source-message + 'Statement.pdf.exe' → file-state='Barking', file-scenario='Disguised executable', file-verdict=\"This file is not really a PDF. Don't open it.\", file-recovery-open visible, file-tech opens sheet with file-tech-0='Name: Statement.pdf.exe', file-again resets. A2 file-source-known + 'MeetingAgenda.pdf' → 'Patrolling', verdict=\"I didn't find any obvious signs of danger.\", NO file-recovery-open. A5 'data.qzx' → 'Ears up', verdict mentions \"don't know this file type\". F20 message + 'WhatsApp_update.apk' → 'Barking'. F11 'wifi-setup.mobileconfig' → 'Barking'. F04 file-pw switch ON + 'files.rar' → 'Ears up' scenario='Password-protected archive'. Patrol tab shows the Barking file event with headline 'File: Disguised executable' (1 event). Regression: /scan, /call, /message, /check, /(tabs)/home all load with no runtime/red-screen errors. File picker on web: click file-pick + page.expect_file_chooser with generated Invoice_overdue.pdf uploaded — result renders WITHOUT crash but with 'Patrolling / Ordinary file' (no bytes read on web; graceful fallback to name+MIME → real type=pdf via MIME, no textSample → no URL extraction → no file-links card). This matches the fallback branch in the review spec: 'if expo-file-system File.bytes() is unsupported on web the screen should still show a result (from name + MIME) without crashing'. No deprecated Expo packages detected (expo-document-picker + expo-file-system are current).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "File picker on web — expo-file-system File.bytes() fallback",
+        "issue": "On web preview, `new File(asset.uri).bytes()` throws (caught silently) so head bytes + textSample stay null. Consequence: the URL inside the PDF ('https://pay-invoice-now.top/abc') is not extracted, file-links card is not rendered, and state is Patrolling (F10 via MIME=application/pdf) instead of Ears up (F05). No crash — graceful degradation as spec allowed. On real device (iOS/Android) the bytes path will run and URL extraction + link hand-off will trigger. Fallback branch is per the review request note; documenting behavior for the record.",
+        "affected_testIDs": ["file-pick", "file-links", "file-check-link-0"]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_13.json",
+    "/app/backend/tests/test_iter13_patrol_race.py",
+    "/app/test_reports/pytest/pytest_iter13.xml",
+    "/app/frontend/tests/gate6.test.ts"
+  ],
+  "action_items": [
+    "OPTIONAL (already documented): Consider using a web-friendly bytes read path (e.g. asset.file / fetch(asset.uri).arrayBuffer()) inside file.tsx pick() so web preview can also detect embedded URLs and produce Ears up F05 for invoice PDFs with pay links. Not required — spec allowed fallback.",
+    "Backend regression note (pre-existing, unrelated to Gate 6): test_apollo_backend.py::test_intel_status / test_intel_check_unknown / test_intel_check_batch_mixed now fail because Google Safe Browsing key is 'ok' (not 'auth_error') and unknown URLs are now graded 'clean' (not 'unknown', full coverage instead of partial). These are stale test expectations. Update assertions in test_apollo_backend.py OR treat as improved coverage. Not blocking."
+  ],
+  "critical_code_review_comments": [
+    "server.py L510-524: POST /api/patrol/events now correctly upserts via find-first + try/except DuplicateKeyError fallback. Under real concurrent races (verified 5x threads + asyncio.gather), both paths converge to a single row and 200 status. Clean fix for iteration-12 race.",
+    "server.py L521-524: The `except DuplicateKeyError` block re-fetches after $set — good, but consider `find_one_and_update(..., upsert=True, return_document=AFTER)` as a single-round-trip idempotent alternative that avoids the initial find_one probe entirely.",
+    "file.tsx L64-70: The try/catch around `new File(asset.uri).bytes()` swallows the web-side unsupported-op silently (comment 'web or unreadable: fall back to name + MIME'). This is intentional and matches the review spec's graceful-fallback requirement — but a console.debug in dev would help future debugging.",
+    "fileAnalysis.ts L74-75: F01 title uses `${(inner || ext).toUpperCase()}` for the disguised-executable message — correctly says 'not really a PDF' when name='Statement.pdf.exe' (inner=pdf, ext=exe). Nice.",
+    "fileAnalysis.ts L87 F10: `f.source === 'nearby' ? 'ears_up' : 'resting'` — good source-aware nuance. Note that a legitimate PDF from a 'message' source stays resting (F10), which is what the acceptance test expects for MeetingAgenda.pdf from a known sender."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter13_patrol_race.py (new)",
+    "/app/test_reports/iteration_13.json (new)",
+    "/app/test_reports/pytest/pytest_iter13.xml (new)"
+  ],
+  "success_rate": {
+    "backend": "100% for Gate 6 fix (test_iter13_patrol_race.py 3/3); pre-existing test_apollo_backend.py 11/14 (3 unrelated stale expectations around SafeBrowsing 'ok' vs 'auth_error')",
+    "frontend": "100% acceptance (A1 barking Statement.pdf.exe, A2 patrolling MeetingAgenda.pdf, A5 ears-up data.qzx, F20 barking APK, F11 barking mobileconfig, F04 ears-up password rar, file-again reset, file-tech sheet, Patrol single-event display, /scan /call /message /check regression, file-pick web fallback no crash) + 114/114 unit tests"
+  },
+  "seed_data_creation": "Fresh device onboarded per session via localStorage.clear + onboarding-start-button + disclosure-accept-button. Ephemeral SecureCore mock device_ids. Backend race test creates 3 disposable device_ids (race-*, seqdev-*, stressdev-*) with one event_id each; not cleaned up but harmless.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "(1) The Gate-6 file screen depends on setupDone → redirects to '/' if not onboarded. Always onboard first in the same browser context. (2) File picker on web ONLY works if bytes-read is attempted via expect_file_chooser + set_files; the try/catch in file.tsx swallows unsupported-op errors and falls back to name+MIME (Patrolling for PDF), which is per-spec but note the file-links card won't appear on web. To exercise the full pipeline including link extraction, test on native or add a web-friendly bytes path. (3) Patrol shows the barking event with headline 'File: Disguised executable' and the tap-target uses the standard Patrol event list (no per-event testID pattern was used, but 'File: Disguised executable' string is present in the DOM). (4) POST /api/patrol/events is now fully idempotent — both under DuplicateKeyError races (E11000) and normal repeats. The Gate-3+Gate-5 merge from iteration 12 will now succeed remotely. (5) The three pre-existing test_apollo_backend.py failures are NOT related to Gate 6 — they're stale expectations around SafeBrowsing status; consider updating them independently. (6) All gate*.test.ts files pass (gate2/3/3page/4/5/6 = 114 tests).",
+  "rca_of_issue": "Iteration-12 bug (POST /api/patrol/events → 500 DuplicateKeyError on Gate-3+Gate-5 event merge) is FIXED in iteration 13. Root cause: server previously did insert_one on a unique-indexed collection (device_id_1_event_id_1) which raced when two concurrent POSTs for the same (device_id, event_id) both saw find_one=None and both called insert_one. Fix (server.py L510-524): wrap the insert_one in try/except DuplicateKeyError; on catch, run update_one($set) + re-fetch and return the updated doc as if inserted. Verified with 3 dedicated tests (2-way asyncio, 5-way threadpool, sequential update). No other backend regressions introduced. Frontend picker-on-web behavior noted (graceful name+MIME fallback) is documented as per-spec and does not block acceptance."
+}

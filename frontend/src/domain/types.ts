@@ -7,6 +7,9 @@ export type ApolloState = "sniffing" | "resting" | "ears_up" | "growling" | "bar
 
 /** Semantically exact wording for each state. Never paraphrase these in the UI. */
 /** User-facing state names. The internal key stays `resting`; on the lookout it reads as "Patrolling". */
+/** Ordered low → high for comparisons in UI code (mirrors stateMachine STATE_RANK). */
+export const STATE_RANK_ORDER: ApolloState[] = ["sniffing", "resting", "ears_up", "growling", "barking", "biting"];
+
 export const STATE_NAME: Record<ApolloState, string> = { sniffing: "Sniffing", resting: "Patrolling", ears_up: "Ears up", growling: "Growling", barking: "Barking", biting: "Guarding" };
 
 export const STATE_LABEL: Record<ApolloState, string> = {
@@ -69,7 +72,7 @@ export interface IntelResult {
   coverage: IntelCoverage;
 }
 
-export type EventCategory = "link" | "website" | "connection" | "known_threat" | "protection" | "system" | "message";
+export type EventCategory = "link" | "website" | "connection" | "known_threat" | "protection" | "system" | "message" | "call" | "app" | "device" | "account";
 export type EventStatus = "active" | "trusted" | "blocked" | "resolved";
 
 export interface PatrolEvent {
@@ -104,7 +107,7 @@ export interface PatrolEvent {
 export type CapabilityStatus = "available" | "active" | "permission_required" | "unsupported" | "coming_later" | "inactive";
 
 export interface Capability {
-  id: "link_guard" | "site_guard" | "connection_guard" | "known_threats" | "share_intake" | "message_guard";
+  id: "link_guard" | "site_guard" | "connection_guard" | "known_threats" | "share_intake" | "message_guard" | "app_guard";
   title: string;
   status: CapabilityStatus;
   detail: string; // truthful, plain-language reason for the status

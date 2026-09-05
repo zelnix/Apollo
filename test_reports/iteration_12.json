@@ -1,0 +1,56 @@
+{
+  "summary": "Apollo V1 Gate 5 Scan Protection (iteration 12) PASSED. Frontend unit tests: gate5 19/19 (Q01-Q20 + N04), plus regression gate2 20/20, gate3 18/18, gate3page 15/15, gate4 25/25 — all green via `yarn test:gate*`. UI tests on 390x844 against https://threat-patrol-1.preview.emergentagent.com: onboarding-start-button → disclosure-accept-button → Home → home-scan-button navigates to /scan. On web, scan-start is disabled with label 'Camera scanning needs the phone app'. Acceptance 1 (parking + https://example-parking-payment.test/pay?zone=12): scan-state='Growling', scan-type='PAYMENT', scan-preview 'This appears to be a payment request via example-parking-payment.test.', scan-why-2 contains 'The sign says it's for the parking service on the sign, but the code leads to example-parking-payment.test…', scan-recommendation 'Don't open it. Use the official app or website for the service on the sign.', scan-open is the ghost 'Open anyway (Apollo recommends not to)', scan-view-destination present, scan-recovery-open present, scan-again clears the input. Acceptance 2 (menu + https://order.mryum.com/the-local-cafe): scan-state='Patrolling', scan-type='URL', scan-open label='Open website' (primary variant). Acceptance 4 (other + tel:+61400000000): scan-type='TEL', scan-preview 'This code wants to call +61400000000.', scan-check-number + scan-call present, no auto-navigation; tapping scan-check-number navigates to /call with call-number prefilled '+61400000000' and the call-more-toggle section open. Acceptance 5a (WIFI:T:WPA;S:CafeGuest;P:secret;;): scan-type='WIFI', scan-state='Patrolling', preview mentions 'CafeGuest'. 5b open Wi-Fi (WIFI:T:nopass;S:FreeAirport;;): scan-state='Ears up'. Plain text 'Table 12 thanks': scan-type='TEXT', scan-state='Patrolling'. bitcoin:bc1qexample?amount=0.01: scan-type='CRYPTO', scan-state='Ears up'. Q03 (email + https://microsoft-verify-account.top/login): scan-state='Barking', scan-open-blocked visible ('Apollo stopped this destination from opening. Use the organisation's official app instead.'), no primary 'Open website' button (scan-open not rendered because canOpen=false when state=barking). Patrol tab shows exactly ONE event with headline 'QR code: Suspicious destination' (Growling) for the parking scan — Gate 3 + Gate 5 correctly merged into a single incident, not two. /message, /call, /check, Home hero all load without errors on regression. No red screens, no runtime React Native errors. HOWEVER, backend log shows one silent 500 during the Gate-3-URL merge path (see backend_issues below) — swallowed by syncEvent's try/catch and does not affect the UI acceptance.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/patrol/events",
+        "issue": "Not idempotent on (device_id, event_id). When scan.tsx merges a Gate-3 URL check event with QR-context findings and calls upsertEvent → syncEvent → POST, the server raises pymongo.errors.DuplicateKeyError E11000 on index device_id_1_event_id_1 and returns 500 (visible in /var/log/supervisor/backend.err.log). ApolloContext.syncEvent swallows the error in its try/catch so the UI shows the merged headline locally, but the server-side event is never updated with the merged 'QR code: …' headline / QR-prefixed why lines. Any future GET /patrol/events (fresh install, second device, cache miss) will return the pre-merge Gate-3 version. Fix: make the POST an upsert on (device_id, event_id) or add PATCH and route upsertEvent to PATCH for known event_ids."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Gate 5 URL scan → Gate 3 link check → merged event sync to backend",
+        "issue": "Merged event never round-trips to the server due to the POST /api/patrol/events duplicate-key 500 (see backend_issues.minor). Locally correct, remotely stale.",
+        "affected_testIDs": ["scan-headline", "scan-why-2"]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_12.json",
+    "/app/frontend/tests/gate5.test.ts",
+    "/app/frontend/tests/gate2.test.ts (via test:gate2 alias)",
+    "/app/frontend/tests/gate3.test.ts",
+    "/app/frontend/tests/gate3page.test.ts",
+    "/app/frontend/tests/gate4.test.ts"
+  ],
+  "action_items": [
+    "Make POST /api/patrol/events idempotent (upsert on device_id+event_id) so the Gate-3 + Gate-5 merged event syncs remotely. Alternatively add PATCH /api/patrol/events/{event_id} and have ApolloContext.upsertEvent switch verbs based on whether the event is already known locally.",
+    "Optional: log-and-continue the DuplicateKeyError on the server side instead of returning 500, or return 200 with the existing document. Reduces console noise from `Failed to load resource: the server responded with a status of 500 ()`."
+  ],
+  "critical_code_review_comments": [
+    "scan.tsx L71-73: the merge condition `a.state !== 'resting'` combined with `higher` calculation correctly prefers the stronger of Gate-3 and Gate-5 states, and only replaces headline/what_to_do when Gate 5 is stronger. Preserves Gate-3 barking (e.g. Q03 Microsoft) while allowing Gate-5 physical-context growling to escalate a Gate-3 resting/ears_up (Acceptance 1). Nice.",
+    "scan.tsx L82 finalState: correctly derived by taking event.state if present else max(web.state, assess.state). Ensures the pill shown matches the persisted event and drives canOpen consistently.",
+    "scan.tsx L83 canOpen: only true for URL-typed payloads AND finalState not in {barking, biting}. Q03 correctly hides scan-open and shows scan-open-blocked, A2 shows primary 'Open website' at Patrolling, A1 (Growling) shows ghost 'Open anyway…'. Matches spec.",
+    "scan.tsx L131-134: tel payload renders scan-check-number and scan-call side-by-side WITHOUT auto-dial. Tapping scan-check-number routes to /call with params.number, and call.tsx L52 opens the more-toggle section when params.number is present. Good composition with Gate 4.",
+    "scanPayload.ts L60-77: assessScan for URL/payment first flags brand mismatch, then applies strict-context (parking/parcel/government) mismatch penalty scaled by payish detector. Correctly resting-passes A2 (mryum in menu context) via officialFor(). Logic is layered and readable.",
+    "ApolloContext.tsx L276-280: syncEvent swallows POST errors with a bare catch and a comment 'offline: local copy is authoritative'. That masks the DuplicateKeyError observed in this iteration and any future 4xx/5xx from the events endpoint. Consider distinguishing network errors (offline) from server errors (bug) and surfacing at least a dev-only console.warn."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_12.json (new)"
+  ],
+  "success_rate": {
+    "backend": "n/a (frontend-only review; backend regression not requested — but see minor DuplicateKeyError on POST /api/patrol/events observed via logs)",
+    "frontend": "100% acceptance (A1 parking, A2 menu, A4 tel, A5a WIFI WPA, A5b WIFI open, TEXT, CRYPTO, Q03 email/MSFT, scan-again reset, /call handoff prefill, Patrol single-event merge, /message /call /check /home regression) + 97/97 unit tests (gate2 20 + gate3 18 + gate3page 15 + gate4 25 + gate5 19)"
+  },
+  "seed_data_creation": "One fresh device onboarded per test session via localStorage.clear + reload → onboarding-start-button → disclosure-accept-button. Ephemeral browser-session device_id from SecureCore mock adapter. Patrol events persist to Mongo test_database.patrol_events; visible under device b52353a2-… in the log. No cleanup required.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Gate 5 is fully green on the frontend. If retesting: (1) The scan screen redirects to onboarding if setupDone is false — always onboard via onboarding-start-button + disclosure-accept-button in the same browser session before hitting /scan directly. Do NOT navigate to /scan on a cleared localStorage without onboarding first, you'll get bounced to the intro. (2) scan-again fully resets payload/assess/web/event/manual (scan.tsx L143) — confirmed via input_value check. (3) Q03 renders scan-open-blocked Body but NOT scan-open (since canOpen=false at barking); do not assert scan-open exists in the barking case. (4) The DuplicateKeyError on POST /api/patrol/events is a real backend bug — main agent needs to make the events endpoint idempotent. It does NOT block UI acceptance because syncEvent swallows the failure and the local Zustand-style events store already has the merged event. (5) Patrol tab lives at /(tabs)/patrol; tab bar testIDs weren't checked but URL navigation works. (6) All 19 gate5.test.ts assertions match the UI results observed 1:1.",
+  "rca_of_issue": "One latent backend bug found: POST /api/patrol/events raises 500 DuplicateKeyError when Gate 5 merges Gate 3's already-created event via upsertEvent. Reproduction: onboard → /scan → parking context → paste https://example-parking-payment.test/pay?zone=12 → sniff. Backend log shows E11000 on unique index device_id_1_event_id_1. Mitigation: (a) in server.py, change the /api/patrol/events handler to `update_one({device_id, event_id}, {'$set': doc}, upsert=True)` instead of insert_one; or (b) split into POST (create) + PATCH (update) and have ApolloContext.upsertEvent choose based on whether it's the first sync. Fix belongs to main agent. All Gate 5 acceptance criteria in the review request are met in the UI."
+}

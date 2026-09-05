@@ -13,6 +13,8 @@ import { Sheet } from "./Sheet";
 export const RECOVERY_TITLE: Record<RecoveryKind, string> = {
   clicked: "I only opened the page", password: "I entered my password", card: "I entered card / bank details", code: "I gave a verification code",
   money: "I sent money", info: "I shared personal information", download: "I downloaded something", app: "I installed something", called: "I called the number shown",
+  remote: "I gave someone remote access", accessibility: "I granted accessibility access", profile: "I installed a profile / certificate", banking_during_access: "I used banking while they had access",
+  mfa_approved: "I approved the login prompt", locked_out: "I'm locked out of the account",
 };
 
 const useStyles = makeStyles((c) => ({

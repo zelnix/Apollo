@@ -3,7 +3,7 @@
 // Raw personal content (page text, messages, contacts, photos, identifiers
 // beyond the anonymous device id) never leaves the device.
 
-export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "device_register" | "family" | "push_register" | "push_test" | "device_settings" | "message_check" | "message_extract" | "feedback" | "page_extract";
+export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "device_register" | "family" | "push_register" | "push_test" | "device_settings" | "message_check" | "message_extract" | "feedback" | "page_extract" | "app_check" | "account_check" | "breach_check";
 
 const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   family: new Set(["device_id", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id"]),
@@ -23,6 +23,11 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   message_check: new Set(["device_id", "sender", "text", "urls", "local_state", "scenario", "signals", "claimed_brand", "second_opinion"]),
   message_extract: new Set(["device_id", "image_base64"]),
   page_extract: new Set(["device_id", "image_base64", "url_hint"]),
+  // Gate 7: only the app's name/developer/source/purpose/permission *labels* and SDK-reported hosts — never an app inventory.
+  app_check: new Set(["device_id", "name", "developer", "source", "purpose", "permissions", "hosts", "local_state", "scenario", "second_opinion"]),
+  // Gate 8: alert text leaves the device only when the user taps "Check this alert"; the breach lookup sends the identifier the user typed, nothing else.
+  account_check: new Set(["device_id", "kind", "provider", "sender", "text", "urls", "local_state", "scenario", "second_opinion"]),
+  breach_check: new Set(["device_id", "identifier"]),
   // Quiet hours window (local minutes + UTC offset) so the server can hold growling pushes at night.
   device_settings: new Set(["quiet_hours"]),
 };

@@ -29,7 +29,8 @@
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.INTERNET",
         "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.POST_NOTIFICATIONS"
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.CAMERA"
       ]
     },
     "web": {
@@ -79,6 +80,14 @@
       ],
       "./plugins/withApolloSiteGuard",
       "expo-sharing",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Scan QR codes so Apollo can check where they lead",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
       [
         "expo-image-picker",
         {

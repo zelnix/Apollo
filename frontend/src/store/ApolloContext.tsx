@@ -14,6 +14,7 @@ import { decide } from "@/src/domain/decision";
 import { minimalIndicator } from "@/src/domain/privacy";
 import { analyseMessage, type MessageAnalysis } from "@/src/domain/messageAnalysis";
 import type { PageAnalysis } from "@/src/domain/pageAnalysis";
+import { analyseCall, type CallAnalysis, type CallInput } from "@/src/domain/callAnalysis";
 import { analyseUrlLocally } from "@/src/domain/risk";
 import { STATE_RANK } from "@/src/domain/stateMachine";
 import { findScentFor } from "@/src/domain/threatScent";
@@ -33,9 +34,15 @@ export interface CheckOutcome { local: LocalAnalysis; intel: IntelResult | null;
 export interface MessageUrlResult { url: string; host: string; verdict: "clean" | "malicious" | "unknown"; threat_types: string[]; coverage: string }
 export interface MessageExplanation { summary: string; why: string[]; recommendation: string }
 export interface MessageOutcome { analysis: MessageAnalysis; urls: MessageUrlResult[]; explanation: MessageExplanation | null; remoteError: string | null; event: PatrolEvent | null }
-export type RecoveryKind = "clicked" | "password" | "code" | "money" | "info" | "app" | "card" | "download" | "called";
+export type RecoveryKind = "clicked" | "password" | "code" | "money" | "info" | "app" | "card" | "download" | "called" | "remote" | "accessibility" | "profile" | "banking_during_access" | "mfa_approved" | "locked_out";
 /** Recovery guidance ("Stay With Me"). First step doubles as the event's what_to_do. */
 export const RECOVERY_STEPS: Record<RecoveryKind, string[]> = {
+  mfa_approved: ["Open the service's official app or typed address right now and sign out of all other devices/sessions.", "Change the password immediately — the person who triggered the prompt knows it.", "Check that the recovery email and phone are still yours; fix them if not.", "Deny every further approval prompt. Turn on number-matching or an authenticator app if offered.", "If it's a bank or payment account, call them on the number on your card."],
+  locked_out: ["Use only the provider's official account-recovery page (type the address yourself or use their app). Never a link or number someone sent you.", "Have your recovery email/phone and any backup codes ready; the provider will verify you.", "Once back in: change the password, sign out all other sessions, and restore your recovery details.", "Check for forwarding rules or new linked apps the attacker may have added.", "If it's a bank or contains payment details, call the bank on the number on your card."],
+  remote: ["End the remote-access session now: turn off Wi‑Fi and mobile data, or restart your phone.", "Hang up on the caller. Don't call the number back.", "Remove or disable the remote-access app and any permissions it was given (Settings → Apps).", "Review the accounts you used while they were connected — change passwords from a device they didn't touch.", "Reject any login or MFA prompts you didn't start.", "If any banking happened during the session, call your bank on the number on your card."],
+  accessibility: ["Open Settings → Accessibility and turn the service off for that app.", "If it won't turn off or keeps coming back, uninstall the app (Settings → Apps).", "Change passwords you typed while it was on — from a different device if you can.", "Check for unexpected messages or login alerts."],
+  profile: ["Open Settings → General → VPN & Device Management (iPhone) or Settings → Security (Android).", "Remove any profile, certificate or device-admin app you didn't deliberately install for work or a VPN you chose.", "Turn off any VPN you didn't set up.", "Restart the phone and check the profile is gone."],
+  banking_during_access: ["Call your bank now on the number on the back of your card. Tell them someone had access to your phone.", "Ask them to check for unauthorised transfers and to reset your online banking access.", "Change your email password from another device — email resets everything else.", "Turn on or reset two-factor authentication and reject any prompts you didn't start.", "Report it at ReportCyber (cyber.gov.au) and Scamwatch."],
   clicked: ["Close the page. If you only looked, you're most likely fine.", "Don't enter anything if it asks for details.", "Check the link with Apollo so it can be blocked."],
   password: ["Open the real service yourself (official app or typed address) and change that password now.", "If you use that password anywhere else, change it there too.", "Sign out other sessions if the service offers it.", "Reject any login or MFA prompts you didn't start."],
   code: ["Treat this as an account takeover in progress: open the real service now and change the password.", "Turn on or reset two-factor authentication.", "Check recent activity and contact the service using details you find yourself."],
@@ -72,6 +79,8 @@ interface ApolloContextValue {
   recordRecovery(event: PatrolEvent, kind: RecoveryKind): Promise<void>;
   /** Gate 3 Phase B: merge a page-screenshot analysis into an existing link event, or create a new website event. */
   recordPageAnalysis(pa: PageAnalysis, existing: PatrolEvent | null): Promise<PatrolEvent | null>;
+  /** Gate 4: Check This Call — user-selected context (+ optional transcript) → Call Risk Engine → Patrol event + Threat Scent. */
+  checkCall(input: CallInput): Promise<{ analysis: CallAnalysis; event: PatrolEvent | null }>;
   upsertEvent(event: PatrolEvent): Promise<PatrolEvent>;
   blockEvent(event: PatrolEvent): Promise<BlockResult>;
   trustEvent(event: PatrolEvent): Promise<boolean>;
@@ -338,8 +347,23 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     });
   }, [deviceId, upsertEvent]);
 
+  const checkCall = useCallback(async (input: CallInput) => {
+    const analysis = analyseCall(input);
+    let event: PatrolEvent | null = null;
+    if (analysis.state !== "resting") {
+      event = await upsertEvent({
+        event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "call", state: analysis.state, status: "active",
+        headline: `${analysis.title}${analysis.claimedBrand ? ` — caller claimed ${analysis.claimedBrand}` : ""}`, what_happened: analysis.verdict, why: analysis.why, what_to_do: analysis.recommendation,
+        indicator_host: null, indicator_digest: null, local_indicator: input.number?.trim() || null, verified_block: false, adapter_label: securityAdapter.label,
+        occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: analysis.claimedBrand, scenario: analysis.scenario,
+      });
+      if (event.state !== analysis.state) return { analysis: { ...analysis, state: event.state, why: event.why, verdict: "This call may be connected to the suspicious activity detected earlier." }, event };
+    }
+    return { analysis, event };
+  }, [deviceId, upsertEvent]);
+
   const recordRecovery = useCallback(async (event: PatrolEvent, kind: RecoveryKind) => {
-    const label: Record<RecoveryKind, string> = { clicked: "Opened the link", password: "Entered a password", code: "Shared a verification code", money: "Sent money", info: "Shared personal information", app: "Installed an app", card: "Entered card or bank details", download: "Downloaded a file", called: "Called the number shown" };
+    const label: Record<RecoveryKind, string> = { clicked: "Opened the link", password: "Entered a password", code: "Shared a verification code", money: "Sent money", info: "Shared personal information", app: "Installed an app", card: "Entered card or bank details", download: "Downloaded a file", called: "Called the number shown", remote: "Gave someone remote access", accessibility: "Granted accessibility access", profile: "Installed a profile or certificate", banking_during_access: "Used banking while they had access", mfa_approved: "Approved a login prompt", locked_out: "Lost access to the account" };
     const escalate = kind !== "clicked";
     await upsertEvent({ ...event, state: escalate ? "barking" : event.state, status: "active", why: [...event.why, `You told Apollo: ${label[kind].toLowerCase()}.`], what_to_do: RECOVERY_STEPS[kind][0] });
   }, [upsertEvent]);
@@ -442,7 +466,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   const value: ApolloContextValue = {
     ready, setupDone, deviceId, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label, isMock: IS_MOCK_SECURITY,
-    refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, recordRecovery, upsertEvent, recordPageAnalysis,
+    refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, recordRecovery, upsertEvent, recordPageAnalysis, checkCall,
     pushStatus, enablePush, quietHours, quietNow, setQuietHours, lowPower, setLowPower,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

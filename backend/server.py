@@ -13,6 +13,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import secrets
 import uuid
 from html import escape
@@ -23,6 +24,7 @@ from typing import Annotated, Any, AsyncIterator, Literal, Optional
 from urllib.parse import urlparse, urlunparse
 
 import httpx
+from pymongo.errors import DuplicateKeyError
 from bson import ObjectId
 from dotenv import load_dotenv
 from fastapi import APIRouter, FastAPI, HTTPException, Query
@@ -45,6 +47,8 @@ db = client[os.environ["DB_NAME"]]
 
 SAFE_BROWSING_API_KEY = os.environ.get("SAFE_BROWSING_API_KEY", "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+# Gate 8 — optional breach intelligence (Have I Been Pwned). Empty → /api/account/breach reports "not_configured".
+HIBP_API_KEY = os.environ.get("HIBP_API_KEY", "")
 URL_HMAC_SECRET = os.environ["URL_HMAC_SECRET"]
 SB_ENDPOINT = "https://safebrowsing.googleapis.com/v4/threatMatches:find"
 SB_THREAT_TYPES = ["MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE", "POTENTIALLY_HARMFUL_APPLICATION"]
@@ -152,7 +156,7 @@ class PatrolEventIn(BaseModel):
 
     event_id: str = Field(min_length=8, max_length=64)
     device_id: str = Field(min_length=8, max_length=64)
-    category: Literal["link", "website", "connection", "known_threat", "protection", "system", "message"]
+    category: Literal["link", "website", "connection", "known_threat", "protection", "system", "message", "call", "app", "device", "account"]
     state: ApolloState
     status: EventStatus
     headline: str = Field(max_length=160)
@@ -515,7 +519,13 @@ async def upsert_event(body: PatrolEventIn):
         doc = await db.patrol_events.find_one({"_id": existing["_id"]})
         return PatrolEvent.from_mongo(doc)
     event = PatrolEvent(**body.model_dump(), created_at=ts, updated_at=ts)
-    result = await db.patrol_events.insert_one(event.to_mongo())
+    try:
+        result = await db.patrol_events.insert_one(event.to_mongo())
+    except DuplicateKeyError:
+        # Two syncs of the same event raced (e.g. link check + QR merge). Idempotent: apply as an update.
+        await db.patrol_events.update_one({"event_id": body.event_id, "device_id": body.device_id}, {"$set": {**body.model_dump(), "updated_at": ts}})
+        doc = await db.patrol_events.find_one({"event_id": body.event_id, "device_id": body.device_id})
+        return PatrolEvent.from_mongo(doc)
     event.id = str(result.inserted_id)
     if event.state in ("barking", "biting"):
         asyncio.create_task(notify_guardians(event))
@@ -1142,6 +1152,244 @@ async def page_extract(body: PageExtractIn):
             "captcha_instructions": s_("captcha_instructions", 200), "wallet_connect_request": b_("wallet_connect_request"), "urgency_or_threat_text": s_("urgency_or_threat_text", 200),
             "prices_look_unrealistic": b_("prices_look_unrealistic"), "payment_methods": l_("payment_methods"), "business_identity": s_("business_identity", 200),
             "os_or_security_branding": s_("os_or_security_branding", 60), "text_excerpt": s_("text_excerpt", 400)}
+
+
+# ---------------------------------------------------------------------------
+# Gate 7 — Apps & Device: reputation hints + SDK-host intel + Gemini plain-language second opinion.
+# The on-device App & Device Engine is authoritative; nothing here overrides its verdict.
+# ---------------------------------------------------------------------------
+
+REMOTE_ACCESS_TOOLS = ["anydesk", "teamviewer", "quicksupport", "rustdesk", "airdroid", "airmirror", "supremo", "splashtop", "logmein", "rescue", "zoho assist", "ultraviewer", "remote desktop", "alpemix", "aweray", "hoptodesk"]
+SECURITY_VENDORS = ["google authenticator", "microsoft authenticator", "authy", "1password", "bitwarden", "lastpass", "dashlane", "proton", "nordvpn", "expressvpn", "mullvad", "surfshark", "malwarebytes", "norton", "mcafee", "bitdefender", "kaspersky", "avast", "lookout", "okta verify", "duo mobile"]
+APP_BRANDS = ["commbank", "westpac", "anz", "nab", "paypal", "auspost", "linkt", "ato", "mygov", "centrelink", "medicare", "telstra", "optus", "whatsapp", "netflix", "amazon", "microsoft", "apple", "google", "facebook", "instagram"]
+
+
+class AppAnalyseIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)
+    name: str = Field(min_length=1, max_length=120)
+    developer: Optional[str] = Field(default=None, max_length=120)
+    source: str = Field(default="not_sure", max_length=30)
+    purpose: str = Field(default="other", max_length=30)
+    permissions: list[str] = Field(default_factory=list, max_length=20)
+    hosts: list[str] = Field(default_factory=list, max_length=10)
+    local_state: ApolloState
+    scenario: str = Field(default="", max_length=40)
+    second_opinion: bool = True
+
+
+class AppHostResult(BaseModel):
+    host: str
+    verdict: Verdict
+    threat_types: list[str] = Field(default_factory=list)
+    coverage: str
+
+
+class AppReputation(BaseModel):
+    remote_access_tool: Optional[str] = None
+    known_security_vendor: Optional[str] = None
+    impersonates_brand: Optional[str] = None
+    official_store: bool
+    note: str
+
+
+class AppAnalyseOut(BaseModel):
+    reputation: AppReputation
+    hosts: list[AppHostResult]
+    explanation: Optional[dict[str, Any]] = None
+    gemini_used: bool = False
+
+
+GATE7_EXPLAIN_PROMPT = """You are Apollo, a calm plain-language security guide for everyday Australians. You will be given facts about an app
+someone installed (name, source, claimed purpose, permissions) plus the findings of an on-device App & Device Engine. Do NOT change the verdict.
+Explain permissions in plain words (what they let the app do to the person), never jargon. Write for a worried, non-technical person.
+Return ONLY JSON: {"summary": "<one sentence, max 22 words>", "why": ["<3 short bullets, each max 16 words>"], "recommendation": "<one or two sentences, max 40 words>"}.
+Rules: never call an app malware unless the findings say a dangerous connection or impersonation was confirmed; never say an app is safe just because
+it is in a store; if the findings say the app looks fine, say so plainly and avoid alarm; never tell the person to trust a caller or a link."""
+
+
+def app_reputation(body: AppAnalyseIn) -> AppReputation:
+    n = body.name.lower()
+    compact = re.sub(r"[^a-z0-9]", "", n)
+    remote = next((t for t in REMOTE_ACCESS_TOOLS if t in n), None)
+    vendor = next((v for v in SECURITY_VENDORS if v in n), None)
+    brand = next((b for b in APP_BRANDS if b in compact), None)
+    official = body.source in ("app_store", "play_store")
+    impersonates = brand.capitalize() if brand and not official and not vendor else None
+    if remote:
+        note = f"{remote.title()} is a genuine remote-control tool — and the tool scammers most often ask people to install. Legitimate only when you sought the help yourself."
+    elif impersonates:
+        note = f"Uses {impersonates}'s name but wasn't installed from {impersonates}'s official store listing."
+    elif vendor:
+        note = f"{vendor.title()} is a well-known security vendor. Still check that the developer name in the store matches."
+    elif official:
+        note = "Store presence is a useful signal, not proof of safety."
+    else:
+        note = "No reputation information for this name. Unknown is not the same as dangerous."
+    return AppReputation(remote_access_tool=remote.title() if remote else None, known_security_vendor=vendor.title() if vendor else None, impersonates_brand=impersonates, official_store=official, note=note)
+
+
+async def gemini_app_opinion(body: AppAnalyseIn, rep: AppReputation, hosts: list[AppHostResult]) -> Optional[dict[str, Any]]:
+    if not GEMINI_API_KEY:
+        return None
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    findings = {"state": body.local_state, "scenario": body.scenario, "reputation": rep.model_dump(), "hosts": [{"host": h.host, "verdict": h.verdict} for h in hosts]}
+    prompt = (f"App: {body.name}\nDeveloper: {body.developer or 'unknown'}\nSource: {body.source}\nClaimed purpose: {body.purpose}\n"
+              f"Permissions: {', '.join(body.permissions) or 'none'}\n\nEngine findings (authoritative):\n{json.dumps(findings)}")
+    chat = LlmChat(api_key=GEMINI_API_KEY, session_id=f"gate7-{uuid.uuid4().hex[:8]}", system_message=GATE7_EXPLAIN_PROMPT).with_model("gemini", "gemini-3-flash-preview")
+    try:
+        raw = await asyncio.wait_for(chat.send_message(UserMessage(text=prompt)), timeout=20)
+        txt = raw.strip()
+        if txt.startswith("```"):
+            txt = txt.strip("`")
+            txt = txt[txt.find("{"):txt.rfind("}") + 1]
+        data = json.loads(txt)
+        return {"summary": str(data.get("summary", ""))[:200], "why": [str(w)[:160] for w in data.get("why", [])][:4], "recommendation": str(data.get("recommendation", ""))[:320]}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("gate7 gemini opinion failed: %s", exc)
+        return None
+
+
+@api.post("/app/analyse", response_model=AppAnalyseOut)
+async def app_analyse(body: AppAnalyseIn):
+    rep = app_reputation(body)
+    hosts: list[AppHostResult] = []
+    for raw in body.hosts[:10]:
+        try:
+            _, host = sanitize_url(raw if "://" in raw else f"https://{raw}")
+            r = await run_intel_check("domain", host)
+            hosts.append(AppHostResult(host=host, verdict=r.verdict, threat_types=r.threat_types, coverage=r.coverage))
+        except HTTPException:
+            continue
+    explanation = await gemini_app_opinion(body, rep, hosts) if body.second_opinion else None
+    return AppAnalyseOut(reputation=rep, hosts=hosts, explanation=explanation, gemini_used=explanation is not None)
+
+
+# ---------------------------------------------------------------------------
+# Gate 8 — Account Guard: link intel + official-domain match for pasted alerts, optional Gemini plain-language
+# second opinion (never overrides), and breach exposure via HIBP when a key is configured. No passwords, ever.
+# ---------------------------------------------------------------------------
+
+OFFICIAL_DOMAINS: dict[str, list[str]] = {
+    "microsoft": ["microsoft.com", "live.com", "microsoftonline.com", "outlook.com", "office.com"],
+    "google": ["google.com", "gmail.com", "youtube.com"],
+    "apple": ["apple.com", "icloud.com"],
+    "bank": ["commbank.com.au", "westpac.com.au", "anz.com", "anz.com.au", "nab.com.au"],
+    "paypal": ["paypal.com", "paypal.com.au"],
+    "facebook": ["facebook.com", "fb.com", "instagram.com", "meta.com"],
+    "mygov": ["my.gov.au", "servicesaustralia.gov.au", "ato.gov.au"],
+    "other": [],
+}
+
+
+class AccountAnalyseIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)
+    kind: str = Field(default="other", max_length=30)
+    provider: str = Field(default="other", max_length=30)
+    sender: str = Field(default="", max_length=80)
+    text: str = Field(default="", max_length=4000)
+    urls: list[str] = Field(default_factory=list, max_length=10)
+    local_state: ApolloState
+    scenario: str = Field(default="", max_length=40)
+    second_opinion: bool = True
+
+    @field_validator("text")
+    @classmethod
+    def no_passwords(cls, v: str) -> str:
+        # Never persist or forward anything that looks like a shared password. Apollo doesn't want it.
+        return re.sub(r"(?i)(password|passcode|pin)\s*[:=]\s*\S+", r"\1: [removed]", v)
+
+
+class AccountUrlResult(BaseModel):
+    url: str
+    host: str
+    verdict: Verdict
+    threat_types: list[str] = Field(default_factory=list)
+    coverage: str
+    official: bool
+
+
+class AccountAnalyseOut(BaseModel):
+    urls: list[AccountUrlResult]
+    explanation: Optional[dict[str, Any]] = None
+    gemini_used: bool = False
+
+
+GATE8_EXPLAIN_PROMPT = """You are Apollo, a calm plain-language security guide for everyday Australians. You will be given an account-security
+alert (login prompt, MFA request, password reset, breach notice…) plus the findings of an on-device Identity & Account Engine. Do NOT change the verdict.
+Write for a worried, non-technical person. Return ONLY JSON: {"summary": "<one sentence, max 22 words>", "why": ["<3 short bullets, each max 16 words>"],
+"recommendation": "<one or two sentences, max 40 words>"}. Rules: never tell the person to use links, numbers or buttons from the alert itself; always say to open
+the service's own app or type its address; never say the account is definitely compromised unless the findings say a code or password was shared;
+never ask for or mention their password value; if the findings say the alert looks normal, say so plainly."""
+
+
+async def gemini_account_opinion(body: AccountAnalyseIn, urls: list[AccountUrlResult]) -> Optional[dict[str, Any]]:
+    if not GEMINI_API_KEY:
+        return None
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    findings = {"state": body.local_state, "scenario": body.scenario, "kind": body.kind, "provider": body.provider, "urls": [{"host": u.host, "verdict": u.verdict, "official": u.official} for u in urls]}
+    prompt = f"Sender: {body.sender or 'unknown'}\nAlert text:\n{body.text[:1500] or '(none shared)'}\n\nEngine findings (authoritative):\n{json.dumps(findings)}"
+    chat = LlmChat(api_key=GEMINI_API_KEY, session_id=f"gate8-{uuid.uuid4().hex[:8]}", system_message=GATE8_EXPLAIN_PROMPT).with_model("gemini", "gemini-3-flash-preview")
+    try:
+        raw = await asyncio.wait_for(chat.send_message(UserMessage(text=prompt)), timeout=20)
+        txt = raw.strip()
+        if txt.startswith("```"):
+            txt = txt.strip("`")
+            txt = txt[txt.find("{"):txt.rfind("}") + 1]
+        data = json.loads(txt)
+        return {"summary": str(data.get("summary", ""))[:200], "why": [str(w)[:160] for w in data.get("why", [])][:4], "recommendation": str(data.get("recommendation", ""))[:320]}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("gate8 gemini opinion failed: %s", exc)
+        return None
+
+
+@api.post("/account/analyse", response_model=AccountAnalyseOut)
+async def account_analyse(body: AccountAnalyseIn):
+    official = OFFICIAL_DOMAINS.get(body.provider, [])
+    results: list[AccountUrlResult] = []
+    for raw in body.urls[:10]:
+        try:
+            normalized, host = sanitize_url(raw)
+            r = await run_intel_check("url", normalized)
+            is_official = any(host == d or host.endswith(f".{d}") for d in official)
+            results.append(AccountUrlResult(url=normalized, host=host, verdict=r.verdict, threat_types=r.threat_types, coverage=r.coverage, official=is_official))
+        except HTTPException:
+            continue
+    explanation = await gemini_account_opinion(body, results) if body.second_opinion else None
+    return AccountAnalyseOut(urls=results, explanation=explanation, gemini_used=explanation is not None)
+
+
+class BreachCheckIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)
+    identifier: str = Field(min_length=3, max_length=254)
+
+
+class BreachCheckOut(BaseModel):
+    status: Literal["not_configured", "clear", "found", "unavailable"]
+    breaches: list[dict[str, Any]] = Field(default_factory=list)
+    password_exposed: bool = False
+    detail: str
+
+
+@api.post("/account/breach", response_model=BreachCheckOut)
+async def account_breach(body: BreachCheckIn):
+    """Breach exposure lookup (HIBP). The identifier is forwarded once and never stored or logged."""
+    if not HIBP_API_KEY:
+        return BreachCheckOut(status="not_configured", detail="Breach intelligence isn't connected on this build. Apollo won't guess — you can check haveibeenpwned.com yourself.")
+    ident = body.identifier.strip().lower()
+    try:
+        async with httpx.AsyncClient(timeout=12) as client:
+            r = await client.get(f"https://haveibeenpwned.com/api/v3/breachedaccount/{ident}", params={"truncateResponse": "false"},
+                                 headers={"hibp-api-key": HIBP_API_KEY, "user-agent": "Apollo-GuardDog"})
+    except httpx.HTTPError:
+        return BreachCheckOut(status="unavailable", detail="The breach service didn't answer. Try again later.")
+    if r.status_code == 404:
+        return BreachCheckOut(status="clear", detail="No known breach lists this account. That's good — not a guarantee.")
+    if r.status_code != 200:
+        return BreachCheckOut(status="unavailable", detail="The breach service is unavailable right now.")
+    data = r.json()
+    breaches = [{"name": b.get("Title") or b.get("Name"), "date": b.get("BreachDate"), "data": (b.get("DataClasses") or [])[:8]} for b in data[:20]]
+    pw = any("Passwords" in (b.get("DataClasses") or []) for b in data)
+    return BreachCheckOut(status="found", breaches=breaches, password_exposed=pw, detail=f"Found in {len(data)} known breach{'es' if len(data) != 1 else ''}.{' At least one included passwords.' if pw else ''}")
 
 
 app.include_router(api)

@@ -99,6 +99,13 @@ export default function RootLayout() {
                   <Stack.Screen name="(tabs)" />
                   <Stack.Screen name="check" options={{ presentation: "modal" }} />
                   <Stack.Screen name="message" options={{ presentation: "modal" }} />
+                  <Stack.Screen name="call" options={{ presentation: "modal" }} />
+                  <Stack.Screen name="scan" options={{ presentation: "modal" }} />
+                  <Stack.Screen name="file" options={{ presentation: "modal" }} />
+                  <Stack.Screen name="app-check" options={{ presentation: "modal" }} />
+                  <Stack.Screen name="device" options={{ presentation: "modal" }} />
+                  <Stack.Screen name="network" options={{ presentation: "modal" }} />
+                  <Stack.Screen name="account" options={{ presentation: "modal" }} />
                   <Stack.Screen name="patrol/[id]" options={{ presentation: "modal" }} />
                   <Stack.Screen name="dev-tools" options={{ presentation: "modal" }} />
                   <Stack.Screen name="benchmark" options={{ presentation: "modal" }} />

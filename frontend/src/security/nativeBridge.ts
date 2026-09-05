@@ -29,6 +29,24 @@ export interface ApolloSecurityNativeModule {
   getRedirectAssessment(url: string): Promise<string>;
   allowDestination(domain: string): Promise<string>;
   getRecentWebThreatEvents(): Promise<string>;
+  // Gate 4 — Phone Calls (SDK contract). JSON strings; see src/security/callSdk.ts.
+  getCallProtectionCapabilities(): Promise<string>;
+  getCallerMetadata(): Promise<string>;
+  checkNumberReputation(number: string): Promise<string>;
+  reportCallContext(contextJson: string): Promise<string>;
+  getRecentCallSecurityEvents(): Promise<string>;
+  // Gate 7 — Apps & Device (SDK contract). JSON strings; see src/security/appDeviceSdk.ts.
+  getAppDeviceCapabilities(): Promise<string>;
+  getInstalledAppAssessment(packageId: string): Promise<string>;
+  getRecentInstallEvents(): Promise<string>;
+  getDeviceSecuritySignals(): Promise<string>;
+  getRecentAppSecurityEvents(): Promise<string>;
+  // Gate 8 — Network & Accounts (SDK contract). JSON strings; see src/security/networkAccountSdk.ts.
+  getNetworkProtectionCapabilities(): Promise<string>;
+  getVPNState(): Promise<string>;
+  getRecentNetworkEvents(): Promise<string>;
+  getRecentAccountSecurityEvents(): Promise<string>;
+  submitAccountSecurityEvent(eventJson: string): Promise<string>;
 }
 
 let cached: ApolloSecurityNativeModule | null | undefined;

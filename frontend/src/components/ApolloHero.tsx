@@ -107,6 +107,8 @@ export function ApolloHero({ resolution, visibility, adapterLabel, isMock, anima
             <Animated.View style={dogStyle}>
               {state === "resting" && animate ? (
                 <Image source={require("../../assets/images/apollo-patrolling.gif")} style={{ width: 132, height: 132 }} contentFit="contain" autoplay accessibilityLabel="Apollo patrolling" testID="apollo-hero-gif" />
+              ) : (state === "barking" || state === "biting") && animate ? (
+                <Image source={require("../../assets/images/apollo-barking.gif")} style={{ width: 132, height: 132 }} contentFit="contain" autoplay accessibilityLabel="Apollo barking" testID="apollo-hero-gif-barking" />
               ) : (
                 <Image source={require("../../assets/images/logo.png")} style={{ width: 124, height: 124 }} contentFit="contain" accessibilityLabel="Apollo" />
               )}

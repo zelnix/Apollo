@@ -1,8 +1,15 @@
 import { useRouter } from "expo-router";
 import BatteryCharging from "lucide-react-native/icons/battery-charging";
+import FileSearch from "lucide-react-native/icons/file-search";
+import KeyRound from "lucide-react-native/icons/key-round";
 import Link2 from "lucide-react-native/icons/link-2";
 import MessageSquareWarning from "lucide-react-native/icons/message-square-warning";
+import PhoneIncoming from "lucide-react-native/icons/phone-incoming";
+import ScanLine from "lucide-react-native/icons/scan-line";
 import RefreshCw from "lucide-react-native/icons/refresh-cw";
+import ShieldCheck from "lucide-react-native/icons/shield-check";
+import Smartphone from "lucide-react-native/icons/smartphone";
+import Wifi from "lucide-react-native/icons/wifi";
 import React from "react";
 import { RefreshControl, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -62,7 +69,22 @@ export default function Home() {
           <Button testID="home-check-link-button" label="Check a link" onPress={() => router.push("/check")} icon={<Link2 size={18} color={colors.onBrandPrimary} />} style={{ flex: 1 }} />
           <Button testID="home-check-message-button" label="Check a message" variant="secondary" onPress={() => router.push("/message")} icon={<MessageSquareWarning size={18} color={colors.onSurface} />} style={{ flex: 1 }} />
         </View>
-        <Button testID="home-verify-button" label="Verify now" variant="ghost" onPress={verifyNow} icon={<RefreshCw size={18} color={colors.onSurface} />} />
+        <View style={{ flexDirection: "row", gap: spacing.sm }}>
+          <Button testID="home-check-call-button" label="Check this call" variant="secondary" onPress={() => router.push("/call")} icon={<PhoneIncoming size={18} color={colors.onSurface} />} style={{ flex: 1 }} />
+          <Button testID="home-scan-button" label="Scan a code" variant="secondary" onPress={() => router.push("/scan")} icon={<ScanLine size={18} color={colors.onSurface} />} style={{ flex: 1 }} />
+        </View>
+        <View style={{ flexDirection: "row", gap: spacing.sm }}>
+          <Button testID="home-check-file-button" label="Check a file" variant="secondary" onPress={() => router.push("/file")} icon={<FileSearch size={18} color={colors.onSurface} />} style={{ flex: 1 }} />
+          <Button testID="home-check-app-button" label="Check an app" variant="secondary" onPress={() => router.push("/app-check")} icon={<Smartphone size={18} color={colors.onSurface} />} style={{ flex: 1 }} />
+        </View>
+        <View style={{ flexDirection: "row", gap: spacing.sm }}>
+          <Button testID="home-check-device-button" label="Check my device" variant="secondary" onPress={() => router.push("/device")} icon={<ShieldCheck size={18} color={colors.onSurface} />} style={{ flex: 1 }} />
+          <Button testID="home-check-network-button" label="Network Guard" variant="secondary" onPress={() => router.push("/network")} icon={<Wifi size={18} color={colors.onSurface} />} style={{ flex: 1 }} />
+        </View>
+        <View style={{ flexDirection: "row", gap: spacing.sm }}>
+          <Button testID="home-check-account-button" label="Account Guard" variant="secondary" onPress={() => router.push("/account")} icon={<KeyRound size={18} color={colors.onSurface} />} style={{ flex: 1 }} />
+          <Button testID="home-verify-button" label="Verify now" variant="ghost" onPress={verifyNow} icon={<RefreshCw size={18} color={colors.onSurface} />} style={{ flex: 1 }} />
+        </View>
         {scents.length ? (
           <View>
             <SectionTitle>Connected events (Threat Scent)</SectionTitle>

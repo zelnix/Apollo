@@ -62,7 +62,7 @@ export function buildScents(events: PatrolEvent[], now = Date.now()): ThreatScen
     const brand = sorted.find((e) => e.claimed_brand)?.claimed_brand ?? null;
     const host = sorted.find((e) => e.indicator_host)?.indicator_host ?? null;
     const recent = now - Date.parse(sorted[sorted.length - 1].occurred_at) <= 24 * 60 * 60 * 1000;
-    const parts = sorted.map((e) => ({ message: "a suspicious message", link: "a link check", website: "a website visit", known_threat: "a known threat", connection: "a network warning", protection: "a protection change", system: "a system event" }[e.category]));
+    const parts = sorted.map((e) => ({ message: "a suspicious message", link: "a link check", website: "a website visit", known_threat: "a known threat", connection: "a network warning", protection: "a protection change", system: "a system event", call: "a phone call", app: "an app install", device: "a device change", account: "an account alert" }[e.category]));
     out.push({ scent_id, events: sorted, state, brand, host,
       summary: `${recent ? "These events may be connected." : "Earlier connected events."} ${brand ? `A ${brand} message` : parts[0].replace(/^a /, "A ")} was followed by ${parts.slice(1).join(", then ")}.` });
   }

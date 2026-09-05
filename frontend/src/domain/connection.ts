@@ -32,8 +32,8 @@ export function assessConnection(n: NetworkStatus | null, trustedSsids: string[]
   if (n.type === "wifi" && (n.wifiSecurity === "open" || n.wifiSecurity === "wep")) {
     const open = n.wifiSecurity === "open";
     return {
-      state: "growling", key: `wifi-${n.wifiSecurity}`, headline: open ? "You're on an open Wi‑Fi network" : "This Wi‑Fi uses outdated security",
-      what_happened: open ? "This Wi‑Fi has no password, so others nearby can see unencrypted traffic." : "This Wi‑Fi uses WEP, which can be broken in minutes.",
+      state: open ? "ears_up" : "growling", key: `wifi-${n.wifiSecurity}`, headline: open ? "You're on an open Wi‑Fi network" : "This Wi‑Fi uses outdated security",
+      what_happened: open ? "This Wi‑Fi has no password. That doesn't mean anyone is listening — it means they could." : "This Wi‑Fi uses WEP, which can be broken in minutes.",
       why: [open ? "The platform reported the network has no encryption." : "The platform reported WEP security."],
       what_to_do: "Stick to https websites and apps, avoid banking, or use mobile data. Apollo can't confirm this network is hostile — just that it isn't private.",
       summary: open ? "Open Wi‑Fi (no password)." : "Wi‑Fi uses outdated WEP security.",

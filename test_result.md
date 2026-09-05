@@ -188,3 +188,65 @@ frontend:
     working: "NA"
     file: "frontend/app/check.tsx, frontend/src/domain/pageAnalysis.ts, frontend/src/store/ApolloContext.tsx"
     needs_retesting: true
+
+## Iteration 11 — Gate 4 Phone Call Protection
+backend:
+  - task: "PatrolEventIn category Literal adds 'call'"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+frontend:
+  - task: "src/domain/callAnalysis.ts Call Risk Engine (C01–C20, transcript folding, claim inference); app/call.tsx Check This Call (big ask buttons, claim chips, optional number/transcript, result with Hang up & verify / Tell me why / Verify caller sheet / RecoveryFlow / Ask / mark safe); Home 'Check this call'; checkCall in ApolloContext creates 'call' events → Threat Scent; CallSdk stubs; yarn test:gate4 25/25"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/call.tsx, frontend/src/domain/callAnalysis.ts, frontend/src/store/ApolloContext.tsx, frontend/app/(tabs)/home.tsx"
+    needs_retesting: true
+
+## Iteration 12 — Gate 5 Scan Protection (QR / NFC payloads)
+frontend:
+  - task: "src/domain/scanPayload.ts (classifyPayload: url/payment/tel/sms/mailto/wifi/crypto/applink/geo/vcard/text; assessScan with physical-context mismatch + known official context domains); app/scan.tsx (expo-camera QR scanner w/ permission contract, paste fallback, context chips, Sniffing → preview → Gate 3 checkLink for URLs merged into one event, actions per payload type: Check number → /call?number, Open website only when resting / 'Open anyway' ghost otherwise, View destination → /check, copy, RecoveryFlow); Home 'Scan a code'; yarn test:gate5 19/19"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/scan.tsx, frontend/src/domain/scanPayload.ts"
+    needs_retesting: true
+
+## Iteration 13 — Gate 6 Files & Downloads + idempotent event sync fix
+backend:
+  - task: "POST /api/patrol/events now idempotent under races (DuplicateKeyError → update) — fixes iteration-12 500"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+frontend:
+  - task: "src/domain/fileAnalysis.ts File & Content Engine (magic bytes vs extension, double/RTL extension, apk/profile/cert/archive/macro/links, F01–F20); app/file.tsx Check This File (expo-document-picker + expo-file-system head bytes/text sample, source chips, password switch, name-only check, result, links → /check, technical sheet, RecoveryFlow); Home 'Check a file'; yarn test:gate6 17/17"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/file.tsx, frontend/src/domain/fileAnalysis.ts"
+    needs_retesting: true
+
+## Iteration 14 — Gate 7 Apps & Device Protection
+backend:
+  - task: "POST /api/app/analyse (reputation hints: remote-access tools, security vendors, brand impersonation off-store; SDK hosts → intel domain check; optional Gemini second opinion never overriding); PatrolEventIn category adds 'app'/'device'; tests/test_gate7_app.py 9/9"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py, backend/tests/test_gate7_app.py"
+    needs_retesting: true
+frontend:
+  - task: "src/domain/appAnalysis.ts App & Device Engine (A01–A20, context-aware scoring, permission plain-language notes); src/domain/deviceAnalysis.ts (device status Protected/Review/Action/Recovery, D01–D11, cannot-see list); app/app-check.tsx Check This App (name/developer, source/purpose chips, permission multi-select + long-press explainer, context switches, Threat Scent notice, result: state/why/recommendation, Access/Network/Reputation cards, Open Settings/Review permissions/Stay With Me/Tell me why/Keep/Report/technical); app/device.tsx Check My Device (status card, findings with Open Settings, self-report switches, cannot-see, Save to Patrol + RecoveryFlow); Home 'Check an app' + 'Check my device'; File gate → 'I installed it — check the app' handoff keeps scent; Call gate → 'They asked me to install an app' handoff; new recovery kinds remote/accessibility/profile/banking_during_access; yarn test:gate7 36/36"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/app-check.tsx, frontend/app/device.tsx, frontend/src/domain/appAnalysis.ts, frontend/src/domain/deviceAnalysis.ts, frontend/src/security/appDeviceSdk.ts, frontend/src/utils/deviceSettings.ts"
+    needs_retesting: true
+
+## Iteration 15 — Gate 8 Network & Accounts + barking GIF + Gate 7 label fix
+backend:
+  - task: "POST /api/account/analyse (URL intel + official-domain match per provider + password scrubbing validator + optional Gemini second opinion); POST /api/account/breach (HIBP when HIBP_API_KEY set, else truthful not_configured); PatrolEventIn category adds 'account'; tests/test_gate8_account.py 8/8"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py, backend/tests/test_gate8_account.py"
+    needs_retesting: true
+frontend:
+  - task: "src/domain/networkAnalysis.ts (N00–N12, lookalike SSID, VPN trust, captive portal handoff, SDK summary); src/domain/accountAnalysis.ts (AC01–AC20, official-domain link check, takeover risk, recovery kinds); app/network.tsx Network Guard dashboard (protection status from capabilities, current network, 24h activity) + Check This Network (context chips, expected name, VPN switch, captive URL) → connection events; app/account.tsx Account Guard dashboard (open account events + Review) + Check Account Alert (kind/provider chips, yes/no/unsure, paste text, flags, Threat Scent linking) + breach exposure card; Home 'Network Guard' + 'Account Guard'; message → Account Guard handoff (message-check-account), call code/password → Account Guard (call-check-account); new recovery kinds mfa_approved/locked_out; connection.ts open Wi‑Fi now ears_up (N04); ApolloHero shows apollo-barking.gif for barking/biting; appAnalysis: off-store impersonators get no purpose credit (all perms flagged); yarn test:gate8 34/34, test:gate7 36/36"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/network.tsx, frontend/app/account.tsx, frontend/src/domain/networkAnalysis.ts, frontend/src/domain/accountAnalysis.ts, frontend/src/security/networkAccountSdk.ts, frontend/src/components/ApolloHero.tsx"
+    needs_retesting: true
