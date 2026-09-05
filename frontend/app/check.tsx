@@ -13,6 +13,7 @@ import { Body, Button, Card, Pill, toneColor } from "@/src/components/ui";
 import { STATE_LABEL } from "@/src/domain/types";
 import { useApollo, type CheckOutcome } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+import { goBackOrHome } from "@/src/utils/navigation";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -65,7 +66,7 @@ export default function CheckLink() {
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <Text style={s.title}>Check a link</Text>
-        <Pressable testID="check-close" accessibilityRole="button" accessibilityLabel="Close" onPress={() => router.back()} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        <Pressable testID="check-close" accessibilityRole="button" accessibilityLabel="Close" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={16}>
         <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} keyboardShouldPersistTaps="handled" testID="check-scroll">

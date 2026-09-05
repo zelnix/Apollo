@@ -14,6 +14,7 @@ import { IS_MOCK_SECURECORE, SecureCore, SecureCoreError, userMessageFor } from 
 import { MockSecureCore } from "@/src/security/securecore/mock/MockSecureCore";
 import { MOCK_SCENARIOS, MockScenarioEngine, type MockScenario } from "@/src/security/securecore/mock/MockSecureCoreScenarios";
 import { SecureCoreLogger } from "@/src/security/securecore/SecureCoreLogger";
+import { goBackOrHome } from "@/src/utils/navigation";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
@@ -54,7 +55,7 @@ export default function DevTools() {
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <Text style={s.title}>Developer tools</Text>
-        <Pressable testID="dev-close" accessibilityRole="button" onPress={() => router.back()} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        <Pressable testID="dev-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="dev-scroll">
         <Pill tone="unknown" label="Mock builds only — never shipped" />

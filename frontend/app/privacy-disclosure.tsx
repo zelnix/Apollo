@@ -9,6 +9,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-nati
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
+import { goBackOrHome } from "@/src/utils/navigation";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
@@ -55,7 +56,7 @@ export default function PrivacyDisclosure() {
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <Text style={s.title}>Privacy disclosure</Text>
-        {setupDone ? <Pressable testID="disclosure-close" accessibilityRole="button" onPress={() => router.back()} style={s.close}><X size={20} color={colors.onSurface} /></Pressable> : null}
+        {setupDone ? <Pressable testID="disclosure-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable> : null}
       </View>
       <ScrollView contentContainerStyle={[s.content, { paddingBottom: spacing.xl }]} testID="disclosure-scroll">
         <Body>Apollo is built for Australians under the Privacy Act 1988 and the Australian Privacy Principles. This page lists exactly what leaves your phone and when. Nothing else does.</Body>
@@ -105,7 +106,7 @@ export default function PrivacyDisclosure() {
         <View style={[s.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
           {error ? <Text style={{ color: colors.barking, fontFamily: fonts.textMedium }} testID="disclosure-error">{error}</Text> : null}
           <Button testID="disclosure-accept-button" label={busy ? "Setting up…" : "I understand — set up Apollo"} onPress={accept} disabled={busy} icon={busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : undefined} />
-          <Button testID="disclosure-back-button" variant="ghost" label="Back" onPress={() => router.back()} />
+          <Button testID="disclosure-back-button" variant="ghost" label="Back" onPress={() => goBackOrHome(router)} />
         </View>
       ) : null}
     </View>

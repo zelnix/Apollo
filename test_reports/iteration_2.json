@@ -1,0 +1,31 @@
+{
+  "summary": "Apollo V1 iteration-2 testing PASSED end-to-end. Backend: 17/17 targeted pytest cases pass on retest (all iteration-1 regressions + new POST /api/intel/check-batch handling of mixed valid/invalid inputs; javascript:alert(1) now returns 422 on /intel/check and error field on /intel/check-batch). Benchmark harness (test_benchmark.py) passes shape, FP<2%, detection>=90% on blocklisted subset, and writes /app/test_reports/benchmark_report.json. Frontend: Onboarding → Continue routes to /privacy-disclosure (disclosure-leaves + disclosure-never visible; disclosure-back-button returns to onboarding); disclosure-accept-button completes setup → Home 'Apollo is resting'. Deep link /check?url=commbank-secure-login-verify.xyz&source=link auto-runs after setup, shows check-source-pill 'Opened via link' and check-result-state 'Apollo is barking'; check-close returns cleanly to Home (no GO_BACK error). Settings → settings-privacy-disclosure opens with disclosure-close and NO accept button; close returns to Settings. Settings → settings-benchmark → benchmark-run yields benchmark-gate 'Gates passed', benchmark-detection '100.0%', benchmark-fp '0.0%', with Misses & False Positives (0); benchmark-close returns to Settings. Settings shows 'Share links into Apollo' card (settings-share) and Anonymous device ID now surfaces truncated hex ('95e8da05…'), fixing iteration-1 issue. Guard tab shows Site Guard 'Permission required' with MOCK adapter. Regression: check http://testsafebrowsing.appspot.com/s/phishing.html → barking → Block → biting → Mark as contained works; Patrol tab lists the event with patrol-filter-all/needs-attention/biting/barking/growling/resting filters; Ask tab ask-suggestion-0 streams a full Apollo reply. No deprecated Expo packages, no React Native red screens observed.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_apollo_backend.py",
+    "/app/backend/tests/test_benchmark.py",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/benchmark_report.json"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py: FastAPI @app.on_event('startup')/'shutdown' still uses deprecated hooks — non-blocking, but consider migrating to lifespan handlers before FastAPI drops them.",
+    "backend intel_status calls Safe Browsing on every unauthenticated GET (10-min cache but concurrent requests can fan out) — cheap in-process lock recommended.",
+    "test_apollo_backend.py::test_intel_check_malicious asserts cached is False, but pytest-xdist parallel scheduling can run test_intel_check_cached first on the same URL causing a benign flake. Non-blocking; can be pinned with pytest.mark.order or a unique URL suffix."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_apollo_backend.py (added test_intel_check_batch_mixed)"
+  ],
+  "success_rate": {"backend": "100% (17/17 targeted; 1 xdist ordering flake on cached assert)", "frontend": "100% for iteration-2 scope (onboarding→disclosure→home, deep link, benchmark, settings disclosure/share/device-id, guard site-guard, regression check-link + Patrol + Ask streaming)"},
+  "seed_data_creation": "Fresh anonymous device_id per pytest module (testdev-<uuid>); patrol events + trust rows soft-deleted inside tests. Frontend tests clear localStorage per session to force onboarding, then perform in-session navigation for deep-link testing.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend URL: https://threat-patrol-1.preview.emergentagent.com/api. Deep-link /check?url=... only auto-runs when onboarding is complete (redirects to /onboarding otherwise) — always onboard first in same browser context. Settings device ID now displays a truncated 8-char hex, not '—'. Benchmark takes ~15-20s in preview; wait accordingly. GSB intentionally auth_error, benchmark shows 'Intelligence coverage: partial' by design. Pytest suite in /app/backend/tests/test_apollo_backend.py + /app/backend/tests/test_benchmark.py is fully reusable.",
+  "rca_of_issue": "N/A — all iteration-2 acceptance criteria met; iteration-1 defects (settings device id blank, tab navigation, trust persistence UX) were addressed via the onboarding-redirect fix and the new privacy disclosure gate, all now verified live."
+}

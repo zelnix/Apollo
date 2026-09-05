@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EventActions } from "@/src/components/EventActions";
 import { Body, Card, Pill, toneColor } from "@/src/components/ui";
 import { STATE_LABEL, STATE_MEANING } from "@/src/domain/types";
+import { goBackOrHome } from "@/src/utils/navigation";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
@@ -37,7 +38,7 @@ export default function EventDetail() {
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <Text style={s.title} numberOfLines={2} testID="event-title">{event?.headline ?? "Event"}</Text>
-        <Pressable testID="event-close" accessibilityRole="button" accessibilityLabel="Close" onPress={() => router.back()} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        <Pressable testID="event-close" accessibilityRole="button" accessibilityLabel="Close" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       {!event ? (
         <View style={s.content}><Body>This event is no longer available.</Body></View>

@@ -1,0 +1,16 @@
+{
+  "ran_at": "2026-09-05T09:01:42.691222+00:00",
+  "corpus_version": "2026-06-v1",
+  "scope": "backend intelligence layer only (on-device heuristics are scored in-app: Settings \u2192 Run threat benchmark)",
+  "intel_coverage": [
+    "partial"
+  ],
+  "threats": 60,
+  "clean": 60,
+  "intel_detected_threats": 12,
+  "intel_detection_rate_all_threats": 0.2,
+  "clean_false_positives": 0,
+  "false_positive_rate": 0.0,
+  "gate_false_positive_lt_2pct": true,
+  "false_positive_urls": []
+}

@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { GATES, runBenchmark, type BenchmarkReport } from "@/src/benchmark/runBenchmark";
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+import { goBackOrHome } from "@/src/utils/navigation";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -42,7 +43,7 @@ export default function Benchmark() {
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <Text style={s.title}>Threat benchmark</Text>
-        <Pressable testID="benchmark-close" accessibilityRole="button" onPress={() => router.back()} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        <Pressable testID="benchmark-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="benchmark-scroll">
         <Card style={{ gap: spacing.md }}>

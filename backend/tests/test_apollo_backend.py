@@ -204,3 +204,30 @@ def test_ask_history(api_client):
     roles = {m["role"] for m in hist}
     assert "user" in roles, hist
     assert "apollo" in roles, hist
+
+
+# --- intel/check-batch (iteration 2) ---
+def test_intel_check_batch_mixed(api_client):
+    body = {
+        "indicator_type": "url",
+        "values": [
+            "http://testsafebrowsing.appspot.com/s/phishing.html",  # blocklisted -> malicious
+            "https://www.abc.net.au",                                 # unknown (partial)
+            "javascript:alert(1)",                                    # invalid -> error
+        ],
+    }
+    r = api_client.post(f"{API}/intel/check-batch", json=body)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert isinstance(data, list) and len(data) == 3, data
+    by_val = {item["value"]: item for item in data}
+    # blocklisted
+    m = by_val["http://testsafebrowsing.appspot.com/s/phishing.html"]
+    assert m["result"] is not None and m["result"]["verdict"] == "malicious", m
+    assert not m.get("error")
+    # unknown
+    u = by_val["https://www.abc.net.au"]
+    assert u["result"] is not None and u["result"]["verdict"] == "unknown", u
+    # invalid -> error field set, result None
+    inv = by_val["javascript:alert(1)"]
+    assert inv["result"] is None and inv["error"], inv
