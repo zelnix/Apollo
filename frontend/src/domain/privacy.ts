@@ -3,7 +3,7 @@
 // Raw personal content (page text, messages, contacts, photos, identifiers
 // beyond the anonymous device id) never leaves the device.
 
-export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "device_register" | "family" | "push_register" | "push_test" | "device_settings" | "message_check" | "message_extract" | "feedback";
+export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "device_register" | "family" | "push_register" | "push_test" | "device_settings" | "message_check" | "message_extract" | "feedback" | "page_extract";
 
 const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   family: new Set(["device_id", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id"]),
@@ -22,6 +22,7 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   // Gate 2: message text + URLs leave the device only when the user taps "Check message" (shown as "Shared with Apollo for analysis").
   message_check: new Set(["device_id", "sender", "text", "urls", "local_state", "scenario", "signals", "claimed_brand", "second_opinion"]),
   message_extract: new Set(["device_id", "image_base64"]),
+  page_extract: new Set(["device_id", "image_base64", "url_hint"]),
   // Quiet hours window (local minutes + UTC offset) so the server can hold growling pushes at night.
   device_settings: new Set(["quiet_hours"]),
 };

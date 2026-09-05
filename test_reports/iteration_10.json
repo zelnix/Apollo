@@ -1,0 +1,34 @@
+{
+  "summary": "Apollo V1 iteration-10 (Gate 3 Phase B - page screenshot signals) PASSED end-to-end. Backend: 4/4 pytest cases in /app/backend/tests/test_gate3_page_extract.py against https://threat-patrol-1.preview.emergentagent.com/api. (1) POST /api/page/extract with a PIL-synthesised 600x420 fake-virus PNG (address bar 'apple-security-alert.top/warning', 'APPLE SECURITY WARNING', 'Your iPhone has 17 viruses!', 'Call Apple Support now: 1800 123 456', 'Download Protection App') -> 200 with all 15 required keys present; virus_or_infection_claim=true, phone_number_to_call contains '1800 123 456', page_type in ('security_warning','tech_support'), visible_url contains 'apple-security-alert.top'. (2) Plain white 'Weather today: sunny, 24C' PNG -> virus_or_infection_claim=false, page_type in ('article','other'), no phone. (3) image_base64='abc' -> 422. (4) missing device_id -> 422. Frontend unit tests: yarn test:gate3page 15/15, yarn test:gate3 18/18, yarn test:gate2 20/20. Frontend UI (390x844) via public preview: onboarding-start-button + disclosure-accept-button -> /check -> check-page-screenshot visible -> Playwright page.expect_file_chooser uploaded the fake-virus PNG (expo-image-picker on web renders a hidden <input type=file> which Playwright drove successfully) -> waited ~10s -> check-page-card rendered with check-page-state 'Barking', check-page-scenario 'Fake technical support', check-page-verdict 'This looks like a fake technical-support page.', check-page-phone pill \"Don't call 1800 123 456\", check-page-recommendation 'Don't call the number or install anything...'; because no URL was checked first, page-recovery-open button rendered inside the card. MERGE PATH: /check?url=https://apple-security-alert.top/warning -> check-result-card immediately at 'Apollo is barking' (host is blocklist-like scam TLD .top); after uploading same PNG, check-page-card also renders and check-result-state stays 'Apollo is barking' (already at ceiling; screenshot confirms merged why list now shows 'Page:' items e.g. 'Page: It claims your device is compromised. That's a claim, not evidence.'). Tech details sheet (check-tech-details) opens and shows on-device score/adapter/event id. Patrol tab: two Barking website events visible ('This looks like a fake Apple page' + 'Fake technical support'), both tagged apple-security-alert.top. Regression: Home hero (apollo-hero-gif) renders in Patrolling state. No red screens; no console errors beyond React DevTools banner.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_10.json",
+    "/app/backend/tests/test_gate3_page_extract.py",
+    "/app/test_reports/pytest/pytest_iter10.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py L1117-1144 /api/page/extract: solid input caps (image_base64 100..6M), strict JSON re-parse with try/except -> 502 on unreadable, and all string/list/bool fields defensively coerced+truncated. Good. Consider capping response text_excerpt to <=400 chars (already done at L1144 via s_('text_excerpt', 400)) - noted, no change needed.",
+    "server.py L1122 model 'gemini-3-flash-preview' - shared with /message/extract. Fine to reuse, but per-call session_id 'gate3p-<hex>' means no context bleed. Good privacy hygiene.",
+    "pageAnalysis.ts L56-60 W14 branch fires when asks_for includes 'install' AND (virus_or_infection_claim OR page_type=='tech_support'). Correct precedence keeps W14 above W09/W08 so a 'download+install' AnyDesk-style scare wins over a generic tech-support classification.",
+    "check.tsx L66 apiPost timeout key 'page_extract' - ensure client.ts maps this to a >=60s timeout, otherwise slow Gemini calls (up to 45s server timeout) can be cancelled client-side before response. Not observed in this run but worth confirming.",
+    "check.tsx L69 recordPageAnalysis(pa, liveEvent ?? null): when liveEvent exists, the returned ev may be the merged event; the current code only setPageEvent(ev) when !liveEvent. That's correct - merge path relies on liveEvent updating via events.find(...) at L82, not on a duplicate card."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_gate3_page_extract.py (new - 4 tests, PIL synth PNGs)",
+    "/app/test_reports/iteration_10.json (new)",
+    "/app/test_reports/pytest/pytest_iter10.xml (new - JUnit)"
+  ],
+  "success_rate": {"backend": "100% (4/4)", "frontend": "100% (15/15 gate3page unit + 18/18 gate3 + 20/20 gate2 + full UI upload/merge/patrol/regression flow)"},
+  "seed_data_creation": "Ephemeral test devices only: gate3page0001/0002/0003 for backend, and the browser session's SecureCore-issued device_id for UI. Two live Gemini calls per pytest run + two per UI run (~15-40s total). No seeded blocklist touched. No persistent state to clean up beyond the barking events in patrol_events which are per-device.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Gate 3 Phase B is fully green. To reproduce the page-extract test: use requests with a browser-like User-Agent (default python-requests UA works; only python-urllib is 403'd by the ingress). Build PNG via PIL - see helper _font()/make_fake_virus_png() in /app/backend/tests/test_gate3_page_extract.py. For UI, expo-image-picker on the web preview renders a hidden <input type=file> - drive it with `async with page.expect_file_chooser(): await btn.click(force=True)` then `fc.set_files(...)`. Gemini vision on a 600x420 PNG returned in ~8-12s in this environment; use a 60s wait_for on [data-testid=check-page-card]. Merge behaviour: if the current outcome is already at 'barking', the state pill won't visibly change on upload - assert the page card renders AND (optionally) that the why list contains 'Page:' items instead of expecting a further escalation. The public preview's /check?url=... deep link triggers the auto-run in check.tsx useEffect once ready+setupDone are true; onboarding is one-time per browser context.",
+  "rca_of_issue": "No bugs found. Implementation matches spec: PageExtractIn accepts image_base64 with proper length bounds; PAGE_EXTRACT_PROMPT enumerates every signal downstream analysePage() consumes; the response coercion at L1140-1144 guarantees the exact shape pageAnalysis.ts imports as PageSignals. On-device W09 branch fires correctly for the synthetic fake-virus PNG because the extracted signals hit: phone_number_to_call + (virus_or_infection_claim OR os_or_security_branding='Apple' OR urgency). Merge with an existing barking outcome is via recordPageAnalysis()/ApolloContext, which reuses the same event_id and appends 'Page: ...' items to the why list - confirmed visually in the tech-details sheet screenshot."
+}

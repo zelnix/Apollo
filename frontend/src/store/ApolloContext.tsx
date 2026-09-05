@@ -13,6 +13,7 @@ import { assessConnection } from "@/src/domain/connection";
 import { decide } from "@/src/domain/decision";
 import { minimalIndicator } from "@/src/domain/privacy";
 import { analyseMessage, type MessageAnalysis } from "@/src/domain/messageAnalysis";
+import type { PageAnalysis } from "@/src/domain/pageAnalysis";
 import { analyseUrlLocally } from "@/src/domain/risk";
 import { STATE_RANK } from "@/src/domain/stateMachine";
 import { findScentFor } from "@/src/domain/threatScent";
@@ -69,6 +70,8 @@ interface ApolloContextValue {
   checkLink(input: string): Promise<CheckOutcome>;
   checkMessage(sender: string, text: string): Promise<MessageOutcome>;
   recordRecovery(event: PatrolEvent, kind: RecoveryKind): Promise<void>;
+  /** Gate 3 Phase B: merge a page-screenshot analysis into an existing link event, or create a new website event. */
+  recordPageAnalysis(pa: PageAnalysis, existing: PatrolEvent | null): Promise<PatrolEvent | null>;
   upsertEvent(event: PatrolEvent): Promise<PatrolEvent>;
   blockEvent(event: PatrolEvent): Promise<BlockResult>;
   trustEvent(event: PatrolEvent): Promise<boolean>;
@@ -320,6 +323,21 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     return { analysis: { ...analysis, state, why }, urls, explanation, remoteError, event };
   }, [deviceId, upsertEvent]);
 
+  const recordPageAnalysis = useCallback(async (pa: PageAnalysis, existing: PatrolEvent | null): Promise<PatrolEvent | null> => {
+    if (existing) {
+      const escalate = STATE_RANK[pa.state] > STATE_RANK[existing.state] && existing.state !== "biting";
+      return upsertEvent({ ...existing, state: escalate ? pa.state : existing.state, status: escalate && existing.status === "resolved" ? "active" : existing.status, resolved_at: escalate ? null : existing.resolved_at,
+        headline: escalate ? pa.title : existing.headline, what_happened: escalate ? `${existing.what_happened} A screenshot of the page: ${pa.verdict}` : existing.what_happened,
+        why: [...existing.why, ...pa.why.map((w) => `Page: ${w}`)], what_to_do: escalate ? pa.recommendation : existing.what_to_do, claimed_brand: existing.claimed_brand ?? pa.claimedBrand, scenario: pa.scenario });
+    }
+    if (pa.state === "resting") return null;
+    return upsertEvent({
+      event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "website", state: pa.state, status: "active", headline: pa.title, what_happened: pa.verdict, why: pa.why, what_to_do: pa.recommendation,
+      indicator_host: pa.host, indicator_digest: null, local_indicator: pa.host, verified_block: false, adapter_label: securityAdapter.label, occurred_at: new Date().toISOString(), resolved_at: null,
+      trust_allowed: false, claimed_brand: pa.claimedBrand, scenario: pa.scenario,
+    });
+  }, [deviceId, upsertEvent]);
+
   const recordRecovery = useCallback(async (event: PatrolEvent, kind: RecoveryKind) => {
     const label: Record<RecoveryKind, string> = { clicked: "Opened the link", password: "Entered a password", code: "Shared a verification code", money: "Sent money", info: "Shared personal information", app: "Installed an app", card: "Entered card or bank details", download: "Downloaded a file", called: "Called the number shown" };
     const escalate = kind !== "clicked";
@@ -424,7 +442,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   const value: ApolloContextValue = {
     ready, setupDone, deviceId, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label, isMock: IS_MOCK_SECURITY,
-    refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, recordRecovery, upsertEvent,
+    refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, recordRecovery, upsertEvent, recordPageAnalysis,
     pushStatus, enablePush, quietHours, quietNow, setQuietHours, lowPower, setLowPower,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

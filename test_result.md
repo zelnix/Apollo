@@ -174,3 +174,17 @@ frontend:
     working: "NA"
     file: "frontend/app/check.tsx, frontend/src/domain/brand.ts, frontend/src/domain/decision.ts, frontend/src/components/RecoveryFlow.tsx, frontend/src/domain/threatScent.ts, frontend/src/components/ApolloHero.tsx"
     needs_retesting: true
+
+## Iteration 10 — Gate 3 Phase B (page screenshot checks)
+backend:
+  - task: "POST /api/page/extract {device_id,image_base64,url_hint?} → Gemini vision security signals JSON (visible_url, claimed_brand, page_type, asks_for[], virus_or_infection_claim, phone_number_to_call, remote_access_tool, captcha_instructions, wallet_connect_request, urgency_or_threat_text, prices_look_unrealistic, payment_methods[], business_identity, os_or_security_branding, text_excerpt)"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+    needs_retesting: true
+frontend:
+  - task: "src/domain/pageAnalysis.ts rule engine (W08/W09/W10/W11/W12/W14/W17/W18/W02/W03/W20); check.tsx 'Add a screenshot of the page' (check-page-screenshot) → check-page-card with state/scenario/verdict/why/recommendation/phone pill; merges into existing link event (escalates) or creates a website event with EventActions + RecoveryFlow; yarn test:gate3page 15/15"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/check.tsx, frontend/src/domain/pageAnalysis.ts, frontend/src/store/ApolloContext.tsx"
+    needs_retesting: true

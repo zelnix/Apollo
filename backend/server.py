@@ -1086,6 +1086,64 @@ async def message_extract(body: MessageExtractIn):
     return {"sender": str(data.get("sender", ""))[:80], "text": str(data.get("text", ""))[:4000], "urls": [str(u)[:500] for u in data.get("urls", [])][:10], "source": str(data.get("source", "other"))[:20]}
 
 
+# --------------------------------------------------------------------------- Gate 3 Phase B: page screenshot signals
+# Gemini vision extracts *security signals* from a screenshot of a web page (never stored). The on-device
+# rule engine (src/domain/pageAnalysis.ts) maps them to W08/W09/W10/W12/W18 and decides the dog state.
+class PageExtractIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)
+    image_base64: str = Field(min_length=100, max_length=6_000_000)
+    url_hint: Optional[str] = Field(default=None, max_length=2048)
+
+
+PAGE_EXTRACT_PROMPT = """You analyse a screenshot of a web page for a consumer security app. Report ONLY what is visible. Return ONLY JSON:
+{"visible_url": "<address bar URL/domain if visible, else empty>",
+ "claimed_brand": "<organisation/brand the page presents as (logo, name), else empty>",
+ "page_type": "<login|payment|shop|security_warning|tech_support|captcha|wallet|download|article|other>",
+ "asks_for": ["<any of: password, username, email, card, bank_login, verification_code, personal_id, phone_call, download, install, permission, wallet_connect, payment>"],
+ "virus_or_infection_claim": <true|false>,
+ "phone_number_to_call": "<phone number the page tells the user to call, else empty>",
+ "remote_access_tool": "<AnyDesk/TeamViewer/other tool named, else empty>",
+ "captcha_instructions": "<if a 'verify you are human' step tells the user to download, run, paste or install something, describe briefly, else empty>",
+ "wallet_connect_request": <true|false>,
+ "urgency_or_threat_text": "<short quote of urgent/threatening wording, else empty>",
+ "prices_look_unrealistic": <true|false>,
+ "payment_methods": ["<e.g. card, bank transfer, crypto, gift card, western union>"],
+ "business_identity": "<contact address/ABN/company details if shown, else empty>",
+ "os_or_security_branding": "<Apple/Microsoft/Google/McAfee/Norton style security branding used, else empty>",
+ "text_excerpt": "<up to 60 words of the main visible text>"}
+Never guess. If unreadable, use empty values."""
+
+
+@api.post("/page/extract")
+async def page_extract(body: PageExtractIn):
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=503, detail="Screenshot reading is not configured")
+    from emergentintegrations.llm.chat import ImageContent, LlmChat, UserMessage
+    chat = LlmChat(api_key=GEMINI_API_KEY, session_id=f"gate3p-{uuid.uuid4().hex[:8]}", system_message=PAGE_EXTRACT_PROMPT).with_model("gemini", "gemini-3-flash-preview")
+    hint = f" The user says the address was: {body.url_hint}" if body.url_hint else ""
+    try:
+        raw = await asyncio.wait_for(chat.send_message(UserMessage(text=f"Extract the security signals from this page screenshot.{hint}", file_contents=[ImageContent(body.image_base64)])), timeout=45)
+        txt = raw.strip()
+        if "{" in txt:
+            txt = txt[txt.find("{"):txt.rfind("}") + 1]
+        data = json.loads(txt)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("page extract failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Couldn't read that screenshot. Try a clearer image.") from exc
+    def s_(k: str, n: int = 200) -> str:
+        return str(data.get(k) or "")[:n]
+    def b_(k: str) -> bool:
+        return bool(data.get(k)) and str(data.get(k)).lower() not in ("false", "0", "")
+    def l_(k: str) -> list[str]:
+        v = data.get(k) or []
+        return [str(x)[:40].lower() for x in v][:12] if isinstance(v, list) else []
+    return {"visible_url": s_("visible_url", 500), "claimed_brand": s_("claimed_brand", 60), "page_type": s_("page_type", 20).lower(), "asks_for": l_("asks_for"),
+            "virus_or_infection_claim": b_("virus_or_infection_claim"), "phone_number_to_call": s_("phone_number_to_call", 40), "remote_access_tool": s_("remote_access_tool", 40),
+            "captcha_instructions": s_("captcha_instructions", 200), "wallet_connect_request": b_("wallet_connect_request"), "urgency_or_threat_text": s_("urgency_or_threat_text", 200),
+            "prices_look_unrealistic": b_("prices_look_unrealistic"), "payment_methods": l_("payment_methods"), "business_identity": s_("business_identity", 200),
+            "os_or_security_branding": s_("os_or_security_branding", 60), "text_excerpt": s_("text_excerpt", 400)}
+
+
 app.include_router(api)
 app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 

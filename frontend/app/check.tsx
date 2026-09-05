@@ -1,9 +1,11 @@
 import * as Clipboard from "expo-clipboard";
+import * as ImagePicker from "expo-image-picker";
+import ImageIcon from "lucide-react-native/icons/image";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import ClipboardPaste from "lucide-react-native/icons/clipboard-paste";
 import X from "lucide-react-native/icons/x";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -14,7 +16,8 @@ import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card, Pill, toneColor } from "@/src/components/ui";
 import { verifyWebsite } from "@/src/domain/brand";
-import { STATE_LABEL } from "@/src/domain/types";
+import { analysePage, type PageAnalysis, type PageSignals } from "@/src/domain/pageAnalysis";
+import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { useApollo, type CheckOutcome } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -41,10 +44,32 @@ export default function CheckLink() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { checkLink, events, isMock, ready, setupDone, deviceId, showToast, upsertEvent } = useApollo();
+  const { checkLink, events, isMock, ready, setupDone, deviceId, showToast, upsertEvent, recordPageAnalysis } = useApollo();
   const [verify, setVerify] = useState(false);
   const [report, setReport] = useState(false);
   const [tech, setTech] = useState(false);
+  const [page, setPage] = useState<PageAnalysis | null>(null);
+  const [pageEvent, setPageEvent] = useState<PatrolEvent | null>(null);
+  const [pageBusy, setPageBusy] = useState(false);
+  const [pageError, setPageError] = useState<string | null>(null);
+  const pickPage = async () => {
+    const perm = await ImagePicker.getMediaLibraryPermissionsAsync();
+    if (perm.status !== "granted") {
+      if (!perm.canAskAgain) { showToast("Photo access is off. Allow it in Settings to use screenshots.", "growling"); void Linking.openSettings(); return; }
+      const asked = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (asked.status !== "granted") { showToast("Apollo only needs the screenshot you pick — nothing else.", "neutral"); return; }
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.6, base64: true });
+    if (res.canceled || !res.assets[0]?.base64) return;
+    setPageBusy(true); setPageError(null);
+    try {
+      const signals = await apiPost<PageSignals>("/page/extract", "page_extract", { device_id: deviceId ?? undefined, image_base64: res.assets[0].base64, url_hint: outcome?.local.normalizedUrl ?? (input.trim() || undefined) });
+      const pa = analysePage(signals, outcome?.local.normalizedUrl ?? input);
+      setPage(pa);
+      const ev = await recordPageAnalysis(pa, liveEvent ?? null);
+      if (ev && !liveEvent) setPageEvent(ev);
+    } catch (e) { setPageError(e instanceof Error ? e.message : "Couldn't read that screenshot."); } finally { setPageBusy(false); }
+  };
   const sendFeedback = async (kind: "false_positive" | "override", ev: { event_id: string; state: string; indicator_host: string | null }, sources: string[]) => {
     try { await apiPost("/feedback", "feedback", { device_id: deviceId, event_id: ev.event_id, kind, state: ev.state, host: ev.indicator_host, sources, note: "" }); } catch { /* best effort */ }
   };
@@ -98,7 +123,25 @@ export default function CheckLink() {
           </View>
           {sourceLabel ? <Pill tone="neutral" label={sourceLabel} testID="check-source-pill" /> : null}
           <Button testID="check-submit-button" label={busy ? "Checking…" : "Check with Apollo"} onPress={() => run(input)} disabled={busy || !input.trim()} icon={busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : undefined} />
-          <Text style={s.hint}>Checked on your device first. Only the link itself (no page content) is sent for a reputation check.</Text>
+          <Button testID="check-page-screenshot" variant="secondary" label={pageBusy ? "Reading the page…" : "Add a screenshot of the page"} icon={<ImageIcon size={18} color={colors.onSurface} />} onPress={() => void pickPage()} disabled={pageBusy || busy} />
+          <Text style={s.hint}>Checked on your device first. Only the link itself (no page content) is sent for a reputation check. A screenshot is read once for security signals and never stored.</Text>
+          {pageError ? <Card testID="check-page-error"><Body>{pageError}</Body></Card> : null}
+          {page ? (
+            <Animated.View entering={FadeInDown.duration(350)}>
+              <Card testID="check-page-card" style={{ borderColor: toneColor(colors, page.state), gap: spacing.sm }}>
+                <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap", alignItems: "center" }}>
+                  <Pill tone={page.state} label={STATE_NAME[page.state]} testID="check-page-state" />
+                  <Pill tone="neutral" label={page.title} testID="check-page-scenario" />
+                  <Pill tone="neutral" label="Shared with Apollo for analysis" />
+                </View>
+                <Text style={s.headline} testID="check-page-verdict">{page.verdict}</Text>
+                {page.why.map((w, i) => <Body key={i} testID={`check-page-why-${i}`}>• {w}</Body>)}
+                <Body testID="check-page-recommendation">{page.recommendation}</Body>
+                {page.phoneToAvoid ? <Pill tone="barking" label={`Don't call ${page.phoneToAvoid}`} testID="check-page-phone" /> : null}
+                {!outcome && pageEvent ? <View style={{ marginTop: spacing.sm, gap: spacing.sm }}><EventActions event={events.find((e) => e.event_id === pageEvent.event_id) ?? pageEvent} /><RecoveryFlow event={pageEvent} kinds={["clicked", "password", "card", "code", "download", "app", "called"]} testID="page-recovery" /></View> : null}
+              </Card>
+            </Animated.View>
+          ) : null}
 
           {outcome && state ? (
             <Animated.View entering={FadeInDown.duration(350)}>

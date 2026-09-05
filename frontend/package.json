@@ -9,6 +9,7 @@
     "test:security": "node --test tests/securityConfig.test.ts",
     "test:gate2": "node --test tests/messageAnalysis.test.ts",
     "test:gate3": "node --test tests/gate3.test.ts",
+    "test:gate3page": "node --test tests/gate3page.test.ts",
     "eas-build-pre-install": "node scripts/security-preflight.mjs",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
