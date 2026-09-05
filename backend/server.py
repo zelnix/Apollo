@@ -873,6 +873,25 @@ async def send_push(recipients: list[str], data: dict, idempotency_key: Optional
     resp.raise_for_status()
 
 
+class PushTestIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)
+
+
+@api.post("/push/test")
+async def push_test(body: PushTestIn):
+    """Sample bark so people can hear and see exactly what a threat alert looks like."""
+    try:
+        await send_push(
+            recipients=[body.device_id],
+            data={"title": "Apollo is barking (test)", "message": "This is what a threat alert looks like. A real one names the website and tells you what to do.",
+                  "subtext": "No action needed — this is a test.", "action_url": "/settings", **PUSH_THREAT},
+            idempotency_key=f"test-{body.device_id}-{int(now_utc().timestamp())}",
+        )
+    except HTTPException as exc:
+        raise HTTPException(status_code=exc.status_code, detail="Test alert could not be sent. Notifications work after a native build with push configured.") from exc
+    return {"sent": True}
+
+
 async def push_owner_alert(event: PatrolEvent) -> None:
     """Tell the protected person the moment Apollo barks/bites while the app is closed.
     Growling is a non-urgent nudge → default channel, silenced during the device's quiet hours."""

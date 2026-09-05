@@ -1,11 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import { Platform, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { apiGet } from "@/src/api/client";
+import { apiGet, apiPost } from "@/src/api/client";
 import { Sheet } from "@/src/components/Sheet";
 import { TimeStepper } from "@/src/components/TimeStepper";
 import { Body, Button, Card, Pill, ScreenHeader, SectionTitle } from "@/src/components/ui";
@@ -38,6 +38,11 @@ export default function SettingsScreen() {
   const { colors } = useTheme();
   const [confirmClear, setConfirmClear] = useState(false);
   const intel = useQuery({ queryKey: ["intel-status"], queryFn: () => apiGet<IntelStatus>("/intel/status"), staleTime: 60_000 });
+  const testPush = useMutation({
+    mutationFn: () => apiPost<{ sent: boolean }>("/push/test", "push_test", { device_id: deviceId }),
+    onSuccess: () => showToast("Test bark sent — check your notifications.", "resting"),
+    onError: (e) => showToast(e instanceof Error ? e.message : "Could not send the test alert.", "barking"),
+  });
   const sb = intel.data?.safe_browsing;
   const sbTone = sb?.status === "ok" ? "resting" : sb?.status === "not_configured" ? "unknown" : "growling";
 
@@ -78,6 +83,13 @@ export default function SettingsScreen() {
             {pushStatus === "unsupported" ? <Pill tone="unknown" label="Needs a native build (not available in Expo Go or web)" /> : null}
             {pushStatus === "denied" || pushStatus === "undetermined" ? <Button testID="settings-push-enable" variant="secondary" label="Turn on alert notifications" onPress={() => void enablePush()} /> : null}
             {pushStatus === "blocked" ? <Button testID="settings-push-settings" variant="secondary" label="Open Settings to allow notifications" onPress={() => void Linking.openSettings()} /> : null}
+            {pushStatus === "granted" ? (
+              <>
+                <Button testID="settings-push-test" variant="secondary" label={testPush.isPending ? "Sending…" : "Send me a test bark"} onPress={() => testPush.mutate()} disabled={testPush.isPending} />
+                <Body>Minimise Apollo after tapping — the test arrives like a real alert, with the bark sound.</Body>
+              </>
+            ) : null}
+            {pushStatus !== "granted" && pushStatus !== "unsupported" ? <Body>Turn on alert notifications to send yourself a test bark.</Body> : null}
           </Card>
         </View>
 
