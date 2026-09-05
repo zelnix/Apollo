@@ -79,6 +79,8 @@ export interface PatrolEvent {
   adapter_label: string;
   occurred_at: string;
   resolved_at: string | null;
+  /** Set by the native Site Guard when the block happened with the app closed → backend pushes an alert to this device. */
+  background?: boolean;
   /** Whether "Trust This" may be offered. Only growling-level uncertain items. */
   trust_allowed?: boolean;
 }

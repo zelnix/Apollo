@@ -6,6 +6,7 @@ import React from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { ApolloLogo } from "@/src/components/ApolloLogo";
 import { Body, Button, Card, Pill } from "@/src/components/ui";
 import { PRIVACY_POLICY_SUMMARY } from "@/src/domain/privacy";
 import { STATE_LABEL, STATE_MEANING, type ApolloState } from "@/src/domain/types";
@@ -37,7 +38,10 @@ export default function Onboarding() {
   return (
     <View style={s.root}>
       <ScrollView contentContainerStyle={[s.content, { paddingTop: insets.top + spacing["2xl"], paddingBottom: spacing.xl }]} testID="onboarding-screen">
-        <Text style={s.eyebrow}>Apollo</Text>
+        <View style={{ alignItems: "flex-start", gap: spacing.md }}>
+          <ApolloLogo size={112} testID="onboarding-logo" />
+          <Text style={s.eyebrow}>Apollo</Text>
+        </View>
         <Text style={s.title}>A calm guard dog for the links you tap.</Text>
         <Body>Apollo checks dangerous links, suspicious websites and known online threats. It tells you exactly what it can see, and never pretends to protect what it can&apos;t.</Body>
 

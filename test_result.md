@@ -101,3 +101,24 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+## Iteration 6 — Alert notifications (Emergent managed push) + Guardian Reply verification
+backend:
+  - task: "POST /api/register-push relay + send_push helper; push to owner on background barking/biting events, to paired guardian devices in notify_guardians, and to protected owner on guardian ack"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+    needs_retesting: true
+frontend:
+  - task: "Settings → Alert notifications card (status pill, enable / open settings); _layout.tsx notification handler, channel, tap handlers, weekly nudge; registerForPush on device identity"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/_layout.tsx, frontend/app/(tabs)/settings.tsx, frontend/src/push/notifications.ts, frontend/src/store/ApolloContext.tsx"
+    needs_retesting: true
+  - task: "Guardian Reply UI on /family (I called them / I messaged them → ack → visible under 'Family responses to your alerts' on owner device)"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/family.tsx"
+    needs_retesting: true
+agent_communication:
+  - agent: "main"
+    message: "EMERGENT_PUSH_KEY is 'placeholder' in dev so /api/register-push returns 500 'EMERGENT_PUSH_KEY missing or invalid' (expected) and send_push failures are logged non-blocking — event/ack endpoints must still return 200. Web preview shows push as 'Native build only'."

@@ -46,7 +46,7 @@ export default function EventDetail() {
         <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="event-scroll">
           <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}>
             <Pill tone={event.state} label={STATE_LABEL[event.state]} testID="event-state-pill" />
-            {event.verified_block ? <Pill tone="biting" label="Block verified" testID="event-verified-pill" /> : null}
+            {event.verified_block ? <Pill tone={event.resolved_at ? "resting" : "biting"} label={event.resolved_at ? "Threat contained" : "Block verified"} testID="event-verified-pill" /> : null}
             {isMock ? <Pill tone="unknown" label={event.adapter_label} /> : null}
           </View>
           <Body>{STATE_MEANING[event.state]}</Body>
@@ -64,7 +64,7 @@ export default function EventDetail() {
             ))}
           </Card>
 
-          <Card style={{ gap: spacing.sm, borderColor: toneColor(colors, event.state) }}>
+          <Card style={{ gap: spacing.sm, borderColor: toneColor(colors, event.state === "biting" && event.resolved_at ? "resting" : event.state) }}>
             <Text style={s.sub}>What to do</Text>
             <Text style={s.big} testID="event-what-to-do">{event.what_to_do}</Text>
           </Card>

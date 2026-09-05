@@ -79,9 +79,9 @@ class MockSecurityAdapterImpl implements SecurityPlatformAdapter {
       const map: Record<string, NetworkStatus["type"]> = { WIFI: "wifi", CELLULAR: "cellular", ETHERNET: "ethernet", VPN: "vpn", NONE: "none", UNKNOWN: "unknown" };
       const type = map[String(s.type)] ?? "other";
       const sim = this.scenario === "OPEN_WIFI" ? "open" : this.scenario === "CAPTIVE_PORTAL" ? "wpa" : undefined;
-      return { connected: !!s.isConnected, type: sim ? "wifi" : type, isInternetReachable: s.isInternetReachable ?? null, inspectable: this.running, wifiSecurity: sim ?? (type === "wifi" ? "unknown" : "n/a"), captivePortal: this.scenario === "CAPTIVE_PORTAL" ? true : type === "wifi" ? false : null, vpnActive: type === "vpn", checkedAt: new Date().toISOString() };
+      return { connected: !!s.isConnected, type: sim ? "wifi" : type, isInternetReachable: s.isInternetReachable ?? null, inspectable: this.running, wifiSecurity: sim ?? (type === "wifi" ? "unknown" : "n/a"), captivePortal: this.scenario === "CAPTIVE_PORTAL" ? true : type === "wifi" ? false : null, vpnActive: type === "vpn", ssid: sim || type === "wifi" ? "Apollo-Mock-WiFi" : null, checkedAt: new Date().toISOString() };
     } catch {
-      return { connected: true, type: "unknown", isInternetReachable: null, inspectable: false, wifiSecurity: "unknown", captivePortal: null, vpnActive: null, checkedAt: new Date().toISOString() };
+      return { connected: true, type: "unknown", isInternetReachable: null, inspectable: false, wifiSecurity: "unknown", captivePortal: null, vpnActive: null, ssid: null, checkedAt: new Date().toISOString() };
     }
   }
 

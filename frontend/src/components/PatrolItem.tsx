@@ -23,7 +23,8 @@ export function PatrolItem({ event, isLast }: { event: PatrolEvent; isLast?: boo
   const s = useStyles();
   const { colors } = useTheme();
   const router = useRouter();
-  const color = toneColor(colors, event.state);
+  const contained = event.state === "biting" && event.verified_block && !!event.resolved_at;
+  const color = toneColor(colors, contained ? "resting" : event.state);
   const time = new Date(event.occurred_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   return (
     <View style={s.row}>
@@ -38,7 +39,7 @@ export function PatrolItem({ event, isLast }: { event: PatrolEvent; isLast?: boo
         style={({ pressed }) => [s.card, { opacity: pressed ? 0.85 : 1 }]}
       >
         <View style={s.top}>
-          <Pill tone={event.state} label={event.state.charAt(0).toUpperCase() + event.state.slice(1)} />
+          <Pill tone={contained ? "resting" : event.state} label={contained ? "Blocked & contained" : event.state.charAt(0).toUpperCase() + event.state.slice(1)} testID={contained ? `patrol-item-contained-${event.event_id}` : undefined} />
           <Text style={s.meta}>{time}</Text>
         </View>
         <Text style={s.headline} numberOfLines={2}>{event.headline}</Text>

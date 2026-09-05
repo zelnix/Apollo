@@ -13,7 +13,7 @@
       "bundleIdentifier": "com.emergent.threatpatrol.hynln9",
       "infoPlist": {
         "NSUserNotificationsUsageDescription": "Tell you when Apollo barks about a threat",
-        "NSLocationWhenInUseUsageDescription": "Check whether your current Wi‑Fi is open or secured"
+        "NSLocationWhenInUseUsageDescription": "Check whether your current Wi\u2011Fi is open or secured"
       },
       "entitlements": {
         "com.apple.developer.networking.wifi-info": true
@@ -27,7 +27,9 @@
       "package": "com.emergent.threatpatrol.hynln9",
       "permissions": [
         "android.permission.ACCESS_NETWORK_STATE",
-        "android.permission.INTERNET"
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS"
       ]
     },
     "web": {
@@ -37,6 +39,13 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-notifications",
+        {
+          "color": "#0B1220",
+          "defaultChannel": "default"
+        }
+      ],
       [
         "expo-splash-screen",
         {
@@ -58,11 +67,14 @@
             "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
             "NSExtensionActivationSupportsText": true
           },
-          "androidIntentFilters": ["text/*"],
+          "androidIntentFilters": [
+            "text/*"
+          ],
           "androidMultiIntentFilters": []
         }
       ],
-      "./plugins/withApolloSiteGuard"
+      "./plugins/withApolloSiteGuard",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true
@@ -77,7 +89,9 @@
                   "targetName": "ApolloContentBlocker",
                   "bundleIdentifier": "com.emergent.threatpatrol.hynln9.contentblocker",
                   "entitlements": {
-                    "com.apple.security.application-groups": ["group.com.emergent.threatpatrol.hynln9.apollo"]
+                    "com.apple.security.application-groups": [
+                      "group.com.emergent.threatpatrol.hynln9.apollo"
+                    ]
                   }
                 }
               ]

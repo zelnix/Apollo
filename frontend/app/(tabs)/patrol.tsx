@@ -1,3 +1,4 @@
+import FileDown from "lucide-react-native/icons/file-down";
 import React, { useMemo, useState } from "react";
 import { FlatList, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -7,6 +8,7 @@ import { Body, Card, Pill, ScreenHeader } from "@/src/components/ui";
 import type { ApolloState, PatrolEvent } from "@/src/domain/types";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+import { exportPatrolPdf } from "@/src/utils/exportPatrol";
 
 type Filter = "all" | ApolloState | "active";
 const FILTERS: { key: Filter; label: string }[] = [
@@ -21,6 +23,7 @@ const useStyles = makeStyles((c) => ({
   list: { paddingHorizontal: spacing.xl, paddingTop: spacing.sm, paddingBottom: spacing.xl },
   day: { fontFamily: fonts.display, fontSize: 13, color: c.onSurfaceSecondary, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: spacing.md, marginTop: spacing.sm },
   emptyTitle: { fontFamily: fonts.display, fontSize: 16, color: c.onSurface },
+  iconBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: c.surfaceTertiary },
 }));
 
 function dayLabel(iso: string) {
@@ -35,8 +38,13 @@ export default function Patrol() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { events } = useApollo();
+  const { events, deviceId, showToast } = useApollo();
   const [filter, setFilter] = useState<Filter>("all");
+  const onExport = async () => {
+    if (events.length === 0) { showToast("Nothing to export yet.", "neutral"); return; }
+    try { const r = await exportPatrolPdf(events, deviceId); showToast(r === "shared" ? "Patrol PDF ready to share" : "Print dialog opened", "resting"); }
+    catch { showToast("Could not create the PDF on this device.", "growling"); }
+  };
 
   const rows = useMemo(() => {
     const filtered = events.filter((e) => filter === "all" ? true : filter === "active" ? e.status === "active" || (e.status === "blocked" && !e.resolved_at) : e.state === filter);
@@ -54,7 +62,12 @@ export default function Patrol() {
   return (
     <View style={s.root}>
       <View style={{ paddingTop: insets.top + spacing.md }}>
-        <ScreenHeader title="Patrol" testID="patrol-header" right={<Pill tone="neutral" label={`${events.length} events`} testID="patrol-count" />} />
+        <ScreenHeader title="Patrol" testID="patrol-header" right={
+          <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}>
+            <Pill tone="neutral" label={`${events.length} events`} testID="patrol-count" />
+            <Pressable testID="patrol-export-button" accessibilityRole="button" accessibilityLabel="Export Patrol as PDF" onPress={onExport} style={s.iconBtn}><FileDown size={20} color={colors.onSurface} /></Pressable>
+          </View>
+        } />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipRow} testID="patrol-filter-row">
           {FILTERS.map((f) => {
             const active = filter === f.key;

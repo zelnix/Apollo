@@ -1,6 +1,7 @@
 // Home hero: communicates the current Apollo state with exact wording.
 // Visibility gaps are surfaced explicitly, never masked by a safe state.
 
+import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect } from "react";
 import { Text, View } from "react-native";
@@ -46,8 +47,8 @@ export function ApolloHero({ resolution, visibility, adapterLabel, isMock }: { r
         <View style={s.inner}>
           <View style={s.orbWrap}>
             <Animated.View style={[s.orbRing, { borderColor: color }, ring]} />
-            <View style={[s.orb, { borderColor: color, backgroundColor: toneTint(colors, tone) }]}>
-              <View style={[s.orbCore, { backgroundColor: color }]} />
+            <View style={[s.orb, { borderColor: color, backgroundColor: toneTint(colors, tone), overflow: "hidden" }]}>
+              <Image source={require("../../assets/images/logo.png")} style={{ width: 88, height: 88 }} contentFit="cover" accessibilityLabel="Apollo" />
             </View>
           </View>
           <Text style={s.label} testID="apollo-state-label">{title}</Text>
@@ -56,6 +57,7 @@ export function ApolloHero({ resolution, visibility, adapterLabel, isMock }: { r
           <View style={s.row}>
             <Pill testID="visibility-pill" tone={visibility === "full" ? "resting" : visibility === "limited" ? "growling" : "unknown"} label={visibility === "full" ? "Full visibility" : visibility === "limited" ? "Limited visibility" : "No visibility"} />
             {resolution.recovering ? <Pill tone="growling" label="Awaiting fresh check" testID="recovering-pill" /> : null}
+            {resolution.recovering && resolution.drivingEvent?.state === "biting" && resolution.drivingEvent.verified_block ? <Pill tone="resting" label="Threat contained" testID="contained-pill" /> : null}
             {isMock ? <Pill tone="unknown" label={adapterLabel} testID="mock-adapter-pill" /> : null}
           </View>
         </View>

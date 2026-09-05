@@ -86,19 +86,19 @@ public class ApolloSecurityModule: Module {
         monitor.cancel()
         let type: String = path.status != .satisfied ? "none" : path.usesInterfaceType(.wifi) ? "wifi" : path.usesInterfaceType(.cellular) ? "cellular" : path.usesInterfaceType(.wiredEthernet) ? "ethernet" : "other"
         let vpn = path.availableInterfaces.contains { $0.type == .other && $0.name.hasPrefix("utun") }
-        let finish: (String) -> Void = { sec in
+        let finish: (String, String?) -> Void = { sec, ssid in
           promise.resolve(self.json(["connected": path.status == .satisfied, "type": type, "isInternetReachable": path.status == .satisfied,
-                                     "inspectable": self.protectionSince != nil, "wifiSecurity": sec, "captivePortal": NSNull(), "vpnActive": vpn, "checkedAt": self.now()]))
+                                     "inspectable": self.protectionSince != nil, "wifiSecurity": sec, "captivePortal": NSNull(), "vpnActive": vpn, "ssid": ssid ?? NSNull(), "checkedAt": self.now()]))
         }
-        guard type == "wifi" else { finish("n/a"); return }
+        guard type == "wifi" else { finish("n/a", nil); return }
         if #available(iOS 14.0, *) {
           NEHotspotNetwork.fetchCurrent { net in
-            guard let net = net else { finish("unknown"); return }
+            guard let net = net else { finish("unknown", nil); return }
             if #available(iOS 15.0, *) {
-              switch net.securityType { case .open: finish("open"); case .WEP: finish("wep"); case .personal: finish("wpa"); case .enterprise: finish("enterprise"); default: finish("unknown") }
-            } else { finish(net.isSecure ? "wpa" : "open") }
+              switch net.securityType { case .open: finish("open", net.ssid); case .WEP: finish("wep", net.ssid); case .personal: finish("wpa", net.ssid); case .enterprise: finish("enterprise", net.ssid); default: finish("unknown", net.ssid) }
+            } else { finish(net.isSecure ? "wpa" : "open", net.ssid) }
           }
-        } else { finish("unknown") }
+        } else { finish("unknown", nil) }
       }
       monitor.start(queue: queue)
     }

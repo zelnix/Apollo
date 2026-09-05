@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import { Platform, ScrollView, Text, View } from "react-native";
@@ -7,12 +8,15 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiGet } from "@/src/api/client";
 import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card, Pill, ScreenHeader, SectionTitle } from "@/src/components/ui";
+import { APP_ENV } from "@/src/config/appEnvironment";
 import { PRIVACY_POLICY_SUMMARY } from "@/src/domain/privacy";
+import type { PushStatus } from "@/src/push/notifications";
 import { SECURECORE_LABEL, IS_MOCK_SECURECORE } from "@/src/security/securecore/SecureCore";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, spacing } from "@/src/theme";
 
 interface IntelStatus { safe_browsing: { status: string; detail: string }; blocklist: { status: string; entries: number } }
+const PUSH_LABEL: Record<PushStatus, string> = { granted: "On", denied: "Off", undetermined: "Not set", blocked: "Blocked in Settings", unsupported: "Native build only" };
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -28,7 +32,7 @@ export default function SettingsScreen() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { deviceId, trust, revokeTrust, clearPatrol, adapterLabel, isMock } = useApollo();
+  const { deviceId, trust, revokeTrust, clearPatrol, adapterLabel, isMock, pushStatus, enablePush } = useApollo();
   const [confirmClear, setConfirmClear] = useState(false);
   const intel = useQuery({ queryKey: ["intel-status"], queryFn: () => apiGet<IntelStatus>("/intel/status"), staleTime: 60_000 });
   const sb = intel.data?.safe_browsing;
@@ -57,6 +61,20 @@ export default function SettingsScreen() {
           <Card style={{ gap: spacing.sm }} testID="settings-share">
             <Body>From Messages, Mail or a browser, tap Share → Apollo to check a link instantly. Apollo also notices links on your clipboard when you open it, and opens links sent to apollo://check?url=… — nothing is checked until you confirm.</Body>
             <Pill tone={Platform.OS === "web" ? "unknown" : "growling"} label={Platform.OS === "web" ? "Share sheet: needs a native build" : "Share sheet: available after a native build"} />
+          </Card>
+        </View>
+
+        <View>
+          <SectionTitle>Alert notifications</SectionTitle>
+          <Card style={{ gap: spacing.sm }} testID="settings-push">
+            <View style={s.row}>
+              <Text style={s.label}>Tell me the moment Apollo barks</Text>
+              <Pill tone={pushStatus === "granted" ? "resting" : pushStatus === "unsupported" ? "unknown" : "growling"} label={PUSH_LABEL[pushStatus]} testID="settings-push-status" />
+            </View>
+            <Body>Barking and Biting alerts reach you even when the app is closed, plus replies from family you share with. Only the headline and what to do — never the link.</Body>
+            {pushStatus === "unsupported" ? <Pill tone="unknown" label="Needs a native build (not available in Expo Go or web)" /> : null}
+            {pushStatus === "denied" || pushStatus === "undetermined" ? <Button testID="settings-push-enable" variant="secondary" label="Turn on alert notifications" onPress={() => void enablePush()} /> : null}
+            {pushStatus === "blocked" ? <Button testID="settings-push-settings" variant="secondary" label="Open Settings to allow notifications" onPress={() => void Linking.openSettings()} /> : null}
           </Card>
         </View>
 
@@ -117,6 +135,7 @@ export default function SettingsScreen() {
         <View>
           <SectionTitle>About this build</SectionTitle>
           <Card style={{ gap: spacing.sm }} testID="settings-build">
+            <View style={s.row}><Text style={s.label}>Environment</Text><Pill tone={APP_ENV === "production" ? "resting" : "growling"} label={APP_ENV} testID="settings-app-env" /></View>
             <View style={s.row}><Text style={s.label}>Security adapter</Text><Pill tone={isMock ? "unknown" : "resting"} label={adapterLabel} /></View>
             <View style={s.row}><Text style={s.label}>SecureCore</Text><Pill tone={IS_MOCK_SECURECORE ? "unknown" : "resting"} label={IS_MOCK_SECURECORE ? "MOCK" : "Native"} /></View>
             <Body>{SECURECORE_LABEL}</Body>

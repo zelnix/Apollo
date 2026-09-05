@@ -14,8 +14,11 @@ export interface ConnectionAssessment {
   summary: string; // one-liner for Guard tab
 }
 
-export function assessConnection(n: NetworkStatus | null): ConnectionAssessment {
+export function assessConnection(n: NetworkStatus | null, trustedSsids: string[] = []): ConnectionAssessment {
   if (!n || !n.connected) return { state: null, key: "offline", headline: "", what_happened: "", why: [], what_to_do: "", summary: "Not connected." };
+  if (n.type === "wifi" && n.ssid && trustedSsids.includes(n.ssid)) {
+    return { state: null, key: `trusted-${n.ssid}`, headline: "", what_happened: "", why: [], what_to_do: "", summary: `On “${n.ssid}”, a network you marked as trusted. Apollo stays quiet here.` };
+  }
   if (!n.inspectable) return { state: null, key: `uninspectable-${n.type}`, headline: "", what_happened: "", why: [], what_to_do: "", summary: `Connected via ${n.type}. Apollo cannot assess this connection's safety on this build.` };
   if (n.captivePortal) {
     return {

@@ -1,0 +1,38 @@
+{
+  "summary": "Apollo V1 iteration-6 (Emergent-managed push relay + Guardian Reply UI) PASSED. Backend: 14/14 pytest cases against https://threat-patrol-1.preview.emergentagent.com/api in test_iter6_push.py — (a) POST /register-push validation: short user_id, bad platform, short device_token all 422; (b) POST /register-push with valid body returns 500 {detail:'EMERGENT_PUSH_KEY missing or invalid'} as expected in dev (placeholder key → 401 upstream); (c) POST /patrol/events with state='biting' + background=true returns 200 and persists (verified via GET); background defaults to false when omitted; barking+background=true also 200 (push failure non-blocking); (d) Full pairing flow: pair → link → barking event → fanout visible to guardian within ~1s → ack {reply:'called'} → 200 {ack_label:'I called them'} → shared-events shows acknowledged_at+ack_label → GET /family/acks on protected device sees the ack → ack on unknown event = 404. Backend log confirms 'owner push failed (non-blocking)', 'guardian push failed (non-blocking)', 'ack push failed (non-blocking)' warnings — all non-blocking as designed. Frontend (390x844): onboarding → home → Settings tab: 'Alert notifications' Card visible with 'settings-push-status' pill = 'Native build only' (correct for Web/Expo Go). Family screen: 'Create pairing code' produced 6-char code '93M3YL'; sections 'Alerts from people you watch' and 'Family responses to your alerts' render. Seeded a shared barking event via backend using the web device_id (captured 'b750fb8d-…' from /api/patrol/events?device_id=…): the 'I called them' Button (testID family-ack-called-<eid>) triggered the ack, showToast 'Marked: I called them' displayed, row switched to green Pill 'I called them · 9/5/2026' (testID family-ack-done-<eid>), and the protected device's /family/acks returned the ack row with correct label. Regression: Home/Guard/Patrol/Ask tabs still load; Check link flow (https://phishing.apollo.test/login) → 'Apollo is barking' → block → 'Apollo is biting' verified. No React Native red screens. Only a benign pointerEvents-prop RN-web deprecation warning (pre-existing) + expo-notifications 'push token listener not supported on web' info warning (expected).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "expo-notifications on web", "issue": "expo-notifications logs a benign warning on web: 'Listening to push token changes is not yet fully supported on web. Adding a listener will have no effect.' This is expected because push is native-only, and Settings correctly shows 'Native build only'. No action needed unless you want to gate the listener with Platform.OS !== 'web'. Reference: /app/frontend/src/push/notifications.ts and its consumer in ApolloContext."}
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_6.json",
+    "/app/backend/tests/test_iter6_push.py",
+    "/app/test_reports/pytest/pytest_iter6.xml"
+  ],
+  "action_items": [
+    "Optional: in /app/frontend/src/push/notifications.ts (or wherever addPushTokenListener is registered), early-return on Platform.OS === 'web' to silence the two 'Listening to push token changes is not yet fully supported on web' warnings.",
+    "Optional (cosmetic): Native testing needed to fully verify /register-push success path (dev env correctly returns 500 with placeholder key; production/native build with a real EMERGENT_PUSH_KEY will exercise the 201 + push_registered_at persistence branch)."
+  ],
+  "critical_code_review_comments": [
+    "server.py line 757: _push_client = httpx.AsyncClient(...) is a module-level client with headers captured at import time. If EMERGENT_PUSH_KEY is rotated at runtime, the header will not update. Consider constructing the header per-request or reloading via an app lifespan hook.",
+    "server.py line 397 upsert_event: when a duplicate event_id/device_id is PATCHed by an upsert (same POST body sent twice), notify_guardians / push_owner_alert are NOT re-fired — good. But if 'state' escalates from resting→biting in a subsequent POST, the escalation is silently missed. Acceptable given today's flow; worth documenting.",
+    "server.py send_push: recipients list is compared against len>100 after the caller has already .to_list(10) for guardians; safe today but if fan-out size grows, add explicit chunking helper.",
+    "family.tsx line 118: ack-done Pill uses toLocaleDateString() which renders locale-dependent date ('9/5/2026' vs '5/9/2026'). Consider a stable format (e.g. 'YYYY-MM-DD' or via Intl.DateTimeFormat) to reduce ambiguity when Australian users see US-locale output."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter6_push.py (new — 14 tests)",
+    "/app/test_reports/iteration_6.json (new)",
+    "/app/test_reports/pytest/pytest_iter6.xml (new — JUnit)"
+  ],
+  "success_rate": {"backend": "100% (14/14)", "frontend": "100% (onboarding, settings-push-status pill 'Native build only', /family pair code, seeded shared event ack → toast → ack-done pill, protected sees ack, regression check flow barking→biting)"},
+  "seed_data_creation": "In the seeded ack test the web-device UUID was captured from a live /api/patrol/events?device_id=... request. A protected device 'seed6P-<hex>' was created, paired, and posted a barking patrol event. The web device (guardian) then ack'ed via UI. All test DB rows are namespaced with disposable UUIDs and iter4 fixture already cleans its own; iter6 data is ephemeral and does not touch seeded blocklist rows.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "EMERGENT_PUSH_KEY is 'placeholder' in dev → /api/register-push always returns 500 with detail 'EMERGENT_PUSH_KEY missing or invalid' — this is EXPECTED, not a bug. All send_push callers are wrapped in try/except and log 'X push failed (non-blocking)' so state-changing endpoints (POST /patrol/events, POST /family/shared-events/{id}/ack) remain 200. When testing the family ack UI on web preview, DO capture the device_id from network (e.g. /api/patrol/events?device_id=<uuid>) — Settings shows only 8-char truncation. Frontend context is fresh on every browser_automation invocation (new UUID each session), so seed the backend pair/link/event inside the SAME session after capturing the current device_id. Family screen only shows ack buttons per row when acknowledged_at is null on that shared-event row; after ack, the row collapses to the pill (testID family-ack-done-<eid>).",
+  "rca_of_issue": "N/A — all iteration-6 acceptance criteria met."
+}

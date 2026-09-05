@@ -161,6 +161,8 @@ class PatrolEventIn(BaseModel):
     adapter_label: str = Field(max_length=64)
     occurred_at: datetime
     resolved_at: Optional[datetime] = None
+    # True when the native Site Guard raised this while the app was closed → owner gets a push.
+    background: bool = False
 
 
 class PatrolEvent(PatrolEventIn, BaseDocument):
@@ -405,6 +407,8 @@ async def upsert_event(body: PatrolEventIn):
     event.id = str(result.inserted_id)
     if event.state in ("barking", "biting"):
         asyncio.create_task(notify_guardians(event))
+        if event.background:
+            asyncio.create_task(push_owner_alert(event))
     return event
 
 
@@ -630,11 +634,22 @@ async def notify_guardians(event: PatrolEvent) -> None:
     try:
         guardians = await db.guardians.find({"device_id": event.device_id, "deleted_at": None, "confirmed": True}).to_list(10)
         links = await db.family_links.find({"protected_device_id": event.device_id, "deleted_at": None}).to_list(10)
-        # fan out to paired guardian devices (in-app)
+        # fan out to paired guardian devices (in-app + push)
         for ln in links:
             await db.shared_events.update_one({"event_id": event.event_id, "guardian_device_id": ln["guardian_device_id"]}, {"$set": {
                 "event_id": event.event_id, "guardian_device_id": ln["guardian_device_id"], "from_label": ln.get("owner_name") or "Family member",
                 "state": event.state, "headline": event.headline, "what_to_do": event.what_to_do, "indicator_host": event.indicator_host, "occurred_at": event.occurred_at, "created_at": now_utc()}}, upsert=True)
+        if links:
+            who = links[0].get("owner_name") or "A family member"
+            verb = "needs to be careful" if event.state == "barking" else "was protected"
+            try:
+                await send_push(
+                    recipients=[ln["guardian_device_id"] for ln in links][:100],
+                    data={"title": f"Apollo: {who} {verb}", "message": event.headline, "subtext": "A quick call is usually the most helpful response.", "action_url": "/family"},
+                    idempotency_key=f"guardian-{event.event_id}",
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("guardian push failed (non-blocking): %s", type(exc).__name__)
         today = now_utc().strftime("%Y-%m-%d")
         for g in guardians:
             sent = g.get("sent_today", 0) if g.get("sent_day") == today else 0
@@ -692,6 +707,103 @@ async def list_links(device_id: str = Query(min_length=8, max_length=64)):
 async def shared_events(device_id: str = Query(min_length=8, max_length=64)):
     docs = await db.shared_events.find({"guardian_device_id": device_id}).sort("occurred_at", -1).to_list(100)
     return [{k: v for k, v in d.items() if k != "_id"} for d in docs]
+
+
+class AckIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)  # guardian device
+    reply: Literal["called", "messaged", "visiting", "noted"] = "called"
+
+
+ACK_LABEL = {"called": "I called them", "messaged": "I messaged them", "visiting": "I'm visiting them", "noted": "Noted, no action needed"}
+
+
+@api.post("/family/shared-events/{event_id}/ack")
+async def ack_shared_event(event_id: str, body: AckIn):
+    """Guardian Reply: the family member marks how they responded; both sides see it."""
+    se = await db.shared_events.find_one({"event_id": event_id, "guardian_device_id": body.device_id})
+    if not se:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    ts = now_utc()
+    link = await db.family_links.find_one({"guardian_device_id": body.device_id, "deleted_at": None})
+    await db.shared_events.update_one({"_id": se["_id"]}, {"$set": {"acknowledged_at": ts, "ack_label": ACK_LABEL[body.reply]}})
+    ev = await db.patrol_events.find_one({"event_id": event_id})
+    if ev:
+        guardian_label = (link or {}).get("guardian_label") or "A family member"
+        await db.family_acks.update_one({"event_id": event_id, "guardian_device_id": body.device_id}, {"$set": {
+            "event_id": event_id, "protected_device_id": ev["device_id"], "guardian_device_id": body.device_id,
+            "guardian_label": guardian_label, "ack_label": ACK_LABEL[body.reply], "headline": ev["headline"], "acknowledged_at": ts}}, upsert=True)
+        try:
+            await send_push(
+                recipients=[ev["device_id"]],
+                data={"title": f"{guardian_label} replied: {ACK_LABEL[body.reply]}", "message": ev["headline"], "action_url": "/family"},
+                idempotency_key=f"ack-{event_id}-{body.device_id}",
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("ack push failed (non-blocking): %s", type(exc).__name__)
+    return {"acknowledged": True, "ack_label": ACK_LABEL[body.reply]}
+
+
+@api.get("/family/acks")
+async def list_acks(device_id: str = Query(min_length=8, max_length=64)):
+    docs = await db.family_acks.find({"protected_device_id": device_id}).sort("acknowledged_at", -1).to_list(50)
+    return [{k: v for k, v in d.items() if k != "_id"} for d in docs]
+
+
+# --------------------------------------------------------------------------- Alert notifications (Emergent managed push)
+# Recipient identity is the anonymous device_id. Device tokens are relayed to the managed push
+# service and never stored in our database. Payloads carry only the event headline + what to do.
+PUSH_BASE_URL = "https://integrations.emergentagent.com"
+PUSH_KEY = os.environ.get("EMERGENT_PUSH_KEY", "placeholder")
+_push_client = httpx.AsyncClient(base_url=PUSH_BASE_URL, headers={"X-Push-Key": PUSH_KEY}, timeout=10.0)
+
+
+class RegisterPushBody(BaseModel):
+    user_id: str = Field(min_length=8, max_length=64)
+    platform: Literal["android", "ios"]
+    device_token: str = Field(min_length=8, max_length=4096)
+
+
+@api.post("/register-push", status_code=201)
+async def register_push(body: RegisterPushBody):
+    resp = await _push_client.post("/api/v1/push/users/register", json=body.model_dump())
+    if resp.status_code == 401:
+        raise HTTPException(status_code=500, detail="EMERGENT_PUSH_KEY missing or invalid")
+    if resp.status_code >= 500:
+        raise HTTPException(status_code=502, detail="Push provider unavailable")
+    resp.raise_for_status()
+    await db.devices.update_one({"device_id": body.user_id}, {"$set": {"push_registered_at": now_utc(), "push_platform": body.platform}})
+    return {"status": "registered"}
+
+
+async def send_push(recipients: list[str], data: dict, idempotency_key: Optional[str] = None) -> None:
+    if not recipients:
+        return
+    if len(recipients) > 100:
+        raise ValueError("max 100 recipients per /trigger call; chunk before sending")
+    if "title" not in data or "message" not in data:
+        raise ValueError("data must include title and message")
+    payload: dict[str, Any] = {"recipients": recipients, "data": data}
+    if idempotency_key:
+        payload["$idempotency_key"] = idempotency_key
+    resp = await _push_client.post("/api/v1/push/trigger", json=payload)
+    if resp.status_code == 401:
+        raise HTTPException(status_code=500, detail="EMERGENT_PUSH_KEY missing or invalid")
+    if resp.status_code >= 500:
+        raise HTTPException(status_code=502, detail="Push provider unavailable")
+    resp.raise_for_status()
+
+
+async def push_owner_alert(event: PatrolEvent) -> None:
+    """Tell the protected person the moment Apollo barks/bites while the app is closed."""
+    try:
+        verb = "Apollo is barking" if event.state == "barking" else "Apollo blocked a threat"
+        await send_push(
+            recipients=[event.device_id],
+            data={"title": verb, "message": event.headline, "subtext": event.what_to_do[:120], "action_url": f"/patrol/{event.event_id}"},
+            idempotency_key=f"owner-{event.event_id}",
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("owner push failed (non-blocking): %s", type(exc).__name__)
 
 
 

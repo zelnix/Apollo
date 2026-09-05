@@ -32,6 +32,8 @@ export interface NetworkStatus {
   wifiSecurity: "open" | "wep" | "wpa" | "wpa3" | "enterprise" | "unknown" | "n/a";
   captivePortal: boolean | null;
   vpnActive: boolean | null;
+  /** Network name when the platform reveals it (needs location permission on both platforms). */
+  ssid: string | null;
   checkedAt: string;
 }
 

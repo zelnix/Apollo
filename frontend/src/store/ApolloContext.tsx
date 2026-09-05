@@ -18,9 +18,10 @@ import type { ApolloState, Capability, Decision, IntelResult, LocalAnalysis, Pat
 import { IS_MOCK_SECURITY, SECURITY_MODE, securityAdapter } from "@/src/security/securityAdapter";
 import type { BlockResult, NetworkStatus, ProtectionPermission, ProtectionStatus } from "@/src/security/SecurityPlatformAdapter";
 import { SecureCore } from "@/src/security/securecore/SecureCore";
+import { getPushStatus, registerForPush, type PushStatus } from "@/src/push/notifications";
 import { storage } from "@/src/utils/storage";
 
-const K = { setup: "apollo.setup.done", events: "apollo.patrol.events", trust: "apollo.trust.entries", verified: "apollo.lastVerifiedAt", protection: "apollo.protection.on" };
+const K = { setup: "apollo.setup.done", events: "apollo.patrol.events", trust: "apollo.trust.entries", verified: "apollo.lastVerifiedAt", protection: "apollo.protection.on", wifi: "apollo.wifi.trusted" };
 
 export interface TrustEntry { trust_id: string; device_id: string; indicator_type: "url" | "domain"; indicator_digest: string; indicator_host: string; event_id: string | null; created_at: string; local_indicator?: string }
 
@@ -52,8 +53,13 @@ interface ApolloContextValue {
   resolveEvent(event: PatrolEvent): Promise<void>;
   revokeTrust(entry: TrustEntry): Promise<void>;
   clearPatrol(): Promise<void>;
+  trustedSsids: string[];
+  trustNetwork(ssid: string): Promise<void>;
+  forgetNetwork(ssid: string): Promise<void>;
   toast: { message: string; tone: ApolloState | "neutral" } | null;
   showToast(message: string, tone?: ApolloState | "neutral"): void;
+  pushStatus: PushStatus;
+  enablePush(): Promise<PushStatus>;
 }
 
 const Ctx = createContext<ApolloContextValue | null>(null);
@@ -91,8 +97,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         securityAdapter.getCapabilities(), securityAdapter.getProtectionStatus(), securityAdapter.getProtectionPermissions(), securityAdapter.getNetworkStatus(),
       ]);
       setCapabilities(caps); setProtection(status); setPermissions(perms); setNetwork(net);
-      // Connection Guard: raise one growling event per distinct unsafe network condition.
-      const a = assessConnection(net);
+      // Connection Guard: raise one growling event per distinct unsafe network condition (trusted networks stay quiet).
+      const a = assessConnection(net, trustedSsidsRef.current);
       if (a.state && status.running && lastConnectionKey.current !== a.key) {
         lastConnectionKey.current = a.key;
         const ev: PatrolEvent = {
@@ -109,6 +115,21 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const deviceIdRef = useRef<string | null>(null);
   useEffect(() => { deviceIdRef.current = deviceId; }, [deviceId]);
   const syncEventRef = useRef<((e: PatrolEvent) => Promise<void>) | null>(null);
+  // Wi‑Fi Memory: networks the user marked as home/work. Local only.
+  const [trustedSsids, setTrustedSsids] = useState<string[]>([]);
+  const trustedSsidsRef = useRef<string[]>([]);
+  useEffect(() => { trustedSsidsRef.current = trustedSsids; }, [trustedSsids]);
+  useEffect(() => { storage.getItem<string | null>(K.wifi, null).then((raw) => { if (raw) { const v = JSON.parse(raw) as string[]; setTrustedSsids(v); trustedSsidsRef.current = v; } }); }, []);
+  const trustNetwork = useCallback(async (ssid: string) => {
+    const next = Array.from(new Set([...trustedSsidsRef.current, ssid])); setTrustedSsids(next); trustedSsidsRef.current = next; await storage.setItem(K.wifi, JSON.stringify(next));
+    // Resolve any active connection event for this condition and re-assess.
+    setEvents((prev) => { const n = prev.map((e) => e.category === "connection" && e.status === "active" ? { ...e, status: "resolved" as const, resolved_at: new Date().toISOString(), what_to_do: `You marked “${ssid}” as a trusted network.` } : e); void storage.setItem(K.events, JSON.stringify(n)); return n; });
+    lastConnectionKey.current = null;
+    showToast(`Trusted “${ssid}”. Apollo stays quiet on this network.`, "resting");
+  }, [showToast]);
+  const forgetNetwork = useCallback(async (ssid: string) => {
+    const next = trustedSsidsRef.current.filter((x) => x !== ssid); setTrustedSsids(next); trustedSsidsRef.current = next; await storage.setItem(K.wifi, JSON.stringify(next)); lastConnectionKey.current = null;
+  }, []);
 
   const verifyNow = useCallback(async () => {
     await refresh();
@@ -141,6 +162,20 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   // Re-resolve state over time so cooldown/freshness windows expire visibly.
   useEffect(() => { const t = setInterval(() => setTick((n) => n + 1), 30000); return () => clearInterval(t); }, []);
 
+  // Alert notifications: re-register on every launch once the device identity exists (tokens rotate).
+  // Only ask for permission once setup completes (completeSetup → enablePush); silent re-register otherwise.
+  const [pushStatus, setPushStatus] = useState<PushStatus>(Platform.OS === "web" ? "unsupported" : "undetermined");
+  useEffect(() => {
+    if (!deviceId) return;
+    void registerForPush(deviceId, { ask: false }).then(setPushStatus).catch(() => getPushStatus().then(setPushStatus));
+  }, [deviceId]);
+  const enablePush = useCallback(async () => {
+    const id = deviceIdRef.current;
+    const st = id ? await registerForPush(id, { ask: true }) : await getPushStatus();
+    setPushStatus(st);
+    return st;
+  }, []);
+
   const completeSetup = useCallback(async () => {
     const identity = await SecureCore.createDeviceIdentity();
     setDeviceId(identity.deviceId);
@@ -152,6 +187,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     await storage.setItem(K.setup, true);
     setSetupDone(true);
     await verifyNow();
+    // Contextual ask: the user just turned protection on, so "tell me when Apollo barks" is expected here.
+    try { setPushStatus(await registerForPush(identity.deviceId, { ask: true })); } catch { /* never block setup */ }
   }, [verifyNow]);
 
   // Remote Patrol + trust merge (device may have reinstalled). Local wins.
@@ -280,7 +317,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   const value: ApolloContextValue = {
     ready, setupDone, deviceId, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label, isMock: IS_MOCK_SECURITY,
-    refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, toast, showToast,
+    refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, trustedSsids, trustNetwork, forgetNetwork, toast, showToast,
+    pushStatus, enablePush,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

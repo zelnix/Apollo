@@ -92,8 +92,9 @@ export default function CheckLink() {
 
           {outcome && state ? (
             <Animated.View entering={FadeInDown.duration(350)}>
-              <Card testID="check-result-card" style={{ borderColor: toneColor(colors, state), gap: spacing.sm }}>
+              <Card testID="check-result-card" style={{ borderColor: toneColor(colors, liveEvent?.state === "biting" && liveEvent.resolved_at ? "resting" : state), gap: spacing.sm }}>
                 <Pill tone={state} label={STATE_LABEL[state]} testID="check-result-state" />
+                {liveEvent?.state === "biting" && liveEvent.resolved_at ? <Pill tone="resting" label="Threat contained" testID="check-result-contained" /> : null}
                 <Text style={s.headline} testID="check-result-headline">{liveEvent?.headline ?? outcome.decision.headline}</Text>
                 <Body>{liveEvent?.what_happened ?? outcome.decision.what_happened}</Body>
                 <Text style={s.sub}>Why Apollo reacted</Text>

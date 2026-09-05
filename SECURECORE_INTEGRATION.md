@@ -72,18 +72,39 @@ PROTECTION_UNAVAILABLE (`MockSecurityAdapter.setScenario`).
 
 ## 6. Environment configuration
 
-`frontend/.env`
+`frontend/.env` (development)
 ```
-EXPO_PUBLIC_SECURECORE_MODE=mock   # or native
-EXPO_PUBLIC_SECURITY_MODE=mock     # or native
+EXPO_PUBLIC_APP_ENV=development     # development | staging | production
+EXPO_PUBLIC_SECURECORE_MODE=mock    # or native
+EXPO_PUBLIC_SECURITY_MODE=mock      # or native
 ```
-Missing or invalid values throw at module load. Production/EAS builds must set both to `native`.
+`frontend/.env.production` pins `production` / `native` / `native`.
+Missing or invalid values throw at module load and fail the build preflight.
 
-## 7. Production fail-closed rule
+## 7. Production fail-closed rule — guarantees
 
-`SecureCore.ts` and `securityAdapter.ts`: in `native` mode, if the native module is not present the
-selector **throws** (`"HuCentAI SecureCore native SDK is required but unavailable."`). There is no
-fallback to the mock, ever. `__DEV__` is not consulted.
+Enforced in **three** places, all sharing `src/security/securityConfig.ts` (pure, unit-tested):
+
+1. **Runtime (app load)** — `src/config/appEnvironment.ts` validates `EXPO_PUBLIC_APP_ENV`
+   (`development | staging | production`, never derived from `__DEV__`) plus both mode variables.
+   `SecureCore.ts` and `securityAdapter.ts` re-validate with the real native-module availability.
+   Any violation throws `SecurityConfigurationError: SECURITY CONFIGURATION ERROR: …` before the UI mounts.
+2. **Build time** — `scripts/security-preflight.mjs` runs as the EAS `eas-build-pre-install` hook
+   (and via `yarn security:preflight`). It fails the build if, for the production profile, either mode
+   is `mock`, or any setting is missing/invalid. `.env.production` pins all three values to production/native.
+3. **Tests** — `yarn test:security` (`tests/securityConfig.test.ts`, node:test) covers: dev+mock ✓,
+   dev+native ✓, prod+native ✓, prod+mock SecureCore ✗, prod+mock adapter ✗, native selected but module
+   unavailable ✗ (every environment), missing/invalid mode or environment ✗, staging+mock ✓.
+
+Rules:
+- `production` ⇒ `EXPO_PUBLIC_SECURECORE_MODE=native` **and** `EXPO_PUBLIC_SECURITY_MODE=native`. No exceptions.
+- `development` and `staging` may use `mock`, including native builds installed on physical devices, but must
+  set their mode explicitly — there is no fallback/default.
+- `native` mode with the module absent fails closed in **every** environment. There is never a silent
+  fallback to the mock.
+- EAS profiles (managed by Emergent in `eas.json`) should set `EXPO_PUBLIC_APP_ENV` per profile
+  (`development`, `staging`, `production`); `.env.production` covers the production bundle even if the
+  profile omits it, and the preflight infers `production` from `EAS_BUILD_PROFILE=production`.
 
 ## 8. How the app uses SecureCore today
 

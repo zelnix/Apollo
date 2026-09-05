@@ -1,0 +1,27 @@
+{
+  "summary": "Apollo V1 iteration-5 (dark 'sentinel' theme + green 'Threat contained' confirmation) PASSED end-to-end. Full mobile-viewport (390x844) Playwright flow against https://threat-patrol-1.preview.emergentagent.com with fresh localStorage. VISUAL/THEME: 6 root/app views render backgroundColor rgb(11,18,32) (#0B1220 surface); apollo-hero card backgroundColor rgb(20,26,34) (#141A22); apollo-state-label text rgb(244,247,250) (#F4F7FA); state-pill dots — resting rgb(79,175,131), growling rgb(217,164,65), barking rgb(228,122,63), biting rgb(217,83,79) — all match spec. FLOW CHECK: onboarding-start-button → disclosure-accept-button → home → home-check-link-button → paste http://testsafebrowsing.appspot.com/s/phishing.html → check-submit-button → check-result-state='Apollo is barking' (dot orange rgb(228,122,63)) → event-block-button → check-result-state='Apollo is biting' (dot red rgb(217,83,79)) with check-result-card border rgb(217,83,79) → event-contained-button → check-result-contained pill 'Threat contained' (dot green rgb(79,175,131)) appears AND check-result-card border flips to green rgb(79,175,131). PATROL: patrol-item-contained-<id> pill reads 'Blocked & contained' with green dot rgb(79,175,131) and the rail dot next to the card is also green rgb(79,175,131). Detail (/patrol/<id>): event-state-pill='Apollo is biting' red rgb(217,83,79), event-verified-pill='Threat contained' green rgb(79,175,131), 'What to do' Card borderColor rgb(79,175,131). HOME HERO immediately after containment: apollo-state-label='Apollo is growling' + recovering-pill 'Awaiting fresh check' amber rgb(217,164,65) + contained-pill 'Threat contained' green rgb(79,175,131) (both simultaneously visible). After home-verify-button: apollo-state-label transitioned to exact wording 'Apollo is resting'. REGRESSION: Barking dot orange verified via check-result-state; biting red pill + red block-verified path exercised on the pre-contain step (state_dot & card_border both rgb(217,83,79) before Mark as contained). No React Native red screens, no console errors of concern (pre-existing pointerEvents deprecation warning only), no deprecated Expo packages introduced.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_5.json"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "check.tsx line 95: check-result-card borderColor uses (liveEvent?.state === 'biting' && liveEvent.resolved_at) → 'resting' else state. Semantically correct today but the same predicate is duplicated at patrol/[id].tsx line 67 and PatrolItem.tsx line 26–27; consider a shared helper isContained(event) or resolvedTone(event) to keep the three call sites in sync when contain semantics evolve.",
+    "ApolloHero.tsx line 59: contained-pill visibility depends on resolution.recovering AND drivingEvent.state==='biting' AND verified_block. Recovering flag has a 2-minute cooldown per stateMachine — acceptable per spec, but consider surfacing 'Threat contained' independently of cooldown so users returning to Home after 2+ minutes still see the reassurance until they next tap Check.",
+    "ui.tsx Pill component always renders a leading dot with the same color as text; visually excellent but the dot has no aria-hidden, so screen readers may read the pill label twice on some platforms — cosmetic, non-blocking.",
+    "PatrolItem STATUS_LABEL maps 'resolved' → 'Handled' but a contained biting event has status='blocked' (verified_block=true) with resolved_at set — the meta line will read 'Blocked' rather than 'Handled'. Copy is consistent with pill wording, no change needed."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A — frontend-only scope", "frontend": "100% (7/7 acceptance checks: theme palette, barking→biting→contained flow, contained card border, Patrol contained pill + rail dot, detail contained pill + WTD border, home hero recovering + contained pills, verify → resting)"},
+  "seed_data_creation": "Ephemeral: single mock-adapter simulated block event per Playwright session. localStorage cleared at start of session to force onboarding.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Frontend URL https://threat-patrol-1.preview.emergentagent.com (mock adapter, EXPO_PUBLIC_SECURITY_MODE=mock). Clean run pattern: page.evaluate(\"localStorage.clear()\") then reload → onboarding-start-button → disclosure-accept-button → apollo-hero. Reliable auto-run: navigate directly to /check?url=<encoded> and wait for check-result-state — the URL param auto-fires the check once setupDone. Patrol item Pressable is best clicked via page.mouse.click at boundingBox center (data-testid click on the Pressable card intermittently no-ops on RN-web when a child Pill absorbs the pointer). For color validation query the .querySelector('div') child of any pill (the dot) — that's the source of truth for tone; the pill text color matches. #0B1220 surface renders on the outer app-root Views, not on <body> (transparent) — this is normal RN-web behavior. Cooldown: after Mark as contained, home hero holds 'Apollo is growling' with recovering-pill for up to 2 min; home-verify-button after ~1s reliably drops it to 'Apollo is resting' when adapter is idle.",
+  "rca_of_issue": "N/A — all iteration-5 acceptance criteria met."
+}

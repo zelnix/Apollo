@@ -89,10 +89,13 @@ class ApolloSecurityModule : Module() {
         }
       }
       val captive = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)
+      // SSID needs ACCESS_FINE_LOCATION at runtime; Android returns "<unknown ssid>" otherwise.
+      val rawSsid = if (type == "wifi" && android.os.Build.VERSION.SDK_INT >= 31) (caps?.transportInfo as? android.net.wifi.WifiInfo)?.ssid else null
+      val ssid = rawSsid?.trim('"')?.takeIf { it.isNotBlank() && it != "<unknown ssid>" }
       JSONObject().put("connected", caps != null).put("type", type)
         .put("isInternetReachable", caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) ?: JSONObject.NULL)
         .put("inspectable", protectionSince != null).put("wifiSecurity", wifiSecurity)
-        .put("captivePortal", captive ?: JSONObject.NULL).put("vpnActive", type == "vpn").put("checkedAt", now()).toString()
+        .put("captivePortal", captive ?: JSONObject.NULL).put("vpnActive", type == "vpn").put("ssid", ssid ?: JSONObject.NULL).put("checkedAt", now()).toString()
     }
 
     AsyncFunction("getSecuritySignals") {

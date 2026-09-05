@@ -13,7 +13,8 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 
 interface GuardianRow { guardian_id: string; email: string; name: string; confirmed: boolean }
-interface SharedEvent { event_id: string; from_label: string; state: string; headline: string; what_to_do: string; indicator_host: string | null; occurred_at: string }
+interface SharedEvent { event_id: string; from_label: string; state: string; headline: string; what_to_do: string; indicator_host: string | null; occurred_at: string; acknowledged_at?: string; ack_label?: string }
+interface Ack { event_id: string; guardian_label: string; ack_label: string; headline: string; acknowledged_at: string }
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -41,6 +42,11 @@ export default function Family() {
   const guardians = useQuery({ queryKey: ["guardians", deviceId], enabled: !!deviceId, queryFn: () => apiGet<GuardianRow[]>(`/family/guardians?device_id=${deviceId}`) });
   const links = useQuery({ queryKey: ["family-links", deviceId], enabled: !!deviceId, queryFn: () => apiGet<{ i_watch: { owner_name: string }[]; watching_me: number }>(`/family/links?device_id=${deviceId}`) });
   const shared = useQuery({ queryKey: ["shared-events", deviceId], enabled: !!deviceId, queryFn: () => apiGet<SharedEvent[]>(`/family/shared-events?device_id=${deviceId}`), refetchInterval: 30000 });
+  const acks = useQuery({ queryKey: ["family-acks", deviceId], enabled: !!deviceId, queryFn: () => apiGet<Ack[]>(`/family/acks?device_id=${deviceId}`), refetchInterval: 30000 });
+  const ack = useMutation({
+    mutationFn: (p: { event_id: string; reply: string }) => apiPost<{ ack_label: string }>(`/family/shared-events/${p.event_id}/ack`, "family", { device_id: deviceId, reply: p.reply }),
+    onSuccess: (r) => { qc.invalidateQueries({ queryKey: ["shared-events", deviceId] }); showToast(`Marked: ${r.ack_label}`, "resting"); },
+  });
   const invalidate = () => { qc.invalidateQueries({ queryKey: ["guardians", deviceId] }); qc.invalidateQueries({ queryKey: ["family-links", deviceId] }); qc.invalidateQueries({ queryKey: ["shared-events", deviceId] }); };
 
   const addGuardian = useMutation({
@@ -109,6 +115,24 @@ export default function Family() {
                 <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}><Pill tone={e.state as "barking"} label={e.state} /><Body>{e.from_label} · {new Date(e.occurred_at).toLocaleString()}</Body></View>
                 <Text style={s.name}>{e.headline}</Text>
                 <Body>{e.what_to_do}</Body>
+                {e.acknowledged_at ? <Pill tone="resting" label={`${e.ack_label} · ${new Date(e.acknowledged_at).toLocaleDateString()}`} testID={`family-ack-done-${e.event_id}`} /> : (
+                  <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}>
+                    <Button testID={`family-ack-called-${e.event_id}`} variant="secondary" label="I called them" onPress={() => ack.mutate({ event_id: e.event_id, reply: "called" })} />
+                    <Button testID={`family-ack-messaged-${e.event_id}`} variant="ghost" label="I messaged them" onPress={() => ack.mutate({ event_id: e.event_id, reply: "messaged" })} />
+                  </View>
+                )}
+              </View>
+            ))}
+          </Card>
+        </View>
+
+        <View>
+          <SectionTitle>Family responses to your alerts</SectionTitle>
+          <Card testID="family-acks">
+            {(acks.data ?? []).length === 0 ? <Body>No responses yet. When someone you share with marks an alert handled, it shows here.</Body> : acks.data!.map((a) => (
+              <View key={a.event_id} style={s.row} testID={`family-acks-${a.event_id}`}>
+                <View style={{ flex: 1 }}><Text style={s.name}>{a.headline}</Text><Body>{a.guardian_label}: {a.ack_label}</Body></View>
+                <Body>{new Date(a.acknowledged_at).toLocaleDateString()}</Body>
               </View>
             ))}
           </Card>

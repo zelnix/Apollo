@@ -32,7 +32,7 @@ export default function Guard() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { capabilities, protection, permissions, network, toggleProtection, requestPermission, adapterLabel, isMock, showToast } = useApollo();
+  const { capabilities, protection, permissions, network, toggleProtection, requestPermission, adapterLabel, isMock, showToast, trustedSsids, trustNetwork, forgetNetwork } = useApollo();
   const [busy, setBusy] = useState(false);
   const [explain, setExplain] = useState<ProtectionPermission | null>(null);
   const [selected, setSelected] = useState<Capability | null>(null);
@@ -100,9 +100,15 @@ export default function Guard() {
         <View>
           <SectionTitle>Connection</SectionTitle>
           <Card testID="guard-network">
-            <Text style={s.netLine}>{network ? (network.connected ? `Connected via ${network.type}` : "Not connected") : "Checking…"}</Text>
-            <Body>{assessConnection(network).summary}</Body>
-            {network?.type === "wifi" ? <Pill tone={network.wifiSecurity === "open" || network.wifiSecurity === "wep" || network.captivePortal ? "growling" : network.wifiSecurity === "unknown" ? "unknown" : "resting"} label={network.captivePortal ? "Captive portal" : network.wifiSecurity === "n/a" ? "Wi‑Fi" : `Wi‑Fi: ${network.wifiSecurity}`} testID="guard-wifi-pill" /> : null}
+            <Text style={s.netLine}>{network ? (network.connected ? `Connected via ${network.type}${network.ssid ? ` · ${network.ssid}` : ""}` : "Not connected") : "Checking…"}</Text>
+            <Body>{assessConnection(network, trustedSsids).summary}</Body>
+            {network?.type === "wifi" ? <Pill tone={trustedSsids.includes(network.ssid ?? "") ? "resting" : network.wifiSecurity === "open" || network.wifiSecurity === "wep" || network.captivePortal ? "growling" : network.wifiSecurity === "unknown" ? "unknown" : "resting"} label={trustedSsids.includes(network.ssid ?? "") ? "Trusted network" : network.captivePortal ? "Captive portal" : network.wifiSecurity === "n/a" ? "Wi‑Fi" : `Wi‑Fi: ${network.wifiSecurity}`} testID="guard-wifi-pill" /> : null}
+            {network?.type === "wifi" && network.ssid ? (
+              trustedSsids.includes(network.ssid)
+                ? <Button testID="guard-forget-network" variant="ghost" label="Forget this network" onPress={() => forgetNetwork(network.ssid!)} style={{ marginTop: spacing.sm }} />
+                : <Button testID="guard-trust-network" variant="secondary" label="Trust this network (home / work)" onPress={() => trustNetwork(network.ssid!)} style={{ marginTop: spacing.sm }} />
+            ) : null}
+            {trustedSsids.length ? <Body style={{ marginTop: spacing.sm }}>Trusted networks: {trustedSsids.join(", ")}</Body> : null}
           </Card>
         </View>
 

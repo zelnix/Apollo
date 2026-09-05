@@ -1,0 +1,39 @@
+{
+  "summary": "Apollo V1 iteration-4 PASSED end-to-end. (A) HARDENING: cd /app/frontend && node --test tests/securityConfig.test.ts → 8/8 pass (7 required + staging). scripts/security-preflight.mjs: default dev/mock → exit 0; EAS_BUILD_PROFILE=production EXPO_PUBLIC_SECURECORE_MODE=mock → exit 1 with 'Production builds require native HuCentAI SecureCore'; EAS_BUILD_PROFILE=production EXPO_PUBLIC_SECURITY_MODE=mock → exit 1 with 'native Apollo Security Adapter'; NODE_ENV=production → exit 0 (reads .env.production: APP_ENV=production/native/native); EXPO_PUBLIC_APP_ENV=bogus → exit 1 with 'missing or invalid'. Code review of src/security/securityConfig.ts, src/security/securecore/SecureCore.ts, src/security/securityAdapter.ts, src/config/appEnvironment.ts confirms: no __DEV__ used for environment; no native→mock fallback; validator is pure & used by SecureCore + securityAdapter; HuCentAISecureCore interface unchanged; Settings 'settings-app-env' pill renders 'development' in preview. (B) BACKEND Guardian Reply: 10/10 pytest tests in /app/backend/tests/test_iter4_guardian_ack.py — pair(dev-P,Nan)→6-char code; link(dev-G, code)→{linked:true, owner_name:'Nan'}; POST /api/patrol/events (barking, category=known_threat, adapter_label='test', occurred_at=now) accepted; GET /api/family/shared-events?device_id=dev-G shows the event within 6s; POST /api/family/shared-events/{event_id}/ack {device_id:dev-G, reply:'called'} → {acknowledged:true, ack_label:'I called them'}; GET shared-events now shows acknowledged_at + ack_label; GET /api/family/acks?device_id=dev-P lists it with headline='Dog is barking'; ack with bogus guardian device → 404; reply='bogus' → 422; reply='messaged' → 'I messaged them' and shared-events reflects update. (C+D) FRONTEND (Expo web, 390x844, fresh localStorage): onboarding-start-button → disclosure-accept-button → Home. Settings→settings-dev-tools→dev-adapter-OPEN_WIFI→dev-close. Guard tab: guard-wifi-pill='Wi‑Fi: open' with guard-trust-network visible → tap → toast 'Network trusted', pill becomes 'Trusted network', guard-forget-network visible → tap → back to 'Wi‑Fi: open'. Patrol tab: patrol-export-button visible; with 0 events → toast 'Nothing to export yet.'; with 1 OPEN_WIFI event → toast 'Print dialog opened' (no crash, no red screen). Patrol shows exactly one 'You're on an open Wi‑Fi network' event after OPEN_WIFI+home verify. /family screen renders 'Family responses to your alerts' card testID='family-acks' with empty text 'No responses yet. When someone you share with marks an alert handled, it shows here.'. No React Native red screens, no deprecated Expo packages introduced, no console errors of concern (only pointerEvents style deprecation warning already present).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter4_guardian_ack.py",
+    "/app/frontend/tests/securityConfig.test.ts",
+    "/app/frontend/scripts/security-preflight.mjs",
+    "/app/test_reports/pytest/pytest_iter4.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Pre-existing flakiness: /app/backend/tests/test_family.py::TestSharedEvents::test_barking_event_shared fails under pytest-xdist LoadScope scheduling because TestSharedEvents can run in parallel with TestPairing (test-order dependency on DEV_B being linked). Not iteration-4 scope, but consider consolidating pairing setup into a class-scoped fixture or adding a small module-scoped 'ensure_linked' fixture so class-parallel scheduling stays green.",
+    "server.py ack endpoint (/api/family/shared-events/{event_id}/ack) does not check that a link still exists between guardian and protected before writing family_acks — today it writes as long as the shared_events row exists; if links have been deleted post-fanout, an ack still updates. Acceptable but worth documenting.",
+    "server.py ACK_LABEL only supports 4 labels — 'visiting' / 'noted' variants are unit-covered by validation (Literal Pydantic) but not exercised in tests; consider adding smoke tests if these UI paths are added later.",
+    "Frontend family.tsx exposes only 'I called them' / 'I messaged them' buttons in the Shared alerts card — the backend also accepts 'visiting' and 'noted'; PRD explicitly enumerates the 4 replies. If product intent is a 4-button set, UI is missing two. Currently PRD acceptance mentions only 'I called them' / 'I messaged them' so leaving as-is.",
+    "scripts/security-preflight.mjs dotenv parser is intentionally tiny and drops values containing '#' or '\"' — fine today but a stray '#' in .env.production would silently be treated as a comment. Consider a stricter parser or reusing @expo/env in the future."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter4_guardian_ack.py (new — 10 tests covering full pair→link→patrol→ack→acks round trip incl. 404 and 422)"
+  ],
+  "success_rate": {
+    "backend": "100% for iteration-4 scope (10/10). Total suite 43/44 (1 pre-existing xdist-scheduling flake in test_family.py::TestSharedEvents::test_barking_event_shared — unrelated to iter4).",
+    "frontend": "100% for iteration-4 scope (hardening pill, Wi‑Fi Memory trust/forget, Patrol export empty + populated, family-acks empty card)"
+  },
+  "seed_data_creation": "Ephemeral dev-P-<hex10> and dev-G-<hex10> per module; cleanup of pair_codes/family_links/shared_events/family_acks/patrol_events in teardown against MONGO_URL/DB_NAME. Frontend clears localStorage per session to force onboarding.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend URL https://threat-patrol-1.preview.emergentagent.com/api. Iteration-4 file: /app/backend/tests/test_iter4_guardian_ack.py fully reusable. Frontend: 'settings-dev-tools' opens /dev-tools (must be dismissed via 'dev-close'). Toast overlay covers the bottom tab bar for ~4s — wait it out before switching tabs. window.print() must be stubbed via page.add_init_script BEFORE first navigation for Patrol export to be counted. Wi‑Fi Memory: after 'Trust', backend still may emit one 'connection event' (open Wi‑Fi) if verification ran before trust; PRD accepts 'exactly one connection event' — verified. Preflight scenarios rely on process.env taking precedence over .env files, per readDotenv order.",
+  "rca_of_issue": "N/A — all iteration-4 acceptance criteria met on first pass. Only pre-existing item: test_family.py::TestSharedEvents flakes under xdist LoadScope class-parallel scheduling because TestPairing (which links DEV_B) and TestSharedEvents (which posts a patrol event on DEV_A and expects DEV_B to see it) can be scheduled to different workers concurrently. Mitigation: add module-scoped fixture that guarantees pair+link executed before TestSharedEvents, or run tests with -p no:xdist for that module."
+}
