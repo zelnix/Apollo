@@ -18,6 +18,7 @@ const useStyles = makeStyles((c) => ({
   masterRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.lg },
   masterTitle: { fontFamily: fonts.display, fontSize: 18, color: c.onSurface },
   capCard: { gap: spacing.sm, marginBottom: spacing.md },
+  guardRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
   capTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.md },
   capTitle: { fontFamily: fonts.display, fontSize: 16, color: c.onSurface, flex: 1 },
   permRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm },
@@ -32,8 +33,12 @@ export default function Guard() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { capabilities, protection, permissions, network, toggleProtection, requestPermission, adapterLabel, isMock, showToast, trustedSsids, trustNetwork, forgetNetwork } = useApollo();
+  const { capabilities, protection, permissions, network, events, toggleProtection, requestPermission, adapterLabel, isMock, showToast, trustedSsids, trustNetwork, forgetNetwork } = useApollo();
   const [busy, setBusy] = useState(false);
+  const netCap = capabilities.find((c) => c.id === "connection_guard");
+  const connectionSummary = assessConnection(network, trustedSsids).summary;
+  const netOpen = events.filter((e) => e.category === "connection" && e.status === "active" && e.state !== "resting").length;
+  const accountOpen = events.filter((e) => e.category === "account" && e.status === "active" && e.state !== "resting");
   // One sheet, two views. Closing one Modal and opening another in the same tick fails on iOS/Android
   // (the second never presents), so capability → permission switches content inside the same Modal.
   const [sheet, setSheet] = useState<{ kind: "cap"; cap: Capability } | { kind: "perm"; perm: ProtectionPermission } | null>(null);
@@ -65,6 +70,26 @@ export default function Guard() {
             <Switch testID="guard-protection-switch" value={!!protection?.running} onValueChange={onToggle} disabled={busy} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} />
           </View>
         </Card>
+
+        <View>
+          <SectionTitle>Network & Accounts</SectionTitle>
+          <Card style={s.capCard} testID="guard-network-card">
+            <View style={s.guardRow}>
+              <Text style={s.capTitle}>Network Guard</Text>
+              <Pill tone={netCap ? capabilityTone(netCap.status) : "unknown"} label={netCap ? CAPABILITY_STATUS_LABEL[netCap.status] : "Unknown"} testID="guard-network-status" />
+            </View>
+            <Body testID="guard-network-summary">{!protection?.running ? "Protection is off — Apollo isn't watching connections." : `${connectionSummary} ${netOpen ? `${netOpen} unresolved network item${netOpen > 1 ? "s" : ""}.` : "No unresolved network issues."}`}</Body>
+            <Button testID="guard-open-network" variant="secondary" label="Open Network Guard" onPress={() => router.push("/network")} />
+          </Card>
+          <Card style={s.capCard} testID="guard-account-card">
+            <View style={s.guardRow}>
+              <Text style={s.capTitle}>Account Guard</Text>
+              <Pill tone={accountOpen.some((e) => e.state === "barking") ? "barking" : accountOpen.length ? "growling" : "resting"} label={accountOpen.length ? `${accountOpen.length} need${accountOpen.length > 1 ? "" : "s"} attention` : "All good"} testID="guard-account-status" />
+            </View>
+            <Body testID="guard-account-summary">{accountOpen.length ? accountOpen.slice(0, 2).map((e) => e.headline.replace(/^Account: /, "")).join(" · ") : "No unresolved account-security issues. Check any login, MFA or password-reset alert you're unsure about."}</Body>
+            <Button testID="guard-open-account" variant="secondary" label="Open Account Guard" onPress={() => router.push("/account")} />
+          </Card>
+        </View>
 
         <View>
           <SectionTitle>Capabilities</SectionTitle>

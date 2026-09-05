@@ -72,7 +72,7 @@ export interface IntelResult {
   coverage: IntelCoverage;
 }
 
-export type EventCategory = "link" | "website" | "connection" | "known_threat" | "protection" | "system" | "message" | "call" | "app" | "device" | "account";
+export type EventCategory = "link" | "website" | "connection" | "known_threat" | "protection" | "system" | "message" | "call" | "app" | "device" | "account" | "email";
 export type EventStatus = "active" | "trusted" | "blocked" | "resolved";
 
 export interface PatrolEvent {

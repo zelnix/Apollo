@@ -3,6 +3,7 @@ import BatteryCharging from "lucide-react-native/icons/battery-charging";
 import FileSearch from "lucide-react-native/icons/file-search";
 import KeyRound from "lucide-react-native/icons/key-round";
 import Link2 from "lucide-react-native/icons/link-2";
+import Mail from "lucide-react-native/icons/mail";
 import MessageSquareWarning from "lucide-react-native/icons/message-square-warning";
 import PhoneIncoming from "lucide-react-native/icons/phone-incoming";
 import ScanLine from "lucide-react-native/icons/scan-line";
@@ -83,8 +84,9 @@ export default function Home() {
         </View>
         <View style={{ flexDirection: "row", gap: spacing.sm }}>
           <Button testID="home-check-account-button" label="Account Guard" variant="secondary" onPress={() => router.push("/account")} icon={<KeyRound size={18} color={colors.onSurface} />} style={{ flex: 1 }} />
-          <Button testID="home-verify-button" label="Verify now" variant="ghost" onPress={verifyNow} icon={<RefreshCw size={18} color={colors.onSurface} />} style={{ flex: 1 }} />
+          <Button testID="home-check-email-button" label="Check an email" variant="secondary" onPress={() => router.push("/email")} icon={<Mail size={18} color={colors.onSurface} />} style={{ flex: 1 }} />
         </View>
+        <Button testID="home-verify-button" label="Verify now" variant="ghost" onPress={verifyNow} icon={<RefreshCw size={18} color={colors.onSurface} />} />
         {scents.length ? (
           <View>
             <SectionTitle>Connected events (Threat Scent)</SectionTitle>

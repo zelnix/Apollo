@@ -6,11 +6,13 @@
 import * as Network from "expo-network";
 
 import type { Capability } from "@/src/domain/types";
+import { storage } from "@/src/utils/storage";
 import type {
   BlockResult, NativeUrlAnalysis, NetworkStatus, ProtectionPermission, ProtectionStatus, SecurityPlatformAdapter, SecuritySignal,
 } from "./SecurityPlatformAdapter";
 
 export const MOCK_ADAPTER_LABEL = "MOCK adapter — simulated";
+const PERMS_KEY = "apollo.mock.permissions";
 
 type MockScenario = "NORMAL" | "PERMISSION_DENIED" | "BLOCK_UNVERIFIED" | "PROTECTION_UNAVAILABLE" | "OPEN_WIFI" | "CAPTIVE_PORTAL";
 
@@ -23,11 +25,22 @@ class MockSecurityAdapterImpl implements SecurityPlatformAdapter {
   private permissions: Record<ProtectionPermission["id"], ProtectionPermission["status"]> = {
     network_filter: "undetermined", vpn_config: "not_applicable", accessibility: "not_applicable", notifications: "undetermined",
   };
+  private hydrated: Promise<void> | null = null;
+  /** Permission grants survive reloads (like a real OS grant would); everything else stays simulated per session. */
+  private hydrate(): Promise<void> {
+    if (!this.hydrated) {
+      this.hydrated = storage.getItem<string | null>(PERMS_KEY, null)
+        .then((saved) => { if (saved) this.permissions = { ...this.permissions, ...(JSON.parse(saved) as Partial<typeof this.permissions>) }; })
+        .catch(() => undefined);
+    }
+    return this.hydrated;
+  }
   scenario: MockScenario = "NORMAL";
 
   setScenario(s: MockScenario) { this.scenario = s; }
 
   async getCapabilities(): Promise<Capability[]> {
+    await this.hydrate();
     const filterGranted = this.permissions.network_filter === "granted";
     const unavailable = this.scenario === "PROTECTION_UNAVAILABLE";
     return [
@@ -100,6 +113,7 @@ class MockSecurityAdapterImpl implements SecurityPlatformAdapter {
   }
 
   async getProtectionPermissions(): Promise<ProtectionPermission[]> {
+    await this.hydrate();
     return [
       { id: "network_filter", title: "Network filter", status: this.permissions.network_filter, canAskAgain: this.permissions.network_filter !== "blocked", why: "Lets Apollo see which websites are opened so it can warn you." },
       { id: "notifications", title: "Notifications", status: this.permissions.notifications, canAskAgain: true, why: "Lets Apollo tell you when it barks." },
@@ -108,8 +122,10 @@ class MockSecurityAdapterImpl implements SecurityPlatformAdapter {
 
   async requestProtectionPermission(id: ProtectionPermission["id"]): Promise<ProtectionPermission> {
     await delay(300);
+    await this.hydrate();
     if (this.scenario === "PERMISSION_DENIED") this.permissions[id] = this.permissions[id] === "denied" ? "blocked" : "denied";
     else this.permissions[id] = "granted";
+    await storage.setItem(PERMS_KEY, JSON.stringify(this.permissions)).catch(() => undefined);
     const all = await this.getProtectionPermissions();
     return all.find((p) => p.id === id)!;
   }

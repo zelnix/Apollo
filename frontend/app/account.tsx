@@ -63,7 +63,7 @@ export default function CheckAccount() {
   const [tech, setTech] = useState(false);
 
   const openAccount = events.filter((e) => e.category === "account" && e.status === "active" && e.state !== "resting");
-  const recentLinked = useMemo(() => { const now = Date.now(); return events.filter((e) => e.state !== "resting" && ["message", "website", "link", "call", "app", "connection"].includes(e.category) && now - Date.parse(e.occurred_at) <= SCENT_WINDOW_MS); }, [events]);
+  const recentLinked = useMemo(() => { const now = Date.now(); return events.filter((e) => e.state !== "resting" && ["message", "email", "website", "link", "call", "app", "connection"].includes(e.category) && now - Date.parse(e.occurred_at) <= SCENT_WINDOW_MS); }, [events]);
   const dashTone = openAccount.some((e) => e.state === "barking") ? "barking" : openAccount.length ? "growling" : "resting";
 
   const run = async () => {

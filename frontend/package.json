@@ -15,6 +15,7 @@
     "test:gate6": "node --test tests/gate6.test.ts",
     "test:gate7": "node --test tests/gate7.test.ts",
     "test:gate8": "node --test tests/gate8.test.ts",
+    "test:gate1": "node --test tests/gate1.test.ts",
     "eas-build-pre-install": "node scripts/security-preflight.mjs",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",

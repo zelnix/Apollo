@@ -156,7 +156,7 @@ class PatrolEventIn(BaseModel):
 
     event_id: str = Field(min_length=8, max_length=64)
     device_id: str = Field(min_length=8, max_length=64)
-    category: Literal["link", "website", "connection", "known_threat", "protection", "system", "message", "call", "app", "device", "account"]
+    category: Literal["link", "website", "connection", "known_threat", "protection", "system", "message", "call", "app", "device", "account", "email"]
     state: ApolloState
     status: EventStatus
     headline: str = Field(max_length=160)

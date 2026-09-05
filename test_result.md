@@ -250,3 +250,24 @@ frontend:
     working: "NA"
     file: "frontend/app/network.tsx, frontend/app/account.tsx, frontend/src/domain/networkAnalysis.ts, frontend/src/domain/accountAnalysis.ts, frontend/src/security/networkAccountSdk.ts, frontend/src/components/ApolloHero.tsx"
     needs_retesting: true
+
+## Iteration 16 — Bug fix: Site Guard permission not persisting
+frontend:
+  - task: "MockSecurityAdapter now persists granted/denied protection permissions (network_filter for Site Guard, notifications) in AsyncStorage key apollo.mock.permissions and hydrates before the first capability/permission read — Site Guard no longer reverts to 'Permission required' after reload"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/security/MockSecurityAdapter.ts"
+    needs_retesting: true
+
+## Iteration 17 — Gate 1 Email + Guard tab Network/Account summary cards
+backend:
+  - task: "PatrolEventIn category adds 'email' (email checks reuse POST /api/message/analyse for link intel + Gemini second opinion)"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+frontend:
+  - task: "src/domain/emailAnalysis.ts (parseEmail headers/body/attachments; E01–E13: brand impersonation via official sending domains, off-domain login links, risky attachments, changed bank details/BEC, code/identity asks, reply-to mismatch, genuine brand-domain emails); app/email.tsx Check an Email (From/Subject/Body fields or pasted forwarded email; result, sender card, links → /check, attachments → /file, 'It's about my account' → /account with scent, Verify sender sheet, RecoveryFlow, technical sheet); Home 'Check an email'; Guard tab 'Network & Accounts' section with Network Guard card (status pill from connection_guard + connection summary + open network items → /network) and Account Guard card (open account events count → /account); yarn test:gate1 13/13"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/email.tsx, frontend/src/domain/emailAnalysis.ts, frontend/app/(tabs)/guard.tsx, frontend/app/(tabs)/home.tsx"
+    needs_retesting: true

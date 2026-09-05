@@ -13,7 +13,7 @@ export interface WeeklyDigest {
 export function buildWeeklyDigest(events: PatrolEvent[], now = Date.now()): WeeklyDigest {
   const from = now - 7 * 24 * 3600 * 1000;
   const week = events.filter((e) => Date.parse(e.occurred_at) >= from && e.category !== "protection" && e.category !== "system");
-  const checked = week.filter((e) => e.category === "link" || e.category === "known_threat" || e.category === "website" || e.category === "app" || e.category === "device").length;
+  const checked = week.filter((e) => e.category === "link" || e.category === "known_threat" || e.category === "website" || e.category === "app" || e.category === "device" || e.category === "email").length;
   const blocked = week.filter((e) => e.state === "biting" && e.verified_block).length;
   const warned = week.filter((e) => e.state === "barking" || (e.state === "growling" && e.category !== "connection")).length;
   const letThrough = week.filter((e) => e.state === "resting" && (e.category === "link" || e.category === "website")).length;
