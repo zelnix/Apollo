@@ -1,7 +1,7 @@
-// Share intake: links shared from other apps (iOS Share Extension / Android
-// ACTION_SEND via expo-share-intent) and the apollo://check?url= deep link
-// both land on the Check screen. The native share module is optional: in
-// Expo Go / web it is absent and only the deep link path is active.
+// Share intake: content shared from other apps (iOS Share Extension / Android ACTION_SEND via
+// expo-share-intent) lands on the Share landing screen, which classifies it (link / message / email /
+// account alert / file / screenshot) and offers alternatives. The native share module is optional:
+// in Expo Go / web it is absent and only the apollo://share and apollo://check deep links are active.
 
 import { useRouter } from "expo-router";
 import { useShareIntent } from "expo-share-intent";
@@ -9,11 +9,7 @@ import { useEffect } from "react";
 
 import { useApollo } from "@/src/store/ApolloContext";
 
-export function extractUrl(text: string | null | undefined): string | null {
-  if (!text) return null;
-  const match = text.match(/https?:\/\/[^\s<>"']+/i) ?? text.match(/\b[a-z0-9-]+(\.[a-z0-9-]+)+(\/[^\s<>"']*)?/i);
-  return match ? match[0] : null;
-}
+export { extractUrl } from "./classifyShare";
 
 export function ShareIntakeListener() {
   const router = useRouter();
@@ -22,12 +18,13 @@ export function ShareIntakeListener() {
 
   useEffect(() => {
     if (!ready || !setupDone || !hasShareIntent) return;
-    const raw = shareIntent.webUrl ?? shareIntent.text ?? "";
-    const url = extractUrl(raw);
+    const file = shareIntent.files?.[0];
+    const params: Record<string, string> = {};
+    if (file) { params.fileUri = file.path; if (file.fileName) params.fileName = file.fileName; if (file.mimeType) params.mime = file.mimeType; if (file.size) params.size = String(file.size); }
+    if (shareIntent.webUrl) params.url = shareIntent.webUrl;
+    if (shareIntent.text) params.text = shareIntent.text.slice(0, 6000);
     resetShareIntent();
-    // A bare link → link check. Anything with more words than a link → Gate 2 message check (links are handed off from there).
-    if (url && raw.trim().replace(url, "").trim().length < 12) router.push({ pathname: "/check", params: { url, source: "share" } });
-    else if (raw.trim()) router.push({ pathname: "/message", params: { text: raw.trim().slice(0, 4000), source: "share" } });
+    if (Object.keys(params).length) router.push({ pathname: "/share", params });
   }, [ready, setupDone, hasShareIntent, shareIntent, resetShareIntent, router]);
 
   return null;

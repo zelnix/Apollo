@@ -5,7 +5,7 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { EventActions } from "@/src/components/EventActions";
-import { Body, Card, Pill, toneColor } from "@/src/components/ui";
+import { Body, Button, Card, Pill, toneColor } from "@/src/components/ui";
 import { STATE_LABEL, STATE_MEANING } from "@/src/domain/types";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { useApollo } from "@/src/store/ApolloContext";
@@ -70,6 +70,7 @@ export default function EventDetail() {
           </Card>
 
           <EventActions event={event} />
+          {event.scent_id && events.filter((e) => e.scent_id === event.scent_id).length > 1 ? <Card style={{ gap: spacing.sm }} testID="event-incident-card"><Body>This event is part of a connected incident ({events.filter((e) => e.scent_id === event.scent_id).length} events).</Body><Button testID="event-incident-open" variant="secondary" label="View incident timeline" onPress={() => router.push({ pathname: "/patrol/scent/[id]", params: { id: event.scent_id! } })} /></Card> : null}
 
           <Text style={s.meta}>Occurred {new Date(event.occurred_at).toLocaleString()}{event.resolved_at ? ` · Resolved ${new Date(event.resolved_at).toLocaleString()}` : ""}</Text>
         </ScrollView>

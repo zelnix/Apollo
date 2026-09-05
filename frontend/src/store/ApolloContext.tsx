@@ -34,25 +34,8 @@ export interface CheckOutcome { local: LocalAnalysis; intel: IntelResult | null;
 export interface MessageUrlResult { url: string; host: string; verdict: "clean" | "malicious" | "unknown"; threat_types: string[]; coverage: string }
 export interface MessageExplanation { summary: string; why: string[]; recommendation: string }
 export interface MessageOutcome { analysis: MessageAnalysis; urls: MessageUrlResult[]; explanation: MessageExplanation | null; remoteError: string | null; event: PatrolEvent | null }
-export type RecoveryKind = "clicked" | "password" | "code" | "money" | "info" | "app" | "card" | "download" | "called" | "remote" | "accessibility" | "profile" | "banking_during_access" | "mfa_approved" | "locked_out";
-/** Recovery guidance ("Stay With Me"). First step doubles as the event's what_to_do. */
-export const RECOVERY_STEPS: Record<RecoveryKind, string[]> = {
-  mfa_approved: ["Open the service's official app or typed address right now and sign out of all other devices/sessions.", "Change the password immediately — the person who triggered the prompt knows it.", "Check that the recovery email and phone are still yours; fix them if not.", "Deny every further approval prompt. Turn on number-matching or an authenticator app if offered.", "If it's a bank or payment account, call them on the number on your card."],
-  locked_out: ["Use only the provider's official account-recovery page (type the address yourself or use their app). Never a link or number someone sent you.", "Have your recovery email/phone and any backup codes ready; the provider will verify you.", "Once back in: change the password, sign out all other sessions, and restore your recovery details.", "Check for forwarding rules or new linked apps the attacker may have added.", "If it's a bank or contains payment details, call the bank on the number on your card."],
-  remote: ["End the remote-access session now: turn off Wi‑Fi and mobile data, or restart your phone.", "Hang up on the caller. Don't call the number back.", "Remove or disable the remote-access app and any permissions it was given (Settings → Apps).", "Review the accounts you used while they were connected — change passwords from a device they didn't touch.", "Reject any login or MFA prompts you didn't start.", "If any banking happened during the session, call your bank on the number on your card."],
-  accessibility: ["Open Settings → Accessibility and turn the service off for that app.", "If it won't turn off or keeps coming back, uninstall the app (Settings → Apps).", "Change passwords you typed while it was on — from a different device if you can.", "Check for unexpected messages or login alerts."],
-  profile: ["Open Settings → General → VPN & Device Management (iPhone) or Settings → Security (Android).", "Remove any profile, certificate or device-admin app you didn't deliberately install for work or a VPN you chose.", "Turn off any VPN you didn't set up.", "Restart the phone and check the profile is gone."],
-  banking_during_access: ["Call your bank now on the number on the back of your card. Tell them someone had access to your phone.", "Ask them to check for unauthorised transfers and to reset your online banking access.", "Change your email password from another device — email resets everything else.", "Turn on or reset two-factor authentication and reject any prompts you didn't start.", "Report it at ReportCyber (cyber.gov.au) and Scamwatch."],
-  clicked: ["Close the page. If you only looked, you're most likely fine.", "Don't enter anything if it asks for details.", "Check the link with Apollo so it can be blocked."],
-  password: ["Open the real service yourself (official app or typed address) and change that password now.", "If you use that password anywhere else, change it there too.", "Sign out other sessions if the service offers it.", "Reject any login or MFA prompts you didn't start."],
-  code: ["Treat this as an account takeover in progress: open the real service now and change the password.", "Turn on or reset two-factor authentication.", "Check recent activity and contact the service using details you find yourself."],
-  money: ["Contact your bank or payment provider immediately using the number on your card or their official app.", "Ask them to stop or recall the payment — Apollo can't promise funds come back.", "Report it at ReportCyber (cyber.gov.au) and Scamwatch."],
-  info: ["Note exactly what you shared (ID, card, address).", "For card details: call your bank to cancel the card.", "For ID documents: contact IDCARE (idcare.org) for free support."],
-  app: ["Don't open the app. Turn off Wi‑Fi and mobile data if a stranger is connected.", "Uninstall the app from your phone's settings.", "Change passwords for banking and email from a different device if you can."],
-  card: ["Call your bank now using the number on the back of your card and ask them to block the card.", "Check recent transactions and dispute anything you don't recognise.", "Don't reply to any follow-up messages or calls about this — they may be the same scammers."],
-  download: ["Don't open the file. Delete it from your Downloads.", "If it was an app installer (APK/profile), also remove it from Settings.", "Run your phone's built-in security check (Google Play Protect / iOS software update)."],
-  called: ["Hang up if you're still on the call. Don't call back the number.", "If you shared any details or installed anything, follow those recovery steps too.", "Block the number. Report the call at Scamwatch."],
-};
+export { RECOVERY_STEPS, type RecoveryKind } from "@/src/domain/recovery";
+import { RECOVERY_STEPS, type RecoveryKind } from "@/src/domain/recovery";
 
 interface ApolloContextValue {
   ready: boolean;
@@ -66,7 +49,7 @@ interface ApolloContextValue {
   adapterLabel: string;
   isMock: boolean;
   refreshing: boolean;
-  refresh(): Promise<void>;
+  refresh(minVisibleMs?: number): Promise<void>;
   verifyNow(): Promise<void>;
   lastVerifiedAt: string | null;
   toggleProtection(on: boolean): Promise<void>;
@@ -158,11 +141,16 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     toastTimer.current = setTimeout(() => setToast(null), 3200);
   }, []);
 
-  const persistEvents = useCallback(async (next: PatrolEvent[]) => { setEvents(next); await storage.setItem(K.events, JSON.stringify(next)); }, []);
+  // Latest events, updated synchronously so back-to-back upserts (e.g. resolving a whole incident) never
+  // operate on a stale snapshot and overwrite each other.
+  const eventsRef = useRef<PatrolEvent[]>([]);
+  useEffect(() => { eventsRef.current = events; }, [events]);
+  const persistEvents = useCallback(async (next: PatrolEvent[]) => { eventsRef.current = next; setEvents(next); await storage.setItem(K.events, JSON.stringify(next)); }, []);
   const persistTrust = useCallback(async (next: TrustEntry[]) => { setTrust(next); await storage.setItem(K.trust, JSON.stringify(next)); }, []);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (minVisibleMs = 0) => {
     setRefreshing(true);
+    const hold = new Promise((r) => setTimeout(r, minVisibleMs));
     try {
       const [caps, status, perms, net] = await Promise.all([
         securityAdapter.getCapabilities(), securityAdapter.getProtectionStatus(), securityAdapter.getProtectionPermissions(), securityAdapter.getNetworkStatus(),
@@ -180,7 +168,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         setEvents((prev) => { const next = [ev, ...prev]; void storage.setItem(K.events, JSON.stringify(next)); return next; });
         void syncEventRef.current?.(ev);
       } else if (!a.state) lastConnectionKey.current = a.key;
-    } finally { setRefreshing(false); }
+    } finally { await hold; setRefreshing(false); }
   }, []);
   const lastConnectionKey = useRef<string | null>(null);
   const deviceIdRef = useRef<string | null>(null);
@@ -203,7 +191,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const verifyNow = useCallback(async () => {
-    await refresh();
+    // Keep the Sniffing state visible for at least a beat so the user sees Apollo actually checking.
+    await refresh(900);
     const ts = new Date().toISOString();
     setLastVerifiedAt(ts);
     await storage.setItem(K.verified, ts);
@@ -290,6 +279,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     // Threat Scent: link this event to related recent events (same brand/host within 30 min).
     // When two different gates are involved (e.g. message → link), the sequence escalates to barking.
     let e = input;
+    const events = eventsRef.current;
     if (e.state !== "resting" && !events.some((x) => x.event_id === e.event_id)) {
       const scent = findScentFor(e, events) ?? e.event_id;
       e = { ...e, scent_id: e.scent_id ?? scent };
@@ -302,7 +292,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     await persistEvents(next);
     void syncEvent(e);
     return e;
-  }, [events, persistEvents, syncEvent]);
+  }, [persistEvents, syncEvent]);
 
   const checkMessage = useCallback(async (sender: string, text: string): Promise<MessageOutcome> => {
     const analysis = analyseMessage(sender, text);

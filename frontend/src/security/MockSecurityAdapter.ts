@@ -4,6 +4,7 @@
 // on-device) — everything else is simulated.
 
 import * as Network from "expo-network";
+import { Platform } from "react-native";
 
 import type { Capability } from "@/src/domain/types";
 import { storage } from "@/src/utils/storage";
@@ -48,7 +49,7 @@ class MockSecurityAdapterImpl implements SecurityPlatformAdapter {
       { id: "known_threats", title: "Known Threat Lookup", status: this.running ? "active" : "available", detail: "Privacy-preserving reputation checks using the link only." },
       { id: "site_guard", title: "Site Guard", status: unavailable ? "unsupported" : filterGranted ? (this.running ? "active" : "inactive") : "permission_required", detail: unavailable ? "This device cannot run a content filter." : filterGranted ? "Warns about suspicious websites in supported browsers." : "Needs the network filter permission to see website visits." },
       { id: "connection_guard", title: "Connection Guard", status: this.running ? "active" : "available", detail: this.running ? "Warns about open or captive Wi‑Fi (simulated in mock mode)." : "Turn on protection to assess Wi‑Fi connections." },
-      { id: "share_intake", title: "Share to Apollo", status: "coming_later", detail: "Share links from other apps straight into Apollo. Requires a native build." },
+      { id: "share_intake", title: "Share to Apollo", status: Platform.OS === "web" ? "coming_later" : "available", detail: Platform.OS === "web" ? "Share links, messages, emails, screenshots and files from other apps straight into the right Apollo check. Needs the native build (share sheet); on this preview use the Shared-with-Apollo screen via the apollo://share link." : "Share links, messages, emails, screenshots and files from other apps: Share → Apollo. Apollo works out which check fits and lets you switch." },
       { id: "message_guard", title: "Message Guard", status: this.running ? "active" : "available", detail: "Checks texts and chats you paste, share or screenshot into Apollo. Apollo never reads your messages automatically — the operating system doesn't allow it, and Apollo won't pretend otherwise." },
       { id: "app_guard", title: "App & Device Guard", status: this.running ? "active" : "available", detail: "Check This App and Check My Device work from what you tell Apollo. Automatic install monitoring, permission reading and app-to-network correlation need the native Security SDK (Android); iOS never exposes other apps' permissions." },
     ];

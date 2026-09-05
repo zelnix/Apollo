@@ -1,0 +1,103 @@
+// Incident Timeline — one Threat Scent, told in order (email → link → login → MFA), with a single combined
+// Stay With Me plan the user can tick off. Resolving the incident resolves every linked event.
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
+import Check from "lucide-react-native/icons/check";
+import X from "lucide-react-native/icons/x";
+import React, { useMemo, useState } from "react";
+import { Pressable, ScrollView, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
+import { buildIncidentPlan, CATEGORY_GLYPH, CATEGORY_LABEL } from "@/src/domain/incidentPlan";
+import { STATE_LABEL, STATE_NAME } from "@/src/domain/types";
+import { useApollo } from "@/src/store/ApolloContext";
+import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+import { goBackOrHome } from "@/src/utils/navigation";
+
+const useStyles = makeStyles((c) => ({
+  root: { flex: 1, backgroundColor: c.surface },
+  top: { paddingHorizontal: spacing.xl, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: spacing.md },
+  title: { fontFamily: fonts.displayBold, fontSize: 22, color: c.onSurface },
+  close: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: c.surfaceTertiary },
+  content: { paddingHorizontal: spacing.xl, gap: spacing.lg },
+  headline: { fontFamily: fonts.displayBold, fontSize: 20, lineHeight: 26, color: c.onSurface },
+  why: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurface },
+  label: { fontFamily: fonts.textSemibold, fontSize: 15, color: c.onSurface },
+  meta: { fontFamily: fonts.text, fontSize: 13, color: c.muted },
+  row: { flexDirection: "row", gap: spacing.md, alignItems: "flex-start" },
+  rail: { width: 28, alignItems: "center" },
+  glyph: { fontSize: 18, lineHeight: 24 },
+  line: { width: 2, flex: 1, minHeight: 20, marginVertical: 4 },
+  step: { flexDirection: "row", gap: spacing.md, alignItems: "flex-start", paddingVertical: spacing.sm, minHeight: 44 },
+  box: { width: 26, height: 26, borderRadius: 8, borderWidth: 2, alignItems: "center", justifyContent: "center", marginTop: 1 },
+  done: { textDecorationLine: "line-through", color: c.muted },
+}));
+
+export default function IncidentTimeline() {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const { events, ready, setupDone, upsertEvent, showToast } = useApollo();
+  const linked = useMemo(() => events.filter((e) => e.scent_id === id || e.event_id === id), [events, id]);
+  const plan = useMemo(() => buildIncidentPlan(linked), [linked]);
+  const [ticked, setTicked] = useState<Record<string, boolean>>({});
+  const doneCount = plan.steps.filter((st) => ticked[st.id]).length;
+  if (ready && !setupDone) return <Redirect href="/" />;
+
+  const resolveAll = async () => { const at = new Date().toISOString(); for (const e of linked) if (e.status === "active") await upsertEvent({ ...e, status: "resolved", resolved_at: at }); showToast("Incident marked handled. Apollo keeps the record.", "resting"); };
+
+  return (
+    <View style={s.root}>
+      <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
+        <Text style={s.title}>Incident timeline</Text>
+        <Pressable testID="incident-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+      </View>
+      {!linked.length ? <View style={s.content}><Body>This incident is no longer available.</Body></View> : (
+        <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="incident-scroll">
+          <Card style={{ gap: spacing.sm, borderColor: toneColor(colors, plan.state) }} testID="incident-summary">
+            <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}><Pill tone={plan.state} label={STATE_NAME[plan.state]} testID="incident-state" /><Pill tone="neutral" label={`${linked.length} connected events`} testID="incident-count" />{plan.allResolved ? <Pill tone="resting" label="Handled" testID="incident-handled" /> : null}</View>
+            <Text style={s.headline} testID="incident-headline">{plan.headline}</Text>
+            <Text style={s.why}>{STATE_LABEL[plan.state]}</Text>
+            <Body>{plan.exposure.length ? `You told Apollo: ${plan.exposure.join("; ")}. The plan below starts with the most urgent step.` : "Apollo connected these because they happened close together and point at the same target. Nothing is lost if you haven't typed, paid or approved anything."}</Body>
+          </Card>
+
+          <View>
+            <SectionTitle>What happened, in order</SectionTitle>
+            {plan.timeline.map((e, i) => (
+              <Pressable key={e.event_id} testID={`incident-event-${i}`} accessibilityRole="button" onPress={() => router.push({ pathname: "/patrol/[id]", params: { id: e.event_id } })} style={s.row}>
+                <View style={s.rail}><Text style={s.glyph}>{CATEGORY_GLYPH[e.category]}</Text>{i < plan.timeline.length - 1 ? <View style={[s.line, { backgroundColor: colors.border }]} /> : null}</View>
+                <View style={{ flex: 1, paddingBottom: spacing.md, gap: 2 }}>
+                  <Text style={s.meta}>{new Date(e.occurred_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · {CATEGORY_LABEL[e.category]}</Text>
+                  <Text style={s.label}>{e.headline.replace(/^(Email|App|Device|Account|Network): /, "")}</Text>
+                  <Body>{e.what_happened}</Body>
+                  <View style={{ flexDirection: "row", gap: spacing.sm }}><Pill tone={e.state} label={STATE_NAME[e.state]} />{e.status !== "active" ? <Pill tone="resting" label="Handled" /> : null}</View>
+                </View>
+              </Pressable>
+            ))}
+          </View>
+
+          <Card style={{ gap: spacing.xs }} testID="incident-plan">
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}><SectionTitle>Stay with me — one plan</SectionTitle><Text style={s.meta} testID="incident-progress">{doneCount}/{plan.steps.length}</Text></View>
+            {plan.steps.map((st, i) => {
+              const on = !!ticked[st.id];
+              return (
+                <Pressable key={st.id} testID={`incident-step-${i}`} accessibilityRole="checkbox" accessibilityState={{ checked: on }} onPress={() => setTicked((t) => ({ ...t, [st.id]: !on }))} style={s.step}>
+                  <View style={[s.box, { borderColor: on ? colors.resting : colors.borderStrong, backgroundColor: on ? colors.resting : "transparent" }]}>{on ? <Check size={16} color={colors.surface} /> : null}</View>
+                  <Text style={[s.why, { flex: 1 }, on && s.done]}>{i + 1}. {st.text}</Text>
+                </Pressable>
+              );
+            })}
+            <Body>Tick steps as you go. Apollo doesn&apos;t know what was taken — only what was risky — so don&apos;t assume the worst, but do the steps.</Body>
+          </Card>
+
+          <Card style={{ gap: spacing.sm }} testID="incident-actions">
+            <Button testID="incident-ask" variant="secondary" label="Ask Apollo about this incident" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { context: `Incident: ${plan.headline}. Events in order: ${plan.timeline.map((e) => `${CATEGORY_LABEL[e.category]} — ${e.headline}`).join("; ")}. Exposure: ${plan.exposure.join(", ") || "none reported"}.`, prompt: "What should I do first, and what's the risk?" } })} />
+            {!plan.allResolved ? <Button testID="incident-resolve" variant={doneCount === plan.steps.length ? "primary" : "ghost"} label="I've done the steps — mark incident handled" onPress={() => void resolveAll()} /> : null}
+          </Card>
+        </ScrollView>
+      )}
+    </View>
+  );
+}

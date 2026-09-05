@@ -70,10 +70,14 @@
         {
           "iosActivationRules": {
             "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
-            "NSExtensionActivationSupportsText": true
+            "NSExtensionActivationSupportsText": true,
+            "NSExtensionActivationSupportsImageWithMaxCount": 1,
+            "NSExtensionActivationSupportsFileWithMaxCount": 1
           },
           "androidIntentFilters": [
-            "text/*"
+            "text/*",
+            "image/*",
+            "application/*"
           ],
           "androidMultiIntentFilters": []
         }

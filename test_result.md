@@ -271,3 +271,19 @@ frontend:
     working: "NA"
     file: "frontend/app/email.tsx, frontend/src/domain/emailAnalysis.ts, frontend/app/(tabs)/guard.tsx, frontend/app/(tabs)/home.tsx"
     needs_retesting: true
+
+## Iteration 19 — Share Into Apollo + Incident Timeline
+frontend:
+  - task: "src/share/classifyShare.ts routes shared payloads (file→/file, image→/message screenshot, email headers/body→/email, login/MFA/reset text→/account, bare link→/check, else /message) + alternativeRoutes; app/share.tsx landing screen ('Looks like …', Check as …, Not that? alternatives); ShareIntakeListener now pushes /share with text/url/file params; app.json share-intent activation adds images + files; message.tsx accepts imageUri (reads base64, runs /message/extract); file.tsx accepts uri/name/mime/size and analyses on open. Incident Timeline: src/domain/incidentPlan.ts (ordered timeline, highest state, recovery kinds inferred from recorded recoveries + scenarios, one deduplicated Stay With Me plan) + app/patrol/scent/[id].tsx (summary, timeline rows → event detail, tickable steps with progress, Ask, mark whole incident handled); Home Threat Scent card is tappable → timeline; event detail shows 'View incident timeline' when linked. RECOVERY_STEPS moved to src/domain/recovery.ts (re-exported from ApolloContext). yarn test:share 11/11"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/share.tsx, frontend/app/patrol/scent/[id].tsx, frontend/src/share/classifyShare.ts, frontend/src/domain/incidentPlan.ts"
+    needs_retesting: true
+
+## Iteration 20 — fixes from iteration 19 + sniffing GIF
+frontend:
+  - task: "upsertEvent reads eventsRef (updated synchronously in persistEvents) so back-to-back upserts don't overwrite each other; incident timeline resolveAll upserts each linked event → all become Handled + incident-handled pill. alternativeRoutes emits message/email/account alternatives for URL-only shares. Hero shows apollo-sniffing.gif (testID apollo-hero-gif-sniffing) while refreshing (Verify now / pull-to-refresh) — transient Sniffing state."
+    implemented: true
+    working: "NA"
+    file: "frontend/src/store/ApolloContext.tsx, frontend/app/patrol/scent/[id].tsx, frontend/src/share/classifyShare.ts, frontend/src/components/ApolloHero.tsx, frontend/app/(tabs)/home.tsx"
+    needs_retesting: true

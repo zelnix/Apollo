@@ -41,7 +41,7 @@ export default function CheckMessage() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ text?: string; sender?: string; source?: string }>();
+  const params = useLocalSearchParams<{ text?: string; sender?: string; source?: string; imageUri?: string }>();
   const { ready, setupDone, deviceId, checkMessage, resolveEvent, showToast } = useApollo();
   const [sender, setSender] = useState(params.sender ? String(params.sender) : "");
   const [text, setText] = useState(params.text ? String(params.text) : "");
@@ -67,9 +67,20 @@ export default function CheckMessage() {
     }
     const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.6, base64: true, allowsEditing: false });
     if (res.canceled || !res.assets[0]?.base64) return;
+    await readScreenshot(res.assets[0].base64);
+  };
+  // Screenshot shared from another app (Share → Apollo): read it as soon as the screen opens.
+  useEffect(() => {
+    if (!params.imageUri) return;
+    (async () => {
+      try { const { File } = await import("expo-file-system"); const b64 = await new File(params.imageUri!).base64(); await readScreenshot(b64); }
+      catch { setError("Couldn't read the shared image on this build."); }
+    })();
+  }, [params.imageUri]); // eslint-disable-line react-hooks/exhaustive-deps
+  const readScreenshot = async (base64: string) => {
     setBusy("reading"); setError(null);
     try {
-      const r = await apiPost<{ sender: string; text: string; urls: string[] }>("/message/extract", "message_extract", { device_id: deviceId ?? undefined, image_base64: res.assets[0].base64 });
+      const r = await apiPost<{ sender: string; text: string; urls: string[] }>("/message/extract", "message_extract", { device_id: deviceId ?? undefined, image_base64: base64 });
       if (r.sender && !sender) setSender(r.sender);
       const extra = r.urls.filter((u) => !r.text.includes(u));
       setText([r.text, ...extra].filter(Boolean).join("\n"));

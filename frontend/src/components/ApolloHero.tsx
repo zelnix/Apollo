@@ -28,14 +28,16 @@ const useStyles = makeStyles((c) => ({
 
 const ease = Easing.inOut(Easing.ease);
 
-export function ApolloHero({ resolution, visibility, adapterLabel, isMock, animate = true, quietNow = false }: {
+export function ApolloHero({ resolution, visibility, adapterLabel, isMock, animate = true, quietNow = false, sniffing = false }: {
   resolution: StateResolution; visibility: Visibility; adapterLabel: string; isMock: boolean; animate?: boolean; quietNow?: boolean;
+  /** True while Apollo is actively re-checking (Verify now / pull-to-refresh) — shows the transient Sniffing state. */
+  sniffing?: boolean;
 }) {
   const s = useStyles();
   const { colors } = useTheme();
   const tone = resolution.visibilityLost ? "unknown" : resolution.state;
   const color = toneColor(colors, tone);
-  const state: ApolloState | "lost" = resolution.visibilityLost ? "lost" : resolution.state;
+  const state: ApolloState | "lost" = resolution.visibilityLost ? "lost" : sniffing ? "sniffing" : resolution.state;
 
   const ring = useSharedValue(1);
   const scale = useSharedValue(1);
@@ -111,6 +113,8 @@ export function ApolloHero({ resolution, visibility, adapterLabel, isMock, anima
                 <Image source={require("../../assets/images/apollo-barking.gif")} style={{ width: 132, height: 132 }} contentFit="contain" autoplay accessibilityLabel="Apollo barking" testID="apollo-hero-gif-barking" />
               ) : state === "growling" && animate ? (
                 <Image source={require("../../assets/images/apollo-growling.gif")} style={{ width: 132, height: 132 }} contentFit="contain" autoplay accessibilityLabel="Apollo growling" testID="apollo-hero-gif-growling" />
+              ) : state === "sniffing" && animate ? (
+                <Image source={require("../../assets/images/apollo-sniffing.gif")} style={{ width: 132, height: 132 }} contentFit="contain" autoplay accessibilityLabel="Apollo sniffing" testID="apollo-hero-gif-sniffing" />
               ) : (
                 <Image source={require("../../assets/images/logo.png")} style={{ width: 124, height: 124 }} contentFit="contain" accessibilityLabel="Apollo" />
               )}

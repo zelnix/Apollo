@@ -12,7 +12,7 @@ import ShieldCheck from "lucide-react-native/icons/shield-check";
 import Smartphone from "lucide-react-native/icons/smartphone";
 import Wifi from "lucide-react-native/icons/wifi";
 import React from "react";
-import { RefreshControl, Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApolloHero } from "@/src/components/ApolloHero";
@@ -56,7 +56,7 @@ export default function Home() {
         <ScreenHeader title="Apollo" testID="home-header" right={<View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>{isMock ? <Pill tone="unknown" label="Mock" testID="home-mock-pill" /> : null}<ApolloLogo size={40} testID="home-logo" /></View>} />
       </View>
       <ScrollView contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={verifyNow} tintColor={colors.resting} />} testID="home-scroll">
-        <ApolloHero resolution={resolution} visibility={visibility} adapterLabel={adapterLabel} isMock={isMock} animate={!lowPower} quietNow={quietNow} />
+        <ApolloHero resolution={resolution} visibility={visibility} adapterLabel={adapterLabel} isMock={isMock} animate={!lowPower} quietNow={quietNow} sniffing={refreshing} />
         <ClipboardLinkBanner />
         {protection?.running ? (
           <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }} testID="home-background-card">
@@ -91,11 +91,13 @@ export default function Home() {
           <View>
             <SectionTitle>Connected events (Threat Scent)</SectionTitle>
             {scents.slice(0, 2).map((sc) => (
-              <Card key={sc.scent_id} style={{ gap: spacing.xs, borderColor: toneColor(colors, sc.state) }} testID={`home-scent-${sc.scent_id}`}>
-                <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}><Pill tone={sc.state} label={STATE_NAME[sc.state]} />{sc.brand ? <Pill tone="neutral" label={sc.brand} /> : null}</View>
-                <Body>{sc.summary}</Body>
-                <Body>Don&apos;t provide passwords, verification codes or transfer money until you&apos;ve checked with the real organisation yourself.</Body>
-              </Card>
+              <Pressable key={sc.scent_id} testID={`home-scent-${sc.scent_id}`} accessibilityRole="button" onPress={() => router.push({ pathname: "/patrol/scent/[id]", params: { id: sc.scent_id } })}>
+                <Card style={{ gap: spacing.xs, borderColor: toneColor(colors, sc.state) }}>
+                  <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}><Pill tone={sc.state} label={STATE_NAME[sc.state]} />{sc.brand ? <Pill tone="neutral" label={sc.brand} /> : null}<Pill tone="neutral" label={`${sc.events.length} events`} /></View>
+                  <Body>{sc.summary}</Body>
+                  <Body>Tap to see the timeline and one Stay With Me plan for the whole incident.</Body>
+                </Card>
+              </Pressable>
             ))}
           </View>
         ) : null}

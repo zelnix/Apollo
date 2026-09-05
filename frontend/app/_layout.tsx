@@ -107,6 +107,8 @@ export default function RootLayout() {
                   <Stack.Screen name="network" options={{ presentation: "modal" }} />
                   <Stack.Screen name="account" options={{ presentation: "modal" }} />
                   <Stack.Screen name="email" options={{ presentation: "modal" }} />
+                  <Stack.Screen name="share" options={{ presentation: "modal" }} />
+                  <Stack.Screen name="patrol/scent/[id]" options={{ presentation: "modal" }} />
                   <Stack.Screen name="patrol/[id]" options={{ presentation: "modal" }} />
                   <Stack.Screen name="dev-tools" options={{ presentation: "modal" }} />
                   <Stack.Screen name="benchmark" options={{ presentation: "modal" }} />

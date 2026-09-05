@@ -2,9 +2,9 @@
 // nothing is uploaded. URLs found inside are handed to Gate 3.
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
-import { Redirect, useRouter } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import X from "lucide-react-native/icons/x";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Pressable, Switch, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -54,10 +54,15 @@ export default function CheckFile() {
     }
     setResult({ a, event });
   };
+  const params = useLocalSearchParams<{ uri?: string; name?: string; mime?: string; size?: string; source?: string }>();
   const pick = async () => {
     const res = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false });
     if (res.canceled || !res.assets[0]) return;
-    const asset = res.assets[0];
+    await analyseAsset(res.assets[0]);
+  };
+  // Shared from another app (Share → Apollo): analyse the shared file straight away.
+  useEffect(() => { if (params.uri && !result) { setSource("message"); void analyseAsset({ uri: params.uri, name: params.name ?? params.uri.split("/").pop() ?? "shared file", mimeType: params.mime || null, size: params.size ? Number(params.size) : undefined }); } }, [params.uri]); // eslint-disable-line react-hooks/exhaustive-deps
+  const analyseAsset = async (asset: { uri: string; name: string; mimeType?: string | null; size?: number }) => {
     setBusy(true);
     try {
       let head: Uint8Array | null = null; let text: string | null = null;
