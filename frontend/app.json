@@ -13,7 +13,7 @@
       "bundleIdentifier": "com.emergent.threatpatrol.hynln9",
       "infoPlist": {
         "NSUserNotificationsUsageDescription": "Tell you when Apollo barks about a threat",
-        "NSLocationWhenInUseUsageDescription": "Check whether your current Wi\u2011Fi is open or secured"
+        "NSLocationWhenInUseUsageDescription": "Check whether your current Wi‑Fi is open or secured"
       },
       "entitlements": {
         "com.apple.developer.networking.wifi-info": true
@@ -78,7 +78,21 @@
         }
       ],
       "./plugins/withApolloSiteGuard",
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Pick a screenshot of a message for Apollo to check",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

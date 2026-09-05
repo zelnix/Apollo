@@ -49,15 +49,22 @@ export function ApolloHero({ resolution, visibility, adapterLabel, isMock, anima
     ring.value = 1; scale.value = 1; tx.value = 0; ty.value = 0; rot.value = 0; glow.value = 0.25;
     if (!animate) return;
     if (state === "resting") {
-      // Breathing + a periodic look-around: head sweeps left, right, back to centre.
-      scale.value = withRepeat(withSequence(withTiming(1.04, { duration: 2400, easing: ease }), withTiming(1, { duration: 2400, easing: ease })), -1, false);
+      // The patrolling GIF carries the dog's motion; code adds only a slow breath and ring pulse.
+      scale.value = withRepeat(withSequence(withTiming(1.03, { duration: 2400, easing: ease }), withTiming(1, { duration: 2400, easing: ease })), -1, false);
       ring.value = withRepeat(withSequence(withTiming(1.12, { duration: 2600, easing: ease }), withTiming(1, { duration: 2600, easing: ease })), -1, false);
-      rot.value = withRepeat(withSequence(
-        withDelay(3200, withTiming(-5, { duration: 700, easing: ease })), withTiming(-5, { duration: 500 }),
-        withTiming(5, { duration: 900, easing: ease }), withTiming(5, { duration: 500 }),
-        withTiming(0, { duration: 600, easing: ease }),
-      ), -1, false);
       glow.value = withRepeat(withSequence(withTiming(0.4, { duration: 2400, easing: ease }), withTiming(0.2, { duration: 2400, easing: ease })), -1, false);
+    } else if (state === "sniffing") {
+      // Nose down, quick sniffs: small fast scale ticks with a gentle head tilt.
+      scale.value = withRepeat(withSequence(withTiming(1.05, { duration: 140 }), withTiming(1, { duration: 140 }), withTiming(1.05, { duration: 140 }), withTiming(1, { duration: 140 }), withDelay(400, withTiming(1, { duration: 1 }))), -1, false);
+      rot.value = withRepeat(withSequence(withTiming(6, { duration: 500, easing: ease }), withTiming(-6, { duration: 700, easing: ease }), withTiming(0, { duration: 500, easing: ease })), -1, false);
+      ring.value = withRepeat(withSequence(withTiming(1.15, { duration: 900, easing: ease }), withTiming(1, { duration: 900, easing: ease })), -1, false);
+      glow.value = withRepeat(withSequence(withTiming(0.45, { duration: 600 }), withTiming(0.25, { duration: 600 })), -1, false);
+    } else if (state === "ears_up") {
+      // Alert but still: a quick perk up, then a hold, then a slow settle.
+      ty.value = withRepeat(withSequence(withTiming(-6, { duration: 160, easing: Easing.out(Easing.quad) }), withTiming(-6, { duration: 1400 }), withTiming(0, { duration: 700, easing: ease }), withDelay(1200, withTiming(0, { duration: 1 }))), -1, false);
+      scale.value = withRepeat(withSequence(withTiming(1.06, { duration: 160 }), withTiming(1.06, { duration: 1400 }), withTiming(1, { duration: 700, easing: ease }), withDelay(1200, withTiming(1, { duration: 1 }))), -1, false);
+      ring.value = withRepeat(withSequence(withTiming(1.1, { duration: 1600, easing: ease }), withTiming(1, { duration: 1600, easing: ease })), -1, false);
+      glow.value = withRepeat(withSequence(withTiming(0.45, { duration: 1200 }), withTiming(0.25, { duration: 1200 })), -1, false);
     } else if (state === "growling") {
       // Low, continuous rumble.
       tx.value = withRepeat(withSequence(withTiming(-1.8, { duration: 70 }), withTiming(1.8, { duration: 70 })), -1, true);
@@ -98,7 +105,11 @@ export function ApolloHero({ resolution, visibility, adapterLabel, isMock, anima
             <Animated.View style={[s.orbRing, { borderColor: color }, ringStyle]} />
             <Animated.View style={[s.glow, { backgroundColor: color }, glowStyle]} />
             <Animated.View style={dogStyle}>
-              <Image source={require("../../assets/images/logo.png")} style={{ width: 124, height: 124 }} contentFit="contain" accessibilityLabel="Apollo" />
+              {state === "resting" && animate ? (
+                <Image source={require("../../assets/images/apollo-patrolling.gif")} style={{ width: 132, height: 132 }} contentFit="contain" autoplay accessibilityLabel="Apollo patrolling" testID="apollo-hero-gif" />
+              ) : (
+                <Image source={require("../../assets/images/logo.png")} style={{ width: 124, height: 124 }} contentFit="contain" accessibilityLabel="Apollo" />
+              )}
             </Animated.View>
           </View>
           <Text style={s.label} testID="apollo-state-label">{title}</Text>

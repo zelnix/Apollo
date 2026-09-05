@@ -17,6 +17,18 @@ export interface ApolloSecurityNativeModule {
   stopProtection(): Promise<string>;
   getProtectionPermissions(): Promise<string>;
   requestProtectionPermission(id: string): Promise<string>;
+  // Gate 2 — Text & Messaging (SDK contract). Each returns a JSON string; see src/security/messagingSdk.ts.
+  getMessagingCapabilities(): Promise<string>;
+  analyseMessageMetadata(metadataJson: string): Promise<string>;
+  checkSenderReputation(sender: string): Promise<string>;
+  registerShareHandler(): Promise<string>;
+  getRecentMessageSecurityEvents(): Promise<string>;
+  // Gate 3 — Website & Browser (SDK contract). JSON strings; see src/security/webSdk.ts.
+  getWebProtectionCapabilities(): Promise<string>;
+  getDomainReputation(domain: string): Promise<string>;
+  getRedirectAssessment(url: string): Promise<string>;
+  allowDestination(domain: string): Promise<string>;
+  getRecentWebThreatEvents(): Promise<string>;
 }
 
 let cached: ApolloSecurityNativeModule | null | undefined;

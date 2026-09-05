@@ -1,11 +1,11 @@
-// Apollo four-state machine.
+// Apollo six-state machine (sniffing is transient and never persisted as an event state).
 // Escalation is immediate on evidence. Recovery to Resting is slow and strict:
 // it requires (a) no active events, (b) a fresh verification after the most
 // recent escalation was resolved, and (c) visibility not lost.
 
 import type { ApolloState, PatrolEvent, Visibility } from "./types";
 
-export const STATE_RANK: Record<ApolloState, number> = { resting: 0, growling: 1, barking: 2, biting: 3 };
+export const STATE_RANK: Record<ApolloState, number> = { sniffing: 0, resting: 0, ears_up: 1, growling: 2, barking: 3, biting: 4 };
 
 /** How recent a verification must be to permit returning to Resting. */
 export const VERIFICATION_FRESHNESS_MS = 10 * 60 * 1000;
@@ -49,7 +49,11 @@ export function resolveApolloState(input: StateInput): StateResolution {
   }
   const growling = active.filter((e) => e.state === "growling").sort(byNewest)[0];
   if (growling) {
-    return { state: "growling", reason: "Something looks unusual and is not yet confirmed.", recovering: false, visibilityLost: false, drivingEvent: growling };
+    return { state: "growling", reason: "Something looks suspicious and is not yet confirmed.", recovering: false, visibilityLost: false, drivingEvent: growling };
+  }
+  const earsUp = active.filter((e) => e.state === "ears_up").sort(byNewest)[0];
+  if (earsUp) {
+    return { state: "ears_up", reason: "Something matches a known pattern. Take a careful look.", recovering: false, visibilityLost: false, drivingEvent: earsUp };
   }
 
   // No active events. Recovery rules apply.

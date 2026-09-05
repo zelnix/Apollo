@@ -1,6 +1,7 @@
 import { useRouter } from "expo-router";
 import BatteryCharging from "lucide-react-native/icons/battery-charging";
 import Link2 from "lucide-react-native/icons/link-2";
+import MessageSquareWarning from "lucide-react-native/icons/message-square-warning";
 import RefreshCw from "lucide-react-native/icons/refresh-cw";
 import React from "react";
 import { RefreshControl, Pressable, ScrollView, Text, View } from "react-native";
@@ -10,7 +11,9 @@ import { ApolloHero } from "@/src/components/ApolloHero";
 import { ApolloLogo } from "@/src/components/ApolloLogo";
 import { ClipboardLinkBanner } from "@/src/components/ClipboardLinkBanner";
 import { PatrolItem } from "@/src/components/PatrolItem";
-import { Body, Button, Card, Pill, ScreenHeader, SectionTitle, capabilityTone } from "@/src/components/ui";
+import { Body, Button, Card, Pill, ScreenHeader, SectionTitle, capabilityTone, toneColor } from "@/src/components/ui";
+import { buildScents } from "@/src/domain/threatScent";
+import { STATE_NAME } from "@/src/domain/types";
 import { CAPABILITY_STATUS_LABEL, visibilityFrom } from "@/src/domain/capability";
 import { buildWeeklyDigest } from "@/src/domain/digest";
 import { useApollo } from "@/src/store/ApolloContext";
@@ -37,6 +40,7 @@ export default function Home() {
   const visibility = visibilityFrom(capabilities, !!protection?.running);
   const recent = events.slice(0, 4);
   const digest = buildWeeklyDigest(events);
+  const scents = buildScents(events);
 
   return (
     <View style={s.root}>
@@ -56,8 +60,21 @@ export default function Home() {
 
         <View style={s.actions}>
           <Button testID="home-check-link-button" label="Check a link" onPress={() => router.push("/check")} icon={<Link2 size={18} color={colors.onBrandPrimary} />} style={{ flex: 1 }} />
-          <Button testID="home-verify-button" label="Verify now" variant="secondary" onPress={verifyNow} icon={<RefreshCw size={18} color={colors.onSurface} />} style={{ flex: 1 }} />
+          <Button testID="home-check-message-button" label="Check a message" variant="secondary" onPress={() => router.push("/message")} icon={<MessageSquareWarning size={18} color={colors.onSurface} />} style={{ flex: 1 }} />
         </View>
+        <Button testID="home-verify-button" label="Verify now" variant="ghost" onPress={verifyNow} icon={<RefreshCw size={18} color={colors.onSurface} />} />
+        {scents.length ? (
+          <View>
+            <SectionTitle>Connected events (Threat Scent)</SectionTitle>
+            {scents.slice(0, 2).map((sc) => (
+              <Card key={sc.scent_id} style={{ gap: spacing.xs, borderColor: toneColor(colors, sc.state) }} testID={`home-scent-${sc.scent_id}`}>
+                <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}><Pill tone={sc.state} label={STATE_NAME[sc.state]} />{sc.brand ? <Pill tone="neutral" label={sc.brand} /> : null}</View>
+                <Body>{sc.summary}</Body>
+                <Body>Don&apos;t provide passwords, verification codes or transfer money until you&apos;ve checked with the real organisation yourself.</Body>
+              </Card>
+            ))}
+          </View>
+        ) : null}
         {lastVerifiedAt ? <Body style={{ marginTop: -spacing.md }} >Last verified {new Date(lastVerifiedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Body> : null}
 
         <View>

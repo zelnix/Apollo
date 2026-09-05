@@ -11,7 +11,9 @@ export type Tone = ApolloState | "neutral" | "unknown";
 
 export function toneColor(colors: ThemeColors, tone: Tone) {
   switch (tone) {
+    case "sniffing": return colors.sniffing;
     case "resting": return colors.resting;
+    case "ears_up": return colors.ears_up;
     case "growling": return colors.growling;
     case "barking": return colors.barking;
     case "biting": return colors.biting;
@@ -21,7 +23,9 @@ export function toneColor(colors: ThemeColors, tone: Tone) {
 }
 export function toneTint(colors: ThemeColors, tone: Tone) {
   switch (tone) {
+    case "sniffing": return colors.sniffingTint;
     case "resting": return colors.restingTint;
+    case "ears_up": return colors.ears_upTint;
     case "growling": return colors.growlingTint;
     case "barking": return colors.barkingTint;
     case "biting": return colors.bitingTint;

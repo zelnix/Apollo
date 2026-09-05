@@ -6,7 +6,9 @@
       "@/*": [
         "./*"
       ]
-    }
+    },
+    "allowImportingTsExtensions": true,
+    "noEmit": true
   },
   "include": [
     "**/*.ts",
@@ -14,5 +16,8 @@
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
   ],
-  "exclude": ["node_modules", "tests/**/*.test.ts"]
+  "exclude": [
+    "node_modules",
+    "tests/**/*.test.ts"
+  ]
 }

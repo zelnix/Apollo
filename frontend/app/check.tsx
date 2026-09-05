@@ -8,8 +8,12 @@ import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { apiPost } from "@/src/api/client";
 import { EventActions } from "@/src/components/EventActions";
+import { RecoveryFlow } from "@/src/components/RecoveryFlow";
+import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card, Pill, toneColor } from "@/src/components/ui";
+import { verifyWebsite } from "@/src/domain/brand";
 import { STATE_LABEL } from "@/src/domain/types";
 import { useApollo, type CheckOutcome } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -37,7 +41,13 @@ export default function CheckLink() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { checkLink, events, isMock, ready, setupDone } = useApollo();
+  const { checkLink, events, isMock, ready, setupDone, deviceId, showToast, upsertEvent } = useApollo();
+  const [verify, setVerify] = useState(false);
+  const [report, setReport] = useState(false);
+  const [tech, setTech] = useState(false);
+  const sendFeedback = async (kind: "false_positive" | "override", ev: { event_id: string; state: string; indicator_host: string | null }, sources: string[]) => {
+    try { await apiPost("/feedback", "feedback", { device_id: deviceId, event_id: ev.event_id, kind, state: ev.state, host: ev.indicator_host, sources, note: "" }); } catch { /* best effort */ }
+  };
   const params = useLocalSearchParams<{ url?: string; source?: string }>();
   const [input, setInput] = useState(params.url ? String(params.url) : "");
   const [busy, setBusy] = useState(false);
@@ -95,8 +105,19 @@ export default function CheckLink() {
               <Card testID="check-result-card" style={{ borderColor: toneColor(colors, liveEvent?.state === "biting" && liveEvent.resolved_at ? "resting" : state), gap: spacing.sm }}>
                 <Pill tone={state} label={STATE_LABEL[state]} testID="check-result-state" />
                 {liveEvent?.state === "biting" && liveEvent.resolved_at ? <Pill tone="resting" label="Threat contained" testID="check-result-contained" /> : null}
-                <Text style={s.headline} testID="check-result-headline">{liveEvent?.headline ?? outcome.decision.headline}</Text>
-                <Body>{liveEvent?.what_happened ?? outcome.decision.what_happened}</Body>
+                {liveEvent?.state === "biting" ? (
+                  <>
+                    <Text style={s.headline} testID="check-result-headline">Apollo is guarding — I blocked a dangerous website.</Text>
+                    <Body>{outcome.decision.claimed_brand ? `It was pretending to be ${outcome.decision.claimed_brand}. ` : ""}No action is needed unless you already entered information.</Body>
+                  </>
+                ) : (
+                  <>
+                    <Text style={s.headline} testID="check-result-headline">{liveEvent?.headline ?? outcome.decision.headline}</Text>
+                    <Body>{liveEvent?.what_happened ?? outcome.decision.what_happened}</Body>
+                  </>
+                )}
+                {outcome.intel?.redirect_chain?.length ? <Pill tone="unknown" label={`Redirected: ${outcome.intel.redirect_chain.join(" → ")}`} testID="check-result-redirects" /> : null}
+                {outcome.decision.claimed_brand ? <Pill tone={state === "resting" ? "resting" : "barking"} label={`Claims to be ${outcome.decision.claimed_brand}`} testID="check-result-brand" /> : null}
                 <Text style={s.sub}>Why Apollo reacted</Text>
                 {(liveEvent?.why ?? outcome.decision.why).map((w, i) => (
                   <View key={i} style={s.bullet}><View style={[s.dot, { backgroundColor: toneColor(colors, state) }]} /><Body style={{ flex: 1 }}>{w}</Body></View>
@@ -113,10 +134,51 @@ export default function CheckLink() {
                 {isMock && liveEvent?.verified_block ? <Pill tone="unknown" label="Simulated block (mock adapter)" /> : null}
               </Card>
               {liveEvent ? <View style={{ marginTop: spacing.md }}><EventActions event={liveEvent} /></View> : null}
+              {liveEvent ? (
+                <Card style={{ marginTop: spacing.md, gap: spacing.sm }} testID="check-gate3-actions">
+                  <Button testID="check-verify-website" variant="secondary" label="Verify website" onPress={() => setVerify(true)} />
+                  <Button testID="check-tech-details" variant="ghost" label={liveEvent.state === "biting" ? "What happened? / Technical details" : "Technical details"} onPress={() => setTech(true)} />
+                  {liveEvent.state !== "resting" ? <RecoveryFlow event={liveEvent} kinds={["clicked", "password", "card", "code", "download", "app", "called"]} testID="check-recovery" /> : null}
+                  {(liveEvent.state === "growling" || liveEvent.state === "ears_up") && liveEvent.status === "active" ? (
+                    <Button testID="check-continue-anyway" variant="ghost" label="Continue anyway (Apollo still recommends leaving)" onPress={() => { void upsertEvent({ ...liveEvent, why: [...liveEvent.why, "You chose to continue anyway. Apollo still recommends leaving this site."] }); void sendFeedback("override", liveEvent, outcome.intel?.sources.map((x) => x.name) ?? []); showToast("Recorded. Apollo still recommends leaving this site.", "growling"); }} />
+                  ) : null}
+                  {liveEvent.state !== "resting" ? <Button testID="check-report-mistake" variant="ghost" label="Report mistake" onPress={() => setReport(true)} /> : null}
+                </Card>
+              ) : null}
             </Animated.View>
           ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Sheet visible={verify} onClose={() => setVerify(false)} title="Verify website" testID="verify-website-sheet">
+        {(() => { const v = outcome?.local.host ? verifyWebsite(outcome.local.host, outcome.decision.claimed_brand) : null; return v ? (
+          <>
+            <Pill tone={v.matches === true ? "resting" : v.matches === false ? "barking" : "unknown"} label={v.title} testID="verify-website-title" />
+            {v.lines.map((l, i) => <Body key={i} testID={`verify-website-line-${i}`}>{l}</Body>)}
+            <Body>Apollo compares against an independently maintained list of official domains — never information from the page itself.</Body>
+          </>
+        ) : null; })()}
+        <Button testID="verify-website-close" variant="ghost" label="Done" onPress={() => setVerify(false)} />
+      </Sheet>
+
+      <Sheet visible={tech} onClose={() => setTech(false)} title="Technical details" testID="tech-details-sheet">
+        {outcome ? (
+          <>
+            <Body>Checked: {outcome.local.normalizedUrl ?? outcome.local.input}</Body>
+            {outcome.intel?.final_url ? <Body>Final destination: {outcome.intel.final_url}</Body> : null}
+            <Body>On-device score: {outcome.local.score}/100 ({outcome.local.level}). Signals: {outcome.local.signals.map((x) => x.code).join(", ") || "none"}.</Body>
+            <Body>Intelligence: {outcome.intel ? outcome.intel.sources.map((x) => `${x.name} = ${x.status}`).join("; ") : "unavailable"}. Verdict: {outcome.intel?.verdict ?? "n/a"}. Coverage: {outcome.intel?.coverage ?? "none"}.</Body>
+            <Body>Adapter: {liveEvent?.adapter_label}. Verified block: {liveEvent?.verified_block ? "yes" : "no"}. Event: {liveEvent?.event_id.slice(0, 8)}…</Body>
+          </>
+        ) : null}
+        <Button testID="tech-details-close" variant="ghost" label="Done" onPress={() => setTech(false)} />
+      </Sheet>
+
+      <Sheet visible={report} onClose={() => setReport(false)} title="Report a mistake" testID="report-sheet">
+        <Body>Think Apollo got this wrong? Your report includes the event, Apollo&apos;s decision, the domain and which intelligence sources responded — nothing else. A human reviews it; one report never whitelists a site for everyone.</Body>
+        <Button testID="report-send" label="Send report" onPress={() => { if (liveEvent) void sendFeedback("false_positive", liveEvent, outcome?.intel?.sources.map((x) => x.name) ?? []); setReport(false); showToast("Thanks — report sent for review.", "resting"); }} />
+        <Button testID="report-cancel" variant="ghost" label="Cancel" onPress={() => setReport(false)} />
+      </Sheet>
     </View>
   );
 }

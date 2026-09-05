@@ -12,7 +12,10 @@ import { visibilityFrom } from "@/src/domain/capability";
 import { assessConnection } from "@/src/domain/connection";
 import { decide } from "@/src/domain/decision";
 import { minimalIndicator } from "@/src/domain/privacy";
+import { analyseMessage, type MessageAnalysis } from "@/src/domain/messageAnalysis";
 import { analyseUrlLocally } from "@/src/domain/risk";
+import { STATE_RANK } from "@/src/domain/stateMachine";
+import { findScentFor } from "@/src/domain/threatScent";
 import { canTransition, resolveApolloState, type StateResolution } from "@/src/domain/stateMachine";
 import type { ApolloState, Capability, Decision, IntelResult, LocalAnalysis, PatrolEvent } from "@/src/domain/types";
 import { IS_MOCK_SECURITY, SECURITY_MODE, securityAdapter } from "@/src/security/securityAdapter";
@@ -26,6 +29,22 @@ const K = { setup: "apollo.setup.done", events: "apollo.patrol.events", trust: "
 export interface TrustEntry { trust_id: string; device_id: string; indicator_type: "url" | "domain"; indicator_digest: string; indicator_host: string; event_id: string | null; created_at: string; local_indicator?: string }
 
 export interface CheckOutcome { local: LocalAnalysis; intel: IntelResult | null; intelError: string | null; decision: Decision; event: PatrolEvent | null }
+export interface MessageUrlResult { url: string; host: string; verdict: "clean" | "malicious" | "unknown"; threat_types: string[]; coverage: string }
+export interface MessageExplanation { summary: string; why: string[]; recommendation: string }
+export interface MessageOutcome { analysis: MessageAnalysis; urls: MessageUrlResult[]; explanation: MessageExplanation | null; remoteError: string | null; event: PatrolEvent | null }
+export type RecoveryKind = "clicked" | "password" | "code" | "money" | "info" | "app" | "card" | "download" | "called";
+/** Recovery guidance ("Stay With Me"). First step doubles as the event's what_to_do. */
+export const RECOVERY_STEPS: Record<RecoveryKind, string[]> = {
+  clicked: ["Close the page. If you only looked, you're most likely fine.", "Don't enter anything if it asks for details.", "Check the link with Apollo so it can be blocked."],
+  password: ["Open the real service yourself (official app or typed address) and change that password now.", "If you use that password anywhere else, change it there too.", "Sign out other sessions if the service offers it.", "Reject any login or MFA prompts you didn't start."],
+  code: ["Treat this as an account takeover in progress: open the real service now and change the password.", "Turn on or reset two-factor authentication.", "Check recent activity and contact the service using details you find yourself."],
+  money: ["Contact your bank or payment provider immediately using the number on your card or their official app.", "Ask them to stop or recall the payment — Apollo can't promise funds come back.", "Report it at ReportCyber (cyber.gov.au) and Scamwatch."],
+  info: ["Note exactly what you shared (ID, card, address).", "For card details: call your bank to cancel the card.", "For ID documents: contact IDCARE (idcare.org) for free support."],
+  app: ["Don't open the app. Turn off Wi‑Fi and mobile data if a stranger is connected.", "Uninstall the app from your phone's settings.", "Change passwords for banking and email from a different device if you can."],
+  card: ["Call your bank now using the number on the back of your card and ask them to block the card.", "Check recent transactions and dispute anything you don't recognise.", "Don't reply to any follow-up messages or calls about this — they may be the same scammers."],
+  download: ["Don't open the file. Delete it from your Downloads.", "If it was an app installer (APK/profile), also remove it from Settings.", "Run your phone's built-in security check (Google Play Protect / iOS software update)."],
+  called: ["Hang up if you're still on the call. Don't call back the number.", "If you shared any details or installed anything, follow those recovery steps too.", "Block the number. Report the call at Scamwatch."],
+};
 
 interface ApolloContextValue {
   ready: boolean;
@@ -48,6 +67,9 @@ interface ApolloContextValue {
   trust: TrustEntry[];
   resolution: StateResolution;
   checkLink(input: string): Promise<CheckOutcome>;
+  checkMessage(sender: string, text: string): Promise<MessageOutcome>;
+  recordRecovery(event: PatrolEvent, kind: RecoveryKind): Promise<void>;
+  upsertEvent(event: PatrolEvent): Promise<PatrolEvent>;
   blockEvent(event: PatrolEvent): Promise<BlockResult>;
   trustEvent(event: PatrolEvent): Promise<boolean>;
   resolveEvent(event: PatrolEvent): Promise<void>;
@@ -252,11 +274,57 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   }, [deviceId, qc]);
   useEffect(() => { syncEventRef.current = syncEvent; }, [syncEvent]);
 
-  const upsertEvent = useCallback(async (e: PatrolEvent) => {
+  const upsertEvent = useCallback(async (input: PatrolEvent) => {
+    // Threat Scent: link this event to related recent events (same brand/host within 30 min).
+    // When two different gates are involved (e.g. message → link), the sequence escalates to barking.
+    let e = input;
+    if (e.state !== "resting" && !events.some((x) => x.event_id === e.event_id)) {
+      const scent = findScentFor(e, events) ?? e.event_id;
+      e = { ...e, scent_id: e.scent_id ?? scent };
+      const linked = events.filter((x) => x.scent_id === scent && x.category !== e.category && x.state !== "resting");
+      if (linked.length && STATE_RANK[e.state] < STATE_RANK.barking) {
+        e = { ...e, state: "barking", why: [...e.why, "Connected to an earlier event about the same organisation or website."], what_to_do: `${e.what_to_do} Don't provide passwords, verification codes or transfer money.` };
+      }
+    }
     const next = [e, ...events.filter((x) => x.event_id !== e.event_id)];
     await persistEvents(next);
     void syncEvent(e);
+    return e;
   }, [events, persistEvents, syncEvent]);
+
+  const checkMessage = useCallback(async (sender: string, text: string): Promise<MessageOutcome> => {
+    const analysis = analyseMessage(sender, text);
+    let urls: MessageUrlResult[] = []; let explanation: MessageExplanation | null = null; let remoteError: string | null = null;
+    try {
+      const r = await apiPost<{ urls: MessageUrlResult[]; explanation: MessageExplanation | null }>("/message/analyse", "message_check", {
+        device_id: deviceId ?? undefined, sender: sender.trim().slice(0, 80), text: text.slice(0, 4000), urls: analysis.signals.urls.slice(0, 10),
+        local_state: analysis.state, scenario: analysis.scenario, signals: analysis.signalLabels, claimed_brand: analysis.signals.claimedBrand, second_opinion: true,
+      });
+      urls = r.urls; explanation = r.explanation;
+    } catch (e) { remoteError = e instanceof Error ? e.message : "Apollo's second opinion is unavailable right now."; }
+    let state = analysis.state; const why = [...analysis.why];
+    const malicious = urls.find((u) => u.verdict === "malicious");
+    if (malicious && STATE_RANK[state] < STATE_RANK.barking) { state = "barking"; why.push(`The link (${malicious.host}) is confirmed dangerous by Apollo's threat intelligence.`); }
+    const firstHost = urls[0]?.host ?? (analysis.signals.urls[0] ? analysis.signals.urls[0].replace(/^https?:\/\//i, "").split("/")[0].toLowerCase() : null);
+    let event: PatrolEvent | null = null;
+    if (state !== "resting") {
+      event = await upsertEvent({
+        event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "message", state, status: "active",
+        headline: `${analysis.scenarioTitle}${analysis.signals.claimedBrand ? ` — claims to be ${analysis.signals.claimedBrand}` : ""}`,
+        what_happened: explanation?.summary ?? analysis.verdict, why, what_to_do: explanation?.recommendation ?? analysis.recommendation,
+        indicator_host: firstHost, indicator_digest: null, local_indicator: analysis.signals.urls[0] ?? null, verified_block: false, adapter_label: securityAdapter.label,
+        occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: analysis.signals.claimedBrand, scenario: analysis.scenario,
+      });
+      if (event.state !== state) { state = event.state; }
+    }
+    return { analysis: { ...analysis, state, why }, urls, explanation, remoteError, event };
+  }, [deviceId, upsertEvent]);
+
+  const recordRecovery = useCallback(async (event: PatrolEvent, kind: RecoveryKind) => {
+    const label: Record<RecoveryKind, string> = { clicked: "Opened the link", password: "Entered a password", code: "Shared a verification code", money: "Sent money", info: "Shared personal information", app: "Installed an app", card: "Entered card or bank details", download: "Downloaded a file", called: "Called the number shown" };
+    const escalate = kind !== "clicked";
+    await upsertEvent({ ...event, state: escalate ? "barking" : event.state, status: "active", why: [...event.why, `You told Apollo: ${label[kind].toLowerCase()}.`], what_to_do: RECOVERY_STEPS[kind][0] });
+  }, [upsertEvent]);
 
   const toggleProtection = useCallback(async (on: boolean) => {
     const status = on ? await securityAdapter.startProtection() : await securityAdapter.stopProtection();
@@ -289,7 +357,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     }
     const indicator = minimalIndicator(local.normalizedUrl);
     let intel: IntelResult | null = null; let intelError: string | null = null;
-    try { intel = await apiPost<IntelResult>("/intel/check", "intel_check", { indicator_type: "url", value: indicator, device_id: deviceId ?? undefined }); }
+    try { intel = await apiPost<IntelResult>("/intel/check", "intel_check", { indicator_type: "url", value: indicator, device_id: deviceId ?? undefined, expand: true }); }
     catch (e) { intelError = e instanceof Error ? e.message : "Reputation check unavailable"; }
     const digest = intel?.indicator_digest ?? (await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, indicator));
     const trusted = trust.some((t) => t.indicator_digest === digest || t.local_indicator === indicator);
@@ -299,8 +367,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: intel?.verdict === "malicious" ? "known_threat" : "link",
       state: decision.state, status: decision.state === "resting" ? "resolved" : "active",
       headline: decision.headline, what_happened: decision.what_happened, why: decision.why, what_to_do: decision.what_to_do,
-      indicator_host: local.host, indicator_digest: digest, local_indicator: indicator, verified_block: false, adapter_label: securityAdapter.label,
+      indicator_host: intel?.final_url ? (intel.redirect_chain?.[intel.redirect_chain.length - 1] ?? local.host) : local.host, indicator_digest: digest, local_indicator: indicator, verified_block: false, adapter_label: securityAdapter.label,
       occurred_at: new Date().toISOString(), resolved_at: decision.state === "resting" ? new Date().toISOString() : null, trust_allowed: decision.trust_allowed,
+      claimed_brand: decision.claimed_brand ?? null,
     };
     if (isEvent || decision.state === "resting") await upsertEvent(ev); // resting checks are still traceable in Patrol
     return { local, intel, intelError, decision, event: ev };
@@ -355,7 +424,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   const value: ApolloContextValue = {
     ready, setupDone, deviceId, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label, isMock: IS_MOCK_SECURITY,
-    refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, trustedSsids, trustNetwork, forgetNetwork, toast, showToast,
+    refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, recordRecovery, upsertEvent,
     pushStatus, enablePush, quietHours, quietNow, setQuietHours, lowPower, setLowPower,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

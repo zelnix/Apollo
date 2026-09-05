@@ -26,7 +26,7 @@ const useStyles = makeStyles((c) => ({
   note: { fontFamily: fonts.text, fontSize: 12, color: c.muted, textAlign: "center" },
 }));
 
-const STATES: ApolloState[] = ["resting", "growling", "barking", "biting"];
+const STATES: ApolloState[] = ["resting", "ears_up", "growling", "barking", "biting"];
 
 export default function Onboarding() {
   const s = useStyles();

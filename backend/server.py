@@ -77,7 +77,7 @@ class BaseDocument(BaseModel):
 
 # --------------------------------------------------------------------------- Models
 Verdict = Literal["clean", "malicious", "unknown"]
-ApolloState = Literal["resting", "growling", "barking", "biting"]
+ApolloState = Literal["sniffing", "resting", "ears_up", "growling", "barking", "biting"]
 EventStatus = Literal["active", "trusted", "blocked", "resolved"]
 
 
@@ -101,6 +101,8 @@ class IntelCheckRequest(BaseModel):
     indicator_type: Literal["url", "domain"]
     value: str = Field(min_length=1, max_length=2048)
     device_id: Optional[str] = Field(default=None, max_length=64)
+    # Gate 3: follow shorteners/redirects and judge the FINAL destination (W04/W05). Shortened ≠ malicious.
+    expand: bool = False
 
     @field_validator("value")
     @classmethod
@@ -123,6 +125,8 @@ class IntelCheckResponse(BaseModel):
     checked_at: datetime
     cached: bool
     coverage: Literal["full", "partial", "none"]
+    redirect_chain: list[str] = Field(default_factory=list)  # hosts visited, first → final (only when expand=True and redirects occurred)
+    final_url: Optional[str] = None
 
 
 class ReputationCache(BaseDocument):
@@ -148,7 +152,7 @@ class PatrolEventIn(BaseModel):
 
     event_id: str = Field(min_length=8, max_length=64)
     device_id: str = Field(min_length=8, max_length=64)
-    category: Literal["link", "website", "connection", "known_threat", "protection", "system"]
+    category: Literal["link", "website", "connection", "known_threat", "protection", "system", "message"]
     state: ApolloState
     status: EventStatus
     headline: str = Field(max_length=160)
@@ -163,6 +167,10 @@ class PatrolEventIn(BaseModel):
     resolved_at: Optional[datetime] = None
     # True when the native Site Guard raised this while the app was closed → owner gets a push.
     background: bool = False
+    # Gate 2 (messages): extracted security signals only — never the conversation.
+    claimed_brand: Optional[str] = Field(default=None, max_length=60)
+    scenario: Optional[str] = Field(default=None, max_length=40)
+    scent_id: Optional[str] = Field(default=None, max_length=64)
 
 
 class PatrolEvent(PatrolEventIn, BaseDocument):
@@ -377,9 +385,73 @@ async def intel_status():
     return {"safe_browsing": sb, "blocklist": {"status": "ok", "entries": count}, "checked_at": now_utc()}
 
 
+async def expand_redirects(url: str, max_hops: int = 5) -> list[str]:
+    """Follow HTTP redirects without downloading bodies. Returns the URL chain (first → final)."""
+    chain = [url]
+    try:
+        async with httpx.AsyncClient(timeout=6.0, follow_redirects=False, headers={"User-Agent": "Mozilla/5.0 (Apollo link check)"}) as http:
+            cur = url
+            for _ in range(max_hops):
+                try:
+                    resp = await http.head(cur)
+                    if resp.status_code in (405, 403, 400):
+                        resp = await http.get(cur)
+                except httpx.HTTPError:
+                    break
+                loc = resp.headers.get("location")
+                if resp.status_code not in (301, 302, 303, 307, 308) or not loc:
+                    break
+                nxt = str(httpx.URL(cur).join(loc))
+                if nxt in chain:
+                    break
+                chain.append(nxt)
+                cur = nxt
+    except Exception as exc:  # noqa: BLE001
+        logger.info("redirect expansion stopped: %s", type(exc).__name__)
+    return chain
+
+
 @api.post("/intel/check", response_model=IntelCheckResponse)
 async def intel_check(body: IntelCheckRequest):
-    return await run_intel_check(body.indicator_type, body.value)
+    if not body.expand or body.indicator_type != "url":
+        return await run_intel_check(body.indicator_type, body.value)
+    chain = await expand_redirects(body.value)
+    final = chain[-1]
+    # Judge the final destination; any confirmed-malicious hop along the way also counts.
+    result = await run_intel_check("url", final)
+    threat_types, sources, verdict = list(result.threat_types), list(result.sources), result.verdict
+    for hop in chain[:-1]:
+        try:
+            r = await run_intel_check("url", hop)
+        except HTTPException:
+            continue
+        if r.verdict == "malicious":
+            verdict = "malicious"; threat_types = sorted(set(threat_types + r.threat_types))
+    hosts = []
+    for u in chain:
+        try:
+            hosts.append(sanitize_url(u)[1])
+        except HTTPException:
+            hosts.append(urlparse(u).hostname or u)
+    return IntelCheckResponse(verdict=verdict, threat_types=threat_types, sources=sources, indicator_digest=result.indicator_digest, checked_at=result.checked_at, cached=result.cached,
+                              coverage=result.coverage, redirect_chain=hosts if len(chain) > 1 else [], final_url=final if len(chain) > 1 else None)
+
+
+class FeedbackIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)
+    event_id: str = Field(min_length=8, max_length=64)
+    kind: Literal["false_positive", "missed_threat", "override"]
+    state: ApolloState
+    host: Optional[str] = Field(default=None, max_length=253)
+    sources: list[str] = Field(default_factory=list, max_length=10)
+    note: str = Field(default="", max_length=300)
+
+
+@api.post("/feedback", status_code=201)
+async def submit_feedback(body: FeedbackIn):
+    """Report Mistake / user override. Reviewed by humans — never auto-whitelists a site globally."""
+    await db.feedback.insert_one({**body.model_dump(), "created_at": now_utc()})
+    return {"received": True}
 
 
 class IntelBatchRequest(BaseModel):
@@ -908,6 +980,110 @@ async def push_owner_alert(event: PatrolEvent) -> None:
     except Exception as exc:  # noqa: BLE001
         logger.warning("owner push failed (non-blocking): %s", type(exc).__name__)
 
+
+
+# --------------------------------------------------------------------------- Gate 2: Text & Messaging
+# The rule engine runs on-device. The backend adds (a) URL reputation for links found in the message and
+# (b) an optional Gemini "second opinion" that only rewrites the explanation in plain language — it never
+# overrides the on-device verdict. Message text is sent only when the user taps "Check message"
+# (shown in-app as "Shared with Apollo for analysis") and is not stored.
+class MessageAnalyseIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)
+    sender: str = Field(default="", max_length=80)
+    text: str = Field(min_length=1, max_length=4000)
+    urls: list[str] = Field(default_factory=list, max_length=10)
+    local_state: ApolloState
+    scenario: str = Field(default="", max_length=40)
+    signals: list[str] = Field(default_factory=list, max_length=20)
+    claimed_brand: Optional[str] = Field(default=None, max_length=60)
+    second_opinion: bool = True
+
+
+class MessageUrlResult(BaseModel):
+    url: str
+    host: str
+    verdict: Verdict
+    threat_types: list[str] = Field(default_factory=list)
+    coverage: str
+
+
+class MessageAnalyseOut(BaseModel):
+    urls: list[MessageUrlResult]
+    explanation: Optional[dict[str, Any]] = None  # {summary, why[], recommendation}
+    gemini_used: bool = False
+
+
+GATE2_EXPLAIN_PROMPT = """You are Apollo, a calm plain-language security guide for everyday Australians. You will be given a suspicious
+message plus the findings of an on-device rule engine. Do NOT change the verdict. Write for a worried, non-technical person.
+Return ONLY JSON: {"summary": "<one sentence, max 22 words>", "why": ["<3 short bullets, each max 16 words>"], "recommendation": "<one or two sentences, max 40 words>"}.
+Rules: never tell the person to use contact details, links or numbers from the message itself; never promise money can be recovered;
+never claim the device is compromised unless the findings say so; if the findings say the message looks normal, say so plainly and avoid alarm."""
+
+
+async def gemini_second_opinion(body: MessageAnalyseIn, url_results: list[MessageUrlResult]) -> Optional[dict[str, Any]]:
+    if not GEMINI_API_KEY:
+        return None
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    findings = {"state": body.local_state, "scenario": body.scenario, "signals": body.signals, "claimed_brand": body.claimed_brand,
+                "urls": [{"host": u.host, "verdict": u.verdict} for u in url_results]}
+    prompt = f"Sender: {body.sender or 'unknown'}\nMessage:\n{body.text[:1500]}\n\nRule-engine findings (authoritative):\n{json.dumps(findings)}"
+    chat = LlmChat(api_key=GEMINI_API_KEY, session_id=f"gate2-{uuid.uuid4().hex[:8]}", system_message=GATE2_EXPLAIN_PROMPT).with_model("gemini", "gemini-3-flash-preview")
+    try:
+        raw = await asyncio.wait_for(chat.send_message(UserMessage(text=prompt)), timeout=20)
+        txt = raw.strip()
+        if txt.startswith("```"):
+            txt = txt.strip("`")
+            txt = txt[txt.find("{"):txt.rfind("}") + 1]
+        data = json.loads(txt)
+        why = [str(w)[:160] for w in data.get("why", [])][:4]
+        return {"summary": str(data.get("summary", ""))[:200], "why": why, "recommendation": str(data.get("recommendation", ""))[:320]}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("gate2 second opinion unavailable: %s", type(exc).__name__)
+        return None
+
+
+@api.post("/message/analyse", response_model=MessageAnalyseOut)
+async def message_analyse(body: MessageAnalyseIn):
+    results: list[MessageUrlResult] = []
+    for raw in body.urls[:10]:
+        try:
+            normalized, host = sanitize_url(raw)
+            r = await run_intel_check("url", normalized)
+            results.append(MessageUrlResult(url=normalized, host=host, verdict=r.verdict, threat_types=r.threat_types, coverage=r.coverage))
+        except HTTPException:
+            continue
+    explanation = await gemini_second_opinion(body, results) if body.second_opinion else None
+    return MessageAnalyseOut(urls=results, explanation=explanation, gemini_used=explanation is not None)
+
+
+class MessageExtractIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)
+    image_base64: str = Field(min_length=100, max_length=6_000_000)
+
+
+GATE2_EXTRACT_PROMPT = """You read screenshots of text messages, chats, emails or QR codes for a security app. Extract exactly what is visible.
+Return ONLY JSON: {"sender": "<phone number, name or handle shown, else empty>", "text": "<the message text(s) verbatim, most recent last>",
+"urls": ["<every URL or domain visible, including any decoded from a QR code>"], "source": "<sms|whatsapp|imessage|email|messenger|telegram|other>"}.
+Do not add commentary. Do not guess text you cannot read."""
+
+
+@api.post("/message/extract")
+async def message_extract(body: MessageExtractIn):
+    """Screenshot → text/sender/URLs via Gemini vision. The image is processed once and not stored."""
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=503, detail="Screenshot reading is not configured")
+    from emergentintegrations.llm.chat import ImageContent, LlmChat, UserMessage
+    chat = LlmChat(api_key=GEMINI_API_KEY, session_id=f"gate2x-{uuid.uuid4().hex[:8]}", system_message=GATE2_EXTRACT_PROMPT).with_model("gemini", "gemini-3-flash-preview")
+    try:
+        raw = await asyncio.wait_for(chat.send_message(UserMessage(text="Extract the message from this screenshot.", file_contents=[ImageContent(body.image_base64)])), timeout=45)
+        txt = raw.strip()
+        if "{" in txt:
+            txt = txt[txt.find("{"):txt.rfind("}") + 1]
+        data = json.loads(txt)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("gate2 extract failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=502, detail="Couldn't read that screenshot. Try a clearer image or paste the text.") from exc
+    return {"sender": str(data.get("sender", ""))[:80], "text": str(data.get("text", ""))[:4000], "urls": [str(u)[:500] for u in data.get("urls", [])][:10], "source": str(data.get("source", "other"))[:20]}
 
 
 app.include_router(api)

@@ -1,0 +1,47 @@
+{
+  "summary": "Apollo V1 iteration-8 (Gate 2 - Text & Messaging Protection + 6-state rename) PASSED with one bug in Threat Scent linking. Backend: 8/8 pytest cases in /app/backend/tests/test_gate2_message.py against https://threat-patrol-1.preview.emergentagent.com/api. POST /api/message/analyse acceptance body returns 200 with urls[0].host=='commbank-security-example.test' (verdict 'clean' on this .test domain), explanation is an object with summary(str)/why(list 3)/recommendation(str), gemini_used=true. second_opinion=false -> explanation null, gemini_used false. text empty -> 422; local_state='weird' -> 422; url http://testsafebrowsing.appspot.com/s/phishing.html -> verdict 'malicious'. POST /api/message/extract: image_base64='abc' -> 422; valid 200x60 PNG generated with PIL returns 200 with sender/text/urls/source keys and correct types. POST /api/patrol/events accepts state='ears_up', category='message', claimed_brand, scenario, scent_id fields and echoes them; GET lists them with those fields intact. Frontend gate2 unit tests: `cd /app/frontend && yarn test:gate2` -> **20/20 pass** (all M01-M15 + verify-sender rule + M05-not-fraud + >=90% detection rate). Frontend UI (390x844): Onboarding lists all 5 state labels (Patrolling, Ears up, Growling, Barking, Guarding). Home has home-check-message-button and apollo-hero-anim-resting hero. On /message: paste CommBank sender+text and tap message-check -> message-sniffing card appears briefly -> message-result with message-state='Barking', message-scenario='Bank fraud message', pill 'Shared with Apollo for analysis' visible, message-why-0..2 populated (Gemini rewritten), message-recommendation present; 'Links in this message' card renders message-check-link-0 which navigates to /check (check-url-input testID present on /check). Re-run message: message-verify-sender opens verify-sender-sheet whose text is CommBank/bank guidance and does NOT contain the message's own link 'commbank-security-example.test' (verified string absence). message-tell-more present. message-already-acted -> recovery-pick-sheet -> recovery-pick-password -> recovery-sheet with recovery-step-0..3 all rendered. message-mark-safe resolves and returns to /home. Scenario coverage: 'Hi Dad, I smashed my phone...' -> state='Ears up' scenario='Hi Mum / Hi Dad pattern'; 'Send me the six-digit code...' -> state='Barking' scenario='Verification code request'; 'Hi, it's Sam the plumber...' -> state='Patrolling' scenario='Ordinary message' AND no message-already-acted button rendered (no event created). 6-state regression: Patrol filter chips include 'Ears up' and 'Guarding'; Guard tab shows a 'Message Guard' capability card; existing /check flow https://phishing.apollo.test/login renders check-result-state='Apollo is barking' with barking headline. BUG FOUND (as spec instructed to report if not connecting): Threat Scent card home-scent-* DOES NOT appear after a CommBank message check (claimed_brand='CommBank') is followed by a link check on https://commbank-secure-login-verify.xyz/account (indicator_host only, no claimed_brand). Same for Patrol screen ('Connected to an earlier event' text: 0 occurrences).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Threat Scent linking (message -> URL by shared brand)",
+        "issue": "keyFor() in threatScent.ts returns claimed_brand?.toLowerCase() ?? indicator_host?.toLowerCase() - it never returns both. A message event has claimed_brand='commbank' (key='commbank') and the follow-up link check event has indicator_host='commbank-secure-login-verify.xyz' with NO claimed_brand (key='commbank-secure-login-verify.xyz'). The two keys never match and findScentFor() returns null, so buildScents() sees only single-event groups and drops them (list.length < 2 skip). Result: home-scent-* card and 'Connected to an earlier event' badge never appear despite a matching brand present in both events. Expected behaviour per spec: scent links by claimed_brand OR indicator_host with brand-substring matching so a CommBank message connects to a link whose host contains 'commbank'. Reference: /app/frontend/src/domain/threatScent.ts:19-21 (keyFor) and :24-33 (findScentFor).",
+        "affected_testIDs": ["home-scent-*", "patrol connected-badge"]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_8.json",
+    "/app/backend/tests/test_gate2_message.py",
+    "/app/test_reports/pytest/pytest_iter8.xml"
+  ],
+  "action_items": [
+    "Fix Threat Scent brand-vs-host linking in /app/frontend/src/domain/threatScent.ts:19-33. Change keyFor to return a set of keys (both brand and host when available) and update findScentFor to match when ANY key overlaps, OR add a normalised brand-in-host substring check (e.g., host includes brand.toLowerCase()). Acceptance: after a CommBank message event and a link-check event with host 'commbank-secure-login-verify.xyz', home-scent-* card appears with brand 'CommBank' and state 'Barking', and Patrol shows 'Connected to an earlier event' on the newer event.",
+    "Optional: unit tests in /app/frontend/tests/threatScent.test.ts covering (a) brand-only + host-only pair, (b) two brand events, (c) two host events with same host, (d) events > 30 min apart don't link, (e) two different gates escalate to 'barking' (already implemented via STATE_RANK check).",
+    "Optional: gemini second_opinion latency is ~5-10s in normal load; consider a client-side timeout hint (already 20s server-side) with a friendly 'still thinking' pill if p95 climbs."
+  ],
+  "critical_code_review_comments": [
+    "server.py L977-988 message_analyse: iterates urls sequentially through run_intel_check (network + mongo per item). For ~10 urls in one request this is OK; consider asyncio.gather with a small concurrency limit if abuse becomes an issue.",
+    "server.py L980 for raw in body.urls[:10]: silently drops any URL that fails sanitize_url (e.g. non-http). Fine, but could add a top-level 'skipped' count in the response so the UI can hint 'we couldn't check 2 links'.",
+    "messageAnalysis.ts L155: reads a module-level variable text_cache set on entry - safe here because the module is single-threaded on-device, but a note/comment would help future readers.",
+    "threatScent.ts L19-21 keyFor: the nullish-coalescing pattern makes brand and host mutually exclusive - see integration_issues above.",
+    "message.tsx L132 URL matching for link cards uses .includes on stripped forms - can produce false matches when two urls share a common substring (unlikely in practice)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_gate2_message.py (new - 8 tests)",
+    "/app/test_reports/iteration_8.json (new)",
+    "/app/test_reports/pytest/pytest_iter8.xml (new - JUnit)"
+  ],
+  "success_rate": {
+    "backend": "100% (8/8)",
+    "frontend": "~95% (all Gate 2 acceptance-criteria testIDs verified; 20/20 domain tests pass; 1 Threat Scent linking bug found)"
+  },
+  "seed_data_creation": "Ephemeral test devices only (prefix 'g2dev...' UUID-suffixed and 'gate2test0001'). Ephemeral patrol events with prefix 'evm...' UUID-suffixed. Nothing touches seeded blocklist rows.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "The CommBank message flow accidentally hits SafeBrowsing but the .test TLD is not indexed, so verdict is 'clean' (or 'unknown' if SB is slow) - that is expected. To reproduce the Threat Scent gap: after the CommBank message check that creates a Patrol event with claimed_brand='CommBank', do a link check on any URL whose host contains 'commbank' (e.g. https://commbank-secure-login-verify.xyz/account). Then go /home - the home-scent-* card should appear but currently does not. localStorage key 'apollo.securecore.mock.identity' holds the deviceId if you need to reach into /api/patrol/events directly. Gemini second-opinion typically responds in 5-10s in this environment - use 45s waits.",
+  "rca_of_issue": "Threat Scent linking uses a single 'key' per event (keyFor in threatScent.ts) that returns claimed_brand?.toLowerCase() ?? indicator_host?.toLowerCase(). Because '??' short-circuits on a truthy brand, a message event with brand 'CommBank' has key='commbank' while a URL-check event (which has no claimed_brand) has key='commbank-secure-login-verify.xyz'. The two keys never intersect and findScentFor returns null, so the second event doesn't inherit a scent_id and buildScents drops singletons. Fix: (a) generate BOTH keys per event where available (brand AND host, and where host contains brand) and match when any key overlaps; (b) additionally, when matching, treat 'brand' as a substring of the other event's host (case-insensitive) - a CommBank claim should connect to any host that contains 'commbank'. This is exactly the behaviour called out in the review spec ('scent links by claimed_brand OR indicator_host - the link check event has indicator_host commbank-secure-login-verify.xyz and no claimed_brand'). Reproduction: onboarded home -> Check a message with the CommBank body -> then /check https://commbank-secure-login-verify.xyz/account -> /home shows no home-scent-* card; /patrol shows no 'Connected to an earlier event' badge on the newer event."
+}

@@ -1,6 +1,7 @@
 // Combines local analysis with privacy-preserving intelligence into one
 // Apollo decision. Uncertainty lowers confidence and drama, never raises it.
 
+import { assessBrand } from "./brand.ts";
 import type { Decision, IntelResult, LocalAnalysis } from "./types";
 
 const THREAT_PLAIN: Record<string, string> = {
@@ -12,7 +13,15 @@ const THREAT_PLAIN: Record<string, string> = {
 
 export function decide(local: LocalAnalysis, intel: IntelResult | null, trusted: boolean): Decision {
   const host = local.host ?? "this address";
-  const localWhy = local.signals.map((s) => s.plain);
+  const brand = local.host ? assessBrand(local.host) : null;
+  const chain = intel?.redirect_chain ?? [];
+  const localWhy = [
+    ...(chain.length > 1 ? [`The link redirected ${chain.length - 1} time${chain.length > 2 ? "s" : ""}: ${chain.join(" → ")}. Apollo judged the final destination.`] : []),
+    ...(brand?.mismatch ? [`It looks like ${brand.claimed!.name}${brand.homograph ? " (using look-alike characters)" : ""}, but ${brand.registrable} is not one of ${brand.claimed!.name}'s official domains.`] : []),
+    ...local.signals.map((s) => s.plain),
+  ];
+  const claimed_brand = brand?.claimed?.name ?? null;
+  const base = { claimed_brand };
   const intelUnavailable = !intel || intel.coverage === "none";
   const intelPartial = intel?.coverage === "partial";
   const gapNote = intelUnavailable
@@ -25,6 +34,7 @@ export function decide(local: LocalAnalysis, intel: IntelResult | null, trusted:
   if (intel?.verdict === "malicious") {
     const why = [...intel.threat_types.map((t) => THREAT_PLAIN[t] ?? `Listed as ${t.toLowerCase().replace(/_/g, " ")}.`), ...localWhy];
     return {
+      ...base,
       state: "barking",
       headline: `Don't open ${host}`,
       what_happened: `You checked a link to ${host}. Apollo's intelligence sources list it as a known threat.`,
@@ -40,6 +50,7 @@ export function decide(local: LocalAnalysis, intel: IntelResult | null, trusted:
   // 2. Strong local evidence → Barking. Trust does not apply.
   if (local.level === "malicious") {
     return {
+      ...base,
       state: "barking",
       headline: `Don't open ${host}`,
       what_happened: `You checked a link to ${host}. Several strong warning signs were found on your device.`,
@@ -52,9 +63,27 @@ export function decide(local: LocalAnalysis, intel: IntelResult | null, trusted:
     };
   }
 
+  // 2b. Brand & Impersonation: claims/looks like a known organisation but lives elsewhere → Barking (W02/W03/W06/W17).
+  if (brand?.mismatch && !trusted) {
+    const strong = brand.homograph || local.level !== "clean" || /login|signin|verify|secure|account|auth|update|confirm/i.test(local.normalizedUrl ?? "");
+    return {
+      ...base,
+      state: strong ? "barking" : "growling",
+      headline: strong ? `This looks like a fake ${brand.claimed!.name} page` : `${host} is not ${brand.claimed!.name}`,
+      what_happened: `You checked a link to ${host}. It presents as ${brand.claimed!.name}, but the website is not one of that organisation's official domains.`,
+      why: gapNote ? [...localWhy, gapNote] : localWhy,
+      what_to_do: `Do not enter your login, card details or any verification code. Open ${brand.claimed!.name}'s official app or type its address yourself.`,
+      action_required: strong,
+      trust_allowed: !strong,
+      block_offered: true,
+      confidence: intel?.verdict === "clean" ? "medium" : "high",
+    };
+  }
+
   // 3. Previously trusted, and nothing confirmed malicious → Resting (scoped trust).
   if (trusted) {
     return {
+      ...base,
       state: "resting",
       headline: `You trust ${host}`,
       what_happened: `You previously trusted this exact link. No confirmed threat was found.`,
@@ -68,9 +97,24 @@ export function decide(local: LocalAnalysis, intel: IntelResult | null, trusted:
   }
 
   // 4. Suspicious locally, or uncertain with weak intelligence → Growling.
-  const uncertain = local.level === "suspicious" || (local.level === "uncertain" && intel?.verdict !== "clean");
+  if (local.level === "uncertain") {
+    return {
+      ...base,
+      state: "ears_up",
+      headline: `I don't know ${host} well yet`,
+      what_happened: `You checked a link to ${host}. Nothing confirmed, but a few things are unfamiliar. Unknown does not mean dangerous.`,
+      why: gapNote ? [...localWhy, gapNote] : localWhy,
+      what_to_do: "Be cautious if it asks for passwords, personal information or payment details. If you weren't expecting this link, don't open it.",
+      action_required: false,
+      trust_allowed: true,
+      block_offered: false,
+      confidence: "low",
+    };
+  }
+  const uncertain = local.level === "suspicious";
   if (uncertain) {
     return {
+      ...base,
       state: "growling",
       headline: `${host} looks unusual`,
       what_happened: `You checked a link to ${host}. Apollo found signs that are unusual but not confirmed as a threat.`,
@@ -90,6 +134,7 @@ export function decide(local: LocalAnalysis, intel: IntelResult | null, trusted:
     ...(localWhy.length ? localWhy : []),
   ].filter(Boolean);
   return {
+    ...base,
     state: "resting",
     headline: `Nothing found for ${host}`,
     what_happened: `You checked a link to ${host}. Nothing concerning was found within the checks Apollo can run.`,

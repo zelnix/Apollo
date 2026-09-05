@@ -22,9 +22,12 @@ export function ShareIntakeListener() {
 
   useEffect(() => {
     if (!ready || !setupDone || !hasShareIntent) return;
-    const url = extractUrl(shareIntent.webUrl ?? shareIntent.text);
+    const raw = shareIntent.webUrl ?? shareIntent.text ?? "";
+    const url = extractUrl(raw);
     resetShareIntent();
-    if (url) router.push({ pathname: "/check", params: { url, source: "share" } });
+    // A bare link → link check. Anything with more words than a link → Gate 2 message check (links are handed off from there).
+    if (url && raw.trim().replace(url, "").trim().length < 12) router.push({ pathname: "/check", params: { url, source: "share" } });
+    else if (raw.trim()) router.push({ pathname: "/message", params: { text: raw.trim().slice(0, 4000), source: "share" } });
   }, [ready, setupDone, hasShareIntent, shareIntent, resetShareIntent, router]);
 
   return null;

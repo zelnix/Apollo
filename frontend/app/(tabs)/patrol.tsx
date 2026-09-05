@@ -12,7 +12,7 @@ import { exportPatrolPdf } from "@/src/utils/exportPatrol";
 
 type Filter = "all" | ApolloState | "active";
 const FILTERS: { key: Filter; label: string }[] = [
-  { key: "all", label: "All" }, { key: "active", label: "Needs attention" }, { key: "biting", label: "Biting" }, { key: "barking", label: "Barking" }, { key: "growling", label: "Growling" }, { key: "resting", label: "Patrolling" },
+  { key: "all", label: "All" }, { key: "active", label: "Needs attention" }, { key: "biting", label: "Guarding" }, { key: "barking", label: "Barking" }, { key: "growling", label: "Growling" }, { key: "ears_up", label: "Ears up" }, { key: "resting", label: "Patrolling" },
 ];
 
 const useStyles = makeStyles((c) => ({

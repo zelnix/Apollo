@@ -98,6 +98,7 @@ export default function RootLayout() {
                   <Stack.Screen name="onboarding" />
                   <Stack.Screen name="(tabs)" />
                   <Stack.Screen name="check" options={{ presentation: "modal" }} />
+                  <Stack.Screen name="message" options={{ presentation: "modal" }} />
                   <Stack.Screen name="patrol/[id]" options={{ presentation: "modal" }} />
                   <Stack.Screen name="dev-tools" options={{ presentation: "modal" }} />
                   <Stack.Screen name="benchmark" options={{ presentation: "modal" }} />

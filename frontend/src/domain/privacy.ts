@@ -3,14 +3,15 @@
 // Raw personal content (page text, messages, contacts, photos, identifiers
 // beyond the anonymous device id) never leaves the device.
 
-export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "device_register" | "family" | "push_register" | "push_test" | "device_settings";
+export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "device_register" | "family" | "push_register" | "push_test" | "device_settings" | "message_check" | "message_extract" | "feedback";
 
 const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   family: new Set(["device_id", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id"]),
-  intel_check: new Set(["indicator_type", "value", "values", "device_id"]),
+  intel_check: new Set(["indicator_type", "value", "values", "device_id", "expand"]),
+  feedback: new Set(["device_id", "event_id", "kind", "state", "host", "sources", "note"]),
   patrol_sync: new Set([
     "event_id", "device_id", "category", "state", "status", "headline", "what_happened", "why", "what_to_do",
-    "indicator_host", "indicator_digest", "verified_block", "adapter_label", "occurred_at", "resolved_at", "background",
+    "indicator_host", "indicator_digest", "verified_block", "adapter_label", "occurred_at", "resolved_at", "background", "claimed_brand", "scenario", "scent_id",
   ]),
   trust_sync: new Set(["device_id", "indicator_type", "indicator_digest", "indicator_host", "event_id", "trust_id"]),
   ask_apollo: new Set(["device_id", "message", "context"]),
@@ -18,6 +19,9 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   // Alert notifications: the push token is an opaque delivery address (FCM/APNs), relayed and not stored by us.
   push_register: new Set(["user_id", "platform", "device_token"]),
   push_test: new Set(["device_id"]),
+  // Gate 2: message text + URLs leave the device only when the user taps "Check message" (shown as "Shared with Apollo for analysis").
+  message_check: new Set(["device_id", "sender", "text", "urls", "local_state", "scenario", "signals", "claimed_brand", "second_opinion"]),
+  message_extract: new Set(["device_id", "image_base64"]),
   // Quiet hours window (local minutes + UTC offset) so the server can hold growling pushes at night.
   device_settings: new Set(["quiet_hours"]),
 };

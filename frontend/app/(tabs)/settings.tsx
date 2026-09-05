@@ -6,6 +6,7 @@ import { Platform, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiGet, apiPost } from "@/src/api/client";
+import { AlertPreviewSheet } from "@/src/components/AlertPreviewSheet";
 import { Sheet } from "@/src/components/Sheet";
 import { TimeStepper } from "@/src/components/TimeStepper";
 import { Body, Button, Card, Pill, ScreenHeader, SectionTitle } from "@/src/components/ui";
@@ -37,6 +38,7 @@ export default function SettingsScreen() {
   const { deviceId, trust, revokeTrust, clearPatrol, adapterLabel, isMock, pushStatus, enablePush, quietHours, quietNow, setQuietHours, lowPower, setLowPower, showToast } = useApollo();
   const { colors } = useTheme();
   const [confirmClear, setConfirmClear] = useState(false);
+  const [preview, setPreview] = useState(false);
   const intel = useQuery({ queryKey: ["intel-status"], queryFn: () => apiGet<IntelStatus>("/intel/status"), staleTime: 60_000 });
   const testPush = useMutation({
     mutationFn: () => apiPost<{ sent: boolean }>("/push/test", "push_test", { device_id: deviceId }),
@@ -90,6 +92,7 @@ export default function SettingsScreen() {
               </>
             ) : null}
             {pushStatus !== "granted" && pushStatus !== "unsupported" ? <Body>Turn on alert notifications to send yourself a test bark.</Body> : null}
+            <Button testID="settings-alert-preview" variant={pushStatus === "granted" ? "ghost" : "secondary"} label="Preview an alert (see & hear it here)" onPress={() => setPreview(true)} />
           </Card>
         </View>
 
@@ -190,6 +193,7 @@ export default function SettingsScreen() {
         <Text style={s.footer}>Apollo V1 · Australia-first · No account, no tracking</Text>
       </ScrollView>
 
+      <AlertPreviewSheet visible={preview} onClose={() => setPreview(false)} />
       <Sheet visible={confirmClear} onClose={() => setConfirmClear(false)} title="Clear Patrol history?" testID="clear-sheet">
         <Body>This removes all events from this device and marks synced summaries as deleted. Trust entries are kept.</Body>
         <Button testID="clear-confirm" variant="danger" label="Clear history" onPress={() => { setConfirmClear(false); void clearPatrol(); }} />

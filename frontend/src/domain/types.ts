@@ -1,24 +1,30 @@
 // Shared Apollo domain types. Used by the state machine, risk engine, Patrol,
 // capability model and privacy policy. Platform-agnostic: no React, no native.
 
-export type ApolloState = "resting" | "growling" | "barking" | "biting";
+// Six-state model. `sniffing` is transient (analysing), `ears_up` is a low-confidence pattern match,
+// `biting` is the internal key for the verified-block state shown to users as "Guarding".
+export type ApolloState = "sniffing" | "resting" | "ears_up" | "growling" | "barking" | "biting";
 
 /** Semantically exact wording for each state. Never paraphrase these in the UI. */
 /** User-facing state names. The internal key stays `resting`; on the lookout it reads as "Patrolling". */
-export const STATE_NAME: Record<ApolloState, string> = { resting: "Patrolling", growling: "Growling", barking: "Barking", biting: "Biting" };
+export const STATE_NAME: Record<ApolloState, string> = { sniffing: "Sniffing", resting: "Patrolling", ears_up: "Ears up", growling: "Growling", barking: "Barking", biting: "Guarding" };
 
 export const STATE_LABEL: Record<ApolloState, string> = {
+  sniffing: "Apollo is sniffing",
   resting: "Apollo is patrolling",
+  ears_up: "Apollo's ears are up",
   growling: "Apollo is growling",
   barking: "Apollo is barking",
-  biting: "Apollo is biting",
+  biting: "Apollo is guarding",
 };
 
 export const STATE_MEANING: Record<ApolloState, string> = {
+  sniffing: "Checking now. Apollo is looking closely before deciding.",
   resting: "On the lookout. Safe within the checks Apollo can currently see.",
-  growling: "Something looks unusual or uncertain. Not confirmed.",
+  ears_up: "This matches a known pattern. Not confirmed — take a careful look.",
+  growling: "Something looks suspicious. Not confirmed.",
   barking: "You need to decide or act.",
-  biting: "Apollo verified a threat and blocked it.",
+  biting: "Apollo verified a threat and blocked it. Standing guard.",
 };
 
 export type Visibility = "full" | "limited" | "none";
@@ -52,6 +58,8 @@ export interface IntelSource {
 }
 
 export interface IntelResult {
+  redirect_chain?: string[];
+  final_url?: string | null;
   verdict: IntelVerdict;
   threat_types: string[];
   sources: IntelSource[];
@@ -61,7 +69,7 @@ export interface IntelResult {
   coverage: IntelCoverage;
 }
 
-export type EventCategory = "link" | "website" | "connection" | "known_threat" | "protection" | "system";
+export type EventCategory = "link" | "website" | "connection" | "known_threat" | "protection" | "system" | "message";
 export type EventStatus = "active" | "trusted" | "blocked" | "resolved";
 
 export interface PatrolEvent {
@@ -84,6 +92,11 @@ export interface PatrolEvent {
   resolved_at: string | null;
   /** Set by the native Site Guard when the block happened with the app closed → backend pushes an alert to this device. */
   background?: boolean;
+  /** Gate 2 (messages): extracted security signals only — never the conversation. */
+  claimed_brand?: string | null;
+  scenario?: string | null;
+  /** Threat Scent id linking related events (message → link → login → call). */
+  scent_id?: string | null;
   /** Whether "Trust This" may be offered. Only growling-level uncertain items. */
   trust_allowed?: boolean;
 }
@@ -91,7 +104,7 @@ export interface PatrolEvent {
 export type CapabilityStatus = "available" | "active" | "permission_required" | "unsupported" | "coming_later" | "inactive";
 
 export interface Capability {
-  id: "link_guard" | "site_guard" | "connection_guard" | "known_threats" | "share_intake";
+  id: "link_guard" | "site_guard" | "connection_guard" | "known_threats" | "share_intake" | "message_guard";
   title: string;
   status: CapabilityStatus;
   detail: string; // truthful, plain-language reason for the status
@@ -107,4 +120,6 @@ export interface Decision {
   trust_allowed: boolean;
   block_offered: boolean;
   confidence: "low" | "medium" | "high";
+  /** Gate 3: organisation the destination claims/looks like (Brand & Impersonation engine). */
+  claimed_brand?: string | null;
 }

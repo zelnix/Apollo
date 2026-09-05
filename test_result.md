@@ -146,3 +146,31 @@ frontend:
     working: "NA"
     file: "frontend/app/(tabs)/guard.tsx"
     needs_retesting: true
+
+## Iteration 8 — Gate 2 Text & Messaging + 6-state model
+backend:
+  - task: "POST /api/message/analyse (URL reputation for message links + Gemini second-opinion explanation JSON), POST /api/message/extract (screenshot → text via Gemini vision), ApolloState Literal now includes sniffing/ears_up, PatrolEventIn category 'message' + claimed_brand/scenario/scent_id"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+    needs_retesting: true
+frontend:
+  - task: "Six-state model (Sniffing/Patrolling/Ears up/Growling/Barking/Guarding labels), on-device rule engine src/domain/messageAnalysis.ts (M01–M15), Threat Scent src/domain/threatScent.ts, /message screen (paste, screenshot, result, links hand-off, verify sender, recovery sheets, mark safe), Home 'Check a message' + Threat Scent cards, share intake routes text → /message, Message Guard capability, MessagingSdk contract stubs, yarn test:gate2 (20/20)"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/message.tsx, frontend/src/domain/messageAnalysis.ts, frontend/src/domain/threatScent.ts, frontend/src/store/ApolloContext.tsx, frontend/app/(tabs)/home.tsx"
+    needs_retesting: true
+
+## Iteration 9 — Gate 3 Phase A (Website & Browser) + patrolling GIF + Threat Scent fix
+backend:
+  - task: "POST /api/intel/check expand:true follows redirects (max 5 hops) → redirect_chain hosts + final_url, judges final destination; POST /api/feedback (false_positive/override/missed_threat) stored in db.feedback"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+    needs_retesting: true
+frontend:
+  - task: "Brand & Impersonation engine src/domain/brand.ts (official domains, homograph deobfuscation, verifyWebsite); decision.ts: brand mismatch → barking/growling, uncertain → ears_up, redirect chain in why; check.tsx: calm 'Apollo is guarding' copy when blocked, redirect pill, brand pill, Verify website sheet, Technical details sheet, Continue anyway (override recorded), Report mistake sheet, RecoveryFlow (clicked/password/card/code/download/app/called); shared RecoveryFlow component also used by /message; WebSdk contract stubs; yarn test:gate3 18/18; Threat Scent keys now brand+host (fix from iteration 8); Home hero uses apollo-patrolling.gif in Patrolling state (testID apollo-hero-gif)"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/check.tsx, frontend/src/domain/brand.ts, frontend/src/domain/decision.ts, frontend/src/components/RecoveryFlow.tsx, frontend/src/domain/threatScent.ts, frontend/src/components/ApolloHero.tsx"
+    needs_retesting: true

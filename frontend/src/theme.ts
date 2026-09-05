@@ -42,7 +42,9 @@ const dark = {
   divider: "#263241",
 
   // Apollo behaviour states
+  sniffing: "#7FB2E5",
   resting: "#4FAF83",
+  ears_up: "#C9C56A",
   growling: "#D9A441",
   barking: "#E47A3F",
   biting: "#D9534F",
@@ -50,7 +52,9 @@ const dark = {
   unknown: "#6F7F91",
 
   // Translucent tints used for state-coloured fills over dark surfaces
+  sniffingTint: "rgba(127,178,229,0.16)",
   restingTint: "rgba(79,175,131,0.14)",
+  ears_upTint: "rgba(201,197,106,0.16)",
   growlingTint: "rgba(217,164,65,0.16)",
   barkingTint: "rgba(228,122,63,0.16)",
   bitingTint: "rgba(217,83,79,0.16)",

@@ -1,0 +1,34 @@
+{
+  "summary": "Apollo V1 iteration-9 (Gate 3 - Website & Browser Protection Phase A + Threat Scent linking fix + Home hero GIF) PASSED end-to-end. Backend: 7/7 pytest cases in /app/backend/tests/test_gate3_intel_feedback.py against https://threat-patrol-1.preview.emergentagent.com/api. POST /api/intel/check {value:'https://bit.ly/3xyzabc', expand:true} -> 200 verdict='clean', redirect_chain=['bit.ly','drive.google.com'] (>=2 hosts, first is 'bit.ly'), final_url set. expand:false -> redirect_chain=[] and final_url=null. {value:'http://testsafebrowsing.appspot.com/s/phishing.html', expand:true} -> verdict='malicious'. Non-redirecting https://www.abc.net.au with expand:true -> redirect_chain=[] final_url=null. POST /api/feedback happy body -> 201 {received:true}; kind 'bogus' -> 422; missing event_id -> 422. Frontend unit tests: yarn test:gate3 -> 18/18 pass; yarn test:gate2 -> 20/20 pass. Frontend UI (390x844): Onboarding via onboarding-start-button + disclosure-accept-button works. /check?url=https://commbank-secure-login-verify.xyz/account -> check-result-state 'Apollo is barking', check-result-headline \"Don't open commbank-secure-login-verify.xyz\", check-result-brand 'Claims to be CommBank'. check-gate3-actions card renders check-verify-website, check-tech-details, check-recovery-open, check-report-mistake. Verify Website sheet opens with verify-website-title 'These do not match' and body contains 'commbank.com.au'. Tech details sheet contains 'On-device score'. Recovery: check-recovery-open -> check-recovery-pick-sheet -> check-recovery-pick-card -> check-recovery-sheet with check-recovery-step-0 = 'Call your bank now using the number on the back of your card and ask them to block the card.' (mentions bank+card). Report mistake sheet -> report-send -> toast 'report sent' rendered. Block button (testID event-block-button, labelled 'Block this destination') -> state becomes 'Apollo is guarding' and headline exactly 'Apollo is guarding - I blocked a dangerous website.' /check?url=https://bit.ly/3xyzabc -> state 'Apollo's ears are up' (NOT barking), check-result-redirects pill text 'Redirected: bit.ly -> drive.google.com'. /check?url=https://my-new-plumbing-biz.online/quote -> 'Apollo is patrolling' (not barking). /check?url=https://www.commbank.com.au/netbank -> 'Apollo is patrolling' (official domain not flagged). Threat Scent: after Home -> home-check-message-button -> paste CommBank message -> message-check -> message-result -> message-check-link-0 -> check-result-card -> back to /home -> home-scent-* card renders with pill 'Barking' and brand 'CommBank' AND summary 'These events may be connected. A CommBank message was followed by a link check.' (previous iteration-8 bug is FIXED via /app/frontend/src/domain/threatScent.ts using keysFor() returning both brand and host keys plus brand-in-host token matching against BRAND_TOKENS). Home hero shows apollo-hero-gif in Patrolling state. Regression: /message, /patrol, /settings all render.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_9.json",
+    "/app/backend/tests/test_gate3_intel_feedback.py",
+    "/app/test_reports/pytest/pytest_iter9.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py L388-411 expand_redirects: uses HEAD then falls back to GET on 405/403/400 - good. Silent broad-except catch (Exception) hides non-httpx errors but only logs the exception class name (privacy-safe). OK.",
+    "server.py L414-437 intel_check with expand=true walks each hop through run_intel_check which caches per-URL - fine but O(n) sequential Mongo hits per bit.ly chain. Acceptable at 2-5 hops; consider asyncio.gather if chains grow.",
+    "server.py L440-448 FeedbackIn: kind is Literal - good. sources max_length=10 but no per-item length cap - a client could send 10 x 300-char sources. Non-critical.",
+    "threatScent.ts L19-34 keysFor+normKeys: nice fix over iter-8 - brand and host both emitted, BRAND_TOKENS substring match, BRAND_ALIAS to normalise scenario placeholders. Consider unit tests in /app/frontend/tests/threatScent.test.ts to lock in the behaviour.",
+    "check.tsx L110 hardcoded en-dash in the calm 'guarding' headline is stable; suggest a constant in copy dict for future localisation."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_gate3_intel_feedback.py (new - 7 tests)",
+    "/app/test_reports/iteration_9.json (new)",
+    "/app/test_reports/pytest/pytest_iter9.xml (new - JUnit)"
+  ],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% (all Gate 3 acceptance-criteria testIDs verified; 18/18 gate3 unit; 20/20 gate2 unit; Threat Scent linking bug from iter-8 confirmed fixed)"},
+  "seed_data_creation": "Ephemeral test devices only (gate3test0001 for feedback; g2dev... for patrol event upserts in gate2 tests). Redirect expansion made real outbound HTTP HEAD requests to bit.ly and drive.google.com; no persistent state affected. Nothing touches seeded blocklist rows.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Gate 3 Phase A is fully wired and green. If iterating on brand engine, threatScent BRAND_TOKENS list at /app/frontend/src/domain/threatScent.ts:30 is the single source of truth for brand-in-host substring matching. verify-website-sheet body contains the official domain string 'commbank.com.au' - if you add more brands, keep the OFFICIAL_DOMAINS map in sync with BRAND_TOKENS so both engines agree. bit.ly currently resolves to drive.google.com in this environment; treat the second hop host as environment-specific and only assert 'bit.ly' as first host. Gemini second opinion on /message takes 5-10s; use >=30s waits when validating explanation.summary/why/recommendation. Onboarding state persists per browser context - reset localStorage between tests if reproducibility matters.",
+  "rca_of_issue": "No new bugs. Iteration-8 bug (Threat Scent brand-vs-host mismatch) is fixed - keysFor() now emits BOTH `brand:<norm>` (from claimed_brand) and `host:<host>` (from indicator_host), plus a synthetic `brand:<token>` for any BRAND_TOKEN substring found inside the host. A CommBank message event emits ['brand:commbank']; the follow-up link check on commbank-secure-login-verify.xyz emits ['host:commbank-secure-login-verify.xyz', 'brand:commbank']. findScentFor now returns a shared scent_id, buildScents groups them, and the Home + Patrol UI renders the linked 'Barking / CommBank' card. Verified live end-to-end."
+}
