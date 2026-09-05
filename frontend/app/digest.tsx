@@ -55,6 +55,21 @@ export default function Digest() {
           ))}
         </View>
         <View>
+          <SectionTitle>Connected incidents</SectionTitle>
+          <Card style={{ gap: spacing.sm }} testID="digest-incidents">
+            <Body testID="digest-incidents-summary">{d.incidents.length === 0 ? "No connected incidents this week — nothing chained together into a scam attempt." : `${d.incidents.length} incident${d.incidents.length > 1 ? "s" : ""}: ${d.handledIncidents} handled, ${d.openIncidents} still open.${d.openSingles ? ` Plus ${d.openSingles} single alert${d.openSingles > 1 ? "s" : ""} still open in Patrol.` : ""}`}</Body>
+            {d.incidents.map((inc) => (
+              <Pressable key={inc.scent_id} testID={`digest-incident-${inc.scent_id}`} accessibilityRole="button" onPress={() => router.push({ pathname: "/patrol/scent/[id]", params: { id: inc.scent_id } })} style={{ gap: 4, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: colors.divider }}>
+                <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center", flexWrap: "wrap" }}><Pill tone={inc.open ? inc.state : "resting"} label={inc.open ? "Still open" : "Handled"} /><Pill tone="neutral" label={`${inc.events} events`} /><Body>{new Date(inc.occurred_at).toLocaleDateString()}</Body></View>
+                <Text style={s.host}>{inc.headline}</Text>
+                {inc.stopped.length ? <Body>Stopped: {inc.stopped.join(" · ")}</Body> : null}
+                {inc.stillOpen.length ? <Body>Still open: {inc.stillOpen.join(" · ")}</Body> : null}
+                <Body>{inc.open ? `Tap to work through the ${inc.stepsTotal}-step plan.` : "Tap to review the timeline."}</Body>
+              </Pressable>
+            ))}
+          </Card>
+        </View>
+        <View>
           <SectionTitle>Websites Apollo reacted to</SectionTitle>
           <Card>
             {d.topHosts.length === 0 ? <Body>None this week.</Body> : d.topHosts.map((h) => (

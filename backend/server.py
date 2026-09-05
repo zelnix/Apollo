@@ -902,6 +902,89 @@ async def ack_shared_event(event_id: str, body: AckIn):
     return {"acknowledged": True, "ack_label": ACK_LABEL[body.reply]}
 
 
+# ---------------------------------------------------------------------------
+# Family Incident Sharing — the protected person explicitly shares ONE incident (Threat Scent timeline + the
+# combined Stay With Me plan and tick progress) with paired guardians. Minimal fields only; no message text.
+# ---------------------------------------------------------------------------
+
+class SharedIncidentEvent(BaseModel):
+    event_id: str = Field(max_length=64)
+    category: str = Field(max_length=20)
+    state: ApolloState
+    headline: str = Field(max_length=200)
+    occurred_at: str = Field(max_length=40)
+    status: str = Field(default="active", max_length=20)
+
+
+class SharedIncidentStep(BaseModel):
+    id: str = Field(max_length=40)
+    text: str = Field(max_length=400)
+
+
+class ShareIncidentIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)
+    scent_id: str = Field(min_length=4, max_length=64)
+    headline: str = Field(max_length=200)
+    state: ApolloState
+    events: list[SharedIncidentEvent] = Field(max_length=30)
+    steps: list[SharedIncidentStep] = Field(max_length=30)
+    done: list[str] = Field(default_factory=list, max_length=30)
+    note: str = Field(default="", max_length=300)
+
+
+class IncidentProgressIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)
+    done: list[str] = Field(default_factory=list, max_length=30)
+    resolved: bool = False
+
+
+def _incident_out(d: dict[str, Any], links: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    return {**{k: v for k, v in d.items() if k != "_id"}, "phone": _link_phone(links.get(d.get("protected_device_id", ""), {}))}
+
+
+@api.post("/family/incidents/share")
+async def share_incident(body: ShareIncidentIn):
+    links = await db.family_links.find({"protected_device_id": body.device_id, "deleted_at": None}).to_list(10)
+    ts = now_utc()
+    for ln in links:
+        await db.shared_incidents.update_one({"scent_id": body.scent_id, "guardian_device_id": ln["guardian_device_id"]}, {"$set": {
+            "scent_id": body.scent_id, "guardian_device_id": ln["guardian_device_id"], "protected_device_id": body.device_id,
+            "from_label": ln.get("owner_name") or "Family member", "headline": body.headline, "state": body.state,
+            "events": [e.model_dump() for e in body.events], "steps": [s.model_dump() for s in body.steps], "done": body.done, "note": body.note,
+            "resolved": False, "shared_at": ts, "updated_at": ts}}, upsert=True)
+    if links:
+        who = links[0].get("owner_name") or "A family member"
+        try:
+            await send_push(recipients=[ln["guardian_device_id"] for ln in links][:100],
+                            data={"title": f"Apollo: {who} is asking for help", "message": body.headline, "subtext": "Tap to see what happened and the steps they're working through.", "action_url": f"/family/incident/{body.scent_id}", **PUSH_THREAT},
+                            idempotency_key=f"incident-{body.scent_id}-{ts.isoformat()[:16]}")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("incident push failed (non-blocking): %s", type(exc).__name__)
+    return {"shared_with": len(links)}
+
+
+@api.patch("/family/incidents/{scent_id}/progress")
+async def incident_progress(scent_id: str, body: IncidentProgressIn):
+    r = await db.shared_incidents.update_many({"scent_id": scent_id, "protected_device_id": body.device_id}, {"$set": {"done": body.done, "resolved": body.resolved, "updated_at": now_utc()}})
+    return {"updated": r.matched_count}
+
+
+@api.get("/family/incidents")
+async def list_shared_incidents(device_id: str = Query(min_length=8, max_length=64)):
+    docs = await db.shared_incidents.find({"guardian_device_id": device_id}).sort("updated_at", -1).to_list(50)
+    links = {l["protected_device_id"]: l for l in await db.family_links.find({"guardian_device_id": device_id, "deleted_at": None}).to_list(20)}
+    return [_incident_out(d, links) for d in docs]
+
+
+@api.get("/family/incidents/{scent_id}")
+async def get_shared_incident(scent_id: str, device_id: str = Query(min_length=8, max_length=64)):
+    d = await db.shared_incidents.find_one({"scent_id": scent_id, "guardian_device_id": device_id})
+    if not d:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    links = {l["protected_device_id"]: l for l in await db.family_links.find({"guardian_device_id": device_id, "deleted_at": None}).to_list(20)}
+    return _incident_out(d, links)
+
+
 @api.get("/family/acks")
 async def list_acks(device_id: str = Query(min_length=8, max_length=64)):
     docs = await db.family_acks.find({"protected_device_id": device_id}).sort("acknowledged_at", -1).to_list(50)

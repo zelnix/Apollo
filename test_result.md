@@ -287,3 +287,16 @@ frontend:
     working: "NA"
     file: "frontend/src/store/ApolloContext.tsx, frontend/app/patrol/scent/[id].tsx, frontend/src/share/classifyShare.ts, frontend/src/components/ApolloHero.tsx, frontend/app/(tabs)/home.tsx"
     needs_retesting: true
+
+## Iteration 21 — Family Incident Sharing + Weekly Digest incidents + palette
+backend:
+  - task: "POST /api/family/incidents/share (fan-out to paired guardians + push), PATCH /api/family/incidents/{scent_id}/progress, GET /api/family/incidents, GET /api/family/incidents/{scent_id}; tests/test_family_incidents.py 3/3"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+frontend:
+  - task: "Incident timeline: tick progress persisted (apollo.incident.<id>), 'Ask my family for help' shares headline/timeline/steps/ticks (never message text) and mirrors progress + handled state; guardian screen app/family/incident/[id].tsx (read-only timeline, live progress, call); Family screen 'Incidents shared with you' section. Weekly digest: 'Connected incidents' card (handled vs still open, stopped vs still-open events per incident, tap → timeline) via buildDigestIncidents. Theme palette: sniffing Muted Silver, ears_up Watchful Amber, growling Alert Orange, barking+guarding Threat Red; export colours matched."
+    implemented: true
+    working: "NA"
+    file: "frontend/app/patrol/scent/[id].tsx, frontend/app/family/incident/[id].tsx, frontend/app/family.tsx, frontend/app/digest.tsx, frontend/src/domain/digest.ts, frontend/src/theme.ts"
+    needs_retesting: true

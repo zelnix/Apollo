@@ -116,6 +116,7 @@ export default function RootLayout() {
                   <Stack.Screen name="digest" options={{ presentation: "modal" }} />
                   <Stack.Screen name="family" options={{ presentation: "modal" }} />
                   <Stack.Screen name="family/alert/[id]" options={{ presentation: "modal" }} />
+                  <Stack.Screen name="family/incident/[id]" options={{ presentation: "modal" }} />
                 </Stack>
                 <ShareIntakeListener />
                 <ToastHost />

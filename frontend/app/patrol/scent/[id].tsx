@@ -3,15 +3,17 @@
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import Check from "lucide-react-native/icons/check";
 import X from "lucide-react-native/icons/x";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { apiPatch, apiPost } from "@/src/api/client";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { buildIncidentPlan, CATEGORY_GLYPH, CATEGORY_LABEL } from "@/src/domain/incidentPlan";
 import { STATE_LABEL, STATE_NAME } from "@/src/domain/types";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+import { storage } from "@/src/utils/storage";
 import { goBackOrHome } from "@/src/utils/navigation";
 
 const useStyles = makeStyles((c) => ({
@@ -39,14 +41,32 @@ export default function IncidentTimeline() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { events, ready, setupDone, upsertEvent, showToast } = useApollo();
+  const { events, ready, setupDone, upsertEvent, showToast, deviceId } = useApollo();
   const linked = useMemo(() => events.filter((e) => e.scent_id === id || e.event_id === id), [events, id]);
   const plan = useMemo(() => buildIncidentPlan(linked), [linked]);
   const [ticked, setTicked] = useState<Record<string, boolean>>({});
+  const [shared, setShared] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const doneCount = plan.steps.filter((st) => ticked[st.id]).length;
+  // Tick progress survives leaving the screen; if the incident was shared with family, progress is mirrored to them.
+  useEffect(() => { void storage.getItem<string | null>(`apollo.incident.${id}`, null).then((raw) => { if (raw) { const v = JSON.parse(raw) as { ticked: Record<string, boolean>; shared: boolean }; setTicked(v.ticked ?? {}); setShared(!!v.shared); } }); }, [id]);
+  const save = (next: Record<string, boolean>, isShared: boolean, resolved = false) => {
+    void storage.setItem(`apollo.incident.${id}`, JSON.stringify({ ticked: next, shared: isShared }));
+    if (isShared) void apiPatch(`/family/incidents/${id}/progress`, { device_id: deviceId ?? "local-device", done: Object.keys(next).filter((k) => next[k]), resolved }).catch(() => undefined);
+  };
+  const toggle = (stepId: string) => setTicked((t) => { const next = { ...t, [stepId]: !t[stepId] }; save(next, shared); return next; });
+  const shareWithFamily = async () => {
+    setSharing(true);
+    try {
+      const r = await apiPost<{ shared_with: number }>("/family/incidents/share", "family", { device_id: deviceId ?? "local-device", scent_id: id, headline: plan.headline, state: plan.state, events: plan.timeline.map((e) => ({ event_id: e.event_id, category: e.category, state: e.state, headline: e.headline, occurred_at: e.occurred_at, status: e.status })), steps: plan.steps.map((st) => ({ id: st.id, text: st.text })), done: Object.keys(ticked).filter((k) => ticked[k]), note: "" });
+      if (r.shared_with === 0) { showToast("No family linked yet. Pair someone in Family first.", "neutral"); return; }
+      setShared(true); save(ticked, true);
+      showToast(`Shared with ${r.shared_with} family member${r.shared_with > 1 ? "s" : ""}. They can see the timeline and your progress — nothing else.`, "resting");
+    } catch { showToast("Couldn't reach Apollo's relay right now.", "barking"); } finally { setSharing(false); }
+  };
   if (ready && !setupDone) return <Redirect href="/" />;
 
-  const resolveAll = async () => { const at = new Date().toISOString(); for (const e of linked) if (e.status === "active") await upsertEvent({ ...e, status: "resolved", resolved_at: at }); showToast("Incident marked handled. Apollo keeps the record.", "resting"); };
+  const resolveAll = async () => { const at = new Date().toISOString(); for (const e of linked) if (e.status === "active") await upsertEvent({ ...e, status: "resolved", resolved_at: at }); save(ticked, shared, true); showToast("Incident marked handled. Apollo keeps the record.", "resting"); };
 
   return (
     <View style={s.root}>
@@ -83,7 +103,7 @@ export default function IncidentTimeline() {
             {plan.steps.map((st, i) => {
               const on = !!ticked[st.id];
               return (
-                <Pressable key={st.id} testID={`incident-step-${i}`} accessibilityRole="checkbox" accessibilityState={{ checked: on }} onPress={() => setTicked((t) => ({ ...t, [st.id]: !on }))} style={s.step}>
+                <Pressable key={st.id} testID={`incident-step-${i}`} accessibilityRole="checkbox" accessibilityState={{ checked: on }} onPress={() => toggle(st.id)} style={s.step}>
                   <View style={[s.box, { borderColor: on ? colors.resting : colors.borderStrong, backgroundColor: on ? colors.resting : "transparent" }]}>{on ? <Check size={16} color={colors.surface} /> : null}</View>
                   <Text style={[s.why, { flex: 1 }, on && s.done]}>{i + 1}. {st.text}</Text>
                 </Pressable>
@@ -93,6 +113,8 @@ export default function IncidentTimeline() {
           </Card>
 
           <Card style={{ gap: spacing.sm }} testID="incident-actions">
+            <Button testID="incident-share-family" variant={shared ? "ghost" : "secondary"} label={sharing ? "Sharing…" : shared ? "Shared with family — update" : "Ask my family for help"} onPress={() => void shareWithFamily()} disabled={sharing} />
+            {shared ? <Body testID="incident-shared-note">Your family can see this timeline and which steps you&apos;ve ticked — not your messages or links. They&apos;ll be nudged to call you.</Body> : <Body>Shares only the timeline headlines and the plan — never the message text or links.</Body>}
             <Button testID="incident-ask" variant="secondary" label="Ask Apollo about this incident" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { context: `Incident: ${plan.headline}. Events in order: ${plan.timeline.map((e) => `${CATEGORY_LABEL[e.category]} — ${e.headline}`).join("; ")}. Exposure: ${plan.exposure.join(", ") || "none reported"}.`, prompt: "What should I do first, and what's the risk?" } })} />
             {!plan.allResolved ? <Button testID="incident-resolve" variant={doneCount === plan.steps.length ? "primary" : "ghost"} label="I've done the steps — mark incident handled" onPress={() => void resolveAll()} /> : null}
           </Card>

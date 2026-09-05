@@ -8,7 +8,7 @@ import { Platform } from "react-native";
 import { STATE_LABEL, type PatrolEvent } from "@/src/domain/types";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-const COLOR: Record<PatrolEvent["state"], string> = { sniffing: "#7FB2E5", resting: "#4FAF83", ears_up: "#C9C56A", growling: "#D9A441", barking: "#E47A3F", biting: "#D9534F" };
+const COLOR: Record<PatrolEvent["state"], string> = { sniffing: "#9EABB8", resting: "#4FAF83", ears_up: "#D9A441", growling: "#E47A3F", barking: "#D9534F", biting: "#D9534F" };
 
 export function patrolHtml(events: PatrolEvent[], deviceId: string | null): string {
   const rows = events.map((e) => `

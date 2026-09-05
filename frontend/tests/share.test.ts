@@ -44,3 +44,16 @@ test("no exposure → generic don't-act plan, contact the brand yourself", () =>
   const plan = buildIncidentPlan([ev({ claimed_brand: "ANZ" }), ev({ category: "call", claimed_brand: "ANZ" })]);
   assert.equal(plan.kinds.length, 0); assert.match(plan.steps[0].text, /Don't act/); assert.match(plan.steps[1].text, /Contact ANZ yourself/);
 });
+
+// ---- Weekly digest incidents ----
+import { buildWeeklyDigest } from "../src/domain/digest.ts";
+test("weekly digest groups 2+ linked events into incidents with stopped / still-open split", () => {
+  const t0 = Date.now() - 3600_000;
+  const d = buildWeeklyDigest([
+    ev({ scent_id: "S9", category: "message", state: "growling", occurred_at: new Date(t0).toISOString(), claimed_brand: "ANZ", status: "resolved", headline: "ANZ SMS" }),
+    ev({ scent_id: "S9", category: "account", state: "barking", occurred_at: new Date(t0 + 60_000).toISOString(), headline: "Account: Login prompt", status: "active" }),
+    ev({ scent_id: "solo", category: "link", state: "growling", status: "active" }),
+  ]);
+  assert.equal(d.incidents.length, 1); assert.equal(d.openIncidents, 1); assert.equal(d.handledIncidents, 0); assert.equal(d.openSingles, 1);
+  const inc = d.incidents[0]; assert.match(inc.headline, /ANZ impersonation/); assert.equal(inc.events, 2); assert.equal(inc.stopped.length, 1); assert.equal(inc.stillOpen.length, 1); assert.match(inc.stillOpen[0], /Login prompt/);
+});

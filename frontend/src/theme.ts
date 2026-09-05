@@ -42,21 +42,21 @@ const dark = {
   divider: "#263241",
 
   // Apollo behaviour states
-  sniffing: "#7FB2E5",
+  sniffing: "#9EABB8", // Muted Silver — checking, no verdict yet
   resting: "#4FAF83",
-  ears_up: "#C9C56A",
-  growling: "#D9A441",
-  barking: "#E47A3F",
+  ears_up: "#D9A441", // Watchful Amber
+  growling: "#E47A3F", // Alert Orange
+  barking: "#D9534F", // Threat Red
   biting: "#D9534F",
   // Capability gaps (visibility lost / unsupported) — neutral, never "safe" green
   unknown: "#6F7F91",
 
   // Translucent tints used for state-coloured fills over dark surfaces
-  sniffingTint: "rgba(127,178,229,0.16)",
+  sniffingTint: "rgba(158,171,184,0.16)",
   restingTint: "rgba(79,175,131,0.14)",
-  ears_upTint: "rgba(201,197,106,0.16)",
-  growlingTint: "rgba(217,164,65,0.16)",
-  barkingTint: "rgba(228,122,63,0.16)",
+  ears_upTint: "rgba(217,164,65,0.16)",
+  growlingTint: "rgba(228,122,63,0.16)",
+  barkingTint: "rgba(217,83,79,0.16)",
   bitingTint: "rgba(217,83,79,0.16)",
   unknownTint: "rgba(111,127,145,0.16)",
   scrim: "rgba(11,18,32,0.72)",

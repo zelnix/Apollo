@@ -47,6 +47,7 @@ export default function Family() {
   const guardians = useQuery({ queryKey: ["guardians", deviceId], enabled: !!deviceId, queryFn: () => apiGet<GuardianRow[]>(`/family/guardians?device_id=${deviceId}`) });
   const links = useQuery({ queryKey: ["family-links", deviceId], enabled: !!deviceId, queryFn: () => apiGet<{ i_watch: WatchLink[]; watching_me: number }>(`/family/links?device_id=${deviceId}`) });
   const shared = useQuery({ queryKey: ["shared-events", deviceId], enabled: !!deviceId, queryFn: () => apiGet<SharedEvent[]>(`/family/shared-events?device_id=${deviceId}`), refetchInterval: 30000 });
+  const incidents = useQuery({ queryKey: ["family-incidents", deviceId], enabled: !!deviceId, queryFn: () => apiGet<{ scent_id: string; from_label: string; headline: string; state: ApolloState; steps: { id: string }[]; done: string[]; resolved: boolean; updated_at: string }[]>(`/family/incidents?device_id=${deviceId}`) });
   const acks = useQuery({ queryKey: ["family-acks", deviceId], enabled: !!deviceId, queryFn: () => apiGet<Ack[]>(`/family/acks?device_id=${deviceId}`), refetchInterval: 30000 });
   const ack = useMutation({
     mutationFn: (p: { event_id: string; reply: string }) => apiPost<{ ack_label: string }>(`/family/shared-events/${p.event_id}/ack`, "family", { device_id: deviceId, reply: p.reply }),
@@ -117,6 +118,20 @@ export default function Family() {
         </View>
 
         <View>
+          {(incidents.data ?? []).length ? (
+            <>
+              <SectionTitle>Incidents shared with you</SectionTitle>
+              <Card testID="family-incidents">
+                {incidents.data!.map((inc) => (
+                  <Pressable key={inc.scent_id} onPress={() => router.push(`/family/incident/${inc.scent_id}`)} testID={`family-incident-open-${inc.scent_id}`} accessibilityRole="button" style={{ paddingVertical: spacing.sm, gap: 4, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
+                    <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center", flexWrap: "wrap" }}><Pill tone={inc.resolved ? "resting" : inc.state} label={inc.resolved ? "Handled" : STATE_NAME[inc.state]} /><Body>{inc.from_label} · {inc.done.length}/{inc.steps.length} steps · {new Date(inc.updated_at).toLocaleString()}</Body></View>
+                    <Text style={s.name}>{inc.headline}</Text>
+                    <Body>Tap to see the timeline and help them through the steps.</Body>
+                  </Pressable>
+                ))}
+              </Card>
+            </>
+          ) : null}
           <SectionTitle>Alerts from people you watch</SectionTitle>
           <Card testID="family-shared">
             {(links.data?.i_watch ?? []).map((l) => (

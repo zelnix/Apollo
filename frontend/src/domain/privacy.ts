@@ -6,7 +6,7 @@
 export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "device_register" | "family" | "push_register" | "push_test" | "device_settings" | "message_check" | "message_extract" | "feedback" | "page_extract" | "app_check" | "account_check" | "breach_check";
 
 const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
-  family: new Set(["device_id", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id"]),
+  family: new Set(["device_id", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id", "scent_id", "headline", "state", "events", "steps", "done", "note", "resolved"]),
   intel_check: new Set(["indicator_type", "value", "values", "device_id", "expand"]),
   feedback: new Set(["device_id", "event_id", "kind", "state", "host", "sources", "note"]),
   patrol_sync: new Set([
