@@ -18,7 +18,7 @@ import { goBackOrHome } from "@/src/utils/navigation";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
-const ADAPTER_SCENARIOS = ["NORMAL", "PERMISSION_DENIED", "BLOCK_UNVERIFIED", "PROTECTION_UNAVAILABLE"] as const;
+const ADAPTER_SCENARIOS = ["NORMAL", "PERMISSION_DENIED", "BLOCK_UNVERIFIED", "PROTECTION_UNAVAILABLE", "OPEN_WIFI", "CAPTIVE_PORTAL"] as const;
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },

@@ -28,6 +28,10 @@ export interface NetworkStatus {
   isInternetReachable: boolean | null;
   /** Whether the adapter can actually inspect connection safety. */
   inspectable: boolean;
+  /** Wi‑Fi security as reported by the platform. "n/a" when not on Wi‑Fi, "unknown" when the platform hides it. */
+  wifiSecurity: "open" | "wep" | "wpa" | "wpa3" | "enterprise" | "unknown" | "n/a";
+  captivePortal: boolean | null;
+  vpnActive: boolean | null;
   checkedAt: string;
 }
 

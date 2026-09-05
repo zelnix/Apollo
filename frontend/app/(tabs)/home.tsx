@@ -2,7 +2,7 @@ import { useRouter } from "expo-router";
 import Link2 from "lucide-react-native/icons/link-2";
 import RefreshCw from "lucide-react-native/icons/refresh-cw";
 import React from "react";
-import { RefreshControl, ScrollView, Text, View } from "react-native";
+import { RefreshControl, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApolloHero } from "@/src/components/ApolloHero";
@@ -10,6 +10,7 @@ import { ClipboardLinkBanner } from "@/src/components/ClipboardLinkBanner";
 import { PatrolItem } from "@/src/components/PatrolItem";
 import { Body, Button, Card, Pill, ScreenHeader, SectionTitle, capabilityTone } from "@/src/components/ui";
 import { CAPABILITY_STATUS_LABEL, visibilityFrom } from "@/src/domain/capability";
+import { buildWeeklyDigest } from "@/src/domain/digest";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
@@ -32,6 +33,7 @@ export default function Home() {
   const { resolution, capabilities, protection, adapterLabel, isMock, refreshing, verifyNow, events, lastVerifiedAt } = useApollo();
   const visibility = visibilityFrom(capabilities, !!protection?.running);
   const recent = events.slice(0, 4);
+  const digest = buildWeeklyDigest(events);
 
   return (
     <View style={s.root}>
@@ -59,6 +61,17 @@ export default function Home() {
             ))}
             <Text style={s.link} onPress={() => router.push("/(tabs)/guard")} testID="home-open-guard">Manage in Guard</Text>
           </Card>
+        </View>
+
+        <View>
+          <SectionTitle>This week</SectionTitle>
+          <Pressable testID="home-digest-card" accessibilityRole="button" onPress={() => router.push("/digest")}>
+            <Card style={{ gap: spacing.xs }}>
+              <Text style={s.emptyTitle}>{digest.headline}</Text>
+              <Body>{digest.summary}</Body>
+              <Text style={s.link}>Open weekly patrol</Text>
+            </Card>
+          </Pressable>
         </View>
 
         <View>

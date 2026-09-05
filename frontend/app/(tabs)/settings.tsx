@@ -61,6 +61,14 @@ export default function SettingsScreen() {
         </View>
 
         <View>
+          <SectionTitle>Family sharing</SectionTitle>
+          <Card style={{ gap: spacing.sm }}>
+            <Body>Send plain-language Barking and Biting alerts to a trusted family member by email, or pair their Apollo device.</Body>
+            <Button testID="settings-family" variant="secondary" label="Manage family sharing" onPress={() => router.push("/family")} />
+          </Card>
+        </View>
+
+        <View>
           <SectionTitle>Launch gates</SectionTitle>
           <Card style={{ gap: spacing.sm }}>
             <Body>Run the labelled threat corpus and clean set against Apollo&apos;s engine to check the ≥90% detection and &lt;2% false-positive gates.</Body>

@@ -1,4 +1,6 @@
 import ExpoModulesCore
+import Network
+import NetworkExtension
 import SafariServices
 
 /// ApolloSecurity — iOS (Swift) security module.
@@ -32,7 +34,7 @@ public class ApolloSecurityModule: Module {
           ["id": "link_guard", "title": "Link Guard", "status": running ? "active" : "available", "detail": "Checks links you paste or share into Apollo."],
           ["id": "known_threats", "title": "Known Threat Lookup", "status": running ? "active" : "available", "detail": "Privacy-preserving reputation checks using the link only."],
           ["id": "site_guard", "title": "Site Guard", "status": site.0, "detail": site.1],
-          ["id": "connection_guard", "title": "Connection Guard", "status": "coming_later", "detail": "Network Extension integration is not yet implemented."],
+          ["id": "connection_guard", "title": "Connection Guard", "status": running ? "active" : "available", "detail": "Limited on iOS: Apple only reveals whether the current Wi‑Fi is open or secured."],
           ["id": "share_intake", "title": "Share to Apollo", "status": "active", "detail": "Share a link from any app to check it."],
         ]))
       }
@@ -76,8 +78,29 @@ public class ApolloSecurityModule: Module {
       }
     }
 
-    AsyncFunction("getNetworkStatus") { () -> String in
-      self.json(["connected": true, "type": "unknown", "isInternetReachable": NSNull(), "inspectable": false, "checkedAt": self.now()])
+    AsyncFunction("getNetworkStatus") { (promise: Promise) in
+      // iOS exposes very little: NEHotspotNetwork (needs the Access Wi‑Fi Information entitlement + location
+      // permission) reports whether the current Wi‑Fi is secure. Anything Apple hides is reported as "unknown".
+      let monitor = NWPathMonitor(); let queue = DispatchQueue(label: "apollo.path")
+      monitor.pathUpdateHandler = { path in
+        monitor.cancel()
+        let type: String = path.status != .satisfied ? "none" : path.usesInterfaceType(.wifi) ? "wifi" : path.usesInterfaceType(.cellular) ? "cellular" : path.usesInterfaceType(.wiredEthernet) ? "ethernet" : "other"
+        let vpn = path.availableInterfaces.contains { $0.type == .other && $0.name.hasPrefix("utun") }
+        let finish: (String) -> Void = { sec in
+          promise.resolve(self.json(["connected": path.status == .satisfied, "type": type, "isInternetReachable": path.status == .satisfied,
+                                     "inspectable": self.protectionSince != nil, "wifiSecurity": sec, "captivePortal": NSNull(), "vpnActive": vpn, "checkedAt": self.now()]))
+        }
+        guard type == "wifi" else { finish("n/a"); return }
+        if #available(iOS 14.0, *) {
+          NEHotspotNetwork.fetchCurrent { net in
+            guard let net = net else { finish("unknown"); return }
+            if #available(iOS 15.0, *) {
+              switch net.securityType { case .open: finish("open"); case .WEP: finish("wep"); case .personal: finish("wpa"); case .enterprise: finish("enterprise"); default: finish("unknown") }
+            } else { finish(net.isSecure ? "wpa" : "open") }
+          }
+        } else { finish("unknown") }
+      }
+      monitor.start(queue: queue)
     }
 
     AsyncFunction("getSecuritySignals") { () -> String in "[]" }

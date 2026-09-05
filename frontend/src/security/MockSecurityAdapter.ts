@@ -12,7 +12,7 @@ import type {
 
 export const MOCK_ADAPTER_LABEL = "MOCK adapter — simulated";
 
-type MockScenario = "NORMAL" | "PERMISSION_DENIED" | "BLOCK_UNVERIFIED" | "PROTECTION_UNAVAILABLE";
+type MockScenario = "NORMAL" | "PERMISSION_DENIED" | "BLOCK_UNVERIFIED" | "PROTECTION_UNAVAILABLE" | "OPEN_WIFI" | "CAPTIVE_PORTAL";
 
 class MockSecurityAdapterImpl implements SecurityPlatformAdapter {
   readonly kind = "mock" as const;
@@ -34,7 +34,7 @@ class MockSecurityAdapterImpl implements SecurityPlatformAdapter {
       { id: "link_guard", title: "Link Guard", status: this.running ? "active" : "available", detail: this.running ? "Checks links you paste or share into Apollo." : "Turn on protection to check links you paste or share." },
       { id: "known_threats", title: "Known Threat Lookup", status: this.running ? "active" : "available", detail: "Privacy-preserving reputation checks using the link only." },
       { id: "site_guard", title: "Site Guard", status: unavailable ? "unsupported" : filterGranted ? (this.running ? "active" : "inactive") : "permission_required", detail: unavailable ? "This device cannot run a content filter." : filterGranted ? "Warns about suspicious websites in supported browsers." : "Needs the network filter permission to see website visits." },
-      { id: "connection_guard", title: "Connection Guard", status: "coming_later", detail: "Unsafe Wi‑Fi and connection checks arrive in a later release." },
+      { id: "connection_guard", title: "Connection Guard", status: this.running ? "active" : "available", detail: this.running ? "Warns about open or captive Wi‑Fi (simulated in mock mode)." : "Turn on protection to assess Wi‑Fi connections." },
       { id: "share_intake", title: "Share to Apollo", status: "coming_later", detail: "Share links from other apps straight into Apollo. Requires a native build." },
     ];
   }
@@ -77,9 +77,11 @@ class MockSecurityAdapterImpl implements SecurityPlatformAdapter {
     try {
       const s = await Network.getNetworkStateAsync();
       const map: Record<string, NetworkStatus["type"]> = { WIFI: "wifi", CELLULAR: "cellular", ETHERNET: "ethernet", VPN: "vpn", NONE: "none", UNKNOWN: "unknown" };
-      return { connected: !!s.isConnected, type: map[String(s.type)] ?? "other", isInternetReachable: s.isInternetReachable ?? null, inspectable: false, checkedAt: new Date().toISOString() };
+      const type = map[String(s.type)] ?? "other";
+      const sim = this.scenario === "OPEN_WIFI" ? "open" : this.scenario === "CAPTIVE_PORTAL" ? "wpa" : undefined;
+      return { connected: !!s.isConnected, type: sim ? "wifi" : type, isInternetReachable: s.isInternetReachable ?? null, inspectable: this.running, wifiSecurity: sim ?? (type === "wifi" ? "unknown" : "n/a"), captivePortal: this.scenario === "CAPTIVE_PORTAL" ? true : type === "wifi" ? false : null, vpnActive: type === "vpn", checkedAt: new Date().toISOString() };
     } catch {
-      return { connected: true, type: "unknown", isInternetReachable: null, inspectable: false, checkedAt: new Date().toISOString() };
+      return { connected: true, type: "unknown", isInternetReachable: null, inspectable: false, wifiSecurity: "unknown", captivePortal: null, vpnActive: null, checkedAt: new Date().toISOString() };
     }
   }
 

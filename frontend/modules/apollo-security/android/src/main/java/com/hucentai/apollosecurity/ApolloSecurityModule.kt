@@ -33,7 +33,7 @@ class ApolloSecurityModule : Module() {
         put(cap("site_guard", "Site Guard",
           when { running -> "active"; vpnGranted -> "inactive"; else -> "permission_required" },
           when { running -> "Blocking verified threat domains with an on-device DNS filter."; vpnGranted -> "Turn protection on to start the DNS filter."; else -> "Needs the local VPN permission to filter DNS lookups on this device." }))
-        put(cap("connection_guard", "Connection Guard", "coming_later", "Wi‑Fi safety checks are not yet implemented."))
+        put(cap("connection_guard", "Connection Guard", if (protectionSince != null) "active" else "available", "Warns about open, WEP or captive-portal Wi‑Fi using Android's own network report."))
         put(cap("share_intake", "Share to Apollo", "active", "Share a link from any app to check it."))
       }.toString()
     }
@@ -74,9 +74,25 @@ class ApolloSecurityModule : Module() {
         caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "ethernet"
         else -> "other"
       }
+      // Connection Guard: Wi‑Fi security type (API 31+) and captive-portal flag come straight from the platform.
+      var wifiSecurity = if (type == "wifi") "unknown" else "n/a"
+      if (type == "wifi" && android.os.Build.VERSION.SDK_INT >= 31) {
+        val info = caps?.transportInfo as? android.net.wifi.WifiInfo
+        wifiSecurity = when (info?.currentSecurityType) {
+          android.net.wifi.WifiInfo.SECURITY_TYPE_OPEN, android.net.wifi.WifiInfo.SECURITY_TYPE_OWE -> "open"
+          android.net.wifi.WifiInfo.SECURITY_TYPE_WEP -> "wep"
+          android.net.wifi.WifiInfo.SECURITY_TYPE_PSK -> "wpa"
+          android.net.wifi.WifiInfo.SECURITY_TYPE_SAE -> "wpa3"
+          android.net.wifi.WifiInfo.SECURITY_TYPE_EAP, android.net.wifi.WifiInfo.SECURITY_TYPE_EAP_WPA3_ENTERPRISE -> "enterprise"
+          null -> "unknown"
+          else -> "unknown"
+        }
+      }
+      val captive = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)
       JSONObject().put("connected", caps != null).put("type", type)
         .put("isInternetReachable", caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) ?: JSONObject.NULL)
-        .put("inspectable", false).put("checkedAt", now()).toString()
+        .put("inspectable", protectionSince != null).put("wifiSecurity", wifiSecurity)
+        .put("captivePortal", captive ?: JSONObject.NULL).put("vpnActive", type == "vpn").put("checkedAt", now()).toString()
     }
 
     AsyncFunction("getSecuritySignals") {

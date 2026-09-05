@@ -9,6 +9,7 @@ import { Platform } from "react-native";
 
 import { apiDelete, apiGet, apiPost } from "@/src/api/client";
 import { visibilityFrom } from "@/src/domain/capability";
+import { assessConnection } from "@/src/domain/connection";
 import { decide } from "@/src/domain/decision";
 import { minimalIndicator } from "@/src/domain/privacy";
 import { analyseUrlLocally } from "@/src/domain/risk";
@@ -90,8 +91,24 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         securityAdapter.getCapabilities(), securityAdapter.getProtectionStatus(), securityAdapter.getProtectionPermissions(), securityAdapter.getNetworkStatus(),
       ]);
       setCapabilities(caps); setProtection(status); setPermissions(perms); setNetwork(net);
+      // Connection Guard: raise one growling event per distinct unsafe network condition.
+      const a = assessConnection(net);
+      if (a.state && status.running && lastConnectionKey.current !== a.key) {
+        lastConnectionKey.current = a.key;
+        const ev: PatrolEvent = {
+          event_id: Crypto.randomUUID(), device_id: deviceIdRef.current ?? "local", category: "connection", state: a.state, status: "active",
+          headline: a.headline, what_happened: a.what_happened, why: a.why, what_to_do: a.what_to_do, indicator_host: null, indicator_digest: null,
+          verified_block: false, adapter_label: securityAdapter.label, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false,
+        };
+        setEvents((prev) => { const next = [ev, ...prev]; void storage.setItem(K.events, JSON.stringify(next)); return next; });
+        void syncEventRef.current?.(ev);
+      } else if (!a.state) lastConnectionKey.current = a.key;
     } finally { setRefreshing(false); }
   }, []);
+  const lastConnectionKey = useRef<string | null>(null);
+  const deviceIdRef = useRef<string | null>(null);
+  useEffect(() => { deviceIdRef.current = deviceId; }, [deviceId]);
+  const syncEventRef = useRef<((e: PatrolEvent) => Promise<void>) | null>(null);
 
   const verifyNow = useCallback(async () => {
     await refresh();
@@ -158,6 +175,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const { local_indicator: _omit, trust_allowed: _omit2, ...rest } = e; // never leaves device
     try { await apiPost("/patrol/events", "patrol_sync", { ...rest, device_id: deviceId }); qc.invalidateQueries({ queryKey: ["patrol", deviceId] }); } catch { /* offline: local copy is authoritative */ }
   }, [deviceId, qc]);
+  useEffect(() => { syncEventRef.current = syncEvent; }, [syncEvent]);
 
   const upsertEvent = useCallback(async (e: PatrolEvent) => {
     const next = [e, ...events.filter((x) => x.event_id !== e.event_id)];

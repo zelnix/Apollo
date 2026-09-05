@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card, Pill, ScreenHeader, SectionTitle, capabilityTone } from "@/src/components/ui";
 import { CAPABILITY_STATUS_LABEL } from "@/src/domain/capability";
+import { assessConnection } from "@/src/domain/connection";
 import type { Capability } from "@/src/domain/types";
 import type { ProtectionPermission } from "@/src/security/SecurityPlatformAdapter";
 import { useApollo } from "@/src/store/ApolloContext";
@@ -100,7 +101,8 @@ export default function Guard() {
           <SectionTitle>Connection</SectionTitle>
           <Card testID="guard-network">
             <Text style={s.netLine}>{network ? (network.connected ? `Connected via ${network.type}` : "Not connected") : "Checking…"}</Text>
-            <Body>{network?.inspectable ? "Apollo can inspect this connection." : "Apollo cannot inspect connection safety on this build. Connection Guard is coming later."}</Body>
+            <Body>{assessConnection(network).summary}</Body>
+            {network?.type === "wifi" ? <Pill tone={network.wifiSecurity === "open" || network.wifiSecurity === "wep" || network.captivePortal ? "growling" : network.wifiSecurity === "unknown" ? "unknown" : "resting"} label={network.captivePortal ? "Captive portal" : network.wifiSecurity === "n/a" ? "Wi‑Fi" : `Wi‑Fi: ${network.wifiSecurity}`} testID="guard-wifi-pill" /> : null}
           </Card>
         </View>
 

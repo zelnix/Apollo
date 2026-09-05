@@ -8,11 +8,14 @@ Privacy posture:
 """
 from __future__ import annotations
 
+import asyncio
 import hmac
 import json
 import logging
 import os
+import secrets
 import uuid
+from html import escape
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from pathlib import Path
@@ -400,6 +403,8 @@ async def upsert_event(body: PatrolEventIn):
     event = PatrolEvent(**body.model_dump(), created_at=ts, updated_at=ts)
     result = await db.patrol_events.insert_one(event.to_mongo())
     event.id = str(result.inserted_id)
+    if event.state in ("barking", "biting"):
+        asyncio.create_task(notify_guardians(event))
     return event
 
 
@@ -515,7 +520,181 @@ async def clear_ask_history(device_id: str = Query(min_length=8, max_length=64))
     return {"deleted": result.deleted_count}
 
 
-# --------------------------------------------------------------------------- App wiring
+# --------------------------------------------------------------------------- Family sharing
+# Two channels: (a) email to a confirmed guardian via Emergent-managed email; (b) device pairing code.
+# Only Barking/Biting event summaries are shared (headline, domain, what to do). Never the full link.
+EMAIL_BASE_URL = "https://integrations.emergentagent.com"
+EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY", "")
+EMAIL_FROM_NAME = os.environ["EMAIL_FROM_NAME"]
+PUBLIC_BASE = os.environ.get("PUBLIC_API_BASE", "")  # e.g. https://<host>; confirm links are first-party
+_CRED_ASK = ("reply with your password", "reply with the code", "send your password", "cvv", "seed phrase", "verify your card", "confirm your bank details")
+
+
+def _assert_safe_email(subject: str, html: str) -> None:
+    low = f"{subject}\n{html}".lower()
+    if "<form" in low or "<input" in low:
+        raise ValueError("No forms in email")
+    if any(p in low for p in _CRED_ASK):
+        raise ValueError("Credential ask phrasing")
+    for m in __import__("re").finditer(r'(?:href|src)="([^"]+)"', html):
+        u = m.group(1).lower()
+        if u.startswith(("mailto:", "#")):
+            continue
+        if not u.startswith("https://") or "xn--" in u or "@" in u.split("/")[2]:
+            raise ValueError(f"Unsafe link {u}")
+
+
+async def send_email(*, to: str, subject: str, html: str) -> Optional[str]:
+    _assert_safe_email(subject, html)
+    if not EMAIL_KEY:
+        raise HTTPException(status_code=503, detail="Email is not configured")
+    async with httpx.AsyncClient(timeout=30) as http:
+        resp = await http.post(f"{EMAIL_BASE_URL}/api/v1/email/send", headers={"X-Email-Key": EMAIL_KEY}, json={"to": [to], "subject": subject, "html": html, "from_name": EMAIL_FROM_NAME})
+    if resp.status_code >= 400:
+        logger.error("email send failed: %s", resp.status_code)
+        raise HTTPException(status_code=502, detail="Failed to send email")
+    return resp.json().get("id")
+
+
+def _wrap(body: str) -> str:
+    return (f'<table role="presentation" width="100%"><tr><td style="padding:24px;font-family:Arial,sans-serif;color:#111">{body}'
+            f'<p style="font-size:12px;color:#888">Sent by {escape(EMAIL_FROM_NAME)}, a privacy-first security app. Apollo never asks for passwords, codes or payment details by email.</p></td></tr></table>')
+
+
+class GuardianIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)
+    email: str = Field(min_length=5, max_length=254, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    name: str = Field(default="", max_length=60)
+    owner_name: str = Field(default="", max_length=60)
+
+
+class Guardian(BaseDocument):
+    guardian_id: str
+    device_id: str
+    email: str
+    name: str
+    owner_name: str
+    confirmed: bool
+    confirm_token: str
+    created_at: datetime
+    deleted_at: Optional[datetime] = None
+    sent_today: int = 0
+    sent_day: str = ""
+
+
+@api.post("/family/guardians")
+async def add_guardian(body: GuardianIn):
+    count = await db.guardians.count_documents({"device_id": body.device_id, "deleted_at": None})
+    if count >= 3:
+        raise HTTPException(status_code=400, detail="Up to 3 trusted family members")
+    g = Guardian(guardian_id=uuid.uuid4().hex, device_id=body.device_id, email=body.email.lower(), name=body.name, owner_name=body.owner_name,
+                 confirmed=False, confirm_token=secrets.token_urlsafe(24), created_at=now_utc())
+    await db.guardians.insert_one(g.to_mongo())
+    link = f"{PUBLIC_BASE}/api/family/confirm/{g.confirm_token}" if PUBLIC_BASE.startswith("https://") else None
+    who = escape(body.owner_name) or "someone you know"
+    html = _wrap(f"<p>Hi {escape(body.name) or 'there'},</p><p>{who} uses {escape(EMAIL_FROM_NAME)} to stay safe from dangerous links and has asked to share safety alerts with you. "
+                 f"You would only receive plain-language notices when Apollo is <strong>barking</strong> (action needed) or <strong>biting</strong> (a threat was blocked).</p>"
+                 + (f'<p><a href="{link}">Yes, send me these alerts</a></p>' if link else "<p>Ask them to confirm this in the app.</p>")
+                 + "<p>If you did not expect this, simply ignore this email.</p>")
+    try:
+        await send_email(to=g.email, subject=f"{who} wants to share Apollo safety alerts with you", html=html)
+    except HTTPException as exc:
+        await db.guardians.update_one({"guardian_id": g.guardian_id}, {"$set": {"deleted_at": now_utc()}})
+        raise exc
+    return {"guardian_id": g.guardian_id, "confirmed": False}
+
+
+@api.get("/family/confirm/{token}")
+async def confirm_guardian(token: str):
+    from fastapi.responses import HTMLResponse
+    result = await db.guardians.update_one({"confirm_token": token, "deleted_at": None}, {"$set": {"confirmed": True}})
+    msg = "You're now receiving Apollo safety alerts. You can stop any time by asking the person who added you." if result.matched_count else "This link is no longer valid."
+    return HTMLResponse(f"<html><body style='font-family:Arial;padding:32px;background:#0B1220;color:#F4F7FA'><h2>Apollo</h2><p>{msg}</p></body></html>")
+
+
+@api.get("/family/guardians")
+async def list_guardians(device_id: str = Query(min_length=8, max_length=64)):
+    docs = await db.guardians.find({"device_id": device_id, "deleted_at": None}).to_list(10)
+    return [{"guardian_id": d["guardian_id"], "email": d["email"], "name": d["name"], "confirmed": d["confirmed"], "created_at": d["created_at"]} for d in docs]
+
+
+@api.delete("/family/guardians/{guardian_id}")
+async def remove_guardian(guardian_id: str, device_id: str = Query(min_length=8, max_length=64)):
+    r = await db.guardians.update_one({"guardian_id": guardian_id, "device_id": device_id, "deleted_at": None}, {"$set": {"deleted_at": now_utc()}})
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"removed": True}
+
+
+async def notify_guardians(event: PatrolEvent) -> None:
+    try:
+        guardians = await db.guardians.find({"device_id": event.device_id, "deleted_at": None, "confirmed": True}).to_list(10)
+        links = await db.family_links.find({"protected_device_id": event.device_id, "deleted_at": None}).to_list(10)
+        # fan out to paired guardian devices (in-app)
+        for ln in links:
+            await db.shared_events.update_one({"event_id": event.event_id, "guardian_device_id": ln["guardian_device_id"]}, {"$set": {
+                "event_id": event.event_id, "guardian_device_id": ln["guardian_device_id"], "from_label": ln.get("owner_name") or "Family member",
+                "state": event.state, "headline": event.headline, "what_to_do": event.what_to_do, "indicator_host": event.indicator_host, "occurred_at": event.occurred_at, "created_at": now_utc()}}, upsert=True)
+        today = now_utc().strftime("%Y-%m-%d")
+        for g in guardians:
+            sent = g.get("sent_today", 0) if g.get("sent_day") == today else 0
+            if sent >= 5:
+                continue
+            who = escape(g.get("owner_name") or "Your family member")
+            verb = "needs to be careful" if event.state == "barking" else "was protected"
+            html = _wrap(f"<p>Hi {escape(g.get('name') or 'there')},</p><p>{who} {verb}: <strong>{escape(event.headline)}</strong></p>"
+                         f"<p>{escape(event.what_happened)}</p><p><strong>What to do:</strong> {escape(event.what_to_do)}</p>"
+                         f"<p>Website involved: {escape(event.indicator_host or 'n/a')}. A quick call to check in is usually the most helpful thing.</p>")
+            await send_email(to=g["email"], subject=f"Apollo alert: {who} {verb}", html=html)
+            await db.guardians.update_one({"guardian_id": g["guardian_id"]}, {"$set": {"sent_day": today, "sent_today": sent + 1}})
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("guardian notify failed: %s", type(exc).__name__)
+
+
+class PairRequest(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)
+    owner_name: str = Field(default="", max_length=60)
+
+
+class LinkRequest(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)
+    code: str = Field(min_length=6, max_length=6)
+
+
+@api.post("/family/pair")
+async def create_pair_code(body: PairRequest):
+    code = "".join(secrets.choice("ABCDEFGHJKLMNPQRSTUVWXYZ23456789") for _ in range(6))
+    await db.pair_codes.insert_one({"code": code, "protected_device_id": body.device_id, "owner_name": body.owner_name, "created_at": now_utc(), "expires_at": now_utc() + timedelta(hours=24), "used": False})
+    return {"code": code, "expires_in_hours": 24}
+
+
+@api.post("/family/link")
+async def link_device(body: LinkRequest):
+    pc = await db.pair_codes.find_one({"code": body.code.upper(), "used": False})
+    if not pc or pc["expires_at"].replace(tzinfo=timezone.utc) < now_utc():
+        raise HTTPException(status_code=404, detail="Code not found or expired")
+    if pc["protected_device_id"] == body.device_id:
+        raise HTTPException(status_code=400, detail="You can't link a device to itself")
+    await db.pair_codes.update_one({"_id": pc["_id"]}, {"$set": {"used": True}})
+    await db.family_links.update_one({"protected_device_id": pc["protected_device_id"], "guardian_device_id": body.device_id},
+                                     {"$set": {"protected_device_id": pc["protected_device_id"], "guardian_device_id": body.device_id, "owner_name": pc.get("owner_name", ""), "created_at": now_utc(), "deleted_at": None}}, upsert=True)
+    return {"linked": True, "owner_name": pc.get("owner_name", "")}
+
+
+@api.get("/family/links")
+async def list_links(device_id: str = Query(min_length=8, max_length=64)):
+    protecting = await db.family_links.find({"guardian_device_id": device_id, "deleted_at": None}).to_list(20)
+    watched_by = await db.family_links.find({"protected_device_id": device_id, "deleted_at": None}).to_list(20)
+    return {"i_watch": [{"owner_name": l.get("owner_name", ""), "since": l["created_at"]} for l in protecting], "watching_me": len(watched_by)}
+
+
+@api.get("/family/shared-events")
+async def shared_events(device_id: str = Query(min_length=8, max_length=64)):
+    docs = await db.shared_events.find({"guardian_device_id": device_id}).sort("occurred_at", -1).to_list(100)
+    return [{k: v for k, v in d.items() if k != "_id"} for d in docs]
+
+
+
 app.include_router(api)
 app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 

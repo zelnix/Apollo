@@ -3,9 +3,10 @@
 // Raw personal content (page text, messages, contacts, photos, identifiers
 // beyond the anonymous device id) never leaves the device.
 
-export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "device_register";
+export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "device_register" | "family";
 
 const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
+  family: new Set(["device_id", "email", "name", "owner_name", "code"]),
   intel_check: new Set(["indicator_type", "value", "values", "device_id"]),
   patrol_sync: new Set([
     "event_id", "device_id", "category", "state", "status", "headline", "what_happened", "why", "what_to_do",

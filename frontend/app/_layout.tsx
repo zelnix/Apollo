@@ -49,6 +49,8 @@ export default function RootLayout() {
                   <Stack.Screen name="dev-tools" options={{ presentation: "modal" }} />
                   <Stack.Screen name="benchmark" options={{ presentation: "modal" }} />
                   <Stack.Screen name="privacy-disclosure" options={{ presentation: "modal" }} />
+                  <Stack.Screen name="digest" options={{ presentation: "modal" }} />
+                  <Stack.Screen name="family" options={{ presentation: "modal" }} />
                 </Stack>
                 <ShareIntakeListener />
                 <ToastHost />

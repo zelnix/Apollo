@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import X from "lucide-react-native/icons/x";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -8,6 +8,10 @@ import { GATES, runBenchmark, type BenchmarkReport } from "@/src/benchmark/runBe
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { storage } from "@/src/utils/storage";
+
+const HISTORY_KEY = "apollo.benchmark.history";
+interface HistoryEntry { ranAt: string; detectionRate: number; falsePositiveRate: number; barkingRate: number; pass: boolean; coverage: string; corpusVersion: string }
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -21,6 +25,11 @@ const useStyles = makeStyles((c) => ({
   metricLabel: { fontFamily: fonts.text, fontSize: 12, color: c.onSurfaceSecondary },
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: c.divider },
   url: { fontFamily: fonts.text, fontSize: 12, color: c.onSurfaceSecondary, flex: 1 },
+  chart: { flexDirection: "row", alignItems: "flex-end", gap: 4, height: 120, paddingTop: spacing.sm },
+  barWrap: { flex: 1, alignItems: "center", justifyContent: "flex-end", height: "100%", gap: 2 },
+  bar: { width: "100%", borderRadius: 3 },
+  gateLine: { position: "absolute", left: 0, right: 0, borderTopWidth: 1, borderStyle: "dashed", borderColor: c.borderStrong },
+  legend: { fontFamily: fonts.text, fontSize: 11, color: c.muted },
 }));
 
 export default function Benchmark() {
@@ -31,11 +40,20 @@ export default function Benchmark() {
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<BenchmarkReport | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  useEffect(() => { storage.getItem<string | null>(HISTORY_KEY, null).then((raw) => { if (raw) setHistory(JSON.parse(raw)); }); }, []);
 
   const run = async () => {
     setBusy(true); setError(null);
-    try { setReport(await runBenchmark()); } catch (e) { setError(e instanceof Error ? e.message : "Benchmark failed"); } finally { setBusy(false); }
+    try {
+      const r = await runBenchmark();
+      setReport(r);
+      const entry: HistoryEntry = { ranAt: r.ranAt, detectionRate: r.detectionRate, falsePositiveRate: r.falsePositiveRate, barkingRate: r.barkingRate, pass: r.gates.pass, coverage: r.intelCoverage, corpusVersion: r.corpusVersion };
+      const next = [...history, entry].slice(-30);
+      setHistory(next); await storage.setItem(HISTORY_KEY, JSON.stringify(next));
+    } catch (e) { setError(e instanceof Error ? e.message : "Benchmark failed"); } finally { setBusy(false); }
   };
+  const clearHistory = async () => { setHistory([]); await storage.removeItem(HISTORY_KEY); };
   const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
   const misses = report?.rows.filter((r) => (r.label === "threat" && !r.detected) || r.falsePositive) ?? [];
 
@@ -51,6 +69,39 @@ export default function Benchmark() {
           <Button testID="benchmark-run" label={busy ? "Running…" : report ? "Run again" : "Run benchmark"} onPress={run} disabled={busy} icon={busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : undefined} />
           {error ? <Text style={{ color: colors.barking, fontFamily: fonts.textMedium }} testID="benchmark-error">{error}</Text> : null}
         </Card>
+
+        {history.length > 0 ? (
+          <View>
+            <SectionTitle>History ({history.length} run{history.length > 1 ? "s" : ""})</SectionTitle>
+            <Card style={{ gap: spacing.md }} testID="benchmark-history">
+              <Body>Detection rate per run (green ≥ 90% gate, dashed line). Bars in orange missed a gate.</Body>
+              <View style={s.chart} testID="benchmark-chart">
+                <View style={[s.gateLine, { bottom: 0.9 * 100 }]} />
+                {history.map((h, i) => (
+                  <View key={h.ranAt} style={s.barWrap} testID={`benchmark-bar-${i}`}>
+                    <View style={[s.bar, { height: `${Math.max(4, h.detectionRate * 100)}%`, backgroundColor: h.pass ? colors.resting : colors.barking }]} />
+                  </View>
+                ))}
+              </View>
+              <View style={s.chart} testID="benchmark-chart-fp">
+                <View style={[s.gateLine, { bottom: 0.02 * 100 * 5 }]} />
+                {history.map((h, i) => (
+                  <View key={h.ranAt} style={s.barWrap}>
+                    <View style={[s.bar, { height: `${Math.max(3, Math.min(100, h.falsePositiveRate * 100 * 5))}%`, backgroundColor: h.falsePositiveRate < GATES.falsePositiveMax ? colors.resting : colors.barking }]} />
+                  </View>
+                ))}
+              </View>
+              <Text style={s.legend}>Second chart: false-positive rate ×5 scale (dashed line = 2% gate). Oldest run on the left.</Text>
+              {[...history].reverse().slice(0, 5).map((h) => (
+                <View key={h.ranAt} style={s.row}>
+                  <Text style={s.url}>{new Date(h.ranAt).toLocaleString()} · {h.coverage}</Text>
+                  <Pill tone={h.pass ? "resting" : "barking"} label={`${pct(h.detectionRate)} / ${pct(h.falsePositiveRate)}`} />
+                </View>
+              ))}
+              <Button testID="benchmark-clear-history" variant="ghost" label="Clear history" onPress={clearHistory} />
+            </Card>
+          </View>
+        ) : null}
 
         {report ? (
           <>

@@ -12,7 +12,11 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.emergent.threatpatrol.hynln9",
       "infoPlist": {
-        "NSUserNotificationsUsageDescription": "Tell you when Apollo barks about a threat"
+        "NSUserNotificationsUsageDescription": "Tell you when Apollo barks about a threat",
+        "NSLocationWhenInUseUsageDescription": "Check whether your current Wi‑Fi is open or secured"
+      },
+      "entitlements": {
+        "com.apple.developer.networking.wifi-info": true
       }
     },
     "android": {
