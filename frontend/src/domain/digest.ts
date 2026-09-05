@@ -24,7 +24,7 @@ export function buildWeeklyDigest(events: PatrolEvent[], now = Date.now()): Week
   const topHosts = [...hosts.entries()].map(([host, count]) => ({ host, count })).sort((a, b) => b.count - a.count).slice(0, 3);
   const days = new Set(week.map((e) => new Date(e.occurred_at).toDateString()));
   const quietDays = 7 - days.size;
-  const headline = week.length === 0 ? "A quiet week" : blocked > 0 ? `Apollo blocked ${blocked} threat${blocked > 1 ? "s" : ""}` : warned > 0 ? `Apollo warned you ${warned} time${warned > 1 ? "s" : ""}` : `${checked} link${checked > 1 ? "s" : ""} checked, all clear`;
+  const headline = week.length === 0 ? "A quiet week" : blocked > 0 ? `Apollo blocked ${blocked} threat${blocked > 1 ? "s" : ""}` : warned > 0 ? `Apollo warned you ${warned} time${warned > 1 ? "s" : ""}` : checked === 0 && connection > 0 ? `${connection} Wi‑Fi warning${connection > 1 ? "s" : ""}` : `${checked} link${checked > 1 ? "s" : ""} checked, all clear`;
   const summary = week.length === 0
     ? "No links checked and nothing to warn about. Apollo was resting within the checks it could see."
     : `You checked ${checked} link${checked === 1 ? "" : "s"}. ${letThrough} looked fine, ${warned} needed care${blocked ? `, and ${blocked} ${blocked === 1 ? "was" : "were"} blocked after verification` : ""}.${connection ? ` ${connection} Wi‑Fi warning${connection === 1 ? "" : "s"}.` : ""} ${quietDays} quiet day${quietDays === 1 ? "" : "s"}.`;

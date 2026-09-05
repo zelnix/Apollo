@@ -1,0 +1,33 @@
+{
+  "summary": "Apollo V1 iteration-3 PASSED end-to-end. Backend: 30/30 pytest cases (16 new /app/backend/tests/test_family.py + 14 regression /app/backend/tests/test_apollo_backend.py). Family Sharing: POST /api/family/guardians accepts delivered@resend.dev via Emergent-managed email and returns {guardian_id, confirmed:false}; 4th guardian on same device_id → 400 'Up to 3 trusted family members'; invalid email → 422; DELETE removes and list confirms removal. GET /api/family/confirm/{token} — token pulled from Mongo (DB_NAME=test_database) collection `guardians` → HTMLResponse containing 'now receiving'; garbage token → HTML 'no longer valid'. POST /api/family/pair returns 6-char code; POST /api/family/link marries dev-B to dev-A, second use of same code → 404, self-link → 400. GET /api/family/links returns i_watch=[{owner_name:'Alex'}] on dev-B and watching_me=1 on dev-A. Patrol fanout: barking event on dev-A appears in /api/family/shared-events?device_id=dev-B within 2.5s with headline+from_label='Alex'; a 'resting' event is correctly NOT shared. Frontend (Expo web, 390x844 mobile viewport, fresh localStorage): Onboarding (onboarding-start-button) → /privacy-disclosure (disclosure-accept-button) → Home; home-digest-card shows 'A quiet week' → /digest exposes digest-headline='A quiet week', digest-summary (94 chars), 6 digest-stat-* tiles; digest-close returns. Settings → settings-family → family-make-code produces 6-char family-pair-code ('CRNQZJ' on this run); adding delivered@resend.dev via family-add-guardian creates a family-guardian-* row with 'Awaiting confirmation' and can be removed; entering 'ZZZZZZ' in family-link-code + family-link-button shows family-error 'Code not found or expired'. Settings → settings-dev-tools → dev-adapter-OPEN_WIFI: Home hero becomes 'growling' with an 'open Wi‑Fi' Patrol event; Guard tab guard-network reads 'Open Wi‑Fi (no password).' and guard-wifi-pill = 'Wi‑Fi: open'. Toggling NORMAL then OPEN_WIFI again does not spawn additional distinct events (event_id-based upsert). dev-adapter-CAPTIVE_PORTAL surfaces the 'sign in first' Patrol event. Settings → settings-benchmark: two runs produce benchmark-history with benchmark-chart, benchmark-bar-0 and benchmark-bar-1 visible; benchmark-clear-history empties the section. Regression: /check?url=http://testsafebrowsing.appspot.com/s/phishing.html&source=link → check-result-state 'Apollo is barking'; Ask suggestion 0 streams a full multi-line Apollo reply visibly (screenshot verified). No React Native red screens, no deprecated Expo packages introduced, no console errors of concern.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_family.py",
+    "/app/backend/tests/test_apollo_backend.py",
+    "/app/backend/tests/test_benchmark.py",
+    "/app/test_reports/pytest/pytest_iter3.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py `notify_guardians` swallows all exceptions with a single warning — good for safety, but consider adding structured logging (recipient hash + event_id) to aid audit of the 5/day cap.",
+    "server.py:407 fanout is fired only on INSERT, not on UPDATE — this is correct today (event_id-based upsert wouldn't re-notify) but a devicewide 'resend' path may be desirable if a barking event is later escalated to biting; currently no code path emits a new fanout on state transitions via PATCH /api/patrol/events/{event_id}.",
+    "server.py `add_guardian` inserts the guardian row before send_email; if send_email raises non-HTTPException the row remains inserted (only HTTPException triggers cleanup). Consider broadening the except clause.",
+    "server.py `list_links` returns owner_name via `l.get('owner_name','')` — always defaults to '' when the pairing was created with an empty owner_name; UI copies rely on a friendly label, which is fine but worth verifying the family screen does not render an empty tag.",
+    "frontend `ask-message-*` testID pattern is missing on message bubbles — SSE streaming clearly works (verified visually) but automated regression on Ask message DOM would be more robust with a dedicated testID on each message bubble."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_family.py (new — 16 tests covering guardians, confirm token via Mongo, pairing, linking, patrol fanout for barking vs resting)"
+  ],
+  "success_rate": {"backend": "100% (30/30: 16 new family + 14 regression)", "frontend": "100% for iteration-3 scope (digest, family, Connection Guard OPEN_WIFI/CAPTIVE_PORTAL, benchmark history, regression check-link + Ask streaming)"},
+  "seed_data_creation": "Ephemeral test devices dev-A-<uuid8> and dev-B-<uuid8> per pytest module; guardians/pair_codes/family_links/shared_events/patrol_events cleaned in fixture teardown against MONGO_URL/DB_NAME. Frontend clears localStorage per session to force onboarding.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend URL https://threat-patrol-1.preview.emergentagent.com/api. Confirm-token flow requires reading `guardians` from Mongo directly — helper in test_family.py::TestConfirmToken. Guardian cap = 3 (4th → 400). Fanout runs in a fire-and-forget asyncio.create_task; a 2–3s sleep is enough on preview. Frontend: use testID 'onboarding-start-button' (NOT 'onboarding-continue'). CAPTIVE_PORTAL Patrol headline contains 'sign in first'. Benchmark run takes ~15–20s each on preview; wait accordingly. GSB still auth_error by design. Iteration-3 test file /app/backend/tests/test_family.py is fully reusable.",
+  "rca_of_issue": "N/A — all iteration-3 acceptance criteria met on first pass."
+}

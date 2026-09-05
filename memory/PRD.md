@@ -22,11 +22,12 @@ Privacy-first mobile security app (iOS/Android, Expo + FastAPI + MongoDB) that d
 - Phase 1–5 MVP: domain layer, state machine, Patrol, capability model, privacy guardrails; native shell + truthful status UI; Check-a-link with local + intel; four states w/ thresholds; Patrol timeline + detail + Trust This (growling only, exact link) + revoke; verified block → Biting (mock adapter simulated, labelled); cautious de-escalation (2-min cooldown, verify-now freshness 10 min); Ask Apollo streaming explanation-only.
 - Testing iteration 1: backend 13/13 after 422 fix; frontend flows verified (barking→biting→contained→growling→verify→resting; growling→trust→settings).
 - Iteration 2 (2026-06): Share Intake (expo-share-intent config plugin for iOS Share Extension + Android ACTION_SEND; `/check?url=&source=` deep link auto-run; clipboard link banner on Home, native only). Threat Benchmark (shared corpus `src/benchmark/corpus.json` 60/60; in-app `/benchmark` screen scoring detection/FP vs gates; backend `POST /api/intel/check-batch`; pytest `tests/test_benchmark.py` → `/app/test_reports/benchmark_report.json`). Site Guard native: Android DNS-only `VpnService` filter (Kotlin) + module wiring; iOS Safari Content Blocker extension + `plugins/withApolloSiteGuard.js` config plugin + EAS appExtensions config; `SITE_GUARD_NATIVE.md`. Australian privacy disclosure screen in onboarding + Settings. Testing iteration 2: all pass.
+- Iteration 3 (2026-06): Connection Guard (NetworkStatus wifiSecurity/captivePortal/vpnActive; Android WifiInfo.currentSecurityType + NET_CAPABILITY_CAPTIVE_PORTAL; iOS NEHotspotNetwork limited; `domain/connection.ts` → growling connection events, deduped). Weekly Patrol Digest (`domain/digest.ts`, Home card, `/digest`). Benchmark History (local, bar charts, `/benchmark`). Family Sharing (`/family`; backend `/api/family/*`: guardian email via Emergent Resend w/ confirm link + 5/day cap, pairing codes, shared_events fan-out on barking/biting). Testing iteration 3: 30/30 backend, all frontend flows pass.
 
 ## Known gaps / notes
 - Safe Browsing key returns 401 (API not enabled on the key's Google Cloud project or key restricted to Generative Language API). Enable "Safe Browsing API" for that project or create a separate key; backend picks it up from SAFE_BROWSING_API_KEY.
-- Native Swift/Kotlin stubs only run in EAS dev/prod builds (Publish → build); Expo Go/web use labelled mocks.
-- Connection Guard, Site Guard (real filter), Share intake: "coming later" (truthfully surfaced).
+- Native code (share extension, DNS filter, Safari content blocker, Wi‑Fi security) only runs in EAS dev/prod builds (Publish → build); Expo Go/web use labelled mocks.
+- PUBLIC_API_BASE in backend/.env must be the production https host after deploy so guardian confirm links work.
 
 ## Backlog
 - P0: Real Safe Browsing key; EAS dev build validation of ApolloSecurity module, DNS filter, Safari content blocker, share extension
