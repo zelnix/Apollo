@@ -4,11 +4,11 @@ import ChevronRight from "lucide-react-native/icons/chevron-right";
 import Phone from "lucide-react-native/icons/phone";
 import X from "lucide-react-native/icons/x";
 import React, { useState } from "react";
-import { Linking, Platform, Pressable, Text, TextInput, View } from "react-native";
+import { Linking, Platform, Pressable, Switch, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { apiDelete, apiGet, apiPost } from "@/src/api/client";
+import { apiDelete, apiGet, apiPost, apiPut } from "@/src/api/client";
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { type FamilyWeekly, lastSeenLabel, weeklyDetails, weeklyHeadline } from "@/src/domain/familyWeekly";
 import { STATE_NAME, type ApolloState } from "@/src/domain/types";
@@ -51,6 +51,17 @@ export default function Family() {
   const incidents = useQuery({ queryKey: ["family-incidents", deviceId], enabled: !!deviceId, queryFn: () => apiGet<{ scent_id: string; from_label: string; headline: string; state: ApolloState; steps: { id: string }[]; done: string[]; resolved: boolean; updated_at: string }[]>(`/family/incidents?device_id=${deviceId}`) });
   const acks = useQuery({ queryKey: ["family-acks", deviceId], enabled: !!deviceId, queryFn: () => apiGet<Ack[]>(`/family/acks?device_id=${deviceId}`), refetchInterval: 30000 });
   const weekly = useQuery({ queryKey: ["family-weekly", deviceId], enabled: !!deviceId, queryFn: () => apiGet<FamilyWeekly[]>(`/family/weekly?device_id=${deviceId}`) });
+  const weeklyPref = useQuery({ queryKey: ["family-weekly-pref", deviceId], enabled: !!deviceId, queryFn: () => apiGet<{ enabled: boolean; last_sent_at: string | null; window: string }>(`/family/weekly/notify?device_id=${deviceId}`) });
+  const setWeeklyPref = useMutation({
+    mutationFn: (enabled: boolean) => apiPut<{ enabled: boolean }>("/family/weekly/notify", "family", { device_id: deviceId, enabled }),
+    onSuccess: (r) => { qc.invalidateQueries({ queryKey: ["family-weekly-pref", deviceId] }); showToast(r.enabled ? "Sunday check-in on. Apollo will nudge you Sunday evening." : "Sunday check-in off. The Family screen still shows the week.", "neutral"); },
+  });
+  const [weeklyPreview, setWeeklyPreview] = useState<string | null>(null);
+  const previewWeekly = useMutation({
+    mutationFn: (send: boolean) => apiPost<{ sent: boolean; title?: string; message?: string; reason?: string }>("/family/weekly/send-now", "family", { device_id: deviceId, preview_only: !send }),
+    onSuccess: (r, send) => { if (r.message) setWeeklyPreview(`${r.title} — ${r.message}`); if (send) showToast(r.sent ? "Sent. Check your notifications." : "Nothing to send yet — pair with someone first.", r.sent ? "resting" : "neutral"); },
+    onError: (e) => showToast(e instanceof Error ? e.message : "Couldn't reach Apollo's relay.", "barking"),
+  });
   const ack = useMutation({
     mutationFn: (p: { event_id: string; reply: string }) => apiPost<{ ack_label: string }>(`/family/shared-events/${p.event_id}/ack`, "family", { device_id: deviceId, reply: p.reply }),
     onSuccess: (r) => { qc.invalidateQueries({ queryKey: ["shared-events", deviceId] }); showToast(`Marked: ${r.ack_label}`, "resting"); },
@@ -133,6 +144,16 @@ export default function Family() {
                     {w.phone ? <View style={{ flexDirection: "row" }}><Button testID={`family-weekly-call-${w.protected_device_id}`} variant={h.tone === "growling" ? "primary" : "ghost"} label={`Call ${w.owner_name || "them"}`} icon={<Phone size={16} color={h.tone === "growling" ? colors.onBrandPrimary : colors.onSurface} />} onPress={() => void Linking.openURL(`tel:${w.phone.replace(/[^+\d]/g, "")}`)} /></View> : null}
                   </View>); })}
                 <Body>Counts only — Apollo never shares what they checked, their messages or their links.</Body>
+                <View style={[s.row, { borderBottomWidth: 0 }]} testID="family-weekly-notify-row">
+                  <View style={{ flex: 1 }}><Text style={s.name}>Sunday check-in notification</Text><Body>{weeklyPref.data?.window ?? "Sunday 5–9 pm, your local time"}{weeklyPref.data?.last_sent_at ? ` · last sent ${new Date(weeklyPref.data.last_sent_at).toLocaleDateString()}` : ""}. Same calm summary, so you don&apos;t have to open the app.</Body></View>
+                  <Switch testID="family-weekly-notify-switch" value={weeklyPref.data?.enabled ?? true} onValueChange={(v) => setWeeklyPref.mutate(v)} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} />
+                </View>
+                <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}>
+                  <Button testID="family-weekly-preview" variant="ghost" label={previewWeekly.isPending ? "…" : "Preview the notification"} onPress={() => previewWeekly.mutate(false)} disabled={previewWeekly.isPending} />
+                  {Platform.OS !== "web" ? <Button testID="family-weekly-send-now" variant="secondary" label="Send it to me now" onPress={() => previewWeekly.mutate(true)} disabled={previewWeekly.isPending} /> : null}
+                </View>
+                {weeklyPreview ? <Body testID="family-weekly-preview-text">{weeklyPreview}</Body> : null}
+                {Platform.OS === "web" ? <Body>Notifications arrive on the phone app (a native build) — the preview shows the exact wording.</Body> : null}
               </Card>
             </>
           ) : null}

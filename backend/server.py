@@ -90,6 +90,7 @@ class DeviceRegister(BaseModel):
     platform: str = Field(max_length=16)
     adapter_mode: str = Field(max_length=16)
     app_version: str = Field(default="1.0.0", max_length=16)
+    tz_offset_minutes: int = Field(default=0, ge=-840, le=840)  # coarse UTC offset; times the Sunday family check-in
 
 
 class Device(BaseDocument):
@@ -97,6 +98,7 @@ class Device(BaseDocument):
     platform: str
     adapter_mode: str
     app_version: str
+    tz_offset_minutes: int = 0
     created_at: datetime
     last_seen_at: datetime
 
@@ -327,7 +329,7 @@ async def register_device(body: DeviceRegister):
     if existing:
         await db.devices.update_one(
             {"device_id": body.device_id},
-            {"$set": {"last_seen_at": ts, "platform": body.platform, "adapter_mode": body.adapter_mode, "app_version": body.app_version}},
+            {"$set": {"last_seen_at": ts, "platform": body.platform, "adapter_mode": body.adapter_mode, "app_version": body.app_version, "tz_offset_minutes": body.tz_offset_minutes}},
         )
         return {"device_id": body.device_id, "registered": False}
     device = Device(**body.model_dump(), created_at=ts, last_seen_at=ts)
@@ -1035,9 +1037,8 @@ async def list_incident_notes(scent_id: str, device_id: str = Query(min_length=8
 
 # Family Weekly Check-In — a calm, count-only summary of a watched person's week. Uses the event summaries the
 # protected device already syncs (state/status/category/time); never headlines, hosts or message text.
-@api.get("/family/weekly")
-async def family_weekly(device_id: str = Query(min_length=8, max_length=64)):
-    links = await db.family_links.find({"guardian_device_id": device_id, "deleted_at": None}).to_list(20)
+async def _weekly_rollup(guardian_device_id: str) -> list[dict[str, Any]]:
+    links = await db.family_links.find({"guardian_device_id": guardian_device_id, "deleted_at": None}).to_list(20)
     since = now_utc() - timedelta(days=7)
     out = []
     for ln in links:
@@ -1050,7 +1051,7 @@ async def family_weekly(device_id: str = Query(min_length=8, max_length=64)):
         open_alerts = sum(1 for e in alerts if e["status"] == "active")
         days = {e["occurred_at"].date().isoformat() for e in evs}
         dev = await db.devices.find_one({"device_id": pid}, {"last_seen_at": 1})
-        incs = await db.shared_incidents.find({"protected_device_id": pid, "guardian_device_id": device_id, "shared_at": {"$gte": since}}, {"resolved": 1}).to_list(50)
+        incs = await db.shared_incidents.find({"protected_device_id": pid, "guardian_device_id": guardian_device_id, "shared_at": {"$gte": since}}, {"resolved": 1}).to_list(50)
         out.append({
             "protected_device_id": pid, "owner_name": ln.get("owner_name", ""), "phone": _link_phone(ln),
             "week_start": since, "total": len(evs), "by_state": by_state, "alerts": len(alerts), "open_alerts": open_alerts,
@@ -1059,6 +1060,127 @@ async def family_weekly(device_id: str = Query(min_length=8, max_length=64)):
             "last_seen_at": (dev or {}).get("last_seen_at"),
         })
     return out
+
+
+def weekly_sentence(w: dict[str, Any], at: Optional[datetime] = None) -> str:
+    """Server-side twin of frontend weeklyHeadline — same calm wording, so the push matches the screen."""
+    who = w.get("owner_name") or "Your family member"
+    seen = w.get("last_seen_at")
+    silent_days = ((at or now_utc()) - seen.replace(tzinfo=timezone.utc)).days if seen else 999
+    if w["total"] == 0 and silent_days >= 7:
+        return f"Apollo hasn't heard from {who}'s phone this week — worth a friendly check-in."
+    if w["total"] == 0:
+        return f"A quiet week for {who}. Nothing came up that needed a look."
+    if w["open_alerts"] > 0:
+        n = w["open_alerts"]
+        return f"{who} has {n} alert{'s' if n > 1 else ''} still open this week. A call to walk through it would help."
+    if w["alerts"] > 0:
+        n = w["alerts"]
+        return f"{who} had {n} alert{'s' if n > 1 else ''} this week and handled {'them all' if n > 1 else 'it'}."
+    return f"A calm week for {who}. Apollo looked at {w['total']} thing{'s' if w['total'] > 1 else ''} and none needed attention."
+
+
+@api.get("/family/weekly")
+async def family_weekly(device_id: str = Query(min_length=8, max_length=64)):
+    return await _weekly_rollup(device_id)
+
+
+# Sunday check-in push — one gentle notification per guardian per week, in their local Sunday evening
+# (17:00–20:59 by the device's coarse UTC offset). Counts only; same wording as the Family screen.
+WEEKLY_WINDOW = range(17, 21)
+
+
+def _week_key(local: datetime) -> str:
+    iso = local.isocalendar()
+    return f"{iso[0]}-W{iso[1]:02d}"
+
+
+async def send_weekly_checkin(guardian_device_id: str, week_key: str, *, force: bool = False) -> dict[str, Any]:
+    rollup = await _weekly_rollup(guardian_device_id)
+    if not rollup:
+        return {"sent": False, "reason": "no_links"}
+    dev = await db.devices.find_one({"device_id": guardian_device_id}) or {}
+    if not force and dev.get("weekly_checkin_enabled") is False:
+        return {"sent": False, "reason": "opted_out"}
+    if not force and await db.weekly_checkin_sends.find_one({"guardian_device_id": guardian_device_id, "week_key": week_key}):
+        return {"sent": False, "reason": "already_sent"}
+    lines = [weekly_sentence(w) for w in rollup]
+    message = " ".join(lines[:2]) + (f" And {len(lines) - 2} more — open Family for the full check-in." if len(lines) > 2 else "")
+    open_total = sum(w["open_alerts"] for w in rollup)
+    title = "Apollo: Sunday check-in" if open_total == 0 else "Apollo: Sunday check-in — someone may need a call"
+    await send_push(recipients=[guardian_device_id], data={"title": title, "message": message, "action_url": "/family", **PUSH_FAMILY},
+                    idempotency_key=f"weekly-{guardian_device_id}-{week_key}" + ("-manual-" + uuid.uuid4().hex[:6] if force else ""))
+    if not force:
+        await db.weekly_checkin_sends.update_one({"guardian_device_id": guardian_device_id, "week_key": week_key}, {"$set": {"sent_at": now_utc(), "message": message}}, upsert=True)
+    return {"sent": True, "title": title, "message": message}
+
+
+async def weekly_checkin_tick(at: Optional[datetime] = None) -> int:
+    """Run every 15 minutes; sends to guardians whose local time is inside the Sunday window."""
+    at = at or now_utc()
+    guardians = await db.family_links.distinct("guardian_device_id", {"deleted_at": None})
+    sent = 0
+    for gid in guardians:
+        dev = await db.devices.find_one({"device_id": gid}) or {}
+        tz = int(dev.get("tz_offset_minutes") or ((dev.get("settings") or {}).get("quiet_hours") or {}).get("tz_offset_minutes", 0) or 0)
+        local = at + timedelta(minutes=tz)
+        if local.weekday() != 6 or local.hour not in WEEKLY_WINDOW or in_quiet_hours((dev.get("settings") or {}).get("quiet_hours"), at):
+            continue
+        try:
+            r = await send_weekly_checkin(gid, _week_key(local))
+            sent += int(bool(r.get("sent")))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("weekly check-in push failed for a guardian (non-blocking): %s", type(exc).__name__)
+    return sent
+
+
+async def weekly_checkin_loop() -> None:
+    while True:
+        try:
+            await weekly_checkin_tick()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("weekly check-in tick failed: %s", type(exc).__name__)
+        await asyncio.sleep(15 * 60)
+
+
+class WeeklyPrefIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)
+    enabled: bool = True
+
+
+@api.put("/family/weekly/notify")
+async def set_weekly_pref(body: WeeklyPrefIn):
+    await db.devices.update_one({"device_id": body.device_id}, {"$set": {"weekly_checkin_enabled": body.enabled, "last_seen_at": now_utc()}}, upsert=True)
+    return {"enabled": body.enabled}
+
+
+@api.get("/family/weekly/notify")
+async def get_weekly_pref(device_id: str = Query(min_length=8, max_length=64)):
+    dev = await db.devices.find_one({"device_id": device_id}) or {}
+    last = await db.weekly_checkin_sends.find_one({"guardian_device_id": device_id}, sort=[("sent_at", -1)])
+    return {"enabled": dev.get("weekly_checkin_enabled", True) is not False, "last_sent_at": (last or {}).get("sent_at"), "window": "Sunday 5–9 pm, your local time"}
+
+
+class WeeklySendNowIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)
+    preview_only: bool = False  # True → compose the text without pushing (works on web / Expo Go)
+
+
+@api.post("/family/weekly/send-now")
+async def weekly_send_now(body: WeeklySendNowIn):
+    """Guardian asks to see this week's check-in as a notification right now (or just its text)."""
+    if body.preview_only:
+        rollup = await _weekly_rollup(body.device_id)
+        if not rollup:
+            return {"sent": False, "reason": "no_links"}
+        lines = [weekly_sentence(w) for w in rollup]
+        return {"sent": False, "preview": True, "title": "Apollo: Sunday check-in", "message": " ".join(lines[:2]) + (f" And {len(lines) - 2} more — open Family for the full check-in." if len(lines) > 2 else "")}
+    try:
+        return await send_weekly_checkin(body.device_id, _week_key(now_utc()), force=True)
+    except HTTPException:
+        raise
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail="Apollo's alert relay didn't respond. Try again in a minute.")
 
 
 @api.get("/family/acks")
@@ -1564,6 +1686,7 @@ SEED_BLOCKLIST = [
 
 @app.on_event("startup")
 async def startup():
+    asyncio.create_task(weekly_checkin_loop())
     await db.reputation_cache.create_index("indicator_digest", unique=True)
     await db.reputation_cache.create_index("expires_at")  # plain index; expiry is checked at read time, never auto-deleted
     await db.patrol_events.create_index([("device_id", 1), ("event_id", 1)], unique=True)

@@ -326,3 +326,15 @@ frontend:
     working: "NA"
     file: "frontend/app/family.tsx, frontend/app/family/incident/[id].tsx, frontend/app/patrol/scent/[id].tsx, frontend/src/domain/familyWeekly.ts"
     needs_retesting: true
+
+## Iteration 24 — Sunday check-in notification
+backend:
+  - task: "weekly_checkin_loop/tick (Sunday 17–20 local via device tz_offset_minutes, quiet hours respected, once per ISO week, opt-out), GET/PUT /api/family/weekly/notify, POST /api/family/weekly/send-now {preview_only}. tests/test_family_weekly_push.py 5/5"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+frontend:
+  - task: "Family weekly card: family-weekly-notify-switch, family-weekly-preview → family-weekly-preview-text, family-weekly-send-now (native only). Register sends tz_offset_minutes. Self-tested via screenshot: preview text renders."
+    implemented: true
+    working: true
+    file: "frontend/app/family.tsx, frontend/src/store/ApolloContext.tsx, frontend/src/domain/privacy.ts"

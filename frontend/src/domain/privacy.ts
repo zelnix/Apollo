@@ -6,7 +6,7 @@
 export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "device_register" | "family" | "push_register" | "push_test" | "device_settings" | "message_check" | "message_extract" | "feedback" | "page_extract" | "app_check" | "account_check" | "breach_check";
 
 const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
-  family: new Set(["device_id", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id", "scent_id", "headline", "state", "events", "steps", "done", "note", "resolved", "kind", "text", "from_name"]),
+  family: new Set(["device_id", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id", "scent_id", "headline", "state", "events", "steps", "done", "note", "resolved", "kind", "text", "from_name", "enabled", "preview_only"]),
   intel_check: new Set(["indicator_type", "value", "values", "device_id", "expand"]),
   feedback: new Set(["device_id", "event_id", "kind", "state", "host", "sources", "note"]),
   patrol_sync: new Set([
@@ -15,7 +15,7 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   ]),
   trust_sync: new Set(["device_id", "indicator_type", "indicator_digest", "indicator_host", "event_id", "trust_id"]),
   ask_apollo: new Set(["device_id", "message", "context"]),
-  device_register: new Set(["device_id", "platform", "adapter_mode", "app_version"]),
+  device_register: new Set(["device_id", "platform", "adapter_mode", "app_version", "tz_offset_minutes"]),
   // Alert notifications: the push token is an opaque delivery address (FCM/APNs), relayed and not stored by us.
   push_register: new Set(["user_id", "platform", "device_token"]),
   push_test: new Set(["device_id"]),

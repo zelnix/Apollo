@@ -241,7 +241,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const identity = await SecureCore.createDeviceIdentity();
     setDeviceId(identity.deviceId);
     try {
-      await apiPost("/devices/register", "device_register", { device_id: identity.deviceId, platform: Platform.OS, adapter_mode: SECURITY_MODE, app_version: "1.0.0" });
+      await apiPost("/devices/register", "device_register", { device_id: identity.deviceId, platform: Platform.OS, adapter_mode: SECURITY_MODE, app_version: "1.0.0", tz_offset_minutes: -new Date().getTimezoneOffset() });
     } catch { /* offline is fine; registration retries on next launch */ }
     await securityAdapter.startProtection();
     await storage.setItem(K.protection, true);
