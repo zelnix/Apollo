@@ -10,7 +10,13 @@ echo "== Guard Dog Android native gate $(date -u +%FT%TZ) =="
 echo "host: $(uname -m) $(uname -s); java: $(java -version 2>&1 | head -1); ANDROID_HOME=${ANDROID_HOME:-unset}"
 [ -f "$HOME/.gradle/gradle.properties" ] && grep -H "aapt2FromMavenOverride" "$HOME/.gradle/gradle.properties" || true
 cd "$SDK"
-[ -f gradlew ] || gradle wrapper --gradle-version 8.13 --quiet
+# Bootstrap the wrapper if the script or its JAR is missing (a missing gradle-wrapper.jar fails with
+# ClassNotFoundException: org.gradle.wrapper.GradleWrapperMain before anything compiles).
+if [ ! -f gradlew ] || [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+  echo "gradle wrapper incomplete; regenerating with pinned Gradle 8.13"
+  gradle wrapper --gradle-version 8.13 --distribution-type bin --quiet
+fi
+unzip -l gradle/wrapper/gradle-wrapper.jar | grep -q "org/gradle/wrapper/GradleWrapperMain.class" && echo "wrapper jar ok: $(sha256sum gradle/wrapper/gradle-wrapper.jar | cut -c1-16)…"
 VEC="-Dguarddog.vectors=$ROOT/security/test-vectors"
 
 echo "-- 1. dependency resolution"

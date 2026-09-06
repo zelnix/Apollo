@@ -93,3 +93,7 @@ packages/guarddog-expo-module/android/.gradle/
 credentials.json
 *.key
 .credentials
+
+# Gradle wrapper bootstrap JAR must be tracked (CI fails with ClassNotFoundException: GradleWrapperMain without it)
+!packages/guarddog-android-sdk/gradle/wrapper/gradle-wrapper.jar
+!**/gradle/wrapper/gradle-wrapper.jar
