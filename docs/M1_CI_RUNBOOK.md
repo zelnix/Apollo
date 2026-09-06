@@ -31,6 +31,24 @@ Three CI defects, none in Guard Dog enforcement or the APK itself — fixed in t
   `expo-modules-jsi 57.0.8`; GuardDogCore itself was 10/10. No Expo or Guard Dog Swift source is patched.
 - `docs/M1_CI_RUNBOOK.md` (this note).
 
+### Run 34035232915 (tip `05161e2`) → run 4 (tip `6d19825`): CI green, but the APK crashed on the proof phone — correction pass 2
+Device exception at first launch, before the harness: `UnsupportedOperationException: This function has a reified type parameter and thus can
+only be inlined at compilation time, not called directly` → `Intrinsics.reifiedOperationMarker` → `GuardDogExpoModule.definition (GuardDogExpoModule.kt:346)`.
+Root cause (bytecode-proven with `javap -c -p` on the compiled module): 12 surviving `reifiedOperationMarker` + `io.github.lukmccall.pika.throwNonReified*Error`
+stubs inlined into `definition()` by the `Function`/`AsyncFunction` registrations with typed arguments (`configure`, `acceptRuleBundle`, `analyzeUrl`,
+`requestPermission`, `startProtection`, `stopProtection`). Expo SDK 57 resolves those argument types with the **Pika Kotlin compiler plugin**, which is applied
+only by `expo-module-gradle-plugin`; `packages/guarddog-expo-module/android/build.gradle` still used the legacy `ExpoModulesCorePlugin.gradle` path, so the
+module compiled (AC-01 step 5 passed) but could never register. Fix + guards (reviewer-requested; **expected** in the next diff):
+- `packages/guarddog-expo-module/android/build.gradle` — `plugins { id 'com.android.library'; id 'expo-module-gradle-plugin' }`, `expoModule { canBePublished false }`,
+  JVM unit-test deps, `unitTests.returnDefaultValues = true`. No Kotlin/Swift source, bundle, verifier or VPN change.
+- `packages/guarddog-expo-module/android/src/test/.../GuardDogExpoModuleDefinitionTest.kt` — executes the REAL `GuardDogExpoModule().definition()` (as Expo's
+  ModuleHolder does) and scans the compiled class for `reifiedOperationMarker`/`throwNonReified`. Pre-fix: 2/2 FAIL with the exact device exception
+  (`…definition(GuardDogExpoModule.kt:346)`); post-fix: 2/2 PASS, `reifiedOperationMarker=0`, 14 compile-time `PTypeDescriptor` constructions.
+- `scripts/ci/android-native-gate.sh` step 5b — runs that test in the prebuilt app, copies `expo-module-test-results/*.xml`, and fails if any
+  `GuardDogExpoModule*.class` under `build/tmp/kotlin-classes/debug` contains a reified stub. "assembleDebug succeeded" alone no longer qualifies an APK.
+- `docs/M1_CI_RUNBOOK.md` (this note).
+Run-4 APK `ea719d72…`/its successor are void; the next run yields a new provenance-bound APK.
+
 ## 4. Download artifacts and attach here
 | Artifact | Files to attach |
 |---|---|
@@ -52,6 +70,7 @@ v25 remains the served/frozen bundle; `apk-provenance.json.commit` = the new tip
 
 ## 5. Audit criteria (what will be checked before the APK is cleared)
 - all jobs actually executed (no skipped gate steps); AC-02 shows SwiftPM build + parity tests + Expo iOS module compiled via CocoaPods/xcodebuild
+- `android-native-gate.txt`: `expo module definition test: 2 run, 0 failed`, `reified stubs: 0`, `expo module: loads (definition() evaluated, bytecode clean)`
 - `android-dev-build.txt`: `distribution: bundle v25 keyId=gd-m1-test-ed25519-001 … frozen=25` and `app consumes: signed frozen bundle + pinned PUBLIC key only`
 - `merged-manifest-audit.txt`: `MERGED MANIFEST AUDIT: PASS`
 - `apk-recheck.txt`: `== APK RECHECK PASSED ==`, `native-code exactly ['arm64-v8a']`, `application-debuggable`, sdk 26/36, no leakage

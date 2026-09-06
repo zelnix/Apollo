@@ -54,6 +54,27 @@ PY
 echo "-- 5. Expo Android module compiles inside the prebuilt app (requires scripts/ci/android-dev-build.sh first)"
 if [ -d "$ROOT/frontend/android" ]; then
   (cd "$ROOT/frontend/android" && ./gradlew --quiet :guarddog-expo-module:assembleDebug) && echo "expo module: compiled"
+  echo "-- 5b. Expo module LOADS: real GuardDogExpoModule().definition() executes (JVM unit test) + no reified stubs in bytecode"
+  # Compilation is not evidence the bridge can register: without the Pika compiler plugin (expo-module-gradle-plugin) the module
+  # compiles but throws "reified type parameter … can only be inlined" the moment Expo instantiates it on a device.
+  (cd "$ROOT/frontend/android" && ./gradlew $VEC :guarddog-expo-module:testDebugUnitTest --tests 'com.guarddog.expo.GuardDogExpoModuleDefinitionTest' > "$OUT/expo-module-definition-test.log" 2>&1) \
+    || { tail -60 "$OUT/expo-module-definition-test.log"; echo "FAIL: GuardDogExpoModule().definition() does not evaluate"; exit 1; }
+  rm -rf "$OUT/expo-module-test-results"; mkdir -p "$OUT/expo-module-test-results"
+  cp "$ROOT/packages/guarddog-expo-module/android/build/test-results/testDebugUnitTest/"*.xml "$OUT/expo-module-test-results/"
+  python3 - "$OUT/expo-module-test-results" <<'PY'
+import glob, sys, xml.etree.ElementTree as ET
+t = f = 0
+for p in glob.glob(sys.argv[1] + "/*.xml"):
+    r = ET.parse(p).getroot(); t += int(r.get("tests", 0)); f += int(r.get("failures", 0)) + int(r.get("errors", 0))
+print(f"expo module definition test: {t} run, {f} failed"); sys.exit(1 if f or t < 2 else 0)
+PY
+  KCLASSES="$ROOT/packages/guarddog-expo-module/android/build/tmp/kotlin-classes/debug/com/guarddog/expo"
+  CLASSES="$(find "$KCLASSES" -name 'GuardDogExpoModule*.class' 2>/dev/null | head -50)"
+  [ -n "$CLASSES" ] || { echo "FAIL: no compiled GuardDogExpoModule classes under $KCLASSES to inspect"; exit 1; }
+  MARKERS="$(cat $CLASSES | grep -a -c 'reifiedOperationMarker\|throwNonReified' || true)"
+  echo "compiled classes inspected: $(echo "$CLASSES" | wc -l | tr -d ' '); reified stubs: $MARKERS"
+  [ "$MARKERS" = "0" ] || { echo "FAIL: un-inlined reified stubs in Expo module bytecode (Pika compiler plugin missing)"; exit 1; }
+  echo "expo module: loads (definition() evaluated, bytecode clean)"
   echo "-- 6. frozen Android SDK levels in the generated app (minSdk 26 / compileSdk 36 / targetSdk 36)"
   # ExpoRootProject prints the effective SDK levels at configuration time (set via expo-build-properties in app.json).
   LEVELS="$(cd "$ROOT/frontend/android" && ./gradlew :guarddog-expo-module:help 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E "^\s+- (minSdk|compileSdk|targetSdk):" | tr -s ' ' | tr '\n' ' ')"

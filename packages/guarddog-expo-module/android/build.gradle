@@ -1,20 +1,27 @@
-apply plugin: 'com.android.library'
-apply plugin: 'kotlin-android'
+// Expo SDK 57 module build. `expo-module-gradle-plugin` is REQUIRED (not the legacy ExpoModulesCorePlugin.gradle path):
+// it applies the Pika Kotlin compiler plugin that rewrites the `typeDescriptorOf<T>()` / `introspectionOf<T>()` calls inlined
+// into `definition()` by Function/AsyncFunction. Without it the inlined stubs survive as Intrinsics.reifiedOperationMarker +
+// pika.throwNonReified*Error and the module throws "This function has a reified type parameter…" the moment Expo registers
+// it on a device (observed on the M1 proof phone). Regression guards: src/test GuardDogExpoModuleDefinitionTest + AC-01 step 5.
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
 
 group = 'com.guarddog.expo'
 version = '0.1.0'
 
-def expoModulesCorePlugin = new File(project(":expo-modules-core").projectDir.absolutePath, "ExpoModulesCorePlugin.gradle")
-apply from: expoModulesCorePlugin
-applyKotlinExpoModulesCorePlugin()
-useCoreDependencies()
-useDefaultAndroidSdkVersions()
+expoModule {
+  canBePublished false
+}
 
 android {
   namespace "com.guarddog.expo"
   defaultConfig { versionCode 1; versionName "0.1.0" }
   compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
   kotlinOptions { jvmTarget = "17" }
+  // JVM unit test executes the real `definition()`; android.os.Trace etc. become no-ops instead of "Method ... not mocked".
+  testOptions { unitTests.returnDefaultValues = true }
 }
 
 dependencies {
@@ -22,6 +29,8 @@ dependencies {
   implementation project(':guarddog-core')
   implementation project(':guarddog-vpn')
   implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3"
+  testImplementation 'junit:junit:4.13.2'
+  testImplementation 'org.jetbrains.kotlin:kotlin-test-junit'
   androidTestImplementation 'androidx.test.ext:junit:1.2.1'
   androidTestImplementation 'androidx.test:runner:1.6.2'
 }
