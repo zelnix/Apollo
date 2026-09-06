@@ -1,0 +1,92 @@
+{
+  "project_info": {
+    "project_number": "987445335781",
+    "project_id": "fit-beyond-50",
+    "storage_bucket": "fit-beyond-50.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:987445335781:android:66935708d7f6c276bd260c",
+        "android_client_info": {
+          "package_name": "app.hwg.apollo"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "987445335781-pqf8sju3p3164mucuj23658olha5u89s.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDIpGRk53Gh3Bbn_-BrcpDHyvyy151yDr8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "987445335781-pqf8sju3p3164mucuj23658olha5u89s.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "987445335781-u22pu0g3kedp6komhnp49crq1qa84acn.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "life.fb50.app",
+                "app_store_id": "6799383648"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:987445335781:android:9977912362d2d7c2bd260c",
+        "android_client_info": {
+          "package_name": "life.fb50.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "987445335781-l0cqkgc9lo1goec1djna1b240r9sgu5b.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "life.fb50.app",
+            "certificate_hash": "b2730522cfd23474b84bedec6fb2b754c14a5081"
+          }
+        },
+        {
+          "client_id": "987445335781-pqf8sju3p3164mucuj23658olha5u89s.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDIpGRk53Gh3Bbn_-BrcpDHyvyy151yDr8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "987445335781-pqf8sju3p3164mucuj23658olha5u89s.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "987445335781-u22pu0g3kedp6komhnp49crq1qa84acn.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "life.fb50.app",
+                "app_store_id": "6799383648"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
