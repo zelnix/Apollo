@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Android native gate (AC-01). Run on a machine with JDK 17 + Android SDK (compileSdk 35) + Gradle 8.9.
+# Android native gate (AC-01). Run on a machine with JDK 17 + Android SDK (compileSdk 36) + Gradle 8.13 (wrapper).
 # Produces docs/evidence/android-native-gate.txt. Exit non-zero on any failure.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -10,7 +10,7 @@ echo "== Guard Dog Android native gate $(date -u +%FT%TZ) =="
 echo "host: $(uname -m) $(uname -s); java: $(java -version 2>&1 | head -1); ANDROID_HOME=${ANDROID_HOME:-unset}"
 [ -f "$HOME/.gradle/gradle.properties" ] && grep -H "aapt2FromMavenOverride" "$HOME/.gradle/gradle.properties" || true
 cd "$SDK"
-[ -f gradlew ] || gradle wrapper --gradle-version 8.9 --quiet
+[ -f gradlew ] || gradle wrapper --gradle-version 8.13 --quiet
 VEC="-Dguarddog.vectors=$ROOT/security/test-vectors"
 
 echo "-- 1. dependency resolution"
@@ -48,6 +48,11 @@ PY
 echo "-- 5. Expo Android module compiles inside the prebuilt app (requires scripts/ci/android-dev-build.sh first)"
 if [ -d "$ROOT/frontend/android" ]; then
   (cd "$ROOT/frontend/android" && ./gradlew --quiet :guarddog-expo-module:assembleDebug) && echo "expo module: compiled"
+  echo "-- 6. frozen Android SDK levels in the generated app (minSdk 26 / compileSdk 36 / targetSdk 36)"
+  # ExpoRootProject prints the effective SDK levels at configuration time (set via expo-build-properties in app.json).
+  LEVELS="$(cd "$ROOT/frontend/android" && ./gradlew :guarddog-expo-module:help 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E "^\s+- (minSdk|compileSdk|targetSdk):" | tr -s ' ' | tr '\n' ' ')"
+  echo "generated app: $LEVELS"
+  echo "$LEVELS" | grep -q "minSdk: 26" && echo "$LEVELS" | grep -q "compileSdk: 36" && echo "$LEVELS" | grep -q "targetSdk: 36" && echo "sdk levels: frozen configuration confirmed"
 else
   echo "SKIPPED: run scripts/ci/android-dev-build.sh to prebuild the app first"
 fi

@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.guarddog.core"
-    compileSdk = 35
+    compileSdk = 36  // frozen M1 Android SDK level
     defaultConfig { minSdk = 26 }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

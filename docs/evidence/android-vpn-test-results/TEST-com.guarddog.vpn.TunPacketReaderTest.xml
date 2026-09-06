@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.guarddog.vpn.TunPacketReaderTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-09-06T08:36:03" hostname="agent-env-7657c2c0-a2aa-48ca-a3f3-785f03490eb7" time="0.004">
+<testsuite name="com.guarddog.vpn.TunPacketReaderTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-09-06T09:03:39.433Z" hostname="agent-env-7657c2c0-a2aa-48ca-a3f3-785f03490eb7" time="0.004">
   <properties/>
   <testcase name="observesDropsAndReportsOnlyAfterRealPacket" classname="com.guarddog.vpn.TunPacketReaderTest" time="0.003"/>
   <testcase name="nothingIsEverForwarded" classname="com.guarddog.vpn.TunPacketReaderTest" time="0.001"/>

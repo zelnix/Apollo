@@ -1,9 +1,9 @@
 // Root build for the standalone Android SDK (used by scripts/ci/android-native-gate.sh).
-// Generate the wrapper on the build machine: `gradle wrapper --gradle-version 8.9`.
+// Generate the wrapper on the build machine: `gradle wrapper --gradle-version 8.13`. Toolchain aligned with the Expo/RN app (AGP 8.12, Kotlin 2.1.20).
 plugins {
-    id("com.android.library") version "8.5.2" apply false
-    id("org.jetbrains.kotlin.android") version "2.0.21" apply false
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.0.21" apply false
+    id("com.android.library") version "8.12.0" apply false
+    id("org.jetbrains.kotlin.android") version "2.1.20" apply false
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.1.20" apply false
 }
 
 // Fails the build if :guarddog-core ever gains a dependency on :guarddog-vpn (PF-01 gate).

@@ -5,8 +5,8 @@ Milestone 1 is **not** complete. Backend pytest, shared contracts (node tests), 
 block / recovery / revoke proofs have **not** been executed. The earlier static review is kept below for the record.
 
 ## 1. Native build + parity gate — Android ✅ PASSED (executed 2026-06) · iOS ⏳ OPEN
-Android gate executed for real in this environment after installing JDK 17 (arm64), Android SDK (platform 35/36, build-tools 35),
-Gradle 8.9, and running the x86_64 `aapt2` through `qemu-user-static` (`~/.gradle/gradle.properties: android.aapt2FromMavenOverride`).
+Android gate executed for real in this environment after installing JDK 17 (arm64), Android SDK (platform 36, build-tools 35),
+Gradle 8.13 (wrapper), and running the x86_64 `aapt2` through `qemu-user-static` (`~/.gradle/gradle.properties: android.aapt2FromMavenOverride`).
 Evidence: `docs/evidence/android-native-gate.txt`, `docs/evidence/android-{core,vpn}-test-results/*.xml`, `docs/evidence/{core,vpn}-deps.txt`.
 
 Result: dependencies resolved · core→vpn graph clean · `:guarddog-core` + `:guarddog-vpn` `assembleRelease` compiled · **29 native unit tests, 0 failed**
@@ -24,7 +24,16 @@ Findings fixed by the real build (the static review could not see these):
    `classpath('org.jetbrains.kotlin:kotlin-serialization:<RN kotlin version>')` to the app's root `build.gradle` (read from `react-native/gradle/libs.versions.toml`).
 5. Gate hardening: step 1 now fails on unresolved dependencies; step 4 uses `--rerun-tasks` and prints a per-suite summary that fails on any failure.
 
-Residual warning (not a defect): AGP 8.5.2 warns it was tested up to compileSdk 34 (project uses 35). Bump AGP when convenient.
+Follow-up requested by the reviewer (done, gate re-run 2026-06 — PASSED again, 29/29, from a fresh `expo prebuild --clean`):
+- **Finding**: the generated Expo app was on **minSdk 24** (Expo default), compileSdk 36, targetSdk 36 — not the frozen configuration.
+  Fixed via `expo-build-properties` in `app.json` (`minSdkVersion 26, compileSdkVersion 36, targetSdkVersion 36`); the gate now has
+  step 6 which reads the effective levels from the Gradle configuration output and fails unless it sees `minSdk: 26 · compileSdk: 36 · targetSdk: 36`.
+- Standalone SDK toolchain aligned with the app: AGP 8.5.2 → **8.12.0**, Kotlin 2.0.21 → **2.1.20**, compileSdk 35 → **36**, Gradle wrapper 8.9 → **8.13**.
+  The earlier "AGP tested up to compileSdk 34" warning is gone. Only remaining warning: `android.aapt2FromMavenOverride` is experimental (arm64 host workaround).
+- The config-plugin fixes are reproducible: `expo prebuild --platform android --clean` regenerates `settings.gradle` (both SDK modules) and the
+  root `build.gradle` (`kotlin-serialization:2.1.20` classpath) every time; nothing depends on a previously generated file.
+- `scripts/ci/setup-android-toolchain-linux.sh` provisions the whole Linux toolchain idempotently (this container's system packages are not
+  persistent, so the gate can be re-run from scratch with `bash scripts/ci/setup-android-toolchain-linux.sh && source /opt/guarddog-android-env.sh && bash scripts/ci/android-native-gate.sh`).
 
 iOS gate (`scripts/ci/ios-native-gate.sh`) still requires macOS + Xcode: SwiftPM resolves; `GuardDogCore` compiles; Swift parity tests pass;
 `show-dependencies` proves no `GuardDogCore → GuardDogNetworkFeasibility` edge; Expo iOS module compiles in the prebuilt app.

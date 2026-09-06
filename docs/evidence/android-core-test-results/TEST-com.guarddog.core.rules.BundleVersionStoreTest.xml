@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.guarddog.core.rules.BundleVersionStoreTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-09-06T08:36:02" hostname="agent-env-7657c2c0-a2aa-48ca-a3f3-785f03490eb7" time="0.001">
+<testsuite name="com.guarddog.core.rules.BundleVersionStoreTest" tests="1" skipped="0" failures="0" errors="0" timestamp="2026-09-06T09:03:37.609Z" hostname="agent-env-7657c2c0-a2aa-48ca-a3f3-785f03490eb7" time="0.001">
   <properties/>
   <testcase name="recordsHighestVersionPerRuleset" classname="com.guarddog.core.rules.BundleVersionStoreTest" time="0.001"/>
   <system-out><![CDATA[]]></system-out>
