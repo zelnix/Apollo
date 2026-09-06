@@ -9,6 +9,11 @@ exec > >(tee "$OUT/android-dev-build.txt") 2>&1
 echo "== Guard Dog Android dev build $(date -u +%FT%TZ) =="
 cd "$APP"
 
+# Provenance baked into the JS bundle (read by the harness report): commit + CI run id. APK hash is computed on-device and in apk-recheck.
+export EXPO_PUBLIC_GIT_SHA="${EXPO_PUBLIC_GIT_SHA:-$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo unknown)}"
+export EXPO_PUBLIC_CI_RUN_ID="${EXPO_PUBLIC_CI_RUN_ID:-local}"
+echo "provenance: commit=$EXPO_PUBLIC_GIT_SHA run=$EXPO_PUBLIC_CI_RUN_ID"
+
 echo "-- 1. dependency/version checks"
 yarn install --frozen-lockfile
 npx expo-doctor || true

@@ -31,6 +31,16 @@ export interface NativeRecoveryStatus {
   recovered: boolean;
 }
 
+export interface NativeBuildProvenance {
+  apkSha256: string | null;
+  apkSizeBytes: number | null;
+  splitApks: number;
+  packageName: string | null;
+  versionName: string | null;
+  versionCode: number | string | null;
+  debuggable: boolean | null;
+}
+
 export interface GuardDogNativeModule {
   getCapabilities(): Record<string, unknown>;
   getProtectionState(): NativeProtectionState;
@@ -42,6 +52,7 @@ export interface GuardDogNativeModule {
   stopProtection(): Promise<NativeProtectionState>;
   getEnforcementStats(): Record<string, number> | null;
   getRecoveryStatus(): NativeRecoveryStatus;
+  getBuildProvenance(): Promise<NativeBuildProvenance>;
   addListener(eventName: string, listener: (payload: unknown) => void): { remove(): void };
 }
 

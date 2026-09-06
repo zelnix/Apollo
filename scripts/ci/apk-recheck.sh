@@ -15,7 +15,14 @@ AAPT2="$(ls -d "${ANDROID_HOME:-$ANDROID_SDK_ROOT}"/build-tools/*/aapt2 2>/dev/n
 
 {
 echo "== Guard Dog APK recheck $(date -u +%FT%TZ) =="
-echo "apk: $APK ($(stat -c %s "$APK") bytes) sha256=$(sha256sum "$APK" | cut -d' ' -f1)"
+APK_SHA="$(sha256sum "$APK" | cut -d' ' -f1)"
+GIT_SHA="${GITHUB_SHA:-$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo unknown)}"
+RUN_ID="${GITHUB_RUN_ID:-local}"
+echo "apk: $APK ($(stat -c %s "$APK") bytes)"
+echo "PROVENANCE apkSha256=$APK_SHA commit=$GIT_SHA workflowRunId=$RUN_ID repo=${GITHUB_REPOSITORY:-local} runAttempt=${GITHUB_RUN_ATTEMPT:-1}"
+printf '{"apkSha256":"%s","commit":"%s","workflowRunId":"%s","repository":"%s","runAttempt":"%s","generatedAt":"%s"}\n' \
+  "$APK_SHA" "$GIT_SHA" "$RUN_ID" "${GITHUB_REPOSITORY:-local}" "${GITHUB_RUN_ATTEMPT:-1}" "$(date -u +%FT%TZ)" > "$OUT/apk-provenance.json"
+echo "device proof must report the same apkSha256 (harness report → provenance.apkSha256)"
 BADGING="$("$AAPT2" dump badging "$APK")"
 echo "$BADGING" | grep -E "^package:|^sdkVersion|^targetSdkVersion|^native-code|^application-debuggable|^uses-permission" | sed 's/^/  /'
 "$AAPT2" dump xmltree --file AndroidManifest.xml "$APK" > "$OUT/apk-AndroidManifest.txt"

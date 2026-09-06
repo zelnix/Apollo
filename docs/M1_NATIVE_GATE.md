@@ -104,6 +104,11 @@ arm64 host run only under qemu emulation, and this container's system layer (JDK
   package id, `application-debuggable` (dev build), `sdkVersion 26` / `targetSdkVersion 36`, `native-code` exactly `arm64-v8a`, VpnService facts from the
   APK's binary manifest (BIND_VPN_SERVICE, `foregroundServiceType=0x400` systemExempted, `android.net.VpnService`), high-risk permissions absent, and a
   content scan proving **no private-key material, admin token, DB URL or backend `.env` content** is packaged (pinned PUBLIC key expected in dex).
+- **Artifact provenance chain**: `apk-recheck.txt` / `apk-provenance.json` record `apkSha256`, `commit` (GITHUB_SHA) and `workflowRunId`; the dev build bakes
+  `EXPO_PUBLIC_GIT_SHA` / `EXPO_PUBLIC_CI_RUN_ID` into the JS bundle; on the phone the harness computes the SHA-256 of the installed base APK
+  (bridge `getBuildProvenance`, harness-only adapter `src/harness/buildProvenance.ts`) and the JSON/PDF proof carries `provenance{apkSha256, gitSha, ciRunId,
+  packageName, versionName, debuggable}`. Acceptance requires `provenance.apkSha256 == apk-recheck apkSha256` — the phone ran exactly the CI artifact.
+- Workflow permissions: `contents: read` for all jobs (least privilege).
 - CI key hygiene: the `executable-suites` pytest job now generates **ephemeral** Ed25519 seeds per run (`GD_CI_EPHEMERAL_KEY=1`); the workflow contains
   no `secrets.*` at all. The real `gd-m1-test-ed25519-001` seed stays in the controlled signing environment. The frozen v25 bundle is committed at
   `security/frozen/controlled-bundle-v25.json` and verified read-only with the pinned public key (`tests/test_frozen_bundle_public_verification.py`).

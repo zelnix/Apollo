@@ -9,14 +9,17 @@ import { Platform } from "react-native";
 
 import type { SecurityEvent } from "@/src/contracts/securityEventSchemas";
 import type { HarnessResult, RecoveryEvidence } from "@/src/harness/androidBlockingProofHarness";
+import type { BuildProvenance } from "@/src/harness/buildProvenance";
 import type { M1Config } from "@/src/harness/ruleBundleFixtures";
 import { GuardDogSecuritySDK } from "@/src/sdk/GuardDogSecuritySDK";
 
 export interface ProofReport {
-  reportVersion: "m1-2";
+  reportVersion: "m1-3";
   generatedAt: string;
   platform: string;
   nativeModuleAvailable: boolean;
+  /** Exact artifact under test: installed APK SHA-256 (must equal CI apk-recheck.txt), commit and CI run id. */
+  provenance: BuildProvenance | null;
   proofComplete: boolean;
   recoveryComplete: boolean;
   auditChain: {
@@ -40,16 +43,18 @@ export function buildProofReport(
   bundle: { rulesetId: string; bundleVersion: number; keyId: string; payloadHash: string } | null,
   result: HarnessResult,
   events: SecurityEvent[],
+  provenance: BuildProvenance | null = null,
 ): ProofReport {
   const blocked = result.blockedEvent;
   // Captured by the harness before recovery (stopping clears the native drop reporter).
   const stats = result.enforcementStats;
   const start = result.steps.find((s) => s.id === "start") ?? null;
   return {
-    reportVersion: "m1-2",
+    reportVersion: "m1-3",
     generatedAt: new Date().toISOString(),
     platform: Platform.OS,
     nativeModuleAvailable: GuardDogSecuritySDK.nativeAvailable,
+    provenance,
     proofComplete: result.proofComplete,
     recoveryComplete: result.recoveryComplete,
     auditChain: {
@@ -100,6 +105,15 @@ export function reportToHtml(r: ProofReport): string {
         ["Recovered at", esc(rec.recoveredAt)],
       ]
     : [["Recovery", "not run (protection was never started)"]];
+  const pv = r.provenance;
+  const provenanceRows = pv
+    ? [
+        ["Installed APK SHA-256", esc(pv.apkSha256) + (pv.splitApks ? ` (+${pv.splitApks} split APKs)` : "")],
+        ["Package / version", `${esc(pv.packageName)} ${esc(pv.versionName)} (${esc(pv.versionCode)})${pv.debuggable ? " · debuggable dev build" : ""}`],
+        ["Git commit", esc(pv.gitSha)],
+        ["CI workflow run id", esc(pv.ciRunId)],
+      ]
+    : [["Provenance", "unavailable"]];
   const table = (rows: string[][]) => `<table border="1" cellpadding="6" style="border-collapse:collapse">${rows.map(([k, v]) => `<tr><th align="left">${k}</th><td>${v}</td></tr>`).join("")}</table>`;
   const steps = r.steps.map((s) => `<tr><td>${esc(s.status)}</td><td>${esc(s.title)}</td><td>${esc(s.detail)}</td></tr>`).join("");
   return `<html><body style="font-family:-apple-system,Helvetica,sans-serif;padding:24px;color:#0b1220">
@@ -107,6 +121,7 @@ export function reportToHtml(r: ProofReport): string {
 <p>Generated ${esc(r.generatedAt)} · platform ${esc(r.platform)} · native module ${r.nativeModuleAvailable ? "present" : "absent"}</p>
 <h2 style="color:${r.proofComplete ? "#15803d" : "#b45309"}">${r.proofComplete ? "BLOCK PROOF COMPLETE" : "BLOCK PROOF INCOMPLETE — milestone remains open"}</h2>
 <h2 style="color:${r.recoveryComplete ? "#15803d" : "#b45309"}">${r.recoveryComplete ? "RECOVERY PROOF COMPLETE" : "RECOVERY PROOF INCOMPLETE"}</h2>
+<h3>Artifact provenance</h3>${table(provenanceRows)}
 <h3>Audit chain</h3>${table(rows)}
 <h3>Recovery chain</h3>${table(recoveryRows)}
 <h3>Steps</h3><table border="1" cellpadding="6" style="border-collapse:collapse"><tr><th>Status</th><th>Step</th><th>Detail</th></tr>${steps}</table>

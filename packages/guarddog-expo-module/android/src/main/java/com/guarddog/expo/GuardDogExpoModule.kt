@@ -129,6 +129,34 @@ class GuardDogExpoModule : Module() {
                 "vpnTransportPresent" to r.vpnTransportPresent, "routeCidr" to r.routeCidr, "dropReporterAttached" to r.dropReporterAttached,
                 "recovered" to r.recovered)
         }
+
+        // Build provenance for the device proof: SHA-256 of the installed base APK (compared against the CI artifact hash),
+        // package/version and debuggable flag. Hashing runs off the main thread (APK is tens of MB).
+        AsyncFunction("getBuildProvenance") { promise: Promise ->
+            Thread {
+                try {
+                    val info = context.packageManager.getPackageInfo(context.packageName, 0)
+                    val apk = java.io.File(context.applicationInfo.sourceDir)
+                    val digest = java.security.MessageDigest.getInstance("SHA-256")
+                    apk.inputStream().use { input ->
+                        val buf = ByteArray(1 shl 16)
+                        while (true) { val n = input.read(buf); if (n < 0) break; digest.update(buf, 0, n) }
+                    }
+                    val debuggable = (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+                    promise.resolve(mapOf(
+                        "apkSha256" to digest.digest().joinToString("") { "%02x".format(it) },
+                        "apkSizeBytes" to apk.length(),
+                        "splitApks" to (context.applicationInfo.splitSourceDirs?.size ?: 0),
+                        "packageName" to context.packageName,
+                        "versionName" to info.versionName,
+                        "versionCode" to info.longVersionCode,
+                        "debuggable" to debuggable,
+                    ))
+                } catch (e: Exception) {
+                    promise.reject(CodedException("E_PROVENANCE", e.message, e))
+                }
+            }.start()
+        }
     }
 
     companion object {

@@ -49,6 +49,12 @@ public class GuardDogExpoModule: Module {
             ["lifecycle": "INACTIVE", "tunOpen": false, "selectiveRouteActive": false, "vpnTransportPresent": false,
              "routeCidr": nil, "dropReporterAttached": false, "recovered": true]
         }
+        // iOS is analysis-only in M1: no enforcement artifact to hash; identify the build only.
+        AsyncFunction("getBuildProvenance") { () -> [String: Any?] in
+            let info = Bundle.main.infoDictionary ?? [:]
+            return ["apkSha256": nil, "apkSizeBytes": nil, "splitApks": 0, "packageName": Bundle.main.bundleIdentifier,
+                    "versionName": info["CFBundleShortVersionString"], "versionCode": info["CFBundleVersion"], "debuggable": nil]
+        }
     }
 
     private func emit(_ event: SecurityEvent) {

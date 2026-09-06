@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ActionButton, Card, KeyValue, StatusBadge, StepRow } from "@/src/components/harness-ui";
 import type { SecurityEvent } from "@/src/contracts/securityEventSchemas";
 import { type HarnessStep, runAndroidBlockingProof } from "@/src/harness/androidBlockingProofHarness";
+import { readBuildProvenance } from "@/src/harness/buildProvenance";
 import { buildProofReport, exportReportJson, exportReportPdf, type ProofReport, shareEvidenceFile } from "@/src/harness/proofReport";
 import { fetchLatestBundle, fetchM1Config } from "@/src/harness/ruleBundleFixtures";
 import { GuardDogSecuritySDK, type LocalAnalysis } from "@/src/sdk/GuardDogSecuritySDK";
@@ -148,7 +149,8 @@ export default function Index() {
               secondary
               disabled={!proof.data || !config.data}
               onPress={async () => {
-                const built = buildProofReport(config.data!, bundle.data ?? null, proof.data!, events);
+                const provenance = await readBuildProvenance().catch(() => null);
+                const built = buildProofReport(config.data!, bundle.data ?? null, proof.data!, events, provenance);
                 setReport(built);
                 setJsonUri((await exportReportJson(built)) ?? "shown below (web: no file system)");
               }}
@@ -166,6 +168,8 @@ export default function Index() {
               <KeyValue label="Block proof complete" value={report.proofComplete ? "yes" : "no — milestone open"} testID="report-proof-complete" />
               <KeyValue label="Recovery proof complete" value={report.recoveryComplete ? "yes" : "no"} testID="report-recovery-complete" />
               <KeyValue label="enforcementEvidenceId" value={report.auditChain.enforcementEvidenceId ?? "none"} testID="report-evidence-id" />
+              <KeyValue label="APK SHA-256" value={report.provenance?.apkSha256 ?? "n/a (not an Android APK)"} testID="report-apk-sha" />
+              <KeyValue label="Commit / CI run" value={`${report.provenance?.gitSha ?? "—"} / ${report.provenance?.ciRunId ?? "—"}`} testID="report-provenance" />
               {report.auditChain.recovery ? (
                 <KeyValue
                   label="Recovery"

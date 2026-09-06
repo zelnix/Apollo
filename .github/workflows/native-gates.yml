@@ -1,5 +1,9 @@
 name: native-gates
 on: [push, pull_request, workflow_dispatch]
+# Least privilege: every job only reads the repository; artifacts are uploaded via the actions token.
+permissions:
+  contents: read
+
 jobs:
   android:
     runs-on: ubuntu-latest
@@ -44,6 +48,8 @@ jobs:
           CI: "1"
           EXPO_PUBLIC_BACKEND_URL: ${{ vars.GD_BACKEND_URL }}   # repository variable (public distribution URL), not a secret
           GD_DEV_ABIS: arm64-v8a
+          EXPO_PUBLIC_GIT_SHA: ${{ github.sha }}          # baked into the JS bundle → appears in the device proof report
+          EXPO_PUBLIC_CI_RUN_ID: ${{ github.run_id }}
       # Artifact recheck before any phone: intended dev build, 26/36, arm64-v8a only, VpnService facts, no secret/.env content packaged.
       - run: bash scripts/ci/apk-recheck.sh docs/evidence/guarddog-m1-dev.apk
         env: { GD_DEV_ABIS: arm64-v8a }
