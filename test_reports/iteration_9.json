@@ -1,0 +1,79 @@
+{
+  "summary": "Iteration 9 verifies all three CI-audit corrections without touching bundle v25 or enforcement logic. (1) Requirements cleanup: no 'emergentintegrations' in requirements.txt or app/scripts/tests; no customer-assets URL; `pip install --dry-run -q -r requirements.txt` exits 0; pytest → 89 passed, 37 skipped, 0 failed; live GET /api/rules/gd-m1-controlled-block/latest still serves v25 with 1 rule. (2) iOS gate script (static): bash -n PASS; uses set -euo pipefail; step 3 pipes xcodebuild through `tee \"$XCLOG\"` and captures ${PIPESTATUS[0]}; on non-zero prints failing-phase context and exits xc-status; pod install teed to $PODLOG; step 0 records xcodebuild -version, swift --version, expo/expo-modules-core/expo-modules-jsi versions plus `yarn why` for both and `npx expo install --check` into docs/evidence/ios-expo-package-audit.txt; removes node_modules/expo-modules-jsi/apple/Products before pod install; git diff HEAD~2 -- packages/guarddog-ios-sdk is empty (0 bytes) — GuardDog Swift sources untouched. (3) Expo SDK 57 alignment: package.json has expo ~57.0.20 and expo-router ~57.0.19; installed expo 57.0.20, expo-modules-core 57.0.16, expo-modules-jsi 57.0.8; `CI=1 npx expo install --check` → 'Dependencies are up to date' (exit 0); node_modules/expo-modules-jsi/CHANGELOG.md 57.0.5 entry documents `abs(_:)` → `Double.magnitude` fix confirming the installed 57.0.8 already includes the Xcode 26 abs(milliseconds) fix. Workflow /app/.github/workflows/native-gates.yml: valid YAML; ios job pins Xcode via maxim-lobanov/setup-xcode with `xcode-version: \"${{ github.event.inputs.xcode || '26.1' }}\"` and lists /Applications/Xcode*.app; runs `expo prebuild --platform ios --clean` before `scripts/ci/ios-native-gate.sh`; uploads docs/evidence with `if: always()`; zero `secrets.` references (grep count = 0); workflow_dispatch input `xcode` default '26.1'. Frontend regression @ 390x844 (Expo web): harness loads; shows 'v25 · 1 rule(s)' with payloadHash 2581666cc768e1e4e76962db0cc70e49…; Run proof yields honest PASS/PASS/BLOCKED/PASS/BLOCKED/SKIPPED chain; Build JSON evidence renders the report JSON (bundleVersion 25, routeActivation SKIPPED, intentionalDrop false); 0 app console errors. /tmp/gate4.log tail ends with 'sdk levels: frozen configuration confirmed', '== ANDROID NATIVE GATE PASSED ==', 'GATE EXIT=0'.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": [], "react_native_issues": []},
+  "verification_results": {
+    "requirements_cleanup": {
+      "grep_emergentintegrations_backend_scope": "0 hits (app/, scripts/, tests/) — exit 1 (grep no-match)",
+      "grep_customer_assets_url_in_requirements": "0 hits",
+      "grep_emergentintegrations_in_requirements": "0 hits",
+      "pip_dry_run_exit": 0,
+      "pytest": "89 passed, 37 skipped, 0 failed (2.25s)",
+      "pytest_junit": "/app/test_reports/pytest/iteration_9_backend.xml",
+      "live_backend_v25": {
+        "endpoint": "https://guard-dog-m1.preview.emergentagent.com/api/rules/gd-m1-controlled-block/latest",
+        "bundleVersion": 25,
+        "keyId": "gd-m1-test-ed25519-001",
+        "rules_count": 1,
+        "payloadHash": "2581666cc768e1e4e76962db0cc70e497e17e9b9cf4a5a997c8cfb091e6b90c9"
+      }
+    },
+    "ios_gate_script_static": {
+      "bash_n": "PASS",
+      "set_euo_pipefail_line": 6,
+      "tee_xclog_line": 42,
+      "PIPESTATUS_captured_line": 43,
+      "pod_install_teed_to_PODLOG_line": 37,
+      "package_audit_teed_line": 19,
+      "removes_expo_modules_jsi_apple_Products_line": 35,
+      "failing_phase_context_on_error": "grep -n -B5 -A60 'PhaseScriptExecution.*failed|\\*\\* BUILD FAILED' \"$XCLOG\" (line 48); exits with $XC_STATUS (line 50)",
+      "guarddog_ios_sdk_diff_HEAD_minus_2_bytes": 0
+    },
+    "expo_alignment": {
+      "package_json_expo": "~57.0.20",
+      "package_json_expo_router": "~57.0.19",
+      "installed_expo": "57.0.20",
+      "installed_expo_modules_core": "57.0.16",
+      "installed_expo_modules_jsi": "57.0.8",
+      "expo_install_check_output": "Dependencies are up to date",
+      "expo_install_check_exit": 0,
+      "expo_modules_jsi_CHANGELOG_57_0_5_abs_magnitude_entry_present": true,
+      "changelog_57_0_5_excerpt": "Fixed `dateFromMilliseconds` failing to compile with \"type of expression is ambiguous\" under newer toolchains: the unqualified `abs(_:)` in the `Double` overflow guard is ambiguous once C++ interop brings the C `abs` overloads into scope, so use `Double.magnitude` instead. (#49039)"
+    },
+    "workflow_native_gates": {
+      "yaml_valid": true,
+      "ios_xcode_pin": "${{ github.event.inputs.xcode || '26.1' }} (maxim-lobanov/setup-xcode@v1)",
+      "workflow_dispatch_xcode_default": "26.1",
+      "lists_available_xcodes": "ls -d /Applications/Xcode*.app",
+      "expo_prebuild_ios_clean": true,
+      "upload_docs_evidence_if_always": 3,
+      "secrets_references": 0
+    },
+    "frontend_regression": {
+      "viewport": "390x844",
+      "harness_loaded": true,
+      "shows_v25_1_rule": true,
+      "run_proof_chain_honest_BLOCKED_SKIPPED": true,
+      "build_json_evidence_renders": true,
+      "app_console_errors": 0
+    },
+    "gate4_log_tail": "expo module: compiled → generated app: minSdk 26 / compileSdk 36 / targetSdk 36 → sdk levels: frozen configuration confirmed → == ANDROID NATIVE GATE PASSED == → GATE EXIT=0"
+  },
+  "test_report_links": [
+    "/app/test_reports/pytest/iteration_9_backend.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "iOS gate step 3 correctly captures ${PIPESTATUS[0]} (not the trailing grep/tail exit) after set +e/-e — preserves the true xcodebuild exit code even when the filter matches nothing.",
+    "Full raw xcodebuild stdout/stderr is teed to docs/evidence/ios-xcodebuild-full.log BEFORE the grep filter, so the artifact upload (`if: always()`) will contain the entire log for post-mortem regardless of build outcome.",
+    "Removing node_modules/expo-modules-jsi/apple/Products before pod install is a well-targeted mitigation for the stale ExpoModulesJSI xcframework cache issue (referenced by expo/expo#46242 in the script comment).",
+    "Workflow pins Xcode to 26.1 (overridable via workflow_dispatch input) rather than 'latest-stable', which prevents Xcode 26.3 / Swift 6.2.4 style breakage from silently reappearing.",
+    "requirements.txt is now free of emergentintegrations and any customer-assets.emergentagent.com URL; `pip install --dry-run` resolves cleanly from public PyPI (exit 0) — reproducible on any runner."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (89/89 executed passed)", "frontend": "100% (harness + run proof + build JSON, 0 console errors)"},
+  "seed_data_creation": "None.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All three audit findings are resolved without touching frozen bundle v25 or enforcement logic. If a subsequent iOS CI run fails, first inspect docs/evidence/ios-xcodebuild-full.log (now guaranteed present due to `if: always()` + `tee`+`PIPESTATUS`) and docs/evidence/ios-expo-package-audit.txt for the yarn why / expo install --check output — those two artifacts should give a definitive verdict on whether the failure is inside GuardDog code or inside the Expo/Xcode toolchain."
+}
