@@ -7,7 +7,7 @@ const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
 export interface M1Config {
   rulesetId: string;
-  controlledEndpoint: { host: string; ipv4: string; url: string };
+  controlledEndpoint: { host: string; ipv4: string; url: string; isPlaceholder: boolean };
   blockDedupeWindowMs: number;
   signingKeyId: string;
   capabilities: Record<string, unknown>;

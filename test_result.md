@@ -101,3 +101,11 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+## Iteration 4 (main agent, 2026-06) — post-resign + recovery checklist
+- Resigned real controlled bundle (Elastic IP confirmed): final v25, keyId gd-m1-test-ed25519-001, payloadHash 2581666c…, single block rule blocktest.btciq.app.
+- New: backend/scripts/verify_resigned_bundle.py (10-point check → docs/evidence/resigned-bundle-verification.json).
+- Live pytest suites updated to post-resign expectations and made read-only (mutating happy-path gated by GD_ALLOW_LIVE_RESIGN=1).
+- Frontend harness: recovery steps (stop / tun-closed / route-cleared / recovered) after block proof; probe requires real HTTP 200 on native; HarnessResult has recovery, enforcementStats, recoveryComplete.
+- Proof report m1-2: recovery chain; JSON written to device file (expo-file-system) + PDF + share sheet (expo-sharing); web shows JSON inline, PDF = print dialog.
+- Native (not runtime-verifiable here): RecoveryInspector/getRecoveryStatus (Android + iOS), E2E test step 6, TunSessionRecoveryTest new case.
+- Test focus: backend read APIs (/api/config isPlaceholder=false, /latest v25 single rule, /versions, /keys, /intelligence/lookup block for blocktest.btciq.app, sign guard 401/409/403 without mutating), web harness UI (honest BLOCKED/SKIPPED, Build JSON evidence shows recovery fields, no fake THREAT_BLOCKED). Do NOT POST /api/rules/sign with confirm=true for gd-m1-controlled-block.

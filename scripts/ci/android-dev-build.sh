@@ -31,6 +31,7 @@ grep -q 'com.guarddog.vpn.GuardDogVpnService' "$MERGED" && echo "merged manifest
 grep -q 'android.permission.BIND_VPN_SERVICE' "$MERGED" && echo "merged manifest: BIND_VPN_SERVICE permission present"
 grep -q 'foregroundServiceType="systemExempted"' "$MERGED" && echo "merged manifest: foregroundServiceType=systemExempted"
 grep -q 'FOREGROUND_SERVICE_SYSTEM_EXEMPTED' "$MERGED" && echo "merged manifest: FOREGROUND_SERVICE_SYSTEM_EXEMPTED permission"
+grep -q 'android.permission.ACCESS_NETWORK_STATE' "$MERGED" && echo "merged manifest: ACCESS_NETWORK_STATE (recovery VPN-transport check)"
 cp "$MERGED" "$OUT/merged-AndroidManifest.xml"
 
 echo "-- 5. native unit tests + debug build"

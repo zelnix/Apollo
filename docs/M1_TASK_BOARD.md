@@ -85,11 +85,11 @@ Every ticket lists dependencies and pass/fail criteria. IDs are stable; referenc
 | ID | Ticket | Depends on | Pass / Fail | Status |
 |---|---|---|---|---|
 | SG-01 | Signing guard: admin token + `GD_SIGNING_ENABLED` + `confirm` + ruleset allow-list + controlled-config check; secrets never logged | BE-03 | `test_signing_guard.py` | ✅ |
-| SG-02 | Endpoint tooling: `verify_controlled_endpoint.py`, `resign_controlled_bundle.py --confirm` | SG-01 | refuse placeholder; resolution must equal dedicated IPv4 | ✅ (awaiting real values) |
+| SG-02 | Endpoint tooling: `verify_controlled_endpoint.py`, `resign_controlled_bundle.py --confirm`, `verify_resigned_bundle.py` | SG-01 | refuse placeholder; resolution must equal dedicated IPv4; 10-point post-resign check | ✅ |
 | AC-01 | `scripts/ci/android-native-gate.sh` (resolve, compile, tests, cycle check) | AN-*, PF-* | evidence in `docs/evidence/` | 📝 scripted, ⏳ run |
 | AC-02 | `scripts/ci/ios-native-gate.sh` (resolve, compile, tests, cycle check) | IO-* | evidence in `docs/evidence/` | 📝 scripted, ⏳ run |
-| AC-03 | Inject real controlled host + dedicated static IPv4 + TLS; resign bundle | — | `/api/config → isPlaceholder=false`, verify script exit 0 | ⏳ input needed |
+| AC-03 | Inject real controlled host + dedicated static IPv4 + TLS; resign bundle | — | `/api/config → isPlaceholder=false`, verify script exit 0 | ✅ v25 signed (`blocktest.btciq.app` / 52.25.179.131), `docs/evidence/resigned-bundle-verification.json` |
 | AC-04 | Android development build (`scripts/ci/android-dev-build.sh`, config plugin, merged-manifest check) | AC-01, AC-03 | manifest shows service + `systemExempted`; unit tests pass; APK installed | 📝 scripted, ⏳ run |
 | AC-05 | Physical-device proof (`AndroidBlockingProofE2ETest` + RN harness) | AC-04 | all steps PASS; exactly one `THREAT_BLOCKED` with evidence per attempt | ⏳ |
-| AC-06 | Recovery: stop → TUN closed, INACTIVE/STOPPED, endpoint reachable again; revoke → REVOKED, consent cleared | AC-05 | `TunSessionRecoveryTest` 📝 + device run | ⏳ |
-| AC-07 | Proof report export (JSON + PDF) from device run | AC-05 | report `proofComplete=true` with full audit chain | ✅ tooling, ⏳ run |
+| AC-06 | Recovery checklist (`docs/M1_RECOVERY_CHECKLIST.md`): stop → TUN closed → INACTIVE/STOPPED → no selective route / VPN transport → real HTTPS **200** again; revoke → REVOKED, consent cleared | AC-05 | harness steps `stop`/`tun-closed`/`route-cleared`/`recovered` all PASS; E2E step 6; `TunSessionRecoveryTest` 📝 | 📝 tooling, ⏳ device run |
+| AC-07 | Proof report export (local JSON file + PDF, share sheet; no upload) from device run | AC-05, AC-06 | report `proofComplete=true` and `recoveryComplete=true` with audit + recovery chain | ✅ tooling, ⏳ run |

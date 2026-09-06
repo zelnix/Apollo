@@ -16,9 +16,10 @@ from cryptography.exceptions import InvalidSignature
 
 # public URL under test
 BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://guard-dog-m1.preview.emergentagent.com").rstrip("/")
-CONTROLLED_HOST = __import__("os").environ.get("GD_CONTROLLED_HOST", "blocktest.btciq.app")
-# Live tests sign bundles against the RUNNING backend. Disabled by default so the controlled bundle is never
-# resigned implicitly (final M1 signing waits for infrastructure confirmation). Enable with GD_RUN_LIVE_TESTS=1.
+CONTROLLED_HOST = os.environ.get("GD_CONTROLLED_HOST", "blocktest.btciq.app")
+CONTROLLED_IPV4 = os.environ.get("GD_CONTROLLED_IPV4", "52.25.179.131")
+# Live read-only tests against the RUNNING backend. The final M1 controlled bundle is signed; these tests never
+# call POST /api/rules/sign with confirm=true for the controlled ruleset. Enable with GD_RUN_LIVE_TESTS=1.
 pytestmark = pytest.mark.skipif(__import__("os").environ.get("GD_RUN_LIVE_TESTS") != "1", reason="live signing tests disabled by default")
 ADMIN_TOKEN = "m1-dev-admin-token-change-me"
 
@@ -62,7 +63,8 @@ class TestHealthConfig:
         d = r.json()
         assert d["rulesetId"] == "gd-m1-controlled-block"
         assert d["controlledEndpoint"]["host"] == CONTROLLED_HOST
-        assert d["controlledEndpoint"]["ipv4"] == "203.0.113.10"
+        assert d["controlledEndpoint"]["ipv4"] == CONTROLLED_IPV4
+        assert d["controlledEndpoint"]["isPlaceholder"] is False
         assert "url" in d["controlledEndpoint"]
         assert d["capabilities"]["android"]["dnsInterception"] is False
         assert d["capabilities"]["android"]["dohDotCoverage"] is False
@@ -117,22 +119,22 @@ class TestRules:
         )
         assert r.status_code == 401
 
-    def test_sign_success_and_canonicalization_and_version_increment(self, s):
-        # NOTE: uses the controlled ruleset intentionally per test spec; test restores state at teardown.
-        prev = s.get(f"{BASE_URL}/api/rules/gd-m1-controlled-block/latest").json()["bundleVersion"]
-        body = {"rulesetId": "gd-m1-controlled-block", "confirm": True,
-                "rules": [{"ruleId": "m1-controlled-block-001", "host": CONTROLLED_HOST, "action": "block"},
-                          {"ruleId": f"t-{uuid.uuid4().hex[:6]}", "host": "Evil.Example.", "action": "block"}]}
+    def test_final_controlled_bundle_is_single_block_rule(self, s):
+        # Post-resign invariant: exactly one block rule, for the real controlled host, no placeholder host.
+        b = s.get(f"{BASE_URL}/api/rules/gd-m1-controlled-block/latest").json()
+        assert b["bundleVersion"] > 17
+        rules = b["payload"]["rules"]
+        assert len(rules) == 1 and rules[0] == {"ruleId": "m1-controlled-block-001", "host": CONTROLLED_HOST, "action": "block", "category": "controlled-test"} or (
+            len(rules) == 1 and rules[0]["host"] == CONTROLLED_HOST and rules[0]["action"] == "block"
+        )
+        assert not any(rule["host"].endswith(".example") for rule in rules)
+
+    def test_sign_without_confirm_is_refused(self, s):
+        # Guard check that does not mutate the controlled ruleset.
+        body = {"rulesetId": "gd-m1-controlled-block", "confirm": False,
+                "rules": [{"ruleId": "m1-controlled-block-001", "host": CONTROLLED_HOST, "action": "block"}]}
         r = s.post(f"{BASE_URL}/api/rules/sign", json=body, headers={"X-GuardDog-Admin-Token": ADMIN_TOKEN})
-        assert r.status_code == 200, r.text
-        b = r.json()
-        assert b["bundleVersion"] == prev + 1
-        assert any(rule["host"] == "evil.example" for rule in b["payload"]["rules"])
-        # Restore controlled-host rule so live frontend continues to show "block" for the default URL.
-        restore = {"rulesetId": "gd-m1-controlled-block", "confirm": True,
-                   "rules": [{"ruleId": "m1-controlled-block-001", "host": CONTROLLED_HOST, "action": "block"}]}
-        r2 = s.post(f"{BASE_URL}/api/rules/sign", json=restore, headers={"X-GuardDog-Admin-Token": ADMIN_TOKEN})
-        assert r2.status_code == 200
+        assert r.status_code in (400, 403, 409, 422), r.text
 
     def test_sign_rule_conflict_422(self, s):
         body = {"rulesetId": "gd-m1-controlled-block", "confirm": True,
@@ -164,12 +166,12 @@ class TestKeys:
 class TestIntelligence:
     def test_lookup_controlled_host_block_local_signed_rules(self, s):
         r = s.post(f"{BASE_URL}/api/intelligence/lookup",
-                   json={"url": "https://M1-Block-Test.GuardDog.Example/x?token=SECRET"})
+                   json={"url": f"https://{CONTROLLED_HOST.upper()}/x?token=SECRET"})
         assert r.status_code == 200, r.text
         d = r.json()
         assert d["verdict"] == "block"
         assert d["source"] == "local-signed-rules"
-        assert d["sanitizedUrl"] == "https://m1-block-test.guarddog.example/x"
+        assert d["sanitizedUrl"] == f"https://{CONTROLLED_HOST}/x"
         assert "SECRET" not in json.dumps(d)
 
     def test_lookup_unknown_host_unknown_degraded_fail_open(self, s):

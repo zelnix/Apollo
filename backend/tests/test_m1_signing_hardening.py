@@ -98,8 +98,10 @@ class TestControlledConfigurationGuard:
         assert r.json()["detail"]["code"] == "CONTROLLED_CONFIG_MISMATCH"
 
 
-# --- Happy path (also restores /latest to a valid state for the frontend) ---
+# --- Happy path: MUTATES the live controlled ruleset (bumps the frozen M1 bundle). Only with GD_ALLOW_LIVE_RESIGN=1;
+# afterwards run `python scripts/resign_controlled_bundle.py --confirm` to restore the single-rule M1 bundle. ---
 class TestSigningHappyPath:
+    @pytest.mark.skipif(os.environ.get("GD_ALLOW_LIVE_RESIGN") != "1", reason="would resign the frozen M1 controlled bundle")
     def test_valid_sign_increments_and_canonicalizes_and_preserves_controlled(self, s, admin):
         prev = s.get(f"{BASE_URL}/api/rules/gd-m1-controlled-block/latest").json()["bundleVersion"]
         extra_id = f"t-{uuid.uuid4().hex[:8]}"
@@ -145,7 +147,7 @@ class TestPublicSurfaceSecretLeaks:
 
     def test_config_signing_metadata_and_placeholder_flag(self, s):
         d = s.get(f"{BASE_URL}/api/config").json()
-        assert d["controlledEndpoint"]["isPlaceholder"] is True
+        assert d["controlledEndpoint"]["isPlaceholder"] is False
         signing = d["signing"]
         assert signing["enabled"] is True
         assert signing["requiresAdminToken"] is True

@@ -18,7 +18,7 @@ function withGuardDogAndroidSdk(config) {
     return mod;
   });
   config = withAndroidManifest(config, (mod) => {
-    for (const perm of ["android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED", "android.permission.POST_NOTIFICATIONS"]) {
+    for (const perm of ["android.permission.ACCESS_NETWORK_STATE", "android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED", "android.permission.POST_NOTIFICATIONS"]) {
       AndroidConfig.Permissions.addPermission(mod.modResults, perm);
     }
     return mod;

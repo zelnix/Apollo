@@ -50,4 +50,29 @@ class TunSessionRecoveryTest {
         assertEquals(ProtectionState.REVOKED, repo.current().state)
         assertFalse(repo.consentGranted) // revocation does
     }
+
+    @Test fun recoverySnapshotIsCleanOnlyAfterSessionClosedAndStateLeftRunning() {
+        val clock = FixedClock(0)
+        val repo = VpnStateRepository(clock)
+        val stream = BlockingStream()
+        val reporter = PacketDropReporter("52.25.179.131", BlockedFlowDeduper(5_000, clock), { }, clock)
+        val session = TunSession(Closeable { stream.close() }, TunPacketReader(stream, reporter), null)
+        repo.recordConsent(true)
+        repo.transition(VpnLifecycleState.Running(0, "52.25.179.131/32"))
+
+        val enforcing = RecoveryInspector.fromRuntime(repo, session, reporter, vpnTransportPresent = true)
+        assertTrue(enforcing.tunOpen && enforcing.selectiveRouteActive && enforcing.dropReporterAttached)
+        assertEquals("52.25.179.131/32", enforcing.routeCidr)
+        assertFalse(enforcing.recovered)
+
+        session.close()
+        repo.transition(VpnLifecycleState.Stopped("stopped by user"))
+        val stillVpnTransport = RecoveryInspector.fromRuntime(repo, session, null, vpnTransportPresent = true)
+        assertFalse(stillVpnTransport.recovered) // OS still reports a VPN transport -> not recovered yet
+
+        val recovered = RecoveryInspector.fromRuntime(repo, null, null, vpnTransportPresent = false)
+        assertEquals("STOPPED", recovered.lifecycle)
+        assertFalse(recovered.tunOpen || recovered.selectiveRouteActive || recovered.dropReporterAttached)
+        assertTrue(recovered.recovered)
+    }
 }

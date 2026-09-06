@@ -5,7 +5,6 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.VpnService
 import android.os.Build
-import android.os.ParcelFileDescriptor
 import android.util.Log
 import com.guarddog.core.clock.SystemClock
 import com.guarddog.core.protection.ProtectionEnforcementReporter
@@ -21,6 +20,9 @@ object GuardDogVpnRuntime {
     @Volatile var reporter: ProtectionEnforcementReporter? = null
     @Volatile var resolver: HostResolver = SystemHostResolver
     @Volatile var dropReporter: PacketDropReporter? = null
+        internal set
+    /** The live TUN session while enforcing; null once closed. Read by the recovery proof. */
+    @Volatile var activeSession: TunSession? = null
         internal set
 }
 
@@ -90,9 +92,11 @@ class GuardDogVpnService : VpnService() {
             state.transition(VpnLifecycleState.Degraded("TUN read error"))
         }
         // Retain the ParcelFileDescriptor inside the session; close() releases it exactly once.
-        session = TunSession(pfd as ParcelFileDescriptor, tunReader, Thread(tunReader, "guarddog-tun-reader")) {
+        session = TunSession(pfd, tunReader, Thread(tunReader, "guarddog-tun-reader")) {
             GuardDogVpnRuntime.dropReporter = null
+            GuardDogVpnRuntime.activeSession = null
         }.also { it.start() }
+        GuardDogVpnRuntime.activeSession = session
         val running = VpnLifecycleState.Running(System.currentTimeMillis(), spec.routes[0].cidr)
         state.transition(running)
         startForegroundCompat(ProtectionNotificationFactory.build(this, running))
@@ -134,6 +138,7 @@ class GuardDogVpnService : VpnService() {
         session?.close()
         session = null
         GuardDogVpnRuntime.dropReporter = null
+        GuardDogVpnRuntime.activeSession = null
     }
 
     private fun startForegroundCompat(notification: android.app.Notification) {

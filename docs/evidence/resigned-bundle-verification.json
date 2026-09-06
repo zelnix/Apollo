@@ -1,0 +1,38 @@
+{
+  "checkedAt": "2026-09-06T07:54:09Z",
+  "rulesetId": "gd-m1-controlled-block",
+  "bundleVersion": 25,
+  "keyId": "gd-m1-test-ed25519-001",
+  "payloadHash": "2581666cc768e1e4e76962db0cc70e497e17e9b9cf4a5a997c8cfb091e6b90c9",
+  "issuedAt": "2026-09-06T07:54:08Z",
+  "expiresAt": "2026-10-06T07:54:08Z",
+  "rules": [
+    {
+      "ruleId": "m1-controlled-block-001",
+      "host": "blocktest.btciq.app",
+      "action": "block",
+      "matchType": "exact",
+      "category": "controlled-test"
+    }
+  ],
+  "controlledEndpoint": {
+    "host": "blocktest.btciq.app",
+    "ipv4": "52.25.179.131",
+    "url": "https://blocktest.btciq.app/",
+    "isPlaceholder": false
+  },
+  "verifyReason": null,
+  "checks": {
+    "bundleVersion_gt_previous": true,
+    "rulesetId_is_m1_controlled": true,
+    "keyId_is_gd_m1_test_ed25519_001": true,
+    "block_host_is_controlled_host": true,
+    "old_placeholder_host_absent": true,
+    "exactly_one_controlled_block_rule": true,
+    "signature_verifies_against_pinned_public_key": true,
+    "issuedAt_expiresAt_valid": true,
+    "config_isPlaceholder_false": true,
+    "latest_endpoint_serves_new_version": true
+  },
+  "result": "PASS"
+}

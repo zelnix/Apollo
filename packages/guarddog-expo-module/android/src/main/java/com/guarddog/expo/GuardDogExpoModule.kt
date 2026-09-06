@@ -15,6 +15,7 @@ import com.guarddog.vpn.BindingResult
 import com.guarddog.vpn.ControlledEndpointResolver
 import com.guarddog.vpn.GuardDogVpnRuntime
 import com.guarddog.vpn.GuardDogVpnService
+import com.guarddog.vpn.RecoveryInspector
 import com.guarddog.vpn.VpnLifecycleState
 import com.guarddog.vpn.VpnStateRepository
 import expo.modules.kotlin.Promise
@@ -119,6 +120,14 @@ class GuardDogExpoModule : Module() {
                 mapOf("observedMatching" to it.observedMatching, "droppedMatching" to it.droppedMatching, "reportedBlocks" to it.reportedBlocks,
                     "dedupedRetries" to it.dedupedRetries, "unexpectedPackets" to it.unexpectedPackets)
             }
+        }
+
+        // Recovery proof (AC-06): real runtime + OS-level snapshot; the HTTPS re-check is done by the caller.
+        Function("getRecoveryStatus") {
+            val r = RecoveryInspector.inspect(context, state)
+            mapOf("lifecycle" to r.lifecycle, "tunOpen" to r.tunOpen, "selectiveRouteActive" to r.selectiveRouteActive,
+                "vpnTransportPresent" to r.vpnTransportPresent, "routeCidr" to r.routeCidr, "dropReporterAttached" to r.dropReporterAttached,
+                "recovered" to r.recovered)
         }
     }
 

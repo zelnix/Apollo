@@ -44,6 +44,11 @@ public class GuardDogExpoModule: Module {
         AsyncFunction("startProtection") { () -> BridgeProtectionStateDTO in self.state(reason: "iOS M1 has no enforcement layer") }
         AsyncFunction("stopProtection") { () -> BridgeProtectionStateDTO in self.state(reason: nil) }
         Function("getEnforcementStats") { () -> [String: Any]? in nil }
+        // iOS never installs a route or TUN: the honest snapshot is "nothing to recover".
+        Function("getRecoveryStatus") { () -> [String: Any?] in
+            ["lifecycle": "INACTIVE", "tunOpen": false, "selectiveRouteActive": false, "vpnTransportPresent": false,
+             "routeCidr": nil, "dropReporterAttached": false, "recovered": true]
+        }
     }
 
     private func emit(_ event: SecurityEvent) {

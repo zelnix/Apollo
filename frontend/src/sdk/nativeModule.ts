@@ -21,6 +21,16 @@ export interface NativeRuleBundleResult {
   ruleCount: number;
 }
 
+export interface NativeRecoveryStatus {
+  lifecycle: string;
+  tunOpen: boolean;
+  selectiveRouteActive: boolean;
+  vpnTransportPresent: boolean;
+  routeCidr: string | null;
+  dropReporterAttached: boolean;
+  recovered: boolean;
+}
+
 export interface GuardDogNativeModule {
   getCapabilities(): Record<string, unknown>;
   getProtectionState(): NativeProtectionState;
@@ -31,6 +41,7 @@ export interface GuardDogNativeModule {
   startProtection(): Promise<NativeProtectionState>;
   stopProtection(): Promise<NativeProtectionState>;
   getEnforcementStats(): Record<string, number> | null;
+  getRecoveryStatus(): NativeRecoveryStatus;
   addListener(eventName: string, listener: (payload: unknown) => void): { remove(): void };
 }
 
