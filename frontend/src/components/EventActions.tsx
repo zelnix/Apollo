@@ -24,7 +24,7 @@ export function EventActions({ event }: { event: PatrolEvent }) {
     return (
       <View style={{ gap: spacing.sm }}>
         <Body>This event is {event.status === "trusted" ? "trusted (this exact link only)" : event.status === "blocked" ? "blocked and contained" : "handled"}.</Body>
-        <Button testID="event-explain-button" variant="secondary" label="Ask Apollo to explain" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { prompt: "Explain this event and what I should do next.", context } })} />
+        <Button testID="event-explain-button" variant="secondary" label="Ask Higgins to explain" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { prompt: "Explain this event and what I should do next.", context } })} />
       </View>
     );
   }
@@ -44,7 +44,7 @@ export function EventActions({ event }: { event: PatrolEvent }) {
           <Button testID="event-handled-button" variant="ghost" label="I've handled this" onPress={wrap("resolve", () => resolveEvent(event))} disabled={!!busy} />
         </>
       )}
-      <Button testID="event-explain-button" variant="ghost" label="Ask Apollo to explain" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { prompt: "Explain this event and what I should do next.", context } })} />
+      <Button testID="event-explain-button" variant="ghost" label="Ask Higgins to explain" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { prompt: "Explain this event and what I should do next.", context } })} />
     </View>
   );
 }

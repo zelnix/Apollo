@@ -126,7 +126,7 @@ export default function CheckEmail() {
               <Button testID="email-verify-sender" variant="secondary" label="Verify sender safely" onPress={() => setVerify(true)} />
               {result.explanation ? <><Text style={s.label}>Apollo&apos;s plain-language take</Text><Body testID="email-second-opinion">{result.explanation.summary}</Body></> : null}
               {result.event ? <RecoveryFlow event={result.event} kinds={["clicked", "password", "code", "money", "card", "info", "download"]} linkToCheck={a.urls[0] ?? null} testID="email-recovery" /> : null}
-              <Button testID="email-ask" variant="ghost" label="Tell me more (Ask Apollo)" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { context: `Email check: ${a.title}. State: ${STATE_NAME[a.state]}. ${a.technical.join("; ")}`, prompt: "What should I do about this email?" } })} />
+              <Button testID="email-ask" variant="ghost" label="Tell me more (Ask Higgins)" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { context: `Email check: ${a.title}. State: ${STATE_NAME[a.state]}. ${a.technical.join("; ")}`, prompt: "What should I do about this email?" } })} />
               <Button testID="email-tech" variant="ghost" label="View technical details" onPress={() => setTech(true)} />
               <Button testID="email-again" variant="ghost" label="Check another email" onPress={() => { setResult(null); setRaw(""); setFrom(""); setSubject(""); }} />
             </Card>

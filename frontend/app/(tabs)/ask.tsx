@@ -7,12 +7,13 @@ import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiGet, streamPost } from "@/src/api/client";
+import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
 import { Body, Card, Pill, ScreenHeader } from "@/src/components/ui";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 interface Msg { id: string; role: "user" | "apollo"; content: string; pending?: boolean }
-const SUGGESTIONS = ["What does growling mean?", "Why can't Apollo see my whole phone?", "How do I spot a scam text link?", "What should I do after a barking alert?"];
+const SUGGESTIONS = ["What does it mean when Apollo growls?", "Why can't Apollo see my whole phone?", "How do I spot a scam text link?", "What should I do after Apollo barks?"];
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -73,7 +74,7 @@ export default function Ask() {
   return (
     <View style={s.root}>
       <View style={{ paddingTop: insets.top + spacing.md }}>
-        <ScreenHeader title="Ask Apollo" testID="ask-header" right={<Pill tone="neutral" label="Explanation only" testID="ask-scope-pill" />} />
+        <ScreenHeader title="Ask Higgins" testID="ask-header" right={<Pill tone="neutral" label="Explanation only" testID="ask-scope-pill" />} />
       </View>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={0}>
         <FlatList
@@ -86,12 +87,13 @@ export default function Ask() {
           renderItem={({ item }) => (
             <View style={[s.bubble, item.role === "user" ? s.user : s.apollo]} testID={`ask-msg-${item.role}`}>
               {item.pending ? <ActivityIndicator color={colors.resting} /> : <Text style={s.text}>{item.content}</Text>}
+              {item.role === "apollo" && !item.pending && item.content ? <View style={{ marginTop: spacing.sm }}><HigginsSpeakButton text={item.content} testID={`ask-hear-${item.id}`} /></View> : null}
             </View>
           )}
           ListEmptyComponent={
             <Card style={{ gap: spacing.sm }} testID="ask-empty">
-              <Text style={{ fontFamily: fonts.display, fontSize: 16, color: colors.onSurface }}>Ask Apollo to explain</Text>
-              <Body>Apollo explains what happened and what to do, in plain language. It never decides what is safe — Apollo&apos;s on-device checks and intelligence do that.</Body>
+              <Text style={{ fontFamily: fonts.display, fontSize: 16, color: colors.onSurface }}>Ask Higgins</Text>
+              <Body>Higgins is Apollo&apos;s handler. He explains what Apollo saw and what to do, in plain English — and will read it aloud if you ask. He never decides what is safe; Apollo&apos;s on-device checks and intelligence do that.</Body>
             </Card>
           }
         />
@@ -107,7 +109,7 @@ export default function Ask() {
             style={s.input}
             value={text}
             onChangeText={setText}
-            placeholder="Ask about a link, a warning, or a term…"
+            placeholder="Ask Higgins about a link, a warning, or a term…"
             placeholderTextColor={colors.muted}
             multiline
             returnKeyType="send"
@@ -118,7 +120,7 @@ export default function Ask() {
             {streaming ? <ActivityIndicator color={colors.onBrandPrimary} /> : <SendHorizontal size={20} color={colors.onBrandPrimary} />}
           </Pressable>
         </View>
-        <Text style={s.disclaimer}>Guidance only. Apollo&apos;s AI never blocks or verifies threats.</Text>
+        <Text style={s.disclaimer}>Guidance only. Higgins never blocks or verifies threats — Apollo does.</Text>
       </KeyboardAvoidingView>
     </View>
   );

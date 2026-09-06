@@ -14,6 +14,8 @@ import { apiPost } from "@/src/api/client";
 import { EventActions } from "@/src/components/EventActions";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
+import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
+import { getHigginsAuto, speakHiggins } from "@/src/voice/higgins";
 import { Body, Button, Card, Pill, toneColor } from "@/src/components/ui";
 import { verifyWebsite } from "@/src/domain/brand";
 import { analysePage, type PageAnalysis, type PageSignals } from "@/src/domain/pageAnalysis";
@@ -88,6 +90,12 @@ export default function CheckLink() {
     try { setOutcome(await checkLink(value)); } finally { setBusy(false); }
   }, [checkLink]);
 
+  // Higgins speaks up unprompted when Apollo barks or guards — only if the person asked for that in Settings.
+  useEffect(() => {
+    if (!outcome || !state || (state !== "barking" && state !== "biting")) return;
+    void getHigginsAuto().then((on) => { if (on) void speakHiggins(`${STATE_LABEL[state]}. ${outcome.decision.headline} What to do: ${outcome.decision.what_to_do}`, deviceId).catch(() => undefined); });
+  }, [outcome]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Shared / deep-linked / clipboard links run automatically once setup is complete.
   useEffect(() => {
     if (params.url && ready && setupDone && !autoRan.current) { autoRan.current = true; void run(String(params.url)); }
@@ -146,7 +154,7 @@ export default function CheckLink() {
           {outcome && state ? (
             <Animated.View entering={FadeInDown.duration(350)}>
               <Card testID="check-result-card" style={{ borderColor: toneColor(colors, liveEvent?.state === "biting" && liveEvent.resolved_at ? "resting" : state), gap: spacing.sm }}>
-                <Pill tone={state} label={STATE_LABEL[state]} testID="check-result-state" />
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm }}><Pill tone={state} label={STATE_LABEL[state]} testID="check-result-state" /><HigginsSpeakButton compact text={`${STATE_LABEL[state]}. ${liveEvent?.state === "biting" ? "Apollo blocked a dangerous website." : (liveEvent?.headline ?? outcome.decision.headline)} ${liveEvent?.what_happened ?? outcome.decision.what_happened} What to do: ${liveEvent?.what_to_do ?? outcome.decision.what_to_do}`} testID="check-hear-higgins" /></View>
                 {liveEvent?.state === "biting" && liveEvent.resolved_at ? <Pill tone="resting" label="Threat contained" testID="check-result-contained" /> : null}
                 {liveEvent?.state === "biting" ? (
                   <>

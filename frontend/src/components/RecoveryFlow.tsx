@@ -40,7 +40,7 @@ export function RecoveryFlow({ event, kinds, linkToCheck, testID = "recovery" }:
         {kind ? RECOVERY_STEPS[kind].map((step, i) => <View key={i} style={s.step}><Text style={s.num}>{i + 1}</Text><Text style={s.text} testID={`${testID}-step-${i}`}>{step}</Text></View>) : null}
         {kind === "clicked" && linkToCheck ? <Button testID={`${testID}-check-link`} label="Check the link now" onPress={() => { setKind(null); router.push({ pathname: "/check", params: { url: linkToCheck.startsWith("http") ? linkToCheck : `https://${linkToCheck}`, source: "message" } }); }} /> : null}
         {kind === "clicked" && !linkToCheck ? <Body>If you only looked at the page and didn't type anything, you're most likely fine. Apollo has recorded it.</Body> : null}
-        <Body>This is recorded in Patrol so you can come back to it. Ask Apollo any time.</Body>
+        <Body>This is recorded in Patrol so you can come back to it. Ask Higgins any time.</Body>
         <Button testID={`${testID}-close`} variant="ghost" label="Done" onPress={() => setKind(null)} />
       </Sheet>
     </>

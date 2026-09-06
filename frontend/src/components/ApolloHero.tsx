@@ -11,6 +11,7 @@ import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, wi
 
 import type { StateResolution } from "@/src/domain/stateMachine";
 import { STATE_LABEL, STATE_MEANING, type ApolloState, type Visibility } from "@/src/domain/types";
+import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { Pill, toneColor, toneTint } from "./ui";
 
@@ -112,6 +113,7 @@ export function ApolloHero({ resolution, visibility, adapterLabel, isMock, anima
           <Text style={s.label} testID="apollo-state-label">{title}</Text>
           <Text style={s.meaning}>{meaning}</Text>
           <Text style={s.reason} testID="apollo-state-reason">{resolution.reason}</Text>
+          <HigginsSpeakButton text={`${title}. ${meaning} ${resolution.reason}`} testID="hero-hear-higgins" />
           <View style={s.row}>
             <Pill testID="visibility-pill" tone={visibility === "full" ? "resting" : visibility === "limited" ? "growling" : "unknown"} label={visibility === "full" ? "Full visibility" : visibility === "limited" ? "Limited visibility" : "No visibility"} />
             {resolution.recovering ? <Pill tone="growling" label="Awaiting fresh check" testID="recovering-pill" /> : null}

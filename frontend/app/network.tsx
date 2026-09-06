@@ -126,7 +126,7 @@ export default function CheckNetwork() {
               {a.ssid && !trustedSsids.includes(a.ssid) && (a.state === "resting" || a.state === "ears_up") && context !== "public" ? <Button testID="network-trust" variant="secondary" label={`Trust “${a.ssid}” — it's mine`} onPress={() => void trustNetwork(a.ssid!)} /> : null}
               <Button testID="network-tech" variant="ghost" label="View technical details" onPress={() => setTech((t) => !t)} />
               {tech ? a.technical.map((t, i) => <Body key={i} testID={`network-tech-${i}`}>{t}</Body>) : null}
-              <Button testID="network-ask" variant="ghost" label="Ask Apollo about this network" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { context: `Network check: ${a.title}. State: ${STATE_NAME[a.state]}. ${a.technical.join("; ")}`, prompt: "Is it OK to use this network?" } })} />
+              <Button testID="network-ask" variant="ghost" label="Ask Higgins about this network" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { context: `Network check: ${a.title}. State: ${STATE_NAME[a.state]}. ${a.technical.join("; ")}`, prompt: "Is it OK to use this network?" } })} />
               <Button testID="network-again" variant="ghost" label="Check again" onPress={() => setResult(null)} />
             </Card>
           </>

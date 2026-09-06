@@ -121,7 +121,7 @@ export default function CheckDevice() {
           {result.status !== "protected" && !event ? <Button testID="device-save" label={saving ? "Saving…" : "Save to Patrol & stay with me"} onPress={() => void save()} disabled={saving} /> : null}
           {event ? <RecoveryFlow event={event} kinds={["remote", "banking_during_access", "accessibility", "profile", "password", "code"]} testID="device-recovery-flow" /> : null}
           <Button testID="device-check-app" variant="secondary" label="Check a specific app" onPress={() => router.push("/app-check")} />
-          <Button testID="device-ask" variant="ghost" label="Ask Apollo about my device" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { context: `Device check: ${meta.title}. ${result.summary} Findings: ${result.findings.map((f) => f.title).join("; ") || "none"}. Self-reported: ${Object.keys(self).filter((k) => self[k as keyof SelfReport]).join(", ") || "nothing"}.`, prompt: anySelf ? "What should I do first?" : "How do I keep my phone secure?" } })} />
+          <Button testID="device-ask" variant="ghost" label="Ask Higgins about my device" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { context: `Device check: ${meta.title}. ${result.summary} Findings: ${result.findings.map((f) => f.title).join("; ") || "none"}. Self-reported: ${Object.keys(self).filter((k) => self[k as keyof SelfReport]).join(", ") || "nothing"}.`, prompt: anySelf ? "What should I do first?" : "How do I keep my phone secure?" } })} />
         </Card>
       </ScrollView>
     </View>

@@ -36,13 +36,13 @@ class TestWeeklyCheckinApi:
         assert api.post(f"{BASE_URL}/api/family/weekly/send-now", json={"device_id": guardian, "preview_only": True}).json() == {"sent": False, "reason": "no_links"}
         _pair(api, protected, guardian)
         r = api.post(f"{BASE_URL}/api/family/weekly/send-now", json={"device_id": guardian, "preview_only": True}).json()
-        assert r["preview"] is True and r["title"] == "Apollo: Sunday check-in"
+        assert r["preview"] is True and r["title"] == "Higgins: your Sunday check-in"
         assert r["message"] == "A quiet week for Mum. Nothing came up that needed a look."
         # an open alert changes the wording
         ts = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
         api.post(f"{BASE_URL}/api/patrol/events", json={"event_id": uuid.uuid4().hex[:16], "device_id": protected, "category": "link", "state": "barking", "status": "active", "headline": "x", "what_happened": "x", "why": [], "what_to_do": "x", "adapter_label": "mock", "occurred_at": ts})
         r = api.post(f"{BASE_URL}/api/family/weekly/send-now", json={"device_id": guardian, "preview_only": True}).json()
-        assert r["message"] == "Mum has 1 alert still open this week. A call to walk through it would help."
+        assert r["message"] == "Mum has 1 alert still open this week. I would suggest a call to walk through it."
 
     def test_send_now_without_relay_is_friendly_error(self, api):
         protected, guardian = f"prot{uuid.uuid4().hex[:12]}", f"guard{uuid.uuid4().hex[:12]}"
@@ -89,7 +89,7 @@ class TestWeeklyCheckinScheduler:
             w = (await server._weekly_rollup(g))[0]
             assert server.weekly_sentence(w) == "A quiet week for Mum. Nothing came up that needed a look."
             w2 = {**w, "total": 3, "alerts": 2, "open_alerts": 0, "handled_alerts": 2}
-            assert server.weekly_sentence(w2) == "Mum had 2 alerts this week and handled them all."
+            assert server.weekly_sentence(w2) == "Mum had 2 alerts this week and handled them all. Quite so."
             w3 = {**w, "total": 0, "last_seen_at": None}
             assert server.weekly_sentence(w3).startswith("Apollo hasn't heard from Mum's phone")
         asyncio.run(run())

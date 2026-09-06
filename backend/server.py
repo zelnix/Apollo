@@ -23,12 +23,13 @@ from pathlib import Path
 from typing import Annotated, Any, AsyncIterator, Literal, Optional
 from urllib.parse import urlparse, urlunparse
 
+import emoji
 import httpx
 from pymongo.errors import DuplicateKeyError
 from bson import ObjectId
 from dotenv import load_dotenv
 from fastapi import APIRouter, FastAPI, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator
 from starlette.middleware.cors import CORSMiddleware
@@ -588,10 +589,15 @@ async def revoke_trust(trust_id: str, device_id: str = Query(min_length=8, max_l
 
 
 # --------------------------------------------------------------------------- Routes: Ask Apollo
-APOLLO_SYSTEM_PROMPT = """You are Apollo, a calm, plain-language security guide inside a privacy-first mobile app for everyday people in Australia.
+HIGGINS_VOICE = ("You speak as Higgins — Apollo's handler: a sophisticated, older English gentleman, very proper and butler-like. Courteous, unhurried, "
+                 "dry warmth, never theatrical. Refer to Apollo (the guard dog) in the third person — 'Apollo is growling at this one', 'Apollo has it in hand'. "
+                 "Use light butler turns of phrase sparingly ('if I may', 'I would suggest', 'quite so', 'do allow me') — at most one per answer. Do not use 'sir' or 'madam'. "
+                 "Australian spelling. Plain words; every technical term gets a one-line explanation.")
+
+APOLLO_SYSTEM_PROMPT = HIGGINS_VOICE + """ You are the plain-language security guide inside Apollo, a privacy-first mobile app for everyday people in Australia.
 Your role is explanation and guidance only. You do not decide whether something is safe, and you never claim Apollo blocked or verified anything unless the provided event context says so.
 Apollo's four states mean exactly: Patrolling (internally "resting") = on the lookout, safe within the checks Apollo can see; Growling = unusual or uncertain, not confirmed; Barking = the person needs to decide or act; Biting = Apollo verified and blocked a threat.
-Rules: no fear theatrics, no jargon without a one-line explanation, no fake certainty. If something is uncertain, say so plainly. Never ask for passwords, codes or personal details. Keep answers short (under 150 words) with clear next steps. If asked about things outside online safety, gently redirect."""
+Rules: no fear theatrics, no jargon without a one-line explanation, no fake certainty. If something is uncertain, say so plainly. Never ask for passwords, codes or personal details. Keep answers short (under 150 words) with clear next steps. If asked about things outside online safety, redirect with good grace."""
 
 
 async def gemini_stream(device_id: str, message: str, context: Optional[str]) -> AsyncIterator[str]:
@@ -688,7 +694,7 @@ async def send_email(*, to: str, subject: str, html: str) -> Optional[str]:
 
 def _wrap(body: str) -> str:
     return (f'<table role="presentation" width="100%"><tr><td style="padding:24px;font-family:Arial,sans-serif;color:#111">{body}'
-            f'<p style="font-size:12px;color:#888">Sent by {escape(EMAIL_FROM_NAME)}, a privacy-first security app. Apollo never asks for passwords, codes or payment details by email.</p></td></tr></table>')
+            f'<p style="font-size:12px;color:#888">Sent by {escape(EMAIL_FROM_NAME)}, a privacy-first security app. Apollo is a brand of Harmony Wellness Group. Apollo never asks for passwords, codes or payment details by email.</p></td></tr></table>')
 
 
 class GuardianIn(BaseModel):
@@ -958,7 +964,7 @@ async def share_incident(body: ShareIncidentIn):
         who = links[0].get("owner_name") or "A family member"
         try:
             await send_push(recipients=[ln["guardian_device_id"] for ln in links][:100],
-                            data={"title": f"Apollo: {who} is asking for help", "message": body.headline, "subtext": "Tap to see what happened and the steps they're working through.", "action_url": f"/family/incident/{body.scent_id}", **PUSH_THREAT},
+                            data={"title": f"Higgins: {who} is asking for your help", "message": body.headline, "subtext": "Do have a look at what happened and the steps they're working through.", "action_url": f"/family/incident/{body.scent_id}", **PUSH_THREAT},
                             idempotency_key=f"incident-{body.scent_id}-{ts.isoformat()[:16]}")
         except Exception as exc:  # noqa: BLE001
             logger.warning("incident push failed (non-blocking): %s", type(exc).__name__)
@@ -1064,19 +1070,19 @@ async def _weekly_rollup(guardian_device_id: str) -> list[dict[str, Any]]:
 
 def weekly_sentence(w: dict[str, Any], at: Optional[datetime] = None) -> str:
     """Server-side twin of frontend weeklyHeadline — same calm wording, so the push matches the screen."""
-    who = w.get("owner_name") or "Your family member"
+    who = w.get("owner_name") or "your family member"
     seen = w.get("last_seen_at")
     silent_days = ((at or now_utc()) - seen.replace(tzinfo=timezone.utc)).days if seen else 999
     if w["total"] == 0 and silent_days >= 7:
-        return f"Apollo hasn't heard from {who}'s phone this week — worth a friendly check-in."
+        return f"Apollo hasn't heard from {who}'s phone this week. A friendly check-in would not go amiss."
     if w["total"] == 0:
         return f"A quiet week for {who}. Nothing came up that needed a look."
     if w["open_alerts"] > 0:
         n = w["open_alerts"]
-        return f"{who} has {n} alert{'s' if n > 1 else ''} still open this week. A call to walk through it would help."
+        return f"{who[0].upper() + who[1:]} has {n} alert{'s' if n > 1 else ''} still open this week. I would suggest a call to walk through it."
     if w["alerts"] > 0:
         n = w["alerts"]
-        return f"{who} had {n} alert{'s' if n > 1 else ''} this week and handled {'them all' if n > 1 else 'it'}."
+        return f"{who[0].upper() + who[1:]} had {n} alert{'s' if n > 1 else ''} this week and handled {'them all' if n > 1 else 'it'}. Quite so."
     return f"A calm week for {who}. Apollo looked at {w['total']} thing{'s' if w['total'] > 1 else ''} and none needed attention."
 
 
@@ -1107,7 +1113,7 @@ async def send_weekly_checkin(guardian_device_id: str, week_key: str, *, force: 
     lines = [weekly_sentence(w) for w in rollup]
     message = " ".join(lines[:2]) + (f" And {len(lines) - 2} more — open Family for the full check-in." if len(lines) > 2 else "")
     open_total = sum(w["open_alerts"] for w in rollup)
-    title = "Apollo: Sunday check-in" if open_total == 0 else "Apollo: Sunday check-in — someone may need a call"
+    title = "Higgins: your Sunday check-in" if open_total == 0 else "Higgins: your Sunday check-in — a call may be in order"
     await send_push(recipients=[guardian_device_id], data={"title": title, "message": message, "action_url": "/family", **PUSH_FAMILY},
                     idempotency_key=f"weekly-{guardian_device_id}-{week_key}" + ("-manual-" + uuid.uuid4().hex[:6] if force else ""))
     if not force:
@@ -1134,12 +1140,64 @@ async def weekly_checkin_tick(at: Optional[datetime] = None) -> int:
     return sent
 
 
+# Missed Check-In Nudge — Tuesday evening (same local window), one per guardian per week: names the people they
+# haven't said hello to since Sunday. Same opt-out and quiet hours as the Sunday summary.
+async def send_missed_checkin_nudge(guardian_device_id: str, local: datetime, *, force: bool = False) -> dict[str, Any]:
+    dev = await db.devices.find_one({"device_id": guardian_device_id}) or {}
+    if not force and dev.get("weekly_checkin_enabled") is False:
+        return {"sent": False, "reason": "opted_out"}
+    week_key = _week_key(local)
+    if not force and await db.weekly_nudge_sends.find_one({"guardian_device_id": guardian_device_id, "week_key": week_key}):
+        return {"sent": False, "reason": "already_sent"}
+    links = await db.family_links.find({"guardian_device_id": guardian_device_id, "deleted_at": None}).to_list(20)
+    if not links:
+        return {"sent": False, "reason": "no_links"}
+    # "since Sunday" = 00:00 of the most recent local Sunday, expressed in UTC using the device's coarse offset.
+    tz_minutes = int(dev.get("tz_offset_minutes") or 0)
+    sunday_local = (local - timedelta(days=(local.weekday() + 1) % 7)).replace(hour=0, minute=0, second=0, microsecond=0)
+    since = (sunday_local - timedelta(minutes=tz_minutes)).replace(tzinfo=timezone.utc)
+    missed = []
+    for ln in links:
+        done = await db.weekly_checkins.find_one({"guardian_device_id": guardian_device_id, "protected_device_id": ln["protected_device_id"], "created_at": {"$gte": since}})
+        if not done:
+            missed.append(ln.get("owner_name") or "your family member")
+    if not missed:
+        return {"sent": False, "reason": "all_checked_in"}
+    names = missed[0] if len(missed) == 1 else f"{', '.join(missed[:-1])} and {missed[-1]}"
+    title = f"Higgins: a hello for {names}, perhaps?"
+    message = f"You haven't checked in with {names} since Sunday. A quiet week is rather nicer with a quick call — then do tap \"All good\" in Family."
+    await send_push(recipients=[guardian_device_id], data={"title": title, "message": message, "action_url": "/family", **PUSH_FAMILY},
+                    idempotency_key=f"nudge-{guardian_device_id}-{week_key}" + ("-manual-" + uuid.uuid4().hex[:6] if force else ""))
+    if not force:
+        await db.weekly_nudge_sends.update_one({"guardian_device_id": guardian_device_id, "week_key": week_key}, {"$set": {"sent_at": now_utc(), "missed": missed}}, upsert=True)
+    return {"sent": True, "title": title, "message": message, "missed": missed}
+
+
+async def missed_checkin_tick(at: Optional[datetime] = None) -> int:
+    at = at or now_utc()
+    guardians = await db.family_links.distinct("guardian_device_id", {"deleted_at": None})
+    sent = 0
+    for gid in guardians:
+        dev = await db.devices.find_one({"device_id": gid}) or {}
+        tz = int(dev.get("tz_offset_minutes") or ((dev.get("settings") or {}).get("quiet_hours") or {}).get("tz_offset_minutes", 0) or 0)
+        local = at + timedelta(minutes=tz)
+        if local.weekday() != 1 or local.hour not in WEEKLY_WINDOW or in_quiet_hours((dev.get("settings") or {}).get("quiet_hours"), at):
+            continue
+        try:
+            r = await send_missed_checkin_nudge(gid, local.replace(tzinfo=None))
+            sent += int(bool(r.get("sent")))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("missed check-in nudge failed for a guardian (non-blocking): %s", type(exc).__name__)
+    return sent
+
+
 async def weekly_checkin_loop() -> None:
     while True:
-        try:
-            await weekly_checkin_tick()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("weekly check-in tick failed: %s", type(exc).__name__)
+        for tick in (weekly_checkin_tick, missed_checkin_tick):
+            try:
+                await tick()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("%s failed: %s", tick.__name__, type(exc).__name__)
         await asyncio.sleep(15 * 60)
 
 
@@ -1209,17 +1267,34 @@ async def list_weekly_checkins(device_id: str = Query(min_length=8, max_length=6
 class WeeklySendNowIn(BaseModel):
     device_id: str = Field(min_length=8, max_length=64)
     preview_only: bool = False  # True → compose the text without pushing (works on web / Expo Go)
+    kind: Literal["summary", "nudge"] = "summary"
 
 
 @api.post("/family/weekly/send-now")
 async def weekly_send_now(body: WeeklySendNowIn):
-    """Guardian asks to see this week's check-in as a notification right now (or just its text)."""
+    """Guardian asks to see this week's check-in (or the Tuesday nudge) as a notification right now, or just its text."""
+    if body.kind == "nudge":
+        dev = await db.devices.find_one({"device_id": body.device_id}) or {}
+        local = (now_utc() + timedelta(minutes=int(dev.get("tz_offset_minutes") or 0))).replace(tzinfo=None)
+        if body.preview_only:
+            links = await db.family_links.find({"guardian_device_id": body.device_id, "deleted_at": None}).to_list(20)
+            if not links:
+                return {"sent": False, "reason": "no_links"}
+            names = [ln.get("owner_name") or "your family member" for ln in links]
+            who = names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+            return {"sent": False, "preview": True, "title": f"Higgins: a hello for {who}, perhaps?", "message": f"You haven't checked in with {who} since Sunday. A quiet week is rather nicer with a quick call — then do tap \"All good\" in Family."}
+        try:
+            return await send_missed_checkin_nudge(body.device_id, local, force=True)
+        except HTTPException:
+            raise
+        except Exception:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail="Apollo's alert relay didn't respond. Try again in a minute.")
     if body.preview_only:
         rollup = await _weekly_rollup(body.device_id)
         if not rollup:
             return {"sent": False, "reason": "no_links"}
         lines = [weekly_sentence(w) for w in rollup]
-        return {"sent": False, "preview": True, "title": "Apollo: Sunday check-in", "message": " ".join(lines[:2]) + (f" And {len(lines) - 2} more — open Family for the full check-in." if len(lines) > 2 else "")}
+        return {"sent": False, "preview": True, "title": "Higgins: your Sunday check-in", "message": " ".join(lines[:2]) + (f" And {len(lines) - 2} more — open Family for the full check-in." if len(lines) > 2 else "")}
     try:
         return await send_weekly_checkin(body.device_id, _week_key(now_utc()), force=True)
     except HTTPException:
@@ -1232,6 +1307,54 @@ async def weekly_send_now(body: WeeklySendNowIn):
 async def list_acks(device_id: str = Query(min_length=8, max_length=64)):
     docs = await db.family_acks.find({"protected_device_id": device_id}).sort("acknowledged_at", -1).to_list(50)
     return [{k: v for k, v in d.items() if k != "_id"} for d in docs]
+
+
+# --------------------------------------------------------------------------- Higgins' voice (OpenAI TTS via Emergent key)
+# Short explanatory text → mp3, cached by digest so repeated alerts cost nothing. Only the text the app already
+# shows is sent (no links, no identifiers); audio is served from our own cache, never as a data: URI.
+EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
+HIGGINS_TTS = {"model": "tts-1", "voice": "fable", "speed": 0.95}
+
+
+def clean_for_tts(text: str) -> str:
+    text = emoji.replace_emoji(text, replace="")
+    text = re.sub(r"https?://\S+", "a web address", text)
+    text = re.sub(r"`{1,3}[^`]*`{1,3}", "", text)
+    text = re.sub(r"[*_#>~|]", "", text)
+    text = text.replace("Wi‑Fi", "wifi").replace("Wi-Fi", "wifi").replace("MFA", "M F A").replace("URL", "web address")
+    return re.sub(r"\s+", " ", text).strip()
+
+
+class SpeakIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)
+    text: str = Field(min_length=1, max_length=1500)
+
+
+@api.post("/voice/speak")
+async def voice_speak(body: SpeakIn):
+    text = clean_for_tts(body.text)
+    if not text:
+        raise HTTPException(status_code=422, detail="Nothing to say.")
+    key = sha256(f"{text}|{HIGGINS_TTS['voice']}|{HIGGINS_TTS['speed']}|{HIGGINS_TTS['model']}|mp3".encode()).hexdigest()[:40]
+    if not await db.voice_cache.find_one({"key": key}, {"_id": 1}):
+        if not EMERGENT_LLM_KEY:
+            raise HTTPException(status_code=503, detail="Higgins' voice isn't configured on this server.")
+        from emergentintegrations.llm.openai import OpenAITextToSpeech
+        try:
+            audio = await asyncio.wait_for(OpenAITextToSpeech(api_key=EMERGENT_LLM_KEY).generate_speech(text=text, model=HIGGINS_TTS["model"], voice=HIGGINS_TTS["voice"], speed=HIGGINS_TTS["speed"], response_format="mp3"), timeout=30)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("tts failed: %s", type(exc).__name__)
+            raise HTTPException(status_code=502, detail="Higgins has lost his voice for a moment. Do try again shortly.")
+        await db.voice_cache.update_one({"key": key}, {"$set": {"key": key, "audio": audio, "chars": len(text), "created_at": now_utc()}}, upsert=True)
+    return {"url": f"/api/voice/{key}.mp3", "chars": len(text)}
+
+
+@api.get("/voice/{key}.mp3")
+async def voice_audio(key: str):
+    doc = await db.voice_cache.find_one({"key": key})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Not found")
+    return Response(content=bytes(doc["audio"]), media_type="audio/mpeg", headers={"Cache-Control": "public, max-age=31536000"})
 
 
 # --------------------------------------------------------------------------- Alert notifications (Emergent managed push)
@@ -1349,7 +1472,7 @@ class MessageAnalyseOut(BaseModel):
     gemini_used: bool = False
 
 
-GATE2_EXPLAIN_PROMPT = """You are Apollo, a calm plain-language security guide for everyday Australians. You will be given a suspicious
+GATE2_EXPLAIN_PROMPT = HIGGINS_VOICE + """ You are the calm plain-language security guide for everyday Australians. You will be given a suspicious
 message plus the findings of an on-device rule engine. Do NOT change the verdict. Write for a worried, non-technical person.
 Return ONLY JSON: {"summary": "<one sentence, max 22 words>", "why": ["<3 short bullets, each max 16 words>"], "recommendation": "<one or two sentences, max 40 words>"}.
 Rules: never tell the person to use contact details, links or numbers from the message itself; never promise money can be recovered;
@@ -1525,7 +1648,7 @@ class AppAnalyseOut(BaseModel):
     gemini_used: bool = False
 
 
-GATE7_EXPLAIN_PROMPT = """You are Apollo, a calm plain-language security guide for everyday Australians. You will be given facts about an app
+GATE7_EXPLAIN_PROMPT = HIGGINS_VOICE + """ You are the calm plain-language security guide for everyday Australians. You will be given facts about an app
 someone installed (name, source, claimed purpose, permissions) plus the findings of an on-device App & Device Engine. Do NOT change the verdict.
 Explain permissions in plain words (what they let the app do to the person), never jargon. Write for a worried, non-technical person.
 Return ONLY JSON: {"summary": "<one sentence, max 22 words>", "why": ["<3 short bullets, each max 16 words>"], "recommendation": "<one or two sentences, max 40 words>"}.
@@ -1640,7 +1763,7 @@ class AccountAnalyseOut(BaseModel):
     gemini_used: bool = False
 
 
-GATE8_EXPLAIN_PROMPT = """You are Apollo, a calm plain-language security guide for everyday Australians. You will be given an account-security
+GATE8_EXPLAIN_PROMPT = HIGGINS_VOICE + """ You are the calm plain-language security guide for everyday Australians. You will be given an account-security
 alert (login prompt, MFA request, password reset, breach notice…) plus the findings of an on-device Identity & Account Engine. Do NOT change the verdict.
 Write for a worried, non-technical person. Return ONLY JSON: {"summary": "<one sentence, max 22 words>", "why": ["<3 short bullets, each max 16 words>"],
 "recommendation": "<one or two sentences, max 40 words>"}. Rules: never tell the person to use links, numbers or buttons from the alert itself; always say to open

@@ -3,11 +3,13 @@
 // Raw personal content (page text, messages, contacts, photos, identifiers
 // beyond the anonymous device id) never leaves the device.
 
-export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "device_register" | "family" | "push_register" | "push_test" | "device_settings" | "message_check" | "message_extract" | "feedback" | "page_extract" | "app_check" | "account_check" | "breach_check";
+export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "device_register" | "family" | "push_register" | "push_test" | "device_settings" | "message_check" | "message_extract" | "feedback" | "page_extract" | "app_check" | "account_check" | "breach_check" | "voice";
 
 const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   family: new Set(["device_id", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id", "scent_id", "headline", "state", "events", "steps", "done", "note", "resolved", "kind", "text", "from_name", "enabled", "preview_only"]),
   intel_check: new Set(["indicator_type", "value", "values", "device_id", "expand"]),
+  // Higgins' voice: only the sentence already shown on screen, so it can be read aloud.
+  voice: new Set(["device_id", "text"]),
   feedback: new Set(["device_id", "event_id", "kind", "state", "host", "sources", "note"]),
   patrol_sync: new Set([
     "event_id", "device_id", "category", "state", "status", "headline", "what_happened", "why", "what_to_do",
@@ -66,5 +68,6 @@ export const PRIVACY_POLICY_SUMMARY = [
   "Only the link itself (no page content, no messages) is sent for reputation checks, stripped of credentials and fragments.",
   "Patrol sync stores event summaries and the website domain only. The full link stays on your device.",
   "Apollo uses an anonymous device ID. No account, no email. A phone number is shared only if you choose to add one so family can call you.",
-  "Ask Apollo sends only your question and, if you choose, a short event summary.",
+  "Ask Higgins sends only your question and, if you choose, a short event summary.",
+  "Hear Higgins sends only the sentence already on your screen so it can be read aloud.",
 ];

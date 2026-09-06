@@ -70,8 +70,8 @@ export default function Family() {
   const myCheckinFor = (pid: string) => (checkins.data ?? []).find((c) => c.guardian_device_id === deviceId && c.protected_device_id === pid && Date.now() - Date.parse(c.created_at) < 7 * 86_400_000);
   const received = (checkins.data ?? []).filter((c) => c.protected_device_id === deviceId);
   const previewWeekly = useMutation({
-    mutationFn: (send: boolean) => apiPost<{ sent: boolean; title?: string; message?: string; reason?: string }>("/family/weekly/send-now", "family", { device_id: deviceId, preview_only: !send }),
-    onSuccess: (r, send) => { if (r.message) setWeeklyPreview(`${r.title} — ${r.message}`); if (send) showToast(r.sent ? "Sent. Check your notifications." : "Nothing to send yet — pair with someone first.", r.sent ? "resting" : "neutral"); },
+    mutationFn: (p: { send: boolean; kind: "summary" | "nudge" }) => apiPost<{ sent: boolean; title?: string; message?: string; reason?: string }>("/family/weekly/send-now", "family", { device_id: deviceId, preview_only: !p.send, kind: p.kind }),
+    onSuccess: (r, { send }) => { if (r.message) setWeeklyPreview(`${r.title} — ${r.message}`); if (send) showToast(r.sent ? "Sent. Check your notifications." : "Nothing to send yet — pair with someone first.", r.sent ? "resting" : "neutral"); },
     onError: (e) => showToast(e instanceof Error ? e.message : "Couldn't reach Apollo's relay.", "barking"),
   });
   const ack = useMutation({
@@ -165,12 +165,13 @@ export default function Family() {
                   </View>); })}
                 <Body>Counts only — Apollo never shares what they checked, their messages or their links.</Body>
                 <View style={[s.row, { borderBottomWidth: 0 }]} testID="family-weekly-notify-row">
-                  <View style={{ flex: 1 }}><Text style={s.name}>Sunday check-in notification</Text><Body>{weeklyPref.data?.window ?? "Sunday 5–9 pm, your local time"}{weeklyPref.data?.last_sent_at ? ` · last sent ${new Date(weeklyPref.data.last_sent_at).toLocaleDateString()}` : ""}. Same calm summary, so you don&apos;t have to open the app.</Body></View>
+                  <View style={{ flex: 1 }}><Text style={s.name}>Sunday check-in notification</Text><Body>{weeklyPref.data?.window ?? "Sunday 5–9 pm, your local time"}{weeklyPref.data?.last_sent_at ? ` · last sent ${new Date(weeklyPref.data.last_sent_at).toLocaleDateString()}` : ""}. Same calm summary, so you don&apos;t have to open the app. If you haven&apos;t said hello by Tuesday evening, Apollo sends one gentle reminder.</Body></View>
                   <Switch testID="family-weekly-notify-switch" value={weeklyPref.data?.enabled ?? true} onValueChange={(v) => setWeeklyPref.mutate(v)} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} />
                 </View>
                 <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}>
-                  <Button testID="family-weekly-preview" variant="ghost" label={previewWeekly.isPending ? "…" : "Preview the notification"} onPress={() => previewWeekly.mutate(false)} disabled={previewWeekly.isPending} />
-                  {Platform.OS !== "web" ? <Button testID="family-weekly-send-now" variant="secondary" label="Send it to me now" onPress={() => previewWeekly.mutate(true)} disabled={previewWeekly.isPending} /> : null}
+                  <Button testID="family-weekly-preview" variant="ghost" label={previewWeekly.isPending ? "…" : "Preview Sunday's"} onPress={() => previewWeekly.mutate({ send: false, kind: "summary" })} disabled={previewWeekly.isPending} />
+                  <Button testID="family-weekly-preview-nudge" variant="ghost" label="Preview Tuesday's" onPress={() => previewWeekly.mutate({ send: false, kind: "nudge" })} disabled={previewWeekly.isPending} />
+                  {Platform.OS !== "web" ? <Button testID="family-weekly-send-now" variant="secondary" label="Send Sunday's now" onPress={() => previewWeekly.mutate({ send: true, kind: "summary" })} disabled={previewWeekly.isPending} /> : null}
                 </View>
                 {weeklyPreview ? <Body testID="family-weekly-preview-text">{weeklyPreview}</Body> : null}
                 {Platform.OS === "web" ? <Body>Notifications arrive on the phone app (a native build) — the preview shows the exact wording.</Body> : null}

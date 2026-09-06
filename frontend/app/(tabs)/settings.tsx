@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Platform, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -17,6 +17,7 @@ import { SECURECORE_LABEL, IS_MOCK_SECURECORE } from "@/src/security/securecore/
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 import { minimiseApp } from "@/src/utils/minimise";
+import { getHigginsAuto, setHigginsAuto, useHiggins } from "@/src/voice/higgins";
 
 interface IntelStatus { safe_browsing: { status: string; detail: string }; blocklist: { status: string; entries: number } }
 const PUSH_LABEL: Record<PushStatus, string> = { granted: "On", denied: "Off", undetermined: "Not set", blocked: "Blocked in Settings", unsupported: "Native build only" };
@@ -36,6 +37,9 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { deviceId, trust, revokeTrust, clearPatrol, adapterLabel, isMock, pushStatus, enablePush, quietHours, quietNow, setQuietHours, lowPower, setLowPower, showToast } = useApollo();
+  const [higginsAuto, setHigginsAutoState] = useState(false);
+  useEffect(() => { void getHigginsAuto().then(setHigginsAutoState); }, []);
+  const higgins = useHiggins(deviceId);
   const { colors } = useTheme();
   const [confirmClear, setConfirmClear] = useState(false);
   const [preview, setPreview] = useState(false);
@@ -181,6 +185,26 @@ export default function SettingsScreen() {
         </View>
 
         <View>
+          <SectionTitle>Higgins&apos; voice</SectionTitle>
+          <Card style={{ gap: spacing.md }} testID="settings-higgins">
+            <Body>Higgins is Apollo&apos;s handler — a proper old English gentleman who explains what Apollo saw. Tap &quot;Hear Higgins&quot; anywhere to have it read aloud.</Body>
+            <View style={s.row}>
+              <View style={{ flex: 1 }}><Text style={s.label}>Read alerts aloud automatically</Text><Body>When Apollo barks or guards after a check, Higgins speaks up without being asked.</Body></View>
+              <Switch testID="settings-higgins-auto" value={higginsAuto} onValueChange={(v) => { setHigginsAutoState(v); void setHigginsAuto(v); }} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} />
+            </View>
+            <Button testID="settings-higgins-sample" variant="secondary" label={higgins.busy ? "One moment…" : higgins.speaking ? "Stop" : "Hear a sample"} onPress={() => void higgins.speak("Good evening. Higgins here — Apollo's handler. Apollo is patrolling and all is well within the checks he can see. Should he growl or bark, I shall explain exactly what he saw and what to do. Nothing more alarming than that.").catch((e: Error) => showToast(e.message, "neutral"))} />
+          </Card>
+        </View>
+
+        <View>
+          <SectionTitle>About</SectionTitle>
+          <Card style={{ gap: spacing.sm }} testID="settings-about">
+            <Text style={s.label}>Apollo is a brand of Harmony Wellness Group.</Text>
+            <Body>Apollo is the guard dog; Higgins is his handler and the voice you hear. Australia-first, privacy-first — no account, no tracking.</Body>
+          </Card>
+        </View>
+
+        <View>
           <SectionTitle>About this build</SectionTitle>
           <Card style={{ gap: spacing.sm }} testID="settings-build">
             <View style={s.row}><Text style={s.label}>Environment</Text><Pill tone={APP_ENV === "production" ? "resting" : "growling"} label={APP_ENV} testID="settings-app-env" /></View>
@@ -190,7 +214,7 @@ export default function SettingsScreen() {
             {isMock ? <Button testID="settings-dev-tools" variant="secondary" label="Developer tools (mock scenarios)" onPress={() => router.push("/dev-tools")} /> : null}
           </Card>
         </View>
-        <Text style={s.footer}>Apollo V1 · Australia-first · No account, no tracking</Text>
+        <Text style={s.footer}>Apollo V1 · a brand of Harmony Wellness Group · No account, no tracking</Text>
       </ScrollView>
 
       <AlertPreviewSheet visible={preview} onClose={() => setPreview(false)} />

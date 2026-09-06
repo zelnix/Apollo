@@ -348,3 +348,14 @@ frontend:
   - task: "Family weekly row: family-weekly-checkin-spoke-<pid> / -messaged-<pid> → family-weekly-checkin-done-<pid> pill; protected user sees family-checkins-received rows in the Family responses card. Self-tested via screenshot."
     implemented: true
     working: true
+
+## Iteration 26 — Higgins (voice + persona), owner attribution, Tuesday nudge
+backend:
+  - task: "HIGGINS_VOICE persona prefix on all LLM prompts (ask/stream, gate2/7/8 explain); POST /api/voice/speak {device_id,text} → {url:/api/voice/<key>.mp3} (OpenAI tts-1 voice fable via EMERGENT_LLM_KEY, cached in Mongo voice_cache, text cleaned: emoji/links/markdown), GET /api/voice/{key}.mp3 audio/mpeg; Higgins-voiced push titles (Sunday check-in, Tuesday nudge, incident share); weekly_sentence Higgins wording; email footer 'Apollo is a brand of Harmony Wellness Group'; missed_checkin_tick Tuesday 17–20 local, POST /api/family/weekly/send-now kind=nudge. tests: test_voice.py 2/2, test_family_nudge.py 2/2, test_family_weekly_push.py 5/5"
+    implemented: true
+    working: true
+frontend:
+  - task: "Ask Apollo → Ask Higgins everywhere (tab 'Higgins', header, buttons, empty card, placeholder); HigginsSpeakButton (src/components) + src/voice/higgins.ts (module-level expo-audio player, tap again to stop): hero-hear-higgins on Home hero, ask-hear-<msgId> under each Higgins reply, check-hear-higgins (compact) on check result; Settings 'Higgins' voice' card: settings-higgins-auto switch (auto-read barking/biting check results) + settings-higgins-sample; Settings 'About' card (Harmony Wellness Group); privacy disclosure: owner sentence + 'The sentence Higgins reads aloud' row; STATE_MEANING + RECOVERY_STEPS + familyWeekly sentences in Higgins voice; Family weekly card: 'Preview Sunday's' / 'Preview Tuesday's' (family-weekly-preview / family-weekly-preview-nudge)."
+    implemented: true
+    working: "NA"
+    needs_retesting: true

@@ -22,12 +22,12 @@ export const STATE_LABEL: Record<ApolloState, string> = {
 };
 
 export const STATE_MEANING: Record<ApolloState, string> = {
-  sniffing: "Checking now. Apollo is looking closely before deciding.",
-  resting: "On the lookout. Safe within the checks Apollo can currently see.",
-  ears_up: "This matches a known pattern. Not confirmed — take a careful look.",
-  growling: "Something looks suspicious. Not confirmed.",
-  barking: "You need to decide or act.",
-  biting: "Apollo verified a threat and blocked it. Standing guard.",
+  sniffing: "Apollo is having a closer look before he decides. Do allow him a moment.",
+  resting: "On the lookout. All is well within the checks Apollo can currently see.",
+  ears_up: "This matches a pattern Apollo knows. Not confirmed — a careful look is in order.",
+  growling: "Something looks suspicious, though it is not yet confirmed.",
+  barking: "This one needs your decision. I would suggest you act on it now.",
+  biting: "Apollo verified a threat and blocked it. He is standing guard.",
 };
 
 export type Visibility = "full" | "limited" | "none";

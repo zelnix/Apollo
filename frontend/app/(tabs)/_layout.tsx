@@ -24,7 +24,7 @@ export default function TabsLayout() {
         <NativeTabs.Trigger name="home"><NativeTabs.Trigger.Icon sf="house.fill" /><NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label></NativeTabs.Trigger>
         <NativeTabs.Trigger name="guard"><NativeTabs.Trigger.Icon sf="shield.fill" /><NativeTabs.Trigger.Label>Guard</NativeTabs.Trigger.Label></NativeTabs.Trigger>
         <NativeTabs.Trigger name="patrol"><NativeTabs.Trigger.Icon sf="list.bullet.rectangle" /><NativeTabs.Trigger.Label>Patrol</NativeTabs.Trigger.Label></NativeTabs.Trigger>
-        <NativeTabs.Trigger name="ask"><NativeTabs.Trigger.Icon sf="bubble.left.fill" /><NativeTabs.Trigger.Label>Ask</NativeTabs.Trigger.Label></NativeTabs.Trigger>
+        <NativeTabs.Trigger name="ask"><NativeTabs.Trigger.Icon sf="bubble.left.fill" /><NativeTabs.Trigger.Label>Higgins</NativeTabs.Trigger.Label></NativeTabs.Trigger>
         <NativeTabs.Trigger name="settings"><NativeTabs.Trigger.Icon sf="gearshape.fill" /><NativeTabs.Trigger.Label>Settings</NativeTabs.Trigger.Label></NativeTabs.Trigger>
       </NativeTabs>
     );
@@ -45,7 +45,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="home" options={{ title: "Home", tabBarButtonTestID: "tab-home", tabBarIcon: ({ color, size }) => <House color={color} size={size} /> }} />
       <Tabs.Screen name="guard" options={{ title: "Guard", tabBarButtonTestID: "tab-guard", tabBarIcon: ({ color, size }) => <Shield color={color} size={size} /> }} />
       <Tabs.Screen name="patrol" options={{ title: "Patrol", tabBarButtonTestID: "tab-patrol", tabBarIcon: ({ color, size }) => <ScrollText color={color} size={size} /> }} />
-      <Tabs.Screen name="ask" options={{ title: "Ask", tabBarButtonTestID: "tab-ask", tabBarIcon: ({ color, size }) => <MessageCircle color={color} size={size} /> }} />
+      <Tabs.Screen name="ask" options={{ title: "Higgins", tabBarButtonTestID: "tab-ask", tabBarIcon: ({ color, size }) => <MessageCircle color={color} size={size} /> }} />
       <Tabs.Screen name="settings" options={{ title: "Settings", tabBarButtonTestID: "tab-settings", tabBarIcon: ({ color, size }) => <Settings color={color} size={size} /> }} />
     </Tabs>
   );

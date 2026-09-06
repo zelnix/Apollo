@@ -120,7 +120,7 @@ export default function CheckFile() {
               {a.handoff === "network" ? <Button testID="file-check-device" label="I installed it — check my device" onPress={() => router.push("/device")} /> : null}
               <Button testID="file-tech" variant="secondary" label="View technical details" onPress={() => setTech(true)} />
               {result.event ? <RecoveryFlow event={result.event} kinds={["clicked", "app", "password", "card", "money", "download"]} testID="file-recovery" /> : null}
-              {result.event ? <Button testID="file-tell-more" variant="ghost" label="Ask Apollo about this file" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { context: `File check: ${a.title}. State: ${STATE_NAME[a.state]}. ${a.technical.join("; ")}`, prompt: "What should I do with this file?" } })} /> : null}
+              {result.event ? <Button testID="file-tell-more" variant="ghost" label="Ask Higgins about this file" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { context: `File check: ${a.title}. State: ${STATE_NAME[a.state]}. ${a.technical.join("; ")}`, prompt: "What should I do with this file?" } })} /> : null}
               <Button testID="file-again" variant="ghost" label="Check another file" onPress={() => { setResult(null); setNameOnly(""); }} />
             </Card>
           </>
