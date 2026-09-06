@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.guarddog.vpn.VpnLifecycleStateTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-09-06T11:04:13.953Z" hostname="agent-env-7657c2c0-a2aa-48ca-a3f3-785f03490eb7" time="0.001">
+<testsuite name="com.guarddog.vpn.VpnLifecycleStateTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-09-06T11:19:13.722Z" hostname="agent-env-7657c2c0-a2aa-48ca-a3f3-785f03490eb7" time="0.001">
   <properties/>
-  <testcase name="repositoryIsSingleSourceOfTruth" classname="com.guarddog.vpn.VpnLifecycleStateTest" time="0.0"/>
+  <testcase name="repositoryIsSingleSourceOfTruth" classname="com.guarddog.vpn.VpnLifecycleStateTest" time="0.001"/>
   <testcase name="mapsHonestlyToProtectionState" classname="com.guarddog.vpn.VpnLifecycleStateTest" time="0.0"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[]]></system-err>

@@ -130,3 +130,9 @@
 - Root cause: packages/guarddog-android-sdk/gradle/wrapper/gradle-wrapper.jar existed locally but was untracked in git (platform auto-commit skipped it), so CI checkout had gradlew without its JAR.
 - Fix: regenerated wrapper with pinned Gradle 8.13 (`gradle wrapper --gradle-version 8.13 --distribution-type bin`), `git add -f` + committed jar/properties/gradlew/gradlew.bat; .gitignore negations for gradle-wrapper.jar; android-native-gate.sh regenerates the wrapper if gradlew OR the jar is missing and asserts GradleWrapperMain.class is present.
 - No Android implementation or bundle changes. Verify: `git ls-files` shows the 4 wrapper files; `git check-ignore` says not ignored; jar contains org/gradle/wrapper/GradleWrapperMain.class; properties distributionUrl gradle-8.13-bin.zip; `./gradlew --version` reports Gradle 8.13 (JDK 17 at /usr/lib/jvm/java-17-openjdk-arm64, Gradle also at /opt/gradle/gradle-8.13/bin); live bundle still v25.
+
+## Iteration 9 (main agent) — CI failure audit corrections
+- requirements.txt: removed emergentintegrations==0.2.0 and Emergent-private litellm wheel (unused; `pip install --dry-run -r requirements.txt` resolves from PyPI).
+- ios-native-gate.sh rewritten: full xcodebuild log preserved (docs/evidence/ios-xcodebuild-full.log), yarn why / expo install --check recorded, cache clear; cannot run here (no macOS) — static review only.
+- Expo packages aligned: expo ~57.0.20, expo-router ~57.0.19 (expo install --fix). Web preview must still work.
+- Workflow: ios job Xcode pinned via input (default 26.1); yaml valid. Android gate re-run locally PASSED after alignment (/tmp/gate4.log).

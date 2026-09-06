@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.guarddog.vpn.Ipv4PacketParserTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-09-06T11:04:13.882Z" hostname="agent-env-7657c2c0-a2aa-48ca-a3f3-785f03490eb7" time="0.01">
+<testsuite name="com.guarddog.vpn.Ipv4PacketParserTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-09-06T11:19:13.653Z" hostname="agent-env-7657c2c0-a2aa-48ca-a3f3-785f03490eb7" time="0.009">
   <properties/>
-  <testcase name="icmpHasNoPorts" classname="com.guarddog.vpn.Ipv4PacketParserTest" time="0.006"/>
+  <testcase name="icmpHasNoPorts" classname="com.guarddog.vpn.Ipv4PacketParserTest" time="0.005"/>
   <testcase name="handlesOptionsAndUdp" classname="com.guarddog.vpn.Ipv4PacketParserTest" time="0.0"/>
   <testcase name="rejectsIpv6ShortAndInconsistent" classname="com.guarddog.vpn.Ipv4PacketParserTest" time="0.0"/>
   <testcase name="parsesTcpSynToControlledIp" classname="com.guarddog.vpn.Ipv4PacketParserTest" time="0.004"/>

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.guarddog.vpn.BlockedFlowDeduperTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-09-06T11:04:13.871Z" hostname="agent-env-7657c2c0-a2aa-48ca-a3f3-785f03490eb7" time="0.01">
+<testsuite name="com.guarddog.vpn.BlockedFlowDeduperTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-09-06T11:19:13.641Z" hostname="agent-env-7657c2c0-a2aa-48ca-a3f3-785f03490eb7" time="0.01">
   <properties/>
   <testcase name="prunesExpiredEntries" classname="com.guarddog.vpn.BlockedFlowDeduperTest" time="0.009"/>
   <testcase name="oneConnectionAttemptProducesOneReportWithinWindow" classname="com.guarddog.vpn.BlockedFlowDeduperTest" time="0.001"/>

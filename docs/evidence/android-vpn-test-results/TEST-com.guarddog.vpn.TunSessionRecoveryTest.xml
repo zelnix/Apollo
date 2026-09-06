@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.guarddog.vpn.TunSessionRecoveryTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-09-06T11:04:13.925Z" hostname="agent-env-7657c2c0-a2aa-48ca-a3f3-785f03490eb7" time="0.026">
+<testsuite name="com.guarddog.vpn.TunSessionRecoveryTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-09-06T11:19:13.694Z" hostname="agent-env-7657c2c0-a2aa-48ca-a3f3-785f03490eb7" time="0.027">
   <properties/>
   <testcase name="lifecycleReportsInactiveAfterStopAndRevocation" classname="com.guarddog.vpn.TunSessionRecoveryTest" time="0.002"/>
-  <testcase name="stopClosesDescriptorOnceAndStopsReader" classname="com.guarddog.vpn.TunSessionRecoveryTest" time="0.023"/>
+  <testcase name="stopClosesDescriptorOnceAndStopsReader" classname="com.guarddog.vpn.TunSessionRecoveryTest" time="0.024"/>
   <testcase name="recoverySnapshotIsCleanOnlyAfterSessionClosedAndStateLeftRunning" classname="com.guarddog.vpn.TunSessionRecoveryTest" time="0.001"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[Exception in thread "Thread-3" java.lang.InterruptedException: sleep interrupted

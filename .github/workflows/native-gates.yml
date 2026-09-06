@@ -1,5 +1,13 @@
 name: native-gates
-on: [push, pull_request, workflow_dispatch]
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      xcode:
+        description: "Xcode version for the iOS gate (Expo SDK 57 toolchain). Pin to a known-compatible release; see 'available Xcodes' step output."
+        default: "26.1"
+        required: false
 # Least privilege: every job only reads the repository; artifacts are uploaded via the actions token.
 permissions:
   contents: read
@@ -62,8 +70,12 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      - name: available Xcodes on this runner
+        run: ls -d /Applications/Xcode*.app
+      # Pinned rather than latest-stable: the Expo SDK 57 ExpoModulesJSI xcframework phase is sensitive to brand-new Xcode/Swift
+      # releases (e.g. Xcode 26.3 / Swift 6.2.4). Override via workflow_dispatch input when Expo confirms compatibility.
       - uses: maxim-lobanov/setup-xcode@v1
-        with: { xcode-version: latest-stable }
+        with: { xcode-version: "${{ github.event.inputs.xcode || '26.1' }}" }
       - uses: actions/setup-node@v4
         with: { node-version: "24" }
       - run: xcodebuild -version && swift --version && pod --version

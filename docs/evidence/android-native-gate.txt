@@ -1,4 +1,4 @@
-== Guard Dog Android native gate 2026-09-06T11:03:59Z ==
+== Guard Dog Android native gate 2026-09-06T11:19:06Z ==
 host: aarch64 Linux; java: openjdk version "17.0.20.1" 2026-08-18; ANDROID_HOME=/opt/android-sdk
 /root/.gradle/gradle.properties:android.aapt2FromMavenOverride=/opt/aapt2/aapt2
 -- 1. dependency resolution
@@ -19,28 +19,28 @@ WARNING: The option setting 'android.aapt2FromMavenOverride=/opt/aapt2/aapt2' is
 > Task :guarddog-core:generateReleaseResources
 > Task :guarddog-core:packageReleaseResources
 > Task :guarddog-core:preReleaseUnitTestBuild UP-TO-DATE
+> Task :guarddog-core:javaPreCompileRelease
+> Task :guarddog-core:parseReleaseLocalResources
+> Task :guarddog-core:javaPreCompileReleaseUnitTest
 > Task :guarddog-vpn:checkKotlinGradlePluginConfigurationErrors SKIPPED
 > Task :guarddog-vpn:preBuild UP-TO-DATE
 > Task :guarddog-vpn:preReleaseBuild UP-TO-DATE
-> Task :guarddog-core:javaPreCompileRelease
-> Task :guarddog-core:javaPreCompileReleaseUnitTest
 > Task :guarddog-vpn:generateReleaseResValues
+> Task :guarddog-core:generateReleaseRFile
 > Task :guarddog-vpn:generateReleaseResources
+> Task :guarddog-core:generateReleaseUnitTestStubRFile
 > Task :guarddog-vpn:packageReleaseResources
 > Task :guarddog-vpn:preReleaseUnitTestBuild UP-TO-DATE
 > Task :guarddog-vpn:javaPreCompileRelease
-> Task :guarddog-vpn:javaPreCompileReleaseUnitTest
-> Task :guarddog-core:parseReleaseLocalResources
 > Task :guarddog-vpn:parseReleaseLocalResources
+> Task :guarddog-vpn:javaPreCompileReleaseUnitTest
 > Task :guarddog-vpn:generateReleaseRFile
-> Task :guarddog-core:generateReleaseRFile
-> Task :guarddog-core:generateReleaseUnitTestStubRFile
 > Task :guarddog-vpn:generateReleaseUnitTestStubRFile
 > Task :guarddog-core:compileReleaseKotlin
 > Task :guarddog-core:compileReleaseJavaWithJavac NO-SOURCE
-> Task :guarddog-core:processReleaseJavaRes
 > Task :guarddog-core:bundleLibRuntimeToJarRelease
 > Task :guarddog-core:bundleLibCompileToJarRelease
+> Task :guarddog-core:processReleaseJavaRes
 
 > Task :guarddog-core:compileReleaseUnitTestKotlin
 w: file:///app/packages/guarddog-android-sdk/guarddog-core/src/test/java/com/guarddog/core/rules/RuleBundleVerifierTest.kt:85:61 This declaration needs opt-in. Its usage should be marked with '@kotlinx.serialization.ExperimentalSerializationApi' or '@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)'
@@ -67,7 +67,7 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.13/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD SUCCESSFUL in 10s
+BUILD SUCCESSFUL in 4s
 30 actionable tasks: 30 executed
   com.guarddog.core.net.HostCanonicalizerParityTest: 2 tests, 0 failures, 0 errors
   com.guarddog.core.net.UrlSanitizerParityTest: 2 tests, 0 failures, 0 errors
@@ -98,10 +98,10 @@ Using expo modules
 Linking react-native-worklets native libs into expo-modules-core build tasks
 task ':react-native-worklets:mergeDebugNativeLibs'
 task ':react-native-worklets:mergeReleaseNativeLibs'
-  - [32mexpo-modules-core[0m (57.0.15)
+  - [32mexpo-modules-core[0m (57.0.16)
   - [32mguarddog-expo-module[0m (0.1.0)
   - [33m[📦][0m [32mexpo-dom-webview[0m (57.0.1)
-  - [33m[📦][0m [32mexpo-ui[0m (57.0.15)
+  - [33m[📦][0m [32mexpo-ui[0m (57.0.16)
   - [33m[📦][0m [32mexpo-asset[0m (57.0.16)
   - [33m[📦][0m [32mexpo-blur[0m (57.0.2)
   - [33m[📦][0m [32mexpo-file-system[0m (57.0.6)
@@ -112,7 +112,7 @@ task ':react-native-worklets:mergeReleaseNativeLibs'
   - [33m[📦][0m [32mexpo-linear-gradient[0m (57.0.1)
   - [33m[📦][0m [32mexpo-linking[0m (57.0.9)
   - [33m[📦][0m [32mexpo-print[0m (57.0.1)
-  - [33m[📦][0m [32mexpo-router[0m (57.0.18)
+  - [33m[📦][0m [32mexpo-router[0m (57.0.19)
   - [33m[📦][0m [32mexpo-secure-store[0m (57.0.3)
   - [33m[📦][0m [32mexpo-sharing[0m (57.0.18)
   - [33m[📦][0m [32mexpo-splash-screen[0m (57.0.8)
@@ -120,6 +120,8 @@ task ':react-native-worklets:mergeReleaseNativeLibs'
   - [33m[📦][0m [32mexpo-system-ui[0m (57.0.3)
   - [33m[📦][0m [32mexpo-web-browser[0m (57.0.2)
 
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
 expo module: compiled
 -- 6. frozen Android SDK levels in the generated app (minSdk 26 / compileSdk 36 / targetSdk 36)
 generated app:  - minSdk: 26  - compileSdk: 36  - targetSdk: 36 

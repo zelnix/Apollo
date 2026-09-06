@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.guarddog.core.net.UrlSanitizerParityTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-09-06T11:04:12.030Z" hostname="agent-env-7657c2c0-a2aa-48ca-a3f3-785f03490eb7" time="0.006">
+<testsuite name="com.guarddog.core.net.UrlSanitizerParityTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-09-06T11:19:12.562Z" hostname="agent-env-7657c2c0-a2aa-48ca-a3f3-785f03490eb7" time="0.006">
   <properties/>
-  <testcase name="urlVectors" classname="com.guarddog.core.net.UrlSanitizerParityTest" time="0.005"/>
-  <testcase name="originalRemainsAnalyzableWhileSharedFormDropsSecrets" classname="com.guarddog.core.net.UrlSanitizerParityTest" time="0.001"/>
+  <testcase name="urlVectors" classname="com.guarddog.core.net.UrlSanitizerParityTest" time="0.006"/>
+  <testcase name="originalRemainsAnalyzableWhileSharedFormDropsSecrets" classname="com.guarddog.core.net.UrlSanitizerParityTest" time="0.0"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>

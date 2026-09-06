@@ -35,6 +35,21 @@ Follow-up requested by the reviewer (done, gate re-run 2026-06 — PASSED again,
 - `scripts/ci/setup-android-toolchain-linux.sh` provisions the whole Linux toolchain idempotently (this container's system packages are not
   persistent, so the gate can be re-run from scratch with `bash scripts/ci/setup-android-toolchain-linux.sh && source /opt/guarddog-android-env.sh && bash scripts/ci/android-native-gate.sh`).
 
+**First GitHub run (2026-06) — CI failure audit and corrections (no Guard Dog enforcement code or bundle changes):**
+- Android: failed before compile with `ClassNotFoundException: org.gradle.wrapper.GradleWrapperMain` — the wrapper JAR was never committed.
+  Fixed: wrapper regenerated with pinned Gradle 8.13, all four wrapper files tracked, `.gitignore` un-ignore, gate self-heals + asserts the JAR.
+- executable-suites: `emergentintegrations==0.2.0` and the Emergent-hosted `litellm` wheel were template leftovers, unused by the backend
+  (`grep` → 0 references) and not installable from public PyPI → removed from `backend/requirements.txt`; `pip install --dry-run` resolves cleanly.
+- iOS: `GuardDogCore` compiled and its 10 tests passed; the failure was the Expo SDK 57 `[CP-User] Build ExpoModulesJSI xcframework` phase under
+  Xcode 26.3 / Swift 6.2.4 — not Guard Dog code. Corrections: (a) gate now preserves the **full raw xcodebuild stdout/stderr**
+  (`ios-xcodebuild-full.log`, `ios-pod-install.log`) with `pipefail` + `tee`, prints the failing phase context on failure, and records toolchain +
+  `yarn why expo-modules-jsi` / `yarn why expo-modules-core` / `npx expo install --check` (`ios-expo-package-audit.txt`); (b) it clears the stale
+  `expo-modules-jsi/apple/Products` cache before `pod install` (expo/expo#46242); (c) Expo package set aligned to the latest SDK 57 patch releases
+  via `expo install --fix`: expo 57.0.20, expo-router 57.0.19, expo-modules-core 57.0.16, **expo-modules-jsi 57.0.8** (the `abs(milliseconds)` /
+  `Double.magnitude` fix is included since 57.0.5); (d) the iOS job pins Xcode (default **26.1**, overridable via `workflow_dispatch` input) instead of
+  `latest-stable`, and prints the runner's available Xcodes. No patch-package workaround was needed. Android gate re-run locally with the aligned
+  packages: PASSED (29/29, Expo module compiled, 26/36/36).
+
 iOS gate (`scripts/ci/ios-native-gate.sh`) requires macOS + Xcode — now wired as the `ios` job on a GitHub-hosted `macos-15` runner
 (`.github/workflows/native-gates.yml`: Xcode select → `expo prebuild --platform ios --clean` → the same gate script → `docs/evidence/ios-native-gate.txt`
 uploaded as artifact, `if: always()`). Trigger via push or `workflow_dispatch`. The gate proves: SwiftPM resolves; `GuardDogCore` compiles; Swift parity tests pass;
