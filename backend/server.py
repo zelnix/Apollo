@@ -1161,6 +1161,51 @@ async def get_weekly_pref(device_id: str = Query(min_length=8, max_length=64)):
     return {"enabled": dev.get("weekly_checkin_enabled", True) is not False, "last_sent_at": (last or {}).get("sent_at"), "window": "Sunday 5–9 pm, your local time"}
 
 
+# Check-In Reply — the guardian taps "All good, spoke to Mum" on the Sunday summary; the family member sees who
+# checked in. One reply per guardian per person per week (re-tapping updates it).
+CHECKIN_LABEL = {"spoke": "All good, spoke to them", "messaged": "Messaged them, all good", "will_call": "Will call them this week"}
+
+
+class CheckinIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)  # guardian device
+    protected_device_id: str = Field(min_length=8, max_length=64)
+    reply: Literal["spoke", "messaged", "will_call"] = "spoke"
+    from_name: str = Field(default="", max_length=40)
+
+
+@api.post("/family/weekly/checkin")
+async def weekly_checkin_reply(body: CheckinIn):
+    link = await db.family_links.find_one({"guardian_device_id": body.device_id, "protected_device_id": body.protected_device_id, "deleted_at": None})
+    if not link:
+        raise HTTPException(status_code=404, detail="You're not paired with that person.")
+    from_name = body.from_name.strip()
+    if from_name:
+        await db.family_links.update_one({"_id": link["_id"]}, {"$set": {"guardian_label": from_name}})
+    guardian_label = from_name or link.get("guardian_label") or "A family member"
+    owner = link.get("owner_name") or "you"
+    ts = now_utc()
+    week_key = _week_key(ts)
+    label = CHECKIN_LABEL[body.reply]
+    await db.weekly_checkins.update_one({"guardian_device_id": body.device_id, "protected_device_id": body.protected_device_id, "week_key": week_key}, {"$set": {
+        "guardian_device_id": body.device_id, "protected_device_id": body.protected_device_id, "week_key": week_key,
+        "guardian_label": guardian_label, "reply": body.reply, "label": label, "created_at": ts}}, upsert=True)
+    try:
+        await send_push(recipients=[body.protected_device_id],
+                        data={"title": f"{guardian_label} checked in", "message": label.replace("them", owner if owner != "you" else "you"), "action_url": "/family", **PUSH_FAMILY},
+                        idempotency_key=f"checkin-{body.device_id}-{body.protected_device_id}-{week_key}-{body.reply}")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("check-in push failed (non-blocking): %s", type(exc).__name__)
+    return {"checked_in": True, "label": label, "week_key": week_key, "guardian_label": guardian_label}
+
+
+@api.get("/family/weekly/checkins")
+async def list_weekly_checkins(device_id: str = Query(min_length=8, max_length=64)):
+    """Protected user: check-ins they received (last 8 weeks). Guardian: the ones they sent (to mark the button done)."""
+    since = now_utc() - timedelta(weeks=8)
+    docs = await db.weekly_checkins.find({"created_at": {"$gte": since}, "$or": [{"protected_device_id": device_id}, {"guardian_device_id": device_id}]}).sort("created_at", -1).to_list(100)
+    return [{k: v for k, v in d.items() if k != "_id"} for d in docs]
+
+
 class WeeklySendNowIn(BaseModel):
     device_id: str = Field(min_length=8, max_length=64)
     preview_only: bool = False  # True → compose the text without pushing (works on web / Expo Go)

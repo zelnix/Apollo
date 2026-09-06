@@ -338,3 +338,13 @@ frontend:
     implemented: true
     working: true
     file: "frontend/app/family.tsx, frontend/src/store/ApolloContext.tsx, frontend/src/domain/privacy.ts"
+
+## Iteration 25 — Check-In Reply
+backend:
+  - task: "POST /api/family/weekly/checkin {device_id, protected_device_id, reply spoke|messaged|will_call, from_name} (404 if not paired; upsert per week; push to protected), GET /api/family/weekly/checkins. tests/test_family_checkin.py 2/2"
+    implemented: true
+    working: true
+frontend:
+  - task: "Family weekly row: family-weekly-checkin-spoke-<pid> / -messaged-<pid> → family-weekly-checkin-done-<pid> pill; protected user sees family-checkins-received rows in the Family responses card. Self-tested via screenshot."
+    implemented: true
+    working: true

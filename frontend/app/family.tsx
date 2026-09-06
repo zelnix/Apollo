@@ -3,7 +3,7 @@ import { useRouter } from "expo-router";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import Phone from "lucide-react-native/icons/phone";
 import X from "lucide-react-native/icons/x";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Linking, Platform, Pressable, Switch, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -15,11 +15,13 @@ import { STATE_NAME, type ApolloState } from "@/src/domain/types";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { storage } from "@/src/utils/storage";
 
 interface GuardianRow { guardian_id: string; email: string; name: string; confirmed: boolean }
 interface SharedEvent { event_id: string; protected_device_id?: string; from_label: string; state: string; headline: string; what_to_do: string; indicator_host: string | null; occurred_at: string; acknowledged_at?: string; ack_label?: string; phone?: string }
 interface WatchLink { owner_name: string; protected_device_id: string; phone: string }
 interface Ack { event_id: string; guardian_label: string; ack_label: string; headline: string; acknowledged_at: string }
+interface Checkin { guardian_device_id: string; protected_device_id: string; week_key: string; guardian_label: string; reply: string; label: string; created_at: string }
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -57,6 +59,16 @@ export default function Family() {
     onSuccess: (r) => { qc.invalidateQueries({ queryKey: ["family-weekly-pref", deviceId] }); showToast(r.enabled ? "Sunday check-in on. Apollo will nudge you Sunday evening." : "Sunday check-in off. The Family screen still shows the week.", "neutral"); },
   });
   const [weeklyPreview, setWeeklyPreview] = useState<string | null>(null);
+  const checkins = useQuery({ queryKey: ["family-checkins", deviceId], enabled: !!deviceId, refetchInterval: 30000, queryFn: () => apiGet<Checkin[]>(`/family/weekly/checkins?device_id=${deviceId}`) });
+  const [myName, setMyName] = useState("");
+  useEffect(() => { void storage.getItem<string>("apollo.family.myname", "").then((v) => setMyName(v ?? "")); }, []);
+  const checkin = useMutation({
+    mutationFn: (p: { protected_device_id: string; reply: "spoke" | "messaged" | "will_call"; name: string }) => apiPost<{ label: string }>("/family/weekly/checkin", "family", { device_id: deviceId, protected_device_id: p.protected_device_id, reply: p.reply, from_name: myName.trim() }),
+    onSuccess: (r, p) => { qc.invalidateQueries({ queryKey: ["family-checkins", deviceId] }); showToast(`Checked in: ${r.label.replace("them", p.name)}. ${p.name} will see it in their app.`, "resting"); },
+    onError: (e) => showToast(e instanceof Error ? e.message : "Couldn't check in right now.", "barking"),
+  });
+  const myCheckinFor = (pid: string) => (checkins.data ?? []).find((c) => c.guardian_device_id === deviceId && c.protected_device_id === pid && Date.now() - Date.parse(c.created_at) < 7 * 86_400_000);
+  const received = (checkins.data ?? []).filter((c) => c.protected_device_id === deviceId);
   const previewWeekly = useMutation({
     mutationFn: (send: boolean) => apiPost<{ sent: boolean; title?: string; message?: string; reason?: string }>("/family/weekly/send-now", "family", { device_id: deviceId, preview_only: !send }),
     onSuccess: (r, send) => { if (r.message) setWeeklyPreview(`${r.title} — ${r.message}`); if (send) showToast(r.sent ? "Sent. Check your notifications." : "Nothing to send yet — pair with someone first.", r.sent ? "resting" : "neutral"); },
@@ -142,6 +154,14 @@ export default function Family() {
                     {details.length ? <Body testID={`family-weekly-details-${w.protected_device_id}`}>{details.join(" · ")}</Body> : null}
                     <Body>{lastSeenLabel(w)}</Body>
                     {w.phone ? <View style={{ flexDirection: "row" }}><Button testID={`family-weekly-call-${w.protected_device_id}`} variant={h.tone === "growling" ? "primary" : "ghost"} label={`Call ${w.owner_name || "them"}`} icon={<Phone size={16} color={h.tone === "growling" ? colors.onBrandPrimary : colors.onSurface} />} onPress={() => void Linking.openURL(`tel:${w.phone.replace(/[^+\d]/g, "")}`)} /></View> : null}
+                    {(() => { const done = myCheckinFor(w.protected_device_id); return done ? (
+                      <Pill tone="resting" label={`Checked in · ${done.label.replace("them", w.owner_name || "them")} · ${new Date(done.created_at).toLocaleDateString([], { weekday: "short" })}`} testID={`family-weekly-checkin-done-${w.protected_device_id}`} />
+                    ) : (
+                      <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}>
+                        <Button testID={`family-weekly-checkin-spoke-${w.protected_device_id}`} variant="secondary" label={`All good, spoke to ${w.owner_name || "them"}`} onPress={() => checkin.mutate({ protected_device_id: w.protected_device_id, reply: "spoke", name: w.owner_name || "them" })} disabled={checkin.isPending} />
+                        <Button testID={`family-weekly-checkin-messaged-${w.protected_device_id}`} variant="ghost" label="Messaged them" onPress={() => checkin.mutate({ protected_device_id: w.protected_device_id, reply: "messaged", name: w.owner_name || "them" })} disabled={checkin.isPending} />
+                      </View>
+                    ); })()}
                   </View>); })}
                 <Body>Counts only — Apollo never shares what they checked, their messages or their links.</Body>
                 <View style={[s.row, { borderBottomWidth: 0 }]} testID="family-weekly-notify-row">
@@ -201,6 +221,16 @@ export default function Family() {
         <View>
           <SectionTitle>Family responses to your alerts</SectionTitle>
           <Card testID="family-acks">
+            {received.length ? (
+              <View style={{ gap: 2, paddingBottom: spacing.sm }} testID="family-checkins-received">
+                {received.map((c) => (
+                  <View key={`${c.guardian_device_id}-${c.week_key}`} style={s.row} testID={`family-checkin-${c.guardian_device_id}-${c.week_key}`}>
+                    <View style={{ flex: 1 }}><Text style={s.name}>{c.guardian_label} checked in</Text><Body>{c.label.replace("them", "you")}</Body></View>
+                    <Body>{new Date(c.created_at).toLocaleDateString()}</Body>
+                  </View>
+                ))}
+              </View>
+            ) : null}
             {(acks.data ?? []).length === 0 ? <Body>No responses yet. When someone you share with marks an alert handled, it shows here.</Body> : acks.data!.map((a) => (
               <View key={a.event_id} style={s.row} testID={`family-acks-${a.event_id}`}>
                 <View style={{ flex: 1 }}><Text style={s.name}>{a.headline}</Text><Body>{a.guardian_label}: {a.ack_label}</Body></View>
