@@ -9,16 +9,67 @@ jobs:
         with: { distribution: temurin, java-version: "17" }
       - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
-        with: { gradle-version: "8.9" }
+        with: { gradle-version: "8.13" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "24" }
+      - run: yes | sdkmanager --licenses >/dev/null || true
+      - run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
+      # Prebuild so gate steps 5-6 (Expo module inside the generated app, frozen SDK levels 26/36/36) execute, not skip.
+      - run: cd frontend && yarn install --frozen-lockfile && CI=1 npx expo prebuild --platform android --clean --no-install
       - run: bash scripts/ci/android-native-gate.sh
       - uses: actions/upload-artifact@v4
+        if: always()
         with: { name: android-native-gate, path: docs/evidence }
+  # AC-04: development APK + merged-manifest audit on a native x86_64 runner (no device: the script stops before install and
+  # uploads guarddog-m1-dev.apk, merged-AndroidManifest.xml, merged-manifest-audit.txt for the physical-device run).
+  android-dev-build:
+    runs-on: ubuntu-latest
+    needs: android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: android-actions/setup-android@v3
+      - uses: actions/setup-node@v4
+        with: { node-version: "24" }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -r backend/requirements.txt
+      - run: yes | sdkmanager --licenses >/dev/null || true
+      - run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006" "cmake;3.22.1"
+      - run: cp backend/.env.example backend/.env
+      - run: bash scripts/ci/android-dev-build.sh
+        env:
+          CI: "1"
+          EXPO_PUBLIC_BACKEND_URL: ${{ vars.GD_BACKEND_URL }}
+          GD_DEV_ABIS: arm64-v8a
+          MONGO_URL: mongodb://localhost:27017
+          DB_NAME: ci
+          GD_M1_SIGNING_PRIVATE_KEY_B64: ${{ secrets.GD_M1_SIGNING_PRIVATE_KEY_B64 }}
+          GD_ADMIN_TOKEN: ci-admin
+          GD_CONTROLLED_HOST: blocktest.btciq.app
+          GD_CONTROLLED_IPV4: 52.25.179.131
+          GD_CONTROLLED_URL: https://blocktest.btciq.app/
+          GD_RULESET_ID: gd-m1-controlled-block
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: android-dev-build, path: docs/evidence }
+  # AC-02: runs the SAME scripts/ci/ios-native-gate.sh as a developer Mac would (SwiftPM resolve/build/tests, cycle check,
+  # CocoaPods + xcodebuild of the Expo iOS module inside the prebuilt app) and preserves docs/evidence/ios-native-gate.txt.
   ios:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with: { xcode-version: latest-stable }
+      - uses: actions/setup-node@v4
+        with: { node-version: "24" }
+      - run: xcodebuild -version && swift --version && pod --version
+      # Prebuild iOS so gate step 3 (Expo iOS module linkage via CocoaPods) executes instead of skipping.
+      - run: cd frontend && yarn install --frozen-lockfile && CI=1 npx expo prebuild --platform ios --clean --no-install
       - run: bash scripts/ci/ios-native-gate.sh
       - uses: actions/upload-artifact@v4
+        if: always()
         with: { name: ios-native-gate, path: docs/evidence }
   executable-suites:
     runs-on: ubuntu-latest

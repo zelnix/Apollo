@@ -35,7 +35,9 @@ Follow-up requested by the reviewer (done, gate re-run 2026-06 — PASSED again,
 - `scripts/ci/setup-android-toolchain-linux.sh` provisions the whole Linux toolchain idempotently (this container's system packages are not
   persistent, so the gate can be re-run from scratch with `bash scripts/ci/setup-android-toolchain-linux.sh && source /opt/guarddog-android-env.sh && bash scripts/ci/android-native-gate.sh`).
 
-iOS gate (`scripts/ci/ios-native-gate.sh`) still requires macOS + Xcode: SwiftPM resolves; `GuardDogCore` compiles; Swift parity tests pass;
+iOS gate (`scripts/ci/ios-native-gate.sh`) requires macOS + Xcode — now wired as the `ios` job on a GitHub-hosted `macos-15` runner
+(`.github/workflows/native-gates.yml`: Xcode select → `expo prebuild --platform ios --clean` → the same gate script → `docs/evidence/ios-native-gate.txt`
+uploaded as artifact, `if: always()`). Trigger via push or `workflow_dispatch`. The gate proves: SwiftPM resolves; `GuardDogCore` compiles; Swift parity tests pass;
 `show-dependencies` proves no `GuardDogCore → GuardDogNetworkFeasibility` edge; Expo iOS module compiles in the prebuilt app.
 
 | Evidence item | Android | iOS |
@@ -74,11 +76,27 @@ Android re-resolves the host immediately before route install (`ControlledEndpoi
 A genuine correction: raise/unset the env value, resign (version increments normally), set the new frozen version, document it here.
 v25 is the minimum accepted version for this ruleset going forward (rollback store).
 
-## 4. Android development build — OPEN
-`bash scripts/ci/android-dev-build.sh`: version checks → contract sync → endpoint binding check → `expo prebuild --clean`
-(with `packages/guarddog-expo-module/app.plugin.js` linking `:guarddog-core`/`:guarddog-vpn`) → merged-manifest check
-(`GuardDogVpnService`, `BIND_VPN_SERVICE`, `foregroundServiceType="systemExempted"`) → native unit tests → `assembleDebug`
-→ install → `AndroidBlockingProofE2ETest`. Development build only; not Expo Go; not a Play Store release.
+## 4. Android development build — merged-manifest audit ✅ PASSED · APK ⏳ (needs a persistent native host)
+`scripts/ci/android-dev-build.sh` executed here 2026-06 through step 4: `yarn install` → contracts sync → controlled-endpoint binding check
+(52.25.179.131, HTTPS 200) → `expo prebuild --clean` with the Guard Dog config plugin → `processDebugMainManifest` → **merged-manifest audit PASS**
+(`docs/evidence/merged-manifest-audit.txt`, `docs/evidence/merged-AndroidManifest.xml`):
+- `com.guarddog.vpn.GuardDogVpnService` present · `android:permission="android.permission.BIND_VPN_SERVICE"` on the service · `android:exported="false"`
+  (intentional: only the app starts it; the system binds through BIND_VPN_SERVICE — matches the Android VpnService reference declaration) ·
+  `foregroundServiceType="systemExempted"` · `<action android:name="android.net.VpnService"/>` intent filter
+- `uses-permission`: INTERNET, ACCESS_NETWORK_STATE, FOREGROUND_SERVICE, FOREGROUND_SERVICE_SYSTEM_EXEMPTED, POST_NOTIFICATIONS
+- `minSdkVersion=26`, `targetSdkVersion=36`, Gradle effective `compileSdk: 36`
+- **Absent (asserted)**: QUERY_ALL_PACKAGES, PACKAGE_USAGE_STATS, READ_SMS, READ_CALL_LOG, READ_CONTACTS, MANAGE_EXTERNAL_STORAGE,
+  BIND_ACCESSIBILITY_SERVICE (and RECORD_AUDIO, CAMERA, fine/background location, READ_PHONE_STATE); no accessibility service declared.
+- Trimmed: Expo's default READ/WRITE_EXTERNAL_STORAGE removed via `android.blockedPermissions` (evidence files live in the app's own document dir).
+- Remaining framework permissions, with provenance: VIBRATE (expo-haptics), USE_BIOMETRIC/USE_FINGERPRINT (expo-secure-store),
+  DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION (androidx), SYSTEM_ALERT_WINDOW (react-native **debug** manifest only — dev overlay; not in release).
+
+APK assembly (step 5) did not complete here: the third-party C++ modules (react-native-screens/worklets) need the x86_64-only NDK/CMake, which on this
+arm64 host run only under qemu emulation, and this container's system layer (JDK/SDK/qemu) is periodically reset, killing long builds. Two ways forward:
+- GitHub Actions job `android-dev-build` (added to `.github/workflows/native-gates.yml`, native x86_64 runner) runs the same script and uploads
+  `guarddog-m1-dev.apk` + manifest evidence as artifacts (requires repo var `GD_BACKEND_URL` and secret `GD_M1_SIGNING_PRIVATE_KEY_B64`).
+- Any persistent Linux/macOS host: `bash scripts/ci/setup-android-toolchain-linux.sh && source /opt/guarddog-android-env.sh && bash scripts/ci/android-dev-build.sh`
+  (with a phone attached the script continues into install + `AndroidBlockingProofE2ETest`).
 
 ## 5–6. Physical-device proof + recovery — OPEN
 Run the RN harness ("Run proof") on the device: it executes the block proof and then the recovery checklist

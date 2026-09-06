@@ -1,0 +1,33 @@
+PASS  GuardDogVpnService present
+PASS  service permission BIND_VPN_SERVICE
+PASS  service exported=false (intentional: launched only by the app; system binds via BIND_VPN_SERVICE)
+PASS  foregroundServiceType="systemExempted"
+PASS  VpnService intent filter (android.net.VpnService)
+PASS  uses-permission FOREGROUND_SERVICE
+PASS  uses-permission FOREGROUND_SERVICE_SYSTEM_EXEMPTED
+PASS  uses-permission ACCESS_NETWORK_STATE
+PASS  uses-permission INTERNET
+PASS  minSdkVersion=26
+PASS  targetSdkVersion=36
+PASS  absent: android.permission.QUERY_ALL_PACKAGES
+PASS  absent: android.permission.PACKAGE_USAGE_STATS
+PASS  absent: android.permission.READ_SMS
+PASS  absent: android.permission.READ_CALL_LOG
+PASS  absent: android.permission.READ_CONTACTS
+PASS  absent: android.permission.MANAGE_EXTERNAL_STORAGE
+PASS  absent: android.permission.BIND_ACCESSIBILITY_SERVICE
+PASS  absent: android.permission.RECORD_AUDIO
+PASS  absent: android.permission.CAMERA
+PASS  absent: android.permission.ACCESS_FINE_LOCATION
+PASS  absent: android.permission.ACCESS_BACKGROUND_LOCATION
+PASS  absent: android.permission.READ_PHONE_STATE
+PASS  no accessibility service declared
+PASS  absent: READ_EXTERNAL_STORAGE / WRITE_EXTERNAL_STORAGE (blocked in app.json)
+INFO  other permission POST_NOTIFICATIONS: foreground-service notification (declared)
+INFO  other permission SYSTEM_ALERT_WINDOW: react-native DEBUG manifest only (dev overlay); absent in release builds
+INFO  other permission USE_BIOMETRIC: expo-secure-store
+INFO  other permission USE_FINGERPRINT: expo-secure-store
+INFO  other permission VIBRATE: expo-haptics
+INFO  other permission DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: androidx runtime receiver hardening
+all uses-permission entries: ACCESS_NETWORK_STATE, DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION, FOREGROUND_SERVICE, FOREGROUND_SERVICE_SYSTEM_EXEMPTED, INTERNET, POST_NOTIFICATIONS, SYSTEM_ALERT_WINDOW, USE_BIOMETRIC, USE_FINGERPRINT, VIBRATE
+MERGED MANIFEST AUDIT: PASS
