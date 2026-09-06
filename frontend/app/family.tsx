@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiDelete, apiGet, apiPost } from "@/src/api/client";
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
+import { type FamilyWeekly, lastSeenLabel, weeklyDetails, weeklyHeadline } from "@/src/domain/familyWeekly";
 import { STATE_NAME, type ApolloState } from "@/src/domain/types";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -49,6 +50,7 @@ export default function Family() {
   const shared = useQuery({ queryKey: ["shared-events", deviceId], enabled: !!deviceId, queryFn: () => apiGet<SharedEvent[]>(`/family/shared-events?device_id=${deviceId}`), refetchInterval: 30000 });
   const incidents = useQuery({ queryKey: ["family-incidents", deviceId], enabled: !!deviceId, queryFn: () => apiGet<{ scent_id: string; from_label: string; headline: string; state: ApolloState; steps: { id: string }[]; done: string[]; resolved: boolean; updated_at: string }[]>(`/family/incidents?device_id=${deviceId}`) });
   const acks = useQuery({ queryKey: ["family-acks", deviceId], enabled: !!deviceId, queryFn: () => apiGet<Ack[]>(`/family/acks?device_id=${deviceId}`), refetchInterval: 30000 });
+  const weekly = useQuery({ queryKey: ["family-weekly", deviceId], enabled: !!deviceId, queryFn: () => apiGet<FamilyWeekly[]>(`/family/weekly?device_id=${deviceId}`) });
   const ack = useMutation({
     mutationFn: (p: { event_id: string; reply: string }) => apiPost<{ ack_label: string }>(`/family/shared-events/${p.event_id}/ack`, "family", { device_id: deviceId, reply: p.reply }),
     onSuccess: (r) => { qc.invalidateQueries({ queryKey: ["shared-events", deviceId] }); showToast(`Marked: ${r.ack_label}`, "resting"); },
@@ -107,7 +109,7 @@ export default function Family() {
         <View>
           <SectionTitle>Pair another Apollo device</SectionTitle>
           <Card style={{ gap: spacing.md }} testID="family-pair-card">
-            <Body>Give this code to a family member who also uses Apollo. Your Barking/Biting alerts will appear in their app.</Body>
+            <Body>Give this code to a family member who also uses Apollo. Your Barking/Biting alerts will appear in their app, and they get a calm weekly check-in — how many things Apollo checked and how many alerts — never what you checked.</Body>
             <TextInput testID="family-owner-phone" style={s.input} value={phone} onChangeText={setPhone} placeholder="Your phone number (optional) — so they can call you in one tap" placeholderTextColor={colors.muted} keyboardType="phone-pad" autoCorrect={false} />
             {pairCode ? <Text style={s.code} selectable testID="family-pair-code">{pairCode}</Text> : null}
             <Button testID="family-make-code" variant="secondary" label={pairCode ? "New code" : "Create pairing code"} onPress={() => makeCode.mutate()} disabled={makeCode.isPending} />
@@ -118,6 +120,22 @@ export default function Family() {
         </View>
 
         <View>
+          {(weekly.data ?? []).length ? (
+            <>
+              <SectionTitle>Weekly check-in</SectionTitle>
+              <Card style={{ gap: spacing.md }} testID="family-weekly">
+                {weekly.data!.map((w) => { const h = weeklyHeadline(w); const details = weeklyDetails(w); return (
+                  <View key={w.protected_device_id} style={{ gap: spacing.xs, paddingBottom: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.divider }} testID={`family-weekly-${w.protected_device_id}`}>
+                    <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center", flexWrap: "wrap" }}><Pill tone={h.tone} label={h.tone === "resting" ? "Calm week" : h.tone === "growling" ? "Needs a call" : h.tone === "ears_up" ? "Handled" : "No news"} testID={`family-weekly-tone-${w.protected_device_id}`} /><Body>{w.owner_name || "Family member"} · last 7 days</Body></View>
+                    <Text style={s.name} testID={`family-weekly-headline-${w.protected_device_id}`}>{h.text}</Text>
+                    {details.length ? <Body testID={`family-weekly-details-${w.protected_device_id}`}>{details.join(" · ")}</Body> : null}
+                    <Body>{lastSeenLabel(w)}</Body>
+                    {w.phone ? <View style={{ flexDirection: "row" }}><Button testID={`family-weekly-call-${w.protected_device_id}`} variant={h.tone === "growling" ? "primary" : "ghost"} label={`Call ${w.owner_name || "them"}`} icon={<Phone size={16} color={h.tone === "growling" ? colors.onBrandPrimary : colors.onSurface} />} onPress={() => void Linking.openURL(`tel:${w.phone.replace(/[^+\d]/g, "")}`)} /></View> : null}
+                  </View>); })}
+                <Body>Counts only — Apollo never shares what they checked, their messages or their links.</Body>
+              </Card>
+            </>
+          ) : null}
           {(incidents.data ?? []).length ? (
             <>
               <SectionTitle>Incidents shared with you</SectionTitle>

@@ -995,6 +995,7 @@ class IncidentNoteIn(BaseModel):
     kind: Literal["here", "calling", "on_way", "together", "custom"] = "here"
     text: str = Field(default="", max_length=140)
     from_name: str = Field(default="", max_length=40)
+    phone: str = Field(default="", max_length=32)  # guardian's call-back number, optional
 
 
 @api.post("/family/incidents/{scent_id}/notes", status_code=201)
@@ -1007,12 +1008,14 @@ async def add_incident_note(scent_id: str, body: IncidentNoteIn):
         raise HTTPException(status_code=422, detail="Write a short note first.")
     link_q = {"guardian_device_id": body.device_id, "protected_device_id": inc["protected_device_id"], "deleted_at": None}
     link = await db.family_links.find_one(link_q)
-    from_name = body.from_name.strip()
-    if from_name and link:
-        await db.family_links.update_one({"_id": link["_id"]}, {"$set": {"guardian_label": from_name}})
+    from_name, phone = body.from_name.strip(), re.sub(r"[^+\d ]", "", body.phone).strip()
+    remember = {k: v for k, v in (("guardian_label", from_name), ("guardian_phone", phone)) if v}
+    if remember and link:
+        await db.family_links.update_one({"_id": link["_id"]}, {"$set": remember})
     guardian_label = from_name or (link or {}).get("guardian_label") or "A family member"
+    phone = phone or (link or {}).get("guardian_phone", "")
     note = {"note_id": uuid.uuid4().hex, "scent_id": scent_id, "protected_device_id": inc["protected_device_id"], "guardian_device_id": body.device_id,
-            "guardian_label": guardian_label, "kind": body.kind, "text": text, "created_at": now_utc()}
+            "guardian_label": guardian_label, "kind": body.kind, "text": text, "phone": phone, "created_at": now_utc()}
     await db.incident_notes.insert_one(dict(note))
     try:
         await send_push(recipients=[inc["protected_device_id"]],
@@ -1028,6 +1031,34 @@ async def list_incident_notes(scent_id: str, device_id: str = Query(min_length=8
     """Protected user sees every guardian's notes; a guardian sees only the notes they sent."""
     docs = await db.incident_notes.find({"scent_id": scent_id, "$or": [{"protected_device_id": device_id}, {"guardian_device_id": device_id}]}).sort("created_at", 1).to_list(50)
     return [{k: v for k, v in d.items() if k != "_id"} for d in docs]
+
+
+# Family Weekly Check-In — a calm, count-only summary of a watched person's week. Uses the event summaries the
+# protected device already syncs (state/status/category/time); never headlines, hosts or message text.
+@api.get("/family/weekly")
+async def family_weekly(device_id: str = Query(min_length=8, max_length=64)):
+    links = await db.family_links.find({"guardian_device_id": device_id, "deleted_at": None}).to_list(20)
+    since = now_utc() - timedelta(days=7)
+    out = []
+    for ln in links:
+        pid = ln["protected_device_id"]
+        evs = await db.patrol_events.find({"device_id": pid, "deleted_at": None, "occurred_at": {"$gte": since}}, {"state": 1, "status": 1, "category": 1, "occurred_at": 1}).to_list(500)
+        by_state = {k: 0 for k in ("sniffing", "resting", "ears_up", "growling", "barking", "biting")}
+        for e in evs:
+            by_state[e["state"]] = by_state.get(e["state"], 0) + 1
+        alerts = [e for e in evs if e["state"] in ("growling", "barking", "biting")]
+        open_alerts = sum(1 for e in alerts if e["status"] == "active")
+        days = {e["occurred_at"].date().isoformat() for e in evs}
+        dev = await db.devices.find_one({"device_id": pid}, {"last_seen_at": 1})
+        incs = await db.shared_incidents.find({"protected_device_id": pid, "guardian_device_id": device_id, "shared_at": {"$gte": since}}, {"resolved": 1}).to_list(50)
+        out.append({
+            "protected_device_id": pid, "owner_name": ln.get("owner_name", ""), "phone": _link_phone(ln),
+            "week_start": since, "total": len(evs), "by_state": by_state, "alerts": len(alerts), "open_alerts": open_alerts,
+            "handled_alerts": len(alerts) - open_alerts, "blocked": by_state["biting"], "active_days": len(days),
+            "shared_incidents": len(incs), "shared_resolved": sum(1 for i in incs if i.get("resolved")),
+            "last_seen_at": (dev or {}).get("last_seen_at"),
+        })
+    return out
 
 
 @api.get("/family/acks")

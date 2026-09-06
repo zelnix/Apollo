@@ -4,9 +4,10 @@ import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import Check from "lucide-react-native/icons/check";
 import Heart from "lucide-react-native/icons/heart";
+import Phone from "lucide-react-native/icons/phone";
 import X from "lucide-react-native/icons/x";
 import React, { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiGet, apiPatch, apiPost } from "@/src/api/client";
@@ -51,7 +52,7 @@ export default function IncidentTimeline() {
   const [sharing, setSharing] = useState(false);
   const doneCount = plan.steps.filter((st) => ticked[st.id]).length;
   // Reassurance notes from family arrive once the incident is shared; poll gently while the screen is open.
-  const notes = useQuery({ queryKey: ["incident-notes", id, deviceId], enabled: shared && !!deviceId, refetchInterval: 15000, queryFn: () => apiGet<{ note_id: string; guardian_label: string; text: string; created_at: string }[]>(`/family/incidents/${id}/notes?device_id=${deviceId}`) });
+  const notes = useQuery({ queryKey: ["incident-notes", id, deviceId], enabled: shared && !!deviceId, refetchInterval: 15000, queryFn: () => apiGet<{ note_id: string; guardian_label: string; text: string; phone: string; created_at: string }[]>(`/family/incidents/${id}/notes?device_id=${deviceId}`) });
   // Tick progress survives leaving the screen; if the incident was shared with family, progress is mirrored to them.
   useEffect(() => { void storage.getItem<string | null>(`apollo.incident.${id}`, null).then((raw) => { if (raw) { const v = JSON.parse(raw) as { ticked: Record<string, boolean>; shared: boolean }; setTicked(v.ticked ?? {}); setShared(!!v.shared); } }); }, [id]);
   const save = (next: Record<string, boolean>, isShared: boolean, resolved = false) => {
@@ -94,6 +95,7 @@ export default function IncidentTimeline() {
                 <View key={n.note_id} style={{ gap: 2 }} testID={`incident-family-note-${i}`}>
                   <Text style={s.label}>{n.guardian_label}: <Text style={s.why}>{n.text}</Text></Text>
                   <Text style={s.meta}>{new Date(n.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>
+                  {n.phone ? <View style={{ flexDirection: "row", paddingTop: spacing.xs }}><Button testID={`incident-family-note-call-${i}`} variant="secondary" label={`Call ${n.guardian_label} back`} icon={<Phone size={16} color={colors.onSurface} />} onPress={() => void Linking.openURL(`tel:${n.phone.replace(/[^+\d]/g, "")}`)} /></View> : null}
                 </View>
               ))}
               <Body>Family notes are reassurance only. If anyone — even family — asks for a password or code, stop and call them on a number you already know.</Body>

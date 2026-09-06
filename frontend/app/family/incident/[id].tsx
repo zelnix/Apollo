@@ -21,7 +21,7 @@ import { goBackOrHome } from "@/src/utils/navigation";
 import { storage } from "@/src/utils/storage";
 
 export interface SharedIncident { scent_id: string; from_label: string; headline: string; state: ApolloState; events: { event_id: string; category: EventCategory; state: ApolloState; headline: string; occurred_at: string; status: string }[]; steps: { id: string; text: string }[]; done: string[]; resolved: boolean; shared_at: string; updated_at: string; phone: string }
-export interface IncidentNote { note_id: string; guardian_label: string; kind: string; text: string; created_at: string }
+export interface IncidentNote { note_id: string; guardian_label: string; kind: string; text: string; phone: string; created_at: string }
 
 type NoteKind = "here" | "calling" | "on_way" | "together" | "custom";
 const PRESETS: { kind: NoteKind; label: string }[] = [
@@ -65,10 +65,14 @@ export default function FamilyIncident() {
   const [kind, setKind] = useState<NoteKind>("here");
   const [custom, setCustom] = useState("");
   const [fromName, setFromName] = useState("");
-  useEffect(() => { void storage.getItem<string>("apollo.family.myname", "").then((v) => setFromName(v ?? "")); }, []);
+  const [myPhone, setMyPhone] = useState("");
+  useEffect(() => {
+    void storage.getItem<string>("apollo.family.myname", "").then((v) => setFromName(v ?? ""));
+    void storage.getItem<string>("apollo.family.myphone", "").then((v) => setMyPhone(v ?? ""));
+  }, []);
   const send = useMutation({
-    mutationFn: () => apiPost<IncidentNote>(`/family/incidents/${id}/notes`, "family", { device_id: deviceId ?? "local-device", kind, text: kind === "custom" ? custom.trim() : "", from_name: fromName.trim() }),
-    onSuccess: () => { void storage.setItem("apollo.family.myname", fromName.trim()); setCustom(""); void qc.invalidateQueries({ queryKey: ["family-incident-notes", id, deviceId] }); showToast("Note sent. They'll see it on their incident timeline.", "resting"); },
+    mutationFn: () => apiPost<IncidentNote>(`/family/incidents/${id}/notes`, "family", { device_id: deviceId ?? "local-device", kind, text: kind === "custom" ? custom.trim() : "", from_name: fromName.trim(), phone: myPhone.trim() }),
+    onSuccess: () => { void storage.setItem("apollo.family.myname", fromName.trim()); void storage.setItem("apollo.family.myphone", myPhone.trim()); setCustom(""); void qc.invalidateQueries({ queryKey: ["family-incident-notes", id, deviceId] }); showToast("Note sent. They'll see it on their incident timeline.", "resting"); },
     onError: (e: Error) => showToast(e.message || "Couldn't send the note right now.", "barking"),
   });
   const inc = q.data;
@@ -127,6 +131,7 @@ export default function FamilyIncident() {
               </View>
               {kind === "custom" ? <TextInput testID="family-note-text" style={s.input} value={custom} onChangeText={(t) => setCustom(t.slice(0, 140))} placeholder="e.g. Popping over after work — don't touch anything till then" placeholderTextColor={colors.muted} multiline maxLength={140} /> : null}
               <TextInput testID="family-note-name" style={s.input} value={fromName} onChangeText={(t) => setFromName(t.slice(0, 40))} placeholder="Your name (so they know who it's from)" placeholderTextColor={colors.muted} maxLength={40} autoCorrect={false} />
+              <TextInput testID="family-note-phone" style={s.input} value={myPhone} onChangeText={(t) => setMyPhone(t.slice(0, 32))} placeholder="Your phone number (optional) — adds a one-tap Call back button" placeholderTextColor={colors.muted} keyboardType="phone-pad" maxLength={32} autoCorrect={false} />
               <Button testID="family-note-send" label={send.isPending ? "Sending…" : "Send note"} onPress={() => send.mutate()} disabled={!canSend} />
               {(notes.data ?? []).length ? (
                 <View style={{ gap: spacing.xs }} testID="family-note-sent">
@@ -134,7 +139,7 @@ export default function FamilyIncident() {
                   {notes.data!.map((n, i) => (
                     <View key={n.note_id} style={s.note} testID={`family-note-sent-${i}`}>
                       <Check size={16} color={colors.resting} style={{ marginTop: 3 }} />
-                      <Text style={[s.why, { flex: 1 }]}>{n.text} <Text style={s.meta}>· {new Date(n.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text></Text>
+                      <Text style={[s.why, { flex: 1 }]}>{n.text} <Text style={s.meta}>· {new Date(n.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}{n.phone ? ` · call back ${n.phone}` : ""}</Text></Text>
                     </View>
                   ))}
                 </View>

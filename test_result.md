@@ -313,3 +313,16 @@ frontend:
     working: "NA"
     file: "frontend/app/family/incident/[id].tsx, frontend/app/patrol/scent/[id].tsx, frontend/src/components/ApolloHero.tsx"
     needs_retesting: true
+
+## Iteration 23 — Family Weekly Check-In + Guardian Call-Back Number
+backend:
+  - task: "GET /api/family/weekly?device_id=<guardian> → per watched person: count-only 7-day summary (total, by_state, alerts, open_alerts, handled_alerts, blocked, active_days, shared_incidents, shared_resolved, last_seen_at, phone) — never headlines. Notes: IncidentNoteIn.phone (scrubbed), remembered on link as guardian_phone, returned on notes. tests/test_family_weekly.py 3/3"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+frontend:
+  - task: "Family screen 'Weekly check-in' section (family-weekly, family-weekly-<pid>, -tone-, -headline-, -details-, -call-) via src/domain/familyWeekly.ts (weeklyHeadline/weeklyDetails/lastSeenLabel; yarn test:family 7/7). Guardian note composer: family-note-phone (remembered). Protected timeline: 'Call <name> back' button incident-family-note-call-N when note has phone. Pair card copy mentions weekly check-in."
+    implemented: true
+    working: "NA"
+    file: "frontend/app/family.tsx, frontend/app/family/incident/[id].tsx, frontend/app/patrol/scent/[id].tsx, frontend/src/domain/familyWeekly.ts"
+    needs_retesting: true

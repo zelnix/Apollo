@@ -22,7 +22,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "test:family": "node --test tests/familyWeekly.test.ts"
   },
   "dependencies": {
     "@expo/metro-runtime": "57.0.15",
