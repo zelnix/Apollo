@@ -116,21 +116,22 @@ class TestRules:
     def test_sign_success_and_canonicalization_and_version_increment(self, s):
         # NOTE: uses the controlled ruleset intentionally per test spec; test restores state at teardown.
         prev = s.get(f"{BASE_URL}/api/rules/gd-m1-controlled-block/latest").json()["bundleVersion"]
-        body = {"rulesetId": "gd-m1-controlled-block",
-                "rules": [{"ruleId": f"t-{uuid.uuid4().hex[:6]}", "host": "Evil.Example.", "action": "block"}]}
+        body = {"rulesetId": "gd-m1-controlled-block", "confirm": True,
+                "rules": [{"ruleId": "m1-controlled-block-001", "host": "m1-block-test.guarddog.example", "action": "block"},
+                          {"ruleId": f"t-{uuid.uuid4().hex[:6]}", "host": "Evil.Example.", "action": "block"}]}
         r = s.post(f"{BASE_URL}/api/rules/sign", json=body, headers={"X-GuardDog-Admin-Token": ADMIN_TOKEN})
         assert r.status_code == 200, r.text
         b = r.json()
         assert b["bundleVersion"] == prev + 1
         assert any(rule["host"] == "evil.example" for rule in b["payload"]["rules"])
         # Restore controlled-host rule so live frontend continues to show "block" for the default URL.
-        restore = {"rulesetId": "gd-m1-controlled-block",
-                   "rules": [{"ruleId": "restore-controlled", "host": "m1-block-test.guarddog.example", "action": "block"}]}
+        restore = {"rulesetId": "gd-m1-controlled-block", "confirm": True,
+                   "rules": [{"ruleId": "m1-controlled-block-001", "host": "m1-block-test.guarddog.example", "action": "block"}]}
         r2 = s.post(f"{BASE_URL}/api/rules/sign", json=restore, headers={"X-GuardDog-Admin-Token": ADMIN_TOKEN})
         assert r2.status_code == 200
 
     def test_sign_rule_conflict_422(self, s):
-        body = {"rulesetId": "gd-m1-controlled-block",
+        body = {"rulesetId": "gd-m1-controlled-block", "confirm": True,
                 "rules": [
                     {"ruleId": "c-1", "host": "a.example", "action": "block"},
                     {"ruleId": "c-2", "host": "A.EXAMPLE.", "action": "allow"},

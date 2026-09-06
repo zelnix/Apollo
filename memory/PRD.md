@@ -18,9 +18,10 @@ Frozen M1 execution spec (Part 4.1 Android real blocking proof + Part 5 FastAPI 
 - apps/guarddog-mobile == frontend (symlink): SDK, contracts, harness, index.tsx harness screen.
 
 ## Implemented (2026-06)
-- All spec files created (see docs/M1_TASK_BOARD.md). Backend 74 pytest passing; contracts 14 node tests passing; fixtures generated; web harness verified via screenshot (BLOCKED/SKIPPED honest states).
+- All spec files created (see docs/M1_TASK_BOARD.md). Backend 93 pytest passing; contracts 14 node tests passing; fixtures generated; web harness verified via screenshot (BLOCKED/SKIPPED honest states).
+- Native gate round: signing guard (admin token + GD_SIGNING_ENABLED + confirm + ruleset allow-list + controlled-config check; secret redaction), endpoint verify/resign scripts, Gradle root + CI gate scripts (android/ios), Expo config plugin linking the Android SDK modules, android-dev-build script with merged-manifest checks, TunSession recovery + tests, proof report export (JSON + PDF via expo-print), docs/M1_NATIVE_GATE.md (status OPEN).
 
 ## Backlog / remaining
-- P0: AC-01..AC-05 — compile Kotlin/Swift, run native tests, provision real controlled endpoint, physical-device proof, milestone note with device evidence.
+- P0 (blocked on inputs/native machine): real controlled host + static IPv4 + URL from user; run scripts/ci/android-native-gate.sh, ios-native-gate.sh, android-dev-build.sh; physical-device proof; recovery run; export report. M1 stays OPEN until then.
 - P1: SharedPreferences store hardening (EncryptedSharedPreferences), backend admin auth beyond static token, provider retry/backoff.
 - P2: iOS enforcement feasibility beyond M1 (out of scope), Threat Scent UX.

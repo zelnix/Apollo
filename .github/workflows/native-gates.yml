@@ -1,0 +1,37 @@
+name: native-gates
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: "8.9" }
+      - run: bash scripts/ci/android-native-gate.sh
+      - uses: actions/upload-artifact@v4
+        with: { name: android-native-gate, path: docs/evidence }
+  ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/ci/ios-native-gate.sh
+      - uses: actions/upload-artifact@v4
+        with: { name: ios-native-gate, path: docs/evidence }
+  executable-suites:
+    runs-on: ubuntu-latest
+    services:
+      mongo: { image: "mongo:7", ports: ["27017:27017"] }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "24" }
+      - run: pip install -r backend/requirements.txt
+      - run: cp backend/.env.example backend/.env && python -c "print('CI must inject GD_M1_* secrets')"
+      - run: cd backend && python -m pytest tests -q --ignore=tests/test_m1_endpoints_integration.py
+        env: { MONGO_URL: mongodb://localhost:27017, DB_NAME: ci, GD_M1_SIGNING_PRIVATE_KEY_B64: "${{ secrets.GD_M1_SIGNING_PRIVATE_KEY_B64 }}", GD_M1_SECONDARY_PRIVATE_KEY_B64: "${{ secrets.GD_M1_SECONDARY_PRIVATE_KEY_B64 }}", GD_ADMIN_TOKEN: ci-admin, GD_CONTROLLED_HOST: m1-block-test.guarddog.example, GD_CONTROLLED_IPV4: 203.0.113.10, GD_CONTROLLED_URL: https://m1-block-test.guarddog.example/ }
+      - run: cd packages/guarddog-contracts && node --test tests/*.test.ts

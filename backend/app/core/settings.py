@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
@@ -20,22 +20,31 @@ def _req(name: str) -> str:
 
 @dataclass(frozen=True)
 class Settings:
-    mongo_url: str
+    mongo_url: str = field(repr=False)
     db_name: str
     signing_key_id: str
-    signing_private_key_b64: str
+    signing_private_key_b64: str = field(repr=False)  # never printed, never logged
     secondary_key_id: str | None
-    secondary_private_key_b64: str | None
-    admin_token: str
+    secondary_private_key_b64: str | None = field(repr=False)
+    admin_token: str = field(repr=False)
     controlled_host: str
     controlled_ipv4: str
     controlled_url: str
     ruleset_id: str
     bundle_ttl_days: int
     block_dedupe_window_ms: int
-    webrisk_api_key: str | None
+    webrisk_api_key: str | None = field(repr=False)
     webrisk_timeout_seconds: float
     provider_cache_ttl_seconds: int
+    signing_enabled: bool
+    signing_allowed_rulesets: frozenset[str]
+
+    @property
+    def controlled_endpoint_is_placeholder(self) -> bool:
+        return self.controlled_host.endswith(".example") or self.controlled_ipv4.startswith("203.0.113.")
+
+    def secrets(self) -> list[str]:
+        return [s for s in (self.signing_private_key_b64, self.secondary_private_key_b64, self.admin_token, self.webrisk_api_key) if s]
 
 
 @lru_cache
@@ -57,4 +66,6 @@ def get_settings() -> Settings:
         webrisk_api_key=os.environ.get("WEBRISK_API_KEY") or None,
         webrisk_timeout_seconds=float(_req("WEBRISK_TIMEOUT_SECONDS")),
         provider_cache_ttl_seconds=int(_req("GD_PROVIDER_CACHE_TTL_SECONDS")),
+        signing_enabled=_req("GD_SIGNING_ENABLED").lower() == "true",
+        signing_allowed_rulesets=frozenset(r.strip() for r in _req("GD_SIGNING_ALLOWED_RULESETS").split(",") if r.strip()),
     )

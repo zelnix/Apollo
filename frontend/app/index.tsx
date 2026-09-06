@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ActionButton, Card, KeyValue, StatusBadge, StepRow } from "@/src/components/harness-ui";
 import type { SecurityEvent } from "@/src/contracts/securityEventSchemas";
 import { type HarnessStep, runAndroidBlockingProof } from "@/src/harness/androidBlockingProofHarness";
+import { buildProofReport, exportReportPdf, type ProofReport } from "@/src/harness/proofReport";
 import { fetchLatestBundle, fetchM1Config } from "@/src/harness/ruleBundleFixtures";
 import { GuardDogSecuritySDK, type LocalAnalysis } from "@/src/sdk/GuardDogSecuritySDK";
 import { makeStyles, useTheme } from "@/src/theme";
@@ -34,6 +35,8 @@ export default function Index() {
   const [steps, setSteps] = useState<HarnessStep[]>([]);
   const [url, setUrl] = useState("https://m1-block-test.guarddog.example/login?token=SECRET");
   const [analysis, setAnalysis] = useState<LocalAnalysis | null | undefined>(undefined);
+  const [report, setReport] = useState<ProofReport | null>(null);
+  const [pdfUri, setPdfUri] = useState<string | null>(null);
   const analyze = () => setAnalysis(GuardDogSecuritySDK.analyzeUrl(url));
 
   const config = useQuery({ queryKey: ["m1-config"], queryFn: fetchM1Config });
@@ -128,6 +131,34 @@ export default function Index() {
               {proof.data.proofComplete ? "Genuine end-to-end block proven." : "Proof incomplete: requires Android native build + real controlled endpoint."}
             </Text>
           ) : null}
+        </Card>
+
+        <Card title="Proof report export" testID="report-card">
+          <View style={styles.actions}>
+            <ActionButton
+              title="Build JSON evidence"
+              secondary
+              disabled={!proof.data || !config.data}
+              onPress={() => setReport(buildProofReport(config.data!, bundle.data ?? null, proof.data!, events))}
+              testID="build-report-button"
+            />
+            <ActionButton
+              title="Export PDF"
+              disabled={!report}
+              onPress={async () => setPdfUri((await exportReportPdf(report!)) ?? "print dialog opened")}
+              testID="export-pdf-button"
+            />
+          </View>
+          {report ? (
+            <>
+              <KeyValue label="Proof complete" value={report.proofComplete ? "yes" : "no — milestone open"} testID="report-proof-complete" />
+              <KeyValue label="enforcementEvidenceId" value={report.auditChain.enforcementEvidenceId ?? "none"} testID="report-evidence-id" />
+              <Text style={styles.mono} numberOfLines={12} testID="report-json">{JSON.stringify(report.auditChain, null, 1)}</Text>
+            </>
+          ) : (
+            <Text style={styles.empty} testID="report-empty">Run the proof first. The report only contains observed results.</Text>
+          )}
+          {pdfUri ? <Text style={styles.note} testID="report-pdf-uri">PDF: {pdfUri}</Text> : null}
         </Card>
 
         <Card title="Security events" testID="events-card">

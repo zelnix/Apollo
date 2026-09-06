@@ -72,11 +72,18 @@ async def test_backend_signs_and_serves_controlled_block_bundle(client):
 
 @pytest.mark.anyio
 async def test_sign_endpoint_requires_admin_and_increments_version(client, admin_headers):
-    body = {"rulesetId": "gd-m1-controlled-block", "rules": [{"ruleId": "r-2", "host": "Evil.Example.", "action": "block"}]}
+    body = {
+        "rulesetId": "gd-m1-controlled-block",
+        "confirm": True,
+        "rules": [
+            {"ruleId": "m1-controlled-block-001", "host": "m1-block-test.guarddog.example", "action": "block"},
+            {"ruleId": "r-2", "host": "Evil.Example.", "action": "block"},
+        ],
+    }
     assert (await client.post("/api/rules/sign", json=body)).status_code == 401
     r = await client.post("/api/rules/sign", json=body, headers=admin_headers)
     assert r.status_code == 200
     assert r.json()["bundleVersion"] == 2
-    assert r.json()["payload"]["rules"][0]["host"] == "evil.example"
+    assert r.json()["payload"]["rules"][1]["host"] == "evil.example"
     versions = (await client.get("/api/rules/gd-m1-controlled-block/versions")).json()["versions"]
     assert [v["bundleVersion"] for v in versions] == [2, 1]

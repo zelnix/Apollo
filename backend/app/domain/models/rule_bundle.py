@@ -60,11 +60,16 @@ class SignedRuleBundle(UnsignedRuleBundle):
 
 
 class SignRequest(BaseModel):
+    """Administrative signing request. `confirm` is an explicit human confirmation, NOT access control
+    (the admin token + GD_SIGNING_ENABLED + ruleset allow-list are the access controls)."""
+
     model_config = ConfigDict(extra="forbid")
     rulesetId: str = Field(pattern=r"^[a-z0-9-]+$")
     rules: list[RuleEntry] = Field(min_length=1)
     expiresAt: str | None = None
     keyId: str | None = None
+    confirm: bool = False
+    purpose: Literal["m1-controlled-test"] = "m1-controlled-test"
 
     @field_validator("expiresAt")
     @classmethod

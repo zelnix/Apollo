@@ -47,6 +47,7 @@ def test_valid_rules_are_canonicalized():
 async def test_sign_endpoint_reports_conflicts(client, admin_headers):
     body = {
         "rulesetId": "gd-m1-controlled-block",
+        "confirm": True,
         "rules": [{"ruleId": "x", "host": "a.example", "action": "block"}, {"ruleId": "y", "host": "A.EXAMPLE.", "action": "allow"}],
     }
     r = await client.post("/api/rules/sign", json=body, headers=admin_headers)

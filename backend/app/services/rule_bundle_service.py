@@ -7,6 +7,7 @@ from app.core.settings import Settings
 from app.domain.models.rule_bundle import SignedRuleBundle, SignRequest, parse_iso_z
 from app.domain.models.rule_entry import RuleEntry
 from app.domain.validation.rule_conflicts import validate_and_canonicalize
+from app.domain.validation.signing_guard import enforce_controlled_configuration
 from app.repositories.rules_repository import RulesRepository
 from app.services.key_registry_service import KeyRegistryService
 from app.services.rule_signer import build_unsigned, sign_unsigned
@@ -18,6 +19,7 @@ class RuleBundleService:
 
     async def sign_and_publish(self, request: SignRequest, now: datetime | None = None) -> SignedRuleBundle:
         rules = validate_and_canonicalize(request.rules)  # raises RuleValidationError
+        enforce_controlled_configuration(self._settings, request.rulesetId, rules)  # raises SigningRefused
         issued = now or datetime.now(timezone.utc)
         expires = parse_iso_z(request.expiresAt) if request.expiresAt else issued + timedelta(days=self._settings.bundle_ttl_days)
         if expires <= issued:
@@ -48,6 +50,7 @@ class RuleBundleService:
             return existing
         request = SignRequest(
             rulesetId=self._settings.ruleset_id,
+            confirm=True,
             rules=[RuleEntry(ruleId="m1-controlled-block-001", host=self._settings.controlled_host, action="block", category="controlled-test")],
         )
         return await self.sign_and_publish(request)

@@ -48,7 +48,7 @@ def build_services(app: FastAPI, db) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    configure_logging()
+    configure_logging(secrets=get_settings().secrets())
     settings = get_settings()
     client = AsyncIOMotorClient(settings.mongo_url)
     db = client[settings.db_name]
@@ -65,7 +65,9 @@ async def lifespan(app: FastAPI):
     present = set(await db.list_collection_names())
     if present & FORBIDDEN_COLLECTIONS:
         log.error("forbidden M1 collections present: %s", sorted(present & FORBIDDEN_COLLECTIONS))
-    log.info("Guard Dog M1 backend ready (ruleset=%s)", settings.ruleset_id)
+    if settings.controlled_endpoint_is_placeholder:
+        log.warning("controlled endpoint is a documentation placeholder (%s); not an acceptance target", settings.controlled_host)
+    log.info("Guard Dog M1 backend ready (ruleset=%s, signing_enabled=%s)", settings.ruleset_id, settings.signing_enabled)
     yield
     client.close()
 

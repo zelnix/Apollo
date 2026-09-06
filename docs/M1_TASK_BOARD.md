@@ -80,12 +80,16 @@ Every ticket lists dependencies and pass/fail criteria. IDs are stable; referenc
 | RN-03 | Harness (`androidBlockingProofHarness.ts`) reports PASS/FAIL/BLOCKED/SKIPPED, never fabricates | RN-02, BE-08 | On web/Expo Go: verify/before/consent BLOCKED, start SKIPPED | ✅ |
 | RN-04 | Fixtures (`ruleBundleFixtures.ts`): live bundle + tampered/unknown-key negatives | BE-03 | Negatives rejected natively when module present | ✅ |
 
-## G. Final acceptance (Phase 5) — ⏳ blocked on native environment
+## G. Final acceptance (Phase 5) — ⏳ blocked on native environment (tracking: `docs/M1_NATIVE_GATE.md`)
 
-| ID | Ticket | Depends on | Pass / Fail |
-|---|---|---|---|
-| AC-01 | Compile Android SDK + Expo module; run unit tests with `-Dguarddog.vectors=<repo>/security/test-vectors` | AN-*, PF-* | all Kotlin tests green |
-| AC-02 | Compile Swift packages; run XCTest parity suites | IO-* | all Swift tests green |
-| AC-03 | Provision real Guard Dog-controlled host + dedicated static IPv4 + TLS; inject via backend `.env` | — | `/api/config` returns non-`.example` host |
-| AC-04 | Physical-device run of `AndroidBlockingProofE2ETest` and RN harness | AC-01, AC-03 | Every harness step PASS; exactly one `THREAT_BLOCKED` per attempt; `enforcementEvidenceId` present |
-| AC-05 | Milestone note documenting the exact observed traffic path (no overclaim) | AC-04 | `docs/M1_OBSERVED_TRAFFIC_PATH.md` updated with device evidence |
+| ID | Ticket | Depends on | Pass / Fail | Status |
+|---|---|---|---|---|
+| SG-01 | Signing guard: admin token + `GD_SIGNING_ENABLED` + `confirm` + ruleset allow-list + controlled-config check; secrets never logged | BE-03 | `test_signing_guard.py` | ✅ |
+| SG-02 | Endpoint tooling: `verify_controlled_endpoint.py`, `resign_controlled_bundle.py --confirm` | SG-01 | refuse placeholder; resolution must equal dedicated IPv4 | ✅ (awaiting real values) |
+| AC-01 | `scripts/ci/android-native-gate.sh` (resolve, compile, tests, cycle check) | AN-*, PF-* | evidence in `docs/evidence/` | 📝 scripted, ⏳ run |
+| AC-02 | `scripts/ci/ios-native-gate.sh` (resolve, compile, tests, cycle check) | IO-* | evidence in `docs/evidence/` | 📝 scripted, ⏳ run |
+| AC-03 | Inject real controlled host + dedicated static IPv4 + TLS; resign bundle | — | `/api/config → isPlaceholder=false`, verify script exit 0 | ⏳ input needed |
+| AC-04 | Android development build (`scripts/ci/android-dev-build.sh`, config plugin, merged-manifest check) | AC-01, AC-03 | manifest shows service + `systemExempted`; unit tests pass; APK installed | 📝 scripted, ⏳ run |
+| AC-05 | Physical-device proof (`AndroidBlockingProofE2ETest` + RN harness) | AC-04 | all steps PASS; exactly one `THREAT_BLOCKED` with evidence per attempt | ⏳ |
+| AC-06 | Recovery: stop → TUN closed, INACTIVE/STOPPED, endpoint reachable again; revoke → REVOKED, consent cleared | AC-05 | `TunSessionRecoveryTest` 📝 + device run | ⏳ |
+| AC-07 | Proof report export (JSON + PDF) from device run | AC-05 | report `proofComplete=true` with full audit chain | ✅ tooling, ⏳ run |

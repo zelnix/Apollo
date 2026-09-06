@@ -34,9 +34,7 @@ object GuardDogVpnRuntime {
  */
 class GuardDogVpnService : VpnService() {
     private val state = VpnStateRepository.shared
-    private var tun: ParcelFileDescriptor? = null
-    private var readerThread: Thread? = null
-    private var reader: TunPacketReader? = null
+    private var session: TunSession? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -84,7 +82,6 @@ class GuardDogVpnService : VpnService() {
             fail("establish() returned null (consent revoked or another VPN active)")
             return
         }
-        tun = pfd
         val deduper = BlockedFlowDeduper(config.dedupeWindowMillis, SystemClock)
         val dropReporter = PacketDropReporter(verifiedIpv4, deduper, reporter, SystemClock)
         GuardDogVpnRuntime.dropReporter = dropReporter
@@ -92,8 +89,10 @@ class GuardDogVpnService : VpnService() {
             Log.w(TAG, "TUN read failed: ${e.message}")
             state.transition(VpnLifecycleState.Degraded("TUN read error"))
         }
-        reader = tunReader
-        readerThread = Thread(tunReader, "guarddog-tun-reader").also { it.start() }
+        // Retain the ParcelFileDescriptor inside the session; close() releases it exactly once.
+        session = TunSession(pfd as ParcelFileDescriptor, tunReader, Thread(tunReader, "guarddog-tun-reader")) {
+            GuardDogVpnRuntime.dropReporter = null
+        }.also { it.start() }
         val running = VpnLifecycleState.Running(System.currentTimeMillis(), spec.routes[0].cidr)
         state.transition(running)
         startForegroundCompat(ProtectionNotificationFactory.build(this, running))
@@ -130,14 +129,10 @@ class GuardDogVpnService : VpnService() {
         stopSelf()
     }
 
-    /** Retain and correctly close the ParcelFileDescriptor; stop the reader thread. */
+    /** Retain and correctly close the ParcelFileDescriptor; stop the reader thread (idempotent). */
     private fun cleanup() {
-        reader?.stop()
-        reader = null
-        try { tun?.close() } catch (e: IOException) { Log.w(TAG, "closing TUN failed: ${e.message}") }
-        tun = null
-        readerThread?.interrupt()
-        readerThread = null
+        session?.close()
+        session = null
         GuardDogVpnRuntime.dropReporter = null
     }
 
