@@ -28,6 +28,12 @@ Let the run finish completely — do **not** re-run individual failed jobs mid-s
 | `executable-suites` | job log showing dependency install succeeded and pytest/node suites actually ran |
 | any failed job | the failed step's raw log |
 
+Provenance rule (reviewer-approved): the **actual branch tip** used by the run is the authoritative build commit.
+- Build provenance: `apk-provenance.json.commit` == the run's `GITHUB_SHA`; `workflowRunId` == that run; `apkSha256` == SHA-256 of the produced APK.
+- Code provenance: `dbd58e5` must be an ancestor of the build commit, and `git diff --name-only dbd58e5 <build-sha>` must list only paths under
+  `docs/` or `memory/` (use `--name-only`, not `--stat`). Any path under `.github/`, `apps/`, `packages/`, `backend/`, `security/`, `scripts/`,
+  `frontend/` (sources, `app.json`, `package.json`, `yarn.lock`) or other build configuration is inspected, never auto-accepted as "docs-only".
+
 Audit focus for this run: GitHub reproduces AC-01; executable suites run after a clean dependency install; AC-02 compiles under the pinned Xcode 26.1
 path; the dev APK is generated; v25 remains the served/frozen bundle; `apk-provenance.json` ties `commit` = `dbd58e5…` and `workflowRunId` = this run.
 
