@@ -44,6 +44,9 @@ jobs:
           CI: "1"
           EXPO_PUBLIC_BACKEND_URL: ${{ vars.GD_BACKEND_URL }}   # repository variable (public distribution URL), not a secret
           GD_DEV_ABIS: arm64-v8a
+      # Artifact recheck before any phone: intended dev build, 26/36, arm64-v8a only, VpnService facts, no secret/.env content packaged.
+      - run: bash scripts/ci/apk-recheck.sh docs/evidence/guarddog-m1-dev.apk
+        env: { GD_DEV_ABIS: arm64-v8a }
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: android-dev-build, path: docs/evidence }
@@ -75,7 +78,13 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "24" }
       - run: pip install -r backend/requirements.txt
-      - run: cp backend/.env.example backend/.env && python -c "print('CI must inject GD_M1_* secrets')"
+      - run: cp backend/.env.example backend/.env
+      # Ephemeral Ed25519 seeds generated per run: the real gd-m1-test-ed25519-001 seed stays in the controlled signing environment.
+      # Tests that need the real key (pinned-key match, byte-identical fixture regeneration) skip via GD_CI_EPHEMERAL_KEY=1;
+      # the frozen v25 bundle is verified read-only with the pinned PUBLIC key (tests/test_frozen_bundle_public_verification.py).
+      - run: |
+          echo "GD_M1_SIGNING_PRIVATE_KEY_B64=$(python -c 'import os,base64;print(base64.b64encode(os.urandom(32)).decode())')" >> "$GITHUB_ENV"
+          echo "GD_M1_SECONDARY_PRIVATE_KEY_B64=$(python -c 'import os,base64;print(base64.b64encode(os.urandom(32)).decode())')" >> "$GITHUB_ENV"
       - run: cd backend && python -m pytest tests -q --ignore=tests/test_m1_endpoints_integration.py
-        env: { MONGO_URL: mongodb://localhost:27017, DB_NAME: ci, GD_M1_SIGNING_PRIVATE_KEY_B64: "${{ secrets.GD_M1_SIGNING_PRIVATE_KEY_B64 }}", GD_M1_SECONDARY_PRIVATE_KEY_B64: "${{ secrets.GD_M1_SECONDARY_PRIVATE_KEY_B64 }}", GD_ADMIN_TOKEN: ci-admin, GD_CONTROLLED_HOST: m1-block-test.guarddog.example, GD_CONTROLLED_IPV4: 203.0.113.10, GD_CONTROLLED_URL: https://m1-block-test.guarddog.example/ }
+        env: { GD_CI_EPHEMERAL_KEY: "1", MONGO_URL: mongodb://localhost:27017, DB_NAME: ci, GD_ADMIN_TOKEN: ci-admin, GD_CONTROLLED_HOST: m1-block-test.guarddog.example, GD_CONTROLLED_IPV4: 203.0.113.10, GD_CONTROLLED_URL: https://m1-block-test.guarddog.example/ }
       - run: cd packages/guarddog-contracts && node --test tests/*.test.ts

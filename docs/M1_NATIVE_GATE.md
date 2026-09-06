@@ -100,6 +100,13 @@ arm64 host run only under qemu emulation, and this container's system layer (JDK
   provided to the mobile pipeline. (`verify_controlled_endpoint.py --api <url>` mode.)
 - Backend distribution-only mode: with `GD_SIGNING_ENABLED=false` the backend starts without `GD_M1_SIGNING_PRIVATE_KEY_B64`, serves existing signed
   bundles + public keys, skips seed-signing, and `POST /api/rules/sign` is disabled (`tests/test_distribution_only_mode.py`).
+- **APK artifact recheck** (`scripts/ci/apk-recheck.sh <apk>`, wired after the build in the `android-dev-build` job → `docs/evidence/apk-recheck.txt`):
+  package id, `application-debuggable` (dev build), `sdkVersion 26` / `targetSdkVersion 36`, `native-code` exactly `arm64-v8a`, VpnService facts from the
+  APK's binary manifest (BIND_VPN_SERVICE, `foregroundServiceType=0x400` systemExempted, `android.net.VpnService`), high-risk permissions absent, and a
+  content scan proving **no private-key material, admin token, DB URL or backend `.env` content** is packaged (pinned PUBLIC key expected in dex).
+- CI key hygiene: the `executable-suites` pytest job now generates **ephemeral** Ed25519 seeds per run (`GD_CI_EPHEMERAL_KEY=1`); the workflow contains
+  no `secrets.*` at all. The real `gd-m1-test-ed25519-001` seed stays in the controlled signing environment. The frozen v25 bundle is committed at
+  `security/frozen/controlled-bundle-v25.json` and verified read-only with the pinned public key (`tests/test_frozen_bundle_public_verification.py`).
 - Release builds: the merged **release** manifest must be audited too — `SYSTEM_ALERT_WINDOW` (RN debug manifest) must be absent there.
 - Any persistent Linux/macOS host: `bash scripts/ci/setup-android-toolchain-linux.sh && source /opt/guarddog-android-env.sh && bash scripts/ci/android-dev-build.sh`
   (with a phone attached the script continues into install + `AndroidBlockingProofE2ETest`).

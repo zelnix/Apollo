@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 
@@ -51,6 +52,7 @@ def test_schema_is_strict():
     assert verify_bundle({**bundle, "bundleVersion": 3.0}, trusted(), FROZEN_NOW).reason == RejectReason.SCHEMA_INVALID
 
 
+@pytest.mark.skipif(os.environ.get("GD_CI_EPHEMERAL_KEY") == "1", reason="CI runs with an ephemeral signing key; the pinned key only exists in the controlled signing environment")
 def test_pinned_public_key_matches_env_private_key():
     s = get_settings()
     assert security.public_key_b64(security.load_private_key(s.signing_private_key_b64)) == trusted()[s.signing_key_id]

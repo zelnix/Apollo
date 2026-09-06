@@ -119,3 +119,9 @@
 - Bug: GitHub Actions `android-dev-build` job required secret GD_M1_SIGNING_PRIVATE_KEY_B64 (because android-dev-build.sh ran verify_controlled_endpoint.py via backend settings). Fixed: job now needs only repo var GD_BACKEND_URL; script uses `verify_controlled_endpoint.py --api <url>` (public /api/config) and asserts served bundle == frozen version and signed by the SDK-pinned public key. No secrets in that job.
 - Backend distribution-only mode: GD_SIGNING_ENABLED=false → private key optional; KeyRegistryService.can_sign; main.py skips seed signing. tests/test_distribution_only_mode.py.
 - Live backend unchanged (signing enabled, frozen v25). Verify: workflow yaml has no `secrets.` in android-dev-build job; `python scripts/verify_controlled_endpoint.py --api <backend>` exits 0 without any GD_* env; pytest 85 offline / 134 live pass; /api endpoints unchanged.
+
+## Iteration 7 (main agent) — CI key hygiene + APK recheck tooling
+- Workflow has zero secrets: executable-suites generates ephemeral Ed25519 seeds; GD_CI_EPHEMERAL_KEY=1 skips test_pinned_public_key_matches_env_private_key + test_regeneration_is_byte_identical.
+- New tests/test_frozen_bundle_public_verification.py (4 tests; public key only; uses security/frozen/controlled-bundle-v25.json).
+- New scripts/ci/apk-recheck.sh (needs aapt2 + APK; not runnable here) — python blocks unit-checked with fake dirs.
+- Verify: pytest offline 89 pass; with ephemeral seeds + GD_CI_EPHEMERAL_KEY=1 + DB_NAME=ci_ephemeral → 87 pass / 39 skipped, 0 fail; live backend still v25; frozen-bundle tests pass with no env.
