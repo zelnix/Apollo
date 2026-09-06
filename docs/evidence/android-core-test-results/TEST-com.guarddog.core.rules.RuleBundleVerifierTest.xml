@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.guarddog.core.rules.RuleBundleVerifierTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-09-06T08:36:02" hostname="agent-env-7657c2c0-a2aa-48ca-a3f3-785f03490eb7" time="0.233">
+  <properties/>
+  <testcase name="canonicalBytesMatchReferenceFixture" classname="com.guarddog.core.rules.RuleBundleVerifierTest" time="0.009"/>
+  <testcase name="serializerSymbolIsReal" classname="com.guarddog.core.rules.RuleBundleVerifierTest" time="0.003"/>
+  <testcase name="validBundleAccepted" classname="com.guarddog.core.rules.RuleBundleVerifierTest" time="0.196"/>
+  <testcase name="keyRolloverWithoutBridgeChanges" classname="com.guarddog.core.rules.RuleBundleVerifierTest" time="0.007"/>
+  <testcase name="strictSchema" classname="com.guarddog.core.rules.RuleBundleVerifierTest" time="0.001"/>
+  <testcase name="rollbackRejectedAfterNewerVersionAccepted" classname="com.guarddog.core.rules.RuleBundleVerifierTest" time="0.004"/>
+  <testcase name="manifestRejections" classname="com.guarddog.core.rules.RuleBundleVerifierTest" time="0.012"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

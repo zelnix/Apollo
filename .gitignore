@@ -81,3 +81,9 @@ memory/test_credentials.md
 
 # Mobile development
 android-sdk/
+# Native build outputs (generated; regenerate with scripts/ci/*.sh)
+frontend/android/
+frontend/ios/
+packages/guarddog-android-sdk/.gradle/
+packages/**/build/
+packages/guarddog-expo-module/android/.gradle/

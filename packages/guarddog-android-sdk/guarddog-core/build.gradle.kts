@@ -18,7 +18,7 @@ android {
 // guarddog-core is platform-agnostic and MUST NOT depend on :guarddog-vpn (no circular dependency).
 dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
-    implementation("org.erdtman:java-json-canonicalization:1.1")   // RFC 8785 reference implementation
+    implementation("io.github.erdtman:java-json-canonicalization:1.1")   // RFC 8785 reference implementation
     implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")        // Ed25519 verification
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit")

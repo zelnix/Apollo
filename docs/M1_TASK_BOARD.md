@@ -1,6 +1,6 @@
 # Guard Dog — M1 Execution Board (Part 4.1 + Part 5)
 
-Status legend: ✅ done (executable here) · 📝 code-review ready / not runtime-verified (Kotlin/Swift, no toolchain in this environment) · ⏳ blocked on physical device / real endpoint.
+Status legend: ✅ done (executed here) · 📝 code-review ready / not runtime-verified (Swift; no Xcode in this environment — Kotlin items marked 📝 were compiled + unit-tested by AC-01 on 2026-06) · ⏳ blocked on physical device / native machine.
 
 Every ticket lists dependencies and pass/fail criteria. IDs are stable; reference them in commits.
 
@@ -86,7 +86,7 @@ Every ticket lists dependencies and pass/fail criteria. IDs are stable; referenc
 |---|---|---|---|---|
 | SG-01 | Signing guard: admin token + `GD_SIGNING_ENABLED` + `confirm` + ruleset allow-list + controlled-config check; secrets never logged | BE-03 | `test_signing_guard.py` | ✅ |
 | SG-02 | Endpoint tooling: `verify_controlled_endpoint.py`, `resign_controlled_bundle.py --confirm`, `verify_resigned_bundle.py` | SG-01 | refuse placeholder; resolution must equal dedicated IPv4; 10-point post-resign check | ✅ |
-| AC-01 | `scripts/ci/android-native-gate.sh` (resolve, compile, tests, cycle check) | AN-*, PF-* | evidence in `docs/evidence/` | 📝 scripted, ⏳ run |
+| AC-01 | `scripts/ci/android-native-gate.sh` (resolve, compile, tests, cycle check, Expo module in prebuilt app) | AN-*, PF-* | evidence in `docs/evidence/` | ✅ PASSED 2026-06 (29 tests, 0 failed; 4 build findings fixed — see M1_NATIVE_GATE.md) |
 | AC-02 | `scripts/ci/ios-native-gate.sh` (resolve, compile, tests, cycle check) | IO-* | evidence in `docs/evidence/` | 📝 scripted, ⏳ run |
 | AC-03 | Inject real controlled host + dedicated static IPv4 + TLS; resign bundle | — | `/api/config → isPlaceholder=false`, verify script exit 0 | ✅ v25 signed (`blocktest.btciq.app` / 52.25.179.131) and **FROZEN** (`GD_M1_FROZEN_BUNDLE_VERSION=25`, API 409 `BUNDLE_FROZEN`), `docs/evidence/resigned-bundle-verification.json` |
 | AC-04 | Android development build (`scripts/ci/android-dev-build.sh`, config plugin, merged-manifest check) | AC-01, AC-03 | manifest shows service + `systemExempted`; unit tests pass; APK installed | 📝 scripted, ⏳ run |

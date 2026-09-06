@@ -109,3 +109,8 @@
 - Proof report m1-2: recovery chain; JSON written to device file (expo-file-system) + PDF + share sheet (expo-sharing); web shows JSON inline, PDF = print dialog.
 - Native (not runtime-verifiable here): RecoveryInspector/getRecoveryStatus (Android + iOS), E2E test step 6, TunSessionRecoveryTest new case.
 - Test focus: backend read APIs (/api/config isPlaceholder=false, /latest v25 single rule, /versions, /keys, /intelligence/lookup block for blocktest.btciq.app, sign guard 401/409/403 without mutating), web harness UI (honest BLOCKED/SKIPPED, Build JSON evidence shows recovery fields, no fake THREAT_BLOCKED). Do NOT POST /api/rules/sign with confirm=true for gd-m1-controlled-block.
+
+## Iteration 5 (main agent) — review corrections + Android native gate executed
+- getRecoveryStatus removed from public SDK (harness adapter src/harness/recoveryDiagnostics.ts); TRANSPORT_VPN supporting-only; bundle FROZEN v25 (GD_M1_FROZEN_BUNDLE_VERSION → POST /api/rules/sign 409 BUNDLE_FROZEN for controlled ruleset; /api/config.signing.frozenBundleVersion=25).
+- Android native gate run for real in this container (JDK17/Android SDK/Gradle installed): PASSED, 29 Kotlin tests. Fixed: erdtman coordinate, fun interface, RuleBundleVerifier raw type check, config plugin serialization classpath.
+- Test focus now: regression of backend read APIs + freeze guard (409 BUNDLE_FROZEN with confirm:true for gd-m1-controlled-block; latest stays 25), web harness unchanged behaviour, evidence files exist (docs/evidence/android-native-gate.txt contains "ANDROID NATIVE GATE PASSED" and "29 run, 0 failed").

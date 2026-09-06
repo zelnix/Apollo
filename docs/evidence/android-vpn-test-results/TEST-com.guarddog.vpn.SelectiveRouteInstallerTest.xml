@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.guarddog.vpn.SelectiveRouteInstallerTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-09-06T08:36:03" hostname="agent-env-7657c2c0-a2aa-48ca-a3f3-785f03490eb7" time="0.02">
+  <properties/>
+  <testcase name="refusesUnverifiedTarget" classname="com.guarddog.vpn.SelectiveRouteInstallerTest" time="0.016"/>
+  <testcase name="configValidatesIpv4" classname="com.guarddog.vpn.SelectiveRouteInstallerTest" time="0.0"/>
+  <testcase name="installsOnlyTheControlledSlash32" classname="com.guarddog.vpn.SelectiveRouteInstallerTest" time="0.002"/>
+  <testcase name="bindingMismatchAbortsBeforeRouteInstall" classname="com.guarddog.vpn.SelectiveRouteInstallerTest" time="0.002"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

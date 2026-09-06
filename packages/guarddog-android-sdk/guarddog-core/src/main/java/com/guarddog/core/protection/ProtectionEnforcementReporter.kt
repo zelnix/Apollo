@@ -10,6 +10,6 @@ import com.guarddog.core.events.BlockedThreatEvidence
  * Nothing else (rule match, DNS resolution, VPN start, failed HTTP request, test
  * helper) may call this. It is the only path that can lead to THREAT_BLOCKED.
  */
-interface ProtectionEnforcementReporter {
+fun interface ProtectionEnforcementReporter {
     fun reportBlockedPacket(evidence: BlockedThreatEvidence)
 }

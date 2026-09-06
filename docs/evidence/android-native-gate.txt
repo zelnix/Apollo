@@ -1,0 +1,132 @@
+== Guard Dog Android native gate 2026-09-06T08:35:57Z ==
+host: aarch64 Linux; java: openjdk version "17.0.20.1" 2026-08-18; ANDROID_HOME=/opt/android-sdk
+/root/.gradle/gradle.properties:android.aapt2FromMavenOverride=/opt/aapt2/aapt2
+-- 1. dependency resolution
+all dependencies resolved
+-- 2. no core -> vpn dependency (source + gradle)
+core imports: clean
+gradle graph: clean
+-- 3. compile
+-- 4. unit tests (normalization, URL sanitization, signing/JCS fixtures, packet path)
+
+> Configure project :guarddog-core
+WARNING: The option setting 'android.aapt2FromMavenOverride=/opt/aapt2/aapt2' is experimental.
+WARNING: We recommend using a newer Android Gradle plugin to use compileSdk = 35
+
+This Android Gradle plugin (8.5.2) was tested up to compileSdk = 34.
+
+You are strongly encouraged to update your project to use a newer
+Android Gradle plugin that has been tested with compileSdk = 35.
+
+If you are already using the latest version of the Android Gradle plugin,
+you may need to wait until a newer version with support for compileSdk = 35 is available.
+
+For more information refer to the compatibility table:
+https://d.android.com/r/tools/api-level-support
+
+To suppress this warning, add/update
+    android.suppressUnsupportedCompileSdk=35
+to this project's gradle.properties.
+
+> Task :guarddog-core:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :guarddog-core:preBuild UP-TO-DATE
+> Task :guarddog-core:preReleaseBuild UP-TO-DATE
+> Task :guarddog-core:generateReleaseResValues
+> Task :guarddog-core:generateReleaseResources
+> Task :guarddog-core:packageReleaseResources
+> Task :guarddog-core:preReleaseUnitTestBuild UP-TO-DATE
+> Task :guarddog-core:javaPreCompileRelease
+> Task :guarddog-vpn:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :guarddog-core:javaPreCompileReleaseUnitTest
+> Task :guarddog-vpn:preBuild UP-TO-DATE
+> Task :guarddog-vpn:preReleaseBuild UP-TO-DATE
+> Task :guarddog-core:parseReleaseLocalResources
+> Task :guarddog-vpn:generateReleaseResValues
+> Task :guarddog-vpn:generateReleaseResources
+> Task :guarddog-core:generateReleaseRFile
+> Task :guarddog-vpn:packageReleaseResources
+> Task :guarddog-vpn:javaPreCompileRelease
+> Task :guarddog-vpn:preReleaseUnitTestBuild UP-TO-DATE
+> Task :guarddog-core:generateReleaseUnitTestStubRFile
+> Task :guarddog-vpn:parseReleaseLocalResources
+> Task :guarddog-vpn:javaPreCompileReleaseUnitTest
+> Task :guarddog-vpn:generateReleaseRFile
+> Task :guarddog-vpn:generateReleaseUnitTestStubRFile
+> Task :guarddog-core:compileReleaseKotlin
+> Task :guarddog-core:compileReleaseJavaWithJavac NO-SOURCE
+> Task :guarddog-core:bundleLibRuntimeToJarRelease
+> Task :guarddog-core:bundleLibCompileToJarRelease
+> Task :guarddog-core:processReleaseJavaRes
+
+> Task :guarddog-core:compileReleaseUnitTestKotlin
+w: file:///app/packages/guarddog-android-sdk/guarddog-core/src/test/java/com/guarddog/core/rules/RuleBundleVerifierTest.kt:85:61 This declaration needs opt-in. Its usage should be marked with '@kotlinx.serialization.ExperimentalSerializationApi' or '@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)'
+w: file:///app/packages/guarddog-android-sdk/guarddog-core/src/test/java/com/guarddog/core/rules/RuleBundleVerifierTest.kt:86:83 This declaration needs opt-in. Its usage should be marked with '@kotlinx.serialization.ExperimentalSerializationApi' or '@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)'
+
+> Task :guarddog-core:compileReleaseUnitTestJavaWithJavac NO-SOURCE
+> Task :guarddog-core:processReleaseUnitTestJavaRes
+> Task :guarddog-vpn:compileReleaseKotlin
+> Task :guarddog-core:testReleaseUnitTest
+> Task :guarddog-vpn:compileReleaseJavaWithJavac NO-SOURCE
+> Task :guarddog-vpn:bundleLibRuntimeToJarRelease
+> Task :guarddog-vpn:bundleLibCompileToJarRelease
+> Task :guarddog-vpn:processReleaseJavaRes
+> Task :guarddog-vpn:compileReleaseUnitTestKotlin
+> Task :guarddog-vpn:compileReleaseUnitTestJavaWithJavac NO-SOURCE
+> Task :guarddog-vpn:processReleaseUnitTestJavaRes
+> Task :guarddog-vpn:testReleaseUnitTest
+
+BUILD SUCCESSFUL in 3s
+30 actionable tasks: 30 executed
+  com.guarddog.core.net.HostCanonicalizerParityTest: 2 tests, 0 failures, 0 errors
+  com.guarddog.core.net.UrlSanitizerParityTest: 2 tests, 0 failures, 0 errors
+  com.guarddog.core.rules.BundleVersionStoreTest: 1 tests, 0 failures, 0 errors
+  com.guarddog.core.rules.RuleBundleVerifierTest: 7 tests, 0 failures, 0 errors
+  com.guarddog.vpn.BlockedFlowDeduperTest: 2 tests, 0 failures, 0 errors
+  com.guarddog.vpn.Ipv4PacketParserTest: 4 tests, 0 failures, 0 errors
+  com.guarddog.vpn.SelectiveRouteInstallerTest: 4 tests, 0 failures, 0 errors
+  com.guarddog.vpn.TunPacketReaderTest: 2 tests, 0 failures, 0 errors
+  com.guarddog.vpn.TunSessionRecoveryTest: 3 tests, 0 failures, 0 errors
+  com.guarddog.vpn.VpnLifecycleStateTest: 2 tests, 0 failures, 0 errors
+native unit tests: 29 run, 0 failed
+-- 5. Expo Android module compiles inside the prebuilt app (requires scripts/ci/android-dev-build.sh first)
+[32m[ExpoRootProject][0m Using the following versions:
+  - buildTools:  [32m36.0.0[0m
+  - minSdk:      [32m24[0m
+  - compileSdk:  [32m36[0m
+  - targetSdk:   [32m36[0m
+  - ndk:         [32m27.1.12297006[0m
+  - kotlin:      [32m2.1.20[0m
+  - ksp:         [32m2.1.20-2.0.1[0m
+ ℹ️  [33mApplying gradle plugin[0m '[32mexpo-max-sdk-override-plugin[0m'
+  [expo-max-sdk-override-plugin] This plugin will find all permissions declared with `android:maxSdkVersion`. If there exists a declaration with the `android:maxSdkVersion` annotation and another one without, the plugin will remove the annotation from the final merged manifest. In order to see a log with the changes run a clean build of the app.
+
+Using expo modules
+  - [32mexpo-log-box[0m (57.0.4)
+  - [32mexpo-constants[0m (57.0.17)
+Linking react-native-worklets native libs into expo-modules-core build tasks
+task ':react-native-worklets:mergeDebugNativeLibs'
+task ':react-native-worklets:mergeReleaseNativeLibs'
+  - [32mexpo-modules-core[0m (57.0.15)
+  - [32mguarddog-expo-module[0m (0.1.0)
+  - [33m[📦][0m [32mexpo-dom-webview[0m (57.0.1)
+  - [33m[📦][0m [32mexpo-ui[0m (57.0.15)
+  - [33m[📦][0m [32mexpo-asset[0m (57.0.16)
+  - [33m[📦][0m [32mexpo-blur[0m (57.0.2)
+  - [33m[📦][0m [32mexpo-file-system[0m (57.0.6)
+  - [33m[📦][0m [32mexpo-font[0m (57.0.3)
+  - [33m[📦][0m [32mexpo-haptics[0m (57.0.2)
+  - [33m[📦][0m [32mexpo-image[0m (57.0.4)
+  - [33m[📦][0m [32mexpo-keep-awake[0m (57.0.1)
+  - [33m[📦][0m [32mexpo-linear-gradient[0m (57.0.1)
+  - [33m[📦][0m [32mexpo-linking[0m (57.0.9)
+  - [33m[📦][0m [32mexpo-print[0m (57.0.1)
+  - [33m[📦][0m [32mexpo-router[0m (57.0.18)
+  - [33m[📦][0m [32mexpo-secure-store[0m (57.0.3)
+  - [33m[📦][0m [32mexpo-sharing[0m (57.0.18)
+  - [33m[📦][0m [32mexpo-splash-screen[0m (57.0.8)
+  - [33m[📦][0m [32mexpo-status-bar[0m (57.0.1)
+  - [33m[📦][0m [32mexpo-system-ui[0m (57.0.3)
+  - [33m[📦][0m [32mexpo-web-browser[0m (57.0.2)
+
+expo module: compiled
+== ANDROID NATIVE GATE PASSED ==

@@ -2,7 +2,10 @@ package com.guarddog.core.rules
 
 import com.guarddog.core.clock.Clock
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
 import org.bouncycastle.crypto.signers.Ed25519Signer
@@ -40,6 +43,7 @@ class RuleBundleVerifier(
     private val ruleIdRegex = Regex("^[A-Za-z0-9._:-]+$")
     private val hexRegex = Regex("^[0-9a-f]{64}$")
     private val isoZ = Regex("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$")
+    private val integerLiteral = Regex("^(0|[1-9][0-9]*)$")
 
     fun verify(rawJson: String, rollbackProtected: Boolean = true): VerificationResult {
         val root: JsonObject
@@ -84,9 +88,30 @@ class RuleBundleVerifier(
         return VerificationResult.Accepted(bundle)
     }
 
+    /** Strict JSON types: kotlinx decodes quoted numbers leniently, so the raw tree is checked too ("3" and 3.0 are invalid). */
+    private fun typeProblem(root: JsonObject): String? {
+        fun isString(e: JsonElement?) = e is JsonPrimitive && e.isString
+        for (key in listOf("schemaVersion", "rulesetId", "issuedAt", "expiresAt", "keyId", "payloadHash", "signature")) {
+            if (!isString(root[key])) return "$key must be a string"
+        }
+        val version = root["bundleVersion"]
+        if (version !is JsonPrimitive || version.isString || !integerLiteral.matches(version.content)) return "bundleVersion must be an integer literal"
+        val payload = root["payload"] as? JsonObject ?: return "payload must be an object"
+        if (payload.keys != setOf("rules")) return "unexpected payload keys"
+        val rules = payload["rules"] as? JsonArray ?: return "rules must be an array"
+        val ruleKeys = setOf("ruleId", "host", "action", "matchType", "category")
+        for (rule in rules) {
+            val obj = rule as? JsonObject ?: return "rule must be an object"
+            if (!ruleKeys.containsAll(obj.keys)) return "unexpected rule keys"
+            if (obj.values.any { !isString(it) }) return "rule fields must be strings"
+        }
+        return null
+    }
+
     private fun schemaProblem(b: SignedRuleBundle, root: JsonObject): String? {
         val allowed = setOf("schemaVersion", "rulesetId", "bundleVersion", "issuedAt", "expiresAt", "keyId", "payload", "payloadHash", "signature")
         if (!allowed.containsAll(root.keys)) return "unexpected envelope keys"
+        typeProblem(root)?.let { return it }
         if (b.schemaVersion != "1.0") return "schemaVersion"
         if (!idRegex.matches(b.rulesetId)) return "rulesetId"
         if (b.bundleVersion < 1) return "bundleVersion"

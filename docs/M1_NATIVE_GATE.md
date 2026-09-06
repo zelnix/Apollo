@@ -1,28 +1,44 @@
 # M1 Native Operational Acceptance Gate — STATUS: OPEN
 
-Milestone 1 is **not** complete. Backend pytest, shared contracts (node tests) and the real-endpoint resign/verification pass here;
-sections 1, 4, 5–6 require a native build machine and a physical Android device and have **not** been executed
-in this environment (no JDK/Android SDK/Xcode available). A static review of the Kotlin/Swift sources and gate scripts was done
-(see "Static review" below); it prepares AC-01/AC-02 but does not close them.
+Milestone 1 is **not** complete. Backend pytest, shared contracts (node tests), the real-endpoint resign/verification and the
+**Android native gate (AC-01)** pass here. The iOS gate (Xcode), the Android development APK on a device, and the physical
+block / recovery / revoke proofs have **not** been executed. The earlier static review is kept below for the record.
 
-## 1. Native build + parity gate — OPEN
-Run and attach `docs/evidence/*`:
-- `bash scripts/ci/android-native-gate.sh` → Gradle resolves; `guarddog-core` + `guarddog-vpn` compile; Kotlin normalization,
-  URL sanitization, signing/JCS fixture tests pass; graph check proves no core → vpn dependency (also enforced in root `build.gradle.kts`).
-- `bash scripts/ci/ios-native-gate.sh` → SwiftPM resolves; `GuardDogCore` compiles; Swift parity tests pass; `show-dependencies`
-  proves no `GuardDogCore → GuardDogNetworkFeasibility` edge; Expo iOS module compiles in the prebuilt app.
-- GitHub Actions: `.github/workflows/native-gates.yml` runs both gates + executable suites.
+## 1. Native build + parity gate — Android ✅ PASSED (executed 2026-06) · iOS ⏳ OPEN
+Android gate executed for real in this environment after installing JDK 17 (arm64), Android SDK (platform 35/36, build-tools 35),
+Gradle 8.9, and running the x86_64 `aapt2` through `qemu-user-static` (`~/.gradle/gradle.properties: android.aapt2FromMavenOverride`).
+Evidence: `docs/evidence/android-native-gate.txt`, `docs/evidence/android-{core,vpn}-test-results/*.xml`, `docs/evidence/{core,vpn}-deps.txt`.
+
+Result: dependencies resolved · core→vpn graph clean · `:guarddog-core` + `:guarddog-vpn` `assembleRelease` compiled · **29 native unit tests, 0 failed**
+(HostCanonicalizerParity 2, UrlSanitizerParity 2, BundleVersionStore 1, RuleBundleVerifier 7 incl. JCS byte-identity + strict schema + rollback +
+key rollover, BlockedFlowDeduper 2, Ipv4PacketParser 4, SelectiveRouteInstaller 4, TunPacketReader 2, TunSessionRecovery 3, VpnLifecycleState 2) ·
+`expo prebuild --platform android --clean` succeeded with the Guard Dog config plugin · `:guarddog-expo-module:assembleDebug` compiled inside the prebuilt app (AAR).
+
+Findings fixed by the real build (the static review could not see these):
+1. Wrong Maven coordinate for the RFC 8785 library: `org.erdtman:…` → `io.github.erdtman:java-json-canonicalization:1.1` (the Kotlin import `org.erdtman.jcs` was already correct).
+2. `ProtectionEnforcementReporter` is used with SAM syntax in tests → declared as `fun interface` (production implementation `GuardDogSDKEngine` unchanged).
+3. **Parity defect**: kotlinx.serialization decodes the quoted number `"3"` as a Long, so `bundleVersion: "3"` reached signature verification and was rejected
+   as `SIGNATURE_INVALID` instead of `SCHEMA_INVALID`. `RuleBundleVerifier.typeProblem` now checks raw JSON types (strings, integer literal, payload/rule
+   shape) before decoding — behaviour now matches Python/TS (`strictSchema` passes).
+4. Inside the prebuilt app the `org.jetbrains.kotlin.plugin.serialization` plugin had no version → config plugin adds
+   `classpath('org.jetbrains.kotlin:kotlin-serialization:<RN kotlin version>')` to the app's root `build.gradle` (read from `react-native/gradle/libs.versions.toml`).
+5. Gate hardening: step 1 now fails on unresolved dependencies; step 4 uses `--rerun-tasks` and prints a per-suite summary that fails on any failure.
+
+Residual warning (not a defect): AGP 8.5.2 warns it was tested up to compileSdk 34 (project uses 35). Bump AGP when convenient.
+
+iOS gate (`scripts/ci/ios-native-gate.sh`) still requires macOS + Xcode: SwiftPM resolves; `GuardDogCore` compiles; Swift parity tests pass;
+`show-dependencies` proves no `GuardDogCore → GuardDogNetworkFeasibility` edge; Expo iOS module compiles in the prebuilt app.
 
 | Evidence item | Android | iOS |
 |---|---|---|
-| package/gradle resolution | ☐ | ☐ |
-| core compiles | ☐ | ☐ |
-| vpn / feasibility compiles | ☐ | ☐ |
-| Expo module compiles in prebuilt app | ☐ | ☐ |
-| normalization parity tests | ☐ | ☐ |
-| URL sanitization parity tests | ☐ | ☐ |
-| signing/JCS fixture tests | ☐ | ☐ |
-| dependency cycle check | ☐ | ☐ |
+| package/gradle resolution | ✅ | ☐ |
+| core compiles | ✅ | ☐ |
+| vpn / feasibility compiles | ✅ | ☐ |
+| Expo module compiles in prebuilt app | ✅ | ☐ |
+| normalization parity tests | ✅ | ☐ |
+| URL sanitization parity tests | ✅ | ☐ |
+| signing/JCS fixture tests | ✅ | ☐ |
+| dependency cycle check | ✅ | ☐ |
 
 ## 2. Signing hardening — DONE (executable, tested)
 `POST /api/rules/sign` requires: admin token → `GD_SIGNING_ENABLED=true` → `confirm: true` → rulesetId on
