@@ -57,7 +57,10 @@ async def lifespan(app: FastAPI):
     for repo in (rules_repo, keys_repo, cache_repo):
         await repo.ensure_indexes()
     await app.state.key_registry.ensure_seeded()
-    await app.state.rule_service.ensure_controlled_block_bundle()
+    if app.state.key_registry.can_sign:
+        await app.state.rule_service.ensure_controlled_block_bundle()
+    else:
+        log.info("distribution-only mode: no private key loaded; serving existing signed bundles and public keys only")
     await config_repo.put(
         "m1",
         {"rulesetId": settings.ruleset_id, "controlledHost": settings.controlled_host, "blockDedupeWindowMs": settings.block_dedupe_window_ms},

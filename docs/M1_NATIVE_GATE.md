@@ -93,8 +93,14 @@ v25 is the minimum accepted version for this ruleset going forward (rollback sto
 
 APK assembly (step 5) did not complete here: the third-party C++ modules (react-native-screens/worklets) need the x86_64-only NDK/CMake, which on this
 arm64 host run only under qemu emulation, and this container's system layer (JDK/SDK/qemu) is periodically reset, killing long builds. Two ways forward:
-- GitHub Actions job `android-dev-build` (added to `.github/workflows/native-gates.yml`, native x86_64 runner) runs the same script and uploads
-  `guarddog-m1-dev.apk` + manifest evidence as artifacts (requires repo var `GD_BACKEND_URL` and secret `GD_M1_SIGNING_PRIVATE_KEY_B64`).
+- GitHub Actions job `android-dev-build` (`.github/workflows/native-gates.yml`, native x86_64 runner) runs the same script and uploads
+  `guarddog-m1-dev.apk` + manifest evidence as artifacts. **Trust boundary (reviewer decision)**: it requires only the repository variable
+  `GD_BACKEND_URL`; it consumes public distribution data (`/api/config`, `/api/rules/…/latest`, `/api/keys`) and asserts the served bundle is the
+  frozen version and signed by the key pinned in the SDK (`TrustedKeyRegistry.kt`). No backend is started and the Ed25519 signing seed is never
+  provided to the mobile pipeline. (`verify_controlled_endpoint.py --api <url>` mode.)
+- Backend distribution-only mode: with `GD_SIGNING_ENABLED=false` the backend starts without `GD_M1_SIGNING_PRIVATE_KEY_B64`, serves existing signed
+  bundles + public keys, skips seed-signing, and `POST /api/rules/sign` is disabled (`tests/test_distribution_only_mode.py`).
+- Release builds: the merged **release** manifest must be audited too — `SYSTEM_ALERT_WINDOW` (RN debug manifest) must be absent there.
 - Any persistent Linux/macOS host: `bash scripts/ci/setup-android-toolchain-linux.sh && source /opt/guarddog-android-env.sh && bash scripts/ci/android-dev-build.sh`
   (with a phone attached the script continues into install + `AndroidBlockingProofE2ETest`).
 

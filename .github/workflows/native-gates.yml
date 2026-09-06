@@ -22,6 +22,8 @@ jobs:
         with: { name: android-native-gate, path: docs/evidence }
   # AC-04: development APK + merged-manifest audit on a native x86_64 runner (no device: the script stops before install and
   # uploads guarddog-m1-dev.apk, merged-AndroidManifest.xml, merged-manifest-audit.txt for the physical-device run).
+  # Trust boundary: this job consumes PUBLIC distribution data only (GET /api/config, /latest, /keys from GD_BACKEND_URL) and the
+  # public key pinned in the SDK. It never receives the Ed25519 signing seed; no backend is started here.
   android-dev-build:
     runs-on: ubuntu-latest
     needs: android
@@ -34,23 +36,14 @@ jobs:
         with: { node-version: "24" }
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
-      - run: pip install -r backend/requirements.txt
+      - run: pip install httpx
       - run: yes | sdkmanager --licenses >/dev/null || true
       - run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006" "cmake;3.22.1"
-      - run: cp backend/.env.example backend/.env
       - run: bash scripts/ci/android-dev-build.sh
         env:
           CI: "1"
-          EXPO_PUBLIC_BACKEND_URL: ${{ vars.GD_BACKEND_URL }}
+          EXPO_PUBLIC_BACKEND_URL: ${{ vars.GD_BACKEND_URL }}   # repository variable (public distribution URL), not a secret
           GD_DEV_ABIS: arm64-v8a
-          MONGO_URL: mongodb://localhost:27017
-          DB_NAME: ci
-          GD_M1_SIGNING_PRIVATE_KEY_B64: ${{ secrets.GD_M1_SIGNING_PRIVATE_KEY_B64 }}
-          GD_ADMIN_TOKEN: ci-admin
-          GD_CONTROLLED_HOST: blocktest.btciq.app
-          GD_CONTROLLED_IPV4: 52.25.179.131
-          GD_CONTROLLED_URL: https://blocktest.btciq.app/
-          GD_RULESET_ID: gd-m1-controlled-block
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: android-dev-build, path: docs/evidence }

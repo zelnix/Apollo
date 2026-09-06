@@ -16,7 +16,23 @@ npx expo install --check || true
 
 echo "-- 2. sync shared contracts + verify controlled endpoint binding"
 (cd "$ROOT/packages/guarddog-contracts" && node scripts/sync-to-app.mjs)
-(cd "$ROOT/backend" && python scripts/verify_controlled_endpoint.py)
+# Public distribution data only (GET /api/config, /api/rules/.../latest): the mobile build pipeline never touches the signing key.
+(cd "$ROOT/backend" && python scripts/verify_controlled_endpoint.py --api "$EXPO_PUBLIC_BACKEND_URL")
+python3 - "$EXPO_PUBLIC_BACKEND_URL" "$ROOT" <<'PY'
+import json, sys, urllib.request
+base, root = sys.argv[1].rstrip("/"), sys.argv[2]
+def get(path):  # explicit UA: some ingresses reject urllib's default one
+    return json.load(urllib.request.urlopen(urllib.request.Request(f"{base}{path}", headers={"User-Agent": "guarddog-dev-build/1"}), timeout=10))
+cfg = get("/api/config")
+bundle = get(f"/api/rules/{cfg['rulesetId']}/latest")
+keys = {k["keyId"]: k["publicKeyB64"] for k in get("/api/keys")}
+frozen = cfg["signing"].get("frozenBundleVersion")
+pinned = open(f"{root}/packages/guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/rules/TrustedKeyRegistry.kt").read()
+print(f"distribution: bundle v{bundle['bundleVersion']} keyId={bundle['keyId']} payloadHash={bundle['payloadHash'][:16]}… frozen={frozen}")
+assert frozen is None or bundle["bundleVersion"] == frozen, "served bundle is not the frozen version"
+assert bundle["keyId"] in keys and keys[bundle["keyId"]] in pinned, "bundle key is not the public key pinned in the Android SDK"
+print("app consumes: signed frozen bundle + pinned PUBLIC key only (no private material in this pipeline)")
+PY
 
 echo "-- 3. expo prebuild (clean) with the Guard Dog config plugin"
 npx expo prebuild --platform android --clean --no-install

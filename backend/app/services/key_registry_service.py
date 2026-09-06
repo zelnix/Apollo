@@ -15,12 +15,14 @@ from app.repositories.key_metadata_repository import KeyMetadataRepository
 class KeyRegistryService:
     def __init__(self, settings: Settings, repo: KeyMetadataRepository):
         self._repo = repo
-        self._private: dict[str, Ed25519PrivateKey] = {
-            settings.signing_key_id: security.load_private_key(settings.signing_private_key_b64)
-        }
+        # Distribution-only deployments (CI builds, read replicas) hold no private material at all.
+        self._private: dict[str, Ed25519PrivateKey] = {}
+        if settings.signing_private_key_b64:
+            self._private[settings.signing_key_id] = security.load_private_key(settings.signing_private_key_b64)
         if settings.secondary_key_id and settings.secondary_private_key_b64:
             self._private[settings.secondary_key_id] = security.load_private_key(settings.secondary_private_key_b64)
         self.default_key_id = settings.signing_key_id
+        self._signing_enabled = settings.signing_enabled
 
     async def ensure_seeded(self) -> None:
         now = format_iso_z(datetime.now(timezone.utc))
@@ -30,11 +32,16 @@ class KeyRegistryService:
                     KeyMetadata(keyId=key_id, publicKeyB64=security.public_key_b64(private), introducedAt=now)
                 )
 
+    @property
+    def can_sign(self) -> bool:
+        """Signing requires the default key; a lone secondary key never enables signing/seeding."""
+        return self._signing_enabled and self.default_key_id in self._private
+
     def private_key(self, key_id: str) -> Ed25519PrivateKey:
         try:
             return self._private[key_id]
         except KeyError as exc:
-            raise KeyError(f"no private key for keyId '{key_id}'") from exc
+            raise KeyError(f"no private key for keyId '{key_id}' (distribution-only mode?)") from exc
 
     async def list_keys(self) -> list[KeyMetadata]:
         return await self._repo.list_all()

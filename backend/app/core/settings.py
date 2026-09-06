@@ -23,7 +23,8 @@ class Settings:
     mongo_url: str = field(repr=False)
     db_name: str
     signing_key_id: str
-    signing_private_key_b64: str = field(repr=False)  # never printed, never logged
+    # None in distribution-only mode (GD_SIGNING_ENABLED=false): the backend serves already-signed bundles + public keys and cannot sign.
+    signing_private_key_b64: str | None = field(repr=False)  # never printed, never logged
     secondary_key_id: str | None
     secondary_private_key_b64: str | None = field(repr=False)
     admin_token: str = field(repr=False)
@@ -51,11 +52,12 @@ class Settings:
 
 @lru_cache
 def get_settings() -> Settings:
+    signing_enabled = _req("GD_SIGNING_ENABLED").lower() == "true"
     return Settings(
         mongo_url=_req("MONGO_URL"),
         db_name=_req("DB_NAME"),
         signing_key_id=_req("GD_M1_SIGNING_KEY_ID"),
-        signing_private_key_b64=_req("GD_M1_SIGNING_PRIVATE_KEY_B64"),
+        signing_private_key_b64=_req("GD_M1_SIGNING_PRIVATE_KEY_B64") if signing_enabled else (os.environ.get("GD_M1_SIGNING_PRIVATE_KEY_B64") or None),
         secondary_key_id=os.environ.get("GD_M1_SECONDARY_KEY_ID") or None,
         secondary_private_key_b64=os.environ.get("GD_M1_SECONDARY_PRIVATE_KEY_B64") or None,
         admin_token=_req("GD_ADMIN_TOKEN"),
@@ -68,7 +70,7 @@ def get_settings() -> Settings:
         webrisk_api_key=os.environ.get("WEBRISK_API_KEY") or None,
         webrisk_timeout_seconds=float(_req("WEBRISK_TIMEOUT_SECONDS")),
         provider_cache_ttl_seconds=int(_req("GD_PROVIDER_CACHE_TTL_SECONDS")),
-        signing_enabled=_req("GD_SIGNING_ENABLED").lower() == "true",
+        signing_enabled=signing_enabled,
         signing_allowed_rulesets=frozenset(r.strip() for r in _req("GD_SIGNING_ALLOWED_RULESETS").split(",") if r.strip()),
         frozen_bundle_version=int(os.environ["GD_M1_FROZEN_BUNDLE_VERSION"]) if os.environ.get("GD_M1_FROZEN_BUNDLE_VERSION") else None,
     )
