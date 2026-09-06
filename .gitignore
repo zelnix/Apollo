@@ -97,3 +97,7 @@ credentials.json
 # Gradle wrapper bootstrap JAR must be tracked (CI fails with ClassNotFoundException: GradleWrapperMain without it)
 !packages/guarddog-android-sdk/gradle/wrapper/gradle-wrapper.jar
 !**/gradle/wrapper/gradle-wrapper.jar
+
+
+# Secret-free template consumed by CI (`cp backend/.env.example backend/.env`); the generic .env.* / *.env rules above must not swallow it
+!backend/.env.example

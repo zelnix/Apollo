@@ -27,21 +27,38 @@ BADGING="$("$AAPT2" dump badging "$APK")"
 echo "$BADGING" | grep -E "^package:|^sdkVersion|^targetSdkVersion|^native-code|^application-debuggable|^uses-permission" | sed 's/^/  /'
 "$AAPT2" dump xmltree --file AndroidManifest.xml "$APK" > "$OUT/apk-AndroidManifest.txt"
 
+# Checks read the BINARY manifest tree (authoritative) for SDK levels and the foreground-service flag; `aapt2 dump badging`
+# omits `sdkVersion:` on some build-tools releases and renders flags with varying hex width (0x400 vs 0x00000400).
+set +e
 python3 - "$BADGING" "$OUT/apk-AndroidManifest.txt" "$PKG" "$EXPECTED_ABIS" <<'PY'
 import re, sys
 badging, tree, pkg, abis = sys.argv[1], open(sys.argv[2]).read(), sys.argv[3], set(sys.argv[4].split(","))
 perms = set(re.findall(r"uses-permission: name='([^']+)'", badging))
 native = set(re.findall(r"native-code: (.*)", badging)[0].replace("'", "").split()) if "native-code:" in badging else set()
 svc = "com.guarddog.vpn.GuardDogVpnService" in tree
+
+def attr_int(name):
+    """Numeric value of an android:<name> attribute from `aapt2 dump xmltree` (accepts `=26`, `=0x400`, `=(type 0x11)0x00000400`)."""
+    m = re.search(rf"android:{name}(?:\(0x[0-9a-fA-F]+\))?=(?:\(type 0x[0-9a-fA-F]+\))?\s*(0x[0-9a-fA-F]+|\d+)", tree)
+    return int(m.group(1), 0) if m else None
+
+def badging_int(key):
+    m = re.search(rf"^{key}:'(\d+)'", badging, re.M)
+    return int(m.group(1)) if m else None
+
+min_sdk = attr_int("minSdkVersion") if attr_int("minSdkVersion") is not None else badging_int("sdkVersion")
+target_sdk = attr_int("targetSdkVersion") if attr_int("targetSdkVersion") is not None else badging_int("targetSdkVersion")
+fgs_type = attr_int("foregroundServiceType") or 0
+print(f"manifest: minSdkVersion={min_sdk} targetSdkVersion={target_sdk} foregroundServiceType={hex(fgs_type)}")
 checks = {
   f"package is {pkg}": f"package: name='{pkg}'" in badging,
   "development build (application-debuggable)": "application-debuggable" in badging,
-  "minSdkVersion 26": "sdkVersion:'26'" in badging,
-  "targetSdkVersion 36": "targetSdkVersion:'36'" in badging,
+  "minSdkVersion 26": min_sdk == 26,
+  "targetSdkVersion 36": target_sdk == 36,
   f"native-code exactly {sorted(abis)}": native == abis,
   "GuardDogVpnService in APK manifest": svc,
   "BIND_VPN_SERVICE on service": svc and "android.permission.BIND_VPN_SERVICE" in tree,
-  "systemExempted foreground type": svc and bool(re.search(r"foregroundServiceType.*=.*0x400", tree)),  # FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED = 1024
+  "systemExempted foreground type": svc and bool(fgs_type & 0x400),  # FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED = 1024
   "android.net.VpnService intent action": "android.net.VpnService" in tree,
   "uses-permission INTERNET/ACCESS_NETWORK_STATE/FOREGROUND_SERVICE/FGS_SYSTEM_EXEMPTED": {"android.permission.INTERNET", "android.permission.ACCESS_NETWORK_STATE", "android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED"} <= perms,
 }
@@ -52,9 +69,13 @@ for k, v in checks.items(): print(f"{'PASS' if v else 'FAIL'}  {k}")
 print("all permissions: " + ", ".join(sorted(p.split(".")[-1] for p in perms)))
 sys.exit(0 if all(checks.values()) else 1)
 PY
+MANIFEST_STATUS=$?
+set -e
 
+# The leakage scan ALWAYS runs (even after a manifest-check failure) so the evidence file carries both verdicts.
 echo "-- secret / config leakage scan (APK contents)"
 TMP="$(mktemp -d)"; unzip -q -o "$APK" -d "$TMP"
+set +e
 python3 - "$TMP" "$ROOT" <<'PY'
 import base64, os, re, sys
 apk_dir, root = sys.argv[1], sys.argv[2]
@@ -84,6 +105,13 @@ if hits:
     print("FAIL  secret/config leakage:"); [print("      " + h) for h in hits]; sys.exit(1)
 print("PASS  no private key material, admin token, DB URL or backend .env content packaged")
 PY
+LEAK_STATUS=$?
+set -e
 rm -rf "$TMP"
+if [ "$MANIFEST_STATUS" -ne 0 ] || [ "$LEAK_STATUS" -ne 0 ]; then
+  echo "== APK RECHECK FAILED (manifest checks exit=$MANIFEST_STATUS, leakage scan exit=$LEAK_STATUS) =="
+  exit 1
+fi
 echo "== APK RECHECK PASSED =="
 } | tee "$REPORT"
+exit "${PIPESTATUS[0]}"

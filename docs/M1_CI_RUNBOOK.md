@@ -14,10 +14,22 @@ access of its own; this is the only handoff path.) The push includes `.github/wo
 
 ## 3. Run
 Before clicking **Run workflow**, confirm the selected branch contains commit **`dbd58e5`** (`git log --oneline -1` after Save to GitHub).
-Actions → **native-gates** → Run workflow (leave the `xcode` input at `26.1` unless told otherwise). The **whole workflow = four jobs**:
-`android` (AC-01, ubuntu) · `android-dev-build` (AC-04 APK + manifest audit + APK recheck, ubuntu, needs `android`) · `ios` (AC-02, macos-15, Xcode 26.1) ·
+Actions → **native-gates** → Run workflow (leave the `xcode` input at `26.4` unless told otherwise; the iOS job runs on `macos-26`). The **whole workflow = four jobs**:
+`android` (AC-01, ubuntu) · `android-dev-build` (AC-04 APK + manifest audit + APK recheck, ubuntu, needs `android`) · `ios` (AC-02, macos-26, Xcode 26.4) ·
 `executable-suites` (pytest/node with ephemeral keys, after dependency install).
 Let the run finish completely — do **not** re-run individual failed jobs mid-stream; the audit needs one coherent run ID.
+
+### Run 34032597988 (tip `8869ce7`) — audited, APK NOT cleared; correction pass applied
+Provenance PASS, `android` PASS (29/29, GitHub-reproduced AC-01), `merged-manifest-audit` PASS, dev APK built (v25 / `gd-m1-test-ed25519-001`, arm64-v8a, 26/36).
+Three CI defects, none in Guard Dog enforcement or the APK itself — fixed in the next commit (reviewer-requested; these paths are **expected** in the next diff):
+- `scripts/ci/apk-recheck.sh` — `minSdkVersion 26` / `systemExempted foreground type` were parser false negatives (badging omitted `sdkVersion:`; flag rendered `0x00000400`).
+  Now reads both from the binary manifest tree and parses the flag numerically; the leakage scan always runs and the verdict line reports both statuses.
+- `.gitignore` + `backend/.env.example` — the template was swallowed by `.env.*`, so `executable-suites` died at `cp backend/.env.example backend/.env`
+  before pytest/node ran. Negation rule added; the committed file has empty key/token/DB fields only.
+- `.github/workflows/native-gates.yml` — `ios` moves to `macos-26` / Xcode `26.4` (Swift 6.3). Run 34032597988 on Xcode 26.1 failed in
+  `[CP-User] Build ExpoModulesJSI xcframework` (`'weak' must be a mutable variable`, RuntimeScheduler `SWIFT_RETURNS_*`) inside
+  `expo-modules-jsi 57.0.8`; GuardDogCore itself was 10/10. No Expo or Guard Dog Swift source is patched.
+- `docs/M1_CI_RUNBOOK.md` (this note).
 
 ## 4. Download artifacts and attach here
 | Artifact | Files to attach |
@@ -34,8 +46,9 @@ Provenance rule (reviewer-approved): the **actual branch tip** used by the run i
   `docs/` or `memory/` (use `--name-only`, not `--stat`). Any path under `.github/`, `apps/`, `packages/`, `backend/`, `security/`, `scripts/`,
   `frontend/` (sources, `app.json`, `package.json`, `yarn.lock`) or other build configuration is inspected, never auto-accepted as "docs-only".
 
-Audit focus for this run: GitHub reproduces AC-01; executable suites run after a clean dependency install; AC-02 compiles under the pinned Xcode 26.1
-path; the dev APK is generated; v25 remains the served/frozen bundle; `apk-provenance.json` ties `commit` = `dbd58e5…` and `workflowRunId` = this run.
+Audit focus for the next run: `executable-suites` reaches and passes pytest + node; AC-02 compiles under Xcode 26.4 on `macos-26`; `apk-recheck.txt`
+prints `manifest: minSdkVersion=26 targetSdkVersion=36 foregroundServiceType=0x400`, every PASS line, the leakage PASS, and `== APK RECHECK PASSED ==`;
+v25 remains the served/frozen bundle; `apk-provenance.json.commit` = the new tip and `workflowRunId` = that run.
 
 ## 5. Audit criteria (what will be checked before the APK is cleared)
 - all jobs actually executed (no skipped gate steps); AC-02 shows SwiftPM build + parity tests + Expo iOS module compiled via CocoaPods/xcodebuild

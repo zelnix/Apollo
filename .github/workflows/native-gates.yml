@@ -5,8 +5,8 @@ on:
   workflow_dispatch:
     inputs:
       xcode:
-        description: "Xcode version for the iOS gate (Expo SDK 57 toolchain). Pin to a known-compatible release; see 'available Xcodes' step output."
-        default: "26.1"
+        description: "Xcode version for the iOS gate (Expo SDK 57 toolchain). Needs Swift 6.3+ (Xcode 26.4+) for expo-modules-jsi 57.0.8; see 'available Xcodes' step output."
+        default: "26.4"
         required: false
 # Least privilege: every job only reads the repository; artifacts are uploaded via the actions token.
 permissions:
@@ -66,16 +66,18 @@ jobs:
         with: { name: android-dev-build, path: docs/evidence }
   # AC-02: runs the SAME scripts/ci/ios-native-gate.sh as a developer Mac would (SwiftPM resolve/build/tests, cycle check,
   # CocoaPods + xcodebuild of the Expo iOS module inside the prebuilt app) and preserves docs/evidence/ios-native-gate.txt.
+  # Runner: macos-26 (arm64) — the only hosted image carrying Xcode 26.4+/Swift 6.3; macos-15 tops out at Xcode 26.3.
   ios:
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
       - name: available Xcodes on this runner
         run: ls -d /Applications/Xcode*.app
-      # Pinned rather than latest-stable: the Expo SDK 57 ExpoModulesJSI xcframework phase is sensitive to brand-new Xcode/Swift
-      # releases (e.g. Xcode 26.3 / Swift 6.2.4). Override via workflow_dispatch input when Expo confirms compatibility.
+      # Run 34032597988 (Xcode 26.1 / Swift 6.2.1) failed inside "[CP-User] Build ExpoModulesJSI xcframework" with
+      # "'weak' must be a mutable variable" + RuntimeScheduler SWIFT_RETURNS_* errors in node_modules/expo-modules-jsi 57.0.8.
+      # Expo documents that syntax as requiring Swift 6.3 (Xcode 26.4+); the toolchain moves up, Guard Dog and Expo sources stay unpatched.
       - uses: maxim-lobanov/setup-xcode@v1
-        with: { xcode-version: "${{ github.event.inputs.xcode || '26.1' }}" }
+        with: { xcode-version: "${{ github.event.inputs.xcode || '26.4' }}" }
       - uses: actions/setup-node@v4
         with: { node-version: "24" }
       - run: xcodebuild -version && swift --version && pod --version
