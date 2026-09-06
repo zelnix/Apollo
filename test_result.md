@@ -300,3 +300,16 @@ frontend:
     working: "NA"
     file: "frontend/app/patrol/scent/[id].tsx, frontend/app/family/incident/[id].tsx, frontend/app/family.tsx, frontend/app/digest.tsx, frontend/src/domain/digest.ts, frontend/src/theme.ts"
     needs_retesting: true
+
+## Iteration 22 — Family Reassurance Note + hero GIF fixes
+backend:
+  - task: "POST /api/family/incidents/{scent_id}/notes (guardian only; kinds here/calling/on_way/together/custom ≤140 chars; from_name remembered on link as guardian_label; push to protected device), GET /api/family/incidents/{scent_id}/notes?device_id= (protected sees all, guardian sees own, stranger empty). tests/test_family_notes.py 2/2"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+frontend:
+  - task: "Guardian view app/family/incident/[id].tsx: 'Send a reassurance note' card (preset chips family-note-kind-*, 'Write my own' → family-note-text, family-note-name remembered, family-note-send, sent list family-note-sent-N). Protected timeline app/patrol/scent/[id].tsx: once shared, polls notes and shows 'From your family' card (incident-family-notes / incident-family-note-N). Hero: sniffing/growling/barking GIFs re-encoded transparent; code shake/bounce removed for GIF states."
+    implemented: true
+    working: "NA"
+    file: "frontend/app/family/incident/[id].tsx, frontend/app/patrol/scent/[id].tsx, frontend/src/components/ApolloHero.tsx"
+    needs_retesting: true

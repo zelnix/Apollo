@@ -1,13 +1,15 @@
 // Incident Timeline — one Threat Scent, told in order (email → link → login → MFA), with a single combined
 // Stay With Me plan the user can tick off. Resolving the incident resolves every linked event.
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
 import Check from "lucide-react-native/icons/check";
+import Heart from "lucide-react-native/icons/heart";
 import X from "lucide-react-native/icons/x";
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { apiPatch, apiPost } from "@/src/api/client";
+import { apiGet, apiPatch, apiPost } from "@/src/api/client";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { buildIncidentPlan, CATEGORY_GLYPH, CATEGORY_LABEL } from "@/src/domain/incidentPlan";
 import { STATE_LABEL, STATE_NAME } from "@/src/domain/types";
@@ -48,6 +50,8 @@ export default function IncidentTimeline() {
   const [shared, setShared] = useState(false);
   const [sharing, setSharing] = useState(false);
   const doneCount = plan.steps.filter((st) => ticked[st.id]).length;
+  // Reassurance notes from family arrive once the incident is shared; poll gently while the screen is open.
+  const notes = useQuery({ queryKey: ["incident-notes", id, deviceId], enabled: shared && !!deviceId, refetchInterval: 15000, queryFn: () => apiGet<{ note_id: string; guardian_label: string; text: string; created_at: string }[]>(`/family/incidents/${id}/notes?device_id=${deviceId}`) });
   // Tick progress survives leaving the screen; if the incident was shared with family, progress is mirrored to them.
   useEffect(() => { void storage.getItem<string | null>(`apollo.incident.${id}`, null).then((raw) => { if (raw) { const v = JSON.parse(raw) as { ticked: Record<string, boolean>; shared: boolean }; setTicked(v.ticked ?? {}); setShared(!!v.shared); } }); }, [id]);
   const save = (next: Record<string, boolean>, isShared: boolean, resolved = false) => {
@@ -82,6 +86,19 @@ export default function IncidentTimeline() {
             <Text style={s.why}>{STATE_LABEL[plan.state]}</Text>
             <Body>{plan.exposure.length ? `You told Apollo: ${plan.exposure.join("; ")}. The plan below starts with the most urgent step.` : "Apollo connected these because they happened close together and point at the same target. Nothing is lost if you haven't typed, paid or approved anything."}</Body>
           </Card>
+
+          {shared && (notes.data ?? []).length ? (
+            <Card style={{ gap: spacing.sm, borderColor: colors.resting }} testID="incident-family-notes">
+              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><Heart size={18} color={colors.resting} /><SectionTitle>From your family</SectionTitle></View>
+              {notes.data!.map((n, i) => (
+                <View key={n.note_id} style={{ gap: 2 }} testID={`incident-family-note-${i}`}>
+                  <Text style={s.label}>{n.guardian_label}: <Text style={s.why}>{n.text}</Text></Text>
+                  <Text style={s.meta}>{new Date(n.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>
+                </View>
+              ))}
+              <Body>Family notes are reassurance only. If anyone — even family — asks for a password or code, stop and call them on a number you already know.</Body>
+            </Card>
+          ) : null}
 
           <View>
             <SectionTitle>What happened, in order</SectionTitle>
