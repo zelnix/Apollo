@@ -651,7 +651,7 @@ async def clear_ask_history(device_id: str = Query(min_length=8, max_length=64))
 # --------------------------------------------------------------------------- Family sharing
 # Two channels: (a) email to a confirmed guardian via Emergent-managed email; (b) device pairing code.
 # Only Barking/Biting event summaries are shared (headline, domain, what to do). Never the full link.
-EMAIL_BASE_URL = "https://integrations.emergentagent.com"
+EMAIL_BASE_URL = os.environ.get("EMERGENT_INTEGRATIONS_BASE_URL", "https://integrations.emergentagent.com")
 EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY", "")
 EMAIL_FROM_NAME = os.environ["EMAIL_FROM_NAME"]
 PUBLIC_BASE = os.environ.get("PUBLIC_API_BASE", "")  # e.g. https://<host>; confirm links are first-party
@@ -1039,7 +1039,7 @@ async def list_acks(device_id: str = Query(min_length=8, max_length=64)):
 # --------------------------------------------------------------------------- Alert notifications (Emergent managed push)
 # Recipient identity is the anonymous device_id. Device tokens are relayed to the managed push
 # service and never stored in our database. Payloads carry only the event headline + what to do.
-PUSH_BASE_URL = "https://integrations.emergentagent.com"
+PUSH_BASE_URL = os.environ.get("EMERGENT_INTEGRATIONS_BASE_URL", "https://integrations.emergentagent.com")
 PUSH_KEY = os.environ.get("EMERGENT_PUSH_KEY", "placeholder")
 _push_client = httpx.AsyncClient(base_url=PUSH_BASE_URL, headers={"X-Push-Key": PUSH_KEY}, timeout=10.0)
 # Sound routing — Android channel id + iOS aps.sound. Files bundled via expo-notifications `sounds` in app.json.
@@ -1534,7 +1534,7 @@ SEED_BLOCKLIST = [
 @app.on_event("startup")
 async def startup():
     await db.reputation_cache.create_index("indicator_digest", unique=True)
-    await db.reputation_cache.create_index("expires_at", expireAfterSeconds=0)
+    await db.reputation_cache.create_index("expires_at")  # plain index; expiry is checked at read time, never auto-deleted
     await db.patrol_events.create_index([("device_id", 1), ("event_id", 1)], unique=True)
     await db.trust_entries.create_index("trust_id", unique=True)
     await db.ask_messages.create_index([("device_id", 1), ("created_at", 1)])
