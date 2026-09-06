@@ -10,6 +10,9 @@ from httpx import ASGITransport, AsyncClient
 from motor.motor_asyncio import AsyncIOMotorClient
 
 os.environ["DB_NAME"] = f"guarddog_m1_test_{os.environ.get('PYTEST_XDIST_WORKER', 'gw0')}"
+# The live controlled bundle is frozen (GD_M1_FROZEN_BUNDLE_VERSION); these in-process tests sign into an isolated,
+# dropped-on-exit test database, so the freeze does not apply here (load_dotenv never overrides an existing value).
+os.environ["GD_M1_FROZEN_BUNDLE_VERSION"] = ""
 
 from app.main import create_app  # noqa: E402
 from app.core.settings import get_settings  # noqa: E402

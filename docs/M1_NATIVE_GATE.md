@@ -43,6 +43,12 @@ ruleset `gd-m1-controlled-block`. Executed here:
   issuedAt/expiresAt valid, `/api/config isPlaceholder=false`, `/latest` serves v25.
 Android re-resolves the host immediately before route install (`ControlledEndpointResolver`); mismatch → `Failed`, no route, no event.
 
+**FROZEN at v25** (user decision, 2026-06): `GD_M1_FROZEN_BUNDLE_VERSION=25` makes `POST /api/rules/sign` refuse the controlled ruleset
+(409 `BUNDLE_FROZEN`, checked before rule content), `resign_controlled_bundle.py` refuses without `--unfreeze`, and
+`verify_resigned_bundle.py` asserts the served version equals 25. `/api/config.signing.frozenBundleVersion` exposes the freeze.
+A genuine correction: raise/unset the env value, resign (version increments normally), set the new frozen version, document it here.
+v25 is the minimum accepted version for this ruleset going forward (rollback store).
+
 ## 4. Android development build — OPEN
 `bash scripts/ci/android-dev-build.sh`: version checks → contract sync → endpoint binding check → `expo prebuild --clean`
 (with `packages/guarddog-expo-module/app.plugin.js` linking `:guarddog-core`/`:guarddog-vpn`) → merged-manifest check

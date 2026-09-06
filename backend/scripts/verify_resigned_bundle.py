@@ -1,13 +1,15 @@
-"""Post-resign acceptance check for the M1 controlled bundle (AC-03 closure evidence).
+"""Post-resign acceptance check for the M1 controlled bundle (AC-03 closure evidence + freeze guard).
 
 Usage: cd backend && python scripts/verify_resigned_bundle.py [--min-version N] [--api http://localhost:8001]
-Exit 0 only if every check passes. Writes docs/evidence/resigned-bundle-verification.json.
+Exit 0 only if every check passes. When GD_M1_FROZEN_BUNDLE_VERSION is set, the served version must equal it exactly
+(the bundle is frozen for the physical-device proof; a genuine correction must bump the env value and be documented). Writes docs/evidence/resigned-bundle-verification.json.
 Never prints private key material.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -55,6 +57,9 @@ def main() -> int:
         "config_isPlaceholder_false": config["controlledEndpoint"]["isPlaceholder"] is False and config["controlledEndpoint"]["host"] == s.controlled_host,
         "latest_endpoint_serves_new_version": latest_listed is None or latest_listed == bundle["bundleVersion"],
     }
+    frozen = os.environ.get("GD_M1_FROZEN_BUNDLE_VERSION")
+    if frozen:
+        checks["frozen_version_unchanged"] = bundle["bundleVersion"] == int(frozen)
     checks = {k: bool(v) for k, v in checks.items()}
     ok = all(checks.values())
     report = {
@@ -68,6 +73,7 @@ def main() -> int:
         "rules": rules,
         "controlledEndpoint": config["controlledEndpoint"],
         "verifyReason": None if verification.accepted else str(verification.reason),
+        "frozenBundleVersion": int(frozen) if frozen else None,
         "checks": checks,
         "result": "PASS" if ok else "FAIL",
     }

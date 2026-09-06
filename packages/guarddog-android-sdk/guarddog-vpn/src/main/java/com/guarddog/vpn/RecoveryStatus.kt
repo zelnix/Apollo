@@ -8,8 +8,9 @@ import android.net.NetworkCapabilities
  * Snapshot used by the recovery proof (AC-06). Every field is read from the real runtime:
  *  - tunOpen: the retained TUN ParcelFileDescriptor session exists and has not been closed
  *  - selectiveRouteActive: the authoritative lifecycle is Running (the /32 route only exists while the TUN fd is open)
- *  - vpnTransportPresent: the OS reports any network with TRANSPORT_VPN (ConnectivityManager), independent of our own state
- * Nothing here is inferred from HTTP results; the harness performs the real HTTPS re-check separately.
+ *  - vpnTransportPresent: the OS reports any network with TRANSPORT_VPN (ConnectivityManager). SUPPORTING evidence only:
+ *    another VPN app may be present, so it is never part of [recovered] and never the sole proof.
+ * Nothing here is inferred from HTTP results; the harness/E2E test performs the real HTTPS 200 re-check separately.
  */
 data class RecoveryStatus(
     val lifecycle: String,
@@ -19,7 +20,8 @@ data class RecoveryStatus(
     val routeCidr: String?,
     val dropReporterAttached: Boolean,
 ) {
-    val recovered: Boolean get() = !tunOpen && !selectiveRouteActive && !vpnTransportPresent && !dropReporterAttached
+    /** Required recovery evidence from our own runtime: TUN closed, route gone, reporter detached. */
+    val recovered: Boolean get() = !tunOpen && !selectiveRouteActive && !dropReporterAttached
 }
 
 object RecoveryInspector {

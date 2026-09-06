@@ -1,5 +1,5 @@
 {
-  "checkedAt": "2026-09-06T07:54:09Z",
+  "checkedAt": "2026-09-06T08:07:32Z",
   "rulesetId": "gd-m1-controlled-block",
   "bundleVersion": 25,
   "keyId": "gd-m1-test-ed25519-001",
@@ -22,6 +22,7 @@
     "isPlaceholder": false
   },
   "verifyReason": null,
+  "frozenBundleVersion": 25,
   "checks": {
     "bundleVersion_gt_previous": true,
     "rulesetId_is_m1_controlled": true,
@@ -32,7 +33,8 @@
     "signature_verifies_against_pinned_public_key": true,
     "issuedAt_expiresAt_valid": true,
     "config_isPlaceholder_false": true,
-    "latest_endpoint_serves_new_version": true
+    "latest_endpoint_serves_new_version": true,
+    "frozen_version_unchanged": true
   },
   "result": "PASS"
 }

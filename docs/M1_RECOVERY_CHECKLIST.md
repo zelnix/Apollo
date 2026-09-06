@@ -10,9 +10,12 @@ every value comes from the native runtime (`RecoveryInspector`), the OS (`Connec
 | 2 | `stopProtection()` | public SDK surface → `ACTION_STOP` → service `cleanup()` | promise resolves; lifecycle polled until it leaves `ACTIVE` |
 | 3 | TUN descriptor closed | `GuardDogVpnRuntime.activeSession == null` / `TunSession.closed == true`; drop reporter detached | `tunOpen=false`, `dropReporterAttached=false` |
 | 4 | State `INACTIVE` / `STOPPED` | `VpnStateRepository` (sole writer: the service) | `getProtectionState().state ∈ {INACTIVE, STOPPED}` |
-| 5 | No Guard Dog selective VPN route active | lifecycle not `Running` **and** OS reports no `TRANSPORT_VPN` network | `selectiveRouteActive=false`, `vpnTransportPresent=false` |
+| 5 | No Guard Dog selective VPN route active | lifecycle not `Running` and TUN closed (the /32 route only exists while the TUN fd is open) | `selectiveRouteActive=false`, `tunOpen=false`; `osVpnTransportPresent` recorded as **supporting evidence only** (never the sole proof, never required) |
 | 6 | Same endpoint reachable again | real `GET https://blocktest.btciq.app/` from the device (DNS + TCP + TLS + HTTP) | HTTP status **exactly 200** (redirects not followed); retried up to 20 s while routing settles |
 | 7 | No fake events | SDK event stream | stopping produces no `THREAT_BLOCKED`; blocked-event count unchanged |
+
+`getRecoveryStatus` is a harness-only diagnostic (`src/harness/recoveryDiagnostics.ts`); it is **not** part of the frozen public
+`GuardDogSecuritySDK` surface.
 
 Harness step ids: `stop`, `tun-closed`, `route-cleared`, `recovered`. `HarnessResult.recoveryComplete` is true only when the
 block proof **and** all four recovery steps are `PASS`. The exported JSON/PDF report carries the `auditChain.recovery` block

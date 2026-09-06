@@ -38,6 +38,8 @@ class Settings:
     provider_cache_ttl_seconds: int
     signing_enabled: bool
     signing_allowed_rulesets: frozenset[str]
+    # When set, the M1 controlled ruleset is frozen at this version: POST /api/rules/sign refuses it (BUNDLE_FROZEN).
+    frozen_bundle_version: int | None
 
     @property
     def controlled_endpoint_is_placeholder(self) -> bool:
@@ -68,4 +70,5 @@ def get_settings() -> Settings:
         provider_cache_ttl_seconds=int(_req("GD_PROVIDER_CACHE_TTL_SECONDS")),
         signing_enabled=_req("GD_SIGNING_ENABLED").lower() == "true",
         signing_allowed_rulesets=frozenset(r.strip() for r in _req("GD_SIGNING_ALLOWED_RULESETS").split(",") if r.strip()),
+        frozen_bundle_version=int(os.environ["GD_M1_FROZEN_BUNDLE_VERSION"]) if os.environ.get("GD_M1_FROZEN_BUNDLE_VERSION") else None,
     )

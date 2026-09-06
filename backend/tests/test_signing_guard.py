@@ -68,6 +68,22 @@ async def test_signing_disabled_deployment(client, admin_headers):
     assert (await client.get("/api/rules/gd-m1-controlled-block/latest")).status_code == 200  # distribution unaffected
 
 
+
+@pytest.mark.anyio
+async def test_frozen_bundle_refuses_resign_of_controlled_ruleset_only(client, admin_headers):
+    s = client.app.state.settings
+    before = (await client.get("/api/rules/gd-m1-controlled-block/latest")).json()["bundleVersion"]
+    client.app.state.settings = dataclasses.replace(s, frozen_bundle_version=before)
+    try:
+        r = await client.post("/api/rules/sign", json=body(), headers=admin_headers)
+        assert r.status_code == 409 and r.json()["detail"]["code"] == "BUNDLE_FROZEN"
+        assert (await client.get("/api/config")).json()["signing"]["frozenBundleVersion"] == before
+    finally:
+        client.app.state.settings = s
+    assert (await client.get("/api/rules/gd-m1-controlled-block/latest")).json()["bundleVersion"] == before
+    assert (await client.get("/api/config")).json()["signing"]["frozenBundleVersion"] is None
+
+
 def test_private_key_material_never_printed_or_logged():
     s = get_settings()
     text = repr(s)

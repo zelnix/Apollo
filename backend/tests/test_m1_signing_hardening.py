@@ -83,19 +83,36 @@ class TestSigningPreconditions:
         assert r.json()["detail"]["code"] == "RULESET_NOT_ALLOWED"
 
 
-# --- Controlled-configuration guard ---
-class TestControlledConfigurationGuard:
-    def test_controlled_block_cannot_be_replaced_with_unrelated_rule(self, s, admin):
-        body = _body(rules=[{"ruleId": "x", "host": "evil.example", "action": "block"}])
-        r = s.post(f"{BASE_URL}/api/rules/sign", json=body, headers=admin)
+def _expect_refused(s, r):
+    """While the live bundle is frozen every re-sign of the controlled ruleset is refused with 409 BUNDLE_FROZEN
+    (checked before rule content); otherwise the controlled-configuration guard answers 422."""
+    frozen = s.get(f"{BASE_URL}/api/config").json()["signing"].get("frozenBundleVersion")
+    if frozen is not None:
+        assert r.status_code == 409, r.text
+        assert r.json()["detail"]["code"] == "BUNDLE_FROZEN"
+    else:
         assert r.status_code == 422, r.text
         assert r.json()["detail"]["code"] == "CONTROLLED_CONFIG_MISMATCH"
 
+
+# --- Controlled-configuration guard (never mutates: every request here is refused) ---
+class TestControlledConfigurationGuard:
+    def test_controlled_block_cannot_be_replaced_with_unrelated_rule(self, s, admin):
+        body = _body(rules=[{"ruleId": "x", "host": "evil.example", "action": "block"}])
+        _expect_refused(s, s.post(f"{BASE_URL}/api/rules/sign", json=body, headers=admin))
+
     def test_controlled_host_flipped_to_allow_is_rejected(self, s, admin):
         body = _body(rules=[{**CONTROLLED_RULE, "action": "allow"}])
-        r = s.post(f"{BASE_URL}/api/rules/sign", json=body, headers=admin)
-        assert r.status_code == 422, r.text
-        assert r.json()["detail"]["code"] == "CONTROLLED_CONFIG_MISMATCH"
+        _expect_refused(s, s.post(f"{BASE_URL}/api/rules/sign", json=body, headers=admin))
+
+    def test_frozen_bundle_refuses_even_a_valid_resign(self, s, admin):
+        frozen = s.get(f"{BASE_URL}/api/config").json()["signing"].get("frozenBundleVersion")
+        if frozen is None:
+            pytest.skip("bundle not frozen")
+        before = s.get(f"{BASE_URL}/api/rules/gd-m1-controlled-block/latest").json()["bundleVersion"]
+        r = s.post(f"{BASE_URL}/api/rules/sign", json=_body(), headers=admin)
+        assert r.status_code == 409 and r.json()["detail"]["code"] == "BUNDLE_FROZEN", r.text
+        assert s.get(f"{BASE_URL}/api/rules/gd-m1-controlled-block/latest").json()["bundleVersion"] == before == frozen
 
 
 # --- Happy path: MUTATES the live controlled ruleset (bumps the frozen M1 bundle). Only with GD_ALLOW_LIVE_RESIGN=1;

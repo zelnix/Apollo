@@ -88,9 +88,10 @@ class AndroidBlockingProofE2ETest {
         assertTrue("state must be STOPPED or INACTIVE, was $stateAfterStop", stateAfterStop == ProtectionState.STOPPED || stateAfterStop == ProtectionState.INACTIVE)
         assertTrue("TUN descriptor must be closed", sessionBeforeStop!!.closed)
         assertTrue(GuardDogVpnRuntime.activeSession == null && GuardDogVpnRuntime.dropReporter == null)
-        waitFor(timeoutMs = 15_000) { !RecoveryInspector.vpnTransportPresent(context) }
         val recovery = RecoveryInspector.inspect(context, state)
         assertTrue("recovery snapshot must be clean: $recovery", recovery.recovered)
+        // Supporting evidence only (another VPN app could be present): logged, not asserted.
+        android.util.Log.i("GuardDogProof", "osVpnTransportPresent after stop = ${recovery.vpnTransportPresent}")
         waitFor(timeoutMs = 20_000) { httpsStatus(url) == 200 }
         assertEquals("controlled endpoint must answer HTTPS 200 after stop", 200, httpsStatus(url))
         assertEquals(1, blocked.size) // stopping never produces THREAT_BLOCKED

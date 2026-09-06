@@ -10,7 +10,7 @@ import { type ProtectionCapabilities, IOS_M1_CAPABILITIES, NO_ENFORCEMENT_CAPABI
 import { findRuleForHost, type SignedRuleBundle, validateSignedBundleShape } from "@/src/contracts/shared/ruleBundle.ts";
 import { type ProtectionState, type SecurityEvent, validateSecurityEvent } from "@/src/contracts/securityEventSchemas";
 import { sanitizeUrl } from "@/src/contracts/urlSanitization";
-import { GuardDogNative, type NativeProtectionState, type NativeRecoveryStatus } from "@/src/sdk/nativeModule";
+import { GuardDogNative, type NativeProtectionState } from "@/src/sdk/nativeModule";
 
 export type PermissionKind = "vpn";
 export type PermissionOutcome = "granted" | "denied" | "unsupported";
@@ -125,11 +125,6 @@ class GuardDogSecuritySDKImpl {
 
   getEnforcementStats(): Record<string, number> | null {
     return GuardDogNative?.getEnforcementStats() ?? null;
-  }
-
-  /** Recovery snapshot from the native runtime + OS (null without the native module: nothing to recover). */
-  getRecoveryStatus(): NativeRecoveryStatus | null {
-    return GuardDogNative?.getRecoveryStatus() ?? null;
   }
 
   onSecurityEvent(listener: Listener): () => void {

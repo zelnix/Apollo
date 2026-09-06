@@ -67,8 +67,11 @@ class TunSessionRecoveryTest {
 
         session.close()
         repo.transition(VpnLifecycleState.Stopped("stopped by user"))
-        val stillVpnTransport = RecoveryInspector.fromRuntime(repo, session, null, vpnTransportPresent = true)
-        assertFalse(stillVpnTransport.recovered) // OS still reports a VPN transport -> not recovered yet
+        val otherVpnPresent = RecoveryInspector.fromRuntime(repo, session, null, vpnTransportPresent = true)
+        assertTrue(otherVpnPresent.recovered) // TRANSPORT_VPN is supporting evidence only (another VPN app may exist)
+        assertTrue(otherVpnPresent.vpnTransportPresent)
+        val reporterStillAttached = RecoveryInspector.fromRuntime(repo, session, reporter, vpnTransportPresent = false)
+        assertFalse(reporterStillAttached.recovered) // our own runtime must be fully torn down
 
         val recovered = RecoveryInspector.fromRuntime(repo, null, null, vpnTransportPresent = false)
         assertEquals("STOPPED", recovered.lifecycle)

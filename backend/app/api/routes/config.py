@@ -28,7 +28,7 @@ async def get_config(request: Request) -> dict:
     return {
         "rulesetId": s.ruleset_id,
         "controlledEndpoint": {"host": s.controlled_host, "ipv4": s.controlled_ipv4, "url": s.controlled_url, "isPlaceholder": s.controlled_endpoint_is_placeholder},
-        "signing": {"enabled": s.signing_enabled, "allowedRulesets": sorted(s.signing_allowed_rulesets), "requiresAdminToken": True, "requiresConfirm": True},
+        "signing": {"enabled": s.signing_enabled, "allowedRulesets": sorted(s.signing_allowed_rulesets), "requiresAdminToken": True, "requiresConfirm": True, "frozenBundleVersion": s.frozen_bundle_version},
         "blockDedupeWindowMs": s.block_dedupe_window_ms,
         "signingKeyId": s.signing_key_id,
         "capabilities": M1_CAPABILITIES,

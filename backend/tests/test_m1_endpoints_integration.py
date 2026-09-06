@@ -143,9 +143,13 @@ class TestRules:
                     {"ruleId": "c-2", "host": "A.EXAMPLE.", "action": "allow"},
                 ]}
         r = s.post(f"{BASE_URL}/api/rules/sign", json=body, headers={"X-GuardDog-Admin-Token": ADMIN_TOKEN})
-        assert r.status_code == 422, r.text
-        detail = r.json()["detail"]
-        assert detail["code"] == "RULE_CONFLICT"
+        frozen = s.get(f"{BASE_URL}/api/config").json()["signing"].get("frozenBundleVersion")
+        if frozen is not None:
+            # Freeze is checked before rule content: nothing about the controlled ruleset can be signed.
+            assert r.status_code == 409 and r.json()["detail"]["code"] == "BUNDLE_FROZEN", r.text
+        else:
+            assert r.status_code == 422, r.text
+            assert r.json()["detail"]["code"] == "RULE_CONFLICT"
 
 
 # ---------- keys ----------

@@ -8,6 +8,8 @@ Layers (all required):
   5. for the M1 controlled ruleset the bundle must keep the controlled test configuration:
      exactly one `block` rule for the configured canonical controlled host, no `allow` for it,
      so the controlled block cannot be silently replaced.
+  6. freeze: while GD_M1_FROZEN_BUNDLE_VERSION is set, the controlled ruleset cannot be re-signed at all
+     (the bundle is frozen for the physical-device proof; a genuine correction changes the env value first).
 """
 from __future__ import annotations
 
@@ -36,6 +38,12 @@ def enforce_signing_preconditions(settings: Settings, request: SignRequest) -> N
         raise SigningRefused(409, "CONFIRMATION_REQUIRED", "set confirm=true to sign and publish a new bundle version")
     if request.rulesetId not in settings.signing_allowed_rulesets:
         raise SigningRefused(403, "RULESET_NOT_ALLOWED", f"rulesetId '{request.rulesetId}' is not on the signing allow-list")
+    if request.rulesetId == settings.ruleset_id and settings.frozen_bundle_version is not None:
+        raise SigningRefused(
+            409,
+            "BUNDLE_FROZEN",
+            f"controlled ruleset is frozen at v{settings.frozen_bundle_version} for the device proof; unset/raise GD_M1_FROZEN_BUNDLE_VERSION for a documented correction",
+        )
 
 
 def enforce_controlled_configuration(settings: Settings, ruleset_id: str, canonical_rules: list[RuleEntry]) -> None:

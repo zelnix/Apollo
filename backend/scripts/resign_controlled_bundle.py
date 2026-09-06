@@ -1,6 +1,6 @@
 """Re-sign the M1 controlled block bundle with gd-m1-test-ed25519-001 after injecting the real endpoint.
 
-Usage: cd backend && python scripts/resign_controlled_bundle.py --confirm [--allow-placeholder]
+Usage: cd backend && python scripts/resign_controlled_bundle.py --confirm [--allow-placeholder] [--unfreeze]
 Runs the same guarded workflow as POST /api/rules/sign (conflict validation, controlled-config check,
 version increment). Never prints private key material.
 """
@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -34,7 +35,12 @@ async def main() -> int:
         keyId=s.signing_key_id,
         rules=[RuleEntry(ruleId="m1-controlled-block-001", host=s.controlled_host, action="block", category="controlled-test")],
     )
-    enforce_signing_preconditions(s, request)  # raises SigningRefused (e.g. CONFIRMATION_REQUIRED)
+    if s.frozen_bundle_version is not None:
+        if "--unfreeze" not in sys.argv:
+            print(f"REFUSED: controlled bundle is FROZEN at v{s.frozen_bundle_version} for the device proof; pass --unfreeze for a documented correction and update GD_M1_FROZEN_BUNDLE_VERSION afterwards")
+            return 3
+        s = replace(s, frozen_bundle_version=None)  # explicit, documented correction
+    enforce_signing_preconditions(s, request)  # raises SigningRefused (e.g. CONFIRMATION_REQUIRED, BUNDLE_FROZEN)
     client = AsyncIOMotorClient(s.mongo_url)
     db = client[s.db_name]
     keys = KeyRegistryService(s, KeyMetadataRepository(db))
