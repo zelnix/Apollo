@@ -87,3 +87,9 @@ frontend/ios/
 packages/guarddog-android-sdk/.gradle/
 packages/**/build/
 packages/guarddog-expo-module/android/.gradle/
+.env
+.env.*
+*.env
+credentials.json
+*.key
+.credentials
