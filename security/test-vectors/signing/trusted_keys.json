@@ -1,0 +1,13 @@
+{
+  "frozenNow": "2026-06-15T00:00:00Z",
+  "rulesetId": "gd-m1-controlled-block",
+  "controlledHost": "m1-block-test.guarddog.example",
+  "highestAcceptedVersionForRollbackTest": 3,
+  "trustedKeys": {
+    "gd-m1-test-ed25519-001": "ccf41NL6VHYQsH171Lw98hKiIoQFvAY0t171X4PL/ac="
+  },
+  "rolloverKeys": {
+    "gd-m1-test-ed25519-002": "tjHUbcOwKuqnHFAMkoiurrgdJDbO7g6FXV7Y5nMwzSg="
+  },
+  "note": "Public test keys only. Private keys are backend-only (env) and never ship in apps."
+}

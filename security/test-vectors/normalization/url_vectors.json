@@ -1,0 +1,19 @@
+{
+  "description": "Shared URL sanitization vectors. `analyzable` = the original candidate can still be analyzed locally. `sanitizedUrl` = the only form that may leave the device / appear in SecurityEvent (scheme + canonical host + path). null = reject.",
+  "vectors": [
+    {"input": "https://example.com/login?token=SECRET", "analyzable": true, "sanitizedUrl": "https://example.com/login", "host": "example.com"},
+    {"input": "https://example.com/login?token=SECRET#section", "analyzable": true, "sanitizedUrl": "https://example.com/login", "host": "example.com"},
+    {"input": "https://user:pass@Example.COM./a/b?x=1#frag", "analyzable": true, "sanitizedUrl": "https://example.com/a/b", "host": "example.com"},
+    {"input": "HTTPS://EXAMPLE.COM", "analyzable": true, "sanitizedUrl": "https://example.com/", "host": "example.com"},
+    {"input": "http://example.com:8080/path", "analyzable": true, "sanitizedUrl": "http://example.com/path", "host": "example.com"},
+    {"input": "https://m1-block-test.guarddog.example/", "analyzable": true, "sanitizedUrl": "https://m1-block-test.guarddog.example/", "host": "m1-block-test.guarddog.example"},
+    {"input": "https://bücher.example/kaufen?utm_source=x", "analyzable": true, "sanitizedUrl": "https://xn--bcher-kva.example/kaufen", "host": "xn--bcher-kva.example"},
+    {"input": "https://[2001:DB8::1]/p?q=1", "analyzable": true, "sanitizedUrl": "https://[2001:db8::1]/p", "host": "[2001:db8::1]"},
+    {"input": "https://203.0.113.10/health", "analyzable": true, "sanitizedUrl": "https://203.0.113.10/health", "host": "203.0.113.10"},
+    {"input": "ftp://example.com/file", "analyzable": false, "sanitizedUrl": null, "host": null},
+    {"input": "javascript:alert(1)", "analyzable": false, "sanitizedUrl": null, "host": null},
+    {"input": "https:///nohost", "analyzable": false, "sanitizedUrl": null, "host": null},
+    {"input": "https://exa mple.com/", "analyzable": false, "sanitizedUrl": null, "host": null},
+    {"input": "not a url", "analyzable": false, "sanitizedUrl": null, "host": null}
+  ]
+}

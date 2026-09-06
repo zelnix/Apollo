@@ -1,0 +1,27 @@
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+group = 'com.guarddog.expo'
+version = '0.1.0'
+
+def expoModulesCorePlugin = new File(project(":expo-modules-core").projectDir.absolutePath, "ExpoModulesCorePlugin.gradle")
+apply from: expoModulesCorePlugin
+applyKotlinExpoModulesCorePlugin()
+useCoreDependencies()
+useDefaultAndroidSdkVersions()
+
+android {
+  namespace "com.guarddog.expo"
+  defaultConfig { versionCode 1; versionName "0.1.0" }
+  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+  kotlinOptions { jvmTarget = "17" }
+}
+
+dependencies {
+  // The Expo bridge depends on both SDK modules; core never depends on vpn.
+  implementation project(':guarddog-core')
+  implementation project(':guarddog-vpn')
+  implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3"
+  androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+  androidTestImplementation 'androidx.test:runner:1.6.2'
+}

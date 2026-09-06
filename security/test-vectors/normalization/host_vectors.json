@@ -1,0 +1,32 @@
+{
+  "description": "Shared host canonicalization vectors. Every implementation (TS/Swift/Kotlin/Python) must produce `expected` (null = reject).",
+  "vectors": [
+    {"input": "Example.COM", "expected": "example.com", "note": "case"},
+    {"input": "example.com.", "expected": "example.com", "note": "trailing dot"},
+    {"input": "  example.com  ", "expected": "example.com", "note": "whitespace"},
+    {"input": "M1-Block-Test.GuardDog.Example.", "expected": "m1-block-test.guarddog.example", "note": "controlled host variants"},
+    {"input": "bücher.example", "expected": "xn--bcher-kva.example", "note": "IDN to punycode"},
+    {"input": "BÜCHER.example", "expected": "xn--bcher-kva.example", "note": "IDN uppercase"},
+    {"input": "xn--bcher-kva.example", "expected": "xn--bcher-kva.example", "note": "already punycode"},
+    {"input": "XN--BCHER-KVA.example", "expected": "xn--bcher-kva.example", "note": "punycode uppercase"},
+    {"input": "日本.example", "expected": "xn--wgv71a.example", "note": "CJK label"},
+    {"input": "192.168.0.1", "expected": "192.168.0.1", "note": "IPv4 literal"},
+    {"input": "203.0.113.10", "expected": "203.0.113.10", "note": "controlled IPv4"},
+    {"input": "[2001:DB8::1]", "expected": "[2001:db8::1]", "note": "IPv6 bracketed uppercase"},
+    {"input": "2001:0db8:0000:0000:0000:0000:0000:0001", "expected": "[2001:db8::1]", "note": "IPv6 full form compressed"},
+    {"input": "::1", "expected": "[::1]", "note": "IPv6 loopback"},
+    {"input": "[fe80::1%25eth0]", "expected": null, "note": "zone id rejected"},
+    {"input": "2001:db8:::1", "expected": null, "note": "invalid IPv6 triple colon"},
+    {"input": "1:2:3:4:5:6:7:8:9", "expected": null, "note": "IPv6 too many groups"},
+    {"input": "gggg::1", "expected": null, "note": "IPv6 non-hex"},
+    {"input": "not:an:ip:but:has:colons", "expected": null, "note": "colons imply IPv6; invalid"},
+    {"input": "", "expected": null, "note": "empty"},
+    {"input": ".", "expected": null, "note": "only dot"},
+    {"input": "exa mple.com", "expected": null, "note": "space inside"},
+    {"input": "example..com", "expected": null, "note": "empty label"},
+    {"input": "-example.com", "expected": null, "note": "leading hyphen"},
+    {"input": "example-.com", "expected": null, "note": "trailing hyphen"},
+    {"input": "exam_ple.com", "expected": null, "note": "underscore rejected"},
+    {"input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example", "expected": null, "note": "label > 63"}
+  ]
+}

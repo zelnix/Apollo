@@ -1,0 +1,11 @@
+{
+  "name": "@guarddog/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Guard Dog shared contracts (security events, capabilities, rule bundles, normalization). Source of truth for the TypeScript side of the cross-language parity suite.",
+  "scripts": {
+    "test": "node --test tests/*.test.ts",
+    "sync-to-app": "node scripts/sync-to-app.mjs"
+  }
+}

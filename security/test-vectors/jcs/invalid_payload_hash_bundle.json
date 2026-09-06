@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "1.0",
+  "rulesetId": "gd-m1-controlled-block",
+  "bundleVersion": 3,
+  "issuedAt": "2026-06-01T00:00:00Z",
+  "expiresAt": "2027-06-01T00:00:00Z",
+  "keyId": "gd-m1-test-ed25519-001",
+  "payload": {
+    "rules": [
+      {
+        "ruleId": "m1-controlled-block-001",
+        "host": "m1-block-test.guarddog.example",
+        "action": "block",
+        "matchType": "exact",
+        "category": "controlled-test"
+      },
+      {
+        "ruleId": "m1-allow-001",
+        "host": "allowed.guarddog.example",
+        "action": "allow",
+        "matchType": "exact",
+        "category": "controlled-test"
+      }
+    ]
+  },
+  "payloadHash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "signature": "fXzadA7oWtAevg5M/wCfzmDh4eBtr7SUOjK/fccJxZU/EGMqtyrGvNSw9Nqz82fbMzvxiAtN5Xc8TJFv2ejcCA=="
+}
