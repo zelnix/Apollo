@@ -24,10 +24,13 @@ import pytest
 import requests
 
 BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://guard-dog-m1.preview.emergentagent.com").rstrip("/")
+# Live tests sign bundles against the RUNNING backend. Disabled by default so the controlled bundle is never
+# resigned implicitly (final M1 signing waits for infrastructure confirmation). Enable with GD_RUN_LIVE_TESTS=1.
+pytestmark = pytest.mark.skipif(__import__("os").environ.get("GD_RUN_LIVE_TESTS") != "1", reason="live signing tests disabled by default")
 ADMIN_TOKEN = "m1-dev-admin-token-change-me"
 PRIVATE_SEED = "qPjRUS79sQkfUvlyMdlu38nbDtuau+N3JSYEgLh2gWw="
 SECONDARY_SEED = "IF0goB6MZnabxSv26FW1jd0vOf+E387URWP+1PgdK9M="
-CONTROLLED_HOST = "m1-block-test.guarddog.example"
+CONTROLLED_HOST = __import__("os").environ.get("GD_CONTROLLED_HOST", "blocktest.btciq.app")
 CONTROLLED_RULE = {"ruleId": "m1-controlled-block-001", "host": CONTROLLED_HOST, "action": "block"}
 
 

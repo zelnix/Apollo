@@ -22,6 +22,8 @@ Frozen M1 execution spec (Part 4.1 Android real blocking proof + Part 5 FastAPI 
 - Native gate round: signing guard (admin token + GD_SIGNING_ENABLED + confirm + ruleset allow-list + controlled-config check; secret redaction), endpoint verify/resign scripts, Gradle root + CI gate scripts (android/ios), Expo config plugin linking the Android SDK modules, android-dev-build script with merged-manifest checks, TunSession recovery + tests, proof report export (JSON + PDF via expo-print), docs/M1_NATIVE_GATE.md (status OPEN).
 
 ## Backlog / remaining
+- Real endpoint injected 2026-06: blocktest.btciq.app / 52.25.179.131 / https://blocktest.btciq.app/ (verify script: single A record match, HTTPS 200). Live bundle NOT resigned (v17, old host) — waiting for user confirmation of Elastic IP association; then `python scripts/resign_controlled_bundle.py --confirm`. Live signing tests gated by GD_RUN_LIVE_TESTS=1.
+- Out of scope for M1 (user decision): backend evidence upload/archiving of proof reports. Local JSON + PDF export only.
 - P0 (blocked on inputs/native machine): real controlled host + static IPv4 + URL from user; run scripts/ci/android-native-gate.sh, ios-native-gate.sh, android-dev-build.sh; physical-device proof; recovery run; export report. M1 stays OPEN until then.
 - P1: SharedPreferences store hardening (EncryptedSharedPreferences), backend admin auth beyond static token, provider retry/backoff.
 - P2: iOS enforcement feasibility beyond M1 (out of scope), Threat Scent UX.

@@ -33,7 +33,7 @@ export default function Index() {
   const insets = useSafeAreaInsets();
   const [events, setEvents] = useState<SecurityEvent[]>([]);
   const [steps, setSteps] = useState<HarnessStep[]>([]);
-  const [url, setUrl] = useState("https://m1-block-test.guarddog.example/login?token=SECRET");
+  const [url, setUrl] = useState("");
   const [analysis, setAnalysis] = useState<LocalAnalysis | null | undefined>(undefined);
   const [report, setReport] = useState<ProofReport | null>(null);
   const [pdfUri, setPdfUri] = useState<string | null>(null);
@@ -49,6 +49,9 @@ export default function Index() {
   });
 
   useEffect(() => GuardDogSecuritySDK.onSecurityEvent((event) => setEvents((prev) => [event, ...prev].slice(0, 30))), []);
+  useEffect(() => {
+    if (config.data && url === "") setUrl(`https://${config.data.controlledEndpoint.host}/login?token=SECRET`);
+  }, [config.data, url]);
   useEffect(() => {
     if (bundle.data && !GuardDogSecuritySDK.nativeAvailable) GuardDogSecuritySDK.acceptRuleBundle(bundle.data);
   }, [bundle.data]);

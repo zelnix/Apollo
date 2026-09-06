@@ -29,13 +29,14 @@ Run and attach `docs/evidence/*`:
 Private seeds: env-only, `repr=False`, `SecretRedactionFilter` on all loggers, never in any response (`test_signing_guard.py`).
 The public app only uses distribution (`GET /api/rules/{id}/latest`, `GET /api/keys`).
 
-## 3. Real controlled endpoint — WAITING FOR INPUT
-Current config is the documentation placeholder (`/api/config → controlledEndpoint.isPlaceholder: true`).
-When the real Guard Dog-controlled host / dedicated static IPv4 / HTTPS URL are available:
-1. set `GD_CONTROLLED_HOST`, `GD_CONTROLLED_IPV4`, `GD_CONTROLLED_URL` (and `GD_RULESET_ID` if it changes) in `backend/.env`
-2. `python scripts/verify_controlled_endpoint.py` (single A record must equal the IPv4; TLS answers)
-3. `python scripts/resign_controlled_bundle.py --confirm` (signs with `gd-m1-test-ed25519-001` via the guarded workflow)
-Android re-resolves the host immediately before route install (`ControlledEndpointResolver`); mismatch → `Failed`, no route, no event.
+## 3. Real controlled endpoint — INJECTED, RESIGN PENDING CONFIRMATION
+Injected (backend/.env): `blocktest.btciq.app` → `52.25.179.131`, `https://blocktest.btciq.app/`, ruleset `gd-m1-controlled-block`.
+`/api/config → controlledEndpoint.isPlaceholder: false`. Backend-side binding check already run here:
+`python scripts/verify_controlled_endpoint.py` → resolved `['52.25.179.131']` (single A record), HTTPS status 200, TLS ok, exit 0.
+Still required from infrastructure: confirmation that 52.25.179.131 is the associated Elastic IP. The live bundle has **not** been
+resigned; run `python scripts/resign_controlled_bundle.py --confirm` only after that confirmation. (Live signing tests are disabled by
+default: `GD_RUN_LIVE_TESTS=1` enables them.) Android re-resolves the host immediately before route install
+(`ControlledEndpointResolver`); mismatch → `Failed`, no route, no event.
 
 ## 4. Android development build — OPEN
 `bash scripts/ci/android-dev-build.sh`: version checks → contract sync → endpoint binding check → `expo prebuild --clean`
@@ -47,7 +48,7 @@ Android re-resolves the host immediately before route install (`ControlledEndpoi
 Run the RN harness ("Run proof") on the device, then "Stop protection" and re-run the reachability probe. Recovery logic is unit-tested
 (`TunSessionRecoveryTest`: descriptor closed exactly once, reader stopped, STOPPED/REVOKED states, consent cleared on revoke).
 
-## 7. Proof report — READY
+## 7. Proof report — READY (local export only; uploading/archiving reports is outside the frozen M1 scope)
 Harness → "Build JSON evidence" → "Export PDF" (`src/harness/proofReport.ts`, `expo-print`). Contains only the audit chain
 (bundle/version/keyId/payloadHash → host → IPv4 → route → packet stats → drop → enforcementEvidenceId → event id → bridge receipt → timestamps).
 

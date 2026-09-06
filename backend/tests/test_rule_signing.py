@@ -76,7 +76,7 @@ async def test_sign_endpoint_requires_admin_and_increments_version(client, admin
         "rulesetId": "gd-m1-controlled-block",
         "confirm": True,
         "rules": [
-            {"ruleId": "m1-controlled-block-001", "host": "m1-block-test.guarddog.example", "action": "block"},
+            {"ruleId": "m1-controlled-block-001", "host": get_settings().controlled_host, "action": "block"},
             {"ruleId": "r-2", "host": "Evil.Example.", "action": "block"},
         ],
     }

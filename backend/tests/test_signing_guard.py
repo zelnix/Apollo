@@ -8,7 +8,7 @@ from app.core.logging import SecretRedactionFilter
 from app.core.settings import get_settings
 from app.main import build_services
 
-CONTROLLED = {"ruleId": "m1-controlled-block-001", "host": "m1-block-test.guarddog.example", "action": "block", "category": "controlled-test"}
+CONTROLLED = {"ruleId": "m1-controlled-block-001", "host": get_settings().controlled_host, "action": "block", "category": "controlled-test"}
 
 
 def body(**overrides):
@@ -48,12 +48,12 @@ async def test_controlled_block_cannot_be_silently_replaced(client, admin_header
     # Adding other rules alongside the controlled block is fine (controlled host normalized from a variant).
     r = await client.post(
         "/api/rules/sign",
-        json=body(rules=[{**CONTROLLED, "host": "M1-Block-Test.GuardDog.Example."}, {"ruleId": "x", "host": "evil.example", "action": "block"}]),
+        json=body(rules=[{**CONTROLLED, "host": get_settings().controlled_host.upper() + "."}, {"ruleId": "x", "host": "evil.example", "action": "block"}]),
         headers=admin_headers,
     )
     assert r.status_code == 200 and r.json()["bundleVersion"] == 2
     latest = (await client.get("/api/rules/gd-m1-controlled-block/latest")).json()
-    assert any(rule["host"] == "m1-block-test.guarddog.example" and rule["action"] == "block" for rule in latest["payload"]["rules"])
+    assert any(rule["host"] == get_settings().controlled_host and rule["action"] == "block" for rule in latest["payload"]["rules"])
 
 
 @pytest.mark.anyio

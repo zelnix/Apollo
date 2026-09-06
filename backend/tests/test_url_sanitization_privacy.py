@@ -5,6 +5,7 @@ import httpx
 import pytest
 import respx
 
+from app.core.settings import get_settings
 from app.core.logging import REDACTED, RawUrlRedactionFilter
 from app.domain.validation.normalization import canonicalize_host, sanitize_url
 from app.providers.google_webrisk import ENDPOINT
@@ -48,10 +49,10 @@ async def test_lookup_endpoint_local_rule_first_then_sanitized_cloud_only_when_u
     # 1) local signed rule resolves the controlled host: no provider call, verdict block
     with respx.mock(assert_all_called=False) as router:
         route = router.get(ENDPOINT).mock(return_value=httpx.Response(200, json={}))
-        r = await client.post("/api/intelligence/lookup", json={"url": "https://M1-Block-Test.GuardDog.Example./x?secret=1"})
+        r = await client.post("/api/intelligence/lookup", json={"url": f"https://{get_settings().controlled_host.upper()}./x?secret=1"})
         assert r.status_code == 200
         assert r.json()["verdict"] == "block" and r.json()["source"] == "local-signed-rules"
-        assert r.json()["sanitizedUrl"] == "https://m1-block-test.guarddog.example/x"
+        assert r.json()["sanitizedUrl"] == f"https://{get_settings().controlled_host}/x"
         assert not route.called
     # 2) unresolved host, provider unconfigured -> unknown + degraded (fail open, never 'block')
     r = await client.post("/api/intelligence/lookup", json={"url": "https://unknown.example/p?token=SECRET"})

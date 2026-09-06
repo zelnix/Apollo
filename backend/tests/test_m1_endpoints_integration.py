@@ -16,6 +16,10 @@ from cryptography.exceptions import InvalidSignature
 
 # public URL under test
 BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://guard-dog-m1.preview.emergentagent.com").rstrip("/")
+CONTROLLED_HOST = __import__("os").environ.get("GD_CONTROLLED_HOST", "blocktest.btciq.app")
+# Live tests sign bundles against the RUNNING backend. Disabled by default so the controlled bundle is never
+# resigned implicitly (final M1 signing waits for infrastructure confirmation). Enable with GD_RUN_LIVE_TESTS=1.
+pytestmark = pytest.mark.skipif(__import__("os").environ.get("GD_RUN_LIVE_TESTS") != "1", reason="live signing tests disabled by default")
 ADMIN_TOKEN = "m1-dev-admin-token-change-me"
 
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
@@ -57,7 +61,7 @@ class TestHealthConfig:
         assert r.status_code == 200
         d = r.json()
         assert d["rulesetId"] == "gd-m1-controlled-block"
-        assert d["controlledEndpoint"]["host"] == "m1-block-test.guarddog.example"
+        assert d["controlledEndpoint"]["host"] == CONTROLLED_HOST
         assert d["controlledEndpoint"]["ipv4"] == "203.0.113.10"
         assert "url" in d["controlledEndpoint"]
         assert d["capabilities"]["android"]["dnsInterception"] is False
@@ -76,7 +80,7 @@ class TestRules:
         assert b["keyId"] == "gd-m1-test-ed25519-001"
         assert HEX64.match(b["payloadHash"]), b["payloadHash"]
         assert len(b["signature"]) == 88 and B64_88.match(b["signature"]), b["signature"]
-        assert b["payload"]["rules"][0]["host"] == "m1-block-test.guarddog.example"
+        assert b["payload"]["rules"][0]["host"] == CONTROLLED_HOST
         assert b["payload"]["rules"][0]["action"] == "block"
 
         # verify payloadHash = sha256(JCS(payload))
@@ -117,7 +121,7 @@ class TestRules:
         # NOTE: uses the controlled ruleset intentionally per test spec; test restores state at teardown.
         prev = s.get(f"{BASE_URL}/api/rules/gd-m1-controlled-block/latest").json()["bundleVersion"]
         body = {"rulesetId": "gd-m1-controlled-block", "confirm": True,
-                "rules": [{"ruleId": "m1-controlled-block-001", "host": "m1-block-test.guarddog.example", "action": "block"},
+                "rules": [{"ruleId": "m1-controlled-block-001", "host": CONTROLLED_HOST, "action": "block"},
                           {"ruleId": f"t-{uuid.uuid4().hex[:6]}", "host": "Evil.Example.", "action": "block"}]}
         r = s.post(f"{BASE_URL}/api/rules/sign", json=body, headers={"X-GuardDog-Admin-Token": ADMIN_TOKEN})
         assert r.status_code == 200, r.text
@@ -126,7 +130,7 @@ class TestRules:
         assert any(rule["host"] == "evil.example" for rule in b["payload"]["rules"])
         # Restore controlled-host rule so live frontend continues to show "block" for the default URL.
         restore = {"rulesetId": "gd-m1-controlled-block", "confirm": True,
-                   "rules": [{"ruleId": "m1-controlled-block-001", "host": "m1-block-test.guarddog.example", "action": "block"}]}
+                   "rules": [{"ruleId": "m1-controlled-block-001", "host": CONTROLLED_HOST, "action": "block"}]}
         r2 = s.post(f"{BASE_URL}/api/rules/sign", json=restore, headers={"X-GuardDog-Admin-Token": ADMIN_TOKEN})
         assert r2.status_code == 200
 

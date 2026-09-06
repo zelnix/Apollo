@@ -4,6 +4,8 @@
 // A step is PASS only when it actually happened. Steps that cannot run in the current
 // environment (no native module, placeholder endpoint) are BLOCKED, never faked.
 // THREAT_BLOCKED is only ever observed from the SDK event stream - the harness cannot create it.
+import { Platform } from "react-native";
+
 import { isGenuineBlockedEvent, type SecurityEvent } from "@/src/contracts/securityEventSchemas";
 import { fetchLatestBundle, fetchM1Config, tamperedCopy, toProtectionConfig, unknownKeyCopy } from "@/src/harness/ruleBundleFixtures";
 import { GuardDogSecuritySDK } from "@/src/sdk/GuardDogSecuritySDK";
@@ -30,8 +32,9 @@ async function probe(url: string): Promise<{ reachable: boolean; detail: string 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
   try {
-    const res = await fetch(url, { method: "GET", signal: controller.signal, cache: "no-store" });
-    return { reachable: true, detail: `HTTP ${res.status}` };
+    // On web a cross-origin probe must be opaque (no-cors): a CORS failure is not evidence of unreachability.
+    const res = await fetch(url, { method: "GET", signal: controller.signal, cache: "no-store", mode: Platform.OS === "web" ? "no-cors" : undefined });
+    return { reachable: true, detail: res.type === "opaque" ? "reachable (opaque cross-origin response)" : `HTTP ${res.status}` };
   } catch (e) {
     return { reachable: false, detail: e instanceof Error ? e.message : "request failed" };
   } finally {
