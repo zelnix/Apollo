@@ -23,7 +23,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "test:family": "node --test tests/familyWeekly.test.ts"
+    "test:family": "node --test tests/familyWeekly.test.ts",
+    "test:higgins": "node --test tests/higginsGreeting.test.ts"
   },
   "dependencies": {
     "@expo/metro-runtime": "57.0.15",

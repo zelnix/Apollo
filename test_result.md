@@ -359,3 +359,9 @@ frontend:
     implemented: true
     working: "NA"
     needs_retesting: true
+
+## Iteration 27 — Higgins daily greeting
+frontend:
+  - task: "HigginsGreeting card (higgins-greeting, -text, -hear, -dismiss) on Home once per local day, state-matched lines; auto-speak when apollo.voice.auto is on. Self-tested via screenshot."
+    implemented: true
+    working: true

@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApolloHero } from "@/src/components/ApolloHero";
 import { ApolloLogo } from "@/src/components/ApolloLogo";
+import { HigginsGreeting } from "@/src/components/HigginsGreeting";
 import { ClipboardLinkBanner } from "@/src/components/ClipboardLinkBanner";
 import { PatrolItem } from "@/src/components/PatrolItem";
 import { Body, Button, Card, Pill, ScreenHeader, SectionTitle, capabilityTone, toneColor } from "@/src/components/ui";
@@ -57,6 +58,7 @@ export default function Home() {
       </View>
       <ScrollView contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={verifyNow} tintColor={colors.resting} />} testID="home-scroll">
         <ApolloHero resolution={resolution} visibility={visibility} adapterLabel={adapterLabel} isMock={isMock} animate={!lowPower} quietNow={quietNow} sniffing={refreshing} />
+        <HigginsGreeting state={resolution.visibilityLost ? "lost" : resolution.state} />
         <ClipboardLinkBanner />
         {protection?.running ? (
           <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }} testID="home-background-card">
