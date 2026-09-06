@@ -5,6 +5,8 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { EventActions } from "@/src/components/EventActions";
+import { HigginsReadAloud } from "@/src/components/HigginsReadAloud";
+import { narrateEvent } from "@/src/domain/higginsNarration";
 import { Body, Button, Card, Pill, toneColor } from "@/src/components/ui";
 import { STATE_LABEL, STATE_MEANING } from "@/src/domain/types";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -69,6 +71,7 @@ export default function EventDetail() {
             <Text style={s.big} testID="event-what-to-do">{event.what_to_do}</Text>
           </Card>
 
+          <Card style={{ gap: spacing.sm }} testID="event-read-card"><HigginsReadAloud chunks={narrateEvent(event)} testID="event-read" /></Card>
           <EventActions event={event} />
           {event.scent_id && events.filter((e) => e.scent_id === event.scent_id).length > 1 ? <Card style={{ gap: spacing.sm }} testID="event-incident-card"><Body>This event is part of a connected incident ({events.filter((e) => e.scent_id === event.scent_id).length} events).</Body><Button testID="event-incident-open" variant="secondary" label="View incident timeline" onPress={() => router.push({ pathname: "/patrol/scent/[id]", params: { id: event.scent_id! } })} /></Card> : null}
 

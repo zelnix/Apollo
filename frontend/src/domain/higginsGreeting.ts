@@ -1,6 +1,6 @@
 // Higgins' daily greeting — one short line, once a day, matching the time of day and Apollo's current state.
 // Pure and deterministic (variant chosen by date) so it can be unit-tested and never needs the network.
-import type { ApolloState } from "@/src/domain/types";
+import type { ApolloState } from "./types.ts";
 
 export type TimeOfDay = "morning" | "afternoon" | "evening" | "night";
 

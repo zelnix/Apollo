@@ -11,7 +11,9 @@ import { Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiGet, apiPatch, apiPost } from "@/src/api/client";
+import { HigginsReadAloud } from "@/src/components/HigginsReadAloud";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
+import { narrateIncident } from "@/src/domain/higginsNarration";
 import { buildIncidentPlan, CATEGORY_GLYPH, CATEGORY_LABEL } from "@/src/domain/incidentPlan";
 import { STATE_LABEL, STATE_NAME } from "@/src/domain/types";
 import { useApollo } from "@/src/store/ApolloContext";
@@ -86,6 +88,7 @@ export default function IncidentTimeline() {
             <Text style={s.headline} testID="incident-headline">{plan.headline}</Text>
             <Text style={s.why}>{STATE_LABEL[plan.state]}</Text>
             <Body>{plan.exposure.length ? `You told Apollo: ${plan.exposure.join("; ")}. The plan below starts with the most urgent step.` : "Apollo connected these because they happened close together and point at the same target. Nothing is lost if you haven't typed, paid or approved anything."}</Body>
+            <HigginsReadAloud chunks={narrateIncident(plan, ticked)} label="Higgins, read the whole incident" testID="incident-read" />
           </Card>
 
           {shared && (notes.data ?? []).length ? (

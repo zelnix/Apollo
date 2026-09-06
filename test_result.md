@@ -365,3 +365,9 @@ frontend:
   - task: "HigginsGreeting card (higgins-greeting, -text, -hear, -dismiss) on Home once per local day, state-matched lines; auto-speak when apollo.voice.auto is on. Self-tested via screenshot."
     implemented: true
     working: true
+
+## Iteration 28 — Higgins reads Patrol
+frontend:
+  - task: "HigginsReadAloud on /patrol/[id] (event-read-button/-progress) and /patrol/scent/[id] (incident-read-*); queued TTS playback with prefetch; narration builders unit-tested. Self-tested via screenshot (progress advanced 1→2 of 4)."
+    implemented: true
+    working: true
