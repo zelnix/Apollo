@@ -13,16 +13,23 @@ access of its own; this is the only handoff path.) The push includes `.github/wo
 - Actions → General → Workflow permissions may stay "Read repository contents" (the workflow declares `permissions: contents: read`).
 
 ## 3. Run
-Actions → **native-gates** → Run workflow (also runs on push). Four jobs:
-`android` (AC-01, ubuntu) · `android-dev-build` (AC-04 APK + manifest audit + APK recheck, ubuntu, needs `android`) · `ios` (AC-02, macos-15) · `executable-suites` (pytest/node, ephemeral keys).
+Before clicking **Run workflow**, confirm the selected branch contains commit **`dbd58e5`** (`git log --oneline -1` after Save to GitHub).
+Actions → **native-gates** → Run workflow (leave the `xcode` input at `26.1` unless told otherwise). The **whole workflow = four jobs**:
+`android` (AC-01, ubuntu) · `android-dev-build` (AC-04 APK + manifest audit + APK recheck, ubuntu, needs `android`) · `ios` (AC-02, macos-15, Xcode 26.1) ·
+`executable-suites` (pytest/node with ephemeral keys, after dependency install).
+Let the run finish completely — do **not** re-run individual failed jobs mid-stream; the audit needs one coherent run ID.
 
 ## 4. Download artifacts and attach here
 | Artifact | Files to attach |
 |---|---|
 | `android-native-gate` | `android-native-gate.txt` (+ `android-*-test-results/*.xml` if regenerated) |
-| `android-dev-build` | `apk-recheck.txt`, `apk-provenance.json`, `merged-manifest-audit.txt`, `android-dev-build.txt` (keep `guarddog-m1-dev.apk` locally; do not install yet) |
-| `ios-native-gate` | `ios-native-gate.txt` |
+| `android-dev-build` | `apk-recheck.txt`, `apk-provenance.json`, `merged-manifest-audit.txt`, `android-dev-build.txt` (keep `guarddog-m1-dev.apk` locally; **do not install it, even if green**) |
+| `ios-native-gate` | `ios-native-gate.txt`, `ios-expo-package-audit.txt`, and `ios-xcodebuild-full.log` if iOS failed |
+| `executable-suites` | job log showing dependency install succeeded and pytest/node suites actually ran |
 | any failed job | the failed step's raw log |
+
+Audit focus for this run: GitHub reproduces AC-01; executable suites run after a clean dependency install; AC-02 compiles under the pinned Xcode 26.1
+path; the dev APK is generated; v25 remains the served/frozen bundle; `apk-provenance.json` ties `commit` = `dbd58e5…` and `workflowRunId` = this run.
 
 ## 5. Audit criteria (what will be checked before the APK is cleared)
 - all jobs actually executed (no skipped gate steps); AC-02 shows SwiftPM build + parity tests + Expo iOS module compiled via CocoaPods/xcodebuild
