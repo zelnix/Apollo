@@ -2,7 +2,7 @@
 // Guard Dog Expo module (which depends on :guarddog-core and :guarddog-vpn) compiles.
 // Library manifests (VPN service, FGS type, permissions) merge automatically from :guarddog-vpn.
 // The plugin lives outside the app's node_modules: resolve expo's plugin API from the app root.
-const { withSettingsGradle, withProjectBuildGradle, withAndroidManifest, withDangerousMod, AndroidConfig } = require(require.resolve("expo/config-plugins", { paths: [process.cwd(), __dirname] }));
+const { withSettingsGradle, withProjectBuildGradle, withAppBuildGradle, withAndroidManifest, withDangerousMod, AndroidConfig } = require(require.resolve("expo/config-plugins", { paths: [process.cwd(), __dirname] }));
 const fs = require("fs");
 const path = require("path");
 
@@ -22,6 +22,18 @@ function withGuardDogAndroidSdk(config) {
     const line = `    classpath('org.jetbrains.kotlin:kotlin-serialization:${reactNativeKotlinVersion(mod.modRequest.projectRoot)}') // guarddog-core`;
     if (!mod.modResults.contents.includes("kotlin-serialization")) {
       mod.modResults.contents = mod.modResults.contents.replace(/(classpath\('org\.jetbrains\.kotlin:kotlin-gradle-plugin'\)\n)/, `$1${line}\n`);
+    }
+    return mod;
+  });
+  config = withAppBuildGradle(config, (mod) => {
+    // The M1 proof APK is a self-contained development build (debuggable, no Metro). React Native's default
+    // `debuggableVariants = ["debug"]` SKIPS JS bundling for the debug variant and the phone shows "Unable to load script"
+    // (ReactInstance.loadJSBundleFromAssets). Bundling every variant embeds assets/index.android.bundle (Hermes bytecode with the
+    // EXPO_PUBLIC_GIT_SHA / EXPO_PUBLIC_CI_RUN_ID provenance inlined). Metro still takes precedence when a dev server is reachable.
+    const line = '    debuggableVariants = [] // guarddog: embed the JS bundle in the dev (debug) APK for standalone device proof';
+    if (!/^\s*debuggableVariants\s*=/m.test(mod.modResults.contents)) {
+      mod.modResults.contents = mod.modResults.contents.replace(/(\n\s*bundleCommand = "export:embed"\n)/, `$1${line}\n`);
+      if (!mod.modResults.contents.includes("guarddog: embed the JS bundle")) throw new Error("guarddog plugin: could not locate the react { bundleCommand } block in app/build.gradle");
     }
     return mod;
   });

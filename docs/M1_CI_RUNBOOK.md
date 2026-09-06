@@ -49,6 +49,19 @@ module compiled (AC-01 step 5 passed) but could never register. Fix + guards (re
 - `docs/M1_CI_RUNBOOK.md` (this note).
 Run-4 APK `ea719d72…`/its successor are void; the next run yields a new provenance-bound APK.
 
+### Run 34044357809 (tip `5c544d0`) — 4/4 green, module registers on the phone; next layer: "Unable to load script" — correction pass 3
+Device: `Unable to load script. Make sure you're running Metro or that your bundle 'index.android.bundle' is packaged correctly` →
+`ReactInstance.loadJSBundleFromAssets`. The registration crash is gone (run-5 fix confirmed on hardware); the debug APK simply contains no JS.
+Root cause: `:app:assembleDebug` with React Native's default `debuggableVariants = ["debug"]` skips `createBundleDebugJsAndAssets`, so the "dev" APK
+expects Metro — but the M1 proof APK must be self-contained (and `EXPO_PUBLIC_GIT_SHA`/`CI_RUN_ID` were never actually baked in). Fix + guard:
+- `packages/guarddog-expo-module/app.plugin.js` — `withAppBuildGradle` inserts `debuggableVariants = []` after `bundleCommand = "export:embed"` in the
+  prebuilt `app/build.gradle`, so the debug variant embeds `assets/index.android.bundle` (Hermes, `--dev false`) with the provenance env inlined. Metro
+  still wins when reachable. Verified locally via `expo prebuild` (line present); no Kotlin/Swift/bundle/verifier/VPN change.
+- `scripts/ci/apk-recheck.sh` — `PASS embedded JS bundle assets/index.android.bundle (N bytes)` (fails if missing/<100 KB) and
+  `PASS build commit <sha>… inlined in the JS bundle` (the run's `GITHUB_SHA` must appear in the bundle bytes). Mock-tested: missing bundle → FAIL,
+  wrong SHA → FAIL, correct → PASS.
+- `docs/M1_CI_RUNBOOK.md` (this note). Run-5 APK is void; run 6 yields the sideload candidate.
+
 ## 4. Download artifacts and attach here
 | Artifact | Files to attach |
 |---|---|
@@ -73,6 +86,7 @@ v25 remains the served/frozen bundle; `apk-provenance.json.commit` = the new tip
 - `android-native-gate.txt`: `expo module definition test: 2 run, 0 failed`, `reified stubs: 0`, `expo module: loads (definition() evaluated, bytecode clean)`
 - `android-dev-build.txt`: `distribution: bundle v25 keyId=gd-m1-test-ed25519-001 … frozen=25` and `app consumes: signed frozen bundle + pinned PUBLIC key only`
 - `merged-manifest-audit.txt`: `MERGED MANIFEST AUDIT: PASS`
-- `apk-recheck.txt`: `== APK RECHECK PASSED ==`, `native-code exactly ['arm64-v8a']`, `application-debuggable`, sdk 26/36, no leakage
+- `apk-recheck.txt`: `== APK RECHECK PASSED ==`, `native-code exactly ['arm64-v8a']`, `application-debuggable`, sdk 26/36, no leakage,
+  `PASS embedded JS bundle assets/index.android.bundle`, `PASS build commit <run sha>… inlined in the JS bundle`
 - `apk-provenance.json`: `apkSha256` is a 64-hex digest; `commit` = pushed commit; `workflowRunId` = the run you triggered
 - After clearance: sideload **that** APK; the device proof report must show `provenance.apkSha256` identical to `apk-provenance.json`.

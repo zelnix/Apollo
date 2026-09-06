@@ -101,6 +101,20 @@ for dp, _, fs in os.walk(apk_dir):
 # public material is expected: pinned public key in the SDK
 pub_ok = any(b"ccf41NL6VHYQsH171Lw98hKiIoQFvAY0t171X4PL/ac=" in open(os.path.join(dp, f), "rb").read() for dp, _, fs in os.walk(apk_dir) for f in fs if f.endswith((".dex",)))
 print(f"{'PASS' if pub_ok else 'INFO'}  pinned PUBLIC key present in dex (expected)")
+# Self-contained proof APK: the JS bundle must be embedded (RN skips bundling for debuggable variants unless debuggableVariants = []),
+# otherwise the phone shows "Unable to load script" and never reaches the harness. The bundle must carry the build commit inlined
+# from EXPO_PUBLIC_GIT_SHA so the on-device report's provenance.gitSha is bound to this run.
+bundle = os.path.join(apk_dir, "assets", "index.android.bundle")
+bundle_ok = os.path.isfile(bundle) and os.path.getsize(bundle) > 100_000
+print(f"{'PASS' if bundle_ok else 'FAIL'}  embedded JS bundle assets/index.android.bundle ({os.path.getsize(bundle) if os.path.isfile(bundle) else 0} bytes)")
+if not bundle_ok: hits.append("JS bundle not embedded (debug variant built without debuggableVariants = [])")
+sha = os.environ.get("GITHUB_SHA")
+if sha and bundle_ok:
+    sha_ok = sha.encode() in open(bundle, "rb").read()
+    print(f"{'PASS' if sha_ok else 'FAIL'}  build commit {sha[:12]}… inlined in the JS bundle (EXPO_PUBLIC_GIT_SHA)")
+    if not sha_ok: hits.append("EXPO_PUBLIC_GIT_SHA not inlined in the embedded bundle")
+elif bundle_ok:
+    print("INFO  GITHUB_SHA unset (local run): bundle commit binding not checked")
 if hits:
     print("FAIL  secret/config leakage:"); [print("      " + h) for h in hits]; sys.exit(1)
 print("PASS  no private key material, admin token, DB URL or backend .env content packaged")
