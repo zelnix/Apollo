@@ -1,0 +1,55 @@
+{
+  "summary": "Bug fix verified: Gradle wrapper bootstrap JAR is now tracked in the repo, fixing the CI ClassNotFoundException: org.gradle.wrapper.GradleWrapperMain. All 5 review checks pass — git tracking of the 4 wrapper files, wrapper integrity (Gradle 8.13, GradleWrapperMain.class present), fresh-clone bootstrap works, gate script hardened, no source regressions, and live backend bundle v25 confirmed. Local full Android gate (/tmp/gate3.log) already passed with GATE EXIT=0.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": [], "react_native_issues": []},
+  "verification_results": {
+    "git_tracking": {
+      "tracked_files": [
+        "packages/guarddog-android-sdk/gradlew",
+        "packages/guarddog-android-sdk/gradlew.bat",
+        "packages/guarddog-android-sdk/gradle/wrapper/gradle-wrapper.properties",
+        "packages/guarddog-android-sdk/gradle/wrapper/gradle-wrapper.jar"
+      ],
+      "check_ignore_exit": "1 (not ignored, no output)",
+      "untracked_wrapper_files": "none",
+      "head_commit": "37b2fe7 ci: track Gradle 8.13 wrapper JAR (fixes GradleWrapperMain ClassNotFoundException); gate regenerates wrapper if incomplete",
+      "jar_in_head": "gradle-wrapper.jar Bin 0 -> 43705 bytes (newly added in HEAD)"
+    },
+    "wrapper_integrity": {
+      "GradleWrapperMain_class_present": true,
+      "distribution_url": "gradle-8.13-bin.zip",
+      "gradlew_version_local": "Gradle 8.13 (JDK 17.0.20.1)",
+      "fresh_clone_bootstrap": "PASS — git clone /app /tmp/gd-clone && ./gradlew --version -> Gradle 8.13"
+    },
+    "gate_script": {
+      "bash_n": "PASS",
+      "regenerates_when_wrapper_missing": "checks both gradlew AND gradle/wrapper/gradle-wrapper.jar (line 15)",
+      "asserts_GradleWrapperMain": "unzip -l ... | grep -q org/gradle/wrapper/GradleWrapperMain.class (line 19)",
+      "pinned_version": "gradle wrapper --gradle-version 8.13 --distribution-type bin"
+    },
+    "no_regression": {
+      "source_changes": ".gitignore + scripts/ci/android-native-gate.sh + 4 wrapper files (gradlew, gradle-wrapper.jar) only",
+      "artifact_changes": "docs/evidence/android-native-gate.txt + test_result.md + regenerated JUnit XML/bin under docs/evidence/android-*-test-results (outputs of the re-run gate, not source)",
+      "kotlin_swift_ts_backend_touched": false
+    },
+    "live_backend": {
+      "rules_latest_bundleVersion": 25,
+      "config_signing_frozenBundleVersion": 25,
+      "endpoint": "https://guard-dog-m1.preview.emergentagent.com"
+    },
+    "gate_log_tail": "/tmp/gate3.log present; last lines show 'expo module: compiled', 'sdk levels: frozen configuration confirmed', '== ANDROID NATIVE GATE PASSED ==', 'GATE EXIT=0'"
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    ".gitignore correctly whitelists gradle-wrapper.jar via '!**/gradle/wrapper/gradle-wrapper.jar' after the general '*.jar' ignore — prevents future regressions in any subproject.",
+    "Gate script bootstrap is idempotent (only regenerates when files missing) and asserts the critical GradleWrapperMain.class after regeneration — good defense-in-depth."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "N/A (skipped per request)"},
+  "seed_data_creation": "None.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Wrapper bootstrap fix is verified end-to-end (including fresh-clone simulation which is what CI does). If a subsequent CI failure recurs, first check whether git-lfs/binary filter is stripping the jar in the CI runner, then re-verify sha256 of the committed jar matches locally.",
+  "rca_of_issue": "Root cause: gradle-wrapper.jar (43705 bytes) was excluded from version control (likely by a broad *.jar rule in .gitignore), so a fresh CI checkout had gradlew + gradle-wrapper.properties but no bootstrap JAR. Running ./gradlew therefore raised java.lang.ClassNotFoundException: org.gradle.wrapper.GradleWrapperMain before compilation. Fix: (a) commit the jar; (b) add explicit '!**/gradle/wrapper/gradle-wrapper.jar' unignore rule; (c) harden the gate script to regenerate the wrapper (pinned Gradle 8.13) and assert GradleWrapperMain.class is inside the jar. Verified by simulating the CI checkout via `git clone /app /tmp/gd-clone` and running `./gradlew --version` from the fresh clone — succeeds with 'Gradle 8.13'."
+}

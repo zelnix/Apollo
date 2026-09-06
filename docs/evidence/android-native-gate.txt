@@ -1,4 +1,4 @@
-== Guard Dog Android native gate 2026-09-06T09:02:50Z ==
+== Guard Dog Android native gate 2026-09-06T11:03:59Z ==
 host: aarch64 Linux; java: openjdk version "17.0.20.1" 2026-08-18; ANDROID_HOME=/opt/android-sdk
 /root/.gradle/gradle.properties:android.aapt2FromMavenOverride=/opt/aapt2/aapt2
 -- 1. dependency resolution
@@ -8,16 +8,6 @@ core imports: clean
 gradle graph: clean
 -- 3. compile
 -- 4. unit tests (normalization, URL sanitization, signing/JCS fixtures, packet path)
-
-Welcome to Gradle 8.13!
-
-Here are the highlights of this release:
- - Daemon JVM auto-provisioning
- - Enhancements for Scala plugin and JUnit testing
- - Improvements for build authors and plugin developers
-
-For more details see https://docs.gradle.org/8.13/release-notes.html
-
 
 > Configure project :guarddog-core
 WARNING: The option setting 'android.aapt2FromMavenOverride=/opt/aapt2/aapt2' is experimental.
@@ -29,28 +19,28 @@ WARNING: The option setting 'android.aapt2FromMavenOverride=/opt/aapt2/aapt2' is
 > Task :guarddog-core:generateReleaseResources
 > Task :guarddog-core:packageReleaseResources
 > Task :guarddog-core:preReleaseUnitTestBuild UP-TO-DATE
-> Task :guarddog-core:javaPreCompileRelease
-> Task :guarddog-core:parseReleaseLocalResources
-> Task :guarddog-core:javaPreCompileReleaseUnitTest
 > Task :guarddog-vpn:checkKotlinGradlePluginConfigurationErrors SKIPPED
 > Task :guarddog-vpn:preBuild UP-TO-DATE
 > Task :guarddog-vpn:preReleaseBuild UP-TO-DATE
+> Task :guarddog-core:javaPreCompileRelease
+> Task :guarddog-core:javaPreCompileReleaseUnitTest
 > Task :guarddog-vpn:generateReleaseResValues
-> Task :guarddog-core:generateReleaseRFile
 > Task :guarddog-vpn:generateReleaseResources
 > Task :guarddog-vpn:packageReleaseResources
-> Task :guarddog-core:generateReleaseUnitTestStubRFile
 > Task :guarddog-vpn:preReleaseUnitTestBuild UP-TO-DATE
-> Task :guarddog-vpn:parseReleaseLocalResources
 > Task :guarddog-vpn:javaPreCompileRelease
 > Task :guarddog-vpn:javaPreCompileReleaseUnitTest
+> Task :guarddog-core:parseReleaseLocalResources
+> Task :guarddog-vpn:parseReleaseLocalResources
 > Task :guarddog-vpn:generateReleaseRFile
+> Task :guarddog-core:generateReleaseRFile
+> Task :guarddog-core:generateReleaseUnitTestStubRFile
 > Task :guarddog-vpn:generateReleaseUnitTestStubRFile
 > Task :guarddog-core:compileReleaseKotlin
 > Task :guarddog-core:compileReleaseJavaWithJavac NO-SOURCE
+> Task :guarddog-core:processReleaseJavaRes
 > Task :guarddog-core:bundleLibRuntimeToJarRelease
 > Task :guarddog-core:bundleLibCompileToJarRelease
-> Task :guarddog-core:processReleaseJavaRes
 
 > Task :guarddog-core:compileReleaseUnitTestKotlin
 w: file:///app/packages/guarddog-android-sdk/guarddog-core/src/test/java/com/guarddog/core/rules/RuleBundleVerifierTest.kt:85:61 This declaration needs opt-in. Its usage should be marked with '@kotlinx.serialization.ExperimentalSerializationApi' or '@OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)'
@@ -77,7 +67,7 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/8.13/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD SUCCESSFUL in 7s
+BUILD SUCCESSFUL in 10s
 30 actionable tasks: 30 executed
   com.guarddog.core.net.HostCanonicalizerParityTest: 2 tests, 0 failures, 0 errors
   com.guarddog.core.net.UrlSanitizerParityTest: 2 tests, 0 failures, 0 errors
@@ -101,13 +91,6 @@ native unit tests: 29 run, 0 failed
   - ksp:         [32m2.1.20-2.0.1[0m
  ℹ️  [33mApplying gradle plugin[0m '[32mexpo-max-sdk-override-plugin[0m'
   [expo-max-sdk-override-plugin] This plugin will find all permissions declared with `android:maxSdkVersion`. If there exists a declaration with the `android:maxSdkVersion` annotation and another one without, the plugin will remove the annotation from the final merged manifest. In order to see a log with the changes run a clean build of the app.
-Checking the license for package NDK (Side by side) 27.1.12297006 in /opt/android-sdk/licenses
-License for package NDK (Side by side) 27.1.12297006 accepted.
-Preparing "Install NDK (Side by side) 27.1.12297006 v.27.1.12297006".
-"Install NDK (Side by side) 27.1.12297006 v.27.1.12297006" ready.
-Installing NDK (Side by side) 27.1.12297006 in /opt/android-sdk/ndk/27.1.12297006
-"Install NDK (Side by side) 27.1.12297006 v.27.1.12297006" complete.
-"Install NDK (Side by side) 27.1.12297006 v.27.1.12297006" finished.
 
 Using expo modules
   - [32mexpo-log-box[0m (57.0.4)
@@ -137,8 +120,6 @@ task ':react-native-worklets:mergeReleaseNativeLibs'
   - [33m[📦][0m [32mexpo-system-ui[0m (57.0.3)
   - [33m[📦][0m [32mexpo-web-browser[0m (57.0.2)
 
-Note: Some input files use or override a deprecated API.
-Note: Recompile with -Xlint:deprecation for details.
 expo module: compiled
 -- 6. frozen Android SDK levels in the generated app (minSdk 26 / compileSdk 36 / targetSdk 36)
 generated app:  - minSdk: 26  - compileSdk: 36  - targetSdk: 36 

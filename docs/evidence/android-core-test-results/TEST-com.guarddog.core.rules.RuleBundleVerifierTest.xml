@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.guarddog.core.rules.RuleBundleVerifierTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-09-06T09:03:37.614Z" hostname="agent-env-7657c2c0-a2aa-48ca-a3f3-785f03490eb7" time="0.143">
+<testsuite name="com.guarddog.core.rules.RuleBundleVerifierTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-09-06T11:04:12.042Z" hostname="agent-env-7657c2c0-a2aa-48ca-a3f3-785f03490eb7" time="0.274">
   <properties/>
-  <testcase name="canonicalBytesMatchReferenceFixture" classname="com.guarddog.core.rules.RuleBundleVerifierTest" time="0.01"/>
-  <testcase name="serializerSymbolIsReal" classname="com.guarddog.core.rules.RuleBundleVerifierTest" time="0.001"/>
-  <testcase name="validBundleAccepted" classname="com.guarddog.core.rules.RuleBundleVerifierTest" time="0.109"/>
-  <testcase name="keyRolloverWithoutBridgeChanges" classname="com.guarddog.core.rules.RuleBundleVerifierTest" time="0.006"/>
-  <testcase name="strictSchema" classname="com.guarddog.core.rules.RuleBundleVerifierTest" time="0.001"/>
-  <testcase name="rollbackRejectedAfterNewerVersionAccepted" classname="com.guarddog.core.rules.RuleBundleVerifierTest" time="0.005"/>
-  <testcase name="manifestRejections" classname="com.guarddog.core.rules.RuleBundleVerifierTest" time="0.011"/>
+  <testcase name="canonicalBytesMatchReferenceFixture" classname="com.guarddog.core.rules.RuleBundleVerifierTest" time="0.009"/>
+  <testcase name="serializerSymbolIsReal" classname="com.guarddog.core.rules.RuleBundleVerifierTest" time="0.002"/>
+  <testcase name="validBundleAccepted" classname="com.guarddog.core.rules.RuleBundleVerifierTest" time="0.21"/>
+  <testcase name="keyRolloverWithoutBridgeChanges" classname="com.guarddog.core.rules.RuleBundleVerifierTest" time="0.004"/>
+  <testcase name="strictSchema" classname="com.guarddog.core.rules.RuleBundleVerifierTest" time="0.037"/>
+  <testcase name="rollbackRejectedAfterNewerVersionAccepted" classname="com.guarddog.core.rules.RuleBundleVerifierTest" time="0.004"/>
+  <testcase name="manifestRejections" classname="com.guarddog.core.rules.RuleBundleVerifierTest" time="0.008"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>
