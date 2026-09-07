@@ -14,8 +14,30 @@ export interface ProtectionPermission {
   why: string;
 }
 
+/** How Site Guard actually enforces on this device. "simulated" only ever comes from the mock adapter. */
+export type EnforcementMethod = "dns_filter" | "content_blocker" | "none" | "simulated";
+
+/**
+ * Truth-of-state contract. Three distinct facts, never collapsed into one Boolean:
+ *  - requested:   the person turned protection on (their intent; persisted by the native layer).
+ *  - operational: the enforcement mechanism is running/enabled RIGHT NOW as observed from the OS
+ *                 (Android: the DNS VpnService is up; iOS: the Safari content blocker is enabled and rules are written).
+ *  - lastVerified: when the OS last confirmed that observation.
+ * `running` is kept for existing callers and is always identical to `operational`.
+ * The UI reports these; it never decides them.
+ */
 export interface ProtectionStatus {
   running: boolean;
+  requested: boolean;
+  operational: boolean;
+  enforcementMethod: EnforcementMethod;
+  /** Plain-language statement of exactly what is covered — and what is not. */
+  coverage: string;
+  /** Machine-readable scope tags, e.g. ["dns:ipv4", "dns:udp-53"] or ["browser:safari"]. */
+  coverageScope: string[];
+  lastVerified: string | null;
+  /** Why requested ≠ operational (null when they agree). */
+  degradedReason: string | null;
   visibility: Visibility;
   since: string | null;
   adapterLabel: string; // visible label, e.g. "MOCK adapter — simulated"

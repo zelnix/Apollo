@@ -33,3 +33,54 @@ keeps **Barking** and explains why (`ApolloContext.blockEvent`).
 - Android: apps using private DNS (DoH/DoT) or hard-coded IPs bypass DNS filtering. Site Guard visibility is *limited*, never *full*.
 - iOS: other browsers and in-app web views are not covered by Safari content blockers.
 - Connection Guard (unsafe Wi‑Fi) remains *Coming later*.
+
+## Truth of state (Security Hardening Gate, iteration 29)
+
+Apollo must never say he is guarding when he isn't. `ProtectionStatus` therefore carries three separate facts,
+produced by the native layer and only *reported* by the UI (`src/domain/protectionTruth.ts` → Guard master card):
+
+| Field | Meaning | Android source | iOS source |
+|---|---|---|---|
+| `requested` | The person turned protection on (intent). Persisted so it survives process death. | `SharedPreferences apollo_siteguard/protection_requested` | `UserDefaults(appGroup) apollo.siteguard.requested` |
+| `operational` | Enforcement is happening **right now**, observed from the OS. Never stored. | `ApolloDnsVpnService.isRunning` (set only after `Builder.establish()` succeeds; cleared on stop/`onRevoke`/destroy) | `SFContentBlockerManager.getStateOfContentBlocker(...).isEnabled == true` **and** `blockerList.json` exists in the App Group |
+| `enforcementMethod` | `dns_filter` / `content_blocker` / `none` / `simulated` (mock only) | | |
+| `coverage`, `coverageScope` | Exactly what is and is not covered, in words + tags | `ApolloSecurityModule.COVERAGE` | `coverage` constant |
+| `lastVerified` | When the OS observation was made | the instant `isRunning` was read | last successful `getStateOfContentBlocker` |
+| `degradedReason` | Why `requested ≠ operational` (VPN permission revoked / another VPN / extension disabled / rule file missing) | | |
+| `running` | Compatibility alias — always equals `operational` | | |
+
+Guard wording: **Apollo is guarding** (requested ∧ operational) · **Apollo is guarding what he can** (requested ∧ ¬operational,
+"Link checks remain active") · **Apollo is off duty** (¬requested). Pills show Requested / Enforcement / Verified separately.
+`startProtection` on Android waits up to 2 s for `establish()` before answering; on iOS it answers only after Safari's
+reload callback and a fresh extension-state read. `stopProtection` on iOS writes an empty rule list and reloads, so
+"off" also stops enforcing.
+
+### Coverage definition — Android DNS filter
+Covered: DNS over **IPv4 / UDP / destination port 53** from apps using the system resolver (`DnsPacket.isFilterableQuery`).
+**Not covered:** IPv6 DNS, DNS over TCP, Private DNS / DoH / DoT, apps with their own resolver, captive-portal networks,
+and the period after a reboot until the app is opened (no boot receiver; status shows *degraded*, not *on*).
+Before marketing "website protection", real-device tests must cover: Chrome/Firefox/Samsung Internet with Private DNS
+off/automatic/on, IPv6-only Wi‑Fi, a second VPN taking over, VPN consent revoked in Settings, reboot.
+
+### Coverage definition — iOS content blocker
+Covered: Safari and SFSafariViewController. **Not covered:** Chrome/Firefox/other browsers, non-Safari in-app browsers,
+non-browser apps. Real-device tests: extension toggled off in Settings while protection is requested (must read degraded),
+rules reload after adding/removing a host, relaunch after force-quit (requested must persist, operational must be re-observed).
+
+### Mock adapter rule
+`EXPO_PUBLIC_SECURITY_MODE=mock` is preview-only. It reports `operational=false`, `enforcementMethod="simulated"`,
+and `blockDestination` returns `verified=false` — so the preview can never show *Apollo is biting*, a verified block or
+`THREAT_BLOCKED`. Production config rejects mock (`securityConfig.ts`).
+
+### Native tests
+- Android JVM: `modules/apollo-security/android/src/test/java/.../DnsPacketTest.kt` (coverage boundary, QNAME parsing,
+  subdomain matching, NXDOMAIN bit layout, reply address/port swap + IP checksum). Run with the module's gradle
+  (`testDebugUnitTest`); needs a JDK — not runnable in the Emergent sandbox.
+- iOS XCTest: `modules/apollo-security/ios/Tests/SiteGuardTruthTests.swift` (truth derivation incl. unknown state ≠ on,
+  rule-list shape, empty-list placeholder). Podspec `test_spec 'Tests'`; run from the generated Xcode workspace.
+- TypeScript: `yarn test:truth` (Guard wording from the three facts).
+
+### Gate sign-off rule
+No green gate on unit tests alone. Sign-off requires real-device evidence on Android **and** iOS that
+requested ≠ operational ≠ verified are distinguished in the UI for: fresh install, permission denied, permission revoked
+mid-session, extension disabled, second VPN, reboot/relaunch.

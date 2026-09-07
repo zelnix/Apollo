@@ -63,8 +63,8 @@ export default function CheckNetwork() {
   const unresolved = recentNet.filter((e) => e.status === "active" && e.state !== "resting").length;
   const scentCats = useMemo(() => { const now = Date.now(); return events.filter((e) => e.state !== "resting" && (e.category === "app" || e.category === "device") && now - Date.parse(e.occurred_at) <= SCENT_WINDOW_MS).map((e) => e.category); }, [events]);
   const vpnOn = network?.vpnActive === true || network?.type === "vpn";
-  const protectionTone = !protection?.running ? "unknown" : guard?.status === "active" ? "resting" : guard?.status === "permission_required" ? "growling" : "unknown";
-  const protectionTitle = !protection?.running ? "Protection off" : guard?.status === "active" ? "Active" : guard?.status === "permission_required" ? "Permission required" : guard?.status === "unsupported" ? "Not supported on this device" : "Available";
+  const protectionTone = !(protection?.requested ?? protection?.running) ? "unknown" : guard?.status === "active" ? "resting" : guard?.status === "permission_required" ? "growling" : "unknown";
+  const protectionTitle = !(protection?.requested ?? protection?.running) ? "Protection off" : guard?.status === "active" ? "Active" : guard?.status === "permission_required" ? "Permission required" : guard?.status === "unsupported" ? "Not supported on this device" : "Available";
 
   const run = async () => {
     const a = analyseNetwork({ status: network, context, trustedSsids, expectedName: expected, vpnTrusted, captiveUrl, sdk, recentScentCategories: scentCats });
@@ -87,7 +87,7 @@ export default function CheckNetwork() {
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="network-scroll">
         <Card testID="network-dashboard" style={{ gap: spacing.sm, borderColor: toneColor(colors, protectionTone) }}>
           <View style={s.row}><View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><Wifi size={20} color={toneColor(colors, protectionTone)} /><Text style={s.statTitle} testID="network-protection-title">{protectionTitle}</Text></View><Pill tone={guard ? capabilityTone(guard.status) : "unknown"} label={guard ? CAPABILITY_STATUS_LABEL[guard.status] : "Unknown"} testID="network-protection-pill" /></View>
-          <Body testID="network-protection-detail">{!protection?.running ? "Turn protection on in Guard for Apollo to watch connections." : guard?.status === "active" ? (sdkLive ? "Apollo is watching network destinations and blocking confirmed-dangerous ones." : "Apollo assesses the connection the platform reports. Destination blocking needs the native Security SDK — not in this build.") : guard?.detail ?? ""}</Body>
+          <Body testID="network-protection-detail">{!(protection?.requested ?? protection?.running) ? "Turn protection on in Guard for Apollo to watch connections." : guard?.status === "active" ? (sdkLive ? "Apollo is watching network destinations and blocking confirmed-dangerous ones." : "Apollo assesses the connection the platform reports. Destination blocking needs the native Security SDK — not in this build.") : guard?.detail ?? ""}</Body>
           <Text style={s.label}>Current network</Text>
           <Body testID="network-current">{!network?.connected ? "Not connected" : network.type === "wifi" ? `Wi‑Fi${network.ssid ? ` “${network.ssid}”` : " (name not revealed)"} · security ${network.wifiSecurity === "unknown" ? "not revealed" : network.wifiSecurity.toUpperCase()}${trustedSsids.includes(network.ssid ?? "") ? " · trusted" : ""}` : network.type === "cellular" ? "Mobile data" : `Connected via ${network.type}`}{vpnOn ? " · VPN on" : ""}</Body>
           <Text style={s.label}>Recent activity (24h)</Text>

@@ -1,0 +1,24 @@
+{
+  "summary": "Apollo V1 Security Hardening Gate step 1 (truth-of-state in MOCK mode) — frontend-only verification passed end-to-end at 390x844. Onboarding → disclosure → Home hero renders 'Apollo is patrolling' and the 'Guarding in the background' card is correctly hidden in mock (not operational). Guard tab shows 'Apollo is guarding what he can' with line 'Site Guard simulated · Link checks remain active.', pills 'Requested: on' / 'Enforcement: not active' / 'Not yet verified', coverage 'Demo data only — nothing is filtered or blocked on this device.', and degraded reason 'Mock adapter: protection is simulated for the preview and enforces nothing.'; switch is ON and Network Guard summary reads a normal connection line (not 'Protection is off'). Toggling OFF switches to 'Apollo is off duty' with the truth block hidden and network summary 'Protection is off — Apollo isn't watching connections.'; toggling back ON returns to 'guarding what he can' and the state persists across page reload. Block-flow regression: /check?url=…phishing.html yields 'Apollo is barking'; tapping Block shows toast 'Block could not be verified. Apollo is still barking.', reasons include 'Block not verified: Mock adapter (demo): nothing is blocked on this device. Native builds enforce with the DNS filter or Safari content blocker.', the state stays barking, and 'Apollo is biting' is never rendered anywhere. Patrol and Settings screens render; zero console errors observed across the run.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_29.json"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "protectionTruth.masterCopy correctly derives the three-state wording from ProtectionStatus without inferring anything in the UI; MockSecurityAdapter.getProtectionStatus enforces operational=false and blockDestination always returns verified=false, so 'Apollo is biting' is unreachable in mock as intended.",
+    "guard.tsx line 96: `guard-network-summary` gates on `requested` (not `running`/operational), which is the correct behaviour — when the switch is ON in mock the message shows the real connection summary instead of 'Protection is off'.",
+    "home.tsx line 63 gates the background card on `protection?.operational`, which is always false in mock, so the card is correctly suppressed on the web preview."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only)", "frontend": "100%"},
+  "seed_data_creation": "None.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Web preview runs in EXPO_PUBLIC_SECURITY_MODE=mock. Onboarding + disclosure required on fresh context to reach the tabs. Guard master-card testIDs verified: guard-master-title, guard-master-line, guard-truth-requested/operational/verified, guard-master-coverage, guard-master-degraded, guard-master-truth (hidden when protection off), guard-protection-switch, guard-network-summary. Block button on the /check result uses testID `event-block-button` (from EventActions). The check page opens as a modal overlay over the current tab — bottom tabs (tab-patrol, tab-settings, tab-home) are not clickable while the modal is open; close it or navigate via URL/tab click before the modal opens.",
+  "rca_of_issue": "N/A — no defects found for the requested review."
+}

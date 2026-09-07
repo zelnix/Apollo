@@ -12,7 +12,6 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
-import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
@@ -54,10 +53,7 @@ class ApolloDnsVpnService : VpnService() {
       val set = loadBlocked(ctx).toMutableSet(); set.remove(host.lowercase())
       ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putStringSet(KEY_BLOCKED, set).apply(); blocked = set
     }
-    fun isBlockedHost(host: String): Boolean {
-      val h = host.lowercase().trimEnd('.')
-      return blocked.any { h == it || h.endsWith(".$it") }
-    }
+    fun isBlockedHost(host: String): Boolean = DnsPacket.matchesBlocked(host, blocked)
   }
 
   private var tun: ParcelFileDescriptor? = null
@@ -116,44 +112,19 @@ class ApolloDnsVpnService : VpnService() {
 
   /** IPv4 + UDP + DNS only; anything else is dropped (the tunnel only routes the virtual DNS IP anyway). */
   private fun handlePacket(pkt: ByteArray, out: FileOutputStream) {
-    if (pkt.size < 28 || (pkt[0].toInt() shr 4) != 4 || pkt[9].toInt() != 17) return
-    val ihl = (pkt[0].toInt() and 0x0F) * 4
-    val udpStart = ihl
-    val dstPort = ((pkt[udpStart + 2].toInt() and 0xFF) shl 8) or (pkt[udpStart + 3].toInt() and 0xFF)
-    if (dstPort != 53) return
-    val dnsStart = udpStart + 8
-    val dns = pkt.copyOfRange(dnsStart, pkt.size)
-    val qname = parseQName(dns) ?: return
+    // Coverage boundary: only IPv4 + UDP + port 53 is inspected (see DnsPacket.isFilterableQuery / COVERAGE).
+    if (!DnsPacket.isFilterableQuery(pkt)) return
+    val ihl = DnsPacket.ihl(pkt)
+    val dns = DnsPacket.dnsPayload(pkt)
+    val qname = DnsPacket.parseQName(dns) ?: return
 
     val response: ByteArray = if (isBlockedHost(qname)) {
       blockedCount++; lastBlockedAt = System.currentTimeMillis()
-      nxdomain(dns)
+      DnsPacket.nxdomain(dns)
     } else {
       forward(dns) ?: return
     }
-    out.write(wrapReply(pkt, ihl, response))
-  }
-
-  private fun parseQName(dns: ByteArray): String? {
-    if (dns.size < 12) return null
-    var i = 12; val sb = StringBuilder()
-    while (i < dns.size) {
-      val len = dns[i].toInt() and 0xFF
-      if (len == 0) break
-      if (len >= 0xC0 || i + 1 + len > dns.size) return null
-      if (sb.isNotEmpty()) sb.append('.')
-      sb.append(String(dns, i + 1, len, Charsets.US_ASCII)); i += 1 + len
-    }
-    return sb.toString().ifEmpty { null }
-  }
-
-  /** Copy the question, set QR=1, RA=1, RCODE=3 (NXDOMAIN), zero answer counts. */
-  private fun nxdomain(query: ByteArray): ByteArray {
-    val r = query.copyOf()
-    r[2] = (r[2].toInt() or 0x80).toByte()          // QR
-    r[3] = ((r[3].toInt() and 0x70) or 0x80 or 0x03).toByte() // RA + RCODE 3
-    r[6] = 0; r[7] = 0; r[8] = 0; r[9] = 0; r[10] = 0; r[11] = 0
-    return r
+    out.write(DnsPacket.wrapReply(pkt, ihl, response))
   }
 
   private fun forward(query: ByteArray): ByteArray? {
@@ -166,27 +137,5 @@ class ApolloDnsVpnService : VpnService() {
       socket.receive(dp)
       return reply.copyOf(dp.length)
     } catch (_: Exception) { return null } finally { socket.close() }
-  }
-
-  /** Build an IPv4/UDP reply by swapping addresses and ports of the request. */
-  private fun wrapReply(req: ByteArray, ihl: Int, payload: ByteArray): ByteArray {
-    val total = 20 + 8 + payload.size
-    val b = ByteBuffer.allocate(total)
-    b.put((0x45).toByte()); b.put(0); b.putShort(total.toShort()); b.putShort(0); b.putShort(0x4000.toShort()); b.put(64); b.put(17); b.putShort(0)
-    b.put(req, 16, 4) // src = original dst
-    b.put(req, 12, 4) // dst = original src
-    val srcPort = ((req[ihl].toInt() and 0xFF) shl 8) or (req[ihl + 1].toInt() and 0xFF)
-    b.putShort(53); b.putShort(srcPort.toShort()); b.putShort((8 + payload.size).toShort()); b.putShort(0) // UDP checksum 0 = none (IPv4)
-    b.put(payload)
-    val arr = b.array()
-    val cs = ipChecksum(arr, 0, 20); arr[10] = (cs shr 8).toByte(); arr[11] = cs.toByte()
-    return arr
-  }
-
-  private fun ipChecksum(data: ByteArray, off: Int, len: Int): Int {
-    var sum = 0L; var i = off
-    while (i < off + len - 1) { sum += ((data[i].toInt() and 0xFF) shl 8) or (data[i + 1].toInt() and 0xFF); i += 2 }
-    while (sum shr 16 != 0L) sum = (sum and 0xFFFF) + (sum shr 16)
-    return (sum.inv() and 0xFFFF).toInt()
   }
 }

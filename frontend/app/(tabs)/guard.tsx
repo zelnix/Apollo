@@ -7,6 +7,7 @@ import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card, Pill, ScreenHeader, SectionTitle, capabilityTone } from "@/src/components/ui";
 import { CAPABILITY_STATUS_LABEL } from "@/src/domain/capability";
 import { assessConnection } from "@/src/domain/connection";
+import { masterCopy } from "@/src/domain/protectionTruth";
 import type { Capability } from "@/src/domain/types";
 import type { ProtectionPermission } from "@/src/security/SecurityPlatformAdapter";
 import { useApollo } from "@/src/store/ApolloContext";
@@ -33,7 +34,7 @@ export default function Guard() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { capabilities, protection, permissions, network, events, toggleProtection, requestPermission, adapterLabel, isMock, showToast, trustedSsids, trustNetwork, forgetNetwork } = useApollo();
+  const { capabilities, protection, permissions, network, events, toggleProtection, requestPermission, isMock, showToast, trustedSsids, trustNetwork, forgetNetwork } = useApollo();
   const [busy, setBusy] = useState(false);
   const netCap = capabilities.find((c) => c.id === "connection_guard");
   const connectionSummary = assessConnection(network, trustedSsids).summary;
@@ -48,6 +49,9 @@ export default function Guard() {
 
   const onToggle = async (on: boolean) => { setBusy(true); try { await toggleProtection(on); } finally { setBusy(false); } };
 
+  // Three facts from the security layer, reported — never inferred here: requested, operational, verified.
+  const { title: masterTitle, line: masterLine, requested, operational } = masterCopy(protection);
+
   const ask = async (perm: ProtectionPermission) => {
     setSheet(null);
     if (needsSettings(perm)) { void Linking.openSettings(); return; }
@@ -61,14 +65,25 @@ export default function Guard() {
         <ScreenHeader title="Guard" testID="guard-header" right={isMock ? <Pill tone="unknown" label="Mock" /> : null} />
       </View>
       <ScrollView contentContainerStyle={s.content} testID="guard-scroll">
-        <Card testID="guard-master-card">
+        <Card testID="guard-master-card" style={{ gap: spacing.sm }}>
           <View style={s.masterRow}>
             <View style={{ flex: 1, gap: 4 }}>
-              <Text style={s.masterTitle}>{protection?.running ? "Protection is on" : "Protection is off"}</Text>
-              <Body>{protection?.running ? `Apollo is watching within its active checks. Adapter: ${adapterLabel}.` : "Apollo cannot see anything while protection is off."}</Body>
+              <Text style={s.masterTitle} testID="guard-master-title">{masterTitle}</Text>
+              <Body testID="guard-master-line">{masterLine}</Body>
             </View>
-            <Switch testID="guard-protection-switch" value={!!protection?.running} onValueChange={onToggle} disabled={busy} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} />
+            <Switch testID="guard-protection-switch" value={requested} onValueChange={onToggle} disabled={busy} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} />
           </View>
+          {requested ? (
+            <View style={{ gap: 4 }} testID="guard-master-truth">
+              <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}>
+                <Pill tone="neutral" label="Requested: on" testID="guard-truth-requested" />
+                <Pill tone={operational ? "resting" : "growling"} label={operational ? "Enforcement: active" : "Enforcement: not active"} testID="guard-truth-operational" />
+                <Pill tone={operational ? "resting" : "unknown"} label={protection?.lastVerified ? `Verified ${new Date(protection.lastVerified).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Not yet verified"} testID="guard-truth-verified" />
+              </View>
+              <Body testID="guard-master-coverage">{protection?.coverage}</Body>
+              {protection?.degradedReason ? <Body testID="guard-master-degraded">{protection.degradedReason}</Body> : null}
+            </View>
+          ) : null}
         </Card>
 
         <View>
@@ -78,7 +93,7 @@ export default function Guard() {
               <Text style={s.capTitle}>Network Guard</Text>
               <Pill tone={netCap ? capabilityTone(netCap.status) : "unknown"} label={netCap ? CAPABILITY_STATUS_LABEL[netCap.status] : "Unknown"} testID="guard-network-status" />
             </View>
-            <Body testID="guard-network-summary">{!protection?.running ? "Protection is off — Apollo isn't watching connections." : `${connectionSummary} ${netOpen ? `${netOpen} unresolved network item${netOpen > 1 ? "s" : ""}.` : "No unresolved network issues."}`}</Body>
+            <Body testID="guard-network-summary">{!requested ? "Protection is off — Apollo isn't watching connections." : `${connectionSummary} ${netOpen ? `${netOpen} unresolved network item${netOpen > 1 ? "s" : ""}.` : "No unresolved network issues."}`}</Body>
             <Button testID="guard-open-network" variant="secondary" label="Open Network Guard" onPress={() => router.push("/network")} />
           </Card>
           <Card style={s.capCard} testID="guard-account-card">

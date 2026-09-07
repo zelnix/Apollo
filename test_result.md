@@ -371,3 +371,9 @@ frontend:
   - task: "HigginsReadAloud on /patrol/[id] (event-read-button/-progress) and /patrol/scent/[id] (incident-read-*); queued TTS playback with prefetch; narration builders unit-tested. Self-tested via screenshot (progress advanced 1→2 of 4)."
     implemented: true
     working: true
+
+## Iteration 29 — Security Hardening Gate: truth of state
+frontend:
+  - task: "Guard master card testIDs guard-master-title/-line/-truth/-coverage/-degraded, pills guard-truth-requested/-operational/-verified; switch bound to requested. Mock: 'Apollo is guarding what he can · Site Guard simulated', blockDestination never verified (biting unreachable in mock). Native Kotlin/Swift truth changes untestable here."
+    implemented: true
+    working: true

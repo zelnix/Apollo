@@ -59,8 +59,16 @@ class MockSecurityAdapterImpl implements SecurityPlatformAdapter {
     const caps = await this.getCapabilities();
     const active = caps.filter((c) => c.status === "active").length;
     const gaps = caps.some((c) => c.status === "permission_required" || c.status === "inactive");
+    // Mock = preview fixtures only. It is never "operational": nothing on this device is enforced.
     return {
-      running: this.running,
+      running: false,
+      requested: this.running,
+      operational: false,
+      enforcementMethod: "simulated",
+      coverage: "Demo data only — nothing is filtered or blocked on this device.",
+      coverageScope: [],
+      lastVerified: null,
+      degradedReason: this.running ? "Mock adapter: protection is simulated for the preview and enforces nothing." : null,
       visibility: !this.running || active === 0 ? "none" : gaps ? "limited" : "full",
       since: this.since,
       adapterLabel: this.label,
@@ -80,13 +88,14 @@ class MockSecurityAdapterImpl implements SecurityPlatformAdapter {
     if (this.scenario === "BLOCK_UNVERIFIED") {
       return { verified: false, method: "none", detail: "Simulated: the platform could not confirm the block.", adapterLabel: this.label, blockedAt: null };
     }
+    // A mock can never verify a block — that would let the preview say "Apollo is biting" with nothing enforced.
     this.blocked.add(host);
-    return { verified: true, method: "simulated", detail: "Simulated block confirmed by the mock adapter.", adapterLabel: this.label, blockedAt: new Date().toISOString() };
+    return { verified: false, method: "none", detail: "Mock adapter (demo): nothing is blocked on this device. Native builds enforce with the DNS filter or Safari content blocker.", adapterLabel: this.label, blockedAt: null };
   }
 
   async unblockDestination(host: string): Promise<BlockResult> {
     this.blocked.delete(host);
-    return { verified: true, method: "simulated", detail: "Simulated unblock.", adapterLabel: this.label, blockedAt: null };
+    return { verified: false, method: "none", detail: "Mock adapter (demo): nothing to unblock on this device.", adapterLabel: this.label, blockedAt: null };
   }
 
   async getNetworkStatus(): Promise<NetworkStatus> {

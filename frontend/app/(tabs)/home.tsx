@@ -46,7 +46,7 @@ export default function Home() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { resolution, capabilities, protection, adapterLabel, isMock, refreshing, verifyNow, events, lastVerifiedAt, lowPower, quietNow, showToast } = useApollo();
-  const visibility = visibilityFrom(capabilities, !!protection?.running);
+  const visibility = visibilityFrom(capabilities, !!(protection?.requested ?? protection?.running));
   const recent = events.slice(0, 4);
   const digest = buildWeeklyDigest(events);
   const scents = buildScents(events);
@@ -60,7 +60,7 @@ export default function Home() {
         <ApolloHero resolution={resolution} visibility={visibility} adapterLabel={adapterLabel} isMock={isMock} animate={!lowPower} quietNow={quietNow} sniffing={refreshing} />
         <HigginsGreeting state={resolution.visibilityLost ? "lost" : resolution.state} />
         <ClipboardLinkBanner />
-        {protection?.running ? (
+        {protection?.operational ? (
           <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }} testID="home-background-card">
             <BatteryCharging size={20} color={colors.resting} />
             <View style={{ flex: 1 }}><Body>Guarding in the background — minimise to save battery.</Body></View>

@@ -451,7 +451,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     showToast("Patrol history cleared", "neutral");
   }, [deviceId, persistEvents, qc, showToast]);
 
-  const visibility = useMemo(() => visibilityFrom(capabilities, !!protection?.running), [capabilities, protection]);
+  const visibility = useMemo(() => visibilityFrom(capabilities, !!(protection?.requested ?? protection?.running)), [capabilities, protection]);
   const resolution = useMemo(() => resolveApolloState({ events, visibility, lastVerifiedAt }), [events, visibility, lastVerifiedAt]);
 
   const value: ApolloContextValue = {

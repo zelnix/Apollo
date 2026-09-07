@@ -9,9 +9,28 @@ import SafariServices
 /// A block is "verified" only when the reload succeeds AND the extension is
 /// enabled in Settings › Safari › Extensions. Nothing is inferred.
 public class ApolloSecurityModule: Module {
-  private var protectionSince: String? = nil
   private let label = "iOS security module"
+  /// Last observed extension state + when it was observed. Never assumed; refreshed from SFContentBlockerManager.
   private var blockerEnabled: Bool? = nil
+  private var blockerVerifiedAt: String? = nil
+
+  /// Exactly what the Safari content blocker covers. Everything else is NOT covered and the UI says so.
+  private let coverage = "Covers websites opened in Safari (and Safari View Controller inside other apps). Not covered: Chrome, Firefox and other browsers, in-app browsers that don't use Safari, and non-browser apps."
+  private let coverageScope = ["browser:safari"]
+
+  // Truth model: `requested` is the person's intent, persisted in the App Group so it survives relaunch.
+  // `operational` is never stored — it is derived from the extension state each time it is reported.
+  private var requestedKey: String { "apollo.siteguard.requested" }
+  private var sinceKey: String { "apollo.siteguard.since" }
+  private var requested: Bool {
+    get { UserDefaults(suiteName: appGroup)?.bool(forKey: requestedKey) ?? false }
+    set { UserDefaults(suiteName: appGroup)?.set(newValue, forKey: requestedKey) }
+  }
+  private var protectionSince: String? {
+    get { UserDefaults(suiteName: appGroup)?.string(forKey: sinceKey) }
+    set { UserDefaults(suiteName: appGroup)?.set(newValue, forKey: sinceKey) }
+  }
+  private var rulesWritten: Bool { listURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false }
 
   private var appBundleId: String { Bundle.main.bundleIdentifier ?? "" }
   private var blockerId: String { "\(appBundleId).contentblocker" }
@@ -26,7 +45,7 @@ public class ApolloSecurityModule: Module {
 
     AsyncFunction("getCapabilities") { (promise: Promise) in
       self.refreshBlockerState { enabled in
-        let running = self.protectionSince != nil
+        let running = self.requested
         let site: (String, String) = enabled == true
           ? (running ? "active" : "inactive", running ? "Safari blocks verified threat domains via Apollo's content blocker." : "Turn protection on to activate the Safari content blocker.")
           : ("permission_required", "Enable Apollo in Settings › Safari › Extensions to block threat sites in Safari.")
@@ -40,7 +59,9 @@ public class ApolloSecurityModule: Module {
       }
     }
 
-    AsyncFunction("getProtectionStatus") { () -> String in self.statusJSON() }
+    AsyncFunction("getProtectionStatus") { (promise: Promise) in
+      self.refreshBlockerState { _ in promise.resolve(self.statusJSON()) }
+    }
 
     AsyncFunction("analyseURL") { (_ url: String) -> String in
       self.json(["supported": false, "verdict": "unknown", "reasons": ["Native URL analysis not implemented yet."]])
@@ -88,7 +109,7 @@ public class ApolloSecurityModule: Module {
         let vpn = path.availableInterfaces.contains { $0.type == .other && $0.name.hasPrefix("utun") }
         let finish: (String, String?) -> Void = { sec, ssid in
           promise.resolve(self.json(["connected": path.status == .satisfied, "type": type, "isInternetReachable": path.status == .satisfied,
-                                     "inspectable": self.protectionSince != nil, "wifiSecurity": sec, "captivePortal": NSNull(), "vpnActive": vpn, "ssid": ssid ?? NSNull(), "checkedAt": self.now()]))
+                                     "inspectable": self.requested, "wifiSecurity": sec, "captivePortal": NSNull(), "vpnActive": vpn, "ssid": ssid ?? NSNull(), "checkedAt": self.now()]))
         }
         guard type == "wifi" else { finish("n/a", nil); return }
         if #available(iOS 14.0, *) {
@@ -105,15 +126,23 @@ public class ApolloSecurityModule: Module {
 
     AsyncFunction("getSecuritySignals") { () -> String in "[]" }
 
-    AsyncFunction("startProtection") { () -> String in
+    AsyncFunction("startProtection") { (promise: Promise) in
+      self.requested = true
       if self.protectionSince == nil { self.protectionSince = self.now() }
       _ = self.writeRules(self.blockedHosts())
-      SFContentBlockerManager.reloadContentBlocker(withIdentifier: self.blockerId, completionHandler: nil)
-      return self.statusJSON()
+      // Report only after Safari has answered: reload result + real extension state.
+      SFContentBlockerManager.reloadContentBlocker(withIdentifier: self.blockerId) { _ in
+        self.refreshBlockerState { _ in promise.resolve(self.statusJSON()) }
+      }
     }
-    AsyncFunction("stopProtection") { () -> String in
+    AsyncFunction("stopProtection") { (promise: Promise) in
+      self.requested = false
       self.protectionSince = nil
-      return self.statusJSON()
+      // Turning protection off must also stop enforcing: write an empty rule list and reload.
+      _ = self.writeRules([])
+      SFContentBlockerManager.reloadContentBlocker(withIdentifier: self.blockerId) { _ in
+        self.refreshBlockerState { _ in promise.resolve(self.statusJSON()) }
+      }
     }
 
     AsyncFunction("getProtectionPermissions") { (promise: Promise) in
@@ -142,6 +171,7 @@ public class ApolloSecurityModule: Module {
     SFContentBlockerManager.getStateOfContentBlocker(withIdentifier: blockerId) { state, error in
       let enabled: Bool? = error == nil ? state?.isEnabled : nil
       self.blockerEnabled = enabled
+      if enabled != nil { self.blockerVerifiedAt = self.now() }
       done(enabled)
     }
   }
@@ -153,21 +183,28 @@ public class ApolloSecurityModule: Module {
     UserDefaults(suiteName: appGroup)?.set(Array(hosts).sorted(), forKey: blockedKey)
   }
 
-  /// Writes Safari content-blocker rules: one "block" rule covering every verified host (and subdomains).
+  /// Writes the Safari rule list built by SiteGuardTruth.rules (pure, unit-tested).
   private func writeRules(_ hosts: Set<String>) -> Bool {
-    guard let url = listURL else { return false }
-    let rules: [[String: Any]] = hosts.isEmpty
-      ? [["trigger": ["url-filter": "^https?://apollo\\.invalid/"], "action": ["type": "block"]]]  // Safari requires ≥1 rule
-      : [["trigger": ["url-filter": ".*", "if-domain": hosts.sorted().map { "*\($0)" }], "action": ["type": "block"]]]
-    guard let data = try? JSONSerialization.data(withJSONObject: rules) else { return false }
+    guard let url = listURL, let data = try? JSONSerialization.data(withJSONObject: SiteGuardTruth.rules(for: hosts)) else { return false }
     return (try? data.write(to: url, options: .atomic)) != nil
   }
 
+  /// requested = intent · operational = extension enabled (observed) AND rules written · degradedReason = the gap.
+  /// Derivation lives in SiteGuardTruth so it is unit-tested; this only reads observed inputs and formats.
   private func statusJSON() -> String {
-    json([
-      "running": protectionSince != nil,
-      "visibility": protectionSince == nil ? "none" : "limited",
-      "since": protectionSince ?? NSNull(),
+    let wants = requested
+    let d = SiteGuardTruth.derive(requested: wants, blockerEnabled: blockerEnabled, rulesWritten: rulesWritten)
+    return json([
+      "running": d.operational,
+      "requested": wants,
+      "operational": d.operational,
+      "enforcementMethod": d.enforcementMethod,
+      "coverage": d.operational ? coverage : "Nothing is being blocked in Safari right now. Link checks you run in Apollo still work.",
+      "coverageScope": d.operational ? coverageScope : [],
+      "lastVerified": blockerVerifiedAt ?? NSNull(),
+      "degradedReason": d.degradedReason ?? NSNull(),
+      "visibility": wants ? "limited" : "none",
+      "since": wants ? (protectionSince ?? NSNull()) : NSNull(),
       "adapterLabel": label,
       "checkedAt": now(),
     ])

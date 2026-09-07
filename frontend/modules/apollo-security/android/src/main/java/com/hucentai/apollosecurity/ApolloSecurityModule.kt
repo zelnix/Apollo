@@ -18,8 +18,26 @@ import java.time.Instant
  */
 class ApolloSecurityModule : Module() {
   private val ctx: Context get() = appContext.reactContext ?: throw IllegalStateException("No context")
-  private var protectionSince: String? = null
   private val label = "Android security module"
+
+  // Truth model. `requested` is the person's intent and survives process recreation (SharedPreferences).
+  // `operational` is NEVER stored: it is read from ApolloDnsVpnService.isRunning every time it is reported.
+  private val prefs get() = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+  private var requested: Boolean
+    get() = prefs.getBoolean(KEY_REQUESTED, false)
+    set(v) { prefs.edit().putBoolean(KEY_REQUESTED, v).apply() }
+  private var protectionSince: String?
+    get() = prefs.getString(KEY_SINCE, null)
+    set(v) { prefs.edit().putString(KEY_SINCE, v).apply() }
+
+  companion object {
+    private const val PREFS = "apollo_siteguard"
+    private const val KEY_REQUESTED = "protection_requested"
+    private const val KEY_SINCE = "protection_since"
+    /** Exactly what the DNS filter sees. Anything outside this is NOT covered and the UI says so. */
+    const val COVERAGE = "Covers DNS lookups over IPv4 UDP port 53 from apps that use the system resolver. Not covered: IPv6 DNS, DNS over TCP, private/encrypted DNS (DoH/DoT), apps with their own resolver, and traffic on networks using a captive portal."
+    val COVERAGE_SCOPE = listOf("dns:ipv4", "dns:udp-53", "resolver:system")
+  }
 
   override fun definition() = ModuleDefinition {
     Name("ApolloSecurity")
@@ -28,12 +46,12 @@ class ApolloSecurityModule : Module() {
       val vpnGranted = VpnService.prepare(ctx) == null
       val running = ApolloDnsVpnService.isRunning
       JSONArray().apply {
-        put(cap("link_guard", "Link Guard", if (protectionSince != null) "active" else "available", "Checks links you paste or share into Apollo."))
-        put(cap("known_threats", "Known Threat Lookup", if (protectionSince != null) "active" else "available", "Privacy-preserving reputation checks using the link only."))
+        put(cap("link_guard", "Link Guard", if (requested) "active" else "available", "Checks links you paste or share into Apollo."))
+        put(cap("known_threats", "Known Threat Lookup", if (requested) "active" else "available", "Privacy-preserving reputation checks using the link only."))
         put(cap("site_guard", "Site Guard",
           when { running -> "active"; vpnGranted -> "inactive"; else -> "permission_required" },
           when { running -> "Blocking verified threat domains with an on-device DNS filter."; vpnGranted -> "Turn protection on to start the DNS filter."; else -> "Needs the local VPN permission to filter DNS lookups on this device." }))
-        put(cap("connection_guard", "Connection Guard", if (protectionSince != null) "active" else "available", "Warns about open, WEP or captive-portal Wi‑Fi using Android's own network report."))
+        put(cap("connection_guard", "Connection Guard", if (requested) "active" else "available", "Warns about open, WEP or captive-portal Wi‑Fi using Android's own network report."))
         put(cap("share_intake", "Share to Apollo", "active", "Share a link from any app to check it."))
       }.toString()
     }
@@ -94,7 +112,7 @@ class ApolloSecurityModule : Module() {
       val ssid = rawSsid?.trim('"')?.takeIf { it.isNotBlank() && it != "<unknown ssid>" }
       JSONObject().put("connected", caps != null).put("type", type)
         .put("isInternetReachable", caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) ?: JSONObject.NULL)
-        .put("inspectable", protectionSince != null).put("wifiSecurity", wifiSecurity)
+        .put("inspectable", requested).put("wifiSecurity", wifiSecurity)
         .put("captivePortal", captive ?: JSONObject.NULL).put("vpnActive", type == "vpn").put("ssid", ssid ?: JSONObject.NULL).put("checkedAt", now()).toString()
     }
 
@@ -109,18 +127,23 @@ class ApolloSecurityModule : Module() {
     }
 
     AsyncFunction("startProtection") {
-      protectionSince = protectionSince ?: now()
+      requested = true
+      if (protectionSince == null) protectionSince = now()
       if (VpnService.prepare(ctx) == null) {
         ctx.startService(Intent(ctx, ApolloDnsVpnService::class.java).setAction(ApolloDnsVpnService.ACTION_START))
-        Thread.sleep(250) // give establish() a moment so the status we report is real
+        // Wait for establish() to actually succeed (or not) — up to 2 s — so the status we return is observed, not assumed.
+        var waited = 0
+        while (!ApolloDnsVpnService.isRunning && waited < 2000) { Thread.sleep(100); waited += 100 }
       }
       statusJson()
     }
 
     AsyncFunction("stopProtection") {
+      requested = false
       protectionSince = null
       ctx.startService(Intent(ctx, ApolloDnsVpnService::class.java).setAction(ApolloDnsVpnService.ACTION_STOP))
-      Thread.sleep(150)
+      var waited = 0
+      while (ApolloDnsVpnService.isRunning && waited < 1500) { Thread.sleep(100); waited += 100 }
       statusJson()
     }
 
@@ -150,15 +173,35 @@ class ApolloSecurityModule : Module() {
   private fun perm(id: String, title: String, status: String, canAskAgain: Boolean, why: String) =
     JSONObject().put("id", id).put("title", title).put("status", status).put("canAskAgain", canAskAgain).put("why", why)
 
+  /**
+   * requested  = what the person asked for (persisted intent)
+   * operational = ApolloDnsVpnService.isRunning, observed now — the only source of "protection is on"
+   * degradedReason explains any gap between the two, in plain words.
+   */
   private fun statusJson(): String {
-    val running = protectionSince != null
-    val filter = ApolloDnsVpnService.isRunning
+    val wants = requested
+    val operational = ApolloDnsVpnService.isRunning
+    val vpnGranted = VpnService.prepare(ctx) == null
+    val degraded: String? = when {
+      !wants -> null
+      operational -> null
+      !vpnGranted -> "The local VPN permission is missing or was revoked, so the DNS filter cannot run. Allow it under Permissions."
+      else -> "The DNS filter is not running (another VPN may have taken over, or Android stopped the service). Turn protection off and on again."
+    }
+    val ts = now()
     return JSONObject()
-      .put("running", running)
-      .put("visibility", when { !running -> "none"; filter -> "limited"; else -> "limited" })
-      .put("since", protectionSince ?: JSONObject.NULL)
+      .put("running", operational)
+      .put("requested", wants)
+      .put("operational", operational)
+      .put("enforcementMethod", if (operational) "dns_filter" else "none")
+      .put("coverage", if (operational) COVERAGE else "Nothing is being filtered on this device right now. Link checks you run in Apollo still work.")
+      .put("coverageScope", JSONArray(if (operational) COVERAGE_SCOPE else emptyList<String>()))
+      .put("lastVerified", ts) // isRunning is read from the live service at this instant
+      .put("degradedReason", degraded ?: JSONObject.NULL)
+      .put("visibility", if (!wants) "none" else "limited")
+      .put("since", if (wants) (protectionSince ?: JSONObject.NULL) else JSONObject.NULL)
       .put("adapterLabel", label)
-      .put("checkedAt", now())
+      .put("checkedAt", ts)
       .toString()
   }
 
