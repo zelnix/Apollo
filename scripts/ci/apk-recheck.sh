@@ -109,12 +109,18 @@ bundle_ok = os.path.isfile(bundle) and os.path.getsize(bundle) > 100_000
 print(f"{'PASS' if bundle_ok else 'FAIL'}  embedded JS bundle assets/index.android.bundle ({os.path.getsize(bundle) if os.path.isfile(bundle) else 0} bytes)")
 if not bundle_ok: hits.append("JS bundle not embedded (debug variant built without debuggableVariants = [])")
 sha = os.environ.get("GITHUB_SHA")
-if sha and bundle_ok:
-    sha_ok = sha.encode() in open(bundle, "rb").read()
+run_id = os.environ.get("GITHUB_RUN_ID")
+if sha and run_id and bundle_ok:
+    blob = open(bundle, "rb").read()
+    sha_ok = sha.encode() in blob
     print(f"{'PASS' if sha_ok else 'FAIL'}  build commit {sha[:12]}… inlined in the JS bundle (EXPO_PUBLIC_GIT_SHA)")
     if not sha_ok: hits.append("EXPO_PUBLIC_GIT_SHA not inlined in the embedded bundle")
+    # Hermes keeps string literals verbatim; require the run id as a standalone token so e.g. run 123 cannot satisfy 1234.
+    run_ok = re.search(rb"(?<![0-9])" + re.escape(run_id.encode()) + rb"(?![0-9])", blob) is not None
+    print(f"{'PASS' if run_ok else 'FAIL'}  CI run id {run_id} inlined in the JS bundle (EXPO_PUBLIC_CI_RUN_ID)")
+    if not run_ok: hits.append("EXPO_PUBLIC_CI_RUN_ID not inlined in the embedded bundle")
 elif bundle_ok:
-    print("INFO  GITHUB_SHA unset (local run): bundle commit binding not checked")
+    print("INFO  GITHUB_SHA/GITHUB_RUN_ID unset (local run): bundle provenance binding not checked")
 if hits:
     print("FAIL  secret/config leakage:"); [print("      " + h) for h in hits]; sys.exit(1)
 print("PASS  no private key material, admin token, DB URL or backend .env content packaged")
