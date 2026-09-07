@@ -138,6 +138,24 @@ Verdict: test-environment defect; **no Apollo process death, no recovery relaunc
 - `.github/workflows/native-gates.yml` — emulator image `target: default` (AOSP, no Pixel Launcher/GMS) instead of `google_apis`.
 - `docs/M1_CI_RUNBOOK.md` (this note). Next fully green run → the phone may proceed (its APK will differ only by this CI change; re-verify the card).
 
+### Run 34131512062 (tip `c844390`) — **5/5 green** (smoke: AOSP image, header on attempt 1, pid stable). Phone proof reached the verifier → same-version rollback bug — correction pass 8
+Phone (`f1fd234` APK, VPN consent granted): `valid=ROLLBACK`, `tampered=PAYLOAD_HASH_MISMATCH`, `unknownKey=UNKNOWN_KEY`; `startProtection()` correctly
+SKIPPED, no block claimed (fail-safe held). Root cause: `RuleBundleVerifier` rejected `bundleVersion <= highestAccepted`, and the SharedPreferences store
+had already recorded 25 from the first successful verification, so the identical authentic v25 could never be re-verified after restart/update/re-fetch.
+Secure fix (Kotlin + Swift + Python in parity; TS contracts updated):
+- Store now persists the **signed-envelope identity** with the version (`AcceptedBundle(bundleVersion, envelopeHash)`, `envelopeHash` =
+  SHA-256 of the JCS canonical unsigned envelope = everything the Ed25519 signature covers, computed only after the signature verified).
+- Semantics: `version < highest` → `ROLLBACK`; `version > highest` → accept, record replaces; `version == highest` and same identity → **accept
+  idempotently**; `version == highest` and different authenticated identity → new reason **`VERSION_CONFLICT`** (never silently replaced, never
+  mislabelled as rollback). Rejected bundles never touch the store. Legacy version-only records (the proof phone's state: key `<rulesetId>` = 25,
+  no identity) accept the same version once and pin its identity in place — so the corrected APK is installed **over** the existing install,
+  without clearing data, and the regression is exercised by the phone itself.
+- Tests: Kotlin `RuleBundleVerifierTest` (+4: idempotent across "restart", conflict, legacy pin, rejected-never-advances) and
+  `BundleVersionStoreTest` (+1: monotonic merge); Swift `RuleBundleVerifierParityTests` (+4 mirrors); Python `test_rollback_protection.py` (+3) and
+  `test_frozen_bundle_public_verification.py` (v25 re-accepted with highest=25; conflict with foreign identity; 26 → ROLLBACK). Local: pytest 89 passed,
+  node 14/14; Kotlin/Swift compile + tests run in CI (`android`, `ios` jobs).
+- Untouched: frozen bundle v25, signing keys, controlled endpoint/IP, VPN /32 enforcement, THREAT_BLOCKED semantics, verification order.
+
 ## 4. Download artifacts and attach here
 | Artifact | Files to attach |
 |---|---|

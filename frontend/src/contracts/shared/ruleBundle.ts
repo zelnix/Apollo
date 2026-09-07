@@ -40,7 +40,8 @@ export type BundleRejectReason =
   | "SIGNATURE_INVALID"
   | "NOT_YET_VALID"
   | "EXPIRED"
-  | "ROLLBACK";
+  | "ROLLBACK"
+  | "VERSION_CONFLICT"; // same bundleVersion as the accepted one, different authenticated signed envelope
 
 const ISO_Z = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 const ID_RE = /^[a-z0-9-]+$/;

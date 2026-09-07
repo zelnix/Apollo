@@ -5,6 +5,8 @@ verify: schema -> payloadHash -> keyId known -> signature -> issued/expiry -> ro
 """
 from __future__ import annotations
 
+import hashlib
+
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 
@@ -32,11 +34,17 @@ class RejectReason(str, Enum):
     NOT_YET_VALID = "NOT_YET_VALID"
     EXPIRED = "EXPIRED"
     ROLLBACK = "ROLLBACK"
+    VERSION_CONFLICT = "VERSION_CONFLICT"  # same bundleVersion as the accepted one, different authenticated signed envelope
 
 
 class VerificationResult:
-    def __init__(self, accepted: bool, reason: RejectReason | None = None, bundle: SignedRuleBundle | None = None):
-        self.accepted, self.reason, self.bundle = accepted, reason, bundle
+    def __init__(self, accepted: bool, reason: RejectReason | None = None, bundle: SignedRuleBundle | None = None, envelope_hash: str | None = None):
+        self.accepted, self.reason, self.bundle, self.envelope_hash = accepted, reason, bundle, envelope_hash
+
+
+def envelope_hash(bundle: SignedRuleBundle) -> str:
+    """Identity of everything the signature covers: SHA-256 of the JCS canonical unsigned envelope (parity: Kotlin/Swift store this)."""
+    return hashlib.sha256(canonical_bytes(bundle.unsigned_dict())).hexdigest()
 
 
 def payload_hash(payload: RulePayload | dict) -> str:
@@ -75,7 +83,11 @@ def verify_bundle(
     trusted_keys: dict[str, str],
     now: datetime,
     highest_accepted_version: int | None = None,
+    highest_accepted_envelope_hash: str | None = None,
 ) -> VerificationResult:
+    """Rollback semantics (identical on Kotlin/Swift): version < highest -> ROLLBACK; version > highest -> accepted; version == highest
+    with the same envelope identity (or no recorded identity) -> accepted idempotently; version == highest with a different
+    authenticated identity -> VERSION_CONFLICT."""
     try:
         bundle = SignedRuleBundle.model_validate(raw, strict=True)
     except ValidationError:
@@ -91,6 +103,10 @@ def verify_bundle(
         return VerificationResult(False, RejectReason.NOT_YET_VALID)
     if parse_iso_z(bundle.expiresAt) <= now:
         return VerificationResult(False, RejectReason.EXPIRED)
-    if highest_accepted_version is not None and bundle.bundleVersion <= highest_accepted_version:
-        return VerificationResult(False, RejectReason.ROLLBACK)
-    return VerificationResult(True, None, bundle)
+    identity = envelope_hash(bundle)
+    if highest_accepted_version is not None:
+        if bundle.bundleVersion < highest_accepted_version:
+            return VerificationResult(False, RejectReason.ROLLBACK)
+        if bundle.bundleVersion == highest_accepted_version and highest_accepted_envelope_hash not in (None, identity):
+            return VerificationResult(False, RejectReason.VERSION_CONFLICT)
+    return VerificationResult(True, None, bundle, identity)

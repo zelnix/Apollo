@@ -39,13 +39,46 @@ final class RuleBundleVerifierParityTests: XCTestCase {
         try assertRejected("signing/unknown_key_bundle.json", .unknownKey)
     }
 
-    func testRollback() throws {
+    private let ruleset = "gd-m1-controlled-block"
+    private func envelopeHash(_ path: String) throws -> String {
+        var root = try JSONSerialization.jsonObject(with: try TestVectors.load(path)) as! [String: Any]
+        root.removeValue(forKey: "signature")
+        return RuleBundleVerifier.sha256Hex(try JCSCanonicalizer.canonicalData(root))
+    }
+
+    /// Physical M1 finding: the same authentic bundle must be accepted again after restart (same version is NOT a rollback).
+    func testSameTrustedBundleAcceptedIdempotentlyAcrossRestarts() throws {
+        let store = InMemoryBundleVersionStore()
+        guard case .accepted = verifier(store).verify(rawJson: try TestVectors.load("signing/valid_bundle.json")) else { return XCTFail("first acceptance") }
+        XCTAssertEqual(store.highestAccepted(rulesetId: ruleset), AcceptedBundle(bundleVersion: 3, envelopeHash: try envelopeHash("signing/valid_bundle.json")))
+        let afterRestart = verifier(store)
+        guard case .accepted = afterRestart.verify(rawJson: try TestVectors.load("signing/valid_bundle.json")) else { return XCTFail("idempotent re-verification") }
+        XCTAssertEqual(store.highestAccepted(rulesetId: ruleset)?.bundleVersion, 3)
+        try assertRejected("signing/rollback_bundle.json", .rollback, afterRestart)
+    }
+
+    func testSameVersionDifferentEnvelopeIsAConflict() throws {
+        let store = InMemoryBundleVersionStore()
+        let other = String(repeating: "0", count: 64)
+        store.recordAccepted(rulesetId: ruleset, bundleVersion: 3, envelopeHash: other)
+        try assertRejected("signing/valid_bundle.json", .versionConflict, verifier(store))
+        XCTAssertEqual(store.highestAccepted(rulesetId: ruleset), AcceptedBundle(bundleVersion: 3, envelopeHash: other))
+    }
+
+    func testLegacyVersionOnlyRecordAcceptsSameVersionAndPinsIdentity() throws {
+        let store = InMemoryBundleVersionStore()
+        store.recordAccepted(rulesetId: ruleset, bundleVersion: 3, envelopeHash: nil)
+        guard case .accepted = verifier(store).verify(rawJson: try TestVectors.load("signing/valid_bundle.json")) else { return XCTFail("legacy record must accept the same version") }
+        XCTAssertEqual(store.highestAccepted(rulesetId: ruleset)?.envelopeHash, try envelopeHash("signing/valid_bundle.json"))
+    }
+
+    func testRejectedBundlesNeverAdvanceRollbackState() throws {
         let store = InMemoryBundleVersionStore()
         let v = verifier(store)
-        _ = v.verify(rawJson: try TestVectors.load("signing/valid_bundle.json"))
-        XCTAssertEqual(store.highestAccepted(rulesetId: "gd-m1-controlled-block"), 3)
-        try assertRejected("signing/rollback_bundle.json", .rollback, v)
-        try assertRejected("signing/valid_bundle.json", .rollback, v)
+        try assertRejected("signing/tampered_payload_bundle.json", .payloadHashMismatch, v)
+        try assertRejected("signing/unknown_key_bundle.json", .unknownKey, v)
+        try assertRejected("signing/expired_bundle.json", .expired, v)
+        XCTAssertNil(store.highestAccepted(rulesetId: ruleset))
     }
 
     func testKeyRollover() throws {

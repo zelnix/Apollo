@@ -30,7 +30,7 @@ Every ticket lists dependencies and pass/fail criteria. IDs are stable; referenc
 | CR-03 | Ed25519 M1 test keypair `gd-m1-test-ed25519-001`; private key env-only; public key pinned | — | `backend/.env` gitignored, `.env.example` has no secrets; pinned key == env public key (test) | ✅ |
 | CR-04 | Verification order: schema → hash → key → signature → time → rollback | CR-01..03 | Manifest test passes on Python; same expectations in Kotlin/Swift tests | ✅/📝 |
 | CR-05 | Key rollover: introduce key 002, retire 001 without API/bridge change | CR-03 | `test_keys_metadata.py`, `keyRolloverWithoutBridgeChanges`, `testKeyRollover` | ✅/📝 |
-| CR-06 | Rollback store (in-memory core; SharedPreferences / UserDefaults in bridge) with frozen clock tests | CR-04 | Older or equal version → `ROLLBACK` | ✅/📝 |
+| CR-06 | Rollback store (in-memory core; SharedPreferences / UserDefaults in bridge) with frozen clock tests | CR-04 | Older version → `ROLLBACK`; same version + same signed envelope → idempotent accept; same version + different envelope → `VERSION_CONFLICT` | ✅/📝 |
 | CR-07 | Generate committed fixtures deterministically | CR-03 | `test_bundle_fixture_generation.py` byte-identical regeneration | ✅ |
 
 ## C. FastAPI / signing / intelligence (Phase 4)

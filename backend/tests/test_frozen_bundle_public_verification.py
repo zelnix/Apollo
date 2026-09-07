@@ -14,7 +14,7 @@ from pathlib import Path
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from app.services.jcs_canonicalization import canonical_bytes as canonicalize
-from app.services.rule_signer import verify_bundle
+from app.services.rule_signer import RejectReason, verify_bundle
 
 ROOT = Path(__file__).resolve().parents[2]
 FROZEN = json.loads((ROOT / "security/frozen/controlled-bundle-v25.json").read_text())
@@ -46,5 +46,12 @@ def test_frozen_bundle_signature_verifies_with_pinned_public_key_only():
 def test_frozen_bundle_rejected_by_any_other_key_and_below_frozen_version():
     other = base64.b64encode(bytes(32)).decode()
     assert not verify_bundle(FROZEN, {PINNED_KEY_ID: other}, datetime.now(timezone.utc)).accepted
-    # rollback protection: once v25 is accepted, v25 itself is not "newer"
-    assert not verify_bundle(FROZEN, {PINNED_KEY_ID: PINNED_PUBLIC_B64}, datetime.now(timezone.utc), highest_accepted_version=25).accepted
+    # rollback protection: after v25 the SAME frozen v25 is re-accepted idempotently (device restart/update — physical M1 finding),
+    # a same-version bundle with a different signed envelope is a conflict, and anything below 25 is a rollback.
+    now = datetime.now(timezone.utc)
+    accepted = verify_bundle(FROZEN, {PINNED_KEY_ID: PINNED_PUBLIC_B64}, now, highest_accepted_version=25)
+    assert accepted.accepted and accepted.envelope_hash
+    assert verify_bundle(FROZEN, {PINNED_KEY_ID: PINNED_PUBLIC_B64}, now, highest_accepted_version=25, highest_accepted_envelope_hash=accepted.envelope_hash).accepted
+    conflict = verify_bundle(FROZEN, {PINNED_KEY_ID: PINNED_PUBLIC_B64}, now, highest_accepted_version=25, highest_accepted_envelope_hash="0" * 64)
+    assert not conflict.accepted and conflict.reason == RejectReason.VERSION_CONFLICT
+    assert verify_bundle(FROZEN, {PINNED_KEY_ID: PINNED_PUBLIC_B64}, now, highest_accepted_version=26).reason == RejectReason.ROLLBACK

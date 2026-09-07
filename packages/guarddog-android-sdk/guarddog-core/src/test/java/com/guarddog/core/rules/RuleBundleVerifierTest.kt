@@ -2,6 +2,8 @@ package com.guarddog.core.rules
 
 import com.guarddog.core.clock.FixedClock
 import java.io.File
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -52,13 +54,61 @@ class RuleBundleVerifierTest {
         assertRejected("signing/unknown_key_bundle.json", RejectReason.UNKNOWN_KEY)
     }
 
-    @Test fun rollbackRejectedAfterNewerVersionAccepted() {
+    private val ruleset = "gd-m1-controlled-block"
+    private fun envelopeHashOf(path: String): String {
+        val root = StrictJson.parseToJsonElement(read(path)).jsonObject
+        return RuleBundleVerifier.sha256Hex(RuleBundleVerifier.canonical(JsonObject(root.filterKeys { it != "signature" }).toString()))
+    }
+
+    /** Physical M1 finding: after v25 had been recorded, the SAME authentic v25 came back as ROLLBACK on every later verification. */
+    @Test fun sameTrustedBundleIsAcceptedIdempotentlyAcrossRestarts() {
+        val store = InMemoryBundleVersionStore()
+        // 1. first acceptance records version + envelope identity
+        assertIs<VerificationResult.Accepted>(verifier(store).verify(read("signing/valid_bundle.json")))
+        assertEquals(AcceptedBundle(3L, envelopeHashOf("signing/valid_bundle.json")), store.highestAccepted(ruleset))
+        // 2. "restart": a new verifier over the persisted state re-verifies the exact same bundle -> accepted, state unchanged
+        val afterRestart = verifier(store)
+        assertIs<VerificationResult.Accepted>(afterRestart.verify(read("signing/valid_bundle.json")))
+        assertIs<VerificationResult.Accepted>(afterRestart.verify(read("signing/valid_bundle.json")))
+        assertEquals(AcceptedBundle(3L, envelopeHashOf("signing/valid_bundle.json")), store.highestAccepted(ruleset))
+        // 3. an older validly signed bundle is still a rollback
+        assertRejected("signing/rollback_bundle.json", RejectReason.ROLLBACK, afterRestart)
+        assertEquals(3L, store.highestAccepted(ruleset)?.bundleVersion)
+    }
+
+    /** 4. Same version, different authenticated signed envelope -> VERSION_CONFLICT (never silently replaced, never called a rollback). */
+    @Test fun sameVersionWithDifferentEnvelopeIdentityIsAConflict() {
+        val store = InMemoryBundleVersionStore()
+        val otherIdentity = "0".repeat(64)
+        store.recordAccepted(ruleset, 3L, otherIdentity)
+        assertRejected("signing/valid_bundle.json", RejectReason.VERSION_CONFLICT, verifier(store))
+        assertEquals(AcceptedBundle(3L, otherIdentity), store.highestAccepted(ruleset)) // rejected bundle never touches the record
+    }
+
+    /** Legacy rollback record (version only, written before identity was persisted — the state on the proof phone). */
+    @Test fun legacyVersionOnlyRecordAcceptsSameVersionAndPinsIdentity() {
+        val store = InMemoryBundleVersionStore()
+        store.recordAccepted(ruleset, 3L, null)
+        assertEquals(AcceptedBundle(3L, null), store.highestAccepted(ruleset))
+        assertIs<VerificationResult.Accepted>(verifier(store).verify(read("signing/valid_bundle.json")))
+        assertEquals(AcceptedBundle(3L, envelopeHashOf("signing/valid_bundle.json")), store.highestAccepted(ruleset))
+        // once pinned, a different same-version envelope is a conflict and cannot re-pin
+        store.recordAccepted(ruleset, 3L, "f".repeat(64))
+        assertEquals(envelopeHashOf("signing/valid_bundle.json"), store.highestAccepted(ruleset)?.envelopeHash)
+    }
+
+    /** 7. Rejected fixtures never advance rollback state. */
+    @Test fun rejectedBundlesNeverAdvanceRollbackState() {
         val store = InMemoryBundleVersionStore()
         val v = verifier(store)
+        assertRejected("signing/tampered_payload_bundle.json", RejectReason.PAYLOAD_HASH_MISMATCH, v)
+        assertRejected("signing/unknown_key_bundle.json", RejectReason.UNKNOWN_KEY, v)
+        assertRejected("signing/expired_bundle.json", RejectReason.EXPIRED, v)
+        assertRejected("jcs/invalid_signature_bundle.json", RejectReason.SIGNATURE_INVALID, v)
+        assertEquals(null, store.highestAccepted(ruleset))
         assertIs<VerificationResult.Accepted>(v.verify(read("signing/valid_bundle.json")))
-        assertEquals(3L, store.highestAccepted("gd-m1-controlled-block"))
         assertRejected("signing/rollback_bundle.json", RejectReason.ROLLBACK, v)
-        assertRejected("signing/valid_bundle.json", RejectReason.ROLLBACK, v) // same version is a rollback too
+        assertEquals(AcceptedBundle(3L, envelopeHashOf("signing/valid_bundle.json")), store.highestAccepted(ruleset))
     }
 
     @Test fun keyRolloverWithoutBridgeChanges() {

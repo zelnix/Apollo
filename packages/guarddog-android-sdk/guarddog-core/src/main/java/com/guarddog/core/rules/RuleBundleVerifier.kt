@@ -16,7 +16,9 @@ import java.time.format.DateTimeParseException
 import java.util.Base64
 
 enum class RejectReason {
-    SCHEMA_INVALID, PAYLOAD_HASH_MISMATCH, UNKNOWN_KEY, SIGNATURE_INVALID, NOT_YET_VALID, EXPIRED, ROLLBACK
+    SCHEMA_INVALID, PAYLOAD_HASH_MISMATCH, UNKNOWN_KEY, SIGNATURE_INVALID, NOT_YET_VALID, EXPIRED, ROLLBACK,
+    /** Same bundleVersion as the accepted one but a different authenticated signed envelope. */
+    VERSION_CONFLICT,
 }
 
 sealed class VerificationResult {
@@ -28,7 +30,7 @@ sealed class VerificationResult {
  * Independent verification of a signed rule bundle on device.
  *
  * Order (identical on Python/Swift): schema -> payloadHash -> keyId known -> Ed25519
- * signature over JCS(unsigned envelope) -> issuedAt/expiresAt (injected clock) -> rollback.
+ * signature over JCS(unsigned envelope) -> issuedAt/expiresAt (injected clock) -> rollback / same-version identity.
  *
  * Canonicalization uses erdtman/java-json-canonicalization (RFC 8785 reference by the
  * RFC author) - never hand-rolled. Byte identity is proven against
@@ -79,11 +81,19 @@ class RuleBundleVerifier(
         if (!expires.isAfter(now)) return VerificationResult.Rejected(RejectReason.EXPIRED)
 
         if (rollbackProtected) {
+            // Identity of everything the signature covers (authenticated above). Same version + same envelope = the trusted bundle
+            // being re-verified after restart/update/re-fetch -> idempotent accept. Same version + different envelope = conflict.
+            val envelopeHash = sha256Hex(message)
             val highest = versionStore.highestAccepted(bundle.rulesetId)
-            if (highest != null && bundle.bundleVersion <= highest) {
-                return VerificationResult.Rejected(RejectReason.ROLLBACK, "highest accepted $highest")
+            if (highest != null) {
+                if (bundle.bundleVersion < highest.bundleVersion) {
+                    return VerificationResult.Rejected(RejectReason.ROLLBACK, "highest accepted ${highest.bundleVersion}")
+                }
+                if (bundle.bundleVersion == highest.bundleVersion && highest.envelopeHash != null && highest.envelopeHash != envelopeHash) {
+                    return VerificationResult.Rejected(RejectReason.VERSION_CONFLICT, "version ${bundle.bundleVersion} already accepted with a different signed envelope")
+                }
             }
-            versionStore.recordAccepted(bundle.rulesetId, bundle.bundleVersion)
+            versionStore.recordAccepted(bundle.rulesetId, bundle.bundleVersion, envelopeHash)
         }
         return VerificationResult.Accepted(bundle)
     }

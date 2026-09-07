@@ -34,6 +34,8 @@ public enum RejectReason: String {
     case notYetValid = "NOT_YET_VALID"
     case expired = "EXPIRED"
     case rollback = "ROLLBACK"
+    /// Same bundleVersion as the accepted one but a different authenticated signed envelope.
+    case versionConflict = "VERSION_CONFLICT"
 }
 
 public enum VerificationResult: Equatable {
@@ -81,8 +83,14 @@ public final class RuleBundleVerifier {
         if expires <= now { return .rejected(.expired) }
 
         if rollbackProtected {
-            if let highest = versions.highestAccepted(rulesetId: bundle.rulesetId), bundle.bundleVersion <= highest { return .rejected(.rollback) }
-            versions.recordAccepted(rulesetId: bundle.rulesetId, bundleVersion: bundle.bundleVersion)
+            // Identity of everything the (already verified) signature covers. Same version + same envelope = re-verification of the
+            // trusted bundle after restart/update/re-fetch -> idempotent accept. Same version + different envelope = conflict.
+            let envelopeHash = Self.sha256Hex(message)
+            if let highest = versions.highestAccepted(rulesetId: bundle.rulesetId) {
+                if bundle.bundleVersion < highest.bundleVersion { return .rejected(.rollback) }
+                if bundle.bundleVersion == highest.bundleVersion, let pinned = highest.envelopeHash, pinned != envelopeHash { return .rejected(.versionConflict) }
+            }
+            versions.recordAccepted(rulesetId: bundle.rulesetId, bundleVersion: bundle.bundleVersion, envelopeHash: envelopeHash)
         }
         return .accepted(bundle)
     }

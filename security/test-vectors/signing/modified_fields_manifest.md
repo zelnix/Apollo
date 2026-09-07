@@ -2,6 +2,7 @@
 
 Frozen verification clock for every consumer: `2026-06-15T00:00:00Z`.
 Trusted registry for the baseline run: `signing/trusted_keys.json → trustedKeys` (key `gd-m1-test-ed25519-001` only).
+Rollback semantics: version < highest → `ROLLBACK`; version == highest with the same signed-envelope identity (or a legacy version-only record) → accepted idempotently; version == highest with a different authenticated envelope → `VERSION_CONFLICT`.
 Rollback store state for the rollback case: highest accepted `bundleVersion = 3` for `gd-m1-controlled-block`.
 
 Verification order (all platforms): schema → payloadHash → keyId known → Ed25519 signature → issuedAt/expiresAt → rollback.

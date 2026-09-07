@@ -76,10 +76,16 @@ public class GuardDogExpoModule: Module {
 
 final class UserDefaultsBundleVersionStore: BundleVersionStore {
     private let defaults = UserDefaults.standard
-    func highestAccepted(rulesetId: String) -> Int64? {
-        defaults.object(forKey: "gd.bundleVersion.\(rulesetId)") == nil ? nil : Int64(defaults.integer(forKey: "gd.bundleVersion.\(rulesetId)"))
+    // Keys: "gd.bundleVersion.<rulesetId>" (pre-existing, so already-recorded devices are migrated in place) and
+    // "gd.bundleEnvelopeHash.<rulesetId>" (identity of the accepted signed envelope; absent on legacy records).
+    func highestAccepted(rulesetId: String) -> AcceptedBundle? {
+        guard defaults.object(forKey: "gd.bundleVersion.\(rulesetId)") != nil else { return nil }
+        return AcceptedBundle(bundleVersion: Int64(defaults.integer(forKey: "gd.bundleVersion.\(rulesetId)")),
+                              envelopeHash: defaults.string(forKey: "gd.bundleEnvelopeHash.\(rulesetId)"))
     }
-    func recordAccepted(rulesetId: String, bundleVersion: Int64) {
-        if bundleVersion > (highestAccepted(rulesetId: rulesetId) ?? -1) { defaults.set(Int(bundleVersion), forKey: "gd.bundleVersion.\(rulesetId)") }
+    func recordAccepted(rulesetId: String, bundleVersion: Int64, envelopeHash: String?) {
+        let merged = AcceptedBundle.merge(current: highestAccepted(rulesetId: rulesetId), incoming: AcceptedBundle(bundleVersion: bundleVersion, envelopeHash: envelopeHash))
+        defaults.set(Int(merged.bundleVersion), forKey: "gd.bundleVersion.\(rulesetId)")
+        if let hash = merged.envelopeHash { defaults.set(hash, forKey: "gd.bundleEnvelopeHash.\(rulesetId)") } else { defaults.removeObject(forKey: "gd.bundleEnvelopeHash.\(rulesetId)") }
     }
 }

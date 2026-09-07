@@ -89,7 +89,7 @@ Android re-resolves the host immediately before route install (`ControlledEndpoi
 (409 `BUNDLE_FROZEN`, checked before rule content), `resign_controlled_bundle.py` refuses without `--unfreeze`, and
 `verify_resigned_bundle.py` asserts the served version equals 25. `/api/config.signing.frozenBundleVersion` exposes the freeze.
 A genuine correction: raise/unset the env value, resign (version increments normally), set the new frozen version, document it here.
-v25 is the minimum accepted version for this ruleset going forward (rollback store).
+v25 is the minimum accepted version for this ruleset going forward (rollback store); the identical signed v25 is re-accepted idempotently on every restart/update, a different signed envelope claiming v25 is `VERSION_CONFLICT`.
 
 ## 4. Android development build — merged-manifest audit ✅ PASSED · APK ⏳ (needs a persistent native host)
 `scripts/ci/android-dev-build.sh` executed here 2026-06 through step 4: `yarn install` → contracts sync → controlled-endpoint binding check

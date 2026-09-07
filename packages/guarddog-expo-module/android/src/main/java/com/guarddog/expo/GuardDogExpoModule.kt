@@ -7,7 +7,9 @@ import android.net.VpnService
 import com.guarddog.core.GuardDogSDKEngine
 import com.guarddog.core.BlockAuthorization
 import com.guarddog.core.clock.SystemClock
+import com.guarddog.core.rules.AcceptedBundle
 import com.guarddog.core.rules.BundleVersionStore
+import com.guarddog.core.rules.InMemoryBundleVersionStore
 import com.guarddog.core.rules.RuleBundleVerifier
 import com.guarddog.core.rules.TrustedKeyRegistry
 import com.guarddog.expo.dto.BridgeProtectionConfigRecord
@@ -26,10 +28,16 @@ import expo.modules.kotlin.modules.ModuleDefinition
 /** Rollback store persisted across process restarts (core stays platform-agnostic). */
 class SharedPreferencesBundleVersionStore(context: Context) : BundleVersionStore {
     private val prefs = context.getSharedPreferences("guarddog_bundle_versions", Context.MODE_PRIVATE)
-    override fun highestAccepted(rulesetId: String): Long? = if (prefs.contains(rulesetId)) prefs.getLong(rulesetId, 0) else null
-    override fun recordAccepted(rulesetId: String, bundleVersion: Long) {
-        val current = highestAccepted(rulesetId) ?: -1
-        if (bundleVersion > current) prefs.edit().putLong(rulesetId, bundleVersion).apply()
+    // Layout: "<rulesetId>" -> Long version (pre-existing key, so devices that already recorded v25 keep their state and are
+    // migrated in place), "<rulesetId>.envelopeHash" -> identity of the accepted signed envelope (absent on legacy records).
+    override fun highestAccepted(rulesetId: String): AcceptedBundle? =
+        if (prefs.contains(rulesetId)) AcceptedBundle(prefs.getLong(rulesetId, 0), prefs.getString("$rulesetId.envelopeHash", null)) else null
+
+    override fun recordAccepted(rulesetId: String, bundleVersion: Long, envelopeHash: String?) {
+        val merged = InMemoryBundleVersionStore.merge(highestAccepted(rulesetId), AcceptedBundle(bundleVersion, envelopeHash))
+        val editor = prefs.edit().putLong(rulesetId, merged.bundleVersion)
+        if (merged.envelopeHash != null) editor.putString("$rulesetId.envelopeHash", merged.envelopeHash) else editor.remove("$rulesetId.envelopeHash")
+        editor.apply()
     }
 }
 
