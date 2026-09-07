@@ -97,6 +97,13 @@ React Native 0.86 Android rejects (`ColorSchemeName = 'light' | 'dark' | 'unspec
   `-logcat.txt`, `-ui.xml`, `.png` (uploaded from that job only, so no stale files ride along). Would have failed runs 4, 5, 6 and 7.
 - `docs/M1_CI_RUNBOOK.md` (this note). Run-7 APK is void; run 8 yields the sideload candidate.
 
+### Run 34096450762 (tip `c481f1f`) — 5/5 green incl. the new start-up smoke; branding change requested before run 9
+User request: display name **Apollo Native Gates** + supplied artwork as the icon. Changed `frontend/app.json` `name` (was the template default
+`frontend`), `icon`/`adaptive-icon` (foreground scaled to the safe zone on `#0a101c`), splash image and favicon; harness eyebrow reads
+`APOLLO NATIVE GATES · M1 PROOF HARNESS` (the smoke gate's `M1 PROOF HARNESS` token is preserved). **Unchanged:** `slug`, Android package
+`com.emergent.guarddogm.k6cugf`, iOS bundle id, permissions, native code, bundle v25. Effect on the APK: `android:label` string + launcher
+drawables only — a new provenance SHA as with any commit.
+
 ## 4. Download artifacts and attach here
 | Artifact | Files to attach |
 |---|---|

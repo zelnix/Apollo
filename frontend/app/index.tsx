@@ -71,7 +71,7 @@ export default function Index() {
   return (
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === "ios" ? "padding" : undefined} testID="harness-screen">
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <Text style={styles.eyebrow}>GUARD DOG · M1 PROOF HARNESS</Text>
+        <Text style={styles.eyebrow}>APOLLO NATIVE GATES · M1 PROOF HARNESS</Text>
         <Text style={styles.title}>Selective Block Proof</Text>
         <Text style={styles.subtitle}>{caps.platform} · {caps.selectiveIpBlocking ? "selective /32 enforcement available" : "no enforcement layer in this runtime"}</Text>
       </View>
