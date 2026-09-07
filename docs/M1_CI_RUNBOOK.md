@@ -59,9 +59,17 @@ expects Metro — but the M1 proof APK must be self-contained (and `EXPO_PUBLIC_
   still wins when reachable. Verified locally via `expo prebuild` (line present); no Kotlin/Swift/bundle/verifier/VPN change.
 - `scripts/ci/apk-recheck.sh` — `PASS embedded JS bundle assets/index.android.bundle (N bytes)` (fails if missing/<100 KB) and
   `PASS build commit <sha>… inlined in the JS bundle` and `PASS CI run id <id> inlined in the JS bundle` (the run's `GITHUB_SHA` and `GITHUB_RUN_ID`
-  must both appear in the bundle bytes; the run id is matched as a standalone digit token). Mock-tested: missing bundle → FAIL, wrong SHA → FAIL,
-  run id missing or only a prefix → FAIL, correct → PASS.
+  must both appear in the bundle bytes as plain substrings). Mock-tested: missing bundle → FAIL, wrong SHA → FAIL,
+  run id missing → FAIL, correct → PASS (see apk-recheck-selftest.sh).
 - `docs/M1_CI_RUNBOOK.md` (this note). Run-5 APK is void; run 6 yields the sideload candidate.
+
+### Run 34072034928 (tip `e5a171c`) — packaging fix confirmed; one verifier false negative — correction pass 4
+`android`/`ios`/`executable-suites` PASS; `android-dev-build` built and embedded `assets/index.android.bundle` with the commit inlined, but the new
+run-id check rejected the real bundle: the digit-boundary regex assumed the literal is isolated, whereas Hermes packs it next to other digit bytes.
+- `scripts/ci/apk-recheck.sh` — run-id check is a plain substring test (`run_id.encode() in blob`); the 11-digit id plus the 40-hex commit are the binding.
+- `scripts/ci/apk-recheck-selftest.sh` — new mock-aapt2 self-test (no SDK needed): correct sha + run id beside packed digits → PASS; wrong run id,
+  wrong commit, missing bundle, leaked marker → FAIL; binary-manifest parsing line asserted. Run locally with `bash scripts/ci/apk-recheck-selftest.sh`.
+- `docs/M1_CI_RUNBOOK.md` (this note). Run-6 APK is void; run 7 yields the sideload candidate.
 
 ## 4. Download artifacts and attach here
 | Artifact | Files to attach |

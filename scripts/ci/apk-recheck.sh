@@ -115,8 +115,9 @@ if sha and run_id and bundle_ok:
     sha_ok = sha.encode() in blob
     print(f"{'PASS' if sha_ok else 'FAIL'}  build commit {sha[:12]}… inlined in the JS bundle (EXPO_PUBLIC_GIT_SHA)")
     if not sha_ok: hits.append("EXPO_PUBLIC_GIT_SHA not inlined in the embedded bundle")
-    # Hermes keeps string literals verbatim; require the run id as a standalone token so e.g. run 123 cannot satisfy 1234.
-    run_ok = re.search(rb"(?<![0-9])" + re.escape(run_id.encode()) + rb"(?![0-9])", blob) is not None
+    # Plain substring: in Hermes bytecode the literal can sit next to packed digit bytes, so a digit-boundary rule falsely rejects
+    # real bundles (run 34072034928). Uniqueness comes from the 11-digit run id itself, checked together with the 40-hex commit.
+    run_ok = run_id.encode() in blob
     print(f"{'PASS' if run_ok else 'FAIL'}  CI run id {run_id} inlined in the JS bundle (EXPO_PUBLIC_CI_RUN_ID)")
     if not run_ok: hits.append("EXPO_PUBLIC_CI_RUN_ID not inlined in the embedded bundle")
 elif bundle_ok:
