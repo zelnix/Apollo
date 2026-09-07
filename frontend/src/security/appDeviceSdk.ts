@@ -1,7 +1,7 @@
 // Gate 7 — Security SDK contract for apps & device protection. Android (Kotlin) can see package installs,
 // permissions, accessibility/overlay/notification access and VPN state; iOS (Swift) can only report profiles,
 // VPN and its own state. Every method degrades to "not visible" — the UI never invents signals.
-import type { AppNetwork } from "@/src/domain/appAnalysis";
+import type { AppNetwork, AppPermission } from "@/src/domain/appAnalysis";
 import { EMPTY_SIGNALS, type DevicePlatform, type DeviceSignals } from "@/src/domain/deviceAnalysis";
 import { getNativeModule } from "./nativeBridge";
 
@@ -12,6 +12,15 @@ export interface SdkAppSecurityEvent { eventType: "app_install" | "permission_ch
 
 const UNSUPPORTED: AppDeviceCapabilities = { installEvents: "unsupported", appPermissions: "unsupported", accessibilityServices: "unsupported", overlayApps: "unsupported", notificationAccess: "unsupported", vpnState: "unsupported", profileState: "unsupported", appNetworkCorrelation: "unsupported" };
 async function call<T>(fn: (() => Promise<string>) | undefined, fallback: T): Promise<T> { if (!fn) return fallback; try { return JSON.parse(await fn()) as T; } catch { return fallback; } }
+
+/** Plain permission names reported by the native SDK (AppDeviceCatalog.PERMISSION_LABELS) → App engine permission ids. */
+const SDK_PERMISSION_MAP: Record<string, AppPermission> = {
+  "Read SMS": "sms", "Receive SMS": "sms", "Send SMS": "sms", "Contacts": "contacts", "Camera": "camera", "Microphone": "microphone",
+  "Precise location": "location", "Location": "location", "Call log": "calls", "Make calls": "calls", "Phone state": "calls",
+  "Display over other apps": "overlay", "Accessibility service": "accessibility", "Install other apps": "install_apps", "Photos": "files", "Files": "files",
+  "Notifications": "notifications", "Read notifications": "notifications", "Device admin": "device_admin",
+};
+export function sdkPermissionsToApp(labels: string[]): AppPermission[] { return Array.from(new Set(labels.map((l) => SDK_PERMISSION_MAP[l]).filter((p): p is AppPermission => !!p))); }
 
 export const AppDeviceSdk = {
   getAppDeviceCapabilities: () => { const m = getNativeModule(); return call<AppDeviceCapabilities>(m ? () => m.getAppDeviceCapabilities() : undefined, UNSUPPORTED); },

@@ -169,6 +169,14 @@ class TestPairing:
 
 # --- Shared events (patrol fanout) ---
 class TestSharedEvents:
+    @pytest.fixture(autouse=True)
+    def _paired(self, s):
+        # Self-sufficient under xdist --dist loadscope (classes of one module may land on different workers):
+        # ensure A → B pairing exists before relying on the fan-out. Idempotent (link upsert).
+        links = s.get(f"{API}/family/links", params={"device_id": DEVICE_B}).json()
+        if not any(l["protected_device_id"] == DEVICE_A for l in links.get("i_watch", [])):
+            code = s.post(f"{API}/family/pair", json={"device_id": DEVICE_A, "owner_name": "Alex"}).json()["code"]
+            assert s.post(f"{API}/family/link", json={"device_id": DEVICE_B, "code": code}).status_code == 200
     def test_barking_event_shared(self, s):
         event_id = f"evt-{uuid.uuid4().hex[:12]}"
         payload = {

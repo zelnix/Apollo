@@ -418,3 +418,18 @@ native:
   - task: "Android: SiteGuardTruth.kt (pure) + SiteGuardTruthTest.kt (8 tests); module delegates status/verified-block to it. iOS: SiteGuardTruthTests.swift +5 tests; rules(for:) dedupes hosts. SITE_GUARD_NATIVE.md: run commands + 11-row physical-device matrix. No JDK/Xcode in sandbox — compile/run in Publish builds."
     implemented: true
     working: "NA"
+
+## Iteration 34 — Unlink Device + Phase A Android signals
+backend:
+  - task: "GET /api/family/links {i_watch[].link_id, watching_me, watchers[]}; DELETE /api/family/links/{link_id}?device_id= 204 (either side), 404 stranger/unknown, 403 mismatched id. tests/test_family_unlink.py 3/3."
+    implemented: true
+    working: true
+frontend:
+  - task: "Family: watcher rows family-watcher-<link_id> with family-watcher-remove-<link_id>; watched rows get family-watch-stop-<protected_device_id>; confirm dialog then DELETE; toast 'Pairing removed…'. app-check merges native SDK facts (installSource/permissions/remote capability) when available (native only)."
+    implemented: true
+    working: "NA"
+    needs_retesting: true
+native:
+  - task: "Android AppDeviceCatalog.kt + AppDeviceSignals.kt + module functions + manifest <queries>; AppDeviceCatalogTest.kt 5 tests. Cannot compile/run here."
+    implemented: true
+    working: "NA"

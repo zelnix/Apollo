@@ -4,7 +4,7 @@ import ChevronRight from "lucide-react-native/icons/chevron-right";
 import Phone from "lucide-react-native/icons/phone";
 import X from "lucide-react-native/icons/x";
 import React, { useEffect, useState } from "react";
-import { Linking, Platform, Pressable, Switch, Text, TextInput, View } from "react-native";
+import { Alert, Linking, Platform, Pressable, Switch, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -20,7 +20,8 @@ import { storage } from "@/src/utils/storage";
 
 interface GuardianRow { guardian_id: string; email: string; name: string; confirmed: boolean }
 interface SharedEvent { event_id: string; protected_device_id?: string; from_label: string; state: string; headline: string; what_to_do: string; indicator_host: string | null; occurred_at: string; acknowledged_at?: string; ack_label?: string; phone?: string }
-interface WatchLink { owner_name: string; protected_device_id: string; phone: string }
+interface WatchLink { link_id: string; owner_name: string; protected_device_id: string; phone: string }
+interface Watcher { link_id: string; guardian_label: string; since: string }
 interface Ack { event_id: string; guardian_label: string; ack_label: string; headline: string; acknowledged_at: string }
 interface Checkin { guardian_device_id: string; protected_device_id: string; week_key: string; guardian_label: string; reply: string; label: string; created_at: string }
 
@@ -49,7 +50,7 @@ export default function Family() {
   const [phone, setPhone] = useState("");
 
   const guardians = useQuery({ queryKey: ["guardians", deviceId], enabled: !!deviceId, queryFn: () => apiGet<GuardianRow[]>(`/family/guardians?device_id=${deviceId}`) });
-  const links = useQuery({ queryKey: ["family-links", deviceId], enabled: !!deviceId, queryFn: () => apiGet<{ i_watch: WatchLink[]; watching_me: number }>(`/family/links?device_id=${deviceId}`) });
+  const links = useQuery({ queryKey: ["family-links", deviceId], enabled: !!deviceId, queryFn: () => apiGet<{ i_watch: WatchLink[]; watching_me: number; watchers: Watcher[] }>(`/family/links?device_id=${deviceId}`) });
   const shared = useQuery({ queryKey: ["shared-events", deviceId], enabled: !!deviceId, queryFn: () => apiGet<SharedEvent[]>(`/family/shared-events?device_id=${deviceId}`), refetchInterval: 30000 });
   const incidents = useQuery({ queryKey: ["family-incidents", deviceId], enabled: !!deviceId, queryFn: () => apiGet<{ scent_id: string; from_label: string; headline: string; state: ApolloState; steps: { id: string }[]; done: string[]; resolved: boolean; updated_at: string }[]>(`/family/incidents?device_id=${deviceId}`) });
   const acks = useQuery({ queryKey: ["family-acks", deviceId], enabled: !!deviceId, queryFn: () => apiGet<Ack[]>(`/family/acks?device_id=${deviceId}`), refetchInterval: 30000 });
@@ -92,6 +93,18 @@ export default function Family() {
     onSuccess: (r) => { setErr(null); setPairCode(r.code); },
     onError: (e) => setErr(e instanceof Error ? e.message : "Could not create code"),
   });
+  // Unlink Device: either side can end a pairing. Soft-deleted on the server → that device stops receiving alerts, pushes and weekly rollups.
+  const unlink = useMutation({
+    mutationFn: (linkId: string) => apiDelete(`/family/links/${linkId}?device_id=${deviceId}`),
+    onSuccess: () => { invalidate(); qc.invalidateQueries({ queryKey: ["family-weekly", deviceId] }); showToast("Pairing removed. That phone no longer receives alerts.", "neutral"); },
+    onError: (e) => setErr(e instanceof Error ? e.message : "Could not remove the pairing"),
+  });
+  const confirmUnlink = (linkId: string, who: string, mine: boolean) => {
+    const title = mine ? `Remove ${who}?` : `Stop watching ${who}?`;
+    const msg = mine ? `${who} will stop receiving your alerts, incidents and weekly check-ins. You can pair again with a new code.` : `You will stop receiving ${who}'s alerts and weekly check-ins.`;
+    if (Platform.OS === "web") { if (typeof globalThis.confirm !== "function" || globalThis.confirm(`${title}\n\n${msg}`)) unlink.mutate(linkId); return; }
+    Alert.alert(title, msg, [{ text: "Keep", style: "cancel" }, { text: mine ? "Remove" : "Stop watching", style: "destructive", onPress: () => unlink.mutate(linkId) }]);
+  };
   const link = useMutation({
     mutationFn: () => apiPost<{ owner_name: string }>("/family/link", "family", { device_id: deviceId, code: code.trim().toUpperCase() }),
     onSuccess: (r) => { setCode(""); setErr(null); invalidate(); showToast(`Now watching ${r.owner_name || "a family member"}`, "resting"); },
@@ -139,7 +152,13 @@ export default function Family() {
             <TextInput testID="family-owner-phone" style={s.input} value={phone} onChangeText={setPhone} placeholder="Your phone number (optional) — so they can call you in one tap" placeholderTextColor={colors.muted} keyboardType="phone-pad" autoCorrect={false} />
             {pairCode ? <Text style={s.code} selectable testID="family-pair-code">{pairCode}</Text> : null}
             <Button testID="family-make-code" variant="secondary" label={pairCode ? "New code" : "Create pairing code"} onPress={() => makeCode.mutate()} disabled={makeCode.isPending} />
-            <Body>{links.data?.watching_me ? `${links.data.watching_me} device${links.data.watching_me > 1 ? "s" : ""} receive your alerts.` : "No devices linked yet."}</Body>
+            <Body>{links.data?.watching_me ? `${links.data.watching_me} device${links.data.watching_me > 1 ? "s receive" : " receives"} your alerts.` : "No devices linked yet."}</Body>
+            {(links.data?.watchers ?? []).map((w) => (
+              <View key={w.link_id} style={s.row} testID={`family-watcher-${w.link_id}`}>
+                <View style={{ flex: 1 }}><Text style={s.name}>{w.guardian_label}</Text><Body>Paired {new Date(w.since).toLocaleDateString()}</Body></View>
+                <Button testID={`family-watcher-remove-${w.link_id}`} variant="ghost" label="Remove" onPress={() => confirmUnlink(w.link_id, w.guardian_label, true)} disabled={unlink.isPending} />
+              </View>
+            ))}
             <TextInput testID="family-link-code" style={s.input} value={code} onChangeText={setCode} placeholder="Enter a code you were given" placeholderTextColor={colors.muted} autoCapitalize="characters" maxLength={6} />
             <Button testID="family-link-button" variant="secondary" label="Link" onPress={() => link.mutate()} disabled={code.trim().length !== 6 || link.isPending} />
           </Card>
@@ -201,6 +220,7 @@ export default function Family() {
               <View key={l.protected_device_id} style={s.row} testID={`family-watch-${l.protected_device_id}`}>
                 <View style={{ flex: 1 }}><Text style={s.name}>{l.owner_name || "Family member"}</Text><Body>{l.phone ? l.phone : "No phone number yet — add one from any of their alerts"}</Body></View>
                 {l.phone ? <Button testID={`family-watch-call-${l.protected_device_id}`} variant="secondary" label="Call" icon={<Phone size={16} color={colors.onSurface} />} onPress={() => void Linking.openURL(`tel:${l.phone.replace(/[^+\d]/g, "")}`)} /> : null}
+                <Button testID={`family-watch-stop-${l.protected_device_id}`} variant="ghost" label="Stop" onPress={() => confirmUnlink(l.link_id, l.owner_name || "this person", false)} disabled={unlink.isPending} />
               </View>
             ))}
             {(shared.data ?? []).length === 0 ? <Body>No alerts. That&apos;s good news.</Body> : shared.data!.map((e) => (

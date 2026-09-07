@@ -8,7 +8,10 @@ from datetime import datetime, timedelta, timezone
 from html import escape
 from typing import Any, Literal, Optional
 
+from bson import ObjectId
+from bson.errors import InvalidId
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from core.config import EMAIL_FROM_NAME, PUBLIC_BASE, logger
@@ -191,7 +194,30 @@ def _link_phone(ln: dict[str, Any]) -> str:
 async def list_links(device_id: str = Query(min_length=8, max_length=64)):
     protecting = await db.family_links.find({"guardian_device_id": device_id, "deleted_at": None}).to_list(20)
     watched_by = await db.family_links.find({"protected_device_id": device_id, "deleted_at": None}).to_list(20)
-    return {"i_watch": [{"owner_name": l.get("owner_name", ""), "protected_device_id": l["protected_device_id"], "phone": _link_phone(l), "since": l["created_at"]} for l in protecting], "watching_me": len(watched_by)}
+    # `watching_me` stays a count for compatibility; `watchers` lists each paired device (label + since, never its id) so the
+    # protected person can remove one. `link_id` is the handle for DELETE /family/links/{link_id}.
+    return {
+        "i_watch": [{"link_id": str(l["_id"]), "owner_name": l.get("owner_name", ""), "protected_device_id": l["protected_device_id"], "phone": _link_phone(l), "since": l["created_at"]} for l in protecting],
+        "watching_me": len(watched_by),
+        "watchers": [{"link_id": str(l["_id"]), "guardian_label": l.get("guardian_label") or "A family member", "since": l["created_at"], "last_checkin_at": l.get("last_checkin_at")} for l in watched_by],
+    }
+
+
+@router.delete("/family/links/{link_id}", status_code=204)
+async def unlink_device(link_id: str, device_id: str = Query(min_length=8, max_length=64)):
+    """Either side may end a pairing: the protected person removes a watcher, or a guardian stops watching.
+    Soft delete — the other device simply stops receiving fan-outs, pushes and weekly rollups (all filter deleted_at=None)."""
+    try:
+        oid = ObjectId(link_id)
+    except (InvalidId, TypeError):
+        raise HTTPException(status_code=404, detail="Unknown pairing.")
+    r = await db.family_links.update_one(
+        {"_id": oid, "deleted_at": None, "$or": [{"protected_device_id": device_id}, {"guardian_device_id": device_id}]},
+        {"$set": {"deleted_at": now_utc(), "unlinked_by": device_id}},
+    )
+    if not r.matched_count:
+        raise HTTPException(status_code=404, detail="Unknown pairing.")
+    return Response(status_code=204)
 
 
 @router.get("/family/shared-events")

@@ -14,7 +14,7 @@ import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/compone
 import { analyseApp, APP_PERMISSIONS, APP_PURPOSES, APP_SOURCES, PERMISSION_INFO, type AppAnalysis, type AppNetwork, type AppPermission, type AppPurpose, type AppSource } from "@/src/domain/appAnalysis";
 import { SCENT_WINDOW_MS } from "@/src/domain/threatScent";
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
-import { AppDeviceSdk } from "@/src/security/appDeviceSdk";
+import { AppDeviceSdk, sdkPermissionsToApp } from "@/src/security/appDeviceSdk";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { openDeviceSettings } from "@/src/utils/deviceSettings";
@@ -72,13 +72,18 @@ export default function CheckApp() {
       let network: AppNetwork | null = null;
       const sdk = await AppDeviceSdk.getInstalledAppAssessment(name.trim());
       if (sdk?.network) network = sdk.network;
+      // Phase A: observed facts from the native SDK override guesses — install source when the person wasn't sure,
+      // and the app's actual permissions (plus remote-access capability) are added to what they ticked.
+      const observedSource: AppSource = sdk && source === "not_sure" ? sdk.installSource : source;
+      const observedPerms: AppPermission[] = sdk ? Array.from(new Set([...perms, ...sdkPermissionsToApp(sdk.permissions), ...(sdk.remoteAccessCapability ? ["screen_share" as const] : [])])) : perms;
+      if (sdk) { setSource(observedSource); setPerms(observedPerms); }
       const context = { ...ctx, recentScentCategories: recentLinked.map((e) => e.category) };
-      let a = analyseApp({ name: name.trim(), developer: developer.trim() || undefined, source, purpose, permissions: perms, context, network });
+      let a = analyseApp({ name: name.trim(), developer: developer.trim() || undefined, source: observedSource, purpose, permissions: observedPerms, context, network });
       let remote: Remote | null = null;
       try {
-        remote = await apiPost<Remote>("/app/analyse", "app_check", { device_id: deviceId ?? "local-device", name: name.trim().slice(0, 120), developer: developer.trim().slice(0, 120) || null, source, purpose, permissions: perms, hosts: network?.hosts.slice(0, 10) ?? [], local_state: a.state, scenario: a.scenario, second_opinion: true });
+        remote = await apiPost<Remote>("/app/analyse", "app_check", { device_id: deviceId ?? "local-device", name: name.trim().slice(0, 120), developer: developer.trim().slice(0, 120) || null, source: observedSource, purpose, permissions: observedPerms, hosts: network?.hosts.slice(0, 10) ?? [], local_state: a.state, scenario: a.scenario, second_opinion: true });
         const bad = remote.hosts.filter((h) => h.verdict === "malicious").length;
-        if (bad && !network?.blockedMalicious) a = analyseApp({ name: name.trim(), developer: developer.trim() || undefined, source, purpose, permissions: perms, context, network: { blockedMalicious: bad, unknownHosts: network?.unknownHosts ?? 0, hosts: network?.hosts ?? [] } });
+        if (bad && !network?.blockedMalicious) a = analyseApp({ name: name.trim(), developer: developer.trim() || undefined, source: observedSource, purpose, permissions: observedPerms, context, network: { blockedMalicious: bad, unknownHosts: network?.unknownHosts ?? 0, hosts: network?.hosts ?? [] } });
       } catch { /* offline: on-device engine is authoritative */ }
       let event: PatrolEvent | null = null;
       const linked = recentLinked.find((e) => (ctx.promptedByCaller && e.category === "call") || (ctx.promptedByMessageOrSite && e.category !== "call")) ?? (a.remoteCapable || a.scenario === "A16" ? recentLinked[0] : null) ?? null;
@@ -104,7 +109,7 @@ export default function CheckApp() {
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="app-scroll">
         {!result ? (
           <>
-            <Body>Apollo doesn&apos;t judge an app by its name. It looks at what the app can do, where it came from, and what was happening when you installed it. {sdkVisible ? "The Security SDK can read this app's permissions on this device." : "On this build Apollo can't read other apps' permissions — tell it what you see in Settings."}</Body>
+            <Body>Apollo doesn&apos;t judge an app by its name. It looks at what the app can do, where it came from, and what was happening when you installed it. {sdkVisible ? "On this device Apollo can read the install source and permissions of known remote-access apps (AnyDesk, TeamViewer and similar). For any other app, tell it what you see in Settings — Apollo can't list your apps." : "On this build Apollo can't read other apps' permissions — tell it what you see in Settings."}</Body>
             <Text style={s.label}>App name</Text>
             <TextInput testID="app-name" style={s.input} value={name} onChangeText={setName} placeholder="e.g. Bank Security Update" placeholderTextColor={colors.muted} autoCapitalize="words" autoCorrect={false} />
             <Text style={s.label}>Developer (if shown)</Text>

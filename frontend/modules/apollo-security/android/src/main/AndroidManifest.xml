@@ -2,6 +2,57 @@
   <uses-permission android:name="android.permission.INTERNET" />
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <!-- Package visibility (Android 11+): Apollo deliberately does NOT use QUERY_ALL_PACKAGES. It can only see the
+       remote-access risk catalog plus the stores/browsers/messengers needed to name an install source.
+       Keep this list identical to AppDeviceCatalog.VISIBLE_PACKAGES. -->
+  <queries>
+    <package android:name="com.anydesk.anydeskandroid" />
+    <package android:name="com.teamviewer.teamviewer.market.mobile" />
+    <package android:name="com.teamviewer.quicksupport.market" />
+    <package android:name="com.teamviewer.host.market" />
+    <package android:name="com.rsupport.rs.activity.rsupport.aas2" />
+    <package android:name="com.splashtop.remote.pad.v2" />
+    <package android:name="com.splashtop.streamer.csrs" />
+    <package android:name="com.sand.airdroid" />
+    <package android:name="com.sand.airmirror" />
+    <package android:name="com.microsoft.rdc.androidx" />
+    <package android:name="com.realvnc.viewer.android" />
+    <package android:name="com.logmein.rescuemobile" />
+    <package android:name="com.zoho.assist.agent" />
+    <package android:name="com.aeroadmin.android" />
+    <package android:name="com.ultraviewer.android" />
+    <package android:name="com.rustdesk.rustdesk" />
+    <package android:name="net.grandcentrix.tv.remotedesktop" />
+    <package android:name="com.android.vending" />
+    <package android:name="com.sec.android.app.samsungapps" />
+    <package android:name="com.amazon.venezia" />
+    <package android:name="com.huawei.appmarket" />
+    <package android:name="com.xiaomi.mipicks" />
+    <package android:name="com.android.chrome" />
+    <package android:name="org.mozilla.firefox" />
+    <package android:name="com.microsoft.emmx" />
+    <package android:name="com.opera.browser" />
+    <package android:name="com.brave.browser" />
+    <package android:name="com.sec.android.app.sbrowser" />
+    <package android:name="com.duckduckgo.mobile.android" />
+    <package android:name="com.android.browser" />
+    <package android:name="com.whatsapp" />
+    <package android:name="org.telegram.messenger" />
+    <package android:name="com.facebook.orca" />
+    <package android:name="com.google.android.apps.messaging" />
+    <package android:name="com.samsung.android.messaging" />
+    <package android:name="com.google.android.packageinstaller" />
+    <package android:name="com.android.packageinstaller" />
+    <package android:name="com.google." />
+    <package android:name="com.android." />
+    <package android:name="com.samsung." />
+    <package android:name="com.sec." />
+    <package android:name="com.motorola." />
+    <package android:name="com.oneplus." />
+    <package android:name="com.oppo." />
+    <package android:name="com.miui." />
+    <package android:name="com.huawei." />
+  </queries>
   <application>
     <service
       android:name="com.hucentai.apollosecurity.ApolloDnsVpnService"
