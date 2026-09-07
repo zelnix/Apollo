@@ -33,7 +33,8 @@ class TestCredentialLifecycle:
 
     def test_missing_or_malformed_credentials_fail_closed_401(self):
         d = Dev()
-        for headers in ({}, {"Authorization": "Basic abc"}, {"Authorization": "Bearer short"}, {"Authorization": "Bearer " + "x" * 200}, {"Authorization": f"Bearer {d.token[:-1]}0"}):
+        tampered = d.token[:-1] + ("0" if d.token[-1] != "0" else "1")
+        for headers in ({}, {"Authorization": "Basic abc"}, {"Authorization": "Bearer short"}, {"Authorization": "Bearer " + "x" * 200}, {"Authorization": f"Bearer {tampered}"}):
             r = anon.get(f"{API}/patrol/events", params={"device_id": d.id}, headers=headers)
             assert r.status_code == 401, (headers, r.status_code)
             assert r.headers.get("www-authenticate") == "Bearer"
@@ -93,3 +94,62 @@ class TestOwnershipEnforcement:
         # Registration no longer accepts a device_id; supplying one is ignored and a server id is issued instead.
         r = anon.post(f"{API}/devices/register", json={"device_id": "legacy-device-0001", "platform": "web", "adapter_mode": "mock"})
         assert r.status_code == 201 and r.json()["device_id"] != "legacy-device-0001"
+
+
+def _db(coro_factory):
+    """Run a DB operation against the live database (test-only state manipulation, e.g. forcing expiry).
+    Uses a fresh motor client per call so successive asyncio.run() loops don't share a closed client."""
+    import asyncio, os, sys
+    sys.path.insert(0, "/app/backend")
+    from datetime import timedelta
+    from core import db as core_db
+    from motor.motor_asyncio import AsyncIOMotorClient
+    async def main():
+        client = AsyncIOMotorClient(os.environ["MONGO_URL"])
+        try:
+            ns = type("NS", (), {"db": client[core_db.db.name], "now_utc": core_db.now_utc, "timedelta": timedelta})
+            return await coro_factory(ns)
+        finally:
+            client.close()
+    return asyncio.run(main())
+
+
+class TestTokenLifecycle:
+    def test_expired_token_is_rejected_and_recovery_is_a_new_identity(self):
+        # Force expiry directly in Mongo (test-only), then confirm 401 and that recovery = fresh registration (new id).
+        d = Dev()
+        _db(lambda server: server.db.devices.update_one({"device_id": d.id}, {"$set": {"token_expires_at": server.now_utc() - server.timedelta(seconds=1)}}))
+        assert d.get("/devices/me").status_code == 401
+        fresh = Dev(); assert fresh.id != d.id
+        # the expired device's data is NOT reachable from the new identity
+        assert fresh.get("/patrol/events", params={"device_id": d.id}).status_code == 403
+
+    def test_concurrent_rotation_only_one_winner(self):
+        from concurrent.futures import ThreadPoolExecutor
+        d = Dev()
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            results = list(ex.map(lambda _: anon.post(f"{API}/devices/token/rotate", headers={"Authorization": f"Bearer {d.token}"}).status_code, range(4)))
+        assert results.count(200) == 1 and results.count(401) == 3, results
+
+    def test_revoked_device_never_regains_access(self):
+        d = Dev(); other = Dev()
+        d.post("/family/pair", json={"device_id": d.id, "owner_name": "Mum"})
+        assert d.post("/devices/revoke").status_code == 204
+        assert d.post("/devices/token/rotate").status_code == 401  # cannot rotate back to life
+        assert d.get("/family/links", params={"device_id": d.id}).status_code == 401
+        assert other.get("/family/links", params={"device_id": d.id}).status_code == 403  # nor can anyone else read it
+
+    def test_email_confirm_link_is_single_use_and_expires(self):
+        d = Dev()
+        r = d.post("/family/guardians", json={"device_id": d.id, "name": "Aunt", "email": "delivered@resend.dev", "owner_name": "Mum"})
+        assert r.status_code in (200, 201), r.text[:200]
+        g = _db(lambda server: server.db.guardians.find_one({"device_id": d.id}, sort=[("created_at", -1)]))
+        tok = g["confirm_token"]
+        assert g["confirm_expires_at"] is not None
+        first = anon.get(f"{API}/family/confirm/{tok}"); assert first.status_code == 200 and "now receiving" in first.text
+        second = anon.get(f"{API}/family/confirm/{tok}"); assert "no longer valid" in second.text  # single use: token cleared
+        # expired token for a second guardian
+        d.post("/family/guardians", json={"device_id": d.id, "name": "Uncle", "email": "delivered@resend.dev", "owner_name": "Mum"})
+        g2 = _db(lambda server: server.db.guardians.find_one({"device_id": d.id, "name": "Uncle"}))
+        _db(lambda server: server.db.guardians.update_one({"_id": g2["_id"]}, {"$set": {"confirm_expires_at": server.now_utc() - server.timedelta(minutes=1)}}))
+        assert "no longer valid" in anon.get(f"{API}/family/confirm/{g2['confirm_token']}").text  # expired

@@ -32,7 +32,7 @@ test("incident plan orders the timeline and takes the highest state", () => {
   const t0 = Date.now();
   const plan = buildIncidentPlan([ev({ category: "account", state: "barking", occurred_at: new Date(t0 + 3000).toISOString(), scenario: "AC01" }), ev({ category: "email", state: "growling", occurred_at: new Date(t0).toISOString(), claimed_brand: "CommBank", scenario: "E01" }), ev({ category: "link", state: "barking", occurred_at: new Date(t0 + 1000).toISOString() })]);
   assert.deepEqual(plan.timeline.map((e) => e.category), ["email", "link", "account"]); assert.equal(plan.state, "barking"); assert.match(plan.headline, /CommBank impersonation — email → link checked → account alert/i);
-  assert.ok(plan.kinds.includes("mfa_approved")); assert.match(plan.steps[0].text, /sign out of all other devices/i); assert.equal(plan.allResolved, false);
+  assert.ok(plan.kinds.includes("mfa_approved")); assert.match(plan.steps[0].text, /sign out of (all|every) other device/i); assert.equal(plan.allResolved, false);
 });
 test("recoveries the user recorded are read back from why and ordered by urgency; steps are deduplicated", () => {
   const kinds = inferRecoveryKinds([ev({ why: ["You told Apollo: entered a password."] }), ev({ why: ["You told Apollo: shared a verification code."] }), ev({ scenario: "A01", state: "barking", category: "app" })]);

@@ -5,14 +5,17 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Crypto from "expo-crypto";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 
 import { API_BASE, apiDelete, apiGet, apiPost, apiPut } from "@/src/api/client";
-import { getDeviceIdentity, onIdentityReset, registerDeviceIdentity } from "@/src/auth/deviceIdentity";
+import { getBackendHealth, onBackendHealth, probeBackend } from "@/src/api/backendHealth";
+import { getDeviceIdentity, getIdentityResetReason, onIdentityReset, registerDeviceIdentity } from "@/src/auth/deviceIdentity";
 import { visibilityFrom } from "@/src/domain/capability";
 import { assessConnection } from "@/src/domain/connection";
 import { decide } from "@/src/domain/decision";
+import { parseIntelResult } from "@/src/domain/intelContract";
 import { minimalIndicator } from "@/src/domain/privacy";
+import { FAILURE_MESSAGE } from "@/src/domain/serviceHealth";
 import { analyseMessage, type MessageAnalysis } from "@/src/domain/messageAnalysis";
 import type { PageAnalysis } from "@/src/domain/pageAnalysis";
 import { analyseCall, type CallAnalysis, type CallInput } from "@/src/domain/callAnalysis";
@@ -44,6 +47,9 @@ interface ApolloContextValue {
   ready: boolean;
   setupDone: boolean;
   deviceId: string | null;
+  /** Set when the server rejected this device's credential. The app is in an explicit identity-reset state until the person re-registers. */
+  identityReset: string | null;
+  reRegisterDevice(): Promise<void>;
   completeSetup(): Promise<void>;
   capabilities: Capability[];
   protection: ProtectionStatus | null;
@@ -104,6 +110,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [setupDone, setSetupDone] = useState(false);
   const [deviceId, setDeviceId] = useState<string | null>(null);
+  const [identityReset, setIdentityReset] = useState<string | null>(null);
   const [capabilities, setCapabilities] = useState<Capability[]>([]);
   const [protection, setProtection] = useState<ProtectionStatus | null>(null);
   const [permissions, setPermissions] = useState<ProtectionPermission[]>([]);
@@ -215,10 +222,12 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         if (done) {
           // Server-issued identity. Legacy (pre-token) installs have none and get a fresh identity — never a claimed one.
           let identity = await getDeviceIdentity();
-          if (!identity) { try { identity = await registerDeviceIdentity(API_BASE, deviceMeta()); } catch { identity = null; } }
+          const resetWhy = identity ? null : await getIdentityResetReason();
+          if (resetWhy) setIdentityReset(resetWhy); // explicit reset state survives reloads — never re-register silently
+          else if (!identity) { try { identity = await registerDeviceIdentity(API_BASE, deviceMeta()); } catch { identity = null; } }
           if (identity) {
             setDeviceId(identity.deviceId);
-            try { await apiPost("/devices/heartbeat", "device_register", deviceMeta()); } catch { /* offline is fine */ }
+            void apiPost("/devices/heartbeat", "device_register", deviceMeta()).catch(() => undefined); // never blocks boot; offline is fine
           }
           if (protOn) await securityAdapter.startProtection();
         }
@@ -227,12 +236,45 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     })();
   }, [refresh]);
 
-  // A 401 means the credential is dead (revoked/expired/rotated elsewhere). Fail closed, then re-register a NEW identity.
-  useEffect(() => onIdentityReset((why) => {
-    setDeviceId(null);
-    showToast(`${why} Registering a new device identity…`, "neutral");
-    void registerDeviceIdentity(API_BASE, deviceMeta()).then((id) => setDeviceId(id.deviceId)).catch(() => undefined);
-  }), [showToast]);
+  // A 401 means the credential is dead (revoked/expired/rotated elsewhere). Fail closed and enter an EXPLICIT
+  // identity-reset state: nothing is re-registered silently, because a new identity detaches this install from its
+  // Family links, shared incidents and push registration on the server. The person chooses to re-register.
+  useEffect(() => onIdentityReset((why) => { setDeviceId(null); setIdentityReset(why); }), []);
+  const identityResetRef = useRef<string | null>(null);
+  useEffect(() => { identityResetRef.current = identityReset; }, [identityReset]);
+  const setupDoneRef = useRef(false);
+  useEffect(() => { setupDoneRef.current = setupDone; }, [setupDone]);
+  const reRegisterDevice = useCallback(async () => {
+    const id = await registerDeviceIdentity(API_BASE, deviceMeta());
+    setDeviceId(id.deviceId); setIdentityReset(null);
+    showToast("Registered as a new device. Re-pair with family members to share alerts again.", "neutral");
+  }, [showToast]);
+
+  // Failure contract: while the security service is unreachable, re-probe /health periodically and whenever the
+  // app returns to the foreground. Degraded state clears ONLY on a fresh successful observation (inside probe/client),
+  // after which cached server data is refetched and a setup-complete install that could not register at boot
+  // (service down at the time) registers now — unless it is in the explicit identity-reset state.
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const schedule = (down: boolean) => {
+      if (timer) { clearInterval(timer); timer = null; }
+      if (down) timer = setInterval(() => void probeBackend(), lowPower ? 120000 : 30000);
+    };
+    let wasReachable = getBackendHealth().reachable;
+    schedule(wasReachable === false);
+    const off = onBackendHealth((h) => {
+      schedule(h.reachable === false);
+      if (h.reachable === true && wasReachable === false) {
+        void qc.invalidateQueries();
+        if (setupDoneRef.current && !deviceIdRef.current && !identityResetRef.current) {
+          void registerDeviceIdentity(API_BASE, deviceMeta()).then((id) => setDeviceId(id.deviceId)).catch(() => undefined);
+        }
+      }
+      wasReachable = h.reachable;
+    });
+    const sub = AppState.addEventListener("change", (st) => { if (st === "active" && getBackendHealth().reachable === false) void probeBackend(); });
+    return () => { off(); sub.remove(); if (timer) clearInterval(timer); };
+  }, [lowPower, qc]);
 
   // Re-resolve state over time so cooldown/freshness windows expire visibly (slower in battery saver).
   useEffect(() => { const t = setInterval(() => setTick((n) => n + 1), lowPower ? 120000 : 30000); return () => clearInterval(t); }, [lowPower]);
@@ -311,11 +353,14 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const analysis = analyseMessage(sender, text);
     let urls: MessageUrlResult[] = []; let explanation: MessageExplanation | null = null; let remoteError: string | null = null;
     try {
-      const r = await apiPost<{ urls: MessageUrlResult[]; explanation: MessageExplanation | null }>("/message/analyse", "message_check", {
+      const r = await apiPost<{ urls?: unknown; explanation?: unknown }>("/message/analyse", "message_check", {
         device_id: deviceId ?? undefined, sender: sender.trim().slice(0, 80), text: text.slice(0, 4000), urls: analysis.signals.urls.slice(0, 10),
         local_state: analysis.state, scenario: analysis.scenario, signals: analysis.signalLabels, claimed_brand: analysis.signals.claimedBrand, second_opinion: true,
       });
-      urls = r.urls; explanation = r.explanation;
+      // Contract guard: only well-formed url verdicts count; anything else is dropped (unknown), never treated as clean.
+      urls = Array.isArray(r.urls) ? (r.urls as MessageUrlResult[]).filter((u) => u && typeof u.url === "string" && typeof u.host === "string" && ["clean", "malicious", "unknown"].includes(u.verdict) && Array.isArray(u.threat_types)) : [];
+      const ex = r.explanation as MessageExplanation | null | undefined;
+      explanation = ex && typeof ex.summary === "string" && typeof ex.recommendation === "string" && Array.isArray(ex.why) ? ex : null;
     } catch (e) { remoteError = e instanceof Error ? e.message : "Apollo's second opinion is unavailable right now."; }
     let state = analysis.state; const why = [...analysis.why];
     const malicious = urls.find((u) => u.verdict === "malicious");
@@ -402,8 +447,12 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     }
     const indicator = minimalIndicator(local.normalizedUrl);
     let intel: IntelResult | null = null; let intelError: string | null = null;
-    try { intel = await apiPost<IntelResult>("/intel/check", "intel_check", { indicator_type: "url", value: indicator, device_id: deviceId ?? undefined, expand: true }); }
-    catch (e) { intelError = e instanceof Error ? e.message : "Reputation check unavailable"; }
+    try {
+      const raw = await apiPost<unknown>("/intel/check", "intel_check", { indicator_type: "url", value: indicator, device_id: deviceId ?? undefined, expand: true });
+      // Malformed/partial answer → rejected → "intelligence unavailable" (never optimistic).
+      intel = parseIntelResult(raw);
+      if (!intel) intelError = FAILURE_MESSAGE.malformed;
+    } catch (e) { intelError = e instanceof Error ? e.message : "Reputation check unavailable"; }
     const digest = intel?.indicator_digest ?? (await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, indicator));
     const trusted = trust.some((t) => t.indicator_digest === digest || t.local_indicator === indicator);
     const decision = decide(local, intel, trusted);
@@ -468,7 +517,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const resolution = useMemo(() => resolveApolloState({ events, visibility, lastVerifiedAt }), [events, visibility, lastVerifiedAt]);
 
   const value: ApolloContextValue = {
-    ready, setupDone, deviceId, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label, isMock: IS_MOCK_SECURITY,
+    ready, setupDone, deviceId, identityReset, reRegisterDevice, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label, isMock: IS_MOCK_SECURITY,
     refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, recordRecovery, upsertEvent, recordPageAnalysis, checkCall,
     pushStatus, enablePush, quietHours, quietNow, setQuietHours, lowPower, setLowPower,
   };

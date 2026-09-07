@@ -12,6 +12,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiGet, apiPost } from "@/src/api/client";
+import { StaleNote } from "@/src/components/ServiceBanner";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { CATEGORY_GLYPH, CATEGORY_LABEL } from "@/src/domain/incidentPlan";
 import { type ApolloState, type EventCategory, STATE_NAME } from "@/src/domain/types";
@@ -87,7 +88,8 @@ export default function FamilyIncident() {
         <Pressable testID="family-incident-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="family-incident-scroll" bottomOffset={24} keyboardShouldPersistTaps="handled">
-        {q.isLoading ? <Body>Loading…</Body> : !inc ? <Body testID="family-incident-missing">This incident isn&apos;t available (it may have been shared with someone else).</Body> : (
+        <StaleNote queries={[q, notes]} testID="family-incident-stale" />
+        {q.isLoading ? <Body>Loading…</Body> : q.isError && !inc ? <Body testID="family-incident-unavailable">Apollo can&apos;t reach the security service right now, so this shared incident can&apos;t be loaded. It hasn&apos;t gone anywhere — try again shortly.</Body> : !inc ? <Body testID="family-incident-missing">This incident isn&apos;t available (it may have been shared with someone else).</Body> : (
           <>
             <Card style={{ gap: spacing.sm, borderColor: toneColor(colors, inc.resolved ? "resting" : inc.state) }} testID="family-incident-summary">
               <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}><Pill tone={inc.state} label={STATE_NAME[inc.state]} testID="family-incident-state" />{inc.resolved ? <Pill tone="resting" label="They marked it handled" testID="family-incident-resolved" /> : <Pill tone="neutral" label={`${doneCount}/${inc.steps.length} steps done`} testID="family-incident-progress" />}</View>

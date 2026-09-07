@@ -20,6 +20,7 @@ import { ApolloLogo } from "@/src/components/ApolloLogo";
 import { HigginsGreeting } from "@/src/components/HigginsGreeting";
 import { ClipboardLinkBanner } from "@/src/components/ClipboardLinkBanner";
 import { PatrolItem } from "@/src/components/PatrolItem";
+import { ServiceBanner } from "@/src/components/ServiceBanner";
 import { Body, Button, Card, Pill, ScreenHeader, SectionTitle, capabilityTone, toneColor } from "@/src/components/ui";
 import { buildScents } from "@/src/domain/threatScent";
 import { STATE_NAME } from "@/src/domain/types";
@@ -45,7 +46,7 @@ export default function Home() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { resolution, capabilities, protection, adapterLabel, isMock, refreshing, verifyNow, events, lastVerifiedAt, lowPower, quietNow, showToast } = useApollo();
+  const { resolution, capabilities, protection, adapterLabel, isMock, refreshing, verifyNow, events, lastVerifiedAt, lowPower, quietNow, showToast, identityReset, reRegisterDevice } = useApollo();
   const visibility = visibilityFrom(capabilities, !!(protection?.requested ?? protection?.running));
   const recent = events.slice(0, 4);
   const digest = buildWeeklyDigest(events);
@@ -58,6 +59,15 @@ export default function Home() {
       </View>
       <ScrollView contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={verifyNow} tintColor={colors.resting} />} testID="home-scroll">
         <ApolloHero resolution={resolution} visibility={visibility} adapterLabel={adapterLabel} isMock={isMock} animate={!lowPower} quietNow={quietNow} sniffing={refreshing} />
+        {identityReset ? (
+          <Card style={{ gap: spacing.sm, borderColor: colors.barking }} testID="identity-reset-card">
+            <Text style={s.capTitle}>Apollo needs to re-register this phone</Text>
+            <Body testID="identity-reset-why">{identityReset}</Body>
+            <Body>Your on-phone Patrol history is untouched. Family pairings and shared incidents were tied to the old identity — after re-registering, pair with family again. Nothing is sent to Apollo&apos;s servers until you do.</Body>
+            <Button testID="identity-reset-register" label="Register this phone again" onPress={() => void reRegisterDevice().catch((e: Error) => showToast(e.message, "barking"))} />
+          </Card>
+        ) : null}
+        <ServiceBanner />
         <HigginsGreeting state={resolution.visibilityLost ? "lost" : resolution.state} />
         <ClipboardLinkBanner />
         {protection?.operational ? (

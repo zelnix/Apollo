@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiGet, apiPatch, apiPost } from "@/src/api/client";
 import { HigginsReadAloud } from "@/src/components/HigginsReadAloud";
+import { StaleNote } from "@/src/components/ServiceBanner";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { narrateIncident } from "@/src/domain/higginsNarration";
 import { buildIncidentPlan, CATEGORY_GLYPH, CATEGORY_LABEL } from "@/src/domain/incidentPlan";
@@ -102,6 +103,7 @@ export default function IncidentTimeline() {
                 </View>
               ))}
               <Body>Family notes are reassurance only. If anyone — even family — asks for a password or code, stop and call them on a number you already know.</Body>
+              <StaleNote queries={[notes]} testID="incident-family-notes-stale" />
             </Card>
           ) : null}
 

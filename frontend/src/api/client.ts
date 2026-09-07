@@ -1,15 +1,26 @@
 // Thin API client. Every outbound body passes through the egress policy.
 
+import { markBackendFailure, markBackendOk } from "@/src/api/backendHealth";
 import { getDeviceToken, resetDeviceIdentity } from "@/src/auth/deviceIdentity";
 import { enforceEgress, type EgressEndpoint } from "@/src/domain/privacy";
+import { classifyHttpFailure, FAILURE_MESSAGE, type FailureKind } from "@/src/domain/serviceHealth";
 
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL;
 if (!BASE) throw new Error("EXPO_PUBLIC_BACKEND_URL is not set");
 export const API_BASE = `${BASE}/api`;
 
 export class ApiError extends Error {
-  constructor(readonly status: number, message: string) { super(message); this.name = "ApiError"; }
+  /** `kind` is set for transport-level failures (no coherent HTTP answer); undefined for real HTTP status errors. */
+  constructor(readonly status: number, message: string, readonly kind?: FailureKind) { super(message); this.name = "ApiError"; }
 }
+
+// Failure contract (Hardening Gate step 3): every call ends — in an answer, or in a classified failure. A hung
+// service must never leave a check spinning; the caller degrades to "unavailable", never to "safe".
+export const DEFAULT_TIMEOUT_MS = 20000;
+/** Endpoints that legitimately take longer (vision/LLM second opinions, TTS, redirect expansion). */
+const LONG_TIMEOUT_MS = 60000;
+const LONG_PATHS = ["/message/extract", "/page/extract", "/voice/speak", "/message/analyse", "/app/analyse", "/account/analyse", "/intel/check", "/ask/"];
+export function timeoutFor(path: string): number { return LONG_PATHS.some((p) => path.startsWith(p)) ? LONG_TIMEOUT_MS : DEFAULT_TIMEOUT_MS; }
 
 /** Bearer credential for every call. Fails closed: with no identity the request is not sent. */
 async function authHeaders(): Promise<Record<string, string>> {
@@ -18,17 +29,35 @@ async function authHeaders(): Promise<Record<string, string>> {
   return { Authorization: `Bearer ${token}` };
 }
 
+async function fetchWithBudget(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: ctl.signal });
+  } catch {
+    const kind: FailureKind = ctl.signal.aborted ? "timeout" : "offline";
+    markBackendFailure(kind);
+    throw new ApiError(0, FAILURE_MESSAGE[kind], kind);
+  } finally { clearTimeout(t); }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const auth = await authHeaders();
-  const res = await fetch(`${API_BASE}${path}`, { ...init, headers: { "Content-Type": "application/json", ...auth, ...(init?.headers ?? {}) } });
+  const res = await fetchWithBudget(`${API_BASE}${path}`, { ...init, headers: { "Content-Type": "application/json", ...auth, ...(init?.headers ?? {}) } }, timeoutFor(path));
   if (!res.ok) {
     let detail = res.statusText;
     try { detail = (await res.json()).detail ?? detail; } catch { /* keep statusText */ }
-    if (res.status === 401) await resetDeviceIdentity(typeof detail === "string" ? detail : "Device credential rejected.");
+    const cls = classifyHttpFailure(res.status);
+    // A 5xx means the service answered but is failing → degraded. Any 4xx (incl. 401/403) is a coherent answer → reachable.
+    if (cls === "service_degraded") markBackendFailure("server_error"); else markBackendOk();
+    // 401 → credential is dead → explicit identity reset. 403 → authenticated but NOT allowed → never touches identity.
+    if (cls === "identity_reset") await resetDeviceIdentity(typeof detail === "string" ? detail : "Device credential rejected.");
     throw new ApiError(res.status, typeof detail === "string" ? detail : JSON.stringify(detail));
   }
+  markBackendOk();
   if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  try { return (await res.json()) as T; }
+  catch { markBackendFailure("malformed"); throw new ApiError(502, FAILURE_MESSAGE.malformed, "malformed"); }
 }
 
 export function apiGet<T>(path: string) { return request<T>(path); }
@@ -74,9 +103,17 @@ export function streamPost(path: string, endpoint: EgressEndpoint, body: Record<
     }
   };
   xhr.onprogress = consume;
-  xhr.onload = () => { consume(); if (xhr.status === 401) { void resetDeviceIdentity("Device credential rejected."); finish("Apollo needs to re-register this device. Try again in a moment."); } else if (xhr.status >= 400) finish("Apollo could not answer right now."); else finish(); };
-  xhr.onerror = () => finish("Connection problem. Try again.");
-  xhr.ontimeout = () => finish("That took too long. Try again.");
-  xhr.timeout = 60000;
+  xhr.onload = () => {
+    consume();
+    if (xhr.status >= 500) markBackendFailure("server_error"); else markBackendOk();
+    // 401 → identity reset; 403 → forbidden, identity untouched.
+    if (xhr.status === 401) { void resetDeviceIdentity("Device credential rejected."); finish("Apollo needs to re-register this device. Try again in a moment."); }
+    else if (xhr.status === 403) finish("This device isn't allowed to do that.");
+    else if (xhr.status >= 400) finish("Higgins could not answer right now.");
+    else finish();
+  };
+  xhr.onerror = () => { markBackendFailure("offline"); finish(FAILURE_MESSAGE.offline); };
+  xhr.ontimeout = () => { markBackendFailure("timeout"); finish(FAILURE_MESSAGE.timeout); };
+  xhr.timeout = LONG_TIMEOUT_MS;
   return () => xhr.abort();
 }

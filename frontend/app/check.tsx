@@ -169,6 +169,7 @@ export default function CheckLink() {
                 )}
                 {outcome.intel?.redirect_chain?.length ? <Pill tone="unknown" label={`Redirected: ${outcome.intel.redirect_chain.join(" → ")}`} testID="check-result-redirects" /> : null}
                 {outcome.decision.claimed_brand ? <Pill tone={state === "resting" ? "resting" : "barking"} label={`Claims to be ${outcome.decision.claimed_brand}`} testID="check-result-brand" /> : null}
+                {!outcome.intel || outcome.intel.coverage === "none" ? <Pill tone="unknown" label="Online check unavailable — on-device checks only" testID="check-result-intel-unavailable" /> : outcome.intel.coverage === "partial" ? <Pill tone="unknown" label="Online check partial" testID="check-result-intel-partial" /> : null}
                 <Text style={s.sub}>Why Apollo reacted</Text>
                 {(liveEvent?.why ?? outcome.decision.why).map((w, i) => (
                   <View key={i} style={s.bullet}><View style={[s.dot, { backgroundColor: toneColor(colors, state) }]} /><Body style={{ flex: 1 }}>{w}</Body></View>
@@ -181,7 +182,7 @@ export default function CheckLink() {
                     <Body style={{ flex: 1 }}>{src.name === "google_safe_browsing" ? "Google Safe Browsing" : "Apollo threat list"}</Body>
                     <Pill tone={src.status === "match" ? "barking" : src.status === "clear" ? "resting" : "unknown"} label={src.status === "match" ? "Listed" : src.status === "clear" ? "Clear" : src.status === "not_configured" ? "Not configured" : "Unavailable"} />
                   </View>
-                )) : outcome.intelError ? <Body>Reputation check unavailable: {outcome.intelError}</Body> : null}
+                )) : outcome.intelError ? <Body testID="check-result-intel-error">Reputation check unavailable: {outcome.intelError}</Body> : null}
                 {isMock && liveEvent?.verified_block ? <Pill tone="unknown" label="Simulated block (mock adapter)" /> : null}
               </Card>
               {liveEvent ? <View style={{ marginTop: spacing.md }}><EventActions event={liveEvent} /></View> : null}

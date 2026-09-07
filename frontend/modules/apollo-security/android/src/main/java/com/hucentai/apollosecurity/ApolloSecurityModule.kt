@@ -34,9 +34,9 @@ class ApolloSecurityModule : Module() {
     private const val PREFS = "apollo_siteguard"
     private const val KEY_REQUESTED = "protection_requested"
     private const val KEY_SINCE = "protection_since"
-    /** Exactly what the DNS filter sees. Anything outside this is NOT covered and the UI says so. */
-    const val COVERAGE = "Covers DNS lookups over IPv4 UDP port 53 from apps that use the system resolver. Not covered: IPv6 DNS, DNS over TCP, private/encrypted DNS (DoH/DoT), apps with their own resolver, and traffic on networks using a captive portal."
-    val COVERAGE_SCOPE = listOf("dns:ipv4", "dns:udp-53", "resolver:system")
+    /** Exactly what the DNS filter sees (single source of truth: SiteGuardTruth.COVERAGE). */
+    const val COVERAGE = SiteGuardTruth.COVERAGE
+    val COVERAGE_SCOPE = SiteGuardTruth.COVERAGE_SCOPE
   }
 
   override fun definition() = ModuleDefinition {
@@ -67,7 +67,7 @@ class ApolloSecurityModule : Module() {
 
     AsyncFunction("blockDestination") { host: String ->
       ApolloDnsVpnService.addBlocked(ctx, host)
-      val verified = ApolloDnsVpnService.isRunning && ApolloDnsVpnService.isBlockedHost(host)
+      val verified = SiteGuardTruth.verifiedBlock(ApolloDnsVpnService.isRunning, host, ApolloDnsVpnService.loadBlocked(ctx))
       JSONObject()
         .put("verified", verified)
         .put("method", if (verified) "dns_filter" else "none")
@@ -179,27 +179,20 @@ class ApolloSecurityModule : Module() {
    * degradedReason explains any gap between the two, in plain words.
    */
   private fun statusJson(): String {
-    val wants = requested
-    val operational = ApolloDnsVpnService.isRunning
-    val vpnGranted = VpnService.prepare(ctx) == null
-    val degraded: String? = when {
-      !wants -> null
-      operational -> null
-      !vpnGranted -> "The local VPN permission is missing or was revoked, so the DNS filter cannot run. Allow it under Permissions."
-      else -> "The DNS filter is not running (another VPN may have taken over, or Android stopped the service). Turn protection off and on again."
-    }
+    // Live facts in, derived truth out (SiteGuardTruth is pure and unit-tested). Nothing here is cached.
+    val d = SiteGuardTruth.derive(requested = requested, vpnRunning = ApolloDnsVpnService.isRunning, vpnGranted = VpnService.prepare(ctx) == null)
     val ts = now()
     return JSONObject()
-      .put("running", operational)
-      .put("requested", wants)
-      .put("operational", operational)
-      .put("enforcementMethod", if (operational) "dns_filter" else "none")
-      .put("coverage", if (operational) COVERAGE else "Nothing is being filtered on this device right now. Link checks you run in Apollo still work.")
-      .put("coverageScope", JSONArray(if (operational) COVERAGE_SCOPE else emptyList<String>()))
+      .put("running", d.operational)
+      .put("requested", requested)
+      .put("operational", d.operational)
+      .put("enforcementMethod", d.enforcementMethod)
+      .put("coverage", d.coverage)
+      .put("coverageScope", JSONArray(d.coverageScope))
       .put("lastVerified", ts) // isRunning is read from the live service at this instant
-      .put("degradedReason", degraded ?: JSONObject.NULL)
-      .put("visibility", if (!wants) "none" else "limited")
-      .put("since", if (wants) (protectionSince ?: JSONObject.NULL) else JSONObject.NULL)
+      .put("degradedReason", d.degradedReason ?: JSONObject.NULL)
+      .put("visibility", d.visibility)
+      .put("since", if (requested) (protectionSince ?: JSONObject.NULL) else JSONObject.NULL)
       .put("adapterLabel", label)
       .put("checkedAt", ts)
       .toString()

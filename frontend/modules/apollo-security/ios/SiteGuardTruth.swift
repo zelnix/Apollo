@@ -26,6 +26,6 @@ public enum SiteGuardTruth {
   public static func rules(for hosts: Set<String>) -> [[String: Any]] {
     hosts.isEmpty
       ? [["trigger": ["url-filter": "^https?://apollo\\.invalid/"], "action": ["type": "block"]]]
-      : [["trigger": ["url-filter": ".*", "if-domain": hosts.map { $0.lowercased() }.sorted().map { "*\($0)" }], "action": ["type": "block"]]]
+      : [["trigger": ["url-filter": ".*", "if-domain": Set(hosts.map { $0.lowercased() }).sorted().map { "*\($0)" }], "action": ["type": "block"]]]
   }
 }

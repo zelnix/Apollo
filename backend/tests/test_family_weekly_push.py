@@ -63,7 +63,8 @@ class TestWeeklyCheckinScheduler:
         import sys; sys.path.insert(0, "/app/backend")
 
     def test_window_and_week_key(self):
-        import asyncio, server
+        import asyncio
+        from routers import family_weekly as server
         # Sunday 2026-06-14 18:30 local (UTC+10 → 08:30Z) is inside the window; Saturday is not; Sunday 12:00 is not.
         assert server._week_key(datetime(2026, 6, 14, 18, 30)) == "2026-W24"
         assert 17 in server.WEEKLY_WINDOW and 20 in server.WEEKLY_WINDOW and 21 not in server.WEEKLY_WINDOW and 16 not in server.WEEKLY_WINDOW

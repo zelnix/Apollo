@@ -9,6 +9,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiDelete, apiGet, apiPost, apiPut } from "@/src/api/client";
+import { ServiceBanner, StaleNote } from "@/src/components/ServiceBanner";
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { type FamilyWeekly, lastSeenLabel, weeklyDetails, weeklyHeadline } from "@/src/domain/familyWeekly";
 import { STATE_NAME, type ApolloState } from "@/src/domain/types";
@@ -106,6 +107,8 @@ export default function Family() {
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="family-scroll">
         <Body>Share only Barking and Biting alerts — headline, website and what to do — with someone you trust. Never the full link, never your browsing.</Body>
         {err ? <Text style={s.err} testID="family-error">{err}</Text> : null}
+        <ServiceBanner />
+        <StaleNote queries={[guardians, links, shared, incidents, acks, weekly, checkins]} testID="family-stale-note" />
 
         <View>
           <SectionTitle>Your name (shown to them)</SectionTitle>

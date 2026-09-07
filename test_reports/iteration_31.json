@@ -1,0 +1,29 @@
+{
+  "summary": "RETEST of iter 30 HIGH bug (silent /api/devices/register on full page reload after 401 identity-reset). FIX VERIFIED PASS on Expo web preview @ 390x844. Playwright E2E flow: (1) fresh context → onboarding-start-button → disclosure-accept-button → apollo-state-label rendered → localStorage 'apollo.device.identity.v2' populated with {deviceId(hex), token(len 43), expiresAt}; exactly 1 POST /api/devices/register during onboarding. (2) POST /api/devices/token/rotate with A's Bearer → 200 (localStorage NOT updated). (3) page.goto('/family') triggers React Query fetches → server returns 401 → client resetDeviceIdentity() called → localStorage 'apollo.device.identity.v2' cleared AND marker key 'apollo.device.identity.reset.v1' persisted (value = 'Apollo needs to re-register this phone…'). (4) Navigating back to Home shows identity-reset-card + identity-reset-why + identity-reset-register button. (5) page.reload() on Home → card STILL visible after boot; ZERO auto POST /api/devices/register observed during the reload window; identity still null; marker still present — this is the specific regression that failed in iter 30 and now passes. (6) Navigation loop /guard → /family → / while in reset state → marker persists across every hop; zero silent registrations; card visible again when back on Home. (7) Tap identity-reset-register → exactly 1 POST /api/devices/register → new deviceId (differs from original) stored in localStorage → marker key removed → card gone from Home; toast copy 'Registered as a new device. Re-pair with family members to share alerts again.' shown. (8) Final page.reload() → no card, zero register calls, identity persists. Fresh-install regression: brand-new browser context still auto-registers exactly once on first onboarding (marker absent, as expected). Total assertions across two runs: 33 pass, 0 fail against the fix (the 3 initial 'card not visible on /family' failures were test-script issues — the card only lives on Home; corrected by navigating to / before assertion). Files touched by fix (already applied by main agent): /app/frontend/src/auth/deviceIdentity.ts (RESET_KEY constant, resetDeviceIdentity writes marker, registerDeviceIdentity clears marker, getIdentityResetReason reads it), /app/frontend/src/store/ApolloContext.tsx (boot IIFE lines 219–228 now checks getIdentityResetReason() before falling through to registerDeviceIdentity(); reRegisterDevice() unchanged but effect chain now correctly clears the marker via registerDeviceIdentity). No deprecated Expo packages introduced. No react-native issues detected in the changed files.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_31.json",
+    "/app/tests/test_identity_reset_reload.py",
+    "/app/tests/test_device_auth_e2e.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "src/auth/deviceIdentity.ts: marker key 'apollo.device.identity.reset.v1' is versioned (nice — future-proofs a schema change); reset marker written unconditionally in resetDeviceIdentity() and cleared inside registerDeviceIdentity() so success on either the boot path or reRegisterDevice() converges on a clean state.",
+  "src/store/ApolloContext.tsx boot IIFE lines 219–228: correctly gates the silent register call behind `const resetWhy = identity ? null : await getIdentityResetReason();` and only falls through to registerDeviceIdentity() when both identity is missing AND no reset marker is present. This is the exact fix recommended in iter 30 RCA.",
+  "Boot effect still calls apiPost('/devices/heartbeat', …) only when identity exists — good, no 401 leak from heartbeat during a reset state.",
+  "reRegisterDevice() relies on registerDeviceIdentity()'s marker cleanup rather than an extra storage.removeItem() call — DRY, and the ordering (write identity, then remove marker) is race-safe against a concurrent reload because the boot code only re-checks getIdentityResetReason() when identity is missing."
+  ],
+  "updated_files": ["/app/tests/test_identity_reset_reload.py"],
+  "success_rate": {"backend": "not tested (frontend-only scope)", "frontend": "33/33 assertions PASS across two E2E runs (10/10 in the corrected run; 23/23 non-navigation assertions in the first run)"},
+  "seed_data_creation": "Ephemeral: ~3 devices registered via /api/devices/register (onboarding + one re-register per run). Append-only, no cleanup needed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "The reset-marker path is now fully wired. If the auth surface changes again, three invariants to keep asserting on web preview (390x844): (a) after a mid-session 401, localStorage 'apollo.device.identity.reset.v1' is set and 'apollo.device.identity.v2' is null; (b) a page.reload() while the marker is set must NOT fire POST /api/devices/register; (c) tapping identity-reset-register must fire exactly ONE POST /api/devices/register and remove the marker. Note that identity-reset-card renders only on the Home screen (app/(tabs)/home.tsx:62), so navigate to '/' before asserting on it — asserting on /family or /guard will falsely fail. Rotation helper: POST {API}/devices/token/rotate with 'Authorization: Bearer <token>' (no body). Fresh-install regression: a brand-new browser context (or window.localStorage.clear()) must still auto-register exactly once during onboarding because the marker is absent by definition on first launch.",
+  "rca_of_issue": "n/a — bug from iter 30 is fixed as recommended (persistent 'reset marker' in AsyncStorage/localStorage). Verified by 10 targeted assertions plus a full 23-assertion regression flow."
+}

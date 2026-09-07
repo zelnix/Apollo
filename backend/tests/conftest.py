@@ -6,10 +6,12 @@
 # ids back to the legacy ones in response bodies so the tests' equality checks still hold.
 # Authentication itself is tested WITHOUT this shim in test_device_auth.py (it uses requests.post directly with
 # explicit headers and its own ids, which are never rewritten because they are real server ids).
-import json, os, re
+import fcntl, json, os, re, tempfile
 import pytest, requests
 
 BASE_URL = (os.environ.get("EXPO_BACKEND_URL") or os.environ.get("EXPO_PUBLIC_BACKEND_URL") or "https://threat-patrol-1.preview.emergentagent.com").rstrip("/")
+# One map per pytest run (all xdist workers of a run share PYTEST_XDIST_TESTRUNUID).
+_SHARED_MAP = os.path.join(tempfile.gettempdir(), f"apollo_shim_ids_{os.environ.get('PYTEST_XDIST_TESTRUNUID') or os.getppid()}.json")
 ID_KEYS = ("device_id", "user_id", "protected_device_id", "guardian_device_id")
 _real_by_legacy: dict[str, tuple[str, str]] = {}  # legacy id -> (real id, token)
 _legacy_by_real: dict[str, str] = {}
@@ -22,9 +24,23 @@ def _real(legacy: str) -> tuple[str, str]:
         return _real_by_legacy[legacy]
     if _ID_RE.match(legacy) and legacy in _legacy_by_real.values():
         return next(v for k, v in _real_by_legacy.items() if v[0] == legacy)
-    r = _orig_request(requests.Session(), "POST", f"{BASE_URL}/api/devices/register", json={"platform": "web", "adapter_mode": "mock"}, headers={"User-Agent": "apollo-tests"})
-    j = r.json()
-    _real_by_legacy[legacy] = (j["device_id"], j["device_token"]); _legacy_by_real[j["device_id"]] = legacy
+    # xdist runs classes of one module on different workers (loadscope). Their legacy→real maps must agree, or a
+    # pairing made in one class is invisible to the next (DEVICE_A would be two different real devices). The map is
+    # therefore shared through a per-run file under an exclusive lock.
+    with open(_SHARED_MAP, "a+") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        fh.seek(0)
+        try:
+            shared = json.loads(fh.read() or "{}")
+        except ValueError:
+            shared = {}
+        if legacy not in shared:
+            r = _orig_request(requests.Session(), "POST", f"{BASE_URL}/api/devices/register", json={"platform": "web", "adapter_mode": "mock"}, headers={"User-Agent": "apollo-tests"})
+            j = r.json()
+            shared[legacy] = [j["device_id"], j["device_token"]]
+            fh.seek(0); fh.truncate(); fh.write(json.dumps(shared))
+        real, tok = shared[legacy]
+    _real_by_legacy[legacy] = (real, tok); _legacy_by_real[real] = legacy
     return _real_by_legacy[legacy]
 
 

@@ -31,7 +31,7 @@ class TestNudgeApi:
 
 class TestNudgeScheduler:
     def test_only_tuesday_window_and_only_missed(self):
-        import server
+        from routers import family_weekly as server
 
         async def run():
             g, p1, p2 = f"guard{uuid.uuid4().hex[:12]}", f"prot{uuid.uuid4().hex[:12]}", f"prot{uuid.uuid4().hex[:12]}"

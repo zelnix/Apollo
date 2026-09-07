@@ -388,3 +388,33 @@ frontend:
     implemented: true
     working: "NA"
     needs_retesting: true
+  - Update (iter 30b): 401 no longer auto re-registers. ApolloContext exposes identityReset + reRegisterDevice(); Home shows identity-reset-card (identity-reset-why, identity-reset-register). Email confirm token single-use + 72h expiry. tests/test_device_auth.py 12/12 (lifecycle: expiry, concurrent rotation, revoked never restored, confirm single-use/expiry).
+
+## Iteration 32 — Hardening Gate step 3: failure modes + external admin console key
+backend:
+  - task: "Safe Browsing malformed-shape guard (non-dict / non-list matches → unavailable, never clear); redirect expansion bounded 12 s total; tests/test_failure_modes.py 17/17 (combine matrix, SB timeout/401/5xx/unreadable/wrong-shape → unavailable, expired reputation_cache row never served as fresh, 422 for malformed body, /health public)."
+    implemented: true
+    working: true
+  - task: "Admin console: X-Admin-Key (APOLLO_ADMIN_KEY in backend/.env, hmac.compare_digest, generic 401, 503 if unconfigured) on separate router /api/admin/{ping,stats,blocklist[GET/POST/DELETE {host}],feedback,devices,devices/{id},devices/{id}/revoke}. Device bearer never opens admin; admin key never opens device routes. Blocklist changes flush reputation_cache. tests/test_admin.py 10/10."
+    implemented: true
+    working: true
+  - conftest: legacy→real id map now shared across xdist workers via a per-run /tmp JSON file (fixes cross-class pairing flake in test_family.py). test_device_auth tamper case made deterministic.
+  - NOTE: test_family.py guardian-email tests fail while the Resend relay returns 429 (rate limit) → backend answers 502 "Failed to send email" by design. Environmental, not a regression.
+frontend:
+  - task: "Failure contract: API client per-endpoint time budgets (20 s default, 60 s for AI/vision/TTS/intel/ask) via AbortController → ApiError(kind offline|timeout|malformed); 401 → identity reset, 403 → NEVER resets identity; 5xx → degraded. Backend health tracker (src/api/backendHealth.ts) fed by every call; /health re-probe every 30 s (120 s battery saver) while down + on foreground; recovery ONLY on a fresh successful observation, then queries refetch and a setup-complete install that couldn't register at boot registers now (unless identity-reset). registerDeviceIdentity bounded 15 s + shape-checked; boot heartbeat no longer blocks readiness. ServiceBanner (service-banner, -title, -line, -last, -retry) on Home, Guard, Family: 'Apollo can't reach the security service / … having trouble / … slow to answer' + 'Local protection continues where available. New online checks may be unavailable.' Guard master card mixed state: operational + service down → 'Apollo is guarding what he can · … · Online checks unavailable right now'. check.tsx pills check-result-intel-unavailable / -partial, check-result-intel-error. parseIntelResult rejects malformed intel (→ unavailable, never clean); message/analyse urls/explanation shape-guarded. StaleNote (family-stale-note, family-incident-stale, incident-family-notes-stale) 'Showing what Apollo last saw at HH:MM — may be out of date'; family incident/alert screens say 'can't reach the security service' instead of 'isn't available' when offline with no data. tests/failureModes.test.ts 15/15 (yarn test:failure). Self-tested in web: backend stopped → banner + Guard mixed copy; backend restarted → banner auto-cleared on the 30 s probe and the device registered (recovery registration observed in DB)."
+    implemented: true
+    working: true
+    needs_retesting: true
+
+## Iteration 33 — Hardening Gate step 4: backend split (zero behaviour change)
+backend:
+  - task: "server.py (2100 lines) → server.py (app + lifespan + router mounting, 68 lines), core/{config,db,models,auth}.py, services/{intel,email}.py, routers/{health,devices,intel,patrol,ask,family,family_weekly,voice,push,analysis,admin}.py. Route table verified identical to the monolith (68 routes: same paths/methods/handler names); every /api route carries enforce_device_auth, every /api/admin route carries require_admin_key. on_event → lifespan (deprecation gone). Tests importing `server` now import routers.family_weekly / services.intel / core.db. Full suite 173/174 (1 = pre-existing log-tail race in test_iter7 under xdist; passes alone)."
+    implemented: true
+    working: true
+    needs_retesting: true
+
+## Iteration 33b — Hardening Gate step 5: native security tests (code only; cannot execute here)
+native:
+  - task: "Android: SiteGuardTruth.kt (pure) + SiteGuardTruthTest.kt (8 tests); module delegates status/verified-block to it. iOS: SiteGuardTruthTests.swift +5 tests; rules(for:) dedupes hosts. SITE_GUARD_NATIVE.md: run commands + 11-row physical-device matrix. No JDK/Xcode in sandbox — compile/run in Publish builds."
+    implemented: true
+    working: "NA"

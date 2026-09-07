@@ -11,10 +11,16 @@ const METHOD_LABEL: Record<ProtectionStatus["enforcementMethod"], string> = {
   none: "No enforcement on this device",
 };
 
-export function masterCopy(p: ProtectionStatus | null): MasterCopy {
+/**
+ * @param online false while the security service is unreachable — local enforcement is unaffected, online checks are.
+ * Mixed states are reported as such: DNS filter operational + service down = "guarding what he can", never "off duty".
+ */
+export function masterCopy(p: ProtectionStatus | null, online: boolean = true): MasterCopy {
   const requested = !!(p?.requested ?? p?.running);
   const operational = !!p?.operational;
   if (!requested) return { title: "Apollo is off duty", line: "Protection is off. Apollo cannot see or block anything until you turn him back on.", requested, operational };
-  if (operational) return { title: "Apollo is guarding", line: `Site Guard active · ${METHOD_LABEL[p!.enforcementMethod]}.`, requested, operational };
-  return { title: "Apollo is guarding what he can", line: `Site Guard ${p?.enforcementMethod === "simulated" ? "simulated" : "unavailable"} · Link checks remain active.`, requested, operational };
+  if (operational && online) return { title: "Apollo is guarding", line: `Site Guard active · ${METHOD_LABEL[p!.enforcementMethod]}.`, requested, operational };
+  if (operational) return { title: "Apollo is guarding what he can", line: `Site Guard active · ${METHOD_LABEL[p!.enforcementMethod]} · Online checks unavailable right now.`, requested, operational };
+  const guard = `Site Guard ${p?.enforcementMethod === "simulated" ? "simulated" : "unavailable"}`;
+  return { title: "Apollo is guarding what he can", line: online ? `${guard} · Link checks remain active.` : `${guard} · Online checks unavailable right now · On-device link checks remain active.`, requested, operational };
 }

@@ -3,6 +3,8 @@ import React, { useState } from "react";
 import { Linking, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useBackendHealth } from "@/src/api/backendHealth";
+import { ServiceBanner } from "@/src/components/ServiceBanner";
 import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card, Pill, ScreenHeader, SectionTitle, capabilityTone } from "@/src/components/ui";
 import { CAPABILITY_STATUS_LABEL } from "@/src/domain/capability";
@@ -50,7 +52,9 @@ export default function Guard() {
   const onToggle = async (on: boolean) => { setBusy(true); try { await toggleProtection(on); } finally { setBusy(false); } };
 
   // Three facts from the security layer, reported — never inferred here: requested, operational, verified.
-  const { title: masterTitle, line: masterLine, requested, operational } = masterCopy(protection);
+  // Plus one from the network layer: is the security service reachable (online checks) — local enforcement is unaffected.
+  const health = useBackendHealth();
+  const { title: masterTitle, line: masterLine, requested, operational } = masterCopy(protection, health.reachable !== false);
 
   const ask = async (perm: ProtectionPermission) => {
     setSheet(null);
@@ -65,6 +69,7 @@ export default function Guard() {
         <ScreenHeader title="Guard" testID="guard-header" right={isMock ? <Pill tone="unknown" label="Mock" /> : null} />
       </View>
       <ScrollView contentContainerStyle={s.content} testID="guard-scroll">
+        <ServiceBanner />
         <Card testID="guard-master-card" style={{ gap: spacing.sm }}>
           <View style={s.masterRow}>
             <View style={{ flex: 1, gap: 4 }}>
