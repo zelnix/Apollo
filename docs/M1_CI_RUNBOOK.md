@@ -109,6 +109,18 @@ full APK SHA-256 and Git SHA (selectable mono text, no truncation), CI run ID, n
 Harness-only (`frontend/app/index.tsx`); the frozen public SDK, bundle v25, verifier, VPN and THREAT_BLOCKED path are untouched. Phone procedure:
 open the app → compare the card with the run's `apk-provenance.json` (`apkSha256`, `commit`, `workflowRunId`) **before** pressing *Run proof*.
 
+### Run 34106689038 (tip `47b878c`) — 4/5 green; `android-startup-smoke` false negative from an emulator system dialog — correction pass 6
+The smoke job proved the app bootstrapped (`harness mounted after 4s`, marker gitSha == run SHA, `native=true`, process alive, `MainActivity`
+resumed) and failed only at `harness header not found in UI hierarchy`: the uploaded `-ui.xml` was rooted in Android system UI showing
+"Pixel Launcher isn't responding" (App info / Close app / Wait). No app fatal in logcat.
+- `scripts/ci/android-startup-smoke.sh` — before the hierarchy assertion, the dump is classified: if the app does not own the visible hierarchy or a
+  system dialog text is present, it logs `INFO unrelated system overlay detected (<text>); refocusing Apollo (attempt N)`, taps the dialog's
+  Wait/OK/Close button when one exists, re-issues `am start` for `MainActivity`, waits and re-dumps (≤5 attempts). While retrying, the mandatory
+  gates stay hard: any fatal-pattern log line or process death fails immediately. The header check is **not** skipped — it must pass once the app
+  has clean focus, and `MainActivity` must still be the resumed activity afterwards. Classifier unit-checked against synthetic dumps
+  (system dialog → dismiss coords; app hierarchy → no overlay; launcher in front → refocus only).
+- `docs/M1_CI_RUNBOOK.md` (this note). Run-34106689038 APK (`10214cdf…`) is not the device candidate; the next fully green run is.
+
 ## 4. Download artifacts and attach here
 | Artifact | Files to attach |
 |---|---|

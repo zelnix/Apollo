@@ -65,8 +65,52 @@ PID="$(adb shell pidof "$PKG" | tr -d '\r')"; [ -n "$PID" ] && echo "PASS  proce
 adb shell dumpsys activity activities | tr -d '\r' | grep -E "mResumedActivity|topResumedActivity" | grep -q "$PKG" && echo "PASS  MainActivity is the resumed activity" || { echo "FAIL  MainActivity not resumed"; exit 1; }
 
 # On-screen proof: UI hierarchy contains the harness header, plus a screenshot for the evidence folder.
-adb shell uiautomator dump /sdcard/gd-smoke-ui.xml >/dev/null 2>&1 && adb pull /sdcard/gd-smoke-ui.xml "$OUT/android-startup-smoke-ui.xml" >/dev/null 2>&1 || true
-if [ -f "$OUT/android-startup-smoke-ui.xml" ] && grep -q "M1 PROOF HARNESS" "$OUT/android-startup-smoke-ui.xml"; then echo "PASS  harness header visible in UI hierarchy"; else echo "FAIL  harness header not found in UI hierarchy"; exit 1; fi
+# Emulator system dialogs ("Pixel Launcher isn't responding" — seen in run 34106689038) can sit over the app and make uiautomator dump
+# the system UI instead. Detect such an unrelated overlay, record it, dismiss it / refocus the app and retry; still a hard failure if the
+# harness is absent after clean focus, the process dies, or a fatal exception appears.
+UIXML="$OUT/android-startup-smoke-ui.xml"
+dump_ui() { rm -f "$UIXML"; adb shell uiautomator dump /sdcard/gd-smoke-ui.xml >/dev/null 2>&1 && adb pull /sdcard/gd-smoke-ui.xml "$UIXML" >/dev/null 2>&1 || true; [ -f "$UIXML" ]; }
+overlay_info() { # prints "<overlay text>|<x>,<y> of a dismiss button or empty>" when the dump is not the app's own hierarchy
+  python3 - "$UIXML" "$PKG" <<'PY'
+import re, sys, xml.etree.ElementTree as ET
+xml, pkg = open(sys.argv[1], encoding="utf-8", errors="replace").read(), sys.argv[2]
+nodes = list(ET.fromstring(xml).iter("node"))
+pkgs = {n.get("package") for n in nodes}
+texts = [n.get("text") or "" for n in nodes]
+sysdlg = [t for t in texts if re.search(r"isn't responding|not responding|Close app|has stopped|keeps stopping|System UI", t)]
+if pkg in pkgs and not sysdlg:
+    sys.exit(0)  # app owns the visible hierarchy
+label = sysdlg[0] if sysdlg else "foreground hierarchy owned by " + ",".join(sorted(p for p in pkgs if p)) if pkgs else "empty hierarchy"
+tap = ""
+for want in ("Wait", "OK", "Close"):
+    for n in nodes:
+        if (n.get("text") or "").strip() == want and n.get("clickable") == "true":
+            x1, y1, x2, y2 = map(int, re.findall(r"\d+", n.get("bounds") or "[0,0][0,0]"))
+            tap = f"{(x1+x2)//2},{(y1+y2)//2}"; break
+    if tap: break
+print(f"{label}|{tap}")
+PY
+}
+HEADER_OK=""
+for attempt in 1 2 3 4 5; do
+  dump_ui || { echo "INFO  uiautomator dump unavailable (attempt $attempt)"; sleep 3; continue; }
+  if grep -q "M1 PROOF HARNESS" "$UIXML"; then HEADER_OK=1; break; fi
+  INFO="$(overlay_info || true)"
+  if [ -n "$INFO" ]; then
+    echo "INFO  unrelated system overlay detected (${INFO%%|*}); refocusing Apollo (attempt $attempt)"
+    TAP="${INFO#*|}"; [ -n "$TAP" ] && adb shell input tap "${TAP%,*}" "${TAP#*,}" >/dev/null 2>&1 || true
+    adb shell "am start -n $ACTIVITY" >/dev/null 2>&1 || true
+  else
+    echo "INFO  app hierarchy visible but harness header not rendered yet (attempt $attempt)"
+  fi
+  sleep 4
+  # the mandatory gates must still hold while we retry
+  adb logcat -d -v time > "$LOGCAT" 2>/dev/null || true
+  grep -a -E -q "$FATAL_RE" "$LOGCAT" && { echo "FAIL  fatal exception while refocusing:"; grep -a -E -m 6 -A 6 "$FATAL_RE" "$LOGCAT" | head -40; exit 1; }
+  [ -n "$(adb shell pidof "$PKG" | tr -d '\r')" ] || { echo "FAIL  process died while refocusing"; exit 1; }
+done
+if [ -n "$HEADER_OK" ]; then echo "PASS  harness header visible in UI hierarchy (attempt $attempt)"; else echo "FAIL  harness header not found in UI hierarchy after $attempt attempts with clean focus"; exit 1; fi
+adb shell dumpsys activity activities | tr -d '\r' | grep -E "mResumedActivity|topResumedActivity" | grep -q "$PKG" || { echo "FAIL  MainActivity lost focus"; exit 1; }
 adb exec-out screencap -p > "$OUT/android-startup-smoke.png" 2>/dev/null && echo "screenshot: docs/evidence/android-startup-smoke.png ($(stat -c %s "$OUT/android-startup-smoke.png") bytes)"
 echo "== ANDROID START-UP SMOKE PASSED =="
 } | tee "$REPORT"
