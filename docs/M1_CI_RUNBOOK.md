@@ -14,9 +14,10 @@ access of its own; this is the only handoff path.) The push includes `.github/wo
 
 ## 3. Run
 Before clicking **Run workflow**, confirm the selected branch contains commit **`dbd58e5`** (`git log --oneline -1` after Save to GitHub).
-Actions → **native-gates** → Run workflow (leave the `xcode` input at `26.4` unless told otherwise; the iOS job runs on `macos-26`). The **whole workflow = four jobs**:
-`android` (AC-01, ubuntu) · `android-dev-build` (AC-04 APK + manifest audit + APK recheck, ubuntu, needs `android`) · `ios` (AC-02, macos-26, Xcode 26.4) ·
-`executable-suites` (pytest/node with ephemeral keys, after dependency install).
+Actions → **native-gates** → Run workflow (leave the `xcode` input at `26.4` unless told otherwise; the iOS job runs on `macos-26`). The **whole workflow = five jobs**:
+`android` (AC-01, ubuntu) · `android-dev-build` (AC-04 APK + manifest audit + APK recheck, ubuntu, needs `android`) ·
+`android-startup-smoke` (same commit/script built for x86_64, installed on a KVM emulator with no Metro, must reach `GD_SMOKE_READY`; needs `android`) ·
+`ios` (AC-02, macos-26, Xcode 26.4) · `executable-suites` (pytest/node with ephemeral keys, after dependency install).
 Let the run finish completely — do **not** re-run individual failed jobs mid-stream; the audit needs one coherent run ID.
 
 ### Run 34032597988 (tip `8869ce7`) — audited, APK NOT cleared; correction pass applied
@@ -81,6 +82,16 @@ Device: `Parameter specified as non-null is null: AppearanceModule.setColorSchem
 bundle loaded (packaging fix confirmed); `frontend/src/theme.ts` called `Appearance.setColorScheme(null)` at import to "follow the device", which
 React Native 0.86 Android rejects (`ColorSchemeName = 'light' | 'dark' | 'unspecified'`).
 - `frontend/src/theme.ts` — `setColorScheme(scheme ?? "unspecified")`. UI theme plumbing only; no Guard Dog / bundle / verifier / VPN change.
+  Caller identified from source, not inferred: `theme.ts` line `setColorScheme?.(themes.dark ? null : defaultScheme)` runs at module import;
+  RN's `Appearance.setColorScheme` forwards the value unchanged to `NativeAppearance.setColorScheme` (`Appearance.js:100`), so `null` crossed the
+  bridge into the non-null Kotlin parameter. `userInterfaceStyle: "automatic"` is consumed natively by Expo and is not involved.
+- **New CI gate `android-startup-smoke`** (`.github/workflows/native-gates.yml`, `scripts/ci/android-startup-smoke.sh`, marker in `frontend/app/index.tsx`):
+  builds the same commit with `android-dev-build.sh` for `x86_64` (GitHub's KVM emulator cannot execute arm64 natively; bootstrap failures are
+  ABI-independent — the arm64-v8a acceptance APK still comes from `android-dev-build`), boots an API 34 emulator, installs with no Metro /
+  `adb reverse`, launches `MainActivity` and requires: no `FATAL EXCEPTION` / `JavascriptException` / `Unable to load script` / non-null crash,
+  the harness `GD_SMOKE_READY {gitSha, ciRunId, apkSha256, native}` logcat marker with `gitSha == github.sha` and `native:true`, a 15 s stable
+  window, live process, `MainActivity` resumed, and `M1 PROOF HARNESS` present in the `uiautomator` hierarchy. Evidence: `android-startup-smoke.txt`,
+  `-logcat.txt`, `-ui.xml`, `.png` (uploaded from that job only, so no stale files ride along). Would have failed runs 4, 5, 6 and 7.
 - `docs/M1_CI_RUNBOOK.md` (this note). Run-7 APK is void; run 8 yields the sideload candidate.
 
 ## 4. Download artifacts and attach here
@@ -105,6 +116,8 @@ v25 remains the served/frozen bundle; `apk-provenance.json.commit` = the new tip
 ## 5. Audit criteria (what will be checked before the APK is cleared)
 - all jobs actually executed (no skipped gate steps); AC-02 shows SwiftPM build + parity tests + Expo iOS module compiled via CocoaPods/xcodebuild
 - `android-native-gate.txt`: `expo module definition test: 2 run, 0 failed`, `reified stubs: 0`, `expo module: loads (definition() evaluated, bytecode clean)`
+- `android-startup-smoke.txt`: `PASS harness mounted after Ns`, `PASS marker gitSha == expected build commit`, `PASS GuardDogSecurity native module reachable from JS`,
+  `PASS process alive`, `PASS MainActivity is the resumed activity`, `PASS harness header visible in UI hierarchy`, `== ANDROID START-UP SMOKE PASSED ==`
 - `android-dev-build.txt`: `distribution: bundle v25 keyId=gd-m1-test-ed25519-001 … frozen=25` and `app consumes: signed frozen bundle + pinned PUBLIC key only`
 - `merged-manifest-audit.txt`: `MERGED MANIFEST AUDIT: PASS`
 - `apk-recheck.txt`: `== APK RECHECK PASSED ==`, `native-code exactly ['arm64-v8a']`, `application-debuggable`, sdk 26/36, no leakage,

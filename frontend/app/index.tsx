@@ -51,6 +51,12 @@ export default function Index() {
   });
 
   useEffect(() => GuardDogSecuritySDK.onSecurityEvent((event) => setEvents((prev) => [event, ...prev].slice(0, 30))), []);
+  // CI start-up smoke marker (scripts/ci/android-startup-smoke.sh reads it from logcat): emitted once after the first committed render,
+  // i.e. only when React Native bootstrapped, the bundle executed and the harness screen mounted. Carries the build provenance so the
+  // smoke log is bound to the CI run.
+  useEffect(() => {
+    readBuildProvenance().then((p) => console.log(`GD_SMOKE_READY ${JSON.stringify({ gitSha: p.gitSha, ciRunId: p.ciRunId, apkSha256: p.apkSha256, native: GuardDogSecuritySDK.nativeAvailable })}`));
+  }, []);
   useEffect(() => {
     if (config.data && url === "") setUrl(`https://${config.data.controlledEndpoint.host}/login?token=SECRET`);
   }, [config.data, url]);
