@@ -114,7 +114,10 @@ export const themes: { light: ThemeColors; dark?: ThemeColors } = { light, dark 
 // follow the device. Every useTheme() consumer re-renders. Persisting the
 // choice and re-applying it on launch is the toggle's job.
 export function setColorScheme(scheme: ColorScheme | null) {
-  Appearance.setColorScheme?.(scheme);
+  // React Native 0.86 Android rejects null natively ("Parameter specified as non-null is null:
+  // AppearanceModule.setColorScheme, parameter style" — crashed the run-7 proof APK at JS start-up);
+  // "unspecified" is the documented value for "follow the device".
+  Appearance.setColorScheme?.(scheme ?? "unspecified");
 }
 
 // Keep native surfaces (alerts, pickers, navigation chrome) on the schemes this

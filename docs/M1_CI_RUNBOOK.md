@@ -71,6 +71,18 @@ run-id check rejected the real bundle: the digit-boundary regex assumed the lite
   wrong commit, missing bundle, leaked marker → FAIL; binary-manifest parsing line asserted. Run locally with `bash scripts/ci/apk-recheck-selftest.sh`.
 - `docs/M1_CI_RUNBOOK.md` (this note). Run-6 APK is void; run 7 yields the sideload candidate.
 
+### Run 34078207844 (tip `9d53df9`) — 4/4 green, APK recheck PASS end-to-end; phone reaches JS and hits a start-up RN Appearance crash — correction pass 5
+Verified from the API + artifacts: provenance diff exact; `apk-provenance.json` = `apkSha256 0225fa78…563f9a`, commit `9d53df9…`, run `34078207844`;
+`apk-recheck.txt` all PASS incl. `embedded JS bundle (2357980 bytes)`, commit + run id inlined, leakage clean; `distribution: bundle v25 … frozen=25`.
+Artifact hygiene finding: the `android-dev-build` artifact uploads the whole `docs/evidence/`, which still contains the **git-tracked, stale**
+`android-native-gate.txt` from a local run (2026-09-06T11:19, aarch64). The authoritative AC-01 log is only in the `android-native-gate` artifact.
+Always read gate logs from their own job's artifact; treat any `docs/evidence/*.txt` whose header host/date does not match the run as stale.
+Device: `Parameter specified as non-null is null: AppearanceModule.setColorScheme, parameter style` (`AppearanceModule.kt`) at JS start-up — the
+bundle loaded (packaging fix confirmed); `frontend/src/theme.ts` called `Appearance.setColorScheme(null)` at import to "follow the device", which
+React Native 0.86 Android rejects (`ColorSchemeName = 'light' | 'dark' | 'unspecified'`).
+- `frontend/src/theme.ts` — `setColorScheme(scheme ?? "unspecified")`. UI theme plumbing only; no Guard Dog / bundle / verifier / VPN change.
+- `docs/M1_CI_RUNBOOK.md` (this note). Run-7 APK is void; run 8 yields the sideload candidate.
+
 ## 4. Download artifacts and attach here
 | Artifact | Files to attach |
 |---|---|
