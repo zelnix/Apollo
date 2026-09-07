@@ -20,7 +20,7 @@ class TestWeeklyCheckinApi:
     def test_register_stores_tz_offset(self, api):
         d = f"dev{uuid.uuid4().hex[:12]}"
         r = api.post(f"{BASE_URL}/api/devices/register", json={"device_id": d, "platform": "web", "adapter_mode": "mock", "app_version": "1.0.0", "tz_offset_minutes": 600})
-        assert r.status_code == 200
+        assert r.status_code == 201
         assert api.post(f"{BASE_URL}/api/devices/register", json={"device_id": d, "platform": "web", "adapter_mode": "mock", "app_version": "1.0.0", "tz_offset_minutes": 900}).status_code == 422  # out of range
 
     def test_pref_default_on_and_toggle(self, api):

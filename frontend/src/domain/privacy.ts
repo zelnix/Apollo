@@ -17,7 +17,7 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   ]),
   trust_sync: new Set(["device_id", "indicator_type", "indicator_digest", "indicator_host", "event_id", "trust_id"]),
   ask_apollo: new Set(["device_id", "message", "context"]),
-  device_register: new Set(["device_id", "platform", "adapter_mode", "app_version", "tz_offset_minutes"]),
+  device_register: new Set(["platform", "adapter_mode", "app_version", "tz_offset_minutes"]),
   // Alert notifications: the push token is an opaque delivery address (FCM/APNs), relayed and not stored by us.
   push_register: new Set(["user_id", "platform", "device_token"]),
   push_test: new Set(["device_id"]),

@@ -49,15 +49,15 @@ def _sb_ok(api_client) -> bool:
 # --- device register ---
 def test_device_register(api_client):
     payload = {"device_id": DEVICE_ID, "platform": "web", "adapter_mode": "mock", "app_version": "1.0.0"}
+    # Registration is server-issued: the caller's device_id is ignored, a new id + one-time token come back (201).
     r = api_client.post(f"{API}/devices/register", json=payload)
-    assert r.status_code == 200, r.text
+    assert r.status_code == 201, r.text
     body = r.json()
-    assert body["device_id"] == DEVICE_ID
-    assert body["registered"] is True
-    # second call -> idempotent (registered False)
+    assert body["device_id"] != DEVICE_ID and len(body["device_id"]) == 32
+    assert len(body["device_token"]) >= 40 and body["registered"] is True
+    # a second registration is a second identity, never "the same device again"
     r2 = api_client.post(f"{API}/devices/register", json=payload)
-    assert r2.status_code == 200
-    assert r2.json()["registered"] is False
+    assert r2.status_code == 201 and r2.json()["device_id"] != body["device_id"]
 
 
 # --- intel/check malicious ---

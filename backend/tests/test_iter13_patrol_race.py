@@ -43,9 +43,12 @@ def _payload(headline: str, state: str = "barking"):
 @pytest.mark.asyncio
 async def test_concurrent_upsert_same_event_id():
     """Two concurrent POSTs same event_id+device_id but different headlines → both 200, one row."""
-    async with aiohttp.ClientSession() as session:
+    # aiohttp bypasses the requests-based conftest shim, so authenticate explicitly with a real device.
+    reg = requests.post(f"{API}/devices/register", json={"platform": "web", "adapter_mode": "mock"}, headers={"User-Agent": "apollo-tests"}).json()
+    async with aiohttp.ClientSession(headers={"Authorization": f"Bearer {reg['device_token']}"}) as session:
         async def post(headline: str):
-            async with session.post(f"{API}/patrol/events", json=_payload(headline)) as r:
+            body = {**_payload(headline), "device_id": reg["device_id"]}
+            async with session.post(f"{API}/patrol/events", json=body) as r:
                 return r.status, await r.json()
 
         results = await asyncio.gather(
@@ -61,7 +64,7 @@ async def test_concurrent_upsert_same_event_id():
         assert status == 200, f"expected 200, got {status}: {body}"
 
     # GET must show exactly one event with this event_id
-    r = requests.get(f"{API}/patrol/events", params={"device_id": DEVICE_ID}, timeout=10)
+    r = requests.get(f"{API}/patrol/events", params={"device_id": reg["device_id"]}, headers={"Authorization": f"Bearer {reg['device_token']}", "X-Apollo-Raw": "1"}, timeout=10)
     assert r.status_code == 200
     events = [e for e in r.json() if e["event_id"] == EVENT_ID]
     assert len(events) == 1, f"expected 1 event, got {len(events)}: {events}"

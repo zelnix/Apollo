@@ -377,3 +377,14 @@ frontend:
   - task: "Guard master card testIDs guard-master-title/-line/-truth/-coverage/-degraded, pills guard-truth-requested/-operational/-verified; switch bound to requested. Mock: 'Apollo is guarding what he can · Site Guard simulated', blockDestination never verified (biting unreachable in mock). Native Kotlin/Swift truth changes untestable here."
     implemented: true
     working: true
+
+## Iteration 30 — Device authentication (needs E2E sweep)
+backend:
+  - task: "Server-issued device identity + bearer tokens, router-wide enforcement, rotate/revoke. tests/test_device_auth.py 8/8; conftest auth shim for legacy suites."
+    implemented: true
+    working: true
+frontend:
+  - task: "src/auth/deviceIdentity.ts + authenticated API client + identity reset on 401. E2E scripts must read localStorage 'apollo.device.identity.v2' ({deviceId, token}) and send Authorization: Bearer for API-side pairing. Smoke-tested only."
+    implemented: true
+    working: "NA"
+    needs_retesting: true

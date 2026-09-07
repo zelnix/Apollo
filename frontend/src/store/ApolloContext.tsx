@@ -1,4 +1,4 @@
-// ApolloProvider — app-wide store: device identity (via SecureCore), adapter
+// ApolloProvider — app-wide store: device identity (server-issued, src/auth/deviceIdentity), adapter
 // status/capabilities, Patrol events (local-first, minimal sync), trust list,
 // verification timestamps and the resolved Apollo state.
 
@@ -7,7 +7,8 @@ import * as Crypto from "expo-crypto";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Platform } from "react-native";
 
-import { apiDelete, apiGet, apiPost, apiPut } from "@/src/api/client";
+import { API_BASE, apiDelete, apiGet, apiPost, apiPut } from "@/src/api/client";
+import { getDeviceIdentity, onIdentityReset, registerDeviceIdentity } from "@/src/auth/deviceIdentity";
 import { visibilityFrom } from "@/src/domain/capability";
 import { assessConnection } from "@/src/domain/connection";
 import { decide } from "@/src/domain/decision";
@@ -25,6 +26,8 @@ import type { BlockResult, NetworkStatus, ProtectionPermission, ProtectionStatus
 import { SecureCore } from "@/src/security/securecore/SecureCore";
 import { getPushStatus, registerForPush, type PushStatus } from "@/src/push/notifications";
 import { storage } from "@/src/utils/storage";
+
+const deviceMeta = () => ({ platform: Platform.OS, adapter_mode: SECURITY_MODE, app_version: "1.0.0", tz_offset_minutes: -new Date().getTimezoneOffset() });
 
 const K = { setup: "apollo.setup.done", events: "apollo.patrol.events", trust: "apollo.trust.entries", verified: "apollo.lastVerifiedAt", protection: "apollo.protection.on", wifi: "apollo.wifi.trusted", quiet: "apollo.quiet.hours", lowPower: "apollo.lowPower" };
 
@@ -210,14 +213,26 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         setSetupDone(!!done);
         if (ev) setEvents(JSON.parse(ev)); if (tr) setTrust(JSON.parse(tr)); setLastVerifiedAt(ver ?? null);
         if (done) {
-          const status = await SecureCore.getSecurityStatus();
-          if (status.deviceIdentityExists) setDeviceId((await SecureCore.createDeviceIdentity()).deviceId);
+          // Server-issued identity. Legacy (pre-token) installs have none and get a fresh identity — never a claimed one.
+          let identity = await getDeviceIdentity();
+          if (!identity) { try { identity = await registerDeviceIdentity(API_BASE, deviceMeta()); } catch { identity = null; } }
+          if (identity) {
+            setDeviceId(identity.deviceId);
+            try { await apiPost("/devices/heartbeat", "device_register", deviceMeta()); } catch { /* offline is fine */ }
+          }
           if (protOn) await securityAdapter.startProtection();
         }
         await refresh();
       } finally { setReady(true); }
     })();
   }, [refresh]);
+
+  // A 401 means the credential is dead (revoked/expired/rotated elsewhere). Fail closed, then re-register a NEW identity.
+  useEffect(() => onIdentityReset((why) => {
+    setDeviceId(null);
+    showToast(`${why} Registering a new device identity…`, "neutral");
+    void registerDeviceIdentity(API_BASE, deviceMeta()).then((id) => setDeviceId(id.deviceId)).catch(() => undefined);
+  }), [showToast]);
 
   // Re-resolve state over time so cooldown/freshness windows expire visibly (slower in battery saver).
   useEffect(() => { const t = setInterval(() => setTick((n) => n + 1), lowPower ? 120000 : 30000); return () => clearInterval(t); }, [lowPower]);
@@ -238,18 +253,16 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const completeSetup = useCallback(async () => {
-    const identity = await SecureCore.createDeviceIdentity();
-    setDeviceId(identity.deviceId);
-    try {
-      await apiPost("/devices/register", "device_register", { device_id: identity.deviceId, platform: Platform.OS, adapter_mode: SECURITY_MODE, app_version: "1.0.0", tz_offset_minutes: -new Date().getTimezoneOffset() });
-    } catch { /* offline is fine; registration retries on next launch */ }
+    let identity = await getDeviceIdentity();
+    if (!identity) { try { identity = await registerDeviceIdentity(API_BASE, deviceMeta()); } catch { identity = null; /* offline: retried on next launch */ } }
+    if (identity) setDeviceId(identity.deviceId);
     await securityAdapter.startProtection();
     await storage.setItem(K.protection, true);
     await storage.setItem(K.setup, true);
     setSetupDone(true);
     await verifyNow();
     // Contextual ask: the user just turned protection on, so "tell me when Apollo barks" is expected here.
-    try { setPushStatus(await registerForPush(identity.deviceId, { ask: true })); } catch { /* never block setup */ }
+    if (identity) { try { setPushStatus(await registerForPush(identity.deviceId, { ask: true })); } catch { /* never block setup */ } }
   }, [verifyNow]);
 
   // Remote Patrol + trust merge (device may have reinstalled). Local wins.

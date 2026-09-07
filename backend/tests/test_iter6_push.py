@@ -32,13 +32,10 @@ def s():
 
 # ------------------------- /api/register-push validation ------------------------
 class TestRegisterPushValidation:
-    def test_short_user_id_returns_422(self, s):
-        r = s.post(f"{API}/register-push", json={
-            "user_id": "short",   # <8
-            "platform": "android",
-            "device_token": "tok-abc12345",
-        })
-        assert r.status_code == 422, r.text
+    def test_foreign_user_id_is_forbidden(self, s):
+        # user_id must match the authenticated device (device auth); a foreign id is 403, never accepted.
+        r = s.post(f"{API}/register-push", json={"user_id": "someoneelse0001", "platform": "ios", "device_token": "ExponentPushToken[x]"}, headers={"X-Apollo-Raw": "1", "Authorization": f"Bearer {__import__('requests').post(f'{API}/devices/register', json={'platform': 'web', 'adapter_mode': 'mock'}).json()['device_token']}"})
+        assert r.status_code == 403, r.text
 
     def test_bad_platform_returns_422(self, s):
         r = s.post(f"{API}/register-push", json={

@@ -9,6 +9,7 @@ Privacy posture:
 from __future__ import annotations
 
 import asyncio
+import base64
 import hmac
 import json
 import logging
@@ -28,7 +29,8 @@ import httpx
 from pymongo.errors import DuplicateKeyError
 from bson import ObjectId
 from dotenv import load_dotenv
-from fastapi import APIRouter, FastAPI, HTTPException, Query
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.responses import Response, StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator
@@ -87,7 +89,6 @@ EventStatus = Literal["active", "trusted", "blocked", "resolved"]
 
 
 class DeviceRegister(BaseModel):
-    device_id: str = Field(min_length=8, max_length=64)
     platform: str = Field(max_length=16)
     adapter_mode: str = Field(max_length=16)
     app_version: str = Field(default="1.0.0", max_length=16)
@@ -323,19 +324,118 @@ async def health():
     return {"status": "ok", "service": "apollo-v1", "time": now_utc().isoformat()}
 
 
-@api.post("/devices/register")
-async def register_device(body: DeviceRegister):
-    existing = await db.devices.find_one({"device_id": body.device_id})
+# --------------------------------------------------------------------------- Device authentication (Hardening Gate step 2)
+# Anonymous devices, no accounts. The SERVER issues both the device_id and a 256-bit bearer token; only the token's
+# SHA-256 is stored. Every request outside PUBLIC_PATHS must carry `Authorization: Bearer <token>`, and any
+# device_id the caller supplies (path, query or JSON body) must equal the authenticated device — the backend never
+# trusts a caller-supplied device_id. Legacy devices (no token_hash) can never authenticate: no first-come binding.
+TOKEN_TTL_DAYS = 365
+bearer_scheme = HTTPBearer(auto_error=False)
+PUBLIC_PATHS = {"/api/health", "/api/intel/status", "/api/devices/register"}
+PUBLIC_PREFIXES = ("/api/family/confirm/", "/api/voice/")  # email confirmation link; cached audio by unguessable key
+
+
+def hash_token(raw: str) -> str:
+    return sha256(raw.encode("ascii")).hexdigest()
+
+
+def new_token() -> str:
+    return base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b"=").decode("ascii")
+
+
+def _issue(device_id: str) -> tuple[str, dict[str, Any]]:
+    raw = new_token()
     ts = now_utc()
-    if existing:
-        await db.devices.update_one(
-            {"device_id": body.device_id},
-            {"$set": {"last_seen_at": ts, "platform": body.platform, "adapter_mode": body.adapter_mode, "app_version": body.app_version, "tz_offset_minutes": body.tz_offset_minutes}},
-        )
-        return {"device_id": body.device_id, "registered": False}
-    device = Device(**body.model_dump(), created_at=ts, last_seen_at=ts)
-    await db.devices.insert_one(device.to_mongo())
-    return {"device_id": body.device_id, "registered": True}
+    return raw, {"token_hash": hash_token(raw), "token_issued_at": ts, "token_expires_at": ts + timedelta(days=TOKEN_TTL_DAYS), "revoked_at": None}
+
+
+def _unauthorized(detail: str) -> HTTPException:
+    return HTTPException(status_code=401, detail=detail, headers={"WWW-Authenticate": "Bearer"})
+
+
+async def authed_device(credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme)) -> dict[str, Any]:
+    """Resolve the bearer token to a device document. Fails closed with 401 on anything unexpected."""
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise _unauthorized("This request needs Apollo's device credential.")
+    raw = credentials.credentials
+    if not (40 <= len(raw) <= 128):
+        raise _unauthorized("Invalid device credential.")
+    dev = await db.devices.find_one({"token_hash": hash_token(raw), "revoked_at": None, "token_expires_at": {"$gt": now_utc()}})
+    if not dev:
+        raise _unauthorized("Device credential is invalid, expired or revoked. Apollo will re-register this device.")
+    return dev
+
+
+async def enforce_device_auth(request: Request, credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme)) -> None:
+    """Router-wide gate: public paths pass; everything else needs a valid token AND every supplied device_id must
+    match the authenticated device (path param, query string, or top-level JSON body field)."""
+    path = request.url.path
+    if path in PUBLIC_PATHS or path.startswith(PUBLIC_PREFIXES):
+        return
+    dev = await authed_device(credentials)
+    me = dev["device_id"]
+    claimed: set[str] = set()
+    for key in ("device_id", "user_id"):
+        if key in request.path_params:
+            claimed.add(str(request.path_params[key]))
+        if key in request.query_params:
+            claimed.add(request.query_params[key])
+    if request.method in ("POST", "PUT", "PATCH") and "application/json" in (request.headers.get("content-type") or ""):
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001 — malformed JSON is rejected by the route's own validation
+            body = None
+        if isinstance(body, dict):
+            for key in ("device_id", "user_id"):
+                if isinstance(body.get(key), str):
+                    claimed.add(body[key])
+    if any(c != me for c in claimed):
+        raise HTTPException(status_code=403, detail="That device_id does not belong to this device.")
+    request.state.device = dev
+
+
+@api.post("/devices/register", status_code=201)
+async def register_device(body: DeviceRegister):
+    """Creates a NEW anonymous device identity. The raw token is returned exactly once and never stored."""
+    ts = now_utc()
+    device_id = uuid.uuid4().hex
+    raw, cred = _issue(device_id)
+    doc = Device(device_id=device_id, **body.model_dump(), created_at=ts, last_seen_at=ts).to_mongo()
+    doc.update(cred)
+    await db.devices.insert_one(doc)
+    return {"device_id": device_id, "device_token": raw, "token_expires_at": cred["token_expires_at"], "registered": True}
+
+
+@api.post("/devices/heartbeat")
+async def device_heartbeat(body: DeviceRegister, request: Request):
+    """Authenticated 'still here' — updates platform/app/tz and last_seen for the token's device."""
+    me = request.state.device["device_id"]
+    await db.devices.update_one({"device_id": me}, {"$set": {"last_seen_at": now_utc(), "platform": body.platform, "adapter_mode": body.adapter_mode, "app_version": body.app_version, "tz_offset_minutes": body.tz_offset_minutes}})
+    return {"device_id": me}
+
+
+@api.get("/devices/me")
+async def device_me(request: Request):
+    d = request.state.device
+    return {"device_id": d["device_id"], "token_expires_at": d.get("token_expires_at"), "created_at": d.get("created_at")}
+
+
+@api.post("/devices/token/rotate")
+async def rotate_token(request: Request):
+    """Atomic: the old token stops working in the same update that installs the new one."""
+    d = request.state.device
+    raw, cred = _issue(d["device_id"])
+    res = await db.devices.update_one({"device_id": d["device_id"], "token_hash": d["token_hash"], "revoked_at": None}, {"$set": cred})
+    if res.modified_count != 1:
+        raise _unauthorized("Token is no longer valid.")
+    return {"device_id": d["device_id"], "device_token": raw, "token_expires_at": cred["token_expires_at"]}
+
+
+@api.post("/devices/revoke", status_code=204)
+async def revoke_device(request: Request):
+    """Revokes this device's credential. The device must register again (new identity) to use Apollo's API."""
+    await db.devices.update_one({"device_id": request.state.device["device_id"], "revoked_at": None}, {"$set": {"revoked_at": now_utc()}})
+    return None
 
 
 # --------------------------------------------------------------------------- Quiet hours (device settings)
@@ -1841,8 +1941,11 @@ async def account_breach(body: BreachCheckIn):
     return BreachCheckOut(status="found", breaches=breaches, password_exposed=pw, detail=f"Found in {len(data)} known breach{'es' if len(data) != 1 else ''}.{' At least one included passwords.' if pw else ''}")
 
 
-app.include_router(api)
-app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.include_router(api, dependencies=[Depends(enforce_device_auth)])
+# CORS is not authentication (bearer tokens do that). The web preview is same-origin (/api on the same host), and native
+# apps don't use CORS, so only explicitly configured browser origins are allowed.
+_cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
+app.add_middleware(CORSMiddleware, allow_credentials=False, allow_origins=_cors_origins, allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"], allow_headers=["Authorization", "Content-Type", "Accept"])
 
 SEED_BLOCKLIST = [
     ("testsafebrowsing.appspot.com", "SOCIAL_ENGINEERING", "Google Safe Browsing public test pages"),
@@ -1855,6 +1958,8 @@ SEED_BLOCKLIST = [
 @app.on_event("startup")
 async def startup():
     asyncio.create_task(weekly_checkin_loop())
+    await db.devices.create_index("device_id", unique=True)
+    await db.devices.create_index("token_hash", unique=True, partialFilterExpression={"token_hash": {"$type": "string"}})
     await db.reputation_cache.create_index("indicator_digest", unique=True)
     await db.reputation_cache.create_index("expires_at")  # plain index; expiry is checked at read time, never auto-deleted
     await db.patrol_events.create_index([("device_id", 1), ("event_id", 1)], unique=True)

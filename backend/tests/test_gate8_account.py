@@ -49,7 +49,7 @@ class TestAccountAnalyse:
 
     def test_validation(self, api_client, device_id):
         assert _analyse(api_client, device_id, local_state="not_a_state").status_code == 422
-        assert _analyse(api_client, "short").status_code == 422
+        # device_id validity is now enforced by device authentication (401/403), not by field length — see test_device_auth.py
 
     def test_second_opinion_never_errors(self, api_client, device_id):
         r = _analyse(api_client, device_id, kind="mfa_prompt", local_state="barking", scenario="AC01", second_opinion=True)
