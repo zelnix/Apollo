@@ -78,6 +78,9 @@ Verified from the API + artifacts: provenance diff exact; `apk-provenance.json` 
 Artifact hygiene finding: the `android-dev-build` artifact uploads the whole `docs/evidence/`, which still contains the **git-tracked, stale**
 `android-native-gate.txt` from a local run (2026-09-06T11:19, aarch64). The authoritative AC-01 log is only in the `android-native-gate` artifact.
 Always read gate logs from their own job's artifact; treat any `docs/evidence/*.txt` whose header host/date does not match the run as stale.
+Closed in run 8: every job's `upload-artifact` now lists only the files that job generates (`android`: gate log + test XML; `android-dev-build`: APK,
+build log, manifests, recheck, provenance; `ios`: gate log + Xcode/pod logs; `android-startup-smoke`: smoke report/logcat/UI/screenshot), so a
+downloaded artifact can no longer contain a git-tracked local evidence file.
 Device: `Parameter specified as non-null is null: AppearanceModule.setColorScheme, parameter style` (`AppearanceModule.kt`) at JS start-up — the
 bundle loaded (packaging fix confirmed); `frontend/src/theme.ts` called `Appearance.setColorScheme(null)` at import to "follow the device", which
 React Native 0.86 Android rejects (`ColorSchemeName = 'light' | 'dark' | 'unspecified'`).

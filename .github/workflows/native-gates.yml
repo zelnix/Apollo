@@ -29,9 +29,19 @@ jobs:
       # Prebuild so gate steps 5-6 (Expo module inside the generated app, frozen SDK levels 26/36/36) execute, not skip.
       - run: cd frontend && yarn install --frozen-lockfile && CI=1 npx expo prebuild --platform android --clean --no-install
       - run: bash scripts/ci/android-native-gate.sh
+      # Upload only what THIS job generated — docs/evidence also holds git-tracked local evidence files that would otherwise ride along as stale copies.
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: android-native-gate, path: docs/evidence }
+        with:
+          name: android-native-gate
+          path: |
+            docs/evidence/android-native-gate.txt
+            docs/evidence/core-deps.txt
+            docs/evidence/vpn-deps.txt
+            docs/evidence/android-core-test-results
+            docs/evidence/android-vpn-test-results
+            docs/evidence/expo-module-test-results
+            docs/evidence/expo-module-definition-test.log
   # AC-04: development APK + merged-manifest audit on a native x86_64 runner (no device: the script stops before install and
   # uploads guarddog-m1-dev.apk, merged-AndroidManifest.xml, merged-manifest-audit.txt for the physical-device run).
   # Trust boundary: this job consumes PUBLIC distribution data only (GET /api/config, /latest, /keys from GD_BACKEND_URL) and the
@@ -63,7 +73,16 @@ jobs:
         env: { GD_DEV_ABIS: arm64-v8a }
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: android-dev-build, path: docs/evidence }
+        with:
+          name: android-dev-build
+          path: |
+            docs/evidence/guarddog-m1-dev.apk
+            docs/evidence/android-dev-build.txt
+            docs/evidence/merged-AndroidManifest.xml
+            docs/evidence/merged-manifest-audit.txt
+            docs/evidence/apk-AndroidManifest.txt
+            docs/evidence/apk-recheck.txt
+            docs/evidence/apk-provenance.json
   # Start-up smoke: the gate that runs 4–7 lacked. Builds the SAME commit with the SAME script (only the ABI differs: x86_64 so GitHub's
   # KVM emulator can execute it natively; the arm64-v8a acceptance APK comes from android-dev-build), installs it on a cold emulator with
   # no Metro/adb reverse, launches MainActivity and requires the harness GD_SMOKE_READY marker (bound to github.sha), a stable window,
@@ -134,7 +153,14 @@ jobs:
       - run: bash scripts/ci/ios-native-gate.sh
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: ios-native-gate, path: docs/evidence }
+        with:
+          name: ios-native-gate
+          path: |
+            docs/evidence/ios-native-gate.txt
+            docs/evidence/ios-core-test-results.txt
+            docs/evidence/ios-expo-package-audit.txt
+            docs/evidence/ios-pod-install.log
+            docs/evidence/ios-xcodebuild-full.log
   executable-suites:
     runs-on: ubuntu-latest
     services:
