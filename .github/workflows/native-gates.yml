@@ -119,7 +119,9 @@ jobs:
         with:
           api-level: 34
           arch: x86_64
-          target: google_apis
+          # AOSP image: no Pixel Launcher / GMS boot storm. Run 34117910707 (google_apis) had wellbeing/messaging/quicksearchbox FGS
+          # starts at boot and a persistent "Pixel Launcher isn't responding" system dialog covering the (alive, resumed) app.
+          target: default
           profile: pixel_6
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none

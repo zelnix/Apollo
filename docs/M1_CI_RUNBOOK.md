@@ -121,6 +121,23 @@ resumed) and failed only at `harness header not found in UI hierarchy`: the uplo
   (system dialog → dismiss coords; app hierarchy → no overlay; launcher in front → refocus only).
 - `docs/M1_CI_RUNBOOK.md` (this note). Run-34106689038 APK (`10214cdf…`) is not the device candidate; the next fully green run is.
 
+### Run 34117910707 (tip `f1fd234`) — 4/5 green; **phone provenance PASSED**; smoke false negative root-caused from evidence — correction pass 7
+Phone (Build provenance card) = CI `apk-provenance.json`: `apkSha256 ed746066…38c5`, `commit f1fd234b…4536`, `workflowRunId 34117910707`; native yes;
+v25 loaded; INACTIVE / consent not granted; 0 genuine blocks. **That installation stays on the phone untouched.**
+Smoke root cause (from `android-startup-smoke-logcat.txt`, `-ui.xml`, `.txt` of the run — not inferred): Apollo pid 3676 started 12:02:41.996, emitted
+`GD_SMOKE_READY` 12:02:53.679, and is still logging at 12:03:48.9 (last logcat line 12:03:49.7); **no** `am_proc_died`/`am_kill`/`has died`/ANR/FATAL
+for the package; each refocus `am start` returned `result code=3` (intent delivered to top — already foreground). The script's process-death
+branch never fired; the failure line was the header check. The `-ui.xml` contains 12 nodes, all `package="android"`: "Pixel Launcher isn't
+responding" / Close app / Wait — `uiautomator dump` only sees the topmost window, and that system ANR dialog (caused by the `google_apis` image's
+boot storm: wellbeing, messaging, quicksearchbox FGS starts; `am start -W` even timed out) sat above the alive, resumed app through all 5 attempts.
+Verdict: test-environment defect; **no Apollo process death, no recovery relaunch needed or added.**
+- `scripts/ci/android-startup-smoke.sh` — `settings put global hide_error_dialogs 1` (+ animation scales 0) before launch, so other processes' ANR/crash
+  dialogs cannot occlude the app (Apollo's own fatals are still detected from logcat, which the dialog setting does not affect); 20 s post-boot settle;
+  every failure path now prints **process-exit evidence** (`dumpsys activity exit-info <pkg>`, `am_proc_died/am_kill/am_anr/am_crash` events buffer,
+  ActivityManager/lowmemorykiller lines for the last known PID); PID is tracked and a PID change during retries fails as "process restarted".
+- `.github/workflows/native-gates.yml` — emulator image `target: default` (AOSP, no Pixel Launcher/GMS) instead of `google_apis`.
+- `docs/M1_CI_RUNBOOK.md` (this note). Next fully green run → the phone may proceed (its APK will differ only by this CI change; re-verify the card).
+
 ## 4. Download artifacts and attach here
 | Artifact | Files to attach |
 |---|---|
