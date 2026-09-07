@@ -103,6 +103,11 @@ User request: display name **Apollo Native Gates** + supplied artwork as the ico
 `APOLLO NATIVE GATES · M1 PROOF HARNESS` (the smoke gate's `M1 PROOF HARNESS` token is preserved). **Unchanged:** `slug`, Android package
 `com.emergent.guarddogm.k6cugf`, iOS bundle id, permissions, native code, bundle v25. Effect on the APK: `android:label` string + launcher
 drawables only — a new provenance SHA as with any commit.
+Reviewer correction (same push): the harness had no on-screen provenance before the enforcement proof — `readBuildProvenance()` was only used for the
+CI marker and inside "Build JSON evidence". Added a read-only **Build provenance (this installed APK)** card between *Protection state* and *Backend*:
+full APK SHA-256 and Git SHA (selectable mono text, no truncation), CI run ID, native module available yes/no, package/version/debuggable line.
+Harness-only (`frontend/app/index.tsx`); the frozen public SDK, bundle v25, verifier, VPN and THREAT_BLOCKED path are untouched. Phone procedure:
+open the app → compare the card with the run's `apk-provenance.json` (`apkSha256`, `commit`, `workflowRunId`) **before** pressing *Run proof*.
 
 ## 4. Download artifacts and attach here
 | Artifact | Files to attach |

@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ActionButton, Card, KeyValue, StatusBadge, StepRow } from "@/src/components/harness-ui";
 import type { SecurityEvent } from "@/src/contracts/securityEventSchemas";
 import { type HarnessStep, runAndroidBlockingProof } from "@/src/harness/androidBlockingProofHarness";
-import { readBuildProvenance } from "@/src/harness/buildProvenance";
+import { readBuildProvenance, type BuildProvenance } from "@/src/harness/buildProvenance";
 import { buildProofReport, exportReportJson, exportReportPdf, type ProofReport, shareEvidenceFile } from "@/src/harness/proofReport";
 import { fetchLatestBundle, fetchM1Config } from "@/src/harness/ruleBundleFixtures";
 import { GuardDogSecuritySDK, type LocalAnalysis } from "@/src/sdk/GuardDogSecuritySDK";
@@ -37,6 +37,7 @@ export default function Index() {
   const [url, setUrl] = useState("");
   const [analysis, setAnalysis] = useState<LocalAnalysis | null | undefined>(undefined);
   const [report, setReport] = useState<ProofReport | null>(null);
+  const [provenance, setProvenance] = useState<BuildProvenance | null>(null);
   const [pdfUri, setPdfUri] = useState<string | null>(null);
   const [jsonUri, setJsonUri] = useState<string | null>(null);
   const analyze = () => setAnalysis(GuardDogSecuritySDK.analyzeUrl(url));
@@ -55,7 +56,10 @@ export default function Index() {
   // i.e. only when React Native bootstrapped, the bundle executed and the harness screen mounted. Carries the build provenance so the
   // smoke log is bound to the CI run.
   useEffect(() => {
-    readBuildProvenance().then((p) => console.log(`GD_SMOKE_READY ${JSON.stringify({ gitSha: p.gitSha, ciRunId: p.ciRunId, apkSha256: p.apkSha256, native: GuardDogSecuritySDK.nativeAvailable })}`));
+    readBuildProvenance().then((p) => {
+      setProvenance(p);
+      console.log(`GD_SMOKE_READY ${JSON.stringify({ gitSha: p.gitSha, ciRunId: p.ciRunId, apkSha256: p.apkSha256, native: GuardDogSecuritySDK.nativeAvailable })}`);
+    });
   }, []);
   useEffect(() => {
     if (config.data && url === "") setUrl(`https://${config.data.controlledEndpoint.host}/login?token=SECRET`);
@@ -83,6 +87,23 @@ export default function Index() {
           </View>
           <KeyValue label="Blocked events (genuine)" value={String(blocked)} testID="blocked-count" />
           <KeyValue label="Rejected bridge payloads" value={String(GuardDogSecuritySDK.rejectedEventCount)} testID="rejected-count" />
+        </Card>
+
+        {/* Read-only, harness-only: lets the phone's installed build be matched against CI (apk-provenance.json) BEFORE any enforcement proof runs. */}
+        <Card title="Build provenance (this installed APK)" testID="provenance-card">
+          {provenance ? (
+            <>
+              <Text style={styles.note}>APK SHA-256 (must equal apk-provenance.json.apkSha256 of the CI run)</Text>
+              <Text style={styles.mono} selectable testID="provenance-apk-sha">{provenance.apkSha256 ?? "unavailable (not an installed Android APK)"}</Text>
+              <Text style={styles.note}>Git SHA (EXPO_PUBLIC_GIT_SHA baked into this JS bundle)</Text>
+              <Text style={styles.mono} selectable testID="provenance-git-sha">{provenance.gitSha ?? "not baked in (non-CI bundle)"}</Text>
+              <KeyValue label="CI run ID" value={provenance.ciRunId ?? "not baked in (non-CI bundle)"} testID="provenance-run-id" />
+              <KeyValue label="Native module available" value={GuardDogSecuritySDK.nativeAvailable ? "yes" : "no"} testID="provenance-native" />
+              {provenance.packageName ? <Text style={styles.mono} testID="provenance-package">{provenance.packageName} · v{provenance.versionName} ({provenance.versionCode}) · {provenance.debuggable ? "debuggable" : "release"}{provenance.splitApks ? ` · ${provenance.splitApks} split APK(s)` : ""}</Text> : null}
+            </>
+          ) : (
+            <ActivityIndicator color={colors.brandPrimary} testID="provenance-loading" />
+          )}
         </Card>
 
         <Card title="Backend · signed rules" testID="backend-card">
