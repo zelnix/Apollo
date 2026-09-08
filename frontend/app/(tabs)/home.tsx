@@ -68,7 +68,7 @@ export default function Home() {
           </Card>
         ) : null}
         <ServiceBanner />
-        <HigginsGreeting state={resolution.visibilityLost ? "lost" : resolution.state} />
+        <HigginsGreeting state={resolution.visibilityLost ? "lost" : resolution.state} statusLine={resolution.reason} />
         <ClipboardLinkBanner />
         {protection?.operational ? (
           <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }} testID="home-background-card">

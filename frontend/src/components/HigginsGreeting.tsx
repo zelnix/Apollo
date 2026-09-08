@@ -22,7 +22,8 @@ const useStyles = makeStyles((c) => ({
   close: { width: 44, height: 44, alignItems: "center", justifyContent: "center", marginTop: -spacing.sm, marginRight: -spacing.sm },
 }));
 
-export function HigginsGreeting({ state }: { state: ApolloState | "lost" }) {
+/** The single "Hear Higgins" on Home: reads the greeting, then Apollo's current status line (from the hero) in one go. */
+export function HigginsGreeting({ state, statusLine }: { state: ApolloState | "lost"; statusLine?: string }) {
   const s = useStyles();
   const { colors } = useTheme();
   const { deviceId, ready } = useApollo();
@@ -52,7 +53,7 @@ export function HigginsGreeting({ state }: { state: ApolloState | "lost" }) {
         </View>
         <Pressable testID="higgins-greeting-dismiss" accessibilityRole="button" accessibilityLabel="Dismiss greeting" onPress={dismiss} style={s.close} hitSlop={8}><X size={18} color={colors.muted} /></Pressable>
       </View>
-      <HigginsSpeakButton text={greeting.text} testID="higgins-greeting-hear" />
+      <HigginsSpeakButton text={statusLine ? `${greeting.text} ${statusLine}` : greeting.text} testID="higgins-greeting-hear" />
     </Card>
   );
 }
