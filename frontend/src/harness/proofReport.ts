@@ -14,7 +14,7 @@ import type { M1Config } from "@/src/harness/ruleBundleFixtures";
 import { GuardDogSecuritySDK } from "@/src/sdk/GuardDogSecuritySDK";
 
 export interface ProofReport {
-  reportVersion: "m1-5";
+  reportVersion: "m1-6";
   /** "block": selective block + stop/recovery proof. "revoke": VpnService.onRevoke() lifecycle proof. */
   mode: ProofMode;
   generatedAt: string;
@@ -56,7 +56,7 @@ export function buildProofReport(
   const stats = result.enforcementStats;
   const routeActive = result.steps.find((s) => s.id === "route-active") ?? null;
   return {
-    reportVersion: "m1-5",
+    reportVersion: "m1-6",
     mode: result.mode,
     generatedAt: new Date().toISOString(),
     platform: Platform.OS,
@@ -133,7 +133,7 @@ export function reportToHtml(r: ProofReport): string {
         ["Selective route active", rv.selectiveRouteActive === null ? "unknown" : rv.selectiveRouteActive ? "YES (still active)" : "no"],
         ["OS VPN transport present (supporting)", rv.vpnTransportPresent === null ? "unknown" : rv.vpnTransportPresent ? "YES (another VPN may own it)" : "no"],
         ["SDK consentGranted after revoke", esc(rv.consentGrantedAfterRevoke)],
-        ["OS requires re-consent (prepare() != null)", esc(rv.osConsentRequiredAfterRevoke)],
+        ["OS prepared-state observation (diagnostic only, not a gate): prepare() != null", esc(rv.osConsentRequiredAfterRevoke)],
         ["startProtection() without fresh consent", `${esc(rv.restartWithoutConsent)}${rv.restartError ? ` — ${esc(rv.restartError)}` : ""}`],
         ["HTTPS status after revoke", esc(rv.httpsStatusAfterRevoke)],
         ["Recovered at", esc(rv.recoveredAt)],

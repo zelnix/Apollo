@@ -236,7 +236,7 @@ export default function Index() {
               {report.auditChain.revocation ? (
                 <KeyValue
                   label="Revocation"
-                  value={`${report.auditChain.revocation.stateAfterRevoke} · TUN ${report.auditChain.revocation.tunOpen === false ? "closed" : "open/unknown"} · re-consent ${report.auditChain.revocation.osConsentRequiredAfterRevoke ? "required" : "NOT required"} · restart ${report.auditChain.revocation.restartWithoutConsent}`}
+                  value={`${report.auditChain.revocation.stateAfterRevoke} · TUN ${report.auditChain.revocation.tunOpen === false ? "closed" : "open/unknown"} · sdk consent ${report.auditChain.revocation.consentGrantedAfterRevoke === false ? "cleared" : "NOT cleared"} · restart ${report.auditChain.revocation.restartWithoutConsent} · OS prepared-state obs. prepare()!=null=${String(report.auditChain.revocation.osConsentRequiredAfterRevoke)}`}
                   testID="report-revocation"
                 />
               ) : null}

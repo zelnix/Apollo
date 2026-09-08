@@ -42,7 +42,11 @@ export interface RevocationEvidence {
   stateAfterRevoke: string;
   stateReason: string | null;
   consentGrantedAfterRevoke: boolean | null;
-  /** OS-level: VpnService.prepare() returns an intent again (consent must be re-granted). */
+  /**
+   * OS prepared-state OBSERVATION (diagnostic only, no PASS/FAIL significance): whether VpnService.prepare() would return an intent after
+   * the revoke. Android keeps its consent record across a Settings-side disconnect (observed on the run-18 device); the security property
+   * is enforced by Apollo's own layer (consentGrantedAfterRevoke=false + restartWithoutConsent=rejected).
+   */
   osConsentRequiredAfterRevoke: boolean | null;
   tunOpen: boolean | null;
   selectiveRouteActive: boolean | null;

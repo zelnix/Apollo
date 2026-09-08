@@ -96,15 +96,17 @@ export async function runAndroidRevokeProof(onStep?: StepSink, onPrompt?: (messa
     detail: rec ? `lifecycle=${rec.lifecycle} tunOpen=${rec.tunOpen} dropReporterAttached=${rec.dropReporterAttached} selectiveRouteActive=${rec.selectiveRouteActive}; supporting: osVpnTransportPresent=${rec.vpnTransportPresent}` : "no runtime snapshot",
   });
 
-  // 10. consent cleared at both layers: SDK state (consentGranted=false) and OS (VpnService.prepare() would show the dialog again).
+  // 10. consent cleared at the SDK layer (AC-06: "revoke → REVOKED, consent cleared"). The OS prepared-state (VpnService.prepare() would
+  //     return an intent) is recorded as an OBSERVATION only: Android is not documented to clear its consent record on a Settings-side
+  //     disconnect, and run 18 showed it keeps it. Apollo's own layer is what refuses to restart (step 11), regardless of the OS record.
   const state = GuardDogSecuritySDK.getProtectionState();
   const osConsentRequired = readVpnConsentRequired();
-  const consentCleared = state.consentGranted === false && osConsentRequired === true;
+  const consentCleared = state.consentGranted === false;
   push({
     id: "consent-cleared",
-    title: "Consent cleared: SDK consentGranted=false and OS requires re-consent",
+    title: "SDK consent cleared on revoke (consentGranted=false)",
     status: consentCleared ? "PASS" : "FAIL",
-    detail: `sdk.consentGranted=${state.consentGranted} os.prepare()!=null=${osConsentRequired ?? "unavailable"}`,
+    detail: `sdk.consentGranted=${state.consentGranted}; OS prepared-state observation (diagnostic only, not a gate): prepare()!=null=${osConsentRequired ?? "unavailable"}`,
   });
 
   // 11. no silent restart: startProtection() without fresh consent must be rejected and must not open a TUN.

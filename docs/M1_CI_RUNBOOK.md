@@ -276,6 +276,43 @@ Phone procedure (after Run 18 is green and the APK SHA is matched again): instal
 wait for `enforcing PASS` and the banner → leave the app, Settings → VPN → Apollo Native Gates → **Disconnect** → return to the app →
 let it finish → Build JSON evidence → share the `guarddog-m1-revoke-proof-*.json`.
 
+### Run 34195912145 (run 18, tip `06622d0`) — 5/5 green; **physical `onRevoke()` behaviour: PASS · automated `revokeComplete`: false**
+(out-of-spec OS prepared-state assertion) — attestation. History kept as-is: this failed gate is why Run 19 exists.
+
+| Field | Value |
+|---|---|
+| CI run | https://github.com/zelnix/Apollo/actions/runs/34195912145 (`native-gates` #20, push, all five jobs success: android 7m10s · ios 21m17s · executable-suites 51s · android-dev-build 12m21s · android-startup-smoke 14m33s) |
+| Branch tip built | `06622d04afc3ea42bbbda378b64c534bd5a07847` = `6e49681` (run-17 attestation) + `1702e0a` (pass 12, 9 files) + two `.emergent/emergent.yml` timestamp commits |
+| Artifact `apk-provenance.json` | `apkSha256 ac0169a45341eacdd0d807aabb70abeb48e49da00e0538edaea48035589e3ab8` · `commit 06622d0…` · `workflowRunId 34195912145` · attempt 1 |
+| Installed APK (phone card + report) | same `apkSha256`, `gitSha`, `ciRunId`; 90 711 160 bytes; install-over on the preserved device state |
+| Proof file | `guarddog-m1-revoke-proof-2026-09-08T08-16-05-030Z.json` · SHA-256 `a07fcedfe7cc88cb95161d81fce0885290000c99486d8e490bf633c33ff29f6d` · `reportVersion m1-5` · `mode revoke` · generated 2026-09-08T08:16:05.030Z (raw JSON off-repo) |
+| Verdict | **12/13 steps PASS · `revokeComplete: false`** (single failing step `consent-cleared`, see below) |
+| Prelude | v25 `payloadHash 2581666c…6b90c9` accepted, tampered=`PAYLOAD_HASH_MISMATCH`, unknown key=`UNKNOWN_KEY`; fresh socket HTTP 200 (2489 ms); consent granted; **ACTIVE** 08:13:56.595Z; `routeCidr=52.25.179.131/32` |
+| Enforcing at revoke time | fresh socket → `tcp-connect` / `timeout` to `52.25.179.131` (6016 ms); `observedMatching=6 droppedMatching=6 reportedBlocks=2 dedupedRetries=4 nonIpv4=6 malformedIpv4=0 wrongDestinationIpv4=0`; genuine `THREAT_BLOCKED` `ea626ef6-…-5b92b548600b` 08:13:58Z and `3e6842bf-…-57bbca572ae7` 08:14:03Z |
+| **`onRevoke()`** | native `REVOKED` · reason `"VPN permission revoked by system/user"` · bridged `PROTECTION_STATE_CHANGED(REVOKED)` `9b4d6816-bece-4598-acb1-0e839ccde258` at 08:15:13Z · 82 009 ms after ACTIVE · revoked by the tester via Settings → VPN → Disconnect (external, not the in-app Stop) |
+| Cleanup | `lifecycle=REVOKED tunOpen=false dropReporterAttached=false selectiveRouteActive=false`; supporting `osVpnTransportPresent=false` |
+| SDK consent | `consentGranted=false` ✅ (AC-06 requirement met) |
+| OS prepared-state (observation) | `VpnService.prepare() != null` → **false**: Android kept its consent record for the app after the Settings-side disconnect |
+| No silent restart | `startProtection()` **rejected** ("VPN consent not granted"), state stayed `REVOKED`, `tunOpen=false` ✅ |
+| Recovery | fresh socket HTTP 200 (1602 ms) at 08:15:28.806Z ✅ |
+
+Root cause of the failed gate — an acceptance-gate modelling error in the harness, not a defect in `GuardDogVpnService.onRevoke()`:
+`consent-cleared` was coded as `state.consentGranted === false && osConsentRequired === true`. The second conjunct asserted that a
+Settings-side disconnect also clears the platform's prepared-state record so that `prepare()` returns an intent again. Android does not
+document that behaviour and the device disproved it. AC-06 specifies "revoke → REVOKED, consent cleared" at Apollo's own layer, which the
+device satisfied; the security property (no restart without a fresh `requestPermission("vpn")`) was independently proven by `no-silent-restart`.
+
+### Revoke-gate correction (pass 13, for CI Run 19) — harness/report wording only
+- `consent-cleared` PASS condition is now exactly `sdk.consentGranted === false` (AC-06). `osConsentRequiredAfterRevoke` stays in the JSON
+  as an **"OS prepared-state observation (diagnostic only, not a gate)"** — recorded as whatever Android reports, no PASS/FAIL significance;
+  wording changed in the step detail, PDF row and UI so it cannot be misread as required security evidence.
+- Unchanged and still mandatory: genuine `REVOKED` (STOPPED/FAILED/INACTIVE/timeout fail), TUN closed + route gone + reporter detached,
+  `no-silent-restart` (`startProtection()` rejected, state non-ACTIVE, no TUN), fresh-socket HTTP 200 recovery.
+- Evidence schema **`m1-5` → `m1-6`** because the meaning of a PASS condition changed: an `m1-5` `revokeComplete` and an `m1-6` one are not
+  semantically equivalent.
+- Untouched: `GuardDogVpnService.onRevoke()`, `VpnStateRepository`, v25, keys, verifier, /32 routing, THREAT_BLOCKED path, bridge, CI.
+Expected Run 19 phone result: `mode: revoke` · `reportVersion: m1-6` · `revokeComplete: true` · `osConsentRequiredAfterRevoke` = Android's actual report.
+
 ## 4. Download artifacts and attach here
 | Artifact | Files to attach |
 |---|---|
