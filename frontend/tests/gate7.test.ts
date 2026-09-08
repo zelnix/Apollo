@@ -130,3 +130,15 @@ test("D05 third-party accessibility service → Review with app handoff", () => 
 test("D09/D10 overlay + notification access only → Protected with good-to-know items (ears_up)", () => {
   const r = assessDevice({ ...EMPTY_SIGNALS("android"), overlayApps: ["Messenger"], notificationAccessApps: ["Watch"] }); assert.equal(r.status, "protected"); assert.equal(r.state, "ears_up"); assert.equal(r.findings.length, 2);
 });
+
+test("observed VPN with unknown provider is reported as a fact, not a verdict (iOS / non-Apollo Android VPN)", () => {
+  const r = assessDevice({ ...EMPTY_SIGNALS("ios"), vpnActive: true, vpnProviderKnown: null });
+  const f = r.findings.find((x) => x.id === "D04b");
+  assert.ok(f); assert.equal(f!.severity, "info"); assert.match(f!.plain, /not who runs it/);
+  assert.ok(!r.findings.some((x) => x.id === "D04"));
+  assert.ok(!r.cannotSee.some((c) => /VPN state/.test(c)));
+  // Apollo's own DNS filter as the VPN is expected: no finding at all.
+  assert.ok(!assessDevice({ ...EMPTY_SIGNALS("android"), vpnActive: true, vpnProviderKnown: true }).findings.some((x) => x.id.startsWith("D04")));
+  // iOS management can be confirmed, never ruled out.
+  assert.match(assessDevice(EMPTY_SIGNALS("ios")).cannotSee.find((c) => /management profile/.test(c)) ?? "", /never rule it out/);
+});

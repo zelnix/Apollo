@@ -20,7 +20,7 @@ import { storage } from "@/src/utils/storage";
 
 interface GuardianRow { guardian_id: string; email: string; name: string; confirmed: boolean }
 interface SharedEvent { event_id: string; protected_device_id?: string; from_label: string; state: string; headline: string; what_to_do: string; indicator_host: string | null; occurred_at: string; acknowledged_at?: string; ack_label?: string; phone?: string }
-interface WatchLink { link_id: string; owner_name: string; protected_device_id: string; phone: string }
+interface WatchLink { link_id: string; owner_name: string; protected_device_id: string; phone: string; my_label: string }
 interface Watcher { link_id: string; guardian_label: string; since: string }
 interface Ack { event_id: string; guardian_label: string; ack_label: string; headline: string; acknowledged_at: string }
 interface Checkin { guardian_device_id: string; protected_device_id: string; week_key: string; guardian_label: string; reply: string; label: string; created_at: string }
@@ -34,6 +34,7 @@ const useStyles = makeStyles((c) => ({
   input: { minHeight: 48, backgroundColor: c.surfaceTertiary, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.lg, fontFamily: fonts.text, fontSize: 15, color: c.onSurface },
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: c.divider },
   name: { fontFamily: fonts.textMedium, fontSize: 15, color: c.onSurface },
+  linkText: { fontFamily: fonts.textMedium, fontSize: 14, color: c.brandPrimary, paddingVertical: spacing.sm },
   code: { fontFamily: fonts.displayBold, fontSize: 32, letterSpacing: 6, color: c.onSurface, textAlign: "center" },
   err: { fontFamily: fonts.textMedium, fontSize: 13, color: c.barking },
 }));
@@ -105,8 +106,14 @@ export default function Family() {
     if (Platform.OS === "web") { if (typeof globalThis.confirm !== "function" || globalThis.confirm(`${title}\n\n${msg}`)) unlink.mutate(linkId); return; }
     Alert.alert(title, msg, [{ text: "Keep", style: "cancel" }, { text: mine ? "Remove" : "Stop watching", style: "destructive", onPress: () => unlink.mutate(linkId) }]);
   };
+  // Watcher Names: the guardian's own name (the "Your name" field) is sent with the pairing and can be changed later.
+  const rename = useMutation({
+    mutationFn: (v: { linkId: string; name: string }) => apiPut(`/family/links/${v.linkId}/name`, "family", { device_id: deviceId, name: v.name }),
+    onSuccess: () => { invalidate(); showToast("They'll now see your name on their phone.", "resting"); },
+    onError: (e) => setErr(e instanceof Error ? e.message : "Could not update your name"),
+  });
   const link = useMutation({
-    mutationFn: () => apiPost<{ owner_name: string }>("/family/link", "family", { device_id: deviceId, code: code.trim().toUpperCase() }),
+    mutationFn: () => apiPost<{ owner_name: string }>("/family/link", "family", { device_id: deviceId, code: code.trim().toUpperCase(), guardian_name: owner.trim() }),
     onSuccess: (r) => { setCode(""); setErr(null); invalidate(); showToast(`Now watching ${r.owner_name || "a family member"}`, "resting"); },
     onError: (e) => setErr(e instanceof Error ? e.message : "Could not link"),
   });
@@ -218,7 +225,12 @@ export default function Family() {
           <Card testID="family-shared">
             {(links.data?.i_watch ?? []).map((l) => (
               <View key={l.protected_device_id} style={s.row} testID={`family-watch-${l.protected_device_id}`}>
-                <View style={{ flex: 1 }}><Text style={s.name}>{l.owner_name || "Family member"}</Text><Body>{l.phone ? l.phone : "No phone number yet — add one from any of their alerts"}</Body></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.name}>{l.owner_name || "Family member"}</Text>
+                  <Body>{l.phone ? l.phone : "No phone number yet — add one from any of their alerts"}</Body>
+                  <Body testID={`family-watch-label-${l.protected_device_id}`}>{l.my_label ? `They see you as “${l.my_label}”` : "They see you as “A family member”"}</Body>
+                  {owner.trim() && owner.trim() !== l.my_label ? <Pressable testID={`family-watch-rename-${l.protected_device_id}`} accessibilityRole="button" onPress={() => rename.mutate({ linkId: l.link_id, name: owner.trim() })} disabled={rename.isPending}><Text style={s.linkText}>Use “{owner.trim()}” instead</Text></Pressable> : null}
+                </View>
                 {l.phone ? <Button testID={`family-watch-call-${l.protected_device_id}`} variant="secondary" label="Call" icon={<Phone size={16} color={colors.onSurface} />} onPress={() => void Linking.openURL(`tel:${l.phone.replace(/[^+\d]/g, "")}`)} /> : null}
                 <Button testID={`family-watch-stop-${l.protected_device_id}`} variant="ghost" label="Stop" onPress={() => confirmUnlink(l.link_id, l.owner_name || "this person", false)} disabled={unlink.isPending} />
               </View>

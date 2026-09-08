@@ -433,3 +433,17 @@ native:
   - task: "Android AppDeviceCatalog.kt + AppDeviceSignals.kt + module functions + manifest <queries>; AppDeviceCatalogTest.kt 5 tests. Cannot compile/run here."
     implemented: true
     working: "NA"
+
+## Iteration 35 — Watcher Names + iOS device signals
+backend:
+  - task: "POST /family/link guardian_name → guardian_label; PUT /family/links/{link_id}/name (guardian only, 404 others, 422 empty); i_watch[].my_label. test_family_unlink.py 5/5."
+    implemented: true
+    working: true
+frontend:
+  - task: "Family: watcher rows show guardian's name; family-watch-label-<pid> 'They see you as “…”' + family-watch-rename-<pid>. privacy.ts family allow-list += guardian_name (tester fix, intended). E2E 10/10."
+    implemented: true
+    working: true
+native:
+  - task: "iOS DeviceSignalsTruth.swift + module functions + 5 XCTests; deviceAnalysis D04b. Cannot run here."
+    implemented: true
+    working: "NA"

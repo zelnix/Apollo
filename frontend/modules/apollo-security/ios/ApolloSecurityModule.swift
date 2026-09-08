@@ -126,6 +126,24 @@ public class ApolloSecurityModule: Module {
 
     AsyncFunction("getSecuritySignals") { () -> String in "[]" }
 
+    // Phase A — Apps & Device (AppDeviceSdk contract). iPhone exposes exactly two facts; the rest is honestly null.
+    AsyncFunction("getAppDeviceCapabilities") { () -> String in self.json(DeviceSignalsTruth.capabilities()) }
+    AsyncFunction("getInstalledAppAssessment") { (_ name: String) -> String in "null" }   // iOS has no app list / permission API
+    AsyncFunction("getRecentInstallEvents") { () -> String in "[]" }
+    AsyncFunction("getRecentAppSecurityEvents") { () -> String in "[]" }
+    AsyncFunction("getDeviceSecuritySignals") { (promise: Promise) in
+      let managed = UserDefaults.standard.dictionary(forKey: "com.apple.configuration.managed") != nil
+      let scoped = ((CFNetworkCopySystemProxySettings()?.takeRetainedValue() as? [String: Any])?["__SCOPED__"] as? [String: Any])?.keys.map { $0 } ?? []
+      let monitor = NWPathMonitor(); let queue = DispatchQueue(label: "apollo.device.path")
+      monitor.pathUpdateHandler = { path in
+        monitor.cancel()
+        let names = path.availableInterfaces.map { $0.name }
+        let vpn: Bool? = path.status == .satisfied ? DeviceSignalsTruth.vpnActive(interfaceNames: names, scopedProxyKeys: scoped) : nil
+        promise.resolve(self.json(DeviceSignalsTruth.signals(vpnActive: vpn, managedConfigPresent: managed)))
+      }
+      monitor.start(queue: queue)
+    }
+
     AsyncFunction("startProtection") { (promise: Promise) in
       self.requested = true
       if self.protectionSince == nil { self.protectionSince = self.now() }

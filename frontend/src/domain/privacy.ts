@@ -6,7 +6,7 @@
 export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "device_register" | "family" | "push_register" | "push_test" | "device_settings" | "message_check" | "message_extract" | "feedback" | "page_extract" | "app_check" | "account_check" | "breach_check" | "voice";
 
 const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
-  family: new Set(["device_id", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id", "scent_id", "headline", "state", "events", "steps", "done", "note", "resolved", "kind", "text", "from_name", "enabled", "preview_only"]),
+  family: new Set(["device_id", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id", "scent_id", "headline", "state", "events", "steps", "done", "note", "resolved", "kind", "text", "from_name", "enabled", "preview_only", "guardian_name"]),
   intel_check: new Set(["indicator_type", "value", "values", "device_id", "expand"]),
   // Higgins' voice: only the sentence already shown on screen, so it can be read aloud.
   voice: new Set(["device_id", "text"]),

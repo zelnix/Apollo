@@ -69,6 +69,8 @@ export function assessDevice(sig: DeviceSignals, self: SelfReport = {}): DeviceA
   else if (mgmtPresent) f.push({ id: "D02", title: "Managed by work or school", severity: "info", plain: "Expected management lowers the risk. Your organisation can still see and control parts of this device.", action: "Verify with your IT team if anything looks unfamiliar.", settings: path("profile", p) });
   if ((sig.userTrustedCertificates ?? 0) > 0 || self.newCertificate) f.push({ id: "D03", title: "Extra trusted certificate", severity: "high", plain: "This can affect which secure connections your device trusts — someone could read traffic that looks encrypted.", action: "Remove any certificate you didn't deliberately install for work or a VPN you chose.", settings: path("cert", p), handoff: "network" });
   if (self.unexpectedVpn || (sig.vpnActive && sig.vpnProviderKnown === false)) f.push({ id: "D04", title: "Unexpected VPN", severity: "review", plain: "A VPN you didn't choose can watch or redirect everything your phone does online.", action: "Turn it off and remove the app or profile that created it.", settings: path("vpn", p), handoff: "network" });
+  // Observed VPN whose provider the platform won't name (iOS always; Android when it isn't Apollo's own filter): report the fact, don't judge it.
+  else if (sig.vpnActive && sig.vpnProviderKnown === null) f.push({ id: "D04b", title: "A VPN is on right now", severity: "info", plain: "Your phone's connection is going through a VPN. Apollo can see that it's on but not who runs it.", action: "If you turned it on, that's fine. If you didn't, look at what created it and turn it off.", settings: path("vpn", p), handoff: "network" });
   const a11y = sig.thirdPartyAccessibilityServices ?? [];
   if (self.grantedAccessibility || a11y.length) f.push({ id: "D05", title: a11y.length ? `Accessibility access: ${a11y.join(", ")}` : "Accessibility access granted recently", severity: "review", plain: "Accessibility access can allow an app to read parts of your screen and interact with other apps.", action: "Keep it only for genuine accessibility helpers you chose. Revoke it for anything else.", settings: path("accessibility", p), handoff: "app" });
   const remote = sig.remoteAccessApps ?? [];
@@ -82,7 +84,7 @@ export function assessDevice(sig: DeviceSignals, self: SelfReport = {}): DeviceA
   const cannotSee: string[] = [];
   if (p === "ios" || p === "web") cannotSee.push("The list of installed apps and their permissions (iOS doesn't expose this to any app).");
   if (sig.thirdPartyAccessibilityServices === null && p !== "ios") cannotSee.push("Accessibility services (needs the native Security SDK).");
-  if (sig.managementProfile === "unknown") cannotSee.push("Device-management / configuration profiles on this build.");
+  if (sig.managementProfile === "unknown") cannotSee.push(p === "ios" ? "Whether a management profile is installed — iOS only tells an app when it is managed itself, so Apollo can confirm management but never rule it out." : "Device-management / configuration profiles on this build.");
   if (sig.vpnActive === null) cannotSee.push("VPN state on this build.");
   if (sig.userTrustedCertificates === null) cannotSee.push("User-installed certificates on this build.");
   if (sig.remoteAccessApps === null) cannotSee.push("Which remote-access apps are installed.");

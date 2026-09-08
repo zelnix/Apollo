@@ -135,6 +135,7 @@ class PairRequest(BaseModel):
 class LinkRequest(BaseModel):
     device_id: str = Field(min_length=8, max_length=64)
     code: str = Field(min_length=6, max_length=6)
+    guardian_name: str = Field(default="", max_length=40)  # how the protected person will see this watcher
 
 
 _PHONE_OK = set("+0123456789 ()-")
@@ -166,8 +167,27 @@ async def link_device(body: LinkRequest):
         raise HTTPException(status_code=400, detail="You can't link a device to itself")
     await db.pair_codes.update_one({"_id": pc["_id"]}, {"$set": {"used": True}})
     await db.family_links.update_one({"protected_device_id": pc["protected_device_id"], "guardian_device_id": body.device_id},
-                                     {"$set": {"protected_device_id": pc["protected_device_id"], "guardian_device_id": body.device_id, "owner_name": pc.get("owner_name", ""), "owner_phone": pc.get("owner_phone", ""), "created_at": now_utc(), "deleted_at": None}}, upsert=True)
+                                     {"$set": {"protected_device_id": pc["protected_device_id"], "guardian_device_id": body.device_id, "owner_name": pc.get("owner_name", ""), "owner_phone": pc.get("owner_phone", ""), "created_at": now_utc(), "deleted_at": None,
+                                               **({"guardian_label": body.guardian_name.strip()} if body.guardian_name.strip() else {})}}, upsert=True)
     return {"linked": True, "owner_name": pc.get("owner_name", "")}
+
+
+class WatcherNameIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)
+    name: str = Field(min_length=1, max_length=40)
+
+
+@router.put("/family/links/{link_id}/name")
+async def rename_watcher(link_id: str, body: WatcherNameIn):
+    """A guardian sets/changes how they appear on the protected person's phone ("Sarah", "Dad")."""
+    try:
+        oid = ObjectId(link_id)
+    except (InvalidId, TypeError):
+        raise HTTPException(status_code=404, detail="Unknown pairing.")
+    r = await db.family_links.update_one({"_id": oid, "guardian_device_id": body.device_id, "deleted_at": None}, {"$set": {"guardian_label": body.name.strip()}})
+    if not r.matched_count:
+        raise HTTPException(status_code=404, detail="Unknown pairing.")
+    return {"name": body.name.strip()}
 
 
 class PhoneIn(BaseModel):
@@ -197,7 +217,7 @@ async def list_links(device_id: str = Query(min_length=8, max_length=64)):
     # `watching_me` stays a count for compatibility; `watchers` lists each paired device (label + since, never its id) so the
     # protected person can remove one. `link_id` is the handle for DELETE /family/links/{link_id}.
     return {
-        "i_watch": [{"link_id": str(l["_id"]), "owner_name": l.get("owner_name", ""), "protected_device_id": l["protected_device_id"], "phone": _link_phone(l), "since": l["created_at"]} for l in protecting],
+        "i_watch": [{"link_id": str(l["_id"]), "owner_name": l.get("owner_name", ""), "protected_device_id": l["protected_device_id"], "phone": _link_phone(l), "since": l["created_at"], "my_label": l.get("guardian_label") or ""} for l in protecting],
         "watching_me": len(watched_by),
         "watchers": [{"link_id": str(l["_id"]), "guardian_label": l.get("guardian_label") or "A family member", "since": l["created_at"], "last_checkin_at": l.get("last_checkin_at")} for l in watched_by],
     }

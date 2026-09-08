@@ -66,3 +66,25 @@ class TestUnlinkDevice:
         pair(p, g)
         links = p.get("/family/links", params={"device_id": p.id}).json()
         assert links["watching_me"] == 1
+
+
+class TestWatcherNames:
+    def test_guardian_name_travels_with_the_pairing_and_can_be_changed(self):
+        p, g = Dev(), Dev()
+        code = p.post("/family/pair", json={"device_id": p.id, "owner_name": "Mum"}).json()["code"]
+        assert g.post("/family/link", json={"device_id": g.id, "code": code, "guardian_name": "Sarah"}).status_code == 200
+        watchers = p.get("/family/links", params={"device_id": p.id}).json()["watchers"]
+        assert watchers[0]["guardian_label"] == "Sarah"
+        mine = g.get("/family/links", params={"device_id": g.id}).json()["i_watch"][0]
+        assert mine["my_label"] == "Sarah"
+        r = g.s.put(f"{API}/family/links/{mine['link_id']}/name", json={"device_id": g.id, "name": "Sarah (daughter)"})
+        assert r.status_code == 200 and r.json()["name"] == "Sarah (daughter)"
+        assert p.get("/family/links", params={"device_id": p.id}).json()["watchers"][0]["guardian_label"] == "Sarah (daughter)"
+        # only the guardian side may rename; the protected person and strangers get 404
+        assert p.s.put(f"{API}/family/links/{mine['link_id']}/name", json={"device_id": p.id, "name": "x"}).status_code == 404
+        assert g.s.put(f"{API}/family/links/{mine['link_id']}/name", json={"device_id": g.id, "name": ""}).status_code == 422
+
+    def test_pairing_without_a_name_keeps_the_neutral_label(self):
+        p, g = Dev(), Dev()
+        pair(p, g)
+        assert p.get("/family/links", params={"device_id": p.id}).json()["watchers"][0]["guardian_label"] == "A family member"
