@@ -392,3 +392,19 @@ v25 remains the served/frozen bundle; `apk-provenance.json.commit` = the new tip
   `PASS embedded JS bundle assets/index.android.bundle`, `PASS build commit <run sha>… inlined in the JS bundle`, `PASS CI run id <run id> inlined in the JS bundle`
 - `apk-provenance.json`: `apkSha256` is a 64-hex digest; `commit` = pushed commit; `workflowRunId` = the run you triggered
 - After clearance: sideload **that** APK; the device proof report must show `provenance.apkSha256` identical to `apk-provenance.json`.
+
+
+### Run 34212817229 (native-gates #22, tip `d1ae5ae`) — `android-release-manifest` FAIL — root cause + fix (pass 15)
+The assumption at the end of pass 14 ("verified locally against the tracked merged **DEBUG** manifest") did not hold for the actual
+packaged **RELEASE** artifacts: both `android-release-manifest-audit.sh` steps 3 and 4 failed on exactly one permission.
+
+| Field | Value |
+|---|---|
+| CI run | https://github.com/zelnix/Apollo/actions/runs/34212817229 (`native-gates` #22, push, 5/6 jobs green, `android-release-manifest` failed exit code 1) |
+| Failing step | step 9, `bash scripts/ci/android-release-manifest-audit.sh` |
+| APK audit | `RELEASE MANIFEST AUDIT (APK): FAIL` — only failures: `FAIL absent: SYSTEM_ALERT_WINDOW`, `FAIL every requested permission is on the allow-list … unexpected permission: android.permission.SYSTEM_ALERT_WINDOW`. All other 40+ checks PASS (package, debuggable absent, minSdk 26, targetSdk 36, `GuardDogVpnService` config, deny-list, no secrets, embedded bundle). |
+| AAB audit | identical failure signature (`RELEASE MANIFEST AUDIT (AAB): FAIL`); `PASS identical <uses-permission> sets in APK and AAB` — ruling out an `aapt2`/`bundletool` parser or format discrepancy. |
+| Root cause | `android.permission.SYSTEM_ALERT_WINDOW` is declared, unconditionally, in `node_modules/react-native/ReactAndroid/src/debug/AndroidManifest.xml` (React Native's own dev-overlay/`DevSettingsActivity` debug source set) and was surviving Gradle's manifest merge into the **release** APK/AAB — the exact regression the pass-14 gate was built to catch. **Not** an auditor bug: `release_manifest_audit.py`'s deny-list, allow-list and self-test required no change. |
+| Fix | Added `"android.permission.SYSTEM_ALERT_WINDOW"` to the existing `expo.android.blockedPermissions` array in `frontend/app.json` (alongside the already-proven `READ_EXTERNAL_STORAGE`/`WRITE_EXTERNAL_STORAGE` entries). Expo's `withBlockedPermissions` config-plugin injects `tools:node="remove"` into the **main** `AndroidManifest.xml`, which wins over any variant-specific library manifest (including RN's `src/debug`) during Gradle's manifest merger, for every build type. Verified locally: a clean `expo prebuild --platform android --clean --no-install` now emits `<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" tools:node="remove"/>` in `android/app/src/main/AndroidManifest.xml`, in the same form as the two storage permissions that already PASS this exact audit. |
+| Untouched | `release_manifest_audit.py` (deny-list, allow-list, self-test), `android-release-manifest-audit.sh`, `native-gates.yml`, all native SDKs, frozen v25 bundle, signing keys, backend endpoints, `/32` routing, `THREAT_BLOCKED` path. Single one-line diff in `frontend/app.json`. |
+| Expected next run | `android-release-manifest`: both APK and AAB show `PASS absent: SYSTEM_ALERT_WINDOW` and no `unexpected permission` line → `RELEASE MANIFEST AUDIT: PASS` for both containers; `android-dev-build` and `android-startup-smoke` stay green (blocking the permission globally does not touch VPN, notification, or foreground-service capability). Target: 6/6 jobs green. |
