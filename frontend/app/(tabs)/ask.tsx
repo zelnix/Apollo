@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiGet, streamPost } from "@/src/api/client";
 import { HigginsChecks } from "@/src/components/HigginsChecks";
 import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
-import { Body, Card, Pill, ScreenHeader } from "@/src/components/ui";
+import { Pill, ScreenHeader } from "@/src/components/ui";
 import { parseChecks } from "@/src/domain/higginsChecks";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -94,12 +94,6 @@ export default function Ask() {
               {item.role === "apollo" && !item.pending && item.content ? <View style={{ marginTop: spacing.sm }}><HigginsSpeakButton text={parseChecks(item.content).text} testID={`ask-hear-${item.id}`} /></View> : null}
             </View>
           )}
-          ListEmptyComponent={
-            <Card style={{ gap: spacing.sm }} testID="ask-empty">
-              <Text style={{ fontFamily: fonts.display, fontSize: 16, color: colors.onSurface }}>Ask Higgins</Text>
-              <Body>Higgins is Apollo&apos;s handler. He explains what Apollo saw and what to do, in plain English — and will read it aloud if you ask. He never decides what is safe; Apollo&apos;s on-device checks and intelligence do that.</Body>
-            </Card>
-          }
         />
         {error ? <Text style={[s.disclaimer, { color: colors.barkingText }]} testID="ask-error">{error}</Text> : null}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipRow} testID="ask-suggestions">
