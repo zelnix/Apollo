@@ -4,6 +4,7 @@
 
 import type { Capability } from "@/src/domain/types";
 import { getNativeModule, NativeModuleUnavailable } from "./nativeBridge";
+import type { EnforcementEvidence, PlatformCapabilityProfile } from "./PlatformCapabilityProfile";
 import type {
   AdapterKind, BlockResult, NativeUrlAnalysis, NetworkStatus, ProtectionPermission, ProtectionStatus, SecurityPlatformAdapter, SecuritySignal,
 } from "./SecurityPlatformAdapter";
@@ -32,6 +33,8 @@ class NativeAdapterBase implements SecurityPlatformAdapter {
   stopProtection() { return this.call<ProtectionStatus>(() => this.mod().stopProtection()); }
   getProtectionPermissions() { return this.call<ProtectionPermission[]>(() => this.mod().getProtectionPermissions()); }
   requestProtectionPermission(id: ProtectionPermission["id"]) { return this.call<ProtectionPermission>(() => this.mod().requestProtectionPermission(id)); }
+  getPlatformCapabilityProfile() { return this.call<PlatformCapabilityProfile>(() => this.mod().getPlatformCapabilityProfile()); }
+  getEnforcementEvidence() { return this.call<EnforcementEvidence[]>(() => this.mod().getEnforcementEvidence()); }
 }
 
 /** Swift-backed adapter (modules/apollo-security/ios). */

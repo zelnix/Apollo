@@ -8,6 +8,7 @@ import { Platform } from "react-native";
 
 import type { Capability } from "@/src/domain/types";
 import { storage } from "@/src/utils/storage";
+import { PLATFORM_CAPABILITY_BASELINES, type EnforcementEvidence, type PlatformCapabilityProfile } from "./PlatformCapabilityProfile";
 import type {
   BlockResult, NativeUrlAnalysis, NetworkStatus, ProtectionPermission, ProtectionStatus, SecurityPlatformAdapter, SecuritySignal,
 } from "./SecurityPlatformAdapter";
@@ -86,16 +87,16 @@ class MockSecurityAdapterImpl implements SecurityPlatformAdapter {
   async blockDestination(host: string): Promise<BlockResult> {
     await delay(500);
     if (this.scenario === "BLOCK_UNVERIFIED") {
-      return { verified: false, method: "none", detail: "Simulated: the platform could not confirm the block.", adapterLabel: this.label, blockedAt: null };
+      return { verified: false, method: "none", detail: "Simulated: the platform could not confirm the block.", adapterLabel: this.label, blockedAt: null, evidence: null };
     }
     // A mock can never verify a block — that would let the preview say "Apollo is biting" with nothing enforced.
     this.blocked.add(host);
-    return { verified: false, method: "none", detail: "Mock adapter (demo): nothing is blocked on this device. Native builds enforce with the DNS filter or Safari content blocker.", adapterLabel: this.label, blockedAt: null };
+    return { verified: false, method: "none", detail: "Mock adapter (demo): nothing is blocked on this device. Native builds enforce with the DNS filter or Safari content blocker.", adapterLabel: this.label, blockedAt: null, evidence: null };
   }
 
   async unblockDestination(host: string): Promise<BlockResult> {
     this.blocked.delete(host);
-    return { verified: false, method: "none", detail: "Mock adapter (demo): nothing to unblock on this device.", adapterLabel: this.label, blockedAt: null };
+    return { verified: false, method: "none", detail: "Mock adapter (demo): nothing to unblock on this device.", adapterLabel: this.label, blockedAt: null, evidence: null };
   }
 
   async getNetworkStatus(): Promise<NetworkStatus> {
@@ -138,6 +139,18 @@ class MockSecurityAdapterImpl implements SecurityPlatformAdapter {
     await storage.setItem(PERMS_KEY, JSON.stringify(this.permissions)).catch(() => undefined);
     const all = await this.getProtectionPermissions();
     return all.find((p) => p.id === id)!;
+  }
+
+  // Mock always reports the "mock" baseline (every field "none"), NEVER the host OS's real
+  // baseline, even though this may be running on a real iOS/Android device in Expo Go —
+  // reporting a real platform's ceiling here would overclaim a capability nothing here provides.
+  async getPlatformCapabilityProfile(): Promise<PlatformCapabilityProfile> {
+    return PLATFORM_CAPABILITY_BASELINES.mock;
+  }
+
+  // Mock never enforces anything, on any device, ever — so it never has evidence to show.
+  async getEnforcementEvidence(): Promise<EnforcementEvidence[]> {
+    return [];
   }
 }
 

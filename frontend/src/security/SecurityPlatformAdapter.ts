@@ -3,7 +3,12 @@
 // Capabilities are discovered dynamically; never assume iOS/Android parity.
 
 import type { Capability, Visibility } from "@/src/domain/types";
+import type { EnforcementEvidence, PlatformCapabilityProfile } from "./PlatformCapabilityProfile";
 
+// AdapterKind is deliberately narrower than SdkPlatform (see PlatformCapabilityProfile.ts):
+// it lists only the implementations this app can actually select at runtime today
+// (securityAdapter.ts). Windows/macOS have no adapter yet, but the capability/evidence
+// TYPES below already represent them so no redesign is needed when those adapters land.
 export type AdapterKind = "mock" | "ios" | "android";
 
 export interface ProtectionPermission {
@@ -79,6 +84,8 @@ export interface BlockResult {
   detail: string;
   adapterLabel: string;
   blockedAt: string | null;
+  /** Full evidence backing `verified`. Null for mock (never enforces) or when the platform gave none. */
+  evidence?: EnforcementEvidence | null;
 }
 
 export interface SecurityPlatformAdapter {
@@ -96,4 +103,8 @@ export interface SecurityPlatformAdapter {
   stopProtection(): Promise<ProtectionStatus>;
   getProtectionPermissions(): Promise<ProtectionPermission[]>;
   requestProtectionPermission(id: ProtectionPermission["id"]): Promise<ProtectionPermission>;
+  /** Cross-platform capability ceiling for this adapter's platform. See PlatformCapabilityProfile.ts. */
+  getPlatformCapabilityProfile(): Promise<PlatformCapabilityProfile>;
+  /** Recent enforcement evidence records. Mock MUST always return []. */
+  getEnforcementEvidence(): Promise<EnforcementEvidence[]>;
 }

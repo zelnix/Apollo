@@ -3,12 +3,20 @@
 import os
 import time
 import uuid
+from pathlib import Path
+
 import requests
 import pytest
+from dotenv import load_dotenv
 
-BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL") or os.environ.get("EXPO_BACKEND_URL")
-assert BASE_URL, "EXPO_PUBLIC_BACKEND_URL/EXPO_BACKEND_URL not set"
-BASE_URL = BASE_URL.rstrip("/")
+# Match the loading/fallback pattern used by test_admin.py and conftest.py so this test
+# does not depend on shell-exported env vars that are only ever defined in frontend/.env.
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+BASE_URL = (
+    os.environ.get("EXPO_BACKEND_URL")
+    or os.environ.get("EXPO_PUBLIC_BACKEND_URL")
+    or "https://threat-patrol-1.preview.emergentagent.com"
+).rstrip("/")
 
 
 @pytest.fixture(scope="module")

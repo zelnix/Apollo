@@ -17,6 +17,11 @@ export interface ApolloSecurityNativeModule {
   stopProtection(): Promise<string>;
   getProtectionPermissions(): Promise<string>;
   requestProtectionPermission(id: string): Promise<string>;
+  // Cross-Platform Architecture Directive: capability/evidence contract (JSON strings);
+  // see src/security/PlatformCapabilityProfile.ts. Native side may not implement these yet —
+  // NativeAdapterBase fails closed via NativeModuleUnavailable exactly like every other call.
+  getPlatformCapabilityProfile(): Promise<string>;
+  getEnforcementEvidence(): Promise<string>;
   // Gate 2 — Text & Messaging (SDK contract). Each returns a JSON string; see src/security/messagingSdk.ts.
   getMessagingCapabilities(): Promise<string>;
   analyseMessageMetadata(metadataJson: string): Promise<string>;
