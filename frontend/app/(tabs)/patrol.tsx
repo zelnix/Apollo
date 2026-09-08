@@ -4,7 +4,7 @@ import { FlatList, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { PatrolItem } from "@/src/components/PatrolItem";
-import { Body, Card, Pill, ScreenHeader } from "@/src/components/ui";
+import { Body, Card, Pill, ScreenHeader, toneColor, toneTint } from "@/src/components/ui";
 import type { ApolloState, PatrolEvent } from "@/src/domain/types";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -71,9 +71,15 @@ export default function Patrol() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipRow} testID="patrol-filter-row">
           {FILTERS.map((f) => {
             const active = filter === f.key;
+            // Selecting a state filter (Barking, Growling…) borrows that state's own colour — meaningful, not
+            // decorative, since it tells you which colour you're now looking at. "All" / "Needs attention" aren't
+            // states, so they get the restrained gold accent instead of a borrowed status colour.
+            const isStateFilter = f.key !== "all" && f.key !== "active";
+            const activeBorder = isStateFilter ? toneColor(colors, f.key as ApolloState) : colors.gold;
+            const activeTint = isStateFilter ? toneTint(colors, f.key as ApolloState) : colors.goldTint;
             return (
-              <Pressable key={f.key} testID={`patrol-filter-${f.key}`} onPress={() => setFilter(f.key)} style={[s.chip, active && { borderColor: colors.resting, backgroundColor: colors.restingTint }]}>
-                <Text style={[s.chipText, active && { color: colors.onSurface }]}>{f.label}</Text>
+              <Pressable key={f.key} testID={`patrol-filter-${f.key}`} onPress={() => setFilter(f.key)} style={[s.chip, active && { borderColor: activeBorder, backgroundColor: activeTint }]}>
+                <Text style={[s.chipText, active && { color: colors.onSurface, fontFamily: fonts.textSemibold }]}>{f.label}</Text>
               </Pressable>
             );
           })}

@@ -20,10 +20,15 @@ const light = {
   surfaceInverse: "#0B1220",
   onSurfaceInverse: "#F5F7FA",
 
-  // Navigation bar: light bar, navy icons/labels, amber for the active tab — Apollo's colour, not chrome.
-  nav: "#FFFFFF",
-  onNav: "#F4B942",
-  onNavMuted: "#3D4A5C",
+  // Navigation bar: Deep Sentinel Navy structure with Brand Gold for the active tab — one of
+  // Apollo's strongest branded surfaces, not neutral chrome. Icon and label use two slightly
+  // different golds on purpose (see design_guidelines.json) so the active tab still reads as
+  // "premium", not just "highlighted".
+  nav: "#0B1220",
+  navActiveIcon: "#C9A34A",
+  navActiveLabel: "#E2C06B",
+  navInactiveIcon: "#C3CEDA",
+  navInactiveLabel: "#9EABB8",
   muted: "#52606D",
 
   // Premium navy accents — subtle sub-surfaces/wells/rings that give the light theme structure without darkening
@@ -33,7 +38,24 @@ const light = {
   navyBorder: "#C7CEDA",
   brandGlow: "rgba(22,34,53,0.10)", // navy at low opacity — hero halo / top-edge accents only, never a card fill
 
-  brand: "#162235", // deep navy accent — structure, headers, primary actions
+  // Structural navy scale (see design_guidelines.json "Apollo premium colour system"). navyDeep and
+  // onSurface share a hex on purpose — one is "this is the brand's darkest structural navy" (nav bar,
+  // strong headers), the other is "this is body/heading text" — keep them named separately so intent
+  // stays clear even though the value coincides today.
+  navyDeep: "#0B1220", // Deep Sentinel Navy — bottom nav, strong headers, premium framing
+  navySoft: "#22324A", // Soft Navy — secondary dark surfaces
+
+  // Brand Gold — premium accent, DELIBERATELY separate from the amber/orange Apollo STATE colours
+  // below (ears_up/growling). Gold means "premium/Apollo brand"; amber/orange means "Apollo is
+  // concerned". Never substitute one for the other. Use sparingly: active nav, hero framing details,
+  // the Apollo animation's inner ring, selected icon accents, fine dividers — never body text, large
+  // backgrounds, every button/border, or a security warning label.
+  gold: "#C9A34A",
+  goldHighlight: "#E2C06B", // small highlights/glow only — even more restrained than gold itself
+  goldTint: "rgba(201,163,74,0.14)",
+  goldBorder: "rgba(201,163,74,0.55)",
+
+  brand: "#162235", // Apollo Navy — buttons, icon wells, section accents
   onBrand: "#FFFFFF",
   brandPrimary: "#162235", // primary CTA (navy); security states never double as CTA colours
   onBrandPrimary: "#FFFFFF",
@@ -84,12 +106,13 @@ const light = {
   unknownTint: "rgba(122,135,148,0.16)",
 
   // Even lighter washes — full hero-card tint only. Card must still read as "white with a wash", not coloured.
+  // Strength increases with state severity (see design_guidelines.json "State strength").
   sniffingWash: "rgba(82,96,109,0.05)",
-  restingWash: "rgba(79,175,131,0.07)",
-  ears_upWash: "rgba(244,185,66,0.08)",
-  growlingWash: "rgba(232,148,58,0.08)",
-  barkingWash: "rgba(217,83,79,0.07)",
-  bitingWash: "rgba(217,83,79,0.09)",
+  restingWash: "rgba(79,175,131,0.08)",
+  ears_upWash: "rgba(244,185,66,0.10)",
+  growlingWash: "rgba(232,148,58,0.11)",
+  barkingWash: "rgba(217,83,79,0.10)",
+  bitingWash: "rgba(217,83,79,0.13)",
   unknownWash: "rgba(122,135,148,0.05)",
 
   scrim: "rgba(11,18,32,0.55)",

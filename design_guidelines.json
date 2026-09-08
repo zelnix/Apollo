@@ -1,7 +1,7 @@
 {
   "app_name": "Apollo V1",
-  "personality": "Light Sentinel",
-  "personality_one_liner": "A calm, watchful protector — like a premium consumer-security product (Norton / Malwarebytes / 1Password Watchtower tier), not a hacker-black antivirus. Bright, clean, neutral surfaces with strong navy structure; amber/green/orange/red are reserved for Apollo's security states so colour always means something. Apollo himself — an animated guard dog — is the brand, not a shield icon.",
+  "personality": "Light Sentinel — Navy & Gold",
+  "personality_one_liner": "A calm, watchful protector — like a premium consumer-security product (Norton / Malwarebytes / 1Password Watchtower tier), not a hacker-black antivirus. Bright, clean, neutral surfaces sit INSIDE a strong navy-and-gold brand system: navy is the structural brand colour (nav bar, buttons, icon wells, section accents), gold is the premium accent (used sparingly), and amber/green/orange/red remain Apollo's security-state colours, fully separate from gold, so colour always means something. Apollo himself — an animated guard dog — is the brand, not a shield icon.",
   "color": {
     "surface": "#F5F7FA",
     "onSurface": "#0B1220",
@@ -11,13 +11,21 @@
     "onSurfaceTertiary": "#52606D",
     "surfaceInverse": "#0B1220",
     "onSurfaceInverse": "#F5F7FA",
-    "nav": "#FFFFFF",
-    "onNav": "#F4B942",
-    "onNavMuted": "#3D4A5C",
+    "nav": "#0B1220",
+    "navActiveIcon": "#C9A34A",
+    "navActiveLabel": "#E2C06B",
+    "navInactiveIcon": "#C3CEDA",
+    "navInactiveLabel": "#9EABB8",
     "navyTint": "#E8EBF1",
     "navyTintStrong": "#D9DFEA",
     "navyBorder": "#C7CEDA",
     "brandGlow": "rgba(22,34,53,0.10)",
+    "navyDeep": "#0B1220",
+    "navySoft": "#22324A",
+    "gold": "#C9A34A",
+    "goldHighlight": "#E2C06B",
+    "goldTint": "rgba(201,163,74,0.14)",
+    "goldBorder": "rgba(201,163,74,0.55)",
     "brand": "#162235",
     "onBrand": "#FFFFFF",
     "brandPrimary": "#162235",
@@ -45,7 +53,8 @@
     "barking": "#D9534F",
     "biting": "#D9534F",
     "unknown": "#7A8794",
-    "state_tint_note": "Each state colour has a *Tint (~14-26% opacity, pills/glow) and a lighter *Wash (~5-9% opacity, full hero-card background only) — see theme.ts. The card must always still read as white-with-a-wash, never as a coloured panel."
+    "state_tint_note": "Each state colour has a *Tint (~14-26% opacity, pills/glow) and a lighter *Wash (~5-13% opacity, scaling with severity — see 'State strength' below; full hero-card background only) — see theme.ts. The card must always still read as white-with-a-wash, never as a coloured panel.",
+    "gold_vs_amber_note": "Brand Gold (#C9A34A) and Gold Highlight (#E2C06B) are DELIBERATELY separate from ears_up/growling amber-orange (#F4B942/#E8943A). Gold means 'premium/Apollo brand'; amber/orange means 'Apollo is concerned'. Never substitute one for the other, and never use gold as a state/status colour anywhere (pills, dots, warning labels)."
   },
   "typography": {
     "displayFontFamily": "Outfit",
@@ -76,7 +85,7 @@
   },
   "shadow_tier": "1",
   "navigation": "bottom_tabs",
-  "icon_set": "lucide-react-native (@react-native-vector-icons is not used; do not introduce Phosphor, FontAwesome or other icon families)",
+  "icon_set": "lucide-react-native for all secondary/in-screen actions (unchanged). Bottom navigation ONLY uses a genuine filled/solid icon set (@nandorojo/heroicons 24/solid — pure SVG via react-native-svg, no native font linking, works in Expo Go/web) because Lucide is outline-only by design and faking 'solid' with thicker strokes reads wrong. Do not introduce Phosphor, FontAwesome, or any other icon family beyond these two.",
   "glassmorphism": {
     "enabled": false,
     "note": "No blur/glass effects anywhere. Depth comes from white cards (surfaceSecondary) on the #F5F7FA neutral background plus a 1px border (colors.border), not from translucency."
@@ -98,7 +107,8 @@
       "biting": "assets/images/apollo-barking.gif (shares the barking GIF; ring/glow intensity escalates further in code)"
     },
     "size": "~170px on standard phones (largest single element on Home), scaling down slightly only on very small/narrow devices. Never cropped.",
-    "background_treatment": "The hero card itself stays mostly white (surfaceSecondary). The current state's colour appears as a restrained pulsing glow/ring directly behind Apollo — never as a full-card gradient or tint wash. A second, static, larger navy ring/halo (colors.navyBorder / colors.brandGlow) sits behind the state ring purely for premium structure — it does not pulse and never overrides the state colour's meaning.",
+    "background_treatment": "Three layers together, always: (1) Navy structure — a thin navy border/frame around the whole card (colors.navyBorder) plus a 1px navy seam under the top edge; (2) Gold premium detailing — a fine gold inner ring (colors.goldBorder) tight around the animation zone, and the top edge gradient fades from the state colour into colors.goldHighlight; (3) Current state colour — a pulsing glow/ring directly behind Apollo (intensity scales with severity, see state_strength) plus a light wash across the whole card background and the state colour as the top edge's leading colour. The hero card stays a white/light base overall — these are accents and edges, never a full-card fill.",
+    "state_strength": "The wash + halo should make the state identifiable even without reading text: resting = soft green wash, calm; sniffing = cool grey-blue, neutral pulse; ears_up = warm amber wash, brighter halo, alert; growling = stronger amber-orange wash (~11%) and halo (~20-25%), watchful concern; barking = pale red/orange wash with more visible top-edge presence, urgent; biting = strongest red wash (~13%) of the set, but still not a fully red card — confirmed action should feel unmistakable without losing the white base.",
     "state_progression": "Patrolling (resting) → Sniffing → Ears Up → Growling → Barking → Biting is Apollo's visual threat-escalation ladder and must always read as increasing attention/seriousness. Do not alter the underlying state-machine logic to fit visuals — visuals follow the existing Truth-of-State resolution, never the reverse."
   },
   "dev_mode_presentation": {
@@ -177,14 +187,18 @@
     }
   },
   "instructions_to_main_agent": [
-    "Single bright theme (Light Sentinel) — do not add a dark mode or reintroduce dark-navy/black surfaces. surface (#F5F7FA) + surfaceSecondary (#FFFFFF) + a 1px border (colors.border) is the entire depth system; no glassmorphism, no heavy gradients, no glow-behind-everything.",
-    "Premium navy accents (added after initial review — 'too pale/flat' feedback): navy (colors.brand, colors.navyTint, colors.navyTintStrong, colors.navyBorder, colors.brandGlow) is used for STRUCTURE, not for whole-screen or whole-card fills — icon wells/circles behind check-tile and card-title icons, section-title colour + a small micro-divider, a static secondary ring/halo behind the Apollo hero, button outlines/fills for Hear Higgins and primary CTAs, and stronger inactive-tab contrast. Roughly: ~85-90% of any screen stays pure white/#F5F7FA; navy tint appears only in these small, deliberate wells and rings, never as a background wash on an entire card or screen.",
+    "Single bright theme (Light Sentinel) — do not add a dark mode or reintroduce dark-navy/black surfaces on content screens. surface (#F5F7FA) + surfaceSecondary (#FFFFFF) is still the base for all content; navy/gold are structural/premium accents on top of it, not a takeover of the light theme (see 'Apollo premium colour system' below). No glassmorphism, no heavy gradients, no glow-behind-everything.",
+    "Apollo premium colour system: navy (colors.brand #162235, colors.navyDeep #0B1220, colors.navySoft #22324A, plus colors.navyTint/navyTintStrong/navyBorder/brandGlow) is the STRUCTURAL brand colour — bottom nav, strong headers, buttons, icon wells, section accents, card framing. Gold (colors.gold #C9A34A, colors.goldHighlight #E2C06B, colors.goldTint, colors.goldBorder) is a SEPARATE premium accent layered on top of the navy structure. Roughly ~85-90% of any screen stays pure white/#F5F7FA; navy appears in deliberate wells/rings/bars, gold appears only in small, restrained details.",
+    "Gold usage rules: use gold for — active bottom-nav icon/label, small hero framing details (inner ring, top-edge highlight), selected/important icon accents (the four primary Quick Check icons sit on navy wells), fine dividers/section-header micro-accents, the Hear Higgins button's icon. Never use gold for — body text, large backgrounds, every button, every border, or any security-state/warning label (those stay amber/orange/red per gold_vs_amber_note). If everything is gold, nothing feels premium.",
     "Use 'Outfit' for all headings/state titles, 'Geist' for body text and metadata — unchanged from before.",
-    "Never colour a whole screen or card in a state colour. State colour (sniffing/resting/ears_up/growling/barking/biting from the theme) is reserved for: the Apollo hero's glow/ring, status pills/dots, and result cards on check screens. Everything else stays neutral (surface/surfaceSecondary/onSurface/onSurfaceSecondary).",
+    "Never colour a whole screen or card in a state colour. State colour (sniffing/resting/ears_up/growling/barking/biting from the theme) is reserved for: the Apollo hero's glow/ring/wash/top-edge, status pills/dots, and result cards on check screens. Everything else stays neutral (surface/surfaceSecondary/onSurface/onSurfaceSecondary) or navy/gold per the rules above.",
     "Apollo's animated GIF (see apollo_hero) is mandatory on Home and must stay the single most visually prominent element — never shrink it below icon-sized or replace it with a static shield.",
     "capabilityTone() must never map an unsupported/unknown/coming-later status to green (already correct in code — do not regress this).",
-    "Bottom navigation is a light bar: white background, navy (#162235-family) inactive icons/labels, Apollo amber (#F4B942) active tab. Keep all five tabs (Home, Guard, Patrol, Higgins, Settings) and safe-area handling on both Android and iOS.",
-    "Use lucide-react-native icons exclusively. Do not introduce Phosphor or any other icon family.",
+    "Bottom navigation is now a Deep Sentinel Navy bar (colors.nav #0B1220) with solid/filled icons (see icon_set) at ~24-26px: active tab icon in Brand Gold (colors.navActiveIcon), active label in Gold Highlight (colors.navActiveLabel) — deliberately two slightly different golds so the icon alone already makes the selection obvious; inactive icons/labels use colors.navInactiveIcon/navInactiveLabel (light silver/navy-grey). Keep all five tabs (Home, Guard, Patrol, Higgins, Settings) and safe-area handling on both Android and iOS. The iOS 26 NativeTabs branch already uses SF Symbols '.fill' variants (solid) — no change needed there.",
+    "Quick Check tiles: the four PRIMARY checks (Check a link, Check a message, Check this call, Scan a code) use a solid navy icon well (colors.brand) with a gold icon — the emphasis tile (Check a link) uses colors.navyDeep + a thin gold border. The secondary checks under 'All checks' keep the lighter neutral navyTint treatment — do not gold-ify those, the four primary checks are the deliberate premium signal.",
+    "Section headers (SectionTitle in ui.tsx): navy uppercase heading + a short gold micro-accent bar beside it (colors.gold), not a plain navy dash.",
+    "Buttons: Hear Higgins (HigginsSpeakButton, non-compact) is a navy premium CTA — colors.brand background, gold icon, white text, fine colors.goldBorder border. Its compact (icon-only, chat-bubble) variant is unchanged. Generic primary buttons (Button variant='primary' in ui.tsx) already use brandPrimary/onBrandPrimary (navy/white) — leave as-is, do not add gold there unless asked.",
+    "This styling pass started on Home only — Guard, Patrol, Higgins (Ask) and Settings still use the pre-navy-gold nav bar's old light styling assumptions in places; roll the same navy+gold system through them only when asked, using the tokens above (do not invent new ones per-screen).",
     "No indigo, violet, or purple hues. Stick exactly to the provided palette.",
     "Never display emoji in the UI.",
     "Do not hard-code colours inside screens/components — always read from theme.ts tokens via useTheme()/makeStyles(), matching the color block above exactly.",

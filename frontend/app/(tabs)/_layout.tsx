@@ -1,17 +1,17 @@
 import { Redirect, Tabs } from "expo-router";
 import { NativeTabs } from "expo-router/unstable-native-tabs";
-import House from "lucide-react-native/icons/house";
-import MessageCircle from "lucide-react-native/icons/message-circle";
-import ScrollText from "lucide-react-native/icons/scroll-text";
-import Settings from "lucide-react-native/icons/settings";
-import Shield from "lucide-react-native/icons/shield";
+// Bottom nav uses genuine solid/filled icons (pure SVG, no native font linking — safe in Expo Go
+// and web). Lucide is outline-only by design; faking "solid" with thicker strokes looks wrong, so
+// Lucide stays for secondary in-screen actions only (see other screens) and never the tab bar.
+import { ChatBubbleLeftRight, Cog6Tooth, Home, QueueList, ShieldCheck } from "@nandorojo/heroicons/24/solid";
 import React from "react";
-import { Platform } from "react-native";
+import { Platform, Text } from "react-native";
 
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, useTheme } from "@/src/theme";
 
 const isIOS26 = Platform.OS === "ios" && parseInt(String(Platform.Version), 10) >= 26;
+const NAV_ICON_SIZE = 25;
 
 export default function TabsLayout() {
   const { colors } = useTheme();
@@ -30,27 +30,31 @@ export default function TabsLayout() {
     );
   }
 
+  // Icon and label use deliberately different golds when active (Brand Gold vs. Gold Highlight) —
+  // the icon alone should already make the selected tab obvious; the label is a softer echo.
+  const tabIcon = (Icon: React.ComponentType<{ color?: string; width?: number; height?: number }>) =>
+    function TabIcon({ focused }: { focused: boolean }) { return <Icon color={focused ? colors.navActiveIcon : colors.navInactiveIcon} width={NAV_ICON_SIZE} height={NAV_ICON_SIZE} />; };
+  const tabLabel = (title: string) =>
+    function TabLabel({ focused }: { focused: boolean }) { return <Text style={{ fontFamily: fonts.textSemibold, fontSize: 11, color: focused ? colors.navActiveLabel : colors.navInactiveLabel }}>{title}</Text>; };
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.onNav,
-        tabBarInactiveTintColor: colors.onNavMuted,
         tabBarStyle: {
-          backgroundColor: colors.nav, borderTopColor: colors.border, borderTopWidth: 1,
-          shadowColor: colors.brand, shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: -3 }, elevation: 12,
+          backgroundColor: colors.navyDeep, borderTopWidth: 0,
+          shadowColor: "#000000", shadowOpacity: 0.22, shadowRadius: 10, shadowOffset: { width: 0, height: -3 }, elevation: 12,
           ...(Platform.OS === "web" ? { height: 64 } : {}),
         },
         tabBarItemStyle: { alignSelf: "center" },
-        tabBarLabelStyle: { fontFamily: fonts.textSemibold, fontSize: 11 },
         sceneStyle: { backgroundColor: colors.surface },
       }}
     >
-      <Tabs.Screen name="home" options={{ title: "Home", tabBarButtonTestID: "tab-home", tabBarIcon: ({ color, size }) => <House color={color} size={size} /> }} />
-      <Tabs.Screen name="guard" options={{ title: "Guard", tabBarButtonTestID: "tab-guard", tabBarIcon: ({ color, size }) => <Shield color={color} size={size} /> }} />
-      <Tabs.Screen name="patrol" options={{ title: "Patrol", tabBarButtonTestID: "tab-patrol", tabBarIcon: ({ color, size }) => <ScrollText color={color} size={size} /> }} />
-      <Tabs.Screen name="ask" options={{ title: "Higgins", tabBarButtonTestID: "tab-ask", tabBarIcon: ({ color, size }) => <MessageCircle color={color} size={size} /> }} />
-      <Tabs.Screen name="settings" options={{ title: "Settings", tabBarButtonTestID: "tab-settings", tabBarIcon: ({ color, size }) => <Settings color={color} size={size} /> }} />
+      <Tabs.Screen name="home" options={{ title: "Home", tabBarButtonTestID: "tab-home", tabBarIcon: tabIcon(Home), tabBarLabel: tabLabel("Home") }} />
+      <Tabs.Screen name="guard" options={{ title: "Guard", tabBarButtonTestID: "tab-guard", tabBarIcon: tabIcon(ShieldCheck), tabBarLabel: tabLabel("Guard") }} />
+      <Tabs.Screen name="patrol" options={{ title: "Patrol", tabBarButtonTestID: "tab-patrol", tabBarIcon: tabIcon(QueueList), tabBarLabel: tabLabel("Patrol") }} />
+      <Tabs.Screen name="ask" options={{ title: "Higgins", tabBarButtonTestID: "tab-ask", tabBarIcon: tabIcon(ChatBubbleLeftRight), tabBarLabel: tabLabel("Higgins") }} />
+      <Tabs.Screen name="settings" options={{ title: "Settings", tabBarButtonTestID: "tab-settings", tabBarIcon: tabIcon(Cog6Tooth), tabBarLabel: tabLabel("Settings") }} />
     </Tabs>
   );
 }

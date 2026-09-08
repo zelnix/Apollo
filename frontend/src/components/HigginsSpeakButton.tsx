@@ -9,10 +9,12 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { useHiggins } from "@/src/voice/higgins";
 
 const useStyles = makeStyles((c) => ({
-  btn: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 44, paddingHorizontal: spacing.lg, borderRadius: radius.pill, borderWidth: 1.5, borderColor: c.brand, backgroundColor: c.navyTint, alignSelf: "flex-start" },
-  on: { borderColor: c.resting, backgroundColor: c.restingTint },
-  label: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.brand },
+  // Navy premium CTA — gold icon, white text, fine gold border. See design_guidelines.json "Buttons".
+  btn: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 48, paddingHorizontal: spacing.lg, borderRadius: radius.pill, borderWidth: 1, borderColor: c.goldBorder, backgroundColor: c.brand, alignSelf: "flex-start" },
+  btnOn: { borderColor: c.resting },
+  label: { fontFamily: fonts.textSemibold, fontSize: 14, color: "#FFFFFF" },
   icon: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill },
+  iconOn: { backgroundColor: c.restingTint },
 }));
 
 export function HigginsSpeakButton({ text, label = "Hear Higgins", compact = false, testID, onPress: onExtraPress }: { text: string; label?: string; compact?: boolean; testID?: string; /** Fires alongside the tap, before speech starts (e.g. to open a related popup). Not called when tapping to stop. */ onPress?: () => void }) {
@@ -28,14 +30,14 @@ export function HigginsSpeakButton({ text, label = "Hear Higgins", compact = fal
   const Icon = active ? VolumeX : Volume2;
   if (compact) {
     return (
-      <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={active ? "Stop Higgins" : label} onPress={onPress} style={[s.icon, active && s.on]} hitSlop={6}>
+      <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={active ? "Stop Higgins" : label} onPress={onPress} style={[s.icon, active && s.iconOn]} hitSlop={6}>
         {busy ? <ActivityIndicator size="small" color={colors.resting} /> : <Icon size={18} color={active ? colors.resting : colors.onSurfaceSecondary} />}
       </Pressable>
     );
   }
   return (
-    <Pressable testID={testID} accessibilityRole="button" onPress={onPress} style={[s.btn, active && s.on]}>
-      {busy ? <ActivityIndicator size="small" color={colors.resting} /> : <Icon size={18} color={active ? colors.resting : colors.brand} />}
+    <Pressable testID={testID} accessibilityRole="button" onPress={onPress} style={[s.btn, active && s.btnOn]}>
+      {busy ? <ActivityIndicator size="small" color={colors.resting} /> : <Icon size={18} color={active ? colors.resting : colors.gold} />}
       <Text style={s.label}>{busy ? "Higgins is clearing his throat…" : active ? "Stop" : label}</Text>
     </Pressable>
   );

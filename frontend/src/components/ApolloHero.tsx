@@ -36,12 +36,14 @@ const STATE_GIF: Partial<Record<ApolloState, { src: number; label: string; testI
 };
 
 const useStyles = makeStyles((c) => ({
-  hero: { borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, overflow: "hidden" },
-  topEdge: { position: "absolute", top: 0, left: 0, right: 0, height: 4 },
+  hero: { borderRadius: radius.lg, borderWidth: 1, borderColor: c.navyBorder, overflow: "hidden" },
+  topEdge: { position: "absolute", top: 0, left: 0, right: 0, height: 5 },
+  topSeam: { position: "absolute", top: 5, left: 0, right: 0, height: 1, backgroundColor: c.navySoft, opacity: 0.35 },
   inner: { padding: spacing.xl, gap: spacing.sm, alignItems: "center" },
   orbWrap: { alignItems: "center", justifyContent: "center", height: 208 },
   outerRing: { position: "absolute", width: 224, height: 224, borderRadius: 112, borderWidth: 1 },
   orbRing: { position: "absolute", width: 192, height: 192, borderRadius: 96, borderWidth: 1 },
+  goldRing: { position: "absolute", width: 182, height: 182, borderRadius: 91, borderWidth: 1.5 },
   glow: { position: "absolute", width: 204, height: 204, borderRadius: 102 },
   label: { fontFamily: fonts.displayBold, fontSize: 26, color: c.onSurface, letterSpacing: -0.3, textAlign: "center" },
   meaning: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary, textAlign: "center" },
@@ -156,12 +158,14 @@ export function ApolloHero({ resolution, visibility, adapterLabel, isMock, capab
 
   return (
     <View style={[s.hero, { backgroundColor: toneWash(colors, tone) }]} testID="apollo-hero">
-      <LinearGradient colors={[color, colors.brand]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.topEdge} />
+      <LinearGradient colors={[color, colors.goldHighlight]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.topEdge} />
+      <View style={s.topSeam} />
       <View style={s.inner}>
         <View style={s.orbWrap} testID={`apollo-hero-anim-${state}`}>
-          <View style={[s.outerRing, { borderColor: colors.navyBorder, backgroundColor: colors.brandGlow }]} />
+          <View style={[s.outerRing, { borderColor: colors.navyBorder }]} />
           <Animated.View style={[s.orbRing, { borderColor: color }, ringStyle]} />
           <Animated.View style={[s.glow, { backgroundColor: color }, glowStyle]} />
+          <View style={[s.goldRing, { borderColor: colors.goldBorder }]} />
           <Animated.View style={dogStyle}>
             {gif ? (
               <Image source={gif.src} style={{ width: HERO_SIZE, height: HERO_SIZE }} contentFit="contain" autoplay accessibilityLabel={gif.label} testID={gif.testID} />

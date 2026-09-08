@@ -1,6 +1,5 @@
 import { useRouter } from "expo-router";
 import BatteryCharging from "lucide-react-native/icons/battery-charging";
-import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import ChevronUp from "lucide-react-native/icons/chevron-up";
 import Clock from "lucide-react-native/icons/clock";
@@ -49,29 +48,45 @@ const useStyles = makeStyles((c) => ({
   cardIconWell: { width: 30, height: 30, borderRadius: 15, backgroundColor: c.navyTint, alignItems: "center", justifyContent: "center" },
   cardTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.brand },
   cardLinkRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2, minHeight: 32 },
-  tileRow: { flexDirection: "row", gap: spacing.sm },
-  tile: {
-    flex: 1, minHeight: 88, backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1, borderColor: c.navyBorder,
-    alignItems: "center", justifyContent: "center", gap: spacing.xs, paddingVertical: spacing.md, paddingHorizontal: spacing.xs,
-    shadowColor: c.brand, shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1,
-  },
-  tileEmphasis: { borderColor: c.brand, borderWidth: 1.5 },
-  tileIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: c.navyTint, alignItems: "center", justifyContent: "center" },
-  tileIconEmphasis: { backgroundColor: c.navyTintStrong },
-  tileLabel: { fontFamily: fonts.textMedium, fontSize: 12, color: c.onSurface, textAlign: "center" },
-  allChecksToggle: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, minHeight: 44, paddingVertical: spacing.sm },
-  allChecksText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.brand },
+  // Quick Checks is one understated white strip, not four separate cards — dividers between actions
+  // instead of individual borders, gold icons (unboxed) for the primary four, a light gold wash on
+  // press instead of a dark outline. Secondary ("All checks") rows reuse the same strip but keep the
+  // icon in navy, so the four primary actions still read as the fastest path.
+  checksPanel: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border },
+  checksRow: { flexDirection: "row", alignItems: "stretch" },
+  checksRowDivider: { height: 1, backgroundColor: c.divider, marginHorizontal: spacing.md },
+  checkDivider: { width: 1, backgroundColor: c.divider, marginVertical: spacing.md },
+  checkItem: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.xs, paddingVertical: spacing.md, borderRadius: radius.md },
+  checkItemPressed: { backgroundColor: c.goldTint },
+  checkLabel: { fontFamily: fonts.textMedium, fontSize: 12, color: c.onSurface },
+  quickChecksHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  allChecksLink: { flexDirection: "row", alignItems: "center", gap: 2, minHeight: 32, paddingVertical: spacing.xs, paddingHorizontal: spacing.xs },
+  allChecksLinkText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.brand },
 }));
 
-type QuickCheck = { testID: string; label: string; icon: React.ReactNode; route: string; emphasis?: boolean };
+type QuickCheck = { testID: string; label: string; icon: React.ReactNode; route: string };
 
-function CheckTile({ check, onPress }: { check: QuickCheck; onPress: () => void }) {
+/** One row of the Quick Checks strip: N equal actions separated by thin vertical dividers, sharing a
+ *  single panel surface — never individually boxed. */
+function ChecksRow({ items, onPress }: { items: QuickCheck[]; onPress: (route: string) => void }) {
   const s = useStyles();
   return (
-    <Pressable testID={check.testID} accessibilityRole="button" onPress={onPress} style={({ pressed }) => [s.tile, check.emphasis && s.tileEmphasis, { opacity: pressed ? 0.8 : 1 }]}>
-      <View style={[s.tileIcon, check.emphasis && s.tileIconEmphasis]}>{check.icon}</View>
-      <Text style={s.tileLabel} numberOfLines={2}>{check.label}</Text>
-    </Pressable>
+    <View style={s.checksRow}>
+      {items.map((chk, i) => (
+        <React.Fragment key={chk.testID}>
+          {i > 0 ? <View style={s.checkDivider} /> : null}
+          <Pressable
+            testID={chk.testID}
+            accessibilityRole="button"
+            onPress={() => onPress(chk.route)}
+            style={({ pressed }) => [s.checkItem, pressed && s.checkItemPressed]}
+          >
+            {chk.icon}
+            <Text style={s.checkLabel} numberOfLines={1}>{chk.label}</Text>
+          </Pressable>
+        </React.Fragment>
+      ))}
+    </View>
   );
 }
 
@@ -93,18 +108,18 @@ export default function Home() {
   const attentionCount = capabilities.filter((c) => c.status === "permission_required").length;
 
   const primaryChecks: QuickCheck[] = [
-    { testID: "home-check-link-button", label: "Check a link", icon: <Link2 size={18} color={colors.brand} />, route: "/check", emphasis: true },
-    { testID: "home-check-message-button", label: "Check a message", icon: <MessageSquareWarning size={18} color={colors.brand} />, route: "/message" },
-    { testID: "home-check-call-button", label: "Check this call", icon: <PhoneIncoming size={18} color={colors.brand} />, route: "/call" },
-    { testID: "home-scan-button", label: "Scan a code", icon: <ScanLine size={18} color={colors.brand} />, route: "/scan" },
+    { testID: "home-check-link-button", label: "Link", icon: <Link2 size={20} color={colors.gold} />, route: "/check" },
+    { testID: "home-check-message-button", label: "Message", icon: <MessageSquareWarning size={20} color={colors.gold} />, route: "/message" },
+    { testID: "home-check-call-button", label: "Call", icon: <PhoneIncoming size={20} color={colors.gold} />, route: "/call" },
+    { testID: "home-scan-button", label: "Scan code", icon: <ScanLine size={20} color={colors.gold} />, route: "/scan" },
   ];
   const moreChecks: QuickCheck[] = [
-    { testID: "home-check-file-button", label: "Check a file", icon: <FileSearch size={18} color={colors.brand} />, route: "/file" },
-    { testID: "home-check-app-button", label: "Check an app", icon: <Smartphone size={18} color={colors.brand} />, route: "/app-check" },
-    { testID: "home-check-device-button", label: "Check my device", icon: <ShieldCheck size={18} color={colors.brand} />, route: "/device" },
-    { testID: "home-check-network-button", label: "Network Guard", icon: <Wifi size={18} color={colors.brand} />, route: "/network" },
-    { testID: "home-check-account-button", label: "Account Guard", icon: <KeyRound size={18} color={colors.brand} />, route: "/account" },
-    { testID: "home-check-email-button", label: "Check an email", icon: <Mail size={18} color={colors.brand} />, route: "/email" },
+    { testID: "home-check-file-button", label: "Check a file", icon: <FileSearch size={20} color={colors.brand} />, route: "/file" },
+    { testID: "home-check-app-button", label: "Check an app", icon: <Smartphone size={20} color={colors.brand} />, route: "/app-check" },
+    { testID: "home-check-device-button", label: "Check my device", icon: <ShieldCheck size={20} color={colors.brand} />, route: "/device" },
+    { testID: "home-check-network-button", label: "Network Guard", icon: <Wifi size={20} color={colors.brand} />, route: "/network" },
+    { testID: "home-check-account-button", label: "Account Guard", icon: <KeyRound size={20} color={colors.brand} />, route: "/account" },
+    { testID: "home-check-email-button", label: "Check an email", icon: <Mail size={20} color={colors.brand} />, route: "/email" },
   ];
 
   return (
@@ -135,24 +150,24 @@ export default function Home() {
         ) : null}
 
         <View style={{ gap: spacing.md }}>
-          <SectionTitle>Quick checks</SectionTitle>
-          <View style={s.tileRow}>
-            {primaryChecks.map((chk) => <CheckTile key={chk.testID} check={chk} onPress={() => router.push(chk.route as never)} />)}
+          <View style={s.quickChecksHeaderRow}>
+            <SectionTitle>Quick checks</SectionTitle>
+            <Pressable testID="home-all-checks-toggle" accessibilityRole="button" onPress={() => setAllChecksOpen((v) => !v)} style={s.allChecksLink}>
+              <Text style={s.allChecksLinkText}>{allChecksOpen ? "Fewer checks" : "All checks"}</Text>
+              {allChecksOpen ? <ChevronUp size={14} color={colors.brand} /> : <ChevronRight size={14} color={colors.brand} />}
+            </Pressable>
           </View>
-          <Pressable testID="home-all-checks-toggle" accessibilityRole="button" onPress={() => setAllChecksOpen((v) => !v)} style={s.allChecksToggle}>
-            <Text style={s.allChecksText}>{allChecksOpen ? "Fewer checks" : "All checks"}</Text>
-            {allChecksOpen ? <ChevronUp size={16} color={colors.brand} /> : <ChevronDown size={16} color={colors.brand} />}
-          </Pressable>
-          {allChecksOpen ? (
-            <View style={{ gap: spacing.sm }} testID="home-all-checks">
-              <View style={s.tileRow}>
-                {moreChecks.slice(0, 3).map((chk) => <CheckTile key={chk.testID} check={chk} onPress={() => router.push(chk.route as never)} />)}
+          <View style={s.checksPanel}>
+            <ChecksRow items={primaryChecks} onPress={(route) => router.push(route as never)} />
+            {allChecksOpen ? (
+              <View testID="home-all-checks">
+                <View style={s.checksRowDivider} />
+                <ChecksRow items={moreChecks.slice(0, 3)} onPress={(route) => router.push(route as never)} />
+                <View style={s.checksRowDivider} />
+                <ChecksRow items={moreChecks.slice(3)} onPress={(route) => router.push(route as never)} />
               </View>
-              <View style={s.tileRow}>
-                {moreChecks.slice(3).map((chk) => <CheckTile key={chk.testID} check={chk} onPress={() => router.push(chk.route as never)} />)}
-              </View>
-            </View>
-          ) : null}
+            ) : null}
+          </View>
         </View>
 
         <View style={{ flexDirection: isWide ? "row" : "column", gap: spacing.md }}>

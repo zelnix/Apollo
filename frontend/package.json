@@ -34,6 +34,7 @@
   },
   "dependencies": {
     "@expo/metro-runtime": "57.0.15",
+    "@nandorojo/heroicons": "0.3.0",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@tanstack/react-query": "5.102.8",
     "date-fns": "4.1.0",

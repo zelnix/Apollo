@@ -75,7 +75,7 @@ const useStyles = makeStyles((c) => ({
   btnText: { fontFamily: fonts.textSemibold, fontSize: 15 },
   section: { fontFamily: fonts.displayBold, fontSize: 13, color: c.brand, letterSpacing: 1.4, textTransform: "uppercase", marginBottom: spacing.md },
   sectionRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md },
-  sectionDivider: { width: 14, height: 3, borderRadius: 2, backgroundColor: c.brand },
+  sectionDivider: { width: 16, height: 3, borderRadius: 2, backgroundColor: c.gold },
   h1: { fontFamily: fonts.displayBold, fontSize: 28, color: c.onSurface, letterSpacing: -0.4 },
   body: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary },
   header: { paddingHorizontal: spacing.xl, paddingBottom: spacing.md, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },

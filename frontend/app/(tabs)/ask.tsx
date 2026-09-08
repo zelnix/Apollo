@@ -22,7 +22,9 @@ const useStyles = makeStyles((c) => ({
   list: { paddingHorizontal: spacing.xl, paddingBottom: spacing.lg, gap: spacing.md },
   bubble: { maxWidth: "86%", padding: spacing.md, borderRadius: radius.md, borderWidth: 1 },
   user: { alignSelf: "flex-end", backgroundColor: c.surfaceSecondary, borderColor: c.border },
-  apollo: { alignSelf: "flex-start", backgroundColor: c.surfaceTertiary, borderColor: c.surfaceTertiary },
+  // A thin gold accent, not a colour fill, marks this bubble as Higgins speaking — restrained brand
+  // identity on the conversational screen, never a full-bubble wash.
+  apollo: { alignSelf: "flex-start", backgroundColor: c.surfaceTertiary, borderColor: c.surfaceTertiary, borderLeftWidth: 3, borderLeftColor: c.gold },
   text: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurface },
   inputBar: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, backgroundColor: c.glass, borderTopWidth: 1, borderTopColor: c.border },
   input: { flex: 1, minHeight: 48, maxHeight: 120, backgroundColor: c.surfaceTertiary, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, fontFamily: fonts.text, fontSize: 15, color: c.onSurface },
@@ -89,7 +91,7 @@ export default function Ask() {
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
           renderItem={({ item }) => (
             <View style={[s.bubble, item.role === "user" ? s.user : s.apollo]} testID={`ask-msg-${item.role}`}>
-              {item.pending ? <ActivityIndicator color={colors.resting} /> : <Text style={s.text}>{item.role === "apollo" ? parseChecks(item.content).text : item.content}</Text>}
+              {item.pending ? <ActivityIndicator color={colors.gold} /> : <Text style={s.text}>{item.role === "apollo" ? parseChecks(item.content).text : item.content}</Text>}
               {item.role === "apollo" && !item.pending ? <HigginsChecks checks={parseChecks(item.content).checks} askedAt={item.at} messageId={item.id} /> : null}
               {item.role === "apollo" && !item.pending && item.content ? <View style={{ marginTop: spacing.sm }}><HigginsSpeakButton text={parseChecks(item.content).text} testID={`ask-hear-${item.id}`} /></View> : null}
             </View>
