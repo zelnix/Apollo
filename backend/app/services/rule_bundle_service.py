@@ -55,12 +55,20 @@ class RuleBundleService:
         )
         return await self.sign_and_publish(request)
 
-    async def local_verdict(self, host: str) -> tuple[str | None, str | None]:
-        """Return (action, ruleId) from the newest unexpired bundle of the M1 ruleset."""
-        bundle = await self._repo.latest(self._settings.ruleset_id)
-        if bundle is None or parse_iso_z(bundle.expiresAt) <= datetime.now(timezone.utc):
-            return None, None
+    async def local_verdict(self, host: str, ruleset_id: str | None = None) -> tuple[str | None, str | None, bool]:
+        """Return (action, ruleId, expired) from the newest bundle of `ruleset_id`.
+
+        `ruleset_id` defaults to the M1 controlled ruleset (existing behavior, unchanged) when omitted, so
+        every existing caller keeps resolving against the same bundle as before. `expired=True` means a
+        bundle exists but is past its `expiresAt`: distinct from "no bundle"/"no match" (both `expired=False`)
+        so a caller can surface DEGRADED protection instead of silently treating expiry as "unknown".
+        """
+        bundle = await self._repo.latest(ruleset_id or self._settings.ruleset_id)
+        if bundle is None:
+            return None, None, False
+        if parse_iso_z(bundle.expiresAt) <= datetime.now(timezone.utc):
+            return None, None, True
         for rule in bundle.payload.rules:
             if rule.host == host:
-                return rule.action, rule.ruleId
-        return None, None
+                return rule.action, rule.ruleId, False
+        return None, None, False

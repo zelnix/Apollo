@@ -9,7 +9,7 @@ router = APIRouter(prefix="/intelligence", tags=["intelligence"])
 
 @router.post("/lookup", response_model=IntelligenceLookupResponse)
 async def lookup(body: IntelligenceLookupRequest, request: Request):
-    result = await request.app.state.intelligence.lookup(body.url)
+    result = await request.app.state.intelligence.lookup(body.url, body.rulesetId)
     if result is None:
         raise HTTPException(status_code=422, detail="url must be http(s) with a valid host")
     return result

@@ -42,9 +42,26 @@ export interface SecurityEvent {
   bundleVersion?: number;
   /** Internal audit reference: signed rule -> route -> packet observation -> drop -> evidence -> event */
   enforcementEvidenceId?: string;
-  verdict?: "block" | "allow" | "unknown" | "unavailable";
+  verdict?: "block" | "allow" | "warn" | "unknown" | "unavailable";
   protectionState?: ProtectionState;
   reason?: string;
+  // --- Additive cross-platform evidence fields (Gate Guard M2). M1 events never populate these; absent
+  // is the correct, expected value for every M1 event, past or future. ---
+  platform?: "android" | "ios" | "windows" | "macos";
+  osVersion?: string;
+  /** Apollo core/SDK engine version that produced this event. */
+  engineVersion?: string;
+  /** e.g. "android-vpn-tun-drop" (M1) or "android-vpn-dns-sinkhole-drop" (M2 website gate). */
+  enforcementMechanism?: string;
+  direction?: "outbound" | "inbound";
+  /** What the decision layer asked for vs what enforcement actually did (equal for every M1 event). */
+  actionRequested?: "block" | "allow" | "warn";
+  actionEnforced?: "block" | "allow" | "warn";
+  /** 0..1 provider/rule confidence, when the source supplies one. */
+  confidence?: number;
+  /** Explicit null (not merely absent) when the platform cannot provide this without capabilities it does
+   * not have (e.g. Android/iOS without AccessibilityService-class permissions, which Apollo does not use). */
+  applicationIdentity?: string | null;
 }
 
 export const SECURITY_EVENT_TYPES: readonly SecurityEventType[] = [
@@ -91,6 +108,22 @@ export function validateSecurityEvent(input: unknown): SecurityEventValidation {
   if (e.protectionState !== undefined && !PROTECTION_STATES.includes(e.protectionState as ProtectionState))
     return { ok: false, reason: "protectionState" };
   if (e.bundleVersion !== undefined && !Number.isInteger(e.bundleVersion)) return { ok: false, reason: "bundleVersion" };
+  // Additive Gate Guard M2 fields: validated only when present. Absent (the M1 case, always) is always valid.
+  if (e.platform !== undefined && !["android", "ios", "windows", "macos"].includes(e.platform as string))
+    return { ok: false, reason: "platform" };
+  if (e.direction !== undefined && e.direction !== "outbound" && e.direction !== "inbound")
+    return { ok: false, reason: "direction" };
+  for (const key of ["actionRequested", "actionEnforced"] as const) {
+    if (e[key] !== undefined && !["block", "allow", "warn"].includes(e[key] as string)) return { ok: false, reason: key };
+  }
+  if (e.confidence !== undefined && (typeof e.confidence !== "number" || e.confidence < 0 || e.confidence > 1))
+    return { ok: false, reason: "confidence" };
+  if (e.applicationIdentity !== undefined && e.applicationIdentity !== null && typeof e.applicationIdentity !== "string")
+    return { ok: false, reason: "applicationIdentity" };
+  if (e.osVersion !== undefined && typeof e.osVersion !== "string") return { ok: false, reason: "osVersion" };
+  if (e.engineVersion !== undefined && typeof e.engineVersion !== "string") return { ok: false, reason: "engineVersion" };
+  if (e.enforcementMechanism !== undefined && typeof e.enforcementMechanism !== "string")
+    return { ok: false, reason: "enforcementMechanism" };
   if (e.type === "THREAT_BLOCKED") {
     if (e.source !== "android-vpn-enforcement") return { ok: false, reason: "THREAT_BLOCKED requires enforcement source" };
     if (typeof e.enforcementEvidenceId !== "string" || e.enforcementEvidenceId.length === 0)

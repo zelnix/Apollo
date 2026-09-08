@@ -69,7 +69,7 @@ class SignRequest(BaseModel):
     expiresAt: str | None = None
     keyId: str | None = None
     confirm: bool = False
-    purpose: Literal["m1-controlled-test"] = "m1-controlled-test"
+    purpose: Literal["m1-controlled-test", "m2-website-gate-block"] = "m1-controlled-test"
 
     @field_validator("expiresAt")
     @classmethod

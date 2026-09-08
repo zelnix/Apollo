@@ -1,0 +1,28 @@
+{
+    "schemaVersion": "1.0",
+    "rulesetId": "gd-m2-website-gate",
+    "bundleVersion": 2,
+    "issuedAt": "2026-09-08T15:07:22Z",
+    "expiresAt": "2026-10-08T15:07:22Z",
+    "keyId": "gd-m1-test-ed25519-001",
+    "payload": {
+        "rules": [
+            {
+                "ruleId": "m2-kotlin-test-block-001",
+                "host": "bad-test.guarddog.example",
+                "action": "block",
+                "matchType": "exact",
+                "category": "test-malicious"
+            },
+            {
+                "ruleId": "m2-kotlin-test-allow-001",
+                "host": "good-test.guarddog.example",
+                "action": "allow",
+                "matchType": "exact",
+                "category": "test-safe"
+            }
+        ]
+    },
+    "payloadHash": "608dca48ae93918c916ac53691a44e344fc16d30195ff9e3ee8a11c9d259c68e",
+    "signature": "FDC70u010gXbrcSbJABejS7qvnKkAwMmUqfiYL0vfymtJuHXgm51bxYkSagE5OH0n9Iqvnx8/z1L2rOkrMXMBg=="
+}

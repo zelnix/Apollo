@@ -38,6 +38,23 @@ data class SecurityEvent(
     val verdict: String? = null,
     val protectionState: String? = null,
     val reason: String? = null,
+    // --- Additive cross-platform evidence fields (Gate Guard M2), mirrors securityEvent.ts 1:1. M1 events
+    // never populate these; null is the correct, expected value for every M1 event, past or future. ---
+    val platform: String? = null,
+    val osVersion: String? = null,
+    /** Apollo core/SDK engine version that produced this event. */
+    val engineVersion: String? = null,
+    /** e.g. "android-vpn-tun-drop" (M1) or "android-vpn-dns-sinkhole-drop" (M2 website gate). */
+    val enforcementMechanism: String? = null,
+    val direction: String? = null,
+    /** What the decision layer asked for vs what enforcement actually did (equal for every M1 event). */
+    val actionRequested: String? = null,
+    val actionEnforced: String? = null,
+    /** 0..1 provider/rule confidence, when the source supplies one. */
+    val confidence: Double? = null,
+    /** Explicit null (not merely absent) when the platform cannot provide this (Android/iOS without
+     * AccessibilityService-class permissions, which Apollo does not use). */
+    val applicationIdentity: String? = null,
 ) {
     /** True only for events produced from real packet-drop evidence. */
     val isGenuineBlock: Boolean

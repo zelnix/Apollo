@@ -8,10 +8,13 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.guarddog.core.GuardDogSDKEngine
 import com.guarddog.core.clock.SystemClock
 import com.guarddog.core.protection.ProtectionEnforcementReporter
 import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.IOException
+import java.net.InetAddress
 
 /**
  * Runtime wiring injected by the bridge before the service starts: the config and the
@@ -26,15 +29,28 @@ object GuardDogVpnRuntime {
     /** The live TUN session while enforcing; null once closed. Read by the recovery proof. */
     @Volatile var activeSession: TunSession? = null
         internal set
+
+    // --- Gate Guard M2 Website Gate: all additive, all optional. Leaving [websiteGateEngine] or
+    // [websiteGateRouteConfig] null (the default) means M2 is fully disabled and the service
+    // behaves bit-for-bit as it did before this feature -- no DNS gateway, no sinkhole routes,
+    // no addDnsServer call. Wired by the bridge in Phase 5; the plumbing itself lives here. ---
+    @Volatile var websiteGateEngine: GuardDogSDKEngine? = null
+    @Volatile var websiteGateRouteConfig: WebsiteGateRouteConfig? = null
+    @Volatile var upstreamDnsResolverIpv4: String? = null
+    @Volatile var websiteGateBindingLifetimeMillis: Long = 30_000L
 }
 
 /**
- * Android VpnService performing the M1 selective block.
+ * Android VpnService performing the M1 selective block, plus (additively) the Gate Guard M2
+ * Website Gate DNS/sinkhole pipeline when the runtime is configured for it.
  *
- * Observed traffic path (and nothing more): IPv4 packets whose destination is the
- * DNS/IP-verified dedicated controlled IPv4, routed to TUN by the /32 route, read from
- * the TUN fd, parsed, intentionally dropped, deduped, reported as evidence.
- * Not covered: any other destination, DNS, DoH/DoT, QUIC visibility, per-app attribution.
+ * Observed traffic path: IPv4 packets whose destination is the DNS/IP-verified dedicated
+ * controlled IPv4 (M1), or one of the fixed M2 sinkhole pool addresses, routed to TUN by an
+ * explicit /32 route, read from the TUN fd, parsed, intentionally dropped, deduped, reported as
+ * evidence. A packet addressed to the fixed M2 virtual DNS endpoint is serviced (synthesized
+ * sinkhole answer, NXDOMAIN, or untouched upstream forward) rather than dropped -- the only
+ * packets this service ever writes back into the tunnel. Not covered: any other destination,
+ * DoH/DoT, QUIC visibility, per-app attribution.
  */
 class GuardDogVpnService : VpnService() {
     private val state = VpnStateRepository.shared
@@ -84,7 +100,13 @@ class GuardDogVpnService : VpnService() {
     }
 
     private fun establish(config: VpnConfig, reporter: ProtectionEnforcementReporter, verifiedIpv4: String) {
-        val spec = SelectiveRouteInstaller.buildSpec(config, verifiedIpv4)
+        val websiteGateConfig = GuardDogVpnRuntime.websiteGateRouteConfig
+        val websiteGateEngine = GuardDogVpnRuntime.websiteGateEngine
+        val spec = if (websiteGateConfig != null) {
+            SelectiveRouteInstaller.buildWebsiteGateSpec(config, verifiedIpv4, websiteGateConfig)
+        } else {
+            SelectiveRouteInstaller.buildSpec(config, verifiedIpv4)
+        }
         val pfd = try {
             SelectiveRouteInstaller.applyTo(Builder(), spec).establish()
         } catch (e: IllegalStateException) {
@@ -97,12 +119,41 @@ class GuardDogVpnService : VpnService() {
             return
         }
         val deduper = BlockedFlowDeduper(config.dedupeWindowMillis, SystemClock)
-        val dropReporter = PacketDropReporter(verifiedIpv4, deduper, reporter, SystemClock)
+        // Gate Guard M2 Website Gate: null websiteGateConfig means the authorizer stays null too,
+        // so PacketDropReporter's matching logic is bit-for-bit the M1-only check (see PacketDropReporter.onPacket).
+        val websiteGateAuthorizer = websiteGateConfig?.let { WebsiteGatePacketAuthorizer(verifiedIpv4, it.sinkholePool.toSet()) }
+        val dropReporter = PacketDropReporter(verifiedIpv4, deduper, reporter, SystemClock, websiteGateAuthorizer)
         GuardDogVpnRuntime.dropReporter = dropReporter
-        val tunReader = TunPacketReader(FileInputStream(pfd.fileDescriptor), dropReporter) { e: IOException ->
-            Log.w(TAG, "TUN read failed: ${e.message}")
-            state.transition(VpnLifecycleState.Degraded("TUN read error"))
+
+        // Gate Guard M2 Website Gate DNS pipeline: only constructed when BOTH a route config AND a
+        // live shared-core engine are wired in. Either missing means dnsGateway stays null, and
+        // TunPacketReader's read loop is exactly the M1 loop (no writes back into the tunnel at all).
+        val dnsGateway = if (websiteGateConfig != null && websiteGateEngine != null) {
+            val bindingStore = SinkholeBindingStore(
+                websiteGateEngine, websiteGateConfig.sinkholePool, GuardDogVpnRuntime.websiteGateBindingLifetimeMillis, SystemClock,
+            )
+            val upstream = GuardDogVpnRuntime.upstreamDnsResolverIpv4
+            val forwarder: UpstreamDnsForwarder = if (upstream != null) {
+                ProtectedUdpDnsForwarder(InetAddress.getByName(upstream), protector = SocketProtector { socket -> protect(socket) })
+            } else {
+                UpstreamDnsForwarder { _, _, _ -> null } // no upstream configured: fail open by silence
+            }
+            DnsGatewayPacketHandler(bindingStore, forwarder) { reason -> Log.d(TAG, "DNS gateway pass-through: $reason") }
+        } else {
+            null
         }
+
+        val tunReader = TunPacketReader(
+            input = FileInputStream(pfd.fileDescriptor),
+            dropReporter = dropReporter,
+            onError = { e: IOException ->
+                Log.w(TAG, "TUN read failed: ${e.message}")
+                state.transition(VpnLifecycleState.Degraded("TUN read error"))
+            },
+            output = if (dnsGateway != null) FileOutputStream(pfd.fileDescriptor) else null,
+            dnsGatewayIpv4 = websiteGateConfig?.dnsGatewayIpv4,
+            dnsGateway = dnsGateway,
+        )
         // Retain the ParcelFileDescriptor inside the session; close() releases it exactly once.
         session = TunSession(pfd, tunReader, Thread(tunReader, "guarddog-tun-reader")) {
             GuardDogVpnRuntime.dropReporter = null
@@ -112,7 +163,7 @@ class GuardDogVpnService : VpnService() {
         val running = VpnLifecycleState.Running(System.currentTimeMillis(), spec.routes[0].cidr)
         state.transition(running)
         startForegroundCompat(ProtectionNotificationFactory.build(this, running))
-        Log.i(TAG, "Selective route installed: ${spec.routes[0].cidr} (only)")
+        Log.i(TAG, "Selective route installed: ${spec.routes.map { it.cidr }} (dnsGateway=${dnsGateway != null})")
     }
 
     override fun onRevoke() {

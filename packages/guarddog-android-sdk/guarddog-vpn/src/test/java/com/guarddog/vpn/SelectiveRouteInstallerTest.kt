@@ -60,4 +60,32 @@ class SelectiveRouteInstallerTest {
     @Test fun configValidatesIpv4() {
         assertFailsWith<IllegalArgumentException> { config.copy(controlledIpv4 = "not-an-ip") }
     }
+
+    // --- Gate Guard M2 Website Gate: additive builder, never touching buildSpec's M1 behavior above. ---
+
+    private val websiteGate = WebsiteGateRouteConfig("192.0.2.53", listOf("192.0.2.240", "192.0.2.241"))
+
+    @Test fun websiteGateSpecAddsExactlyTheFixedDnsGatewayAndSinkholePoolAlongsideTheM1Slash32() {
+        val spec = SelectiveRouteInstaller.buildWebsiteGateSpec(config, "203.0.113.10", websiteGate)
+        assertEquals(
+            setOf(RouteSpec("203.0.113.10", 32), RouteSpec("192.0.2.53", 32), RouteSpec("192.0.2.240", 32), RouteSpec("192.0.2.241", 32)),
+            spec.routes.toSet(),
+        )
+        assertEquals(listOf("192.0.2.53"), spec.dnsServers)
+        assertTrue(spec.isSelective)
+        assertTrue(spec.routes.none { it.address == "0.0.0.0" || it.address == "::" })
+    }
+
+    @Test fun websiteGateSpecStillEnforcesTheSameM1VerificationAsBuildSpec() {
+        assertFailsWith<IllegalArgumentException> { SelectiveRouteInstaller.buildWebsiteGateSpec(config, "198.51.100.7", websiteGate) }
+    }
+
+    @Test fun buildSpecAloneIsCompletelyUnaffectedByWebsiteGateExisting() {
+        // Same frozen M1 assertion as installsOnlyTheControlledSlash32, proving buildSpec()'s
+        // behavior is bit-for-bit unchanged by the existence of buildWebsiteGateSpec().
+        val spec = SelectiveRouteInstaller.buildSpec(config, "203.0.113.10")
+        assertEquals(listOf(RouteSpec("203.0.113.10", 32)), spec.routes)
+        assertEquals(emptyList(), spec.dnsServers)
+        assertTrue(spec.isSelective)
+    }
 }

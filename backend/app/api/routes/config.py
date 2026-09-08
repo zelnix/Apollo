@@ -37,4 +37,7 @@ async def get_config(request: Request) -> dict:
             "cloudLookupPayload": "scheme + canonical host + path only; no userinfo/query/fragment/port",
             "threatScent": "local-only",
         },
+        # Gate Guard M2 Website Gate: independent ruleset id, additive-only. The M1 fields above are
+        # untouched by its presence; a client that doesn't know this key ignores it.
+        "gateGuard": {"websiteGateRulesetId": s.website_gate_ruleset_id},
     }

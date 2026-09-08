@@ -41,6 +41,9 @@ class Settings:
     signing_allowed_rulesets: frozenset[str]
     # When set, the M1 controlled ruleset is frozen at this version: POST /api/rules/sign refuses it (BUNDLE_FROZEN).
     frozen_bundle_version: int | None
+    # Gate Guard M2 Website Gate: an independent ruleset id, never mutates or overlaps the frozen M1 controlled ruleset.
+    # Optional/non-breaking: defaults to "gd-m2-website-gate" when unset so existing deployments need no env change.
+    website_gate_ruleset_id: str
 
     @property
     def controlled_endpoint_is_placeholder(self) -> bool:
@@ -73,4 +76,5 @@ def get_settings() -> Settings:
         signing_enabled=signing_enabled,
         signing_allowed_rulesets=frozenset(r.strip() for r in _req("GD_SIGNING_ALLOWED_RULESETS").split(",") if r.strip()),
         frozen_bundle_version=int(os.environ["GD_M1_FROZEN_BUNDLE_VERSION"]) if os.environ.get("GD_M1_FROZEN_BUNDLE_VERSION") else None,
+        website_gate_ruleset_id=os.environ.get("GD_M2_WEBSITE_GATE_RULESET_ID") or "gd-m2-website-gate",
     )

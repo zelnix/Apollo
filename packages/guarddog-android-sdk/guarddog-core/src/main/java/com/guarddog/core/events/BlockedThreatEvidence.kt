@@ -21,5 +21,9 @@ data class BlockedThreatEvidence(
 ) {
     companion object {
         const val ENFORCEMENT_LAYER_ANDROID_TUN_DROP = "android-vpn-tun-drop"
+        /** Gate Guard M2 Website Gate: a real TUN packet dropped because its destination was a sinkhole
+         * address bound to a blocked hostname via DNS (see WebsiteGateBinding), never the hostile domain's
+         * real address. Distinct from the M1 controlled-endpoint drop above so evidence stays attributable. */
+        const val ENFORCEMENT_LAYER_ANDROID_DNS_SINKHOLE_DROP = "android-vpn-dns-sinkhole-drop"
     }
 }

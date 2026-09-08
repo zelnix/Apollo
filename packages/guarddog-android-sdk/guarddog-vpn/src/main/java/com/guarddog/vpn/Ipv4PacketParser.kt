@@ -48,4 +48,30 @@ object Ipv4PacketParser {
 
     private fun ipv4At(b: ByteArray, offset: Int): String =
         "${b[offset].toInt() and 0xff}.${b[offset + 1].toInt() and 0xff}.${b[offset + 2].toInt() and 0xff}.${b[offset + 3].toInt() and 0xff}"
+
+    /**
+     * Gate Guard M2 Website Gate: returns the UDP payload's [start, endExclusive) byte range within
+     * [buffer], or null if this isn't a well-formed UDP/IPv4 packet with a complete UDP header.
+     * Bounds are validated against the IPv4 header's own `totalLength` (not just the raw read
+     * length), mirroring [parse]'s validation. Additive -- [parse] and [classify] are unchanged.
+     */
+    fun udpPayloadRange(buffer: ByteArray, length: Int): IntRange? {
+        if (length < 20 || buffer.size < length) return null
+        val versionIhl = buffer[0].toInt() and 0xff
+        if (versionIhl ushr 4 != 4) return null
+        val ihl = (versionIhl and 0x0f) * 4
+        if (ihl < 20 || length < ihl) return null
+        val totalLength = ((buffer[2].toInt() and 0xff) shl 8) or (buffer[3].toInt() and 0xff)
+        if (totalLength < ihl || totalLength > length) return null
+        val protocol = buffer[9].toInt() and 0xff
+        if (protocol != PROTO_UDP) return null
+        val udpStart = ihl
+        if (totalLength < udpStart + 8) return null
+        val udpLength = ((buffer[udpStart + 4].toInt() and 0xff) shl 8) or (buffer[udpStart + 5].toInt() and 0xff)
+        if (udpLength < 8) return null
+        val payloadStart = udpStart + 8
+        val payloadEnd = udpStart + udpLength
+        if (payloadEnd > totalLength || payloadEnd < payloadStart) return null
+        return payloadStart until payloadEnd
+    }
 }

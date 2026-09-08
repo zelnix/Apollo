@@ -20,12 +20,20 @@ data class DropStats(
  * packet actually read from the TUN file descriptor. A packet whose destination equals
  * the authorized controlled IPv4 is intentionally dropped (never written anywhere) and,
  * subject to deduplication, reported to the core engine.
+ *
+ * Gate Guard M2 Website Gate (additive, opt-in via [websiteGateAuthorizer] -- null preserves the
+ * exact M1 behavior): a packet whose destination is one of the fixed, enumerable M2 sinkhole pool
+ * addresses is ALSO recognized here (never miscounted as route-leak noise) and reported to the
+ * core engine. Recognizing it here never decides whether a block is emitted -- that is exclusively
+ * `GuardDogSDKEngine.reportBlockedPacket`'s job (checks its own M1 table, then the strictly
+ * parallel M2 WebsiteGateBinding table, and emits nothing if neither has a live match).
  */
 class PacketDropReporter(
     private val controlledIpv4: String,
     private val deduper: BlockedFlowDeduper,
     private val reporter: ProtectionEnforcementReporter,
     private val clock: Clock,
+    private val websiteGateAuthorizer: WebsiteGatePacketAuthorizer? = null,
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
 ) {
     private var observedMatching = 0L
@@ -45,9 +53,14 @@ class PacketDropReporter(
     /** [kind] classifies why a packet did not parse (from Ipv4PacketParser.classify) so unexpected traffic is diagnosable without logging addresses. */
     @Synchronized
     fun onPacket(info: Ipv4PacketInfo?, kind: Ipv4PacketParser.Kind): Decision {
-        if (info == null || info.destinationIpv4 != controlledIpv4) {
-            // Only controlledIpv4/32 is routed here; anything else is noise we cannot forward
-            // (no forwarding engine in M1). Discarded and counted by category, never reported as a block.
+        val destination = info?.destinationIpv4
+        val isM1Target = destination == controlledIpv4
+        val isM2SinkholeTarget = destination != null &&
+            websiteGateAuthorizer?.classify(destination) == WebsiteGatePacketAuthorizer.Destination.M2_SINKHOLE
+        if (info == null || !(isM1Target || isM2SinkholeTarget)) {
+            // Only recognized destinations (M1 controlledIpv4/32, plus the fixed M2 sinkhole pool
+            // when wired in) are routed here; anything else is noise we cannot forward (no
+            // general-purpose forwarding engine). Discarded and counted by category, never reported as a block.
             unexpectedPackets++
             when {
                 info != null -> wrongDestinationIpv4++
@@ -63,6 +76,11 @@ class PacketDropReporter(
             return Decision.DROP_MATCHING
         }
         reportedBlocks++
+        val enforcementLayer = if (isM1Target) {
+            BlockedThreatEvidence.ENFORCEMENT_LAYER_ANDROID_TUN_DROP
+        } else {
+            BlockedThreatEvidence.ENFORCEMENT_LAYER_ANDROID_DNS_SINKHOLE_DROP
+        }
         reporter.reportBlockedPacket(
             BlockedThreatEvidence(
                 enforcementEvidenceId = idGenerator(),
@@ -73,6 +91,7 @@ class PacketDropReporter(
                 packetLength = info.totalLength,
                 observedAtEpochMillis = clock.nowEpochMillis(),
                 flowKey = info.flowKey,
+                enforcementLayer = enforcementLayer,
             ),
         )
         return Decision.DROP_MATCHING
