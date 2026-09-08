@@ -73,7 +73,7 @@ async def ask_stream(body: AskRequest):
     return StreamingResponse(gen(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-@router.get("/ask/history", response_model=list[AskMessage])
+@router.get("/ask/history", response_model=list[AskMessage], response_model_by_alias=False)
 async def ask_history(device_id: str = Query(min_length=8, max_length=64)):
     docs = await db.ask_messages.find({"device_id": device_id}).sort("created_at", 1).to_list(200)
     return [AskMessage.from_mongo(d) for d in docs]

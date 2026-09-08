@@ -210,6 +210,11 @@ def test_ask_history(api_client):
     roles = {m["role"] for m in hist}
     assert "user" in roles, hist
     assert "apollo" in roles, hist
+    # Regression: response_model_by_alias=False must be set so messages expose `id`
+    # (not mongo `_id`), otherwise React FlatList/.map() key warnings appear on the Ask screen.
+    for m in hist:
+        assert "id" in m and m["id"], f"message missing usable 'id' field: {m}"
+        assert "_id" not in m, f"raw mongo _id leaked into response: {m}"
 
 
 # --- intel/check-batch (iteration 2) ---

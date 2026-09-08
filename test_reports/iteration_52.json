@@ -1,0 +1,48 @@
+{
+  "summary": "Verified 3 targeted fixes for Apollo V1: (1) Ask/Higgins React key warning root cause fix (response_model_by_alias=False on /api/ask/history), (2) Apollo logo removed from Home header, (3) Version/Build rows added to Settings 'About this build'. All confirmed working via backend curl tests, pytest, and Playwright UI tests. No regressions found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "verified_fixes": [
+    {
+      "item": "GET /api/ask/history returns 'id' field",
+      "result": "PASS - curl and pytest confirmed each message has 'id' (mongo ObjectId string) and no raw '_id' key. Verified end-to-end: sent message via /api/ask/stream, reloaded Ask tab in browser, both user + Apollo bubbles reappeared correctly, zero React key warnings in console."
+    },
+    {
+      "item": "Home header logo removed",
+      "result": "PASS - testID 'home-logo' absent, 'home-mock-pill' (MOCK badge) still visible top-right."
+    },
+    {
+      "item": "Settings 'About this build' Version/Build rows",
+      "result": "PASS - settings-app-version shows '1.0.0', settings-app-build shows 'Preview · Sep 8, 2026, 5:52 PM' (correct format since this is dev/web preview, not a native build). Both rows appear above Environment/Security adapter/SecureCore rows as required."
+    },
+    {
+      "item": "Regression: Ask send flow, Home Quick Checks toggle, bottom nav",
+      "result": "PASS - message streamed correctly (Gemini), Quick Checks 'All checks' toggle expands panel, bottom nav navigation to Guard tab works."
+    }
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_apollo_backend.py",
+    "/app/test_reports/pytest/pytest_iter_ask_review.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Note (not a bug): direct URL navigation to '/(tabs)/ask' works but '/(tabs)/higgins' does not exist as a route (file is app.tsx named 'ask.tsx', tab label is 'Higgins') — this is only relevant for test navigation, not a user-facing issue since users navigate via bottom nav tab."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_apollo_backend.py (added assertion in test_ask_history for 'id' field presence and absence of raw '_id', to guard against regression of this exact bug)"
+  ],
+  "success_rate": {"backend": "100% (14/14 pytest tests passed)", "frontend": "100% (all 4 verification flows passed)"},
+  "seed_data_creation": "Registered test devices via /api/devices/register during testing (mock adapter mode); no persistent seed data needed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All 3 items in this session's fix list (Ask key warning, Home logo removal, Settings Version/Build) are verified passing. Ask screen route in Expo Router is '(tabs)/ask', tab label 'Higgins'. Use EXPO_PUBLIC_BACKEND_URL from frontend/.env for API base (public preview URL). Device auth (Bearer token from /api/devices/register) is required for /api/ask/* endpoints now.",
+  "rca_of_issue": "Original bug: FastAPI response_model_by_alias defaults to True, so with a Pydantic BaseDocument aliasing 'id' -> '_id' for Mongo storage, the /api/ask/history GET endpoint serialized messages with '_id' instead of 'id' in the JSON response. Frontend FlatList/.map() used message.id as React key, which was undefined for all history-loaded messages, causing the 'Each child in a list should have a key' warning. Fix: added response_model_by_alias=False to the route decorator, forcing output field name to 'id'. Confirmed via curl and pytest that responses now contain 'id' and not '_id', and confirmed in browser that no key warning fires after reload triggers a history fetch."
+}

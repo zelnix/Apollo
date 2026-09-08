@@ -11,6 +11,7 @@ import { Sheet } from "@/src/components/Sheet";
 import { TimeStepper } from "@/src/components/TimeStepper";
 import { Body, Button, Card, Pill, ScreenHeader, SectionTitle } from "@/src/components/ui";
 import { APP_ENV } from "@/src/config/appEnvironment";
+import { APP_VERSION, buildLabel } from "@/src/config/buildInfo";
 import { PRIVACY_POLICY_SUMMARY } from "@/src/domain/privacy";
 import type { PushStatus } from "@/src/push/notifications";
 import { SECURECORE_LABEL, IS_MOCK_SECURECORE } from "@/src/security/securecore/SecureCore";
@@ -207,6 +208,8 @@ export default function SettingsScreen() {
         <View>
           <SectionTitle>About this build</SectionTitle>
           <Card style={{ gap: spacing.sm }} testID="settings-build">
+            <View style={s.row}><Text style={s.label}>Version</Text><Text style={s.mono} testID="settings-app-version">{APP_VERSION}</Text></View>
+            <View style={s.row}><Text style={s.label}>Build</Text><Text style={s.mono} testID="settings-app-build">{buildLabel()}</Text></View>
             <View style={s.row}><Text style={s.label}>Environment</Text><Pill tone={APP_ENV === "production" ? "resting" : "growling"} label={APP_ENV} testID="settings-app-env" /></View>
             <View style={s.row}><Text style={s.label}>Security adapter</Text><Pill tone={isMock ? "unknown" : "resting"} label={adapterLabel} /></View>
             <View style={s.row}><Text style={s.label}>SecureCore</Text><Pill tone={IS_MOCK_SECURECORE ? "unknown" : "resting"} label={IS_MOCK_SECURECORE ? "MOCK" : "Native"} /></View>

@@ -20,7 +20,6 @@ import { Pressable, RefreshControl, ScrollView, Text, useWindowDimensions, View 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApolloHero } from "@/src/components/ApolloHero";
-import { ApolloLogo } from "@/src/components/ApolloLogo";
 import { HigginsFollowUp } from "@/src/components/HigginsFollowUp";
 import { HigginsGreeting } from "@/src/components/HigginsGreeting";
 import { ClipboardLinkBanner } from "@/src/components/ClipboardLinkBanner";
@@ -125,7 +124,7 @@ export default function Home() {
   return (
     <View style={s.root}>
       <View style={{ paddingTop: insets.top + spacing.md }}>
-        <ScreenHeader title="Apollo" testID="home-header" right={<View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>{isMock ? <DevTag label="Mock" testID="home-mock-pill" /> : null}<ApolloLogo size={40} testID="home-logo" /></View>} />
+        <ScreenHeader title="Apollo" testID="home-header" right={isMock ? <DevTag label="Mock" testID="home-mock-pill" /> : null} />
       </View>
       <ScrollView contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={verifyNow} tintColor={colors.resting} />} testID="home-scroll">
         <ApolloHero resolution={resolution} visibility={visibility} adapterLabel={adapterLabel} isMock={isMock} capabilities={capabilities} animate={!lowPower} quietNow={quietNow} sniffing={refreshing} />
