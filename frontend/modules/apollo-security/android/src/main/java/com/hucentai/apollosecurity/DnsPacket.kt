@@ -37,9 +37,16 @@ object DnsPacket {
   }
 
   /** Blocked if the host equals a blocked entry or is a subdomain of one. */
-  fun matchesBlocked(host: String, blocked: Set<String>): Boolean {
+  fun matchesBlocked(host: String, blocked: Set<String>): Boolean = matchingBlockedEntry(host, blocked) != null
+
+  /**
+   * The specific blocklist entry a host matched — itself, or the parent domain it is a subdomain of —
+   * or null when nothing matches. Used to name the exact rule in EnforcementEvidence.matchedRuleId,
+   * because "www.evil.example" was blocked by the "evil.example" rule, not by its own exact name.
+   */
+  fun matchingBlockedEntry(host: String, blocked: Set<String>): String? {
     val h = host.lowercase().trimEnd('.')
-    return blocked.any { b -> h == b || h.endsWith(".$b") }
+    return blocked.firstOrNull { b -> h == b || h.endsWith(".$b") }
   }
 
   /** Copy the question, set QR=1, RA=1, RCODE=3 (NXDOMAIN), zero answer/authority/additional counts. */

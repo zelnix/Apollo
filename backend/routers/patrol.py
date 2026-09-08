@@ -13,21 +13,52 @@ from routers.push import push_owner_alert
 
 router = APIRouter()
 
+# Mechanisms that can NEVER back a verified block, no matter what result/enforcedAction they claim.
+# "simulated" is the mock adapter's label (Expo Go/dev preview); "none" means nothing was enforced.
+_NEVER_VERIFIED_MECHANISMS = {"simulated", "none"}
+
+
+def _derive_verified_block(body: PatrolEventIn) -> bool:
+    """THE gate. verified_block must never come from the client's boolean directly — only from
+    validated enforcement evidence. All of the following must hold:
+      1. Evidence is attached at all.
+      2. Its own result is "verified" and its enforcedAction is "blocked" (not a rule match, not a
+         plan, not a monitor-only action).
+      3. Its mechanism is a real one — "simulated"/"none" can never verify, however the rest of the
+         record reads (this is what stops the mock adapter, or a client pretending to be it, from
+         ever producing a THREAT_BLOCKED-equivalent state).
+      4. If the evidence names a device_id, it must match the event's own device_id — one device's
+         evidence can never authorise another device's block.
+    Mirrors isVerifiedEnforcement() in frontend/src/security/PlatformCapabilityProfile.ts exactly.
+    """
+    ev = body.enforcement_evidence
+    if ev is None:
+        return False
+    if ev.result != "verified" or ev.enforced_action != "blocked":
+        return False
+    if ev.mechanism in _NEVER_VERIFIED_MECHANISMS:
+        return False
+    if ev.device_id and ev.device_id != body.device_id:
+        return False
+    return True
+
 
 @router.post("/patrol/events", response_model=PatrolEvent)
 async def upsert_event(body: PatrolEventIn):
     ts = now_utc()
+    payload = body.model_dump()
+    payload["verified_block"] = _derive_verified_block(body)  # never trust the client's claim directly
     existing = await db.patrol_events.find_one({"event_id": body.event_id, "device_id": body.device_id})
     if existing:
-        await db.patrol_events.update_one({"_id": existing["_id"]}, {"$set": {**body.model_dump(), "updated_at": ts}})
+        await db.patrol_events.update_one({"_id": existing["_id"]}, {"$set": {**payload, "updated_at": ts}})
         doc = await db.patrol_events.find_one({"_id": existing["_id"]})
         return PatrolEvent.from_mongo(doc)
-    event = PatrolEvent(**body.model_dump(), created_at=ts, updated_at=ts)
+    event = PatrolEvent(**payload, created_at=ts, updated_at=ts)
     try:
         result = await db.patrol_events.insert_one(event.to_mongo())
     except DuplicateKeyError:
         # Two syncs of the same event raced (e.g. link check + QR merge). Idempotent: apply as an update.
-        await db.patrol_events.update_one({"event_id": body.event_id, "device_id": body.device_id}, {"$set": {**body.model_dump(), "updated_at": ts}})
+        await db.patrol_events.update_one({"event_id": body.event_id, "device_id": body.device_id}, {"$set": {**payload, "updated_at": ts}})
         doc = await db.patrol_events.find_one({"event_id": body.event_id, "device_id": body.device_id})
         return PatrolEvent.from_mongo(doc)
     event.id = str(result.inserted_id)

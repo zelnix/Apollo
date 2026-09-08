@@ -27,13 +27,15 @@ import { canTransition, resolveApolloState, type StateResolution } from "@/src/d
 import type { ApolloState, Capability, Decision, IntelResult, LocalAnalysis, PatrolEvent } from "@/src/domain/types";
 import { IS_MOCK_SECURITY, SECURITY_MODE, securityAdapter } from "@/src/security/securityAdapter";
 import type { BlockResult, NetworkStatus, ProtectionPermission, ProtectionStatus } from "@/src/security/SecurityPlatformAdapter";
+import { isVerifiedEnforcement } from "@/src/security/PlatformCapabilityProfile";
+import { toPatrolEnforcementEvidence } from "@/src/domain/enforcementEvidenceSync";
 import { SecureCore } from "@/src/security/securecore/SecureCore";
 import { getPushStatus, registerForPush, type PushStatus } from "@/src/push/notifications";
 import { storage } from "@/src/utils/storage";
 
 const deviceMeta = () => ({ platform: Platform.OS, adapter_mode: SECURITY_MODE, app_version: "1.0.0", tz_offset_minutes: -new Date().getTimezoneOffset() });
 
-const K = { setup: "apollo.setup.done", events: "apollo.patrol.events", trust: "apollo.trust.entries", verified: "apollo.lastVerifiedAt", protection: "apollo.protection.on", wifi: "apollo.wifi.trusted", quiet: "apollo.quiet.hours", lowPower: "apollo.lowPower" };
+const K = { setup: "apollo.setup.done", events: "apollo.patrol.events", trust: "apollo.trust.entries", verified: "apollo.lastVerifiedAt", protection: "apollo.protection.on", wifi: "apollo.wifi.trusted", quiet: "apollo.quiet.hours", lowPower: "apollo.lowPower", seenEvidence: "apollo.evidence.seen" };
 
 export interface TrustEntry { trust_id: string; device_id: string; indicator_type: "url" | "domain"; indicator_digest: string; indicator_host: string; event_id: string | null; created_at: string; local_indicator?: string }
 
@@ -163,8 +165,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     setRefreshing(true);
     const hold = new Promise((r) => setTimeout(r, minVisibleMs));
     try {
-      const [caps, status, perms, net] = await Promise.all([
+      const [caps, status, perms, net, evidence] = await Promise.all([
         securityAdapter.getCapabilities(), securityAdapter.getProtectionStatus(), securityAdapter.getProtectionPermissions(), securityAdapter.getNetworkStatus(),
+        securityAdapter.getEnforcementEvidence().catch(() => []),
       ]);
       setCapabilities(caps); setProtection(status); setPermissions(perms); setNetwork(net);
       // Connection Guard: raise one growling event per distinct unsafe network condition (trusted networks stay quiet).
@@ -179,8 +182,44 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         setEvents((prev) => { const next = [ev, ...prev]; void storage.setItem(K.events, JSON.stringify(next)); return next; });
         void syncEventRef.current?.(ev);
       } else if (!a.state) lastConnectionKey.current = a.key;
+      await syncEnforcementEvidence(evidence);
     } finally { await hold; setRefreshing(false); }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cross-Platform Architecture Directive: passively surface REAL, native-observed blocks (a real
+  // app's traffic actually hit an already-blocked domain and got dropped) as their own verified
+  // "biting" events — distinct from the immediate tap-to-block flow in blockEvent() below. Every
+  // entry here already passed isVerifiedEnforcement(); the backend independently re-validates the
+  // attached evidence again before it ever sets verified_block itself (see routers/patrol.py).
+  const seenEvidenceRef = useRef<Set<string> | null>(null);
+  const syncEnforcementEvidence = useCallback(async (evidence: Awaited<ReturnType<typeof securityAdapter.getEnforcementEvidence>>) => {
+    if (!evidence.length) return;
+    if (!seenEvidenceRef.current) {
+      const raw = await storage.getItem<string | null>(K.seenEvidence, null);
+      seenEvidenceRef.current = new Set(raw ? (JSON.parse(raw) as string[]) : []);
+    }
+    const seen = seenEvidenceRef.current;
+    const fresh = evidence.filter((e) => isVerifiedEnforcement(e) && !seen.has(e.evidenceId));
+    if (!fresh.length) return;
+    for (const e of fresh) seen.add(e.evidenceId);
+    const capped = Array.from(seen).slice(-200);
+    seenEvidenceRef.current = new Set(capped);
+    await storage.setItem(K.seenEvidence, JSON.stringify(capped));
+    for (const e of fresh) {
+      const domain = e.destination.domain ?? e.destination.ip ?? "a threat";
+      const ev: PatrolEvent = {
+        event_id: Crypto.randomUUID(), device_id: deviceIdRef.current ?? "local", category: "connection", state: "biting", status: "blocked",
+        headline: `Apollo blocked ${domain}`, what_happened: `Apollo's Site Guard observed a real connection attempt to ${domain} and blocked it on this device.`,
+        why: ["Apollo's on-device filter matched this domain against a threat it already knew about and blocked the exact connection — confirmed by the operating system, not assumed."],
+        what_to_do: "Nothing more to do. Apollo verified this destination is blocked.", indicator_host: domain, indicator_digest: null,
+        verified_block: true, adapter_label: securityAdapter.label, occurred_at: e.observedAt, resolved_at: null, trust_allowed: false,
+        background: true, enforcement_evidence: toPatrolEnforcementEvidence(e),
+      };
+      setEvents((prev) => { const next = [ev, ...prev]; void storage.setItem(K.events, JSON.stringify(next)); return next; });
+      void syncEventRef.current?.(ev);
+      showToast(`Apollo blocked ${domain}.`, "biting");
+    }
+  }, [showToast]);
   const lastConnectionKey = useRef<string | null>(null);
   const deviceIdRef = useRef<string | null>(null);
   useEffect(() => { deviceIdRef.current = deviceId; }, [deviceId]);
@@ -475,13 +514,17 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const blockEvent = useCallback(async (event: PatrolEvent) => {
     const host = event.indicator_host ?? "";
     const result = await securityAdapter.blockDestination(host);
+    // The backend independently re-validates this evidence before it will ever set verified_block
+    // itself — attaching it here is not the same as trusting it (see routers/patrol.py).
+    const evidence = result.evidence && isVerifiedEnforcement(result.evidence) ? toPatrolEnforcementEvidence(result.evidence) : null;
     if (result.verified && canTransition(event, "biting", { verifiedBlock: true })) {
       await upsertEvent({ ...event, state: "biting", status: "blocked", verified_block: true, adapter_label: result.adapterLabel,
-        headline: `Apollo blocked ${host}`, what_to_do: "Nothing more to do. Apollo verified this destination is blocked. Tap “Mark as contained” once you've read this.", why: [...event.why, result.detail] });
+        headline: `Apollo blocked ${host}`, what_to_do: "Nothing more to do. Apollo verified this destination is blocked. Tap “Mark as contained” once you've read this.", why: [...event.why, result.detail],
+        enforcement_evidence: evidence });
       showToast(`Apollo blocked ${host}`, "biting");
     } else {
       await upsertEvent({ ...event, state: "barking", status: "active", verified_block: false, why: [...event.why, `Block not verified: ${result.detail}`],
-        what_to_do: "Apollo could not verify a block on this device. Do not open the link. Avoid this destination." });
+        what_to_do: "Apollo could not verify a block on this device. Do not open the link. Avoid this destination.", enforcement_evidence: null });
       showToast("Block could not be verified. Apollo is still barking.", "barking");
     }
     return result;

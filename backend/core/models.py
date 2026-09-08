@@ -80,6 +80,43 @@ class BlocklistEntry(BaseDocument):
     deleted_at: Optional[datetime] = None
 
 
+# --------------------------------------------------------------------------- Enforcement evidence
+# Cross-Platform Architecture Directive — mirrors frontend/src/security/PlatformCapabilityProfile.ts
+# EnforcementEvidence field-for-field (flattened; destination/attribution are nested there, flat here
+# to match this module's existing flat convention). This is the ONLY thing the server may consult
+# to decide verified_block — see _derive_verified_block in routers/patrol.py. The client's own
+# verified_block boolean is NEVER trusted directly.
+EnforcementMechanism = Literal["dns_filter", "content_blocker", "network_extension", "vpn_service", "packet_filter", "none", "simulated"]
+EnforcementResult = Literal["verified", "unverified", "failed"]
+
+
+class EnforcementEvidenceIn(BaseModel):
+    evidence_id: str = Field(min_length=1, max_length=64)
+    event_id: Optional[str] = Field(default=None, max_length=64)
+    device_id: Optional[str] = Field(default=None, max_length=64)
+    platform: Literal["android", "ios", "windows", "macos", "mock"]
+    os_version: Optional[str] = Field(default=None, max_length=64)
+    sdk_version: Optional[str] = Field(default=None, max_length=32)
+    observed_at: datetime
+    mechanism: EnforcementMechanism
+    direction: Literal["outbound", "inbound", "unknown"]
+    protocol: Literal["tcp", "udp", "dns", "http", "https", "unknown"]
+    destination_ip: Optional[str] = Field(default=None, max_length=64)
+    destination_domain: Optional[str] = Field(default=None, max_length=253)
+    destination_port: Optional[int] = Field(default=None, ge=0, le=65535)
+    app_id: Optional[str] = Field(default=None, max_length=128)
+    process_name: Optional[str] = Field(default=None, max_length=128)
+    attribution_confidence: Literal["high", "medium", "low", "unavailable"] = "unavailable"
+    matched_rule_id: Optional[str] = Field(default=None, max_length=253)
+    threat_id: Optional[str] = Field(default=None, max_length=64)
+    requested_action: Literal["block", "allow", "monitor"]
+    enforced_action: Literal["blocked", "allowed", "monitored", "none"]
+    result: EnforcementResult
+    rule_source: Literal["local_blocklist", "cloud_intel", "heuristic", "user_override", "unknown"]
+    confidence: Literal["high", "medium", "low"]
+    correlation_id: Optional[str] = Field(default=None, max_length=64)
+
+
 class PatrolEventIn(BaseModel):
     """Minimal event summary synced from device. Full link stays on-device."""
 
@@ -104,6 +141,10 @@ class PatrolEventIn(BaseModel):
     claimed_brand: Optional[str] = Field(default=None, max_length=60)
     scenario: Optional[str] = Field(default=None, max_length=40)
     scent_id: Optional[str] = Field(default=None, max_length=64)
+    # Cross-Platform Architecture Directive: the raw evidence the client's adapter observed, if any.
+    # Presence alone proves nothing — see _derive_verified_block in routers/patrol.py, the only place
+    # allowed to turn this into verified_block=True.
+    enforcement_evidence: Optional[EnforcementEvidenceIn] = None
 
 
 class PatrolEvent(PatrolEventIn, BaseDocument):
@@ -115,7 +156,9 @@ class PatrolEvent(PatrolEventIn, BaseDocument):
 class PatrolEventPatch(BaseModel):
     status: Optional[EventStatus] = None
     state: Optional[ApolloState] = None
-    verified_block: Optional[bool] = None
+    # verified_block is deliberately NOT patchable here: the only legitimate way to set it is via
+    # POST /patrol/events with enforcement_evidence attached, re-derived server-side every time
+    # (see _derive_verified_block in routers/patrol.py). A bare PATCH must never flip it.
     what_to_do: Optional[str] = Field(default=None, max_length=400)
     resolved_at: Optional[datetime] = None
 

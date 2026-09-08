@@ -51,6 +51,14 @@ class DnsPacketTest {
     assertFalse(DnsPacket.matchesBlocked("example", blocked))
   }
 
+  @Test fun `matchingBlockedEntry names the exact rule a subdomain was caught by, for evidence`() {
+    assertEquals("evil.example", DnsPacket.matchingBlockedEntry("evil.example", blocked))
+    assertEquals("evil.example", DnsPacket.matchingBlockedEntry("login.evil.example", blocked)) // rule ≠ queried host
+    assertEquals("phish.test", DnsPacket.matchingBlockedEntry("PHISH.TEST.", blocked))
+    assertNull(DnsPacket.matchingBlockedEntry("notevil.example", blocked))
+    assertNull(DnsPacket.matchingBlockedEntry("safe.example.org", blocked))
+  }
+
   @Test fun `nxdomain keeps id and question, sets QR RA RCODE3 and zero counts`() {
     val q = DnsPacket.dnsPayload(DnsPacket.buildQuery("evil.example", id = 0xBEEF))
     val r = DnsPacket.nxdomain(q)

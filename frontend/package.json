@@ -8,6 +8,7 @@
     "security:preflight": "node scripts/security-preflight.mjs",
     "test:security": "node --test tests/securityConfig.test.ts",
     "test:platform": "node --test tests/platformCapability.test.ts",
+    "test:evidence-sync": "node --test tests/enforcementEvidenceSync.test.ts",
     "test:gate2": "node --test tests/messageAnalysis.test.ts",
     "test:gate3": "node --test tests/gate3.test.ts",
     "test:gate3page": "node --test tests/gate3page.test.ts",

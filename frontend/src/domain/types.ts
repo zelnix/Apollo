@@ -102,6 +102,41 @@ export interface PatrolEvent {
   scent_id?: string | null;
   /** Whether "Trust This" may be offered. Only growling-level uncertain items. */
   trust_allowed?: boolean;
+  /** Cross-Platform Architecture Directive: raw enforcement evidence backing verified_block, if any.
+   * The backend independently re-derives verified_block from this — it is never trusted as-is. */
+  enforcement_evidence?: PatrolEnforcementEvidence | null;
+}
+
+/**
+ * Backend-facing (snake_case, flat) mirror of src/security/PlatformCapabilityProfile.ts
+ * EnforcementEvidence — see toPatrolEnforcementEvidence() in enforcementEvidenceSync.ts for the
+ * camelCase→snake_case, nested→flat conversion at the SDK/domain boundary.
+ */
+export interface PatrolEnforcementEvidence {
+  evidence_id: string;
+  event_id: string | null;
+  device_id: string | null;
+  platform: string;
+  os_version: string | null;
+  sdk_version: string | null;
+  observed_at: string;
+  mechanism: string;
+  direction: string;
+  protocol: string;
+  destination_ip: string | null;
+  destination_domain: string | null;
+  destination_port: number | null;
+  app_id: string | null;
+  process_name: string | null;
+  attribution_confidence: string;
+  matched_rule_id: string | null;
+  threat_id: string | null;
+  requested_action: string;
+  enforced_action: string;
+  result: string;
+  rule_source: string;
+  confidence: string;
+  correlation_id: string | null;
 }
 
 export type CapabilityStatus = "available" | "active" | "permission_required" | "unsupported" | "coming_later" | "inactive";

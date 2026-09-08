@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.VpnService
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import java.io.FileInputStream
@@ -12,6 +13,8 @@ import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.time.Instant
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
@@ -33,12 +36,20 @@ class ApolloDnsVpnService : VpnService() {
     private const val KEY_BLOCKED = "blocked_hosts"
     private const val VIRTUAL_DNS = "10.111.0.1"
     private const val TUN_ADDRESS = "10.111.0.2"
+    /** apollo-security module version. Keep in sync with android/build.gradle `version` and
+     * PlatformCapabilityProfile.ts CAPABILITY_PROFILE_VERSION is a SEPARATE schema-version concept — do not conflate. */
+    const val MODULE_VERSION = "1.0.0"
+    private const val MAX_EVIDENCE = 50
 
     @Volatile var isRunning = false
       private set
     @Volatile private var blocked: Set<String> = emptySet()
     @Volatile var lastBlockedAt: Long = 0L
     @Volatile var blockedCount: Long = 0L
+    // Bounded, thread-safe log of real, observed enforcement actions — see EnforcementEvidence.kt.
+    // Never holds anything the mock/JS side could mistake for a verified block: entries only ever
+    // come from handlePacket() actually writing an NXDOMAIN reply to the tunnel.
+    private val evidenceLog = ArrayDeque<EnforcementEvidence>()
 
     fun loadBlocked(ctx: Context): Set<String> {
       val set = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getStringSet(KEY_BLOCKED, emptySet()) ?: emptySet()
@@ -53,7 +64,13 @@ class ApolloDnsVpnService : VpnService() {
       val set = loadBlocked(ctx).toMutableSet(); set.remove(host.lowercase())
       ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putStringSet(KEY_BLOCKED, set).apply(); blocked = set
     }
-    fun isBlockedHost(host: String): Boolean = DnsPacket.matchesBlocked(host, blocked)
+    /** Snapshot of the most recent real enforcement actions, newest last. Never mutated by callers. */
+    fun recentEvidence(): List<EnforcementEvidence> = synchronized(evidenceLog) { evidenceLog.toList() }
+
+    private fun recordEvidence(ev: EnforcementEvidence) = synchronized(evidenceLog) {
+      evidenceLog.addLast(ev)
+      while (evidenceLog.size > MAX_EVIDENCE) evidenceLog.removeFirst()
+    }
   }
 
   private var tun: ParcelFileDescriptor? = null
@@ -118,8 +135,15 @@ class ApolloDnsVpnService : VpnService() {
     val dns = DnsPacket.dnsPayload(pkt)
     val qname = DnsPacket.parseQName(dns) ?: return
 
-    val response: ByteArray = if (isBlockedHost(qname)) {
+    val matchedRule = DnsPacket.matchingBlockedEntry(qname, blocked)
+    val response: ByteArray = if (matchedRule != null) {
       blockedCount++; lastBlockedAt = System.currentTimeMillis()
+      // This IS the enforcement action: an actual NXDOMAIN reply is about to go back on the wire for a real
+      // query. Evidence is recorded from this fact alone — never from the intent to block, never in advance.
+      recordEvidence(EnforcementEvidence.verifiedDnsBlock(
+        evidenceId = UUID.randomUUID().toString(), observedAt = Instant.ofEpochMilli(lastBlockedAt).toString(),
+        domain = qname, matchedRuleId = matchedRule, osVersion = "Android ${Build.VERSION.RELEASE}", sdkVersion = MODULE_VERSION,
+      ))
       DnsPacket.nxdomain(dns)
     } else {
       forward(dns) ?: return

@@ -10,6 +10,7 @@ import expo.modules.kotlin.modules.ModuleDefinition
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
+import java.util.UUID
 
 /**
  * ApolloSecurity — Android (Kotlin) security module.
@@ -68,11 +69,19 @@ class ApolloSecurityModule : Module() {
     AsyncFunction("blockDestination") { host: String ->
       ApolloDnsVpnService.addBlocked(ctx, host)
       val verified = SiteGuardTruth.verifiedBlock(ApolloDnsVpnService.isRunning, host, ApolloDnsVpnService.loadBlocked(ctx))
+      // Rule-activation evidence only — this confirms the filter is live and will enforce this host from
+      // now on; it is NOT evidence of a specific packet drop (see EnforcementEvidence.ruleActivated).
+      val evidence = if (verified) EnforcementEvidence.ruleActivated(
+        evidenceId = UUID.randomUUID().toString(), observedAt = now(), domain = host,
+        osVersion = platformVersion(), sdkVersion = ApolloDnsVpnService.MODULE_VERSION,
+      ) else null
       JSONObject()
         .put("verified", verified)
         .put("method", if (verified) "dns_filter" else "none")
         .put("detail", if (verified) "DNS lookups for this domain now return NXDOMAIN on this device." else "Domain saved, but the DNS filter is not running so the block is not verified.")
-        .put("adapterLabel", label).put("blockedAt", if (verified) now() else JSONObject.NULL).toString()
+        .put("adapterLabel", label).put("blockedAt", if (verified) now() else JSONObject.NULL)
+        .put("evidence", if (evidence != null) evidenceJson(evidence) else JSONObject.NULL)
+        .toString()
     }
 
     AsyncFunction("unblockDestination") { host: String ->
@@ -173,7 +182,62 @@ class ApolloSecurityModule : Module() {
     AsyncFunction("getRecentInstallEvents") { "[]" }        // no PACKAGE_ADDED receiver by design (would need broad visibility)
     AsyncFunction("getDeviceSecuritySignals") { AppDeviceSignals(ctx).deviceSignalsJson() }
     AsyncFunction("getRecentAppSecurityEvents") { "[]" }
+
+    // Cross-Platform Architecture Directive (src/security/PlatformCapabilityProfile.ts). Capability is the
+    // DEPLOYED reality of THIS build, not the theoretical Android ceiling — Site Guard here is DNS-only by
+    // design (see ApolloDnsVpnService header), so it is honestly narrower than a full packet-filtering VPN.
+    AsyncFunction("getPlatformCapabilityProfile") {
+      JSONObject()
+        .put("platform", "android")
+        .put("platformVersion", platformVersion())
+        .put("sdkVersion", ApolloDnsVpnService.MODULE_VERSION)
+        .put("capabilityVersion", "1") // keep in sync with CAPABILITY_PROFILE_VERSION in PlatformCapabilityProfile.ts
+        .put("networkFiltering", "partial")   // DNS-only tunnel, not a general packet filter
+        .put("packetVisibility", "partial")   // only IPv4/UDP/port-53 packets are inspected
+        .put("dnsVisibility", "full")         // every system-resolver DNS query is seen
+        .put("processAttribution", "none")    // no UID/PID mapping implemented in this module
+        .put("appAttribution", "none")
+        .put("domainVisibility", "full")
+        .put("localBlocking", "full")         // NXDOMAIN genuinely blocks, on this device, right now
+        .put("backgroundProtection", "full")  // foreground VpnService, START_STICKY
+        .put("offlineProtection", "full")     // the blocklist check needs no network at all
+        .put("realTimeEvents", "partial")     // evidence is ready instantly, but the JS side must poll for it
+        .toString()
+    }
+
+    // Recent real enforcement actions (EnforcementEvidence.kt). Only entries handlePacket() actually wrote
+    // an NXDOMAIN reply for — never a rule match, never an intent, never anything simulated.
+    AsyncFunction("getEnforcementEvidence") {
+      val arr = JSONArray()
+      ApolloDnsVpnService.recentEvidence().forEach { arr.put(evidenceJson(it)) }
+      arr.toString()
+    }
   }
+
+  private fun platformVersion(): String = "Android ${android.os.Build.VERSION.RELEASE}"
+
+  private fun evidenceJson(ev: EnforcementEvidence): JSONObject = JSONObject()
+    .put("evidenceId", ev.evidenceId)
+    .put("eventId", ev.eventId ?: JSONObject.NULL)
+    .put("deviceId", ev.deviceId ?: JSONObject.NULL)
+    .put("platform", ev.platform)
+    .put("osVersion", ev.osVersion ?: JSONObject.NULL)
+    .put("sdkVersion", ev.sdkVersion ?: JSONObject.NULL)
+    .put("observedAt", ev.observedAt)
+    .put("mechanism", ev.mechanism)
+    .put("direction", ev.direction)
+    .put("protocol", ev.protocol)
+    .put("destination", JSONObject().put("ip", ev.destinationIp ?: JSONObject.NULL).put("domain", ev.destinationDomain ?: JSONObject.NULL).put("port", ev.destinationPort ?: JSONObject.NULL))
+    .put("attribution", JSONObject().put("appId", ev.appId ?: JSONObject.NULL).put("processName", ev.processName ?: JSONObject.NULL).put("confidence", ev.attributionConfidence))
+    .put("matchedRuleId", ev.matchedRuleId ?: JSONObject.NULL)
+    .put("threatId", ev.threatId ?: JSONObject.NULL)
+    .put("requestedAction", ev.requestedAction)
+    .put("enforcedAction", ev.enforcedAction)
+    .put("result", ev.result)
+    .put("ruleSource", ev.ruleSource)
+    .put("confidence", ev.confidence)
+    .put("sourceMetadata", JSONObject())
+    .put("correlationId", ev.correlationId ?: JSONObject.NULL)
 
   private fun cap(id: String, title: String, status: String, detail: String) =
     JSONObject().put("id", id).put("title", title).put("status", status).put("detail", detail)
