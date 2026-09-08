@@ -36,9 +36,13 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarActiveTintColor: colors.onNav,
         tabBarInactiveTintColor: colors.onNavMuted,
-        tabBarStyle: { backgroundColor: colors.nav, borderTopColor: colors.border, borderTopWidth: 1, ...(Platform.OS === "web" ? { height: 64 } : {}) },
+        tabBarStyle: {
+          backgroundColor: colors.nav, borderTopColor: colors.border, borderTopWidth: 1,
+          shadowColor: colors.brand, shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: -3 }, elevation: 12,
+          ...(Platform.OS === "web" ? { height: 64 } : {}),
+        },
         tabBarItemStyle: { alignSelf: "center" },
-        tabBarLabelStyle: { fontFamily: fonts.textMedium, fontSize: 11 },
+        tabBarLabelStyle: { fontFamily: fonts.textSemibold, fontSize: 11 },
         sceneStyle: { backgroundColor: colors.surface },
       }}
     >

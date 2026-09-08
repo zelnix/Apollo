@@ -46,6 +46,19 @@ export function toneTint(colors: ThemeColors, tone: Tone) {
   }
 }
 
+/** Even lighter than toneTint — for a full-card wash where the card must still read as white, not coloured. */
+export function toneWash(colors: ThemeColors, tone: Tone) {
+  switch (tone) {
+    case "sniffing": return colors.sniffingWash;
+    case "resting": return colors.restingWash;
+    case "ears_up": return colors.ears_upWash;
+    case "growling": return colors.growlingWash;
+    case "barking": return colors.barkingWash;
+    case "biting": return colors.bitingWash;
+    default: return colors.unknownWash;
+  }
+}
+
 export function capabilityTone(status: CapabilityStatus): Tone {
   if (status === "active") return "resting";
   if (status === "available" || status === "inactive") return "neutral";
@@ -60,7 +73,9 @@ const useStyles = makeStyles((c) => ({
   dot: { width: 8, height: 8, borderRadius: 4 },
   btn: { minHeight: 48, borderRadius: radius.md, paddingHorizontal: spacing.xl, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: spacing.sm },
   btnText: { fontFamily: fonts.textSemibold, fontSize: 15 },
-  section: { fontFamily: fonts.display, fontSize: 13, color: c.onSurfaceSecondary, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: spacing.md },
+  section: { fontFamily: fonts.displayBold, fontSize: 13, color: c.brand, letterSpacing: 1.4, textTransform: "uppercase", marginBottom: spacing.md },
+  sectionRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.md },
+  sectionDivider: { width: 14, height: 3, borderRadius: 2, backgroundColor: c.brand },
   h1: { fontFamily: fonts.displayBold, fontSize: 28, color: c.onSurface, letterSpacing: -0.4 },
   body: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary },
   header: { paddingHorizontal: spacing.xl, paddingBottom: spacing.md, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
@@ -85,7 +100,12 @@ export function Pill({ label, tone = "neutral", testID }: { label: string; tone?
 
 export function SectionTitle({ children }: { children: React.ReactNode }) {
   const s = useStyles();
-  return <Text style={s.section}>{children}</Text>;
+  return (
+    <View style={s.sectionRow}>
+      <View style={s.sectionDivider} />
+      <Text style={[s.section, { marginBottom: 0 }]}>{children}</Text>
+    </View>
+  );
 }
 
 /** Small, muted, secondary tag for dev/QA-only signals (e.g. the mock-adapter indicator). Never a bright

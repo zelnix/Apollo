@@ -1,10 +1,12 @@
 import { useRouter } from "expo-router";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import Globe from "lucide-react-native/icons/globe";
+import KeyRound from "lucide-react-native/icons/key-round";
 import Link2 from "lucide-react-native/icons/link-2";
 import MessageSquareWarning from "lucide-react-native/icons/message-square-warning";
 import Radar from "lucide-react-native/icons/radar";
 import Share2 from "lucide-react-native/icons/share-2";
+import ShieldCheck from "lucide-react-native/icons/shield-check";
 import Smartphone from "lucide-react-native/icons/smartphone";
 import Wifi from "lucide-react-native/icons/wifi";
 import React, { useState } from "react";
@@ -38,12 +40,14 @@ const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   content: { paddingHorizontal: spacing.xl, gap: spacing.xl, paddingBottom: spacing.xl },
   masterRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.lg },
-  masterTitle: { fontFamily: fonts.display, fontSize: 18, color: c.onSurface },
+  masterTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  masterTitle: { fontFamily: fonts.displayBold, fontSize: 18, color: c.brand },
   capCard: { gap: spacing.sm, marginBottom: spacing.md },
   guardRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
+  guardTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flex: 1 },
   capTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  capIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center" },
-  capTitle: { fontFamily: fonts.display, fontSize: 16, color: c.onSurface },
+  iconWell: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.navyTint, alignItems: "center", justifyContent: "center" },
+  capTitle: { fontFamily: fonts.displayBold, fontSize: 16, color: c.brand },
   permRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm },
   permTitle: { fontFamily: fonts.textMedium, fontSize: 15, color: c.onSurface },
   netLine: { fontFamily: fonts.textMedium, fontSize: 15, color: c.onSurface },
@@ -93,7 +97,10 @@ export default function Guard() {
         <Card testID="guard-master-card" style={{ gap: spacing.sm }}>
           <View style={s.masterRow}>
             <View style={{ flex: 1, gap: 4 }}>
-              <Text style={s.masterTitle} testID="guard-master-title">{masterTitle}</Text>
+              <View style={s.masterTitleRow}>
+                <View style={s.iconWell}><ShieldCheck size={18} color={colors.brand} /></View>
+                <Text style={s.masterTitle} testID="guard-master-title">{masterTitle}</Text>
+              </View>
               <Body testID="guard-master-line">{masterLine}</Body>
             </View>
             <Switch testID="guard-protection-switch" value={requested} onValueChange={onToggle} disabled={busy} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} />
@@ -115,7 +122,10 @@ export default function Guard() {
           <SectionTitle>Network & Accounts</SectionTitle>
           <Card style={s.capCard} testID="guard-network-card">
             <View style={s.guardRow}>
-              <Text style={s.capTitle}>Network Guard</Text>
+              <View style={s.guardTitleRow}>
+                <View style={s.iconWell}><Wifi size={16} color={colors.brand} /></View>
+                <Text style={s.capTitle}>Network Guard</Text>
+              </View>
               <Pill tone={netCap ? capabilityTone(netCap.status) : "unknown"} label={netCap ? CAPABILITY_STATUS_LABEL[netCap.status] : "Unknown"} testID="guard-network-status" />
             </View>
             <Body testID="guard-network-summary">{!requested ? "Protection is off — Apollo isn't watching connections." : `${connectionSummary} ${netOpen ? `${netOpen} unresolved network item${netOpen > 1 ? "s" : ""}.` : "No unresolved network issues."}`}</Body>
@@ -123,7 +133,10 @@ export default function Guard() {
           </Card>
           <Card style={s.capCard} testID="guard-account-card">
             <View style={s.guardRow}>
-              <Text style={s.capTitle}>Account Guard</Text>
+              <View style={s.guardTitleRow}>
+                <View style={s.iconWell}><KeyRound size={16} color={colors.brand} /></View>
+                <Text style={s.capTitle}>Account Guard</Text>
+              </View>
               <Pill tone={accountOpen.some((e) => e.state === "barking") ? "barking" : accountOpen.length ? "growling" : "resting"} label={accountOpen.length ? `${accountOpen.length} need${accountOpen.length > 1 ? "" : "s"} attention` : "All good"} testID="guard-account-status" />
             </View>
             <Body testID="guard-account-summary">{accountOpen.length ? accountOpen.slice(0, 2).map((e) => e.headline.replace(/^Account: /, "")).join(" · ") : "No unresolved account-security issues. Check any login, MFA or password-reset alert you're unsure about."}</Body>
@@ -139,7 +152,7 @@ export default function Guard() {
             return (
               <Card key={cap.id} style={s.capCard} testID={`guard-cap-${cap.id}`}>
                 <Pressable disabled={!actionable} onPress={() => setSheet({ kind: "cap", cap })} testID={`guard-cap-${cap.id}-press`} accessibilityRole={actionable ? "button" : undefined} style={s.capTop}>
-                  <View style={s.capIcon}><CapIcon size={18} color={colors.brand} /></View>
+                  <View style={s.iconWell}><CapIcon size={18} color={colors.brand} /></View>
                   <Text style={[s.capTitle, { flex: 1 }]}>{cap.title}</Text>
                   <Pill tone={capabilityTone(cap.status)} label={CAPABILITY_STATUS_LABEL[cap.status]} testID={`guard-cap-${cap.id}-status`} />
                   {actionable ? <ChevronRight size={18} color={colors.onSurfaceSecondary} /> : null}

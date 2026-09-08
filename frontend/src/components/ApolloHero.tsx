@@ -5,6 +5,7 @@
 
 import { useAudioPlayer } from "expo-audio";
 import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
 import BellRing from "lucide-react-native/icons/bell-ring";
 import React, { useEffect, useMemo, useState } from "react";
 import { AppState, Text, View } from "react-native";
@@ -17,7 +18,7 @@ import { HigginsChecks } from "@/src/components/HigginsChecks";
 import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
 import { checksSpoken, higginsPermissionNote, recommendedChecks } from "@/src/domain/higginsChecks";
 import { Sheet } from "./Sheet";
-import { Body, Button, DevTag, Pill, toneColor } from "./ui";
+import { Body, Button, DevTag, Pill, toneColor, toneWash } from "./ui";
 
 /** How often Higgins chimes to remind you a check is waiting, until you tap Hear Higgins. */
 const REMINDER_INTERVAL_MS = 60 * 1000;
@@ -35,11 +36,13 @@ const STATE_GIF: Partial<Record<ApolloState, { src: number; label: string; testI
 };
 
 const useStyles = makeStyles((c) => ({
-  hero: { borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, overflow: "hidden", backgroundColor: c.surfaceSecondary },
+  hero: { borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, overflow: "hidden" },
+  topEdge: { position: "absolute", top: 0, left: 0, right: 0, height: 4 },
   inner: { padding: spacing.xl, gap: spacing.sm, alignItems: "center" },
   orbWrap: { alignItems: "center", justifyContent: "center", height: 208 },
+  outerRing: { position: "absolute", width: 224, height: 224, borderRadius: 112, borderWidth: 1 },
   orbRing: { position: "absolute", width: 192, height: 192, borderRadius: 96, borderWidth: 1 },
-  glow: { position: "absolute", width: 156, height: 156, borderRadius: 78 },
+  glow: { position: "absolute", width: 204, height: 204, borderRadius: 102 },
   label: { fontFamily: fonts.displayBold, fontSize: 26, color: c.onSurface, letterSpacing: -0.3, textAlign: "center" },
   meaning: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary, textAlign: "center" },
   reason: { fontFamily: fonts.textMedium, fontSize: 14, lineHeight: 20, color: c.onSurface, textAlign: "center" },
@@ -79,29 +82,29 @@ export function ApolloHero({ resolution, visibility, adapterLabel, isMock, capab
       // The patrolling GIF carries the dog's motion; code adds only a slow breath and ring pulse.
       scale.value = withRepeat(withSequence(withTiming(1.03, { duration: 2400, easing: ease }), withTiming(1, { duration: 2400, easing: ease })), -1, false);
       ring.value = withRepeat(withSequence(withTiming(1.12, { duration: 2600, easing: ease }), withTiming(1, { duration: 2600, easing: ease })), -1, false);
-      glow.value = withRepeat(withSequence(withTiming(0.4, { duration: 2400, easing: ease }), withTiming(0.2, { duration: 2400, easing: ease })), -1, false);
+      glow.value = withRepeat(withSequence(withTiming(0.55, { duration: 2400, easing: ease }), withTiming(0.32, { duration: 2400, easing: ease })), -1, false);
     } else if (state === "sniffing") {
       // The sniffing GIF carries the dog's motion; code adds only the ring pulse and glow.
       ring.value = withRepeat(withSequence(withTiming(1.15, { duration: 900, easing: ease }), withTiming(1, { duration: 900, easing: ease })), -1, false);
-      glow.value = withRepeat(withSequence(withTiming(0.45, { duration: 600 }), withTiming(0.25, { duration: 600 })), -1, false);
+      glow.value = withRepeat(withSequence(withTiming(0.55, { duration: 600 }), withTiming(0.35, { duration: 600 })), -1, false);
     } else if (state === "ears_up") {
       // Alert but still: a quick perk up, then a hold, then a slow settle.
       ty.value = withRepeat(withSequence(withTiming(-6, { duration: 160, easing: Easing.out(Easing.quad) }), withTiming(-6, { duration: 1400 }), withTiming(0, { duration: 700, easing: ease }), withDelay(1200, withTiming(0, { duration: 1 }))), -1, false);
       scale.value = withRepeat(withSequence(withTiming(1.06, { duration: 160 }), withTiming(1.06, { duration: 1400 }), withTiming(1, { duration: 700, easing: ease }), withDelay(1200, withTiming(1, { duration: 1 }))), -1, false);
       ring.value = withRepeat(withSequence(withTiming(1.1, { duration: 1600, easing: ease }), withTiming(1, { duration: 1600, easing: ease })), -1, false);
-      glow.value = withRepeat(withSequence(withTiming(0.45, { duration: 1200 }), withTiming(0.25, { duration: 1200 })), -1, false);
+      glow.value = withRepeat(withSequence(withTiming(0.6, { duration: 1200 }), withTiming(0.38, { duration: 1200 })), -1, false);
     } else if (state === "growling") {
       // The growling GIF carries the dog's motion — no code shake. Ring and glow pulse low and steady.
       ring.value = withRepeat(withSequence(withTiming(1.1, { duration: 1400, easing: ease }), withTiming(1, { duration: 1400, easing: ease })), -1, false);
-      glow.value = withRepeat(withSequence(withTiming(0.55, { duration: 700 }), withTiming(0.3, { duration: 700 })), -1, false);
+      glow.value = withRepeat(withSequence(withTiming(0.68, { duration: 700 }), withTiming(0.42, { duration: 700 })), -1, false);
     } else if (state === "barking") {
       // The barking GIF carries the dog's motion; code adds sharp ring bursts and glow.
       ring.value = withRepeat(withSequence(withTiming(1.25, { duration: 350, easing: Easing.out(Easing.quad) }), withTiming(1, { duration: 350 })), -1, false);
-      glow.value = withRepeat(withSequence(withTiming(0.7, { duration: 250 }), withTiming(0.3, { duration: 450 })), -1, false);
+      glow.value = withRepeat(withSequence(withTiming(0.82, { duration: 250 }), withTiming(0.42, { duration: 450 })), -1, false);
     } else if (state === "biting") {
       // Guarding: same GIF as barking, stronger ring and glow — no code lunge.
       ring.value = withRepeat(withSequence(withTiming(1.3, { duration: 300, easing: Easing.out(Easing.quad) }), withTiming(1, { duration: 400 })), -1, false);
-      glow.value = withRepeat(withSequence(withTiming(0.8, { duration: 200 }), withTiming(0.35, { duration: 600 })), -1, false);
+      glow.value = withRepeat(withSequence(withTiming(0.9, { duration: 200 }), withTiming(0.45, { duration: 600 })), -1, false);
     } else {
       // Visibility lost: dim, slow fade — deliberately lifeless.
       glow.value = withRepeat(withSequence(withTiming(0.15, { duration: 1800 }), withTiming(0.05, { duration: 1800 })), -1, false);
@@ -152,9 +155,11 @@ export function ApolloHero({ resolution, visibility, adapterLabel, isMock, capab
   };
 
   return (
-    <View style={s.hero} testID="apollo-hero">
+    <View style={[s.hero, { backgroundColor: toneWash(colors, tone) }]} testID="apollo-hero">
+      <LinearGradient colors={[color, colors.brand]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={s.topEdge} />
       <View style={s.inner}>
         <View style={s.orbWrap} testID={`apollo-hero-anim-${state}`}>
+          <View style={[s.outerRing, { borderColor: colors.navyBorder, backgroundColor: colors.brandGlow }]} />
           <Animated.View style={[s.orbRing, { borderColor: color }, ringStyle]} />
           <Animated.View style={[s.glow, { backgroundColor: color }, glowStyle]} />
           <Animated.View style={dogStyle}>

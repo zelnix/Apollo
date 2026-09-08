@@ -23,8 +23,15 @@ const light = {
   // Navigation bar: light bar, navy icons/labels, amber for the active tab — Apollo's colour, not chrome.
   nav: "#FFFFFF",
   onNav: "#F4B942",
-  onNavMuted: "#52606D",
+  onNavMuted: "#3D4A5C",
   muted: "#52606D",
+
+  // Premium navy accents — subtle sub-surfaces/wells/rings that give the light theme structure without darkening
+  // it. Never a background for a whole screen or a whole card; only icon wells, title rows, dividers, framing.
+  navyTint: "#E8EBF1",
+  navyTintStrong: "#D9DFEA",
+  navyBorder: "#C7CEDA",
+  brandGlow: "rgba(22,34,53,0.10)", // navy at low opacity — hero halo / top-edge accents only, never a card fill
 
   brand: "#162235", // deep navy accent — structure, headers, primary actions
   onBrand: "#FFFFFF",
@@ -67,7 +74,7 @@ const light = {
   bitingText: "#B3261E",
   unknownText: "#54636F",
 
-  // Translucent tints used for state-coloured fills over light surfaces
+  // Translucent tints used for state-coloured fills over light surfaces (pills, stronger glow)
   sniffingTint: "rgba(82,96,109,0.14)",
   restingTint: "rgba(79,175,131,0.20)",
   ears_upTint: "rgba(244,185,66,0.26)",
@@ -75,6 +82,16 @@ const light = {
   barkingTint: "rgba(217,83,79,0.16)",
   bitingTint: "rgba(217,83,79,0.16)",
   unknownTint: "rgba(122,135,148,0.16)",
+
+  // Even lighter washes — full hero-card tint only. Card must still read as "white with a wash", not coloured.
+  sniffingWash: "rgba(82,96,109,0.05)",
+  restingWash: "rgba(79,175,131,0.07)",
+  ears_upWash: "rgba(244,185,66,0.08)",
+  growlingWash: "rgba(232,148,58,0.08)",
+  barkingWash: "rgba(217,83,79,0.07)",
+  bitingWash: "rgba(217,83,79,0.09)",
+  unknownWash: "rgba(122,135,148,0.05)",
+
   scrim: "rgba(11,18,32,0.55)",
   glass: "rgba(255,255,255,0.88)",
 };

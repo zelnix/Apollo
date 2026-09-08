@@ -3,6 +3,7 @@ import BatteryCharging from "lucide-react-native/icons/battery-charging";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import ChevronUp from "lucide-react-native/icons/chevron-up";
+import Clock from "lucide-react-native/icons/clock";
 import FileSearch from "lucide-react-native/icons/file-search";
 import KeyRound from "lucide-react-native/icons/key-round";
 import Link2 from "lucide-react-native/icons/link-2";
@@ -13,6 +14,7 @@ import RefreshCw from "lucide-react-native/icons/refresh-cw";
 import ScanLine from "lucide-react-native/icons/scan-line";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
 import Smartphone from "lucide-react-native/icons/smartphone";
+import Sparkles from "lucide-react-native/icons/sparkles";
 import Wifi from "lucide-react-native/icons/wifi";
 import React, { useState } from "react";
 import { Pressable, RefreshControl, ScrollView, Text, useWindowDimensions, View } from "react-native";
@@ -43,23 +45,31 @@ const useStyles = makeStyles((c) => ({
   empty: { alignItems: "flex-start", gap: spacing.sm },
   emptyTitle: { fontFamily: fonts.display, fontSize: 16, color: c.onSurface },
   link: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.restingText },
-  cardTitle: { fontFamily: fonts.display, fontSize: 15, color: c.onSurface },
+  cardTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  cardIconWell: { width: 30, height: 30, borderRadius: 15, backgroundColor: c.navyTint, alignItems: "center", justifyContent: "center" },
+  cardTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.brand },
   cardLinkRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2, minHeight: 32 },
   tileRow: { flexDirection: "row", gap: spacing.sm },
-  tile: { flex: 1, minHeight: 84, backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, alignItems: "center", justifyContent: "center", gap: spacing.xs, paddingVertical: spacing.md, paddingHorizontal: spacing.xs },
-  tileIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center" },
+  tile: {
+    flex: 1, minHeight: 88, backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1, borderColor: c.navyBorder,
+    alignItems: "center", justifyContent: "center", gap: spacing.xs, paddingVertical: spacing.md, paddingHorizontal: spacing.xs,
+    shadowColor: c.brand, shadowOpacity: 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1,
+  },
+  tileEmphasis: { borderColor: c.brand, borderWidth: 1.5 },
+  tileIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: c.navyTint, alignItems: "center", justifyContent: "center" },
+  tileIconEmphasis: { backgroundColor: c.navyTintStrong },
   tileLabel: { fontFamily: fonts.textMedium, fontSize: 12, color: c.onSurface, textAlign: "center" },
   allChecksToggle: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, minHeight: 44, paddingVertical: spacing.sm },
   allChecksText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.brand },
 }));
 
-type QuickCheck = { testID: string; label: string; icon: React.ReactNode; route: string };
+type QuickCheck = { testID: string; label: string; icon: React.ReactNode; route: string; emphasis?: boolean };
 
 function CheckTile({ check, onPress }: { check: QuickCheck; onPress: () => void }) {
   const s = useStyles();
   return (
-    <Pressable testID={check.testID} accessibilityRole="button" onPress={onPress} style={({ pressed }) => [s.tile, { opacity: pressed ? 0.8 : 1 }]}>
-      <View style={s.tileIcon}>{check.icon}</View>
+    <Pressable testID={check.testID} accessibilityRole="button" onPress={onPress} style={({ pressed }) => [s.tile, check.emphasis && s.tileEmphasis, { opacity: pressed ? 0.8 : 1 }]}>
+      <View style={[s.tileIcon, check.emphasis && s.tileIconEmphasis]}>{check.icon}</View>
       <Text style={s.tileLabel} numberOfLines={2}>{check.label}</Text>
     </Pressable>
   );
@@ -83,7 +93,7 @@ export default function Home() {
   const attentionCount = capabilities.filter((c) => c.status === "permission_required").length;
 
   const primaryChecks: QuickCheck[] = [
-    { testID: "home-check-link-button", label: "Check a link", icon: <Link2 size={18} color={colors.brand} />, route: "/check" },
+    { testID: "home-check-link-button", label: "Check a link", icon: <Link2 size={18} color={colors.brand} />, route: "/check", emphasis: true },
     { testID: "home-check-message-button", label: "Check a message", icon: <MessageSquareWarning size={18} color={colors.brand} />, route: "/message" },
     { testID: "home-check-call-button", label: "Check this call", icon: <PhoneIncoming size={18} color={colors.brand} />, route: "/call" },
     { testID: "home-scan-button", label: "Scan a code", icon: <ScanLine size={18} color={colors.brand} />, route: "/scan" },
@@ -147,7 +157,10 @@ export default function Home() {
 
         <View style={{ flexDirection: isWide ? "row" : "column", gap: spacing.md }}>
           <Card style={[{ gap: 4 }, isWide ? { flex: 1 } : undefined]} testID="home-protection-summary">
-            <Text style={s.cardTitle}>Protection</Text>
+            <View style={s.cardTitleRow}>
+              <View style={s.cardIconWell}><ShieldCheck size={16} color={colors.brand} /></View>
+              <Text style={s.cardTitle}>Protection</Text>
+            </View>
             <Body>{activeCount} active{attentionCount ? ` · ${attentionCount} need${attentionCount > 1 ? "" : "s"} attention` : ""}</Body>
             <Pressable testID="home-open-guard" accessibilityRole="button" onPress={() => router.push("/(tabs)/guard")} style={s.cardLinkRow}>
               <Text style={s.link}>Manage in Guard</Text>
@@ -155,7 +168,10 @@ export default function Home() {
             </Pressable>
           </Card>
           <Card style={[{ gap: 4 }, isWide ? { flex: 1 } : undefined]} testID="home-verification-card">
-            <Text style={s.cardTitle}>Verification</Text>
+            <View style={s.cardTitleRow}>
+              <View style={s.cardIconWell}><Clock size={16} color={colors.brand} /></View>
+              <Text style={s.cardTitle}>Verification</Text>
+            </View>
             <Body>{lastVerifiedAt ? `Last verified ${new Date(lastVerifiedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Not yet verified"}</Body>
             <Button testID="home-verify-button" label="Verify now" variant="secondary" onPress={verifyNow} icon={<RefreshCw size={16} color={colors.brand} />} style={{ marginTop: spacing.xs }} />
           </Card>
@@ -191,15 +207,19 @@ export default function Home() {
           )}
         </View>
 
-        <Pressable testID="home-digest-card" accessibilityRole="button" onPress={() => router.push("/digest")}>
-          <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text style={s.cardTitle} numberOfLines={1}>{digest.headline}</Text>
-              <Body numberOfLines={2}>{digest.summary}</Body>
-            </View>
-            <ChevronRight size={18} color={colors.onSurfaceSecondary} />
-          </Card>
-        </Pressable>
+        <View>
+          <SectionTitle>This week</SectionTitle>
+          <Pressable testID="home-digest-card" accessibilityRole="button" onPress={() => router.push("/digest")}>
+            <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+              <View style={s.cardIconWell}><Sparkles size={16} color={colors.brand} /></View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={s.cardTitle} numberOfLines={1}>{digest.headline}</Text>
+                <Body numberOfLines={2}>{digest.summary}</Body>
+              </View>
+              <ChevronRight size={18} color={colors.onSurfaceSecondary} />
+            </Card>
+          </Pressable>
+        </View>
       </ScrollView>
     </View>
   );

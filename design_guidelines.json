@@ -13,7 +13,11 @@
     "onSurfaceInverse": "#F5F7FA",
     "nav": "#FFFFFF",
     "onNav": "#F4B942",
-    "onNavMuted": "#52606D",
+    "onNavMuted": "#3D4A5C",
+    "navyTint": "#E8EBF1",
+    "navyTintStrong": "#D9DFEA",
+    "navyBorder": "#C7CEDA",
+    "brandGlow": "rgba(22,34,53,0.10)",
     "brand": "#162235",
     "onBrand": "#FFFFFF",
     "brandPrimary": "#162235",
@@ -40,7 +44,8 @@
     "growling": "#E8943A",
     "barking": "#D9534F",
     "biting": "#D9534F",
-    "unknown": "#7A8794"
+    "unknown": "#7A8794",
+    "state_tint_note": "Each state colour has a *Tint (~14-26% opacity, pills/glow) and a lighter *Wash (~5-9% opacity, full hero-card background only) — see theme.ts. The card must always still read as white-with-a-wash, never as a coloured panel."
   },
   "typography": {
     "displayFontFamily": "Outfit",
@@ -93,7 +98,7 @@
       "biting": "assets/images/apollo-barking.gif (shares the barking GIF; ring/glow intensity escalates further in code)"
     },
     "size": "~170px on standard phones (largest single element on Home), scaling down slightly only on very small/narrow devices. Never cropped.",
-    "background_treatment": "The hero card itself stays mostly white (surfaceSecondary). The current state's colour appears only as a restrained pulsing glow/ring directly behind Apollo — never as a full-card gradient or tint wash. Apollo and the state wording carry the personality, not the card background.",
+    "background_treatment": "The hero card itself stays mostly white (surfaceSecondary). The current state's colour appears as a restrained pulsing glow/ring directly behind Apollo — never as a full-card gradient or tint wash. A second, static, larger navy ring/halo (colors.navyBorder / colors.brandGlow) sits behind the state ring purely for premium structure — it does not pulse and never overrides the state colour's meaning.",
     "state_progression": "Patrolling (resting) → Sniffing → Ears Up → Growling → Barking → Biting is Apollo's visual threat-escalation ladder and must always read as increasing attention/seriousness. Do not alter the underlying state-machine logic to fit visuals — visuals follow the existing Truth-of-State resolution, never the reverse."
   },
   "dev_mode_presentation": {
@@ -173,6 +178,7 @@
   },
   "instructions_to_main_agent": [
     "Single bright theme (Light Sentinel) — do not add a dark mode or reintroduce dark-navy/black surfaces. surface (#F5F7FA) + surfaceSecondary (#FFFFFF) + a 1px border (colors.border) is the entire depth system; no glassmorphism, no heavy gradients, no glow-behind-everything.",
+    "Premium navy accents (added after initial review — 'too pale/flat' feedback): navy (colors.brand, colors.navyTint, colors.navyTintStrong, colors.navyBorder, colors.brandGlow) is used for STRUCTURE, not for whole-screen or whole-card fills — icon wells/circles behind check-tile and card-title icons, section-title colour + a small micro-divider, a static secondary ring/halo behind the Apollo hero, button outlines/fills for Hear Higgins and primary CTAs, and stronger inactive-tab contrast. Roughly: ~85-90% of any screen stays pure white/#F5F7FA; navy tint appears only in these small, deliberate wells and rings, never as a background wash on an entire card or screen.",
     "Use 'Outfit' for all headings/state titles, 'Geist' for body text and metadata — unchanged from before.",
     "Never colour a whole screen or card in a state colour. State colour (sniffing/resting/ears_up/growling/barking/biting from the theme) is reserved for: the Apollo hero's glow/ring, status pills/dots, and result cards on check screens. Everything else stays neutral (surface/surfaceSecondary/onSurface/onSurfaceSecondary).",
     "Apollo's animated GIF (see apollo_hero) is mandatory on Home and must stay the single most visually prominent element — never shrink it below icon-sized or replace it with a static shield.",

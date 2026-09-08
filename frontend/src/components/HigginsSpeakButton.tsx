@@ -9,9 +9,9 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { useHiggins } from "@/src/voice/higgins";
 
 const useStyles = makeStyles((c) => ({
-  btn: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 44, paddingHorizontal: spacing.lg, borderRadius: radius.pill, borderWidth: 1, borderColor: c.brand, backgroundColor: c.surfaceSecondary, alignSelf: "flex-start" },
+  btn: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 44, paddingHorizontal: spacing.lg, borderRadius: radius.pill, borderWidth: 1.5, borderColor: c.brand, backgroundColor: c.navyTint, alignSelf: "flex-start" },
   on: { borderColor: c.resting, backgroundColor: c.restingTint },
-  label: { fontFamily: fonts.textMedium, fontSize: 14, color: c.brand },
+  label: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.brand },
   icon: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill },
 }));
 
@@ -35,7 +35,7 @@ export function HigginsSpeakButton({ text, label = "Hear Higgins", compact = fal
   }
   return (
     <Pressable testID={testID} accessibilityRole="button" onPress={onPress} style={[s.btn, active && s.on]}>
-      {busy ? <ActivityIndicator size="small" color={colors.resting} /> : <Icon size={18} color={active ? colors.resting : colors.onSurface} />}
+      {busy ? <ActivityIndicator size="small" color={colors.resting} /> : <Icon size={18} color={active ? colors.resting : colors.brand} />}
       <Text style={s.label}>{busy ? "Higgins is clearing his throat…" : active ? "Stop" : label}</Text>
     </Pressable>
   );
