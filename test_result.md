@@ -447,3 +447,13 @@ native:
   - task: "iOS DeviceSignalsTruth.swift + module functions + 5 XCTests; deviceAnalysis D04b. Cannot run here."
     implemented: true
     working: "NA"
+
+## Iteration 36 — Guardian Voice Note + Admin Audit Trail
+backend:
+  - task: "POST /family/incidents/{scent}/voice (multipart → Emergent Object Storage), GET /family/voice/{note_id}/ticket, public HMAC-ticketed GET /family/voice-play/{note_id}; admin_audit + GET /admin/audit + stats.audit. tests: test_family_voice.py 3/3, test_admin.py 12/12 (-n 0)."
+    implemented: true
+    working: true
+frontend:
+  - task: "VoiceNoteRecorder (voice-note-record/explain/allow/recording/timer/stop/review/send/discard/blocked/open-settings testIDs) on family/incident/[id]; VoicePlayButton voice-play-<note_id> on both incident screens."
+    implemented: true
+    working: true  # iteration 36 E2E PASS (record → send → Mum plays via ticket URL)

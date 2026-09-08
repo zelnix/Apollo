@@ -1,23 +1,26 @@
 """Family sharing: guardians (email), device pairing, shared events, acks, incidents and reassurance notes."""
 from __future__ import annotations
 
+import hmac
 import re
 import secrets
 import uuid
+from hashlib import sha256
 from datetime import datetime, timedelta, timezone
 from html import escape
 from typing import Any, Literal, Optional
 
 from bson import ObjectId
 from bson.errors import InvalidId
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from core.config import EMAIL_FROM_NAME, PUBLIC_BASE, logger
+from core.config import EMAIL_FROM_NAME, PUBLIC_BASE, URL_HMAC_SECRET, logger
 from core.db import BaseDocument, db, now_utc
 from core.models import ApolloState, PatrolEvent
 from services.email import send_email, _wrap
+from services.storage import StorageError, get_object, put_object, voice_note_path
 from routers.push import PUSH_FAMILY, PUSH_THREAT, send_push
 
 router = APIRouter()
@@ -409,7 +412,88 @@ async def add_incident_note(scent_id: str, body: IncidentNoteIn):
 async def list_incident_notes(scent_id: str, device_id: str = Query(min_length=8, max_length=64)):
     """Protected user sees every guardian's notes; a guardian sees only the notes they sent."""
     docs = await db.incident_notes.find({"scent_id": scent_id, "$or": [{"protected_device_id": device_id}, {"guardian_device_id": device_id}]}).sort("created_at", 1).to_list(50)
-    return [{k: v for k, v in d.items() if k != "_id"} for d in docs]
+    return [{k: v for k, v in d.items() if k not in ("_id", "audio_path")} for d in docs]
+
+
+# Guardian Voice Note — a short recording (≤ 30 s, ≤ 1 MB) attached to a shared incident so the protected person hears a
+# familiar voice. Audio bytes live in Emergent Object Storage; MongoDB owns existence + who may listen. Playback uses a
+# short-lived HMAC ticket URL (works on web <audio> and native alike) — never a bearer token in a URL.
+VOICE_MAX_BYTES = 1_000_000
+VOICE_MAX_SECONDS = 30
+VOICE_TYPES = {"audio/m4a": "m4a", "audio/x-m4a": "m4a", "audio/mp4": "m4a", "audio/aac": "aac", "audio/mpeg": "mp3", "audio/webm": "webm", "audio/ogg": "ogg", "audio/wav": "wav", "video/webm": "webm"}
+VOICE_TICKET_SECONDS = 600
+
+
+def _voice_sig(note_id: str, exp: int) -> str:
+    return hmac.new(URL_HMAC_SECRET.encode(), f"voice:{note_id}:{exp}".encode(), sha256).hexdigest()[:32]
+
+
+@router.post("/family/incidents/{scent_id}/voice", status_code=201)
+async def add_voice_note(request: Request, scent_id: str, device_id: str = Form(min_length=8, max_length=64), from_name: str = Form(default="", max_length=40),
+                         duration_s: float = Form(default=0, ge=0, le=VOICE_MAX_SECONDS), file: UploadFile = File(...)):
+    # Multipart bodies are not inspected by the router-wide gate → bind the form's device_id to the bearer here.
+    if request.state.device["device_id"] != device_id:
+        raise HTTPException(status_code=403, detail="That device_id does not belong to this device.")
+    inc = await db.shared_incidents.find_one({"scent_id": scent_id, "guardian_device_id": device_id})
+    if not inc:
+        raise HTTPException(status_code=404, detail="Incident not found")
+    ctype = (file.content_type or "").split(";")[0].strip().lower()
+    ext = VOICE_TYPES.get(ctype)
+    if not ext:
+        raise HTTPException(status_code=415, detail="That recording format isn't supported.")
+    data = await file.read(VOICE_MAX_BYTES + 1)
+    if len(data) > VOICE_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Keep voice notes under 30 seconds.")
+    if len(data) < 200:
+        raise HTTPException(status_code=422, detail="The recording was empty. Try again.")
+    link = await db.family_links.find_one({"guardian_device_id": device_id, "protected_device_id": inc["protected_device_id"], "deleted_at": None})
+    if not link:
+        raise HTTPException(status_code=403, detail="You're no longer paired with this person.")
+    guardian_label = from_name.strip() or link.get("guardian_label") or "A family member"
+    if from_name.strip():
+        await db.family_links.update_one({"_id": link["_id"]}, {"$set": {"guardian_label": guardian_label}})
+    note_id = uuid.uuid4().hex
+    path = voice_note_path(device_id, note_id, ext)
+    try:
+        stored = await put_object(path, data, ctype)
+    except StorageError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.detail)
+    note = {"note_id": note_id, "scent_id": scent_id, "protected_device_id": inc["protected_device_id"], "guardian_device_id": device_id,
+            "guardian_label": guardian_label, "kind": "voice", "text": f"{guardian_label} left you a voice note.", "phone": link.get("guardian_phone", ""),
+            "duration_s": round(float(duration_s), 1), "content_type": ctype, "size": stored.get("size", len(data)), "created_at": now_utc()}
+    await db.incident_notes.insert_one({**note, "audio_path": stored.get("path", path)})
+    try:
+        await send_push(recipients=[inc["protected_device_id"]],
+                        data={"title": f"{guardian_label} left you a voice note", "message": inc["headline"], "action_url": f"/patrol/scent/{scent_id}", **PUSH_FAMILY},
+                        idempotency_key=f"voice-{note_id}")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("voice note push failed (non-blocking): %s", type(exc).__name__)
+    return note
+
+
+@router.get("/family/voice/{note_id}/ticket")
+async def voice_ticket(note_id: str, device_id: str = Query(min_length=8, max_length=64)):
+    """Authenticated: either side of the incident gets a 10-minute playback URL for this note."""
+    doc = await db.incident_notes.find_one({"note_id": note_id, "kind": "voice", "$or": [{"protected_device_id": device_id}, {"guardian_device_id": device_id}]})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Voice note not found")
+    exp = int(now_utc().timestamp()) + VOICE_TICKET_SECONDS
+    return {"url": f"{PUBLIC_BASE}/api/family/voice-play/{note_id}?exp={exp}&sig={_voice_sig(note_id, exp)}", "expires_at": exp, "content_type": doc["content_type"]}
+
+
+@router.get("/family/voice-play/{note_id}")
+async def voice_play(note_id: str, exp: int = Query(...), sig: str = Query(min_length=32, max_length=32)):
+    """Public path (core.auth PUBLIC_PREFIXES) guarded by the HMAC ticket — unguessable, expiring, note-specific."""
+    if exp < int(now_utc().timestamp()) or not hmac.compare_digest(sig, _voice_sig(note_id, exp)):
+        raise HTTPException(status_code=403, detail="This playback link has expired.")
+    doc = await db.incident_notes.find_one({"note_id": note_id, "kind": "voice"})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Voice note not found")
+    try:
+        data, ctype = await get_object(doc["audio_path"])
+    except StorageError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.detail)
+    return Response(content=data, media_type=doc.get("content_type") or ctype, headers={"Cache-Control": "private, max-age=600", "Accept-Ranges": "bytes"})
 
 
 # Family Weekly Check-In — a calm, count-only summary of a watched person's week. Uses the event summaries the

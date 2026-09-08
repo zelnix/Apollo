@@ -85,3 +85,32 @@ class TestAdminOperations:
     def test_feedback_listing(self):
         r = requests.get(f"{API}/admin/feedback?limit=5", headers=ADMIN)
         assert r.status_code == 200 and isinstance(r.json(), list)
+
+
+class TestAuditTrail:
+    def test_every_console_action_is_logged_with_actor_and_visible_in_stats(self):
+        host = f"audit-{uuid.uuid4().hex[:8]}.apollo.test"
+        did, _ = _device()
+        op = {**ADMIN, "X-Admin-Actor": "ops@hwg"}
+        assert requests.post(f"{API}/admin/blocklist", json={"host": host, "reason": "audit test"}, headers=op).status_code == 201
+        assert requests.delete(f"{API}/admin/blocklist/{host}", headers=op).status_code == 204
+        assert requests.post(f"{API}/admin/devices/{did}/revoke", headers=ADMIN).status_code == 204  # no actor header → "console"
+        log = requests.get(f"{API}/admin/audit?limit=50", headers=ADMIN).json()
+        mine = [r for r in log if r["target"] in (host, did)]
+        assert [r["action"] for r in sorted(mine, key=lambda r: r["at"])] == ["blocklist.add", "blocklist.remove", "device.revoke"]
+        add = next(r for r in mine if r["action"] == "blocklist.add")
+        assert add["actor"] == "ops@hwg" and add["detail"] == {"threat_type": "SOCIAL_ENGINEERING", "reason": "audit test"} and add["audit_id"] and add["at"]
+        assert next(r for r in mine if r["action"] == "device.revoke")["actor"] == "console"
+        # filters
+        assert all(r["action"] == "device.revoke" for r in requests.get(f"{API}/admin/audit?action=device.revoke", headers=ADMIN).json())
+        assert any(r["target"] == host for r in requests.get(f"{API}/admin/audit?actor=ops@hwg&target={host}", headers=ADMIN).json())
+        stats = requests.get(f"{API}/admin/stats", headers=ADMIN).json()["audit"]
+        assert stats["total"] >= 3 and stats["last_7d"] >= 3 and stats["by_action_7d"].get("device.revoke", 0) >= 1
+        assert stats["recent"][0]["action"] == "device.revoke" and stats["recent"][0]["target"] == did
+
+    def test_audit_needs_the_admin_key_and_failed_attempts_write_nothing(self):
+        before = requests.get(f"{API}/admin/stats", headers=ADMIN).json()["audit"]["total"]
+        assert requests.get(f"{API}/admin/audit", headers=H).status_code == 401
+        assert requests.post(f"{API}/admin/blocklist", json={"host": "x.apollo.test", "reason": "nope"}, headers=H).status_code == 401
+        assert requests.post(f"{API}/admin/devices/no-such/revoke", headers=ADMIN).status_code == 404  # failed action → not logged
+        assert requests.get(f"{API}/admin/stats", headers=ADMIN).json()["audit"]["total"] == before

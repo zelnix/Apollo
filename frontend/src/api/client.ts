@@ -1,5 +1,7 @@
 // Thin API client. Every outbound body passes through the egress policy.
 
+import { Platform } from "react-native";
+
 import { markBackendFailure, markBackendOk } from "@/src/api/backendHealth";
 import { getDeviceToken, resetDeviceIdentity } from "@/src/auth/deviceIdentity";
 import { enforceEgress, type EgressEndpoint } from "@/src/domain/privacy";
@@ -64,6 +66,25 @@ export function apiGet<T>(path: string) { return request<T>(path); }
 export function apiDelete<T>(path: string) { return request<T>(path, { method: "DELETE" }); }
 export function apiPost<T>(path: string, endpoint: EgressEndpoint, body: Record<string, unknown>) {
   return request<T>(path, { method: "POST", body: JSON.stringify(enforceEgress(endpoint, body)) });
+}
+/** Multipart upload (voice notes). Text fields go through the egress allow-list like any JSON body; the file is appended
+ *  in the runtime's own shape (web needs a real Blob, native needs { uri, name, type }). Content-Type is left to the runtime. */
+export async function apiUpload<T>(path: string, endpoint: EgressEndpoint, fields: Record<string, string>, file: { uri: string; name: string; type: string }) {
+  const form = new FormData();
+  for (const [k, v] of Object.entries(enforceEgress(endpoint, fields))) form.append(k, String(v));
+  if (Platform.OS === "web") form.append("file", await (await fetch(file.uri)).blob(), file.name);
+  else form.append("file", file as unknown as Blob);
+  const auth = await authHeaders();
+  const res = await fetchWithBudget(`${API_BASE}${path}`, { method: "POST", body: form, headers: auth }, LONG_TIMEOUT_MS);
+  if (!res.ok) {
+    let detail = res.statusText;
+    try { detail = (await res.json()).detail ?? detail; } catch { /* keep statusText */ }
+    if (res.status >= 500) markBackendFailure("server_error"); else markBackendOk();
+    if (res.status === 401) await resetDeviceIdentity(typeof detail === "string" ? detail : "Device credential rejected.");
+    throw new ApiError(res.status, typeof detail === "string" ? detail : JSON.stringify(detail));
+  }
+  markBackendOk();
+  return (await res.json()) as T;
 }
 export function apiPatch<T>(path: string, body: Record<string, unknown>) {
   return request<T>(path, { method: "PATCH", body: JSON.stringify(body) });

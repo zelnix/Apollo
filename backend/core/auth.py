@@ -29,7 +29,7 @@ PUBLIC_PATHS = {"/api/health", "/api/intel/status", "/api/devices/register"}
 #     includes personal data, switch to short-lived signed URLs.
 # NOTE on naming: `user_id` in /register-push is the DEVICE identity today. Device auth proves which device is calling;
 # a person/household layer (one person, several devices) can sit above it later without changing this contract.
-PUBLIC_PREFIXES = ("/api/family/confirm/", "/api/voice/")
+PUBLIC_PREFIXES = ("/api/family/confirm/", "/api/voice/", "/api/family/voice-play/")  # voice-play is HMAC-ticketed (routers/family.py)
 
 
 def hash_token(raw: str) -> str:

@@ -46,6 +46,8 @@ async def lifespan(_: FastAPI):
     await db.trust_entries.create_index("trust_id", unique=True)
     await db.ask_messages.create_index([("device_id", 1), ("created_at", 1)])
     await db.blocklist.create_index("host", unique=True)
+    await db.admin_audit.create_index([("at", -1)])
+    await db.incident_notes.create_index("note_id")
     for host, threat, reason in SEED_BLOCKLIST:
         entry = BlocklistEntry(host=host, threat_type=threat, reason=reason, added_at=now_utc())
         await db.blocklist.update_one({"host": host}, {"$setOnInsert": entry.to_mongo()}, upsert=True)
@@ -65,4 +67,4 @@ app.include_router(admin.router, prefix="/api/admin", tags=["admin"], dependenci
 # CORS is not authentication (bearer tokens do that). The web preview is same-origin (/api on the same host), and native
 # apps don't use CORS, so only explicitly configured browser origins are allowed (add the admin console's origin here).
 _cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
-app.add_middleware(CORSMiddleware, allow_credentials=False, allow_origins=_cors_origins, allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"], allow_headers=["Authorization", "Content-Type", "Accept", ADMIN_HEADER])
+app.add_middleware(CORSMiddleware, allow_credentials=False, allow_origins=_cors_origins, allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"], allow_headers=["Authorization", "Content-Type", "Accept", ADMIN_HEADER, "X-Admin-Actor"])

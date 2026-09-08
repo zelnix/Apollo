@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiGet, apiPost } from "@/src/api/client";
 import { StaleNote } from "@/src/components/ServiceBanner";
+import { VoiceNoteRecorder, VoicePlayButton } from "@/src/components/VoiceNote";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { CATEGORY_GLYPH, CATEGORY_LABEL } from "@/src/domain/incidentPlan";
 import { type ApolloState, type EventCategory, STATE_NAME } from "@/src/domain/types";
@@ -22,7 +23,7 @@ import { goBackOrHome } from "@/src/utils/navigation";
 import { storage } from "@/src/utils/storage";
 
 export interface SharedIncident { scent_id: string; from_label: string; headline: string; state: ApolloState; events: { event_id: string; category: EventCategory; state: ApolloState; headline: string; occurred_at: string; status: string }[]; steps: { id: string; text: string }[]; done: string[]; resolved: boolean; shared_at: string; updated_at: string; phone: string }
-export interface IncidentNote { note_id: string; guardian_label: string; kind: string; text: string; phone: string; created_at: string }
+export interface IncidentNote { note_id: string; guardian_label: string; kind: string; text: string; phone: string; created_at: string; duration_s?: number }
 
 type NoteKind = "here" | "calling" | "on_way" | "together" | "custom";
 const PRESETS: { kind: NoteKind; label: string }[] = [
@@ -135,13 +136,18 @@ export default function FamilyIncident() {
               <TextInput testID="family-note-name" style={s.input} value={fromName} onChangeText={(t) => setFromName(t.slice(0, 40))} placeholder="Your name (so they know who it's from)" placeholderTextColor={colors.muted} maxLength={40} autoCorrect={false} />
               <TextInput testID="family-note-phone" style={s.input} value={myPhone} onChangeText={(t) => setMyPhone(t.slice(0, 32))} placeholder="Your phone number (optional) — adds a one-tap Call back button" placeholderTextColor={colors.muted} keyboardType="phone-pad" maxLength={32} autoCorrect={false} />
               <Button testID="family-note-send" label={send.isPending ? "Sending…" : "Send note"} onPress={() => send.mutate()} disabled={!canSend} />
+              <Text style={s.meta}>Or let them hear it&apos;s really you — a short voice note (up to 30 seconds).</Text>
+              <VoiceNoteRecorder scentId={id} deviceId={deviceId ?? "local-device"} fromName={fromName.trim()} onSent={() => { void storage.setItem("apollo.family.myname", fromName.trim()); void qc.invalidateQueries({ queryKey: ["family-incident-notes", id, deviceId] }); }} />
               {(notes.data ?? []).length ? (
                 <View style={{ gap: spacing.xs }} testID="family-note-sent">
                   <Text style={s.meta}>Sent</Text>
                   {notes.data!.map((n, i) => (
                     <View key={n.note_id} style={s.note} testID={`family-note-sent-${i}`}>
                       <Check size={16} color={colors.resting} style={{ marginTop: 3 }} />
-                      <Text style={[s.why, { flex: 1 }]}>{n.text} <Text style={s.meta}>· {new Date(n.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}{n.phone ? ` · call back ${n.phone}` : ""}</Text></Text>
+                      <View style={{ flex: 1, gap: spacing.xs }}>
+                        <Text style={s.why}>{n.kind === "voice" ? "Voice note" : n.text} <Text style={s.meta}>· {new Date(n.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}{n.phone ? ` · call back ${n.phone}` : ""}</Text></Text>
+                        {n.kind === "voice" ? <VoicePlayButton noteId={n.note_id} deviceId={deviceId ?? "local-device"} durationS={n.duration_s} label="Listen back" /> : null}
+                      </View>
                     </View>
                   ))}
                 </View>

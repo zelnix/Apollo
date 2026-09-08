@@ -13,7 +13,8 @@
       "bundleIdentifier": "app.hwg.apollo",
       "infoPlist": {
         "NSUserNotificationsUsageDescription": "Tell you when Apollo barks about a threat",
-        "NSLocationWhenInUseUsageDescription": "Check whether your current Wi‑Fi is open or secured"
+        "NSLocationWhenInUseUsageDescription": "Check whether your current Wi‑Fi is open or secured",
+        "NSMicrophoneUsageDescription": "Record a short voice note to reassure family"
       },
       "entitlements": {
         "com.apple.developer.networking.wifi-info": true
@@ -29,6 +30,7 @@
       "permissions": [
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.INTERNET",
+        "android.permission.RECORD_AUDIO",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.CAMERA"
