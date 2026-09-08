@@ -5,6 +5,8 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.VpnService
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import com.guarddog.core.clock.SystemClock
 import com.guarddog.core.protection.ProtectionEnforcementReporter
@@ -37,11 +39,15 @@ object GuardDogVpnRuntime {
 class GuardDogVpnService : VpnService() {
     private val state = VpnStateRepository.shared
     private var session: TunSession? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val bindingCheck = OffThreadBindingCheck()
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> { stopProtection("stopped by user"); return START_NOT_STICKY }
-            ACTION_START, null -> startProtection()
+            ACTION_START -> startProtection()
+            // null intent = the system re-delivered a start after the process died (in-memory runtime is gone). Fail closed, explicitly.
+            null -> fail("service restarted by the system without a live runtime (process died during start)")
         }
         return START_NOT_STICKY
     }
@@ -63,11 +69,17 @@ class GuardDogVpnService : VpnService() {
             return
         }
 
-        // DNS/IP binding re-check immediately before route install. Mismatch aborts.
-        when (val binding = ControlledEndpointResolver(config, GuardDogVpnRuntime.resolver).verifyBinding()) {
-            is BindingResult.Match -> establish(config, reporter, binding.ipv4)
-            is BindingResult.Mismatch -> fail("DNS/IP binding mismatch: expected ${binding.expected}, resolved ${binding.resolved}")
-            is BindingResult.ResolutionFailed -> fail("controlled host did not resolve: ${binding.host}")
+        // DNS/IP binding re-check immediately before route install. Mismatch aborts. The lookup runs OFF the main thread
+        // (NetworkOnMainThreadException otherwise — crashed the proof phone); the outcome is applied back on the main thread.
+        bindingCheck.run(config, GuardDogVpnRuntime.resolver) { binding ->
+            mainHandler.post {
+                if (state.lifecycle != VpnLifecycleState.Starting) return@post // stopped/revoked/destroyed while resolving
+                when (binding) {
+                    is BindingResult.Match -> establish(config, reporter, binding.ipv4)
+                    is BindingResult.Mismatch -> fail("DNS/IP binding mismatch: expected ${binding.expected}, resolved ${binding.resolved}")
+                    is BindingResult.ResolutionFailed -> fail("controlled host did not resolve: ${binding.host}")
+                }
+            }
         }
     }
 

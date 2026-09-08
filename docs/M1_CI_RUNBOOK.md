@@ -156,6 +156,20 @@ Secure fix (Kotlin + Swift + Python in parity; TS contracts updated):
   node 14/14; Kotlin/Swift compile + tests run in CI (`android`, `ios` jobs).
 - Untouched: frozen bundle v25, signing keys, controlled endpoint/IP, VPN /32 enforcement, THREAT_BLOCKED semantics, verification order.
 
+### Run 34172332521 (tip `1349a91`) — 5/5 green; phone provenance PASS (`4b85776a…5c2d` = apk-provenance.json); **Run proof → app stopped** — correction pass 9
+Evidence: after the crash the app came back showing `FAILED — VPN runtime not configured (config/reporter missing)`. That text is produced only by
+`GuardDogVpnService.startProtection()` in a **fresh process** (in-memory `GuardDogVpnRuntime` empty): Android re-delivers a foreground-service start
+when the process dies inside `onStartCommand`, so the service restarted with a `null` intent and failed closed. The crash therefore happened in the
+service start path, whose only main-thread network call is `ControlledEndpointResolver.verifyBinding()` → `InetAddress.getAllByName` →
+`NetworkOnMainThreadException`. It never surfaced before: earlier installs SKIPPED at verification (rollback bug), unit tests inject fake resolvers,
+and the emulator smoke never starts protection. This means the verifier fix worked on the phone (the flow got past verification to the service).
+- `guarddog-vpn/OffThreadBindingCheck.kt` (new) — runs the DNS/IP binding re-check on a dedicated thread, converts resolver exceptions into
+  `ResolutionFailed` (fail closed), and asserts it is not on the caller thread. `GuardDogVpnService` uses it and applies the outcome back on the main
+  thread via `Handler(Looper.getMainLooper())`, aborting if the lifecycle left `Starting` meanwhile. `null`-intent restarts now fail closed explicitly.
+- `OffThreadBindingCheckTest` (+3): resolver runs off the caller thread and delivers `Match`; mismatch + throwing resolver → `Mismatch`/`ResolutionFailed`
+  (no crash); same-thread executor (the defect shape) is refused.
+- Untouched: route spec, TUN reader, drop/THREAT_BLOCKED path, verifier, bundle v25, endpoint/IP. Phone: install over, do not clear data, Run proof.
+
 ## 4. Download artifacts and attach here
 | Artifact | Files to attach |
 |---|---|
