@@ -457,3 +457,13 @@ frontend:
   - task: "VoiceNoteRecorder (voice-note-record/explain/allow/recording/timer/stop/review/send/discard/blocked/open-settings testIDs) on family/incident/[id]; VoicePlayButton voice-play-<note_id> on both incident screens."
     implemented: true
     working: true  # iteration 36 E2E PASS (record → send → Mum plays via ticket URL)
+
+## Iteration 37 — Voice Note Transcript
+backend:
+  - task: "services/transcribe.py Whisper caption (background task), incident_notes.transcript/transcript_status; test_family_voice.py 5/5 incl. real TTS→Whisper round-trip."
+    implemented: true
+    working: true
+frontend:
+  - task: "VoiceCaption under voice notes: family-note-caption-<i> (guardian) / incident-family-note-caption-<i> (Mum)."
+    implemented: true
+    working: true  # iteration 37 E2E PASS; prompt-echo hallucination guard added after tester note

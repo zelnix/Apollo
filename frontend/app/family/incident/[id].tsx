@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiGet, apiPost } from "@/src/api/client";
 import { StaleNote } from "@/src/components/ServiceBanner";
-import { VoiceNoteRecorder, VoicePlayButton } from "@/src/components/VoiceNote";
+import { VoiceCaption, VoiceNoteRecorder, VoicePlayButton } from "@/src/components/VoiceNote";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { CATEGORY_GLYPH, CATEGORY_LABEL } from "@/src/domain/incidentPlan";
 import { type ApolloState, type EventCategory, STATE_NAME } from "@/src/domain/types";
@@ -23,7 +23,7 @@ import { goBackOrHome } from "@/src/utils/navigation";
 import { storage } from "@/src/utils/storage";
 
 export interface SharedIncident { scent_id: string; from_label: string; headline: string; state: ApolloState; events: { event_id: string; category: EventCategory; state: ApolloState; headline: string; occurred_at: string; status: string }[]; steps: { id: string; text: string }[]; done: string[]; resolved: boolean; shared_at: string; updated_at: string; phone: string }
-export interface IncidentNote { note_id: string; guardian_label: string; kind: string; text: string; phone: string; created_at: string; duration_s?: number }
+export interface IncidentNote { note_id: string; guardian_label: string; kind: string; text: string; phone: string; created_at: string; duration_s?: number; transcript?: string; transcript_status?: "pending" | "ready" | "unavailable" }
 
 type NoteKind = "here" | "calling" | "on_way" | "together" | "custom";
 const PRESETS: { kind: NoteKind; label: string }[] = [
@@ -63,7 +63,7 @@ export default function FamilyIncident() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { ready, setupDone, deviceId, showToast } = useApollo();
   const q = useQuery({ queryKey: ["family-incident", id, deviceId], enabled: !!deviceId, refetchInterval: 15000, queryFn: () => apiGet<SharedIncident>(`/family/incidents/${id}?device_id=${deviceId}`) });
-  const notes = useQuery({ queryKey: ["family-incident-notes", id, deviceId], enabled: !!deviceId, queryFn: () => apiGet<IncidentNote[]>(`/family/incidents/${id}/notes?device_id=${deviceId}`) });
+  const notes = useQuery({ queryKey: ["family-incident-notes", id, deviceId], enabled: !!deviceId, refetchInterval: (q) => (q.state.data?.some((n) => n.transcript_status === "pending") ? 5000 : false), queryFn: () => apiGet<IncidentNote[]>(`/family/incidents/${id}/notes?device_id=${deviceId}`) });
   const [kind, setKind] = useState<NoteKind>("here");
   const [custom, setCustom] = useState("");
   const [fromName, setFromName] = useState("");
@@ -147,6 +147,7 @@ export default function FamilyIncident() {
                       <View style={{ flex: 1, gap: spacing.xs }}>
                         <Text style={s.why}>{n.kind === "voice" ? "Voice note" : n.text} <Text style={s.meta}>· {new Date(n.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}{n.phone ? ` · call back ${n.phone}` : ""}</Text></Text>
                         {n.kind === "voice" ? <VoicePlayButton noteId={n.note_id} deviceId={deviceId ?? "local-device"} durationS={n.duration_s} label="Listen back" /> : null}
+                        {n.kind === "voice" ? <VoiceCaption status={n.transcript_status} text={n.transcript} testID={`family-note-caption-${i}`} /> : null}
                       </View>
                     </View>
                   ))}

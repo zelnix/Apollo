@@ -82,3 +82,39 @@ class TestVoiceNote:
         link_id = g.get("/family/links", params={"device_id": g.id}).json()["i_watch"][0]["link_id"]
         assert requests.delete(f"{API}/family/links/{link_id}", params={"device_id": g.id}, headers=g.h).status_code == 204
         assert g.post(f"/family/incidents/{scent}/voice", data={"device_id": g.id, "duration_s": "1"}, files={"file": ("n.wav", wav_bytes(), "audio/wav")}).status_code == 403
+
+
+class TestVoiceCaption:
+    def test_caption_is_produced_asynchronously_from_real_speech(self):
+        p, g, scent = paired_incident()
+        # Real speech: Higgins' TTS renders the line, then it is uploaded as Sarah's voice note.
+        spoken = g.post("/voice/speak", json={"device_id": g.id, "text": "Hello Mum, it's Sarah. Everything is fine, I'm coming over after work."})
+        assert spoken.status_code == 200, spoken.text
+        mp3 = requests.get(BASE_URL + spoken.json()["url"], headers=H).content
+        assert len(mp3) > 1000
+        r = g.post(f"/family/incidents/{scent}/voice", data={"device_id": g.id, "from_name": "Sarah", "duration_s": "5"}, files={"file": ("note.mp3", mp3, "audio/mpeg")})
+        assert r.status_code == 201, r.text
+        note = r.json()
+        assert note["transcript_status"] == "pending" and note["transcript"] == ""  # send never waits for the caption
+        deadline = time.time() + 45
+        while time.time() < deadline:
+            n = next(x for x in p.get(f"/family/incidents/{scent}/notes", params={"device_id": p.id}).json() if x["note_id"] == note["note_id"])
+            if n["transcript_status"] != "pending":
+                break
+            time.sleep(2)
+        assert n["transcript_status"] == "ready", n
+        assert "sarah" in n["transcript"].lower() and "fine" in n["transcript"].lower(), n["transcript"]
+        assert n["transcript_language"] in ("english", "en")
+        assert "audio_path" not in n
+
+    def test_unreadable_audio_ends_as_unavailable_not_stuck(self):
+        p, g, scent = paired_incident()
+        note = g.post(f"/family/incidents/{scent}/voice", data={"device_id": g.id, "duration_s": "1"}, files={"file": ("n.wav", wav_bytes(0.3), "audio/wav")}).json()
+        deadline = time.time() + 60
+        status = "pending"
+        while time.time() < deadline:
+            status = next(x for x in g.get(f"/family/incidents/{scent}/notes", params={"device_id": g.id}).json() if x["note_id"] == note["note_id"])["transcript_status"]
+            if status != "pending":
+                break
+            time.sleep(2)
+        assert status in ("ready", "unavailable")  # silence may transcribe to nothing (→ unavailable) — never stays pending

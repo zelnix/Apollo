@@ -1,6 +1,7 @@
 """Family sharing: guardians (email), device pairing, shared events, acks, incidents and reassurance notes."""
 from __future__ import annotations
 
+import asyncio
 import hmac
 import re
 import secrets
@@ -21,6 +22,7 @@ from core.db import BaseDocument, db, now_utc
 from core.models import ApolloState, PatrolEvent
 from services.email import send_email, _wrap
 from services.storage import StorageError, get_object, put_object, voice_note_path
+from services.transcribe import caption_voice_note
 from routers.push import PUSH_FAMILY, PUSH_THREAT, send_push
 
 router = APIRouter()
@@ -422,6 +424,7 @@ VOICE_MAX_BYTES = 1_000_000
 VOICE_MAX_SECONDS = 30
 VOICE_TYPES = {"audio/m4a": "m4a", "audio/x-m4a": "m4a", "audio/mp4": "m4a", "audio/aac": "aac", "audio/mpeg": "mp3", "audio/webm": "webm", "audio/ogg": "ogg", "audio/wav": "wav", "video/webm": "webm"}
 VOICE_TICKET_SECONDS = 600
+_background: set[asyncio.Task[None]] = set()  # keeps caption tasks referenced until done
 
 
 def _voice_sig(note_id: str, exp: int) -> str:
@@ -460,8 +463,12 @@ async def add_voice_note(request: Request, scent_id: str, device_id: str = Form(
         raise HTTPException(status_code=exc.status, detail=exc.detail)
     note = {"note_id": note_id, "scent_id": scent_id, "protected_device_id": inc["protected_device_id"], "guardian_device_id": device_id,
             "guardian_label": guardian_label, "kind": "voice", "text": f"{guardian_label} left you a voice note.", "phone": link.get("guardian_phone", ""),
-            "duration_s": round(float(duration_s), 1), "content_type": ctype, "size": stored.get("size", len(data)), "created_at": now_utc()}
+            "duration_s": round(float(duration_s), 1), "content_type": ctype, "size": stored.get("size", len(data)), "created_at": now_utc(),
+            "transcript": "", "transcript_language": None, "transcript_status": "pending"}  # caption arrives asynchronously (services/transcribe.py)
     await db.incident_notes.insert_one({**note, "audio_path": stored.get("path", path)})
+    task = asyncio.create_task(caption_voice_note(note_id, data, ext))
+    _background.add(task)
+    task.add_done_callback(_background.discard)
     try:
         await send_push(recipients=[inc["protected_device_id"]],
                         data={"title": f"{guardian_label} left you a voice note", "message": inc["headline"], "action_url": f"/patrol/scent/{scent_id}", **PUSH_FAMILY},

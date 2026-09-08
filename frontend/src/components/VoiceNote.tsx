@@ -22,6 +22,7 @@ const useStyles = makeStyles((c) => ({
   hint: { fontFamily: fonts.text, fontSize: 13, color: c.muted, flex: 1 },
   playBtn: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 44, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: c.border, alignSelf: "flex-start" },
   playText: { fontFamily: fonts.textMedium, fontSize: 14, color: c.onSurface },
+  caption: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurface, fontStyle: "italic" },
 }));
 
 const fmt = (ms: number) => { const s = Math.min(VOICE_MAX_SECONDS, Math.floor(ms / 1000)); return `0:${String(s).padStart(2, "0")}`; };
@@ -121,6 +122,15 @@ export function VoiceNoteRecorder({ scentId, deviceId, fromName, onSent }: { sce
       {err ? <Body testID="voice-note-error">{err}</Body> : null}
     </View>
   );
+}
+
+/** Caption under a voice note so it can be read when listening isn't possible. Pending → "Caption coming…"; unavailable → says so. */
+export function VoiceCaption({ status, text, testID }: { status?: "pending" | "ready" | "unavailable"; text?: string; testID?: string }) {
+  const s = useStyles();
+  if (status === "ready" && text) return <Text style={s.caption} testID={testID}>“{text}”</Text>;
+  if (status === "pending") return <Text style={s.hint} testID={testID}>Caption coming…</Text>;
+  if (status === "unavailable") return <Text style={s.hint} testID={testID}>No caption for this one — press play to listen.</Text>;
+  return null;
 }
 
 let sharedPlayer: AudioPlayer | null = null;
