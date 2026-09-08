@@ -13,14 +13,18 @@ import com.guarddog.core.rules.InMemoryBundleVersionStore
 import com.guarddog.core.rules.RuleBundleVerifier
 import com.guarddog.core.rules.TrustedKeyRegistry
 import com.guarddog.expo.dto.BridgeProtectionConfigRecord
+import com.guarddog.expo.dto.BridgeWebsiteGateConfigRecord
+import com.guarddog.expo.dto.BridgeWebsiteGateOverrideRecord
 import com.guarddog.vpn.BindingResult
 import com.guarddog.vpn.ControlledEndpointResolver
 import com.guarddog.vpn.FreshConnectionProbe
 import com.guarddog.vpn.GuardDogVpnRuntime
 import com.guarddog.vpn.GuardDogVpnService
+import com.guarddog.vpn.MutableWebsiteGateOverrideStore
 import com.guarddog.vpn.RecoveryInspector
 import com.guarddog.vpn.VpnLifecycleState
 import com.guarddog.vpn.VpnStateRepository
+import com.guarddog.vpn.WebsiteGateAddressing
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.CodedException
 import expo.modules.kotlin.modules.Module
@@ -51,6 +55,11 @@ class GuardDogExpoModule : Module() {
     private val state = VpnStateRepository.shared
     private lateinit var engine: GuardDogSDKEngine
     private var pendingConsent: Promise? = null
+    // Gate Guard M2 Website Gate: the fast, in-memory runtime cache the native DNS pipeline
+    // consults directly (see SinkholeBindingStore.arm). The durable, user-facing, auditable
+    // record lives in JS/AsyncStorage (frontend/src/sdk/websiteGateOverrides.ts) and re-hydrates
+    // this cache once per bridge session -- this object is never persisted natively.
+    private val websiteGateOverrides = MutableWebsiteGateOverrideStore()
 
     private val context: Context get() = appContext.reactContext ?: throw CodedException("ERR_NO_CONTEXT", "React context unavailable", null)
 
@@ -66,6 +75,11 @@ class GuardDogExpoModule : Module() {
             }
             state.addListener { sendEvent(EVENT_STATE, GuardDogExpoAdapters.toRecord(it).toBundle()) }
             GuardDogVpnRuntime.reporter = engine
+            // Gate Guard M2 Website Gate: the SAME engine instance -- GuardDogSDKEngine already holds
+            // the M1 authorization table and the strictly parallel M2 WebsiteGateBinding table (Phase 3);
+            // there is no second engine to construct or keep in sync.
+            GuardDogVpnRuntime.websiteGateEngine = engine
+            GuardDogVpnRuntime.websiteGateOverrideStore = websiteGateOverrides
         }
 
         Function("getCapabilities") { GuardDogExpoAdapters.androidCapabilities() }
@@ -80,6 +94,41 @@ class GuardDogExpoModule : Module() {
         Function("analyzeUrl") { url: String ->
             engine.analyzeUrl(url)?.let { mapOf("sanitizedUrl" to it.sanitizedUrl, "host" to it.host, "verdict" to it.verdict, "ruleId" to it.ruleId) }
         }
+
+        // --- Gate Guard M2 Website Gate: additive bridge surface. None of the above M1 functions are touched. ---
+
+        // The sinkhole pool / virtual DNS endpoint are ALWAYS the fixed native WebsiteGateAddressing
+        // constants -- record only carries the upstream resolver + binding lifetime, never addresses
+        // that could redirect Apollo's own DNS interception.
+        Function("configureWebsiteGate") { record: BridgeWebsiteGateConfigRecord ->
+            GuardDogVpnRuntime.websiteGateRouteConfig = WebsiteGateAddressing.defaultRouteConfig()
+            GuardDogVpnRuntime.upstreamDnsResolverIpv4 = record.upstreamDnsResolverIpv4
+            GuardDogVpnRuntime.websiteGateBindingLifetimeMillis = record.bindingLifetimeMs.toLong()
+        }
+
+        Function("acceptWebsiteGateRuleBundle") { rawJson: String -> GuardDogExpoAdapters.toRecord(engine.acceptWebsiteGateRuleBundle(rawJson)) }
+
+        // Truthful, live status -- dnsGatewayActive reflects GuardDogVpnRuntime.websiteGateActive,
+        // which only a live TUN session that actually built the DNS gateway pipeline can set true.
+        Function("getWebsiteGateStatus") {
+            GuardDogExpoAdapters.toWebsiteGateStatus(
+                configured = GuardDogVpnRuntime.websiteGateRouteConfig != null,
+                dnsGatewayActive = GuardDogVpnRuntime.websiteGateActive,
+                acceptedBundle = engine.acceptedWebsiteGateBundle(),
+                overrideCount = websiteGateOverrides.allowedHostsSnapshot().size,
+            )
+        }
+
+        // Local, reversible, auditable ALLOW-only override (see WebsiteGateOverrideStore) -- can only
+        // ever prevent a sinkhole arming the signed rule bundle would otherwise trigger; it can never
+        // itself arm a binding or produce a THREAT_BLOCKED. Returns false if host fails canonicalization.
+        Function("setWebsiteGateAllowOverride") { record: BridgeWebsiteGateOverrideRecord ->
+            websiteGateOverrides.setAllowed(record.host, record.allowed)
+        }
+
+        Function("getWebsiteGateOverrides") { websiteGateOverrides.allowedHostsSnapshot().sorted() }
+
+        Function("clearWebsiteGateOverrides") { websiteGateOverrides.clear() }
 
         AsyncFunction("requestPermission") { kind: String, promise: Promise ->
             if (kind != "vpn") { promise.resolve("unsupported"); return@AsyncFunction }

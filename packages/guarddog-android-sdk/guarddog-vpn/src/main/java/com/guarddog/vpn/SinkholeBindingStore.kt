@@ -27,6 +27,7 @@ class SinkholeBindingStore(
     private val sinkholePool: List<String>,
     private val bindingLifetimeMillis: Long,
     private val clock: Clock,
+    private val overrideStore: WebsiteGateOverrideStore = NoWebsiteGateOverrides,
 ) {
     init {
         require(sinkholePool.isNotEmpty()) { "sinkhole pool must not be empty" }
@@ -37,8 +38,10 @@ class SinkholeBindingStore(
     private val nextIndex = AtomicInteger(0)
 
     /** Arms (or refreshes) a binding for [host]. Returns the sinkhole IPv4 to answer the DNS query
-     * with, or null if [engine] rejected the arming -- the caller must forward upstream instead. */
+     * with, or null if [engine] rejected the arming (or a local user ALLOW override is present --
+     * see [WebsiteGateOverrideStore]) -- the caller must forward upstream instead. */
     fun arm(host: String): String? {
+        if (overrideStore.overrideFor(host) == WebsiteGateOverrideDecision.ALLOW) return null
         val now = clock.nowEpochMillis()
         val expiresAt = now + bindingLifetimeMillis
         val sticky = hostToIp[host]?.takeIf { engine.currentWebsiteGateBinding(it)?.host == host }

@@ -252,3 +252,74 @@ M2-awareness only; the existing `TunPacketReaderTest` continues to prove the M1-
 tests appended to `Ipv4PacketParserTest`/`SelectiveRouteInstallerTest` for the new methods; every
 pre-existing test in those two files, and in `TunPacketReaderTest`/`GuardDogSDKEngineTest`, was left
 untouched and re-read after the edits to confirm no behavioral drift.
+
+## Phase 5 — bridge/app wiring + local override store (complete)
+
+- **`WebsiteGateOverrideStore`** (`guarddog-vpn`): `WebsiteGateOverrideDecision { ALLOW, NONE }` --
+  structurally no `BLOCK` value exists anywhere in this type. `NoWebsiteGateOverrides` (M1-equivalent
+  default) + `MutableWebsiteGateOverrideStore` (thread-safe, canonicalized-key, in-memory session
+  cache the DNS pipeline consults synchronously). Wired as a new optional, defaulted parameter into
+  `SinkholeBindingStore.arm()`: an ALLOW override short-circuits *before* the rule-authority chain
+  runs, so an overridden host never arms a binding -- structurally the same "no binding, no possible
+  block" property Phase 3/4 already proved for allow/unknown hosts. `SinkholeBindingStoreTest` gained
+  4 new cases proving the override beats a real signed `block` rule, is fully reversible, doesn't
+  affect unrelated hosts, and that the new parameter is genuinely additive (existing Phase 4 call
+  sites/tests unchanged). `WebsiteGateOverrideStoreTest` (new, 6 cases) proves the store itself in
+  isolation: canonicalization, set/unset, snapshot, and rejecting a host that fails canonicalization.
+- **Bridge** (`guarddog-expo-module`): `GuardDogExpoModule` gets one `MutableWebsiteGateOverrideStore`
+  instance (session-scoped, never persisted natively) plus 6 new sync functions --
+  `configureWebsiteGate`, `acceptWebsiteGateRuleBundle`, `getWebsiteGateStatus`,
+  `setWebsiteGateAllowOverride`, `getWebsiteGateOverrides`, `clearWebsiteGateOverrides` -- all
+  additive; no M1 function signature or behavior touched. `getWebsiteGateStatus().dnsGatewayActive`
+  is read directly from `GuardDogVpnRuntime.websiteGateActive` (only ever set by a live TUN session
+  that actually built the DNS gateway pipeline), never derived from "configured" alone.
+  `GuardDogExpoModuleDefinitionTest` asserts the exact registered function-name set (regression test
+  for the Pika-compiler physical-device blocker found during M1) now includes all 6 new names.
+- **JS bridge types** (`frontend/src/sdk/nativeModule.ts`, mirrored in
+  `packages/guarddog-expo-module/src/index.ts`): `NativeWebsiteGateStatus` + the 6 new method
+  signatures on `GuardDogNativeModule`, additive only.
+- **Shared contracts — `websiteGateOverrides.ts`** (new file, `packages/guarddog-contracts/src`,
+  synced byte-identical into `frontend/src/contracts/shared/` by the now-fixed `sync-to-app.mjs`):
+  the durable override *record* shape (`{ host, type: "allow", source: "user", decidedAt }`) plus
+  pure `upsertWebsiteGateOverride` / `removeWebsiteGateOverride` / `pruneWebsiteGateOverrides` /
+  `validateWebsiteGateOverrideRecord` / `validateWebsiteGateOverrideList`. **Structural invariant**:
+  `type` is a TS literal union of exactly one value, `"allow"` -- there is no "block" (or any other)
+  variant in the type or in the validator, so a corrupted/tampered/future-buggy persisted record can
+  never be resurrected as a block. Bounded to `MAX_WEBSITE_GATE_OVERRIDES = 500`, oldest-by-`decidedAt`
+  evicted first, so the durable record can never grow unbounded across app restarts. 11 new
+  `node --test` cases (30/30 total in the package, up from 19/19 after Phase 2) cover: canonicalized
+  add/dedupe/refresh, reversible remove (incl. no-op on an unrelated/invalid host), the eviction
+  bound, and -- the explicit proof this milestone required -- a validator test that a record tampered
+  to `type: "block"` (or any non-`"allow"` value) is rejected outright, plus a mixed-corruption list
+  test proving malformed/tampered entries are dropped rather than trusted.
+- **Durable JS store** (new, `frontend/src/sdk/websiteGateOverrides.ts`): thin `storage` (AsyncStorage)
+  glue around the pure contracts module -- single bounded JSON blob under
+  `guarddog.websiteGate.overrides.v1`; failed reads/corrupted blobs fail safe to empty, never throw or
+  trust unvalidated data. This is the source of truth across app restarts; the native
+  `MutableWebsiteGateOverrideStore` is intentionally session-only (matches how
+  `GuardDogVpnRuntime.config` is re-pushed every bridge session) and is rehydrated from here.
+- **`GuardDogSecuritySDK.ts`** (public SDK boundary): additive Website Gate surface --
+  `configureWebsiteGate`, `acceptWebsiteGateRuleBundle`, `getWebsiteGateStatus`,
+  `setWebsiteGateAllowOverride` / `removeWebsiteGateAllowOverride` / `getWebsiteGateOverrides` /
+  `clearWebsiteGateOverrides` (all persist to the durable JS store first, then mirror into the native
+  session cache) and `hydrateWebsiteGateOverrides` (pushes every persisted record into the native
+  cache once per bridge session). **Truthful capability reporting**:
+  `getPlatformCapabilityProfile()` returns `ANDROID_M2_CAPABILITIES` *only* when
+  `getWebsiteGateStatus().dnsGatewayActive` is currently `true` (a live TUN session actually built the
+  DNS pipeline); otherwise `ANDROID_M1_CAPABILITY_PROFILE`; `null` on iOS/web/Expo Go (Website Gate
+  does not apply there) -- never a fabricated claim merely because the app version supports it. Zero
+  M1 methods/signatures on the class were touched.
+- **Invariant proof, explicit**: the override type can never represent a block (contracts validator
+  test, above); `arm()` short-circuits to "no binding" on ALLOW (`SinkholeBindingStoreTest`, above),
+  and Phase 3's `armingAloneNeverEmitsAnyEvent` already proves arming/DNS alone never emits an event
+  -- so an override, which can only ever prevent an arm, is two structural layers removed from
+  `THREAT_BLOCKED`, which (unchanged since M1) only ever comes from
+  `GuardDogSDKEngine.reportBlockedPacket()` given a real, dropped TUN packet.
+- Consumer UI ("Apollo's Patrol") wiring is out of scope per §7 -- this phase only adds the SDK/bridge
+  surface; no screen in this repo's harness app (`frontend/app/index.tsx`) was changed.
+- Verification in this environment: `guarddog-contracts` 30/30 `node --test` passing; ESLint clean on
+  all new/changed frontend files; Expo web bundle rebuilds clean (953 modules, was 950), harness
+  screen boots with no console errors, `nativeAvailable: false` truthfully reported (no native module
+  in web preview). Native compile + the Kotlin-side tests above are the same "code-review ready,
+  CI-verified" convention as every other native-only change this milestone -- confirmed by the
+  `native-gates` CI job, not runnable in this sandbox (no JVM/Android toolchain here).

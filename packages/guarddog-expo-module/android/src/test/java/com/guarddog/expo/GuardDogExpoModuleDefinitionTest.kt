@@ -25,7 +25,13 @@ class GuardDogExpoModuleDefinitionTest {
 
         assertEquals("GuardDogSecurity", definition.name)
         assertEquals(
-            setOf("getCapabilities", "getProtectionState", "configure", "acceptRuleBundle", "analyzeUrl", "getEnforcementStats", "getRecoveryStatus", "isVpnConsentRequired"),
+            setOf(
+                "getCapabilities", "getProtectionState", "configure", "acceptRuleBundle", "analyzeUrl", "getEnforcementStats",
+                "getRecoveryStatus", "isVpnConsentRequired",
+                // Gate Guard M2 Website Gate (Phase 5): additive bridge surface, none of the above touched.
+                "configureWebsiteGate", "acceptWebsiteGateRuleBundle", "getWebsiteGateStatus", "setWebsiteGateAllowOverride",
+                "getWebsiteGateOverrides", "clearWebsiteGateOverrides",
+            ),
             definition.syncFunctions.keys,
         )
         // Expo appends startObserving/stopObserving when Events(...) is declared; assert our surface is present.

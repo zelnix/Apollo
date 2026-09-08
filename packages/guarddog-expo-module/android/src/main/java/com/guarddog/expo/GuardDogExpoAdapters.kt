@@ -5,12 +5,14 @@ import com.guarddog.core.events.SecurityEventSource
 import com.guarddog.core.events.SecurityEventType
 import com.guarddog.core.protection.ProtectionRuntimeState
 import com.guarddog.core.rules.RejectReason
+import com.guarddog.core.rules.SignedRuleBundle
 import com.guarddog.core.rules.VerificationResult
 import com.guarddog.expo.dto.BridgeCapabilityRecord
 import com.guarddog.expo.dto.BridgeProtectionConfigRecord
 import com.guarddog.expo.dto.BridgeProtectionStateRecord
 import com.guarddog.expo.dto.BridgeRuleBundleRecord
 import com.guarddog.expo.dto.BridgeSecurityEventRecord
+import com.guarddog.expo.dto.BridgeWebsiteGateStatusRecord
 import com.guarddog.vpn.VpnConfig
 import java.time.Instant
 
@@ -75,4 +77,24 @@ object GuardDogExpoAdapters {
     )
 
     fun rejectReasonName(reason: RejectReason): String = reason.name
+
+    /**
+     * Gate Guard M2 Website Gate: truthful, live status. [dnsGatewayActive] must be exactly
+     * `GuardDogVpnRuntime.websiteGateActive` (set only by a live TUN session that actually built
+     * the DNS gateway pipeline) -- never derived from [configured] alone, which only reflects that
+     * a route config was set, not that anything is actually running.
+     */
+    fun toWebsiteGateStatus(
+        configured: Boolean,
+        dnsGatewayActive: Boolean,
+        acceptedBundle: SignedRuleBundle?,
+        overrideCount: Int,
+    ): BridgeWebsiteGateStatusRecord = BridgeWebsiteGateStatusRecord().apply {
+        this.configured = configured
+        this.dnsGatewayActive = dnsGatewayActive
+        acceptedRulesetId = acceptedBundle?.rulesetId
+        acceptedBundleVersion = acceptedBundle?.bundleVersion?.toDouble()
+        acceptedKeyId = acceptedBundle?.keyId
+        this.overrideCount = overrideCount.toDouble()
+    }
 }

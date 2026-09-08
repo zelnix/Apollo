@@ -38,6 +38,16 @@ object GuardDogVpnRuntime {
     @Volatile var websiteGateRouteConfig: WebsiteGateRouteConfig? = null
     @Volatile var upstreamDnsResolverIpv4: String? = null
     @Volatile var websiteGateBindingLifetimeMillis: Long = 30_000L
+    /** Local, on-device, reversible ALLOW-only overrides (see [WebsiteGateOverrideStore]); pushed
+     * by the bridge from its own durable store, re-hydrated each session. Never null: the default
+     * is the no-op store, so a bridge that never touches this behaves exactly as if it didn't exist. */
+    @Volatile var websiteGateOverrideStore: WebsiteGateOverrideStore = NoWebsiteGateOverrides
+    /** True only while a live TUN session actually constructed the DNS gateway pipeline (see
+     * [GuardDogVpnService.establish]) -- the truthful "is Website Gate currently enforcing" signal
+     * the bridge reports, never assumed merely because [websiteGateRouteConfig]/[websiteGateEngine]
+     * happen to be configured. */
+    @Volatile var websiteGateActive: Boolean = false
+        internal set
 }
 
 /**
@@ -131,6 +141,7 @@ class GuardDogVpnService : VpnService() {
         val dnsGateway = if (websiteGateConfig != null && websiteGateEngine != null) {
             val bindingStore = SinkholeBindingStore(
                 websiteGateEngine, websiteGateConfig.sinkholePool, GuardDogVpnRuntime.websiteGateBindingLifetimeMillis, SystemClock,
+                GuardDogVpnRuntime.websiteGateOverrideStore,
             )
             val upstream = GuardDogVpnRuntime.upstreamDnsResolverIpv4
             val forwarder: UpstreamDnsForwarder = if (upstream != null) {
@@ -158,8 +169,12 @@ class GuardDogVpnService : VpnService() {
         session = TunSession(pfd, tunReader, Thread(tunReader, "guarddog-tun-reader")) {
             GuardDogVpnRuntime.dropReporter = null
             GuardDogVpnRuntime.activeSession = null
+            GuardDogVpnRuntime.websiteGateActive = false
         }.also { it.start() }
         GuardDogVpnRuntime.activeSession = session
+        // Truthful signal for the bridge: only true because this exact session actually built the
+        // DNS gateway pipeline above, never merely because config/engine happen to be set.
+        GuardDogVpnRuntime.websiteGateActive = dnsGateway != null
         val running = VpnLifecycleState.Running(System.currentTimeMillis(), spec.routes[0].cidr)
         state.transition(running)
         startForegroundCompat(ProtectionNotificationFactory.build(this, running))
@@ -202,6 +217,7 @@ class GuardDogVpnService : VpnService() {
         session = null
         GuardDogVpnRuntime.dropReporter = null
         GuardDogVpnRuntime.activeSession = null
+        GuardDogVpnRuntime.websiteGateActive = false
     }
 
     private fun startForegroundCompat(notification: android.app.Notification) {

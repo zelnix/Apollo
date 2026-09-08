@@ -77,4 +77,35 @@ class SinkholeBindingStoreTest {
         store.arm("bad-test.guarddog.example")
         assertTrue(emitted.isEmpty()) // DNS is authorization input, never enforcement evidence
     }
+
+    // --- Gate Guard M2 Phase 5: local ALLOW-only override, additive default (WebsiteGateOverrideStoreTest covers the store itself in isolation). ---
+
+    @Test fun aLocalAllowOverrideBeatsARealBlockRuleAndNeverArms() {
+        val overrides = MutableWebsiteGateOverrideStore()
+        overrides.setAllowed("bad-test.guarddog.example", true)
+        val store = SinkholeBindingStore(engineWithAcceptedM2Bundle(), pool, 5_000, clock, overrides)
+        assertNull(store.arm("bad-test.guarddog.example")) // overridden even though the signed rule says block
+    }
+
+    @Test fun removingTheOverrideRestoresTheRuleDecision() {
+        val overrides = MutableWebsiteGateOverrideStore()
+        overrides.setAllowed("bad-test.guarddog.example", true)
+        overrides.setAllowed("bad-test.guarddog.example", false)
+        val store = SinkholeBindingStore(engineWithAcceptedM2Bundle(), pool, 5_000, clock, overrides)
+        assertNotNull(store.arm("bad-test.guarddog.example")) // reversible: back to the real rule decision
+    }
+
+    @Test fun anOverrideForAnUnrelatedHostDoesNotAffectAnything() {
+        val overrides = MutableWebsiteGateOverrideStore()
+        overrides.setAllowed("some-other-host.example", true)
+        val store = SinkholeBindingStore(engineWithAcceptedM2Bundle(), pool, 5_000, clock, overrides)
+        assertNotNull(store.arm("bad-test.guarddog.example"))
+    }
+
+    @Test fun defaultOverrideStoreParameterPreservesExactPhase4Behavior() {
+        // Same construction as Phase 4's tests above (no 5th argument) -- proves the new
+        // parameter is genuinely additive/opt-in, not a behavior change for existing callers.
+        val store = SinkholeBindingStore(engineWithAcceptedM2Bundle(), pool, 5_000, clock)
+        assertNotNull(store.arm("bad-test.guarddog.example"))
+    }
 }

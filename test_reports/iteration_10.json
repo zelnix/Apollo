@@ -1,0 +1,43 @@
+{
+  "summary": "M2.1 Phase 5 (Bridge/app wiring + local override store) regression check. Phase 5 is SDK-layer only (no new UI) per scope. Verified the existing M1 proof harness screen (frontend/app/index.tsx) still boots cleanly on web preview with zero console errors, confirming the new files (GuardDogSecuritySDK.ts updates, websiteGateOverrides.ts x2) resolve correctly under Metro. GET /api/config sanity check passed (200, unchanged M1 shape). All harness cards verified: header 'APOLLO NATIVE GATES · M1 PROOF HARNESS', protection state (INACTIVE, reason 'native module unavailable (Expo Go / web): no enforcement possible'), build provenance card (Native module available: no), backend/signed-rules card (ruleset gd-m1-controlled-block, host blocktest.btciq.app, bundle v25 1 rule), local URL analysis input+button (verdict 'unknown' for example.com, sanitizedUrl stripped query correctly), acceptance chain buttons (Run proof -> truthfully reports 'Proof incomplete: requires Android native build + real controlled endpoint.', Stop protection clickable), security events card (empty state). Per instructions, did not attempt to test Website Gate DNS/sinkhole behavior via browser (out of scope, requires native Android build) and did not flag missing Website Gate UI as a bug (intentional SDK-only scope for this phase).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": [], "react_native_issues": []},
+  "verification_results": {
+    "backend_regression": {
+      "endpoint": "GET /api/config",
+      "status_code": 200,
+      "rulesetId": "gd-m1-controlled-block",
+      "controlledEndpoint_host": "blocktest.btciq.app",
+      "signingKeyId": "gd-m1-test-ed25519-001",
+      "shape_unchanged": true
+    },
+    "frontend_regression": {
+      "viewport": "390x844",
+      "harness_loaded": true,
+      "header_text": "APOLLO NATIVE GATES \u00b7 M1 PROOF HARNESS",
+      "status_badge": "INACTIVE",
+      "status_reason": "native module unavailable (Expo Go / web): no enforcement possible",
+      "native_available": "no",
+      "config_bundle_load": "ruleset gd-m1-controlled-block, v25 \u00b7 1 rule(s)",
+      "local_url_analysis": "verdict=unknown, sanitizedUrl stripped query correctly",
+      "acceptance_chain_buttons_functional": true,
+      "run_proof_result": "Proof incomplete: requires Android native build + real controlled endpoint. (expected, truthful)",
+      "stop_protection_clickable": true,
+      "events_card_empty_state": true,
+      "console_errors": 0
+    }
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "GuardDogSecuritySDK.ts Website Gate additions (configureWebsiteGate, acceptWebsiteGateRuleBundle, getWebsiteGateStatus, setWebsiteGateAllowOverride, removeWebsiteGateAllowOverride, getWebsiteGateOverrides, clearWebsiteGateOverrides, hydrateWebsiteGateOverrides, getPlatformCapabilityProfile) are additive and correctly gated behind GuardDogNative presence checks -- do not touch existing M1 code paths, consistent with the frozen M1 SDK surface comment at top of file.",
+    "websiteGateOverrides.ts (both sdk/ and contracts/shared/ copies) correctly enforce the ALLOW-only structural invariant (type: 'allow' literal union) with fail-safe validation on corrupted storage reads (catch -> return []).",
+    "No regressions detected in frozen M1 files; new imports resolve cleanly under Metro (0 bundling errors, 0 console errors)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (1/1 sanity check passed)", "frontend": "100% (harness screen full regression, 0 console errors)"},
+  "seed_data_creation": "None.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Phase 5 SDK-layer wiring verified with zero regressions on the M1 harness. Website Gate bridge methods (9 new methods on GuardDogSecuritySDK) are not exercised through UI by design and cannot be functionally tested without a native Android build (VpnService/DNS interception) -- deferred to native CI gates. If a future phase adds a consumer-facing Website Gate UI, retest override CRUD (setWebsiteGateAllowOverride/remove/get/clear) through that new UI surface at that time."
+}

@@ -1,8 +1,9 @@
 // JS side of the native module. Resolves the native module when present (dev/production
 // build with the module linked) and degrades honestly otherwise (Expo Go / web):
 // capabilities report no enforcement and startProtection() stays INACTIVE.
-// NOTE: an identical copy lives in apps/guarddog-mobile/src/sdk/nativeModule.ts because
-// Metro cannot resolve outside its project root; keep both in sync.
+// NOTE: an identical copy lives in packages/guarddog-expo-module/src/index.ts because Metro
+// cannot resolve outside its project root; keep both in sync. (Fixed in Gate Guard M2.1 Phase 5 --
+// this comment previously pointed at a stale apps/guarddog-mobile path.)
 import { requireOptionalNativeModule } from "expo-modules-core";
 
 export interface NativeProtectionState {
@@ -58,6 +59,19 @@ export interface NativeFreshProbe {
   synDropShape: boolean;
 }
 
+// --- Gate Guard M2 Website Gate (Phase 5): additive bridge surface. None of the above M1 types/methods are touched. ---
+
+/** Truthful, live snapshot of the Website Gate's native state -- dnsGatewayActive is set only by a
+ * live TUN session that actually built the DNS gateway pipeline, never assumed from configuration alone. */
+export interface NativeWebsiteGateStatus {
+  configured: boolean;
+  dnsGatewayActive: boolean;
+  acceptedRulesetId: string | null;
+  acceptedBundleVersion: number | null;
+  acceptedKeyId: string | null;
+  overrideCount: number;
+}
+
 export interface GuardDogNativeModule {
   getCapabilities(): Record<string, unknown>;
   getProtectionState(): NativeProtectionState;
@@ -73,6 +87,17 @@ export interface GuardDogNativeModule {
   isVpnConsentRequired(): boolean;
   getBuildProvenance(): Promise<NativeBuildProvenance>;
   probeControlledEndpointFresh(timeoutMs: number): Promise<NativeFreshProbe>;
+  // Gate Guard M2 Website Gate: the sinkhole pool / virtual DNS endpoint are never passed here --
+  // they are always the fixed native WebsiteGateAddressing constants.
+  configureWebsiteGate(config: { upstreamDnsResolverIpv4: string | null; bindingLifetimeMs: number }): void;
+  acceptWebsiteGateRuleBundle(rawJson: string): NativeRuleBundleResult;
+  getWebsiteGateStatus(): NativeWebsiteGateStatus;
+  /** Local, reversible, auditable ALLOW-only override. Can only ever prevent a sinkhole arming the
+   * signed rule bundle would otherwise trigger for `host` -- never arms a binding itself, never
+   * produces a THREAT_BLOCKED. Returns false if `host` fails native canonicalization. */
+  setWebsiteGateAllowOverride(config: { host: string; allowed: boolean }): boolean;
+  getWebsiteGateOverrides(): string[];
+  clearWebsiteGateOverrides(): void;
   addListener(eventName: string, listener: (payload: unknown) => void): { remove(): void };
 }
 
