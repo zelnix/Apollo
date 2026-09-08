@@ -113,6 +113,8 @@ jobs:
         with:
           name: android-release-manifest
           path: |
+            docs/evidence/guarddog-release.apk
+            docs/evidence/guarddog-release.aab
             docs/evidence/release-manifest-audit.log
             docs/evidence/release-provenance.json
             docs/evidence/release-apk-badging.txt
