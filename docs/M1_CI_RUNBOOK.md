@@ -434,3 +434,52 @@ Applied together with the pass-15 `SYSTEM_ALERT_WINDOW` fix, before the next pus
 - Expected next run: Actions UI shows the job as **"Gate Guard"**; artifact list shows `gate-guard` in place of
   `android-release-manifest`; its content is otherwise identical to the pass-15 expectation (both APK and AAB `PASS absent:
   SYSTEM_ALERT_WINDOW`, no unexpected permission) — target 6/6 green.
+
+### Run 34227446022 (native-gates #24, tip `1825118`) — 6/6 green — pass-15 fix + pass-16 rename confirmed
+| Field | Value |
+|---|---|
+| CI run | https://github.com/zelnix/Apollo/actions/runs/34227446022 (`native-gates` #24, push, **Success**, 25m26s total: `android` 7m03s · `ios` 25m14s · `executable-suites` 49s · `android-dev-build` 12m08s · **`Gate Guard`** 12m51s · `android-startup-smoke` 13m54s) |
+| Job identity | 6th job now displays as **"Gate Guard"** (job id `gate-guard`) in the Actions UI, PASS |
+| Artifact | `gate-guard` (66.1 MB, `sha256:de67cec0…78cd1185`) — replaces the old `android-release-manifest` artifact name |
+| Result | All six jobs green, including `android-dev-build` and `android-startup-smoke` — confirms the pass-15 `SYSTEM_ALERT_WINDOW` `blockedPermissions` fix does not regress the dev-build/smoke path |
+| Annotations | Only GitHub's unrelated Node.js 20 → 24 deprecation warnings across jobs; no errors |
+
+**M1 CI status: 6/6 jobs green for the first time.** Remaining before final M1 sign-off: pull the `gate-guard` artifact's
+`release-manifest-audit-{apk,aab}.txt` / `release-{apk,aab}-permissions.txt` to confirm line-by-line `PASS absent:
+SYSTEM_ALERT_WINDOW` and no `unexpected permission` entries (expected per pass 15), then write the final M1 acceptance
+attestation.
+
+
+## 6. Final M1 acceptance attestation — Gate Guard artifact audited line-by-line (pass 17)
+The last open item from pass-14 ("pull the `gate-guard` artifact and confirm line-by-line") is closed: the `gate-guard` artifact
+from Run 34227446022 was downloaded and its evidence files inspected directly (not inferred from the GitHub job's overall
+Success status alone).
+
+| Field | Value |
+|---|---|
+| Gate Guard artifact | `10057100088` (from `native-gates` #24, run https://github.com/zelnix/Apollo/actions/runs/34227446022) |
+| Build commit | `182511830f5a9ebaf909111536781a1bc9d08158` |
+| `release-apk-permissions.txt` | exactly 9 permissions, every entry on the explicit allow-list |
+| `release-aab-permissions.txt` | exactly the same 9 permissions |
+| `release-apk-vs-aab-permissions.diff` | 0 bytes — APK and AAB permission sets identical |
+| `SYSTEM_ALERT_WINDOW` | **absent** from both permission lists; both detailed audits print `PASS absent: SYSTEM_ALERT_WINDOW` explicitly |
+| `release-manifest-audit-apk.txt` | ends `RELEASE MANIFEST AUDIT (APK): PASS` |
+| `release-manifest-audit-aab.txt` | ends `RELEASE MANIFEST AUDIT (AAB): PASS` |
+| Also confirmed in both | `android:debuggable` absent; minSdk 26 / targetSdk 36; `com.guarddog.vpn.GuardDogVpnService` present with `BIND_VPN_SERVICE`, `exported=false`, `foregroundServiceType` includes `systemExempted`; required `FOREGROUND_SERVICE`/`FOREGROUND_SERVICE_SYSTEM_EXEMPTED`/`INTERNET`/`ACCESS_NETWORK_STATE`; no accessibility service; full deny-list absent |
+| `release-provenance.json` | `releaseApkSha256 3404c5771aa2a522e1c7d83f637acbb26c25742ff792499698eaa9ed7345b725` · `releaseAabSha256 5f9454dbf8f6b531dfa2823944e517b25b470884a1f32d5f92ed182baf7b275a` · `commit 182511830f5a9ebaf909111536781a1bc9d08158` · `workflowRunId 34227446022` — matches Run #24 |
+
+### M1 formal sign-off
+| Acceptance item | Status |
+|---|---|
+| Physical selective enforcement (real packet interception, `/32` route, genuine drop) | ✅ PASS (Run 17) |
+| Evidence-backed `THREAT_BLOCKED` bridge (never simulated from a rule match alone) | ✅ PASS (Run 17) |
+| Normal stop → recovery (fresh-socket HTTP 200) | ✅ PASS (Run 17) |
+| System `onRevoke()` → `REVOKED`, consent cleared, no silent restart, recovery | ✅ PASS (Run 19) |
+| Packaged release APK — Gate Guard | ✅ PASS (Run 24, artifact `10057100088`) |
+| Packaged release AAB — Gate Guard | ✅ PASS (Run 24, artifact `10057100088`) |
+| `SYSTEM_ALERT_WINDOW` absent from shipped release manifest | ✅ PASS (both containers, line-by-line confirmed) |
+| CI: all six jobs (`android`, `android-dev-build`, `android-startup-smoke`, `Gate Guard`, `ios`, `executable-suites`) | ✅ 6/6 green (Run 34227446022) |
+
+**M1 acceptance: COMPLETE.** Apollo / Guard Dog M1 (Part 4.1 + Part 5) is formally signed off on commit `1825118`, Run 24
+(`34227446022`), Gate Guard artifact `10057100088`. v25 remains the frozen, served rule bundle throughout; the Ed25519 signing
+key and verifier were never touched by the pass-15/16/17 work.
