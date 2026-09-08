@@ -27,7 +27,8 @@
     "test:higgins": "node --test tests/higginsGreeting.test.ts",
     "test:narration": "node --test tests/higginsNarration.test.ts",
     "test:truth": "node --test tests/protectionTruth.test.ts",
-    "test:failure": "node --test tests/failureModes.test.ts"
+    "test:failure": "node --test tests/failureModes.test.ts",
+    "test:higgins-checks": "node --test tests/higginsChecks.test.ts"
   },
   "dependencies": {
     "@expo/metro-runtime": "57.0.15",

@@ -101,7 +101,7 @@ export default function IncidentTimeline() {
                   <Text style={s.label}>{n.guardian_label}: <Text style={s.why}>{n.text}</Text></Text>
                   <Text style={s.meta}>{new Date(n.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</Text>
                   {n.kind === "voice" ? <VoicePlayButton noteId={n.note_id} deviceId={deviceId ?? "local-device"} durationS={n.duration_s} label={`Hear ${n.guardian_label}`} /> : null}
-                  {n.kind === "voice" ? <VoiceCaption status={n.transcript_status} text={n.transcript} testID={`incident-family-note-caption-${i}`} /> : null}
+                  {n.kind === "voice" ? <VoiceCaption status={n.transcript_status} text={n.transcript} testID={`incident-family-note-caption-${i}`} deviceId={deviceId} speaker={n.guardian_label} /> : null}
                   {n.phone ? <View style={{ flexDirection: "row", paddingTop: spacing.xs }}><Button testID={`incident-family-note-call-${i}`} variant="secondary" label={`Call ${n.guardian_label} back`} icon={<Phone size={16} color={colors.onSurface} />} onPress={() => void Linking.openURL(`tel:${n.phone.replace(/[^+\d]/g, "")}`)} /></View> : null}
                 </View>
               ))}

@@ -16,7 +16,7 @@ import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   content: { paddingHorizontal: spacing.xl, gap: spacing.lg },
-  eyebrow: { fontFamily: fonts.display, fontSize: 13, color: c.resting, letterSpacing: 1.4, textTransform: "uppercase" },
+  eyebrow: { fontFamily: fonts.display, fontSize: 13, color: c.restingText, letterSpacing: 1.4, textTransform: "uppercase" },
   title: { fontFamily: fonts.displayBold, fontSize: 34, color: c.onSurface, letterSpacing: -0.5, lineHeight: 40 },
   stateRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md, paddingVertical: spacing.sm },
   stateText: { flex: 1, gap: 2 },

@@ -21,6 +21,19 @@ export function toneColor(colors: ThemeColors, tone: Tone) {
     default: return colors.onSurfaceSecondary;
   }
 }
+/** Text painted in a state colour: darker, contrast-safe variants (see theme.ts *Text tokens). */
+export function toneText(colors: ThemeColors, tone: Tone) {
+  switch (tone) {
+    case "sniffing": return colors.sniffingText;
+    case "resting": return colors.restingText;
+    case "ears_up": return colors.ears_upText;
+    case "growling": return colors.growlingText;
+    case "barking": return colors.barkingText;
+    case "biting": return colors.bitingText;
+    case "unknown": return colors.unknownText;
+    default: return colors.onSurfaceSecondary;
+  }
+}
 export function toneTint(colors: ThemeColors, tone: Tone) {
   switch (tone) {
     case "sniffing": return colors.sniffingTint;
@@ -65,7 +78,7 @@ export function Pill({ label, tone = "neutral", testID }: { label: string; tone?
   return (
     <View testID={testID} style={[s.pill, { backgroundColor: toneTint(colors, tone) }]}>
       <View style={[s.dot, { backgroundColor: color }]} />
-      <Text style={[s.pillText, { color }]}>{label}</Text>
+      <Text style={[s.pillText, { color: toneText(colors, tone) }]}>{label}</Text>
     </View>
   );
 }
@@ -99,9 +112,10 @@ export function Button({ label, onPress, variant = "primary", icon, disabled, te
   const { colors } = useTheme();
   const palette: Record<BtnVariant, { bg: string; fg: string; border?: string }> = {
     primary: { bg: colors.brandPrimary, fg: colors.onBrandPrimary },
-    secondary: { bg: colors.surfaceTertiary, fg: colors.onSurface, border: colors.borderStrong },
-    ghost: { bg: "transparent", fg: colors.onSurfaceSecondary },
-    danger: { bg: colors.biting, fg: colors.onError },
+    // Secondary buttons sit on cards and on the sky-blue page alike: white face + navy outline keeps them unmistakably tappable.
+    secondary: { bg: colors.surfaceSecondary, fg: colors.brand, border: colors.brand },
+    ghost: { bg: "transparent", fg: colors.brand },
+    danger: { bg: colors.barkingText, fg: colors.onError },
     warning: { bg: colors.growling, fg: colors.onWarning },
   };
   const p = palette[variant];

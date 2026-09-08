@@ -12,7 +12,7 @@ import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 const useStyles = makeStyles((c) => ({
   title: { fontFamily: fonts.textSemibold, fontSize: 15, color: c.onSurface },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  stale: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.unknown },
+  stale: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.unknownText },
 }));
 
 export function ServiceBanner() {

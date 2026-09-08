@@ -12,7 +12,7 @@ import { useHigginsReader } from "@/src/voice/higgins";
 
 const useStyles = makeStyles((c) => ({
   wrap: { gap: spacing.sm },
-  now: { fontFamily: fonts.textMedium, fontSize: 13, color: c.resting },
+  now: { fontFamily: fonts.textMedium, fontSize: 13, color: c.restingText },
 }));
 
 export function HigginsReadAloud({ chunks, label = "Higgins, read this aloud", testID = "higgins-read" }: { chunks: NarrationChunk[]; label?: string; testID?: string }) {

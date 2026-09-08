@@ -9,9 +9,9 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { useHiggins } from "@/src/voice/higgins";
 
 const useStyles = makeStyles((c) => ({
-  btn: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 44, paddingHorizontal: spacing.lg, borderRadius: radius.pill, borderWidth: 1, borderColor: c.border, backgroundColor: c.surfaceTertiary, alignSelf: "flex-start" },
+  btn: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 44, paddingHorizontal: spacing.lg, borderRadius: radius.pill, borderWidth: 1, borderColor: c.brand, backgroundColor: c.surfaceSecondary, alignSelf: "flex-start" },
   on: { borderColor: c.resting, backgroundColor: c.restingTint },
-  label: { fontFamily: fonts.textMedium, fontSize: 14, color: c.onSurface },
+  label: { fontFamily: fonts.textMedium, fontSize: 14, color: c.brand },
   icon: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill },
 }));
 

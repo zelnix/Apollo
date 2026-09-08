@@ -30,7 +30,7 @@ const useStyles = makeStyles((c) => ({
   content: { paddingHorizontal: spacing.xl, gap: spacing.xl },
   headline: { fontFamily: fonts.displayBold, fontSize: 20, color: c.onSurface, lineHeight: 26 },
   input: { minHeight: 48, backgroundColor: c.surfaceTertiary, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.lg, fontFamily: fonts.text, fontSize: 15, color: c.onSurface },
-  err: { fontFamily: fonts.textMedium, fontSize: 13, color: c.barking },
+  err: { fontFamily: fonts.textMedium, fontSize: 13, color: c.barkingText },
 }));
 
 export default function FamilyAlert() {

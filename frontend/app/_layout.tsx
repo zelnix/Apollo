@@ -92,7 +92,7 @@ export default function RootLayout() {
           <SafeAreaProvider>
             <KeyboardProvider>
               <ApolloProvider>
-                <StatusBar style="light" />
+                <StatusBar style="dark" />
                 <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }}>
                   <Stack.Screen name="index" />
                   <Stack.Screen name="onboarding" />

@@ -8,6 +8,7 @@ import { Pressable, Switch, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { markCheckDone } from "@/src/store/checkCompletion";
 import { Body, Button, Card, Pill, SectionTitle, capabilityTone, toneColor } from "@/src/components/ui";
 import { CAPABILITY_STATUS_LABEL } from "@/src/domain/capability";
 import { analyseNetwork, NETWORK_CONTEXTS, type NetworkAnalysis, type NetworkContext, type NetworkSdkSummary } from "@/src/domain/networkAnalysis";
@@ -67,7 +68,8 @@ export default function CheckNetwork() {
   const protectionTitle = !(protection?.requested ?? protection?.running) ? "Protection off" : guard?.status === "active" ? "Active" : guard?.status === "permission_required" ? "Permission required" : guard?.status === "unsupported" ? "Not supported on this device" : "Available";
 
   const run = async () => {
-    const a = analyseNetwork({ status: network, context, trustedSsids, expectedName: expected, vpnTrusted, captiveUrl, sdk, recentScentCategories: scentCats });
+
+    void markCheckDone("network");    const a = analyseNetwork({ status: network, context, trustedSsids, expectedName: expected, vpnTrusted, captiveUrl, sdk, recentScentCategories: scentCats });
     let event: PatrolEvent | null = null;
     if (a.state !== "resting") {
       event = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "connection", state: a.state, status: a.state === "biting" ? "blocked" : "active", headline: `Network: ${a.title}`, what_happened: a.verdict, why: a.why, what_to_do: a.recommendation, indicator_host: captiveUrl.trim() ? captiveUrl.trim().replace(/^https?:\/\//i, "").split("/")[0] : null, indicator_digest: null, local_indicator: a.ssid, verified_block: a.state === "biting", adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: a.state === "ears_up" || a.state === "growling", claimed_brand: null, scenario: a.scenario });

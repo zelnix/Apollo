@@ -34,9 +34,9 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.onSurface,
-        tabBarInactiveTintColor: colors.muted,
-        tabBarStyle: { backgroundColor: colors.surfaceSecondary, borderTopColor: colors.border, ...(Platform.OS === "web" ? { height: 64 } : {}) },
+        tabBarActiveTintColor: colors.onNav,
+        tabBarInactiveTintColor: colors.onNavMuted,
+        tabBarStyle: { backgroundColor: colors.nav, borderTopColor: colors.nav, ...(Platform.OS === "web" ? { height: 64 } : {}) },
         tabBarItemStyle: { alignSelf: "center" },
         tabBarLabelStyle: { fontFamily: fonts.textMedium, fontSize: 11 },
         sceneStyle: { backgroundColor: colors.surface },

@@ -1,4 +1,4 @@
-// Apollo design tokens. Dark ("sentinel") theme only, per design_guidelines.json.
+// Apollo design tokens. "Light Sentinel" palette (single theme, applied in both system schemes).
 // Keys match the "color" block of /app/design_guidelines.json.
 // Components build styles with makeStyles() and read useTheme().colors for
 // color props. Never write color literals in .tsx files.
@@ -8,66 +8,82 @@ import { Appearance, StyleSheet, useColorScheme } from "react-native";
 
 export type ColorScheme = "light" | "dark";
 
-const dark = {
-  surface: "#0B1220", // Sentinel Navy — main background
-  onSurface: "#F4F7FA", // Soft White — primary text
-  surfaceSecondary: "#141A22", // Deep Charcoal — cards / panels
-  onSurfaceSecondary: "#9EABB8", // Muted Silver — secondary text on cards
-  surfaceTertiary: "#1C242F", // inputs, chips, nested fills
-  onSurfaceTertiary: "#9EABB8",
-  surfaceInverse: "#F4F7FA",
-  onSurfaceInverse: "#0B1220",
-  muted: "#9EABB8",
+// "Light Sentinel": bright, clean surfaces with strong navy structure; amber / green / red are reserved for Apollo's
+// security states so colour always means something.
+const light = {
+  surface: "#E6F0FA", // app background — soft sky blue
+  onSurface: "#0B1220", // primary navy text
+  surfaceSecondary: "#FFFFFF", // primary cards
+  onSurfaceSecondary: "#52606D", // secondary text
+  surfaceTertiary: "#D9E7F5", // secondary surface — inputs, chips, nested fills
+  onSurfaceTertiary: "#52606D",
+  surfaceInverse: "#0B1220",
+  onSurfaceInverse: "#F5F7FA",
 
-  brand: "#263241", // Slate
-  onBrand: "#F4F7FA",
-  brandPrimary: "#4FAF83", // primary CTA (resting green)
-  onBrandPrimary: "#0B1220",
-  brandSecondary: "#141A22",
-  onBrandSecondary: "#F4F7FA",
-  brandTertiary: "#1C242F",
-  onBrandTertiary: "#F4F7FA",
+  // Navigation bar: app navy with contrasting icons (amber for the active tab)
+  nav: "#162235",
+  onNav: "#F4B942",
+  onNavMuted: "#9FB0C3",
+  muted: "#52606D",
 
-  success: "#4FAF83",
+  brand: "#162235", // deep navy accent — structure, headers, primary actions
+  onBrand: "#FFFFFF",
+  brandPrimary: "#162235", // primary CTA (navy); security states never double as CTA colours
+  onBrandPrimary: "#FFFFFF",
+  brandSecondary: "#D9E7F5",
+  onBrandSecondary: "#0B1220",
+  brandTertiary: "#FFFFFF",
+  onBrandTertiary: "#0B1220",
+
+  success: "#4FAF83", // protected green
   onSuccess: "#0B1220",
-  warning: "#D9A441",
+  warning: "#E8943A", // warning amber-orange
   onWarning: "#0B1220",
-  error: "#D9534F",
-  onError: "#0B1220",
-  info: "#4FAF83",
-  onInfo: "#0B1220",
+  error: "#D9534F", // threat red
+  onError: "#FFFFFF",
+  info: "#162235",
+  onInfo: "#FFFFFF",
 
-  border: "#263241",
-  borderStrong: "#3A4B5F",
-  divider: "#263241",
+  border: "#C9D9EA",
+  borderStrong: "#A9BED4",
+  divider: "#C9D9EA",
 
   // Apollo behaviour states
-  sniffing: "#9EABB8", // Muted Silver — checking, no verdict yet
-  resting: "#4FAF83",
-  ears_up: "#D9A441", // Watchful Amber
-  growling: "#E47A3F", // Alert Orange
-  barking: "#D9534F", // Threat Red
+  sniffing: "#52606D", // checking, no verdict yet — neutral
+  resting: "#4FAF83", // protected green
+  ears_up: "#F4B942", // Apollo amber
+  growling: "#E8943A", // warning amber-orange
+  barking: "#D9534F", // threat red
   biting: "#D9534F",
   // Capability gaps (visibility lost / unsupported) — neutral, never "safe" green
-  unknown: "#6F7F91",
+  unknown: "#7A8794",
+  // Text-safe variants of the state hues (≥ 4.5:1 on white/tints). Dots, borders and icons keep the bright hue;
+  // any TEXT painted in a state colour must use these.
+  sniffingText: "#3E4A56",
+  restingText: "#1B6B47",
+  ears_upText: "#7A5200",
+  growlingText: "#9A4A0B",
+  barkingText: "#B3261E",
+  bitingText: "#B3261E",
+  unknownText: "#54636F",
 
-  // Translucent tints used for state-coloured fills over dark surfaces
-  sniffingTint: "rgba(158,171,184,0.16)",
-  restingTint: "rgba(79,175,131,0.14)",
-  ears_upTint: "rgba(217,164,65,0.16)",
-  growlingTint: "rgba(228,122,63,0.16)",
+  // Translucent tints used for state-coloured fills over light surfaces
+  sniffingTint: "rgba(82,96,109,0.14)",
+  restingTint: "rgba(79,175,131,0.20)",
+  ears_upTint: "rgba(244,185,66,0.26)",
+  growlingTint: "rgba(232,148,58,0.20)",
   barkingTint: "rgba(217,83,79,0.16)",
   bitingTint: "rgba(217,83,79,0.16)",
-  unknownTint: "rgba(111,127,145,0.16)",
-  scrim: "rgba(11,18,32,0.72)",
-  glass: "rgba(20,26,34,0.82)",
+  unknownTint: "rgba(122,135,148,0.16)",
+  scrim: "rgba(11,18,32,0.55)",
+  glass: "rgba(255,255,255,0.88)",
 };
 
-export type ThemeColors = typeof dark;
+export type ThemeColors = typeof light;
 
-export const defaultScheme = "dark" satisfies ColorScheme;
+export const defaultScheme = "light" satisfies ColorScheme;
 
-export const themes: { light: ThemeColors; dark?: ThemeColors } = { light: dark, dark };
+export const themes: { light: ThemeColors; dark?: ThemeColors } = { light, dark: light };
 
 export const fonts = {
   display: "Outfit-600",

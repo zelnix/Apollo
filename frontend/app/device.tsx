@@ -7,6 +7,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { markCheckDone } from "@/src/store/checkCompletion";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { assessDevice, DEVICE_STATUS, EMPTY_SIGNALS, SELF_REPORT, type DeviceFinding, type DevicePlatform, type DeviceSignals, type SelfReport } from "@/src/domain/deviceAnalysis";
@@ -52,6 +53,7 @@ export default function CheckDevice() {
   const save = async () => {
     setSaving(true);
     try {
+    void markCheckDone("device");
       const ev = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "device", state: result.state, status: "active", headline: `Device: ${meta.title}`, what_happened: result.summary, why: result.findings.map((f) => `${f.title}: ${f.plain}`), what_to_do: result.recoverySteps[0] ?? result.findings[0]?.action ?? "Review the items Apollo listed.", indicator_host: null, indicator_digest: null, verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: null, scenario: result.findings[0]?.id ?? "D00" });
       setEvent(ev);
       showToast("Saved to Patrol. Apollo will stay with you.", "neutral");

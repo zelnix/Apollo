@@ -7,6 +7,7 @@ import { Pressable, Switch, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { markCheckDone } from "@/src/store/checkCompletion";
 import { apiPost } from "@/src/api/client";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
@@ -69,6 +70,7 @@ export default function CheckApp() {
   const run = async () => {
     setBusy(true);
     try {
+    void markCheckDone("app");
       let network: AppNetwork | null = null;
       const sdk = await AppDeviceSdk.getInstalledAppAssessment(name.trim());
       if (sdk?.network) network = sdk.network;

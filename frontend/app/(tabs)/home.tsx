@@ -38,7 +38,7 @@ const useStyles = makeStyles((c) => ({
   capTitle: { fontFamily: fonts.textMedium, fontSize: 15, color: c.onSurface, flex: 1 },
   empty: { alignItems: "flex-start", gap: spacing.sm },
   emptyTitle: { fontFamily: fonts.display, fontSize: 16, color: c.onSurface },
-  link: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.resting },
+  link: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.restingText },
 }));
 
 export default function Home() {

@@ -67,7 +67,7 @@ export default function Benchmark() {
         <Card style={{ gap: spacing.md }}>
           <Body>Runs a labelled corpus (60 threats, 60 clean sites) through Apollo&apos;s on-device engine and reputation intelligence, then scores it against the launch gates: detection ≥ {GATES.detectionMin * 100}% and false positives &lt; {GATES.falsePositiveMax * 100}%.</Body>
           <Button testID="benchmark-run" label={busy ? "Running…" : report ? "Run again" : "Run benchmark"} onPress={run} disabled={busy} icon={busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : undefined} />
-          {error ? <Text style={{ color: colors.barking, fontFamily: fonts.textMedium }} testID="benchmark-error">{error}</Text> : null}
+          {error ? <Text style={{ color: colors.barkingText, fontFamily: fonts.textMedium }} testID="benchmark-error">{error}</Text> : null}
         </Card>
 
         {history.length > 0 ? (

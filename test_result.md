@@ -467,3 +467,23 @@ frontend:
   - task: "VoiceCaption under voice notes: family-note-caption-<i> (guardian) / incident-family-note-caption-<i> (Mum)."
     implemented: true
     working: true  # iteration 37 E2E PASS; prompt-echo hallucination guard added after tester note
+
+## Iteration 38 — Light Sentinel palette + Higgins reads captions
+frontend:
+  - task: "Theme switched to Light Sentinel (single light palette). Smoke screenshots OK (onboarding, Home, Guard). VoiceCaption Higgins read-aloud button <captionTestID>-higgins."
+    implemented: true
+    working: "NA"
+    needs_retesting: true
+
+## Iteration 39 — sky-blue background, navy nav bar, contrast fixes
+frontend:
+  - task: "theme.ts surface #E6F0FA, nav tokens, *Text state tokens; ui.tsx toneText for Pill labels; state text sites migrated. Smoke screenshots OK."
+    implemented: true
+    working: "NA"
+    needs_retesting: true
+
+## Iteration 40 — Higgins names/links/tracks checks; button distinctiveness; contrast fixes
+frontend:
+  - task: "Ask tab: parseChecks + HigginsChecks chips (higgins-checks-<msgId>, higgins-check-<id>, -done, higgins-checks-progress-<msgId>); markCheckDone wired in link/message/app/account/device/network. Secondary buttons white+navy outline; danger #B3261E; onboarding eyebrow restingText; restingText #1B6B47. Backend prompt emits CHECKS: trailer (verified via curl)."
+    implemented: true
+    working: true  # iteration 40 tester PASS on chips/navigation/Done/reload; iteration 41 added where-to-look + state-tied advice (verified via curl + screenshot); HigginsSpeakButton restyled

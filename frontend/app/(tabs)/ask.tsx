@@ -7,12 +7,14 @@ import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiGet, streamPost } from "@/src/api/client";
+import { HigginsChecks } from "@/src/components/HigginsChecks";
 import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
 import { Body, Card, Pill, ScreenHeader } from "@/src/components/ui";
+import { parseChecks } from "@/src/domain/higginsChecks";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
-interface Msg { id: string; role: "user" | "apollo"; content: string; pending?: boolean }
+interface Msg { id: string; role: "user" | "apollo"; content: string; pending?: boolean; at: string }
 const SUGGESTIONS = ["What does it mean when Apollo growls?", "Why can't Apollo see my whole phone?", "How do I spot a scam text link?", "What should I do after Apollo barks?"];
 
 const useStyles = makeStyles((c) => ({
@@ -46,15 +48,16 @@ export default function Ask() {
   const abortRef = useRef<(() => void) | null>(null);
   const contextUsed = useRef(false);
 
-  const history = useQuery({ queryKey: ["ask-history", deviceId], enabled: !!deviceId, queryFn: () => apiGet<{ id: string; role: "user" | "apollo"; content: string }[]>(`/ask/history?device_id=${deviceId}`) });
-  useEffect(() => { if (history.data && messages.length === 0) setMessages(history.data.map((m) => ({ id: m.id, role: m.role, content: m.content }))); }, [history.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  const history = useQuery({ queryKey: ["ask-history", deviceId], enabled: !!deviceId, queryFn: () => apiGet<{ id: string; role: "user" | "apollo"; content: string; created_at: string }[]>(`/ask/history?device_id=${deviceId}`) });
+  useEffect(() => { if (history.data && messages.length === 0) setMessages(history.data.map((m) => ({ id: m.id, role: m.role, content: m.content, at: m.created_at }))); }, [history.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const send = (msg: string, context?: string) => {
     const clean = msg.trim();
     if (!clean || streaming || !deviceId) return;
     setError(null);
-    const userMsg: Msg = { id: `u-${Date.now()}`, role: "user", content: clean };
-    const apolloMsg: Msg = { id: `a-${Date.now()}`, role: "apollo", content: "", pending: true };
+    const now = new Date().toISOString();
+    const userMsg: Msg = { id: `u-${Date.now()}`, role: "user", content: clean, at: now };
+    const apolloMsg: Msg = { id: `a-${Date.now()}`, role: "apollo", content: "", pending: true, at: now };
     setMessages((m) => [...m, userMsg, apolloMsg]);
     setText(""); setStreaming(true);
     abortRef.current = streamPost("/ask/stream", "ask_apollo", { device_id: deviceId, message: clean, ...(context ? { context } : {}) },
@@ -86,8 +89,9 @@ export default function Ask() {
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
           renderItem={({ item }) => (
             <View style={[s.bubble, item.role === "user" ? s.user : s.apollo]} testID={`ask-msg-${item.role}`}>
-              {item.pending ? <ActivityIndicator color={colors.resting} /> : <Text style={s.text}>{item.content}</Text>}
-              {item.role === "apollo" && !item.pending && item.content ? <View style={{ marginTop: spacing.sm }}><HigginsSpeakButton text={item.content} testID={`ask-hear-${item.id}`} /></View> : null}
+              {item.pending ? <ActivityIndicator color={colors.resting} /> : <Text style={s.text}>{item.role === "apollo" ? parseChecks(item.content).text : item.content}</Text>}
+              {item.role === "apollo" && !item.pending ? <HigginsChecks checks={parseChecks(item.content).checks} askedAt={item.at} messageId={item.id} /> : null}
+              {item.role === "apollo" && !item.pending && item.content ? <View style={{ marginTop: spacing.sm }}><HigginsSpeakButton text={parseChecks(item.content).text} testID={`ask-hear-${item.id}`} /></View> : null}
             </View>
           )}
           ListEmptyComponent={
@@ -97,7 +101,7 @@ export default function Ask() {
             </Card>
           }
         />
-        {error ? <Text style={[s.disclaimer, { color: colors.barking }]} testID="ask-error">{error}</Text> : null}
+        {error ? <Text style={[s.disclaimer, { color: colors.barkingText }]} testID="ask-error">{error}</Text> : null}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipRow} testID="ask-suggestions">
           {SUGGESTIONS.map((q) => (
             <Pressable key={q} testID={`ask-suggestion-${SUGGESTIONS.indexOf(q)}`} style={s.chip} onPress={() => send(q)}><Text style={s.chipText}>{q}</Text></Pressable>

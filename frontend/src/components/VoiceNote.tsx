@@ -6,12 +6,14 @@ import Mic from "lucide-react-native/icons/mic";
 import Pause from "lucide-react-native/icons/pause";
 import Play from "lucide-react-native/icons/play";
 import Send from "lucide-react-native/icons/send";
+import Volume2 from "lucide-react-native/icons/volume-2";
 import React, { useEffect, useRef, useState } from "react";
 import { Linking, Platform, Pressable, Text, View } from "react-native";
 
 import { apiGet, apiUpload } from "@/src/api/client";
 import { Body, Button } from "@/src/components/ui";
 import { useApollo } from "@/src/store/ApolloContext";
+import { useHiggins } from "@/src/voice/higgins";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 export const VOICE_MAX_SECONDS = 30;
@@ -23,6 +25,8 @@ const useStyles = makeStyles((c) => ({
   playBtn: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 44, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: c.border, alignSelf: "flex-start" },
   playText: { fontFamily: fonts.textMedium, fontSize: 14, color: c.onSurface },
   caption: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurface, fontStyle: "italic" },
+  higginsBtn: { flexDirection: "row", alignItems: "center", gap: spacing.xs, minHeight: 44, alignSelf: "flex-start", paddingRight: spacing.sm },
+  higginsText: { fontFamily: fonts.textMedium, fontSize: 13, color: c.brand },
 }));
 
 const fmt = (ms: number) => { const s = Math.min(VOICE_MAX_SECONDS, Math.floor(ms / 1000)); return `0:${String(s).padStart(2, "0")}`; };
@@ -125,9 +129,26 @@ export function VoiceNoteRecorder({ scentId, deviceId, fromName, onSent }: { sce
 }
 
 /** Caption under a voice note so it can be read when listening isn't possible. Pending → "Caption coming…"; unavailable → says so. */
-export function VoiceCaption({ status, text, testID }: { status?: "pending" | "ready" | "unavailable"; text?: string; testID?: string }) {
+export function VoiceCaption({ status, text, testID, deviceId, speaker }: { status?: "pending" | "ready" | "unavailable"; text?: string; testID?: string; deviceId?: string | null; speaker?: string }) {
   const s = useStyles();
-  if (status === "ready" && text) return <Text style={s.caption} testID={testID}>“{text}”</Text>;
+  const { colors } = useTheme();
+  const higgins = useHiggins(deviceId ?? null);
+  if (status === "ready" && text) {
+    // Higgins reads the caption in his own voice — the fallback when the original recording won't play (or can't be heard).
+    const line = speaker ? `${speaker} says: ${text}` : text;
+    const reading = !!higgins.speaking && higgins.speaking === line.trim().slice(0, 1500);
+    return (
+      <View style={{ gap: spacing.xs }}>
+        <Text style={s.caption} testID={testID}>“{text}”</Text>
+        {deviceId ? (
+          <Pressable testID={testID ? `${testID}-higgins` : undefined} accessibilityRole="button" accessibilityLabel={reading ? "Stop Higgins" : "Ask Higgins to read this caption"} onPress={() => void higgins.speak(line)} disabled={higgins.busy} style={s.higginsBtn}>
+            <Volume2 size={14} color={colors.brand} />
+            <Text style={s.higginsText}>{higgins.busy ? "Higgins is clearing his throat…" : reading ? "Stop Higgins" : "Can't play it? Let Higgins read it"}</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    );
+  }
   if (status === "pending") return <Text style={s.hint} testID={testID}>Caption coming…</Text>;
   if (status === "unavailable") return <Text style={s.hint} testID={testID}>No caption for this one — press play to listen.</Text>;
   return null;
@@ -164,7 +185,7 @@ export function VoicePlayButton({ noteId, deviceId, durationS, label }: { noteId
       p.replace({ uri: t.url });
       p.play();
       playingId = noteId; playListeners.forEach((l) => l());
-    } catch (e) { setErr(e instanceof Error ? e.message : "Couldn't play this voice note right now."); }
+    } catch (e) { setErr(`${e instanceof Error ? e.message : "Couldn't play this voice note right now."} If there's a caption below, Higgins can read it to you.`); }
     finally { setBusy(false); }
   };
   return (

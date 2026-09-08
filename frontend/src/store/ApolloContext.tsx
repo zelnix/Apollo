@@ -16,6 +16,7 @@ import { decide } from "@/src/domain/decision";
 import { parseIntelResult } from "@/src/domain/intelContract";
 import { minimalIndicator } from "@/src/domain/privacy";
 import { FAILURE_MESSAGE } from "@/src/domain/serviceHealth";
+import { markCheckDone } from "@/src/store/checkCompletion";
 import { analyseMessage, type MessageAnalysis } from "@/src/domain/messageAnalysis";
 import type { PageAnalysis } from "@/src/domain/pageAnalysis";
 import { analyseCall, type CallAnalysis, type CallInput } from "@/src/domain/callAnalysis";
@@ -377,6 +378,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       });
       if (event.state !== state) { state = event.state; }
     }
+    void markCheckDone("message");
     return { analysis: { ...analysis, state, why }, urls, explanation, remoteError, event };
   }, [deviceId, upsertEvent]);
 
@@ -466,6 +468,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       claimed_brand: decision.claimed_brand ?? null,
     };
     if (isEvent || decision.state === "resting") await upsertEvent(ev); // resting checks are still traceable in Patrol
+    void markCheckDone("link");
     return { local, intel, intelError, decision, event: ev };
   }, [deviceId, trust, upsertEvent]);
 

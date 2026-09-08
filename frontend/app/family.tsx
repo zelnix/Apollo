@@ -36,7 +36,7 @@ const useStyles = makeStyles((c) => ({
   name: { fontFamily: fonts.textMedium, fontSize: 15, color: c.onSurface },
   linkText: { fontFamily: fonts.textMedium, fontSize: 14, color: c.brandPrimary, paddingVertical: spacing.sm },
   code: { fontFamily: fonts.displayBold, fontSize: 32, letterSpacing: 6, color: c.onSurface, textAlign: "center" },
-  err: { fontFamily: fonts.textMedium, fontSize: 13, color: c.barking },
+  err: { fontFamily: fonts.textMedium, fontSize: 13, color: c.barkingText },
 }));
 
 export default function Family() {

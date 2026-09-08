@@ -147,7 +147,7 @@ export default function FamilyIncident() {
                       <View style={{ flex: 1, gap: spacing.xs }}>
                         <Text style={s.why}>{n.kind === "voice" ? "Voice note" : n.text} <Text style={s.meta}>· {new Date(n.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}{n.phone ? ` · call back ${n.phone}` : ""}</Text></Text>
                         {n.kind === "voice" ? <VoicePlayButton noteId={n.note_id} deviceId={deviceId ?? "local-device"} durationS={n.duration_s} label="Listen back" /> : null}
-                        {n.kind === "voice" ? <VoiceCaption status={n.transcript_status} text={n.transcript} testID={`family-note-caption-${i}`} /> : null}
+                        {n.kind === "voice" ? <VoiceCaption status={n.transcript_status} text={n.transcript} testID={`family-note-caption-${i}`} deviceId={deviceId} /> : null}
                       </View>
                     </View>
                   ))}

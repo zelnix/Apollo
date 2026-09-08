@@ -32,7 +32,7 @@ const useStyles = makeStyles((c) => ({
   content: { paddingHorizontal: spacing.xl, gap: spacing.xl },
   item: { gap: 4, paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: c.divider },
   what: { fontFamily: fonts.textSemibold, fontSize: 15, color: c.onSurface },
-  when: { fontFamily: fonts.textMedium, fontSize: 13, color: c.growling },
+  when: { fontFamily: fonts.textMedium, fontSize: 13, color: c.growlingText },
   footer: { paddingHorizontal: spacing.xl, paddingTop: spacing.md, gap: spacing.sm, borderTopWidth: 1, borderTopColor: c.border },
   legal: { fontFamily: fonts.text, fontSize: 12, lineHeight: 18, color: c.muted },
 }));
@@ -105,7 +105,7 @@ export default function PrivacyDisclosure() {
       </ScrollView>
       {!setupDone ? (
         <View style={[s.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
-          {error ? <Text style={{ color: colors.barking, fontFamily: fonts.textMedium }} testID="disclosure-error">{error}</Text> : null}
+          {error ? <Text style={{ color: colors.barkingText, fontFamily: fonts.textMedium }} testID="disclosure-error">{error}</Text> : null}
           <Button testID="disclosure-accept-button" label={busy ? "Setting up…" : "I understand — set up Apollo"} onPress={accept} disabled={busy} icon={busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : undefined} />
           <Button testID="disclosure-back-button" variant="ghost" label="Back" onPress={() => goBackOrHome(router)} />
         </View>

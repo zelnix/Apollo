@@ -8,6 +8,7 @@ import { Pressable, Switch, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { markCheckDone } from "@/src/store/checkCompletion";
 import { apiPost } from "@/src/api/client";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
@@ -69,6 +70,7 @@ export default function CheckAccount() {
   const run = async () => {
     setBusy(true);
     try {
+    void markCheckDone("account");
       const prov = ACCOUNT_PROVIDERS.find((p) => p.id === provider)!;
       const linked = recentLinked.find((e) => e.claimed_brand && ((prov.brand && e.claimed_brand.toLowerCase().includes(prov.brand.toLowerCase())) || (provider === "bank" && BANK_RE.test(e.claimed_brand)))) ?? (initiated === false || flags.enteredCode || flags.enteredPassword ? recentLinked[0] ?? null : null);
       const input = { kind, provider, text: text.trim() || undefined, sender: sender.trim() || undefined, userInitiated: initiated, ...flags, recentScentCategories: (linked ? recentLinked : []).map((e) => e.category), recentScentBrand: linked?.claimed_brand ?? null };
