@@ -21,7 +21,7 @@ export function HigginsReadAloud({ chunks, label = "Higgins, read this aloud", t
   const { deviceId, showToast } = useApollo();
   const { read, stop, progress, busy } = useHigginsReader(deviceId);
   const reading = !!progress;
-  const start = () => { void read(chunks.map((c) => c.text)).catch((e: Error) => showToast(e.message || "Higgins couldn't read just now.", "neutral")); };
+  const start = () => { void read(chunks.map((c) => c.text)).catch((e: Error) => showToast(e.message || "I couldn't read just now.", "neutral")); };
   return (
     <View style={s.wrap} testID={testID}>
       <Button testID={`${testID}-button`} variant={reading ? "ghost" : "secondary"} label={busy ? "Higgins is clearing his throat…" : reading ? "Stop reading" : label} icon={busy ? <ActivityIndicator size="small" color={colors.onSurface} /> : reading ? <Square size={16} color={colors.onSurface} /> : <BookOpen size={18} color={colors.onSurface} />} onPress={reading ? stop : start} disabled={busy} />

@@ -38,13 +38,13 @@ async def voice_speak(body: SpeakIn):
     key = sha256(f"{text}|{HIGGINS_TTS['voice']}|{HIGGINS_TTS['speed']}|{HIGGINS_TTS['model']}|mp3".encode()).hexdigest()[:40]
     if not await db.voice_cache.find_one({"key": key}, {"_id": 1}):
         if not EMERGENT_LLM_KEY:
-            raise HTTPException(status_code=503, detail="Higgins' voice isn't configured on this server.")
+            raise HTTPException(status_code=503, detail="I don't have a voice configured on this server yet.")
         from emergentintegrations.llm.openai import OpenAITextToSpeech
         try:
             audio = await asyncio.wait_for(OpenAITextToSpeech(api_key=EMERGENT_LLM_KEY).generate_speech(text=text, model=HIGGINS_TTS["model"], voice=HIGGINS_TTS["voice"], speed=HIGGINS_TTS["speed"], response_format="mp3"), timeout=30)
         except Exception as exc:  # noqa: BLE001
             logger.warning("tts failed: %s", type(exc).__name__)
-            raise HTTPException(status_code=502, detail="Higgins has lost his voice for a moment. Do try again shortly.")
+            raise HTTPException(status_code=502, detail="I've lost my voice for a moment. Do try again shortly.")
         await db.voice_cache.update_one({"key": key}, {"$set": {"key": key, "audio": audio, "chars": len(text), "created_at": now_utc()}}, upsert=True)
     return {"url": f"/api/voice/{key}.mp3", "chars": len(text)}
 

@@ -130,7 +130,7 @@ export function streamPost(path: string, endpoint: EgressEndpoint, body: Record<
     // 401 → identity reset; 403 → forbidden, identity untouched.
     if (xhr.status === 401) { void resetDeviceIdentity("Device credential rejected."); finish("Apollo needs to re-register this device. Try again in a moment."); }
     else if (xhr.status === 403) finish("This device isn't allowed to do that.");
-    else if (xhr.status >= 400) finish("Higgins could not answer right now.");
+    else if (xhr.status >= 400) finish("I couldn't answer right now.");
     else finish();
   };
   xhr.onerror = () => { markBackendFailure("offline"); finish(FAILURE_MESSAGE.offline); };

@@ -68,7 +68,7 @@ async def ask_stream(body: AskRequest):
                 yield chunk
         except Exception as exc:  # noqa: BLE001
             logger.warning("ask stream failed: %s", type(exc).__name__)
-            yield f"data: {json.dumps({'error': 'Apollo could not answer right now.'})}\n\n"
+            yield f"data: {json.dumps({'error': 'I could not answer right now.'})}\n\n"
 
     return StreamingResponse(gen(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 

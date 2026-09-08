@@ -23,7 +23,7 @@ export function HigginsSpeakButton({ text, label = "Hear Higgins", compact = fal
   const active = !!speaking && speaking === text.trim().slice(0, 1500);
   const onPress = () => {
     if (!active) onExtraPress?.();
-    void speak(text).catch((e: Error) => showToast(e.message || "Higgins couldn't speak just now.", "neutral"));
+    void speak(text).catch((e: Error) => showToast(e.message || "I couldn't speak just now.", "neutral"));
   };
   const Icon = active ? VolumeX : Volume2;
   if (compact) {
