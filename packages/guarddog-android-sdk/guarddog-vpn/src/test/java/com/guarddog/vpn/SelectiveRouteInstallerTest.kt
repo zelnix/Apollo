@@ -17,6 +17,31 @@ class SelectiveRouteInstallerTest {
         assertEquals("203.0.113.10/32", spec.routes[0].cidr)
     }
 
+    /** Dual-stack phones: the spec must route exactly one IPv4 /32 AND let IPv6 bypass (Android blocks an unconfigured family otherwise). */
+    @Test fun ipv6FallsThroughWhileOnlyTheIpv4Slash32IsRouted() {
+        val spec = SelectiveRouteInstaller.buildSpec(config, "203.0.113.10")
+        assertTrue(spec.allowIpv6Bypass, "IPv6 must be allowed to bypass the tunnel")
+        assertEquals(1, spec.routes.size)
+        assertTrue(spec.routes.none { it.address.contains(":") }, "no IPv6 route may ever be installed")
+        assertTrue(!spec.copy(allowIpv6Bypass = false).isSelective, "a spec that intercepts IPv6 is not selective")
+    }
+
+    /**
+     * Frozen M1 acceptance constants (blocktest.btciq.app → 52.25.179.131, offline — the binding result is injected, no DNS):
+     * the installed route set must be exactly [52.25.179.131/32] and IPv6 must be explicitly allowed to bypass, never routed into the TUN.
+     */
+    @Test fun frozenM1EndpointRoutesExactlyTheDedicatedSlash32AndBypassesIpv6() {
+        val frozen = VpnConfig("blocktest.btciq.app", "52.25.179.131", "https://blocktest.btciq.app/", "gd-m1-controlled-block")
+        val binding = ControlledEndpointResolver(frozen) { listOf("52.25.179.131") }.verifyBinding()
+        assertIs<BindingResult.Match>(binding)
+        val spec = SelectiveRouteInstaller.buildSpec(frozen, binding.ipv4)
+        assertEquals(listOf(RouteSpec("52.25.179.131", 32)), spec.routes)
+        assertEquals("52.25.179.131/32", spec.routes.single().cidr)
+        assertTrue(spec.isSelective)
+        assertTrue(spec.allowIpv6Bypass, "IPv6 must be allowed to bypass (allowFamily(AF_INET6)), not intercepted")
+        assertTrue(spec.routes.none { it.address == "0.0.0.0" || it.address == "::" || it.address.contains(":") })
+    }
+
     @Test fun refusesUnverifiedTarget() {
         assertFailsWith<IllegalArgumentException> { SelectiveRouteInstaller.buildSpec(config, "198.51.100.7") }
     }

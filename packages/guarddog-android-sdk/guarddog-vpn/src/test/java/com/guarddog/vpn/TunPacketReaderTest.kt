@@ -57,4 +57,21 @@ class TunPacketReaderTest {
         TunPacketReader(ByteArrayInputStream(ipv4(intArrayOf(203, 0, 113, 10), 1, 443)), drop).run()
         assertEquals(0, out.size()) // reader has no output side at all
     }
+
+    /** unexpectedPackets is split into privacy-safe categories; a wrong-destination IPv4 inside the /32-only TUN is a route-leak indicator. */
+    @Test fun unexpectedPacketsAreCategorisedWithoutAddresses() {
+        val clock = FixedClock(1_000)
+        val drop = PacketDropReporter("203.0.113.10", BlockedFlowDeduper(5_000, clock), { }, clock)
+        val ipv6 = ByteArray(40).also { it[0] = 0x60 }                  // version nibble 6
+        val truncated = byteArrayOf(0x45, 0x00, 0x00, 0x14)              // IPv4 header cut short
+        val reader = TunPacketReader(PacketStream(listOf(ipv6, truncated, ipv4(intArrayOf(198, 51, 100, 7), 1, 2), ipv4(intArrayOf(203, 0, 113, 10), 51000, 443))), drop)
+        reader.run()
+        val stats = drop.stats()
+        assertEquals(3, stats.unexpectedPackets)
+        assertEquals(1, stats.nonIpv4)
+        assertEquals(1, stats.malformedIpv4)
+        assertEquals(1, stats.wrongDestinationIpv4)
+        assertEquals(1, stats.observedMatching)
+        assertEquals(stats.unexpectedPackets, stats.nonIpv4 + stats.malformedIpv4 + stats.wrongDestinationIpv4)
+    }
 }

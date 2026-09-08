@@ -14,6 +14,14 @@ data class Ipv4PacketInfo(
 }
 
 object Ipv4PacketParser {
+    enum class Kind { IPV4, NON_IPV4, MALFORMED }
+
+    /** Cheap classification for diagnostics: IP version nibble 4 → IPV4 (may still be malformed), 6/other → NON_IPV4, too short → MALFORMED. */
+    fun classify(buffer: ByteArray, length: Int): Kind {
+        if (length < 1 || buffer.isEmpty()) return Kind.MALFORMED
+        return if ((buffer[0].toInt() and 0xff) ushr 4 == 4) Kind.IPV4 else Kind.NON_IPV4
+    }
+
     const val PROTO_TCP = 6
     const val PROTO_UDP = 17
 

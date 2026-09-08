@@ -31,7 +31,7 @@ class TunPacketReader(
                 if (n < 0) break
                 if (n == 0) continue
                 packetsRead++
-                dropReporter.onPacket(Ipv4PacketParser.parse(buffer, n))
+                dropReporter.onPacket(Ipv4PacketParser.parse(buffer, n), Ipv4PacketParser.classify(buffer, n))
             }
         } catch (e: IOException) {
             if (running) onError(e)

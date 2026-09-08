@@ -15,6 +15,7 @@ import com.guarddog.core.rules.TrustedKeyRegistry
 import com.guarddog.expo.dto.BridgeProtectionConfigRecord
 import com.guarddog.vpn.BindingResult
 import com.guarddog.vpn.ControlledEndpointResolver
+import com.guarddog.vpn.FreshConnectionProbe
 import com.guarddog.vpn.GuardDogVpnRuntime
 import com.guarddog.vpn.GuardDogVpnService
 import com.guarddog.vpn.RecoveryInspector
@@ -126,7 +127,8 @@ class GuardDogExpoModule : Module() {
         Function("getEnforcementStats") {
             GuardDogVpnRuntime.dropReporter?.stats()?.let {
                 mapOf("observedMatching" to it.observedMatching, "droppedMatching" to it.droppedMatching, "reportedBlocks" to it.reportedBlocks,
-                    "dedupedRetries" to it.dedupedRetries, "unexpectedPackets" to it.unexpectedPackets)
+                    "dedupedRetries" to it.dedupedRetries, "unexpectedPackets" to it.unexpectedPackets,
+                    "nonIpv4" to it.nonIpv4, "malformedIpv4" to it.malformedIpv4, "wrongDestinationIpv4" to it.wrongDestinationIpv4)
             }
         }
 
@@ -136,6 +138,19 @@ class GuardDogExpoModule : Module() {
             mapOf("lifecycle" to r.lifecycle, "tunOpen" to r.tunOpen, "selectiveRouteActive" to r.selectiveRouteActive,
                 "vpnTransportPresent" to r.vpnTransportPresent, "routeCidr" to r.routeCidr, "dropReporterAttached" to r.dropReporterAttached,
                 "recovered" to r.recovered)
+        }
+
+        // Harness-only fresh-connection probe of the CONFIGURED controlled endpoint (no caller-supplied URL: nothing else is ever probed or
+        // recorded). Opens a brand-new, unprotected socket each call so the probe is subject to our own /32 route; see FreshConnectionProbe.
+        AsyncFunction("probeControlledEndpointFresh") { timeoutMs: Int, promise: Promise ->
+            val config = GuardDogVpnRuntime.config ?: throw CodedException("ERR_NOT_CONFIGURED", "configure() not called", null)
+            Thread {
+                try {
+                    promise.resolve(FreshConnectionProbe.run(config.controlledUrl, config.controlledIpv4, timeoutMs, GuardDogVpnRuntime.resolver).toMap())
+                } catch (e: Exception) {
+                    promise.reject(CodedException("E_FRESH_PROBE", e.message, e))
+                }
+            }.start()
         }
 
         // Build provenance for the device proof: SHA-256 of the installed base APK (compared against the CI artifact hash),

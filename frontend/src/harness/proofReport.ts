@@ -14,7 +14,7 @@ import type { M1Config } from "@/src/harness/ruleBundleFixtures";
 import { GuardDogSecuritySDK } from "@/src/sdk/GuardDogSecuritySDK";
 
 export interface ProofReport {
-  reportVersion: "m1-3";
+  reportVersion: "m1-4";
   generatedAt: string;
   platform: string;
   nativeModuleAvailable: boolean;
@@ -27,6 +27,8 @@ export interface ProofReport {
     canonicalControlledHost: string;
     configuredControlledIpv4: string;
     routeActivation: { status: string; detail: string } | null;
+    /** Fresh-socket probes (new TCP socket each): before protection, under protection (must be the SYN-drop shape), after stop. */
+    freshConnectionProbes: HarnessResult["freshProbes"];
     packetObservation: Record<string, number> | null;
     intentionalDrop: boolean;
     enforcementEvidenceId: string | null;
@@ -48,9 +50,9 @@ export function buildProofReport(
   const blocked = result.blockedEvent;
   // Captured by the harness before recovery (stopping clears the native drop reporter).
   const stats = result.enforcementStats;
-  const start = result.steps.find((s) => s.id === "start") ?? null;
+  const routeActive = result.steps.find((s) => s.id === "route-active") ?? null;
   return {
-    reportVersion: "m1-3",
+    reportVersion: "m1-4",
     generatedAt: new Date().toISOString(),
     platform: Platform.OS,
     nativeModuleAvailable: GuardDogSecuritySDK.nativeAvailable,
@@ -61,9 +63,10 @@ export function buildProofReport(
       signedBundle: { rulesetId: bundle?.rulesetId ?? null, bundleVersion: bundle?.bundleVersion ?? null, keyId: bundle?.keyId ?? null, payloadHash: bundle?.payloadHash ?? null },
       canonicalControlledHost: config.controlledEndpoint.host,
       configuredControlledIpv4: config.controlledEndpoint.ipv4,
-      routeActivation: start ? { status: start.status, detail: start.detail } : null,
+      routeActivation: routeActive ? { status: routeActive.status, detail: routeActive.detail } : null, // live snapshot, not the start-step echo
+      freshConnectionProbes: result.freshProbes,
       packetObservation: stats,
-      intentionalDrop: !!blocked && (stats?.droppedMatching ?? 0) > 0,
+      intentionalDrop: !!blocked && (stats?.observedMatching ?? 0) > 0 && (stats?.droppedMatching ?? 0) > 0,
       enforcementEvidenceId: blocked?.enforcementEvidenceId ?? null,
       securityEventId: blocked?.id ?? null,
       bridgeReceipt: blocked ? { type: "THREAT_BLOCKED", source: blocked.source, occurredAt: blocked.occurredAt } : null,
@@ -78,6 +81,10 @@ function esc(v: unknown): string {
   return String(v ?? "—").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c] as string);
 }
 
+function probeCell(p: HarnessResult["freshProbes"]["before"]): string {
+  return p ? esc(`${p.phase} / ${p.outcome}${p.httpStatus !== null ? ` HTTP ${p.httpStatus}` : ""} → ${p.resolvedIpv4 ?? "-"} (${p.elapsedMs} ms)`) : "not run (native probe unavailable)";
+}
+
 export function reportToHtml(r: ProofReport): string {
   const chain = r.auditChain;
   const rows = [
@@ -87,6 +94,9 @@ export function reportToHtml(r: ProofReport): string {
     ["Canonical controlled host", esc(chain.canonicalControlledHost)],
     ["Configured dedicated IPv4", esc(chain.configuredControlledIpv4)],
     ["Route activation", chain.routeActivation ? `${esc(chain.routeActivation.status)} — ${esc(chain.routeActivation.detail)}` : "—"],
+    ["Fresh probe before protection", probeCell(chain.freshConnectionProbes.before)],
+    ["Fresh probe under protection", probeCell(chain.freshConnectionProbes.after) + (chain.freshConnectionProbes.after?.synDropShape ? " · SYN-drop shape" : "")],
+    ["Fresh probe after stop", probeCell(chain.freshConnectionProbes.afterStop)],
     ["Packet observation", chain.packetObservation ? esc(JSON.stringify(chain.packetObservation)) : "none observed"],
     ["Intentional drop", chain.intentionalDrop ? "yes" : "no"],
     ["enforcementEvidenceId", esc(chain.enforcementEvidenceId)],

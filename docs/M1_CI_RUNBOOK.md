@@ -183,6 +183,38 @@ before the /32 route existed (HTTP 200, nothing to drop), and the unrelated fetc
   `after`/`blocked` still require the real HTTP failure and a genuine `THREAT_BLOCKED` with `enforcementEvidenceId`.
 - Untouched: native SDKs, verifier, bundle v25, endpoint/IP, CI. Phone: install over, Run proof.
 
+### Run 34177747728 device report (run 16, `2537dd7` APK) — protection ACTIVE confirmed; block not yet proven — correction pass 11
+Phone: `start PASS ACTIVE` (polling fix confirmed), but `after FAIL HTTP 200`, `blocked FAIL observed=0 dropped=0`, `unexpectedPackets` climbing.
+Four root causes, all outside the frozen SDK security semantics (harness instrumentation + Android VPN builder configuration):
+1. **IPv6 not allowed to bypass** — `SelectiveRouteInstaller.kt`: on a dual-stack phone a `VpnService.Builder` with no IPv6 address/route/DNS
+   BLOCKS the whole IPv6 family for the app set unless `allowFamily(AF_INET6)` is called (Android docs). All IPv6 traffic therefore entered
+   the IPv4-only TUN and was counted as "unexpected", and unrelated IPv6 destinations broke. `TunSpec.allowIpv6Bypass=true` is now part of
+   `isSelective`; the builder calls `allowFamily(OsConstants.AF_INET6)`. Route set is unchanged: exactly one IPv4 /32.
+2. **Pooled HTTP connection** — the post-ACTIVE fetch() reused the baseline OkHttp TCP/TLS connection (opened before the route existed), so no
+   new SYN ever reached the TUN → HTTP 200 with `observed=0`. Replaced by a harness-only **native fresh-socket probe**
+   (`guarddog-vpn/FreshConnectionProbe.kt`, bridge `probeControlledEndpointFresh(timeoutMs)`; no caller-supplied URL — only the configured
+   controlled endpoint is ever probed or recorded): system DNS must yield the configured IPv4 → brand-new `Socket()` (never `protect()`ed, so
+   it stays subject to our /32 route) → connect to the configured IPv4 only → TLS with the canonical hostname (SNI + hostname verification)
+   → one `GET` with `Connection: close`. Result = `{phase: dns|tcp-connect|tls-handshake|http, outcome: ok|timeout|refused|unreachable|
+   dns-failed|tls-failed|http-error|error, resolvedIpv4, httpStatus, elapsedMs, synDropShape}`. `before` requires `http/ok/200` over that
+   fresh socket; `after` passes ONLY on the SYN-drop shape (`tcp-connect` + `timeout` to the configured IPv4); DNS failure, another address,
+   refused/unreachable, TLS or HTTP failures never count. Recovery `recovered` re-uses the same probe (fresh socket → 200).
+3. **Undiagnosable `unexpectedPackets`** — `PacketDropReporter`/`TunPacketReader`/`Ipv4PacketParser.classify`: split into `nonIpv4`,
+   `malformedIpv4`, `wrongDestinationIpv4` (counts only; no addresses). `wrongDestinationIpv4 > 0` would indicate a route leak.
+4. **Route evidence** — new step `route-active` records the live native snapshot (`lifecycle`, `tunOpen`, `selectiveRouteActive`,
+   `routeCidr`; OS `TRANSPORT_VPN` supporting only) BEFORE the protected probe; `auditChain.routeActivation` uses it instead of echoing `start`.
+`proofComplete` is stricter, not looser: every block step PASS **and** genuine bridged `THREAT_BLOCKED` with `enforcementEvidenceId` **and**
+fresh-probe SYN-drop shape **and** native TUN counters `observedMatching > 0`, `droppedMatching > 0` (new step `tun-evidence`).
+Report version `m1-4` adds `auditChain.freshConnectionProbes {before, after, afterStop}`.
+Tests: Kotlin `guarddog-vpn` 29/29 (+`FreshConnectionProbeTest` ×6 on loopback only: 200 over fresh socket, non-2xx = http-error, refused ≠ SYN
+drop, TLS-vs-plain reaches tls phase, DNS without configured IPv4 fails before any socket and lists no addresses, only tcp-connect+timeout+configured
+IPv4 is the SYN-drop shape; `SelectiveRouteInstallerTest` +2: IPv6 bypass, and the frozen constants `blocktest.btciq.app`/`52.25.179.131` yield
+routes == `[52.25.179.131/32]` with IPv6 bypass, offline/injected binding; `TunPacketReaderTest` +1: counter split), `guarddog-core` 16/16;
+`GuardDogExpoModuleDefinitionTest` async surface now includes `probeControlledEndpointFresh`; expo module compiled locally against the real
+expo-modules-core/android-36 classpath; frontend `tsc` shows no errors in changed files (8 pre-existing unrelated errors, identical before/after).
+- Untouched: frozen bundle v25, signing key, verifier semantics, controlled endpoint/IP, block-authority chain, THREAT_BLOCKED producer
+  (`PacketDropReporter` remains the only producer; it now only categorises what it already discarded). Phone: install over, Run proof.
+
 ## 4. Download artifacts and attach here
 | Artifact | Files to attach |
 |---|---|

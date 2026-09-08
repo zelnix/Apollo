@@ -7,8 +7,8 @@
 import { Platform } from "react-native";
 
 import { isGenuineBlockedEvent, type SecurityEvent } from "@/src/contracts/securityEventSchemas";
-import { isRecoveredSnapshot, readRecoveryStatus } from "@/src/harness/recoveryDiagnostics";
-import { fetchLatestBundle, fetchM1Config, tamperedCopy, toProtectionConfig, unknownKeyCopy } from "@/src/harness/ruleBundleFixtures";
+import { describeFreshProbe, isRecoveredSnapshot, type NativeFreshProbe, probeControlledEndpointFresh, readRecoveryStatus } from "@/src/harness/recoveryDiagnostics";
+import { fetchLatestBundle, fetchM1Config, type M1Config, tamperedCopy, toProtectionConfig, unknownKeyCopy } from "@/src/harness/ruleBundleFixtures";
 import { GuardDogSecuritySDK } from "@/src/sdk/GuardDogSecuritySDK";
 
 export type StepStatus = "PASS" | "FAIL" | "BLOCKED" | "SKIPPED";
@@ -37,6 +37,8 @@ export interface HarnessResult {
   recovery: RecoveryEvidence | null;
   /** Native drop-reporter counters captured before recovery cleared them. */
   enforcementStats: Record<string, number> | null;
+  /** Fresh-socket probes of the controlled endpoint (native): before protection, under protection, after stop. */
+  freshProbes: { before: NativeFreshProbe | null; after: NativeFreshProbe | null; afterStop: NativeFreshProbe | null };
   /** Genuine end-to-end proof reached (only possible on a real Android build against the real endpoint). */
   proofComplete: boolean;
   /** Block proof AND recovery proof both passed. */
@@ -49,19 +51,42 @@ const POLL_MS = 1000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Real HTTPS probe. On native only an actual HTTP 200 counts as reachable (DNS + TCP + TLS + HTTP all recovered). */
-async function probe(url: string): Promise<{ reachable: boolean; status: number | null; detail: string }> {
+interface ProbeOutcome {
+  reachable: boolean;
+  status: number | null;
+  detail: string;
+  /** Present only when the native fresh-socket probe ran. */
+  fresh: NativeFreshProbe | null;
+}
+
+/** Fallback HTTPS probe through fetch() for runtimes without the native module (web / Expo Go). */
+async function fetchProbe(url: string): Promise<ProbeOutcome> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
   try {
     // On web a cross-origin probe must be opaque (no-cors): a CORS failure is not evidence of unreachability.
-    const res = await fetch(url, { method: "GET", signal: controller.signal, cache: "no-store", mode: Platform.OS === "web" ? "no-cors" : undefined });
-    if (res.type === "opaque") return { reachable: true, status: null, detail: "reachable (opaque cross-origin response)" };
-    return { reachable: res.status === 200, status: res.status, detail: `HTTP ${res.status}` };
+    const res = await fetch(url, { method: "GET", signal: controller.signal, cache: "no-store", headers: { Connection: "close" }, mode: Platform.OS === "web" ? "no-cors" : undefined });
+    if (res.type === "opaque") return { reachable: true, status: null, detail: "reachable (opaque cross-origin response)", fresh: null };
+    return { reachable: res.status === 200, status: res.status, detail: `HTTP ${res.status}`, fresh: null };
   } catch (e) {
-    return { reachable: false, status: null, detail: e instanceof Error ? e.message : "request failed" };
+    return { reachable: false, status: null, detail: e instanceof Error ? e.message : "request failed", fresh: null };
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/**
+ * Probe of the controlled endpoint. Native: a brand-new TCP socket + TLS + one GET each call (FreshConnectionProbe.kt), so no probe can
+ * ever reuse a connection opened before protection became ACTIVE. Only an actual HTTP 200 counts as reachable (DNS + TCP + TLS + HTTP).
+ */
+async function probeControlled(config: M1Config): Promise<ProbeOutcome> {
+  if (!GuardDogSecuritySDK.nativeAvailable) return fetchProbe(config.controlledEndpoint.url);
+  try {
+    const p = await probeControlledEndpointFresh(PROBE_TIMEOUT_MS);
+    if (!p) return fetchProbe(config.controlledEndpoint.url);
+    return { reachable: p.outcome === "ok" && p.httpStatus === 200, status: p.httpStatus, detail: describeFreshProbe(p), fresh: p };
+  } catch (e) {
+    return { reachable: false, status: null, detail: `fresh probe failed: ${e instanceof Error ? e.message : String(e)}`, fresh: null };
   }
 }
 
@@ -121,14 +146,15 @@ export async function runAndroidBlockingProof(onStep?: (step: HarnessStep) => vo
     push({ id: "verify", title: "Device verified signed envelope", status: "BLOCKED", detail: "native verifier unavailable in this runtime (shape check only; nothing trusted)" });
   }
 
-  // 4. reachable before protection
-  const before = await probe(config.controlledEndpoint.url);
+  // 4. reachable before protection (native: fresh socket → TLS → HTTP 200, the same probe used under protection)
+  const before = await probeControlled(config);
   push({
     id: "before",
     title: "Controlled endpoint reachable before protection",
     status: before.reachable ? "PASS" : isPlaceholderEndpoint ? "BLOCKED" : "FAIL",
     detail: before.reachable ? before.detail : `${before.detail}${isPlaceholderEndpoint ? " (placeholder host does not exist yet)" : ""}`,
   });
+  const noProbes = { before: before.fresh, after: null, afterStop: null };
 
   // 5. consent through the common SDK surface
   const permission = await GuardDogSecuritySDK.requestPermission("vpn");
@@ -141,17 +167,18 @@ export async function runAndroidBlockingProof(onStep?: (step: HarnessStep) => vo
 
   if (permission !== "granted" || accepted.accepted !== true || !before.reachable) {
     push({ id: "start", title: "startProtection() selective /32", status: "SKIPPED", detail: "prerequisites not met; nothing started, nothing claimed" });
-    return { steps, blockedEvent: null, recovery: null, enforcementStats: null, proofComplete: false, recoveryComplete: false };
+    return { steps, blockedEvent: null, recovery: null, enforcementStats: null, freshProbes: noProbes, proofComplete: false, recoveryComplete: false };
   }
 
   // 6. start protection (DNS/IP binding re-check + /32 route happen natively)
-  const blockedPromise = waitForBlockedEvent(20_000);
+  // Subscribed before start so nothing can be missed; the window covers the ACTIVE poll (≤15 s) + settle + the 6 s fresh probe.
+  const blockedPromise = waitForBlockedEvent(30_000);
   let status;
   try {
     status = await GuardDogSecuritySDK.startProtection();
   } catch (e) {
     push({ id: "start", title: "startProtection() selective /32", status: "FAIL", detail: e instanceof Error ? e.message : "start failed" });
-    return { steps, blockedEvent: null, recovery: null, enforcementStats: null, proofComplete: false, recoveryComplete: false };
+    return { steps, blockedEvent: null, recovery: null, enforcementStats: null, freshProbes: noProbes, proofComplete: false, recoveryComplete: false };
   }
   // startProtection() resolves as soon as the foreground service is dispatched; the DNS/IP binding re-check and the /32 route
   // install happen asynchronously in the service (off the main thread). Wait for a settled lifecycle state instead of judging
@@ -163,33 +190,59 @@ export async function runAndroidBlockingProof(onStep?: (step: HarnessStep) => vo
   }
   push({ id: "start", title: "startProtection() selective /32", status: status.state === "ACTIVE" ? "PASS" : "FAIL", detail: `${status.state}${status.reason ? `: ${status.reason}` : ""}` });
 
-  // 7. endpoint must now fail; 8. genuine THREAT_BLOCKED with evidence must arrive
+  // Live runtime diagnostic while protection runs (harness-only adapter): independent route evidence for auditChain.routeActivation.
+  const active = readRecoveryStatus();
+  push({
+    id: "route-active",
+    title: "Selective /32 route active (live runtime snapshot)",
+    status: active?.tunOpen && active.selectiveRouteActive ? "PASS" : "FAIL",
+    detail: active ? `lifecycle=${active.lifecycle} tunOpen=${active.tunOpen} selectiveRouteActive=${active.selectiveRouteActive} routeCidr=${active.routeCidr ?? "-"}; supporting: osVpnTransportPresent=${active.vpnTransportPresent}` : "no runtime snapshot",
+  });
+
+  // 7. a brand-new TCP connect to the configured IPv4 must now time out (SYN dropped in the TUN). Only that shape passes: DNS failure,
+  //    another address, refused/unreachable, TLS or HTTP failures are not evidence of enforcement. 8. genuine THREAT_BLOCKED must arrive.
   await sleep(1500);
-  const after = await probe(config.controlledEndpoint.url);
-  push({ id: "after", title: "Controlled endpoint request fails under protection", status: after.reachable || after.status !== null ? "FAIL" : "PASS", detail: after.detail });
+  const after = await probeControlled(config);
+  const afterFresh = after.fresh;
+  const synDropped = !!afterFresh && afterFresh.synDropShape && afterFresh.resolvedIpv4 === config.controlledEndpoint.ipv4 && afterFresh.expectedIpv4 === config.controlledEndpoint.ipv4;
+  push({
+    id: "after",
+    title: "Fresh TCP connect to configured IPv4 times out under protection",
+    status: synDropped ? "PASS" : "FAIL",
+    detail: afterFresh ? after.detail : `native fresh-socket probe unavailable (${after.detail}); fetch() results are not accepted as block evidence`,
+  });
   const blockedEvent = await blockedPromise;
   const stats = GuardDogSecuritySDK.getEnforcementStats();
   push({
     id: "blocked",
     title: "THREAT_BLOCKED received with enforcementEvidenceId",
-    status: blockedEvent ? "PASS" : "FAIL",
+    status: blockedEvent?.enforcementEvidenceId ? "PASS" : "FAIL",
     detail: blockedEvent ? `evidence=${blockedEvent.enforcementEvidenceId} dst=${blockedEvent.destinationIp} rule=${blockedEvent.ruleId}` : `no genuine blocked event${stats ? ` (observed=${stats.observedMatching}, dropped=${stats.droppedMatching})` : ""}`,
+  });
+  // Native TUN evidence (counts only): a matching packet was actually observed on the TUN and intentionally dropped there.
+  const tunEvidence = !!stats && stats.observedMatching > 0 && stats.droppedMatching > 0;
+  push({
+    id: "tun-evidence",
+    title: "Native TUN evidence: matching packet observed and intentionally dropped",
+    status: tunEvidence ? "PASS" : "FAIL",
+    detail: stats ? Object.entries(stats).map(([k, v]) => `${k}=${v}`).join(" ") : "no drop-reporter stats (reporter not attached)",
   });
 
   // 9. unrelated traffic unaffected (one retry: a request in flight while the TUN interface comes up is cancelled by the OS)
-  let unrelated = await probe(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/health`);
+  let unrelated = await fetchProbe(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/health`);
   if (!unrelated.reachable) {
     await sleep(1000);
-    unrelated = await probe(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/health`);
+    unrelated = await fetchProbe(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/health`);
   }
   push({ id: "unrelated", title: "Unrelated destination still reachable", status: unrelated.reachable ? "PASS" : "FAIL", detail: unrelated.detail });
   const blockSteps = steps.length;
-  const proofComplete = steps.every((s) => s.status === "PASS") && !!blockedEvent;
+  // Strict: every block step PASS (incl. fresh SYN-drop shape + TUN counters) AND a genuine bridged THREAT_BLOCKED carrying enforcement evidence.
+  const proofComplete = steps.every((s) => s.status === "PASS") && !!blockedEvent?.enforcementEvidenceId && synDropped && tunEvidence;
 
   // 10-13. RECOVERY (always run once protection was started, so the device is left clean)
-  const recovery = await runRecovery(config.controlledEndpoint.url, push);
+  const recovery = await runRecovery(config, push);
   const recoveryComplete = proofComplete && steps.slice(blockSteps).every((s) => s.status === "PASS");
-  return { steps, blockedEvent, recovery, enforcementStats: stats, proofComplete, recoveryComplete };
+  return { steps, blockedEvent, recovery: recovery.evidence, enforcementStats: stats, freshProbes: { before: before.fresh, after: afterFresh, afterStop: recovery.afterStop }, proofComplete, recoveryComplete };
 }
 
 /**
@@ -198,14 +251,17 @@ export async function runAndroidBlockingProof(onStep?: (step: HarnessStep) => vo
  * The OS TRANSPORT_VPN observation is recorded as supporting evidence only; it is never the sole proof.
  * Every value is read from the native runtime, the OS or a real HTTPS response; nothing is inferred.
  */
-async function runRecovery(controlledUrl: string, push: (step: HarnessStep) => void): Promise<RecoveryEvidence> {
+async function runRecovery(config: M1Config, push: (step: HarnessStep) => void): Promise<{ evidence: RecoveryEvidence; afterStop: NativeFreshProbe | null }> {
   const stopRequestedAt = new Date().toISOString();
   let stopStatus;
   try {
     stopStatus = await GuardDogSecuritySDK.stopProtection();
   } catch (e) {
     push({ id: "stop", title: "stopProtection() -> INACTIVE / STOPPED", status: "FAIL", detail: e instanceof Error ? e.message : "stop failed" });
-    return { stopRequestedAt, stateAfterStop: "UNKNOWN", stateReason: null, tunOpen: null, selectiveRouteActive: null, vpnTransportPresent: null, httpsStatusAfterStop: null, recoveredAt: null };
+    return {
+      evidence: { stopRequestedAt, stateAfterStop: "UNKNOWN", stateReason: null, tunOpen: null, selectiveRouteActive: null, vpnTransportPresent: null, httpsStatusAfterStop: null, recoveredAt: null },
+      afterStop: null,
+    };
   }
   // The service handles ACTION_STOP asynchronously: poll the authoritative lifecycle.
   const deadline = Date.now() + RECOVERY_TIMEOUT_MS;
@@ -237,23 +293,26 @@ async function runRecovery(controlledUrl: string, push: (step: HarnessStep) => v
     detail: rec ? `selectiveRouteActive=${rec.selectiveRouteActive}${rec.routeCidr ? ` route=${rec.routeCidr}` : ""}; supporting: osVpnTransportPresent=${rec.vpnTransportPresent}` : "native recovery status unavailable",
   });
 
-  // Real HTTPS GET must return 200 again (DNS + TCP + TLS + HTTP), retried while routing settles.
-  let again = await probe(controlledUrl);
+  // Real HTTPS GET over a fresh socket must return 200 again (DNS + TCP + TLS + HTTP), retried while routing settles.
+  let again = await probeControlled(config);
   while (again.status !== 200 && Date.now() < deadline) {
     await sleep(POLL_MS);
-    again = await probe(controlledUrl);
+    again = await probeControlled(config);
   }
   const recoveredAt = again.status === 200 ? new Date().toISOString() : null;
   push({ id: "recovered", title: "Controlled endpoint answers HTTPS 200 again", status: again.status === 200 ? "PASS" : "FAIL", detail: again.detail });
 
   return {
-    stopRequestedAt,
-    stateAfterStop: stopStatus.state,
-    stateReason: stopStatus.reason ?? null,
-    tunOpen: rec?.tunOpen ?? null,
-    selectiveRouteActive: rec?.selectiveRouteActive ?? null,
-    vpnTransportPresent: rec?.vpnTransportPresent ?? null,
-    httpsStatusAfterStop: again.status,
-    recoveredAt,
+    evidence: {
+      stopRequestedAt,
+      stateAfterStop: stopStatus.state,
+      stateReason: stopStatus.reason ?? null,
+      tunOpen: rec?.tunOpen ?? null,
+      selectiveRouteActive: rec?.selectiveRouteActive ?? null,
+      vpnTransportPresent: rec?.vpnTransportPresent ?? null,
+      httpsStatusAfterStop: again.status,
+      recoveredAt,
+    },
+    afterStop: again.fresh,
   };
 }

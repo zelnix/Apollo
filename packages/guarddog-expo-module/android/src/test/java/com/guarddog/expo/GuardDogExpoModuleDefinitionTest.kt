@@ -30,7 +30,7 @@ class GuardDogExpoModuleDefinitionTest {
         )
         // Expo appends startObserving/stopObserving when Events(...) is declared; assert our surface is present.
         assertTrue(
-            definition.asyncFunctions.keys.containsAll(setOf("requestPermission", "startProtection", "stopProtection", "getBuildProvenance")),
+            definition.asyncFunctions.keys.containsAll(setOf("requestPermission", "startProtection", "stopProtection", "getBuildProvenance", "probeControlledEndpointFresh")),
         )
         val events = definition.eventsDefinition
         assertNotNull("Events(...) must be registered", events)

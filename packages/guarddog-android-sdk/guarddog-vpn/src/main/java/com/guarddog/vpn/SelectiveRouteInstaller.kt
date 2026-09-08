@@ -1,6 +1,7 @@
 package com.guarddog.vpn
 
 import android.net.VpnService
+import android.system.OsConstants
 
 /** Pure description of the TUN we intend to establish (unit-testable without Android). */
 data class RouteSpec(val address: String, val prefixLength: Int) {
@@ -13,8 +14,10 @@ data class TunSpec(
     val routes: List<RouteSpec>,
     val mtu: Int,
     val sessionName: String,
+    /** IPv6 is never intercepted: the family is explicitly allowed to bypass the tunnel (only the IPv4 /32 is routed). */
+    val allowIpv6Bypass: Boolean = true,
 ) {
-    val isSelective: Boolean get() = routes.size == 1 && routes[0].prefixLength == 32
+    val isSelective: Boolean get() = routes.size == 1 && routes[0].prefixLength == 32 && allowIpv6Bypass
 }
 
 /**
@@ -40,6 +43,9 @@ object SelectiveRouteInstaller {
             .addAddress(spec.address, spec.addressPrefix)
             .setBlocking(true)
         spec.routes.forEach { builder.addRoute(it.address, it.prefixLength) }
+        // Dual-stack devices: with no IPv6 address/route/DNS configured, Android BLOCKS all IPv6 traffic for the app set unless the family
+        // is explicitly allowed (VpnService.Builder docs). Guard Dog intercepts exactly one IPv4 /32, so IPv6 must fall through untouched.
+        if (spec.allowIpv6Bypass) builder.allowFamily(OsConstants.AF_INET6)
         // No DNS servers are set: we do not intercept DNS (see docs/M1_OBSERVED_TRAFFIC_PATH.md).
         return builder
     }
