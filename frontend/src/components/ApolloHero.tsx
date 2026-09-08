@@ -5,7 +5,6 @@
 
 import { useAudioPlayer } from "expo-audio";
 import { Image } from "expo-image";
-import { LinearGradient } from "expo-linear-gradient";
 import BellRing from "lucide-react-native/icons/bell-ring";
 import React, { useEffect, useMemo, useState } from "react";
 import { AppState, Text, View } from "react-native";
@@ -18,21 +17,33 @@ import { HigginsChecks } from "@/src/components/HigginsChecks";
 import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
 import { checksSpoken, higginsPermissionNote, recommendedChecks } from "@/src/domain/higginsChecks";
 import { Sheet } from "./Sheet";
-import { Body, Button, Pill, toneColor, toneTint } from "./ui";
+import { Body, Button, DevTag, Pill, toneColor } from "./ui";
 
 /** How often Higgins chimes to remind you a check is waiting, until you tap Hear Higgins. */
 const REMINDER_INTERVAL_MS = 60 * 1000;
 
+/** Apollo is an animated character, not a static shield — this is core brand identity.
+ *  One state → one asset, in one place, so dropping in apollo-ears-up.gif later is a one-line change. */
+const HERO_SIZE = 170;
+const STATE_GIF: Partial<Record<ApolloState, { src: number; label: string; testID: string }>> = {
+  resting: { src: require("../../assets/images/apollo-patrolling.gif"), label: "Apollo patrolling", testID: "apollo-hero-gif" },
+  sniffing: { src: require("../../assets/images/apollo-sniffing.gif"), label: "Apollo sniffing", testID: "apollo-hero-gif-sniffing" },
+  growling: { src: require("../../assets/images/apollo-growling.gif"), label: "Apollo growling", testID: "apollo-hero-gif-growling" },
+  barking: { src: require("../../assets/images/apollo-barking.gif"), label: "Apollo barking", testID: "apollo-hero-gif-barking" },
+  biting: { src: require("../../assets/images/apollo-barking.gif"), label: "Apollo barking", testID: "apollo-hero-gif-barking" },
+  // ears_up: no GIF yet — drop apollo-ears-up.gif in here when it exists. Falls back to the static mark below.
+};
+
 const useStyles = makeStyles((c) => ({
   hero: { borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, overflow: "hidden", backgroundColor: c.surfaceSecondary },
-  inner: { padding: spacing.xl, gap: spacing.md },
-  orbWrap: { alignItems: "center", justifyContent: "center", height: 160 },
-  orbRing: { position: "absolute", width: 150, height: 150, borderRadius: 75, borderWidth: 1 },
-  glow: { position: "absolute", width: 120, height: 120, borderRadius: 60 },
-  label: { fontFamily: fonts.displayBold, fontSize: 26, color: c.onSurface, letterSpacing: -0.3 },
-  meaning: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary },
-  reason: { fontFamily: fonts.textMedium, fontSize: 14, lineHeight: 20, color: c.onSurface },
-  row: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
+  inner: { padding: spacing.xl, gap: spacing.sm, alignItems: "center" },
+  orbWrap: { alignItems: "center", justifyContent: "center", height: 208 },
+  orbRing: { position: "absolute", width: 192, height: 192, borderRadius: 96, borderWidth: 1 },
+  glow: { position: "absolute", width: 156, height: 156, borderRadius: 78 },
+  label: { fontFamily: fonts.displayBold, fontSize: 26, color: c.onSurface, letterSpacing: -0.3, textAlign: "center" },
+  meaning: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary, textAlign: "center" },
+  reason: { fontFamily: fonts.textMedium, fontSize: 14, lineHeight: 20, color: c.onSurface, textAlign: "center" },
+  row: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap", justifyContent: "center" },
   note: { fontFamily: fonts.text, fontSize: 12, lineHeight: 17, color: c.onSurfaceSecondary },
 }));
 
@@ -50,6 +61,7 @@ export function ApolloHero({ resolution, visibility, adapterLabel, isMock, capab
   const tone = resolution.visibilityLost ? "unknown" : resolution.state;
   const color = toneColor(colors, tone);
   const state: ApolloState | "lost" = resolution.visibilityLost ? "lost" : sniffing ? "sniffing" : resolution.state;
+  const gif = animate && state !== "lost" ? STATE_GIF[state] : undefined;
   const [checklistOpen, setChecklistOpen] = useState(false);
   const [ackKey, setAckKey] = useState<string | null>(null);
   const chime = useAudioPlayer(require("../../assets/sounds/apollo_chime.wav"));
@@ -141,45 +153,37 @@ export function ApolloHero({ resolution, visibility, adapterLabel, isMock, capab
 
   return (
     <View style={s.hero} testID="apollo-hero">
-      <LinearGradient colors={[toneTint(colors, tone), colors.surfaceSecondary]} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }}>
-        <View style={s.inner}>
-          <View style={s.orbWrap} testID={`apollo-hero-anim-${state}`}>
-            <Animated.View style={[s.orbRing, { borderColor: color }, ringStyle]} />
-            <Animated.View style={[s.glow, { backgroundColor: color }, glowStyle]} />
-            <Animated.View style={dogStyle}>
-              {state === "resting" && animate ? (
-                <Image source={require("../../assets/images/apollo-patrolling.gif")} style={{ width: 132, height: 132 }} contentFit="contain" autoplay accessibilityLabel="Apollo patrolling" testID="apollo-hero-gif" />
-              ) : (state === "barking" || state === "biting") && animate ? (
-                <Image source={require("../../assets/images/apollo-barking.gif")} style={{ width: 132, height: 132 }} contentFit="contain" autoplay accessibilityLabel="Apollo barking" testID="apollo-hero-gif-barking" />
-              ) : state === "growling" && animate ? (
-                <Image source={require("../../assets/images/apollo-growling.gif")} style={{ width: 132, height: 132 }} contentFit="contain" autoplay accessibilityLabel="Apollo growling" testID="apollo-hero-gif-growling" />
-              ) : state === "sniffing" && animate ? (
-                <Image source={require("../../assets/images/apollo-sniffing.gif")} style={{ width: 132, height: 132 }} contentFit="contain" autoplay accessibilityLabel="Apollo sniffing" testID="apollo-hero-gif-sniffing" />
-              ) : (
-                <Image source={require("../../assets/images/logo.png")} style={{ width: 124, height: 124 }} contentFit="contain" accessibilityLabel="Apollo" />
-              )}
-            </Animated.View>
-          </View>
-          <Text style={s.label} testID="apollo-state-label">{title}</Text>
-          <Text style={s.meaning}>{meaning}</Text>
-          <Text style={s.reason} testID="apollo-state-reason">{resolution.reason}</Text>
-          <Animated.View style={bellPulseStyle}>
-            <View style={[s.row, { alignItems: "center" }]}>
-              <HigginsSpeakButton text={spokenText} testID="hero-hear-higgins" onPress={onHearHiggins} />
-              {reminderActive ? <BellRing testID="hero-reminder-bell" size={18} color={colors.growling} /> : null}
-            </View>
+      <View style={s.inner}>
+        <View style={s.orbWrap} testID={`apollo-hero-anim-${state}`}>
+          <Animated.View style={[s.orbRing, { borderColor: color }, ringStyle]} />
+          <Animated.View style={[s.glow, { backgroundColor: color }, glowStyle]} />
+          <Animated.View style={dogStyle}>
+            {gif ? (
+              <Image source={gif.src} style={{ width: HERO_SIZE, height: HERO_SIZE }} contentFit="contain" autoplay accessibilityLabel={gif.label} testID={gif.testID} />
+            ) : (
+              <Image source={require("../../assets/images/logo.png")} style={{ width: HERO_SIZE * 0.94, height: HERO_SIZE * 0.94 }} contentFit="contain" accessibilityLabel="Apollo" />
+            )}
           </Animated.View>
-          {reminderActive ? <Text style={s.note} testID="hero-reminder-note">Chiming every minute until you tap Hear Higgins.</Text> : null}
-          <View style={s.row}>
-            <Pill testID="visibility-pill" tone={visibility === "full" ? "resting" : visibility === "limited" ? "growling" : "unknown"} label={visibility === "full" ? "Full visibility" : visibility === "limited" ? "Limited visibility" : "No visibility"} />
-            {resolution.recovering ? <Pill tone="growling" label="Awaiting fresh check" testID="recovering-pill" /> : null}
-            {resolution.recovering && resolution.drivingEvent?.state === "biting" && resolution.drivingEvent.verified_block ? <Pill tone="resting" label="Threat contained" testID="contained-pill" /> : null}
-            {quietNow ? <Pill tone="unknown" label="Quiet hours" testID="quiet-pill" /> : null}
-            {!animate ? <Pill tone="unknown" label="Battery saver" testID="lowpower-pill" /> : null}
-            {isMock ? <Pill tone="unknown" label={adapterLabel} testID="mock-adapter-pill" /> : null}
-          </View>
         </View>
-      </LinearGradient>
+        <Text style={s.label} testID="apollo-state-label">{title}</Text>
+        <Text style={s.meaning}>{meaning}</Text>
+        <Text style={s.reason} testID="apollo-state-reason">{resolution.reason}</Text>
+        <Animated.View style={bellPulseStyle}>
+          <View style={[s.row, { alignItems: "center" }]}>
+            <HigginsSpeakButton text={spokenText} testID="hero-hear-higgins" onPress={onHearHiggins} />
+            {reminderActive ? <BellRing testID="hero-reminder-bell" size={18} color={colors.growling} /> : null}
+          </View>
+        </Animated.View>
+        {reminderActive ? <Text style={s.note} testID="hero-reminder-note">Chiming every minute until you tap Hear Higgins.</Text> : null}
+        <View style={s.row}>
+          <Pill testID="visibility-pill" tone={visibility === "full" ? "resting" : visibility === "limited" ? "growling" : "unknown"} label={visibility === "full" ? "Full visibility" : visibility === "limited" ? "Limited visibility" : "No visibility"} />
+          {resolution.recovering ? <Pill tone="growling" label="Awaiting fresh check" testID="recovering-pill" /> : null}
+          {resolution.recovering && resolution.drivingEvent?.state === "biting" && resolution.drivingEvent.verified_block ? <Pill tone="resting" label="Threat contained" testID="contained-pill" /> : null}
+          {quietNow ? <Pill tone="unknown" label="Quiet hours" testID="quiet-pill" /> : null}
+          {!animate ? <Pill tone="unknown" label="Battery saver" testID="lowpower-pill" /> : null}
+          {isMock ? <DevTag label={adapterLabel} testID="mock-adapter-pill" /> : null}
+        </View>
+      </View>
       <Sheet visible={checklistOpen} onClose={() => setChecklistOpen(false)} title="Checks I need you to run" testID="hero-checklist-sheet">
         <HigginsChecks checks={checks} askedAt={askedAt} messageId="hero" record={false} title="" />
         {permissionNote ? <Body testID="hero-checklist-permission-note">{permissionNote}</Body> : null}

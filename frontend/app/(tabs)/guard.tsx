@@ -1,4 +1,12 @@
 import { useRouter } from "expo-router";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
+import Globe from "lucide-react-native/icons/globe";
+import Link2 from "lucide-react-native/icons/link-2";
+import MessageSquareWarning from "lucide-react-native/icons/message-square-warning";
+import Radar from "lucide-react-native/icons/radar";
+import Share2 from "lucide-react-native/icons/share-2";
+import Smartphone from "lucide-react-native/icons/smartphone";
+import Wifi from "lucide-react-native/icons/wifi";
 import React, { useState } from "react";
 import { Linking, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -6,7 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useBackendHealth } from "@/src/api/backendHealth";
 import { ServiceBanner } from "@/src/components/ServiceBanner";
 import { Sheet } from "@/src/components/Sheet";
-import { Body, Button, Card, Pill, ScreenHeader, SectionTitle, capabilityTone } from "@/src/components/ui";
+import { Body, Button, Card, DevTag, Pill, ScreenHeader, SectionTitle, capabilityTone } from "@/src/components/ui";
 import { CAPABILITY_STATUS_LABEL } from "@/src/domain/capability";
 import { assessConnection } from "@/src/domain/connection";
 import { masterCopy } from "@/src/domain/protectionTruth";
@@ -15,6 +23,17 @@ import type { ProtectionPermission } from "@/src/security/SecurityPlatformAdapte
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
+/** One small icon per capability, matched to what it actually watches — never a generic shield for everything. */
+const CAP_ICON: Record<Capability["id"], React.ComponentType<{ size?: number; color?: string }>> = {
+  link_guard: Link2,
+  known_threats: Radar,
+  site_guard: Globe,
+  connection_guard: Wifi,
+  share_intake: Share2,
+  message_guard: MessageSquareWarning,
+  app_guard: Smartphone,
+};
+
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   content: { paddingHorizontal: spacing.xl, gap: spacing.xl, paddingBottom: spacing.xl },
@@ -22,8 +41,9 @@ const useStyles = makeStyles((c) => ({
   masterTitle: { fontFamily: fonts.display, fontSize: 18, color: c.onSurface },
   capCard: { gap: spacing.sm, marginBottom: spacing.md },
   guardRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
-  capTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.md },
-  capTitle: { fontFamily: fonts.display, fontSize: 16, color: c.onSurface, flex: 1 },
+  capTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  capIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center" },
+  capTitle: { fontFamily: fonts.display, fontSize: 16, color: c.onSurface },
   permRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm },
   permTitle: { fontFamily: fonts.textMedium, fontSize: 15, color: c.onSurface },
   netLine: { fontFamily: fonts.textMedium, fontSize: 15, color: c.onSurface },
@@ -66,7 +86,7 @@ export default function Guard() {
   return (
     <View style={s.root}>
       <View style={{ paddingTop: insets.top + spacing.md }}>
-        <ScreenHeader title="Guard" testID="guard-header" right={isMock ? <Pill tone="unknown" label="Mock" /> : null} />
+        <ScreenHeader title="Guard" testID="guard-header" right={isMock ? <DevTag label="Mock" /> : null} />
       </View>
       <ScrollView contentContainerStyle={s.content} testID="guard-scroll">
         <ServiceBanner />
@@ -113,18 +133,24 @@ export default function Guard() {
 
         <View>
           <SectionTitle>Capabilities</SectionTitle>
-          {capabilities.map((cap) => (
-            <Card key={cap.id} style={s.capCard} testID={`guard-cap-${cap.id}`}>
-              <Pressable disabled={cap.status !== "permission_required"} onPress={() => setSheet({ kind: "cap", cap })} testID={`guard-cap-${cap.id}-press`} accessibilityRole={cap.status === "permission_required" ? "button" : undefined} style={s.capTop}>
-                <Text style={s.capTitle}>{cap.title}</Text>
-                <Pill tone={capabilityTone(cap.status)} label={CAPABILITY_STATUS_LABEL[cap.status]} testID={`guard-cap-${cap.id}-status`} />
-              </Pressable>
-              <Body>{cap.detail}</Body>
-              {cap.status === "permission_required" ? (
-                <Button testID={`guard-cap-${cap.id}-fix`} variant="secondary" label="What's needed" onPress={() => setSheet({ kind: "cap", cap })} />
-              ) : null}
-            </Card>
-          ))}
+          {capabilities.map((cap) => {
+            const CapIcon = CAP_ICON[cap.id];
+            const actionable = cap.status === "permission_required";
+            return (
+              <Card key={cap.id} style={s.capCard} testID={`guard-cap-${cap.id}`}>
+                <Pressable disabled={!actionable} onPress={() => setSheet({ kind: "cap", cap })} testID={`guard-cap-${cap.id}-press`} accessibilityRole={actionable ? "button" : undefined} style={s.capTop}>
+                  <View style={s.capIcon}><CapIcon size={18} color={colors.brand} /></View>
+                  <Text style={[s.capTitle, { flex: 1 }]}>{cap.title}</Text>
+                  <Pill tone={capabilityTone(cap.status)} label={CAPABILITY_STATUS_LABEL[cap.status]} testID={`guard-cap-${cap.id}-status`} />
+                  {actionable ? <ChevronRight size={18} color={colors.onSurfaceSecondary} /> : null}
+                </Pressable>
+                <Body>{cap.detail}</Body>
+                {actionable ? (
+                  <Button testID={`guard-cap-${cap.id}-fix`} variant="secondary" label="What's needed" onPress={() => setSheet({ kind: "cap", cap })} />
+                ) : null}
+              </Card>
+            );
+          })}
         </View>
 
         <View>

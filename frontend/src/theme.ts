@@ -11,26 +11,26 @@ export type ColorScheme = "light" | "dark";
 // "Light Sentinel": bright, clean surfaces with strong navy structure; amber / green / red are reserved for Apollo's
 // security states so colour always means something.
 const light = {
-  surface: "#E6F0FA", // app background — soft sky blue
+  surface: "#F5F7FA", // app background — neutral cool grey, not blue
   onSurface: "#0B1220", // primary navy text
   surfaceSecondary: "#FFFFFF", // primary cards
   onSurfaceSecondary: "#52606D", // secondary text
-  surfaceTertiary: "#D9E7F5", // secondary surface — inputs, chips, nested fills
+  surfaceTertiary: "#EDF2F7", // secondary surface — inputs, chips, nested fills
   onSurfaceTertiary: "#52606D",
   surfaceInverse: "#0B1220",
   onSurfaceInverse: "#F5F7FA",
 
-  // Navigation bar: app navy with contrasting icons (amber for the active tab)
-  nav: "#162235",
+  // Navigation bar: light bar, navy icons/labels, amber for the active tab — Apollo's colour, not chrome.
+  nav: "#FFFFFF",
   onNav: "#F4B942",
-  onNavMuted: "#9FB0C3",
+  onNavMuted: "#52606D",
   muted: "#52606D",
 
   brand: "#162235", // deep navy accent — structure, headers, primary actions
   onBrand: "#FFFFFF",
   brandPrimary: "#162235", // primary CTA (navy); security states never double as CTA colours
   onBrandPrimary: "#FFFFFF",
-  brandSecondary: "#D9E7F5",
+  brandSecondary: "#EDF2F7",
   onBrandSecondary: "#0B1220",
   brandTertiary: "#FFFFFF",
   onBrandTertiary: "#0B1220",
@@ -44,9 +44,9 @@ const light = {
   info: "#162235",
   onInfo: "#FFFFFF",
 
-  border: "#C9D9EA",
-  borderStrong: "#A9BED4",
-  divider: "#C9D9EA",
+  border: "#D7E0EA",
+  borderStrong: "#B9C4D1",
+  divider: "#D7E0EA",
 
   // Apollo behaviour states
   sniffing: "#52606D", // checking, no verdict yet — neutral

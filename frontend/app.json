@@ -7,7 +7,7 @@
     "icon": "./assets/images/icon.png",
     "scheme": "apollo",
     "userInterfaceStyle": "light",
-    "backgroundColor": "#E6F0FA",
+    "backgroundColor": "#F5F7FA",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.hwg.apollo",
@@ -23,7 +23,7 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#E6F0FA"
+        "backgroundColor": "#F5F7FA"
       },
       "package": "app.hwg.apollo",
       "googleServicesFile": "./google-services.json",
@@ -39,8 +39,8 @@
     "web": {
       "bundler": "metro",
       "output": "single",
-      "themeColor": "#E6F0FA",
-      "backgroundColor": "#E6F0FA",
+      "themeColor": "#F5F7FA",
+      "backgroundColor": "#F5F7FA",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
@@ -62,7 +62,7 @@
           "image": "./assets/images/splash-image.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#E6F0FA"
+          "backgroundColor": "#F5F7FA"
         }
       ],
       "expo-font",

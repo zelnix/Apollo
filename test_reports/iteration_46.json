@@ -1,0 +1,36 @@
+{
+  "summary": "Frontend-only verification of the 'Light Sentinel' visual/layout redesign (no backend changes per request). Tested onboarding->Home reach, new neutral background + white cards, ApolloHero (170px GIF, white card, state ring/glow), Quick Checks 4-tile row + 'All checks' expand/collapse (6 tiles), Protection/Verification card stacking (column at 390px, row at 1920px), Recent Patrol max-3 + new empty-state copy, compact digest card at bottom, Guard capability cards with icon+chevron logic, permission-explainer sheet flow, DevTag muted-grey mock indicators (Home, Guard, hero chip row), bottom tab bar styling, and full navigation regression (Quick Checks tiles, Ask, Settings). All target behaviors verified working; no red-screen errors, no invisible/low-contrast text found anywhere.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Home hero state vs /dev-tools SecurityAdapter scenario switch",
+        "issue": "Selecting BLOCK_UNVERIFIED (or other) scenario chips in Developer tools (via in-app SPA nav from Settings, so mock adapter singleton state was preserved) did not change the Home hero's state/animation away from 'Apollo is patrolling' (resting), even after running an actual 'Check a link' action while the scenario was active — the check result still returned a clean 'Nothing found' verdict. This appears to be pre-existing mock-adapter/reputation-check business logic (scenario chip may only affect a different code path, e.g. live network/connection checks, not the link-reputation checker) and unrelated to this session's UI redesign — flagging per instructions rather than fixing, since it needs main-agent context on whether BLOCK_UNVERIFIED is expected to affect Check-a-link results.",
+        "affected_testIDs": ["apollo-state-label", "apollo-hero-anim-resting"]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_46.json"],
+  "action_items": [
+    "Investigate/confirm whether dev-tools SecurityAdapter scenario chips (BLOCK_UNVERIFIED etc.) are expected to influence the Check-a-link reputation result / Home hero state, or if they only apply to other flows (e.g. live connection/network checks) — not a redesign regression, just unclear intended scope for this mock build."
+  ],
+  "critical_code_review_comments": [
+    "theme.ts light palette exactly matches design_guidelines.json 'color' block (surface #F5F7FA, surfaceSecondary #FFFFFF, nav #FFFFFF/onNav #F4B942 amber active tab) — no drift between the design spec and implementation.",
+    "home.tsx: old always-visible 'home-capabilities' full list is confirmed removed (grep + live DOM check); same detail (icon+title+detail+status pill+conditional chevron) is fully present on Guard per capability card — matches spec item 7.",
+    "ApolloHero.tsx: HERO_SIZE=170 confirmed applied to the Image element; card background renders solid white (rgb(255,255,255)) with only ring/glow Animated.View elements behind the dog — no full-card colour wash, matches spec item 3.",
+    "DevTag component (ui.tsx) renders a small muted grey pill (surfaceTertiary bg, border, 10px uppercase onSurfaceSecondary text) — confirmed rendering correctly for home-mock-pill, Guard header mock tag, and mock-adapter-pill inside hero chip row; visually muted vs the colourful Pill component used elsewhere, matches spec item 6.",
+    "Protection/Verification card container correctly switches flexDirection column->row at the WIDE_BREAKPOINT=700 threshold via useWindowDimensions — verified column at 390px and row at 1920px.",
+    "guard.tsx: chevron only rendered when cap.status === 'permission_required' (actionable); confirmed only Site Guard (permission_required) shows a chevron+icon-tappable row among the 7 capabilities in this mock build; capability-sheet -> permission-sheet -> Continue flow works end-to-end without breaking existing 'What's needed' button.",
+    "home-open-patrol testID is conditionally rendered only when recent.length > 0 (per code), so it correctly did not appear in this build's default 'All quiet' (zero events) state — not a bug, just noting for future testers who may expect it always present."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a - not tested per request (no backend changes)", "frontend": "100% of testable scenarios passed; 1 pre-existing/unrelated business-logic observation flagged (not a redesign bug)"},
+  "seed_data_creation": "None — used existing mock adapter default data. Toggled /dev-tools SecurityAdapter scenario to BLOCK_UNVERIFIED transiently within a single test session (in-memory, not persisted).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "EXPO_BACKEND_URL is not set in frontend/.env in this build; use EXPO_PUBLIC_BACKEND_URL (same public preview URL) for the app origin. /dev-tools scenario state lives in an in-memory JS singleton — a full page.goto() to a different URL causes a full reload and resets scenario back to NORMAL; to test scenario effects, navigate in-app via Settings -> 'settings-dev-tools' button (SPA route push) and use page.go_back() to return, keeping the same JS context. Onboarding flow: tap 'Continue' text button (welcome/state-explainer) then [data-testid='disclosure-accept-button'] (privacy disclosure); Home (apollo-hero) load time varies ~5-40s in this sandbox due to completeSetup() network calls — poll with 45s timeout.",
+  "rca_of_issue": "N/A for the redesign scope — all visual/layout changes (theme colors, hero size/card, Quick Checks tiles + All-checks toggle, Protection/Verification responsive stacking, Recent Patrol copy/limit, digest card placement, Guard capability icons/chevrons, DevTag mock indicators, bottom nav styling) verified correct and matching the approved 'Light Sentinel' spec, with no regressions to existing tested features (Hear Higgins, permission flows, navigation)."
+}
