@@ -2,7 +2,7 @@
 // backend/routers/ask.py). We strip that line from what the person reads and turn it into tappable links to the
 // actual checks, then track which of them were completed after Higgins asked.
 
-import type { EventCategory } from "./types.ts";
+import type { Capability, EventCategory } from "./types.ts";
 
 export type CheckId = "link" | "message" | "app" | "device" | "account" | "network";
 
@@ -40,10 +40,9 @@ export function progressLine(done: number, total: number): string {
 }
 
 // --- "Run a check" → which checks, exactly ---------------------------------------------------------------------------
-// MOCK (standard list per situation) until native enforcement can report which protections actually failed
-// verification. When that lands, derive this from the enforcement result instead of the table below.
-export const RECOMMENDED_CHECKS_ARE_MOCK = true;
-export const RECOMMENDED_CHECKS_NOTE = "Standard list for now — once Apollo can verify enforcement on this phone, he will name only the checks that actually need running.";
+// Standard list per situation until native enforcement can report which protections actually failed verification.
+// When that lands, derive this from the enforcement result instead of the table below. No disclaimer is shown for
+// this — the only thing Higgins calls out by name is a real permission gap (see higginsPermissionNote below).
 
 const BY_CATEGORY: Partial<Record<EventCategory, CheckId[]>> = {
   account: ["account", "device"], email: ["account", "message"], message: ["message", "account"], call: ["account", "device"],
@@ -60,11 +59,21 @@ export function recommendedChecks(r: { recovering: boolean; visibilityLost: bool
 
 const ORDINAL = ["first", "second", "third", "fourth", "fifth", "sixth"];
 
-/** Spoken form for Higgins: names each check and where to find it, in order. */
+/** Spoken form for Higgins, in the first person: names each check and where to find it, in order. */
 export function checksSpoken(checks: CheckId[]): string {
   if (!checks.length) return "";
   const parts = checks.map((c, i) => `${checks.length > 1 ? `${ORDINAL[i] ?? `number ${i + 1}`}, ` : ""}${CHECKS[c].label} — under ${CHECKS[c].where.replace(/ \(.*\)$/, "")}`);
-  return `${checks.length === 1 ? "The check to run is" : `The ${checks.length} checks to run, most important first:`} ${parts.join(". ")}.`;
+  return `${checks.length === 1 ? "The check I need you to run is" : `The ${checks.length} checks I need you to run, most important first:`} ${parts.join(". ")}.`;
+}
+
+/** Higgins, in the first person, naming any real permission gap — never a generic "this list is mock" disclaimer.
+ *  Returns null when every capability Apollo needs is already granted. */
+export function higginsPermissionNote(capabilities: Capability[]): string | null {
+  const gaps = capabilities.filter((c) => c.status === "permission_required");
+  if (!gaps.length) return null;
+  const names = gaps.map((c) => c.title);
+  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return `I don't have permission for ${list} yet, so I can't verify ${names.length === 1 ? "it" : "them"} myself. Turn ${names.length === 1 ? "it" : "them"} on in Guard so I can check properly.`;
 }
 // --- Follow-up: a day later, Higgins gently notices what is still waiting ------------------------------------------
 export interface Suggestion { messageId: string; askedAt: string; checks: CheckId[]; snoozedUntil?: string }

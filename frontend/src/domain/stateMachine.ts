@@ -71,7 +71,7 @@ export function resolveApolloState(input: StateInput): StateResolution {
       // Hold at growling (lowest alert) rather than snapping back to resting.
       return {
         state: "growling",
-        reason: "A recent event was resolved. Apollo is waiting for a fresh check before returning to patrol — Higgins has listed which.",
+        reason: "A recent event was resolved. Apollo is waiting for a fresh check before returning to patrol — tap Hear Higgins and I'll tell you which.",
         recovering: true,
         visibilityLost: false,
         drivingEvent: recentlyResolved,
@@ -83,7 +83,7 @@ export function resolveApolloState(input: StateInput): StateResolution {
     return { state: "growling", reason: "Apollo cannot see anything right now. Protection is not active.", recovering: false, visibilityLost: true, drivingEvent: null };
   }
   if (!verificationFresh) {
-    return { state: "growling", reason: "Apollo has not verified protection recently. Higgins has listed the checks to run.", recovering: true, visibilityLost: false, drivingEvent: null };
+    return { state: "growling", reason: "Apollo has not verified protection recently — tap Hear Higgins and I'll list the checks to run.", recovering: true, visibilityLost: false, drivingEvent: null };
   }
   return {
     state: "resting",

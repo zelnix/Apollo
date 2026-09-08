@@ -59,7 +59,7 @@ export default function Home() {
         <ScreenHeader title="Apollo" testID="home-header" right={<View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>{isMock ? <Pill tone="unknown" label="Mock" testID="home-mock-pill" /> : null}<ApolloLogo size={40} testID="home-logo" /></View>} />
       </View>
       <ScrollView contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={verifyNow} tintColor={colors.resting} />} testID="home-scroll">
-        <ApolloHero resolution={resolution} visibility={visibility} adapterLabel={adapterLabel} isMock={isMock} animate={!lowPower} quietNow={quietNow} sniffing={refreshing} />
+        <ApolloHero resolution={resolution} visibility={visibility} adapterLabel={adapterLabel} isMock={isMock} capabilities={capabilities} animate={!lowPower} quietNow={quietNow} sniffing={refreshing} />
         {identityReset ? (
           <Card style={{ gap: spacing.sm, borderColor: colors.barking }} testID="identity-reset-card">
             <Text style={s.capTitle}>Apollo needs to re-register this phone</Text>

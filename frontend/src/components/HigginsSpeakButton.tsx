@@ -15,13 +15,16 @@ const useStyles = makeStyles((c) => ({
   icon: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill },
 }));
 
-export function HigginsSpeakButton({ text, label = "Hear Higgins", compact = false, testID }: { text: string; label?: string; compact?: boolean; testID?: string }) {
+export function HigginsSpeakButton({ text, label = "Hear Higgins", compact = false, testID, onPress: onExtraPress }: { text: string; label?: string; compact?: boolean; testID?: string; /** Fires alongside the tap, before speech starts (e.g. to open a related popup). Not called when tapping to stop. */ onPress?: () => void }) {
   const s = useStyles();
   const { colors } = useTheme();
   const { deviceId, showToast } = useApollo();
   const { speak, speaking, busy } = useHiggins(deviceId);
   const active = !!speaking && speaking === text.trim().slice(0, 1500);
-  const onPress = () => { void speak(text).catch((e: Error) => showToast(e.message || "Higgins couldn't speak just now.", "neutral")); };
+  const onPress = () => {
+    if (!active) onExtraPress?.();
+    void speak(text).catch((e: Error) => showToast(e.message || "Higgins couldn't speak just now.", "neutral"));
+  };
   const Icon = active ? VolumeX : Volume2;
   if (compact) {
     return (
