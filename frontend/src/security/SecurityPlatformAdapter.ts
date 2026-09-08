@@ -78,7 +78,10 @@ export interface NativeUrlAnalysis {
 }
 
 export interface BlockResult {
-  /** True ONLY when the platform confirmed the destination is now blocked. */
+  /** True when the platform confirms the block RULE is now live (filter running + host enforced
+   * going forward). This is NOT a claim that any packet has been dropped yet — see `evidence`,
+   * which for this call is either null or explicitly unverified. Only EnforcementEvidence with
+   * result:"verified" (from an actually-observed drop) may ever authorise THREAT_BLOCKED/"biting". */
   verified: boolean;
   method: "network_extension" | "vpn_service" | "dns_filter" | "content_blocker" | "simulated" | "none";
   detail: string;

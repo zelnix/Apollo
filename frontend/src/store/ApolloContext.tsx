@@ -188,7 +188,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   // Cross-Platform Architecture Directive: passively surface REAL, native-observed blocks (a real
   // app's traffic actually hit an already-blocked domain and got dropped) as their own verified
-  // "biting" events — distinct from the immediate tap-to-block flow in blockEvent() below. Every
+  // "biting" events — distinct from the immediate tap-to-block flow in blockEvent() below, which
+  // must NEVER reach "biting" on its own (a manual tap is a request, not a verified block). Every
   // entry here already passed isVerifiedEnforcement(); the backend independently re-validates the
   // attached evidence again before it ever sets verified_block itself (see routers/patrol.py).
   const seenEvidenceRef = useRef<Set<string> | null>(null);
@@ -199,6 +200,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       seenEvidenceRef.current = new Set(raw ? (JSON.parse(raw) as string[]) : []);
     }
     const seen = seenEvidenceRef.current;
+    // isVerifiedEnforcement() + the evidenceId dedupe below together guarantee repeated evidence for
+    // the same real block can never create duplicate "biting" events.
     const fresh = evidence.filter((e) => isVerifiedEnforcement(e) && !seen.has(e.evidenceId));
     if (!fresh.length) return;
     for (const e of fresh) seen.add(e.evidenceId);
@@ -207,15 +210,24 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     await storage.setItem(K.seenEvidence, JSON.stringify(capped));
     for (const e of fresh) {
       const domain = e.destination.domain ?? e.destination.ip ?? "a threat";
+      // Upgrade an existing card for this exact host (e.g. it was flagged/barking earlier) in place,
+      // rather than spawning a duplicate — one destination should read as one continuous story.
+      const existing = eventsRef.current.find((x) => x.indicator_host === domain && x.state !== "biting");
+      const base: PatrolEvent = existing ?? {
+        event_id: Crypto.randomUUID(), device_id: deviceIdRef.current ?? "local", category: "connection", state: "barking", status: "active",
+        headline: "", what_happened: "", why: [], what_to_do: "", indicator_host: domain, indicator_digest: null,
+        verified_block: false, adapter_label: securityAdapter.label, occurred_at: e.observedAt, resolved_at: null, trust_allowed: false,
+      };
+      if (!canTransition(base, "biting", { verifiedBlock: true })) continue; // defensive: same single gate everywhere
       const ev: PatrolEvent = {
-        event_id: Crypto.randomUUID(), device_id: deviceIdRef.current ?? "local", category: "connection", state: "biting", status: "blocked",
-        headline: `Apollo blocked ${domain}`, what_happened: `Apollo's Site Guard observed a real connection attempt to ${domain} and blocked it on this device.`,
-        why: ["Apollo's on-device filter matched this domain against a threat it already knew about and blocked the exact connection — confirmed by the operating system, not assumed."],
-        what_to_do: "Nothing more to do. Apollo verified this destination is blocked.", indicator_host: domain, indicator_digest: null,
-        verified_block: true, adapter_label: securityAdapter.label, occurred_at: e.observedAt, resolved_at: null, trust_allowed: false,
+        ...base, state: "biting", status: "blocked", headline: `Apollo blocked ${domain}`,
+        what_happened: `Apollo's Site Guard observed a real connection attempt to ${domain} and blocked it on this device.`,
+        why: [...base.why, "Apollo's on-device filter matched this domain against a threat it already knew about and blocked the exact connection — confirmed by the operating system, not assumed."],
+        what_to_do: "Nothing more to do. Apollo verified this destination is blocked.", indicator_host: domain,
+        verified_block: true, adapter_label: securityAdapter.label, occurred_at: e.observedAt, resolved_at: null,
         background: true, enforcement_evidence: toPatrolEnforcementEvidence(e),
       };
-      setEvents((prev) => { const next = [ev, ...prev]; void storage.setItem(K.events, JSON.stringify(next)); return next; });
+      setEvents((prev) => { const next = [ev, ...prev.filter((x) => x.event_id !== ev.event_id)]; void storage.setItem(K.events, JSON.stringify(next)); return next; });
       void syncEventRef.current?.(ev);
       showToast(`Apollo blocked ${domain}.`, "biting");
     }
@@ -514,14 +526,18 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const blockEvent = useCallback(async (event: PatrolEvent) => {
     const host = event.indicator_host ?? "";
     const result = await securityAdapter.blockDestination(host);
-    // The backend independently re-validates this evidence before it will ever set verified_block
-    // itself — attaching it here is not the same as trusting it (see routers/patrol.py).
+    // A manual "Block" tap can only ever REQUEST a block and confirm the rule is now active
+    // ("operational") — it can never claim a VERIFIED block by itself, so this must never move an
+    // event to "biting" / THREAT_BLOCKED on its own. Only an actually-observed dropped connection
+    // (see syncEnforcementEvidence, driven by real EnforcementEvidence) may do that. isVerifiedEnforcement()
+    // below is always false for tap-driven evidence today — kept as the single defensive gate so that
+    // guarantee can never silently change without this line catching it.
     const evidence = result.evidence && isVerifiedEnforcement(result.evidence) ? toPatrolEnforcementEvidence(result.evidence) : null;
-    if (result.verified && canTransition(event, "biting", { verifiedBlock: true })) {
-      await upsertEvent({ ...event, state: "biting", status: "blocked", verified_block: true, adapter_label: result.adapterLabel,
-        headline: `Apollo blocked ${host}`, what_to_do: "Nothing more to do. Apollo verified this destination is blocked. Tap “Mark as contained” once you've read this.", why: [...event.why, result.detail],
+    if (result.verified) {
+      await upsertEvent({ ...event, status: "active", verified_block: false, adapter_label: result.adapterLabel, why: [...event.why, result.detail],
+        what_to_do: "Apollo has put a block in place for this destination. This card will update the moment Apollo actually sees and stops a connection attempt to it.",
         enforcement_evidence: evidence });
-      showToast(`Apollo blocked ${host}`, "biting");
+      showToast(`Block rule active for ${host}. Apollo will confirm once it sees a connection.`, "barking");
     } else {
       await upsertEvent({ ...event, state: "barking", status: "active", verified_block: false, why: [...event.why, `Block not verified: ${result.detail}`],
         what_to_do: "Apollo could not verify a block on this device. Do not open the link. Avoid this destination.", enforcement_evidence: null });

@@ -29,13 +29,16 @@ class EnforcementEvidenceTest {
     assertEquals("local_blocklist", ev.ruleSource)
   }
 
-  @Test fun `ruleActivated is real but distinct from an observed packet drop`() {
+  @Test fun `ruleActivated is real but is never mistaken for an observed packet drop`() {
     val ev = EnforcementEvidence.ruleActivated(
       evidenceId = "ev-2", observedAt = "2026-06-01T00:00:00Z", domain = "evil.example", osVersion = "Android 15", sdkVersion = "1.0.0",
     )
-    assertEquals("verified", ev.result)
-    assertEquals("blocked", ev.enforcedAction)
-    // Distinguishable by ruleSource from an actually-observed block, so no code path can conflate the two.
+    // A manual "Block" tap is a REQUEST, not a VERIFIED block — must fail the same gate verifiedDnsBlock passes.
+    assertEquals("unverified", ev.result)
+    assertEquals("none", ev.enforcedAction)
+    assertNotEquals("verified", ev.result)
+    assertNotEquals("blocked", ev.enforcedAction)
+    // Still distinguishable by ruleSource from an actually-observed block, for audit clarity.
     assertEquals("user_override", ev.ruleSource)
     assertNotEquals("local_blocklist", ev.ruleSource)
   }

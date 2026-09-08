@@ -119,6 +119,16 @@ class TestEnforcementEvidenceGate:
         assert r.status_code == 200, r.text
         assert r.json()["verified_block"] is True
 
+    def test_manual_block_tap_rule_activation_never_authorises_a_verified_block(self):
+        # Mirrors exactly what the Android native module's blockDestination() returns for a manual
+        # "Block" tap: the filter rule went live, but no packet has been observed dropped yet.
+        did, auth = _device()
+        eid = f"evt_{uuid.uuid4().hex[:10]}"
+        ev = _evidence(enforced_action="none", result="unverified", rule_source="user_override")
+        r = requests.post(f"{API}/patrol/events", json=_event_payload(did, eid, True, ev), headers=auth, timeout=15)
+        assert r.status_code == 200, r.text
+        assert r.json()["verified_block"] is False
+
     def test_re_upserting_the_same_event_without_evidence_downgrades_verified_block(self):
         # Sync races/retries must not let an earlier verified block "stick" once re-submitted honestly.
         did, auth = _device()

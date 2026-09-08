@@ -69,8 +69,10 @@ class ApolloSecurityModule : Module() {
     AsyncFunction("blockDestination") { host: String ->
       ApolloDnsVpnService.addBlocked(ctx, host)
       val verified = SiteGuardTruth.verifiedBlock(ApolloDnsVpnService.isRunning, host, ApolloDnsVpnService.loadBlocked(ctx))
-      // Rule-activation evidence only — this confirms the filter is live and will enforce this host from
-      // now on; it is NOT evidence of a specific packet drop (see EnforcementEvidence.ruleActivated).
+      // "verified" here means the filter is live and this host is now enforced going forward — it is
+      // NOT a claim that a packet was ever dropped. The attached evidence says so explicitly
+      // (result="unverified") so it can never pass isVerifiedEnforcement / _derive_verified_block.
+      // Only ApolloDnsVpnService.handlePacket() observing and dropping a real query may do that.
       val evidence = if (verified) EnforcementEvidence.ruleActivated(
         evidenceId = UUID.randomUUID().toString(), observedAt = now(), domain = host,
         osVersion = platformVersion(), sdkVersion = ApolloDnsVpnService.MODULE_VERSION,
@@ -194,7 +196,9 @@ class ApolloSecurityModule : Module() {
         .put("capabilityVersion", "1") // keep in sync with CAPABILITY_PROFILE_VERSION in PlatformCapabilityProfile.ts
         .put("networkFiltering", "partial")   // DNS-only tunnel, not a general packet filter
         .put("packetVisibility", "partial")   // only IPv4/UDP/port-53 packets are inspected
-        .put("dnsVisibility", "full")         // every system-resolver DNS query is seen
+        .put("dnsVisibility", "full")         // every PLAINTEXT UDP/53 system-resolver query is seen — Android
+        // Private DNS (DoT) and app-level DoH bypass this tunnel entirely (see ApolloDnsVpnService header);
+        // this is a known platform-behaviour limit, captured here rather than hidden by overclaiming.
         .put("processAttribution", "none")    // no UID/PID mapping implemented in this module
         .put("appAttribution", "none")
         .put("domainVisibility", "full")

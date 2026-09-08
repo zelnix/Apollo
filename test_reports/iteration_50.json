@@ -1,0 +1,38 @@
+{
+  "summary": "Verified the manual-block-tap-must-never-equal-verified-block correction across backend, frontend, and app smoke test. All targeted new tests pass, full regression suites are green (aside from a pre-existing/known flaky item and one newly-observed unrelated third-party email rate-limit flake). Mock-adapter block flow in the app is confirmed UNCHANGED.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/family/guardians", "issue": "Full-suite run hit a 502 on TestConfirmToken::test_confirm_valid_token due to backend log 'email send failed: 429' (Resend API rate limiting), not the pre-registered known-flaky test_family_weekly_push. Re-ran in isolation and it still failed with the same 502 (external Resend rate-limit dependency, not code-change related). Isolated re-run of test_family_weekly_push.py passed 5/5 as expected."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_enforcement_evidence_gate.py",
+    "/app/frontend/tests/enforcementEvidenceSync.test.ts",
+    "/app/frontend/tests/platformCapability.test.ts",
+    "/app/frontend/tests/protectionTruth.test.ts"
+  ],
+  "action_items": [
+    "Kotlin changes (EnforcementEvidence.kt, EnforcementEvidenceTest.kt, ApolloDnsVpnService.kt doc comments) could not be run in this sandbox (no Android toolchain) -- as expected/out of scope, per request.",
+    "Investigate the Resend email 429 rate-limit causing an intermittent 502 on POST /api/family/guardians during full-suite parallel runs -- unrelated to this round's enforcement-evidence changes but worth tracking separately since it's a second distinct flaky test now observed in the full suite (in addition to the already-known test_window_and_week_key)."
+  ],
+  "critical_code_review_comments": [
+    "No code review issues found in the files reviewed this round; changes are additive/corrective and consistent with the stated Truth-of-State intent (manual tap != verified block)."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "100% for evidence-gate suite (11/11); full suite 218/219 passed on this run (1 failure attributable to third-party email rate-limiting, unrelated to code under test)",
+    "frontend": "100% (20/20 node unit tests passed; tsc clean except the one pre-existing home.tsx:217 error)"
+  },
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Confirmed via browser automation: pasting http://testsafebrowsing.appspot.com/s/phishing.html into 'Check a link' correctly triggers 'Apollo is barking'; tapping 'Block this destination' with the mock adapter shows 'Block not verified: Mock adapter (demo)... still barking' -- event correctly stays in 'barking' state, never jumps to 'biting'. No console errors/crashes during the flow, only pre-existing unrelated deprecation warnings (shadow* / pointerEvents). App boots cleanly after supervisor restart with no blank-screen regression this run.",
+  "rca_of_issue": "The single backend full-suite failure (test_confirm_valid_token) is caused by the Resend transactional email API returning HTTP 429 (rate limited) to the backend when creating a guardian record that triggers a confirmation email send, which the backend surfaces as a 502 to the client. This is an external dependency/rate-limit issue unrelated to the enforcement-evidence correction under test this round; it reproduced identically on isolated re-run, so it is a real (if pre-existing/environmental) flake, not a regression from this change set."
+}

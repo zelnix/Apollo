@@ -26,6 +26,16 @@ import kotlin.concurrent.thread
  * Every DNS query is parsed on-device; queries for hosts Apollo has verified
  * as threats receive NXDOMAIN, everything else is forwarded to the real upstream
  * resolver over a protected socket. No query is logged or sent anywhere else.
+ *
+ * KNOWN PLATFORM-BEHAVIOUR LIMIT (capture explicitly, do not silently "fix" by overclaiming):
+ * because only the plaintext UDP/53 route is tunnelled, a query that never targets
+ * 10.111.0.1:53 is never seen here at all. Android's system-wide Private DNS (DNS-over-TLS,
+ * Settings → Network → Private DNS, port 853) and any app doing its own DNS-over-HTTPS to a
+ * hardcoded resolver IP both bypass this VPN's DNS interception entirely — this is a real gap
+ * in coverage, not a bug in the evidence model. If this is confirmed on a physical device, it
+ * belongs in PlatformCapabilityProfile as a narrower dnsVisibility/networkFiltering value for
+ * this build, or as the trigger to widen the tunnel to a full 0.0.0.0/0 route in a later phase —
+ * never as a reason to fabricate evidence for traffic Apollo never actually observed.
  */
 class ApolloDnsVpnService : VpnService() {
   companion object {

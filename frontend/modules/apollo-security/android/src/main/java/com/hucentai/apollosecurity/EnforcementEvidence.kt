@@ -52,16 +52,17 @@ data class EnforcementEvidence(
 
     /**
      * Rule-activation confirmation for a manual "Block" tap (ApolloSecurityModule.blockDestination):
-     * the filter is observed live-running and this host is now in its enforced set, so every future
-     * lookup for it WILL be answered by [verifiedDnsBlock]. Real (read from live OS/service state, not
-     * client-supplied), but it is evidence of a rule going live — not of a specific packet drop. Callers
-     * must not confuse the two when reasoning about what actually happened on the wire.
+     * the filter is observed live-running and this host is now in its enforced set, so a FUTURE
+     * lookup for it will be answered by [verifiedDnsBlock] — but none has happened yet. result is
+     * deliberately "unverified" and enforcedAction "none": this must NEVER pass isVerifiedEnforcement
+     * / _derive_verified_block, however real the rule-activation itself is. A manual tap is a REQUEST,
+     * not a VERIFIED block — only an actually-observed dropped packet may claim that.
      */
     fun ruleActivated(evidenceId: String, observedAt: String, domain: String, osVersion: String?, sdkVersion: String?): EnforcementEvidence =
       EnforcementEvidence(
         evidenceId = evidenceId, observedAt = observedAt, mechanism = "dns_filter", direction = "outbound", protocol = "dns",
         destinationDomain = domain, destinationPort = 53, matchedRuleId = domain, osVersion = osVersion, sdkVersion = sdkVersion,
-        requestedAction = "block", enforcedAction = "blocked", result = "verified", ruleSource = "user_override", confidence = "high",
+        requestedAction = "block", enforcedAction = "none", result = "unverified", ruleSource = "user_override", confidence = "high",
       )
   }
 }

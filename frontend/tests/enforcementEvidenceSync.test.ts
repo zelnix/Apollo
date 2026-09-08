@@ -49,3 +49,16 @@ test("3. an unverified/simulated record maps through honestly too — mapping do
   const mapped = toPatrolEnforcementEvidence(fake);
   assert.equal(mapped.mechanism, "simulated"); // still visible to the backend gate, not hidden or coerced
 });
+
+test("4. a manual 'Block' tap's rule-activation evidence (ApolloSecurityModule.blockDestination shape) is never verified", () => {
+  // Mirrors exactly what the Android native module's blockDestination() now returns for the
+  // manual-tap flow: result="unverified", enforcedAction="none", ruleSource="user_override".
+  // A tap is a REQUEST, never a VERIFIED block — see ApolloContext.blockEvent().
+  const ruleActivated: EnforcementEvidence = {
+    ...sample, enforcedAction: "none", result: "unverified", ruleSource: "user_override",
+  };
+  assert.equal(isVerifiedEnforcement(ruleActivated), false);
+  const mapped = toPatrolEnforcementEvidence(ruleActivated);
+  assert.equal(mapped.result, "unverified");
+  assert.equal(mapped.enforced_action, "none");
+});
