@@ -215,6 +215,37 @@ expo-modules-core/android-36 classpath; frontend `tsc` shows no errors in change
 - Untouched: frozen bundle v25, signing key, verifier semantics, controlled endpoint/IP, block-authority chain, THREAT_BLOCKED producer
   (`PacketDropReporter` remains the only producer; it now only categorises what it already discarded). Phone: install over, Run proof.
 
+### Run 34189478121 (run 17, tip `c12ae1c`) — 5/5 green; **PHYSICAL BLOCK + BRIDGE + STOP/RECOVERY PROOF: PASS** — attestation
+Immutable attestation of the device-generated proof. The raw JSON is deliberately **not** committed (generated phone artifact); it is
+identified by filename + SHA-256 so any copy can be checked against this entry.
+
+| Field | Value |
+|---|---|
+| CI run | https://github.com/zelnix/Apollo/actions/runs/34189478121 (`native-gates` #18, push, all five jobs success: android 7m21s · ios 18m47s · executable-suites 57s · android-dev-build 13m49s · android-startup-smoke 12m54s) |
+| Branch tip built | `c12ae1cccd6491bfc0320307c4281b63fe99cbc9` = `311070d` (pass-11, 15 files) + `.emergent/emergent.yml` timestamp only |
+| Artifact `apk-provenance.json` | `apkSha256 3b8e16bec48932d2a3be9b8ece0065d56f74f0e39588d5b3bb655becd63bacbe` · `commit c12ae1c…` · `workflowRunId 34189478121` (read by the reviewer from the run's `android-dev-build` artifact) |
+| Installed APK (phone card + report `provenance`) | same `apkSha256`, `gitSha c12ae1c…`, `ciRunId 34189478121`, `com.emergent.guarddogm.k6cugf` 1.0.0 (1), debuggable dev proof APK, 90 697 844 bytes — **CI artifact → installed APK → report continuity closed** |
+| Install mode | install-over on the preserved legacy device state (no uninstall, no data clear) |
+| Proof file | `guarddog-m1-proof-2026-09-08T06-16-11-528Z.json` · SHA-256 `0b09cc9091280d48d9fade81b1d82a9a23b8eba55de9060546688c2ee456dc87` · `reportVersion m1-4` · generated 2026-09-08T06:16:11.528Z |
+| Verdict | **`proofComplete: true` · `recoveryComplete: true`** · 15/15 steps PASS |
+| Frozen bundle | `gd-m1-controlled-block` v25 · `keyId gd-m1-test-ed25519-001` · `payloadHash 2581666cc768e1e4e76962db0cc70e497e17e9b9cf4a5a997c8cfb091e6b90c9` (= `security/frozen/controlled-bundle-v25.json`); on-device verify: valid=accepted, tampered=`PAYLOAD_HASH_MISMATCH`, unknown key=`UNKNOWN_KEY` |
+| Endpoint | `blocktest.btciq.app` → `52.25.179.131` (live `/api/config`) |
+| Fresh probe **before** | new socket → DNS `52.25.179.131` → TCP → TLS → **HTTP 200** (2443 ms) |
+| Route (live snapshot, before protected probe) | `lifecycle=ACTIVE tunOpen=true selectiveRouteActive=true routeCidr=52.25.179.131/32`; supporting `osVpnTransportPresent=true` |
+| Fresh probe **under protection** | new socket → DNS `52.25.179.131` → **`tcp-connect` / `timeout`** (6017 ms) — SYN-drop shape; no DNS/TLS/HTTP/refused/unreachable path taken |
+| Native TUN counters | `observedMatching=6 droppedMatching=6 reportedBlocks=2 dedupedRetries=4 unexpectedPackets=6 nonIpv4=6 malformedIpv4=0 wrongDestinationIpv4=0` |
+| Genuine `THREAT_BLOCKED` (bridge) | `source android-vpn-enforcement` · primary `enforcementEvidenceId 9b382d73-dfcc-44e9-984f-a54d69e5e545` · `securityEventId 54e36113-c3a5-4af5-86c4-5388c25224f5` · 2026-09-08T06:15:09Z (ACTIVE at 06:15:07Z); second event `55c62278-aebc-43c9-93f3-cdc6b1c1d8eb` at 06:15:14Z after the 5 s dedupe window · `rule m1-controlled-block-001` |
+| Unrelated traffic | backend `/api/health` HTTP 200 while protected |
+| Recovery | stop 06:15:16.174Z → `STOPPED: stopped by user` → `tunOpen=false dropReporterAttached=false` → `selectiveRouteActive=false`, `vpnTransportPresent=false` → fresh probe **after stop** new socket → **HTTP 200** (1452 ms) at 06:15:17.929Z |
+
+Observation (non-blocking, cause **unconfirmed**): six non-IPv4 frames entered the TUN during the ~9 s protected window (`nonIpv4=6`), then stopped.
+The report proves only their count and that they were discarded and never reported; it does not identify protocol or origin. Kernel IPv6
+interface bring-up traffic is a plausible explanation but is not established. Not an acceptance blocker: `wrongDestinationIpv4=0` (no IPv4
+route leak) and unrelated traffic stayed reachable. May be instrumented later (ICMPv6 type counts only).
+
+**M1 physical acceptance status after run 17**: block ✅ · bridge ✅ · normal stop + recovery ✅ · **`onRevoke()` physical proof: OPEN** (next
+device item) · release-manifest audit: OPEN (P1, after revoke). Final M1 sign-off only when both pass.
+
 ## 4. Download artifacts and attach here
 | Artifact | Files to attach |
 |---|---|
