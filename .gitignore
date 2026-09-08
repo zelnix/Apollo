@@ -101,3 +101,9 @@ credentials.json
 
 # Secret-free template consumed by CI (`cp backend/.env.example backend/.env`); the generic .env.* / *.env rules above must not swallow it
 !backend/.env.example
+
+# release-manifest audit outputs (CI artifacts, never committed)
+docs/evidence/guarddog-release.apk
+docs/evidence/guarddog-release.aab
+docs/evidence/release-*
+.tools/

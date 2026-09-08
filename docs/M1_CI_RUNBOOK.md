@@ -14,9 +14,10 @@ access of its own; this is the only handoff path.) The push includes `.github/wo
 
 ## 3. Run
 Before clicking **Run workflow**, confirm the selected branch contains commit **`dbd58e5`** (`git log --oneline -1` after Save to GitHub).
-Actions → **native-gates** → Run workflow (leave the `xcode` input at `26.4` unless told otherwise; the iOS job runs on `macos-26`). The **whole workflow = five jobs**:
+Actions → **native-gates** → Run workflow (leave the `xcode` input at `26.4` unless told otherwise; the iOS job runs on `macos-26`). The **whole workflow = six jobs** (five until run 19; `android-release-manifest` added in pass 14):
 `android` (AC-01, ubuntu) · `android-dev-build` (AC-04 APK + manifest audit + APK recheck, ubuntu, needs `android`) ·
 `android-startup-smoke` (same commit/script built for x86_64, installed on a KVM emulator with no Metro, must reach `GD_SMOKE_READY`; needs `android`) ·
+`android-release-manifest` (release APK + AAB packaged-manifest audit, ubuntu, needs `android`) ·
 `ios` (AC-02, macos-26, Xcode 26.4) · `executable-suites` (pytest/node with ephemeral keys, after dependency install).
 Let the run finish completely — do **not** re-run individual failed jobs mid-stream; the audit needs one coherent run ID.
 
@@ -312,6 +313,54 @@ device satisfied; the security property (no restart without a fresh `requestPerm
   semantically equivalent.
 - Untouched: `GuardDogVpnService.onRevoke()`, `VpnStateRepository`, v25, keys, verifier, /32 routing, THREAT_BLOCKED path, bridge, CI.
 Expected Run 19 phone result: `mode: revoke` · `reportVersion: m1-6` · `revokeComplete: true` · `osConsentRequiredAfterRevoke` = Android's actual report.
+
+### Run 34206626107 (run 19, tip `d7abea2`) — 5/5 green; **PHYSICAL `onRevoke()` PROOF: PASS** (`revokeComplete: true`) — attestation
+Raw JSON off-repo, identified by filename + SHA-256.
+
+| Field | Value |
+|---|---|
+| CI run | https://github.com/zelnix/Apollo/actions/runs/34206626107 (`native-gates` #21, push, all five jobs success: android 7m29s · ios 19m33s · executable-suites 48s · android-dev-build 11m53s · android-startup-smoke 13m05s) |
+| Branch tip built | `d7abea270d03735114f216bf36a0caa99e6acbc9` = `68a6adf` (pass 13, 5 harness/docs files) + one `.emergent/emergent.yml` timestamp commit; `git diff 06622d0..d7abea2` touches no native, security, backend or CI path |
+| Artifact `apk-provenance.json` | `apkSha256 890c9c417da1737498e7b894a59b46d95e2aeaa48837a28a31cefdeec4f04ec8` · `commit d7abea2…` · `workflowRunId 34206626107` · attempt 1 |
+| Installed APK (phone card + report) | same `apkSha256`, `gitSha`, `ciRunId`; 90 711 372 bytes; install-over on the preserved device state |
+| Proof file | `guarddog-m1-revoke-proof-2026-09-08T09-29-02-132Z.json` · SHA-256 `742670a9543d143b933622ff9a56cadf0e51e6e546d188f251a64fb9b44636bc` · `reportVersion m1-6` · `mode revoke` · generated 2026-09-08T09:29:02.132Z |
+| Verdict | **13/13 steps PASS · `revokeComplete: true`** (`proofComplete`/`recoveryComplete` are block-mode fields and correctly `false` here) |
+| Prelude | v25 `payloadHash 2581666c…6b90c9` accepted, tampered=`PAYLOAD_HASH_MISMATCH`, unknown key=`UNKNOWN_KEY`; fresh socket HTTP 200 (2173 ms); consent granted; **ACTIVE** 09:28:02.004Z; `routeCidr=52.25.179.131/32` |
+| Enforcing at revoke time | fresh socket → `tcp-connect` / `timeout` to `52.25.179.131` (6019 ms); `observedMatching=6 droppedMatching=6 reportedBlocks=2 dedupedRetries=4 nonIpv4=6 malformedIpv4=0 wrongDestinationIpv4=0`; genuine `THREAT_BLOCKED` `cb4c9402-…` (evidence `d81b484c-cdc0-460e-a938-50f7f2e2af45`, 09:28:03Z) and `8d556092-…` (evidence `568d4170-d01d-4510-901d-8664baabe0a5`, 09:28:08Z) |
+| **`onRevoke()`** | native `REVOKED` · reason `"VPN permission revoked by system/user"` · bridged `PROTECTION_STATE_CHANGED(REVOKED)` `971db3c4-4a07-4452-a134-cd00c2fae766` at 09:28:40Z · 37 054 ms after ACTIVE · external Settings → VPN → Disconnect by the tester |
+| Cleanup | `lifecycle=REVOKED tunOpen=false dropReporterAttached=false selectiveRouteActive=false`; supporting `osVpnTransportPresent=false` |
+| AC-06 consent (Apollo layer) | `consentGranted=false` ✅ |
+| OS prepared-state (observation only) | `VpnService.prepare() != null` → **false**: **the OS prepared-state remained previously-consented on this device; observed, not used as revoke-completion evidence.** Android's API documentation indicates a later `prepare()` should normally return an Intent again after the user disables an active VPN; this device did not do so on two consecutive runs (18, 19). Recorded as an **unresolved platform discrepancy**, not a pass and not a defect finding against Apollo. |
+| No silent restart | `startProtection()` **rejected** by Apollo ("VPN consent not granted"), state stayed `REVOKED`, `tunOpen=false` ✅ |
+| Recovery | fresh socket HTTP 200 (1317 ms) at 09:28:48.984Z ✅ |
+
+**M1 physical acceptance status after run 19: block ✅ · bridge ✅ · stop/recovery ✅ · onRevoke ✅.** Remaining planned M1 gate: packaged
+release-manifest audit (below).
+
+### Packaged release-manifest audit gate (pass 14, for CI Run 20) — new CI job `android-release-manifest`
+Replaces the standing assumption "the debug-only `SYSTEM_ALERT_WINDOW` disappears in release" with a test of the artifacts that would ship.
+- `scripts/ci/android-release-manifest-audit.sh`: clean `expo prebuild` → `:app:assembleRelease :app:bundleRelease` (arm64-v8a; signing =
+  Expo's placeholder debug keystore — packaging audit, not distribution signing) → **release APK** binary manifest via `aapt2 dump
+  xmltree`/`badging` → **release AAB** bundle-derived manifest via `bundletool 1.17.2 dump manifest` → both audited by
+  `scripts/ci/release_manifest_audit.py` with one rule set → APK and AAB permission sets must be identical → release APK content sanity
+  (no private-key / admin-token / DB-URL markers, JS bundle embedded).
+- Rules (REQUIRED, all must pass for each container): package `com.emergent.guarddogm.k6cugf`; `android:debuggable` absent; minSdk 26;
+  targetSdk 36; `com.guarddog.vpn.GuardDogVpnService` present with `BIND_VPN_SERVICE`, `exported=false`, `foregroundServiceType`
+  including `systemExempted` (0x400), intent action `android.net.VpnService`; `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_SYSTEM_EXEMPTED`,
+  `INTERNET`, `ACCESS_NETWORK_STATE` requested; no accessibility service; every deny-listed permission absent (`SYSTEM_ALERT_WINDOW`,
+  `QUERY_ALL_PACKAGES`, SMS/call-log/contacts/storage/media, accessibility/device-admin/notification-listener binds, mic/camera/location,
+  phone, install/delete packages, settings, accounts, calendar, Bluetooth/Wi-Fi state, `CONTROL_VPN`, `DUMP`, `READ_LOGS`); **every
+  requested permission on the explicit allow-list** (INTERNET, ACCESS_NETWORK_STATE, FOREGROUND_SERVICE, FOREGROUND_SERVICE_SYSTEM_EXEMPTED,
+  POST_NOTIFICATIONS, VIBRATE, USE_BIOMETRIC, USE_FINGERPRINT, `<package>.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`) — any new transitive
+  permission fails the gate until reviewed.
+- Evidence (artifact `android-release-manifest`): `release-provenance.json` (release APK + AAB SHA-256, commit, run id), `release-apk-
+  badging.txt`, `release-apk-AndroidManifest.txt`, `release-aab-AndroidManifest.xml`, `release-manifest-audit-{apk,aab}.txt`, and the
+  **complete final permission sets** `release-{apk,aab}-permissions.txt` (each entry with its origin) so "expected normal permissions only"
+  is auditable line by line.
+- Auditor self-test (`--selftest`) runs first: fixtures prove the xmltree and XML parsers agree and that a debug manifest fails exactly on
+  `debuggable` + `SYSTEM_ALERT_WINDOW` (+ allow-list). Verified locally against the tracked merged DEBUG manifest: those are its only failures.
+- Untouched: app code, native SDKs, bridge, frozen v25, keys, endpoint, existing five jobs. The release APK/AAB are CI evidence only,
+  not installed anywhere and not committed (`.gitignore`).
 
 ## 4. Download artifacts and attach here
 | Artifact | Files to attach |
