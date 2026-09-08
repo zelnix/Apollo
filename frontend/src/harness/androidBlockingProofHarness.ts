@@ -153,7 +153,15 @@ export async function runAndroidBlockingProof(onStep?: (step: HarnessStep) => vo
     push({ id: "start", title: "startProtection() selective /32", status: "FAIL", detail: e instanceof Error ? e.message : "start failed" });
     return { steps, blockedEvent: null, recovery: null, enforcementStats: null, proofComplete: false, recoveryComplete: false };
   }
-  push({ id: "start", title: "startProtection() selective /32", status: status.state === "ACTIVE" || status.state === "STARTING" ? "PASS" : "FAIL", detail: `${status.state}${status.reason ? `: ${status.reason}` : ""}` });
+  // startProtection() resolves as soon as the foreground service is dispatched; the DNS/IP binding re-check and the /32 route
+  // install happen asynchronously in the service (off the main thread). Wait for a settled lifecycle state instead of judging
+  // the instantaneous snapshot (phone run 2537dd7 reached ACTIVE 1 s after the harness had already recorded INACTIVE).
+  const startDeadline = Date.now() + 15_000;
+  while (status.state !== "ACTIVE" && status.state !== "FAILED" && status.state !== "STOPPED" && status.state !== "REVOKED" && Date.now() < startDeadline) {
+    await sleep(250);
+    status = GuardDogSecuritySDK.getProtectionState();
+  }
+  push({ id: "start", title: "startProtection() selective /32", status: status.state === "ACTIVE" ? "PASS" : "FAIL", detail: `${status.state}${status.reason ? `: ${status.reason}` : ""}` });
 
   // 7. endpoint must now fail; 8. genuine THREAT_BLOCKED with evidence must arrive
   await sleep(1500);
@@ -168,8 +176,12 @@ export async function runAndroidBlockingProof(onStep?: (step: HarnessStep) => vo
     detail: blockedEvent ? `evidence=${blockedEvent.enforcementEvidenceId} dst=${blockedEvent.destinationIp} rule=${blockedEvent.ruleId}` : `no genuine blocked event${stats ? ` (observed=${stats.observedMatching}, dropped=${stats.droppedMatching})` : ""}`,
   });
 
-  // 9. unrelated traffic unaffected
-  const unrelated = await probe(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/health`);
+  // 9. unrelated traffic unaffected (one retry: a request in flight while the TUN interface comes up is cancelled by the OS)
+  let unrelated = await probe(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/health`);
+  if (!unrelated.reachable) {
+    await sleep(1000);
+    unrelated = await probe(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/health`);
+  }
   push({ id: "unrelated", title: "Unrelated destination still reachable", status: unrelated.reachable ? "PASS" : "FAIL", detail: unrelated.detail });
   const blockSteps = steps.length;
   const proofComplete = steps.every((s) => s.status === "PASS") && !!blockedEvent;

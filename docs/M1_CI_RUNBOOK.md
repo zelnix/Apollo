@@ -170,6 +170,19 @@ and the emulator smoke never starts protection. This means the verifier fix work
   (no crash); same-thread executor (the defect shape) is refused.
 - Untouched: route spec, TUN reader, drop/THREAT_BLOCKED path, verifier, bundle v25, endpoint/IP. Phone: install over, do not clear data, Run proof.
 
+### Run 34177747728 (tip `2537dd7`) — 5/5 green; **phone: no crash, verify ACCEPTED, protection reached ACTIVE** — harness timing bug — correction pass 10
+Proof report `guarddog-m1-proof-2026-09-08T03-40-56-688Z.json` (provenance gitSha `2537dd73…`, run `34177747728`, apkSha256 `4c50e655…bf1f`):
+`config PASS`, `bundle PASS v25`, **`verify PASS valid=accepted; tampered=PAYLOAD_HASH_MISMATCH; unknownKey=UNKNOWN_KEY`** (rollback fix confirmed on the
+legacy record), `before PASS`, `consent PASS`, then `start FAIL INACTIVE` → `after FAIL HTTP 200` → `blocked FAIL observed=0 dropped=0` → `unrelated FAIL
+fetch canceled`; recovery all PASS (`stop STOPPED`, `tun-closed`, `route-cleared`, `recovered`). Events show `STARTING` and `ACTIVE` at 03:39:58 — one
+second after the harness had already judged the state. Root cause is in the harness only: `startProtection()` resolves when the foreground service
+is dispatched; the binding re-check (now off-thread) and `establish()` finish asynchronously, so the instantaneous snapshot was `INACTIVE`, the probe ran
+before the /32 route existed (HTTP 200, nothing to drop), and the unrelated fetch was cancelled by the TUN interface coming up.
+- `frontend/src/harness/androidBlockingProofHarness.ts` — after `startProtection()` poll `getProtectionState()` (250 ms) until `ACTIVE` or a terminal
+  `FAILED/STOPPED/REVOKED`, max 15 s; `start` passes only on `ACTIVE`. The unrelated-destination probe retries once after 1 s. Nothing is faked:
+  `after`/`blocked` still require the real HTTP failure and a genuine `THREAT_BLOCKED` with `enforcementEvidenceId`.
+- Untouched: native SDKs, verifier, bundle v25, endpoint/IP, CI. Phone: install over, Run proof.
+
 ## 4. Download artifacts and attach here
 | Artifact | Files to attach |
 |---|---|
