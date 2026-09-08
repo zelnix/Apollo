@@ -14,10 +14,10 @@ access of its own; this is the only handoff path.) The push includes `.github/wo
 
 ## 3. Run
 Before clicking **Run workflow**, confirm the selected branch contains commit **`dbd58e5`** (`git log --oneline -1` after Save to GitHub).
-Actions → **native-gates** → Run workflow (leave the `xcode` input at `26.4` unless told otherwise; the iOS job runs on `macos-26`). The **whole workflow = six jobs** (five until run 19; `android-release-manifest` added in pass 14):
+Actions → **native-gates** → Run workflow (leave the `xcode` input at `26.4` unless told otherwise; the iOS job runs on `macos-26`). The **whole workflow = six jobs** (five until run 19; **Gate Guard** added in pass 14, renamed from `android-release-manifest` in pass 16):
 `android` (AC-01, ubuntu) · `android-dev-build` (AC-04 APK + manifest audit + APK recheck, ubuntu, needs `android`) ·
 `android-startup-smoke` (same commit/script built for x86_64, installed on a KVM emulator with no Metro, must reach `GD_SMOKE_READY`; needs `android`) ·
-`android-release-manifest` (release APK + AAB packaged-manifest audit, ubuntu, needs `android`) ·
+**`gate-guard`** (display name "Gate Guard"; release APK + AAB packaged-manifest audit, ubuntu, needs `android`) ·
 `ios` (AC-02, macos-26, Xcode 26.4) · `executable-suites` (pytest/node with ephemeral keys, after dependency install).
 Let the run finish completely — do **not** re-run individual failed jobs mid-stream; the audit needs one coherent run ID.
 
@@ -337,13 +337,14 @@ Raw JSON off-repo, identified by filename + SHA-256.
 **M1 physical acceptance status after run 19: block ✅ · bridge ✅ · stop/recovery ✅ · onRevoke ✅.** Remaining planned M1 gate: packaged
 release-manifest audit (below).
 
-### Packaged release-manifest audit gate (pass 14, for CI Run 20) — new CI job `android-release-manifest`
+### Packaged release-manifest audit gate (pass 14, for CI Run 20) — new CI job **Gate Guard** (`gate-guard`, originally shipped as `android-release-manifest`; renamed in pass 16 — see below)
 Replaces the standing assumption "the debug-only `SYSTEM_ALERT_WINDOW` disappears in release" with a test of the artifacts that would ship.
-- `scripts/ci/android-release-manifest-audit.sh`: clean `expo prebuild` → `:app:assembleRelease :app:bundleRelease` (arm64-v8a; signing =
-  Expo's placeholder debug keystore — packaging audit, not distribution signing) → **release APK** binary manifest via `aapt2 dump
-  xmltree`/`badging` → **release AAB** bundle-derived manifest via `bundletool 1.17.2 dump manifest` → both audited by
-  `scripts/ci/release_manifest_audit.py` with one rule set → APK and AAB permission sets must be identical → release APK content sanity
-  (no private-key / admin-token / DB-URL markers, JS bundle embedded).
+- `scripts/ci/gate-guard-audit.sh` (originally `android-release-manifest-audit.sh`): clean `expo prebuild` → `:app:assembleRelease
+  :app:bundleRelease` (arm64-v8a; signing = Expo's placeholder debug keystore — packaging audit, not distribution signing) →
+  **release APK** binary manifest via `aapt2 dump xmltree`/`badging` → **release AAB** bundle-derived manifest via `bundletool
+  1.17.2 dump manifest` → both audited by `scripts/ci/gate_guard_audit.py` (originally `release_manifest_audit.py`) with one rule
+  set → APK and AAB permission sets must be identical → release APK content sanity (no private-key / admin-token / DB-URL
+  markers, JS bundle embedded).
 - Rules (REQUIRED, all must pass for each container): package `com.emergent.guarddogm.k6cugf`; `android:debuggable` absent; minSdk 26;
   targetSdk 36; `com.guarddog.vpn.GuardDogVpnService` present with `BIND_VPN_SERVICE`, `exported=false`, `foregroundServiceType`
   including `systemExempted` (0x400), intent action `android.net.VpnService`; `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_SYSTEM_EXEMPTED`,
@@ -353,7 +354,7 @@ Replaces the standing assumption "the debug-only `SYSTEM_ALERT_WINDOW` disappear
   requested permission on the explicit allow-list** (INTERNET, ACCESS_NETWORK_STATE, FOREGROUND_SERVICE, FOREGROUND_SERVICE_SYSTEM_EXEMPTED,
   POST_NOTIFICATIONS, VIBRATE, USE_BIOMETRIC, USE_FINGERPRINT, `<package>.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`) — any new transitive
   permission fails the gate until reviewed.
-- Evidence (artifact `android-release-manifest`): `release-provenance.json` (release APK + AAB SHA-256, commit, run id), `release-apk-
+- Evidence (artifact `gate-guard`, originally `android-release-manifest`): `release-provenance.json` (release APK + AAB SHA-256, commit, run id), `release-apk-
   badging.txt`, `release-apk-AndroidManifest.txt`, `release-aab-AndroidManifest.xml`, `release-manifest-audit-{apk,aab}.txt`, and the
   **complete final permission sets** `release-{apk,aab}-permissions.txt` (each entry with its origin) so "expected normal permissions only"
   is auditable line by line.
@@ -408,3 +409,28 @@ packaged **RELEASE** artifacts: both `android-release-manifest-audit.sh` steps 3
 | Fix | Added `"android.permission.SYSTEM_ALERT_WINDOW"` to the existing `expo.android.blockedPermissions` array in `frontend/app.json` (alongside the already-proven `READ_EXTERNAL_STORAGE`/`WRITE_EXTERNAL_STORAGE` entries). Expo's `withBlockedPermissions` config-plugin injects `tools:node="remove"` into the **main** `AndroidManifest.xml`, which wins over any variant-specific library manifest (including RN's `src/debug`) during Gradle's manifest merger, for every build type. Verified locally: a clean `expo prebuild --platform android --clean --no-install` now emits `<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" tools:node="remove"/>` in `android/app/src/main/AndroidManifest.xml`, in the same form as the two storage permissions that already PASS this exact audit. |
 | Untouched | `release_manifest_audit.py` (deny-list, allow-list, self-test), `android-release-manifest-audit.sh`, `native-gates.yml`, all native SDKs, frozen v25 bundle, signing keys, backend endpoints, `/32` routing, `THREAT_BLOCKED` path. Single one-line diff in `frontend/app.json`. |
 | Expected next run | `android-release-manifest`: both APK and AAB show `PASS absent: SYSTEM_ALERT_WINDOW` and no `unexpected permission` line → `RELEASE MANIFEST AUDIT: PASS` for both containers; `android-dev-build` and `android-startup-smoke` stay green (blocking the permission globally does not touch VPN, notification, or foreground-service capability). Target: 6/6 jobs green. |
+
+### Rename: CI job + audit scripts → "Gate Guard" (pass 16) — naming only, no logic/rule changes
+Applied together with the pass-15 `SYSTEM_ALERT_WINDOW` fix, before the next push:
+- `.github/workflows/native-gates.yml`: job id `android-release-manifest` → `gate-guard`, with an explicit `name: Gate Guard`
+  display label; `actions/upload-artifact` artifact `name:` → `gate-guard`; step now runs `scripts/ci/gate-guard-audit.sh`.
+- `scripts/ci/android-release-manifest-audit.sh` → `scripts/ci/gate-guard-audit.sh` (`git mv`); internal `python3` calls updated
+  to the renamed auditor.
+- `scripts/ci/release_manifest_audit.py` → `scripts/ci/gate_guard_audit.py` (`git mv`); module docstring, `Usage:` lines and the
+  `--selftest` print string updated to the new filename. Re-ran `python3 scripts/ci/gate_guard_audit.py --selftest` locally after
+  the rename: **PASS** (unchanged fixtures/assertions). `bash -n scripts/ci/gate-guard-audit.sh`: syntax OK.
+- **Not renamed** (kept exactly as-is, by design — these are evidence/output artifact filenames describing the *release build*
+  content, not the job's identity, and several are already cross-referenced by §4/§5 above and by the historical pass-14/Run-20/
+  Run-22 entries): `docs/evidence/release-provenance.json`, `release-apk-*`, `release-aab-*`, `release-manifest-audit*.txt`,
+  `release-manifest-audit.log`, `guarddog-release.apk`/`.aab`; the runtime banner/verdict strings the auditor prints (`==
+  packaged RELEASE manifest audit (…) ==`, `RELEASE MANIFEST AUDIT (…): PASS/FAIL`) are also unchanged, so every historical PASS/
+  FAIL log line above still matches verbatim what the script prints today.
+- Historical entries above (pass 14 body text, Run 20/22 tables) keep the **old** names where they quote literal past CI log
+  output or describe what actually ran at that point in time — that is the accurate historical record. Forward-looking
+  descriptions (job list in §3, pass-14 mechanism description) now show the current name with the old one noted alongside it.
+- Untouched: `gate_guard_audit.py` deny-list/allow-list/rules, `frontend/app.json` (the pass-15 fix stands as committed), all
+  native SDKs, frozen v25, keys, endpoints, `/32` routing, `THREAT_BLOCKED` path. No job depended on
+  `needs: android-release-manifest`, so the id rename has no downstream effect on job ordering.
+- Expected next run: Actions UI shows the job as **"Gate Guard"**; artifact list shows `gate-guard` in place of
+  `android-release-manifest`; its content is otherwise identical to the pass-15 expectation (both APK and AAB `PASS absent:
+  SYSTEM_ALERT_WINDOW`, no unexpected permission) — target 6/6 green.

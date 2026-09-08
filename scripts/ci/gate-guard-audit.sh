@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Packaged RELEASE manifest audit (final M1 gate). Builds the release variant from a clean prebuild and audits the manifest of the
-# ARTIFACTS THAT WOULD SHIP — the release APK (aapt2, binary manifest) and the release AAB (bundletool, bundle-derived manifest) —
-# never a source or merged-intermediate manifest. Signing: Expo's placeholder (debug keystore) — this gate audits packaging, not
-# distribution signing. Evidence: docs/evidence/release-*.  Run from repo root; needs JDK 17, Android SDK (build-tools + NDK), Node.
+# Gate Guard — packaged RELEASE manifest audit (final M1 gate). Builds the release variant from a clean prebuild and audits the
+# manifest of the ARTIFACTS THAT WOULD SHIP — the release APK (aapt2, binary manifest) and the release AAB (bundletool,
+# bundle-derived manifest) — never a source or merged-intermediate manifest. Signing: Expo's placeholder (debug keystore) — this
+# gate audits packaging, not distribution signing. Evidence: docs/evidence/release-*.  Run from repo root; needs JDK 17, Android
+# SDK (build-tools + NDK), Node.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 APP="$ROOT/frontend"
@@ -14,7 +15,7 @@ PKG="$(python3 -c "import json;print(json.load(open('$APP/app.json'))['expo']['a
 echo "expected package: $PKG"
 
 echo "-- 0. auditor self-test (parsers + rules on fixtures)"
-python3 "$ROOT/scripts/ci/release_manifest_audit.py" --selftest
+python3 "$ROOT/scripts/ci/gate_guard_audit.py" --selftest
 
 echo "-- 1. clean prebuild (same config plugin as the proof APK)"
 cd "$APP"
@@ -43,7 +44,7 @@ AAPT2="$(ls -d "${ANDROID_HOME:-$ANDROID_SDK_ROOT}"/build-tools/*/aapt2 2>/dev/n
 "$AAPT2" dump xmltree --file AndroidManifest.xml "$OUT/guarddog-release.apk" > "$OUT/release-apk-AndroidManifest.txt"
 grep -E "^package:|^sdkVersion|^targetSdkVersion|^native-code|^application-debuggable" "$OUT/release-apk-badging.txt" | sed 's/^/  /' || true
 set +e
-python3 "$ROOT/scripts/ci/release_manifest_audit.py" apk "$OUT/release-apk-AndroidManifest.txt" "$OUT/release-apk-badging.txt" \
+python3 "$ROOT/scripts/ci/gate_guard_audit.py" apk "$OUT/release-apk-AndroidManifest.txt" "$OUT/release-apk-badging.txt" \
   "$OUT/release-manifest-audit-apk.txt" "$OUT/release-apk-permissions.txt" "$PKG"
 APK_STATUS=$?
 set -e
@@ -53,7 +54,7 @@ BT="$ROOT/.tools/bundletool-all-$BUNDLETOOL_VERSION.jar"; mkdir -p "$ROOT/.tools
 [ -f "$BT" ] || curl -fsSL -o "$BT" "https://github.com/google/bundletool/releases/download/$BUNDLETOOL_VERSION/bundletool-all-$BUNDLETOOL_VERSION.jar"
 java -jar "$BT" dump manifest --bundle "$OUT/guarddog-release.aab" > "$OUT/release-aab-AndroidManifest.xml"
 set +e
-python3 "$ROOT/scripts/ci/release_manifest_audit.py" aab "$OUT/release-aab-AndroidManifest.xml" \
+python3 "$ROOT/scripts/ci/gate_guard_audit.py" aab "$OUT/release-aab-AndroidManifest.xml" \
   "$OUT/release-manifest-audit-aab.txt" "$OUT/release-aab-permissions.txt" "$PKG"
 AAB_STATUS=$?
 set -e

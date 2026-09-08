@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Packaged RELEASE manifest audit (final M1 gate). Reads the manifest of the artifact that would ship — never a source or
-merged intermediate — and applies one fixed rule set to both container formats:
+"""Gate Guard — packaged RELEASE manifest audit (final M1 gate). Reads the manifest of the artifact that would ship — never a
+source or merged intermediate — and applies one fixed rule set to both container formats:
 
   * APK : `aapt2 dump xmltree --file AndroidManifest.xml app-release.apk` (binary manifest, authoritative for the APK)
   * AAB : `bundletool dump manifest --bundle app-release.aab`             (bundle-derived manifest XML)
 
 Usage:
-  release_manifest_audit.py apk  <xmltree.txt> <badging.txt> <evidence-out.txt> <permissions-out.txt>
-  release_manifest_audit.py aab  <manifest.xml>               <evidence-out.txt> <permissions-out.txt>
-  release_manifest_audit.py --selftest
+  gate_guard_audit.py apk  <xmltree.txt> <badging.txt> <evidence-out.txt> <permissions-out.txt>
+  gate_guard_audit.py aab  <manifest.xml>               <evidence-out.txt> <permissions-out.txt>
+  gate_guard_audit.py --selftest
 
 Exit 0 only when every REQUIRED check passes. The complete final <uses-permission> set is written to the permissions file so
 "expected normal permissions only" is auditable line by line, not a judgement call.
@@ -271,7 +271,7 @@ def selftest():
     h = extract_facts(parse_xml(XML_FIXTURE.replace("</application>", '</application><uses-permission android:name="com.evil.PERM"/>')))
     _, unexpected3 = evaluate(h, "com.example.app")
     assert unexpected3 == ["com.evil.PERM"], unexpected3
-    print("release_manifest_audit selftest: PASS (xmltree + xml parsers, debuggable/deny-list/allow-list rules)")
+    print("gate_guard_audit selftest: PASS (xmltree + xml parsers, debuggable/deny-list/allow-list rules)")
 
 
 def main(argv):

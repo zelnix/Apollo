@@ -83,11 +83,12 @@ jobs:
             docs/evidence/apk-AndroidManifest.txt
             docs/evidence/apk-recheck.txt
             docs/evidence/apk-provenance.json
-  # Final M1 packaging gate: RELEASE variant from a clean prebuild; the manifest of the artifacts that would ship (release APK via
-  # aapt2 binary manifest, release AAB via bundletool) must carry no android:debuggable, no SYSTEM_ALERT_WINDOW / deny-listed
-  # permission, only allow-listed permissions (complete set exported as evidence), and the VpnService/FGS/26/36 facts intact.
-  # Signing is Expo's placeholder debug keystore: this audits packaging, not distribution signing.
-  android-release-manifest:
+  # Final M1 packaging gate ("Gate Guard"): RELEASE variant from a clean prebuild; the manifest of the artifacts that would ship
+  # (release APK via aapt2 binary manifest, release AAB via bundletool) must carry no android:debuggable, no SYSTEM_ALERT_WINDOW /
+  # deny-listed permission, only allow-listed permissions (complete set exported as evidence), and the VpnService/FGS/26/36 facts
+  # intact. Signing is Expo's placeholder debug keystore: this audits packaging, not distribution signing.
+  gate-guard:
+    name: Gate Guard
     runs-on: ubuntu-latest
     needs: android
     steps:
@@ -101,7 +102,7 @@ jobs:
         with: { python-version: "3.11" }
       - run: yes | sdkmanager --licenses >/dev/null || true
       - run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006" "cmake;3.22.1"
-      - run: bash scripts/ci/android-release-manifest-audit.sh
+      - run: bash scripts/ci/gate-guard-audit.sh
         env:
           CI: "1"
           EXPO_PUBLIC_BACKEND_URL: ${{ vars.GD_BACKEND_URL }}
@@ -111,7 +112,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: android-release-manifest
+          name: gate-guard
           path: |
             docs/evidence/guarddog-release.apk
             docs/evidence/guarddog-release.aab
