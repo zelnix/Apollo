@@ -31,27 +31,58 @@ export interface RecoveryEvidence {
   recoveredAt: string | null;
 }
 
+export interface RevocationEvidence {
+  /** How the tester was told to revoke (from outside the app). */
+  revokeInstruction: string;
+  activeAt: string;
+  /** From the bridged PROTECTION_STATE_CHANGED(REVOKED) event; null if the state was only seen by polling. */
+  revokeEventId: string | null;
+  revokedAt: string | null;
+  waitedMs: number;
+  stateAfterRevoke: string;
+  stateReason: string | null;
+  consentGrantedAfterRevoke: boolean | null;
+  /** OS-level: VpnService.prepare() returns an intent again (consent must be re-granted). */
+  osConsentRequiredAfterRevoke: boolean | null;
+  tunOpen: boolean | null;
+  selectiveRouteActive: boolean | null;
+  dropReporterAttached: boolean | null;
+  /** Supporting only: another VPN app may legitimately own the transport after a takeover-revoke. */
+  vpnTransportPresent: boolean | null;
+  /** startProtection() without fresh consent must be rejected and leave no TUN. */
+  restartWithoutConsent: "rejected" | "started" | "not-attempted";
+  restartError: string | null;
+  httpsStatusAfterRevoke: number | null;
+  recoveredAt: string | null;
+}
+
+export type ProofMode = "block" | "revoke";
+
 export interface HarnessResult {
+  mode: ProofMode;
   steps: HarnessStep[];
   blockedEvent: SecurityEvent | null;
   recovery: RecoveryEvidence | null;
+  revocation: RevocationEvidence | null;
   /** Native drop-reporter counters captured before recovery cleared them. */
   enforcementStats: Record<string, number> | null;
-  /** Fresh-socket probes of the controlled endpoint (native): before protection, under protection, after stop. */
+  /** Fresh-socket probes of the controlled endpoint (native): before protection, under protection, after stop/revoke. */
   freshProbes: { before: NativeFreshProbe | null; after: NativeFreshProbe | null; afterStop: NativeFreshProbe | null };
-  /** Genuine end-to-end proof reached (only possible on a real Android build against the real endpoint). */
+  /** Genuine end-to-end block proof reached (block mode only; always false in revoke mode). */
   proofComplete: boolean;
-  /** Block proof AND recovery proof both passed. */
+  /** Block proof AND recovery proof both passed (block mode only). */
   recoveryComplete: boolean;
+  /** Revoke mode only: system revocation observed, cleanup verified, consent cleared, no silent restart, endpoint reachable again. */
+  revokeComplete: boolean;
 }
 
-const PROBE_TIMEOUT_MS = 6000;
-const RECOVERY_TIMEOUT_MS = 20_000;
-const POLL_MS = 1000;
+export const PROBE_TIMEOUT_MS = 6000;
+export const RECOVERY_TIMEOUT_MS = 20_000;
+export const POLL_MS = 1000;
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-interface ProbeOutcome {
+export interface ProbeOutcome {
   reachable: boolean;
   status: number | null;
   detail: string;
@@ -60,7 +91,7 @@ interface ProbeOutcome {
 }
 
 /** Fallback HTTPS probe through fetch() for runtimes without the native module (web / Expo Go). */
-async function fetchProbe(url: string): Promise<ProbeOutcome> {
+export async function fetchProbe(url: string): Promise<ProbeOutcome> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
   try {
@@ -79,7 +110,7 @@ async function fetchProbe(url: string): Promise<ProbeOutcome> {
  * Probe of the controlled endpoint. Native: a brand-new TCP socket + TLS + one GET each call (FreshConnectionProbe.kt), so no probe can
  * ever reuse a connection opened before protection became ACTIVE. Only an actual HTTP 200 counts as reachable (DNS + TCP + TLS + HTTP).
  */
-async function probeControlled(config: M1Config): Promise<ProbeOutcome> {
+export async function probeControlled(config: M1Config): Promise<ProbeOutcome> {
   if (!GuardDogSecuritySDK.nativeAvailable) return fetchProbe(config.controlledEndpoint.url);
   try {
     const p = await probeControlledEndpointFresh(PROBE_TIMEOUT_MS);
@@ -106,12 +137,33 @@ function waitForBlockedEvent(timeoutMs: number): Promise<SecurityEvent | null> {
   });
 }
 
-export async function runAndroidBlockingProof(onStep?: (step: HarnessStep) => void): Promise<HarnessResult> {
+export type StepSink = (step: HarnessStep) => void;
+
+export function makeStepSink(onStep?: StepSink): { steps: HarnessStep[]; push: StepSink } {
   const steps: HarnessStep[] = [];
-  const push = (step: HarnessStep) => {
-    steps.push(step);
-    onStep?.(step);
+  return {
+    steps,
+    push: (step) => {
+      steps.push(step);
+      onStep?.(step);
+    },
   };
+}
+
+export interface PreludeOutcome {
+  config: M1Config;
+  before: ProbeOutcome;
+  /** All prerequisites met AND protection reached ACTIVE with the /32 route live. */
+  ready: boolean;
+  activeAt: string | null;
+  routeActive: HarnessStep | null;
+}
+
+/**
+ * Shared opening of every device proof (block + revoke): config → signed bundle → on-device verification (+ negatives) → fresh-socket
+ * baseline → consent → startProtection() → settled ACTIVE → live route snapshot. Every step reported honestly; nothing faked.
+ */
+export async function runProtectionPrelude(push: StepSink, beforeStart?: () => void): Promise<PreludeOutcome> {
   const native = GuardDogSecuritySDK.nativeAvailable;
   const caps = GuardDogSecuritySDK.getCapabilities();
 
@@ -154,7 +206,6 @@ export async function runAndroidBlockingProof(onStep?: (step: HarnessStep) => vo
     status: before.reachable ? "PASS" : isPlaceholderEndpoint ? "BLOCKED" : "FAIL",
     detail: before.reachable ? before.detail : `${before.detail}${isPlaceholderEndpoint ? " (placeholder host does not exist yet)" : ""}`,
   });
-  const noProbes = { before: before.fresh, after: null, afterStop: null };
 
   // 5. consent through the common SDK surface
   const permission = await GuardDogSecuritySDK.requestPermission("vpn");
@@ -165,20 +216,20 @@ export async function runAndroidBlockingProof(onStep?: (step: HarnessStep) => vo
     detail: native ? permission : `${permission}: ${caps.platform} runtime has no enforcement layer`,
   });
 
+  const notReady = { config, before, ready: false, activeAt: null, routeActive: null };
   if (permission !== "granted" || accepted.accepted !== true || !before.reachable) {
     push({ id: "start", title: "startProtection() selective /32", status: "SKIPPED", detail: "prerequisites not met; nothing started, nothing claimed" });
-    return { steps, blockedEvent: null, recovery: null, enforcementStats: null, freshProbes: noProbes, proofComplete: false, recoveryComplete: false };
+    return notReady;
   }
 
   // 6. start protection (DNS/IP binding re-check + /32 route happen natively)
-  // Subscribed before start so nothing can be missed; the window covers the ACTIVE poll (≤15 s) + settle + the 6 s fresh probe.
-  const blockedPromise = waitForBlockedEvent(30_000);
+  beforeStart?.();
   let status;
   try {
     status = await GuardDogSecuritySDK.startProtection();
   } catch (e) {
     push({ id: "start", title: "startProtection() selective /32", status: "FAIL", detail: e instanceof Error ? e.message : "start failed" });
-    return { steps, blockedEvent: null, recovery: null, enforcementStats: null, freshProbes: noProbes, proofComplete: false, recoveryComplete: false };
+    return notReady;
   }
   // startProtection() resolves as soon as the foreground service is dispatched; the DNS/IP binding re-check and the /32 route
   // install happen asynchronously in the service (off the main thread). Wait for a settled lifecycle state instead of judging
@@ -188,29 +239,51 @@ export async function runAndroidBlockingProof(onStep?: (step: HarnessStep) => vo
     await sleep(250);
     status = GuardDogSecuritySDK.getProtectionState();
   }
+  const activeAt = status.state === "ACTIVE" ? new Date().toISOString() : null;
   push({ id: "start", title: "startProtection() selective /32", status: status.state === "ACTIVE" ? "PASS" : "FAIL", detail: `${status.state}${status.reason ? `: ${status.reason}` : ""}` });
 
   // Live runtime diagnostic while protection runs (harness-only adapter): independent route evidence for auditChain.routeActivation.
   const active = readRecoveryStatus();
-  push({
+  const routeActive: HarnessStep = {
     id: "route-active",
     title: "Selective /32 route active (live runtime snapshot)",
     status: active?.tunOpen && active.selectiveRouteActive ? "PASS" : "FAIL",
     detail: active ? `lifecycle=${active.lifecycle} tunOpen=${active.tunOpen} selectiveRouteActive=${active.selectiveRouteActive} routeCidr=${active.routeCidr ?? "-"}; supporting: osVpnTransportPresent=${active.vpnTransportPresent}` : "no runtime snapshot",
-  });
+  };
+  push(routeActive);
+  return { config, before, ready: activeAt !== null && routeActive.status === "PASS", activeAt, routeActive };
+}
 
-  // 7. a brand-new TCP connect to the configured IPv4 must now time out (SYN dropped in the TUN). Only that shape passes: DNS failure,
-  //    another address, refused/unreachable, TLS or HTTP failures are not evidence of enforcement. 8. genuine THREAT_BLOCKED must arrive.
-  await sleep(1500);
+/** Protected fresh-socket probe: PASS only on the SYN-drop shape to the configured IPv4 (see FreshConnectionProbe.kt). */
+export async function probeUnderProtection(config: M1Config, push: StepSink, id: string, title: string): Promise<{ fresh: NativeFreshProbe | null; synDropped: boolean }> {
   const after = await probeControlled(config);
   const afterFresh = after.fresh;
   const synDropped = !!afterFresh && afterFresh.synDropShape && afterFresh.resolvedIpv4 === config.controlledEndpoint.ipv4 && afterFresh.expectedIpv4 === config.controlledEndpoint.ipv4;
   push({
-    id: "after",
-    title: "Fresh TCP connect to configured IPv4 times out under protection",
+    id,
+    title,
     status: synDropped ? "PASS" : "FAIL",
     detail: afterFresh ? after.detail : `native fresh-socket probe unavailable (${after.detail}); fetch() results are not accepted as block evidence`,
   });
+  return { fresh: afterFresh, synDropped };
+}
+
+export async function runAndroidBlockingProof(onStep?: StepSink): Promise<HarnessResult> {
+  const { steps, push } = makeStepSink(onStep);
+  // Subscribed before start so nothing can be missed; the window covers the ACTIVE poll (≤15 s) + settle + the 6 s fresh probe.
+  let blockedPromise: Promise<SecurityEvent | null> = Promise.resolve(null);
+  const prelude = await runProtectionPrelude(push, () => {
+    blockedPromise = waitForBlockedEvent(30_000);
+  });
+  const { config } = prelude;
+  const noProbes = { before: prelude.before.fresh, after: null, afterStop: null };
+  const failed = (): HarnessResult => ({ mode: "block", steps, blockedEvent: null, recovery: null, revocation: null, enforcementStats: null, freshProbes: noProbes, proofComplete: false, recoveryComplete: false, revokeComplete: false });
+  if (prelude.activeAt === null) return failed();
+
+  // 7. a brand-new TCP connect to the configured IPv4 must now time out (SYN dropped in the TUN). Only that shape passes: DNS failure,
+  //    another address, refused/unreachable, TLS or HTTP failures are not evidence of enforcement. 8. genuine THREAT_BLOCKED must arrive.
+  await sleep(1500);
+  const { fresh: afterFresh, synDropped } = await probeUnderProtection(config, push, "after", "Fresh TCP connect to configured IPv4 times out under protection");
   const blockedEvent = await blockedPromise;
   const stats = GuardDogSecuritySDK.getEnforcementStats();
   push({
@@ -242,7 +315,7 @@ export async function runAndroidBlockingProof(onStep?: (step: HarnessStep) => vo
   // 10-13. RECOVERY (always run once protection was started, so the device is left clean)
   const recovery = await runRecovery(config, push);
   const recoveryComplete = proofComplete && steps.slice(blockSteps).every((s) => s.status === "PASS");
-  return { steps, blockedEvent, recovery: recovery.evidence, enforcementStats: stats, freshProbes: { before: before.fresh, after: afterFresh, afterStop: recovery.afterStop }, proofComplete, recoveryComplete };
+  return { mode: "block", steps, blockedEvent, recovery: recovery.evidence, revocation: null, enforcementStats: stats, freshProbes: { before: prelude.before.fresh, after: afterFresh, afterStop: recovery.afterStop }, proofComplete, recoveryComplete, revokeComplete: false };
 }
 
 /**

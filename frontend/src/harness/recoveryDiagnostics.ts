@@ -9,6 +9,11 @@ export function readRecoveryStatus(): NativeRecoveryStatus | null {
   return GuardDogNative?.getRecoveryStatus() ?? null;
 }
 
+/** Read-only OS consent check (no dialog). null when the bridge is absent. */
+export function readVpnConsentRequired(): boolean | null {
+  return GuardDogNative ? GuardDogNative.isVpnConsentRequired() : null;
+}
+
 /**
  * Fresh-socket probe of the configured controlled endpoint (native only; null when the bridge is absent). Every call opens a brand-new
  * TCP socket in the native layer, so a probe issued after protection became ACTIVE cannot reuse any earlier connection.

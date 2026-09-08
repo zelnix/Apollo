@@ -5,7 +5,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ActionButton, Card, KeyValue, StatusBadge, StepRow } from "@/src/components/harness-ui";
 import type { SecurityEvent } from "@/src/contracts/securityEventSchemas";
-import { type HarnessStep, runAndroidBlockingProof } from "@/src/harness/androidBlockingProofHarness";
+import { type HarnessStep, type ProofMode, runAndroidBlockingProof } from "@/src/harness/androidBlockingProofHarness";
+import { runAndroidRevokeProof } from "@/src/harness/androidRevokeProofHarness";
 import { readBuildProvenance, type BuildProvenance } from "@/src/harness/buildProvenance";
 import { buildProofReport, exportReportJson, exportReportPdf, type ProofReport, shareEvidenceFile } from "@/src/harness/proofReport";
 import { fetchLatestBundle, fetchM1Config } from "@/src/harness/ruleBundleFixtures";
@@ -26,6 +27,9 @@ const useStyles = makeStyles((colors) => ({
   eventType: { color: colors.onSurfaceSecondary, fontWeight: "700", fontSize: 13 },
   actions: { flexDirection: "row", gap: 12, flexWrap: "wrap" },
   empty: { color: colors.muted, fontSize: 13, fontStyle: "italic" },
+  prompt: { borderRadius: 12, borderWidth: 1, borderColor: colors.warning, backgroundColor: colors.surfaceTertiary, padding: 12, gap: 4 },
+  promptTitle: { color: colors.warning, fontSize: 12, fontWeight: "800", letterSpacing: 1.5 },
+  promptText: { color: colors.onSurfaceTertiary, fontSize: 14, lineHeight: 20 },
 }));
 
 export default function Index() {
@@ -40,15 +44,22 @@ export default function Index() {
   const [provenance, setProvenance] = useState<BuildProvenance | null>(null);
   const [pdfUri, setPdfUri] = useState<string | null>(null);
   const [jsonUri, setJsonUri] = useState<string | null>(null);
+  const [prompt, setPrompt] = useState<string | null>(null);
   const analyze = () => setAnalysis(GuardDogSecuritySDK.analyzeUrl(url));
 
   const config = useQuery({ queryKey: ["m1-config"], queryFn: fetchM1Config });
   const bundle = useQuery({ queryKey: ["m1-bundle", config.data?.rulesetId], queryFn: () => fetchLatestBundle(config.data!.rulesetId), enabled: !!config.data });
   const proof = useMutation({
-    mutationFn: () => {
+    mutationFn: (mode: ProofMode) => {
       setSteps([]);
-      return runAndroidBlockingProof((step) => setSteps((prev) => [...prev, step]));
+      setReport(null);
+      setJsonUri(null);
+      setPdfUri(null);
+      setPrompt(null);
+      const onStep = (step: HarnessStep) => setSteps((prev) => [...prev, step]);
+      return mode === "revoke" ? runAndroidRevokeProof(onStep, setPrompt) : runAndroidBlockingProof(onStep);
     },
+    onSettled: () => setPrompt(null),
   });
 
   useEffect(() => GuardDogSecuritySDK.onSecurityEvent((event) => setEvents((prev) => [event, ...prev].slice(0, 30))), []);
@@ -153,18 +164,29 @@ export default function Index() {
 
         <Card title="Acceptance chain" testID="harness-card">
           <View style={styles.actions}>
-            <ActionButton title={proof.isPending ? "Running…" : "Run proof"} disabled={proof.isPending || !config.data} onPress={() => proof.mutate()} testID="run-proof-button" />
+            <ActionButton title={proof.isPending && proof.variables === "block" ? "Running…" : "Run proof"} disabled={proof.isPending || !config.data} onPress={() => proof.mutate("block")} testID="run-proof-button" />
+            <ActionButton title={proof.isPending && proof.variables === "revoke" ? "Waiting…" : "Run revoke proof"} secondary disabled={proof.isPending || !config.data} onPress={() => proof.mutate("revoke")} testID="run-revoke-proof-button" />
             <ActionButton title="Stop protection" secondary onPress={() => GuardDogSecuritySDK.stopProtection()} testID="stop-protection-button" />
           </View>
+          {prompt ? (
+            <View style={styles.prompt} testID="harness-prompt">
+              <Text style={styles.promptTitle}>ACTION REQUIRED ON THE PHONE</Text>
+              <Text style={styles.promptText}>{prompt}</Text>
+            </View>
+          ) : null}
           {proof.error ? <Text style={[styles.note, { color: colors.error }]} testID="harness-error">{String(proof.error)}</Text> : null}
           {steps.length === 0 ? <Text style={styles.empty} testID="harness-empty">No run yet. Steps that cannot happen here are reported BLOCKED, never faked.</Text> : steps.map((s) => <StepRow key={s.id} step={s} />)}
           {proof.data ? (
-            <Text style={[styles.note, { color: proof.data.recoveryComplete ? colors.success : colors.warning }]} testID="harness-verdict">
-              {proof.data.recoveryComplete
-                ? "Genuine end-to-end block AND recovery proven."
-                : proof.data.proofComplete
-                  ? "Block proven; recovery incomplete (see recovery steps)."
-                  : "Proof incomplete: requires Android native build + real controlled endpoint."}
+            <Text style={[styles.note, { color: proof.data.recoveryComplete || proof.data.revokeComplete ? colors.success : colors.warning }]} testID="harness-verdict">
+              {proof.data.mode === "revoke"
+                ? proof.data.revokeComplete
+                  ? "Genuine system revocation observed, cleanup and consent reset proven, no silent restart."
+                  : "Revoke proof incomplete (see steps): requires a real external revocation on the device."
+                : proof.data.recoveryComplete
+                  ? "Genuine end-to-end block AND recovery proven."
+                  : proof.data.proofComplete
+                    ? "Block proven; recovery incomplete (see recovery steps)."
+                    : "Proof incomplete: requires Android native build + real controlled endpoint."}
             </Text>
           ) : null}
         </Card>
@@ -192,9 +214,16 @@ export default function Index() {
           </View>
           {report ? (
             <>
-              <KeyValue label="Block proof complete" value={report.proofComplete ? "yes" : "no — milestone open"} testID="report-proof-complete" />
-              <KeyValue label="Recovery proof complete" value={report.recoveryComplete ? "yes" : "no"} testID="report-recovery-complete" />
-              <KeyValue label="enforcementEvidenceId" value={report.auditChain.enforcementEvidenceId ?? "none"} testID="report-evidence-id" />
+              <KeyValue label="Proof mode" value={report.mode} testID="report-mode" />
+              {report.mode === "revoke" ? (
+                <KeyValue label="Revoke proof complete" value={report.revokeComplete ? "yes" : "no — lifecycle item open"} testID="report-revoke-complete" />
+              ) : (
+                <>
+                  <KeyValue label="Block proof complete" value={report.proofComplete ? "yes" : "no — milestone open"} testID="report-proof-complete" />
+                  <KeyValue label="Recovery proof complete" value={report.recoveryComplete ? "yes" : "no"} testID="report-recovery-complete" />
+                  <KeyValue label="enforcementEvidenceId" value={report.auditChain.enforcementEvidenceId ?? "none"} testID="report-evidence-id" />
+                </>
+              )}
               <KeyValue label="APK SHA-256" value={report.provenance?.apkSha256 ?? "n/a (not an Android APK)"} testID="report-apk-sha" />
               <KeyValue label="Commit / CI run" value={`${report.provenance?.gitSha ?? "—"} / ${report.provenance?.ciRunId ?? "—"}`} testID="report-provenance" />
               {report.auditChain.recovery ? (
@@ -202,6 +231,13 @@ export default function Index() {
                   label="Recovery"
                   value={`${report.auditChain.recovery.stateAfterStop} · TUN ${report.auditChain.recovery.tunOpen === false ? "closed" : "open/unknown"} · HTTPS ${report.auditChain.recovery.httpsStatusAfterStop ?? "—"}`}
                   testID="report-recovery"
+                />
+              ) : null}
+              {report.auditChain.revocation ? (
+                <KeyValue
+                  label="Revocation"
+                  value={`${report.auditChain.revocation.stateAfterRevoke} · TUN ${report.auditChain.revocation.tunOpen === false ? "closed" : "open/unknown"} · re-consent ${report.auditChain.revocation.osConsentRequiredAfterRevoke ? "required" : "NOT required"} · restart ${report.auditChain.revocation.restartWithoutConsent}`}
+                  testID="report-revocation"
                 />
               ) : null}
               <Text style={styles.mono} numberOfLines={12} testID="report-json">{JSON.stringify(report.auditChain, null, 1)}</Text>

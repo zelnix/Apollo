@@ -246,6 +246,36 @@ route leak) and unrelated traffic stayed reachable. May be instrumented later (I
 **M1 physical acceptance status after run 17**: block ✅ · bridge ✅ · normal stop + recovery ✅ · **`onRevoke()` physical proof: OPEN** (next
 device item) · release-manifest audit: OPEN (P1, after revoke). Final M1 sign-off only when both pass.
 
+### Revoke-proof instrumentation (pass 12, for CI Run 18) — harness/bridge only; nothing in the frozen security path changed
+Purpose: the last open physical lifecycle item, `VpnService.onRevoke()`. The harness cannot revoke a VPN — revocation is an OS action the
+tester performs from OUTSIDE the app (Settings → Network & internet → VPN → Apollo Native Gates → Disconnect, or consenting to another
+VPN app). The harness brings protection to a verified enforcing state, then waits (≤ 180 s) and records only what the native layer reports.
+- New `frontend/src/harness/androidRevokeProofHarness.ts` (`runAndroidRevokeProof`). Shared opening extracted from the block harness into
+  `runProtectionPrelude` (config → v25 → on-device verify + negatives → fresh-socket baseline 200 → consent → `startProtection()` → settled
+  ACTIVE → live route snapshot) — the block harness now calls the same function; its step ids/semantics are unchanged.
+- Revoke steps after the prelude: `enforcing` (fresh probe must show the SYN-drop shape — protection is genuinely enforcing at the moment of
+  revocation) → **prompt shown in the UI** → `revoked` (authoritative native state polled every 500 ms must reach `REVOKED`; the bridged
+  `PROTECTION_STATE_CHANGED(REVOKED)` event id/time is recorded when received; `STOPPED`/`FAILED`/`INACTIVE`/timeout = FAIL, explicitly
+  "not a system revocation") → `revoke-cleanup` (`tunOpen=false dropReporterAttached=false selectiveRouteActive=false`; OS transport
+  supporting only, since another VPN may legitimately own it after a takeover-revoke) → `consent-cleared` (SDK `consentGranted=false` AND
+  OS `VpnService.prepare() != null` via the new read-only bridge function `isVpnConsentRequired()` — never shows a dialog) →
+  `no-silent-restart` (`startProtection()` without fresh consent must be rejected — `ERR_CONSENT` — and leave no TUN, state ≠ ACTIVE) →
+  `recovered` (fresh socket → HTTP 200 again, ≤ 20 s).
+- `revokeComplete` = revocation reached AND every step PASS. Block-mode results carry `revokeComplete=false`; revoke-mode results carry
+  `proofComplete=false`/`recoveryComplete=false` (they are different proofs; neither claims the other).
+- Report `m1-5`: `mode` (`block`|`revoke`), `revokeComplete`, `auditChain.revocation {activeAt, revokeEventId, revokedAt, waitedMs,
+  stateAfterRevoke, stateReason, consentGrantedAfterRevoke, osConsentRequiredAfterRevoke, tunOpen, selectiveRouteActive,
+  dropReporterAttached, vpnTransportPresent, restartWithoutConsent, restartError, httpsStatusAfterRevoke, recoveredAt}`; file names now
+  `guarddog-m1-<mode>-proof-<stamp>.json|pdf`; PDF gains a "Revocation chain" table and a mode-specific verdict heading.
+- UI: second button **Run revoke proof** (block button unchanged), an "ACTION REQUIRED ON THE PHONE" banner while waiting, mode-aware verdict
+  and report rows. The in-app **Stop protection** button during the wait produces `STOPPED` → `revoked` FAIL (a stop is not a revoke).
+- Bridge: `Function("isVpnConsentRequired")` (sync, read-only). `GuardDogExpoModuleDefinitionTest` sync surface set updated.
+- Untouched: `GuardDogVpnService.onRevoke()` (cleanup → `Revoked` → stopForeground → stopSelf, as before), `VpnStateRepository` (consent
+  cleared on `Revoked`, unit-tested since pass 1), verifier, frozen v25, keys, endpoint, THREAT_BLOCKED producer, CI workflow.
+Phone procedure (after Run 18 is green and the APK SHA is matched again): install over → **Run revoke proof** → grant consent if asked →
+wait for `enforcing PASS` and the banner → leave the app, Settings → VPN → Apollo Native Gates → **Disconnect** → return to the app →
+let it finish → Build JSON evidence → share the `guarddog-m1-revoke-proof-*.json`.
+
 ## 4. Download artifacts and attach here
 | Artifact | Files to attach |
 |---|---|

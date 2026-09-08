@@ -25,7 +25,7 @@ class GuardDogExpoModuleDefinitionTest {
 
         assertEquals("GuardDogSecurity", definition.name)
         assertEquals(
-            setOf("getCapabilities", "getProtectionState", "configure", "acceptRuleBundle", "analyzeUrl", "getEnforcementStats", "getRecoveryStatus"),
+            setOf("getCapabilities", "getProtectionState", "configure", "acceptRuleBundle", "analyzeUrl", "getEnforcementStats", "getRecoveryStatus", "isVpnConsentRequired"),
             definition.syncFunctions.keys,
         )
         // Expo appends startObserving/stopObserving when Events(...) is declared; assert our surface is present.

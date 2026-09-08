@@ -69,6 +69,8 @@ export interface GuardDogNativeModule {
   stopProtection(): Promise<NativeProtectionState>;
   getEnforcementStats(): Record<string, number> | null;
   getRecoveryStatus(): NativeRecoveryStatus;
+  /** Harness-only, read-only: true when the OS holds no VPN consent for this app (VpnService.prepare() would return an intent). No dialog. */
+  isVpnConsentRequired(): boolean;
   getBuildProvenance(): Promise<NativeBuildProvenance>;
   probeControlledEndpointFresh(timeoutMs: number): Promise<NativeFreshProbe>;
   addListener(eventName: string, listener: (payload: unknown) => void): { remove(): void };

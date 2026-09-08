@@ -140,6 +140,10 @@ class GuardDogExpoModule : Module() {
                 "recovered" to r.recovered)
         }
 
+        // Harness-only, read-only OS consent check (never shows a dialog): true when VpnService.prepare() would return an intent, i.e. the
+        // system holds no VPN consent for this app (revoked, never granted, or another VPN app owns it). Revoke proof evidence.
+        Function("isVpnConsentRequired") { VpnService.prepare(context) != null }
+
         // Harness-only fresh-connection probe of the CONFIGURED controlled endpoint (no caller-supplied URL: nothing else is ever probed or
         // recorded). Opens a brand-new, unprotected socket each call so the probe is subject to our own /32 route; see FreshConnectionProbe.
         AsyncFunction("probeControlledEndpointFresh") { timeoutMs: Int, promise: Promise ->
