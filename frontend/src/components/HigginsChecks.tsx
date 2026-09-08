@@ -2,11 +2,12 @@
 import Check from "lucide-react-native/icons/check";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import { useRouter } from "expo-router";
-import React from "react";
+import React, { useEffect } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { CHECKS, isDone, progressLine, type CheckId } from "@/src/domain/higginsChecks";
 import { useCheckCompletion } from "@/src/store/checkCompletion";
+import { recordSuggestion } from "@/src/store/higginsSuggestions";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
@@ -20,16 +21,17 @@ const useStyles = makeStyles((c) => ({
   progress: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary },
 }));
 
-export function HigginsChecks({ checks, askedAt, messageId }: { checks: CheckId[]; askedAt: string; messageId: string }) {
+export function HigginsChecks({ checks, askedAt, messageId, record = true, title = "Higgins suggests" }: { checks: CheckId[]; askedAt: string; messageId: string; /** Remember this suggestion so Higgins can follow up a day later (off for follow-up cards and the Home hero). */ record?: boolean; title?: string }) {
   const s = useStyles();
   const { colors } = useTheme();
   const router = useRouter();
   const completed = useCheckCompletion();
+  useEffect(() => { if (record && checks.length) void recordSuggestion(messageId, askedAt, checks); }, [record, messageId, askedAt, checks]);
   if (!checks.length) return null;
   const done = checks.filter((c) => isDone(completed[c], askedAt)).length;
   return (
     <View style={s.wrap} testID={`higgins-checks-${messageId}`}>
-      <Text style={s.title}>Higgins suggests</Text>
+      <Text style={s.title}>{title}</Text>
       {checks.map((c) => {
         const d = isDone(completed[c], askedAt);
         return (

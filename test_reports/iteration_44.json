@@ -1,0 +1,25 @@
+{
+  "summary": "Frontend-only iteration 44 verified end-to-end. Onboarding + privacy disclosure reach /home. Forcing stale verification (apollo.lastVerifiedAt set to 45m ago via localStorage) puts Apollo into growling with the exact reason 'Apollo has not verified protection recently. Higgins has listed the checks to run.' The hero shows testID hero-checks containing higgins-checks-hero with all three chips (higgins-check-device 'Check my device' / Home → Check my device, higgins-check-network 'Network Guard' / Home → Network Guard, higgins-check-account 'Account Guard' / Home → Account Guard), progress 'higgins-checks-progress-hero' = '0 of 3 done', and note 'hero-checks-note' starting 'Standard list for now'. Tapping the device chip navigates to /device, markCheckDone('device') fires on signals load, and on returning to Home the device chip shows 'Done' (higgins-check-device-done) with progress '1 of 3 done'. Tapping home-verify-button transitions Apollo to 'Apollo is patrolling' and hero-checks disappears (count 0). Regression: Ask tab produces Higgins chips under the reply (higgins-checks-<msgId> with a higgins-check-account chip) for the 'bank / gave a code' prompt. HigginsFollowUp card renders on Home after planting apollo.higgins.suggestions.v1 with askedAt 26h ago and checks ['account'] — followUpLine reads 'Yesterday I suggested Account Guard. No rush at all — it\u2019s still waiting whenever you have a quiet moment.' and shows the higgins-check-account chip. No frontend regressions detected.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_44.json"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "ApolloHero: recommendedChecks(resolution) is called on every render; when visibilityLost or !recovering it correctly returns [] so hero-checks is hidden — good.",
+    "recommendedChecks + STALE_VERIFICATION list ['device','network','account'] is correctly wired to the state machine reason string; RECOMMENDED_CHECKS_ARE_MOCK flag and RECOMMENDED_CHECKS_NOTE surface the MOCK caveat as required.",
+    "HigginsChecks passes record=false for the hero (messageId='hero'), so hero suggestions are NOT persisted to apollo.higgins.suggestions.v1 — correct, prevents accidental follow-ups from the hero.",
+    "device.tsx: markCheckDone('device') fires from a useEffect on `signals` — even before user takes any action. This is acceptable per the code comment ('the device check runs the moment real signals have been read'), but reviewers should note the chip auto-completes on visit."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a", "frontend": "100%"},
+  "seed_data_creation": "During testing only: (a) apollo.lastVerifiedAt overridden to ISO 45 minutes in the past to force stale-verification state; (b) apollo.higgins.suggestions.v1 planted with a single Suggestion (messageId='test-followup-1', askedAt 26h ago, checks=['account']) to exercise the follow-up card. No persistent server-side data was created.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Web AsyncStorage is @react-native-async-storage/async-storage backed by localStorage. Values are JSON.stringify'd at the storage.setItem layer. For lastVerifiedAt (a string): localStorage value must be JSON.stringify(isoString) → looks like \"\\\"2025-...-Z\\\"\". For apollo.higgins.suggestions.v1 (an array): higginsSuggestions.save() calls JSON.stringify(cache) BEFORE storage.setItem also JSON.stringifies → double-encoded string in localStorage. Tab testIDs are tab-home / tab-guard / tab-patrol / tab-ask / tab-settings. Stale-verification requires (a) no active events AND (b) visibility != 'none' (otherwise state machine returns visibilityLost first and recommendedChecks returns []). Sample script that works: complete onboarding, set localStorage 'apollo.lastVerifiedAt' with double-quoted ISO 30+ min ago, then reload. After reload wait ~2s for capabilities to hydrate — during that beat the hero briefly shows 'Apollo can\u2019t see right now' before settling to 'Apollo is growling' with hero-checks visible.",
+  "rca_of_issue": "N/A — feature works as specified. Only nuance found: on cold reload, the very first render can transiently show 'Apollo can\u2019t see right now' (visibilityLost) before capabilities hydrate to 'limited', at which point the growling + hero-checks state renders correctly. This is expected behaviour per the state machine (visibilityLost check precedes verificationFresh)."
+}

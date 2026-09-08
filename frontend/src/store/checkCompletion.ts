@@ -11,7 +11,7 @@ let cache: Record_ | null = null;
 const listeners = new Set<(r: Record_) => void>();
 
 async function load(): Promise<Record_> {
-  if (!cache) { const raw = await storage.getItem<string | null>(KEY, null); cache = raw ? (JSON.parse(raw) as Record_) : {}; }
+  if (!cache) { const raw = await storage.getItem<string | null>(KEY, null); cache = raw ? ((typeof raw === "string" ? JSON.parse(raw) : raw) as Record_) : {}; }
   return cache;
 }
 

@@ -487,3 +487,15 @@ frontend:
   - task: "Ask tab: parseChecks + HigginsChecks chips (higgins-checks-<msgId>, higgins-check-<id>, -done, higgins-checks-progress-<msgId>); markCheckDone wired in link/message/app/account/device/network. Secondary buttons white+navy outline; danger #B3261E; onboarding eyebrow restingText; restingText #1B6B47. Backend prompt emits CHECKS: trailer (verified via curl)."
     implemented: true
     working: true  # iteration 40 tester PASS on chips/navigation/Done/reload; iteration 41 added where-to-look + state-tied advice (verified via curl + screenshot); HigginsSpeakButton restyled
+
+## Iteration 43 — Higgins follow-up card; Hear Higgins back in the state card
+frontend:
+  - task: "HigginsFollowUp on Home (higgins-followup, -text, -later; chips reuse HigginsChecks). Self-tested in web: planted 26 h-old suggestion → card shown; visiting Check my device removed its chip; snooze hides the card. Single Hear Higgins in ApolloHero."
+    implemented: true
+    working: true
+
+## Iteration 44 — "Run a check" always names the checks (mock list until enforcement)
+frontend:
+  - task: "higginsChecks.ts recommendedChecks()/checksSpoken() (RECOMMENDED_CHECKS_ARE_MOCK). ApolloHero renders HigginsChecks chips (hero-checks, higgins-checks-hero, higgins-check-<id>) + hero-checks-note when resolution.recovering (stale verification → device,network,account; post-resolve cooldown → by event category). Hear Higgins text appends the spoken list. stateMachine reason wording changed. HigginsChecks gains record/title props. Unit tests 12/12."
+    implemented: true
+    working: true  # iteration 44 tester PASS (chips, Done tracking, Verify now clears list, Ask/follow-up regressions)

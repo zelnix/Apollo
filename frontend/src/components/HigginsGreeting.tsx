@@ -4,7 +4,6 @@ import X from "lucide-react-native/icons/x";
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
-import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
 import { Card, toneColor } from "@/src/components/ui";
 import { dayKey, higginsGreeting } from "@/src/domain/higginsGreeting";
 import type { ApolloState } from "@/src/domain/types";
@@ -22,8 +21,8 @@ const useStyles = makeStyles((c) => ({
   close: { width: 44, height: 44, alignItems: "center", justifyContent: "center", marginTop: -spacing.sm, marginRight: -spacing.sm },
 }));
 
-/** The single "Hear Higgins" on Home: reads the greeting, then Apollo's current status line (from the hero) in one go. */
-export function HigginsGreeting({ state, statusLine }: { state: ApolloState | "lost"; statusLine?: string }) {
+/** Greeting only — the single "Hear Higgins" button lives in the Apollo state card (ApolloHero). */
+export function HigginsGreeting({ state }: { state: ApolloState | "lost" }) {
   const s = useStyles();
   const { colors } = useTheme();
   const { deviceId, ready } = useApollo();
@@ -53,7 +52,6 @@ export function HigginsGreeting({ state, statusLine }: { state: ApolloState | "l
         </View>
         <Pressable testID="higgins-greeting-dismiss" accessibilityRole="button" accessibilityLabel="Dismiss greeting" onPress={dismiss} style={s.close} hitSlop={8}><X size={18} color={colors.muted} /></Pressable>
       </View>
-      <HigginsSpeakButton text={statusLine ? `${greeting.text} ${statusLine}` : greeting.text} testID="higgins-greeting-hear" />
     </Card>
   );
 }

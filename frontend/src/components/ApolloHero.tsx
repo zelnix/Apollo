@@ -5,13 +5,16 @@
 
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
-import React, { useEffect } from "react";
+import React, { useEffect, useMemo } from "react";
 import { Text, View } from "react-native";
 import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming } from "react-native-reanimated";
 
 import type { StateResolution } from "@/src/domain/stateMachine";
 import { STATE_LABEL, STATE_MEANING, type ApolloState, type Visibility } from "@/src/domain/types";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+import { HigginsChecks } from "@/src/components/HigginsChecks";
+import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
+import { checksSpoken, RECOMMENDED_CHECKS_ARE_MOCK, RECOMMENDED_CHECKS_NOTE, recommendedChecks } from "@/src/domain/higginsChecks";
 import { Pill, toneColor, toneTint } from "./ui";
 
 const useStyles = makeStyles((c) => ({
@@ -24,6 +27,7 @@ const useStyles = makeStyles((c) => ({
   meaning: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary },
   reason: { fontFamily: fonts.textMedium, fontSize: 14, lineHeight: 20, color: c.onSurface },
   row: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
+  note: { fontFamily: fonts.text, fontSize: 12, lineHeight: 17, color: c.onSurfaceSecondary },
 }));
 
 const ease = Easing.inOut(Easing.ease);
@@ -87,6 +91,10 @@ export function ApolloHero({ resolution, visibility, adapterLabel, isMock, anima
 
   const title = resolution.visibilityLost ? "Apollo can't see right now" : STATE_LABEL[resolution.state];
   const meaning = resolution.visibilityLost ? "Protection is off or has no active checks. This is not a safe state." : STATE_MEANING[resolution.state];
+  // "Run a check" is never said bare: the exact checks are listed (tappable) and read aloud. Completion counts from
+  // the start of today, so a check already done this morning shows as done.
+  const checks = sniffing ? [] : recommendedChecks(resolution);
+  const askedAt = useMemo(() => new Date(new Date().setHours(0, 0, 0, 0)).toISOString(), []);
 
   return (
     <View style={s.hero} testID="apollo-hero">
@@ -112,6 +120,13 @@ export function ApolloHero({ resolution, visibility, adapterLabel, isMock, anima
           <Text style={s.label} testID="apollo-state-label">{title}</Text>
           <Text style={s.meaning}>{meaning}</Text>
           <Text style={s.reason} testID="apollo-state-reason">{resolution.reason}</Text>
+          {checks.length ? (
+            <View style={{ gap: spacing.xs }} testID="hero-checks">
+              <HigginsChecks checks={checks} askedAt={askedAt} messageId="hero" record={false} title="The checks to run" />
+              {RECOMMENDED_CHECKS_ARE_MOCK ? <Text style={s.note} testID="hero-checks-note">{RECOMMENDED_CHECKS_NOTE}</Text> : null}
+            </View>
+          ) : null}
+          <HigginsSpeakButton text={`${title}. ${meaning} ${resolution.reason} ${checksSpoken(checks)}`.trim()} testID="hero-hear-higgins" />
           <View style={s.row}>
             <Pill testID="visibility-pill" tone={visibility === "full" ? "resting" : visibility === "limited" ? "growling" : "unknown"} label={visibility === "full" ? "Full visibility" : visibility === "limited" ? "Limited visibility" : "No visibility"} />
             {resolution.recovering ? <Pill tone="growling" label="Awaiting fresh check" testID="recovering-pill" /> : null}

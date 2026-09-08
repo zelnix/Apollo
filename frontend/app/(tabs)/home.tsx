@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApolloHero } from "@/src/components/ApolloHero";
 import { ApolloLogo } from "@/src/components/ApolloLogo";
+import { HigginsFollowUp } from "@/src/components/HigginsFollowUp";
 import { HigginsGreeting } from "@/src/components/HigginsGreeting";
 import { ClipboardLinkBanner } from "@/src/components/ClipboardLinkBanner";
 import { PatrolItem } from "@/src/components/PatrolItem";
@@ -68,7 +69,8 @@ export default function Home() {
           </Card>
         ) : null}
         <ServiceBanner />
-        <HigginsGreeting state={resolution.visibilityLost ? "lost" : resolution.state} statusLine={resolution.reason} />
+        <HigginsGreeting state={resolution.visibilityLost ? "lost" : resolution.state} />
+        <HigginsFollowUp />
         <ClipboardLinkBanner />
         {protection?.operational ? (
           <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }} testID="home-background-card">

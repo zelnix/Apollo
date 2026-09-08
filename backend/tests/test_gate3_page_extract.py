@@ -12,7 +12,7 @@ import pytest
 import requests
 from PIL import Image, ImageDraw, ImageFont
 
-BASE_URL = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/")
+BASE_URL = (os.environ.get("EXPO_BACKEND_URL") or os.environ.get("EXPO_PUBLIC_BACKEND_URL") or "https://threat-patrol-1.preview.emergentagent.com").rstrip("/")
 # python-requests default UA is fine (the ingress only 403s python-urllib), but be explicit.
 HEADERS = {"Content-Type": "application/json", "User-Agent": "Mozilla/5.0 apollo-test"}
 GEMINI_TIMEOUT = 90
