@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -91,6 +92,13 @@ export default function Index() {
         <Text style={styles.subtitle}>{caps.platform} · {caps.selectiveIpBlocking ? "selective /32 enforcement available" : "no enforcement layer in this runtime"}</Text>
       </View>
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]} keyboardShouldPersistTaps="handled">
+        <Card title="Gate Guard M2.1 · Phase 6" testID="phase6-nav-card">
+          <Text style={styles.note}>Physical-device acceptance report runner for the Website Gate (DNS→sinkhole→TUN evidence chain, PASS/FAIL matrix, PDF export). Real data requires a native Android build.</Text>
+          <View style={styles.actions}>
+            <ActionButton title="Open Phase 6 Acceptance Report Runner" onPress={() => router.push("/phase6-acceptance")} testID="open-phase6-button" />
+          </View>
+        </Card>
+
         <Card title="Protection state" testID="protection-state-card">
           <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
             <StatusBadge status={status.state} testID="protection-state-badge" />

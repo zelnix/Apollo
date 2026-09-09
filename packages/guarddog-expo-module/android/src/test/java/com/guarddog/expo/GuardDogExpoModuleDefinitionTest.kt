@@ -31,6 +31,8 @@ class GuardDogExpoModuleDefinitionTest {
                 // Gate Guard M2 Website Gate (Phase 5): additive bridge surface, none of the above touched.
                 "configureWebsiteGate", "acceptWebsiteGateRuleBundle", "getWebsiteGateStatus", "setWebsiteGateAllowOverride",
                 "getWebsiteGateOverrides", "clearWebsiteGateOverrides",
+                // Gate Guard M2.1 Phase 6: harness-only device provenance for the physical-device acceptance report.
+                "getPhase6DeviceProvenance",
             ),
             definition.syncFunctions.keys,
         )

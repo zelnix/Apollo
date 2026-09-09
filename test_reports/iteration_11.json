@@ -1,0 +1,43 @@
+{
+  "summary": "Frontend-only regression test for Apollo Native Gates M2.1: (1) verified bug fix in phase6-acceptance.tsx (await readBuildProvenance() in autoCapture mutation) does not crash and no unhandled error card appears, (2) verified new navigation entry point 'Open Phase 6 Acceptance Report Runner' (testID=open-phase6-button) on index.tsx navigates to /phase6-acceptance, and back button (testID=phase6-back-button) returns to harness-screen correctly, (3) full walkthrough of Phase 6 screen: invariant banner, provenance auto-capture (native fields correctly show empty/unavailable on web since gitSha/ciRunId/apkSha256 are null, non-native fields like Network type populate correctly with 'UNKNOWN (connected)'), text input typing (Branch field), PASS/FAIL matrix chip selectors across Group 1 and Group 4 (CAPTURED/BYPASSED/UNOBSERVABLE/FAIL) toggle visual selection state correctly (background color changes rgba(0,0,0,0) -> rgb(11,18,32)), verdict chip picker (PASS chip) toggles selection, negative test button (rule-match-alone) does not crash, Generate PDF button does not crash on web. Main harness screen (index.tsx) also re-verified: Protection state (INACTIVE, native module unavailable reason), Build provenance card, Backend/signed rules loaded live from /api/config (ruleset gd-m1-controlled-block, host blocktest.btciq.app), Local URL analysis, Acceptance chain, Security events -- all render with zero console errors and zero red-screen errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": [], "react_native_issues": []},
+  "verification_results": {
+    "main_screen": {
+      "harness_screen_loaded": true,
+      "protection_state_badge": "INACTIVE",
+      "provenance_card": "APK SHA unavailable (expected, not installed APK), native: no",
+      "backend_config_loaded": "ruleset gd-m1-controlled-block, host blocktest.btciq.app (live from /api/config)",
+      "phase6_nav_card_visible": true
+    },
+    "navigation": {
+      "open_phase6_button": "navigates to /phase6-acceptance successfully",
+      "phase6_back_button": "returns to harness-screen successfully"
+    },
+    "phase6_screen": {
+      "invariant_banner_visible": true,
+      "autocapture_bugfix_verified": "clicked phase6-autocapture-button; no crash, no 'Last action error' card shown, Network type field auto-populated with 'UNKNOWN (connected)'; native-only fields (commit SHA, CI run ID, APK SHA) correctly remain empty since readBuildProvenance() returns nulls on web -- expected per task scope",
+      "text_input_typing": "Branch field accepted typed text 'test-branch-123' correctly",
+      "matrix_chip_toggle": "phase6-matrix-1.1-PASS chip: background rgba(0,0,0,0) -> rgb(11,18,32) after tap (selection state works); Group 4 chips (CAPTURED/BYPASSED/UNOBSERVABLE/FAIL) present and correctly testID'd",
+      "verdict_chip_toggle": "phase6-verdict-PASS chip toggled to selected/filled state on tap",
+      "negative_test_button": "phase6-neg-rule-match clicked, no crash",
+      "generate_pdf_button": "phase6-generate-pdf clicked, no crash (web print dialog behavior not fully verifiable in headless automation but no error thrown)",
+      "console_errors": 0,
+      "red_screen_errors": 0
+    }
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "phase6-acceptance.tsx autoCapture mutation await fix confirmed working -- readBuildProvenance() now properly awaited, resolved value (bp) correctly destructured with real gitSha/ciRunId/apkSha256 (all null on web, as expected).",
+    "index.tsx new Phase 6 nav Card is well-placed at top of ScrollView with clear description text and single well-labeled ActionButton; testID naming is consistent with rest of codebase.",
+    "Phase6MatrixRowEditor and verdict chip components correctly use Pressable with conditional style (borderColor/backgroundColor swap) for selection state -- clean, reusable pattern.",
+    "No code changes needed; both fixes described in the review request work as intended."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested this round (out of scope per request)", "frontend": "100% (all requested flows verified, 0 crashes, 0 console errors)"},
+  "seed_data_creation": "None.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Phase 6 screen and new navigation entry point fully verified on web preview with zero regressions. Native-dependent features (Activate Website Gate, Run positive enforcement test, real PDF generation) cannot be functionally exercised on web/Expo Go by design -- this is expected, not a bug, and was correctly treated as out-of-scope per the review request. If a future session adds a native Android build test harness (physical device or emulator with VpnService), retest Activate Website Gate, positive/negative enforcement tests, and PDF generation end-to-end at that time."
+}

@@ -12,6 +12,8 @@ export interface M1Config {
   signingKeyId: string;
   capabilities: Record<string, unknown>;
   privacy: Record<string, unknown>;
+  /** Gate Guard M2 Website Gate ruleset id, additive/optional (older backends won't have it). */
+  gateGuard?: { websiteGateRulesetId: string };
 }
 
 async function getJson<T>(path: string): Promise<T> {

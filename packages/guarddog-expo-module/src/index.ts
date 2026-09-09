@@ -72,6 +72,23 @@ export interface NativeWebsiteGateStatus {
   overrideCount: number;
 }
 
+// --- Gate Guard M2.1 Phase 6: harness-only device provenance for the physical-device acceptance
+// report. Additive; none of the above M1/M2 types or methods are touched. ---
+
+export interface NativePhase6DeviceProvenance {
+  manufacturer: string;
+  model: string;
+  osRelease: string;
+  sdkInt: number;
+  securityPatch: string;
+  /** Native-sourced (not JS-asserted) confirmation of which native stack this response came from --
+   * this module IS com.guarddog.* by construction, so its mere presence/response is itself the
+   * "active stack" evidence; it can never report the other, independent
+   * com.hucentai.apollosecurity stack. Deliberately excludes Android's Private DNS setting (not
+   * readable by third-party apps without a privileged permission) -- record that one manually. */
+  activeNativeStackId: string;
+}
+
 export interface GuardDogNativeModule {
   getCapabilities(): Record<string, unknown>;
   getProtectionState(): NativeProtectionState;
@@ -98,6 +115,8 @@ export interface GuardDogNativeModule {
   setWebsiteGateAllowOverride(config: { host: string; allowed: boolean }): boolean;
   getWebsiteGateOverrides(): string[];
   clearWebsiteGateOverrides(): void;
+  /** Gate Guard M2.1 Phase 6 harness-only device provenance. See NativePhase6DeviceProvenance. */
+  getPhase6DeviceProvenance(): NativePhase6DeviceProvenance;
   addListener(eventName: string, listener: (payload: unknown) => void): { remove(): void };
 }
 

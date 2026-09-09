@@ -233,6 +233,27 @@ class GuardDogExpoModule : Module() {
                 }
             }.start()
         }
+
+        // Gate Guard M2.1 Phase 6: harness-only device provenance for the physical-device acceptance
+        // report (docs/M2_PHASE6_ACCEPTANCE_TEMPLATE.md). Synchronous -- every field is an in-memory
+        // android.os.Build constant, no I/O. `activeNativeStackId` is a native-sourced (not
+        // JS-asserted) confirmation of which of the two independent Android stacks is actually
+        // running: this module IS com.guarddog.* by construction (it cannot report the OTHER stack,
+        // com.hucentai.apollosecurity, since that module's code never executes inside this process),
+        // so its mere presence/response here is itself the "active stack" evidence the Phase 6
+        // template asks for. Deliberately does NOT read Android's Private DNS setting: that value is
+        // not exposed to third-party apps on modern Android without a privileged/system permission
+        // this app does not hold -- see the template's own instruction to record it manually.
+        Function("getPhase6DeviceProvenance") {
+            mapOf(
+                "manufacturer" to android.os.Build.MANUFACTURER,
+                "model" to android.os.Build.MODEL,
+                "osRelease" to android.os.Build.VERSION.RELEASE,
+                "sdkInt" to android.os.Build.VERSION.SDK_INT,
+                "securityPatch" to (android.os.Build.VERSION.SECURITY_PATCH ?: "unavailable"),
+                "activeNativeStackId" to "com.guarddog.* (GuardDogSecurity native module)",
+            )
+        }
     }
 
     companion object {
