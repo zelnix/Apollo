@@ -60,6 +60,20 @@ export interface IntelSource {
   threat_types: string[];
 }
 
+/** RDAP domain lookup — best-effort, keyless registrar/registration-date context. Never gates the
+ * verdict; `available: false` (or an absent object) just means no registration info could be shown. */
+export interface DomainInfo {
+  domain: string;
+  registrar: string | null;
+  registered_at: string | null;
+  registrant_organization: string | null;
+  rdap_server: string | null;
+  age_days: number | null;
+  newly_registered: boolean;
+  available: boolean;
+  error: string | null;
+}
+
 export interface IntelResult {
   redirect_chain?: string[];
   final_url?: string | null;
@@ -70,6 +84,7 @@ export interface IntelResult {
   checked_at: string;
   cached: boolean;
   coverage: IntelCoverage;
+  domain_info?: DomainInfo | null;
 }
 
 export type EventCategory = "link" | "website" | "connection" | "known_threat" | "protection" | "system" | "message" | "call" | "app" | "device" | "account" | "email";

@@ -11,10 +11,22 @@ from pydantic import BaseModel, Field
 
 from core.config import SAFE_BROWSING_API_KEY
 from core.db import db, now_utc
-from core.models import ApolloState, IntelCheckRequest, IntelCheckResponse
+from core.models import ApolloState, DomainInfo, IntelCheckRequest, IntelCheckResponse
 from services.intel import expand_redirects, run_intel_check, safe_browsing_lookup, sanitize_url, _sb_probe
+from services.rdap import lookup_domain_cached
 
 router = APIRouter()
+
+
+async def _await_domain(task: Optional["asyncio.Task[Optional[DomainInfo]]"]) -> Optional[DomainInfo]:
+    """The task was already fired off in parallel with the verdict check — this just bounds the
+    remaining wait. RDAP is best-effort: any failure here degrades to "no domain info", never an error."""
+    if not task:
+        return None
+    try:
+        return await asyncio.wait_for(task, timeout=6.0)
+    except Exception:  # noqa: BLE001
+        return None
 
 
 @router.get("/intel/status")
@@ -32,8 +44,20 @@ async def intel_status():
 
 @router.post("/intel/check", response_model=IntelCheckResponse)
 async def intel_check(body: IntelCheckRequest):
+    # RDAP domain lookup runs in parallel with the verdict below (fired now, awaited at the end) —
+    # it must never add latency to, or gate, the malicious/clean verdict itself.
+    if body.indicator_type == "url":
+        try:
+            initial_host: Optional[str] = sanitize_url(body.value)[1]
+        except HTTPException:
+            initial_host = None
+    else:
+        initial_host = body.value.strip().lower() or None
+    domain_task = asyncio.create_task(lookup_domain_cached(initial_host)) if initial_host else None
+
     if not body.expand or body.indicator_type != "url":
-        return await run_intel_check(body.indicator_type, body.value)
+        result = await run_intel_check(body.indicator_type, body.value)
+        return result.model_copy(update={"domain_info": await _await_domain(domain_task)})
     # Bounded as a whole: a slow redirect chain must never hold the check hostage — judge the link as given instead.
     try:
         chain = await asyncio.wait_for(expand_redirects(body.value), timeout=12)
@@ -57,7 +81,8 @@ async def intel_check(body: IntelCheckRequest):
         except HTTPException:
             hosts.append(urlparse(u).hostname or u)
     return IntelCheckResponse(verdict=verdict, threat_types=threat_types, sources=sources, indicator_digest=result.indicator_digest, checked_at=result.checked_at, cached=result.cached,
-                              coverage=result.coverage, redirect_chain=hosts if len(chain) > 1 else [], final_url=final if len(chain) > 1 else None)
+                              coverage=result.coverage, redirect_chain=hosts if len(chain) > 1 else [], final_url=final if len(chain) > 1 else None,
+                              domain_info=await _await_domain(domain_task))
 
 
 class FeedbackIn(BaseModel):

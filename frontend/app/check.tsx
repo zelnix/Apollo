@@ -18,6 +18,7 @@ import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
 import { getHigginsAuto, speakHiggins } from "@/src/voice/higgins";
 import { Body, Button, Card, Pill, toneColor } from "@/src/components/ui";
 import { verifyWebsite } from "@/src/domain/brand";
+import { formatDomainInfoLine } from "@/src/domain/domainInfo";
 import { analysePage, type PageAnalysis, type PageSignals } from "@/src/domain/pageAnalysis";
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { useApollo, type CheckOutcome } from "@/src/store/ApolloContext";
@@ -170,6 +171,17 @@ export default function CheckLink() {
                 {outcome.intel?.redirect_chain?.length ? <Pill tone="unknown" label={`Redirected: ${outcome.intel.redirect_chain.join(" → ")}`} testID="check-result-redirects" /> : null}
                 {outcome.decision.claimed_brand ? <Pill tone={state === "resting" ? "resting" : "barking"} label={`Claims to be ${outcome.decision.claimed_brand}`} testID="check-result-brand" /> : null}
                 {!outcome.intel || outcome.intel.coverage === "none" ? <Pill tone="unknown" label="Online check unavailable — on-device checks only" testID="check-result-intel-unavailable" /> : outcome.intel.coverage === "partial" ? <Pill tone="unknown" label="Online check partial" testID="check-result-intel-partial" /> : null}
+                {outcome.intel?.domain_info ? (
+                  outcome.intel.domain_info.available === false ? (
+                    <Body style={s.hint} testID="check-result-domain-unavailable">Domain registration lookup unavailable.</Body>
+                  ) : (
+                    <>
+                      <Text style={s.sub}>Domain info</Text>
+                      <Body testID="check-result-domain-info">{formatDomainInfoLine(outcome.intel.domain_info)}</Body>
+                      {outcome.intel.domain_info.newly_registered ? <Pill tone="growling" label="Newly registered — elevated scam risk" testID="check-result-domain-new" /> : null}
+                    </>
+                  )
+                ) : null}
                 <Text style={s.sub}>Why Apollo reacted</Text>
                 {(liveEvent?.why ?? outcome.decision.why).map((w, i) => (
                   <View key={i} style={s.bullet}><View style={[s.dot, { backgroundColor: toneColor(colors, state) }]} /><Body style={{ flex: 1 }}>{w}</Body></View>
@@ -220,6 +232,12 @@ export default function CheckLink() {
             {outcome.intel?.final_url ? <Body>Final destination: {outcome.intel.final_url}</Body> : null}
             <Body>On-device score: {outcome.local.score}/100 ({outcome.local.level}). Signals: {outcome.local.signals.map((x) => x.code).join(", ") || "none"}.</Body>
             <Body>Intelligence: {outcome.intel ? outcome.intel.sources.map((x) => `${x.name} = ${x.status}`).join("; ") : "unavailable"}. Verdict: {outcome.intel?.verdict ?? "n/a"}. Coverage: {outcome.intel?.coverage ?? "none"}.</Body>
+            {outcome.intel?.domain_info && outcome.intel.domain_info.available !== false ? (
+              <Body testID="tech-domain-info">
+                Domain: {outcome.intel.domain_info.domain}. Registrar: {outcome.intel.domain_info.registrar ?? "unknown"}. Registered: {outcome.intel.domain_info.registered_at ? outcome.intel.domain_info.registered_at.slice(0, 10) : "unknown"}
+                {outcome.intel.domain_info.age_days != null ? ` (${outcome.intel.domain_info.age_days} days ago)` : ""}. Registrant organisation: {outcome.intel.domain_info.registrant_organization ?? "not disclosed"}. RDAP server: {outcome.intel.domain_info.rdap_server ?? "n/a"}.
+              </Body>
+            ) : null}
             <Body>Adapter: {liveEvent?.adapter_label}. Verified block: {liveEvent?.verified_block ? "yes" : "no"}. Event: {liveEvent?.event_id.slice(0, 8)}…</Body>
           </>
         ) : null}

@@ -42,6 +42,8 @@ async def lifespan(_: FastAPI):
     await db.devices.create_index("token_hash", unique=True, partialFilterExpression={"token_hash": {"$type": "string"}})
     await db.reputation_cache.create_index("indicator_digest", unique=True)
     await db.reputation_cache.create_index("expires_at")  # plain index; expiry is checked at read time, never auto-deleted
+    await db.domain_info_cache.create_index("domain", unique=True)
+    await db.domain_info_cache.create_index("expires_at")  # plain index; expiry is checked at read time, never auto-deleted
     await db.patrol_events.create_index([("device_id", 1), ("event_id", 1)], unique=True)
     await db.trust_entries.create_index("trust_id", unique=True)
     await db.ask_messages.create_index([("device_id", 1), ("created_at", 1)])

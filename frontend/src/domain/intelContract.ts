@@ -2,7 +2,7 @@
 // A response that doesn't match the contract is REJECTED and treated as "intelligence unavailable" —
 // never as clean. Only shapes that could turn a broken answer into an optimistic verdict are checked.
 
-import type { IntelCoverage, IntelResult, IntelSource, IntelVerdict } from "./types";
+import type { DomainInfo, IntelCoverage, IntelResult, IntelSource, IntelVerdict } from "./types";
 
 const VERDICTS: IntelVerdict[] = ["clean", "malicious", "unknown"];
 const COVERAGES: IntelCoverage[] = ["full", "partial", "none"];
@@ -10,6 +10,25 @@ const SOURCE_STATUS: IntelSource["status"][] = ["match", "clear", "unavailable",
 
 const isStr = (v: unknown): v is string => typeof v === "string";
 const strList = (v: unknown): string[] | null => (Array.isArray(v) && v.every(isStr) ? v : null);
+
+// RDAP domain info is presentational context, never a security verdict — a malformed/absent value
+// simply means "no domain info to show", it never rejects the whole intel result.
+function parseDomainInfo(v: unknown): DomainInfo | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  if (!isStr(o.domain)) return null;
+  return {
+    domain: o.domain,
+    registrar: isStr(o.registrar) ? o.registrar : null,
+    registered_at: isStr(o.registered_at) ? o.registered_at : null,
+    registrant_organization: isStr(o.registrant_organization) ? o.registrant_organization : null,
+    rdap_server: isStr(o.rdap_server) ? o.rdap_server : null,
+    age_days: typeof o.age_days === "number" ? o.age_days : null,
+    newly_registered: o.newly_registered === true,
+    available: o.available !== false,
+    error: isStr(o.error) ? o.error : null,
+  };
+}
 
 export function parseIntelResult(raw: unknown): IntelResult | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
@@ -33,6 +52,6 @@ export function parseIntelResult(raw: unknown): IntelResult | null {
   const redirect_chain = strList(r.redirect_chain) ?? undefined;
   return {
     verdict: r.verdict as IntelVerdict, coverage: r.coverage as IntelCoverage, threat_types, sources, indicator_digest: r.indicator_digest, checked_at: r.checked_at,
-    cached: r.cached === true, redirect_chain, final_url: isStr(r.final_url) ? r.final_url : null,
+    cached: r.cached === true, redirect_chain, final_url: isStr(r.final_url) ? r.final_url : null, domain_info: parseDomainInfo(r.domain_info),
   };
 }
