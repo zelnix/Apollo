@@ -60,6 +60,16 @@ export interface PlatformCapabilityProfile {
   offlineProtection: CapabilityLevel;
   /** Can the platform push security events to the app in near real time? */
   realTimeEvents: CapabilityLevel;
+  /**
+   * Concrete scope tags describing exactly what this profile's capabilities cover — e.g.
+   * ["dns:udp-53"] for a DNS-only tunnel, ["browser:safari"] for a Safari content blocker.
+   * Optional (older/simpler adapters may omit it), but whenever present it must describe the
+   * DEPLOYED implementation's real reach, never a theoretical maximum. A CapabilityLevel of
+   * "partial"/"full" without a scope tag still means "ask the adapter", not "everything".
+   * Presence of a scope tag — like any capability field — never by itself implies enforcement;
+   * only EnforcementEvidence with result:"verified" may authorise that (see isVerifiedEnforcement).
+   */
+  scope?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -156,6 +166,9 @@ export const PLATFORM_CAPABILITY_BASELINES: Record<SdkPlatform, PlatformCapabili
     networkFiltering: "full", packetVisibility: "full", dnsVisibility: "full",
     processAttribution: "full", appAttribution: "full", domainVisibility: "full",
     localBlocking: "full", backgroundProtection: "full", offlineProtection: "partial", realTimeEvents: "full",
+    // Ceiling scope only — the DEPLOYED AndroidSecurityAdapter (ApolloDnsVpnService) is DNS-only
+    // ("dns:udp-53", reported by the native module itself), narrower than this general ceiling.
+    scope: ["packet:all", "dns:all"],
   },
   ios: {
     platform: "ios", platformVersion: null, sdkVersion: null, capabilityVersion: CAPABILITY_PROFILE_VERSION,
@@ -165,6 +178,10 @@ export const PLATFORM_CAPABILITY_BASELINES: Record<SdkPlatform, PlatformCapabili
     networkFiltering: "partial", packetVisibility: "partial", dnsVisibility: "partial",
     processAttribution: "none", appAttribution: "none", domainVisibility: "partial",
     localBlocking: "partial", backgroundProtection: "partial", offlineProtection: "partial", realTimeEvents: "partial",
+    // Ceiling scope for a hypothetical NEFilterDataProvider build. The DEPLOYED IOSSecurityAdapter
+    // uses Safari Content Blocker instead (scope ["browser:safari"], reported by the native module
+    // itself) — a much narrower, purely declarative mechanism. Never conflate the two.
+    scope: ["network_extension:flow-metadata"],
   },
   windows: {
     platform: "windows", platformVersion: null, sdkVersion: null, capabilityVersion: CAPABILITY_PROFILE_VERSION,
@@ -173,6 +190,7 @@ export const PLATFORM_CAPABILITY_BASELINES: Record<SdkPlatform, PlatformCapabili
     networkFiltering: "full", packetVisibility: "full", dnsVisibility: "full",
     processAttribution: "full", appAttribution: "full", domainVisibility: "full",
     localBlocking: "full", backgroundProtection: "full", offlineProtection: "partial", realTimeEvents: "full",
+    scope: ["wfp:kernel-callout"],
   },
   macos: {
     platform: "macos", platformVersion: null, sdkVersion: null, capabilityVersion: CAPABILITY_PROFILE_VERSION,
@@ -182,6 +200,7 @@ export const PLATFORM_CAPABILITY_BASELINES: Record<SdkPlatform, PlatformCapabili
     networkFiltering: "full", packetVisibility: "full", dnsVisibility: "full",
     processAttribution: "partial", appAttribution: "partial", domainVisibility: "full",
     localBlocking: "full", backgroundProtection: "full", offlineProtection: "partial", realTimeEvents: "full",
+    scope: ["system_extension:packet-filter", "system_extension:dns-proxy"],
   },
   mock: {
     platform: "mock", platformVersion: "n/a", sdkVersion: "mock", capabilityVersion: CAPABILITY_PROFILE_VERSION,
@@ -191,5 +210,24 @@ export const PLATFORM_CAPABILITY_BASELINES: Record<SdkPlatform, PlatformCapabili
     networkFiltering: "none", packetVisibility: "none", dnsVisibility: "none",
     processAttribution: "none", appAttribution: "none", domainVisibility: "none",
     localBlocking: "none", backgroundProtection: "none", offlineProtection: "none", realTimeEvents: "none",
+    scope: [],
   },
+};
+
+/**
+ * Machine-checkable companion to PLATFORM_CAPABILITY_BASELINES: which platforms have a REAL
+ * adapter wired up in this codebase right now (see securityAdapter.ts::selectAdapter and
+ * NativeSecurityAdapters.ts), vs. which are only represented in the type system for a future
+ * adapter. Windows/macOS have baselines above so the architecture never needs a redesign when
+ * those adapters land — but until then this record, and the absence of any
+ * WindowsSecurityAdapter/MacosSecurityAdapter export, are what make "not implemented" an
+ * explicit, testable fact rather than an assumption. Do not flip these to true without also
+ * shipping the corresponding native module.
+ */
+export const PLATFORM_ADAPTER_IMPLEMENTED: Record<SdkPlatform, boolean> = {
+  android: true,
+  ios: true,
+  windows: false,
+  macos: false,
+  mock: true,
 };

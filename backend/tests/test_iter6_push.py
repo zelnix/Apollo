@@ -69,7 +69,7 @@ class TestRegisterPushDev:
 
 # ------------------------- /api/patrol/events background field ------------------
 class TestPatrolEventsBackground:
-    def _payload(self, device_id: str, state: str, background=None):
+    def _payload(self, device_id: str, state: str, background=None, evidence=None):
         p = {
             "event_id": f"evt-{uuid.uuid4().hex[:12]}",
             "device_id": device_id,
@@ -83,19 +83,44 @@ class TestPatrolEventsBackground:
             "indicator_host": "bad.example",
             "adapter_label": "test",
             "occurred_at": datetime.now(timezone.utc).isoformat(),
+            "enforcement_evidence": evidence,
         }
         if background is not None:
             p["background"] = background
         return p
 
+    def _valid_evidence(self, device_id: str):
+        # state="biting" is now gated server-side: it can only be persisted with validated
+        # enforcement_evidence (see backend/routers/patrol.py::_derive_verified_block and the
+        # cross-platform correctness pass's Biting invariant). This push test cares about the
+        # notification side-effect, not evidence validation itself, so it supplies fully valid
+        # evidence to legitimately reach "biting" — see test_enforcement_evidence_gate.py for the
+        # dedicated invariant tests.
+        # NOTE: device_id is deliberately omitted (None), not set to the caller's legacy id — the
+        # conftest.py auth shim only rewrites TOP-LEVEL device_id/user_id keys to the real
+        # server-issued device id, not this nested evidence.device_id, so setting it here would
+        # create a false mismatch against the (rewritten) top-level device_id and always fail the
+        # gate's device-matching check. Evidence not naming a device is valid everywhere (see
+        # test_evidence_with_no_device_id_named_is_still_valid_everywhere_else).
+        return {
+            "evidence_id": f"ev-{uuid.uuid4().hex[:12]}", "event_id": None, "device_id": None, "platform": "android",
+            "os_version": "Android 15", "sdk_version": "1.0.0", "observed_at": datetime.now(timezone.utc).isoformat(),
+            "mechanism": "dns_filter", "direction": "outbound", "protocol": "dns",
+            "destination_ip": None, "destination_domain": "bad.example", "destination_port": 53,
+            "app_id": None, "process_name": None, "attribution_confidence": "unavailable",
+            "matched_rule_id": "bad.example", "threat_id": None, "requested_action": "block", "enforced_action": "blocked",
+            "result": "verified", "rule_source": "local_blocklist", "confidence": "high", "correlation_id": None,
+        }
+
     def test_biting_with_background_true_returns_200_and_persists(self, s):
         dev = f"dev-{uuid.uuid4().hex[:12]}"
-        payload = self._payload(dev, "biting", background=True)
+        payload = self._payload(dev, "biting", background=True, evidence=self._valid_evidence(dev))
         r = s.post(f"{API}/patrol/events", json=payload)
         assert r.status_code == 200, r.text
         body = r.json()
         assert body["background"] is True
         assert body["state"] == "biting"
+        assert body["verified_block"] is True
         # GET verifies persistence
         g = s.get(f"{API}/patrol/events", params={"device_id": dev})
         assert g.status_code == 200

@@ -206,6 +206,10 @@ class ApolloSecurityModule : Module() {
         .put("backgroundProtection", "full")  // foreground VpnService, START_STICKY
         .put("offlineProtection", "full")     // the blocklist check needs no network at all
         .put("realTimeEvents", "partial")     // evidence is ready instantly, but the JS side must poll for it
+        // Ceiling scope for a general VpnService is packet:all/dns:all (see PLATFORM_CAPABILITY_BASELINES.android
+        // in PlatformCapabilityProfile.ts) — but THIS deployed module only tunnels DNS (UDP/53), so it must
+        // self-report the narrower real scope, not the ceiling.
+        .put("scope", JSONArray(listOf("dns:udp-53")))
         .toString()
     }
 

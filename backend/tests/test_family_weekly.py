@@ -17,12 +17,32 @@ def _pair(api, protected, guardian):
     assert api.post(f"{BASE_URL}/api/family/link", json={"device_id": guardian, "code": code}).status_code == 200
 
 
-def _event(api, device, state, status, days_ago=1, category="link"):
+def _event(api, device, state, status, days_ago=1, category="link", evidence=None):
     eid = uuid.uuid4().hex[:16]
     ts = (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat()
-    r = api.post(f"{BASE_URL}/api/patrol/events", json={"event_id": eid, "device_id": device, "category": category, "state": state, "status": status, "headline": "x", "what_happened": "x", "why": [], "what_to_do": "x", "adapter_label": "mock", "occurred_at": ts})
+    r = api.post(f"{BASE_URL}/api/patrol/events", json={"event_id": eid, "device_id": device, "category": category, "state": state, "status": status, "headline": "x", "what_happened": "x", "why": [], "what_to_do": "x", "adapter_label": "mock", "occurred_at": ts, "enforcement_evidence": evidence})
     assert r.status_code in (200, 201), r.text
     return eid
+
+
+def _valid_evidence():
+    # state="biting" is gated server-side (see backend/routers/patrol.py::_derive_verified_block,
+    # the cross-platform correctness pass's Biting invariant) — it can only be persisted with
+    # validated enforcement_evidence. This digest test cares about the weekly counts/redaction
+    # behaviour, not evidence validation itself (that's covered by
+    # tests/test_enforcement_evidence_gate.py), so it supplies fully valid evidence just to
+    # legitimately reach "biting". device_id is deliberately omitted: the conftest.py auth shim
+    # only rewrites the top-level device_id key to the real server-issued id, not a nested one
+    # inside enforcement_evidence, so naming it here would create a false mismatch.
+    return {
+        "evidence_id": f"ev-{uuid.uuid4().hex[:12]}", "event_id": None, "device_id": None, "platform": "android",
+        "os_version": "Android 15", "sdk_version": "1.0.0", "observed_at": datetime.now(timezone.utc).isoformat(),
+        "mechanism": "dns_filter", "direction": "outbound", "protocol": "dns",
+        "destination_ip": None, "destination_domain": "evil.example", "destination_port": 53,
+        "app_id": None, "process_name": None, "attribution_confidence": "unavailable",
+        "matched_rule_id": "evil.example", "threat_id": None, "requested_action": "block", "enforced_action": "blocked",
+        "result": "verified", "rule_source": "local_blocklist", "confidence": "high", "correlation_id": None,
+    }
 
 
 class TestFamilyWeekly:
@@ -40,7 +60,7 @@ class TestFamilyWeekly:
         _event(api, protected, "resting", "resolved", days_ago=2)
         _event(api, protected, "growling", "active", days_ago=1)
         _event(api, protected, "barking", "resolved", days_ago=3)
-        _event(api, protected, "biting", "resolved", days_ago=3)
+        _event(api, protected, "biting", "resolved", days_ago=3, evidence=_valid_evidence())
         _event(api, protected, "barking", "active", days_ago=10)  # outside the week
         w = api.get(f"{BASE_URL}/api/family/weekly", params={"device_id": guardian}).json()[0]
         assert w["total"] == 5 and w["alerts"] == 3 and w["open_alerts"] == 1 and w["handled_alerts"] == 2 and w["blocked"] == 1

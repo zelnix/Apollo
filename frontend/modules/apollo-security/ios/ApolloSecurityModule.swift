@@ -10,6 +10,8 @@ import SafariServices
 /// enabled in Settings › Safari › Extensions. Nothing is inferred.
 public class ApolloSecurityModule: Module {
   private let label = "iOS security module"
+  /// Bumped whenever this module's observable behaviour changes. Mirrors ApolloDnsVpnService.MODULE_VERSION on Android.
+  private let moduleVersion = "1.0.0"
   /// Last observed extension state + when it was observed. Never assumed; refreshed from SFContentBlockerManager.
   private var blockerEnabled: Bool? = nil
   private var blockerVerifiedAt: String? = nil
@@ -181,6 +183,53 @@ public class ApolloSecurityModule: Module {
         promise.resolve(self.json(["id": id, "title": id, "status": "undetermined", "canAskAgain": true, "why": "Not implemented in this build."]))
       }
     }
+
+    // Cross-Platform Architecture Directive: describes what THIS deployed mechanism — a Safari
+    // Content Blocker (declarative WebKit rule matching) — actually does, never the theoretical
+    // NEFilterDataProvider ceiling recorded as PLATFORM_CAPABILITY_BASELINES.ios in
+    // PlatformCapabilityProfile.ts. Mirrors ApolloSecurityModule.kt's getPlatformCapabilityProfile
+    // shape exactly; keep both in sync with PlatformCapabilityProfile.ts.
+    AsyncFunction("getPlatformCapabilityProfile") { () -> String in
+      self.json([
+        "platform": "ios",
+        "platformVersion": self.platformVersion(),
+        "sdkVersion": self.moduleVersion,
+        "capabilityVersion": "1", // keep in sync with CAPABILITY_PROFILE_VERSION in PlatformCapabilityProfile.ts
+        // The content blocker filters URL loads inside Safari via a declarative rule list —
+        // real, but scoped to one browser and pattern-based, not a network/VPN interception.
+        "networkFiltering": "partial",
+        // WebKit evaluates rules internally; the extension never sees a packet or a flow.
+        "packetVisibility": "none",
+        // No DNS-level visibility at all — matching is on URL patterns, not resolved queries.
+        "dnsVisibility": "none",
+        // Safari content blockers have no process concept.
+        "processAttribution": "none",
+        // Scoped to Safari only; there is no cross-app attribution to claim.
+        "appAttribution": "none",
+        // WebKit does not report back which domains matched a rule — no observation, only a
+        // static block outcome. Reporting "none" here (not "partial") keeps this consistent
+        // with getEnforcementEvidence() always returning [] below.
+        "domainVisibility": "none",
+        // Real: a matching rule genuinely stops the load, but only inside Safari.
+        "localBlocking": "partial",
+        // The compiled rule list runs inside Safari's own extension process, independent of
+        // Apollo's app lifecycle — but only while the person is using Safari.
+        "backgroundProtection": "partial",
+        // The rule list is written to disk ahead of time; enforcing it needs no connectivity.
+        "offlineProtection": "full",
+        // Apple gives third-party apps zero feedback about content-blocker rule hits.
+        "realTimeEvents": "none",
+        "scope": self.coverageScope, // ["browser:safari"] — never claim broader reach than this
+      ])
+    }
+
+    // Safari gives Apollo no per-hit evidence for content-blocker matches (see comment above on
+    // domainVisibility/realTimeEvents) — so unlike Android's DNS tunnel, there is nothing to list
+    // here, ever. Must stay [] until iOS moves to a mechanism that reports individual verified
+    // blocks (e.g. a Network Extension). A manual "Block" tap must never appear here either —
+    // see blockDestination() above, whose `verified` flag already reflects the same "no observed
+    // drop" truth for the app's own UI.
+    AsyncFunction("getEnforcementEvidence") { () -> String in "[]" }
   }
 
   // MARK: - Helpers
@@ -229,6 +278,7 @@ public class ApolloSecurityModule: Module {
   }
 
   private func now() -> String { ISO8601DateFormatter().string(from: Date()) }
+  private func platformVersion() -> String { "iOS \(UIDevice.current.systemVersion)" }
   private func json(_ value: Any) -> String {
     guard let data = try? JSONSerialization.data(withJSONObject: value), let s = String(data: data, encoding: .utf8) else { return "{}" }
     return s

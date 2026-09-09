@@ -46,8 +46,21 @@ def _derive_verified_block(body: PatrolEventIn) -> bool:
 @router.post("/patrol/events", response_model=PatrolEvent)
 async def upsert_event(body: PatrolEventIn):
     ts = now_utc()
+    verified = _derive_verified_block(body)
+    # Cross-Platform Architecture Directive: state="biting" (THREAT_BLOCKED-equivalent) must never
+    # be PERSISTED unless _derive_verified_block() says so — not just have its verified_block flag
+    # silently downgraded while the biting state itself sails through. Reject outright rather than
+    # downgrade: a client (or a native adapter regression) that thinks it verified a block when it
+    # didn't is a bug that needs to be visible, not quietly smoothed over. An honest client that no
+    # longer has evidence must submit a non-biting state (e.g. "barking") itself.
+    if body.state == "biting" and not verified:
+        raise HTTPException(
+            status_code=422,
+            detail="state='biting' requires validated enforcement_evidence (see _derive_verified_block); "
+            "rejecting rather than persisting an unverified Biting claim. Submit a non-biting state instead.",
+        )
     payload = body.model_dump()
-    payload["verified_block"] = _derive_verified_block(body)  # never trust the client's claim directly
+    payload["verified_block"] = verified  # never trust the client's claim directly
     existing = await db.patrol_events.find_one({"event_id": body.event_id, "device_id": body.device_id})
     if existing:
         await db.patrol_events.update_one({"_id": existing["_id"]}, {"$set": {**payload, "updated_at": ts}})
@@ -80,9 +93,19 @@ async def list_events(device_id: str = Query(min_length=8, max_length=64), limit
 @router.patch("/patrol/events/{event_id}", response_model=PatrolEvent)
 async def patch_event(event_id: str, body: PatrolEventPatch, device_id: str = Query(min_length=8, max_length=64)):
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    query = {"event_id": event_id, "device_id": device_id, "deleted_at": None}
+    if updates.get("state") == "biting":
+        # A PATCH can never PROMOTE an event into a verified block — only POST /patrol/events with
+        # validated enforcement_evidence can (see _derive_verified_block above). Only let this
+        # through when the stored record already carries verified_block=True (e.g. patching
+        # status/resolved_at/what_to_do on an already-verified block); otherwise this is the exact
+        # PATCH-based loophole around the biting gate and must be rejected the same way POST is.
+        query["verified_block"] = True
     updates["updated_at"] = now_utc()
-    result = await db.patrol_events.update_one({"event_id": event_id, "device_id": device_id, "deleted_at": None}, {"$set": updates})
+    result = await db.patrol_events.update_one(query, {"$set": updates})
     if result.matched_count == 0:
+        if updates.get("state") == "biting" and await db.patrol_events.find_one({"event_id": event_id, "device_id": device_id, "deleted_at": None}):
+            raise HTTPException(status_code=422, detail="state='biting' cannot be set via PATCH unless verified_block is already true on this event.")
         raise HTTPException(status_code=404, detail="Event not found")
     doc = await db.patrol_events.find_one({"event_id": event_id, "device_id": device_id})
     return PatrolEvent.from_mongo(doc)

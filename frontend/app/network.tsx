@@ -72,7 +72,14 @@ export default function CheckNetwork() {
     void markCheckDone("network");    const a = analyseNetwork({ status: network, context, trustedSsids, expectedName: expected, vpnTrusted, captiveUrl, sdk, recentScentCategories: scentCats });
     let event: PatrolEvent | null = null;
     if (a.state !== "resting") {
-      event = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "connection", state: a.state, status: a.state === "biting" ? "blocked" : "active", headline: `Network: ${a.title}`, what_happened: a.verdict, why: a.why, what_to_do: a.recommendation, indicator_host: captiveUrl.trim() ? captiveUrl.trim().replace(/^https?:\/\//i, "").split("/")[0] : null, indicator_digest: null, local_indicator: a.ssid, verified_block: a.state === "biting", adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: a.state === "ears_up" || a.state === "growling", claimed_brand: null, scenario: a.scenario });
+      // Network Guard has no EnforcementEvidence to attach here (NetworkAccountSdk reports only a
+      // summarised block COUNT, not a per-connection evidence record) — so the PERSISTED Patrol
+      // entry must never claim state="biting"/verified_block regardless of what analyseNetwork's
+      // on-screen verdict text says the SDK reported. Cap the synced state at "barking" (still
+      // visible, still actionable) so this can never look like a server-verified block it isn't;
+      // see the biting invariant in backend/routers/patrol.py::_derive_verified_block.
+      const syncedState = a.state === "biting" ? "barking" : a.state;
+      event = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "connection", state: syncedState, status: "active", headline: `Network: ${a.title}`, what_happened: a.verdict, why: a.why, what_to_do: a.recommendation, indicator_host: captiveUrl.trim() ? captiveUrl.trim().replace(/^https?:\/\//i, "").split("/")[0] : null, indicator_digest: null, local_indicator: a.ssid, verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: syncedState === "ears_up" || syncedState === "growling", claimed_brand: null, scenario: a.scenario });
     }
     setResult({ a, event });
   };
