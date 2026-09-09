@@ -3,7 +3,7 @@
 // Raw personal content (page text, messages, contacts, photos, identifiers
 // beyond the anonymous device id) never leaves the device.
 
-export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "device_register" | "family" | "push_register" | "push_test" | "device_settings" | "message_check" | "message_extract" | "feedback" | "page_extract" | "app_check" | "account_check" | "breach_check" | "voice";
+export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "device_register" | "family" | "push_register" | "push_test" | "device_settings" | "message_check" | "message_extract" | "feedback" | "page_extract" | "page_crawl" | "app_check" | "account_check" | "breach_check" | "voice";
 
 const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   family: new Set(["device_id", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id", "scent_id", "headline", "state", "events", "steps", "done", "note", "resolved", "kind", "text", "from_name", "enabled", "preview_only", "guardian_name", "duration_s"]),
@@ -25,6 +25,9 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   message_check: new Set(["device_id", "sender", "text", "urls", "local_state", "scenario", "signals", "claimed_brand", "second_opinion"]),
   message_extract: new Set(["device_id", "image_base64"]),
   page_extract: new Set(["device_id", "image_base64", "url_hint"]),
+  // Gate 3 Phase C: only the link itself — Apollo fetches that page server-side and discards the
+  // raw content once turned into short signals (see routers/analysis.py page_crawl, services/webcrawl.py).
+  page_crawl: new Set(["device_id", "url"]),
   // Gate 7: only the app's name/developer/source/purpose/permission *labels* and SDK-reported hosts — never an app inventory.
   app_check: new Set(["device_id", "name", "developer", "source", "purpose", "permissions", "hosts", "local_state", "scenario", "second_opinion"]),
   // Gate 8: alert text leaves the device only when the user taps "Check this alert"; the breach lookup sends the identifier the user typed, nothing else.
@@ -66,6 +69,7 @@ export function minimalIndicator(normalizedUrl: string): string {
 export const PRIVACY_POLICY_SUMMARY = [
   "Links you check are analysed on your device first.",
   "Only the link itself (no page content, no messages) is sent for reputation checks, stripped of credentials and fragments.",
+  "If you choose \"Let Apollo read the page\", Apollo fetches that page directly to look for scam signs — the content is checked and discarded, never stored.",
   "Patrol sync stores event summaries and the website domain only. The full link stays on your device.",
   "Apollo uses an anonymous device ID. No account, no email. A phone number is shared only if you choose to add one so family can call you.",
   "Ask Higgins sends only your question and, if you choose, a short event summary.",

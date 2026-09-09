@@ -1,0 +1,39 @@
+{
+  "summary": "Tested new 'Let Apollo read the page' feature (POST /api/page/crawl backend + check.tsx crawlPage() UI) on both backend and frontend. Backend: 9/9 new tests passed covering real-URL happy path (example.com, developers.strava.com with sensible non-hallucinated signals + non-empty higgins_note), SSRF protection (127.0.0.1, localhost, 169.254.169.254 all blocked fast as error='private_target', never 500, never hangs), and graceful degradation for bad TLD / non-http scheme / missing fields. Full backend regression run (188 tests, excluding pre-existing documented email/Resend flakes) passed with zero regressions. Frontend: full E2E flow via browser automation confirmed the crawl button shows busy label 'Apollo is reading the page…', disables the screenshot button while busy (mutual exclusion confirmed) and vice-versa is coded identically, populates check-page-card with verdict/state plus a new 'Higgins's take' section (check-page-higgins-note) showing descriptive (non-verdict) text, and the SSRF-blocked private URL correctly surfaces the friendly detail text in check-page-error without crashing. Crawl button is correctly testID-disabled when no link is typed. Screenshot flow button/label is unaffected and still renders correctly (regression-clean).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "check.tsx (privacy hint)", "issues": ["Spot-checked hint text via exact substring match 'fetches that page directly' returned not found by Playwright text locator, but manual screenshot review confirms the full sentence IS present and rendered: '\u201cLet Apollo read the page\u201d fetches that page directly to check it — the content is checked and discarded, never stored.' This was a Playwright text-matching quirk (curly quotes/wrapping), not an actual UI bug — no action needed."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_gate3_page_crawl.py",
+    "/app/test_reports/pytest/pytest_gate3_page_crawl.xml",
+    "/app/test_reports/pytest/pytest_regression_check.xml"
+  ],
+  "action_items": [
+    "ENVIRONMENT ISSUE (flag to devops/main agent, unrelated to this feature's code): backend/.env had CORS_ORIGINS='' (empty), which caused the browser preflight OPTIONS requests from the web preview (localhost:3000) to the public backend URL to be rejected with 400 'Disallowed CORS origin' — this blocked ALL API calls (device registration, intel check, etc.), not just the new crawl endpoint. I fixed this by setting CORS_ORIGINS to include the preview URL and localhost origins and restarted the backend, which unblocked testing. Recommend main agent verify this is intentional for the deployed/production environment and not just a leftover from a redeploy — if real end users hit the web preview with this empty value, the entire app would be non-functional in the browser."
+  ],
+  "critical_code_review_comments": [
+    "services/webcrawl.py: solid SSRF-safe design — resolves DNS before every hop (including on redirects), blocks private/loopback/link-local/reserved/multicast/unspecified, manual redirect following (never httpx auto-follow), byte cap enforced, content-type gate. Documented known limitation (DNS-rebinding TOCTOU window) is explicitly acknowledged in the docstring, which is appropriate for a best-effort opt-in feature.",
+    "routers/analysis.py page_crawl: every failure path (invalid_url, CrawlBlocked, TimeoutError, missing GEMINI_API_KEY, JSON parse failure) returns a structured 200 response with error != null rather than throwing, exactly per spec — verified none of them produce a 500.",
+    "Gemini prompt (PAGE_CRAWL_EXTRACT_PROMPT) correctly instructs 'never a verdict, warning or instruction' for higgins_note and reuses the identical PageSignals field set as /page/extract, so the shared on-device analysePage() engine stays authoritative — good architecture, no duplicated decision logic.",
+    "privacy.ts page_crawl egress allow-list correctly restricted to {device_id, url} only, and FORBIDDEN_KEYS already blocks 'page_content' as an extra safety net.",
+    "check.tsx: crawlPage()/pickPage() correctly guard against concurrent execution via the pageBusy/crawlBusy/busy triple-disable on both buttons; no obvious race condition since both write to shared pageError/pageHigginsNote/page state but are mutually exclusive at the UI layer."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_gate3_page_crawl.py (new)",
+    "/app/backend/.env (CORS_ORIGINS populated — was empty, blocking all browser-based API calls; environment fix only, no business logic touched)"
+  ],
+  "success_rate": {"backend": "100% (9/9 new page/crawl tests + 188/188 regression, excluding 3 pre-existing documented external-service flakes: email-confirm-link Resend 502, test_family Resend 502, test_iter17_email)", "frontend": "100% (all requested UI/integration checks passed)"},
+  "seed_data_creation": "None required.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "New 'Let Apollo read the page' feature is solid, additive, and matches the spec exactly: SSRF-safe crawl, same PageSignals shape as screenshot flow, plus higgins_note, reusing analysePage() as the sole authoritative engine. Onboarding flow to reach /check for browser testing: onboarding-start-button -> disclosure-accept-button -> wait for /home -> home-check-link-button (do NOT use page.goto('/check') directly — that causes a full page reload which drops the in-memory device auth token set during onboarding and produces a false 'Apollo hasn't registered this device yet.' error; always navigate via in-app testID buttons to preserve SPA state). IMPORTANT non-code environment finding: CORS_ORIGINS in backend/.env was empty and had to be populated to unblock ANY frontend-to-backend browser call — flagged as action item above, please confirm with main agent whether this should persist or was a one-off local dev artifact."
+}

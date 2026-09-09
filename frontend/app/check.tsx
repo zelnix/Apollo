@@ -1,6 +1,7 @@
 import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
 import ImageIcon from "lucide-react-native/icons/image";
+import Globe from "lucide-react-native/icons/globe";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import ClipboardPaste from "lucide-react-native/icons/clipboard-paste";
 import X from "lucide-react-native/icons/x";
@@ -55,6 +56,8 @@ export default function CheckLink() {
   const [pageEvent, setPageEvent] = useState<PatrolEvent | null>(null);
   const [pageBusy, setPageBusy] = useState(false);
   const [pageError, setPageError] = useState<string | null>(null);
+  const [pageHigginsNote, setPageHigginsNote] = useState<string | null>(null);
+  const [crawlBusy, setCrawlBusy] = useState(false);
   const pickPage = async () => {
     const perm = await ImagePicker.getMediaLibraryPermissionsAsync();
     if (perm.status !== "granted") {
@@ -64,7 +67,7 @@ export default function CheckLink() {
     }
     const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.6, base64: true });
     if (res.canceled || !res.assets[0]?.base64) return;
-    setPageBusy(true); setPageError(null);
+    setPageBusy(true); setPageError(null); setPageHigginsNote(null);
     try {
       const signals = await apiPost<PageSignals>("/page/extract", "page_extract", { device_id: deviceId ?? undefined, image_base64: res.assets[0].base64, url_hint: outcome?.local.normalizedUrl ?? (input.trim() || undefined) });
       const pa = analysePage(signals, outcome?.local.normalizedUrl ?? input);
@@ -72,6 +75,25 @@ export default function CheckLink() {
       const ev = await recordPageAnalysis(pa, liveEvent ?? null);
       if (ev && !liveEvent) setPageEvent(ev);
     } catch (e) { setPageError(e instanceof Error ? e.message : "Couldn't read that screenshot."); } finally { setPageBusy(false); }
+  };
+  // Gate 3 Phase C: Apollo fetches the page itself (SSRF-safe, backend-only) instead of a screenshot.
+  // Manual/opt-in, coexists with "Add a screenshot of the page" above — the content is checked and
+  // discarded server-side, never stored (see routers/analysis.py page_crawl).
+  const crawlPage = async () => {
+    const url = outcome?.local.normalizedUrl ?? input.trim();
+    if (!url) return;
+    setCrawlBusy(true); setPageError(null); setPageHigginsNote(null);
+    try {
+      const res = await apiPost<{ error: string | null; detail: string | null; signals: PageSignals | null; higgins_note: string | null; final_url: string | null }>(
+        "/page/crawl", "page_crawl", { device_id: deviceId ?? undefined, url },
+      );
+      if (res.error || !res.signals) { setPageError(res.detail ?? "Apollo couldn't read that page."); return; }
+      const pa = analysePage(res.signals, res.final_url ?? url);
+      setPage(pa);
+      setPageHigginsNote(res.higgins_note ?? null);
+      const ev = await recordPageAnalysis(pa, liveEvent ?? null);
+      if (ev && !liveEvent) setPageEvent(ev);
+    } catch (e) { setPageError(e instanceof Error ? e.message : "Apollo couldn't read that page."); } finally { setCrawlBusy(false); }
   };
   const sendFeedback = async (kind: "false_positive" | "override", ev: { event_id: string; state: string; indicator_host: string | null }, sources: string[]) => {
     try { await apiPost("/feedback", "feedback", { device_id: deviceId, event_id: ev.event_id, kind, state: ev.state, host: ev.indicator_host, sources, note: "" }); } catch { /* best effort */ }
@@ -132,8 +154,9 @@ export default function CheckLink() {
           </View>
           {sourceLabel ? <Pill tone="neutral" label={sourceLabel} testID="check-source-pill" /> : null}
           <Button testID="check-submit-button" label={busy ? "Checking…" : "Check with Apollo"} onPress={() => run(input)} disabled={busy || !input.trim()} icon={busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : undefined} />
-          <Button testID="check-page-screenshot" variant="secondary" label={pageBusy ? "Reading the page…" : "Add a screenshot of the page"} icon={<ImageIcon size={18} color={colors.onSurface} />} onPress={() => void pickPage()} disabled={pageBusy || busy} />
-          <Text style={s.hint}>Checked on your device first. Only the link itself (no page content) is sent for a reputation check. A screenshot is read once for security signals and never stored.</Text>
+          <Button testID="check-page-screenshot" variant="secondary" label={pageBusy ? "Reading the page…" : "Add a screenshot of the page"} icon={<ImageIcon size={18} color={colors.onSurface} />} onPress={() => void pickPage()} disabled={pageBusy || busy || crawlBusy} />
+          <Button testID="check-page-crawl" variant="secondary" label={crawlBusy ? "Apollo is reading the page…" : "Let Apollo read the page"} icon={crawlBusy ? <ActivityIndicator color={colors.onSurface} /> : <Globe size={18} color={colors.onSurface} />} onPress={() => void crawlPage()} disabled={crawlBusy || busy || pageBusy || (!outcome?.local.normalizedUrl && !input.trim())} />
+          <Text style={s.hint}>Checked on your device first. Only the link itself (no page content) is sent for a reputation check. A screenshot is read once for security signals and never stored. &ldquo;Let Apollo read the page&rdquo; fetches that page directly to check it — the content is checked and discarded, never stored.</Text>
           {pageError ? <Card testID="check-page-error"><Body>{pageError}</Body></Card> : null}
           {page ? (
             <Animated.View entering={FadeInDown.duration(350)}>
@@ -147,6 +170,12 @@ export default function CheckLink() {
                 {page.why.map((w, i) => <Body key={i} testID={`check-page-why-${i}`}>• {w}</Body>)}
                 <Body testID="check-page-recommendation">{page.recommendation}</Body>
                 {page.phoneToAvoid ? <Pill tone="barking" label={`Don't call ${page.phoneToAvoid}`} testID="check-page-phone" /> : null}
+                {pageHigginsNote ? (
+                  <View style={{ gap: 2 }}>
+                    <Text style={s.sub}>Higgins&apos;s take</Text>
+                    <Body testID="check-page-higgins-note">{pageHigginsNote}</Body>
+                  </View>
+                ) : null}
                 {!outcome && pageEvent ? <View style={{ marginTop: spacing.sm, gap: spacing.sm }}><EventActions event={events.find((e) => e.event_id === pageEvent.event_id) ?? pageEvent} /><RecoveryFlow event={pageEvent} kinds={["clicked", "password", "card", "code", "download", "app", "called"]} testID="page-recovery" /></View> : null}
               </Card>
             </Animated.View>

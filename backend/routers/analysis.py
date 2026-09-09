@@ -15,6 +15,7 @@ from core.config import GEMINI_API_KEY, HIBP_API_KEY, HIGGINS_VOICE, logger
 
 from core.models import ApolloState, Verdict
 from services.intel import run_intel_check, sanitize_url
+from services.webcrawl import CrawlBlocked, fetch_page
 
 router = APIRouter()
 
@@ -178,6 +179,104 @@ async def page_extract(body: PageExtractIn):
             "captcha_instructions": s_("captcha_instructions", 200), "wallet_connect_request": b_("wallet_connect_request"), "urgency_or_threat_text": s_("urgency_or_threat_text", 200),
             "prices_look_unrealistic": b_("prices_look_unrealistic"), "payment_methods": l_("payment_methods"), "business_identity": s_("business_identity", 200),
             "os_or_security_branding": s_("os_or_security_branding", 60), "text_excerpt": s_("text_excerpt", 400)}
+
+
+# --------------------------------------------------------------------------- Gate 3 Phase C: "Let Apollo read the page"
+# Manual, opt-in alternative to the screenshot flow: Apollo fetches the link's page content directly
+# (SSRF-safe, see services/webcrawl.py) instead of the user taking a screenshot. The fetched HTML is
+# held only for this request and DISCARDED once the signals below are produced — never stored, never
+# cached. Output uses the exact same PageSignals shape as /page/extract so the frontend's existing
+# on-device rule engine (src/domain/pageAnalysis.ts) stays the sole, authoritative decision-maker;
+# Gemini here only reports what it saw (signals) plus a purely descriptive "higgins_note" — no verdict.
+class PageCrawlIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)
+    url: str = Field(min_length=1, max_length=2048)
+
+
+CRAWL_ERROR_DETAIL = {
+    "invalid_url": "Only http and https links can be read.",
+    "private_target": "That address points at a private or internal network — Apollo won't fetch it.",
+    "dns_failed": "Apollo couldn't find that address.",
+    "redirect_no_location": "That page redirected without saying where to.",
+    "too_many_redirects": "That page redirected too many times.",
+    "not_html": "That link isn't a web page Apollo can read (not HTML).",
+    "fetch_failed": "Apollo couldn't reach that page.",
+    "timeout": "That page took too long to answer.",
+    "not_configured": "Reading pages isn't configured on this build.",
+    "extract_failed": "Apollo read the page but couldn't make sense of it.",
+}
+
+PAGE_CRAWL_EXTRACT_PROMPT = """You analyse TEXT Apollo fetched directly from a web page (not a screenshot, not vision) for a consumer
+security app. You are given: the page title, a truncated excerpt of its visible text, the types of input fields found on the page
+(password/email/tel — never their values), button/submit labels, and a sample of outbound link hostnames. Report ONLY what is present
+in what you were given. Return ONLY JSON:
+{"claimed_brand": "<organisation/brand the page presents as (from its title/text/branding), else empty>",
+ "page_type": "<login|payment|shop|security_warning|tech_support|captcha|wallet|download|article|other>",
+ "asks_for": ["<any of: password, username, email, card, bank_login, verification_code, personal_id, phone_call, download, install, permission, wallet_connect, payment — inferred only from the input field types and text given>"],
+ "virus_or_infection_claim": <true|false>,
+ "phone_number_to_call": "<phone number the text tells the user to call, else empty>",
+ "remote_access_tool": "<AnyDesk/TeamViewer/other tool named in the text, else empty>",
+ "captcha_instructions": "<if the text describes a 'verify you are human' step that tells the user to download, run, paste or install something, describe briefly, else empty>",
+ "wallet_connect_request": <true|false>,
+ "urgency_or_threat_text": "<short quote of urgent/threatening wording from the text, else empty>",
+ "prices_look_unrealistic": <true|false>,
+ "payment_methods": ["<e.g. card, bank transfer, crypto, gift card, western union>"],
+ "business_identity": "<contact address/ABN/company details if present in the text, else empty>",
+ "os_or_security_branding": "<Apple/Microsoft/Google/McAfee/Norton style security branding used, else empty>",
+ "text_excerpt": "<up to 60 words of the main visible text>",
+ "higgins_note": "<one or two calm, plain-English sentences describing what Apollo found on this page, for a worried non-technical
+ person — purely descriptive of what's there, never a verdict, warning or instruction; the decision belongs to Apollo's on-device engine>"}
+Never guess beyond what's given. If a field isn't present in the given content, use an empty/false value."""
+
+
+@router.post("/page/crawl")
+async def page_crawl(body: PageCrawlIn):
+    try:
+        normalized, _host = sanitize_url(body.url)
+    except HTTPException:
+        return {"error": "invalid_url", "detail": CRAWL_ERROR_DETAIL["invalid_url"], "signals": None, "higgins_note": None, "final_url": None, "gemini_used": False}
+    try:
+        page = await asyncio.wait_for(fetch_page(normalized), timeout=14)
+    except CrawlBlocked as exc:
+        logger.info("page crawl blocked: %s", exc.reason)
+        return {"error": exc.reason, "detail": CRAWL_ERROR_DETAIL.get(exc.reason, "Apollo couldn't read that page."), "signals": None, "higgins_note": None, "final_url": None, "gemini_used": False}
+    except asyncio.TimeoutError:
+        return {"error": "timeout", "detail": CRAWL_ERROR_DETAIL["timeout"], "signals": None, "higgins_note": None, "final_url": None, "gemini_used": False}
+    if not GEMINI_API_KEY:
+        return {"error": "not_configured", "detail": CRAWL_ERROR_DETAIL["not_configured"], "signals": None, "higgins_note": None, "final_url": page.final_url, "gemini_used": False}
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    content = (f"Page title: {page.title or '(none)'}\nVisible text (truncated, up to 6000 chars): {page.text[:4000] or '(none)'}\n"
+               f"Form field types present: {', '.join(page.forms) or 'none'}\nButton/submit labels: {', '.join(page.buttons) or 'none'}\n"
+               f"Outbound link hostnames sample: {', '.join(page.links_sample) or 'none'}\nFinal address after redirects: {page.final_url}")
+    chat = LlmChat(api_key=GEMINI_API_KEY, session_id=f"gate3crawl-{uuid.uuid4().hex[:8]}", system_message=PAGE_CRAWL_EXTRACT_PROMPT).with_model("gemini", "gemini-3-flash-preview")
+    try:
+        raw = await asyncio.wait_for(chat.send_message(UserMessage(text=content)), timeout=25)
+        txt = raw.strip()
+        if "{" in txt:
+            txt = txt[txt.find("{"):txt.rfind("}") + 1]
+        data = json.loads(txt)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("page crawl-extract failed: %s", type(exc).__name__)
+        return {"error": "extract_failed", "detail": CRAWL_ERROR_DETAIL["extract_failed"], "signals": None, "higgins_note": None, "final_url": page.final_url, "gemini_used": False}
+
+    def s_(k: str, n: int = 200) -> str:
+        return str(data.get(k) or "")[:n]
+
+    def b_(k: str) -> bool:
+        return bool(data.get(k)) and str(data.get(k)).lower() not in ("false", "0", "")
+
+    def l_(k: str) -> list[str]:
+        v = data.get(k) or []
+        return [str(x)[:40].lower() for x in v][:12] if isinstance(v, list) else []
+
+    signals = {
+        "visible_url": page.final_url[:500], "claimed_brand": s_("claimed_brand", 60), "page_type": s_("page_type", 20).lower(), "asks_for": l_("asks_for"),
+        "virus_or_infection_claim": b_("virus_or_infection_claim"), "phone_number_to_call": s_("phone_number_to_call", 40), "remote_access_tool": s_("remote_access_tool", 40),
+        "captcha_instructions": s_("captcha_instructions", 200), "wallet_connect_request": b_("wallet_connect_request"), "urgency_or_threat_text": s_("urgency_or_threat_text", 200),
+        "prices_look_unrealistic": b_("prices_look_unrealistic"), "payment_methods": l_("payment_methods"), "business_identity": s_("business_identity", 200),
+        "os_or_security_branding": s_("os_or_security_branding", 60), "text_excerpt": s_("text_excerpt", 400) or page.text[:400],
+    }
+    return {"error": None, "detail": None, "signals": signals, "higgins_note": s_("higgins_note", 300) or None, "final_url": page.final_url, "gemini_used": True}
 
 
 # ---------------------------------------------------------------------------
