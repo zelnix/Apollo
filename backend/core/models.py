@@ -50,6 +50,34 @@ class IntelSource(BaseModel):
     threat_types: list[str] = []
 
 
+# --------------------------------------------------------------------------- RDAP domain lookup
+# Best-effort, keyless registration info (IANA bootstrap -> authoritative registry — see
+# services/rdap.py). Presentational only: a failed/absent lookup must NEVER affect the
+# malicious/clean verdict above, it only adds context (and a "newly registered" scam signal).
+class DomainInfo(BaseModel):
+    domain: str
+    registrar: Optional[str] = None
+    registered_at: Optional[datetime] = None
+    registrant_organization: Optional[str] = None
+    rdap_server: Optional[str] = None
+    age_days: Optional[int] = None
+    newly_registered: bool = False
+    available: bool = True
+    error: Optional[str] = None
+
+
+class DomainInfoCache(BaseDocument):
+    domain: str
+    registrar: Optional[str] = None
+    registered_at: Optional[datetime] = None
+    registrant_organization: Optional[str] = None
+    rdap_server: Optional[str] = None
+    available: bool = True
+    error: Optional[str] = None
+    checked_at: datetime
+    expires_at: datetime
+
+
 class IntelCheckResponse(BaseModel):
     verdict: Verdict
     threat_types: list[str]
@@ -60,6 +88,8 @@ class IntelCheckResponse(BaseModel):
     coverage: Literal["full", "partial", "none"]
     redirect_chain: list[str] = Field(default_factory=list)  # hosts visited, first → final (only when expand=True and redirects occurred)
     final_url: Optional[str] = None
+    # RDAP domain lookup — best effort, never gates the verdict. None when not attempted (e.g. no valid host).
+    domain_info: Optional[DomainInfo] = None
 
 
 class ReputationCache(BaseDocument):
