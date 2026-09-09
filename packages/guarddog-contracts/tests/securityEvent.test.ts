@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { ANDROID_M1_CAPABILITIES, ANDROID_M1_CAPABILITY_PROFILE, ANDROID_M2_CAPABILITIES, validateCapabilities, validatePlatformCapabilityProfile } from "../src/capabilities.ts";
+import {
+  ANDROID_M1_CAPABILITIES,
+  ANDROID_M1_CAPABILITY_PROFILE,
+  ANDROID_M2_CAPABILITIES,
+  ANDROID_M2_DNS_COVERAGE_TAG,
+  ANDROID_M2_DNS_VISIBILITY_SCOPE,
+  validateCapabilities,
+  validatePlatformCapabilityProfile,
+} from "../src/capabilities.ts";
 import { isGenuineBlockedEvent, validateSecurityEvent } from "../src/securityEvent.ts";
 
 const genuine = {
@@ -64,6 +72,27 @@ test("Gate Guard M2: ANDROID_M2_CAPABILITIES is additive-only (differs from M1 p
   );
   assert.deepEqual(diffKeys.sort(), ["dnsVisibility", "domainVisibility"]);
   assert.ok(validatePlatformCapabilityProfile(ANDROID_M2_CAPABILITIES));
+});
+
+test("Gate Guard M2.1: Android capability-truth correction -- dnsVisibility/domainVisibility stay true (mechanism genuinely works for what it sees) but the exported scope disclosure explicitly disclaims system-wide/universal DNS coverage", () => {
+  // Locks in the actual decision: values were NOT flipped to false (that would erase the one real
+  // capability gain this milestone built); the correction is the explicit, testable scope statement.
+  assert.equal(ANDROID_M2_CAPABILITIES.dnsVisibility, true);
+  assert.equal(ANDROID_M2_CAPABILITIES.domainVisibility, true);
+  assert.equal(typeof ANDROID_M2_DNS_VISIBILITY_SCOPE, "string");
+  assert.ok(ANDROID_M2_DNS_VISIBILITY_SCOPE.length > 0);
+  const scope = ANDROID_M2_DNS_VISIBILITY_SCOPE.toLowerCase();
+  // Must name both real-world bypass mechanisms this correction exists for...
+  assert.ok(scope.includes("private dns") || scope.includes("dot"), "must disclose Private DNS/DoT bypass");
+  assert.ok(scope.includes("doh"), "must disclose app-embedded DoH bypass");
+  // ...and must explicitly disclaim universal/system-wide coverage, not just describe the mechanism.
+  assert.ok(scope.includes("never system-wide") || scope.includes("not system-wide") || scope.includes("universal"), "must explicitly disclaim system-wide/universal coverage");
+  assert.ok(scope.includes("dns:udp-53"), "disclosure text must name the concrete scope tag");
+});
+
+test("Gate Guard M2.1: ANDROID_M2_DNS_COVERAGE_TAG is a standalone, machine-readable scope tag -- not wired into any shared/main type", () => {
+  assert.equal(ANDROID_M2_DNS_COVERAGE_TAG, "dns:udp-53");
+  assert.equal(typeof ANDROID_M2_DNS_COVERAGE_TAG, "string");
 });
 
 test("PlatformCapabilityProfile validator rejects unknown platform, missing/mistyped fields", () => {

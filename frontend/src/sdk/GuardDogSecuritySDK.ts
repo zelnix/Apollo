@@ -206,6 +206,12 @@ class GuardDogSecuritySDKImpl {
    * gateway pipeline (`dnsGatewayActive === true`) -- never merely because this app version supports
    * it. Returns `null` on any platform/runtime where the Website Gate does not apply (iOS, web, Expo
    * Go) -- an honest "not applicable" rather than a fabricated M1 or M2 claim.
+   *
+   * Gate Guard M2.1 capability-truth correction: `dnsVisibility`/`domainVisibility` here are scoped to
+   * traffic that actually reaches Apollo's own plaintext UDP/53 DNS interception point -- NOT
+   * system-wide DNS coverage. Android Private DNS (DoT) and app-embedded DoH bypass it entirely and
+   * are invisible to Apollo. See `ANDROID_M2_DNS_VISIBILITY_SCOPE` (contracts/shared/capabilities.ts)
+   * for the exact, testable disclosure text and `docs/M2_WEBSITE_GATE_DESIGN.md` for the full record.
    */
   getPlatformCapabilityProfile(): PlatformCapabilityProfile | null {
     if (Platform.OS !== "android" || !GuardDogNative) return null;

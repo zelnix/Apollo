@@ -79,13 +79,20 @@ export interface PlatformCapabilityProfile {
   networkFiltering: boolean;
   /** Can observe raw IP packets (e.g. a TUN read loop). */
   packetVisibility: boolean;
-  /** Can observe DNS queries (e.g. Gate Guard M2's DNS-triggered sinkhole). Never true for M1's frozen profile. */
+  /** Can observe DNS queries. Never true for M1's frozen profile. NOTE: like every field in this
+   * interface, this is scoped to what the platform adapter's own interception mechanism actually
+   * sees, never a claim of universal/system-wide coverage of all DNS traffic on the device — see
+   * each per-platform constant's own doc comment for what its mechanism does and does not cover
+   * (e.g. Android's Gate Guard M2 sinkhole: real for its own plaintext-UDP/53 DNS gateway, silent
+   * for Private DNS/DoT and app-embedded DoH, which never reach that gateway at all). */
   dnsVisibility: boolean;
   /** Can attribute traffic to a specific OS process. */
   processAttribution: boolean;
   /** Can attribute traffic to a specific installed application. */
   appAttribution: boolean;
-  /** Can determine the destination domain/hostname a flow was intended for. */
+  /** Can determine the destination domain/hostname a flow was intended for. Same scoping note as
+   * `dnsVisibility` above: true means the adapter's own mechanism genuinely determines the domain
+   * for traffic that mechanism actually sees, not that it can do so for every flow on the device. */
   domainVisibility: boolean;
   /** Can block using locally-held (signed rule / cache) intelligence, without a network round-trip. */
   localBlocking: boolean;
@@ -114,14 +121,76 @@ export const ANDROID_M1_CAPABILITY_PROFILE: PlatformCapabilityProfile = {
   realTimeEvents: true,
 };
 
-/** Gate Guard M2 Website Gate: the one honest capability gain is dnsVisibility (DNS-triggered sinkhole).
- * Reported only when the website-gate adapter is actually active and validated on-device — never assumed
- * merely because the app version supports it. */
+/**
+ * Gate Guard M2 Website Gate: the one honest capability gain is dnsVisibility/domainVisibility (the
+ * DNS-triggered sinkhole). Reported only when the website-gate adapter is actually active and
+ * validated on-device (see `GuardDogSecuritySDK.getPlatformCapabilityProfile()`) — never assumed
+ * merely because the app version supports it.
+ *
+ * **Scope correction (Gate Guard M2.1, Android capability-truth pass): this is NOT system-wide DNS
+ * visibility.** The mechanism only ever sees DNS queries that transit Apollo's own intercepted
+ * plaintext UDP/53 path (see `WebsiteGateAddressing`/`DnsPacketClassifier` in `guarddog-vpn`) — the
+ * scope tag `"dns:udp-53"` (see `ANDROID_M2_DNS_COVERAGE_TAG` below). Two real, common traffic
+ * shapes bypass it completely and are silently invisible to Apollo, not merely degraded:
+ *   - **Android Private DNS (DoT)**: a device-level setting that sends DNS over TLS to a resolver of
+ *     the user's/network's choosing, entirely outside the plaintext UDP/53 flow the VPN intercepts.
+ *   - **App-embedded DoH**: an app resolving names over HTTPS to a resolver it hardcodes itself —
+ *     indistinguishable from any other HTTPS/443 traffic to Apollo's DNS-only interception point.
+ * `true` here means "genuinely true for the traffic that actually reaches this adapter's own
+ * interception point" — the same convention every other field in `PlatformCapabilityProfile` already
+ * uses (e.g. `packetVisibility: true` for M1 never meant "sees every packet on the device," only
+ * packets on the selectively-routed /32). It is deliberately NOT flipped to `false`: that would erase
+ * the one real, on-device, DNS-triggered enforcement capability this milestone built and verified
+ * (native-gates CI, 111/111 unit tests) — an equally dishonest opposite error.
+ *
+ * **Deliberately no contract redesign here.** A separate, independent Apollo product/UI stream
+ * (GitHub `main`, package `com.hucentai.apollosecurity`) has its own `PlatformCapabilityProfile` using
+ * a tri-state `CapabilityLevel` ("full"|"partial"|"none") plus a `ProtectionStatus.coverageScope:
+ * string[]` field — which could express this limitation as a literal `"partial"` + `["dns:udp-53"]`.
+ * Gate Guard's `com.guarddog.*` native module is a SEPARATE, independent native Android
+ * implementation from that one (flagged as an architectural duplication for the product owner to
+ * resolve in a future Android Native Consolidation milestone — see
+ * `docs/M2_WEBSITE_GATE_DESIGN.md` §"Phase 5.2"). Deliberately NOT copying/wiring `main`'s contract
+ * types into this module now — that would risk making Gate Guard look integrated with Apollo's
+ * product layer when it isn't, and would create a second, drifting copy of that contract. If/when
+ * the two native stacks are unified, this constant is replaced by the real, shared
+ * `CapabilityLevel`/`coverageScope` types, not by a competing Gate Guard-only reinvention of them.
+ * See `ANDROID_M2_DNS_VISIBILITY_SCOPE`/`ANDROID_M2_DNS_COVERAGE_TAG` below for the exported,
+ * testable, user/analyst-facing statement of this exact limitation in the meantime.
+ */
 export const ANDROID_M2_CAPABILITIES: PlatformCapabilityProfile = {
   ...ANDROID_M1_CAPABILITY_PROFILE,
   dnsVisibility: true,
   domainVisibility: true,
 };
+
+/**
+ * Exported (not just a comment) so this exact disclosure is testable and quotable verbatim by any
+ * consumer surfacing `ANDROID_M2_CAPABILITIES` to a user or analyst, instead of re-deriving or
+ * understating/overstating the limitation themselves. Deliberately NOT a new field on
+ * `PlatformCapabilityProfile` (that shape is frozen for this Android-only correction — no contract
+ * redesign, per product decision; see `ANDROID_M2_CAPABILITIES` doc comment above for why).
+ * Kept intentionally narrow and Android/DNS-specific — this is not a general-purpose disclosure
+ * mechanism for other platforms/capabilities.
+ */
+export const ANDROID_M2_DNS_VISIBILITY_SCOPE =
+  "Apollo's Website Gate observes DNS queries and determines destination domains only for traffic " +
+  "that reaches its own plaintext UDP/53 DNS interception point (scope tag \"dns:udp-53\"). Android " +
+  "Private DNS (DoT) and app-embedded DoH resolvers bypass this entirely and are invisible to " +
+  "Apollo. dnsVisibility and domainVisibility above mean visibility into what this adapter's own " +
+  "mechanism actually observes -- never system-wide or universal DNS/domain coverage of the device.";
+
+/**
+ * Machine-readable scope tag for exactly what Gate Guard M2's DNS-triggered sinkhole covers, in the
+ * same tag vocabulary Apollo main's `ProtectionStatus.coverageScope` uses on its own, separate
+ * `com.hucentai.apollosecurity` stack (`frontend/src/security/SecurityPlatformAdapter.ts` on GitHub
+ * `main`) -- deliberately NOT that type, NOT imported from it, and NOT wired into any shared
+ * interface: see `ANDROID_M2_CAPABILITIES`'s doc comment for why this stays a plain, standalone
+ * constant until the two native stacks are deliberately unified.
+ */
+export const ANDROID_M2_DNS_COVERAGE_TAG = "dns:udp-53";
+
+
 
 const APOLLO_PLATFORMS: readonly ApolloPlatform[] = ["android", "ios", "windows", "macos", "web", "unknown"];
 const CAPABILITY_PROFILE_BOOLEAN_KEYS: readonly (keyof PlatformCapabilityProfile)[] = [

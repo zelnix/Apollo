@@ -323,3 +323,83 @@ untouched and re-read after the edits to confirm no behavioral drift.
   in web preview). Native compile + the Kotlin-side tests above are the same "code-review ready,
   CI-verified" convention as every other native-only change this milestone -- confirmed by the
   `native-gates` CI job, not runnable in this sandbox (no JVM/Android toolchain here).
+
+## Phase 5.1 — Android capability-truth correction (Gate Guard M2 branch only, not a shared-schema change)
+
+Scoped, standalone correction on `m2-native-acceptance`, independent of the Phase 5 write-up above.
+**Not** a redesign of `PlatformCapabilityProfile`, `SecurityPlatformAdapter`, or `EnforcementEvidence`
+(that shared cross-platform model is a separate stream's ownership) -- no field was added, removed, or
+retyped; iOS, backend, and M1 were not touched.
+
+- **Problem**: `ANDROID_M2_CAPABILITIES.dnsVisibility`/`domainVisibility` were `true` with no
+  documented scope. Android Private DNS (DoT, device-level, entirely outside plaintext UDP/53) and
+  app-embedded DoH (HTTPS to a hardcoded resolver, indistinguishable from other HTTPS/443 traffic)
+  both bypass Apollo's DNS-triggered sinkhole completely -- an unscoped `true` risks being read as
+  system-wide/universal DNS visibility, which was never proven and is not true.
+- **Correction, deliberately narrow**: values were **not** flipped to `false` (that would erase the
+  one real, CI-verified capability gain this milestone built) and no new field was added to
+  `PlatformCapabilityProfile` (that would be exactly the shared-schema redesign this correction must
+  avoid). Instead: (1) `PlatformCapabilityProfile.dnsVisibility`/`domainVisibility`'s doc comments were
+  generalized to state every boolean in this interface is scoped to what the platform's own mechanism
+  actually observes, never universal device-wide coverage -- a documentation clarification applicable
+  to any platform, not an Android-only carve-out; (2) `ANDROID_M2_CAPABILITIES` got an expanded doc
+  comment naming the two bypasses explicitly; (3) new exported, testable constant
+  `ANDROID_M2_DNS_VISIBILITY_SCOPE` (a plain string, not a `PlatformCapabilityProfile` field) states the
+  limitation for any consumer that surfaces capabilities to a user/analyst to quote verbatim, instead
+  of re-deriving or mis-stating it.
+- **Tests**: new `securityEvent.test.ts` case locks in that the values were *not* flipped (still
+  `true`/`true`) and asserts the new constant names both bypasses (Private DNS/DoT, DoH) and explicitly
+  disclaims system-wide/universal coverage. `guarddog-contracts` suite: **31/31 passing** (was 30/30).
+- **Deferred, not silently dropped**: a formally-typed `coverageScope` (or similar) axis distinguishing
+  "some traffic" from "all traffic" is shared cross-platform contract work for the separate Apollo/main
+  stream; if/when it lands there, M2 should adopt it rather than inventing a competing version here.
+- No Kotlin file references `dnsVisibility`/`domainVisibility`/`PlatformCapabilityProfile` today --
+  this capability is synthesized entirely at the JS/SDK layer
+  (`GuardDogSecuritySDK.getPlatformCapabilityProfile()`) from the live native `dnsGatewayActive` flag,
+  so this correction is TS/contracts-only; no native (Kotlin/Swift) file needed a change.
+
+## Phase 5.2 — architectural duplication flagged: two independent native Android VPN stacks (not reconciled)
+
+**Finding (verified against `github.com/zelnix/Apollo`, fetched into this sandbox as `origin`):** the
+separate Apollo product/UI stream on GitHub `main` has its own complete, independent native Android
+DNS-filtering VPN implementation -- `frontend/modules/apollo-security/android/.../com/hucentai/apollosecurity/`
+(`ApolloDnsVpnService.kt`, `ApolloSecurityModule.kt`, `EnforcementEvidence.kt`, `SiteGuardTruth.kt`,
+`DnsPacket.kt`), bridged via its own Expo native module and its own TS contract
+(`frontend/src/security/{PlatformCapabilityProfile,SecurityPlatformAdapter,NativeSecurityAdapters}.ts`,
+using a tri-state `CapabilityLevel = "full"|"partial"|"none"` plus `ProtectionStatus.coverageScope:
+string[]`, e.g. `["dns:udp-53"]`). This is entirely separate from Gate Guard's `com.guarddog.*` stack
+in this repo (`packages/guarddog-android-sdk`, `packages/guarddog-expo-module`) -- different package,
+different files, different native bridge, independently built across this milestone's 5 phases and
+111+ CI-verified tests.
+
+**This was NOT known before this correction pass** (main had only been reviewed for its shared-contract
+changes, not identified as also shipping a second, competing native Android VPN engine). **Flagged as
+an architectural duplication/coordination issue for the product owner to resolve -- explicitly not
+reconciled, merged, wrapped, or cross-wired by this branch.** Decision recorded: prove Gate Guard's own
+`com.guarddog.*` stack on a physical device first (this milestone's remaining goal, Phase 6); a
+dedicated **Android Native Consolidation** milestone will then make the deliberate call on which native
+stack survives (current lean: Gate Guard becomes the canonical native engine, `com.hucentai.apollosecurity`
+retired or thinned to an adapter -- not decided or acted on here).
+
+**Consequence for the Phase 5.1 correction above**: `main`'s `PlatformCapabilityProfile.ts`/
+`SecurityPlatformAdapter.ts` were deliberately **NOT copied or wired into this branch** -- doing so
+now, before the two native stacks are unified, would risk making Gate Guard look integrated with
+Apollo's product layer when it isn't, and would create a second, drifting copy of that contract.
+Gate Guard's own boolean-only `PlatformCapabilityProfile` (`packages/guarddog-contracts`) is kept
+exactly as `true`/`true` for `dnsVisibility`/`domainVisibility` -- per product decision, **not
+redesigned to a tri-state now** even though main's contract already has one. Instead:
+`ANDROID_M2_DNS_VISIBILITY_SCOPE` (exported string, unchanged shape) now also names the concrete scope
+tag `"dns:udp-53"` inline, and a new standalone constant `ANDROID_M2_DNS_COVERAGE_TAG = "dns:udp-53"`
+was added -- in the same tag vocabulary as main's `coverageScope`, but **not that type, not imported
+from it, not wired into anything shared**; a plain, disconnected constant until the two stacks are
+deliberately unified. 2 new tests (32/32 total, was 31/31): the new tag's exact value, and that the
+scope-disclosure string names it. No `PlatformCapabilityProfile`/`ProtectionStatus` interface anywhere
+in this repo was touched.
+
+**Reminder for Phase 6 (physical-device acceptance, next)**: the backend used for the end-to-end
+device test must include the Biting/Truth-of-State backend invariant that just landed on `main`
+(reject synthesized/unearned block evidence server-side) -- otherwise a real native block could be
+proven against stale/older server semantics. Confirm which backend service the acceptance environment
+actually points at before running the device test. Also: Expo Go/web preview cannot validate this
+milestone's native DNS/VPN path at all (TUN, `VpnService`, DNS interception) -- Phase 6 requires the
+generated native Android development/release build, not the Expo Go QR route.
