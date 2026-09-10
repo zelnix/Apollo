@@ -32,6 +32,7 @@ ALLOWED_PERMISSIONS = {
     "android.permission.VIBRATE": "expo-haptics (framework)",
     "android.permission.USE_BIOMETRIC": "expo-secure-store (framework)",
     "android.permission.USE_FINGERPRINT": "expo-secure-store (framework, legacy alias)",
+    "android.permission.ACCESS_WIFI_STATE": "expo-network (framework; Phase 6 harness reads network type -- wifi vs cellular -- for the acceptance report's device/environment section)",
 }
 # androidx declares this app-private signature permission under the app's own package name (<package>.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION).
 APP_SCOPED_ALLOWED = {"DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION": "androidx runtime receiver hardening (app-private signature permission)"}
@@ -59,7 +60,7 @@ DENY_LIST = [
     "android.permission.REQUEST_INSTALL_PACKAGES", "android.permission.REQUEST_DELETE_PACKAGES", "android.permission.WRITE_SETTINGS",
     "android.permission.WRITE_SECURE_SETTINGS", "android.permission.GET_ACCOUNTS", "android.permission.READ_CALENDAR",
     "android.permission.WRITE_CALENDAR", "android.permission.BLUETOOTH_CONNECT", "android.permission.BLUETOOTH_SCAN",
-    "android.permission.NEARBY_WIFI_DEVICES", "android.permission.ACCESS_WIFI_STATE", "android.permission.CHANGE_WIFI_STATE",
+    "android.permission.NEARBY_WIFI_DEVICES", "android.permission.CHANGE_WIFI_STATE",
     "android.permission.CHANGE_NETWORK_STATE", "android.permission.CONTROL_VPN", "android.permission.DUMP", "android.permission.READ_LOGS",
 ]
 
