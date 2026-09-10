@@ -1,0 +1,47 @@
+{
+  "summary": "Frontend-only testing of Phase 6 acceptance harness screen (/phase6-acceptance) UI-only changes: Checkbox/RadioGroup components, pre-filled defaults, auto-filled test domain/rule ID, Section 3 inline result cards, auto-linked evidence refs, and Section 6 auto-fill justification. All 8 requested feature areas verified working correctly via Playwright on mobile viewport (375x667). No crashes, no red screens. Regression pass (autocapture, activate gate, matrix/verdict chips, generate PDF, live status card) all pass.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "phase6-acceptance / harness-ui.tsx RadioGroup",
+        "issues": [
+          "radioOption style has minHeight: 40 in harness-ui.tsx (line ~31) which is below the 44px minimum touch target guideline. Checkbox's checkboxRow correctly uses minHeight: 44. Minor -- recommend bumping radioOption minHeight to 44."
+        ]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "verified_working": {
+    "screen_load": "phase6-acceptance-screen loads without crashing on mobile viewport; no red screen.",
+    "checkboxes": "vpn-perm, notif-perm, biting-invariant, no-drift (conditional on 'fresh Publish build' radio), gap-0 'exercised bypass path' checkbox all toggle correctly (visual check + conditional field show/hide verified via screenshots).",
+    "radio_groups": "Build source (CI artifact <-> fresh Publish build) correctly shows/hides 'No-drift confirmed' checkbox. Architecture single-select works. VPN state before test radio works. Private DNS radio (Off/Automatic/Provider) correctly reveals/hides 'Private DNS provider hostname' text field only when 'Provider' selected, and the field is editable (tested typing 'dns.google').",
+    "prefilled_defaults": "Job name(s)='Gate Guard, android-dev-build', Artifact name(s)='android-dev-build, gate-guard', APK filename='app-release.apk', Backend branch='main' -- all pre-filled on load (not empty), confirmed editable.",
+    "section2_autofill": "Authorized test domain and Matching rule ID auto-fill from M2 bundle after ~2-3s load: 'blocktest.btciq.app' / 'm2-block-blocktest-001'.",
+    "section3_inline_result_cards": "Verified InlineResultCard appears directly under the CORRECT button for: Run positive test (phase6-result-positive), all 5 negative tests (phase6-result-neg-rule-match-alone/manual-override/local-analysis-only/gate-start-alone/failed-dns-forward), and all 4 snapshot buttons (stop/revoke/restart/network) -- each card only appeared after its own button was pressed, no misattribution observed.",
+    "auto_linked_evidence_refs": "Confirmed matrix rows auto-populate evidenceRef after matching test run: 1.1='Attempt #1 (auto-linked)' after positive test, 2.1='Negative test: rule-match-alone (auto-linked)' after that negative test, 3.1='Snapshot: after Stop protection (auto-linked)' after that snapshot.",
+    "section6_autofill_summary": "'Auto-fill summary from matrix' button correctly generates a factual group-by-group summary string (e.g. 'Group 1: 1.1=PASS, 1.2=not run...') into the Justification field, and the field remains editable afterward.",
+    "regression": "Auto-capture provenance button runs and shows success icon (fields relying on native APIs legitimately stay empty in web preview -- expected, not a bug). Activate Website Gate button fails gracefully with red X + populated error card in web preview (no native VPN module -- expected). Matrix PASS/FAIL/CAPTURED/etc chips toggle visually. Verdict chips (PASS/FAIL/PASS WITH DOCUMENTED CAPABILITY GAP) toggle correctly. Generate PDF button runs and shows success icon without crashing in web preview. Live protection status card renders with StatusBadge widgets. Back button present with testID phase6-back-button."
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Minor: bump RadioGroup's radioOption minHeight from 40 to 44 in /app/frontend/src/components/harness-ui.tsx to meet the 44px minimum touch target guideline (Checkbox already correctly uses 44)."
+  ],
+  "critical_code_review_comments": [
+    "phase6-acceptance.tsx is ~950 lines now, well over the 700-line guideline (grew further this session with new Checkbox/RadioGroup/InlineResultCard usage). Recommend splitting Section 0-2 (provenance/device/setup) and Section 3-6 (tests/matrix/gaps/verdict) into separate component files for maintainability.",
+    "harness-ui.tsx Checkbox/RadioGroup implementations are clean, theme-aware (use colors.* from useTheme), and correctly derive canonical strings into the same Phase6Report string fields per the stated design intent -- verified no data model changes were needed.",
+    "Data model (Phase6Report/Phase6Provenance/Phase6DeviceEnv) confirmed unchanged -- Checkbox/RadioGroup write canonical strings ('Yes'/'No', 'CI artifact', 'Off', etc.) into existing string fields, consistent with PDF export template in phase6AcceptanceReport.ts."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not applicable - not requested this session", "frontend": "100% (all 8 requested feature areas verified working; only 1 minor touch-target design nit found)"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All UI-only Phase 6 changes (Checkbox, RadioGroup, inline result cards, pre-fills, auto-linking, auto-fill justification) verified working end-to-end via Playwright on mobile viewport. Native-dependent fields (commit SHA via readBuildProvenance, THREAT_BLOCKED events, VPN activation) legitimately show empty/placeholder/error in web preview per the agent-to-agent context note -- this is expected, not a bug, and was not flagged. Only outstanding item is the minor 40px vs 44px radioOption touch target.",
+  "rca_of_issue": "Not applicable -- no bugs found requiring RCA. One minor design nit (radioOption touch target height) documented above."
+}

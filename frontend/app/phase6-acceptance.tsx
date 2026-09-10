@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { ActionButton, Card, KeyValue, StatusBadge } from "@/src/components/harness-ui";
+import { ActionButton, Card, Checkbox, InlineResultCard, KeyValue, RadioGroup, StatusBadge } from "@/src/components/harness-ui";
 import { readBuildProvenance } from "@/src/harness/buildProvenance";
 import {
   DEFAULT_PHASE6_GAPS,
@@ -175,18 +175,60 @@ function MatrixRowEditor({ row, onChange }: { row: Phase6MatrixRow; onChange: (n
   );
 }
 
+function NegativeResult({ attempts, kind }: { attempts: Phase6EvidenceAttempt[]; kind: string }) {
+  const a = [...attempts].reverse().find((x) => x.label === `Negative test: ${kind}`);
+  if (!a) return null;
+  const unexpected = a.threatBlockedEmitted.includes("UNEXPECTED");
+  return (
+    <InlineResultCard
+      testID={`phase6-result-neg-${kind}`}
+      tone={unexpected ? "bad" : "good"}
+      title={unexpected ? "UNEXPECTED event fired — investigate (possible Truth-of-State violation)" : "No event fired (expected/correct)"}
+      rows={[
+        ["THREAT_BLOCKED emitted", a.threatBlockedEmitted],
+        ["Timestamps", a.timestamps],
+      ]}
+    />
+  );
+}
+
+function SnapshotResult({ attempts, label }: { attempts: Phase6EvidenceAttempt[]; label: string }) {
+  const a = [...attempts].reverse().find((x) => x.label === `Snapshot: ${label}`);
+  if (!a) return null;
+  return (
+    <InlineResultCard
+      testID={`phase6-result-snapshot-${label.replace(/\s+/g, "-")}`}
+      tone="neutral"
+      title="Snapshot captured"
+      rows={[
+        ["Protection state", a.stopRevokeResult],
+        ["Captured at", a.timestamps],
+      ]}
+    />
+  );
+}
+
 export default function Phase6Acceptance() {
   const styles = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
 
-  const [provenance, setProvenance] = useState(emptyPhase6Provenance());
+  const [provenance, setProvenance] = useState(() => ({
+    ...emptyPhase6Provenance(),
+    // Pre-filled from this pipeline's fixed CI config -- edit only if this run actually differs.
+    jobNames: "Gate Guard, android-dev-build",
+    artifactNames: "android-dev-build, gate-guard",
+    apkFilename: "app-release.apk",
+    backendBranch: "main",
+    buildSource: "CI artifact",
+  }));
   const [device, setDevice] = useState(emptyPhase6Device());
   const [testDomain, setTestDomain] = useState("");
   const [matchingRuleId, setMatchingRuleId] = useState("");
   const [attempts, setAttempts] = useState<Phase6EvidenceAttempt[]>([]);
   const [matrix, setMatrix] = useState<Phase6MatrixRow[]>(DEFAULT_PHASE6_MATRIX);
   const [gaps, setGaps] = useState<Phase6CapabilityGap[]>(DEFAULT_PHASE6_GAPS);
+  const [gapExercised, setGapExercised] = useState<boolean[]>(() => DEFAULT_PHASE6_GAPS.map(() => false));
   const [verdict, setVerdict] = useState<Phase6Verdict>("");
   const [justification, setJustification] = useState("");
   const [completedBy, setCompletedBy] = useState("");
@@ -194,6 +236,50 @@ export default function Phase6Acceptance() {
   const [error, setError] = useState<string | null>(null);
   const [stepStatus, setStepStatus] = useState<Record<string, "success" | "error">>({});
   const [statusTick, setStatusTick] = useState(0);
+
+  // Tap-driven inputs for fields that have a fixed set of possible answers -- kept as their own
+  // state so the underlying report string (device.* / provenance.*) can be derived and stays
+  // exactly as readable in the exported PDF as it was when it was a typed field.
+  const [vpnPermGranted, setVpnPermGranted] = useState(false);
+  const [notifPermGranted, setNotifPermGranted] = useState(false);
+  const [vpnStateChoice, setVpnStateChoice] = useState<"off" | "other" | "">("");
+  const [privateDnsMode, setPrivateDnsMode] = useState<"" | "Off" | "Automatic" | "Provider">("");
+  const [privateDnsProvider, setPrivateDnsProvider] = useState("");
+
+  useEffect(() => {
+    setDevice((d) => ({ ...d, permissionsBeforeTest: `VPN: ${vpnPermGranted ? "granted" : "not granted"}, Notifications: ${notifPermGranted ? "granted" : "not granted"}` }));
+  }, [vpnPermGranted, notifPermGranted]);
+
+  useEffect(() => {
+    if (!vpnStateChoice) return;
+    setDevice((d) => ({ ...d, vpnStateBeforeTest: vpnStateChoice === "off" ? "Off / no other VPN active" : "Another VPN was active before test" }));
+  }, [vpnStateChoice]);
+
+  useEffect(() => {
+    if (!privateDnsMode) return;
+    setDevice((d) => ({ ...d, privateDnsSetting: privateDnsMode === "Provider" ? `Provider: ${privateDnsProvider || "(not specified)"}` : privateDnsMode }));
+  }, [privateDnsMode, privateDnsProvider]);
+
+  function updateGapExercised(index: number, next: boolean) {
+    setGapExercised((prev) => prev.map((v, i) => (i === index ? next : v)));
+    if (!next) updateGap(index, { ...gaps[index], observedImpact: "" });
+  }
+
+  function linkEvidence(rowId: string, ref: string) {
+    setMatrix((prev) => prev.map((row) => (row.id === rowId && !row.evidenceRef ? { ...row, evidenceRef: ref } : row)));
+  }
+
+  function lastAttempt(match: (label: string) => boolean): Phase6EvidenceAttempt | null {
+    for (let i = attempts.length - 1; i >= 0; i--) {
+      if (match(attempts[i].label)) return attempts[i];
+    }
+    return null;
+  }
+
+  function autoFillJustification() {
+    const summarize = (g: 1 | 2 | 3 | 4) => matrix.filter((r) => r.group === g).map((r) => `${r.id}=${r.result || "not run"}`).join(", ");
+    setJustification(`Group 1: ${summarize(1)}. Group 2: ${summarize(2)}. Group 3: ${summarize(3)}. Group 4: ${summarize(4)}.`);
+  }
 
   function markStep(id: string, ok: boolean) {
     setStepStatus((prev) => ({ ...prev, [id]: ok ? "success" : "error" }));
@@ -291,6 +377,9 @@ export default function Phase6Acceptance() {
     onSuccess: (r) => {
       setError(null);
       markStep("positive", true);
+      const positiveCount = attempts.filter((a) => a.label.startsWith("Positive enforcement attempt")).length;
+      const autoRowId = positiveCount === 0 ? "1.1" : positiveCount === 1 ? "1.2" : null;
+      if (autoRowId) linkEvidence(autoRowId, `Attempt #${positiveCount + 1} (auto-linked)`);
       pushAttempt({
         label: `Positive enforcement attempt #${attempts.length + 1}`,
         dnsQueryObserved: r.dnsQueryTriggeredVia,
@@ -335,6 +424,14 @@ export default function Phase6Acceptance() {
     onSuccess: (r) => {
       setError(null);
       markStep(`neg-${r.kind}`, true);
+      const NEG_ROW: Record<NegativeTestKind, string> = {
+        "rule-match-alone": "2.1",
+        "manual-override": "2.2",
+        "local-analysis-only": "2.3",
+        "gate-start-alone": "2.4",
+        "failed-dns-forward": "2.5",
+      };
+      linkEvidence(NEG_ROW[r.kind], `Negative test: ${r.kind} (auto-linked)`);
       pushAttempt({
         label: `Negative test: ${r.kind}`,
         dnsQueryObserved: "n/a (negative test -- no authorized-domain traffic sent)",
@@ -383,6 +480,8 @@ export default function Phase6Acceptance() {
     onSuccess: (r, variables) => {
       setError(null);
       markStep(`snapshot-${variables.key}`, true);
+      const SNAPSHOT_ROW: Record<string, string> = { stop: "3.1", revoke: "3.2", restart: "3.3", network: "3.4" };
+      if (SNAPSHOT_ROW[variables.key]) linkEvidence(SNAPSHOT_ROW[variables.key], `Snapshot: ${r.label} (auto-linked)`);
       pushAttempt({
         label: `Snapshot: ${r.label}`,
         dnsQueryObserved: "n/a (manual-step snapshot)",
@@ -513,34 +612,52 @@ export default function Phase6Acceptance() {
           </View>
           <Text style={styles.note}>
             Tap the button above once — no typing needed for it. It auto-fills every field below marked "(auto)": commit SHA, CI run id, APK SHA-256, version, device-confirmed active native stack,
-            ruleset/bundle info. Every field WITHOUT "(auto)" needs you to type it in manually (read Branch/CI run id/job/artifact names off the GitHub Actions run page; "No-drift confirmation" only
-            applies if you're using a fresh Publish build instead of a CI artifact).
+            ruleset/bundle info. Job name(s), Artifact name(s), APK filename and Backend branch are pre-filled with this pipeline's usual values — edit only if this run is different. Build source
+            and Architecture are tap-to-select below. Branch, Artifact digest(s) and Backend commit SHA still need to be read off the GitHub Actions run page and typed in — Android does not expose
+            these to a third-party app.
           </Text>
           <Field label="Branch" value={provenance.branch} onChangeText={(v) => setProvenance((p) => ({ ...p, branch: v }))} placeholder="m2-native-acceptance" manual />
           <Field label="Exact commit SHA (auto)" value={provenance.commitSha} onChangeText={(v) => setProvenance((p) => ({ ...p, commitSha: v }))} />
           <Field label="CI run ID (auto)" value={provenance.ciRunId} onChangeText={(v) => setProvenance((p) => ({ ...p, ciRunId: v }))} />
           <Field label="CI run URL (auto)" value={provenance.ciRunUrl} onChangeText={(v) => setProvenance((p) => ({ ...p, ciRunUrl: v }))} />
-          <Field label="Job name(s)" value={provenance.jobNames} onChangeText={(v) => setProvenance((p) => ({ ...p, jobNames: v }))} placeholder="Gate Guard, android-dev-build" manual />
-          <Field label="Artifact name(s)" value={provenance.artifactNames} onChangeText={(v) => setProvenance((p) => ({ ...p, artifactNames: v }))} placeholder="android-dev-build, gate-guard" manual />
+          <Field label="Job name(s) (pre-filled default — edit if different)" value={provenance.jobNames} onChangeText={(v) => setProvenance((p) => ({ ...p, jobNames: v }))} />
+          <Field label="Artifact name(s) (pre-filled default — edit if different)" value={provenance.artifactNames} onChangeText={(v) => setProvenance((p) => ({ ...p, artifactNames: v }))} />
           <Field label="Artifact digest(s)" value={provenance.artifactDigests} onChangeText={(v) => setProvenance((p) => ({ ...p, artifactDigests: v }))} placeholder="sha256:abc123... (copy from the Artifacts table on the CI run page)" manual />
-          <Field label="Build source" value={provenance.buildSource} onChangeText={(v) => setProvenance((p) => ({ ...p, buildSource: v }))} placeholder="CI artifact / fresh Publish build" manual />
-          <Field
-            label="No-drift confirmation"
-            value={provenance.noDriftConfirmation}
-            onChangeText={(v) => setProvenance((p) => ({ ...p, noDriftConfirmation: v }))}
-            placeholder="e.g. git diff <verified-sha> <build-sha> --stat -> empty (only needed if Build source above is a fresh Publish build, not a CI artifact)"
-            manual
-            optional
+          <RadioGroup
+            label="Build source"
+            options={["CI artifact", "fresh Publish build"]}
+            value={provenance.buildSource}
+            onChange={(v) => setProvenance((p) => ({ ...p, buildSource: v }))}
+            testID="phase6-radio-build-source"
           />
-          <Field label="APK filename" value={provenance.apkFilename} onChangeText={(v) => setProvenance((p) => ({ ...p, apkFilename: v }))} placeholder="app-release.apk" manual />
+          {provenance.buildSource === "fresh Publish build" ? (
+            <Checkbox
+              label="No-drift confirmed (git diff <verified-sha> <build-sha> --stat was empty)"
+              checked={provenance.noDriftConfirmation.startsWith("Confirmed")}
+              onToggle={(next) => setProvenance((p) => ({ ...p, noDriftConfirmation: next ? "Confirmed — git diff was empty" : "" }))}
+              testID="phase6-checkbox-no-drift"
+            />
+          ) : null}
+          <Field label="APK filename (pre-filled default — edit if different)" value={provenance.apkFilename} onChangeText={(v) => setProvenance((p) => ({ ...p, apkFilename: v }))} />
           <Field label="APK SHA-256 (auto)" value={provenance.apkSha256} onChangeText={(v) => setProvenance((p) => ({ ...p, apkSha256: v }))} />
           <Field label="App version (auto)" value={provenance.appVersion} onChangeText={(v) => setProvenance((p) => ({ ...p, appVersion: v }))} />
           <Field label="Build number (auto)" value={provenance.buildNumber} onChangeText={(v) => setProvenance((p) => ({ ...p, buildNumber: v }))} />
-          <Field label="Architecture" value={provenance.architecture} onChangeText={(v) => setProvenance((p) => ({ ...p, architecture: v }))} placeholder="arm64-v8a" manual />
+          <RadioGroup
+            label="Architecture"
+            options={["arm64-v8a", "armeabi-v7a", "x86_64", "not sure / universal"]}
+            value={provenance.architecture}
+            onChange={(v) => setProvenance((p) => ({ ...p, architecture: v }))}
+            testID="phase6-radio-architecture"
+          />
           <Field label="Active native stack (device-confirmed, auto)" value={provenance.activeNativeStackId} onChangeText={(v) => setProvenance((p) => ({ ...p, activeNativeStackId: v }))} />
-          <Field label="Backend branch" value={provenance.backendBranch} onChangeText={(v) => setProvenance((p) => ({ ...p, backendBranch: v }))} placeholder="main" manual />
+          <Field label="Backend branch (pre-filled default — edit if different)" value={provenance.backendBranch} onChangeText={(v) => setProvenance((p) => ({ ...p, backendBranch: v }))} />
           <Field label="Backend commit SHA" value={provenance.backendCommitSha} onChangeText={(v) => setProvenance((p) => ({ ...p, backendCommitSha: v }))} placeholder="e.g. a1b2c3d... (40-char SHA, from your backend deployment)" manual />
-          <Field label="Biting/Truth-of-State invariant confirmed present" value={provenance.bitingInvariantConfirmed} onChangeText={(v) => setProvenance((p) => ({ ...p, bitingInvariantConfirmed: v }))} placeholder="yes / no + how verified" manual />
+          <Checkbox
+            label="Biting/Truth-of-State invariant confirmed present"
+            checked={provenance.bitingInvariantConfirmed === "Yes"}
+            onToggle={(next) => setProvenance((p) => ({ ...p, bitingInvariantConfirmed: next ? "Yes" : "No" }))}
+            testID="phase6-checkbox-biting-invariant"
+          />
           <Field label="Ruleset ID (auto)" value={provenance.rulesetId} onChangeText={(v) => setProvenance((p) => ({ ...p, rulesetId: v }))} />
           <Field label="Bundle version (auto)" value={provenance.bundleVersion} onChangeText={(v) => setProvenance((p) => ({ ...p, bundleVersion: v }))} />
           <Field label="Bundle signing key ID (auto)" value={provenance.bundleKeyId} onChangeText={(v) => setProvenance((p) => ({ ...p, bundleKeyId: v }))} />
@@ -548,15 +665,31 @@ export default function Phase6Acceptance() {
         </Card>
 
         <Card title="1. Device & environment">
-          <Text style={styles.note}>Manufacturer/model/OS/security patch are auto-captured above. The rest of these Android does not expose to third-party apps — read them off the device and type them in.</Text>
+          <Text style={styles.note}>Manufacturer/model/OS/security patch are auto-captured above. The rest below are tap-to-select, except Private DNS setting's provider hostname (Android doesn't expose that one — read it off Settings and type it in only if you pick "Provider").</Text>
           <View style={styles.manualStepsCard}>
             <Text style={styles.manualStepsTitle}>HOW TO CHECK: Private DNS setting</Text>
-            <Text style={styles.note}>Settings → Network & internet → Private DNS. Note whether it shows "Off", "Automatic", or a provider hostname, then type it below.</Text>
+            <Text style={styles.note}>Settings → Network & internet → Private DNS. Then tap the matching option below.</Text>
           </View>
-          <Field label="Permissions granted before test" value={device.permissionsBeforeTest} onChangeText={(v) => setDevice((d) => ({ ...d, permissionsBeforeTest: v }))} placeholder="VPN: granted, Notifications: granted" manual />
-          <Field label="VPN state before test" value={device.vpnStateBeforeTest} onChangeText={(v) => setDevice((d) => ({ ...d, vpnStateBeforeTest: v }))} placeholder="off / no other VPN active" manual />
+          <Checkbox label="VPN permission granted before test" checked={vpnPermGranted} onToggle={setVpnPermGranted} testID="phase6-checkbox-vpn-perm" />
+          <Checkbox label="Notifications permission granted before test" checked={notifPermGranted} onToggle={setNotifPermGranted} testID="phase6-checkbox-notif-perm" />
+          <RadioGroup
+            label="VPN state before test"
+            options={["Off / no other VPN active", "Another VPN was active"]}
+            value={vpnStateChoice === "off" ? "Off / no other VPN active" : vpnStateChoice === "other" ? "Another VPN was active" : ""}
+            onChange={(v) => setVpnStateChoice(v.startsWith("Off") ? "off" : "other")}
+            testID="phase6-radio-vpn-state"
+          />
           <Field label="Network type (auto)" value={device.networkType} onChangeText={(v) => setDevice((d) => ({ ...d, networkType: v }))} />
-          <Field label="Private DNS setting (manual — see instructions above)" value={device.privateDnsSetting} onChangeText={(v) => setDevice((d) => ({ ...d, privateDnsSetting: v }))} placeholder="Off / Automatic / dns.google" manual />
+          <RadioGroup
+            label="Private DNS setting"
+            options={["Off", "Automatic", "Provider"]}
+            value={privateDnsMode}
+            onChange={(v) => setPrivateDnsMode(v as "Off" | "Automatic" | "Provider")}
+            testID="phase6-radio-private-dns"
+          />
+          {privateDnsMode === "Provider" ? (
+            <Field label="Private DNS provider hostname" value={privateDnsProvider} onChangeText={setPrivateDnsProvider} placeholder="dns.google" manual />
+          ) : null}
         </Card>
 
         <Card title="2. Test setup + activate Website Gate">
@@ -586,6 +719,23 @@ export default function Phase6Acceptance() {
             <ActionButton title={runPositive.isPending ? "Running (up to 20s)…" : "Run positive enforcement test"} onPress={() => runPositive.mutate()} disabled={runPositive.isPending || !testDomain} testID="phase6-run-positive-button" />
             <StatusIcon status={stepStatus.positive} />
           </View>
+          {(() => {
+            const a = lastAttempt((l) => l.startsWith("Positive enforcement attempt"));
+            if (!a) return null;
+            const good = a.threatBlockedEmitted.startsWith("yes");
+            return (
+              <InlineResultCard
+                testID="phase6-result-positive"
+                tone={good ? "good" : "bad"}
+                title={good ? "Evidence chain observed — THREAT_BLOCKED emitted" : "No THREAT_BLOCKED observed within window"}
+                rows={[
+                  ["Evidence ID", a.evidenceId],
+                  ["THREAT_BLOCKED emitted", a.threatBlockedEmitted],
+                  ["Timestamps", a.timestamps],
+                ]}
+              />
+            );
+          })()}
 
           <Text style={styles.matrixGroupTitle}>Group 2 — Negative false-Biting</Text>
           <Text style={styles.stepBadge}>STEP 4 — Rule match alone</Text>
@@ -593,26 +743,31 @@ export default function Phase6Acceptance() {
             <ActionButton title="Rule match alone" secondary onPress={() => runNegative.mutate("rule-match-alone")} disabled={runNegative.isPending} testID="phase6-neg-rule-match" />
             <StatusIcon status={stepStatus["neg-rule-match-alone"]} />
           </View>
+          <NegativeResult attempts={attempts} kind="rule-match-alone" />
           <Text style={styles.stepBadge}>STEP 5 — Manual override</Text>
           <View style={styles.stepRow}>
             <ActionButton title="Manual override" secondary onPress={() => runNegative.mutate("manual-override")} disabled={runNegative.isPending || !testDomain} testID="phase6-neg-override" />
             <StatusIcon status={stepStatus["neg-manual-override"]} />
           </View>
+          <NegativeResult attempts={attempts} kind="manual-override" />
           <Text style={styles.stepBadge}>STEP 6 — Local analysis only</Text>
           <View style={styles.stepRow}>
             <ActionButton title="Local analysis only" secondary onPress={() => runNegative.mutate("local-analysis-only")} disabled={runNegative.isPending || !testDomain} testID="phase6-neg-analysis" />
             <StatusIcon status={stepStatus["neg-local-analysis-only"]} />
           </View>
+          <NegativeResult attempts={attempts} kind="local-analysis-only" />
           <Text style={styles.stepBadge}>STEP 7 — Gate start alone</Text>
           <View style={styles.stepRow}>
             <ActionButton title="Gate start alone" secondary onPress={() => runNegative.mutate("gate-start-alone")} disabled={runNegative.isPending} testID="phase6-neg-gate-start" />
             <StatusIcon status={stepStatus["neg-gate-start-alone"]} />
           </View>
+          <NegativeResult attempts={attempts} kind="gate-start-alone" />
           <Text style={styles.stepBadge}>STEP 8 — Failed DNS forward</Text>
           <View style={styles.stepRow}>
             <ActionButton title="Failed DNS forward" secondary onPress={() => runNegative.mutate("failed-dns-forward")} disabled={runNegative.isPending} testID="phase6-neg-failed-dns" />
             <StatusIcon status={stepStatus["neg-failed-dns-forward"]} />
           </View>
+          <NegativeResult attempts={attempts} kind="failed-dns-forward" />
 
           <Text style={styles.matrixGroupTitle}>Groups 3 & 4 — manual-step snapshot</Text>
           <Text style={styles.note}>Android does not let a third-party app trigger these steps itself. For each one below: do the manual action described right there, then immediately tap that step's own Capture snapshot button — it records live protectionState/gate status/network as the evidence for that exact matrix row.</Text>
@@ -627,6 +782,7 @@ export default function Phase6Acceptance() {
             <ActionButton title="Capture snapshot" secondary onPress={() => captureSnapshot.mutate({ key: "stop", label: "after Stop protection" })} disabled={captureSnapshot.isPending} testID="phase6-snapshot-stop" />
             <StatusIcon status={stepStatus["snapshot-stop"]} />
           </View>
+          <SnapshotResult attempts={attempts} label="after Stop protection" />
 
           <View style={styles.howToCard}>
             <Text style={styles.howToTitle}>STEP 10 — Revoke VPN permission mid-session (matrix row 3.2)</Text>
@@ -636,6 +792,7 @@ export default function Phase6Acceptance() {
             <ActionButton title="Capture snapshot" secondary onPress={() => captureSnapshot.mutate({ key: "revoke", label: "after VPN permission revoke" })} disabled={captureSnapshot.isPending} testID="phase6-snapshot-revoke" />
             <StatusIcon status={stepStatus["snapshot-revoke"]} />
           </View>
+          <SnapshotResult attempts={attempts} label="after VPN permission revoke" />
 
           <View style={styles.howToCard}>
             <Text style={styles.howToTitle}>STEP 11 — App restart (matrix row 3.3)</Text>
@@ -645,6 +802,7 @@ export default function Phase6Acceptance() {
             <ActionButton title="Capture snapshot" secondary onPress={() => captureSnapshot.mutate({ key: "restart", label: "after app restart" })} disabled={captureSnapshot.isPending} testID="phase6-snapshot-restart" />
             <StatusIcon status={stepStatus["snapshot-restart"]} />
           </View>
+          <SnapshotResult attempts={attempts} label="after app restart" />
 
           <View style={styles.howToCard}>
             <Text style={styles.howToTitle}>STEP 12 — Network transition (matrix row 3.4)</Text>
@@ -654,6 +812,7 @@ export default function Phase6Acceptance() {
             <ActionButton title="Capture snapshot" secondary onPress={() => captureSnapshot.mutate({ key: "network", label: "after network transition" })} disabled={captureSnapshot.isPending} testID="phase6-snapshot-network" />
             <StatusIcon status={stepStatus["snapshot-network"]} />
           </View>
+          <SnapshotResult attempts={attempts} label="after network transition" />
         </Card>
 
         <Card title={`Evidence attempts (${attempts.length})`}>
@@ -718,14 +877,22 @@ export default function Phase6Acceptance() {
 
         <Card title="5. Known capability gaps">
           <Text style={styles.note}>
-            For each row: leave "Observed impact" blank only if you did not exercise this bypass path in Group 4 above. If you did (Group 4.3/4.4), describe exactly what you saw — was the traffic
-            invisible to Apollo as expected, or did anything unexpected happen (e.g. a fabricated block)? This is a factual record, not a pass/fail judgment.
+            Tick "I exercised this bypass path" only if you actually ran the matching Group 4 test (4.3 for Private DNS, 4.4 for DoH) during this run. When ticked, describe exactly what you saw —
+            was the traffic invisible to Apollo as expected, or did anything unexpected happen (e.g. a fabricated block)? This is a factual record, not a pass/fail judgment.
           </Text>
           {gaps.map((g, i) => (
             <View key={g.gap} style={styles.matrixRow}>
               <Text style={styles.matrixTest}>{g.gap}</Text>
               <Text style={styles.note}>{g.disclosed}</Text>
-              <TextInput style={[styles.input, styles.inputManual]} value={g.observedImpact} onChangeText={(v) => updateGap(i, { ...g, observedImpact: v })} placeholder="Observed impact during this run" placeholderTextColor={colors.muted} />
+              <Checkbox
+                label="I exercised this bypass path during this test run"
+                checked={gapExercised[i]}
+                onToggle={(next) => updateGapExercised(i, next)}
+                testID={`phase6-checkbox-gap-${i}`}
+              />
+              {gapExercised[i] ? (
+                <TextInput style={[styles.input, styles.inputManual]} value={g.observedImpact} onChangeText={(v) => updateGap(i, { ...g, observedImpact: v })} placeholder="Observed impact during this run" placeholderTextColor={colors.muted} />
+              ) : null}
             </View>
           ))}
         </Card>
@@ -755,7 +922,11 @@ export default function Phase6Acceptance() {
             })}
           </View>
           <Field label="Justification (cite specific matrix row numbers)" value={justification} onChangeText={setJustification} placeholder="e.g. Rows 1.1–1.2, 2.1–2.5 all PASS; Group 3 rows PASS; Group 4 gap documented in Section 5" multiline manual />
-          <Field label="Completed by" value={completedBy} onChangeText={setCompletedBy} placeholder="e.g. Jane Doe — 2026-06-15" manual />
+          <View style={styles.stepRow}>
+            <ActionButton title="Auto-fill summary from matrix" secondary onPress={autoFillJustification} testID="phase6-autofill-justification" />
+          </View>
+          <Text style={styles.note}>Auto-fill only drafts a factual row-by-row summary from Section 4 above — refine the wording afterward if you want to add context.</Text>
+          <Field label="Completed by (your name)" value={completedBy} onChangeText={setCompletedBy} placeholder="e.g. Jane Doe" manual />
         </Card>
 
         <Card title="Export">
