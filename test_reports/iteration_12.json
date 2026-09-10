@@ -1,0 +1,55 @@
+{
+  "summary": "Frontend-only diagnostic (Priority 1) + regression test (Priority 2) for Apollo Native Gates / Gate Guard M2.1 Phase 6. Priority 1's suspected 'queryFn never settles' bug did NOT reproduce in my testing environment — confirmed via 3x reload timing test, network request/response interception, and manual field verification. Priority 2 UI regression passed: no crashes, buttons tappable, badges independent, manual field highlighting, chips, and scrolling all work correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "phase6-back-button (and index.tsx back nav generally)",
+        "issue": "Non-blocking, EXPECTED Expo Router behavior: if /phase6-acceptance is loaded via direct URL (no navigation history, e.g. a fresh page load/deep link), router.back() logs a dev-only warning 'GO_BACK was not handled by any navigator' and does not navigate. Verified this is NOT a regression: navigating normally (index -> tap open-phase6-button -> tap back) works correctly and returns to the harness screen. Not an action item, just documenting for context."
+      }
+    ]
+  },
+  "priority_1_diagnosis": {
+    "reproduced": false,
+    "findings": [
+      "curl http://localhost:8001/api/config and /api/rules/gd-m2-website-gate/latest both return 200 instantly (confirmed independently).",
+      "Playwright network interception on both '/' and '/phase6-acceptance' shows /api/config and the relevant /api/rules/{id}/latest requests ARE dispatched at the network layer and receive HTTP 200 responses within well under 1 second in every test run.",
+      "3x consecutive full page reloads of '/' each resolved the 'Backend · signed rules' card (config-ruleset testID) in 0.42s-0.60s -- no stuck loading spinner, no error state, ever.",
+      "On '/phase6-acceptance', config + M2 bundle loaded successfully and the 'Authorized test domain' / 'Matching rule ID' fields auto-filled correctly from the bundle's first block rule (value: blocktest.btciq.app / m2-block-blocktest-001) -- proving the useQuery pipeline (fetchM1Config -> fetchLatestBundle -> useEffect auto-fill) works end-to-end.",
+      "IMPORTANT CLARIFICATION on phase6-acceptance.tsx: the 'Accepted ruleset / bundle' KeyValue row showing 'none accepted yet' is NOT evidence of a stuck query -- that field reads GuardDogSecuritySDK.getWebsiteGateStatus().acceptedRulesetId, which is only set after the user taps 'Activate Website Gate' (a separate SDK acceptance step), not after the useQuery resolves. The bundle query itself resolved fine (confirmed via the auto-filled testDomain field, which depends on bundle.data). This may be a source of tester confusion in the original bug report, not the app bug it appears to be.",
+      "No CORS/CSP console errors observed on either screen across all test runs.",
+      "CONCLUSION: This strongly suggests the original symptom (queryFn called, promise never settles per E1's own console.log/status check at 4s/12s/30s) is specific to E1's own headless screenshot-tool browser sandbox/session state and NOT reproducible as a general app bug in this testing tool's browser context. Recommend E1 try a hard reload / fresh incognito-style session in their own tool, or check if a stale/paused Service Worker, a browser extension, or a leftover suspended tab in their sandbox is holding the fetch. Backend and frontend code paths both check out as correct."
+    ]
+  },
+  "priority_2_regression_results": {
+    "screen_render": "phase6-acceptance-screen renders without crashing on mobile viewport (375x667), scrolls smoothly top-to-bottom (verified via 10-step scroll sweep), no console errors during full interaction pass.",
+    "live_status_card": "phase6-live-status-card renders correctly with StatusBadge widgets for protection state/gate configured/DNS gateway active. Contextual 'NEEDS TO BE ON' callout with phase6-quick-activate button shown correctly when gate is off (default state).",
+    "step_badges": "All STEP 1-13 labels render above their buttons. Verified STEP 2 (activate), STEP 4-8 (5 negative tests), STEP 9-12 (4 snapshot buttons) each produce their OWN independent status icon (green check / red X) -- confirmed 5 evidence attempts were recorded independently and snapshot buttons each showed their own green checkmark without affecting others.",
+    "graceful_failure": "Activate Website Gate (STEP 2 and the quick-activate shortcut) both failed gracefully in web preview with a red X status icon and populated the 'Last action error' card -- no crash, as expected given no native VPN module in web preview.",
+    "manual_field_highlighting": "Confirmed: 'Branch' field (manual) shows orange border + '· ✎ type this in' label suffix; accepted typed text correctly ('m2-native-acceptance-test'). 'Justification' field (manual, multiline) also accepted typed text correctly.",
+    "matrix_and_verdict_chips": "Matrix PASS/FAIL chip toggled correctly (background/border color change). Overall verdict chip (PASS) toggled to selected state correctly (background changed to brand color). Both sections' 'HOW TO DETERMINE...' callout boxes render as expected.",
+    "navigation": "open-phase6-button navigates from index to phase6-acceptance correctly; phase6-back-button correctly returns to index when navigated via normal in-app flow."
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Priority 1: No code fix identified or applied -- bug did not reproduce in this testing tool's browser. Recommend E1 re-verify in their own screenshot tool with a completely fresh browser session/tab before assuming an app-level regression; if it persists only in that specific tool, treat it as a sandbox/tooling artifact, not an app bug.",
+    "No Priority 2 action items -- all new Phase 6 UI (live status card, STEP badges, independent per-action status icons, manual field highlighting, restructured Groups 3&4, HOW-TO callouts, STEP 13 export) verified working with no crashes."
+  ],
+  "critical_code_review_comments": [
+    "phase6-acceptance.tsx is ~780 lines -- approaching/over the 700-line guideline; could be split (e.g. extract the matrix/verdict/gaps sections and the Field/StatusIcon/MatrixRowEditor helper components into separate files) for maintainability, though not urgent.",
+    "ruleBundleFixtures.ts correctly uses process.env.EXPO_PUBLIC_BACKEND_URL (matches frontend/.env) -- verified this is not a misconfigured env var causing Priority 1."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not applicable - not requested", "frontend": "100% (all executed tests passed; Priority 1 bug not reproducible, Priority 2 all verified working)"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Priority 1 bug report from E1 could not be reproduced by this agent across multiple runs (fresh navigations, 3x reloads, network interception showing fast 200 responses on both / and /phase6-acceptance). If the issue resurfaces, capture a HAR file or screenshot of the actual DevTools Network tab timing waterfall from the SAME tool/session that originally saw it, since standard Playwright network event listeners here show no stuck/pending requests.",
+  "rca_of_issue": "Not applicable -- issue not reproducible; no RCA performed. See priority_1_diagnosis for full investigation notes."
+}
