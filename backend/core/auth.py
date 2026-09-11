@@ -21,12 +21,15 @@ from core.db import db, now_utc
 # trusts a caller-supplied device_id. Legacy devices (no token_hash) can never authenticate: no first-come binding.
 
 bearer_scheme = HTTPBearer(auto_error=False)
-PUBLIC_PATHS = {"/api/health", "/api/intel/status", "/api/devices/register"}
+PUBLIC_PATHS = {"/api/health", "/api/intel/status", "/api/devices/register", "/api/gmail/oauth/callback"}
 # Unauthenticated exceptions, each justified:
 #  /api/family/confirm/<token> — single-purpose, single-use, 72 h-expiring random token sent by email (no device context).
 #  /api/voice/<sha256-prefix>.mp3 — TTS audio of a sentence the app already displays; keyed by an unguessable digest of
 #     the text, never by device/user; contains no identifiers (links are stripped before synthesis). If narration ever
 #     includes personal data, switch to short-lived signed URLs.
+#  /api/gmail/oauth/callback — Google's browser redirect lands here with no Authorization header at all. Trust comes
+#     from the single-use, 10-minute-expiring `state` value minted by the authenticated /gmail/connect call (see
+#     routers/gmail.py) — never from anything the caller supplies directly.
 # NOTE on naming: `user_id` in /register-push is the DEVICE identity today. Device auth proves which device is calling;
 # a person/household layer (one person, several devices) can sit above it later without changing this contract.
 PUBLIC_PREFIXES = ("/api/family/confirm/", "/api/voice/", "/api/family/voice-play/")  # voice-play is HMAC-ticketed (routers/family.py)

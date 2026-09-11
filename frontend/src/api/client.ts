@@ -21,7 +21,7 @@ export class ApiError extends Error {
 export const DEFAULT_TIMEOUT_MS = 20000;
 /** Endpoints that legitimately take longer (vision/LLM second opinions, TTS, redirect expansion). */
 const LONG_TIMEOUT_MS = 60000;
-const LONG_PATHS = ["/message/extract", "/page/extract", "/voice/speak", "/message/analyse", "/app/analyse", "/account/analyse", "/intel/check", "/ask/"];
+const LONG_PATHS = ["/message/extract", "/page/extract", "/page/crawl", "/voice/speak", "/message/analyse", "/app/analyse", "/account/analyse", "/intel/check", "/ask/", "/gmail/scan"];
 export function timeoutFor(path: string): number { return LONG_PATHS.some((p) => path.startsWith(p)) ? LONG_TIMEOUT_MS : DEFAULT_TIMEOUT_MS; }
 
 /** Bearer credential for every call. Fails closed: with no identity the request is not sent. */

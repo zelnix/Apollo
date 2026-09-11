@@ -1,13 +1,16 @@
 // Gate 1 — Check an Email. Paste a forwarded email (headers included if you have them) or fill From/Subject/Body.
 // Read on-device first; links go to the Web gate, account alerts to Account Guard, attachments to Check This File.
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
+import * as Linking from "expo-linking";
+import * as WebBrowser from "expo-web-browser";
+import Mail from "lucide-react-native/icons/mail";
 import X from "lucide-react-native/icons/x";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { apiPost } from "@/src/api/client";
+import { apiDelete, apiGet, apiPost } from "@/src/api/client";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
@@ -37,7 +40,7 @@ export default function CheckEmail() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ text?: string }>();
-  const { ready, setupDone, upsertEvent, deviceId, adapterLabel, showToast } = useApollo();
+  const { ready, setupDone, upsertEvent, deviceId, adapterLabel, showToast, scanGmailInbox } = useApollo();
   const [from, setFrom] = useState("");
   const [subject, setSubject] = useState("");
   const [raw, setRaw] = useState(params.text ?? "");
@@ -45,6 +48,50 @@ export default function CheckEmail() {
   const [result, setResult] = useState<{ a: EmailAnalysis; event: PatrolEvent | null; urls: MessageUrlResult[]; explanation: MessageExplanation | null } | null>(null);
   const [verify, setVerify] = useState(false);
   const [tech, setTech] = useState(false);
+  const [gmailConnected, setGmailConnected] = useState<boolean | null>(null);
+  const [gmailConfigured, setGmailConfigured] = useState(true);
+  const [gmailBusy, setGmailBusy] = useState(false);
+  const [scanBusy, setScanBusy] = useState(false);
+  const [scanSummary, setScanSummary] = useState<{ text: string; flagged: number } | null>(null);
+
+  useEffect(() => {
+    if (!deviceId) return;
+    apiGet<{ connected: boolean; configured: boolean }>(`/gmail/status?device_id=${deviceId}`)
+      .then((r) => { setGmailConnected(r.connected); setGmailConfigured(r.configured); })
+      .catch(() => setGmailConnected(false));
+  }, [deviceId]);
+
+  // Gmail read-only connect: browser-based OAuth (Web-application client — see backend/services/gmail.py).
+  // Native OAuth needs a development/standalone build; this button still works in the web preview.
+  const connectGmail = async () => {
+    if (!deviceId) return;
+    setGmailBusy(true);
+    try {
+      const redirect = Linking.createURL("/email");
+      const { authorization_url } = await apiGet<{ authorization_url: string }>(`/gmail/connect?device_id=${deviceId}&app_redirect=${encodeURIComponent(redirect)}`);
+      const res = await WebBrowser.openAuthSessionAsync(authorization_url, redirect);
+      if (res.type === "success" && res.url.includes("gmail=connected")) { setGmailConnected(true); showToast("Gmail connected — read-only access.", "resting"); }
+      else if (res.type === "success" && res.url.includes("gmail=denied")) showToast("Gmail connection was cancelled.", "neutral");
+      else if (res.type !== "cancel" && res.type !== "dismiss") showToast("Couldn't connect Gmail right now.", "growling");
+    } catch (e) { showToast(e instanceof Error ? e.message : "Couldn't connect Gmail right now.", "growling"); } finally { setGmailBusy(false); }
+  };
+
+  const disconnectGmail = async () => {
+    if (!deviceId) return;
+    try { await apiDelete(`/gmail/connection?device_id=${deviceId}`); } catch { /* already gone */ }
+    setGmailConnected(false); setScanSummary(null);
+    showToast("Gmail disconnected.", "neutral");
+  };
+
+  const scanInbox = async () => {
+    setScanBusy(true); setScanSummary(null);
+    try {
+      const { checked, flagged } = await scanGmailInbox();
+      const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+      setScanSummary({ text: flagged.length ? `Checked ${plural(checked, "email")} — ${plural(flagged.length, "one")} need${flagged.length === 1 ? "s" : ""} a look.` : `Checked ${plural(checked, "email")} — nothing suspicious found.`, flagged: flagged.length });
+      showToast(flagged.length ? `Found ${plural(flagged.length, "email")} needing a look` : "Nothing suspicious in your recent inbox", flagged.length ? "growling" : "resting");
+    } catch (e) { showToast(e instanceof Error ? e.message : "Couldn't scan your inbox right now.", "growling"); } finally { setScanBusy(false); }
+  };
 
   const run = async () => {
     setBusy(true);
@@ -82,7 +129,32 @@ export default function CheckEmail() {
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="email-scroll">
         {!result ? (
           <>
-            <Body>Forward the email to yourself and paste it here — including the From / Subject lines if you can — or fill the fields. Apollo reads it on your phone first; only the text and links you paste are checked for reputation. Apollo never reads your inbox.</Body>
+            {gmailConfigured ? (
+              <Card testID="email-gmail-card" style={{ gap: spacing.sm }}>
+                <SectionTitle>Connect Gmail (optional)</SectionTitle>
+                {gmailConnected === null ? (
+                  <Body>Checking connection…</Body>
+                ) : gmailConnected ? (
+                  <>
+                    <View style={s.chips}><Pill tone="resting" label="Gmail connected — read-only" testID="email-gmail-connected" /></View>
+                    <Button testID="email-gmail-scan" label={scanBusy ? "Scanning your inbox…" : "Scan my inbox now"} onPress={() => void scanInbox()} disabled={scanBusy} />
+                    {scanSummary ? (
+                      <>
+                        <Body testID="email-gmail-scan-summary">{scanSummary.text}</Body>
+                        {scanSummary.flagged ? <Button testID="email-gmail-view-patrol" variant="secondary" label="View in Patrol" onPress={() => router.push("/(tabs)/patrol")} /> : null}
+                      </>
+                    ) : null}
+                    <Button testID="email-gmail-disconnect" variant="ghost" label="Disconnect Gmail" onPress={() => void disconnectGmail()} />
+                  </>
+                ) : (
+                  <>
+                    <Body>Apollo can scan your recent Gmail for scams — read-only access, one tap to scan, nothing stored. Disconnect anytime.</Body>
+                    <Button testID="email-gmail-connect" variant="secondary" icon={<Mail size={18} color={colors.onSurface} />} label={gmailBusy ? "Connecting…" : "Connect Gmail (read-only)"} onPress={() => void connectGmail()} disabled={gmailBusy} />
+                  </>
+                )}
+              </Card>
+            ) : null}
+            <Body>Forward the email to yourself and paste it here — including the From / Subject lines if you can — or fill the fields. Apollo reads it on your phone first; only the text and links you paste are checked for reputation. Apollo never reads your inbox unless you connect Gmail above.</Body>
             <TextInput testID="email-from" style={s.input} value={from} onChangeText={setFrom} placeholder="From (e.g. CommBank <alerts@cb-secure.top>)" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} />
             <TextInput testID="email-subject" style={s.input} value={subject} onChangeText={setSubject} placeholder="Subject" placeholderTextColor={colors.muted} autoCorrect={false} />
             <TextInput testID="email-body" style={[s.input, { minHeight: 140 }]} value={raw} onChangeText={setRaw} placeholder="Paste the email (or the whole forwarded message with headers)…" placeholderTextColor={colors.muted} multiline textAlignVertical="top" autoCapitalize="none" autoCorrect={false} />

@@ -38,6 +38,14 @@ PUSH_KEY = os.environ.get("EMERGENT_PUSH_KEY", "placeholder")
 ADMIN_KEY = os.environ.get("APOLLO_ADMIN_KEY", "")
 ADMIN_HEADER = "X-Admin-Key"
 
+# Gmail read-only connection (Gate 1 add-on) — Web-application OAuth client; the redirect URI is
+# derived from PUBLIC_BASE so it always matches whatever origin this backend is actually served on.
+# Empty GOOGLE_CLIENT_ID → /api/gmail/* returns "not_configured", never a crash.
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_GMAIL_REDIRECT_URI = f"{PUBLIC_BASE}/api/gmail/oauth/callback" if PUBLIC_BASE else ""
+GMAIL_TOKEN_ENCRYPTION_KEY = os.environ.get("GMAIL_TOKEN_ENCRYPTION_KEY", "")
+
 HIGGINS_VOICE = ("You speak as Higgins — Apollo's handler: a sophisticated, older English gentleman, very proper and butler-like. Courteous, unhurried, "
                  "dry warmth, never theatrical. Refer to Apollo (the guard dog) in the third person — 'Apollo is growling at this one', 'Apollo has it in hand'. "
                  "Use light butler turns of phrase sparingly ('if I may', 'I would suggest', 'quite so', 'do allow me') — at most one per answer. Do not use 'sir' or 'madam'. "

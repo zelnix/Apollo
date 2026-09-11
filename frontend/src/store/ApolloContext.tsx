@@ -17,6 +17,7 @@ import { parseIntelResult } from "@/src/domain/intelContract";
 import { minimalIndicator } from "@/src/domain/privacy";
 import { FAILURE_MESSAGE } from "@/src/domain/serviceHealth";
 import { markCheckDone } from "@/src/store/checkCompletion";
+import { analyseEmail } from "@/src/domain/emailAnalysis";
 import { analyseMessage, type MessageAnalysis } from "@/src/domain/messageAnalysis";
 import type { PageAnalysis } from "@/src/domain/pageAnalysis";
 import { analyseCall, type CallAnalysis, type CallInput } from "@/src/domain/callAnalysis";
@@ -71,6 +72,10 @@ interface ApolloContextValue {
   resolution: StateResolution;
   checkLink(input: string): Promise<CheckOutcome>;
   checkMessage(sender: string, text: string): Promise<MessageOutcome>;
+  /** Gmail read-only connection (Gate 1 add-on): fetches recent inbox messages via the backend
+   * (never stored server-side), runs each through the same on-device email engine as the paste
+   * flow, files Patrol events for anything non-resting, then discards the raw content. */
+  scanGmailInbox(): Promise<{ checked: number; flagged: PatrolEvent[] }>;
   recordRecovery(event: PatrolEvent, kind: RecoveryKind): Promise<void>;
   /** Gate 3 Phase B: merge a page-screenshot analysis into an existing link event, or create a new website event. */
   recordPageAnalysis(pa: PageAnalysis, existing: PatrolEvent | null): Promise<PatrolEvent | null>;
@@ -433,6 +438,27 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     return { analysis: { ...analysis, state, why }, urls, explanation, remoteError, event };
   }, [deviceId, upsertEvent]);
 
+  const scanGmailInbox = useCallback(async (): Promise<{ checked: number; flagged: PatrolEvent[] }> => {
+    if (!deviceId) return { checked: 0, flagged: [] };
+    // Raw message bodies live only in this local `messages` array for the duration of the loop
+    // below — never persisted (matches the "checked and discarded" contract on the backend).
+    const messages = await apiPost<{ id: string; from: string; subject: string; date: string; body: string }[]>("/gmail/scan", "gmail_scan", { device_id: deviceId });
+    const flagged: PatrolEvent[] = [];
+    for (const m of messages) {
+      const a = analyseEmail(m.body, { from: m.from, subject: m.subject });
+      if (a.state === "resting") continue;
+      const event = await upsertEvent({
+        event_id: Crypto.randomUUID(), device_id: deviceId, category: "email", state: a.state, status: "active",
+        headline: `Gmail: ${a.title}`, what_happened: a.verdict, why: a.why, what_to_do: a.recommendation,
+        indicator_host: a.lookalikeUrls[0] ? a.lookalikeUrls[0].replace(/^https?:\/\//i, "").split("/")[0] : a.senderDomain,
+        indicator_digest: null, local_indicator: a.parsed.subject, verified_block: false, adapter_label: securityAdapter.label,
+        occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: a.claimedBrand, scenario: a.scenario,
+      });
+      flagged.push(event);
+    }
+    return { checked: messages.length, flagged };
+  }, [deviceId, upsertEvent]);
+
   const recordPageAnalysis = useCallback(async (pa: PageAnalysis, existing: PatrolEvent | null): Promise<PatrolEvent | null> => {
     if (existing) {
       const escalate = STATE_RANK[pa.state] > STATE_RANK[existing.state] && existing.state !== "biting";
@@ -580,7 +606,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   const value: ApolloContextValue = {
     ready, setupDone, deviceId, identityReset, reRegisterDevice, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label, isMock: IS_MOCK_SECURITY,
-    refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, recordRecovery, upsertEvent, recordPageAnalysis, checkCall,
+    refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, scanGmailInbox, recordRecovery, upsertEvent, recordPageAnalysis, checkCall,
     pushStatus, enablePush, quietHours, quietNow, setQuietHours, lowPower, setLowPower,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
