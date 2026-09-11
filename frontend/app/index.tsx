@@ -92,10 +92,11 @@ export default function Index() {
         <Text style={styles.subtitle}>{caps.platform} · {caps.selectiveIpBlocking ? "selective /32 enforcement available" : "no enforcement layer in this runtime"}</Text>
       </View>
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]} keyboardShouldPersistTaps="handled">
-        <Card title="Gate Guard M2.1 · Phase 6" testID="phase6-nav-card">
-          <Text style={styles.note}>Physical-device acceptance report runner for the Website Gate (DNS→sinkhole→TUN evidence chain, PASS/FAIL matrix, PDF export). Real data requires a native Android build.</Text>
+        <Card title="Gate Guard M2.1 · Phase 6A" testID="phase6-nav-card">
+          <Text style={styles.note}>Automated physical-device acceptance: press one button, the harness activates protection, runs every test it can trigger itself, judges every result from observed evidence, and pauses only for the handful of OS-level actions Android will not let this app perform on itself. Real evidence requires a native Android build.</Text>
           <View style={styles.actions}>
-            <ActionButton title="Open Phase 6 Acceptance Report Runner" onPress={() => router.push("/phase6-acceptance")} testID="open-phase6-button" />
+            <ActionButton title="Open Automated Acceptance Runner" onPress={() => router.push("/phase6-automated")} testID="open-phase6-automated-button" />
+            <ActionButton title="Advanced / Diagnostics (manual harness)" secondary onPress={() => router.push("/phase6-acceptance")} testID="open-phase6-button" />
           </View>
         </Card>
 

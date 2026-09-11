@@ -1,4 +1,10 @@
-// Gate Guard M2.1 Phase 6: guided, in-app acceptance report runner. Auto-captures what the app can
+// Gate Guard M2.1 Phase 6 — ADVANCED / DIAGNOSTICS (manual step-by-step harness). Normal acceptance
+// runs should use /phase6-automated (Phase 6A) instead, which runs this same evidence chain
+// end-to-end with a single button and lets the harness's deterministic decision engine own every
+// verdict. This screen remains available for developers who want fine-grained, step-by-step control
+// over provenance capture, individual test triggers, and the PASS/FAIL matrix.
+//
+// Auto-captures what the app can
 // truthfully observe (provenance, device info, ruleset/signature state, network type, the actual
 // DNS→sinkhole→TUN→evidence→event chain via the frozen public SDK surface); everything Android does
 // not expose to third-party apps (Private DNS setting, physically switching networks, revoking VPN

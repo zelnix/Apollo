@@ -1,0 +1,53 @@
+{
+  "summary": "Frontend-only Playwright testing (mobile viewport 375x667) of Phase 6A Automated Acceptance rework: new /phase6-automated screen, home screen nav card with two buttons, navigation to /phase6-acceptance (Advanced/Diagnostics), and the PRECONDITION_FAILURE end-to-end path (expected in web preview, no native module). All requested flows verified working with no crashes/red screens. One layout/design bug found in the step-row verdict text truncation. No manual PASS/FAIL/CAPTURED/BYPASSED tap-to-classify chips found anywhere on the new screen, confirming the hard requirement.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "StepRow (phase6-automated.tsx, styles.stepRow / row flexDirection)",
+        "issue": "On mobile width (375px), the step title (left, wraps to multiple lines when long, e.g. 'pre-NATIVE_MODULE_UNAVAILABLE · Native module available') and the verdict text (right, e.g. 'PRECONDITION_FAILURE') are laid out in a single flexDirection:row with justifyContent:space-between but no flexShrink/flexWrap constraint on the verdict Text. Result: the verdict text visually overflows past the card's right border and is clipped mid-word (renders as 'PRECONDITION_FA...' cut off), even though the page itself has no horizontal scroll (body scrollWidth === clientWidth === 375, confirmed via page.evaluate). This affects every long verdict (PRECONDITION_FAILURE, CAPABILITY_GAP) paired with a long title on narrow screens.",
+        "testID": "phase6a-step-pre-NATIVE_MODULE_UNAVAILABLE",
+        "priority": "MEDIUM (readability/design issue, not a crash)"
+      },
+      {
+        "component": "index.tsx Card 'Gate Guard M2.1 · Phase 6A' — secondary button",
+        "issue": "The 'Advanced / Diagnostics (manual step-by-step harness)' button label is visually clipped/cut off at the right edge of the screen on mobile viewport (375px) -- text does not wrap or shrink to fit the button width, so only 'Advanced / Diagnostics (manual step-by-step' is visible with no ellipsis or second line.",
+        "testID": "open-phase6-button",
+        "priority": "LOW (cosmetic, button still fully tappable and functional)"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "verified_working": {
+    "home_screen_nav_card": "Both 'Open Automated Acceptance Runner' (testID open-phase6-automated-button) and 'Advanced / Diagnostics...' (testID open-phase6-button) render and are tappable. Tapping the first correctly navigates to /phase6-automated.",
+    "phase6_automated_initial_load": "New screen loads without crashing, shows 'Ready to run' card with single 'Run Automated Acceptance' button (testID phase6a-run-button) exactly as specced.",
+    "precondition_failure_flow": "Tapping Run Automated Acceptance progresses automatically and stops with overallVerdict=PRECONDITION_FAILURE, overallReasonCode=NATIVE_MODULE_UNAVAILABLE, human explanation 'GuardDogSecurity native module is not present in this runtime (Expo Go / web). Phase 6A requires a physical Android build — nothing further was attempted.' Confirmed correct/expected for web preview per review request -- not flagged as a bug.",
+    "post_result_buttons": "Generate PDF report, Export canonical JSON, and Start new automated run all tappable with zero page errors/crashes (verified via page.on('pageerror') listener returning nothing, and phase6a-screen remaining visible/mounted after each tap).",
+    "recheck_dns_disabled": "Confirmed via Playwright is_disabled() = True for testID phase6a-recheck-dns once run result is NATIVE_MODULE_UNAVAILABLE -- correctly disabled/greyed out and not tappable.",
+    "start_new_run_reset": "Tapping 'Start new automated run' fully resets the screen back to the initial 'Ready to run' card (phase6a-run-button visible again, run status/result cards gone).",
+    "sections_render": "'0 · Preconditions' and '4 · DNS capability (Private DNS / DoT / DoH)' sections render with explanatory copy and step rows showing id/title/verdict/reasonCode/explanation. Confirmed body text does NOT contain 'CAPTURED' or 'BYPASSED' anywhere on the page in this run state, and no interactive PASS/FAIL classify controls exist -- hard requirement (harness owns every verdict) verified.",
+    "advanced_link_navigation": "Bottom link 'Advanced / Diagnostics (manual step-by-step harness) →' (testID phase6a-advanced-link) correctly navigates to /phase6-acceptance; old screen renders its header 'Acceptance Report Runner', 'FROZEN ACCEPTANCE INVARIANT' banner, Session card with 'Start new session (clear everything)' button -- matches prior iteration_14 regression baseline, no visual breakage from the header-comment-only change."
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Fix StepRow layout so long verdict text (e.g. PRECONDITION_FAILURE, CAPABILITY_GAP) never visually overflows/clips past the card boundary on narrow (375px) screens -- e.g. change the row to allow wrapping (flexWrap: 'wrap') or stack title/verdict vertically on small widths, or give the verdict Text a flexShrink/minWidth so it wraps instead of clipping.",
+    "Consider fixing the home screen secondary button text ('Advanced / Diagnostics (manual step-by-step harness)') to wrap to two lines or use a shorter label on mobile widths so it isn't visually cut off."
+  ],
+  "critical_code_review_comments": [
+    "phase6-automated.tsx StepRow component (line ~82-94) uses flexDirection:'row' + justifyContent:'space-between' for title+verdict with no flexShrink on either child -- root cause of the clipping bug found above.",
+    "phase6AutomatedHarness.ts is a clean, well-documented pure orchestration module (no React) with a clear phase state machine and reasonCode+explanation paired on every step -- good separation of concerns matching the stated design principle.",
+    "finalizeRun()'s requiredGroupsFilled check (line 183, magic number 7 = '2+5 auto + at least stop') is a slightly fragile hardcoded count; a comment explains it but if NEGATIVE_KINDS grows this will silently need updating too -- low risk, already commented."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not applicable - not requested this session (frontend only)", "frontend": "100% of requested testable-in-web-preview flows verified working (screen load, PRECONDITION_FAILURE path, all button taps crash-free, DNS recheck disabled state, reset flow, no manual verdict chips, navigation both directions, old screen regression). 2 minor cosmetic/layout bugs found and reported (not blocking)."},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Phase 6A automated harness (/phase6-automated) end-to-end web-preview flow (Ready to run -> Run -> PRECONDITION_FAILURE/NATIVE_MODULE_UNAVAILABLE -> PDF/JSON export/new-run buttons -> Advanced link -> old /phase6-acceptance regression) is fully verified working with no crashes. Only issue found is a StepRow layout overflow clipping long verdict text on 375px screens -- cosmetic, does not block functionality or data correctness. Real enforcement chain (positive/negative tests, VPN revoke/restart/network detection, DNS capability classification) still requires a physical Android device with the native module -- untestable in this environment by design, matching the review request's own caveat.",
+  "rca_of_issue": "StepRow clipping: styles.stepRow's inner row (title left, verdict right) has no flexWrap/flexShrink; when the title text wraps to 2-3 lines (long titles like 'pre-NATIVE_MODULE_UNAVAILABLE · Native module available'), the sibling verdict Text ('PRECONDITION_FAILURE') on the same flex row keeps its intrinsic (unwrapped) width and gets positioned past the parent card's right edge, so it's rendered but visually clipped by the card's overflow (not a horizontal page scroll -- confirmed body scrollWidth===clientWidth===375). Fix: add flexWrap or a stacked layout, or constrain the verdict Text with flexShrink:1/numberOfLines/adjustsFontSizeToFit."
+}
