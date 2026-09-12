@@ -172,7 +172,7 @@ async function pollReceipt(nonce: string, deadlineMs: number, intervalMs = 2000)
   const deadline = Date.now() + deadlineMs;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(`${BACKEND_URL}/api/dns-diagnostics/receipts/${nonce}`);
+      const res = await fetch(`${BACKEND_URL}/api/dns-diagnostics/receipts/${nonce}`, { cache: "no-store" });
       if (res.ok) {
         const body = (await res.json()) as { received: boolean };
         if (body.received) return true;

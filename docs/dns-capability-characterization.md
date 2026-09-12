@@ -57,27 +57,39 @@ this repo cannot provision external DNS/TLS/hosting):
    Point it at any reachable HTTPS host (does not need to be the same server as `blocktest.btciq.app`,
    though reusing that existing controlled endpoint's server is the simplest option since it is
    already provisioned for a sibling subdomain).
+   **Verified 2026-09** (externally, via the M1 controlled-endpoint content already appearing at the
+   root): `https://dnsprobe.blocktest.btciq.app/` already resolves and serves over HTTPS with no
+   certificate/interstitial error — DNS + TLS coverage for this hostname is confirmed in place. Only
+   the `/dnsdiag/` static file below (step 2) still needs to be deployed there; nothing exists at
+   that path yet.
 2. **One static file** served at `https://dnsprobe.blocktest.btciq.app/dnsdiag/` (any static web
    server — no custom backend logic required on that host). It must read the `n` query parameter
-   from its own URL and call the Apollo backend's receipt endpoint. Minimal reference implementation:
+   from its own URL and call the Apollo backend's receipt endpoint. Serve it with
+   `Cache-Control: no-store` (as an HTTP response header if the server allows it; the `<meta>` tag
+   below is a same-effect fallback for static hosts that don't let you set custom headers) so browser
+   caching can never replay a stale receipt call or skip the request on a repeated run. Minimal
+   reference implementation:
 
    ```html
    <!DOCTYPE html>
-   <html><body>
+   <html><head><meta http-equiv="Cache-Control" content="no-store" /></head><body>
    <p>Apollo DNS/DoH diagnostic probe. You can close this page.</p>
    <script>
      var n = new URLSearchParams(location.search).get("n");
      if (n) {
-       fetch("<GD_BACKEND_URL>/api/dns-diagnostics/receipts/" + encodeURIComponent(n), { method: "POST", keepalive: true }).catch(function () {});
+       fetch("<GD_BACKEND_URL>/api/dns-diagnostics/receipts/" + encodeURIComponent(n), { method: "POST", keepalive: true, cache: "no-store" }).catch(function () {});
      }
    </script>
    </body></html>
    ```
 
    Replace `<GD_BACKEND_URL>` with the same public backend base URL already used for
-   `GD_BACKEND_URL` in the `native-gates` CI variable (see `docs/M1_CI_RUNBOOK.md`). The backend's
-   CORS policy already allows all origins, so no server-side changes are needed to accept this
-   cross-origin call.
+   `GD_BACKEND_URL` in the `native-gates` CI variable (see `docs/M1_CI_RUNBOOK.md`) — currently
+   `https://guard-dog-m1.preview.emergentagent.com`. The backend's CORS policy already allows all
+   origins, so no server-side changes are needed to accept this cross-origin call.
+   **Verified 2026-09**: `GET https://guard-dog-m1.preview.emergentagent.com/api/dns-diagnostics/receipts/<nonce>`
+   is externally HTTPS-reachable and returns the expected JSON shape right now — the receiving end is
+   ready; only the sending static page (step 2 above) is still pending.
 
    The diagnostic tool constructs the exact URL to open as
    `https://dnsprobe.blocktest.btciq.app/dnsdiag/?n=<random-nonce>` (see
@@ -85,6 +97,11 @@ this repo cannot provision external DNS/TLS/hosting):
    `GET /api/dns-diagnostics/receipts/<nonce>` (see `backend/app/api/routes/dns_diagnostics.py` —
    completely separate namespace, in-memory only, never touches any M1/M2 rule data) to confirm
    receipt independently of anything the tester reports.
+
+   **On the in-memory receipt store**: acceptable as-is for this characterization. A backend restart
+   mid-session can at worst turn a real bypass into `UNOBSERVABLE` (the receipt is lost) — it can
+   never fabricate a `BYPASSED` verdict. No persistence is planned unless physical testing shows an
+   actual need for it.
 
 ## 2. Evidence schema (per probe, exported verbatim in the JSON/PDF)
 

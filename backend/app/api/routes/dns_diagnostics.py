@@ -24,7 +24,7 @@ import re
 import time
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 
 router = APIRouter(prefix="/dns-diagnostics", tags=["dns-diagnostics"])
 
@@ -54,8 +54,9 @@ def _validate(nonce: str) -> None:
 
 
 @router.post("/receipts/{nonce}")
-async def record_receipt(nonce: str, request: Request) -> dict:
+async def record_receipt(nonce: str, request: Request, response: Response) -> dict:
     _validate(nonce)
+    response.headers["Cache-Control"] = "no-store"
     store = _store(request)
     _prune(store)
     now = time.time()
@@ -66,8 +67,9 @@ async def record_receipt(nonce: str, request: Request) -> dict:
 
 
 @router.get("/receipts/{nonce}")
-async def get_receipt(nonce: str, request: Request) -> dict:
+async def get_receipt(nonce: str, request: Request, response: Response) -> dict:
     _validate(nonce)
+    response.headers["Cache-Control"] = "no-store"
     store = _store(request)
     _prune(store)
     entry = store.get(nonce)
