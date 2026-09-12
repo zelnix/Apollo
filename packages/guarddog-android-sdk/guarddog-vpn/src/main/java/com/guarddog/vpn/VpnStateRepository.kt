@@ -22,6 +22,17 @@ class VpnStateRepository(private val clock: Clock = SystemClock) : ProtectionRun
     @Volatile var consentGranted: Boolean = false
         private set
 
+    /**
+     * Optional LIVE query of Android's own authoritative consent answer (wired by the bridge to
+     * `VpnService.prepare(context) == null`; see GuardDogExpoModule.kt). A real device run showed
+     * [consentGranted] going stale/wrong after a genuine OS-level revoke that no live `VpnService`
+     * instance was around to observe via [onRevoke]-driven [transition] -- so a cached boolean must
+     * never be treated as the final authority for a *query* when the OS itself can be asked fresh.
+     * Left null by plain unit tests (and briefly at process start before the bridge wires it), in
+     * which case [current] falls back to the cached value exactly as before -- no regression.
+     */
+    @Volatile var osConsentCheck: (() -> Boolean)? = null
+
     @Synchronized
     fun recordConsent(granted: Boolean) {
         consentGranted = granted
@@ -37,12 +48,20 @@ class VpnStateRepository(private val clock: Clock = SystemClock) : ProtectionRun
         listeners.forEach { it(snapshot) }
     }
 
-    override fun current(): ProtectionRuntimeState = ProtectionRuntimeState(
-        state = lifecycle.toProtectionState(),
-        consentGranted = consentGranted,
-        reason = lifecycle.reason(),
-        updatedAtEpochMillis = clock.nowEpochMillis(),
-    )
+    @Synchronized
+    override fun current(): ProtectionRuntimeState {
+        // Re-derive from the OS every time this is queried, when we can: never let a cached flag
+        // outlive what Android itself would say right now (see [osConsentCheck] doc above). The
+        // cache is corrected in place too, so it can't keep drifting further from the truth between
+        // queries.
+        osConsentCheck?.invoke()?.let { consentGranted = it }
+        return ProtectionRuntimeState(
+            state = lifecycle.toProtectionState(),
+            consentGranted = consentGranted,
+            reason = lifecycle.reason(),
+            updatedAtEpochMillis = clock.nowEpochMillis(),
+        )
+    }
 
     override fun addListener(listener: (ProtectionRuntimeState) -> Unit): () -> Unit {
         listeners.add(listener)

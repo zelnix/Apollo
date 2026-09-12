@@ -5,6 +5,7 @@ import com.guarddog.core.protection.ProtectionState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class VpnLifecycleStateTest {
@@ -33,5 +34,37 @@ class VpnLifecycleStateTest {
         assertFalse(repo.lifecycle.isEnforcing)
         assertEquals(listOf(ProtectionState.INACTIVE, ProtectionState.STARTING, ProtectionState.ACTIVE, ProtectionState.REVOKED), seen)
         assertEquals("VPN permission revoked by system/user", repo.current().reason)
+    }
+
+    // Phase 6A / M2.1 freeze regression: a physical device revoked VPN consent while no live
+    // VpnService instance was around to call onRevoke() -> transition(Revoked), leaving the cached
+    // consentGranted stale at true. current() must re-derive from a live OS check when one is wired.
+    @Test fun currentReDerivesConsentFromLiveOsCheckOverStaleCache() {
+        val repo = VpnStateRepository(FixedClock(1_000))
+        repo.recordConsent(true)
+        assertTrue(repo.current().consentGranted)
+        // Android's own authoritative answer disagrees with our stale cache (the reported bug).
+        repo.osConsentCheck = { false }
+        assertFalse(repo.current().consentGranted)
+        assertFalse(repo.consentGranted) // the cache itself is corrected too, not just the snapshot returned.
+    }
+
+    // No live check wired (plain unit tests, or the brief window before the bridge wires one at
+    // process start) -- current() must fall back to the cached value exactly as before this fix.
+    @Test fun currentFallsBackToCachedConsentWithoutALiveOsCheck() {
+        val repo = VpnStateRepository(FixedClock(1_000))
+        repo.recordConsent(true)
+        assertNull(repo.osConsentCheck)
+        assertTrue(repo.current().consentGranted)
+    }
+
+    // After an explicit stop where the OS still genuinely holds consent for this app, consentGranted
+    // must legitimately stay true -- never forced false just because the service stopped/destroyed.
+    @Test fun currentKeepsConsentTrueAfterExplicitStopWhenOsStillGrantsIt() {
+        val repo = VpnStateRepository(FixedClock(1_000))
+        repo.recordConsent(true)
+        repo.osConsentCheck = { true } // OS still prepared for this app.
+        repo.transition(VpnLifecycleState.Stopped("stopped by user"))
+        assertTrue(repo.current().consentGranted)
     }
 }

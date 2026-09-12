@@ -74,6 +74,22 @@ class GuardDogExpoModule : Module() {
                 GuardDogExpoAdapters.toRecord(event)?.let { sendEvent(EVENT_SECURITY, it.toBundle()) }
             }
             state.addListener { sendEvent(EVENT_STATE, GuardDogExpoAdapters.toRecord(it).toBundle()) }
+            // Consent truthfulness fix (Phase 6A / M2.1 freeze, row 3.2): a physical device run showed
+            // getProtectionState().consentGranted still reporting true after Android had genuinely
+            // revoked VPN consent for this app -- VpnService.onRevoke() is only observed by a LIVE
+            // service instance, so a revoke that happens while nothing is running (or between
+            // process restarts) never clears the cached flag. Wire a live, on-demand OS check so
+            // every status read re-derives consentGranted from VpnService.prepare(context) itself --
+            // prepare() returning null IS Android's own authoritative "this app currently holds VPN
+            // consent" answer, never merely assumed from our own cache. Falls back to the last-known
+            // cached value only if the check throws (e.g. no foreground context at that instant).
+            state.osConsentCheck = {
+                try {
+                    VpnService.prepare(context) == null
+                } catch (e: Exception) {
+                    state.consentGranted
+                }
+            }
             GuardDogVpnRuntime.reporter = engine
             // Gate Guard M2 Website Gate: the SAME engine instance -- GuardDogSDKEngine already holds
             // the M1 authorization table and the strictly parallel M2 WebsiteGateBinding table (Phase 3);

@@ -760,37 +760,96 @@ export interface DnsCapabilityCheckResult {
   run: Phase6RunState;
 }
 
+/** Dedicated, isolated host + rule for row 4.1 ONLY -- never `run.testDomain` (shared by rows
+ * 1.1/1.2/3.x). A real physical run showed row 4.1's old raw-counter-delta check misfire from
+ * leftover background retries against the SHARED test domain landing inside this row's own
+ * observation window. Using a completely separate signed block rule (see
+ * backend/scripts/add_dns_capability_rule.py -- additive, `m2-block-blocktest-001` untouched) means
+ * no other row's traffic can ever produce a matching, correctly-attributed event for THIS host. */
+export const DNS_CAPABILITY_TEST_HOST = "dnsprobe.blocktest.btciq.app";
+export const DNS_CAPABILITY_RULE_ID = "m2-block-dns-capability-001";
+
 /**
  * Group 4: Android does not expose the actual Private DNS setting value to a non-privileged app
  * (confirmed: even reading Settings.Global.PRIVATE_DNS_MODE needs WRITE_SECURE_SETTINGS/ADB/device-
  * owner on modern Android). So instead of reading the setting, this classifies the CONSEQUENCE from
- * two independent signals: (a) did Apollo's own plaintext DNS interception observe the query
- * (enforcementStats delta), (b) did the connection independently succeed via SOME path (a real HTTP
- * response, proving resolution + connect + TLS worked). BYPASSED/CAPABILITY_GAP is only ever
- * classified when (b) is true -- an absence of (a) alone is UNOBSERVABLE, never assumed to be a
- * bypass. Callable repeatedly (returns a fresh step each time); the tester may re-run this after
- * manually changing the device's Private DNS setting in Android Settings between taps.
+ * two independent signals, BOTH strictly attributed to this row's own dedicated probe host (never
+ * inferred from the GLOBAL observedMatching/droppedMatching counters, which are shared across every
+ * row's traffic in this run and were the source of a false FAIL from unrelated leftover retries):
+ * (a) did a genuine THREAT_BLOCKED event arrive whose own `host` field matches
+ * [DNS_CAPABILITY_TEST_HOST] exactly, (b) did the connection to that SAME host independently succeed
+ * via SOME path (a real HTTP response, proving resolution + connect + TLS worked). BYPASSED/
+ * CAPABILITY_GAP is only ever classified when (b) is true for OUR host -- an absence of (a) alone is
+ * UNOBSERVABLE, never assumed to be a bypass. Callable repeatedly (returns a fresh step each time);
+ * the tester may re-run this after manually changing the device's Private DNS setting in Android
+ * Settings between taps.
  */
 export async function runDnsCapabilityCheck(run: Phase6RunState): Promise<DnsCapabilityCheckResult> {
   const startedAt = nowIso();
   const statsBefore = GuardDogSecuritySDK.getEnforcementStats();
   let fetchOutcome: Awaited<ReturnType<typeof triggerDnsViaFetch>> | null = null;
   const { event } = await observeBlockedEventWindow(async () => {
-    fetchOutcome = await triggerDnsViaFetch(run.testDomain, 8000);
+    fetchOutcome = await triggerDnsViaFetch(DNS_CAPABILITY_TEST_HOST, 8000);
   }, POSITIVE_WINDOW_MS);
   const statsAfter = GuardDogSecuritySDK.getEnforcementStats();
-  const observedDelta = (statsAfter?.observedMatching ?? 0) - (statsBefore?.observedMatching ?? 0);
   const priorCount = run.steps.filter((s) => s.id.startsWith("4.")).length;
   const rowId = `4.${priorCount + 1}`;
+  // Strict per-row attribution: a genuine THREAT_BLOCKED only ever counts as THIS row's own
+  // evidence when its own `host` field matches the dedicated probe host queried above -- an event
+  // for any other host (e.g. leftover retries from rows 1.1/1.2/3.x against their own shared test
+  // domain) is unrelated noise and is explicitly excluded, never upgraded into this row's PASS/FAIL.
+  const attributedEvent = event && event.host?.toLowerCase() === DNS_CAPABILITY_TEST_HOST.toLowerCase() ? event : null;
+  const unrelatedEventNote = event && !attributedEvent
+    ? ` (A genuine THREAT_BLOCKED did arrive during this window for a DIFFERENT host [${event.host ?? "unknown"}] -- unrelated leftover traffic, correctly excluded from this row's own evidence.)`
+    : "";
   let s: Phase6StepResult;
-  if (event?.enforcementEvidenceId) {
-    s = step(rowId, 4, "Ambient Private DNS condition → DNS-capability check", "PASS", "DNS_QUERY_CAPTURED_AND_BLOCKED", `Apollo's DNS interception observed and blocked the query (evidenceId=${event.enforcementEvidenceId}). This ambient condition is fully captured by Apollo — not a bypass.`, { statsBefore, statsAfter, fetchOutcome, event }, startedAt);
-  } else if (observedDelta > 0) {
-    s = step(rowId, 4, "Ambient Private DNS condition → DNS-capability check", "FAIL", "OBSERVED_BUT_NOT_BLOCKED", "Apollo's interception observed a matching packet but did not produce a full evidence-backed block — an enforcement gap, not a documented capability limitation.", { statsBefore, statsAfter, fetchOutcome }, startedAt);
+  if (attributedEvent?.enforcementEvidenceId && attributedEvent.ruleId === DNS_CAPABILITY_RULE_ID) {
+    s = step(
+      rowId,
+      4,
+      "Ambient Private DNS condition → DNS-capability check",
+      "PASS",
+      "DNS_QUERY_CAPTURED_AND_BLOCKED",
+      `Apollo's DNS interception observed and blocked the dedicated probe query to ${DNS_CAPABILITY_TEST_HOST} (evidenceId=${attributedEvent.enforcementEvidenceId}, ruleId=${attributedEvent.ruleId}). This ambient condition is fully captured by Apollo — not a bypass.`,
+      { statsBefore, statsAfter, fetchOutcome, event, attributedEvent },
+      startedAt,
+    );
+  } else if (attributedEvent?.enforcementEvidenceId) {
+    // Host matched but a DIFFERENT rule authorized it -- a genuine, specifically-attributable
+    // authorization mismatch. Still derived only from this row's own evidence, never from ambient
+    // global counters.
+    s = step(
+      rowId,
+      4,
+      "Ambient Private DNS condition → DNS-capability check",
+      "FAIL",
+      "BLOCKED_BY_UNEXPECTED_RULE",
+      `The dedicated probe host ${DNS_CAPABILITY_TEST_HOST} was blocked, but by ruleId=${attributedEvent.ruleId} instead of the expected ${DNS_CAPABILITY_RULE_ID} -- a genuine authorization mismatch, attributed entirely to this row's own evidence.`,
+      { statsBefore, statsAfter, fetchOutcome, event, attributedEvent },
+      startedAt,
+    );
   } else if (fetchOutcome && (fetchOutcome as { outcome: string }).outcome === "resolved") {
-    s = step(rowId, 4, "Ambient Private DNS condition → DNS-capability check", "CAPABILITY_GAP", "INDEPENDENT_EVIDENCE_OF_BYPASS", "Apollo's plaintext DNS interception did not observe this query, AND the request independently succeeded (a real HTTP response came back) — proof the resolution/connection happened via a path invisible to Apollo (e.g. system Private DNS or app-embedded DoH). Documented capability gap, not a fabricated block and not an enforcement failure.", { statsBefore, statsAfter, fetchOutcome }, startedAt);
+    s = step(
+      rowId,
+      4,
+      "Ambient Private DNS condition → DNS-capability check",
+      "CAPABILITY_GAP",
+      "INDEPENDENT_EVIDENCE_OF_BYPASS",
+      `Apollo's plaintext DNS interception did not attribute a block to ${DNS_CAPABILITY_TEST_HOST}, AND the request to that same host independently succeeded (a real HTTP response came back) — proof the resolution/connection happened via a path invisible to Apollo (e.g. system Private DNS or app-embedded DoH). Documented capability gap, not a fabricated block and not an enforcement failure.${unrelatedEventNote}`,
+      { statsBefore, statsAfter, fetchOutcome, event },
+      startedAt,
+    );
   } else {
-    s = step(rowId, 4, "Ambient Private DNS condition → DNS-capability check", "UNOBSERVABLE", "NO_INDEPENDENT_EVIDENCE_EITHER_WAY", "Apollo did not observe this query, but the request also did not independently succeed (no confirmed HTTP response) — there is no evidence either way whether it bypassed Apollo or simply never resolved. Not classified as a bypass without independent proof.", { statsBefore, statsAfter, fetchOutcome }, startedAt);
+    s = step(
+      rowId,
+      4,
+      "Ambient Private DNS condition → DNS-capability check",
+      "UNOBSERVABLE",
+      "NO_INDEPENDENT_EVIDENCE_EITHER_WAY",
+      `Apollo did not attribute a block to ${DNS_CAPABILITY_TEST_HOST}, but the request to that same host also did not independently succeed (no confirmed HTTP response) — there is no evidence either way whether it bypassed Apollo or simply never resolved. Not classified as a bypass without independent proof.${unrelatedEventNote}`,
+      { statsBefore, statsAfter, fetchOutcome, event },
+      startedAt,
+    );
   }
   const advanced = withLog({ ...run, steps: [...run.steps, s], phase: run.phase === "dns-capability" ? "done" : run.phase }, `DNS-capability check: ${s.verdict} (${s.reasonCode}).`);
   return { step: s, run: finalizeRun(advanced) };

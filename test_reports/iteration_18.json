@@ -1,0 +1,33 @@
+{
+  "summary": "Tested M2.1 freeze fix: (1) new gd-m2-website-gate v4 bundle backend rule bundle (dedicated row-4.1 DNS-capability rule) and (2) frontend regression on /phase6-automated after phase6AutomatedHarness.ts row-4.1 rewrite. Backend: 14/14 pytest checks passed covering bundle version/rule-count/content, signature+payloadHash cryptographic verification via verify_bundle(), M1 frozen bundle unaffected, and /api/config unaffected. Frontend: app boots cleanly (GD_SMOKE_READY logged, native:false), navigated to /phase6-automated, tapped Run -> correctly short-circuits at PRECONDITION_FAILURE/NATIVE_MODULE_UNAVAILABLE (expected on web) with zero console/page errors. Native VPN/DNS-capability logic itself is untestable outside a physical Android device, as scoped.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "verified_working": {
+    "backend_bundle_v4": "GET /api/rules/gd-m2-website-gate/latest returns bundleVersion=4 with exactly 4 rules: m2-block-blocktest-001 (blocktest.btciq.app/block, unchanged), m2-kotlin-test-allow-001, m2-kotlin-test-block-001 (unchanged), and new m2-block-dns-capability-001 (dnsprobe.blocktest.btciq.app/block).",
+    "backend_signature": "Envelope signature verified end-to-end via app.services.rule_signer.verify_bundle() against known test Ed25519 pubkeys (gd-m1-test-ed25519-001/002) -- schema, payloadHash, keyId trust, signature, issued/expiry all accepted=True. payloadHash also independently recomputed via payload_hash() and matches exactly.",
+    "backend_m1_frozen": "GET /api/rules/gd-m1-controlled-block/latest still returns bundleVersion=25 (frozen), completely unaffected.",
+    "backend_config": "GET /api/config returns gateGuard.websiteGateRulesetId='gd-m2-website-gate' correctly, M1 capabilities/signing fields intact.",
+    "add_dns_capability_rule_script": "Re-ran backend/scripts/add_dns_capability_rule.py --confirm -- correctly reports NO-OP (idempotent), confirming bundle v4 with the new rule was already published and the script does not duplicate/re-sign unnecessarily.",
+    "frontend_smoke": "GD_SMOKE_READY log present in expo.out.log after harness.ts edit, native:false as expected on web, no bundler crash.",
+    "frontend_phase6_automated_route": "Navigated to /phase6-automated, tapped 'Run Automated Acceptance' -> Result card renders PRECONDITION_FAILURE/NATIVE_MODULE_UNAVAILABLE within ~4s, Technical Evidence toggle, PDF/JSON export, and Start new run buttons all render. Zero console errors, zero page errors captured."
+  },
+  "test_report_links": ["/app/backend/tests/test_m2_dns_capability_rule.py", "/app/test_reports/pytest/iteration_18_m2_dns.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "phase6AutomatedHarness.ts runDnsCapabilityCheck() attribution logic (strict per-row host+ruleId matching, excluding unrelated events as noise rather than upgrading them into this row's verdict) reviewed and is logically sound -- cannot be exercised beyond static review outside a physical Android device (native-check precondition short-circuits before row 4.1 in this environment, as scoped).",
+    "add_dns_capability_rule.py correctly refuses (exit 2) if no prior bundle exists, correctly no-ops if the rule/host is already present, and carries forward every existing rule byte-for-byte via RuleEntry(**r.model_dump()) before appending only the new rule -- matches the additive-only guarantee claimed in its docstring.",
+    "Groups 1-3 (rows 1.1-3.5) logic was NOT re-evaluated per instructions (frozen/already physically verified) -- only confirmed no regression via web smoke test."
+  ],
+  "updated_files": ["/app/backend/tests/test_m2_dns_capability_rule.py"],
+  "success_rate": {"backend": "100% (14/14)", "frontend": "100% of web-preview-reachable checks (app boot + /phase6-automated precondition path); native VPN/DNS-capability enforcement logic (rows 1.1-4.1) remains untestable outside a physical Android device build, as explicitly scoped out of this test pass."},
+  "seed_data_creation": "None -- reused already-published bundle v4 (script correctly no-op'd on re-run).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "M2.1 freeze fix (row 4.1 dedicated DNS-capability rule/host attribution + native consentGranted staleness fix) fully verified at the backend/API and frontend-boot level: bundle v4 correct+signed+verified, M1 frozen bundle and /api/config untouched, and /phase6-automated boots/runs cleanly to the expected PRECONDITION_FAILURE on web with zero errors. The actual native behaviors (VpnStateRepository.consentGranted fix, row 4.1's real DNS-capability blocking/attribution) still require a physical Android device pass -- cannot be exercised in this environment by design. No bugs found this session.",
+  "rca_of_issue": "N/A -- no bug reproduced this session."
+}
