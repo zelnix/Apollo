@@ -1,0 +1,47 @@
+{
+  "summary": "Tested the DoH probe evidence-model upgrade: new backend receipt endpoint (in-memory nonce store) and the frontend's rewritten section 3 UI. Backend: 4/4 pytest passed + manual curl verification against the public preview URL (unknown-nonce, record-then-poll, duplicate-POST-keeps-original-timestamp, malformed-nonce 400). Confirmed gd-m2-website-gate/latest (bundleVersion=4) and gd-m1-controlled-block/latest (bundleVersion=25) unaffected -- router wiring untouched. Frontend: manual 'Page loaded/did not load' RadioGroup confirmed fully removed (0 occurrences). Probe URL box / Finish&classify path is gated behind Section-1 'Activate', which always fails with NATIVE_MODULE_UNAVAILABLE on web (GuardDogSecuritySDK.nativeAvailable is hard-false without a native module, same as prior pass's Section 2 gating) -- so the nonce/probe-URL/finish flow could not be exercised end-to-end via the web preview UI; verified instead that the disabled button click is a true no-op (no crash, no console/page errors) and confirmed the NOT_TESTABLE manual-override path for section 3 still works (adds a record, increments Results count, enables Export buttons). Regression: home screen cards, back navigation, sections 1/2/4/5 all intact.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Section 3 App-embedded DoH probe (Start 120s observation window -> probe URL box -> Finish & classify)",
+        "issue": "Not a bug, but a testing-environment limitation worth flagging: 'Start 120s observation window' has disabled={busy || !activation?.ok}, and activation.ok can NEVER be true on the web preview because GuardDogSecuritySDK.nativeAvailable is hard-coded false without a native module (see GuardDogSecuritySDK.ts:102/107). This means the new nonce-generation/probe-URL/Finish&classify path described in the review request cannot be exercised through the UI in this environment at all -- it is symmetrically gated the same way Section 2's 'Run probe' already was in the previous pass. This is expected/by-design (same pattern as before), not a regression, but genuine end-to-end verification of pollReceipt()/buildAppEmbeddedDohRecord() wiring from a live UI interaction remains untested outside a native Android build.",
+        "affected_testIDs": ["dns-doh-start-window", "dns-doh-probe-url", "dns-doh-finish-window"]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "verified_working": {
+    "backend_receipt_endpoint": "GET on unknown nonce -> {received:false, receivedAt:null}. POST -> {recorded:true}, subsequent GET -> {received:true, receivedAt:<iso>}. Duplicate POST on same nonce keeps ORIGINAL receivedAt (verified byte-identical timestamp on 2nd GET). Malformed nonces ('ab', 'has spaces') -> HTTP 400 on both GET and POST paths (validated via _validate() shared helper). All verified via pytest (4/4 passed) AND manual curl against the public EXPO_PUBLIC_BACKEND_URL.",
+    "frozen_bundles_unaffected": "gd-m2-website-gate/latest returns bundleVersion=4 (200 OK), gd-m1-controlled-block/latest returns bundleVersion=25 (200 OK) -- both match the frozen versions stated in the review request; main.py router wiring for dns_diagnostics is purely additive.",
+    "manual_radio_removed": "Confirmed 0 occurrences of 'Page loaded' / 'Page did not load' text anywhere on the diagnostic screen -- the old manual outcome RadioGroup is fully gone from section 3.",
+    "probe_url_format_in_code": "buildDohProbeUrl() correctly returns https://dnsprobe.blocktest.btciq.app/dnsdiag/?n=<nonce> (verified by static code read, matches DNS_DIAGNOSTIC_PROBE_HOST constant); could not be observed live in DOM since the button that reveals it is gated (see integration_issues above).",
+    "not_testable_path_section3": "'Mark this configuration NOT_TESTABLE' button for DoH (dns-doh-doh-not-testable) still works independent of activation -- added a record, Results count went 0->2 (with DoT's own NOT_TESTABLE record), Export JSON/PDF buttons became enabled (aria-disabled removed) once records.length > 0.",
+    "sections_1_2_4_5_regression": "Activate button still gracefully fails with 'Failed: NATIVE_MODULE_UNAVAILABLE (Expo Go / web -- a native Android build is required)'; DoT RadioGroup (Off/Automatic/Strict) still renders/switches; Results section renders record cards with all expected KeyValue rows (Category, Probe host, Network, Saw plaintext UDP/53, Independent success, Notes); Export section renders Session ID + gated buttons -- all unchanged from prior pass.",
+    "home_screen_and_navigation": "Both 'Gate Guard M2.1 · Phase 6A' (phase6-nav-card) and 'Out-of-band · DNS / DoH Capability Diagnostic' (dns-doh-nav-card) cards render on home; navigation into the diagnostic screen and Back button both work with no console/page errors."
+  },
+  "test_report_links": [
+    "/app/test_reports/pytest/iteration_20_dns_diagnostics.xml",
+    "/app/backend/tests/test_dns_diagnostics_receipts.py"
+  ],
+  "action_items": [
+    "No code fix required for this round's stated scope -- backend and frontend both implement the reviewed changes correctly.",
+    "Note for main agent (informational, not a blocker): the new Section 3 nonce/probe-URL/Finish&classify flow is currently untestable end-to-end in ANY environment without a real native Android build + a live DNS record for dnsprobe.blocktest.btciq.app, exactly as the review request's agent_to_agent_context_note already anticipated. Static code review of dnsCapabilityDiagnostic.ts confirms pollReceipt(), startAppEmbeddedDohObservation(), and buildAppEmbeddedDohRecord() correctly wire to the same /api/dns-diagnostics/receipts/{nonce} contract verified independently on the backend, and buildAppEmbeddedDohRecord() correctly classifies as UNOBSERVABLE when receiptConfirmed is false and no attributed event exists (never guesses BYPASSED)."
+  ],
+  "critical_code_review_comments": [
+    "dns_diagnostics.py: in-memory-only, per-process app.state dict is a reasonable choice for a short-lived characterization session and correctly isolated from Mongo collections (no risk to M1/M2 data) -- confirmed no import of rules/keys/config repositories.",
+    "NONCE_RE regex (^[A-Za-z0-9_-]{6,128}$) correctly rejects both too-short and space-containing nonces with 400, matching the review's exact test cases.",
+    "store.setdefault() in record_receipt is the correct idiom to guarantee first-arrival-wins semantics without a race-prone read-then-write.",
+    "_prune() TTL sweep (1 hour) runs on every request which is O(n) but acceptable given this is a low-volume, short-lived diagnostic endpoint never touched by production traffic.",
+    "Frontend gating: activation.ok is required for both Section 2's 'Run probe' and Section 3's 'Start 120s observation window', and activation.ok can never be true on web (nativeAvailable is a native-module presence check) -- this is consistent, intentional design (matches prior pass), not a new issue, but worth main agent's awareness that true click-through testing of the receipt-based DoH flow will only ever be possible on a physical/emulated Android device with the native module built."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (4/4 pytest passed, all manual curl checks matched expected contract)", "frontend": "100% of testable acceptance criteria (UI removal of manual radio, NOT_TESTABLE path, no-crash gated-button behavior, regression of sections 1/2/4/5 and home screen) -- the live nonce/probe-URL/finish click-through path itself is environmentally untestable (gated by nativeAvailable=false on web), as anticipated by the review request"},
+  "seed_data_creation": "None -- test nonces created during manual curl verification (testnonce001abc) are in-memory only and will be pruned automatically after the 1-hour TTL; no persistent state created.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "This round's DNS/DoH receipt-evidence upgrade is verified correct on the backend (in isolation, via pytest + live curl against the public URL) and verified correct on the frontend for everything reachable through the web preview (manual radio removal, NOT_TESTABLE override path, graceful no-crash disabled-button behavior, zero regression to sections 1/2/4/5, home screen, and the frozen M2.1/M1 bundle endpoints). The actual nonce-generation -> probe-URL-display -> Finish&classify click-through cannot be triggered in ANY current preview environment because it sits behind the Section 1 'Activate' gate, which requires GuardDogSecuritySDK.nativeAvailable===true (a native module presence check that is unconditionally false on web/Expo-Go). This is an existing, intentional design carried over from the prior pass (Section 2's Run probe has the identical gate) -- not a new defect. If a native Android build ever becomes testable in this pipeline, that would be the point to finally exercise the real click-through DoH flow end-to-end.",
+  "rca_of_issue": "N/A -- no bug reproduced this session. The one caveat raised (Section 3 primary flow untestable via web UI) is an environment/architecture constraint, not a code defect: activation.ok is required by design and nativeAvailable is correctly and permanently false without a native module."
+}

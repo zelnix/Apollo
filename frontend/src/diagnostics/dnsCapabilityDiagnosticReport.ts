@@ -48,8 +48,9 @@ export function buildDnsCharacterizationHtml(run: DnsCharacterizationRun): strin
 This is an OBSERVATIONAL characterization tool, completely separate from the frozen M2.1 Phase 6A acceptance harness.
 It does not test, weaken, or re-run any M2.1 acceptance row, and carries no acceptance/freeze meaning of its own.
 Every classification below is decided from directly observed evidence (the SDK's own validated security-event
-stream, or an explicit manual tester report for app-embedded DoH, which this app cannot trigger or observe itself) --
-never inferred from absence alone. No mitigation or enforcement behavior was added, changed, or tested.
+stream, or the backend's independently server-verified nonce receipt for app-embedded DoH, which this app cannot
+trigger or observe itself) -- never inferred from absence alone, and never from a manually-reported judgment call.
+No mitigation or enforcement behavior was added, changed, or tested.
 </div>
 <p><strong>Run ID:</strong> ${esc(run.runId)} &nbsp; <strong>Started:</strong> ${esc(run.startedAt)}</p>
 <p><strong>APK SHA-256:</strong> ${esc(run.buildProvenance?.apkSha256)} &nbsp; <strong>Commit/CI run:</strong> ${esc(run.buildProvenance?.gitSha)} / ${esc(run.buildProvenance?.ciRunId)}</p>

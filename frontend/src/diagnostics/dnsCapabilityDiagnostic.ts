@@ -43,16 +43,18 @@ export interface DnsDiagnosticRecord {
   websiteGateEventProduced: boolean;
   attributedEvent: SecurityEvent | null;
   independentSuccess: boolean | null;
-  independentSuccessSource: "in-app-fetch" | "manual-tester-report" | "not-applicable";
+  independentSuccessSource: "in-app-fetch" | "controlled-server-receipt" | "not-applicable";
   classification: DnsDiagnosticClassification;
   notes: string | null;
   probeStartedAt: string;
   probeEndedAt: string;
 }
 
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+
 const nowIso = () => new Date().toISOString();
 
-async function getNetworkType(): Promise<string | null> {
+export async function getNetworkType(): Promise<string | null> {
   try {
     const state = await Network.getNetworkStateAsync();
     return state.type ?? null;
@@ -143,63 +145,98 @@ export async function runPrivateDnsProbe(configurationLabel: string, windowMs = 
   };
 }
 
-/** App-embedded DoH (e.g. a browser's own built-in DoH) cannot be triggered, and its page-load
- * result cannot be observed, by this app -- the tester must manually switch to the target browser,
- * navigate to `https://${DNS_DIAGNOSTIC_PROBE_HOST}/`, and report back whether it loaded. This
- * starts listening for a genuine THREAT_BLOCKED BEFORE that happens; call the returned `finish()`
- * once the tester is back in this app (or let it auto-expire after `windowMs`). */
-export function startAppEmbeddedDohObservation(windowMs = 90_000): { startedAt: string; finish: () => Promise<SecurityEvent | null> } {
+/** App-embedded DoH (e.g. a browser's own built-in DoH) cannot be triggered by this app, and the M2.1
+ * freeze's own lesson applies here too: a manually-reported "the page looked like it loaded"
+ * judgment is not strong enough evidence to support a machine BYPASSED verdict -- it reintroduces
+ * exactly the human interpretation the freeze worked to remove. Instead, each probe gets a unique
+ * nonce; the tester opens the dedicated probe URL (see buildDohProbeUrl) in the target browser,
+ * whose page independently calls the backend's receipt endpoint client-side. Apollo's own attributed
+ * event stream AND the server-confirmed receipt are both evidence this tool observes itself -- never
+ * a tester's subjective judgment call. */
+export function generateProbeNonce(): string {
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** The exact URL the tester opens in the target browser. See
+ * docs/dns-capability-characterization.md for the single static asset that must be hosted at this
+ * already-DNS/TLS-provisioned host to serve it and report the receipt -- this app does not, and
+ * cannot, host that page itself (it must be reachable at the SAME hostname Apollo's dedicated rule
+ * matches, independent of this app). */
+export function buildDohProbeUrl(nonce: string): string {
+  return `https://${DNS_DIAGNOSTIC_PROBE_HOST}/dnsdiag/?n=${nonce}`;
+}
+
+/** Polls the backend receipt endpoint until it confirms the nonce arrived, or `deadlineMs` elapses.
+ * A transient network hiccup while polling is retried, never treated as a definitive "not received." */
+async function pollReceipt(nonce: string, deadlineMs: number, intervalMs = 2000): Promise<boolean> {
+  const deadline = Date.now() + deadlineMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/dns-diagnostics/receipts/${nonce}`);
+      if (res.ok) {
+        const body = (await res.json()) as { received: boolean };
+        if (body.received) return true;
+      }
+    } catch {
+      // transient network hiccup while polling -- keep trying until the deadline instead of giving up.
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  return false;
+}
+
+/** Starts listening for a genuine, attributed THREAT_BLOCKED the moment the tester is about to open
+ * the probe URL in the target browser. Call the returned `finish()` once the tester is back in this
+ * app (or let it auto-expire after `maxWindowMs`) -- it does one final short receipt poll before
+ * resolving, since the beacon fetch on the probe page completes almost instantly on page load. */
+export function startAppEmbeddedDohObservation(nonce: string, maxWindowMs = 120_000): { startedAt: string; finish: () => Promise<{ event: SecurityEvent | null; receiptConfirmed: boolean }> } {
   const startedAt = nowIso();
   let settled = false;
-  let resolveEvent!: (e: SecurityEvent | null) => void;
-  const promise = new Promise<SecurityEvent | null>((resolve) => {
-    resolveEvent = resolve;
-  });
-  const timer = setTimeout(() => {
-    if (settled) return;
+  let capturedEvent: SecurityEvent | null = null;
+  const hardTimer = setTimeout(() => {
     settled = true;
     unsubscribe();
-    resolveEvent(null);
-  }, windowMs);
+  }, maxWindowMs);
   const unsubscribe = GuardDogSecuritySDK.onSecurityEvent((event) => {
-    if (settled || !isGenuineBlockedEvent(event)) return;
-    settled = true;
-    clearTimeout(timer);
-    unsubscribe();
-    resolveEvent(event);
+    if (settled || capturedEvent || !isAttributedToProbe(event)) return;
+    capturedEvent = event; // keep the first attributed hit; later unrelated noise is ignored anyway.
   });
   return {
     startedAt,
     finish: async () => {
       if (!settled) {
         settled = true;
-        clearTimeout(timer);
+        clearTimeout(hardTimer);
         unsubscribe();
-        resolveEvent(null);
       }
-      return promise;
+      // A short final grace poll -- covers the case where the tester already saw the page load and
+      // is now just tapping "Finish", plus a small margin for network jitter on the beacon call.
+      const receiptConfirmed = await pollReceipt(nonce, 5000, 1000);
+      return { event: capturedEvent, receiptConfirmed };
     },
   };
 }
 
-/** Builds the record for an app-embedded DoH probe from whatever the observation window captured
- * plus the tester's own manual report of whether the browser's page load succeeded -- this app
- * cannot observe another app's network result itself, so `browserLoadedSuccessfully` is always an
- * explicit, honestly-labelled manual report, never inferred. */
-export async function buildAppEmbeddedDohRecord(configurationLabel: string, event: SecurityEvent | null, browserLoadedSuccessfully: boolean | null, probeStartedAt: string): Promise<DnsDiagnosticRecord> {
+/** Builds the record for an app-embedded DoH probe from ONLY machine-observed evidence: Apollo's own
+ * attributed event stream, and the backend's independent, server-verified receipt confirmation --
+ * never a manually-reported judgment call. */
+export function buildAppEmbeddedDohRecord(configurationLabel: string, nonce: string, event: SecurityEvent | null, receiptConfirmed: boolean, probeStartedAt: string, transportNetworkType: string | null): DnsDiagnosticRecord {
   const attributedEvent = isAttributedToProbe(event) ? event : null;
+  // If Apollo captured/blocked it, the receipt should never have arrived at all (the request never
+  // reached the probe page) -- independentSuccess is only meaningful when there was nothing to capture.
+  const independentSuccess = attributedEvent ? null : receiptConfirmed;
   return {
     id: `doh-${Date.now()}`,
     category: "app-embedded-doh",
     configurationLabel,
-    probeHostname: DNS_DIAGNOSTIC_PROBE_HOST,
-    transportNetworkType: await getNetworkType(),
+    probeHostname: buildDohProbeUrl(nonce),
+    transportNetworkType,
     sawPlaintextUdp53: !!attributedEvent,
     websiteGateEventProduced: !!attributedEvent,
     attributedEvent,
-    independentSuccess: browserLoadedSuccessfully,
-    independentSuccessSource: "manual-tester-report",
-    classification: classify(attributedEvent, browserLoadedSuccessfully),
+    independentSuccess,
+    independentSuccessSource: attributedEvent ? "not-applicable" : "controlled-server-receipt",
+    classification: classify(attributedEvent, independentSuccess),
     notes: unrelatedEventNote(event, attributedEvent),
     probeStartedAt,
     probeEndedAt: nowIso(),

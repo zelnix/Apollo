@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from motor.motor_asyncio import AsyncIOMotorClient
 from starlette.middleware.cors import CORSMiddleware
 
-from app.api.routes import config, health, intelligence, keys, rules
+from app.api.routes import config, dns_diagnostics, health, intelligence, keys, rules
 from app.core.logging import configure_logging, get_logger
 from app.core.settings import get_settings
 from app.providers.google_webrisk import GoogleWebRiskProvider
@@ -77,7 +77,7 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Guard Dog M1 Backend", lifespan=lifespan)
-    for router in (health.router, config.router, rules.router, keys.router, intelligence.router):
+    for router in (health.router, config.router, rules.router, keys.router, intelligence.router, dns_diagnostics.router):
         app.include_router(router, prefix="/api")
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
     return app

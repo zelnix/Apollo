@@ -20,8 +20,11 @@ import {
   activateWebsiteGateForDiagnostics,
   type ActivationResult,
   buildAppEmbeddedDohRecord,
+  buildDohProbeUrl,
   type DnsDiagnosticRecord,
   DNS_DIAGNOSTIC_PROBE_HOST,
+  generateProbeNonce,
+  getNetworkType,
   notTestableRecord,
   runPrivateDnsProbe,
   startAppEmbeddedDohObservation,
@@ -31,7 +34,6 @@ import { makeStyles, useTheme } from "@/src/theme";
 
 const DOT_MODES = ["Off", "Automatic", "Strict hostname"];
 const DOH_STATES = ["DoH ON", "DoH OFF"];
-const DOH_OUTCOMES = ["Not yet reported", "Page loaded", "Page did not load"];
 
 const useStyles = makeStyles((colors) => ({
   root: { flex: 1, backgroundColor: colors.surface },
@@ -47,6 +49,9 @@ const useStyles = makeStyles((colors) => ({
   errorText: { color: colors.error, fontSize: 12, fontWeight: "600" },
   scopeBanner: { backgroundColor: colors.surfaceTertiary, borderRadius: 12, padding: 12, gap: 4, borderWidth: 1, borderColor: colors.border },
   scopeBannerText: { color: colors.onSurfaceSecondary, fontSize: 11, lineHeight: 16 },
+  probeUrlBox: { backgroundColor: colors.surfaceTertiary, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: colors.borderStrong },
+  probeUrlText: { color: colors.brandPrimary, fontSize: 13, fontWeight: "700" },
+  receiptStatus: { fontSize: 12, fontWeight: "700" },
 }));
 
 function classificationTone(c: DnsDiagnosticRecord["classification"]): "good" | "bad" | "neutral" {
@@ -73,8 +78,8 @@ export default function DnsCapabilityDiagnosticScreen() {
 
   const [dohBrowserLabel, setDohBrowserLabel] = useState("");
   const [dohState, setDohState] = useState(DOH_STATES[0]);
-  const [dohOutcome, setDohOutcome] = useState(DOH_OUTCOMES[0]);
-  const [dohObservation, setDohObservation] = useState<{ startedAt: string; finish: () => Promise<import("@/src/contracts/securityEventSchemas").SecurityEvent | null> } | null>(null);
+  const [dohNonce, setDohNonce] = useState<string | null>(null);
+  const [dohObservation, setDohObservation] = useState<{ startedAt: string; finish: () => Promise<{ event: import("@/src/contracts/securityEventSchemas").SecurityEvent | null; receiptConfirmed: boolean }> } | null>(null);
 
   async function handleActivate() {
     setActivating(true);
@@ -106,21 +111,23 @@ export default function DnsCapabilityDiagnosticScreen() {
 
   function handleStartDohWindow() {
     setError(null);
-    setDohOutcome(DOH_OUTCOMES[0]);
-    setDohObservation(startAppEmbeddedDohObservation(90_000));
+    const nonce = generateProbeNonce();
+    setDohNonce(nonce);
+    setDohObservation(startAppEmbeddedDohObservation(nonce, 120_000));
   }
 
   async function handleFinishDohWindow() {
-    if (!dohObservation) return;
+    if (!dohObservation || !dohNonce) return;
     setBusy(true);
     setError(null);
     try {
-      const event = await dohObservation.finish();
-      const browserLoaded = dohOutcome === "Page loaded" ? true : dohOutcome === "Page did not load" ? false : null;
+      const { event, receiptConfirmed } = await dohObservation.finish();
+      const netType = await getNetworkType();
       const label = `${dohBrowserLabel.trim() || "Unnamed browser"}, ${dohState}`;
-      const record = await buildAppEmbeddedDohRecord(label, event, browserLoaded, dohObservation.startedAt);
+      const record = buildAppEmbeddedDohRecord(label, dohNonce, event, receiptConfirmed, dohObservation.startedAt, netType);
       setRecords((prev) => [record, ...prev]);
       setDohObservation(null);
+      setDohNonce(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -206,17 +213,20 @@ export default function DnsCapabilityDiagnosticScreen() {
 
         <Card title="3 · App-embedded DoH probe">
           <Text style={styles.note}>
-            This app cannot trigger or observe another app&apos;s DoH request. Start the window, switch to the target browser, navigate to https://{DNS_DIAGNOSTIC_PROBE_HOST}/, note whether it loaded, then come back and finish.
+            This app cannot trigger or observe another app&apos;s DoH request, and a manual &quot;it looked like it loaded&quot; judgment isn&apos;t strong enough evidence — so this probe is verified by a controlled server receipt instead. Start the window, open the exact URL below in the target browser, then come back and finish.
           </Text>
           <Text style={styles.note} testID="dns-doh-label-hint">Browser name / version:</Text>
           <TextInputLike value={dohBrowserLabel} onChangeText={setDohBrowserLabel} placeholder="e.g. Firefox 143" />
           <RadioGroup label="DoH setting in that browser" options={DOH_STATES} value={dohState} onChange={setDohState} testID="dns-doh-state" />
           {!dohObservation ? (
-            <ActionButton title="Start 90s observation window" onPress={handleStartDohWindow} disabled={busy || !activation?.ok} testID="dns-doh-start-window" />
+            <ActionButton title="Start 120s observation window" onPress={handleStartDohWindow} disabled={busy || !activation?.ok} testID="dns-doh-start-window" />
           ) : (
             <>
-              <Text style={styles.note}>Window running since {dohObservation.startedAt}. Switch apps now — this keeps listening in the background.</Text>
-              <RadioGroup label="What happened in the browser?" options={DOH_OUTCOMES} value={dohOutcome} onChange={setDohOutcome} testID="dns-doh-outcome" />
+              <Text style={styles.note}>Open this exact URL in the target browser now (long-press to copy):</Text>
+              <View style={styles.probeUrlBox}>
+                <Text style={styles.probeUrlText} selectable testID="dns-doh-probe-url">{dohNonce ? buildDohProbeUrl(dohNonce) : ""}</Text>
+              </View>
+              <Text style={styles.note}>Window running since {dohObservation.startedAt}. This keeps listening in the background — switch apps now.</Text>
               <ActionButton title={busy ? "Finishing…" : "Finish & classify"} onPress={handleFinishDohWindow} disabled={busy} testID="dns-doh-finish-window" />
             </>
           )}

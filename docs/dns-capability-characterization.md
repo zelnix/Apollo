@@ -37,9 +37,54 @@ acceptance milestone (see §6, "Future mitigation candidates").
 - **Probe target**: the dedicated, already-signed M2.1 rule `m2-block-dns-capability-001` →
   `dnsprobe.blocktest.btciq.app`, live in the frozen `gd-m2-website-gate` bundle (v4). Reused
   **read-only** — this tool never signs or republishes a bundle.
-- **Evidence source**: Apollo's own validated `THREAT_BLOCKED` security-event stream, strictly
-  attributed by `host` + `ruleId` match to the dedicated probe rule (same principle the M2.1 freeze
-  required for row 4.1 — never inferred from a shared/global counter).
+- **Evidence source**:
+  - **DoT (Private DNS)**: Apollo's own validated `THREAT_BLOCKED` security-event stream (strictly
+    attributed by `host`+`ruleId`) plus the app's own `fetch()` result — both fully machine-observed,
+    no manual judgment involved.
+  - **App-embedded DoH**: the SAME attributed event stream, plus an **independently server-verified
+    nonce receipt** (see §1a) — deliberately NOT a manually-reported "it looked like it loaded"
+    judgment, since that would reintroduce exactly the human interpretation the M2.1 freeze worked to
+    remove.
+
+### 1a. Required infra dependency: the nonce-receipt probe page + DNS/TLS
+
+Before running the DoH matrix, two things must exist on the operator's side (outside this codebase —
+this repo cannot provision external DNS/TLS/hosting):
+
+1. **A real DNS record + valid TLS certificate for `dnsprobe.blocktest.btciq.app`.** Without this, a
+   genuine DoH bypass will fail at DNS resolution or the TLS handshake before ever reaching the
+   receipt endpoint, and will incorrectly collapse into `UNOBSERVABLE` instead of a clean `BYPASSED`.
+   Point it at any reachable HTTPS host (does not need to be the same server as `blocktest.btciq.app`,
+   though reusing that existing controlled endpoint's server is the simplest option since it is
+   already provisioned for a sibling subdomain).
+2. **One static file** served at `https://dnsprobe.blocktest.btciq.app/dnsdiag/` (any static web
+   server — no custom backend logic required on that host). It must read the `n` query parameter
+   from its own URL and call the Apollo backend's receipt endpoint. Minimal reference implementation:
+
+   ```html
+   <!DOCTYPE html>
+   <html><body>
+   <p>Apollo DNS/DoH diagnostic probe. You can close this page.</p>
+   <script>
+     var n = new URLSearchParams(location.search).get("n");
+     if (n) {
+       fetch("<GD_BACKEND_URL>/api/dns-diagnostics/receipts/" + encodeURIComponent(n), { method: "POST", keepalive: true }).catch(function () {});
+     }
+   </script>
+   </body></html>
+   ```
+
+   Replace `<GD_BACKEND_URL>` with the same public backend base URL already used for
+   `GD_BACKEND_URL` in the `native-gates` CI variable (see `docs/M1_CI_RUNBOOK.md`). The backend's
+   CORS policy already allows all origins, so no server-side changes are needed to accept this
+   cross-origin call.
+
+   The diagnostic tool constructs the exact URL to open as
+   `https://dnsprobe.blocktest.btciq.app/dnsdiag/?n=<random-nonce>` (see
+   `buildDohProbeUrl` in `dnsCapabilityDiagnostic.ts`) and polls
+   `GET /api/dns-diagnostics/receipts/<nonce>` (see `backend/app/api/routes/dns_diagnostics.py` —
+   completely separate namespace, in-memory only, never touches any M1/M2 rule data) to confirm
+   receipt independently of anything the tester reports.
 
 ## 2. Evidence schema (per probe, exported verbatim in the JSON/PDF)
 
@@ -47,16 +92,18 @@ acceptance milestone (see §6, "Future mitigation candidates").
 |---|---|
 | `category` | `private-dns` (DoT) or `app-embedded-doh` |
 | `configurationLabel` | Manual tester label — Android does not expose Private DNS mode or another app's DoH setting to this app |
-| `probeHostname` | Always `dnsprobe.blocktest.btciq.app` |
+| `probeHostname` | The exact host (DoT) or full probe URL with nonce (DoH) queried |
 | `transportNetworkType` | wifi / cellular / other, auto-captured via `expo-network` |
 | `sawPlaintextUdp53` / `websiteGateEventProduced` | true iff a genuine `THREAT_BLOCKED` arrived, attributed to this exact probe's `host`+`ruleId` |
-| `independentSuccess` | For DoT: did the app's own `fetch()` get a real HTTP response? For DoH: tester's manual report of whether the browser's page load succeeded (this app cannot observe another app's network result) |
-| `independentSuccessSource` | `in-app-fetch` / `manual-tester-report` / `not-applicable` |
+| `independentSuccess` | For DoT: did the app's own `fetch()` get a real HTTP response? For DoH: did the backend's nonce-receipt endpoint independently confirm the probe page loaded? Both are machine-observed, never a manual report |
+| `independentSuccessSource` | `in-app-fetch` / `controlled-server-receipt` / `not-applicable` |
 | `classification` | `CAPTURED` (Apollo saw+blocked it) / `BYPASSED` (independently proven success with no Apollo visibility) / `UNOBSERVABLE` (no evidence either way — never guessed) / `NOT_TESTABLE` (explicit precondition failure) |
 | `notes` | e.g. an unrelated genuine block event correctly excluded from this probe's evidence |
 
 **Rule, same as the frozen M2.1 row 4.1**: `BYPASSED` is only ever concluded from independent proof
-of success — absence of capture alone is always `UNOBSERVABLE`, never assumed to be a bypass.
+of success — absence of capture alone is always `UNOBSERVABLE`, never assumed to be a bypass. For
+DoH specifically, that independent proof is now the server receipt, never a tester's subjective
+judgment of whether a page "looked like it loaded."
 
 ## 3. Configurations characterized
 
