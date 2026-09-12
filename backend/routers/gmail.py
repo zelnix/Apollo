@@ -92,12 +92,18 @@ async def gmail_disconnect(device_id: str = Query(min_length=8, max_length=64)):
     await gmail_service.disconnect(device_id)
 
 
+class LinkAnchorOut(BaseModel):
+    text: str
+    href: str
+
+
 class ScanMessage(BaseModel):
     id: str
     from_: str = Field(alias="from")
     subject: str
     date: str
     body: str
+    links: list[LinkAnchorOut] = Field(default_factory=list)
 
     class Config:
         populate_by_name = True

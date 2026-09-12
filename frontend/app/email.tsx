@@ -15,7 +15,9 @@ import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { analyseEmail, type EmailAnalysis } from "@/src/domain/emailAnalysis";
+import { evaluateLinkGuardFindings, extractAnchorsFromPlainText } from "@/src/domain/linkGuard";
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
+import { STATE_RANK } from "@/src/domain/stateMachine";
 import { type MessageExplanation, type MessageUrlResult, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -104,8 +106,12 @@ export default function CheckEmail() {
           local_state: a.state, scenario: a.scenario, signals: a.signalLabels.slice(0, 20), claimed_brand: a.claimedBrand, second_opinion: true,
         });
         urls = r.urls; explanation = r.explanation;
-        const bad = urls.find((u) => u.verdict === "malicious");
-        if (bad && a.state !== "barking") a = { ...a, state: "barking", why: [...a.why, `The link (${bad.host}) is confirmed dangerous by Apollo's threat intelligence.`] };
+        // Email Guard: automatic pre-click assessment — redirect chain + RDAP domain-info (already
+        // inside `urls`) plus any display-text-vs-real-destination mismatch recoverable from the
+        // plain pasted text. Can only raise state to growling/barking, never biting.
+        const guard = evaluateLinkGuardFindings(urls, extractAnchorsFromPlainText(raw));
+        if (STATE_RANK[guard.state] > STATE_RANK[a.state]) a = { ...a, state: guard.state, why: [...a.why, ...guard.why] };
+        else if (guard.why.length) a = { ...a, why: [...a.why, ...guard.why] };
       } catch { /* offline: on-device result stands */ }
       let event: PatrolEvent | null = null;
       if (a.state !== "resting") {

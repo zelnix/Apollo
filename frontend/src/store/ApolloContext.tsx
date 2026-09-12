@@ -18,6 +18,7 @@ import { minimalIndicator } from "@/src/domain/privacy";
 import { FAILURE_MESSAGE } from "@/src/domain/serviceHealth";
 import { markCheckDone } from "@/src/store/checkCompletion";
 import { analyseEmail } from "@/src/domain/emailAnalysis";
+import { evaluateLinkGuardFindings, extractAnchorsFromPlainText, type LinkAnchor } from "@/src/domain/linkGuard";
 import { analyseMessage, type MessageAnalysis } from "@/src/domain/messageAnalysis";
 import type { PageAnalysis } from "@/src/domain/pageAnalysis";
 import { analyseCall, type CallAnalysis, type CallInput } from "@/src/domain/callAnalysis";
@@ -25,7 +26,7 @@ import { analyseUrlLocally } from "@/src/domain/risk";
 import { STATE_RANK } from "@/src/domain/stateMachine";
 import { findScentFor } from "@/src/domain/threatScent";
 import { canTransition, resolveApolloState, type StateResolution } from "@/src/domain/stateMachine";
-import type { ApolloState, Capability, Decision, IntelResult, LocalAnalysis, PatrolEvent } from "@/src/domain/types";
+import type { ApolloState, Capability, Decision, DomainInfo, IntelResult, LocalAnalysis, PatrolEvent } from "@/src/domain/types";
 import { IS_MOCK_SECURITY, SECURITY_MODE, securityAdapter } from "@/src/security/securityAdapter";
 import type { BlockResult, NetworkStatus, ProtectionPermission, ProtectionStatus } from "@/src/security/SecurityPlatformAdapter";
 import { isVerifiedEnforcement } from "@/src/security/PlatformCapabilityProfile";
@@ -41,7 +42,7 @@ const K = { setup: "apollo.setup.done", events: "apollo.patrol.events", trust: "
 export interface TrustEntry { trust_id: string; device_id: string; indicator_type: "url" | "domain"; indicator_digest: string; indicator_host: string; event_id: string | null; created_at: string; local_indicator?: string }
 
 export interface CheckOutcome { local: LocalAnalysis; intel: IntelResult | null; intelError: string | null; decision: Decision; event: PatrolEvent | null }
-export interface MessageUrlResult { url: string; host: string; verdict: "clean" | "malicious" | "unknown"; threat_types: string[]; coverage: string }
+export interface MessageUrlResult { url: string; host: string; verdict: "clean" | "malicious" | "unknown"; threat_types: string[]; coverage: string; redirect_chain?: string[]; final_url?: string | null; domain_info?: DomainInfo | null }
 export interface MessageExplanation { summary: string; why: string[]; recommendation: string }
 export interface MessageOutcome { analysis: MessageAnalysis; urls: MessageUrlResult[]; explanation: MessageExplanation | null; remoteError: string | null; event: PatrolEvent | null }
 export { RECOVERY_STEPS, type RecoveryKind } from "@/src/domain/recovery";
@@ -420,8 +421,13 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       explanation = ex && typeof ex.summary === "string" && typeof ex.recommendation === "string" && Array.isArray(ex.why) ? ex : null;
     } catch (e) { remoteError = e instanceof Error ? e.message : "Apollo's second opinion is unavailable right now."; }
     let state = analysis.state; const why = [...analysis.why];
-    const malicious = urls.find((u) => u.verdict === "malicious");
-    if (malicious && STATE_RANK[state] < STATE_RANK.barking) { state = "barking"; why.push(`The link (${malicious.host}) is confirmed dangerous by Apollo's threat intelligence.`); }
+    // Email Guard / Text Guard: automatic pre-click assessment over every checked link (redirect
+    // chain + RDAP domain-info already included in `urls` from the enriched /message/analyse) plus
+    // any display-text-vs-real-destination mismatch recoverable from the plain pasted text. This can
+    // only ever raise state to growling/barking — never biting (see src/domain/linkGuard.ts).
+    const guard = evaluateLinkGuardFindings(urls, extractAnchorsFromPlainText(text));
+    if (STATE_RANK[guard.state] > STATE_RANK[state]) state = guard.state;
+    why.push(...guard.why);
     const firstHost = urls[0]?.host ?? (analysis.signals.urls[0] ? analysis.signals.urls[0].replace(/^https?:\/\//i, "").split("/")[0].toLowerCase() : null);
     let event: PatrolEvent | null = null;
     if (state !== "resting") {
@@ -440,12 +446,28 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   const scanGmailInbox = useCallback(async (): Promise<{ checked: number; flagged: PatrolEvent[] }> => {
     if (!deviceId) return { checked: 0, flagged: [] };
-    // Raw message bodies live only in this local `messages` array for the duration of the loop
+    // Raw message bodies/links live only in this local `messages` array for the duration of the loop
     // below — never persisted (matches the "checked and discarded" contract on the backend).
-    const messages = await apiPost<{ id: string; from: string; subject: string; date: string; body: string }[]>("/gmail/scan", "gmail_scan", { device_id: deviceId });
+    const messages = await apiPost<{ id: string; from: string; subject: string; date: string; body: string; links: LinkAnchor[] }[]>("/gmail/scan", "gmail_scan", { device_id: deviceId });
     const flagged: PatrolEvent[] = [];
     for (const m of messages) {
-      const a = analyseEmail(m.body, { from: m.from, subject: m.subject });
+      let a = analyseEmail(m.body, { from: m.from, subject: m.subject });
+      let urls: MessageUrlResult[] = [];
+      if (a.urls.length) {
+        try {
+          const r = await apiPost<{ urls?: unknown }>("/message/analyse", "message_check", {
+            device_id: deviceId, sender: (m.from || "").slice(0, 80), text: `${m.subject}\n${m.body}`.slice(0, 4000), urls: a.urls.slice(0, 10),
+            local_state: a.state, scenario: a.scenario, signals: a.signalLabels.slice(0, 20), claimed_brand: a.claimedBrand, second_opinion: false,
+          });
+          urls = Array.isArray(r.urls) ? (r.urls as MessageUrlResult[]) : [];
+        } catch { /* offline/unavailable this pass — on-device result stands, Email Guard link findings just don't apply */ }
+      }
+      // Email Guard: automatic pre-click assessment — redirect chain + RDAP domain-info (already
+      // inside `urls`) plus real HTML anchor mismatch detection (Gmail gives us the actual <a>
+      // pairs, unlike pasted plain text). Can only raise state to growling/barking, never biting.
+      const guard = evaluateLinkGuardFindings(urls, m.links ?? []);
+      if (STATE_RANK[guard.state] > STATE_RANK[a.state]) a = { ...a, state: guard.state };
+      if (guard.why.length) a = { ...a, why: [...a.why, ...guard.why] };
       if (a.state === "resting") continue;
       const event = await upsertEvent({
         event_id: Crypto.randomUUID(), device_id: deviceId, category: "email", state: a.state, status: "active",

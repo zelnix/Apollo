@@ -110,9 +110,34 @@ def _walk_parts(part: dict):
             yield mime, _b64url_decode(part["body"]["data"])
 
 
-def _extract_text(message: dict) -> str:
-    """Prefer text/plain; fall back to a crude tag-strip of text/html. Capped — this is a signal
-    source for the on-device rule engine, not a faithful rendering of the email."""
+def _extract_anchors(chunks: list[tuple[str, bytes]]) -> list[dict[str, str]]:
+    """Pulls (visible text, href) pairs from the text/html MIME part — this is what Email Guard's
+    displayed-link-text vs real-destination mismatch check needs; plain text alone can't carry it."""
+    from bs4 import BeautifulSoup
+
+    anchors: list[dict[str, str]] = []
+    for mime, raw in chunks:
+        if mime != "text/html":
+            continue
+        try:
+            soup = BeautifulSoup(raw.decode("utf-8", errors="replace"), "html.parser")
+        except Exception:  # noqa: BLE001
+            continue
+        for a in soup.find_all("a", href=True):
+            href = str(a["href"]).strip()
+            text = a.get_text(" ", strip=True)
+            if not text or not href.lower().startswith(("http://", "https://")):
+                continue
+            anchors.append({"text": text[:120], "href": href[:500]})
+            if len(anchors) >= 20:
+                return anchors
+    return anchors
+
+
+def _extract_content(message: dict) -> tuple[str, list[dict[str, str]]]:
+    """Returns (plain_text, anchors). Text prefers text/plain (crude tag-strip fallback for
+    text/html); anchors come from the text/html part specifically, when present. Capped — this is a
+    signal source for the on-device rule engine, not a faithful rendering of the email."""
     payload = message.get("payload", {})
     chunks = list(_walk_parts(payload))
     if not chunks and payload.get("body", {}).get("data"):
@@ -123,7 +148,8 @@ def _extract_text(message: dict) -> str:
     if "<" in text and ">" in text:
         text = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", text, flags=re.IGNORECASE | re.DOTALL)
         text = re.sub(r"<[^>]+>", " ", text)
-    return re.sub(r"\s+", " ", text).strip()[:4000]
+    text = re.sub(r"\s+", " ", text).strip()[:4000]
+    return text, _extract_anchors(chunks)
 
 
 def _headers_of(message: dict) -> dict[str, str]:
@@ -150,5 +176,6 @@ async def scan_inbox(device_id: str, limit: int = 15) -> list[dict[str, Any]]:
                 continue
             msg = got.json()
             h = _headers_of(msg)
-            out.append({"id": msg.get("id", ""), "from": h.get("from", "")[:200], "subject": h.get("subject", "")[:300], "date": h.get("date", ""), "body": _extract_text(msg)})
+            text, anchors = _extract_content(msg)
+            out.append({"id": msg.get("id", ""), "from": h.get("from", "")[:200], "subject": h.get("subject", "")[:300], "date": h.get("date", ""), "body": text, "links": anchors})
     return out

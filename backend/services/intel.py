@@ -1,6 +1,7 @@
 """Reputation intelligence: blocklist + Google Safe Browsing, HMAC digest cache, redirect expansion."""
 from __future__ import annotations
 
+import asyncio
 import hmac
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
@@ -13,6 +14,7 @@ from fastapi import HTTPException
 from core.config import SAFE_BROWSING_API_KEY, SB_ENDPOINT, SB_THREAT_TYPES, URL_HMAC_SECRET, logger
 from core.db import db, now_utc
 from core.models import BlocklistEntry, IntelCheckResponse, IntelSource, ReputationCache, Verdict
+from services.rdap import lookup_domain_cached
 
 def digest(value: str) -> str:
     return hmac.new(URL_HMAC_SECRET.encode(), value.encode(), sha256).hexdigest()
@@ -165,3 +167,57 @@ async def run_intel_check(indicator_type: str, value: str) -> IntelCheckResponse
     return IntelCheckResponse(
         verdict=verdict, threat_types=threats, sources=sources, indicator_digest=dg, checked_at=ts, cached=False, coverage=coverage  # type: ignore[arg-type]
     )
+
+
+async def assess_indicator(indicator_type: str, value: str, expand: bool) -> IntelCheckResponse:
+    """The full check: blocklist + Safe Browsing verdict, optional redirect-chain expansion (URLs
+    only), and a best-effort/parallel RDAP domain-info lookup (see services/rdap.py) — never gates
+    the verdict. This is THE shared assessment used by both POST /intel/check (Check a Link) and
+    POST /message/analyse (Email/Text Guard's automatic per-link pre-click assessment), so every
+    link checked anywhere in the app gets the exact same treatment. Pure extraction of the previous
+    /intel/check body — behaviour for that endpoint is unchanged."""
+    if indicator_type == "url":
+        try:
+            initial_host: Optional[str] = sanitize_url(value)[1]
+        except HTTPException:
+            initial_host = None
+    else:
+        initial_host = value.strip().lower() or None
+    domain_task = asyncio.create_task(lookup_domain_cached(initial_host)) if initial_host else None
+
+    async def _await_domain():
+        if not domain_task:
+            return None
+        try:
+            return await asyncio.wait_for(domain_task, timeout=6.0)
+        except Exception:  # noqa: BLE001
+            return None
+
+    if not expand or indicator_type != "url":
+        result = await run_intel_check(indicator_type, value)
+        return result.model_copy(update={"domain_info": await _await_domain()})
+    # Bounded as a whole: a slow redirect chain must never hold the check hostage — judge the link as given instead.
+    try:
+        chain = await asyncio.wait_for(expand_redirects(value), timeout=12)
+    except asyncio.TimeoutError:
+        chain = [value]
+    final = chain[-1]
+    # Judge the final destination; any confirmed-malicious hop along the way also counts.
+    result = await run_intel_check("url", final)
+    threat_types, sources, verdict = list(result.threat_types), list(result.sources), result.verdict
+    for hop in chain[:-1]:
+        try:
+            r = await run_intel_check("url", hop)
+        except HTTPException:
+            continue
+        if r.verdict == "malicious":
+            verdict = "malicious"; threat_types = sorted(set(threat_types + r.threat_types))
+    hosts = []
+    for u in chain:
+        try:
+            hosts.append(sanitize_url(u)[1])
+        except HTTPException:
+            hosts.append(urlparse(u).hostname or u)
+    return IntelCheckResponse(verdict=verdict, threat_types=threat_types, sources=sources, indicator_digest=result.indicator_digest, checked_at=result.checked_at, cached=result.cached,
+                              coverage=result.coverage, redirect_chain=hosts if len(chain) > 1 else [], final_url=final if len(chain) > 1 else None,
+                              domain_info=await _await_domain())

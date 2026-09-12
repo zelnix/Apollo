@@ -13,8 +13,8 @@ from pydantic import BaseModel, Field, field_validator
 
 from core.config import GEMINI_API_KEY, HIBP_API_KEY, HIGGINS_VOICE, logger
 
-from core.models import ApolloState, Verdict
-from services.intel import run_intel_check, sanitize_url
+from core.models import ApolloState, DomainInfo, Verdict
+from services.intel import assess_indicator, run_intel_check, sanitize_url
 from services.webcrawl import CrawlBlocked, fetch_page
 
 router = APIRouter()
@@ -42,6 +42,13 @@ class MessageUrlResult(BaseModel):
     verdict: Verdict
     threat_types: list[str] = Field(default_factory=list)
     coverage: str
+    # Email/Text Guard automatic pre-click assessment (see services/intel.py assess_indicator) —
+    # same redirect-chain expansion + RDAP domain-info treatment as a manual Check-a-Link, applied
+    # automatically to every link in a checked/scanned message. Presentational context only; never
+    # used to derive anything beyond growling/barking (see src/domain/linkGuard.ts on the frontend).
+    redirect_chain: list[str] = Field(default_factory=list)
+    final_url: Optional[str] = None
+    domain_info: Optional[DomainInfo] = None
 
 
 class MessageAnalyseOut(BaseModel):
@@ -81,14 +88,20 @@ async def gemini_second_opinion(body: MessageAnalyseIn, url_results: list[Messag
 
 @router.post("/message/analyse", response_model=MessageAnalyseOut)
 async def message_analyse(body: MessageAnalyseIn):
-    results: list[MessageUrlResult] = []
-    for raw in body.urls[:10]:
+    # Email/Text Guard: every link gets the SAME full assessment as a manual Check-a-Link — redirect
+    # chain expansion + Safe Browsing/blocklist + RDAP domain-info — automatically, run concurrently
+    # so checking several links costs no more latency than the slowest one.
+    async def _one(raw: str) -> Optional[MessageUrlResult]:
         try:
             normalized, host = sanitize_url(raw)
-            r = await run_intel_check("url", normalized)
-            results.append(MessageUrlResult(url=normalized, host=host, verdict=r.verdict, threat_types=r.threat_types, coverage=r.coverage))
         except HTTPException:
-            continue
+            return None
+        r = await assess_indicator("url", normalized, True)
+        return MessageUrlResult(url=normalized, host=host, verdict=r.verdict, threat_types=r.threat_types, coverage=r.coverage,
+                                 redirect_chain=r.redirect_chain, final_url=r.final_url, domain_info=r.domain_info)
+
+    checked = await asyncio.gather(*[_one(u) for u in body.urls[:10]])
+    results = [r for r in checked if r is not None]
     explanation = await gemini_second_opinion(body, results) if body.second_opinion else None
     return MessageAnalyseOut(urls=results, explanation=explanation, gemini_used=explanation is not None)
 
