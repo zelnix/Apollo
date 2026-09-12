@@ -1,0 +1,39 @@
+{
+  "summary": "Frontend-only Playwright testing (mobile viewport 375x667) of Phase 6A /phase6-automated screen rework. Verified: Ready-to-run card load, full run -> PRECONDITION_FAILURE (NATIVE_MODULE_UNAVAILABLE) path, visual hierarchy (no 'What Apollo is doing'/'What happens next?' cards once done, no leftover action banner), collapsed Technical Evidence toggle expand/collapse, PDF/JSON export buttons (no crash), Start new run reset, back-button navigation (from real nav history), Advanced/Diagnostics link to legacy /phase6-acceptance (regression-free), and home screen nav card. Zero console/page errors across all flows. The previously-reported 'stuck spinner for 6+ seconds' issue was NOT reproduced in this session -- the run consistently reached the Result card within ~1-2 seconds of tapping the run button, well before even the first 2s poll interval; likely was a transient artifact from the dev-server auto-restarts during the main agent's earlier manual check, as already suspected in the review request.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "verified_working": {
+    "item_1_ready_to_run": "Loads 'Ready to run' card with 'Run Automated Acceptance' button (phase6a-run-button), header 'GATE GUARD M2.1 · PHASE 6A' / 'Automated Acceptance' present.",
+    "item_2_stuck_spinner_investigation": "NOT reproduced. Polled DOM text every 2s up to 20s after tapping run button; PRECONDITION_FAILURE/Result text appeared at t=2s (first poll) in every run across 4 separate test executions. No lone/stuck ActivityIndicator observed. Concluded the original report was a transient dev-server-restart artifact, not a real bug.",
+    "item_3_hierarchy": "Confirmed once done: no action/confirmation banner, no 'What Apollo is doing' card, no 'What happens next?' progress card (all correctly gated on !isDone). Result card shows big verdict PRECONDITION_FAILURE, reason code NATIVE_MODULE_UNAVAILABLE, explanation text, and all 3 buttons (phase6a-generate-pdf, phase6a-export-json, phase6a-new-run). Technical Evidence toggle (phase6a-tech-toggle) renders below Result card, collapsed by default.",
+    "item_4_tech_evidence_toggle": "Tap expands to show 'Run status' Card (Run ID, Started, domain, Phase=done), '0 · Preconditions' Card with the NATIVE_MODULE_UNAVAILABLE row, and 'Run log' Card with 3 log lines. Second tap collapses back cleanly (Run status text no longer present).",
+    "item_5_exports": "Generate PDF report and Export canonical JSON both tapped with zero pageerror/console errors. Run reached done with non-null overallVerdict (PRECONDITION_FAILURE) so this is the isFinalRun()=true path -- correct, no interim labelling expected/observed here.",
+    "item_6_reset": "Start new automated run correctly resets to 'Ready to run' card, phase6a-run-button visible again, no leftover state, no crash.",
+    "item_7_advanced_link": "phase6a-advanced-link navigates to /phase6-acceptance; legacy screen loads fine showing 'Acceptance Report Runner' header and 'FROZEN ACCEPTANCE INVARIANT' banner -- no collateral breakage confirmed.",
+    "item_8_open_settings_unreachable": "Confirmed 'Open Settings' text never appears anywhere during the web-preview run (awaiting-* phases are unreachable as expected, run stops at native-check precondition).",
+    "item_9_general_regression": "Home screen (/) loads correctly showing both nav buttons (Open Automated Acceptance Runner, Advanced / Diagnostics). Back button (phase6a-back) works correctly when navigated via real in-app history (home -> phase6-automated -> back returns to home). Note: navigating directly to /phase6-automated via URL and tapping back produces an expected React Navigation 'GO_BACK not handled' dev-only console warning since there's no history stack in that scenario -- this is normal browser-direct-URL behavior, not an app bug.",
+    "console_errors": "Zero pageerror/console[error] entries observed across all test runs (only the one expected GO_BACK dev warning noted above, which is not app-related)."
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "phase6-automated.tsx correctly implements the frozen UX contract: hierarchy ordering, isDone gating (!isDone) for progress/working cards, confirmationHold overlay, and awaiting sub-state computation (computeAwaitingSubState) are all cleanly separated and match the spec.",
+    "phase6AutomatedReport.ts's isFinalRun() is the single source of truth for interim-vs-final labelling and is consistently used in both the PDF HTML builder and JSON wrapper (reportKind field) -- no risk of a partial run silently exporting as a final verdict.",
+    "AWAITING_ACTION_TIMEOUT_MS / awaitingSince / awaitingAttempts logic (ACTION_REQUIRED -> WAITING_FOR_CONFIRMATION -> ACTION_CONFIRMED/ACTION_NOT_DETECTED) could not be exercised in this web-preview environment since it requires native VPN state after protection reaches ACTIVE, per the review request's own caveat -- untestable here by design, needs a real Android device pass."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested this session per request (frontend only)", "frontend": "100% of web-preview-reachable flows verified working with zero bugs found. Native-only flows (awaiting-revoke/restart/network sub-states, Open Settings intents, positive/negative enforcement matrix) remain untestable outside a physical Android build, as explicitly scoped out in the review request."},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Phase 6A /phase6-automated screen is fully verified working end-to-end for all web-preview-reachable paths: Ready-to-run -> Run -> PRECONDITION_FAILURE(NATIVE_MODULE_UNAVAILABLE) -> Result card hierarchy -> collapsed Technical Evidence expand/collapse -> PDF/JSON export (no crash) -> Start new run reset -> Advanced/Diagnostics link -> legacy /phase6-acceptance regression-free -> home screen nav. The previously-flagged 'stuck spinner' bug did NOT reproduce across 4 separate runs (result appeared within ~1-2s every time); treat as resolved/non-issue unless it recurs. The awaiting-revoke/awaiting-restart/awaiting-network sub-state UI (ACTION_REQUIRED/WAITING_FOR_CONFIRMATION/ACTION_CONFIRMED/ACTION_NOT_DETECTED, numbered steps, Open Settings intents, 'No action needed' banner during automated phases) is still entirely unverified in any environment this agent has access to -- requires a physical Android device build to reach past the native-check precondition. No bugs found or reported this session.",
+  "rca_of_issue": "N/A this session -- no bug reproduced. If the stuck-spinner symptom recurs on a future manual check, first correlate with Metro/Expo dev-server restart timestamps in /var/log/supervisor/expo.*.log before treating it as a code bug, since the environment auto-restarts the bundler periodically and a page mid-reload can transiently show only the top-level ActivityIndicator (the !hydrated branch) for longer than expected."
+}
