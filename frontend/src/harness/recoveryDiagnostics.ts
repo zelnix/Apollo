@@ -14,6 +14,16 @@ export function readVpnConsentRequired(): boolean | null {
   return GuardDogNative ? GuardDogNative.isVpnConsentRequired() : null;
 }
 
+/** Harness-only: the native module's own ephemeral session cache of Website Gate override
+ * hostnames (bare strings, no type/source/decidedAt metadata -- that richer record lives only in
+ * the durable JS store, see src/sdk/websiteGateOverrides.ts). This is DELIBERATELY read separately
+ * from the public SDK's `getWebsiteGateOverrides()` (which returns the durable JS list instead) so
+ * a Phase 6A row can independently verify the native cache actually got re-populated after a
+ * restart, rather than trusting the durable record alone. null when the bridge is absent. */
+export function readNativeWebsiteGateOverrides(): string[] | null {
+  return GuardDogNative?.getWebsiteGateOverrides() ?? null;
+}
+
 /**
  * Fresh-socket probe of the configured controlled endpoint (native only; null when the bridge is absent). Every call opens a brand-new
  * TCP socket in the native layer, so a probe issued after protection became ACTIVE cannot reuse any earlier connection.

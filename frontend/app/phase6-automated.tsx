@@ -142,9 +142,9 @@ const AWAITING_STEPS: Record<string, string[]> = {
     "It resumes automatically on this exact screen.",
   ],
   "awaiting-network": [
-    "Open quick settings or Settings → Network & internet.",
-    "Turn Wi-Fi or mobile data off, then back on (or switch between them).",
-    "Come back to this screen — Apollo checks automatically.",
+    "Protection is ACTIVE again — leave it running.",
+    "Switch to a genuinely DIFFERENT connected network: e.g. turn Wi-Fi off so the phone switches to mobile data, or the reverse. Not just off.",
+    "Come back to this screen — Apollo detects the transition and re-checks enforcement automatically.",
   ],
 };
 
@@ -158,28 +158,29 @@ const AWAITING_SETTINGS_INTENT: Partial<Record<string, string>> = {
 const AWAITING_NOT_DETECTED_HINT: Record<string, string> = {
   "awaiting-revoke": "Make sure you tapped Disconnect/Forget for Apollo specifically (not a different VPN app) in Settings → VPN.",
   "awaiting-restart": "Make sure you fully swiped Apollo away in Recent apps (not just backgrounded it) before reopening — a simple background/foreground doesn't count.",
-  "awaiting-network": "Make sure the network actually changed (e.g. Wi-Fi off then on, or Wi-Fi ↔ mobile data) — not just opened the settings screen without toggling anything.",
+  "awaiting-network": "Make sure you landed on a genuinely different CONNECTED network (Wi-Fi ↔ mobile data) — turning a radio off without a replacement connection, or turning the same one back on, doesn't count.",
 };
 
 const AWAITING_TITLE: Record<string, string> = {
   "awaiting-revoke": "Revoke Apollo's VPN permission",
   "awaiting-restart": "Force-close and reopen Apollo",
-  "awaiting-network": "Toggle Wi-Fi or mobile data",
+  "awaiting-network": "Switch to a different connected network",
 };
 
-/** The 12 human-facing milestones this run passes through, in order — used only to render the
+/** The 14 human-facing milestones this run passes through, in order — used only to render the
  * "What happens next?" progress panel. Purely cosmetic; never consulted for any verdict. */
 const MILESTONES: { label: string; duration: string; noAction: boolean }[] = [
   { label: "Verifying build & device", duration: "a few seconds", noAction: true },
   { label: "Requesting VPN permission (Android may prompt you once)", duration: "one tap if prompted", noAction: false },
   { label: "Loading & verifying signed security rules", duration: "a few seconds", noAction: true },
   { label: "Starting protection & activating the Website Gate", duration: "up to 15 seconds", noAction: true },
-  { label: "Testing blocked-domain enforcement", duration: "up to 20 seconds", noAction: true },
+  { label: "Testing blocked-domain enforcement (twice, same live binding)", duration: "up to 20 seconds", noAction: true },
   { label: "Running false-positive safety checks (5 checks)", duration: "about 30 seconds total", noAction: true },
   { label: "Stopping protection & confirming clean recovery", duration: "a few seconds", noAction: true },
   { label: "Waiting on you: revoke Apollo's VPN permission", duration: "waiting on you", noAction: false },
   { label: "Waiting on you: force-close and reopen the app", duration: "waiting on you", noAction: false },
-  { label: "Waiting on you: toggle Wi-Fi or mobile data", duration: "waiting on you", noAction: false },
+  { label: "Re-establishing an active session for the network test", duration: "up to 15 seconds, may prompt once", noAction: false },
+  { label: "Waiting on you: switch to a different connected network", duration: "waiting on you", noAction: false },
   { label: "Running the automatic DNS-capability check", duration: "a few seconds", noAction: true },
   { label: "Done — review & export your report", duration: "—", noAction: true },
 ];
@@ -208,12 +209,14 @@ function milestoneIndex(phase: Phase6RunPhase): number {
       return 7;
     case "awaiting-restart":
       return 8;
-    case "awaiting-network":
+    case "reactivate-for-network":
       return 9;
-    case "dns-capability":
+    case "awaiting-network":
       return 10;
-    case "done":
+    case "dns-capability":
       return 11;
+    case "done":
+      return 12;
     default:
       return 0;
   }
@@ -233,7 +236,6 @@ function computeAwaitingSubState(run: Phase6RunState, busy: boolean): AwaitingSu
 async function openAndroidSettings(intentAction: string) {
   if (Platform.OS !== "android") return;
   try {
-    // @ts-expect-error -- sendIntent is Android-only and not in the cross-platform Linking types.
     await Linking.sendIntent(intentAction);
   } catch {
     try {
@@ -277,38 +279,6 @@ export default function Phase6Automated() {
     setConfirmationHold(null);
   }, []);
 
-  // --- Load persisted run on mount; if we were mid-restart-test, that's literally happening now. ---
-  useEffect(() => {
-    (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          let loaded: Phase6RunState = JSON.parse(raw);
-          const wasAwaitingRestart = loaded.phase === "awaiting-restart";
-          if (wasAwaitingRestart) {
-            loaded = evaluateAwaitingRestart(loaded);
-            if (loaded.phase === "awaiting-network") {
-              // Prime the "before" network reading right away instead of waiting for a future event.
-              const netState = await Network.getNetworkStateAsync();
-              loaded = await checkAwaitingNetwork(loaded, netState.type ?? "UNKNOWN");
-            }
-            AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(loaded)).catch(() => {});
-          }
-          runRef.current = loaded;
-          setRun(loaded);
-          if (wasAwaitingRestart) {
-            const restartStep = loaded.steps.find((s) => s.id === "3.3");
-            if (restartStep) holdConfirmation(`Apollo confirmed the restart. ${restartStep.explanation}`);
-          }
-        }
-      } catch {
-        // Corrupt/missing state -- start fresh, never crash.
-      } finally {
-        setHydrated(true);
-      }
-    })();
-  }, [holdConfirmation]);
-
   const continueRun = useCallback(async (starting: Phase6RunState) => {
     setBusy(true);
     setError(null);
@@ -331,6 +301,41 @@ export default function Phase6Automated() {
       setBusy(false);
     }
   }, [persist]);
+
+  // --- Load persisted run on mount; if we were mid-restart-test, that's literally happening now. ---
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          let loaded: Phase6RunState = JSON.parse(raw);
+          const wasAwaitingRestart = loaded.phase === "awaiting-restart";
+          if (wasAwaitingRestart) {
+            loaded = await evaluateAwaitingRestart(loaded);
+            AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(loaded)).catch(() => {});
+          }
+          runRef.current = loaded;
+          setRun(loaded);
+          if (wasAwaitingRestart) {
+            const restartStep = loaded.steps.find((s) => s.id === "3.3");
+            if (restartStep) holdConfirmation(`Apollo confirmed the restart. ${restartStep.explanation}`);
+          }
+          if (loaded.phase === "reactivate-for-network") {
+            // Row 3.3's checks are done (just now, or from an earlier reopened session); re-establish
+            // an ACTIVE session for rows 3.4/3.5 fully automatically (may trigger one Android
+            // VPN-consent system dialog -- expected).
+            setHydrated(true);
+            await continueRun(loaded);
+            return;
+          }
+        }
+      } catch {
+        // Corrupt/missing state -- start fresh, never crash.
+      } finally {
+        setHydrated(true);
+      }
+    })();
+  }, [holdConfirmation, continueRun]);
 
   /** Single source of truth for "check whether the tester's manual step is done yet" -- used by the
    * foreground listener, the periodic poll, and the manual "Check now" / "Try again" button so all
@@ -540,10 +545,15 @@ export default function Phase6Automated() {
                       {settingsIntent ? <ActionButton title="Open Settings" secondary onPress={() => openAndroidSettings(settingsIntent)} testID="phase6a-open-settings" /> : null}
                     </View>
                   </View>
-                ) : !isDone ? (
+                ) : !isDone && milestone.noAction ? (
                   <View style={styles.noActionBanner} testID="phase6a-no-action-banner">
                     <ActivityIndicator color={colors.brandPrimary} />
                     <Text style={styles.noActionText}>No action needed from you right now — Apollo is running this step automatically.</Text>
+                  </View>
+                ) : !isDone ? (
+                  <View style={styles.noActionBanner} testID="phase6a-no-action-banner">
+                    <ActivityIndicator color={colors.brandPrimary} />
+                    <Text style={styles.noActionText}>Working automatically — Android may show its own one-time system prompt during this step; respond to that if it appears.</Text>
                   </View>
                 ) : null}
 

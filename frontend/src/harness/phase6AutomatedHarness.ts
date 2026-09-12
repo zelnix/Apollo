@@ -11,9 +11,17 @@
 // GuardDogSecuritySDK surface plus the harness-only read-only diagnostics already used by
 // androidBlockingProofHarness.ts (getRecoveryStatus, isVpnConsentRequired) -- it never fabricates,
 // infers, or upgrades an absence of evidence into a PASS. THREAT_BLOCKED remains evidence-backed only.
+//
+// HARNESS-WIDE RULE (frozen, applies to every row in this file): a row may only return PASS from
+// evidence collected SPECIFICALLY for that row. No inherited PASS ("row 1.2 is fine because 1.1
+// passed"), no inferred PASS, no "same as the previous row" shortcut. If a row's own evidence cannot
+// be independently collected this run (for reasons unrelated to enforcement correctness -- timing,
+// a skipped precondition, a declined re-consent prompt, etc.), it must return NOT_TESTED with an
+// honest reasonCode, never PASS and never a fabricated FAIL. See the 2026-09 acceptance-criteria
+// tightening pass (rows 1.2, 3.2, 3.3, 3.4, 3.5) for the frozen per-row definitions this rule governs.
 import { Platform } from "react-native";
 
-import { readRecoveryStatus, readVpnConsentRequired } from "@/src/harness/recoveryDiagnostics";
+import { readNativeWebsiteGateOverrides, readRecoveryStatus, readVpnConsentRequired } from "@/src/harness/recoveryDiagnostics";
 import { fetchLatestBundle, fetchM1Config, toProtectionConfig, type M1Config } from "@/src/harness/ruleBundleFixtures";
 import {
   observeBlockedEventWindow,
@@ -28,8 +36,10 @@ import { GuardDogSecuritySDK } from "@/src/sdk/GuardDogSecuritySDK";
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const nowIso = () => new Date().toISOString();
 
-// --- Canonical machine states (exactly the six the product requirement specifies) ---
-export type Phase6StepVerdict = "PASS" | "FAIL" | "PRECONDITION_FAILURE" | "CAPABILITY_GAP" | "UNOBSERVABLE" | "NOT_TESTABLE" | "PENDING";
+// --- Canonical machine states (the six the product requirement specifies, plus NOT_TESTED -- added
+// 2026-09 for rows whose own evidence genuinely could not be collected this run; see the
+// harness-wide rule above. NOT_TESTED is never a synonym for PASS or FAIL.) ---
+export type Phase6StepVerdict = "PASS" | "FAIL" | "PRECONDITION_FAILURE" | "CAPABILITY_GAP" | "UNOBSERVABLE" | "NOT_TESTABLE" | "NOT_TESTED" | "PENDING";
 
 export interface Phase6StepResult {
   id: string;
@@ -59,6 +69,7 @@ export type Phase6RunPhase =
   | "recovery-stop"
   | "awaiting-revoke"
   | "awaiting-restart"
+  | "reactivate-for-network"
   | "awaiting-network"
   | "dns-capability"
   | "done";
@@ -78,6 +89,10 @@ export interface Phase6RunState {
   steps: Phase6StepResult[];
   negativeQueueIndex: number;
   networkTypeBeforeToggle: string | null;
+  /** Canonical host of the dedicated, disposable ALLOW override created just before the tester
+   * restarts the app (row 3.3's rehydration check) -- null once cleaned up / if never created.
+   * Never the same host as testDomain; never left behind after the run touches it. */
+  overrideProbeHost: string | null;
   rejectedEventCountAtStart: number;
   truthOfStateViolation: boolean;
   awaitingInstruction: string | null;
@@ -88,7 +103,7 @@ export interface Phase6RunState {
   /** Number of "is it done yet?" checks performed against the CURRENT awaiting-* phase without a
    * positive detection. UI-only counter, same non-verdict-affecting rule as awaitingSince. */
   awaitingAttempts: number;
-  overallVerdict: "PASS" | "FAIL" | "PRECONDITION_FAILURE" | "PASS_WITH_CAPABILITY_GAP" | null;
+  overallVerdict: "PASS" | "FAIL" | "PRECONDITION_FAILURE" | "PASS_WITH_CAPABILITY_GAP" | "PASS_WITH_UNVERIFIED_ROWS" | null;
   overallReasonCode: string | null;
   overallExplanation: string | null;
   completedAt: string | null;
@@ -138,6 +153,7 @@ export function createInitialRun(testDomain: string, matchingRuleId: string): Ph
     steps: [],
     negativeQueueIndex: 0,
     networkTypeBeforeToggle: null,
+    overrideProbeHost: null,
     rejectedEventCountAtStart: GuardDogSecuritySDK.rejectedEventCount,
     truthOfStateViolation: false,
     awaitingInstruction: null,
@@ -175,6 +191,17 @@ function stopWithPrecondition(run: Phase6RunState, reasonCode: string, title: st
   return finalizeRun(withLog({ ...run, preconditions: [...run.preconditions, s], phase: "done" }, `PRECONDITION FAILURE: ${explanation}`));
 }
 
+/** Row 3.4 (and its companion sanity row 3.5) require a genuinely ACTIVE, gate-active session to
+ * mean anything -- if reactivating that session fails for any reason, both rows are honestly
+ * NOT_TESTED (never a fabricated FAIL of "the transition itself", since the transition was never
+ * reached) and the run continues on to the DNS-capability check rather than hard-stopping and
+ * discarding everything rows 1.1-3.3 already proved. */
+function skipNetworkActiveTest(run: Phase6RunState, reasonCode: string, explanation: string, evidence: Record<string, unknown>, startedAt: string): Phase6RunState {
+  const s34 = step("3.4", 3, "Active network transition (Wi-Fi ↔ cellular) while protection is genuinely ACTIVE → truthful state, and (if it stays active) proven recovery", "NOT_TESTED", reasonCode, explanation, evidence, startedAt);
+  const s35 = step("3.5", 3, "Post-transition positive sanity check → enforcement still genuinely functions after the transition", "NOT_TESTED", "NOT_APPLICABLE_REACTIVATION_FAILED", "Row 3.4's precondition (a genuinely ACTIVE, gate-active session) could not be re-established this run -- a sanity check is not applicable.", {}, startedAt);
+  return withLog({ ...run, steps: [...run.steps, s34, s35], phase: "dns-capability", awaitingInstruction: null, awaitingSince: null, awaitingAttempts: 0 }, `Network-transition-while-active test (3.4/3.5) skipped: ${reasonCode}. Continuing to the DNS-capability check.`);
+}
+
 function finalizeRun(run: Phase6RunState): Phase6RunState {
   const checked = checkTruthOfStateSafetyNet(run);
   if (checked.truthOfStateViolation) {
@@ -196,6 +223,18 @@ function finalizeRun(run: Phase6RunState): Phase6RunState {
   const requiredGroupsFilled = checked.steps.filter((s) => s.group === 1 || s.group === 2 || s.group === 3).length >= 7; // 2+5 auto + at least stop
   if (!requiredGroupsFilled) {
     return { ...checked, overallVerdict: null, overallReasonCode: null, overallExplanation: null };
+  }
+  const group123NotTested = checked.steps.filter((s) => (s.group === 1 || s.group === 2 || s.group === 3) && s.verdict === "NOT_TESTED");
+  if (group123NotTested.length > 0) {
+    const ids = group123NotTested.map((s) => s.id).join(", ");
+    return {
+      ...checked,
+      overallVerdict: "PASS_WITH_UNVERIFIED_ROWS",
+      overallReasonCode: `ROWS_NOT_TESTED_${group123NotTested.map((s) => s.id.replace(/\./g, "_")).join("_")}`,
+      overallExplanation: `No acceptance-critical row failed, but row(s) ${ids} could not be independently verified this run (see each row's own reasonCode for why -- a declined re-consent, a timing/precondition gap, etc.; never treated as an inherited or inferred PASS). Re-run to obtain a determinate PASS/FAIL on ${ids} before treating this as full acceptance.`,
+      completedAt: nowIso(),
+      phase: checked.phase,
+    };
   }
   if (group4Gap) {
     return { ...checked, overallVerdict: "PASS_WITH_CAPABILITY_GAP", overallReasonCode: `ROW_${group4Gap.id}_CAPABILITY_GAP`, overallExplanation: `All required enforcement rows passed. Row ${group4Gap.id} (${group4Gap.title}) documents a real, evidence-backed capability gap — not a failure.`, completedAt: nowIso(), phase: checked.phase };
@@ -331,8 +370,36 @@ async function performPhase(run: Phase6RunState): Promise<Phase6RunState> {
       const s1: Phase6StepResult = full
         ? step("1.1", 1, "Authorized blocked domain → full chain observed", "PASS", "FULL_EVIDENCE_CHAIN_OBSERVED", `THREAT_BLOCKED evidenceId=${evidence.blockedEvent!.enforcementEvidenceId} matched real TUN packet observation + intentional drop.`, { evidence, statsBefore, statsAfter }, startedAt)
         : step("1.1", 1, "Authorized blocked domain → full chain observed", "FAIL", evidence.blockedEvent ? "EVENT_WITHOUT_TUN_EVIDENCE" : "NO_EVIDENCE_WITHIN_WINDOW", evidence.blockedEvent ? "A THREAT_BLOCKED event arrived but native TUN drop-reporter counters do not corroborate a real packet observation/drop." : `No THREAT_BLOCKED event observed within ${POSITIVE_WINDOW_MS}ms of triggering traffic to the authorized test domain.`, { evidence, statsBefore, statsAfter }, startedAt);
-      const s2 = step("1.2", 1, "Repeat resolution of same domain within binding lifetime → consistent evidence", s1.verdict === "PASS" ? "PASS" : "FAIL", s1.verdict === "PASS" ? "CONSISTENT_WITH_1_1" : "SKIPPED_NO_BASELINE", s1.verdict === "PASS" ? "Same test domain re-observed under the still-active binding; single positive pass covers both rows for this automated run." : "Not evaluated because row 1.1 did not establish a baseline positive chain.", { note: "Automated run exercises one fresh binding cycle; see 1.1 evidence." }, startedAt);
-      return withLog({ ...run, steps: [...run.steps, s1, s2], phase: "negative" }, `Positive enforcement test: ${s1.verdict} (${s1.reasonCode}).`);
+
+      // Row 1.2 (2026-09 tightened definition): a GENUINELY separate second request to the SAME
+      // domain, while the Website Gate binding row 1.1 just exercised is still live -- its own fresh
+      // fetch, its own fresh TUN observation, its own enforcement outcome. Never inherits 1.1's PASS
+      // (harness-wide rule at the top of this file). Only attempted if 1.1 established a real
+      // baseline binding to repeat against.
+      let s2: Phase6StepResult;
+      if (s1.verdict !== "PASS") {
+        s2 = step("1.2", 1, "Genuine second, independent request under the still-live binding → new evidence or a correctly deduplicated retry", "NOT_TESTED", "SKIPPED_NO_BASELINE", "Not independently evaluated because row 1.1 did not establish a live, evidence-backed binding to repeat against.", {}, startedAt);
+      } else {
+        const startedAt2 = nowIso();
+        const statsBefore2 = GuardDogSecuritySDK.getEnforcementStats();
+        const evidence2 = await runPositiveEnforcementTest(run.testDomain, POSITIVE_WINDOW_MS);
+        const statsAfter2 = GuardDogSecuritySDK.getEnforcementStats();
+        const tunEvidence2 = !!statsAfter2 && !!statsBefore2 && statsAfter2.observedMatching > statsBefore2.observedMatching && statsAfter2.droppedMatching > statsBefore2.droppedMatching;
+        const priorEvidenceId = evidence.blockedEvent?.enforcementEvidenceId ?? null;
+        const newEvidenceRecord = !!evidence2.blockedEvent?.enforcementEvidenceId && evidence2.blockedEvent.enforcementEvidenceId !== priorEvidenceId;
+        const dedupedRetryAttributed = !evidence2.blockedEvent && (statsAfter2?.dedupedRetries ?? 0) > (statsBefore2?.dedupedRetries ?? 0);
+        const evidence2Bundle = { evidence2, statsBefore2, statsAfter2, priorEvidenceId };
+        if (!tunEvidence2) {
+          s2 = step("1.2", 1, "Genuine second, independent request under the still-live binding → new evidence or a correctly deduplicated retry", "NOT_TESTED", "SECOND_REQUEST_NOT_INDEPENDENTLY_OBSERVED", "The second request to the still-live binding was not independently observed at the TUN layer within the window -- cannot confirm or deny a genuine repeat this run; re-run for a determinate result.", evidence2Bundle, startedAt2);
+        } else if (newEvidenceRecord) {
+          s2 = step("1.2", 1, "Genuine second, independent request under the still-live binding → new evidence or a correctly deduplicated retry", "PASS", "SECOND_REQUEST_NEW_EVIDENCE_RECORD", `A second, independently-triggered request to the still-live binding produced its OWN new evidence record (evidenceId=${evidence2.blockedEvent!.enforcementEvidenceId}, distinct from row 1.1's ${priorEvidenceId}) with corroborating TUN observation/drop.`, evidence2Bundle, startedAt2);
+        } else if (dedupedRetryAttributed) {
+          s2 = step("1.2", 1, "Genuine second, independent request under the still-live binding → new evidence or a correctly deduplicated retry", "PASS", "SECOND_REQUEST_CORRECTLY_DEDUPED", `A second, independently-triggered request produced a genuine TUN observation/drop, correctly attributed as a deduplicated retry of the still-live binding (dedupedRetries incremented) rather than re-emitting a duplicate event.`, evidence2Bundle, startedAt2);
+        } else {
+          s2 = step("1.2", 1, "Genuine second, independent request under the still-live binding → new evidence or a correctly deduplicated retry", "FAIL", "SECOND_OBSERVATION_UNACCOUNTED", "A second packet was genuinely observed and dropped at the TUN layer, but neither a new evidence record nor an incremented dedupedRetries counter accounts for it -- inconsistent enforcement bookkeeping for a repeat under the same binding.", evidence2Bundle, startedAt2);
+        }
+      }
+      return withLog({ ...run, steps: [...run.steps, s1, s2], phase: "negative" }, `Positive enforcement test: 1.1=${s1.verdict} (${s1.reasonCode}); 1.2=${s2.verdict} (${s2.reasonCode}).`);
     }
 
     case "negative": {
@@ -402,13 +469,75 @@ async function performPhase(run: Phase6RunState): Promise<Phase6RunState> {
       return withLog({ ...run, steps: [...run.steps, s], phase: "awaiting-revoke", awaitingInstruction: "Turn off Apollo's VPN permission (Settings → Network & internet → VPN → Apollo → Disconnect/Forget), then return here. The harness detects this automatically.", awaitingSince: nowIso(), awaitingAttempts: 0 }, `Stop protection: ${s.verdict}. Now waiting on a tester action Android does not let the app perform itself.`);
     }
 
+    case "reactivate-for-network": {
+      // Rows 3.4/3.5 need a genuinely ACTIVE, gate-active session -- the native module's session
+      // state (bundle acceptance, override cache) does not survive the process restart the tester
+      // just performed for row 3.3, so re-establish it exactly like the initial "config" phase does.
+      // Any failure here is honestly NOT_TESTED for 3.4/3.5 (via skipNetworkActiveTest), never a
+      // fabricated FAIL of "the transition" -- the transition itself was never reached.
+      const startedAt = nowIso();
+      try {
+        const consentRequired = readVpnConsentRequired();
+        if (consentRequired !== false) {
+          const outcome = await GuardDogSecuritySDK.requestPermission("vpn");
+          if (outcome !== "granted") {
+            return skipNetworkActiveTest(run, "VPN_CONSENT_DENIED_ON_REACTIVATION", `Android VPN consent prompt result on reactivation: ${outcome}. Rows 3.4/3.5 require a genuinely ACTIVE session and cannot be independently tested without it.`, { outcome }, startedAt);
+          }
+        }
+        const m1: M1Config = await fetchM1Config();
+        GuardDogSecuritySDK.configure(toProtectionConfig(m1));
+        const m1Bundle: SignedRuleBundle = await fetchLatestBundle(m1.rulesetId);
+        const m1Accept = GuardDogSecuritySDK.acceptRuleBundle(m1Bundle);
+        const m2RulesetId = m1.gateGuard?.websiteGateRulesetId;
+        if (!m2RulesetId) {
+          return skipNetworkActiveTest(run, "NO_M2_RULESET_CONFIGURED_ON_REACTIVATION", "Backend /api/config did not return gateGuard.websiteGateRulesetId on reactivation.", { m1 }, startedAt);
+        }
+        const m2Bundle: SignedRuleBundle = await fetchLatestBundle(m2RulesetId);
+        GuardDogSecuritySDK.configureWebsiteGate({});
+        const m2Accept = GuardDogSecuritySDK.acceptWebsiteGateRuleBundle(m2Bundle);
+        await GuardDogSecuritySDK.hydrateWebsiteGateOverrides();
+        if (!m1Accept.accepted || !m2Accept.accepted) {
+          return skipNetworkActiveTest(run, "RULE_BUNDLE_NOT_ACCEPTED_ON_REACTIVATION", `M1 accepted=${m1Accept.accepted}; M2 accepted=${m2Accept.accepted} on reactivation.`, { m1Accept, m2Accept }, startedAt);
+        }
+        let status = await GuardDogSecuritySDK.startProtection();
+        const startDeadline = Date.now() + START_PROTECTION_TIMEOUT_MS;
+        while (status.state !== "ACTIVE" && status.state !== "FAILED" && status.state !== "STOPPED" && status.state !== "REVOKED" && Date.now() < startDeadline) {
+          await sleep(POLL_MS);
+          status = GuardDogSecuritySDK.getProtectionState();
+        }
+        if (status.state !== "ACTIVE") {
+          return skipNetworkActiveTest(run, "PROTECTION_NOT_ACTIVE_ON_REACTIVATION", `Protection settled at ${status.state} instead of ACTIVE while reactivating for the network-transition test.`, { finalState: status.state }, startedAt);
+        }
+        const gateDeadline = Date.now() + GATE_ACTIVE_TIMEOUT_MS;
+        let gateStatus = GuardDogSecuritySDK.getWebsiteGateStatus();
+        while (!gateStatus.dnsGatewayActive && Date.now() < gateDeadline) {
+          await sleep(POLL_MS);
+          gateStatus = GuardDogSecuritySDK.getWebsiteGateStatus();
+        }
+        if (!gateStatus.dnsGatewayActive) {
+          return skipNetworkActiveTest(run, "DNS_GATEWAY_NOT_ACTIVE_ON_REACTIVATION", "dnsGatewayActive stayed false after reactivation -- cannot test an active network transition.", { gateStatus }, startedAt);
+        }
+        return withLog(
+          { ...run, phase: "awaiting-network", networkTypeBeforeToggle: null, awaitingInstruction: "Protection is ACTIVE again. Switch to a DIFFERENT connected network -- e.g. turn Wi-Fi off so the device switches to mobile data, or the reverse -- not just off. Then return here; Apollo detects the transition automatically.", awaitingSince: nowIso(), awaitingAttempts: 0 },
+          "Reactivated: protection ACTIVE, dnsGatewayActive=true. Now waiting for a genuine Wi-Fi ↔ cellular transition (Android will not let the app toggle its own radios).",
+        );
+      } catch (e) {
+        return skipNetworkActiveTest(run, "REACTIVATION_THREW", `Reactivating protection for the network-transition test threw: ${e instanceof Error ? e.message : String(e)}`, {}, startedAt);
+      }
+    }
+
     default:
       return run;
   }
 }
 
 /** Called by the screen (on AppState foreground, or a manual "Check now" tap) while phase is
- * "awaiting-revoke". Returns the SAME run unchanged if revoke has not happened yet -- never guesses. */
+ * "awaiting-revoke". Returns the SAME run unchanged if revoke has not happened yet -- never guesses.
+ * 2026-09 tightened definition: PASS never relies on `consentGranted` alone (that field was observed
+ * to go stale/wrong on a real device after a genuine revoke) -- it requires five INDEPENDENTLY
+ * verified conditions. Any contradiction in the native status snapshot (e.g. `consentGranted:true`
+ * surviving a confirmed revoke) is logged as its own diagnostic assertion, never silently dropped
+ * and never allowed to weaken the row's own pass criteria. */
 export async function checkAwaitingRevoke(run: Phase6RunState): Promise<Phase6RunState> {
   if (run.phase !== "awaiting-revoke") return run;
   const startedAt = nowIso();
@@ -416,7 +545,7 @@ export async function checkAwaitingRevoke(run: Phase6RunState): Promise<Phase6Ru
   if (consentNowRequired !== true) return withLog({ ...run, awaitingAttempts: run.awaitingAttempts + 1 }, "Checked for VPN revoke — not detected yet, still waiting.");
   await sleep(500); // let the native lifecycle settle after the OS-level revoke before snapshotting
   const status = GuardDogSecuritySDK.getProtectionState();
-  const stillClaimsActive = status.state === "ACTIVE";
+  const rec = readRecoveryStatus();
   // A restart-without-consent attempt must be rejected -- proves no silent re-arm after revoke.
   let restartRejected = true;
   let restartError: string | null = null;
@@ -426,39 +555,204 @@ export async function checkAwaitingRevoke(run: Phase6RunState): Promise<Phase6Ru
   } catch (e) {
     restartError = e instanceof Error ? e.message : String(e);
   }
-  const pass = !stillClaimsActive && restartRejected;
-  const s = step("3.2", 3, "Revoke VPN permission mid-session → app detects and reports truthfully, no silent fabricated active state", pass ? "PASS" : "FAIL", pass ? "REVOKE_DETECTED_AND_TRUTHFUL" : "FABRICATED_ACTIVE_OR_SILENT_RESTART", pass ? `State=${status.state} after revoke; restartWithoutConsent correctly rejected${restartError ? ` (${restartError})` : ""}.` : `State=${status.state} after revoke (stillClaimsActive=${stillClaimsActive}); restartWithoutConsent rejected=${restartRejected}.`, { status, restartRejected, restartError }, startedAt);
-  return withLog({ ...run, steps: [...run.steps, s], phase: "awaiting-restart", awaitingInstruction: "Force-close Apollo completely (Recent apps → swipe away) and reopen it, then return to this screen. The harness resumes automatically on relaunch.", awaitingSince: nowIso(), awaitingAttempts: 0 }, `Revoke detected: ${s.verdict}. Now waiting for an app restart (Android will not let the app trigger this on itself).`);
+  // Five independently-verified conditions -- consentGranted is deliberately NOT one of them.
+  const vpnNoLongerActive = status.state !== "ACTIVE";
+  const tunClosed = rec != null && rec.tunOpen === false;
+  const routeCleared = rec != null && rec.selectiveRouteActive === false;
+  const noStaleState = rec != null && !rec.tunOpen && !rec.selectiveRouteActive && !rec.dropReporterAttached && !rec.vpnTransportPresent;
+  const pass = vpnNoLongerActive && tunClosed && routeCleared && restartRejected && noStaleState;
+  const failedChecks = [
+    !vpnNoLongerActive ? "vpnNoLongerActive" : null,
+    !tunClosed ? "tunClosed" : null,
+    !routeCleared ? "routeCleared" : null,
+    !restartRejected ? "restartRejected" : null,
+    !noStaleState ? "noStaleState" : null,
+  ].filter((x): x is string => x !== null);
+
+  // Separate diagnostic assertion (never gates this row's PASS/FAIL, never silently ignored): the
+  // native status snapshot's own `consentGranted` field contradicts the independently-confirmed
+  // revoke whenever it still reports true here.
+  const consentGrantedFieldContradiction = status.consentGranted === true;
+
+  const s = step(
+    "3.2",
+    3,
+    "Revoke VPN permission mid-session → independently verified (never from consentGranted alone), no silent fabricated active state",
+    pass ? "PASS" : "FAIL",
+    pass ? (consentGrantedFieldContradiction ? "REVOKE_INDEPENDENTLY_VERIFIED_WITH_STALE_CONSENT_FIELD" : "REVOKE_INDEPENDENTLY_VERIFIED") : "REVOKE_VERIFICATION_FAILED",
+    pass
+      ? `Independently verified: state!=ACTIVE, tunOpen=false, selectiveRouteActive=false, restart-without-consent rejected, no stale active/biting state.${consentGrantedFieldContradiction ? " CONTRADICTION FLAGGED: status.consentGranted still reports true after this confirmed revoke -- that field is stale/wrong on this device; it did NOT factor into this PASS and should be fixed in the native layer, not accommodated by weakening this test." : ""}`
+      : `Failed independently-verified check(s): ${failedChecks.join(", ")}. status.consentGranted=${status.consentGranted}${consentGrantedFieldContradiction ? " (also contradicts the confirmed revoke, but that field was never relied on for this verdict either way)" : ""}.`,
+    { status, rec, restartRejected, restartError, failedChecks, consentGrantedFieldContradiction, nativeReportingContradiction: consentGrantedFieldContradiction ? { field: "consentGranted", reportedValue: true, expectedGivenConfirmedRevoke: false, detail: "isVpnConsentRequired()===true independently confirms the OS revoked consent, yet getProtectionState().consentGranted still reports true -- a native-layer truthfulness bug to fix, not to test around." } : null },
+    startedAt,
+  );
+  if (consentGrantedFieldContradiction) {
+    // Ensure this is visible in the run log too, not just buried in evidence JSON.
+    run = withLog(run, "⚠ CONTRADICTION (diagnostic, does not affect the 3.2 verdict above): status.consentGranted still reports true after an independently-confirmed VPN revoke. This native status field is stale/wrong on this device and should be fixed, not accommodated.");
+  }
+  // Set up row 3.3's rehydration check BEFORE instructing the tester to restart: a dedicated,
+  // disposable probe host, never the real testDomain, cleaned up unconditionally by
+  // evaluateAwaitingRestart regardless of outcome.
+  const overrideProbeHost = `phase6a-override-probe.${run.testDomain}`;
+  const probeCreated = await GuardDogSecuritySDK.setWebsiteGateAllowOverride(overrideProbeHost).catch(() => false);
+  return withLog(
+    {
+      ...run,
+      steps: [...run.steps, s],
+      phase: "awaiting-restart",
+      overrideProbeHost: probeCreated ? overrideProbeHost : null,
+      awaitingInstruction: "Force-close Apollo completely (Recent apps → swipe away) and reopen it, then return to this screen. The harness resumes automatically on relaunch.",
+      awaitingSince: nowIso(),
+      awaitingAttempts: 0,
+    },
+    `Revoke detected: ${s.verdict}. Probe override for row 3.3 ${probeCreated ? "created" : "FAILED to create"}. Now waiting for an app restart (Android will not let the app trigger this on itself).`,
+  );
 }
 
 /** Called ONCE right after the screen mounts if the persisted run's phase is "awaiting-restart" --
- * the act of this code running again in a fresh process IS the restart; no separate detection needed. */
-export function evaluateAwaitingRestart(run: Phase6RunState): Phase6RunState {
+ * the act of this code running again in a fresh process IS the restart; no separate detection needed.
+ * 2026-09 tightened definition: row 3.3 now requires TWO independent checks to both pass --
+ * (A) no orphaned enforcement state survived the restart, and (B) the durable override record
+ * genuinely rehydrates into the native runtime cache, which this harness confirmed goes ephemeral
+ * on process death. Never PASS on check A alone (that was the old, weaker definition). */
+export async function evaluateAwaitingRestart(run: Phase6RunState): Promise<Phase6RunState> {
   if (run.phase !== "awaiting-restart") return run;
   const startedAt = nowIso();
   const status = GuardDogSecuritySDK.getProtectionState();
   const rec = readRecoveryStatus();
-  // No orphaned "biting" UI state: nothing in this fresh process claims ACTIVE without a fresh startProtection() call in this run.
+
+  // Check A: no orphaned "biting" state -- nothing in this fresh process claims ACTIVE without a
+  // fresh startProtection() call in this run.
   const orphanedActive = status.state === "ACTIVE" && rec != null && rec.tunOpen;
-  const s = step("3.3", 3, "App restart (kill + relaunch) → overrides rehydrate correctly, no orphaned biting UI state", orphanedActive ? "FAIL" : "PASS", orphanedActive ? "ORPHANED_ACTIVE_STATE_AFTER_RESTART" : "CLEAN_RESTART_NO_ORPHAN", orphanedActive ? "Protection reports ACTIVE with an open TUN immediately on a fresh process, before this run re-armed anything -- a stale/fabricated state." : `Fresh process state=${status.state}; no orphaned active/biting state carried across the restart.`, { status, rec }, startedAt);
-  return withLog({ ...run, steps: [...run.steps, s], phase: "awaiting-network", networkTypeBeforeToggle: null, awaitingInstruction: "Toggle Wi-Fi or mobile data off, then back on, then return here. The harness detects the transition automatically.", awaitingSince: nowIso(), awaitingAttempts: 0 }, `App restart evaluated: ${s.verdict}. Now waiting for a network transition (Android will not let the app toggle its own radios).`);
+  const checkAPass = !orphanedActive;
+
+  // Check B: override persistence/rehydration, using the probe row 3.2 created just before
+  // instructing the restart. Unconditionally cleaned up below regardless of outcome.
+  let checkBPass = false;
+  let checkBReasonCode = "NO_PROBE_OVERRIDE_CREATED_BEFORE_RESTART";
+  let checkBEvidence: Record<string, unknown> = { note: "The pre-restart probe override (row 3.2) was never created -- rehydration cannot be independently tested this run." };
+  if (run.overrideProbeHost) {
+    const persisted = await GuardDogSecuritySDK.getWebsiteGateOverrides();
+    const persistedRecord = persisted.find((r) => r.host === run.overrideProbeHost) ?? null;
+    const persistedOk = !!persistedRecord && persistedRecord.type === "allow";
+    await GuardDogSecuritySDK.hydrateWebsiteGateOverrides();
+    const nativeList = readNativeWebsiteGateOverrides();
+    const nativeOk = !!nativeList && nativeList.includes(run.overrideProbeHost);
+    checkBPass = persistedOk && nativeOk;
+    checkBReasonCode = checkBPass ? "OVERRIDE_REHYDRATED_CORRECTLY" : !persistedOk ? "PERSISTED_RECORD_MISSING_OR_WRONG_TYPE_AFTER_RESTART" : "NATIVE_CACHE_NOT_REHYDRATED_FROM_DURABLE_STORE";
+    checkBEvidence = { probeHost: run.overrideProbeHost, persistedRecord, nativeList, persistedOk, nativeOk };
+    // Clean up unconditionally -- never leave a disposable test override behind.
+    await GuardDogSecuritySDK.removeWebsiteGateAllowOverride(run.overrideProbeHost);
+  }
+
+  const bothPass = checkAPass && checkBPass;
+  const verdict: Phase6StepVerdict = bothPass ? "PASS" : !checkAPass ? "FAIL" : checkBReasonCode === "NO_PROBE_OVERRIDE_CREATED_BEFORE_RESTART" ? "NOT_TESTED" : "FAIL";
+  const reasonCode = bothPass ? "CLEAN_RESTART_AND_OVERRIDE_REHYDRATED" : !checkAPass ? "ORPHANED_ACTIVE_STATE_AFTER_RESTART" : checkBReasonCode;
+  const explanation = bothPass
+    ? `Both independent checks passed: (A) no orphaned active/biting state survived the restart (state=${status.state}); (B) the probe override genuinely rehydrated into the native cache from the durable store after the native session was wiped by process death.`
+    : !checkAPass
+      ? "Protection reports ACTIVE with an open TUN immediately on a fresh process, before this run re-armed anything -- a stale/fabricated state (check A failed; check B not decisive)."
+      : checkBReasonCode === "NO_PROBE_OVERRIDE_CREATED_BEFORE_RESTART"
+        ? "Check A (no orphaned state) passed, but check B (override rehydration) could not be independently tested this run because its pre-restart probe setup failed."
+        : `Check A (no orphaned state) passed, but check B (override rehydration) failed: ${checkBReasonCode}.`;
+  const s = step("3.3", 3, "App restart (kill + relaunch): (A) no orphaned enforcement state, AND (B) durable override genuinely rehydrates into native session state — both required", verdict, reasonCode, explanation, { status, rec, checkAPass, checkBPass, checkBEvidence }, startedAt);
+  return withLog(
+    { ...run, steps: [...run.steps, s], phase: "reactivate-for-network", overrideProbeHost: null, awaitingInstruction: null, awaitingSince: null, awaitingAttempts: 0 },
+    `App restart evaluated: 3.3=${s.verdict} (${s.reasonCode}). Re-establishing an ACTIVE session for the network-transition test (row 3.4).`,
+  );
 }
 
 /** Called by the screen (on AppState foreground or a manual "Check now" tap) while phase is
- * "awaiting-network". `currentNetworkType` comes from expo-network, read by the screen. */
+ * "awaiting-network". `currentNetworkType` comes from expo-network, read by the screen.
+ * 2026-09 tightened definition: this phase is now only entered with protection genuinely ACTIVE and
+ * dnsGatewayActive===true (see the "reactivate-for-network" phase above) -- a real Wi-Fi ↔ cellular
+ * transition, not the old, weaker "any change including dropping to NONE while already inactive."
+ * Landing back on ACTIVE requires proven, not cosmetic, recovery (row 3.5's sanity fetch); landing
+ * on anything else is accepted ONLY if reported truthfully with no stale evidence -- an explicit,
+ * defined outcome either way, never assumed. */
 export async function checkAwaitingNetwork(run: Phase6RunState, currentNetworkType: string): Promise<Phase6RunState> {
   if (run.phase !== "awaiting-network") return run;
   if (run.networkTypeBeforeToggle === null) {
     return { ...run, networkTypeBeforeToggle: currentNetworkType };
   }
-  if (currentNetworkType === run.networkTypeBeforeToggle) {
-    return withLog({ ...run, awaitingAttempts: run.awaitingAttempts + 1 }, `Checked for network transition — still ${currentNetworkType}, no change detected yet.`);
+  // Require landing on a genuinely DIFFERENT connected type -- dropping to NONE/UNKNOWN is not the
+  // active Wi-Fi<->cellular scenario this row exercises; keep waiting rather than settle for it.
+  if (currentNetworkType === run.networkTypeBeforeToggle || currentNetworkType === "NONE" || currentNetworkType === "UNKNOWN") {
+    return withLog({ ...run, awaitingAttempts: run.awaitingAttempts + 1 }, `Checked for an active network transition — still ${currentNetworkType} (need a different CONNECTED type, e.g. Wi-Fi ↔ cellular), no change detected yet.`);
   }
   const startedAt = nowIso();
+  const statsAtDetection = GuardDogSecuritySDK.getEnforcementStats();
+  await sleep(1500); // let the native layer settle/react to the transition before snapshotting
   const status = GuardDogSecuritySDK.getProtectionState();
-  const truthfulThroughTransition = status.state !== "ACTIVE" || (readRecoveryStatus()?.tunOpen ?? false) === true; // if it claims ACTIVE, the TUN must genuinely still be open
-  const s = step("3.4", 3, "Network transition → protection status reported truthfully through the transition", truthfulThroughTransition ? "PASS" : "FAIL", truthfulThroughTransition ? "TRUTHFUL_THROUGH_TRANSITION" : "STALE_STATE_ACROSS_TRANSITION", truthfulThroughTransition ? `Network changed ${run.networkTypeBeforeToggle} → ${currentNetworkType}; reported state (${status.state}) stayed consistent with actual TUN state.` : `Network changed ${run.networkTypeBeforeToggle} → ${currentNetworkType}; state claims ${status.state} but the TUN evidence disagrees.`, { before: run.networkTypeBeforeToggle, after: currentNetworkType, status }, startedAt);
-  return withLog({ ...run, steps: [...run.steps, s], phase: "dns-capability", awaitingInstruction: null, awaitingSince: null, awaitingAttempts: 0 }, `Network transition evaluated: ${s.verdict}. Running the automatic DNS-capability check.`);
+  const rec = readRecoveryStatus();
+  const gateStatus = GuardDogSecuritySDK.getWebsiteGateStatus();
+  const statsAtSettle = GuardDogSecuritySDK.getEnforcementStats();
+  const noStaleEvidenceDuringTransition = !!statsAtSettle && !!statsAtDetection && statsAtSettle.observedMatching === statsAtDetection.observedMatching && statsAtSettle.droppedMatching === statsAtDetection.droppedMatching;
+  const rowTitle = "Active network transition (Wi-Fi ↔ cellular) while protection is genuinely ACTIVE → truthful state, and (if it stays active) proven recovery";
+
+  if (status.state === "ACTIVE") {
+    // "Recovers automatically" path -- every one of these must hold, or it's a truthfulness FAIL.
+    const tunReallyOpen = rec != null && rec.tunOpen === true;
+    const gateReallyActive = gateStatus.dnsGatewayActive === true;
+    const activePass = tunReallyOpen && gateReallyActive && noStaleEvidenceDuringTransition;
+    const s = step(
+      "3.4",
+      3,
+      rowTitle,
+      activePass ? "PASS" : "FAIL",
+      activePass ? "TRUTHFUL_ACTIVE_RECOVERY" : !tunReallyOpen ? "CLAIMS_ACTIVE_BUT_TUN_CLOSED" : !gateReallyActive ? "CLAIMS_ACTIVE_BUT_GATE_INACTIVE" : "STALE_EVIDENCE_DURING_TRANSITION",
+      activePass
+        ? `Network changed ${run.networkTypeBeforeToggle} → ${currentNetworkType} while protection was ACTIVE; state stayed ACTIVE with a genuinely open TUN, dnsGatewayActive stayed true, and no unexplained enforcement events fired purely from the transition.`
+        : `Network changed ${run.networkTypeBeforeToggle} → ${currentNetworkType} while protection was ACTIVE; state claims ACTIVE but tunOpen=${rec?.tunOpen}, dnsGatewayActive=${gateStatus.dnsGatewayActive}, evidenceUnchanged=${noStaleEvidenceDuringTransition} -- inconsistent with a genuine automatic recovery.`,
+      { before: run.networkTypeBeforeToggle, after: currentNetworkType, status, rec, gateStatus, statsAtDetection, statsAtSettle },
+      startedAt,
+    );
+    if (!activePass) {
+      const s35 = step("3.5", 3, "Post-transition positive sanity check → enforcement still genuinely functions after the transition", "NOT_TESTED", "NOT_APPLICABLE_ROW_3_4_FAILED", "Row 3.4 did not confirm a genuinely truthful ACTIVE state after the transition -- a sanity check would not be meaningful.", {}, startedAt);
+      return withLog({ ...run, steps: [...run.steps, s, s35], phase: "dns-capability", awaitingInstruction: null, awaitingSince: null, awaitingAttempts: 0 }, `Network transition (active path) evaluated: 3.4=FAIL (${s.reasonCode}).`);
+    }
+    // Row 3.5: only meaningful once 3.4 has confirmed a genuinely truthful ACTIVE recovery -- its
+    // own fresh fetch, its own fresh TUN evidence, never inherited from row 1.1/1.2/3.4.
+    const sanityStartedAt = nowIso();
+    const statsBeforeSanity = GuardDogSecuritySDK.getEnforcementStats();
+    const sanityEvidence = await runPositiveEnforcementTest(run.testDomain, POSITIVE_WINDOW_MS);
+    const statsAfterSanity = GuardDogSecuritySDK.getEnforcementStats();
+    const sanityTunEvidence = !!statsAfterSanity && !!statsBeforeSanity && statsAfterSanity.observedMatching > statsBeforeSanity.observedMatching && statsAfterSanity.droppedMatching > statsBeforeSanity.droppedMatching;
+    const sanityFull = !!sanityEvidence.blockedEvent?.enforcementEvidenceId && sanityTunEvidence;
+    const s35 = step(
+      "3.5",
+      3,
+      "Post-transition positive sanity check → enforcement still genuinely functions after the transition",
+      sanityFull ? "PASS" : "FAIL",
+      sanityFull ? "SANITY_ENFORCEMENT_CONFIRMED_POST_TRANSITION" : sanityEvidence.blockedEvent ? "SANITY_EVENT_WITHOUT_TUN_EVIDENCE" : "SANITY_NO_EVIDENCE_WITHIN_WINDOW",
+      sanityFull
+        ? `Post-transition fetch to ${run.testDomain} produced a fresh THREAT_BLOCKED (evidenceId=${sanityEvidence.blockedEvent!.enforcementEvidenceId}) with corroborating TUN evidence -- enforcement genuinely still works after the transition, not just cosmetically ACTIVE.`
+        : "Post-transition fetch did not produce a fully evidence-backed block -- protection claims ACTIVE/recovered but enforcement did not genuinely fire.",
+      { sanityEvidence, statsBeforeSanity, statsAfterSanity },
+      sanityStartedAt,
+    );
+    return withLog({ ...run, steps: [...run.steps, s, s35], phase: "dns-capability", awaitingInstruction: null, awaitingSince: null, awaitingAttempts: 0 }, `Network transition (active path): 3.4=${s.verdict}, 3.5=${s35.verdict}.`);
+  }
+
+  // "Design intentionally drops to inactive" path: PASS only if internally consistent (truthfully
+  // inactive, no stale TUN/route left open, no unexplained evidence) -- an explicit, accepted
+  // outcome, not a guess about intent.
+  const tunReallyClosed = rec == null || rec.tunOpen === false;
+  const inactivePass = tunReallyClosed && noStaleEvidenceDuringTransition;
+  const s = step(
+    "3.4",
+    3,
+    rowTitle,
+    inactivePass ? "PASS" : "FAIL",
+    inactivePass ? "TRUTHFUL_INACTIVE_AFTER_TRANSITION_BY_DESIGN" : "CLAIMS_INACTIVE_BUT_TUN_STILL_OPEN",
+    inactivePass
+      ? `Network changed ${run.networkTypeBeforeToggle} → ${currentNetworkType} while protection was ACTIVE; the transition caused protection to settle at ${status.state} -- reported truthfully (TUN genuinely closed, no unexplained evidence). This documents that this app does not auto-recover across this transition, rather than fabricating a false ACTIVE.`
+      : `Network changed ${run.networkTypeBeforeToggle} → ${currentNetworkType}; state claims ${status.state} (not ACTIVE) but tunOpen=${rec?.tunOpen}, evidenceUnchanged=${noStaleEvidenceDuringTransition} -- inconsistent, a stale-state truthfulness violation.`,
+    { before: run.networkTypeBeforeToggle, after: currentNetworkType, status, rec, statsAtDetection, statsAtSettle },
+    startedAt,
+  );
+  const s35 = step("3.5", 3, "Post-transition positive sanity check → enforcement still genuinely functions after the transition", "NOT_TESTED", "NOT_APPLICABLE_PROTECTION_INACTIVE_AFTER_TRANSITION", "Protection reported inactive after the transition -- a positive sanity fetch is not applicable to this outcome.", {}, startedAt);
+  return withLog({ ...run, steps: [...run.steps, s, s35], phase: "dns-capability", awaitingInstruction: null, awaitingSince: null, awaitingAttempts: 0 }, `Network transition (inactive-after-transition path) evaluated: 3.4=${s.verdict}.`);
 }
 
 export interface DnsCapabilityCheckResult {
