@@ -51,6 +51,20 @@ data class EnforcementEvidence(
       )
 
     /**
+     * Call Guard's ONLY factory for a verified call block. Called from
+     * ApolloCallScreeningService.onScreenCall at the exact moment respondToCall() was actually invoked
+     * with rejectCall=true for a real incoming call — never in advance, never from an intent to block.
+     * `destinationDomain` doubles as the caller's E.164 number here (no separate phone field was added
+     * to this shared model purely to avoid schema churn across three layers — see field comment above).
+     */
+    fun verifiedCallBlock(evidenceId: String, observedAt: String, number: String, ruleSource: String, osVersion: String?, sdkVersion: String?): EnforcementEvidence =
+      EnforcementEvidence(
+        evidenceId = evidenceId, observedAt = observedAt, mechanism = "call_screening", direction = "inbound", protocol = "unknown",
+        destinationDomain = number, matchedRuleId = number, osVersion = osVersion, sdkVersion = sdkVersion,
+        requestedAction = "block", enforcedAction = "blocked", result = "verified", ruleSource = ruleSource, confidence = "high",
+      )
+
+    /**
      * Rule-activation confirmation for a manual "Block" tap (ApolloSecurityModule.blockDestination):
      * the filter is observed live-running and this host is now in its enforced set, so a FUTURE
      * lookup for it will be answered by [verifiedDnsBlock] — but none has happened yet. result is

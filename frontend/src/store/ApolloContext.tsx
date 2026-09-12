@@ -34,6 +34,7 @@ import { toPatrolEnforcementEvidence } from "@/src/domain/enforcementEvidenceSyn
 import { SecureCore } from "@/src/security/securecore/SecureCore";
 import { getPushStatus, registerForPush, type PushStatus } from "@/src/push/notifications";
 import { MessagingSdk } from "@/src/security/messagingSdk";
+import { CallSdk } from "@/src/security/callSdk";
 import { storage } from "@/src/utils/storage";
 
 const deviceMeta = () => ({ platform: Platform.OS, adapter_mode: SECURITY_MODE, app_version: "1.0.0", tz_offset_minutes: -new Date().getTimezoneOffset() });
@@ -46,6 +47,14 @@ export interface CheckOutcome { local: LocalAnalysis; intel: IntelResult | null;
 export interface MessageUrlResult { url: string; host: string; verdict: "clean" | "malicious" | "unknown"; threat_types: string[]; coverage: string; redirect_chain?: string[]; final_url?: string | null; domain_info?: DomainInfo | null }
 export interface MessageExplanation { summary: string; why: string[]; recommendation: string }
 export interface MessageOutcome { analysis: MessageAnalysis; urls: MessageUrlResult[]; explanation: MessageExplanation | null; remoteError: string | null; event: PatrolEvent | null }
+/** Call Guard add-on: mirrors backend CallRiskResponse (routers/call.py). `decision` is heuristic/
+ * probabilistic (IPQualityScore) — see services/phonerisk.py's Truth-of-State comment; it alone may
+ * only reach "growling"/"barking" in the app, never a verified "biting" block. */
+export interface CallRiskResult {
+  number: string; valid: boolean | null; active: boolean | null; fraud_score: number | null; recent_abuse: boolean | null;
+  risky: boolean | null; voip: boolean | null; line_type: string | null; carrier: string | null; country: string | null;
+  decision: "allow" | "review" | "avoid"; cached: boolean; checked_at: string; source: "ipqualityscore" | "not_configured";
+}
 export { RECOVERY_STEPS, type RecoveryKind } from "@/src/domain/recovery";
 import { RECOVERY_STEPS, type RecoveryKind } from "@/src/domain/recovery";
 
@@ -86,6 +95,8 @@ interface ApolloContextValue {
   recordPageAnalysis(pa: PageAnalysis, existing: PatrolEvent | null): Promise<PatrolEvent | null>;
   /** Gate 4: Check This Call — user-selected context (+ optional transcript) → Call Risk Engine → Patrol event + Threat Scent. */
   checkCall(input: CallInput): Promise<{ analysis: CallAnalysis; event: PatrolEvent | null }>;
+  /** Call Guard add-on: on-demand caller-number risk check (backend-proxied IPQualityScore). */
+  checkNumberRisk(number: string, country?: string): Promise<CallRiskResult>;
   upsertEvent(event: PatrolEvent): Promise<PatrolEvent>;
   blockEvent(event: PatrolEvent): Promise<BlockResult>;
   trustEvent(event: PatrolEvent): Promise<boolean>;
@@ -219,27 +230,38 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     seenEvidenceRef.current = new Set(capped);
     await storage.setItem(K.seenEvidence, JSON.stringify(capped));
     for (const e of fresh) {
-      const domain = e.destination.domain ?? e.destination.ip ?? "a threat";
-      // Upgrade an existing card for this exact host (e.g. it was flagged/barking earlier) in place,
-      // rather than spawning a duplicate — one destination should read as one continuous story.
-      const existing = eventsRef.current.find((x) => x.indicator_host === domain && x.state !== "biting");
+      const isCall = e.mechanism === "call_screening";
+      const domain = e.destination.domain ?? e.destination.ip ?? (isCall ? "an unknown caller" : "a threat");
+      // Upgrade an existing card for this exact host/number (e.g. it was flagged/barking earlier) in
+      // place, rather than spawning a duplicate — one destination should read as one continuous story.
+      // Calls use `local_indicator` (never synced — see syncEvent) instead of `indicator_host`,
+      // matching the same privacy choice Check This Call already makes for phone numbers.
+      const existing = eventsRef.current.find((x) => (isCall ? x.local_indicator === domain : x.indicator_host === domain) && x.state !== "biting");
       const base: PatrolEvent = existing ?? {
-        event_id: Crypto.randomUUID(), device_id: deviceIdRef.current ?? "local", category: "connection", state: "barking", status: "active",
-        headline: "", what_happened: "", why: [], what_to_do: "", indicator_host: domain, indicator_digest: null,
+        event_id: Crypto.randomUUID(), device_id: deviceIdRef.current ?? "local", category: isCall ? "call" : "connection", state: "barking", status: "active",
+        headline: "", what_happened: "", why: [], what_to_do: "", indicator_host: isCall ? null : domain, local_indicator: isCall ? domain : undefined, indicator_digest: null,
         verified_block: false, adapter_label: securityAdapter.label, occurred_at: e.observedAt, resolved_at: null, trust_allowed: false,
       };
       if (!canTransition(base, "biting", { verifiedBlock: true })) continue; // defensive: same single gate everywhere
+      const headline = isCall ? `Apollo blocked a call from ${domain}` : `Apollo blocked ${domain}`;
+      const whatHappened = isCall
+        ? `Apollo's Call Guard rejected an incoming call from ${domain} on this device before it rang — it matched a number Apollo already knew was high-risk.`
+        : `Apollo's Site Guard observed a real connection attempt to ${domain} and blocked it on this device.`;
+      const whyLine = isCall
+        ? "The call was rejected before it rang — confirmed by the operating system, not assumed."
+        : "Apollo's on-device filter matched this domain against a threat it already knew about and blocked the exact connection — confirmed by the operating system, not assumed.";
       const ev: PatrolEvent = {
-        ...base, state: "biting", status: "blocked", headline: `Apollo blocked ${domain}`,
-        what_happened: `Apollo's Site Guard observed a real connection attempt to ${domain} and blocked it on this device.`,
-        why: [...base.why, "Apollo's on-device filter matched this domain against a threat it already knew about and blocked the exact connection — confirmed by the operating system, not assumed."],
-        what_to_do: "Nothing more to do. Apollo verified this destination is blocked.", indicator_host: domain,
+        ...base, state: "biting", status: "blocked", headline,
+        what_happened: whatHappened,
+        why: [...base.why, whyLine],
+        what_to_do: isCall ? "Nothing more to do. Apollo verified this call was blocked." : "Nothing more to do. Apollo verified this destination is blocked.",
+        indicator_host: isCall ? null : domain, local_indicator: isCall ? domain : base.local_indicator,
         verified_block: true, adapter_label: securityAdapter.label, occurred_at: e.observedAt, resolved_at: null,
         background: true, enforcement_evidence: toPatrolEnforcementEvidence(e),
       };
       setEvents((prev) => { const next = [ev, ...prev.filter((x) => x.event_id !== ev.event_id)]; void storage.setItem(K.events, JSON.stringify(next)); return next; });
       void syncEventRef.current?.(ev);
-      showToast(`Apollo blocked ${domain}.`, "biting");
+      showToast(isCall ? `Apollo blocked a call from ${domain}.` : `Apollo blocked ${domain}.`, "biting");
     }
   }, [showToast]);
   const lastConnectionKey = useRef<string | null>(null);
@@ -562,6 +584,62 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     return { analysis, event };
   }, [deviceId, upsertEvent]);
 
+  // Call Guard add-on: on-demand caller-number risk check (backend-proxied IPQualityScore — see
+  // services/phonerisk.py). Used by the "Check this number" quick action AND the pending-lookup poll
+  // below. A non-"allow" decision is remembered on-device (CallSdk.markNumberRisky) so Call Guard's
+  // native mechanism can act on it next time, and files a growling/barking (never biting) Patrol
+  // event — matching Check This Call's existing choice to keep the number itself local-only
+  // (`local_indicator`, never synced — see syncEvent's strip above).
+  const checkNumberRisk = useCallback(async (number: string, country?: string): Promise<CallRiskResult> => {
+    const body: Record<string, unknown> = { device_id: deviceId ?? "local", number };
+    if (country) body.country = country;
+    const result = await apiPost<CallRiskResult>("/call/risk-check", "call_risk_check", body);
+    if (result.decision !== "allow") {
+      try { await CallSdk.markNumberRisky(result.number); } catch { /* informational only if native module unavailable */ }
+      const isAvoid = result.decision === "avoid";
+      const existing = eventsRef.current.find((x) => x.local_indicator === result.number && x.state !== "biting");
+      const why = [result.recent_abuse ? "Reported for recent abuse." : "Elevated fraud-risk score.", result.voip ? "This is a VOIP number, commonly used to spoof caller ID." : null].filter((w): w is string => !!w);
+      const ev: PatrolEvent = {
+        ...(existing ?? {
+          event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "call" as const, status: "active" as const,
+          indicator_host: null, indicator_digest: null, local_indicator: result.number, verified_block: false,
+          adapter_label: securityAdapter.label, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, why: [],
+        }),
+        state: isAvoid ? "barking" : "growling", status: "active",
+        headline: isAvoid ? `High-risk caller: ${result.number}` : `Caller worth a second look: ${result.number}`,
+        what_happened: isAvoid
+          ? `Apollo checked ${result.number} and found strong signs of fraud/spam abuse (fraud score ${result.fraud_score ?? "unknown"}/100).`
+          : `Apollo checked ${result.number} and found some risk signals (fraud score ${result.fraud_score ?? "unknown"}/100) — not enough to be certain.`,
+        why, what_to_do: isAvoid ? "Apollo will reject future calls from this number automatically. You can also add it to your block list." : "Answer with caution, or add it to your block list if it turns out to be unwanted.",
+      };
+      setEvents((prev) => { const next = [ev, ...prev.filter((x) => x.event_id !== ev.event_id)]; void storage.setItem(K.events, JSON.stringify(next)); return next; });
+      void syncEventRef.current?.(ev);
+      showToast(isAvoid ? `Apollo flagged a high-risk caller: ${result.number}` : `Apollo flagged a caller worth checking: ${result.number}`, isAvoid ? "barking" : "growling");
+    }
+    return result;
+  }, [deviceId, showToast]);
+
+  // Call Guard add-on: drains numbers ApolloCallScreeningService saw ringing with no local block/
+  // allow/risk signal (mailbox semantics, Android only — CallSdk.getPendingCallLookups() always
+  // returns [] elsewhere) and runs the SAME risk check as the manual quick action for each.
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const items = await CallSdk.getPendingCallLookups();
+        for (const item of items) {
+          if (cancelled) return;
+          if (!item?.number) continue;
+          try { await checkNumberRisk(item.number); } catch { /* one bad item shouldn't stop the rest of the queue */ }
+        }
+      } catch { /* native module unavailable — nothing to drain */ }
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), lowPower ? 120000 : 45000);
+    const sub = AppState.addEventListener("change", (st) => { if (st === "active") void poll(); });
+    return () => { cancelled = true; clearInterval(timer); sub.remove(); };
+  }, [checkNumberRisk, lowPower]);
+
   const recordRecovery = useCallback(async (event: PatrolEvent, kind: RecoveryKind) => {
     const label: Record<RecoveryKind, string> = { clicked: "Opened the link", password: "Entered a password", code: "Shared a verification code", money: "Sent money", info: "Shared personal information", app: "Installed an app", card: "Entered card or bank details", download: "Downloaded a file", called: "Called the number shown", remote: "Gave someone remote access", accessibility: "Granted accessibility access", profile: "Installed a profile or certificate", banking_during_access: "Used banking while they had access", mfa_approved: "Approved a login prompt", locked_out: "Lost access to the account" };
     const escalate = kind !== "clicked";
@@ -679,7 +757,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   const value: ApolloContextValue = {
     ready, setupDone, deviceId, identityReset, reRegisterDevice, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label, isMock: IS_MOCK_SECURITY,
-    refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, scanGmailInbox, scanImapInbox, recordRecovery, upsertEvent, recordPageAnalysis, checkCall,
+    refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, scanGmailInbox, scanImapInbox, recordRecovery, upsertEvent, recordPageAnalysis, checkCall, checkNumberRisk,
     pushStatus, enablePush, quietHours, quietNow, setQuietHours, lowPower, setLowPower,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

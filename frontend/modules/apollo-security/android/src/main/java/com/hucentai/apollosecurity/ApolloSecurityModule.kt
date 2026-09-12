@@ -210,6 +210,50 @@ class ApolloSecurityModule : Module() {
       JSONObject().put("opened", true).toString()
     }
 
+    // Call Guard (CallSdk contract). Real Android signal: RoleManager.ROLE_CALL_SCREENING held by
+    // ApolloCallScreeningService — never a live call is read here, only role/list state.
+    // `numberReputation` is always "supported": the actual lookup is backend-proxied
+    // (POST /api/call/risk-check via services/phonerisk.py) and works regardless of native readiness;
+    // /call/risk-check itself reports source="not_configured" honestly if no IPQS key is set.
+    AsyncFunction("getCallProtectionCapabilities") {
+      val held = ApolloCallScreeningService.isRoleHeld(ctx)
+      JSONObject()
+        .put("callScreening", if (held) "supported" else "permission_required")
+        .put("callerIdentification", "unsupported")
+        .put("numberReputation", "supported")
+        .put("voicemailTranscript", "unsupported")
+        .put("liveTranscript", "unsupported")
+        .toString()
+    }
+    AsyncFunction("requestCallScreeningRole") {
+      val rm = ctx.getSystemService(Context.ROLE_SERVICE) as? android.app.role.RoleManager
+      val opened = if (rm != null && ApolloCallScreeningService.isRoleAvailable(ctx) && !ApolloCallScreeningService.isRoleHeld(ctx)) {
+        val intent = rm.createRequestRoleIntent(android.app.role.RoleManager.ROLE_CALL_SCREENING).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        appContext.currentActivity?.startActivity(intent) ?: ctx.startActivity(intent)
+        true
+      } else false
+      JSONObject().put("opened", opened).toString()
+    }
+    // Mailbox semantics, same pattern as Text Guard's queue — draining clears it.
+    AsyncFunction("getPendingCallLookups") { ApolloCallScreeningService.drainPendingLookups(ctx).toString() }
+    AsyncFunction("getCallBlockAllowList") { ApolloCallScreeningService.blockAllowJson(ctx).toString() }
+    AsyncFunction("addCallListEntry") { json: String ->
+      val body = JSONObject(json)
+      val key = if (body.optString("kind") == "allow") "allow_numbers" else "block_numbers"
+      ApolloCallScreeningService.addToSet(ctx, key, body.optString("number"))
+      JSONObject().put("ok", true).toString()
+    }
+    AsyncFunction("removeCallListEntry") { json: String ->
+      val body = JSONObject(json)
+      val key = if (body.optString("kind") == "allow") "allow_numbers" else "block_numbers"
+      ApolloCallScreeningService.removeFromSet(ctx, key, body.optString("number"))
+      JSONObject().put("ok", true).toString()
+    }
+    AsyncFunction("markNumberRisky") { json: String ->
+      ApolloCallScreeningService.markRisky(ctx, JSONObject(json).optString("number"))
+      JSONObject().put("ok", true).toString()
+    }
+
     // Cross-Platform Architecture Directive (src/security/PlatformCapabilityProfile.ts). Capability is the
     // DEPLOYED reality of THIS build, not the theoretical Android ceiling — Site Guard here is DNS-only by
     // design (see ApolloDnsVpnService header), so it is honestly narrower than a full packet-filtering VPN.
@@ -243,6 +287,7 @@ class ApolloSecurityModule : Module() {
     AsyncFunction("getEnforcementEvidence") {
       val arr = JSONArray()
       ApolloDnsVpnService.recentEvidence().forEach { arr.put(evidenceJson(it)) }
+      ApolloCallScreeningService.recentEvidence().forEach { arr.put(evidenceJson(it)) }
       arr.toString()
     }
   }

@@ -1,3 +1,4 @@
+import CallKit
 import ExpoModulesCore
 import Network
 import NetworkExtension
@@ -41,6 +42,31 @@ public class ApolloSecurityModule: Module {
     FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup)?.appendingPathComponent("blockerList.json")
   }
   private var blockedKey: String { "apollo.siteguard.blocked" }
+
+  // Call Guard — CXCallDirectoryExtension (ApolloCallDirectory), same App Group as Site Guard.
+  // The extension only ever gets a STATIC list at reload time (Apple gives it no per-call callback,
+  // unlike Android's CallScreeningService) — so `pendingLookups` can never be populated on iOS, and
+  // `getEnforcementEvidence` must stay "[]" here too: Apple never reports back which entry, if any,
+  // actually caused a block. See ApolloCallDirectory/CallDirectoryHandler.swift for what the
+  // extension itself does with this list.
+  private var callDirectoryId: String { "\(appBundleId).calldirectory" }
+  private var callListURL: URL? {
+    FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup)?.appendingPathComponent("callDirectory.json")
+  }
+  private func loadCallLists() -> [String: [String]] {
+    guard let url = callListURL, let data = try? Data(contentsOf: url),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: [String]] else {
+      return ["block": [], "allow": [], "autoRisky": []]
+    }
+    return ["block": obj["block"] ?? [], "allow": obj["allow"] ?? [], "autoRisky": obj["autoRisky"] ?? []]
+  }
+  private func saveCallLists(_ lists: [String: [String]]) -> Bool {
+    guard let url = callListURL, let data = try? JSONSerialization.data(withJSONObject: lists) else { return false }
+    return (try? data.write(to: url, options: .atomic)) != nil
+  }
+  private func reloadCallDirectory(_ done: @escaping () -> Void) {
+    CXCallDirectoryManager.sharedInstance().reloadExtension(withIdentifier: callDirectoryId) { _ in done() }
+  }
 
   public func definition() -> ModuleDefinition {
     Name("ApolloSecurity")
@@ -140,6 +166,61 @@ public class ApolloSecurityModule: Module {
     AsyncFunction("getRecentMessageSecurityEvents") { () -> String in "[]" }
     AsyncFunction("openSmsListenerSettings") { () -> String in self.json(["opened": false]) }
 
+    // Call Guard (CallSdk contract). `callScreening` reflects CXCallDirectoryManager's OWN reported
+    // enabled status for ApolloCallDirectory — never assumed. `numberReputation` is always
+    // "supported": the lookup is backend-proxied (POST /api/call/risk-check) and works regardless of
+    // extension state. `callerIdentification` mirrors the same enabled status — the extension can add
+    // identification entries once the person has turned it on in Settings › Phone › Call Blocking &
+    // Identification (Apple gives apps no deep link straight to that screen).
+    AsyncFunction("getCallProtectionCapabilities") { (promise: Promise) in
+      CXCallDirectoryManager.sharedInstance().getEnabledStatusForExtension(withIdentifier: self.callDirectoryId) { status, _ in
+        let enabled = status == .enabled
+        promise.resolve(self.json([
+          "callScreening": enabled ? "supported" : "permission_required",
+          "callerIdentification": enabled ? "supported" : "permission_required",
+          "numberReputation": "supported",
+          "voicemailTranscript": "unsupported",
+          "liveTranscript": "unsupported",
+        ]))
+      }
+    }
+    AsyncFunction("requestCallScreeningRole") { () -> String in
+      // Apple has no API to deep-link directly to Phone › Call Blocking & Identification — only to
+      // the app's own Settings page. The in-app copy tells the person exactly where to go from there.
+      if let url = URL(string: UIApplication.openSettingsURLString) { DispatchQueue.main.async { UIApplication.shared.open(url) } }
+      return self.json(["opened": true])
+    }
+    // Apple gives CXCallDirectoryProvider no per-call callback — there is no ringing event for iOS to
+    // observe and queue, unlike Android's CallScreeningService. Always honestly empty.
+    AsyncFunction("getPendingCallLookups") { () -> String in "[]" }
+    AsyncFunction("getCallBlockAllowList") { () -> String in self.json(self.loadCallLists()) }
+    AsyncFunction("addCallListEntry") { (json: String, promise: Promise) in
+      guard let body = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: String],
+            let number = body["number"], !number.isEmpty else { promise.resolve(self.json(["ok": false])); return }
+      let key = body["kind"] == "allow" ? "allow" : "block"
+      var lists = self.loadCallLists()
+      lists[key] = Array(Set((lists[key] ?? []) + [number]))
+      _ = self.saveCallLists(lists)
+      self.reloadCallDirectory { promise.resolve(self.json(["ok": true])) }
+    }
+    AsyncFunction("removeCallListEntry") { (json: String, promise: Promise) in
+      guard let body = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: String],
+            let number = body["number"] else { promise.resolve(self.json(["ok": false])); return }
+      let key = body["kind"] == "allow" ? "allow" : "block"
+      var lists = self.loadCallLists()
+      lists[key] = (lists[key] ?? []).filter { $0 != number }
+      _ = self.saveCallLists(lists)
+      self.reloadCallDirectory { promise.resolve(self.json(["ok": true])) }
+    }
+    AsyncFunction("markNumberRisky") { (json: String, promise: Promise) in
+      guard let body = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: String],
+            let number = body["number"], !number.isEmpty else { promise.resolve(self.json(["ok": false])); return }
+      var lists = self.loadCallLists()
+      lists["autoRisky"] = Array(Set((lists["autoRisky"] ?? []) + [number]))
+      _ = self.saveCallLists(lists)
+      self.reloadCallDirectory { promise.resolve(self.json(["ok": true])) }
+    }
+
     // Phase A — Apps & Device (AppDeviceSdk contract). iPhone exposes exactly two facts; the rest is honestly null.
     AsyncFunction("getAppDeviceCapabilities") { () -> String in self.json(DeviceSignalsTruth.capabilities()) }
     AsyncFunction("getInstalledAppAssessment") { (_ name: String) -> String in "null" }   // iOS has no app list / permission API
@@ -236,11 +317,11 @@ public class ApolloSecurityModule: Module {
     }
 
     // Safari gives Apollo no per-hit evidence for content-blocker matches (see comment above on
-    // domainVisibility/realTimeEvents) — so unlike Android's DNS tunnel, there is nothing to list
-    // here, ever. Must stay [] until iOS moves to a mechanism that reports individual verified
-    // blocks (e.g. a Network Extension). A manual "Block" tap must never appear here either —
-    // see blockDestination() above, whose `verified` flag already reflects the same "no observed
-    // drop" truth for the app's own UI.
+    // domainVisibility/realTimeEvents), and CXCallDirectoryProvider gives no per-call feedback either
+    // (see the Call Guard block above) — so unlike Android's DNS tunnel + CallScreeningService, there
+    // is nothing to list here, ever. Must stay [] until iOS moves to mechanisms that report individual
+    // verified actions. A manual "Block" tap must never appear here either — see blockDestination()
+    // above, whose `verified` flag already reflects the same "no observed drop" truth for the app's own UI.
     AsyncFunction("getEnforcementEvidence") { () -> String in "[]" }
   }
 

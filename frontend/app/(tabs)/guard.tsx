@@ -4,6 +4,7 @@ import Globe from "lucide-react-native/icons/globe";
 import KeyRound from "lucide-react-native/icons/key-round";
 import Link2 from "lucide-react-native/icons/link-2";
 import MessageSquareWarning from "lucide-react-native/icons/message-square-warning";
+import PhoneOff from "lucide-react-native/icons/phone-off";
 import Radar from "lucide-react-native/icons/radar";
 import Share2 from "lucide-react-native/icons/share-2";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
@@ -67,6 +68,7 @@ export default function Guard() {
   const netOpen = events.filter((e) => e.category === "connection" && e.status === "active" && e.state !== "resting").length;
   const accountOpen = events.filter((e) => e.category === "account" && e.status === "active" && e.state !== "resting");
   const messageOpen = events.filter((e) => e.category === "message" && e.status === "active" && e.state !== "resting");
+  const callOpen = events.filter((e) => e.category === "call" && e.status === "active" && e.state !== "resting");
   // One sheet, two views. Closing one Modal and opening another in the same tick fails on iOS/Android
   // (the second never presents), so capability → permission switches content inside the same Modal.
   const [sheet, setSheet] = useState<{ kind: "cap"; cap: Capability } | { kind: "perm"; perm: ProtectionPermission } | null>(null);
@@ -157,6 +159,21 @@ export default function Guard() {
             </View>
             <Body testID="guard-textguard-summary">{messageOpen.length ? messageOpen.slice(0, 2).map((e) => e.headline).join(" · ") : Platform.OS === "android" ? "Paste a text, or turn on automatic scanning of new message notifications." : "Paste a text, or share it to Apollo from Messages."}</Body>
             <Button testID="guard-open-textguard" variant="secondary" label="Open Text Guard" onPress={() => router.push("/text-guard")} />
+          </Card>
+        </View>
+
+        <View>
+          <SectionTitle>Calls</SectionTitle>
+          <Card style={s.capCard} testID="guard-callguard-card">
+            <View style={s.guardRow}>
+              <View style={s.guardTitleRow}>
+                <View style={s.iconWell}><PhoneOff size={16} color={colors.brand} /></View>
+                <Text style={s.capTitle}>Call Guard</Text>
+              </View>
+              <Pill tone={callOpen.some((e) => e.state === "barking") ? "barking" : callOpen.length ? "growling" : "resting"} label={callOpen.length ? `${callOpen.length} need${callOpen.length > 1 ? "" : "s"} attention` : "All good"} testID="guard-callguard-status" />
+            </View>
+            <Body testID="guard-callguard-summary">{callOpen.length ? callOpen.slice(0, 2).map((e) => e.headline).join(" · ") : "Check a number, or turn on automatic call screening."}</Body>
+            <Button testID="guard-open-callguard" variant="secondary" label="Open Call Guard" onPress={() => router.push("/call-guard")} />
           </Card>
         </View>
 

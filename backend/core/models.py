@@ -116,7 +116,7 @@ class BlocklistEntry(BaseDocument):
 # to match this module's existing flat convention). This is the ONLY thing the server may consult
 # to decide verified_block — see _derive_verified_block in routers/patrol.py. The client's own
 # verified_block boolean is NEVER trusted directly.
-EnforcementMechanism = Literal["dns_filter", "content_blocker", "network_extension", "vpn_service", "packet_filter", "none", "simulated"]
+EnforcementMechanism = Literal["dns_filter", "content_blocker", "network_extension", "vpn_service", "packet_filter", "call_screening", "none", "simulated"]
 EnforcementResult = Literal["verified", "unverified", "failed"]
 
 
@@ -218,3 +218,49 @@ class AskMessage(BaseDocument):
     role: Literal["user", "apollo"]
     content: str
     created_at: datetime
+
+
+# --------------------------------------------------------------------------- Call Guard (Gate 4 add-on)
+# IPQualityScore phone fraud/spam risk scoring — proxied entirely server-side (services/phonerisk.py).
+# Cached by phone_e164 directly (not hashed): this is the CALLER's number, not the app owner's own
+# identifier, and the same number is already visible to the person in their call log — there is no
+# extra privacy exposure in caching it the same way DomainInfoCache caches a domain.
+class CallRiskRequest(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)
+    number: str = Field(min_length=3, max_length=40)
+    country: Optional[str] = Field(default=None, min_length=2, max_length=2)
+
+
+class PhoneRiskCache(BaseDocument):
+    phone_e164: str
+    valid: Optional[bool] = None
+    active: Optional[bool] = None
+    fraud_score: Optional[int] = None
+    recent_abuse: Optional[bool] = None
+    risky: Optional[bool] = None
+    voip: Optional[bool] = None
+    line_type: Optional[str] = None
+    carrier: Optional[str] = None
+    country: Optional[str] = None
+    checked_at: datetime
+    expires_at: datetime
+
+
+class CallRiskResponse(BaseModel):
+    number: str
+    valid: Optional[bool] = None
+    active: Optional[bool] = None
+    fraud_score: Optional[int] = None
+    recent_abuse: Optional[bool] = None
+    risky: Optional[bool] = None
+    voip: Optional[bool] = None
+    line_type: Optional[str] = None
+    carrier: Optional[str] = None
+    country: Optional[str] = None
+    # "avoid" deliberately avoids the word "block": this is a heuristic/probabilistic signal (Truth-
+    # of-State) — only the device's OWN CallScreeningService actually rejecting a call, with evidence,
+    # may ever produce a "biting"/verified_block PatrolEvent. This field never gates that on its own.
+    decision: Literal["allow", "review", "avoid"]
+    cached: bool
+    checked_at: datetime
+    source: Literal["ipqualityscore", "not_configured"]

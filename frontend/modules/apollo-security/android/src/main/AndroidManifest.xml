@@ -74,5 +74,17 @@
         <action android:name="android.service.notification.NotificationListenerService" />
       </intent-filter>
     </service>
+    <!-- Call Guard: CallScreeningService, held only if the person selects Apollo via the
+         RoleManager.ROLE_CALL_SCREENING request flow (Settings > Default apps > Caller ID & spam
+         blocking). exported=true is required for the system Telecom process to bind across
+         processes; BIND_SCREENING_SERVICE restricts that binding to the system only. -->
+    <service
+      android:name="com.hucentai.apollosecurity.ApolloCallScreeningService"
+      android:exported="true"
+      android:permission="android.permission.BIND_SCREENING_SERVICE">
+      <intent-filter>
+        <action android:name="android.telecom.CallScreeningService" />
+      </intent-filter>
+    </service>
   </application>
 </manifest>

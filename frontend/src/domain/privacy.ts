@@ -3,7 +3,7 @@
 // Raw personal content (page text, messages, contacts, photos, identifiers
 // beyond the anonymous device id) never leaves the device.
 
-export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "device_register" | "family" | "push_register" | "push_test" | "device_settings" | "message_check" | "message_extract" | "feedback" | "page_extract" | "page_crawl" | "gmail_scan" | "imap_connect" | "imap_scan" | "app_check" | "account_check" | "breach_check" | "voice";
+export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "device_register" | "family" | "push_register" | "push_test" | "device_settings" | "message_check" | "message_extract" | "feedback" | "page_extract" | "page_crawl" | "gmail_scan" | "imap_connect" | "imap_scan" | "app_check" | "account_check" | "breach_check" | "voice" | "call_risk_check";
 
 const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   family: new Set(["device_id", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id", "scent_id", "headline", "state", "events", "steps", "done", "note", "resolved", "kind", "text", "from_name", "enabled", "preview_only", "guardian_name", "duration_s"]),
@@ -44,6 +44,10 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   breach_check: new Set(["device_id", "identifier"]),
   // Quiet hours window (local minutes + UTC offset) so the server can hold growling pushes at night.
   device_settings: new Set(["quiet_hours"]),
+  // Call Guard (Gate 4 add-on): only the number itself (+ optional 2-letter country for local
+  // numbers) leaves the device, only when the person taps "Check this number" or a call rings with
+  // no local block/allow/risk signal — see backend/services/phonerisk.py (IPQualityScore, proxied).
+  call_risk_check: new Set(["device_id", "number", "country"]),
 };
 
 /** Keys that must never appear in any outbound payload, regardless of endpoint. */
@@ -81,6 +85,7 @@ export const PRIVACY_POLICY_SUMMARY = [
   "If you choose \"Let Apollo read the page\", Apollo fetches that page directly to look for scam signs — the content is checked and discarded, never stored.",
   "If you connect Gmail (read-only, optional), Apollo fetches your recent inbox only when you tap \"Scan my inbox\" — messages are checked on the spot and discarded; only Apollo's encrypted connection token is kept until you disconnect.",
   "If you connect another inbox via IMAP (read-only, optional), your host/username/app-password are sent once to set up the connection, then encrypted — the same \"scan and discard\" rule applies.",
+  "Call Guard checks a caller's number only when you ask, or when a call rings with no existing signal on your device — the number is checked and discarded, never stored beyond a short-lived risk-score cache. Your personal block/allow list stays on your device.",
   "Patrol sync stores event summaries and the website domain only. The full link stays on your device.",
   "Apollo uses an anonymous device ID. No account, no email. A phone number is shared only if you choose to add one so family can call you.",
   "Ask Higgins sends only your question and, if you choose, a short event summary.",

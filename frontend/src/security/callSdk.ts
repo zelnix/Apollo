@@ -13,4 +13,10 @@ export const CallSdk = {
   checkNumberReputation: (n: string) => { const m = getNativeModule(); return call<{ status: "unknown" | "trusted" | "reported"; reports: number } | null>(m ? () => m.checkNumberReputation(n) : undefined, null); },
   reportCallContext: (ctx: { asks: string[]; claim: string; state: string }) => { const m = getNativeModule(); return call<{ accepted: boolean }>(m ? () => m.reportCallContext(JSON.stringify(ctx)) : undefined, { accepted: false }); },
   getRecentCallSecurityEvents: () => { const m = getNativeModule(); return call<SdkCallFinding[]>(m ? () => m.getRecentCallSecurityEvents() : undefined, []); },
+  requestCallScreeningRole: () => { const m = getNativeModule(); return call<{ opened: boolean }>(m ? () => m.requestCallScreeningRole() : undefined, { opened: false }); },
+  getPendingCallLookups: () => { const m = getNativeModule(); return call<{ number: string; seenAtMs: number }[]>(m ? () => m.getPendingCallLookups() : undefined, []); },
+  getCallBlockAllowList: () => { const m = getNativeModule(); return call<{ block: string[]; allow: string[]; autoRisky: string[] }>(m ? () => m.getCallBlockAllowList() : undefined, { block: [], allow: [], autoRisky: [] }); },
+  addCallListEntry: (number: string, kind: "block" | "allow") => { const m = getNativeModule(); return call<{ ok: boolean }>(m ? () => m.addCallListEntry(JSON.stringify({ number, kind })) : undefined, { ok: false }); },
+  removeCallListEntry: (number: string, kind: "block" | "allow") => { const m = getNativeModule(); return call<{ ok: boolean }>(m ? () => m.removeCallListEntry(JSON.stringify({ number, kind })) : undefined, { ok: false }); },
+  markNumberRisky: (number: string) => { const m = getNativeModule(); return call<{ ok: boolean }>(m ? () => m.markNumberRisky(JSON.stringify({ number })) : undefined, { ok: false }); },
 };

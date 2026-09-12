@@ -88,6 +88,8 @@ export type AttributionConfidence = "high" | "medium" | "low" | "unavailable";
 
 export interface EnforcementDestination {
   ip: string | null;
+  /** For mechanism="call_screening" this doubles as the caller's E.164 number — no separate `phone`
+   * field was added purely to avoid schema churn across the Kotlin/Swift/Python/TS layers for a v1. */
   domain: string | null;
   port: number | null;
 }
@@ -109,7 +111,7 @@ export interface EnforcementEvidence {
   /** ISO-8601 timestamp of when the OS observed/enforced this, not when the app read it. */
   observedAt: string;
   /** How this was actually enforced. "simulated"/"none" can never carry result:"verified". */
-  mechanism: EnforcementMethod | "network_extension" | "vpn_service" | "packet_filter";
+  mechanism: EnforcementMethod | "network_extension" | "vpn_service" | "packet_filter" | "call_screening";
   direction: EnforcementDirection;
   protocol: EnforcementProtocol;
   destination: EnforcementDestination;

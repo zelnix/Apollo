@@ -25,7 +25,7 @@ from core.auth import enforce_device_auth, require_admin_key
 from core.config import ADMIN_HEADER
 from core.db import client, db, now_utc
 from core.models import BlocklistEntry
-from routers import admin, analysis, ask, devices, family, family_weekly, gmail, health, imapmail, intel, patrol, push, voice
+from routers import admin, analysis, ask, call, devices, family, family_weekly, gmail, health, imapmail, intel, patrol, push, voice
 from routers.family_weekly import weekly_checkin_loop
 
 SEED_BLOCKLIST = [
@@ -48,6 +48,7 @@ async def lifespan(_: FastAPI):
     await db.gmail_oauth_states.create_index("state", unique=True)
     await db.gmail_oauth_states.create_index("expires_at", expireAfterSeconds=0)  # real TTL cleanup — these are short-lived CSRF tokens, not a security "truth" cache
     await db.imap_connections.create_index("device_id", unique=True)
+    await db.phone_risk_cache.create_index("phone_e164", unique=True)
     await db.patrol_events.create_index([("device_id", 1), ("event_id", 1)], unique=True)
     await db.trust_entries.create_index("trust_id", unique=True)
     await db.ask_messages.create_index([("device_id", 1), ("created_at", 1)])
@@ -66,7 +67,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="Apollo V1 API", lifespan=lifespan)
 
 # Every device-facing router is mounted under /api behind the device bearer gate (public paths are listed in core.auth).
-for r in (health, devices, intel, patrol, ask, family, family_weekly, voice, push, analysis, gmail, imapmail):
+for r in (health, devices, intel, patrol, ask, family, family_weekly, voice, push, analysis, gmail, imapmail, call):
     app.include_router(r.router, prefix="/api", dependencies=[Depends(enforce_device_auth)])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_admin_key)])
 

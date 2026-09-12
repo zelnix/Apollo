@@ -44,6 +44,22 @@ export interface ApolloSecurityNativeModule {
   checkNumberReputation(number: string): Promise<string>;
   reportCallContext(contextJson: string): Promise<string>;
   getRecentCallSecurityEvents(): Promise<string>;
+  /** Call Guard (Android): launches the RoleManager.ROLE_CALL_SCREENING request so the person can
+   * select Apollo as their call-screening app (ApolloCallScreeningService.kt). iOS opens the app's
+   * own Settings page instead — Apple has no deep link to Phone > Call Blocking & Identification. */
+  requestCallScreeningRole(): Promise<string>;
+  /** Numbers seen ringing with no local block/allow/risk signal, queued for a background reputation
+   * lookup (mailbox semantics — draining clears the queue). Always [] on iOS: CXCallDirectoryProvider
+   * gets no per-call callback at all, unlike Android's CallScreeningService. */
+  getPendingCallLookups(): Promise<string>;
+  /** The device-local block/allow/auto-risky number sets Call Guard's native screening/directory
+   * mechanism actually reads — {block: string[], allow: string[], autoRisky: string[]}. */
+  getCallBlockAllowList(): Promise<string>;
+  addCallListEntry(entryJson: string): Promise<string>;
+  removeCallListEntry(entryJson: string): Promise<string>;
+  /** Adds a number to the device-local "autoRisky" set (populated after a high-risk
+   * POST /api/call/risk-check result) so Call Guard's native mechanism blocks it going forward. */
+  markNumberRisky(entryJson: string): Promise<string>;
   // Gate 7 — Apps & Device (SDK contract). JSON strings; see src/security/appDeviceSdk.ts.
   getAppDeviceCapabilities(): Promise<string>;
   getInstalledAppAssessment(packageId: string): Promise<string>;
