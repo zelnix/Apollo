@@ -100,6 +100,13 @@ export default function Index() {
           </View>
         </Card>
 
+        <Card title="Out-of-band · DNS / DoH Capability Diagnostic" testID="dns-doh-nav-card">
+          <Text style={styles.note}>M2.1 is FROZEN — this is separate, later characterization work: documents what Apollo can and cannot see under various Private DNS (DoT) and app-embedded DoH configurations. Observational only, no enforcement changes.</Text>
+          <View style={styles.actions}>
+            <ActionButton title="Open DNS / DoH Diagnostic" secondary onPress={() => router.push("/dns-capability-diagnostic")} testID="open-dns-doh-diagnostic-button" />
+          </View>
+        </Card>
+
         <Card title="Protection state" testID="protection-state-card">
           <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
             <StatusBadge status={status.state} testID="protection-state-badge" />

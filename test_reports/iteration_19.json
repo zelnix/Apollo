@@ -1,0 +1,38 @@
+{
+  "summary": "Frontend-only test of the new out-of-band DNS/DoH Capability Diagnostic screen (dns-capability-diagnostic.tsx) and regression check on the frozen M2.1 Phase 6A home card. All acceptance criteria from the review request verified via Playwright on the Expo web preview (mobile viewport 375x667). No bugs found.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "verified_working": {
+    "home_screen_new_card": "'Out-of-band · DNS / DoH Capability Diagnostic' card (testID=dns-doh-nav-card) renders with 'Open DNS / DoH Diagnostic' button (testID=open-dns-doh-diagnostic-button); tapping navigates to /dns-capability-diagnostic without crash.",
+    "diagnostic_screen_render": "Screen (testID=dns-doh-diagnostic-screen) renders back button, OUT-OF-BAND eyebrow, title, subtitle, scope banner text ('This tool never blocks, enforces, or changes routing...'), and all 5 sections in correct order: '1 · Activate protection + Website Gate', '2 · Private DNS (DoT) probe', '3 · App-embedded DoH probe', '4 · Results (0)', '5 · Export evidence'. Card titles render visually uppercase via textTransform CSS (expected/cosmetic, not a bug).",
+    "activate_graceful_failure": "Tapping 'Activate' on web (no native module) sets status to 'Failed: NATIVE_MODULE_UNAVAILABLE (Expo Go / web -- a native Android build is required)' -- no crash, no silent no-op, exactly matching expected behavior for this environment.",
+    "radio_groups": "DoT mode RadioGroup (Off/Automatic/Strict hostname) and DoH state RadioGroup (DoH ON/DoH OFF) both respond correctly to taps, visually update selection (verified via screenshot + click sequences).",
+    "text_inputs": "Browser name/version TextInput (testID=dns-doh-browser-label-input) accepts typed text ('Firefox 143') correctly, value persists.",
+    "gated_buttons_disabled": "'Run probe' (dns-doh-run-dot-probe) and 'Start 90s observation window' (dns-doh-start-window) both report aria-disabled=true when activation has not succeeded; clicking them (force=True) produces no crash and no new record (Results stayed at 0).",
+    "not_testable_manual_override": "Both 'Mark this configuration NOT_TESTABLE' buttons (DoT: dns-doh-dot-not-testable, DoH: dns-doh-doh-not-testable) work without requiring activation success -- each click added a record and incremented Results count sequentially: 0 -> 1 -> 2, as expected for the manual-override path.",
+    "export_buttons_gating": "Export JSON / Export PDF (dns-doh-export-json / dns-doh-export-pdf) are aria-disabled=true with 0 records, and aria-disabled attribute is removed (enabled) once records.length > 0 after adding NOT_TESTABLE records.",
+    "back_navigation": "Back button (dns-doh-back) correctly returns to the home screen (harness-screen visible again).",
+    "m21_no_regression": "After exercising the new screen and returning home, 'Gate Guard M2.1 · Phase 6A' card (phase6-nav-card) and both its buttons (open-phase6-automated-button, open-phase6-button) remain fully functional -- tapping 'Open Automated Acceptance Runner' correctly navigates to /phase6-automated and renders the expected 'Automated Acceptance' screen with no errors.",
+    "console_and_logs": "No console errors, no page errors (pageerror listener attached), no React Native red screen throughout the full flow. expo.out.log shows clean GD_SMOKE_READY boot with native:false as expected on web, no error-level log lines."
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "dnsCapabilityDiagnostic.ts strict-attribution logic (isAttributedToProbe requiring both host+ruleId match) and classify() (never inferring BYPASSED from absence alone, only from independentSuccess===true) is well-designed and consistent with the M2.1 row-4.1 attribution discipline described in the PRD -- reviewed statically only, cannot exercise native event flow in this environment.",
+    "activateWebsiteGateForDiagnostics() correctly short-circuits at the very first check (GuardDogSecuritySDK.nativeAvailable) before touching any SDK/network state, so it is safe to call repeatedly on web without side effects.",
+    "index.tsx new card was inserted additively directly after the frozen phase6-nav-card block with its own distinct testIDs (dns-doh-nav-card, open-dns-doh-diagnostic-button) -- no shared testIDs or JSX structure reused from the frozen card, minimizing regression risk, confirmed via this test's home-screen checks.",
+    "Card title text renders uppercase due to global cardTitle style (textTransform: 'uppercase') in harness-ui.tsx -- this affected initial test assertions (expected mixed case) but is pre-existing shared styling, not a defect introduced by this change."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (frontend-only testing scope)", "frontend": "100% of testable acceptance criteria on web preview (11/11 checks passed)"},
+  "seed_data_creation": "None.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "New DNS/DoH capability diagnostic screen fully verified on web/Expo-Go-equivalent environment: navigation, section rendering/order, graceful NATIVE_MODULE_UNAVAILABLE activation failure, RadioGroup + TextInput interactions, gated button disabling, manual NOT_TESTABLE override path (the only path that adds records without native activation), and export button enable/disable gating all work correctly with zero console/page errors. Frozen M2.1 Phase 6A home card and its navigation to /phase6-automated confirmed unaffected (no regression). Native VPN/DNS probing itself remains untestable outside a physical Android build, as explicitly scoped out by the review request.",
+  "rca_of_issue": "N/A -- no bug reproduced this session."
+}
