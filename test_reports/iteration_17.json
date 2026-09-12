@@ -1,0 +1,34 @@
+{
+  "summary": "Frontend-only regression test of Phase 6A /phase6-automated after this session's harness rewrite (rows 1.2/3.2/3.3/3.4 + new row 3.5, new 'reactivate-for-network' phase, NOT_TESTED verdict, PASS_WITH_UNVERIFIED_ROWS overall verdict, recoveryDiagnostics.ts readNativeWebsiteGateOverrides). As expected/scoped, the web preview short-circuits at the 'native-check' precondition (GuardDogSecuritySDK.nativeAvailable=false) before any of the rewritten rows or the new phase ever execute, so this pass verifies only: (1) app loads and imports cleanly with the new code present, (2) the pre-existing PRECONDITION_FAILURE path still works end-to-end, (3) no regressions in UI/export/reset/navigation. All 8 requested checks passed with zero console/page errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "verified_working": {
+    "item_1_ready_to_run": "Loads 'Ready to run' card, phase6a-run-button visible, header/back-button (phase6a-back)/subtitle intact -- no regressions.",
+    "item_2_run_precondition_failure": "Tapped Run Automated Acceptance; PRECONDITION_FAILURE (NATIVE_MODULE_UNAVAILABLE) rendered within ~2s, well inside the 10-20s generous wait budget. Confirms native-check still short-circuits correctly before rows 1.2/3.2/3.3/3.4/3.5 or the new 'reactivate-for-network' phase are ever reached -- unaffected by this session's rewrite, as expected.",
+    "item_3_result_card_and_tech_toggle": "Result card shows verdict PRECONDITION_FAILURE with correct reasonCode/explanation, no crash. phase6a-tech-toggle expands to show '0 · Preconditions' card containing the NATIVE_MODULE_UNAVAILABLE row, and collapses cleanly back (Run status text disappears).",
+    "item_4_exports": "phase6a-generate-pdf and phase6a-export-json both tapped with zero console/page errors afterward.",
+    "item_5_reset": "phase6a-new-run resets cleanly back to 'Ready to run' card with phase6a-run-button visible again, no leftover state or crash.",
+    "item_6_legacy_screen": "/phase6-acceptance (via phase6a-advanced-link) still loads correctly showing 'Acceptance Report Runner' header and 'FROZEN ACCEPTANCE INVARIANT' banner -- untouched screen confirmed regression-free.",
+    "item_7_general_regression": "Zero console errors/warnings captured throughout the entire flow (console log only contained the benign 'Development-level warnings: ON' line). New code (reactivate-for-network phase type, NOT_TESTED verdict type, recoveryDiagnostics.readNativeWebsiteGateOverrides export) imports and bundles cleanly with no runtime errors, confirming no syntax/import issues from today's rewrite -- consistent with it being correctly gated behind unreachable native-only phases in this environment.",
+    "item_8_advanced_link": "phase6a-advanced-link navigates correctly to /phase6-acceptance."
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Reviewed phase6AutomatedHarness.ts's rewritten rows 1.2/3.2/3.3/3.4/3.5 and the new 'reactivate-for-network' phase: the 'no inherited/inferred PASS' rule is consistently enforced -- row 1.2 explicitly re-runs its own fetch/TUN-observation rather than trusting 1.1, row 3.3 requires two independent checks (A: no orphaned state, B: durable override rehydration into the native cache), row 3.4/3.5 are only entered after a real re-activation (reactivate-for-network) and 3.5 is only evaluated if 3.4 truthfully confirms ACTIVE. finalizeRun() correctly computes PASS_WITH_UNVERIFIED_ROWS only when group 1/2/3 rows are NOT_TESTED (never masking a genuine FAIL). This logic could not be exercised in web preview (by design/scope) so it remains verified only via static code review here -- physical-device validation is still required per the review request's own caveat.",
+    "recoveryDiagnostics.ts's new readNativeWebsiteGateOverrides() is null-safe (returns null when GuardDogNative is absent) and follows the same pattern as the existing readRecoveryStatus/readVpnConsentRequired -- no issues found.",
+    "phase6-automated.tsx's mount effect correctly awaits evaluateAwaitingRestart before calling continueRun when phase is 'reactivate-for-network', and MILESTONES/milestoneIndex were updated consistently for the new 13-step flow (indices 0-12) -- no mismatch found between the array and the switch statement."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested this session (frontend only per request)", "frontend": "100% of web-preview-reachable flows verified working with zero bugs found. All native-only logic (rewritten rows 1.2/3.2/3.3/3.4/3.5, reactivate-for-network phase, awaiting-network/awaiting-restart/awaiting-revoke sub-states) remains entirely unverifiable outside a physical Android device build, exactly as scoped out in the review request -- verified only by static code review this pass."},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Phase 6A /phase6-automated is fully regression-clean in web preview after this session's row-tightening rewrite (rows 1.2/3.2/3.3/3.4 + new 3.5) and new 'reactivate-for-network' phase/NOT_TESTED verdict/PASS_WITH_UNVERIFIED_ROWS additions. PRECONDITION_FAILURE path, Result card, Technical Evidence toggle, PDF/JSON export, Start-new-run reset, and the legacy /phase6-acceptance screen all confirmed working with zero console errors. As expected, none of today's new device-only assertion logic could be exercised here (native-check short-circuits everything before it) -- that logic is only validated via static code review in this report; a real Android device pass is still required for actual acceptance sign-off on rows 1.2/3.2/3.3/3.4/3.5 and the reactivation phase. No bugs found this session.",
+  "rca_of_issue": "N/A -- no bug reproduced this session."
+}
