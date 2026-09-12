@@ -81,6 +81,13 @@ export interface Phase6RunState {
   rejectedEventCountAtStart: number;
   truthOfStateViolation: boolean;
   awaitingInstruction: string | null;
+  /** ISO timestamp of when the CURRENT awaiting-* phase started -- used only to drive the UI's
+   * ACTION_REQUIRED / WAITING_FOR_CONFIRMATION / ACTION_NOT_DETECTED sub-state timeline. Never
+   * affects any verdict: a slow tester is not a test failure. */
+  awaitingSince: string | null;
+  /** Number of "is it done yet?" checks performed against the CURRENT awaiting-* phase without a
+   * positive detection. UI-only counter, same non-verdict-affecting rule as awaitingSince. */
+  awaitingAttempts: number;
   overallVerdict: "PASS" | "FAIL" | "PRECONDITION_FAILURE" | "PASS_WITH_CAPABILITY_GAP" | null;
   overallReasonCode: string | null;
   overallExplanation: string | null;
@@ -111,6 +118,10 @@ export const POLL_MS = 250;
 export const POSITIVE_WINDOW_MS = 20_000;
 export const NEGATIVE_WINDOW_MS = 6_000;
 export const RECOVERY_TIMEOUT_MS = 20_000;
+/** UI-only: how long the screen waits without a positive detection before offering the tester a
+ * "didn't detect it yet" recovery card (Try again / Open Settings). Never affects any verdict --
+ * see Phase6RunState.awaitingSince. */
+export const AWAITING_ACTION_TIMEOUT_MS = 45_000;
 
 export function createInitialRun(testDomain: string, matchingRuleId: string): Phase6RunState {
   const now = nowIso();
@@ -130,6 +141,8 @@ export function createInitialRun(testDomain: string, matchingRuleId: string): Ph
     rejectedEventCountAtStart: GuardDogSecuritySDK.rejectedEventCount,
     truthOfStateViolation: false,
     awaitingInstruction: null,
+    awaitingSince: null,
+    awaitingAttempts: 0,
     overallVerdict: null,
     overallReasonCode: null,
     overallExplanation: null,
@@ -198,7 +211,7 @@ function finalizeRun(run: Phase6RunState): Phase6RunState {
  */
 export async function runToNextPause(initial: Phase6RunState, onProgress: (run: Phase6RunState) => void): Promise<Phase6RunState> {
   let run = initial;
-  const PAUSING = new Set<Phase6RunPhase>(["awaiting-revoke", "awaiting-restart", "awaiting-network", "done", "idle"]);
+  const PAUSING = new Set<Phase6RunPhase>(["awaiting-revoke", "awaiting-restart", "awaiting-network", "dns-capability", "done", "idle"]);
   while (true) {
     run = await performPhase(run);
     onProgress(run);
@@ -376,7 +389,7 @@ async function performPhase(run: Phase6RunState): Promise<Phase6RunState> {
         stopStatus = await GuardDogSecuritySDK.stopProtection();
       } catch (e) {
         const s = step("3.1", 3, "Stop protection → status truthfully reports inactive", "FAIL", "STOP_THREW", `stopProtection() threw: ${e instanceof Error ? e.message : String(e)}`, {}, startedAt);
-        return withLog({ ...run, steps: [...run.steps, s], phase: "awaiting-revoke", awaitingInstruction: "Turn off Apollo's VPN permission (Settings → Network & internet → VPN → Apollo → Disconnect/Forget), then return here." }, "Stop protection threw — recorded FAIL, continuing to next phase.");
+        return withLog({ ...run, steps: [...run.steps, s], phase: "awaiting-revoke", awaitingInstruction: "Turn off Apollo's VPN permission (Settings → Network & internet → VPN → Apollo → Disconnect/Forget), then return here.", awaitingSince: nowIso(), awaitingAttempts: 0 }, "Stop protection threw — recorded FAIL, continuing to next phase.");
       }
       const deadline = Date.now() + RECOVERY_TIMEOUT_MS;
       while (stopStatus.state !== "INACTIVE" && stopStatus.state !== "STOPPED" && Date.now() < deadline) {
@@ -386,7 +399,7 @@ async function performPhase(run: Phase6RunState): Promise<Phase6RunState> {
       const rec = readRecoveryStatus();
       const stopped = (stopStatus.state === "INACTIVE" || stopStatus.state === "STOPPED") && rec != null && !rec.tunOpen && !rec.selectiveRouteActive;
       const s = step("3.1", 3, "Stop protection → status truthfully reports inactive, no further evidence generated", stopped ? "PASS" : "FAIL", stopped ? "RECOVERY_STATE_CONFIRMED" : "STALE_ACTIVE_STATE_AFTER_STOP", stopped ? `State=${stopStatus.state}, tunOpen=${rec?.tunOpen}, selectiveRouteActive=${rec?.selectiveRouteActive} — truthfully inactive.` : `State=${stopStatus.state}, tunOpen=${rec?.tunOpen}, selectiveRouteActive=${rec?.selectiveRouteActive} — did not settle to a truthfully inactive state.`, { stopStatus, rec }, startedAt);
-      return withLog({ ...run, steps: [...run.steps, s], phase: "awaiting-revoke", awaitingInstruction: "Turn off Apollo's VPN permission (Settings → Network & internet → VPN → Apollo → Disconnect/Forget), then return here. The harness detects this automatically." }, `Stop protection: ${s.verdict}. Now waiting on a tester action Android does not let the app perform itself.`);
+      return withLog({ ...run, steps: [...run.steps, s], phase: "awaiting-revoke", awaitingInstruction: "Turn off Apollo's VPN permission (Settings → Network & internet → VPN → Apollo → Disconnect/Forget), then return here. The harness detects this automatically.", awaitingSince: nowIso(), awaitingAttempts: 0 }, `Stop protection: ${s.verdict}. Now waiting on a tester action Android does not let the app perform itself.`);
     }
 
     default:
@@ -400,7 +413,7 @@ export async function checkAwaitingRevoke(run: Phase6RunState): Promise<Phase6Ru
   if (run.phase !== "awaiting-revoke") return run;
   const startedAt = nowIso();
   const consentNowRequired = readVpnConsentRequired();
-  if (consentNowRequired !== true) return withLog(run, "Checked for VPN revoke — not detected yet, still waiting.");
+  if (consentNowRequired !== true) return withLog({ ...run, awaitingAttempts: run.awaitingAttempts + 1 }, "Checked for VPN revoke — not detected yet, still waiting.");
   await sleep(500); // let the native lifecycle settle after the OS-level revoke before snapshotting
   const status = GuardDogSecuritySDK.getProtectionState();
   const stillClaimsActive = status.state === "ACTIVE";
@@ -415,7 +428,7 @@ export async function checkAwaitingRevoke(run: Phase6RunState): Promise<Phase6Ru
   }
   const pass = !stillClaimsActive && restartRejected;
   const s = step("3.2", 3, "Revoke VPN permission mid-session → app detects and reports truthfully, no silent fabricated active state", pass ? "PASS" : "FAIL", pass ? "REVOKE_DETECTED_AND_TRUTHFUL" : "FABRICATED_ACTIVE_OR_SILENT_RESTART", pass ? `State=${status.state} after revoke; restartWithoutConsent correctly rejected${restartError ? ` (${restartError})` : ""}.` : `State=${status.state} after revoke (stillClaimsActive=${stillClaimsActive}); restartWithoutConsent rejected=${restartRejected}.`, { status, restartRejected, restartError }, startedAt);
-  return withLog({ ...run, steps: [...run.steps, s], phase: "awaiting-restart", awaitingInstruction: "Force-close Apollo completely (Recent apps → swipe away) and reopen it, then return to this screen. The harness resumes automatically on relaunch." }, `Revoke detected: ${s.verdict}. Now waiting for an app restart (Android will not let the app trigger this on itself).`);
+  return withLog({ ...run, steps: [...run.steps, s], phase: "awaiting-restart", awaitingInstruction: "Force-close Apollo completely (Recent apps → swipe away) and reopen it, then return to this screen. The harness resumes automatically on relaunch.", awaitingSince: nowIso(), awaitingAttempts: 0 }, `Revoke detected: ${s.verdict}. Now waiting for an app restart (Android will not let the app trigger this on itself).`);
 }
 
 /** Called ONCE right after the screen mounts if the persisted run's phase is "awaiting-restart" --
@@ -428,7 +441,7 @@ export function evaluateAwaitingRestart(run: Phase6RunState): Phase6RunState {
   // No orphaned "biting" UI state: nothing in this fresh process claims ACTIVE without a fresh startProtection() call in this run.
   const orphanedActive = status.state === "ACTIVE" && rec != null && rec.tunOpen;
   const s = step("3.3", 3, "App restart (kill + relaunch) → overrides rehydrate correctly, no orphaned biting UI state", orphanedActive ? "FAIL" : "PASS", orphanedActive ? "ORPHANED_ACTIVE_STATE_AFTER_RESTART" : "CLEAN_RESTART_NO_ORPHAN", orphanedActive ? "Protection reports ACTIVE with an open TUN immediately on a fresh process, before this run re-armed anything -- a stale/fabricated state." : `Fresh process state=${status.state}; no orphaned active/biting state carried across the restart.`, { status, rec }, startedAt);
-  return withLog({ ...run, steps: [...run.steps, s], phase: "awaiting-network", networkTypeBeforeToggle: null, awaitingInstruction: "Toggle Wi-Fi or mobile data off, then back on, then return here. The harness detects the transition automatically." }, `App restart evaluated: ${s.verdict}. Now waiting for a network transition (Android will not let the app toggle its own radios).`);
+  return withLog({ ...run, steps: [...run.steps, s], phase: "awaiting-network", networkTypeBeforeToggle: null, awaitingInstruction: "Toggle Wi-Fi or mobile data off, then back on, then return here. The harness detects the transition automatically.", awaitingSince: nowIso(), awaitingAttempts: 0 }, `App restart evaluated: ${s.verdict}. Now waiting for a network transition (Android will not let the app toggle its own radios).`);
 }
 
 /** Called by the screen (on AppState foreground or a manual "Check now" tap) while phase is
@@ -439,13 +452,13 @@ export async function checkAwaitingNetwork(run: Phase6RunState, currentNetworkTy
     return { ...run, networkTypeBeforeToggle: currentNetworkType };
   }
   if (currentNetworkType === run.networkTypeBeforeToggle) {
-    return withLog(run, `Checked for network transition — still ${currentNetworkType}, no change detected yet.`);
+    return withLog({ ...run, awaitingAttempts: run.awaitingAttempts + 1 }, `Checked for network transition — still ${currentNetworkType}, no change detected yet.`);
   }
   const startedAt = nowIso();
   const status = GuardDogSecuritySDK.getProtectionState();
   const truthfulThroughTransition = status.state !== "ACTIVE" || (readRecoveryStatus()?.tunOpen ?? false) === true; // if it claims ACTIVE, the TUN must genuinely still be open
   const s = step("3.4", 3, "Network transition → protection status reported truthfully through the transition", truthfulThroughTransition ? "PASS" : "FAIL", truthfulThroughTransition ? "TRUTHFUL_THROUGH_TRANSITION" : "STALE_STATE_ACROSS_TRANSITION", truthfulThroughTransition ? `Network changed ${run.networkTypeBeforeToggle} → ${currentNetworkType}; reported state (${status.state}) stayed consistent with actual TUN state.` : `Network changed ${run.networkTypeBeforeToggle} → ${currentNetworkType}; state claims ${status.state} but the TUN evidence disagrees.`, { before: run.networkTypeBeforeToggle, after: currentNetworkType, status }, startedAt);
-  return withLog({ ...run, steps: [...run.steps, s], phase: "dns-capability", awaitingInstruction: null }, `Network transition evaluated: ${s.verdict}. Running the automatic DNS-capability check.`);
+  return withLog({ ...run, steps: [...run.steps, s], phase: "dns-capability", awaitingInstruction: null, awaitingSince: null, awaitingAttempts: 0 }, `Network transition evaluated: ${s.verdict}. Running the automatic DNS-capability check.`);
 }
 
 export interface DnsCapabilityCheckResult {

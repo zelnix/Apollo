@@ -39,10 +39,30 @@ function stepsTable(steps: Phase6StepResult[], group: 0 | 1 | 2 | 3 | 4): string
   return `<table border="1" cellpadding="6" style="border-collapse:collapse;width:100%;font-size:12px"><thead><tr><th>#</th><th>Test</th><th>Verdict</th><th>Reason code</th><th>Explanation</th><th>Timing</th></tr></thead><tbody>${rows || `<tr><td colspan="6" style="color:#94a3b8">Not reached in this run.</td></tr>`}</tbody></table>`;
 }
 
-/** Canonical, machine-readable acceptance result. Everything in the PDF is derived from exactly this
- * object -- nothing more, nothing less. Safe to store/diff/attach to CI as the acceptance artifact. */
+/** True only once the harness has actually reached "done" and settled on a verdict. A run that is
+ * still mid-flight (e.g. paused on an "awaiting-*" tester action, or still running automated
+ * phases) is NEVER final -- exporting it must always be clearly labelled interim, never presented
+ * as an acceptance result. This is the single source of truth for that distinction; nothing else
+ * in this file, or in the screen that calls it, decides completeness independently. */
+export function isFinalRun(run: Phase6RunState): boolean {
+  return run.phase === "done" && run.overallVerdict != null;
+}
+
+/** Canonical, machine-readable result for EXACTLY this run (by runId) -- never merged with, derived
+ * from, or falling back to any other run's state (e.g. the separate legacy /phase6-acceptance manual
+ * screen, which persists under an entirely different AsyncStorage key and report builder). Wrapped
+ * with an explicit reportKind so a CI job or reviewer can never mistake an interim/incomplete run's
+ * JSON for a final acceptance result just by glancing at it. Everything in the PDF is derived from
+ * exactly this same wrapped object -- nothing more, nothing less. */
 export function buildCanonicalResultJson(run: Phase6RunState): string {
-  return JSON.stringify(run, null, 2);
+  const wrapper = {
+    reportKind: isFinalRun(run) ? "FINAL_ACCEPTANCE_RESULT" : "INTERIM_DIAGNOSTIC_ONLY",
+    isFinal: isFinalRun(run),
+    runId: run.runId,
+    exportedAt: new Date().toISOString(),
+    run,
+  };
+  return JSON.stringify(wrapper, null, 2);
 }
 
 export function buildPhase6AutomatedReportHtml(run: Phase6RunState): string {
@@ -50,8 +70,19 @@ export function buildPhase6AutomatedReportHtml(run: Phase6RunState): string {
   const passCount = run.steps.filter((s) => s.verdict === "PASS").length;
   const failCount = run.steps.filter((s) => s.verdict === "FAIL").length;
   const gapCount = run.steps.filter((s) => s.verdict === "CAPABILITY_GAP").length;
+  const isFinal = isFinalRun(run);
   return `<html><body style="font-family:-apple-system,Helvetica,sans-serif;padding:24px;color:#0b1220;font-size:13px">
 <h1>Apollo M2.1 — Phase 6A Automated Physical-Device Acceptance Report</h1>
+${
+    !isFinal
+      ? `<div style="border:3px solid #b45309;background:#fffbeb;padding:14px;border-radius:6px;margin:16px 0">
+<strong style="font-size:15px;color:#b45309">⚠ INCOMPLETE / INTERIM DIAGNOSTIC REPORT — NOT AN ACCEPTANCE VERDICT</strong>
+<p style="margin:6px 0 0 0">Run ${esc(run.runId)} has not finished (current phase: <strong>${esc(run.phase)}</strong>). This export exists only to
+help debug where the run currently stands. It carries NO acceptance meaning -- do not attach this to a release decision.
+Re-run to completion (phase reaches "done" with a non-null overall verdict) and export again to get the final report.</p>
+</div>`
+      : ""
+  }
 <div style="border:2px solid #b91c1c;background:#fef2f2;padding:14px;border-radius:6px;margin:16px 0">
 <strong>FROZEN ACCEPTANCE INVARIANT:</strong> THREAT_BLOCKED is evidence-backed only. It requires an authorized destination, a
 real packet observed by the enforcement layer, an intentional drop, an enforcement evidence record, and event emission from
@@ -64,7 +95,7 @@ enforcement counters, and the SDK's own validated security-event stream) -- not 
 performed only the physical, OS-level actions Android does not let this app perform on itself (see the "tester actions"
 section below); everything else was triggered and judged automatically.
 </div>
-<h2 style="color:${VERDICT_COLOR[run.overallVerdict ?? "PENDING"]}">Overall verdict: ${verdictBadge(run.overallVerdict)}</h2>
+<h2 style="color:${isFinal ? VERDICT_COLOR[run.overallVerdict ?? "PENDING"] : "#b45309"}">${isFinal ? `Overall verdict: ${verdictBadge(run.overallVerdict)}` : "Overall verdict: NOT YET AVAILABLE (run incomplete)"}</h2>
 <p><strong>Reason code:</strong> ${esc(run.overallReasonCode)}<br/><strong>Explanation:</strong> ${esc(run.overallExplanation)}</p>
 <p><strong>Run ID:</strong> ${esc(run.runId)} &nbsp; <strong>Started:</strong> ${esc(run.startedAt)} &nbsp; <strong>Completed:</strong> ${esc(run.completedAt)}</p>
 <p><strong>Authorized test domain:</strong> ${esc(run.testDomain)} &nbsp; <strong>Matching rule ID:</strong> ${esc(run.matchingRuleId)}</p>
@@ -113,7 +144,8 @@ export async function exportPhase6AutomatedReportPdf(run: Phase6RunState): Promi
     return null;
   }
   const { uri } = await Print.printToFileAsync({ html });
-  const target = new File(Paths.document, `apollo-m2.1-phase6a-automated-${stamp(run.completedAt || run.startedAt)}.pdf`);
+  const suffix = isFinalRun(run) ? "" : "-INTERIM-DIAGNOSTIC";
+  const target = new File(Paths.document, `apollo-m2.1-${run.runId}${suffix}-${stamp(run.completedAt || run.startedAt)}.pdf`);
   await new File(uri).move(target, { overwrite: true });
   return target.uri;
 }
@@ -121,7 +153,8 @@ export async function exportPhase6AutomatedReportPdf(run: Phase6RunState): Promi
 /** Writes the canonical JSON result next to the PDF (same run) for archival/CI-attachment purposes. */
 export async function exportPhase6AutomatedResultJson(run: Phase6RunState): Promise<string | null> {
   if (Platform.OS === "web") return null;
-  const target = new File(Paths.document, `apollo-m2.1-phase6a-automated-${stamp(run.completedAt || run.startedAt)}.json`);
+  const suffix = isFinalRun(run) ? "" : "-INTERIM-DIAGNOSTIC";
+  const target = new File(Paths.document, `apollo-m2.1-${run.runId}${suffix}-${stamp(run.completedAt || run.startedAt)}.json`);
   target.write(buildCanonicalResultJson(run));
   return target.uri;
 }

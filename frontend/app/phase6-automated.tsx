@@ -10,16 +10,24 @@
 // DNS setting) -- everything else is triggered and judged automatically. See the detailed
 // step-by-step "Advanced / Diagnostics" screen (/phase6-acceptance) for manual developer tooling;
 // this screen is the one normal acceptance runs should use.
+//
+// UX contract (frozen for this file): visual hierarchy is ALWAYS (1) what to do right now, (2)
+// whether Apollo has detected it, (3) what Apollo itself is doing, (4) overall run progress, (5)
+// raw technical evidence -- collapsed by default. Every manual OS-level step drives an explicit
+// ACTION_REQUIRED → WAITING_FOR_CONFIRMATION → ACTION_CONFIRMED → CONTINUING happy path, or
+// WAITING_FOR_CONFIRMATION → ACTION_NOT_DETECTED as a non-fatal recovery path (never an automatic
+// FAIL -- see phase6AutomatedHarness.ts's finalizeRun, which never reads awaitingSince/awaitingAttempts).
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Network from "expo-network";
 import { router } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, AppState, type AppStateStatus, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, AppState, type AppStateStatus, Linking, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ActionButton, Card, KeyValue } from "@/src/components/harness-ui";
 import { readBuildProvenance } from "@/src/harness/buildProvenance";
 import {
+  AWAITING_ACTION_TIMEOUT_MS,
   checkAwaitingNetwork,
   checkAwaitingRevoke,
   createInitialRun,
@@ -27,11 +35,13 @@ import {
   notTestableDohRow,
   runDnsCapabilityCheck,
   runToNextPause,
+  sleep,
+  type Phase6RunPhase,
   type Phase6RunState,
   type Phase6StepResult,
   type Phase6StepVerdict,
 } from "@/src/harness/phase6AutomatedHarness";
-import { exportPhase6AutomatedReportPdf, exportPhase6AutomatedResultJson } from "@/src/harness/phase6AutomatedReport";
+import { exportPhase6AutomatedReportPdf, exportPhase6AutomatedResultJson, isFinalRun } from "@/src/harness/phase6AutomatedReport";
 import { readPhase6DeviceProvenance } from "@/src/harness/phase6DeviceProvenance";
 import { shareEvidenceFile } from "@/src/harness/proofReport";
 import { fetchLatestBundle, fetchM1Config } from "@/src/harness/ruleBundleFixtures";
@@ -62,6 +72,31 @@ const useStyles = makeStyles((colors) => ({
   phaseText: { fontSize: 13, fontWeight: "700", color: colors.brandPrimary },
   logBox: { borderRadius: 8, backgroundColor: colors.surfaceTertiary, padding: 8, maxHeight: 160 },
   logLine: { fontSize: 10, color: colors.onSurfaceTertiary, fontFamily: "monospace" },
+  // --- New UX-contract styles (action card / confirmation / progress / collapsed evidence) ---
+  numberedStepRow: { flexDirection: "row", gap: 10, alignItems: "flex-start" },
+  numberBubble: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.brandPrimary, alignItems: "center", justifyContent: "center", marginTop: 1 },
+  numberBubbleText: { color: colors.onBrandPrimary, fontSize: 11, fontWeight: "800" },
+  numberedStepText: { flex: 1, fontSize: 14, fontWeight: "600", color: colors.onSurface, lineHeight: 20 },
+  confirmedBanner: { borderRadius: 12, borderWidth: 2, borderColor: colors.success, backgroundColor: colors.surfaceTertiary, padding: 14, gap: 6 },
+  confirmedTitle: { fontSize: 15, fontWeight: "800", color: colors.success },
+  waitingBanner: { borderRadius: 12, borderWidth: 2, borderColor: colors.brandPrimary, backgroundColor: colors.surfaceTertiary, padding: 14, gap: 8, flexDirection: "row", alignItems: "center" },
+  notDetectedBanner: { borderRadius: 12, borderWidth: 2, borderColor: colors.warning, backgroundColor: colors.surfaceTertiary, padding: 14, gap: 8 },
+  notDetectedTitle: { fontSize: 14, fontWeight: "800", color: colors.warning },
+  noActionBanner: { borderRadius: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceSecondary, padding: 10, flexDirection: "row", alignItems: "center", gap: 10 },
+  noActionText: { fontSize: 12, fontWeight: "600", color: colors.onSurfaceSecondary, flex: 1 },
+  workingTitle: { fontSize: 13, fontWeight: "800", color: colors.onSurfaceSecondary },
+  workingDetail: { fontSize: 12, color: colors.onSurfaceTertiary },
+  progressHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" },
+  progressStepText: { fontSize: 12, fontWeight: "800", color: colors.brandPrimary },
+  progressBarTrack: { height: 6, borderRadius: 3, backgroundColor: colors.surfaceTertiary, overflow: "hidden", marginTop: 4 },
+  progressBarFill: { height: 6, borderRadius: 3, backgroundColor: colors.brandPrimary },
+  progressCurrent: { fontSize: 14, fontWeight: "700", color: colors.onSurface, marginTop: 8 },
+  progressNext: { fontSize: 12, color: colors.onSurfaceTertiary, marginTop: 2 },
+  techToggleCard: { backgroundColor: colors.surfaceSecondary, borderRadius: 16, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 16 },
+  techToggleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 44 },
+  techToggleText: { fontSize: 12, fontWeight: "700", color: colors.onSurfaceSecondary },
+  techToggleChevron: { fontSize: 12, fontWeight: "700", color: colors.onSurfaceTertiary },
+  interimNote: { fontSize: 11, color: colors.onSurfaceTertiary, lineHeight: 15 },
 }));
 
 const VERDICT_COLOR: Record<string, string> = {
@@ -93,11 +128,121 @@ function StepRow({ step }: { step: Phase6StepResult }) {
   );
 }
 
-const AWAITING_INSTRUCTIONS: Record<string, string> = {
-  "awaiting-revoke": "Turn off Apollo's VPN permission (Android Settings → Network & internet → VPN → Apollo → Disconnect/Forget), then return to this screen.",
-  "awaiting-restart": "Force-close Apollo completely (Recent apps → swipe it away) and reopen it, then return to this screen.",
-  "awaiting-network": "Toggle Wi-Fi or mobile data off, then back on, then return to this screen.",
+/** Numbered, plain-English steps shown inside the ACTION_REQUIRED card -- separate from
+ * awaitingInstruction (which stays a single sentence for logs/reports). */
+const AWAITING_STEPS: Record<string, string[]> = {
+  "awaiting-revoke": [
+    "Open Android Settings → Network & internet → VPN.",
+    "Tap Apollo, then choose Disconnect or Forget.",
+    "Come back to this screen — Apollo checks automatically.",
+  ],
+  "awaiting-restart": [
+    "Open Recent apps and swipe Apollo away to fully close it.",
+    "Reopen Apollo from your home screen or app drawer.",
+    "It resumes automatically on this exact screen.",
+  ],
+  "awaiting-network": [
+    "Open quick settings or Settings → Network & internet.",
+    "Turn Wi-Fi or mobile data off, then back on (or switch between them).",
+    "Come back to this screen — Apollo checks automatically.",
+  ],
 };
+
+/** Android intent action to jump straight to the relevant system settings screen, where one
+ * exists. "awaiting-restart" has none -- that's a Recent-apps gesture, not a settings screen. */
+const AWAITING_SETTINGS_INTENT: Partial<Record<string, string>> = {
+  "awaiting-revoke": "android.settings.VPN_SETTINGS",
+  "awaiting-network": "android.settings.WIRELESS_SETTINGS",
+};
+
+const AWAITING_NOT_DETECTED_HINT: Record<string, string> = {
+  "awaiting-revoke": "Make sure you tapped Disconnect/Forget for Apollo specifically (not a different VPN app) in Settings → VPN.",
+  "awaiting-restart": "Make sure you fully swiped Apollo away in Recent apps (not just backgrounded it) before reopening — a simple background/foreground doesn't count.",
+  "awaiting-network": "Make sure the network actually changed (e.g. Wi-Fi off then on, or Wi-Fi ↔ mobile data) — not just opened the settings screen without toggling anything.",
+};
+
+const AWAITING_TITLE: Record<string, string> = {
+  "awaiting-revoke": "Revoke Apollo's VPN permission",
+  "awaiting-restart": "Force-close and reopen Apollo",
+  "awaiting-network": "Toggle Wi-Fi or mobile data",
+};
+
+/** The 12 human-facing milestones this run passes through, in order — used only to render the
+ * "What happens next?" progress panel. Purely cosmetic; never consulted for any verdict. */
+const MILESTONES: { label: string; duration: string; noAction: boolean }[] = [
+  { label: "Verifying build & device", duration: "a few seconds", noAction: true },
+  { label: "Requesting VPN permission (Android may prompt you once)", duration: "one tap if prompted", noAction: false },
+  { label: "Loading & verifying signed security rules", duration: "a few seconds", noAction: true },
+  { label: "Starting protection & activating the Website Gate", duration: "up to 15 seconds", noAction: true },
+  { label: "Testing blocked-domain enforcement", duration: "up to 20 seconds", noAction: true },
+  { label: "Running false-positive safety checks (5 checks)", duration: "about 30 seconds total", noAction: true },
+  { label: "Stopping protection & confirming clean recovery", duration: "a few seconds", noAction: true },
+  { label: "Waiting on you: revoke Apollo's VPN permission", duration: "waiting on you", noAction: false },
+  { label: "Waiting on you: force-close and reopen the app", duration: "waiting on you", noAction: false },
+  { label: "Waiting on you: toggle Wi-Fi or mobile data", duration: "waiting on you", noAction: false },
+  { label: "Running the automatic DNS-capability check", duration: "a few seconds", noAction: true },
+  { label: "Done — review & export your report", duration: "—", noAction: true },
+];
+
+function milestoneIndex(phase: Phase6RunPhase): number {
+  switch (phase) {
+    case "idle":
+    case "provenance":
+    case "native-check":
+      return 0;
+    case "consent":
+      return 1;
+    case "config":
+      return 2;
+    case "start-protection":
+    case "gate-active":
+    case "clear-override":
+      return 3;
+    case "positive":
+      return 4;
+    case "negative":
+      return 5;
+    case "recovery-stop":
+      return 6;
+    case "awaiting-revoke":
+      return 7;
+    case "awaiting-restart":
+      return 8;
+    case "awaiting-network":
+      return 9;
+    case "dns-capability":
+      return 10;
+    case "done":
+      return 11;
+    default:
+      return 0;
+  }
+}
+
+type AwaitingSubState = "ACTION_REQUIRED" | "WAITING_FOR_CONFIRMATION" | "ACTION_NOT_DETECTED";
+
+function computeAwaitingSubState(run: Phase6RunState, busy: boolean): AwaitingSubState {
+  if (busy) return "WAITING_FOR_CONFIRMATION";
+  if (run.awaitingSince && Date.now() - new Date(run.awaitingSince).getTime() > AWAITING_ACTION_TIMEOUT_MS) return "ACTION_NOT_DETECTED";
+  return "ACTION_REQUIRED";
+}
+
+/** Best-effort: jumps straight to the relevant Android settings screen. Silently no-ops on
+ * iOS/web or if the OS rejects the intent -- the numbered steps above are always sufficient on
+ * their own, this button is a convenience, never a requirement. */
+async function openAndroidSettings(intentAction: string) {
+  if (Platform.OS !== "android") return;
+  try {
+    // @ts-expect-error -- sendIntent is Android-only and not in the cross-platform Linking types.
+    await Linking.sendIntent(intentAction);
+  } catch {
+    try {
+      await Linking.openSettings();
+    } catch {
+      // No settings surface reachable -- the numbered steps already told the tester where to go manually.
+    }
+  }
+}
 
 export default function Phase6Automated() {
   const styles = useStyles();
@@ -108,13 +253,28 @@ export default function Phase6Automated() {
   const [hydrated, setHydrated] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Non-null while showing the transient "✓ Done" confirmation card (the CONTINUING state) --
+   * overrides whatever the underlying run.phase would otherwise render for ~2s. */
+  const [confirmationHold, setConfirmationHold] = useState<string | null>(null);
+  const [techExpanded, setTechExpanded] = useState(false);
   const runRef = useRef<Phase6RunState | null>(null);
+  const checkInFlightRef = useRef(false);
   runRef.current = run;
 
   const persist = useCallback((next: Phase6RunState) => {
     runRef.current = next;
     setRun(next);
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)).catch(() => {});
+  }, []);
+
+  /** Holds a "✓ Done" confirmation on screen for ~2s (CONTINUING) before letting whatever the next
+   * phase's card is render underneath -- gives the tester a moment to actually register the
+   * confirmation instead of the screen jumping straight to the next instruction. The run data
+   * itself is always persisted BEFORE this is called; this only delays what gets *rendered*. */
+  const holdConfirmation = useCallback(async (message: string) => {
+    setConfirmationHold(message);
+    await sleep(2000);
+    setConfirmationHold(null);
   }, []);
 
   // --- Load persisted run on mount; if we were mid-restart-test, that's literally happening now. ---
@@ -124,12 +284,22 @@ export default function Phase6Automated() {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
         if (raw) {
           let loaded: Phase6RunState = JSON.parse(raw);
-          if (loaded.phase === "awaiting-restart") {
+          const wasAwaitingRestart = loaded.phase === "awaiting-restart";
+          if (wasAwaitingRestart) {
             loaded = evaluateAwaitingRestart(loaded);
+            if (loaded.phase === "awaiting-network") {
+              // Prime the "before" network reading right away instead of waiting for a future event.
+              const netState = await Network.getNetworkStateAsync();
+              loaded = await checkAwaitingNetwork(loaded, netState.type ?? "UNKNOWN");
+            }
             AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(loaded)).catch(() => {});
           }
           runRef.current = loaded;
           setRun(loaded);
+          if (wasAwaitingRestart) {
+            const restartStep = loaded.steps.find((s) => s.id === "3.3");
+            if (restartStep) holdConfirmation(`Apollo confirmed the restart. ${restartStep.explanation}`);
+          }
         }
       } catch {
         // Corrupt/missing state -- start fresh, never crash.
@@ -137,7 +307,7 @@ export default function Phase6Automated() {
         setHydrated(true);
       }
     })();
-  }, []);
+  }, [holdConfirmation]);
 
   const continueRun = useCallback(async (starting: Phase6RunState) => {
     setBusy(true);
@@ -145,7 +315,7 @@ export default function Phase6Automated() {
     try {
       const finished = await runToNextPause(starting, (progress) => persist(progress));
       if (finished.phase === "awaiting-network") {
-        // Prime the "before" network reading immediately so the first foreground check has a baseline.
+        // Prime the "before" network reading immediately so the first check has a baseline.
         const state = await Network.getNetworkStateAsync();
         const primed = await checkAwaitingNetwork(finished, state.type ?? "UNKNOWN");
         persist(primed);
@@ -162,30 +332,61 @@ export default function Phase6Automated() {
     }
   }, [persist]);
 
-  // --- Detect completion of tester-performed OS-level actions on foreground resume. ---
-  useEffect(() => {
-    const onChange = async (state: AppStateStatus) => {
-      if (state !== "active") return;
-      const current = runRef.current;
-      if (!current) return;
+  /** Single source of truth for "check whether the tester's manual step is done yet" -- used by the
+   * foreground listener, the periodic poll, and the manual "Check now" / "Try again" button so all
+   * three give identical, reliable feedback. On a positive detection, holds a "✓ Done" confirmation
+   * on screen for ~2s (CONTINUING) before advancing to the next phase. Never overlaps itself. */
+  const runAwaitingCheck = useCallback(async () => {
+    const current = runRef.current;
+    if (!current || checkInFlightRef.current) return;
+    if (current.phase !== "awaiting-revoke" && current.phase !== "awaiting-network") return;
+    checkInFlightRef.current = true;
+    setBusy(true);
+    try {
       if (current.phase === "awaiting-revoke") {
-        setBusy(true);
         const next = await checkAwaitingRevoke(current);
         persist(next);
-        if (next.phase !== "awaiting-revoke") await continueRun(next);
         setBusy(false);
-      } else if (current.phase === "awaiting-network") {
-        setBusy(true);
+        if (next.phase !== "awaiting-revoke") {
+          const lastStep = next.steps[next.steps.length - 1];
+          await holdConfirmation(lastStep?.explanation ?? "Apollo confirmed the change.");
+          await continueRun(next);
+        }
+      } else {
         const netState = await Network.getNetworkStateAsync();
         const next = await checkAwaitingNetwork(current, netState.type ?? "UNKNOWN");
         persist(next);
-        if (next.phase === "dns-capability") await continueRun(next);
         setBusy(false);
+        if (next.phase === "dns-capability") {
+          const lastStep = next.steps[next.steps.length - 1];
+          await holdConfirmation(lastStep?.explanation ?? "Apollo confirmed the change.");
+          await continueRun(next);
+        }
       }
+    } finally {
+      checkInFlightRef.current = false;
+    }
+  }, [persist, continueRun, holdConfirmation]);
+
+  // --- Detect completion of tester-performed OS-level actions on foreground resume. ---
+  useEffect(() => {
+    const onChange = (state: AppStateStatus) => {
+      if (state === "active") runAwaitingCheck();
     };
     const sub = AppState.addEventListener("change", onChange);
     return () => sub.remove();
-  }, [persist, continueRun]);
+  }, [runAwaitingCheck]);
+
+  // --- Fallback: some OS-level actions (e.g. toggling Wi-Fi via the quick-settings shade) don't
+  // reliably background/foreground the app, so the foreground listener above may never fire. Poll
+  // periodically as a safety net whenever we're actually waiting on the tester -- this same tick
+  // also keeps the ACTION_NOT_DETECTED timeout state fresh on screen. ---
+  useEffect(() => {
+    if (!run || (run.phase !== "awaiting-revoke" && run.phase !== "awaiting-network")) return;
+    const interval = setInterval(() => runAwaitingCheck(), 4000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [run?.phase, runAwaitingCheck]);
 
   async function start() {
     setBusy(true);
@@ -208,22 +409,7 @@ export default function Phase6Automated() {
   }
 
   async function checkNow() {
-    if (!run) return;
-    setBusy(true);
-    try {
-      if (run.phase === "awaiting-revoke") {
-        const next = await checkAwaitingRevoke(run);
-        persist(next);
-        if (next.phase !== "awaiting-revoke") await continueRun(next);
-      } else if (run.phase === "awaiting-network") {
-        const netState = await Network.getNetworkStateAsync();
-        const next = await checkAwaitingNetwork(run, netState.type ?? "UNKNOWN");
-        persist(next);
-        if (next.phase === "dns-capability") await continueRun(next);
-      }
-    } finally {
-      setBusy(false);
-    }
+    await runAwaitingCheck();
   }
 
   async function recheckDnsCapability() {
@@ -242,6 +428,8 @@ export default function Phase6Automated() {
     runRef.current = null;
     setRun(null);
     setError(null);
+    setConfirmationHold(null);
+    setTechExpanded(false);
   }
 
   async function generatePdf() {
@@ -270,9 +458,15 @@ export default function Phase6Automated() {
     }
   }
 
-  const isDone = run?.phase === "done";
+  const isDone = run != null && isFinalRun(run);
   const isAwaiting = run != null && run.phase.startsWith("awaiting-");
   const dnsRows = run?.steps.filter((s) => s.group === 4) ?? [];
+  const milestoneIdx = run ? milestoneIndex(run.phase) : 0;
+  const milestone = MILESTONES[milestoneIdx];
+  const nextMilestone = MILESTONES[milestoneIdx + 1] ?? null;
+  const subState: AwaitingSubState | null = run && isAwaiting ? computeAwaitingSubState(run, busy) : null;
+  const totalChecks = run ? run.preconditions.length + run.steps.length : 0;
+  const settingsIntent = run ? AWAITING_SETTINGS_INTENT[run.phase] : undefined;
 
   return (
     <View style={styles.root} testID="phase6a-screen">
@@ -291,7 +485,7 @@ export default function Phase6Automated() {
         ) : (
           <>
             {error ? (
-              <View style={[styles.instructionBanner, { borderColor: "#b91c1c" }]}>
+              <View style={[styles.instructionBanner, { borderColor: "#b91c1c" }]} testID="phase6a-error-banner">
                 <Text style={[styles.instructionTitle, { color: "#b91c1c" }]}>ERROR</Text>
                 <Text style={styles.instructionText}>{error}</Text>
               </View>
@@ -302,8 +496,7 @@ export default function Phase6Automated() {
                 <Text style={styles.note}>
                   This activates real VPN protection and the Website Gate on this device, sends real traffic to the backend-authorized test domain, and automatically judges every result from
                   native evidence (protection state, recovery state, enforcement counters, validated security events). You will be asked for Android VPN permission once if not already granted.
-                  A few steps near the end (VPN-revoke, app restart, network toggle) will pause and show you the exact one-tap action to perform in Android — the harness detects completion and
-                  judges the result itself.
+                  A few steps near the end (VPN-revoke, app restart, network toggle) will pause and walk you through exactly what to do — Apollo detects completion and judges the result itself.
                 </Text>
                 <View style={styles.actions}>
                   <ActionButton title={busy ? "Starting…" : "Run Automated Acceptance"} onPress={start} disabled={busy} testID="phase6a-run-button" />
@@ -311,29 +504,86 @@ export default function Phase6Automated() {
               </Card>
             ) : (
               <>
-                <Card title="Run status">
-                  <KeyValue label="Run ID" value={run.runId} />
-                  <KeyValue label="Started" value={run.startedAt} />
-                  <KeyValue label="Authorized test domain" value={run.testDomain || "not yet configured"} />
-                  {!isDone ? <Text style={styles.phaseText}>{busy ? "Working…" : `Phase: ${run.phase}`}</Text> : null}
-                  {busy ? <ActivityIndicator color={colors.brandPrimary} /> : null}
-                </Card>
-
-                {isAwaiting ? (
+                {/* ============ 1 & 2. WHAT TO DO RIGHT NOW, and WHETHER APOLLO DETECTED IT ============ */}
+                {confirmationHold ? (
+                  <View style={styles.confirmedBanner} testID="phase6a-confirmed">
+                    <Text style={styles.confirmedTitle}>✓ Done — Apollo detected the change correctly</Text>
+                    <Text style={styles.instructionText}>{confirmationHold}</Text>
+                  </View>
+                ) : isAwaiting && subState === "WAITING_FOR_CONFIRMATION" ? (
+                  <View style={styles.waitingBanner} testID="phase6a-waiting">
+                    <ActivityIndicator color={colors.brandPrimary} />
+                    <Text style={styles.instructionText}>Checking whether you&apos;ve completed this step…</Text>
+                  </View>
+                ) : isAwaiting && subState === "ACTION_NOT_DETECTED" ? (
+                  <View style={styles.notDetectedBanner} testID="phase6a-not-detected">
+                    <Text style={styles.notDetectedTitle}>Apollo didn&apos;t detect the change yet</Text>
+                    <Text style={styles.instructionText}>{AWAITING_NOT_DETECTED_HINT[run.phase] ?? "Double-check you completed the step below, then try again."}</Text>
+                    <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+                      <ActionButton title="Try again" onPress={checkNow} disabled={busy} testID="phase6a-check-now" />
+                      {settingsIntent ? <ActionButton title="Open Settings" secondary onPress={() => openAndroidSettings(settingsIntent)} testID="phase6a-open-settings" /> : null}
+                    </View>
+                  </View>
+                ) : isAwaiting ? (
                   <View style={styles.instructionBanner} testID="phase6a-awaiting-instruction">
-                    <Text style={styles.instructionTitle}>ACTION NEEDED — ANDROID WON&apos;T LET THE APP DO THIS ITSELF</Text>
-                    <Text style={styles.instructionText}>{run.awaitingInstruction ?? AWAITING_INSTRUCTIONS[run.phase]}</Text>
-                    <Text style={styles.note}>Returning to this app after completing the step checks automatically. If nothing happens within a few seconds, tap below.</Text>
-                    <ActionButton title={busy ? "Checking…" : "Check now"} secondary onPress={checkNow} disabled={busy} testID="phase6a-check-now" />
+                    <Text style={styles.instructionTitle}>ACTION NEEDED · {AWAITING_TITLE[run.phase] ?? "Android won't let the app do this itself"}</Text>
+                    {(AWAITING_STEPS[run.phase] ?? []).map((text, i) => (
+                      <View key={i} style={styles.numberedStepRow}>
+                        <View style={styles.numberBubble}>
+                          <Text style={styles.numberBubbleText}>{i + 1}</Text>
+                        </View>
+                        <Text style={styles.numberedStepText}>{text}</Text>
+                      </View>
+                    ))}
+                    <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", marginTop: 4 }}>
+                      <ActionButton title="Check now" secondary onPress={checkNow} disabled={busy} testID="phase6a-check-now" />
+                      {settingsIntent ? <ActionButton title="Open Settings" secondary onPress={() => openAndroidSettings(settingsIntent)} testID="phase6a-open-settings" /> : null}
+                    </View>
+                  </View>
+                ) : !isDone ? (
+                  <View style={styles.noActionBanner} testID="phase6a-no-action-banner">
+                    <ActivityIndicator color={colors.brandPrimary} />
+                    <Text style={styles.noActionText}>No action needed from you right now — Apollo is running this step automatically.</Text>
                   </View>
                 ) : null}
 
+                {/* ============ 3. WHAT APOLLO ITSELF IS DOING ============ */}
+                {!isDone ? (
+                  <Card title="What Apollo is doing">
+                    <Text style={styles.workingTitle}>{isAwaiting ? "Paused — waiting for the action above" : milestone.label}</Text>
+                    {!isAwaiting ? <Text style={styles.workingDetail}>Typically {milestone.duration}.</Text> : null}
+                  </Card>
+                ) : null}
+
+                {/* ============ 4. OVERALL PROGRESS ============ */}
+                {!isDone ? (
+                  <Card title="What happens next?" testID="phase6a-progress-panel">
+                    <View style={styles.progressHeaderRow}>
+                      <Text style={styles.progressStepText}>Step {milestoneIdx + 1} of {MILESTONES.length}</Text>
+                    </View>
+                    <View style={styles.progressBarTrack}>
+                      <View style={[styles.progressBarFill, { width: `${((milestoneIdx + 1) / MILESTONES.length) * 100}%` }]} />
+                    </View>
+                    <Text style={styles.progressCurrent}>Current: {milestone.label}</Text>
+                    {nextMilestone ? <Text style={styles.progressNext}>Next: {nextMilestone.label}</Text> : null}
+                    <Text style={styles.progressNext}>Estimated: {milestone.duration}</Text>
+                    <Text style={[styles.interimNote, { marginTop: 6 }]}>
+                      Need to stop early or debug? Export an interim diagnostic report below — it&apos;s always clearly labelled as incomplete, never presented as an acceptance verdict.
+                    </Text>
+                    <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap", marginTop: 4 }}>
+                      <ActionButton title="Interim PDF" secondary onPress={generatePdf} disabled={busy} testID="phase6a-export-interim-pdf" />
+                      <ActionButton title="Interim JSON" secondary onPress={exportJson} disabled={busy} testID="phase6a-export-interim-json" />
+                    </View>
+                  </Card>
+                ) : null}
+
+                {/* ============ Result — only once the harness has actually finished ============ */}
                 {isDone ? (
                   <Card title="Result">
                     <VerdictText verdict={run.overallVerdict} style={styles.bigVerdict} />
                     <Text style={styles.reasonCode}>{run.overallReasonCode}</Text>
                     <Text style={styles.note}>{run.overallExplanation}</Text>
-                    {run.truthOfStateViolation ? <Text style={[styles.note, { color: "#b91c1c", fontWeight: "800" }]}>TRUTH-OF-STATE VIOLATION FLAGGED — see log below.</Text> : null}
+                    {run.truthOfStateViolation ? <Text style={[styles.note, { color: "#b91c1c", fontWeight: "800" }]}>TRUTH-OF-STATE VIOLATION FLAGGED — see Technical Evidence below.</Text> : null}
                     <View style={styles.actions}>
                       <ActionButton title="Generate PDF report" onPress={generatePdf} disabled={busy} testID="phase6a-generate-pdf" />
                       <ActionButton title="Export canonical JSON" secondary onPress={exportJson} disabled={busy} testID="phase6a-export-json" />
@@ -342,44 +592,73 @@ export default function Phase6Automated() {
                   </Card>
                 ) : null}
 
-                {run.preconditions.length > 0 ? (
-                  <Card title="0 · Preconditions">
-                    {run.preconditions.map((s) => <StepRow key={s.id} step={s} />)}
-                  </Card>
-                ) : null}
+                {/* ============ 5. TECHNICAL EVIDENCE — collapsed by default ============ */}
+                <View style={styles.techToggleCard}>
+                  <Pressable style={styles.techToggleRow} onPress={() => setTechExpanded((v) => !v)} testID="phase6a-tech-toggle" accessibilityRole="button">
+                    <Text style={styles.techToggleText}>Technical Evidence · {totalChecks} checks</Text>
+                    <Text style={styles.techToggleChevron}>{techExpanded ? "Hide details ▲" : "View details ▼"}</Text>
+                  </Pressable>
+                </View>
 
-                {run.steps.some((s) => s.group === 1) ? (
-                  <Card title="1 · Positive enforcement">
-                    {run.steps.filter((s) => s.group === 1).map((s) => <StepRow key={s.id} step={s} />)}
-                  </Card>
-                ) : null}
+                {techExpanded ? (
+                  <>
+                    <Card title="Run status">
+                      <KeyValue label="Run ID" value={run.runId} />
+                      <KeyValue label="Started" value={run.startedAt} />
+                      <KeyValue label="Authorized test domain" value={run.testDomain || "not yet configured"} />
+                      <KeyValue label="Phase" value={run.phase} />
+                    </Card>
 
-                {run.steps.some((s) => s.group === 2) ? (
-                  <Card title="2 · Negative false-Biting">
-                    {run.steps.filter((s) => s.group === 2).map((s) => <StepRow key={s.id} step={s} />)}
-                  </Card>
-                ) : null}
+                    {!isDone ? (
+                      <Card title="Abandon this run">
+                        <Text style={styles.note}>Starts a brand-new automated run from scratch. This run&apos;s un-exported data is discarded.</Text>
+                        <ActionButton title="Start new run" secondary onPress={startNewRun} disabled={busy} testID="phase6a-abandon-run" />
+                      </Card>
+                    ) : null}
 
-                {run.steps.some((s) => s.group === 3) ? (
-                  <Card title="3 · Recovery / stop / revoke / restart / network">
-                    {run.steps.filter((s) => s.group === 3).map((s) => <StepRow key={s.id} step={s} />)}
-                  </Card>
-                ) : null}
+                    {run.preconditions.length > 0 ? (
+                      <Card title="0 · Preconditions">
+                        {run.preconditions.map((s) => <StepRow key={s.id} step={s} />)}
+                      </Card>
+                    ) : null}
 
-                {(dnsRows.length > 0 || isDone) ? (
-                  <Card title="4 · DNS capability (Private DNS / DoT / DoH)">
-                    <Text style={styles.note}>Android doesn&apos;t expose the actual Private DNS setting value to this app, so each check below classifies the observed consequence instead. You can re-run this after manually changing Private DNS in Android Settings to build up more rows — each tap is fully automatic.</Text>
-                    {dnsRows.map((s) => <StepRow key={s.id} step={s} />)}
-                    <ActionButton title={busy ? "Checking…" : "Re-check DNS capability now"} secondary onPress={recheckDnsCapability} disabled={busy || !run.testDomain || run.preconditions.some((p) => p.reasonCode === "NATIVE_MODULE_UNAVAILABLE")} testID="phase6a-recheck-dns" />
-                  </Card>
-                ) : null}
+                    {run.steps.some((s) => s.group === 1) ? (
+                      <Card title="1 · Positive enforcement">
+                        {run.steps.filter((s) => s.group === 1).map((s) => <StepRow key={s.id} step={s} />)}
+                      </Card>
+                    ) : null}
 
-                {run.log.length > 0 ? (
-                  <Card title="Run log">
-                    <ScrollView style={styles.logBox} nestedScrollEnabled>
-                      {run.log.map((line, i) => <Text key={i} style={styles.logLine} selectable>{line}</Text>)}
-                    </ScrollView>
-                  </Card>
+                    {run.steps.some((s) => s.group === 2) ? (
+                      <Card title="2 · Negative false-Biting">
+                        {run.steps.filter((s) => s.group === 2).map((s) => <StepRow key={s.id} step={s} />)}
+                      </Card>
+                    ) : null}
+
+                    {run.steps.some((s) => s.group === 3) ? (
+                      <Card title="3 · Recovery / stop / revoke / restart / network">
+                        {run.steps.filter((s) => s.group === 3).map((s) => <StepRow key={s.id} step={s} />)}
+                      </Card>
+                    ) : null}
+
+                    {(dnsRows.length > 0 || isDone) ? (
+                      <Card title="4 · DNS capability (Private DNS / DoT / DoH)">
+                        <Text style={styles.note}>Android doesn&apos;t expose the actual Private DNS setting value to this app, so each check below classifies the observed consequence instead. Change Private DNS in Android Settings, then re-check — each tap is fully automatic.</Text>
+                        {dnsRows.map((s) => <StepRow key={s.id} step={s} />)}
+                        <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+                          <ActionButton title={busy ? "Checking…" : "Re-check DNS capability now"} secondary onPress={recheckDnsCapability} disabled={busy || !run.testDomain || run.preconditions.some((p) => p.reasonCode === "NATIVE_MODULE_UNAVAILABLE")} testID="phase6a-recheck-dns" />
+                          <ActionButton title="Open Private DNS Settings" secondary onPress={() => openAndroidSettings("android.settings.PRIVATE_DNS_SETTINGS")} testID="phase6a-open-private-dns-settings" />
+                        </View>
+                      </Card>
+                    ) : null}
+
+                    {run.log.length > 0 ? (
+                      <Card title="Run log">
+                        <ScrollView style={styles.logBox} nestedScrollEnabled>
+                          {run.log.map((line, i) => <Text key={i} style={styles.logLine} selectable>{line}</Text>)}
+                        </ScrollView>
+                      </Card>
+                    ) : null}
+                  </>
                 ) : null}
               </>
             )}
