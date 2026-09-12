@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.VpnService
+import android.provider.Settings
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import org.json.JSONArray
@@ -184,6 +185,30 @@ class ApolloSecurityModule : Module() {
     AsyncFunction("getRecentInstallEvents") { "[]" }        // no PACKAGE_ADDED receiver by design (would need broad visibility)
     AsyncFunction("getDeviceSecuritySignals") { AppDeviceSignals(ctx).deviceSignalsJson() }
     AsyncFunction("getRecentAppSecurityEvents") { "[]" }
+
+    // Gate 2 — Text Guard (MessagingSdk contract). The ONLY mechanism used is opt-in
+    // NotificationListenerService access (ApolloSmsListenerService) — no READ_SMS, ever, and no
+    // default-SMS-app role. `smsFiltering`/`notificationIntegration` mirror the real, live-read
+    // Settings.Secure listener grant; `senderReputation` stays honestly unsupported (no number
+    // reputation source is wired). Link checks and Share-to-Apollo already work regardless.
+    AsyncFunction("getMessagingCapabilities") {
+      val enabled = ApolloSmsListenerService.isEnabled(ctx)
+      JSONObject()
+        .put("smsFiltering", if (enabled) "supported" else "permission_required")
+        .put("linkInterception", "supported")
+        .put("senderReputation", "unsupported")
+        .put("shareExtension", "supported")
+        .put("notificationIntegration", if (enabled) "supported" else "permission_required")
+        .toString()
+    }
+    // Mailbox semantics: draining clears the queue so the JS-side poll loop never double-processes
+    // a captured notification (see ApolloSmsListenerService.drainQueue).
+    AsyncFunction("getRecentMessageSecurityEvents") { ApolloSmsListenerService.drainQueue(ctx).toString() }
+    AsyncFunction("openSmsListenerSettings") {
+      val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      appContext.currentActivity?.startActivity(intent) ?: ctx.startActivity(intent)
+      JSONObject().put("opened", true).toString()
+    }
 
     // Cross-Platform Architecture Directive (src/security/PlatformCapabilityProfile.ts). Capability is the
     // DEPLOYED reality of THIS build, not the theoretical Android ceiling — Site Guard here is DNS-only by

@@ -3,7 +3,7 @@
 // Raw personal content (page text, messages, contacts, photos, identifiers
 // beyond the anonymous device id) never leaves the device.
 
-export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "device_register" | "family" | "push_register" | "push_test" | "device_settings" | "message_check" | "message_extract" | "feedback" | "page_extract" | "page_crawl" | "gmail_scan" | "app_check" | "account_check" | "breach_check" | "voice";
+export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "device_register" | "family" | "push_register" | "push_test" | "device_settings" | "message_check" | "message_extract" | "feedback" | "page_extract" | "page_crawl" | "gmail_scan" | "imap_connect" | "imap_scan" | "app_check" | "account_check" | "breach_check" | "voice";
 
 const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   family: new Set(["device_id", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id", "scent_id", "headline", "state", "events", "steps", "done", "note", "resolved", "kind", "text", "from_name", "enabled", "preview_only", "guardian_name", "duration_s"]),
@@ -32,6 +32,11 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   // but the actual message fetch happens entirely on the backend against Google's API using the
   // stored OAuth token; no email content is ever part of this request body.
   gmail_scan: new Set(["device_id"]),
+  // Generic IMAP connect (Gate 1 add-on, Phase 3): the user's own host/port/username/app-password,
+  // entered directly in the app — sent once to establish the connection, then encrypted server-side.
+  // Never logged; see backend/services/imapmail.py.
+  imap_connect: new Set(["device_id", "host", "port", "ssl", "username", "app_password"]),
+  imap_scan: new Set(["device_id"]),
   // Gate 7: only the app's name/developer/source/purpose/permission *labels* and SDK-reported hosts — never an app inventory.
   app_check: new Set(["device_id", "name", "developer", "source", "purpose", "permissions", "hosts", "local_state", "scenario", "second_opinion"]),
   // Gate 8: alert text leaves the device only when the user taps "Check this alert"; the breach lookup sends the identifier the user typed, nothing else.
@@ -75,6 +80,7 @@ export const PRIVACY_POLICY_SUMMARY = [
   "Only the link itself (no page content, no messages) is sent for reputation checks, stripped of credentials and fragments.",
   "If you choose \"Let Apollo read the page\", Apollo fetches that page directly to look for scam signs — the content is checked and discarded, never stored.",
   "If you connect Gmail (read-only, optional), Apollo fetches your recent inbox only when you tap \"Scan my inbox\" — messages are checked on the spot and discarded; only Apollo's encrypted connection token is kept until you disconnect.",
+  "If you connect another inbox via IMAP (read-only, optional), your host/username/app-password are sent once to set up the connection, then encrypted — the same \"scan and discard\" rule applies.",
   "Patrol sync stores event summaries and the website domain only. The full link stays on your device.",
   "Apollo uses an anonymous device ID. No account, no email. A phone number is shared only if you choose to add one so family can call you.",
   "Ask Higgins sends only your question and, if you choose, a short event summary.",

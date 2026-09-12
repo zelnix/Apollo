@@ -63,5 +63,16 @@
       </intent-filter>
       <meta-data android:name="android.net.VpnService.SUPPORTS_ALWAYS_ON" android:value="false" />
     </service>
+    <!-- Text Guard: opt-in NotificationListenerService (Settings > Notification access). No READ_SMS,
+         ever — see ApolloSmsListenerService.kt header for the full truth-of-state contract. -->
+    <service
+      android:name="com.hucentai.apollosecurity.ApolloSmsListenerService"
+      android:exported="false"
+      android:label="Apollo Text Guard"
+      android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+      <intent-filter>
+        <action android:name="android.service.notification.NotificationListenerService" />
+      </intent-filter>
+    </service>
   </application>
 </manifest>

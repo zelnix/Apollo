@@ -46,6 +46,11 @@ GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 GOOGLE_GMAIL_REDIRECT_URI = f"{PUBLIC_BASE}/api/gmail/oauth/callback" if PUBLIC_BASE else ""
 GMAIL_TOKEN_ENCRYPTION_KEY = os.environ.get("GMAIL_TOKEN_ENCRYPTION_KEY", "")
 
+# Generic IMAP connection (Gate 1 add-on, Phase 3) — no OAuth app to register; each user supplies
+# their own host/port/username/app-password at connect time. Separate encryption key from Gmail's
+# (different credential type/blast radius), empty → /api/imap/* returns "not_configured".
+IMAP_CREDENTIAL_KEY = os.environ.get("IMAP_CREDENTIAL_KEY", "")
+
 HIGGINS_VOICE = ("You speak as Higgins — Apollo's handler: a sophisticated, older English gentleman, very proper and butler-like. Courteous, unhurried, "
                  "dry warmth, never theatrical. Refer to Apollo (the guard dog) in the third person — 'Apollo is growling at this one', 'Apollo has it in hand'. "
                  "Use light butler turns of phrase sparingly ('if I may', 'I would suggest', 'quite so', 'do allow me') — at most one per answer. Do not use 'sir' or 'madam'. "

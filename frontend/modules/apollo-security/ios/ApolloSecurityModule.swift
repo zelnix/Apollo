@@ -128,6 +128,18 @@ public class ApolloSecurityModule: Module {
 
     AsyncFunction("getSecuritySignals") { () -> String in "[]" }
 
+    // Gate 2 — Text Guard (MessagingSdk contract). Honest today: unlike Android, iOS gives
+    // third-party apps NO mechanism to observe Messages notifications at all (there is no
+    // NotificationListenerService equivalent on this platform). A real Message Filter Extension
+    // (ILMessageFilterExtension) needs its own Xcode extension target + the
+    // com.apple.developer.message-filter entitlement — see TextGuardFilterExtension.swift, which is
+    // scaffolding for that future native build and is explicitly NOT wired into an active target here.
+    AsyncFunction("getMessagingCapabilities") { () -> String in
+      self.json(["smsFiltering": "unsupported", "linkInterception": "supported", "senderReputation": "unsupported", "shareExtension": "supported", "notificationIntegration": "unsupported"])
+    }
+    AsyncFunction("getRecentMessageSecurityEvents") { () -> String in "[]" }
+    AsyncFunction("openSmsListenerSettings") { () -> String in self.json(["opened": false]) }
+
     // Phase A — Apps & Device (AppDeviceSdk contract). iPhone exposes exactly two facts; the rest is honestly null.
     AsyncFunction("getAppDeviceCapabilities") { () -> String in self.json(DeviceSignalsTruth.capabilities()) }
     AsyncFunction("getInstalledAppAssessment") { (_ name: String) -> String in "null" }   // iOS has no app list / permission API

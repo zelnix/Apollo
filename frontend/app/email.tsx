@@ -42,7 +42,7 @@ export default function CheckEmail() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ text?: string }>();
-  const { ready, setupDone, upsertEvent, deviceId, adapterLabel, showToast, scanGmailInbox } = useApollo();
+  const { ready, setupDone, upsertEvent, deviceId, adapterLabel, showToast, scanGmailInbox, scanImapInbox } = useApollo();
   const [from, setFrom] = useState("");
   const [subject, setSubject] = useState("");
   const [raw, setRaw] = useState(params.text ?? "");
@@ -93,6 +93,62 @@ export default function CheckEmail() {
       setScanSummary({ text: flagged.length ? `Checked ${plural(checked, "email")} — ${plural(flagged.length, "one")} need${flagged.length === 1 ? "s" : ""} a look.` : `Checked ${plural(checked, "email")} — nothing suspicious found.`, flagged: flagged.length });
       showToast(flagged.length ? `Found ${plural(flagged.length, "email")} needing a look` : "Nothing suspicious in your recent inbox", flagged.length ? "growling" : "resting");
     } catch (e) { showToast(e instanceof Error ? e.message : "Couldn't scan your inbox right now.", "growling"); } finally { setScanBusy(false); }
+  };
+
+  const [imapConnected, setImapConnected] = useState<boolean | null>(null);
+  const [imapConfigured, setImapConfigured] = useState(true);
+  const [imapAccount, setImapAccount] = useState<{ host: string; username: string } | null>(null);
+  const [imapSheet, setImapSheet] = useState(false);
+  const [imapHost, setImapHost] = useState("");
+  const [imapPort, setImapPort] = useState("993");
+  const [imapUsername, setImapUsername] = useState("");
+  const [imapPassword, setImapPassword] = useState("");
+  const [imapConnecting, setImapConnecting] = useState(false);
+  const [imapError, setImapError] = useState<string | null>(null);
+  const [imapScanBusy, setImapScanBusy] = useState(false);
+  const [imapScanSummary, setImapScanSummary] = useState<{ text: string; flagged: number } | null>(null);
+
+  useEffect(() => {
+    if (!deviceId) return;
+    apiGet<{ connected: boolean; configured: boolean; host: string | null; username: string | null }>(`/imap/status?device_id=${deviceId}`)
+      .then((r) => { setImapConnected(r.connected); setImapConfigured(r.configured); setImapAccount(r.connected && r.host && r.username ? { host: r.host, username: r.username } : null); })
+      .catch(() => setImapConnected(false));
+  }, [deviceId]);
+
+  const PROVIDER_PRESETS = [
+    { label: "Gmail", host: "imap.gmail.com", port: "993" },
+    { label: "Outlook", host: "outlook.office365.com", port: "993" },
+    { label: "Yahoo", host: "imap.mail.yahoo.com", port: "993" },
+    { label: "iCloud", host: "imap.mail.me.com", port: "993" },
+  ];
+
+  const connectImap = async () => {
+    if (!deviceId || !imapHost.trim() || !imapUsername.trim() || !imapPassword) { setImapError("Fill in host, username and app password."); return; }
+    setImapConnecting(true); setImapError(null);
+    try {
+      const port = Number.parseInt(imapPort, 10) || 993;
+      await apiPost("/imap/connections", "imap_connect", { device_id: deviceId, host: imapHost.trim(), port, ssl: true, username: imapUsername.trim(), app_password: imapPassword });
+      setImapConnected(true); setImapAccount({ host: imapHost.trim(), username: imapUsername.trim() });
+      setImapSheet(false); setImapPassword("");
+      showToast("Inbox connected — read-only access.", "resting");
+    } catch (e) { setImapError(e instanceof Error ? e.message : "Couldn't connect — check the host, port and app password."); } finally { setImapConnecting(false); }
+  };
+
+  const disconnectImap = async () => {
+    if (!deviceId) return;
+    try { await apiDelete(`/imap/connection?device_id=${deviceId}`); } catch { /* already gone */ }
+    setImapConnected(false); setImapAccount(null); setImapScanSummary(null);
+    showToast("Inbox disconnected.", "neutral");
+  };
+
+  const scanImap = async () => {
+    setImapScanBusy(true); setImapScanSummary(null);
+    try {
+      const { checked, flagged } = await scanImapInbox();
+      const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+      setImapScanSummary({ text: flagged.length ? `Checked ${plural(checked, "email")} — ${plural(flagged.length, "one")} need${flagged.length === 1 ? "s" : ""} a look.` : `Checked ${plural(checked, "email")} — nothing suspicious found.`, flagged: flagged.length });
+      showToast(flagged.length ? `Found ${plural(flagged.length, "email")} needing a look` : "Nothing suspicious in your recent inbox", flagged.length ? "growling" : "resting");
+    } catch (e) { showToast(e instanceof Error ? e.message : "Couldn't scan your inbox right now.", "growling"); } finally { setImapScanBusy(false); }
   };
 
   const run = async () => {
@@ -160,7 +216,32 @@ export default function CheckEmail() {
                 )}
               </Card>
             ) : null}
-            <Body>Forward the email to yourself and paste it here — including the From / Subject lines if you can — or fill the fields. Apollo reads it on your phone first; only the text and links you paste are checked for reputation. Apollo never reads your inbox unless you connect Gmail above.</Body>
+            {imapConfigured ? (
+              <Card testID="email-imap-card" style={{ gap: spacing.sm }}>
+                <SectionTitle>Connect another inbox (optional)</SectionTitle>
+                {imapConnected === null ? (
+                  <Body>Checking connection…</Body>
+                ) : imapConnected ? (
+                  <>
+                    <View style={s.chips}><Pill tone="resting" label={`Connected — ${imapAccount?.username ?? "read-only"}`} testID="email-imap-connected" /></View>
+                    <Button testID="email-imap-scan" label={imapScanBusy ? "Scanning your inbox…" : "Scan my inbox now"} onPress={() => void scanImap()} disabled={imapScanBusy} />
+                    {imapScanSummary ? (
+                      <>
+                        <Body testID="email-imap-scan-summary">{imapScanSummary.text}</Body>
+                        {imapScanSummary.flagged ? <Button testID="email-imap-view-patrol" variant="secondary" label="View in Patrol" onPress={() => router.push("/(tabs)/patrol")} /> : null}
+                      </>
+                    ) : null}
+                    <Button testID="email-imap-disconnect" variant="ghost" label="Disconnect this inbox" onPress={() => void disconnectImap()} />
+                  </>
+                ) : (
+                  <>
+                    <Body>Works with any provider via IMAP — Outlook, Yahoo, iCloud or your own domain. You&apos;ll need an app password from your provider, not your normal password.</Body>
+                    <Button testID="email-imap-connect-open" variant="secondary" icon={<Mail size={18} color={colors.onSurface} />} label="Connect via IMAP (read-only)" onPress={() => setImapSheet(true)} />
+                  </>
+                )}
+              </Card>
+            ) : null}
+            <Body>Forward the email to yourself and paste it here — including the From / Subject lines if you can — or fill the fields. Apollo reads it on your phone first; only the text and links you paste are checked for reputation. Apollo never reads your inbox unless you connect one above.</Body>
             <TextInput testID="email-from" style={s.input} value={from} onChangeText={setFrom} placeholder="From (e.g. CommBank <alerts@cb-secure.top>)" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} />
             <TextInput testID="email-subject" style={s.input} value={subject} onChangeText={setSubject} placeholder="Subject" placeholderTextColor={colors.muted} autoCorrect={false} />
             <TextInput testID="email-body" style={[s.input, { minHeight: 140 }]} value={raw} onChangeText={setRaw} placeholder="Paste the email (or the whole forwarded message with headers)…" placeholderTextColor={colors.muted} multiline textAlignVertical="top" autoCapitalize="none" autoCorrect={false} />
@@ -218,6 +299,23 @@ export default function CheckEmail() {
       <Sheet visible={tech} onClose={() => setTech(false)} title="Technical details" testID="email-tech-sheet">
         {a?.technical.map((t, i) => <Body key={i} testID={`email-tech-${i}`}>{t}</Body>)}
         <Button testID="email-tech-close" variant="ghost" label="Done" onPress={() => setTech(false)} />
+      </Sheet>
+      <Sheet visible={imapSheet} onClose={() => setImapSheet(false)} title="Connect an inbox via IMAP" testID="email-imap-sheet">
+        <Body>Use an app-specific password, not your normal account password — most providers require one for third-party apps like this.</Body>
+        <View style={s.chips}>
+          {PROVIDER_PRESETS.map((p) => (
+            <Pressable key={p.label} onPress={() => { setImapHost(p.host); setImapPort(p.port); }} testID={`email-imap-preset-${p.label.toLowerCase()}`}>
+              <Pill tone="neutral" label={p.label} />
+            </Pressable>
+          ))}
+        </View>
+        <TextInput testID="email-imap-host" style={s.input} value={imapHost} onChangeText={setImapHost} placeholder="IMAP host (e.g. imap.gmail.com)" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} />
+        <TextInput testID="email-imap-port" style={s.input} value={imapPort} onChangeText={setImapPort} placeholder="Port (993 for SSL)" placeholderTextColor={colors.muted} keyboardType="number-pad" />
+        <TextInput testID="email-imap-username" style={s.input} value={imapUsername} onChangeText={setImapUsername} placeholder="Email address" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" />
+        <TextInput testID="email-imap-password" style={s.input} value={imapPassword} onChangeText={setImapPassword} placeholder="App password" placeholderTextColor={colors.muted} secureTextEntry autoCapitalize="none" autoCorrect={false} />
+        {imapError ? <Body testID="email-imap-error">{imapError}</Body> : null}
+        <Button testID="email-imap-connect" label={imapConnecting ? "Connecting…" : "Connect"} onPress={() => void connectImap()} disabled={imapConnecting} />
+        <Button testID="email-imap-cancel" variant="ghost" label="Cancel" onPress={() => setImapSheet(false)} disabled={imapConnecting} />
       </Sheet>
     </View>
   );

@@ -10,7 +10,7 @@ import ShieldCheck from "lucide-react-native/icons/shield-check";
 import Smartphone from "lucide-react-native/icons/smartphone";
 import Wifi from "lucide-react-native/icons/wifi";
 import React, { useState } from "react";
-import { Linking, Pressable, ScrollView, Switch, Text, View } from "react-native";
+import { Linking, Platform, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useBackendHealth } from "@/src/api/backendHealth";
@@ -66,6 +66,7 @@ export default function Guard() {
   const connectionSummary = assessConnection(network, trustedSsids).summary;
   const netOpen = events.filter((e) => e.category === "connection" && e.status === "active" && e.state !== "resting").length;
   const accountOpen = events.filter((e) => e.category === "account" && e.status === "active" && e.state !== "resting");
+  const messageOpen = events.filter((e) => e.category === "message" && e.status === "active" && e.state !== "resting");
   // One sheet, two views. Closing one Modal and opening another in the same tick fails on iOS/Android
   // (the second never presents), so capability → permission switches content inside the same Modal.
   const [sheet, setSheet] = useState<{ kind: "cap"; cap: Capability } | { kind: "perm"; perm: ProtectionPermission } | null>(null);
@@ -141,6 +142,21 @@ export default function Guard() {
             </View>
             <Body testID="guard-account-summary">{accountOpen.length ? accountOpen.slice(0, 2).map((e) => e.headline.replace(/^Account: /, "")).join(" · ") : "No unresolved account-security issues. Check any login, MFA or password-reset alert you're unsure about."}</Body>
             <Button testID="guard-open-account" variant="secondary" label="Open Account Guard" onPress={() => router.push("/account")} />
+          </Card>
+        </View>
+
+        <View>
+          <SectionTitle>Messages</SectionTitle>
+          <Card style={s.capCard} testID="guard-textguard-card">
+            <View style={s.guardRow}>
+              <View style={s.guardTitleRow}>
+                <View style={s.iconWell}><MessageSquareWarning size={16} color={colors.brand} /></View>
+                <Text style={s.capTitle}>Text Guard</Text>
+              </View>
+              <Pill tone={messageOpen.some((e) => e.state === "barking") ? "barking" : messageOpen.length ? "growling" : "resting"} label={messageOpen.length ? `${messageOpen.length} need${messageOpen.length > 1 ? "" : "s"} attention` : "All good"} testID="guard-textguard-status" />
+            </View>
+            <Body testID="guard-textguard-summary">{messageOpen.length ? messageOpen.slice(0, 2).map((e) => e.headline).join(" · ") : Platform.OS === "android" ? "Paste a text, or turn on automatic scanning of new message notifications." : "Paste a text, or share it to Apollo from Messages."}</Body>
+            <Button testID="guard-open-textguard" variant="secondary" label="Open Text Guard" onPress={() => router.push("/text-guard")} />
           </Card>
         </View>
 

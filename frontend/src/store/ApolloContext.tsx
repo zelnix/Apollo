@@ -33,6 +33,7 @@ import { isVerifiedEnforcement } from "@/src/security/PlatformCapabilityProfile"
 import { toPatrolEnforcementEvidence } from "@/src/domain/enforcementEvidenceSync";
 import { SecureCore } from "@/src/security/securecore/SecureCore";
 import { getPushStatus, registerForPush, type PushStatus } from "@/src/push/notifications";
+import { MessagingSdk } from "@/src/security/messagingSdk";
 import { storage } from "@/src/utils/storage";
 
 const deviceMeta = () => ({ platform: Platform.OS, adapter_mode: SECURITY_MODE, app_version: "1.0.0", tz_offset_minutes: -new Date().getTimezoneOffset() });
@@ -77,6 +78,9 @@ interface ApolloContextValue {
    * (never stored server-side), runs each through the same on-device email engine as the paste
    * flow, files Patrol events for anything non-resting, then discards the raw content. */
   scanGmailInbox(): Promise<{ checked: number; flagged: PatrolEvent[] }>;
+  /** Generic IMAP connection (Gate 1 add-on, Phase 3): same contract as scanGmailInbox, sourced
+   * from a user-supplied host/username/app-password connection instead of Gmail OAuth. */
+  scanImapInbox(): Promise<{ checked: number; flagged: PatrolEvent[] }>;
   recordRecovery(event: PatrolEvent, kind: RecoveryKind): Promise<void>;
   /** Gate 3 Phase B: merge a page-screenshot analysis into an existing link event, or create a new website event. */
   recordPageAnalysis(pa: PageAnalysis, existing: PatrolEvent | null): Promise<PatrolEvent | null>;
@@ -444,11 +448,46 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     return { analysis: { ...analysis, state, why }, urls, explanation, remoteError, event };
   }, [deviceId, upsertEvent]);
 
-  const scanGmailInbox = useCallback(async (): Promise<{ checked: number; flagged: PatrolEvent[] }> => {
+  // Text Guard (Android only): drains notifications ApolloSmsListenerService captured from the
+  // default messaging app (opt-in, Settings > Notification access — never READ_SMS) and runs each
+  // through the EXACT same on-device engine + Email/Text Guard link assessment as a pasted message.
+  // A capability check keeps this a no-op everywhere else (Expo Go, web, iOS, or listener not yet
+  // granted) — getRecentMessageSecurityEvents() also always returns [] in those cases regardless.
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const caps = await MessagingSdk.getMessagingCapabilities();
+        if (caps.smsFiltering !== "supported") return;
+        const items = await MessagingSdk.getRecentMessageSecurityEvents();
+        for (const raw of items) {
+          if (cancelled) return;
+          const item = raw as { sender?: unknown; text?: unknown };
+          const text = typeof item?.text === "string" ? item.text : "";
+          if (!text.trim()) continue;
+          const sender = typeof item?.sender === "string" ? item.sender : "";
+          try {
+            const outcome = await checkMessage(sender, text);
+            if (outcome.analysis.state !== "resting") {
+              showToast(`Apollo flagged a text message: ${outcome.analysis.scenarioTitle}`, outcome.analysis.state);
+            }
+          } catch { /* one bad captured item shouldn't stop the rest of the queue */ }
+        }
+      } catch { /* native module unavailable or listener not granted — nothing to drain */ }
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), lowPower ? 120000 : 45000);
+    const sub = AppState.addEventListener("change", (st) => { if (st === "active") void poll(); });
+    return () => { cancelled = true; clearInterval(timer); sub.remove(); };
+  }, [checkMessage, showToast, lowPower]);
+
+  // Shared by scanGmailInbox/scanImapInbox: runs each fetched message through the on-device email
+  // engine + Email Guard's automatic pre-click link assessment, filing a Patrol event for anything
+  // non-resting. `messages` is only ever a local, request-scoped array — nothing here is persisted
+  // beyond the Patrol event summary (matches the "checked and discarded" backend contract).
+  const _scanInboxMessages = useCallback(async (messages: { id: string; from: string; subject: string; date: string; body: string; links: LinkAnchor[] }[], sourceLabel: string): Promise<{ checked: number; flagged: PatrolEvent[] }> => {
     if (!deviceId) return { checked: 0, flagged: [] };
-    // Raw message bodies/links live only in this local `messages` array for the duration of the loop
-    // below — never persisted (matches the "checked and discarded" contract on the backend).
-    const messages = await apiPost<{ id: string; from: string; subject: string; date: string; body: string; links: LinkAnchor[] }[]>("/gmail/scan", "gmail_scan", { device_id: deviceId });
     const flagged: PatrolEvent[] = [];
     for (const m of messages) {
       let a = analyseEmail(m.body, { from: m.from, subject: m.subject });
@@ -463,15 +502,15 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         } catch { /* offline/unavailable this pass — on-device result stands, Email Guard link findings just don't apply */ }
       }
       // Email Guard: automatic pre-click assessment — redirect chain + RDAP domain-info (already
-      // inside `urls`) plus real HTML anchor mismatch detection (Gmail gives us the actual <a>
-      // pairs, unlike pasted plain text). Can only raise state to growling/barking, never biting.
+      // inside `urls`) plus real HTML anchor mismatch detection (both Gmail and IMAP give us the
+      // actual <a> pairs, unlike pasted plain text). Can only raise state to growling/barking, never biting.
       const guard = evaluateLinkGuardFindings(urls, m.links ?? []);
       if (STATE_RANK[guard.state] > STATE_RANK[a.state]) a = { ...a, state: guard.state };
       if (guard.why.length) a = { ...a, why: [...a.why, ...guard.why] };
       if (a.state === "resting") continue;
       const event = await upsertEvent({
         event_id: Crypto.randomUUID(), device_id: deviceId, category: "email", state: a.state, status: "active",
-        headline: `Gmail: ${a.title}`, what_happened: a.verdict, why: a.why, what_to_do: a.recommendation,
+        headline: `${sourceLabel}: ${a.title}`, what_happened: a.verdict, why: a.why, what_to_do: a.recommendation,
         indicator_host: a.lookalikeUrls[0] ? a.lookalikeUrls[0].replace(/^https?:\/\//i, "").split("/")[0] : a.senderDomain,
         indicator_digest: null, local_indicator: a.parsed.subject, verified_block: false, adapter_label: securityAdapter.label,
         occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: a.claimedBrand, scenario: a.scenario,
@@ -480,6 +519,18 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     }
     return { checked: messages.length, flagged };
   }, [deviceId, upsertEvent]);
+
+  const scanGmailInbox = useCallback(async (): Promise<{ checked: number; flagged: PatrolEvent[] }> => {
+    if (!deviceId) return { checked: 0, flagged: [] };
+    const messages = await apiPost<{ id: string; from: string; subject: string; date: string; body: string; links: LinkAnchor[] }[]>("/gmail/scan", "gmail_scan", { device_id: deviceId });
+    return _scanInboxMessages(messages, "Gmail");
+  }, [deviceId, _scanInboxMessages]);
+
+  const scanImapInbox = useCallback(async (): Promise<{ checked: number; flagged: PatrolEvent[] }> => {
+    if (!deviceId) return { checked: 0, flagged: [] };
+    const messages = await apiPost<{ id: string; from: string; subject: string; date: string; body: string; links: LinkAnchor[] }[]>("/imap/scan", "imap_scan", { device_id: deviceId });
+    return _scanInboxMessages(messages, "Inbox");
+  }, [deviceId, _scanInboxMessages]);
 
   const recordPageAnalysis = useCallback(async (pa: PageAnalysis, existing: PatrolEvent | null): Promise<PatrolEvent | null> => {
     if (existing) {
@@ -628,7 +679,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   const value: ApolloContextValue = {
     ready, setupDone, deviceId, identityReset, reRegisterDevice, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label, isMock: IS_MOCK_SECURITY,
-    refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, scanGmailInbox, recordRecovery, upsertEvent, recordPageAnalysis, checkCall,
+    refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, scanGmailInbox, scanImapInbox, recordRecovery, upsertEvent, recordPageAnalysis, checkCall,
     pushStatus, enablePush, quietHours, quietNow, setQuietHours, lowPower, setLowPower,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
