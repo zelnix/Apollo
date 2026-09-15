@@ -488,12 +488,24 @@ export interface ActivationResult {
   reason: string | null;
   /** True iff the fetched, currently-accepted DIAGNOSTIC WIZARD bundle (gd-m2-dns-diagnostic-wizard
    * -- NOT the production gd-m2-website-gate bundle) genuinely carries all 5 dedicated per-row
-   * probe rules -- confirms every row's evidence will be attributable before any probe is run. */
-  probeRuleConfirmedInBundle: boolean;
+   * probe rules -- confirms every row's evidence will be attributable before any probe is run.
+   * `null` means activation failed BEFORE the bundle was ever fetched/inspected (native
+   * unavailable, permission denied, protection never reached ACTIVE) -- "not yet checked", never
+   * conflated with `false` ("checked, and it's genuinely missing"). */
+  probeRuleConfirmedInBundle: boolean | null;
   /** Full machine-observed truth-of-state snapshot taken at the end of Preflight. Carried forward
    * as the `probeRuleConfirmedInBundle` baseline for every later per-row snapshot this session. */
   preflightSnapshot: DnsDiagnosticTruthSnapshot;
 }
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/** Same timeout/interval the frozen Phase 6A harness uses for its own equivalent precondition
+ * polls (see phase6AutomatedHarness.ts START_PROTECTION_TIMEOUT_MS / GATE_ACTIVE_TIMEOUT_MS /
+ * POLL_MS) -- duplicated here, not imported, to keep this file's deliberate zero code-level
+ * dependency on that frozen file (see the function doc comment below). */
+const ACTIVATION_START_PROTECTION_TIMEOUT_MS = 15_000;
+const ACTIVATION_GATE_ACTIVE_TIMEOUT_MS = 10_000;
+const ACTIVATION_POLL_MS = 250;
 
 /** Activates protection + the Website Gate using ONLY the stable public GuardDogSecuritySDK surface
  * (requestPermission -> configure -> startProtection -> configureWebsiteGate -> accept the live
@@ -501,25 +513,55 @@ export interface ActivationResult {
  * harness uses for its own (different, frozen) bundle, but implemented fresh here so this tool has
  * zero code-level dependency on phase6AutomatedHarness.ts. Never signs or publishes a bundle; only
  * reads the currently-live one. Deliberately accepts the WIZARD's own dedicated ruleset here, NOT
- * the production gd-m2-website-gate bundle -- see DNS_DIAGNOSTIC_WIZARD_RULESET_ID. */
+ * the production gd-m2-website-gate bundle -- see DNS_DIAGNOSTIC_WIZARD_RULESET_ID.
+ *
+ * Physical-device review fixes (2026-09):
+ * 1. startProtection() can genuinely settle at ACTIVE a moment after returning a transitional state
+ *    (STARTING) -- polling for a terminal state (like the frozen Phase 6A harness already does)
+ *    instead of judging the very first synchronous read avoids a false PRECONDITION failure on a
+ *    device that would have reached ACTIVE within a second or two.
+ * 2. `probeRuleConfirmedInBundle` is only ever MEANINGFULLY known once the bundle has actually been
+ *    fetched and accepted -- every earlier failure path (native unavailable, permission denied,
+ *    protection never reached ACTIVE) now reports it as `null` ("not yet checked"), never `false`
+ *    ("confirmed absent"), so the truth snapshot's violation reasons never claim a check that never
+ *    ran. `false` is reserved for the one path (BUNDLE_REJECTED, or the post-acceptance recount)
+ *    where the bundle genuinely was inspected. */
 export async function activateWebsiteGateForDiagnostics(): Promise<ActivationResult> {
-  const fail = async (reason: string): Promise<ActivationResult> => ({ ok: false, reason, probeRuleConfirmedInBundle: false, preflightSnapshot: await captureDnsDiagnosticTruthSnapshot(false) });
+  const fail = async (reason: string, probeRuleConfirmedInBundle: boolean | null = null): Promise<ActivationResult> => ({
+    ok: false,
+    reason,
+    probeRuleConfirmedInBundle,
+    preflightSnapshot: await captureDnsDiagnosticTruthSnapshot(probeRuleConfirmedInBundle),
+  });
   if (!GuardDogSecuritySDK.nativeAvailable) return fail("NATIVE_MODULE_UNAVAILABLE (Expo Go / web -- a native Android build is required)");
   const permission = await GuardDogSecuritySDK.requestPermission("vpn");
   if (permission !== "granted") return fail(`VPN_PERMISSION_${permission.toUpperCase()}`);
   const m1Config = await fetchM1Config();
   GuardDogSecuritySDK.configure(toProtectionConfig(m1Config));
-  const status = await GuardDogSecuritySDK.startProtection();
+
+  let status = await GuardDogSecuritySDK.startProtection();
+  const startDeadline = Date.now() + ACTIVATION_START_PROTECTION_TIMEOUT_MS;
+  while (status.state !== "ACTIVE" && status.state !== "FAILED" && status.state !== "STOPPED" && status.state !== "REVOKED" && Date.now() < startDeadline) {
+    await sleep(ACTIVATION_POLL_MS);
+    status = GuardDogSecuritySDK.getProtectionState();
+  }
   if (status.state !== "ACTIVE") return fail(`PROTECTION_NOT_ACTIVE (state=${status.state})`);
+
   GuardDogSecuritySDK.configureWebsiteGate({});
   const bundle = await fetchLatestBundle(DNS_DIAGNOSTIC_WIZARD_RULESET_ID);
   const acceptance = GuardDogSecuritySDK.acceptWebsiteGateRuleBundle(bundle);
-  if (!acceptance.accepted) return fail(`BUNDLE_REJECTED (${acceptance.rejectReason})`);
+  if (!acceptance.accepted) return fail(`BUNDLE_REJECTED (${acceptance.rejectReason})`, false);
   await GuardDogSecuritySDK.hydrateWebsiteGateOverrides();
-  const gateStatus = GuardDogSecuritySDK.getWebsiteGateStatus();
-  if (!gateStatus.dnsGatewayActive) return fail("DNS_GATEWAY_NOT_ACTIVE");
+
+  let gateStatus = GuardDogSecuritySDK.getWebsiteGateStatus();
+  const gateDeadline = Date.now() + ACTIVATION_GATE_ACTIVE_TIMEOUT_MS;
+  while (!gateStatus.dnsGatewayActive && Date.now() < gateDeadline) {
+    await sleep(ACTIVATION_POLL_MS);
+    gateStatus = GuardDogSecuritySDK.getWebsiteGateStatus();
+  }
   const rules = bundle.payload.rules as RuleEntry[];
   const probeRuleConfirmedInBundle = Object.values(ROW_PROBE_IDENTITY).every((identity) => rules.some((r) => r.host === identity.host && r.ruleId === identity.ruleId && r.action === "block"));
+  if (!gateStatus.dnsGatewayActive) return fail("DNS_GATEWAY_NOT_ACTIVE", probeRuleConfirmedInBundle);
   const preflightSnapshot = await captureDnsDiagnosticTruthSnapshot(probeRuleConfirmedInBundle);
   return { ok: true, reason: null, probeRuleConfirmedInBundle, preflightSnapshot };
 }

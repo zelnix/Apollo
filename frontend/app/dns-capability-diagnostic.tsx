@@ -422,7 +422,16 @@ export default function DnsCapabilityDiagnosticScreen() {
               {activation ? (
                 <>
                   <KeyValue label="Status" value={activation.ok ? "Active" : `Failed: ${activation.reason}`} testID="dns-doh-activation-status" />
-                  <KeyValue label="All 5 probe rules confirmed in bundle" value={activation.probeRuleConfirmedInBundle ? "yes" : "NO — probes will be unattributable"} />
+                  <KeyValue
+                    label="All 5 probe rules confirmed in bundle"
+                    value={
+                      activation.probeRuleConfirmedInBundle === null
+                        ? "not checked (activation failed before the bundle was verified)"
+                        : activation.probeRuleConfirmedInBundle
+                          ? "yes"
+                          : "NO — probes will be unattributable"
+                    }
+                  />
                   <KeyValue label="Native module" value={activation.preflightSnapshot.nativeAvailable ? "available" : "unavailable (Expo Go / web)"} />
                   <KeyValue label="Active native stack" value={activation.preflightSnapshot.activeNativeStackId ?? "n/a"} />
                   <KeyValue label="Supported ABIs" value={activation.preflightSnapshot.supportedAbis.join(", ") || "n/a"} />
@@ -446,6 +455,18 @@ export default function DnsCapabilityDiagnosticScreen() {
               ) : null}
             </Card>
             {preflightPassed ? <ActionButton title="Continue" onPress={() => goToStep(1)} testID="dns-wizard-preflight-continue" /> : null}
+            {/* Physical-device review fix: a failed/violated Preflight must still let the tester
+                export/share whatever WAS captured (the attempt + failure reason + truth snapshot
+                are themselves evidence) -- never gated behind preflightPassed. */}
+            {activation ? (
+              <ActionButton
+                title={busy ? "Preparing…" : "Share diagnostic report"}
+                secondary
+                onPress={handleShareReport}
+                disabled={busy}
+                testID="dns-doh-preflight-share-report"
+              />
+            ) : null}
           </>
         ) : null}
 

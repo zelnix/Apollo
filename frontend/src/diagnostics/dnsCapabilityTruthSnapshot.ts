@@ -58,6 +58,13 @@ function computeTruthViolation(args: {
   if (args.dnsGatewayActive && !args.tunOpen) {
     reasons.push("Website Gate DNS gateway reports active but the native TUN is reportedly not open -- contradictory.");
   }
+  // Physical-device review fix: the DNS gateway pipeline can only genuinely be active while
+  // protection itself is ACTIVE -- dnsGatewayActive=true alongside any non-ACTIVE protectionState
+  // (e.g. INACTIVE, STOPPED, STARTING) is a stale/invalid combination, not a real "gate is up while
+  // protection is technically off" state. Flagged, never silently trusted.
+  if (args.dnsGatewayActive && args.protectionState !== "ACTIVE") {
+    reasons.push(`Website Gate DNS gateway reports active while protection state is "${args.protectionState ?? "unknown"}" (not ACTIVE) -- stale/invalid combination.`);
+  }
   if (args.probeRuleConfirmedInBundle === false) {
     reasons.push("The dedicated probe rule is NOT confirmed present in the accepted signed bundle -- any capture below would be unattributable.");
   }
