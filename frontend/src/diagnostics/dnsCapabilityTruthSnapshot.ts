@@ -26,6 +26,13 @@ export interface DnsDiagnosticTruthSnapshot {
   acceptedRulesetId: string | null;
   acceptedBundleVersion: number | null;
   acceptedKeyId: string | null;
+  /** Carried through from the Preflight activation result (null before Preflight has run/attempted
+   * this). Physical-device review fix: startProtection() is REJECTED by the native module without
+   * a genuinely accepted M1 signed rule bundle (gd-m1-controlled-block) -- this wizard previously
+   * never fetched/accepted it at all. `null` = never attempted (failed even earlier); `false` =
+   * fetched and rejected; `true` = accepted. Not re-derived per snapshot -- carried forward like
+   * probeRuleConfirmedInBundle below. */
+  m1BundleAccepted: boolean | null;
   /** Carried through from the Preflight activation result (null before Preflight has run). Not
    * re-derived per snapshot -- re-verifying the whole signed bundle on every row would be redundant;
    * the bundle cannot change mid-session without a fresh activation. */
@@ -49,6 +56,7 @@ function computeTruthViolation(args: {
   isVpnConsentRequired: boolean;
   dnsGatewayActive: boolean;
   tunOpen: boolean;
+  m1BundleAccepted: boolean | null;
   probeRuleConfirmedInBundle: boolean | null;
 }): { violated: boolean; reasons: string[] } {
   const reasons: string[] = [];
@@ -65,6 +73,12 @@ function computeTruthViolation(args: {
   if (args.dnsGatewayActive && args.protectionState !== "ACTIVE") {
     reasons.push(`Website Gate DNS gateway reports active while protection state is "${args.protectionState ?? "unknown"}" (not ACTIVE) -- stale/invalid combination.`);
   }
+  // protectionState === "ACTIVE" should be structurally impossible without m1BundleAccepted, since
+  // Preflight only ever calls startProtection() AFTER a successful acceptRuleBundle(M1) -- flagged
+  // rather than assumed, in case a future refactor breaks that ordering again.
+  if (args.protectionState === "ACTIVE" && args.m1BundleAccepted !== true) {
+    reasons.push(`Protection state reports ACTIVE but the M1 signed rule bundle is not confirmed accepted (m1BundleAccepted=${String(args.m1BundleAccepted)}) -- contradictory.`);
+  }
   if (args.probeRuleConfirmedInBundle === false) {
     reasons.push("The dedicated probe rule is NOT confirmed present in the accepted signed bundle -- any capture below would be unattributable.");
   }
@@ -72,10 +86,15 @@ function computeTruthViolation(args: {
 }
 
 /**
- * Captures one fresh, fully machine-observed snapshot. `probeRuleConfirmedInBundle` must be passed
- * through from the Preflight activation result (or null before Preflight has run).
+ * Captures one fresh, fully machine-observed snapshot. `m1BundleAccepted` and
+ * `probeRuleConfirmedInBundle` must be passed through from the Preflight activation result (or
+ * null before Preflight has run/attempted this).
  */
-export async function captureDnsDiagnosticTruthSnapshot(probeRuleConfirmedInBundle: boolean | null): Promise<DnsDiagnosticTruthSnapshot> {
+export async function captureDnsDiagnosticTruthSnapshot(preflight: {
+  m1BundleAccepted: boolean | null;
+  probeRuleConfirmedInBundle: boolean | null;
+}): Promise<DnsDiagnosticTruthSnapshot> {
+  const { m1BundleAccepted, probeRuleConfirmedInBundle } = preflight;
   const buildProvenance = await readBuildProvenance();
   const nativeAvailable = Platform.OS === "android" && !!GuardDogNative;
 
@@ -93,6 +112,7 @@ export async function captureDnsDiagnosticTruthSnapshot(probeRuleConfirmedInBund
       acceptedRulesetId: null,
       acceptedBundleVersion: null,
       acceptedKeyId: null,
+      m1BundleAccepted,
       probeRuleConfirmedInBundle,
       activeNativeStackId: null,
       supportedAbis: [],
@@ -117,6 +137,7 @@ export async function captureDnsDiagnosticTruthSnapshot(probeRuleConfirmedInBund
     isVpnConsentRequired,
     dnsGatewayActive: gateStatus.dnsGatewayActive,
     tunOpen: recovery.tunOpen,
+    m1BundleAccepted,
     probeRuleConfirmedInBundle,
   });
 
@@ -133,6 +154,7 @@ export async function captureDnsDiagnosticTruthSnapshot(probeRuleConfirmedInBund
     acceptedRulesetId: gateStatus.acceptedRulesetId,
     acceptedBundleVersion: gateStatus.acceptedBundleVersion,
     acceptedKeyId: gateStatus.acceptedKeyId,
+    m1BundleAccepted,
     probeRuleConfirmedInBundle,
     activeNativeStackId: dnsSnapshot.activeNativeStackId,
     supportedAbis: dnsSnapshot.supportedAbis,

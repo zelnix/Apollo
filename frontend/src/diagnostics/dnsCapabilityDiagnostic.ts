@@ -282,10 +282,14 @@ async function fetchProbeHost(host: string, timeoutMs: number): Promise<{ outcom
  * fixes applied here: (1) drift between detection and execution, and (2) an "Off" claim that the
  * machine observes as definitely NOT off, both now HARD-gate the row to NOT_TESTABLE via classify()
  * instead of merely adding a note. */
-export async function runPrivateDnsProbeForStep(step: DotWizardStepConfig, probeRuleConfirmedInBundle: boolean | null, windowMs = 12_000): Promise<DnsDiagnosticRecord> {
+export async function runPrivateDnsProbeForStep(
+  step: DotWizardStepConfig,
+  preflight: { m1BundleAccepted: boolean | null; probeRuleConfirmedInBundle: boolean | null },
+  windowMs = 12_000,
+): Promise<DnsDiagnosticRecord> {
   const identity = ROW_PROBE_IDENTITY[step.id];
   const probeStartedAt = nowIso();
-  const truthSnapshot = await captureDnsDiagnosticTruthSnapshot(probeRuleConfirmedInBundle);
+  const truthSnapshot = await captureDnsDiagnosticTruthSnapshot(preflight);
   const transportNetworkType = await getNetworkType();
   let fetchOutcome: Awaited<ReturnType<typeof fetchProbeHost>> | null = null;
   const event = await observeWindow(async () => {
@@ -486,15 +490,22 @@ export function notTestableRecord(category: DnsDiagnosticCategory, configuration
 export interface ActivationResult {
   ok: boolean;
   reason: string | null;
+  /** True iff the M1 signed rule bundle (gd-m1-controlled-block -- the SAME baseline bundle Phase
+   * 6A accepts, fetched via fetchM1Config().rulesetId) was fetched and genuinely accepted via
+   * acceptRuleBundle(). Physical-device review fix: startProtection() is REJECTED by the native
+   * module without this -- this wizard previously never fetched/accepted it at all (it only ever
+   * dealt with its OWN Website Gate bundle). `null` = never attempted (failed even earlier: native
+   * unavailable / permission denied); `false` = fetched and rejected; `true` = accepted. */
+  m1BundleAccepted: boolean | null;
   /** True iff the fetched, currently-accepted DIAGNOSTIC WIZARD bundle (gd-m2-dns-diagnostic-wizard
    * -- NOT the production gd-m2-website-gate bundle) genuinely carries all 5 dedicated per-row
    * probe rules -- confirms every row's evidence will be attributable before any probe is run.
-   * `null` means activation failed BEFORE the bundle was ever fetched/inspected (native
-   * unavailable, permission denied, protection never reached ACTIVE) -- "not yet checked", never
-   * conflated with `false` ("checked, and it's genuinely missing"). */
+   * `null` means activation failed BEFORE this bundle was ever fetched/inspected -- "not yet
+   * checked", never conflated with `false` ("checked, and it's genuinely missing"). */
   probeRuleConfirmedInBundle: boolean | null;
   /** Full machine-observed truth-of-state snapshot taken at the end of Preflight. Carried forward
-   * as the `probeRuleConfirmedInBundle` baseline for every later per-row snapshot this session. */
+   * as the `m1BundleAccepted`/`probeRuleConfirmedInBundle` baseline for every later per-row
+   * snapshot this session. */
   preflightSnapshot: DnsDiagnosticTruthSnapshot;
 }
 
@@ -508,50 +519,73 @@ const ACTIVATION_GATE_ACTIVE_TIMEOUT_MS = 10_000;
 const ACTIVATION_POLL_MS = 250;
 
 /** Activates protection + the Website Gate using ONLY the stable public GuardDogSecuritySDK surface
- * (requestPermission -> configure -> startProtection -> configureWebsiteGate -> accept the live
- * signed gd-m2-dns-diagnostic-wizard bundle -> hydrate overrides) -- the same public calls the M2.1
- * harness uses for its own (different, frozen) bundle, but implemented fresh here so this tool has
- * zero code-level dependency on phase6AutomatedHarness.ts. Never signs or publishes a bundle; only
- * reads the currently-live one. Deliberately accepts the WIZARD's own dedicated ruleset here, NOT
- * the production gd-m2-website-gate bundle -- see DNS_DIAGNOSTIC_WIZARD_RULESET_ID.
+ * -- implemented fresh here (not imported) so this tool has zero code-level dependency on
+ * phase6AutomatedHarness.ts, but now mirrors that frozen harness's PROVEN activation order exactly:
+ * requestPermission -> fetch+configure M1 -> fetch+accept the M1 signed bundle -> configure the
+ * Website Gate -> fetch+accept THIS WIZARD's OWN dedicated bundle (gd-m2-dns-diagnostic-wizard,
+ * never the frozen gd-m2-website-gate v4) -> hydrate overrides -> verify the 5 probe rules ->
+ * ONLY THEN startProtection() -> poll ACTIVE -> poll dnsGatewayActive. Never signs or publishes a
+ * bundle; only reads currently-live ones.
  *
  * Physical-device review fixes (2026-09):
- * 1. startProtection() can genuinely settle at ACTIVE a moment after returning a transitional state
- *    (STARTING) -- polling for a terminal state (like the frozen Phase 6A harness already does)
- *    instead of judging the very first synchronous read avoids a false PRECONDITION failure on a
- *    device that would have reached ACTIVE within a second or two.
- * 2. `probeRuleConfirmedInBundle` is only ever MEANINGFULLY known once the bundle has actually been
- *    fetched and accepted -- every earlier failure path (native unavailable, permission denied,
- *    protection never reached ACTIVE) now reports it as `null` ("not yet checked"), never `false`
- *    ("confirmed absent"), so the truth snapshot's violation reasons never claim a check that never
- *    ran. `false` is reserved for the one path (BUNDLE_REJECTED, or the post-acceptance recount)
- *    where the bundle genuinely was inspected. */
+ * 1. Ordering bug: this wizard previously called startProtection() having only ever
+ *    fetched/configured M1 -- it never fetched or accepted the M1 SIGNED BUNDLE via
+ *    acceptRuleBundle(), which the native module requires before it will let startProtection()
+ *    proceed at all ("no accepted signed rule bundle"). This only surfaced on a real device,
+ *    because the JS/web fallback SDK doesn't enforce that precondition. Fixed by accepting M1
+ *    first, exactly where the frozen Phase 6A harness's own proven "config" phase does it.
+ * 2. startProtection() can genuinely settle at ACTIVE a moment after returning a transitional state
+ *    (STARTING) -- polling for a terminal state instead of judging the very first synchronous read
+ *    avoids a false PRECONDITION failure on a device that would have reached ACTIVE shortly after.
+ * 3. `m1BundleAccepted` / `probeRuleConfirmedInBundle` are only ever MEANINGFULLY known once each
+ *    bundle has actually been fetched and accepted -- every earlier failure path reports the
+ *    not-yet-reached one(s) as `null` ("not yet checked"), never `false` ("confirmed absent"), so
+ *    the truth snapshot's violation reasons never claim a check that never ran. */
 export async function activateWebsiteGateForDiagnostics(): Promise<ActivationResult> {
-  const fail = async (reason: string, probeRuleConfirmedInBundle: boolean | null = null): Promise<ActivationResult> => ({
+  const fail = async (
+    reason: string,
+    m1BundleAccepted: boolean | null = null,
+    probeRuleConfirmedInBundle: boolean | null = null,
+  ): Promise<ActivationResult> => ({
     ok: false,
     reason,
+    m1BundleAccepted,
     probeRuleConfirmedInBundle,
-    preflightSnapshot: await captureDnsDiagnosticTruthSnapshot(probeRuleConfirmedInBundle),
+    preflightSnapshot: await captureDnsDiagnosticTruthSnapshot({ m1BundleAccepted, probeRuleConfirmedInBundle }),
   });
   if (!GuardDogSecuritySDK.nativeAvailable) return fail("NATIVE_MODULE_UNAVAILABLE (Expo Go / web -- a native Android build is required)");
   const permission = await GuardDogSecuritySDK.requestPermission("vpn");
   if (permission !== "granted") return fail(`VPN_PERMISSION_${permission.toUpperCase()}`);
+
   const m1Config = await fetchM1Config();
   GuardDogSecuritySDK.configure(toProtectionConfig(m1Config));
 
+  // Step 1 (must happen BEFORE startProtection()): fetch + accept the M1 baseline signed bundle --
+  // the same one Phase 6A accepts via GuardDogSecuritySDK.acceptRuleBundle(). Without this,
+  // startProtection() is rejected by the native module ("no accepted signed rule bundle").
+  const m1Bundle = await fetchLatestBundle(m1Config.rulesetId);
+  const m1Acceptance = GuardDogSecuritySDK.acceptRuleBundle(m1Bundle);
+  if (!m1Acceptance.accepted) return fail(`M1_BUNDLE_REJECTED (${m1Acceptance.rejectReason})`, false);
+
+  // Step 2: configure + accept THIS WIZARD's own dedicated bundle into the Website Gate slot --
+  // deliberately gd-m2-dns-diagnostic-wizard, never the frozen gd-m2-website-gate v4.
+  GuardDogSecuritySDK.configureWebsiteGate({});
+  const bundle = await fetchLatestBundle(DNS_DIAGNOSTIC_WIZARD_RULESET_ID);
+  const acceptance = GuardDogSecuritySDK.acceptWebsiteGateRuleBundle(bundle);
+  if (!acceptance.accepted) return fail(`BUNDLE_REJECTED (${acceptance.rejectReason})`, true, false);
+  await GuardDogSecuritySDK.hydrateWebsiteGateOverrides();
+
+  const rules = bundle.payload.rules as RuleEntry[];
+  const probeRuleConfirmedInBundle = Object.values(ROW_PROBE_IDENTITY).every((identity) => rules.some((r) => r.host === identity.host && r.ruleId === identity.ruleId && r.action === "block"));
+
+  // Step 3: only now is it valid to call startProtection() -- both bundles are accepted.
   let status = await GuardDogSecuritySDK.startProtection();
   const startDeadline = Date.now() + ACTIVATION_START_PROTECTION_TIMEOUT_MS;
   while (status.state !== "ACTIVE" && status.state !== "FAILED" && status.state !== "STOPPED" && status.state !== "REVOKED" && Date.now() < startDeadline) {
     await sleep(ACTIVATION_POLL_MS);
     status = GuardDogSecuritySDK.getProtectionState();
   }
-  if (status.state !== "ACTIVE") return fail(`PROTECTION_NOT_ACTIVE (state=${status.state})`);
-
-  GuardDogSecuritySDK.configureWebsiteGate({});
-  const bundle = await fetchLatestBundle(DNS_DIAGNOSTIC_WIZARD_RULESET_ID);
-  const acceptance = GuardDogSecuritySDK.acceptWebsiteGateRuleBundle(bundle);
-  if (!acceptance.accepted) return fail(`BUNDLE_REJECTED (${acceptance.rejectReason})`, false);
-  await GuardDogSecuritySDK.hydrateWebsiteGateOverrides();
+  if (status.state !== "ACTIVE") return fail(`PROTECTION_NOT_ACTIVE (state=${status.state})`, true, probeRuleConfirmedInBundle);
 
   let gateStatus = GuardDogSecuritySDK.getWebsiteGateStatus();
   const gateDeadline = Date.now() + ACTIVATION_GATE_ACTIVE_TIMEOUT_MS;
@@ -559,9 +593,7 @@ export async function activateWebsiteGateForDiagnostics(): Promise<ActivationRes
     await sleep(ACTIVATION_POLL_MS);
     gateStatus = GuardDogSecuritySDK.getWebsiteGateStatus();
   }
-  const rules = bundle.payload.rules as RuleEntry[];
-  const probeRuleConfirmedInBundle = Object.values(ROW_PROBE_IDENTITY).every((identity) => rules.some((r) => r.host === identity.host && r.ruleId === identity.ruleId && r.action === "block"));
-  if (!gateStatus.dnsGatewayActive) return fail("DNS_GATEWAY_NOT_ACTIVE", probeRuleConfirmedInBundle);
-  const preflightSnapshot = await captureDnsDiagnosticTruthSnapshot(probeRuleConfirmedInBundle);
-  return { ok: true, reason: null, probeRuleConfirmedInBundle, preflightSnapshot };
+  if (!gateStatus.dnsGatewayActive) return fail("DNS_GATEWAY_NOT_ACTIVE", true, probeRuleConfirmedInBundle);
+  const preflightSnapshot = await captureDnsDiagnosticTruthSnapshot({ m1BundleAccepted: true, probeRuleConfirmedInBundle });
+  return { ok: true, reason: null, m1BundleAccepted: true, probeRuleConfirmedInBundle, preflightSnapshot };
 }

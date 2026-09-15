@@ -122,6 +122,10 @@ export default function DnsCapabilityDiagnosticScreen() {
   const [busy, setBusy] = useState(false);
   const [stepResult, setStepResult] = useState<DnsDiagnosticRecord | null>(null);
 
+  // Carried through from the Preflight activation result into every per-row/per-step snapshot this
+  // session (never re-derived per row -- see dnsCapabilityTruthSnapshot.ts doc comments).
+  const preflightCarry = { m1BundleAccepted: activation?.m1BundleAccepted ?? null, probeRuleConfirmedInBundle: activation?.probeRuleConfirmedInBundle ?? null };
+
   // --- Private DNS (DoT) automated polling sub-state ---
   const [pollPhase, setPollPhase] = useState<"idle" | "polling" | "matched" | "timed-out">("idle");
   const [pollElapsedMs, setPollElapsedMs] = useState(0);
@@ -190,7 +194,7 @@ export default function DnsCapabilityDiagnosticScreen() {
       setPollPhase("matched");
       setBusy(true);
       try {
-        const record = await runPrivateDnsProbeForStep(step, activation?.probeRuleConfirmedInBundle ?? null);
+        const record = await runPrivateDnsProbeForStep(step, preflightCarry);
         setRecords((prev) => [record, ...prev]);
         setStepResult(record);
       } catch (e) {
@@ -215,7 +219,7 @@ export default function DnsCapabilityDiagnosticScreen() {
     setStepResult(null);
     setBusy(true);
     try {
-      const record = await runPrivateDnsProbeForStep(step, activation?.probeRuleConfirmedInBundle ?? null);
+      const record = await runPrivateDnsProbeForStep(step, preflightCarry);
       setRecords((prev) => [record, ...prev]);
       setStepResult(record);
     } catch (e) {
@@ -266,7 +270,7 @@ export default function DnsCapabilityDiagnosticScreen() {
     pollCancelRef.current = true;
     setBusy(true);
     try {
-      const snapshot = await captureDnsDiagnosticTruthSnapshot(activation?.probeRuleConfirmedInBundle ?? null);
+      const snapshot = await captureDnsDiagnosticTruthSnapshot(preflightCarry);
       const reason =
         step.targetRuntimeMode === null
           ? "Tester chose not to confirm the Off configuration for this row."
@@ -303,7 +307,7 @@ export default function DnsCapabilityDiagnosticScreen() {
       const nonce = generateProbeNonce();
       dohNonceRef.current = nonce;
       dohStepRef.current = step;
-      dohTruthSnapshotRef.current = await captureDnsDiagnosticTruthSnapshot(activation?.probeRuleConfirmedInBundle ?? null);
+      dohTruthSnapshotRef.current = await captureDnsDiagnosticTruthSnapshot(preflightCarry);
       dohNetTypeRef.current = await getNetworkType();
       const observation = startAppEmbeddedDohObservation(identity.host, identity.ruleId, nonce, 120_000);
       dohObservationRef.current = observation;
@@ -350,7 +354,7 @@ export default function DnsCapabilityDiagnosticScreen() {
   async function handleRecordDohNotTestable(step: DohStepId) {
     setBusy(true);
     try {
-      const snapshot = await captureDnsDiagnosticTruthSnapshot(activation?.probeRuleConfirmedInBundle ?? null);
+      const snapshot = await captureDnsDiagnosticTruthSnapshot(preflightCarry);
       const label = `${dohBrowserLabel.trim() || "Unnamed browser"} — ${step === "doh-on" ? "DoH ON" : "DoH OFF"}`;
       const record = notTestableRecord("app-embedded-doh", label, "Tester marked this configuration as not testable (e.g. that browser unavailable on this device).", snapshot, ROW_PROBE_IDENTITY[step].host);
       setRecords((prev) => [record, ...prev]);
@@ -422,6 +426,10 @@ export default function DnsCapabilityDiagnosticScreen() {
               {activation ? (
                 <>
                   <KeyValue label="Status" value={activation.ok ? "Active" : `Failed: ${activation.reason}`} testID="dns-doh-activation-status" />
+                  <KeyValue
+                    label="M1 protection bundle accepted"
+                    value={activation.m1BundleAccepted === null ? "not checked (activation failed before this was attempted)" : activation.m1BundleAccepted ? "yes" : "NO — startProtection() cannot succeed without this"}
+                  />
                   <KeyValue
                     label="All 5 probe rules confirmed in bundle"
                     value={
