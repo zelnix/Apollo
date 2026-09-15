@@ -26,7 +26,6 @@ import {
   buildDohProbeUrl,
   CLASSIFICATION_LABELS,
   type DnsDiagnosticRecord,
-  DNS_DIAGNOSTIC_PROBE_HOST,
   type DotWizardStepConfig,
   DOT_WIZARD_STEPS,
   generateProbeNonce,
@@ -35,6 +34,7 @@ import {
   pollForPrivateDnsRuntimeMode,
   PRIVATE_DNS_POLL_HARD_TIMEOUT_MS,
   PRIVATE_DNS_POLL_STILL_CHECKING_AFTER_MS,
+  ROW_PROBE_IDENTITY,
   runPrivateDnsProbeForStep,
   startAppEmbeddedDohObservation,
 } from "@/src/diagnostics/dnsCapabilityDiagnostic";
@@ -145,7 +145,7 @@ export default function DnsCapabilityDiagnosticScreen() {
     setPollElapsedMs(0);
     setPollSnapshot(null);
     setDohPhase("idle");
-    setDohBrowserLabel("");
+    // dohBrowserLabel is deliberately NOT reset here -- entered once, carried across doh-off/doh-on.
   }
 
   function goToStep(index: number) {
@@ -156,7 +156,10 @@ export default function DnsCapabilityDiagnosticScreen() {
     setStepIndex(index);
   }
 
+  /** Only ever called for "dot-automatic"/"dot-strict" (targetRuntimeMode is machine-provable for
+   * those). "dot-off" never polls-to-match -- see handleConfirmDotOff. */
   async function handleStartDotPolling(step: DotWizardStepConfig) {
+    if (step.targetRuntimeMode === null) return;
     setError(null);
     setStepResult(null);
     setPollPhase("polling");
@@ -190,10 +193,30 @@ export default function DnsCapabilityDiagnosticScreen() {
     }
   }
 
-  // Auto-start automated detection the moment a Private DNS step becomes current.
+  /** "dot-off" row: Android's public API can NEVER prove "Off" was selected (see
+   * dnsCapabilityDiagnostic.ts) -- so instead of polling-to-match, the tester explicitly confirms
+   * THEIR OWN selection here, and Apollo records the machine-observed state honestly alongside it
+   * (never displayed as "Off verified"). */
+  async function handleConfirmDotOff(step: DotWizardStepConfig) {
+    setError(null);
+    setStepResult(null);
+    setBusy(true);
+    try {
+      const record = await runPrivateDnsProbeForStep(step, activation?.probeRuleConfirmedInBundle ?? null);
+      setRecords((prev) => [record, ...prev]);
+      setStepResult(record);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Auto-start automated detection the moment a machine-verifiable Private DNS step becomes
+  // current. "dot-off" is excluded -- it waits for the tester's manual confirmation instead.
   useEffect(() => {
     pollCancelRef.current = false;
-    if ((currentStepId === "dot-off" || currentStepId === "dot-automatic" || currentStepId === "dot-strict") && activation?.ok) {
+    if ((currentStepId === "dot-automatic" || currentStepId === "dot-strict") && activation?.ok) {
       const step = DOT_WIZARD_STEPS.find((s) => s.id === currentStepId);
       if (step) void handleStartDotPolling(step);
     }
@@ -231,8 +254,11 @@ export default function DnsCapabilityDiagnosticScreen() {
     setBusy(true);
     try {
       const snapshot = await captureDnsDiagnosticTruthSnapshot(activation?.probeRuleConfirmedInBundle ?? null);
-      const reason = `Automated detection did not observe the target Private DNS runtime state (${step.targetRuntimeMode}) within ${PRIVATE_DNS_POLL_HARD_TIMEOUT_MS / 1000}s.`;
-      const record = notTestableRecord("private-dns", `${step.title}: not testable`, reason, snapshot);
+      const reason =
+        step.targetRuntimeMode === null
+          ? "Tester chose not to confirm the Off configuration for this row."
+          : `Automated detection did not observe the target Private DNS runtime state (${step.targetRuntimeMode}) within ${PRIVATE_DNS_POLL_HARD_TIMEOUT_MS / 1000}s.`;
+      const record = notTestableRecord("private-dns", `${step.title}: not testable`, reason, snapshot, ROW_PROBE_IDENTITY[step.id].host);
       setRecords((prev) => [record, ...prev]);
       setStepResult(record);
       setPollPhase("idle");
@@ -260,16 +286,17 @@ export default function DnsCapabilityDiagnosticScreen() {
     setStepResult(null);
     setBusy(true);
     try {
+      const identity = ROW_PROBE_IDENTITY[step];
       const nonce = generateProbeNonce();
       dohNonceRef.current = nonce;
       dohStepRef.current = step;
       dohTruthSnapshotRef.current = await captureDnsDiagnosticTruthSnapshot(activation?.probeRuleConfirmedInBundle ?? null);
       dohNetTypeRef.current = await getNetworkType();
-      const observation = startAppEmbeddedDohObservation(nonce, 120_000);
+      const observation = startAppEmbeddedDohObservation(identity.host, identity.ruleId, nonce, 120_000);
       dohObservationRef.current = observation;
       dohWentBackgroundRef.current = false;
       setDohPhase("observing");
-      await Linking.openURL(buildDohProbeUrl(nonce));
+      await Linking.openURL(buildDohProbeUrl(identity.host, nonce));
       // Safety net in case AppState never reports background/active (e.g. multi-window/split-screen browsers).
       dohFallbackTimerRef.current = setTimeout(() => void finishDohObservation(), 125_000);
     } catch (e) {
@@ -285,6 +312,7 @@ export default function DnsCapabilityDiagnosticScreen() {
     const nonce = dohNonceRef.current;
     const step = dohStepRef.current;
     if (!observation || !nonce || !step) return;
+    const identity = ROW_PROBE_IDENTITY[step];
     dohObservationRef.current = null;
     if (dohFallbackTimerRef.current) {
       clearTimeout(dohFallbackTimerRef.current);
@@ -295,7 +323,7 @@ export default function DnsCapabilityDiagnosticScreen() {
     try {
       const { event, receiptConfirmed } = await observation.finish();
       const label = `${dohBrowserLabel.trim() || "Unnamed browser"} — ${step === "doh-on" ? "DoH ON" : "DoH OFF"}`;
-      const record = buildAppEmbeddedDohRecord(label, nonce, event, receiptConfirmed, observation.startedAt, dohNetTypeRef.current, dohTruthSnapshotRef.current!);
+      const record = buildAppEmbeddedDohRecord(label, identity.host, identity.ruleId, nonce, event, receiptConfirmed, observation.startedAt, dohNetTypeRef.current, dohTruthSnapshotRef.current!);
       setRecords((prev) => [record, ...prev]);
       setStepResult(record);
       setDohPhase("idle");
@@ -311,7 +339,7 @@ export default function DnsCapabilityDiagnosticScreen() {
     try {
       const snapshot = await captureDnsDiagnosticTruthSnapshot(activation?.probeRuleConfirmedInBundle ?? null);
       const label = `${dohBrowserLabel.trim() || "Unnamed browser"} — ${step === "doh-on" ? "DoH ON" : "DoH OFF"}`;
-      const record = notTestableRecord("app-embedded-doh", label, "Tester marked this configuration as not testable (e.g. that browser unavailable on this device).", snapshot);
+      const record = notTestableRecord("app-embedded-doh", label, "Tester marked this configuration as not testable (e.g. that browser unavailable on this device).", snapshot, ROW_PROBE_IDENTITY[step].host);
       setRecords((prev) => [record, ...prev]);
       setStepResult(record);
       setDohPhase("idle");
@@ -325,27 +353,18 @@ export default function DnsCapabilityDiagnosticScreen() {
     return { runId: sessionId, startedAt: sessionStartedAt, records: [...records].reverse(), buildProvenance, deviceProvenance, preflightSnapshot: activation?.preflightSnapshot ?? null };
   }
 
-  async function handleExportJson() {
+  /** Single share action (physical-device review requested this instead of two separate
+   * Export JSON / Export PDF buttons): generates BOTH artifacts for the record, but only shares
+   * the PDF via the OS share sheet -- it's the comprehensive, human-readable evidence artifact and
+   * already includes everything the JSON does, presented as tables. */
+  async function handleShareReport() {
     setBusy(true);
     setError(null);
     try {
       const run = await buildRun();
-      const uri = await exportDnsCharacterizationJson(run);
-      if (uri) await shareEvidenceFile(uri);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleExportPdf() {
-    setBusy(true);
-    setError(null);
-    try {
-      const run = await buildRun();
-      const uri = await exportDnsCharacterizationPdf(run);
-      if (uri) await shareEvidenceFile(uri);
+      await exportDnsCharacterizationJson(run); // written to disk for raw-evidence audit trails; not part of the share sheet
+      const pdfUri = await exportDnsCharacterizationPdf(run);
+      if (pdfUri) await shareEvidenceFile(pdfUri);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -382,15 +401,15 @@ export default function DnsCapabilityDiagnosticScreen() {
                 This tool never blocks, enforces, or changes routing — it only records machine-observed evidence. The only manual actions anywhere in this wizard are changing an Android/browser setting yourself and tapping Continue once a step&apos;s evidence is captured.
               </Text>
             </View>
-            <Card title="Activate protection + Website Gate">
+            <Card title="Activate protection + diagnostic Website Gate">
               <Text style={styles.note}>
-                Required once per session before any probe runs. Uses the same live signed rule bundle as production — including the dedicated probe rule for {DNS_DIAGNOSTIC_PROBE_HOST}.
+                Required once per session before any probe runs. Uses this wizard&apos;s OWN dedicated, separately-signed rule bundle (never the production Website Gate bundle, and never the frozen M2.1 bundle) -- 5 unique probe hosts, one per row below, so no row can ever reuse another row&apos;s cached DNS answer.
               </Text>
               <ActionButton title={activating ? "Activating…" : activation ? "Retry activation" : "Start diagnostic"} onPress={handleActivate} disabled={activating} testID="dns-doh-activate" />
               {activation ? (
                 <>
                   <KeyValue label="Status" value={activation.ok ? "Active" : `Failed: ${activation.reason}`} testID="dns-doh-activation-status" />
-                  <KeyValue label="Probe rule confirmed in bundle" value={activation.probeRuleConfirmedInBundle ? "yes" : "NO — probes will be unattributable"} />
+                  <KeyValue label="All 5 probe rules confirmed in bundle" value={activation.probeRuleConfirmedInBundle ? "yes" : "NO — probes will be unattributable"} />
                   <KeyValue label="Native module" value={activation.preflightSnapshot.nativeAvailable ? "available" : "unavailable (Expo Go / web)"} />
                   <KeyValue label="Active native stack" value={activation.preflightSnapshot.activeNativeStackId ?? "n/a"} />
                   <KeyValue label="Supported ABIs" value={activation.preflightSnapshot.supportedAbis.join(", ") || "n/a"} />
@@ -429,6 +448,7 @@ export default function DnsCapabilityDiagnosticScreen() {
             busy={busy}
             onOpenSettings={openPrivateDnsSettings}
             onCheckAgain={() => void handleStartDotPolling(DOT_WIZARD_STEPS.find((s) => s.id === currentStepId)!)}
+            onConfirmOff={() => void handleConfirmDotOff(DOT_WIZARD_STEPS.find((s) => s.id === currentStepId)!)}
             onRecordNotTestable={() => void handleRecordDotNotTestable(DOT_WIZARD_STEPS.find((s) => s.id === currentStepId)!)}
             onContinue={() => goToStep(stepIndex + 1)}
           />
@@ -448,7 +468,7 @@ export default function DnsCapabilityDiagnosticScreen() {
               </>
             ) : (
               <>
-                <Text style={styles.note}>Probe URL opened: {dohNonceRef.current ? buildDohProbeUrl(dohNonceRef.current) : ""}</Text>
+                <Text style={styles.note}>Probe URL opened: {dohNonceRef.current && dohStepRef.current ? buildDohProbeUrl(ROW_PROBE_IDENTITY[dohStepRef.current].host, dohNonceRef.current) : ""}</Text>
                 <Text style={styles.timerText}>Waiting for you to return from the browser (auto-detects on app resume, up to 120s)…</Text>
                 <ActivityIndicator color={colors.brandPrimary} />
               </>
@@ -486,10 +506,7 @@ export default function DnsCapabilityDiagnosticScreen() {
             </Card>
             <Card title="Export evidence">
               <Text style={styles.note}>Session ID: {sessionId}</Text>
-              <View style={styles.buttonRow}>
-                <ActionButton title="Export JSON" secondary onPress={handleExportJson} disabled={busy || records.length === 0} testID="dns-doh-export-json" />
-                <ActionButton title="Export PDF" onPress={handleExportPdf} disabled={busy || records.length === 0} testID="dns-doh-export-pdf" />
-              </View>
+              <ActionButton title={busy ? "Preparing…" : "Share report"} onPress={handleShareReport} disabled={busy || records.length === 0} testID="dns-doh-share-report" />
             </Card>
           </>
         ) : null}
@@ -516,6 +533,7 @@ function DotStepCard({
   busy,
   onOpenSettings,
   onCheckAgain,
+  onConfirmOff,
   onRecordNotTestable,
   onContinue,
 }: {
@@ -529,10 +547,43 @@ function DotStepCard({
   busy: boolean;
   onOpenSettings: () => void;
   onCheckAgain: () => void;
+  onConfirmOff: () => void;
   onRecordNotTestable: () => void;
   onContinue: () => void;
 }) {
   const stillChecking = pollElapsedMs >= PRIVATE_DNS_POLL_STILL_CHECKING_AFTER_MS;
+
+  // "dot-off": Android's public API can never PROVE "Off" was selected -- no polling-to-match here.
+  // The tester confirms THEIR OWN selection; Apollo records the machine truth honestly alongside it.
+  if (step.targetRuntimeMode === null) {
+    return (
+      <Card title={step.title}>
+        <Text style={styles.note}>{step.settingsInstruction}</Text>
+        <Text style={styles.note}>
+          Android cannot prove &quot;Off&quot; was selected -- it can only tell whether Private DNS is currently active, which is also true if Automatic&apos;s opportunistic probe happens to be inactive. So this one row needs your confirmation: after setting Off in Android Settings, tap below and Apollo will record the machine-observed state honestly alongside your selection (never displayed as &quot;Off verified&quot;).
+        </Text>
+        <ActionButton title="Open Private DNS Settings" secondary onPress={onOpenSettings} testID={`dns-wizard-${step.id}-open-settings`} />
+        {!stepResult ? (
+          <>
+            <ActionButton title={busy ? "Running…" : "I've set it to Off — Run probe"} onPress={onConfirmOff} disabled={busy} testID={`dns-wizard-${step.id}-confirm-off`} />
+            <ActionButton title="Record as not testable" secondary onPress={onRecordNotTestable} disabled={busy} testID={`dns-wizard-${step.id}-record-not-testable`} />
+          </>
+        ) : null}
+        {stepResult ? (
+          <>
+            <InlineResultCard
+              tone={classificationTone(stepResult.classification)}
+              title={`${stepResult.classification} — ${CLASSIFICATION_LABELS[stepResult.classification]}`}
+              testID={`dns-wizard-${step.id}-result`}
+              rows={recordToRows(stepResult)}
+            />
+            <ActionButton title="Continue" onPress={onContinue} testID={`dns-wizard-${step.id}-continue`} />
+          </>
+        ) : null}
+      </Card>
+    );
+  }
+
   return (
     <Card title={step.title}>
       <Text style={styles.note}>{step.settingsInstruction}</Text>

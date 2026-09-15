@@ -3,21 +3,27 @@
 // COMPLETELY SEPARATE from the frozen M2.1 Phase 6A acceptance harness
 // (src/harness/phase6AutomatedHarness.ts). This file does not import from, is not imported by, and
 // does not affect any M2.1 acceptance row, verdict, or the frozen rule bundle's behavior. It exists
-// purely to OBSERVE and RECORD -- under a device configuration the tester sets and labels manually
-// (Android does not expose Private DNS mode or another app's DoH setting to a third-party app) --
-// whether Apollo's plaintext-UDP/53 DNS interception sees a given probe query. It never enforces,
-// mitigates, blocks port 853, detects encrypted DNS heuristically, or changes any routing/blocking
-// behavior; this milestone is observational only.
+// purely to OBSERVE and RECORD whether Apollo's plaintext-UDP/53 DNS interception sees a given probe
+// query. It never enforces, mitigates, blocks port 853, detects encrypted DNS heuristically, or
+// changes any routing/blocking behavior; this milestone is observational only.
 //
-// Reuses the dedicated, already-signed M2.1 rule (m2-block-dns-capability-001 ->
-// dnsprobe.blocktest.btciq.app, live in gd-m2-website-gate v4, frozen) purely as a READ-ONLY
-// observation target -- this file never signs, modifies, or re-publishes any rule bundle, and never
-// bumps the bundle version the M2.1 freeze is pinned to.
+// Uses its OWN dedicated ruleset (gd-m2-dns-diagnostic-wizard, see
+// backend/scripts/create_dns_diagnostic_wizard_ruleset.py) -- deliberately NOT the frozen M2.1
+// gd-m2-website-gate v4 bundle. This file never signs, modifies, or re-publishes any rule bundle.
+//
+// Physical-device review fix: every row used to reprobe the SAME shared hostname
+// (dnsprobe.blocktest.btciq.app, M2.1's frozen row-4.1 host), which risked the OS/DNS resolver
+// caching an earlier row's genuine bypass resolution and silently reusing it for a LATER row --
+// making that later row look like a bypass with no fresh DNS query actually happening. Each row now
+// gets its own never-reused hostname (see ROW_PROBE_IDENTITY) so that cross-row cache reuse is
+// structurally impossible, not just unlikely.
 //
 // Same strict-attribution principle the M2.1 freeze required for row 4.1 (see PRD): a genuine
 // THREAT_BLOCKED event only ever counts as evidence for a probe when its own `host` + `ruleId`
-// match this probe's dedicated target -- never inferred from a shared/global enforcement counter,
-// and BYPASSED is only ever concluded from independent proof of success, never from absence alone.
+// match THAT probe's own dedicated target -- never inferred from a shared/global enforcement
+// counter, and BYPASSED is only ever concluded from independent proof of success, never absence
+// alone. Additionally (physical-device review fix): a row's truth-of-state snapshot is now a HARD
+// classification gate, not just an informational note -- see evaluateTruthGate/classify below.
 import * as Network from "expo-network";
 import { Platform } from "react-native";
 
@@ -28,8 +34,25 @@ import { fetchLatestBundle, fetchM1Config, toProtectionConfig } from "@/src/harn
 import { GuardDogSecuritySDK } from "@/src/sdk/GuardDogSecuritySDK";
 import { GuardDogNative, type NativeDnsCapabilityDeviceSnapshot, type PrivateDnsRuntimeMode } from "@/src/sdk/nativeModule";
 
-export const DNS_DIAGNOSTIC_PROBE_HOST = "dnsprobe.blocktest.btciq.app";
-export const DNS_DIAGNOSTIC_PROBE_RULE_ID = "m2-block-dns-capability-001";
+/** The wizard's OWN dedicated ruleset -- deliberately separate from gd-m2-website-gate (frozen at
+ * v4 for M2.1) so this tool's per-row probe rules never touch or version-bump that frozen bundle. */
+export const DNS_DIAGNOSTIC_WIZARD_RULESET_ID = "gd-m2-dns-diagnostic-wizard";
+
+export type WizardRowId = "dot-off" | "dot-automatic" | "dot-strict" | "doh-off" | "doh-on";
+
+export interface RowProbeIdentity {
+  host: string;
+  ruleId: string;
+}
+
+/** One dedicated, never-reused hostname per row. See the file-header comment for why. */
+export const ROW_PROBE_IDENTITY: Record<WizardRowId, RowProbeIdentity> = {
+  "dot-off": { host: "dnswiz-dot-off.blocktest.btciq.app", ruleId: "m2-dns-wizard-dot-off-001" },
+  "dot-automatic": { host: "dnswiz-dot-automatic.blocktest.btciq.app", ruleId: "m2-dns-wizard-dot-automatic-001" },
+  "dot-strict": { host: "dnswiz-dot-strict.blocktest.btciq.app", ruleId: "m2-dns-wizard-dot-strict-001" },
+  "doh-off": { host: "dnswiz-doh-off.blocktest.btciq.app", ruleId: "m2-dns-wizard-doh-off-001" },
+  "doh-on": { host: "dnswiz-doh-on.blocktest.btciq.app", ruleId: "m2-dns-wizard-doh-on-001" },
+};
 
 export type DnsDiagnosticCategory = "private-dns" | "app-embedded-doh";
 export type DnsDiagnosticClassification = "CAPTURED" | "BYPASSED" | "UNOBSERVABLE" | "NOT_TESTABLE";
@@ -72,7 +95,12 @@ export interface DotWizardStepConfig {
   id: "dot-off" | "dot-automatic" | "dot-strict";
   title: string;
   settingsInstruction: string;
-  targetRuntimeMode: PrivateDnsRuntimeMode;
+  /** null for "dot-off": Android's public API can NEVER prove "Off" was selected --
+   * INACTIVE_OR_OFF is equally consistent with "Automatic" whose opportunistic probe is currently
+   * inactive. So this row is never auto-polled-to-match; the tester explicitly confirms their OWN
+   * selection instead, and Apollo records the machine-observed state honestly alongside it -- see
+   * runPrivateDnsProbeForStep. Never displayed as "Off verified". */
+  targetRuntimeMode: PrivateDnsRuntimeMode | null;
 }
 
 export const DOT_WIZARD_STEPS: DotWizardStepConfig[] = [
@@ -80,7 +108,7 @@ export const DOT_WIZARD_STEPS: DotWizardStepConfig[] = [
     id: "dot-off",
     title: "Private DNS — Off",
     settingsInstruction: 'In Android Settings → Network & internet → Private DNS, choose "Off".',
-    targetRuntimeMode: "INACTIVE_OR_OFF",
+    targetRuntimeMode: null,
   },
   {
     id: "dot-automatic",
@@ -164,18 +192,41 @@ export async function getNetworkType(): Promise<string | null> {
   }
 }
 
-function isAttributedToProbe(event: SecurityEvent | null): boolean {
-  return !!event && isGenuineBlockedEvent(event) && (event.host ?? "").toLowerCase() === DNS_DIAGNOSTIC_PROBE_HOST.toLowerCase() && event.ruleId === DNS_DIAGNOSTIC_PROBE_RULE_ID;
+function isAttributedToProbe(event: SecurityEvent | null, host: string, ruleId: string): boolean {
+  return !!event && isGenuineBlockedEvent(event) && (event.host ?? "").toLowerCase() === host.toLowerCase() && event.ruleId === ruleId;
 }
 
-function classify(attributedEvent: SecurityEvent | null, independentSuccess: boolean | null): DnsDiagnosticClassification {
-  if (attributedEvent) return "CAPTURED";
-  if (independentSuccess === true) return "BYPASSED";
-  return "UNOBSERVABLE"; // absence of capture alone is NEVER treated as a bypass -- never guessed.
+/** Physical-device review fix: a row must never be labelled CAPTURED/BYPASSED if the environment it
+ * ran under cannot itself be trusted -- these conditions are now a HARD classification gate
+ * (forces NOT_TESTABLE), not merely an informational note attached to an otherwise-normal verdict. */
+function evaluateTruthGate(truthSnapshot: DnsDiagnosticTruthSnapshot, extraReasons: string[]): string[] {
+  const reasons = [...extraReasons];
+  if (!truthSnapshot.nativeAvailable) {
+    reasons.push("Native module unavailable at probe time (Expo Go / web).");
+    return reasons; // nothing else here is meaningfully checkable without native
+  }
+  if (truthSnapshot.protectionState !== "ACTIVE") reasons.push(`Protection state was '${truthSnapshot.protectionState}' at probe time, not ACTIVE.`);
+  if (truthSnapshot.tunOpen === false) reasons.push("Native TUN was reportedly closed at probe time.");
+  if (truthSnapshot.dnsGatewayActive === false) reasons.push("Website Gate DNS gateway was reportedly inactive at probe time.");
+  if (truthSnapshot.probeRuleConfirmedInBundle === false) reasons.push("The dedicated probe rule was not confirmed present in the accepted diagnostic bundle.");
+  return reasons;
 }
 
-function unrelatedEventNote(event: SecurityEvent | null, attributedEvent: SecurityEvent | null): string | null {
-  return event && !attributedEvent ? `A genuine THREAT_BLOCKED arrived during this window for a different host/rule (host=${event.host ?? "unknown"}) -- unrelated leftover traffic, correctly excluded from this probe's own evidence.` : null;
+function classify(
+  attributedEvent: SecurityEvent | null,
+  independentSuccess: boolean | null,
+  truthSnapshot: DnsDiagnosticTruthSnapshot,
+  extraGateReasons: string[] = [],
+): { classification: DnsDiagnosticClassification; gateReasons: string[] } {
+  const gateReasons = evaluateTruthGate(truthSnapshot, extraGateReasons);
+  if (gateReasons.length > 0) return { classification: "NOT_TESTABLE", gateReasons };
+  if (attributedEvent) return { classification: "CAPTURED", gateReasons: [] };
+  if (independentSuccess === true) return { classification: "BYPASSED", gateReasons: [] }; // absence of capture alone is NEVER treated as a bypass -- never guessed.
+  return { classification: "UNOBSERVABLE", gateReasons: [] };
+}
+
+function unrelatedEventNote(event: SecurityEvent | null, attributedEvent: SecurityEvent | null, host: string): string | null {
+  return event && !attributedEvent ? `A genuine THREAT_BLOCKED arrived during this window for a different host/rule than ${host} -- unrelated leftover traffic, correctly excluded from this probe's own evidence.` : null;
 }
 
 /** Self-contained (deliberately NOT importing src/harness/* observation helpers, to keep this tool
@@ -201,11 +252,11 @@ function observeWindow(action: () => Promise<void> | void, windowMs: number): Pr
   });
 }
 
-async function fetchProbeHost(timeoutMs: number): Promise<{ outcome: "resolved" | "network-error" | "timeout"; httpStatus: number | null }> {
+async function fetchProbeHost(host: string, timeoutMs: number): Promise<{ outcome: "resolved" | "network-error" | "timeout"; httpStatus: number | null }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(`https://${DNS_DIAGNOSTIC_PROBE_HOST}/`, { method: "GET", signal: controller.signal });
+    const res = await fetch(`https://${host}/`, { method: "GET", signal: controller.signal });
     return { outcome: "resolved", httpStatus: res.status };
   } catch (e) {
     const aborted = e instanceof Error && e.name === "AbortError";
@@ -215,41 +266,59 @@ async function fetchProbeHost(timeoutMs: number): Promise<{ outcome: "resolved" 
   }
 }
 
-/** Automated single-action probe for Android system Private DNS (DoT) configurations. Called only
- * once `pollForPrivateDnsRuntimeMode` has already confirmed the device is in the step's target
- * runtime mode -- the app's own fetch() resolves via the system DNS resolver, which DOES honor the
- * system Private DNS mode. `configurationLabel` is derived ENTIRELY from a fresh native snapshot
- * taken at probe time (never from the earlier poll match, and never manually typed) -- if the
- * runtime state drifted between detection and execution, that drift is recorded verbatim, never
- * silently reported as the originally-expected state. */
+/** Automated probe for Android system Private DNS (DoT) configurations. For "dot-automatic"/
+ * "dot-strict", called only once `pollForPrivateDnsRuntimeMode` has already confirmed the device is
+ * in the step's target runtime mode. For "dot-off" (`targetRuntimeMode === null`), called once the
+ * tester has manually confirmed THEY selected Off in Android Settings -- there is no machine-provable
+ * target to poll for. `configurationLabel` is derived ENTIRELY from a fresh native snapshot taken at
+ * probe time (never from an earlier poll match, and never manually typed). Physical-device review
+ * fixes applied here: (1) drift between detection and execution, and (2) an "Off" claim that the
+ * machine observes as definitely NOT off, both now HARD-gate the row to NOT_TESTABLE via classify()
+ * instead of merely adding a note. */
 export async function runPrivateDnsProbeForStep(step: DotWizardStepConfig, probeRuleConfirmedInBundle: boolean | null, windowMs = 12_000): Promise<DnsDiagnosticRecord> {
+  const identity = ROW_PROBE_IDENTITY[step.id];
   const probeStartedAt = nowIso();
   const truthSnapshot = await captureDnsDiagnosticTruthSnapshot(probeRuleConfirmedInBundle);
   const transportNetworkType = await getNetworkType();
   let fetchOutcome: Awaited<ReturnType<typeof fetchProbeHost>> | null = null;
   const event = await observeWindow(async () => {
-    fetchOutcome = await fetchProbeHost(Math.min(windowMs, 8000));
+    fetchOutcome = await fetchProbeHost(identity.host, Math.min(windowMs, 8000));
   }, windowMs);
-  const attributedEvent = isAttributedToProbe(event) ? event : null;
+  const attributedEvent = isAttributedToProbe(event, identity.host, identity.ruleId) ? event : null;
   const independentSuccess = (fetchOutcome as { outcome: string } | null)?.outcome === "resolved";
   const observedMode = truthSnapshot.privateDnsRuntimeMode;
-  const drifted = observedMode !== "UNAVAILABLE" && observedMode !== step.targetRuntimeMode;
-  const driftNote = drifted
-    ? `Runtime state drifted between detection and probe execution -- expected ${step.targetRuntimeMode}, observed ${observedMode} at probe time. Recorded exactly as observed, never as the originally-expected state.`
-    : null;
+
+  const extraGateReasons: string[] = [];
+  if (step.targetRuntimeMode === null) {
+    // "Off" row: never machine-provable (see file header). If the machine observes a state that IS
+    // definitely inconsistent with Off (genuinely active encrypted DNS), that is a real
+    // contradiction with the tester's claim -- not just a labelling nuance.
+    if (observedMode === "STRICT" || observedMode === "ACTIVE_NO_HOSTNAME") {
+      extraGateReasons.push(
+        `Tester indicated Private DNS was set to Off, but the machine observed '${observedMode}' at probe time, which is inconsistent with Off -- this row's evidence cannot be trusted under the claimed configuration.`,
+      );
+    }
+  } else if (observedMode !== "UNAVAILABLE" && observedMode !== step.targetRuntimeMode) {
+    extraGateReasons.push(`Runtime state drifted between detection and probe execution -- expected ${step.targetRuntimeMode}, observed ${observedMode} at probe time.`);
+  }
+
+  const { classification, gateReasons } = classify(attributedEvent, independentSuccess, truthSnapshot, extraGateReasons);
+  const machineObserved = describePrivateDnsRuntimeMode(observedMode, truthSnapshot.privateDnsServerName);
+  const configurationLabel = step.targetRuntimeMode === null ? `${step.title} (tester-selected). Machine observed: ${machineObserved}` : `${step.title}: ${machineObserved}`;
+
   return {
     id: `dot-${Date.now()}`,
     category: "private-dns",
-    configurationLabel: `${step.title}: ${describePrivateDnsRuntimeMode(observedMode, truthSnapshot.privateDnsServerName)}`,
-    probeHostname: DNS_DIAGNOSTIC_PROBE_HOST,
+    configurationLabel,
+    probeHostname: identity.host,
     transportNetworkType,
     sawPlaintextUdp53: !!attributedEvent,
     websiteGateEventProduced: !!attributedEvent,
     attributedEvent,
     independentSuccess,
     independentSuccessSource: "in-app-fetch",
-    classification: classify(attributedEvent, independentSuccess),
-    notes: [unrelatedEventNote(event, attributedEvent), driftNote].filter((n): n is string => !!n).join(" ") || null,
+    classification,
+    notes: [unrelatedEventNote(event, attributedEvent, identity.host), gateReasons.length > 0 ? `NOT_TESTABLE reason(s): ${gateReasons.join(" ")}` : null].filter((n): n is string => !!n).join(" ") || null,
     probeStartedAt,
     probeEndedAt: nowIso(),
     truthSnapshot,
@@ -268,13 +337,13 @@ export function generateProbeNonce(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 }
 
-/** The exact URL the tester opens in the target browser. See
- * docs/dns-capability-characterization.md for the single static asset that must be hosted at this
+/** The exact URL the tester opens in the target browser for a given row's dedicated host. See
+ * docs/dns-capability-characterization.md for the static asset that must be hosted at each
  * already-DNS/TLS-provisioned host to serve it and report the receipt -- this app does not, and
  * cannot, host that page itself (it must be reachable at the SAME hostname Apollo's dedicated rule
  * matches, independent of this app). */
-export function buildDohProbeUrl(nonce: string): string {
-  return `https://${DNS_DIAGNOSTIC_PROBE_HOST}/dnsdiag/?n=${nonce}`;
+export function buildDohProbeUrl(host: string, nonce: string): string {
+  return `https://${host}/dnsdiag/?n=${nonce}`;
 }
 
 /** Polls the backend receipt endpoint until it confirms the nonce arrived, or `deadlineMs` elapses.
@@ -296,11 +365,17 @@ async function pollReceipt(nonce: string, deadlineMs: number, intervalMs = 2000)
   return false;
 }
 
-/** Starts listening for a genuine, attributed THREAT_BLOCKED the moment the tester is about to open
- * the probe URL in the target browser. Call the returned `finish()` once the tester is back in this
- * app (or let it auto-expire after `maxWindowMs`) -- it does one final short receipt poll before
- * resolving, since the beacon fetch on the probe page completes almost instantly on page load. */
-export function startAppEmbeddedDohObservation(nonce: string, maxWindowMs = 120_000): { startedAt: string; finish: () => Promise<{ event: SecurityEvent | null; receiptConfirmed: boolean }> } {
+/** Starts listening for a genuine, attributed THREAT_BLOCKED (for this row's dedicated host+ruleId)
+ * the moment the tester is about to open the probe URL in the target browser. Call the returned
+ * `finish()` once the tester is back in this app (or let it auto-expire after `maxWindowMs`) -- it
+ * does one final short receipt poll before resolving, since the beacon fetch on the probe page
+ * completes almost instantly on page load. */
+export function startAppEmbeddedDohObservation(
+  host: string,
+  ruleId: string,
+  nonce: string,
+  maxWindowMs = 120_000,
+): { startedAt: string; finish: () => Promise<{ event: SecurityEvent | null; receiptConfirmed: boolean }> } {
   const startedAt = nowIso();
   let settled = false;
   let capturedEvent: SecurityEvent | null = null;
@@ -309,7 +384,7 @@ export function startAppEmbeddedDohObservation(nonce: string, maxWindowMs = 120_
     unsubscribe();
   }, maxWindowMs);
   const unsubscribe = GuardDogSecuritySDK.onSecurityEvent((event) => {
-    if (settled || capturedEvent || !isAttributedToProbe(event)) return;
+    if (settled || capturedEvent || !isAttributedToProbe(event, host, ruleId)) return;
     capturedEvent = event; // keep the first attributed hit; later unrelated noise is ignored anyway.
   });
   return {
@@ -331,9 +406,15 @@ export function startAppEmbeddedDohObservation(nonce: string, maxWindowMs = 120_
 /** Builds the record for an app-embedded DoH probe from ONLY machine-observed evidence: Apollo's own
  * attributed event stream, and the backend's independent, server-verified receipt confirmation --
  * never a manually-reported judgment call. `truthSnapshot` must be captured by the caller
- * immediately before `Linking.openURL` was fired, so it reflects the exact state the probe ran under. */
+ * immediately before `Linking.openURL` was fired, so it reflects the exact state the probe ran under.
+ * Physical-device review fix: if Apollo BOTH recorded a genuine attributed block AND the probe
+ * page's server receipt independently confirmed arrival, that is a logical contradiction (a
+ * genuinely blocked request could never reach the page to fire its receipt beacon) -- this is now
+ * gated to NOT_TESTABLE via classify() rather than ever being displayed as CAPTURED. */
 export function buildAppEmbeddedDohRecord(
   configurationLabel: string,
+  host: string,
+  ruleId: string,
   nonce: string,
   event: SecurityEvent | null,
   receiptConfirmed: boolean,
@@ -341,23 +422,30 @@ export function buildAppEmbeddedDohRecord(
   transportNetworkType: string | null,
   truthSnapshot: DnsDiagnosticTruthSnapshot,
 ): DnsDiagnosticRecord {
-  const attributedEvent = isAttributedToProbe(event) ? event : null;
+  const attributedEvent = isAttributedToProbe(event, host, ruleId) ? event : null;
+  const contradictionReasons: string[] = [];
+  if (attributedEvent && receiptConfirmed) {
+    contradictionReasons.push(
+      "Contradiction: Apollo recorded an attributed block AND the probe page's server receipt confirmed independently -- these cannot both be genuine, so this row cannot be trusted as CAPTURED.",
+    );
+  }
   // If Apollo captured/blocked it, the receipt should never have arrived at all (the request never
   // reached the probe page) -- independentSuccess is only meaningful when there was nothing to capture.
   const independentSuccess = attributedEvent ? null : receiptConfirmed;
+  const { classification, gateReasons } = classify(attributedEvent, independentSuccess, truthSnapshot, contradictionReasons);
   return {
     id: `doh-${Date.now()}`,
     category: "app-embedded-doh",
     configurationLabel,
-    probeHostname: buildDohProbeUrl(nonce),
+    probeHostname: buildDohProbeUrl(host, nonce),
     transportNetworkType,
     sawPlaintextUdp53: !!attributedEvent,
     websiteGateEventProduced: !!attributedEvent,
     attributedEvent,
     independentSuccess,
     independentSuccessSource: attributedEvent ? "not-applicable" : "controlled-server-receipt",
-    classification: classify(attributedEvent, independentSuccess),
-    notes: unrelatedEventNote(event, attributedEvent),
+    classification,
+    notes: [unrelatedEventNote(event, attributedEvent, host), gateReasons.length > 0 ? `NOT_TESTABLE reason(s): ${gateReasons.join(" ")}` : null].filter((n): n is string => !!n).join(" ") || null,
     probeStartedAt,
     probeEndedAt: nowIso(),
     truthSnapshot,
@@ -367,13 +455,13 @@ export function buildAppEmbeddedDohRecord(
 /** For preconditions that could not be met at all (e.g. native module unavailable, gate not active,
  * or Private DNS detection timed out and the tester chose not to retry) -- an explicit NOT_TESTABLE
  * record, never silently skipped and never guessed as UNOBSERVABLE. */
-export function notTestableRecord(category: DnsDiagnosticCategory, configurationLabel: string, reason: string, truthSnapshot: DnsDiagnosticTruthSnapshot): DnsDiagnosticRecord {
+export function notTestableRecord(category: DnsDiagnosticCategory, configurationLabel: string, reason: string, truthSnapshot: DnsDiagnosticTruthSnapshot, probeHostname = "n/a"): DnsDiagnosticRecord {
   const at = nowIso();
   return {
     id: `nt-${Date.now()}`,
     category,
     configurationLabel,
-    probeHostname: DNS_DIAGNOSTIC_PROBE_HOST,
+    probeHostname,
     transportNetworkType: null,
     sawPlaintextUdp53: false,
     websiteGateEventProduced: false,
@@ -391,8 +479,9 @@ export function notTestableRecord(category: DnsDiagnosticCategory, configuration
 export interface ActivationResult {
   ok: boolean;
   reason: string | null;
-  /** True iff the fetched, currently-accepted M2 bundle genuinely carries the dedicated probe
-   * rule -- confirms this diagnostic's evidence will be attributable before any probe is run. */
+  /** True iff the fetched, currently-accepted DIAGNOSTIC WIZARD bundle (gd-m2-dns-diagnostic-wizard
+   * -- NOT the production gd-m2-website-gate bundle) genuinely carries all 5 dedicated per-row
+   * probe rules -- confirms every row's evidence will be attributable before any probe is run. */
   probeRuleConfirmedInBundle: boolean;
   /** Full machine-observed truth-of-state snapshot taken at the end of Preflight. Carried forward
    * as the `probeRuleConfirmedInBundle` baseline for every later per-row snapshot this session. */
@@ -401,9 +490,11 @@ export interface ActivationResult {
 
 /** Activates protection + the Website Gate using ONLY the stable public GuardDogSecuritySDK surface
  * (requestPermission -> configure -> startProtection -> configureWebsiteGate -> accept the live
- * signed gd-m2-website-gate bundle -> hydrate overrides) -- the exact same public calls the M2.1
- * harness uses, but implemented fresh here so this tool has zero code-level dependency on
- * phase6AutomatedHarness.ts. Never signs or publishes a bundle; only reads the currently-live one. */
+ * signed gd-m2-dns-diagnostic-wizard bundle -> hydrate overrides) -- the same public calls the M2.1
+ * harness uses for its own (different, frozen) bundle, but implemented fresh here so this tool has
+ * zero code-level dependency on phase6AutomatedHarness.ts. Never signs or publishes a bundle; only
+ * reads the currently-live one. Deliberately accepts the WIZARD's own dedicated ruleset here, NOT
+ * the production gd-m2-website-gate bundle -- see DNS_DIAGNOSTIC_WIZARD_RULESET_ID. */
 export async function activateWebsiteGateForDiagnostics(): Promise<ActivationResult> {
   const fail = async (reason: string): Promise<ActivationResult> => ({ ok: false, reason, probeRuleConfirmedInBundle: false, preflightSnapshot: await captureDnsDiagnosticTruthSnapshot(false) });
   if (!GuardDogSecuritySDK.nativeAvailable) return fail("NATIVE_MODULE_UNAVAILABLE (Expo Go / web -- a native Android build is required)");
@@ -413,17 +504,15 @@ export async function activateWebsiteGateForDiagnostics(): Promise<ActivationRes
   GuardDogSecuritySDK.configure(toProtectionConfig(m1Config));
   const status = await GuardDogSecuritySDK.startProtection();
   if (status.state !== "ACTIVE") return fail(`PROTECTION_NOT_ACTIVE (state=${status.state})`);
-  const rulesetId = m1Config.gateGuard?.websiteGateRulesetId;
-  if (!rulesetId) return fail("NO_WEBSITE_GATE_RULESET_CONFIGURED");
   GuardDogSecuritySDK.configureWebsiteGate({});
-  const bundle = await fetchLatestBundle(rulesetId);
+  const bundle = await fetchLatestBundle(DNS_DIAGNOSTIC_WIZARD_RULESET_ID);
   const acceptance = GuardDogSecuritySDK.acceptWebsiteGateRuleBundle(bundle);
   if (!acceptance.accepted) return fail(`BUNDLE_REJECTED (${acceptance.rejectReason})`);
   await GuardDogSecuritySDK.hydrateWebsiteGateOverrides();
   const gateStatus = GuardDogSecuritySDK.getWebsiteGateStatus();
   if (!gateStatus.dnsGatewayActive) return fail("DNS_GATEWAY_NOT_ACTIVE");
   const rules = bundle.payload.rules as RuleEntry[];
-  const probeRuleConfirmedInBundle = rules.some((r) => r.host === DNS_DIAGNOSTIC_PROBE_HOST && r.ruleId === DNS_DIAGNOSTIC_PROBE_RULE_ID && r.action === "block");
+  const probeRuleConfirmedInBundle = Object.values(ROW_PROBE_IDENTITY).every((identity) => rules.some((r) => r.host === identity.host && r.ruleId === identity.ruleId && r.action === "block"));
   const preflightSnapshot = await captureDnsDiagnosticTruthSnapshot(probeRuleConfirmedInBundle);
   return { ok: true, reason: null, probeRuleConfirmedInBundle, preflightSnapshot };
 }

@@ -283,14 +283,34 @@ class GuardDogExpoModule : Module() {
         // INACTIVE_OR_OFF is NEVER proof of "Off" -- Android's API cannot distinguish a deliberate
         // "Off" from "Automatic" whose opportunistic DoT probe is currently failing/unreachable.
         // The JS wizard (dnsCapabilityDiagnostic.ts) must preserve that ambiguity, never collapse it.
+        //
+        // Reviewer-caught fix: while Apollo's own VpnService is active, `ConnectivityManager.
+        // activeNetwork` is Apollo's OWN virtual VPN network (Android routes default traffic through
+        // it), whose LinkProperties reflect the DNS servers *this app's VpnService.Builder* declared
+        // -- NOT the physical Wi-Fi/cellular network's real Private DNS state. Reading Private DNS
+        // off `activeNetwork` while the VPN is up would silently inspect Apollo's own tunnel instead
+        // of the real network being characterized. Android explicitly exposes
+        // `NetworkCapabilities.NET_CAPABILITY_NOT_VPN` for exactly this disambiguation (see
+        // https://developer.android.com/reference/android/net/NetworkCapabilities#NET_CAPABILITY_NOT_VPN);
+        // find the underlying physical network by capability, not by "active", and read its
+        // LinkProperties instead.
         Function("getDnsCapabilityDeviceSnapshot") {
+            val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val physicalNetwork = connectivityManager.allNetworks.firstOrNull { net ->
+                val caps = connectivityManager.getNetworkCapabilities(net)
+                caps != null &&
+                    caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                    caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) &&
+                    (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                        caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
+                        caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET))
+            } ?: connectivityManager.activeNetwork // fallback: no VPN running yet (e.g. before Preflight starts protection)
+
             val privateDnsActive: Boolean
             val privateDnsServerName: String?
             val runtimeMode: String
             if (android.os.Build.VERSION.SDK_INT >= 28) {
-                val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-                val activeNetwork = connectivityManager.activeNetwork
-                val linkProperties = activeNetwork?.let { connectivityManager.getLinkProperties(it) }
+                val linkProperties = physicalNetwork?.let { connectivityManager.getLinkProperties(it) }
                 privateDnsActive = linkProperties?.isPrivateDnsActive ?: false
                 privateDnsServerName = linkProperties?.privateDnsServerName
                 runtimeMode = when {
@@ -303,14 +323,13 @@ class GuardDogExpoModule : Module() {
                 privateDnsServerName = null
                 runtimeMode = "UNSUPPORTED_OS_VERSION"
             }
-            val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            val capabilities = connectivityManager.activeNetwork?.let { connectivityManager.getNetworkCapabilities(it) }
+            val physicalCapabilities = physicalNetwork?.let { connectivityManager.getNetworkCapabilities(it) }
             val networkTransport = when {
-                capabilities == null -> "unknown"
-                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "wifi"
-                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "cellular"
-                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "ethernet"
-                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> "vpn"
+                physicalCapabilities == null -> "unknown"
+                physicalCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "wifi"
+                physicalCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "cellular"
+                physicalCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "ethernet"
+                physicalCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> "vpn" // only reachable via the activeNetwork fallback above
                 else -> "other"
             }
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
