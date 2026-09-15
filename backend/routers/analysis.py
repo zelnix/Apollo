@@ -64,26 +64,41 @@ Rules: never tell the person to use contact details, links or numbers from the m
 never claim the device is compromised unless the findings say so; if the findings say the message looks normal, say so plainly and avoid alarm."""
 
 
-async def gemini_second_opinion(body: MessageAnalyseIn, url_results: list[MessageUrlResult]) -> Optional[dict[str, Any]]:
+# Shared caller for every Gemini "second opinion" (message/app/account) — the explanation only ever
+# rewrites the on-device engine's verdict in plain language, so a failure here degrades gracefully to
+# None rather than ever blocking or overriding anything. A single transient timeout under concurrent
+# load (e.g. several requests hitting the relay at once) is otherwise recoverable and shouldn't silently
+# drop an explanation that would normally succeed — one retry before giving up, same philosophy as the
+# retry-worth-it check in services/email.py.
+async def _gemini_second_opinion_call(*, session_prefix: str, system_message: str, prompt: str, log_label: str, timeout: int = 20, retries: int = 1) -> Optional[dict[str, Any]]:
     if not GEMINI_API_KEY:
         return None
     from emergentintegrations.llm.chat import LlmChat, UserMessage
+    last_exc: Optional[Exception] = None
+    for attempt in range(retries + 1):
+        chat = LlmChat(api_key=GEMINI_API_KEY, session_id=f"{session_prefix}-{uuid.uuid4().hex[:8]}", system_message=system_message).with_model("gemini", "gemini-3-flash-preview")
+        try:
+            raw = await asyncio.wait_for(chat.send_message(UserMessage(text=prompt)), timeout=timeout)
+            txt = raw.strip()
+            if txt.startswith("```"):
+                txt = txt.strip("`")
+                txt = txt[txt.find("{"):txt.rfind("}") + 1]
+            data = json.loads(txt)
+            why = [str(w)[:160] for w in data.get("why", [])][:4]
+            return {"summary": str(data.get("summary", ""))[:200], "why": why, "recommendation": str(data.get("recommendation", ""))[:320]}
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if attempt < retries:
+                logger.info("%s second opinion attempt %d/%d failed (%s), retrying", log_label, attempt + 1, retries + 1, type(exc).__name__)
+    logger.warning("%s second opinion unavailable after %d attempt(s): %s", log_label, retries + 1, type(last_exc).__name__ if last_exc else "unknown")
+    return None
+
+
+async def gemini_second_opinion(body: MessageAnalyseIn, url_results: list[MessageUrlResult]) -> Optional[dict[str, Any]]:
     findings = {"state": body.local_state, "scenario": body.scenario, "signals": body.signals, "claimed_brand": body.claimed_brand,
                 "urls": [{"host": u.host, "verdict": u.verdict} for u in url_results]}
     prompt = f"Sender: {body.sender or 'unknown'}\nMessage:\n{body.text[:1500]}\n\nRule-engine findings (authoritative):\n{json.dumps(findings)}"
-    chat = LlmChat(api_key=GEMINI_API_KEY, session_id=f"gate2-{uuid.uuid4().hex[:8]}", system_message=GATE2_EXPLAIN_PROMPT).with_model("gemini", "gemini-3-flash-preview")
-    try:
-        raw = await asyncio.wait_for(chat.send_message(UserMessage(text=prompt)), timeout=20)
-        txt = raw.strip()
-        if txt.startswith("```"):
-            txt = txt.strip("`")
-            txt = txt[txt.find("{"):txt.rfind("}") + 1]
-        data = json.loads(txt)
-        why = [str(w)[:160] for w in data.get("why", [])][:4]
-        return {"summary": str(data.get("summary", ""))[:200], "why": why, "recommendation": str(data.get("recommendation", ""))[:320]}
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("gate2 second opinion unavailable: %s", type(exc).__name__)
-        return None
+    return await _gemini_second_opinion_call(session_prefix="gate2", system_message=GATE2_EXPLAIN_PROMPT, prompt=prompt, log_label="gate2")
 
 
 @router.post("/message/analyse", response_model=MessageAnalyseOut)
@@ -367,24 +382,10 @@ def app_reputation(body: AppAnalyseIn) -> AppReputation:
 
 
 async def gemini_app_opinion(body: AppAnalyseIn, rep: AppReputation, hosts: list[AppHostResult]) -> Optional[dict[str, Any]]:
-    if not GEMINI_API_KEY:
-        return None
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
     findings = {"state": body.local_state, "scenario": body.scenario, "reputation": rep.model_dump(), "hosts": [{"host": h.host, "verdict": h.verdict} for h in hosts]}
     prompt = (f"App: {body.name}\nDeveloper: {body.developer or 'unknown'}\nSource: {body.source}\nClaimed purpose: {body.purpose}\n"
               f"Permissions: {', '.join(body.permissions) or 'none'}\n\nEngine findings (authoritative):\n{json.dumps(findings)}")
-    chat = LlmChat(api_key=GEMINI_API_KEY, session_id=f"gate7-{uuid.uuid4().hex[:8]}", system_message=GATE7_EXPLAIN_PROMPT).with_model("gemini", "gemini-3-flash-preview")
-    try:
-        raw = await asyncio.wait_for(chat.send_message(UserMessage(text=prompt)), timeout=20)
-        txt = raw.strip()
-        if txt.startswith("```"):
-            txt = txt.strip("`")
-            txt = txt[txt.find("{"):txt.rfind("}") + 1]
-        data = json.loads(txt)
-        return {"summary": str(data.get("summary", ""))[:200], "why": [str(w)[:160] for w in data.get("why", [])][:4], "recommendation": str(data.get("recommendation", ""))[:320]}
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("gate7 gemini opinion failed: %s", exc)
-        return None
+    return await _gemini_second_opinion_call(session_prefix="gate7", system_message=GATE7_EXPLAIN_PROMPT, prompt=prompt, log_label="gate7")
 
 
 @router.post("/app/analyse", response_model=AppAnalyseOut)
@@ -461,23 +462,9 @@ never ask for or mention their password value; if the findings say the alert loo
 
 
 async def gemini_account_opinion(body: AccountAnalyseIn, urls: list[AccountUrlResult]) -> Optional[dict[str, Any]]:
-    if not GEMINI_API_KEY:
-        return None
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
     findings = {"state": body.local_state, "scenario": body.scenario, "kind": body.kind, "provider": body.provider, "urls": [{"host": u.host, "verdict": u.verdict, "official": u.official} for u in urls]}
     prompt = f"Sender: {body.sender or 'unknown'}\nAlert text:\n{body.text[:1500] or '(none shared)'}\n\nEngine findings (authoritative):\n{json.dumps(findings)}"
-    chat = LlmChat(api_key=GEMINI_API_KEY, session_id=f"gate8-{uuid.uuid4().hex[:8]}", system_message=GATE8_EXPLAIN_PROMPT).with_model("gemini", "gemini-3-flash-preview")
-    try:
-        raw = await asyncio.wait_for(chat.send_message(UserMessage(text=prompt)), timeout=20)
-        txt = raw.strip()
-        if txt.startswith("```"):
-            txt = txt.strip("`")
-            txt = txt[txt.find("{"):txt.rfind("}") + 1]
-        data = json.loads(txt)
-        return {"summary": str(data.get("summary", ""))[:200], "why": [str(w)[:160] for w in data.get("why", [])][:4], "recommendation": str(data.get("recommendation", ""))[:320]}
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("gate8 gemini opinion failed: %s", exc)
-        return None
+    return await _gemini_second_opinion_call(session_prefix="gate8", system_message=GATE8_EXPLAIN_PROMPT, prompt=prompt, log_label="gate8")
 
 
 @router.post("/account/analyse", response_model=AccountAnalyseOut)
