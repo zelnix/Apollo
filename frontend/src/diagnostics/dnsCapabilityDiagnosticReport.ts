@@ -6,7 +6,8 @@ import { File, Paths } from "expo-file-system";
 import * as Print from "expo-print";
 import { Platform } from "react-native";
 
-import type { DnsDiagnosticRecord } from "@/src/diagnostics/dnsCapabilityDiagnostic";
+import { CLASSIFICATION_LABELS, type DnsDiagnosticRecord } from "@/src/diagnostics/dnsCapabilityDiagnostic";
+import type { DnsDiagnosticTruthSnapshot } from "@/src/diagnostics/dnsCapabilityTruthSnapshot";
 import type { BuildProvenance } from "@/src/harness/buildProvenance";
 import type { Phase6DeviceProvenance } from "@/src/harness/phase6DeviceProvenance";
 
@@ -16,6 +17,9 @@ export interface DnsCharacterizationRun {
   records: DnsDiagnosticRecord[];
   buildProvenance: BuildProvenance | null;
   deviceProvenance: Phase6DeviceProvenance | null;
+  /** Full machine-observed truth-of-state snapshot captured at the end of Preflight (null if the
+   * wizard never reached/passed Preflight this session). */
+  preflightSnapshot: DnsDiagnosticTruthSnapshot | null;
 }
 
 const CLASS_COLOR: Record<string, string> = {
@@ -34,7 +38,36 @@ export function buildDnsCharacterizationJson(run: DnsCharacterizationRun): strin
 }
 
 function recordRow(r: DnsDiagnosticRecord): string {
-  return `<tr><td>${esc(r.category)}</td><td>${esc(r.configurationLabel)}</td><td>${esc(r.probeHostname)}</td><td>${esc(r.transportNetworkType)}</td><td>${r.sawPlaintextUdp53 ? "yes" : "no"}</td><td>${r.websiteGateEventProduced ? "yes" : "no"}</td><td>${r.independentSuccess === null ? "n/a" : r.independentSuccess ? "yes" : "no"} (${esc(r.independentSuccessSource)})</td><td style="color:${CLASS_COLOR[r.classification] ?? "#64748b"};font-weight:800">${esc(r.classification)}</td><td style="font-size:10px">${esc(r.notes)}</td></tr>`;
+  const violation = r.truthSnapshot?.truthViolation;
+  const violationCell = violation?.violated ? `<span style="color:#b91c1c;font-weight:700">⚠ ${esc(violation.reasons.join(" "))}</span>` : "none";
+  return `<tr><td>${esc(r.category)}</td><td>${esc(r.configurationLabel)}</td><td>${esc(r.probeHostname)}</td><td>${esc(r.transportNetworkType)}</td><td>${r.sawPlaintextUdp53 ? "yes" : "no"}</td><td>${r.websiteGateEventProduced ? "yes" : "no"}</td><td>${r.independentSuccess === null ? "n/a" : r.independentSuccess ? "yes" : "no"} (${esc(r.independentSuccessSource)})</td><td style="color:${CLASS_COLOR[r.classification] ?? "#64748b"};font-weight:800">${esc(r.classification)}<br/><span style="font-weight:400;font-size:9px">${esc(CLASSIFICATION_LABELS[r.classification])}</span></td><td style="font-size:9px">${violationCell}</td><td style="font-size:10px">${esc(r.notes)}</td></tr>`;
+}
+
+function truthSnapshotSection(title: string, s: DnsDiagnosticTruthSnapshot | null): string {
+  if (!s) return `<h3>${esc(title)}</h3><p style="font-size:11px;color:#94a3b8">Not captured this session.</p>`;
+  const rows: [string, string][] = [
+    ["Native module available", s.nativeAvailable ? "yes" : "no (Expo Go / web)"],
+    ["VPN consent granted", s.vpnConsentGranted === null ? "n/a" : s.vpnConsentGranted ? "yes" : "no"],
+    ["Protection state", s.protectionState ?? "n/a"],
+    ["TUN open", s.tunOpen === null ? "n/a" : s.tunOpen ? "yes" : "no"],
+    ["Selective route active", s.selectiveRouteActive === null ? "n/a" : s.selectiveRouteActive ? "yes" : "no"],
+    ["Notifications enabled", s.notificationsEnabled === null ? "n/a" : s.notificationsEnabled ? "yes" : "no"],
+    ["Website Gate configured", s.websiteGateConfigured === null ? "n/a" : s.websiteGateConfigured ? "yes" : "no"],
+    ["DNS gateway active", s.dnsGatewayActive === null ? "n/a" : s.dnsGatewayActive ? "yes" : "no"],
+    ["Accepted ruleset / bundle / key", `${s.acceptedRulesetId ?? "n/a"} / v${s.acceptedBundleVersion ?? "?"} / ${s.acceptedKeyId ?? "n/a"}`],
+    ["Dedicated probe rule confirmed in bundle", s.probeRuleConfirmedInBundle === null ? "n/a" : s.probeRuleConfirmedInBundle ? "yes" : "NO"],
+    ["Active native stack", s.activeNativeStackId ?? "n/a"],
+    ["Supported ABIs / primary", `${s.supportedAbis.join(", ") || "n/a"} / ${s.primaryAbi ?? "n/a"}`],
+    ["Private DNS runtime mode", s.privateDnsRuntimeMode],
+    ["Private DNS server name (Strict only)", s.privateDnsServerName ?? "n/a"],
+    ["Network transport", s.networkTransport ?? "n/a"],
+    ["APK SHA-256 / debuggable", `${s.buildProvenance.apkSha256 ?? "n/a"} / ${s.buildProvenance.debuggable === null ? "n/a" : s.buildProvenance.debuggable}`],
+    ["Captured at", s.capturedAt],
+  ];
+  const violationBanner = s.truthViolation.violated
+    ? `<div style="border:2px solid #b91c1c;background:#fef2f2;padding:8px;border-radius:4px;margin:6px 0;font-size:11px;color:#7f1d1d"><strong>⚠ Truth-of-state violation:</strong> ${esc(s.truthViolation.reasons.join(" "))}</div>`
+    : "";
+  return `<h3>${esc(title)}</h3>${violationBanner}<table border="1" cellpadding="4" style="border-collapse:collapse;width:100%;font-size:10px">${rows.map(([k, v]) => `<tr><td style="font-weight:700">${esc(k)}</td><td>${esc(v)}</td></tr>`).join("")}</table>`;
 }
 
 export function buildDnsCharacterizationHtml(run: DnsCharacterizationRun): string {
@@ -56,9 +89,11 @@ No mitigation or enforcement behavior was added, changed, or tested.
 <p><strong>APK SHA-256:</strong> ${esc(run.buildProvenance?.apkSha256)} &nbsp; <strong>Commit/CI run:</strong> ${esc(run.buildProvenance?.gitSha)} / ${esc(run.buildProvenance?.ciRunId)}</p>
 <p><strong>Device:</strong> ${esc(run.deviceProvenance?.manufacturer)} ${esc(run.deviceProvenance?.model)} · Android ${esc(run.deviceProvenance?.osRelease)} (SDK ${esc(run.deviceProvenance?.sdkInt)}) · patch ${esc(run.deviceProvenance?.securityPatch)}</p>
 
-<table border="1" cellpadding="6" style="border-collapse:collapse;width:100%;font-size:11px">
-<thead><tr><th>Category</th><th>Configuration</th><th>Probe host</th><th>Network</th><th>Saw plaintext UDP/53</th><th>Website Gate event</th><th>Independent success</th><th>Classification</th><th>Notes</th></tr></thead>
-<tbody>${run.records.map(recordRow).join("") || `<tr><td colspan="9" style="color:#94a3b8">No probes recorded yet.</td></tr>`}</tbody>
+${truthSnapshotSection("Preflight — full automated truth-of-state snapshot", run.preflightSnapshot)}
+
+<table border="1" cellpadding="6" style="border-collapse:collapse;width:100%;font-size:11px;margin-top:16px">
+<thead><tr><th>Category</th><th>Configuration (machine-observed)</th><th>Probe host</th><th>Network</th><th>Saw plaintext UDP/53</th><th>Website Gate event</th><th>Independent success</th><th>Classification</th><th>Truth violation</th><th>Notes</th></tr></thead>
+<tbody>${run.records.map(recordRow).join("") || `<tr><td colspan="10" style="color:#94a3b8">No probes recorded yet.</td></tr>`}</tbody>
 </table>
 
 <h3>Summary</h3>

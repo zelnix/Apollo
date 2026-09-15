@@ -33,6 +33,8 @@ class GuardDogExpoModuleDefinitionTest {
                 "getWebsiteGateOverrides", "clearWebsiteGateOverrides",
                 // Gate Guard M2.1 Phase 6: harness-only device provenance for the physical-device acceptance report.
                 "getPhase6DeviceProvenance",
+                // Gate Guard DNS/DoH Capability Diagnostic Wizard: harness-only, additive.
+                "getDnsCapabilityDeviceSnapshot",
             ),
             definition.syncFunctions.keys,
         )

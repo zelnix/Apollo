@@ -89,6 +89,27 @@ export interface NativePhase6DeviceProvenance {
   activeNativeStackId: string;
 }
 
+// --- Gate Guard DNS/DoH Capability Diagnostic Wizard: harness-only, additive. Exposes EXACTLY what
+// Android's public, non-privileged API can prove about the device's current Private DNS runtime
+// state. `privateDnsRuntimeMode === "INACTIVE_OR_OFF"` is NEVER proof of a deliberate "Off" --
+// Android cannot distinguish that from "Automatic" whose opportunistic DoT probe is currently
+// failing. See src/diagnostics/dnsCapabilityDiagnostic.ts for how this ambiguity is preserved
+// (never collapsed into a false "verified Off" claim). ---
+
+export type PrivateDnsRuntimeMode = "STRICT" | "ACTIVE_NO_HOSTNAME" | "INACTIVE_OR_OFF" | "UNSUPPORTED_OS_VERSION";
+
+export interface NativeDnsCapabilityDeviceSnapshot {
+  supportedAbis: string[];
+  primaryAbi: string;
+  activeNativeStackId: string;
+  privateDnsActive: boolean;
+  privateDnsServerName: string | null;
+  privateDnsRuntimeMode: PrivateDnsRuntimeMode;
+  networkTransport: string;
+  notificationsEnabled: boolean;
+  capturedAtMillis: number;
+}
+
 export interface GuardDogNativeModule {
   getCapabilities(): Record<string, unknown>;
   getProtectionState(): NativeProtectionState;
@@ -117,6 +138,8 @@ export interface GuardDogNativeModule {
   clearWebsiteGateOverrides(): void;
   /** Gate Guard M2.1 Phase 6 harness-only device provenance. See NativePhase6DeviceProvenance. */
   getPhase6DeviceProvenance(): NativePhase6DeviceProvenance;
+  /** Gate Guard DNS/DoH Capability Diagnostic Wizard: harness-only. See NativeDnsCapabilityDeviceSnapshot. */
+  getDnsCapabilityDeviceSnapshot(): NativeDnsCapabilityDeviceSnapshot;
   addListener(eventName: string, listener: (payload: unknown) => void): { remove(): void };
 }
 

@@ -19,11 +19,14 @@
 // match this probe's dedicated target -- never inferred from a shared/global enforcement counter,
 // and BYPASSED is only ever concluded from independent proof of success, never from absence alone.
 import * as Network from "expo-network";
+import { Platform } from "react-native";
 
 import { isGenuineBlockedEvent, type SecurityEvent } from "@/src/contracts/securityEventSchemas";
 import type { RuleEntry } from "@/src/contracts/shared/ruleBundle";
+import { captureDnsDiagnosticTruthSnapshot, describePrivateDnsRuntimeMode, type DnsDiagnosticTruthSnapshot } from "@/src/diagnostics/dnsCapabilityTruthSnapshot";
 import { fetchLatestBundle, fetchM1Config, toProtectionConfig } from "@/src/harness/ruleBundleFixtures";
 import { GuardDogSecuritySDK } from "@/src/sdk/GuardDogSecuritySDK";
+import { GuardDogNative, type NativeDnsCapabilityDeviceSnapshot, type PrivateDnsRuntimeMode } from "@/src/sdk/nativeModule";
 
 export const DNS_DIAGNOSTIC_PROBE_HOST = "dnsprobe.blocktest.btciq.app";
 export const DNS_DIAGNOSTIC_PROBE_RULE_ID = "m2-block-dns-capability-001";
@@ -31,11 +34,22 @@ export const DNS_DIAGNOSTIC_PROBE_RULE_ID = "m2-block-dns-capability-001";
 export type DnsDiagnosticCategory = "private-dns" | "app-embedded-doh";
 export type DnsDiagnosticClassification = "CAPTURED" | "BYPASSED" | "UNOBSERVABLE" | "NOT_TESTABLE";
 
+/** Exact, user-approved plain-language labels. The underlying classification enum (used by every
+ * evidence rule elsewhere in this file) is never renamed or weakened -- this is presentation only. */
+export const CLASSIFICATION_LABELS: Record<DnsDiagnosticClassification, string> = {
+  CAPTURED: "Apollo is biting — the request was observed and stopped",
+  BYPASSED: "This encrypted DNS request bypassed Apollo's DNS visibility",
+  UNOBSERVABLE: "Apollo couldn't prove what happened",
+  NOT_TESTABLE: "This check couldn't be run",
+};
+
 export interface DnsDiagnosticRecord {
   id: string;
   category: DnsDiagnosticCategory;
-  /** Manual, tester-supplied label -- Android does not expose this value to a third-party app.
-   * e.g. "DoT: Strict (dns.google)" or "Firefox 143, Enhanced Tracking Protection DoH: ON". */
+  /** Machine-derived label (from the native Private DNS snapshot) for private-dns rows; a
+   * tester-supplied browser/version + DoH setting for app-embedded-doh rows (Android exposes
+   * neither the browser identity nor its DoH setting to a third-party app, so that half stays
+   * descriptive metadata -- never treated as evidence). */
   configurationLabel: string;
   probeHostname: string;
   transportNetworkType: string | null;
@@ -48,6 +62,93 @@ export interface DnsDiagnosticRecord {
   notes: string | null;
   probeStartedAt: string;
   probeEndedAt: string;
+  /** Full machine-observed truth-of-state at the moment this specific probe ran. */
+  truthSnapshot: DnsDiagnosticTruthSnapshot;
+}
+
+// --- Guided wizard step configuration + automated Private DNS runtime-mode polling ---
+
+export interface DotWizardStepConfig {
+  id: "dot-off" | "dot-automatic" | "dot-strict";
+  title: string;
+  settingsInstruction: string;
+  targetRuntimeMode: PrivateDnsRuntimeMode;
+}
+
+export const DOT_WIZARD_STEPS: DotWizardStepConfig[] = [
+  {
+    id: "dot-off",
+    title: "Private DNS — Off",
+    settingsInstruction: 'In Android Settings → Network & internet → Private DNS, choose "Off".',
+    targetRuntimeMode: "INACTIVE_OR_OFF",
+  },
+  {
+    id: "dot-automatic",
+    title: "Private DNS — Automatic",
+    settingsInstruction: 'In Android Settings → Network & internet → Private DNS, choose "Automatic".',
+    targetRuntimeMode: "ACTIVE_NO_HOSTNAME",
+  },
+  {
+    id: "dot-strict",
+    title: "Private DNS — Strict hostname",
+    settingsInstruction: 'In Android Settings → Network & internet → Private DNS, choose "Private DNS provider hostname", enter a provider (e.g. dns.google), then Save.',
+    targetRuntimeMode: "STRICT",
+  },
+];
+
+export interface PrivateDnsPollTick {
+  elapsedMs: number;
+  snapshot: NativeDnsCapabilityDeviceSnapshot | null;
+}
+
+export interface PrivateDnsPollResult {
+  outcome: "matched" | "timed-out" | "cancelled" | "unavailable";
+  finalSnapshot: NativeDnsCapabilityDeviceSnapshot | null;
+  elapsedMs: number;
+}
+
+/** Hard ceiling: after this, polling stops and the wizard offers Retry / Open Settings again /
+ * Record NOT_TESTABLE -- deliberately NEVER a "Continue anyway" that would let an unverified
+ * configuration be labelled as though it were established. */
+export const PRIVATE_DNS_POLL_HARD_TIMEOUT_MS = 90_000;
+/** Purely a UI hint ("Still checking…") -- changes no polling behavior. */
+export const PRIVATE_DNS_POLL_STILL_CHECKING_AFTER_MS = 15_000;
+const PRIVATE_DNS_POLL_INTERVAL_MS = 2_000;
+
+/** Polls the native Private DNS runtime snapshot until it matches `targetMode` or the hard timeout
+ * elapses. Never resolves "matched" on anything other than a genuine, freshly-read match. */
+export function pollForPrivateDnsRuntimeMode(
+  targetMode: PrivateDnsRuntimeMode,
+  opts: { hardTimeoutMs?: number; intervalMs?: number; onTick?: (tick: PrivateDnsPollTick) => void; isCancelled?: () => boolean } = {},
+): Promise<PrivateDnsPollResult> {
+  const hardTimeoutMs = opts.hardTimeoutMs ?? PRIVATE_DNS_POLL_HARD_TIMEOUT_MS;
+  const intervalMs = opts.intervalMs ?? PRIVATE_DNS_POLL_INTERVAL_MS;
+  const startedAt = Date.now();
+  return new Promise((resolve) => {
+    function tick() {
+      if (opts.isCancelled?.()) {
+        resolve({ outcome: "cancelled", finalSnapshot: null, elapsedMs: Date.now() - startedAt });
+        return;
+      }
+      if (Platform.OS !== "android" || !GuardDogNative) {
+        resolve({ outcome: "unavailable", finalSnapshot: null, elapsedMs: Date.now() - startedAt });
+        return;
+      }
+      const snapshot = GuardDogNative.getDnsCapabilityDeviceSnapshot();
+      const elapsedMs = Date.now() - startedAt;
+      opts.onTick?.({ elapsedMs, snapshot });
+      if (snapshot.privateDnsRuntimeMode === targetMode) {
+        resolve({ outcome: "matched", finalSnapshot: snapshot, elapsedMs });
+        return;
+      }
+      if (elapsedMs >= hardTimeoutMs) {
+        resolve({ outcome: "timed-out", finalSnapshot: snapshot, elapsedMs });
+        return;
+      }
+      setTimeout(tick, intervalMs);
+    }
+    tick();
+  });
 }
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
@@ -114,12 +215,16 @@ async function fetchProbeHost(timeoutMs: number): Promise<{ outcome: "resolved" 
   }
 }
 
-/** Automated single-action probe for Android system Private DNS (DoT) configurations. The app's own
- * fetch() resolves via the system DNS resolver, which DOES honor the system Private DNS mode -- so
- * once the tester has set the mode in Android Settings beforehand and labelled it, this probe is
- * fully automated (no manual observation window needed, unlike the DoH case below). */
-export async function runPrivateDnsProbe(configurationLabel: string, windowMs = 12_000): Promise<DnsDiagnosticRecord> {
+/** Automated single-action probe for Android system Private DNS (DoT) configurations. Called only
+ * once `pollForPrivateDnsRuntimeMode` has already confirmed the device is in the step's target
+ * runtime mode -- the app's own fetch() resolves via the system DNS resolver, which DOES honor the
+ * system Private DNS mode. `configurationLabel` is derived ENTIRELY from a fresh native snapshot
+ * taken at probe time (never from the earlier poll match, and never manually typed) -- if the
+ * runtime state drifted between detection and execution, that drift is recorded verbatim, never
+ * silently reported as the originally-expected state. */
+export async function runPrivateDnsProbeForStep(step: DotWizardStepConfig, probeRuleConfirmedInBundle: boolean | null, windowMs = 12_000): Promise<DnsDiagnosticRecord> {
   const probeStartedAt = nowIso();
+  const truthSnapshot = await captureDnsDiagnosticTruthSnapshot(probeRuleConfirmedInBundle);
   const transportNetworkType = await getNetworkType();
   let fetchOutcome: Awaited<ReturnType<typeof fetchProbeHost>> | null = null;
   const event = await observeWindow(async () => {
@@ -127,10 +232,15 @@ export async function runPrivateDnsProbe(configurationLabel: string, windowMs = 
   }, windowMs);
   const attributedEvent = isAttributedToProbe(event) ? event : null;
   const independentSuccess = (fetchOutcome as { outcome: string } | null)?.outcome === "resolved";
+  const observedMode = truthSnapshot.privateDnsRuntimeMode;
+  const drifted = observedMode !== "UNAVAILABLE" && observedMode !== step.targetRuntimeMode;
+  const driftNote = drifted
+    ? `Runtime state drifted between detection and probe execution -- expected ${step.targetRuntimeMode}, observed ${observedMode} at probe time. Recorded exactly as observed, never as the originally-expected state.`
+    : null;
   return {
     id: `dot-${Date.now()}`,
     category: "private-dns",
-    configurationLabel,
+    configurationLabel: `${step.title}: ${describePrivateDnsRuntimeMode(observedMode, truthSnapshot.privateDnsServerName)}`,
     probeHostname: DNS_DIAGNOSTIC_PROBE_HOST,
     transportNetworkType,
     sawPlaintextUdp53: !!attributedEvent,
@@ -139,9 +249,10 @@ export async function runPrivateDnsProbe(configurationLabel: string, windowMs = 
     independentSuccess,
     independentSuccessSource: "in-app-fetch",
     classification: classify(attributedEvent, independentSuccess),
-    notes: unrelatedEventNote(event, attributedEvent),
+    notes: [unrelatedEventNote(event, attributedEvent), driftNote].filter((n): n is string => !!n).join(" ") || null,
     probeStartedAt,
     probeEndedAt: nowIso(),
+    truthSnapshot,
   };
 }
 
@@ -219,8 +330,17 @@ export function startAppEmbeddedDohObservation(nonce: string, maxWindowMs = 120_
 
 /** Builds the record for an app-embedded DoH probe from ONLY machine-observed evidence: Apollo's own
  * attributed event stream, and the backend's independent, server-verified receipt confirmation --
- * never a manually-reported judgment call. */
-export function buildAppEmbeddedDohRecord(configurationLabel: string, nonce: string, event: SecurityEvent | null, receiptConfirmed: boolean, probeStartedAt: string, transportNetworkType: string | null): DnsDiagnosticRecord {
+ * never a manually-reported judgment call. `truthSnapshot` must be captured by the caller
+ * immediately before `Linking.openURL` was fired, so it reflects the exact state the probe ran under. */
+export function buildAppEmbeddedDohRecord(
+  configurationLabel: string,
+  nonce: string,
+  event: SecurityEvent | null,
+  receiptConfirmed: boolean,
+  probeStartedAt: string,
+  transportNetworkType: string | null,
+  truthSnapshot: DnsDiagnosticTruthSnapshot,
+): DnsDiagnosticRecord {
   const attributedEvent = isAttributedToProbe(event) ? event : null;
   // If Apollo captured/blocked it, the receipt should never have arrived at all (the request never
   // reached the probe page) -- independentSuccess is only meaningful when there was nothing to capture.
@@ -240,12 +360,14 @@ export function buildAppEmbeddedDohRecord(configurationLabel: string, nonce: str
     notes: unrelatedEventNote(event, attributedEvent),
     probeStartedAt,
     probeEndedAt: nowIso(),
+    truthSnapshot,
   };
 }
 
-/** For preconditions that could not be met at all (e.g. native module unavailable, gate not active) --
- * an explicit NOT_TESTABLE record, never silently skipped and never guessed as UNOBSERVABLE. */
-export function notTestableRecord(category: DnsDiagnosticCategory, configurationLabel: string, reason: string): DnsDiagnosticRecord {
+/** For preconditions that could not be met at all (e.g. native module unavailable, gate not active,
+ * or Private DNS detection timed out and the tester chose not to retry) -- an explicit NOT_TESTABLE
+ * record, never silently skipped and never guessed as UNOBSERVABLE. */
+export function notTestableRecord(category: DnsDiagnosticCategory, configurationLabel: string, reason: string, truthSnapshot: DnsDiagnosticTruthSnapshot): DnsDiagnosticRecord {
   const at = nowIso();
   return {
     id: `nt-${Date.now()}`,
@@ -262,6 +384,7 @@ export function notTestableRecord(category: DnsDiagnosticCategory, configuration
     notes: reason,
     probeStartedAt: at,
     probeEndedAt: at,
+    truthSnapshot,
   };
 }
 
@@ -271,6 +394,9 @@ export interface ActivationResult {
   /** True iff the fetched, currently-accepted M2 bundle genuinely carries the dedicated probe
    * rule -- confirms this diagnostic's evidence will be attributable before any probe is run. */
   probeRuleConfirmedInBundle: boolean;
+  /** Full machine-observed truth-of-state snapshot taken at the end of Preflight. Carried forward
+   * as the `probeRuleConfirmedInBundle` baseline for every later per-row snapshot this session. */
+  preflightSnapshot: DnsDiagnosticTruthSnapshot;
 }
 
 /** Activates protection + the Website Gate using ONLY the stable public GuardDogSecuritySDK surface
@@ -279,23 +405,25 @@ export interface ActivationResult {
  * harness uses, but implemented fresh here so this tool has zero code-level dependency on
  * phase6AutomatedHarness.ts. Never signs or publishes a bundle; only reads the currently-live one. */
 export async function activateWebsiteGateForDiagnostics(): Promise<ActivationResult> {
-  if (!GuardDogSecuritySDK.nativeAvailable) return { ok: false, reason: "NATIVE_MODULE_UNAVAILABLE (Expo Go / web -- a native Android build is required)", probeRuleConfirmedInBundle: false };
+  const fail = async (reason: string): Promise<ActivationResult> => ({ ok: false, reason, probeRuleConfirmedInBundle: false, preflightSnapshot: await captureDnsDiagnosticTruthSnapshot(false) });
+  if (!GuardDogSecuritySDK.nativeAvailable) return fail("NATIVE_MODULE_UNAVAILABLE (Expo Go / web -- a native Android build is required)");
   const permission = await GuardDogSecuritySDK.requestPermission("vpn");
-  if (permission !== "granted") return { ok: false, reason: `VPN_PERMISSION_${permission.toUpperCase()}`, probeRuleConfirmedInBundle: false };
+  if (permission !== "granted") return fail(`VPN_PERMISSION_${permission.toUpperCase()}`);
   const m1Config = await fetchM1Config();
   GuardDogSecuritySDK.configure(toProtectionConfig(m1Config));
   const status = await GuardDogSecuritySDK.startProtection();
-  if (status.state !== "ACTIVE") return { ok: false, reason: `PROTECTION_NOT_ACTIVE (state=${status.state})`, probeRuleConfirmedInBundle: false };
+  if (status.state !== "ACTIVE") return fail(`PROTECTION_NOT_ACTIVE (state=${status.state})`);
   const rulesetId = m1Config.gateGuard?.websiteGateRulesetId;
-  if (!rulesetId) return { ok: false, reason: "NO_WEBSITE_GATE_RULESET_CONFIGURED", probeRuleConfirmedInBundle: false };
+  if (!rulesetId) return fail("NO_WEBSITE_GATE_RULESET_CONFIGURED");
   GuardDogSecuritySDK.configureWebsiteGate({});
   const bundle = await fetchLatestBundle(rulesetId);
   const acceptance = GuardDogSecuritySDK.acceptWebsiteGateRuleBundle(bundle);
-  if (!acceptance.accepted) return { ok: false, reason: `BUNDLE_REJECTED (${acceptance.rejectReason})`, probeRuleConfirmedInBundle: false };
+  if (!acceptance.accepted) return fail(`BUNDLE_REJECTED (${acceptance.rejectReason})`);
   await GuardDogSecuritySDK.hydrateWebsiteGateOverrides();
   const gateStatus = GuardDogSecuritySDK.getWebsiteGateStatus();
-  if (!gateStatus.dnsGatewayActive) return { ok: false, reason: "DNS_GATEWAY_NOT_ACTIVE", probeRuleConfirmedInBundle: false };
+  if (!gateStatus.dnsGatewayActive) return fail("DNS_GATEWAY_NOT_ACTIVE");
   const rules = bundle.payload.rules as RuleEntry[];
   const probeRuleConfirmedInBundle = rules.some((r) => r.host === DNS_DIAGNOSTIC_PROBE_HOST && r.ruleId === DNS_DIAGNOSTIC_PROBE_RULE_ID && r.action === "block");
-  return { ok: true, reason: null, probeRuleConfirmedInBundle };
+  const preflightSnapshot = await captureDnsDiagnosticTruthSnapshot(probeRuleConfirmedInBundle);
+  return { ok: true, reason: null, probeRuleConfirmedInBundle, preflightSnapshot };
 }

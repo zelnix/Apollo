@@ -1,8 +1,11 @@
 package com.guarddog.expo
 
 import android.app.Activity
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.VpnService
 import com.guarddog.core.GuardDogSDKEngine
 import com.guarddog.core.BlockAuthorization
@@ -268,6 +271,59 @@ class GuardDogExpoModule : Module() {
                 "sdkInt" to android.os.Build.VERSION.SDK_INT,
                 "securityPatch" to (android.os.Build.VERSION.SECURITY_PATCH ?: "unavailable"),
                 "activeNativeStackId" to "com.guarddog.* (GuardDogSecurity native module)",
+            )
+        }
+
+        // Gate Guard — DNS/DoH Capability Diagnostic Wizard (harness-only, additive; does not touch
+        // any M1/M2/Phase6 acceptance code path). Exposes EXACTLY what Android's own public,
+        // non-privileged API can prove about the device's current Private DNS runtime state --
+        // and nothing more. LinkProperties.isPrivateDnsActive()/getPrivateDnsServerName() were
+        // added in API 28 (Android 9); this app's minSdkVersion is 26, so devices below 28 report
+        // UNSUPPORTED_OS_VERSION rather than a guessed value. Critically: privateDnsRuntimeMode ==
+        // INACTIVE_OR_OFF is NEVER proof of "Off" -- Android's API cannot distinguish a deliberate
+        // "Off" from "Automatic" whose opportunistic DoT probe is currently failing/unreachable.
+        // The JS wizard (dnsCapabilityDiagnostic.ts) must preserve that ambiguity, never collapse it.
+        Function("getDnsCapabilityDeviceSnapshot") {
+            val privateDnsActive: Boolean
+            val privateDnsServerName: String?
+            val runtimeMode: String
+            if (android.os.Build.VERSION.SDK_INT >= 28) {
+                val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+                val activeNetwork = connectivityManager.activeNetwork
+                val linkProperties = activeNetwork?.let { connectivityManager.getLinkProperties(it) }
+                privateDnsActive = linkProperties?.isPrivateDnsActive ?: false
+                privateDnsServerName = linkProperties?.privateDnsServerName
+                runtimeMode = when {
+                    privateDnsServerName != null -> "STRICT"
+                    privateDnsActive -> "ACTIVE_NO_HOSTNAME"
+                    else -> "INACTIVE_OR_OFF"
+                }
+            } else {
+                privateDnsActive = false
+                privateDnsServerName = null
+                runtimeMode = "UNSUPPORTED_OS_VERSION"
+            }
+            val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val capabilities = connectivityManager.activeNetwork?.let { connectivityManager.getNetworkCapabilities(it) }
+            val networkTransport = when {
+                capabilities == null -> "unknown"
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "wifi"
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "cellular"
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "ethernet"
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> "vpn"
+                else -> "other"
+            }
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            mapOf(
+                "supportedAbis" to android.os.Build.SUPPORTED_ABIS.toList(),
+                "primaryAbi" to (android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown"),
+                "activeNativeStackId" to "com.guarddog.* (GuardDogSecurity native module)",
+                "privateDnsActive" to privateDnsActive,
+                "privateDnsServerName" to privateDnsServerName,
+                "privateDnsRuntimeMode" to runtimeMode,
+                "networkTransport" to networkTransport,
+                "notificationsEnabled" to notificationManager.areNotificationsEnabled(),
+                "capturedAtMillis" to System.currentTimeMillis(),
             )
         }
     }
