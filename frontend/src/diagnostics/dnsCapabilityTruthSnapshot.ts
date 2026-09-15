@@ -44,6 +44,12 @@ export interface DnsDiagnosticTruthSnapshot {
    * non-test destination was genuinely unreachable (Preflight must fail in this case); `true` =
    * verified reachable. */
   internetContinuityOk: boolean | null;
+  /** The EXPLICIT, named, auditable upstream DNS resolver configured for this session (see
+   * WEBSITE_GATE_DEFAULT_UPSTREAM_DNS_IPV4 in GuardDogSecuritySDK.ts) -- carried through from the
+   * Preflight activation result so physical-device evidence always states exactly which resolver
+   * ordinary (non-block) DNS queries were forwarded to, never an unnamed implementation detail.
+   * `null` = never attempted (Preflight failed before this was configured). */
+  configuredUpstreamDnsResolverIpv4: string | null;
   activeNativeStackId: string | null;
   supportedAbis: string[];
   primaryAbi: string | null;
@@ -109,8 +115,9 @@ export async function captureDnsDiagnosticTruthSnapshot(preflight: {
   m1BundleAccepted: boolean | null;
   probeRuleConfirmedInBundle: boolean | null;
   internetContinuityOk: boolean | null;
+  configuredUpstreamDnsResolverIpv4: string | null;
 }): Promise<DnsDiagnosticTruthSnapshot> {
-  const { m1BundleAccepted, probeRuleConfirmedInBundle, internetContinuityOk } = preflight;
+  const { m1BundleAccepted, probeRuleConfirmedInBundle, internetContinuityOk, configuredUpstreamDnsResolverIpv4 } = preflight;
   const buildProvenance = await readBuildProvenance();
   const nativeAvailable = Platform.OS === "android" && !!GuardDogNative;
 
@@ -131,6 +138,7 @@ export async function captureDnsDiagnosticTruthSnapshot(preflight: {
       m1BundleAccepted,
       probeRuleConfirmedInBundle,
       internetContinuityOk,
+      configuredUpstreamDnsResolverIpv4,
       activeNativeStackId: null,
       supportedAbis: [],
       primaryAbi: null,
@@ -175,6 +183,7 @@ export async function captureDnsDiagnosticTruthSnapshot(preflight: {
     m1BundleAccepted,
     probeRuleConfirmedInBundle,
     internetContinuityOk,
+    configuredUpstreamDnsResolverIpv4,
     activeNativeStackId: dnsSnapshot.activeNativeStackId,
     supportedAbis: dnsSnapshot.supportedAbis,
     primaryAbi: dnsSnapshot.primaryAbi,

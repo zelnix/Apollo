@@ -128,6 +128,7 @@ export default function DnsCapabilityDiagnosticScreen() {
     m1BundleAccepted: activation?.m1BundleAccepted ?? null,
     probeRuleConfirmedInBundle: activation?.probeRuleConfirmedInBundle ?? null,
     internetContinuityOk: activation?.internetContinuityOk ?? null,
+    configuredUpstreamDnsResolverIpv4: activation?.configuredUpstreamDnsResolverIpv4 ?? null,
   };
 
   // --- Private DNS (DoT) automated polling sub-state ---
@@ -438,6 +439,7 @@ export default function DnsCapabilityDiagnosticScreen() {
                     label="Internet continuity (non-test destination reachable)"
                     value={activation.internetContinuityOk === null ? "not checked (activation failed before this was attempted)" : activation.internetContinuityOk ? "yes" : "NO — ordinary browsing would be broken"}
                   />
+                  <KeyValue label="Configured upstream DNS resolver (ordinary/non-block queries)" value={activation.configuredUpstreamDnsResolverIpv4 ?? "not configured (activation failed before Step 2)"} />
                   <KeyValue
                     label="All 5 probe rules confirmed in bundle"
                     value={

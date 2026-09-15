@@ -85,13 +85,14 @@ export interface WebsiteGateConfig {
 }
 
 /** Cloudflare's public DNS resolver -- literal IPv4, never itself resolved via DNS (no
- * chicken-and-egg), used as the safe default real upstream (see `WebsiteGateConfig` doc comment
- * above). Deliberately NOT the device's own pre-VPN DNS server (capturing that would need new
- * native plumbing); a well-known public resolver is a strict improvement over the prior
- * "no answer at all" behavior and preserves the user's original DNS provider choice for every
- * destination that was never going to be intercepted anyway (M1/M2 route selectively, not by
- * default -- see SelectiveRouteInstaller). */
-const WEBSITE_GATE_DEFAULT_UPSTREAM_DNS_IPV4 = "1.1.1.1";
+ * chicken-and-egg), used as the EXPLICIT configured default real upstream (see `WebsiteGateConfig`
+ * doc comment above) -- exported so every caller/report can name and audit the exact resolver in
+ * effect, never an unnamed/invisible implementation detail. Deliberately NOT the device's own
+ * pre-VPN DNS server (capturing that would need new native plumbing); a well-known public resolver
+ * is a strict improvement over the prior "no answer at all" behavior and preserves the user's
+ * original DNS provider choice for every destination that was never going to be intercepted anyway
+ * (M1/M2 route selectively, not by default -- see SelectiveRouteInstaller). */
+export const WEBSITE_GATE_DEFAULT_UPSTREAM_DNS_IPV4 = "1.1.1.1";
 
 export interface WebsiteGateStatus extends NativeWebsiteGateStatus {
   /** false when running without the native module (Expo Go / web): nothing is enforced, this is a
@@ -189,15 +190,21 @@ class GuardDogSecuritySDKImpl {
   // --- Gate Guard M2.1 Phase 5: Website Gate bridge surface + local override store. Additive only;
   // none of the M1 methods above are touched. See docs/M2_WEBSITE_GATE_DESIGN.md. ---
 
-  configureWebsiteGate(config: WebsiteGateConfig = {}): void {
-    GuardDogNative?.configureWebsiteGate({
-      // Physical-device regression fix (2026-09): `undefined` (key omitted, every existing caller)
-      // now gets a real default upstream instead of silently becoming `null` (fail-open-by-silence
-      // for every ordinary DNS lookup) -- see WebsiteGateConfig's doc comment. `null` is still
-      // honored if a caller passes it EXPLICITLY.
+  /**
+   * Physical-device regression fix (2026-09): returns the RESOLVED config (never `void`) so every
+   * caller can name and record the exact upstream resolver actually in effect -- an explicit,
+   * auditable configured default, never an invisible internal fallback. `undefined` (key omitted,
+   * every existing caller) now resolves to `WEBSITE_GATE_DEFAULT_UPSTREAM_DNS_IPV4` instead of
+   * silently becoming `null` (fail-open-by-silence for every ordinary DNS lookup) -- see
+   * WebsiteGateConfig's doc comment. `null` is still honored if a caller passes it EXPLICITLY.
+   */
+  configureWebsiteGate(config: WebsiteGateConfig = {}): { upstreamDnsResolverIpv4: string | null; bindingLifetimeMs: number } {
+    const resolved = {
       upstreamDnsResolverIpv4: config.upstreamDnsResolverIpv4 === undefined ? WEBSITE_GATE_DEFAULT_UPSTREAM_DNS_IPV4 : config.upstreamDnsResolverIpv4,
       bindingLifetimeMs: config.bindingLifetimeMs ?? 30_000,
-    });
+    };
+    GuardDogNative?.configureWebsiteGate(resolved);
+    return resolved;
   }
 
   acceptWebsiteGateRuleBundle(bundle: unknown): BundleAcceptance {

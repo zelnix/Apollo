@@ -36,7 +36,7 @@ import { isGenuineBlockedEvent, type SecurityEvent } from "@/src/contracts/secur
 import type { RuleEntry } from "@/src/contracts/shared/ruleBundle";
 import { captureDnsDiagnosticTruthSnapshot, describePrivateDnsRuntimeMode, type DnsDiagnosticTruthSnapshot } from "@/src/diagnostics/dnsCapabilityTruthSnapshot";
 import { fetchLatestBundle, fetchM1Config, toProtectionConfig } from "@/src/harness/ruleBundleFixtures";
-import { GuardDogSecuritySDK } from "@/src/sdk/GuardDogSecuritySDK";
+import { GuardDogSecuritySDK, WEBSITE_GATE_DEFAULT_UPSTREAM_DNS_IPV4 } from "@/src/sdk/GuardDogSecuritySDK";
 import { GuardDogNative, type NativeDnsCapabilityDeviceSnapshot, type PrivateDnsRuntimeMode } from "@/src/sdk/nativeModule";
 
 /** The wizard's OWN dedicated ruleset -- deliberately separate from gd-m2-website-gate (frozen at
@@ -284,7 +284,12 @@ async function fetchProbeHost(host: string, timeoutMs: number): Promise<{ outcom
  * instead of merely adding a note. */
 export async function runPrivateDnsProbeForStep(
   step: DotWizardStepConfig,
-  preflight: { m1BundleAccepted: boolean | null; probeRuleConfirmedInBundle: boolean | null; internetContinuityOk: boolean | null },
+  preflight: {
+    m1BundleAccepted: boolean | null;
+    probeRuleConfirmedInBundle: boolean | null;
+    internetContinuityOk: boolean | null;
+    configuredUpstreamDnsResolverIpv4: string | null;
+  },
   windowMs = 12_000,
 ): Promise<DnsDiagnosticRecord> {
   const identity = ROW_PROBE_IDENTITY[step.id];
@@ -510,6 +515,14 @@ export interface ActivationResult {
    * "active" but a normal, non-test destination was genuinely unreachable through it -- Preflight
    * MUST fail in this case; no row may ever be classified while this is false. */
   internetContinuityOk: boolean | null;
+  /** The EXPLICIT, named, auditable upstream DNS resolver configured for this session (see
+   * WEBSITE_GATE_DEFAULT_UPSTREAM_DNS_IPV4 in GuardDogSecuritySDK.ts) -- recorded so
+   * physical-device evidence always states exactly which resolver ordinary (non-block) DNS
+   * queries were forwarded to, never an unnamed implementation detail. `null` = never attempted
+   * (Preflight failed before Step 2 configured the Website Gate); otherwise the literal IPv4
+   * string actually passed to the native module (or explicit `null` if a test deliberately
+   * requested fail-open-by-silence). */
+  configuredUpstreamDnsResolverIpv4: string | null;
   /** Full machine-observed truth-of-state snapshot taken at the end of Preflight. Carried forward
    * as the `m1BundleAccepted`/`probeRuleConfirmedInBundle` baseline for every later per-row
    * snapshot this session. */
@@ -587,6 +600,12 @@ async function checkInternetContinuity(): Promise<boolean> {
  *    the wizard cold (INTERNET_CONTINUITY_FAILED) rather than let any row be classified against an
  *    Apollo session that isn't honoring its own core invariant. */
 export async function activateWebsiteGateForDiagnostics(): Promise<ActivationResult> {
+  // Mutated once, right after Step 2 configures the Website Gate -- read by every `fail()` call
+  // via closure (not a positional param) so every failure from that point on automatically reports
+  // the exact resolver actually configured, no matter how many new fail() call sites are added
+  // later. Physical-device review fix: must be an EXPLICITLY named, auditable value, never an
+  // invisible fallback -- see WEBSITE_GATE_DEFAULT_UPSTREAM_DNS_IPV4 in GuardDogSecuritySDK.ts.
+  let configuredUpstreamDnsResolverIpv4: string | null = null;
   const fail = async (
     reason: string,
     m1BundleAccepted: boolean | null = null,
@@ -598,7 +617,8 @@ export async function activateWebsiteGateForDiagnostics(): Promise<ActivationRes
     m1BundleAccepted,
     probeRuleConfirmedInBundle,
     internetContinuityOk,
-    preflightSnapshot: await captureDnsDiagnosticTruthSnapshot({ m1BundleAccepted, probeRuleConfirmedInBundle, internetContinuityOk }),
+    configuredUpstreamDnsResolverIpv4,
+    preflightSnapshot: await captureDnsDiagnosticTruthSnapshot({ m1BundleAccepted, probeRuleConfirmedInBundle, internetContinuityOk, configuredUpstreamDnsResolverIpv4 }),
   });
   if (!GuardDogSecuritySDK.nativeAvailable) return fail("NATIVE_MODULE_UNAVAILABLE (Expo Go / web -- a native Android build is required)");
   const permission = await GuardDogSecuritySDK.requestPermission("vpn");
@@ -615,10 +635,12 @@ export async function activateWebsiteGateForDiagnostics(): Promise<ActivationRes
   if (!m1Acceptance.accepted) return fail(`M1_BUNDLE_REJECTED (${m1Acceptance.rejectReason})`, false);
 
   // Step 2: configure + accept THIS WIZARD's own dedicated bundle into the Website Gate slot --
-  // deliberately gd-m2-dns-diagnostic-wizard, never the frozen gd-m2-website-gate v4. `{}` now
-  // safely defaults `upstreamDnsResolverIpv4` to a real resolver (see GuardDogSecuritySDK.ts) --
-  // it no longer silently means "never forward any ordinary DNS query."
-  GuardDogSecuritySDK.configureWebsiteGate({});
+  // deliberately gd-m2-dns-diagnostic-wizard, never the frozen gd-m2-website-gate v4. Explicitly
+  // (not by omission) names the configured default upstream resolver -- auditable in every report
+  // from here on via `configuredUpstreamDnsResolverIpv4` -- rather than relying on the SDK's own
+  // internal default to apply silently.
+  const websiteGateConfig = GuardDogSecuritySDK.configureWebsiteGate({ upstreamDnsResolverIpv4: WEBSITE_GATE_DEFAULT_UPSTREAM_DNS_IPV4 });
+  configuredUpstreamDnsResolverIpv4 = websiteGateConfig.upstreamDnsResolverIpv4;
   const bundle = await fetchLatestBundle(DNS_DIAGNOSTIC_WIZARD_RULESET_ID);
   const acceptance = GuardDogSecuritySDK.acceptWebsiteGateRuleBundle(bundle);
   if (!acceptance.accepted) return fail(`BUNDLE_REJECTED (${acceptance.rejectReason})`, true, false);
@@ -651,13 +673,13 @@ export async function activateWebsiteGateForDiagnostics(): Promise<ActivationRes
   const internetContinuityOk = await checkInternetContinuity();
   if (!internetContinuityOk) {
     return fail(
-      `INTERNET_CONTINUITY_FAILED (${INTERNET_CONTINUITY_CHECK_URL} was unreachable while the Website Gate was active -- ordinary browsing would be broken; do not proceed)`,
+      `INTERNET_CONTINUITY_FAILED (${INTERNET_CONTINUITY_CHECK_URL} was unreachable via configured upstream resolver ${configuredUpstreamDnsResolverIpv4} while the Website Gate was active -- ordinary browsing would be broken; do not proceed)`,
       true,
       probeRuleConfirmedInBundle,
       false,
     );
   }
 
-  const preflightSnapshot = await captureDnsDiagnosticTruthSnapshot({ m1BundleAccepted: true, probeRuleConfirmedInBundle, internetContinuityOk });
-  return { ok: true, reason: null, m1BundleAccepted: true, probeRuleConfirmedInBundle, internetContinuityOk, preflightSnapshot };
+  const preflightSnapshot = await captureDnsDiagnosticTruthSnapshot({ m1BundleAccepted: true, probeRuleConfirmedInBundle, internetContinuityOk, configuredUpstreamDnsResolverIpv4 });
+  return { ok: true, reason: null, m1BundleAccepted: true, probeRuleConfirmedInBundle, internetContinuityOk, configuredUpstreamDnsResolverIpv4, preflightSnapshot };
 }
