@@ -345,6 +345,37 @@ class GuardDogExpoModule : Module() {
                 "capturedAtMillis" to System.currentTimeMillis(),
             )
         }
+
+        // DNS/DoH Diagnostic Wizard: native Settings navigation (physical-device review fix --
+        // previously only a JS-side `Linking.sendIntent`/`Linking.openSettings()` guess with zero
+        // visibility into whether anything actually opened, or what). Tries the direct Private DNS
+        // settings screen first, falls back to the general Network & internet ("Wireless") settings
+        // screen, then the top-level Settings app -- each candidate is verified resolvable via
+        // PackageManager BEFORE attempting to launch it, so an OEM/skin that doesn't expose one
+        // candidate cleanly falls through to the next rather than silently doing nothing or
+        // crashing with ActivityNotFoundException. Returns exactly which screen was opened (or
+        // FAILED) so the wizard can report this truthfully instead of assuming success.
+        Function("openPrivateDnsSettings") {
+            val candidates = listOf(
+                "PRIVATE_DNS_SETTINGS" to "android.settings.PRIVATE_DNS_SETTINGS",
+                "NETWORK_SETTINGS" to android.provider.Settings.ACTION_WIRELESS_SETTINGS,
+                "GENERIC_SETTINGS" to android.provider.Settings.ACTION_SETTINGS,
+            )
+            var openedScreen = "FAILED"
+            for ((label, action) in candidates) {
+                try {
+                    val intent = Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    if (intent.resolveActivity(context.packageManager) != null) {
+                        context.startActivity(intent)
+                        openedScreen = label
+                        break
+                    }
+                } catch (e: Exception) {
+                    // this candidate isn't launchable on this device/OEM -- fall through to the next, more-generic one.
+                }
+            }
+            mapOf("openedScreen" to openedScreen)
+        }
     }
 
     companion object {

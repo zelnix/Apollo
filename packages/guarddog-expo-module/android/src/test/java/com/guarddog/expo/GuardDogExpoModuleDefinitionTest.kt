@@ -35,6 +35,8 @@ class GuardDogExpoModuleDefinitionTest {
                 "getPhase6DeviceProvenance",
                 // Gate Guard DNS/DoH Capability Diagnostic Wizard: harness-only, additive.
                 "getDnsCapabilityDeviceSnapshot",
+                // DNS/DoH wizard 2026-06 fix round: native Settings navigation w/ fallback chain.
+                "openPrivateDnsSettings",
             ),
             definition.syncFunctions.keys,
         )

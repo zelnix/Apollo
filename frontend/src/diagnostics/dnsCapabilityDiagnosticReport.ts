@@ -6,8 +6,9 @@ import { File, Paths } from "expo-file-system";
 import * as Print from "expo-print";
 import { Platform } from "react-native";
 
-import { CLASSIFICATION_LABELS, type DnsDiagnosticRecord } from "@/src/diagnostics/dnsCapabilityDiagnostic";
+import { type ActivationResult, CLASSIFICATION_LABELS, type DnsDiagnosticRecord } from "@/src/diagnostics/dnsCapabilityDiagnostic";
 import type { DnsDiagnosticTruthSnapshot } from "@/src/diagnostics/dnsCapabilityTruthSnapshot";
+import type { AttemptKeyed } from "@/src/diagnostics/dnsWizardProbeGate";
 import type { BuildProvenance } from "@/src/harness/buildProvenance";
 import type { Phase6DeviceProvenance } from "@/src/harness/phase6DeviceProvenance";
 
@@ -18,8 +19,13 @@ export interface DnsCharacterizationRun {
   buildProvenance: BuildProvenance | null;
   deviceProvenance: Phase6DeviceProvenance | null;
   /** Full machine-observed truth-of-state snapshot captured at the end of Preflight (null if the
-   * wizard never reached/passed Preflight this session). */
+   * wizard never reached/passed Preflight this session). Convenience = the LATEST attempt's
+   * snapshot; see `preflightAttempts` below for the full, immutable history. */
   preflightSnapshot: DnsDiagnosticTruthSnapshot | null;
+  /** Immutable preflight provenance (2026-06 fix): EVERY "Start diagnostic"/"Retry activation"
+   * attempt this session, in order -- never just the latest one, so a prior successful attempt
+   * stays visible in the report even if a later retry failed. */
+  preflightAttempts: (ActivationResult & AttemptKeyed)[];
 }
 
 const CLASS_COLOR: Record<string, string> = {
@@ -40,7 +46,18 @@ export function buildDnsCharacterizationJson(run: DnsCharacterizationRun): strin
 function recordRow(r: DnsDiagnosticRecord): string {
   const violation = r.truthSnapshot?.truthViolation;
   const violationCell = violation?.violated ? `<span style="color:#b91c1c;font-weight:700">⚠ ${esc(violation.reasons.join(" "))}</span>` : "none";
-  return `<tr><td>${esc(r.category)}</td><td>${esc(r.configurationLabel)}</td><td>${esc(r.probeHostname)}</td><td>${esc(r.transportNetworkType)}</td><td>${r.sawPlaintextUdp53 ? "yes" : "no"}</td><td>${r.websiteGateEventProduced ? "yes" : "no"}</td><td>${r.independentSuccess === null ? "n/a" : r.independentSuccess ? "yes" : "no"} (${esc(r.independentSuccessSource)})</td><td style="color:${CLASS_COLOR[r.classification] ?? "#64748b"};font-weight:800">${esc(r.classification)}<br/><span style="font-weight:400;font-size:9px">${esc(CLASSIFICATION_LABELS[r.classification])}</span></td><td style="font-size:9px">${violationCell}</td><td style="font-size:10px">${esc(r.notes)}</td></tr>`;
+  return `<tr><td>${esc(r.category)}</td><td>${esc(r.configuredMode)}</td><td>${esc(r.observedRuntimeMode)}</td><td>${esc(r.protectionStateBeforeProbe)}</td><td>${r.recoveryAttempted ? "yes" : "no"}</td><td>${esc(r.recoveryAttempted ? r.protectionStateAfterRecovery : "n/a")}</td><td>${esc(r.probeHostname)}</td><td>${esc(r.transportNetworkType)}</td><td>${r.sawPlaintextUdp53 ? "yes" : "no"}</td><td>${r.websiteGateEventProduced ? "yes" : "no"}</td><td>${r.independentSuccess === null ? "n/a" : r.independentSuccess ? "yes" : "no"} (${esc(r.independentSuccessSource)})</td><td style="color:${CLASS_COLOR[r.classification] ?? "#64748b"};font-weight:800">${esc(r.classification)}<br/><span style="font-weight:400;font-size:9px">${esc(CLASSIFICATION_LABELS[r.classification])}</span></td><td style="font-size:9px">${violationCell}</td><td style="font-size:10px">${esc(r.notes)}</td></tr>`;
+}
+
+function preflightAttemptsSection(attempts: (ActivationResult & AttemptKeyed)[]): string {
+  if (attempts.length === 0) return `<h3>Preflight attempt history</h3><p style="font-size:11px;color:#94a3b8">No activation was attempted this session.</p>`;
+  const rows = attempts
+    .map(
+      (a) =>
+        `<tr><td>#${a.attemptNumber}</td><td style="color:${a.ok ? "#15803d" : "#b91c1c"};font-weight:700">${a.ok ? "OK" : "FAILED"}</td><td>${esc(a.ok ? "—" : a.reason)}</td><td>${a.m1BundleAccepted === null ? "n/a" : a.m1BundleAccepted ? "yes" : "no"}</td><td>${a.internetContinuityOk === null ? "n/a" : a.internetContinuityOk ? "yes" : "no"}</td><td>${esc(a.preflightSnapshot.capturedAt)}</td></tr>`,
+    )
+    .join("");
+  return `<h3>Preflight attempt history (${attempts.length}) — immutable, never overwritten by a later retry</h3><table border="1" cellpadding="4" style="border-collapse:collapse;width:100%;font-size:10px"><thead><tr><th>#</th><th>Result</th><th>Reason</th><th>M1 accepted</th><th>Continuity OK</th><th>Captured at</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function truthSnapshotSection(title: string, s: DnsDiagnosticTruthSnapshot | null): string {
@@ -92,11 +109,13 @@ No mitigation or enforcement behavior was added, changed, or tested.
 <p><strong>APK SHA-256:</strong> ${esc(run.buildProvenance?.apkSha256)} &nbsp; <strong>Commit/CI run:</strong> ${esc(run.buildProvenance?.gitSha)} / ${esc(run.buildProvenance?.ciRunId)}</p>
 <p><strong>Device:</strong> ${esc(run.deviceProvenance?.manufacturer)} ${esc(run.deviceProvenance?.model)} · Android ${esc(run.deviceProvenance?.osRelease)} (SDK ${esc(run.deviceProvenance?.sdkInt)}) · patch ${esc(run.deviceProvenance?.securityPatch)}</p>
 
-${truthSnapshotSection("Preflight — full automated truth-of-state snapshot", run.preflightSnapshot)}
+${truthSnapshotSection("Preflight — full automated truth-of-state snapshot (latest attempt)", run.preflightSnapshot)}
+
+${preflightAttemptsSection(run.preflightAttempts)}
 
 <table border="1" cellpadding="6" style="border-collapse:collapse;width:100%;font-size:11px;margin-top:16px">
-<thead><tr><th>Category</th><th>Configuration (machine-observed)</th><th>Probe host</th><th>Network</th><th>Saw plaintext UDP/53</th><th>Website Gate event</th><th>Independent success</th><th>Classification</th><th>Truth violation</th><th>Notes</th></tr></thead>
-<tbody>${run.records.map(recordRow).join("") || `<tr><td colspan="10" style="color:#94a3b8">No probes recorded yet.</td></tr>`}</tbody>
+<thead><tr><th>Category</th><th>Configured mode</th><th>Observed runtime mode</th><th>Protection before probe</th><th>Recovery attempted</th><th>Protection after recovery</th><th>Probe host</th><th>Network</th><th>Saw plaintext UDP/53</th><th>Website Gate event</th><th>Independent success</th><th>Classification</th><th>Truth violation</th><th>Notes</th></tr></thead>
+<tbody>${run.records.map(recordRow).join("") || `<tr><td colspan="14" style="color:#94a3b8">No probes recorded yet.</td></tr>`}</tbody>
 </table>
 
 <h3>Summary</h3>

@@ -110,6 +110,16 @@ export interface NativeDnsCapabilityDeviceSnapshot {
   capturedAtMillis: number;
 }
 
+/** DNS/DoH wizard 2026-06 fix round: which Android settings screen `openPrivateDnsSettings()`
+ * actually managed to open, verified resolvable via PackageManager before launch (never assumed) --
+ * see the fallback chain in GuardDogExpoModule.kt. "FAILED" means none of the 3 candidates resolved
+ * on this device/OEM. */
+export type NativeOpenSettingsScreen = "PRIVATE_DNS_SETTINGS" | "NETWORK_SETTINGS" | "GENERIC_SETTINGS" | "FAILED";
+
+export interface NativeOpenSettingsResult {
+  openedScreen: NativeOpenSettingsScreen;
+}
+
 export interface GuardDogNativeModule {
   getCapabilities(): Record<string, unknown>;
   getProtectionState(): NativeProtectionState;
@@ -140,6 +150,10 @@ export interface GuardDogNativeModule {
   getPhase6DeviceProvenance(): NativePhase6DeviceProvenance;
   /** Gate Guard DNS/DoH Capability Diagnostic Wizard: harness-only. See NativeDnsCapabilityDeviceSnapshot. */
   getDnsCapabilityDeviceSnapshot(): NativeDnsCapabilityDeviceSnapshot;
+  /** DNS/DoH wizard 2026-06 fix round: opens the best available Android Settings screen for
+   * changing Private DNS (Private DNS settings -> Network & internet -> generic Settings
+   * fallback chain, each verified resolvable before launch). Returns exactly which screen opened. */
+  openPrivateDnsSettings(): NativeOpenSettingsResult;
   addListener(eventName: string, listener: (payload: unknown) => void): { remove(): void };
 }
 

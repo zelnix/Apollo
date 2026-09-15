@@ -28,13 +28,31 @@
 // match THAT probe's own dedicated target -- never inferred from a shared/global enforcement
 // counter, and BYPASSED is only ever concluded from independent proof of success, never absence
 // alone. Additionally (physical-device review fix): a row's truth-of-state snapshot is now a HARD
-// classification gate, not just an informational note -- see evaluateTruthGate/classify below.
+// classification gate, not just an informational note -- see dnsWizardProbeGate.ts.
+//
+// 2026-06 physical Pixel 10 fix round (see PRD "DNS/DoH Wizard -- physical Pixel 10 run FAILED"):
+// found 3 real bugs -- "Automatic" hard-polled for ACTIVE_NO_HOSTNAME and timed out even though the
+// device was genuinely Automatic (opportunistic DoT legitimately inactive); a correctly-observed
+// "Strict" row was force-gated NOT_TESTABLE because protection had dropped to STOPPED with no
+// recovery attempt; "Strict" was recorded twice because retries appended instead of replacing that
+// step's own row. All decision logic for the fix is centralized in the dependency-free
+// dnsWizardProbeGate.ts (own targeted `node --test` unit tests) so it can be exercised without a
+// native build; this file wires that pure logic to the real native/SDK reads.
 import * as Network from "expo-network";
 import { Platform } from "react-native";
 
 import { isGenuineBlockedEvent, type SecurityEvent } from "@/src/contracts/securityEventSchemas";
 import type { RuleEntry } from "@/src/contracts/shared/ruleBundle";
 import { captureDnsDiagnosticTruthSnapshot, describePrivateDnsRuntimeMode, type DnsDiagnosticTruthSnapshot } from "@/src/diagnostics/dnsCapabilityTruthSnapshot";
+import {
+  classifyWithHardGate,
+  decideRecoveryOutcome,
+  describeAutomaticModeContradiction,
+  describeOffModeContradiction,
+  needsRecovery,
+  type GateTruthInputs,
+  type ObservedPrivateDnsMode,
+} from "@/src/diagnostics/dnsWizardProbeGate";
 import { fetchLatestBundle, fetchM1Config, toProtectionConfig } from "@/src/harness/ruleBundleFixtures";
 import { GuardDogSecuritySDK, WEBSITE_GATE_DEFAULT_UPSTREAM_DNS_IPV4 } from "@/src/sdk/GuardDogSecuritySDK";
 import { GuardDogNative, type NativeDnsCapabilityDeviceSnapshot, type PrivateDnsRuntimeMode } from "@/src/sdk/nativeModule";
@@ -75,12 +93,31 @@ export const CLASSIFICATION_LABELS: Record<DnsDiagnosticClassification, string> 
 
 export interface DnsDiagnosticRecord {
   id: string;
+  /** The wizard step this record belongs to -- duplicate-row fix: a retry for the SAME step
+   * replaces its existing row (see upsertRecordByStepId in dnsWizardProbeGate.ts) rather than
+   * appending a second one. */
+  stepId: WizardRowId;
   category: DnsDiagnosticCategory;
   /** Machine-derived label (from the native Private DNS snapshot) for private-dns rows; a
    * tester-supplied browser/version + DoH setting for app-embedded-doh rows (Android exposes
    * neither the browser identity nor its DoH setting to a third-party app, so that half stays
-   * descriptive metadata -- never treated as evidence). */
+   * descriptive metadata -- never treated as evidence). Kept as a convenience combined display
+   * string; `configuredMode`/`observedRuntimeMode` below are the explicit, separately-reportable
+   * fields the 2026-06 fix round requires. */
   configurationLabel: string;
+  /** What was actually configured/tester-confirmed for this row (e.g. "Private DNS — Off
+   * (tester-selected)") -- NEVER a machine-verified claim by itself; see `observedRuntimeMode`. */
+  configuredMode: string;
+  /** The machine-observed runtime state at probe time (honest wording from
+   * describePrivateDnsRuntimeMode -- e.g. never claims "Off" for INACTIVE_OR_OFF). */
+  observedRuntimeMode: string;
+  /** Protection state read immediately before this row's pre-probe readiness sequence started. */
+  protectionStateBeforeProbe: string | null;
+  /** Whether the pre-probe readiness sequence attempted a recovery (protection was not ACTIVE at
+   * the "before" read). Always reported, never silently omitted, regardless of outcome. */
+  recoveryAttempted: boolean;
+  /** Protection state after the recovery attempt settled (null if no recovery was attempted). */
+  protectionStateAfterRecovery: string | null;
   probeHostname: string;
   transportNetworkType: string | null;
   sawPlaintextUdp53: boolean;
@@ -92,7 +129,9 @@ export interface DnsDiagnosticRecord {
   notes: string | null;
   probeStartedAt: string;
   probeEndedAt: string;
-  /** Full machine-observed truth-of-state at the moment this specific probe ran. */
+  /** Full machine-observed truth-of-state at the moment this specific probe ran (captured AFTER
+   * the pre-probe readiness/recovery sequence, i.e. it reflects the state the probe actually ran
+   * under, never the possibly-stale state from before recovery). */
   truthSnapshot: DnsDiagnosticTruthSnapshot;
 }
 
@@ -102,11 +141,15 @@ export interface DotWizardStepConfig {
   id: "dot-off" | "dot-automatic" | "dot-strict";
   title: string;
   settingsInstruction: string;
-  /** null for "dot-off": Android's public API can NEVER prove "Off" was selected --
-   * INACTIVE_OR_OFF is equally consistent with "Automatic" whose opportunistic probe is currently
-   * inactive. So this row is never auto-polled-to-match; the tester explicitly confirms their OWN
-   * selection instead, and Apollo records the machine-observed state honestly alongside it -- see
-   * runPrivateDnsProbeForStep. Never displayed as "Off verified". */
+  /** null for "dot-off" AND "dot-automatic" (2026-06 fix): Android's public API can never PROVE
+   * either was selected. "Off" cannot be distinguished from "Automatic" whose opportunistic probe
+   * is currently inactive; conversely, requiring/polling for ACTIVE_NO_HOSTNAME to confirm
+   * "Automatic" is WRONG -- opportunistic DoT legitimately stays inactive on many real networks
+   * even with Automatic genuinely selected (this hard-poll timing out was the physical Pixel 10
+   * regression). Both rows are tester-confirmed instead; Apollo records the machine-observed state
+   * honestly alongside the tester's own claim (see runPrivateDnsProbeForStep /
+   * describeOffModeContradiction / describeAutomaticModeContradiction) -- never displayed as a
+   * machine-verified match. Only "dot-strict" has a genuinely machine-provable target. */
   targetRuntimeMode: PrivateDnsRuntimeMode | null;
 }
 
@@ -121,7 +164,8 @@ export const DOT_WIZARD_STEPS: DotWizardStepConfig[] = [
     id: "dot-automatic",
     title: "Private DNS — Automatic",
     settingsInstruction: 'In Android Settings → Network & internet → Private DNS, choose "Automatic".',
-    targetRuntimeMode: "ACTIVE_NO_HOSTNAME",
+    // 2026-06 fix: no longer polls-to-match ACTIVE_NO_HOSTNAME -- see the doc comment above.
+    targetRuntimeMode: null,
   },
   {
     id: "dot-strict",
@@ -203,33 +247,31 @@ function isAttributedToProbe(event: SecurityEvent | null, host: string, ruleId: 
   return !!event && isGenuineBlockedEvent(event) && (event.host ?? "").toLowerCase() === host.toLowerCase() && event.ruleId === ruleId;
 }
 
-/** Physical-device review fix: a row must never be labelled CAPTURED/BYPASSED if the environment it
- * ran under cannot itself be trusted -- these conditions are now a HARD classification gate
- * (forces NOT_TESTABLE), not merely an informational note attached to an otherwise-normal verdict. */
-function evaluateTruthGate(truthSnapshot: DnsDiagnosticTruthSnapshot, extraReasons: string[]): string[] {
-  const reasons = [...extraReasons];
-  if (!truthSnapshot.nativeAvailable) {
-    reasons.push("Native module unavailable at probe time (Expo Go / web).");
-    return reasons; // nothing else here is meaningfully checkable without native
-  }
-  if (truthSnapshot.protectionState !== "ACTIVE") reasons.push(`Protection state was '${truthSnapshot.protectionState}' at probe time, not ACTIVE.`);
-  if (truthSnapshot.tunOpen === false) reasons.push("Native TUN was reportedly closed at probe time.");
-  if (truthSnapshot.dnsGatewayActive === false) reasons.push("Website Gate DNS gateway was reportedly inactive at probe time.");
-  if (truthSnapshot.probeRuleConfirmedInBundle === false) reasons.push("The dedicated probe rule was not confirmed present in the accepted diagnostic bundle.");
-  return reasons;
+/** The exact preflight-derived fields every per-row readiness/gate function needs, carried forward
+ * from the Preflight activation result (or the latest retried attempt -- see appendPreflightAttempt
+ * in dnsWizardProbeGate.ts / the screen's own immutable attempt history) into every later snapshot
+ * this session. */
+export interface PreflightCarry {
+  m1BundleAccepted: boolean | null;
+  probeRuleConfirmedInBundle: boolean | null;
+  internetContinuityOk: boolean | null;
+  configuredUpstreamDnsResolverIpv4: string | null;
 }
 
-function classify(
-  attributedEvent: SecurityEvent | null,
-  independentSuccess: boolean | null,
-  truthSnapshot: DnsDiagnosticTruthSnapshot,
-  extraGateReasons: string[] = [],
-): { classification: DnsDiagnosticClassification; gateReasons: string[] } {
-  const gateReasons = evaluateTruthGate(truthSnapshot, extraGateReasons);
-  if (gateReasons.length > 0) return { classification: "NOT_TESTABLE", gateReasons };
-  if (attributedEvent) return { classification: "CAPTURED", gateReasons: [] };
-  if (independentSuccess === true) return { classification: "BYPASSED", gateReasons: [] }; // absence of capture alone is NEVER treated as a bypass -- never guessed.
-  return { classification: "UNOBSERVABLE", gateReasons: [] };
+/** Converts a full truth-of-state snapshot into the minimal shape the dependency-free hard
+ * classification gate (dnsWizardProbeGate.ts's evaluateHardClassificationGate/classifyWithHardGate)
+ * needs -- keeps this file's own richer DnsDiagnosticTruthSnapshot decoupled from that pure module. */
+function toGateInputs(snapshot: DnsDiagnosticTruthSnapshot): GateTruthInputs {
+  return {
+    nativeAvailable: snapshot.nativeAvailable,
+    protectionState: snapshot.protectionState,
+    tunOpen: snapshot.tunOpen,
+    dnsGatewayActive: snapshot.dnsGatewayActive,
+    m1BundleAccepted: snapshot.m1BundleAccepted,
+    probeRuleConfirmedInBundle: snapshot.probeRuleConfirmedInBundle,
+    internetContinuityOk: snapshot.internetContinuityOk,
+    truthViolation: snapshot.truthViolation,
+  };
 }
 
 function unrelatedEventNote(event: SecurityEvent | null, attributedEvent: SecurityEvent | null, host: string): string | null {
@@ -273,59 +315,70 @@ async function fetchProbeHost(host: string, timeoutMs: number): Promise<{ outcom
   }
 }
 
-/** Automated probe for Android system Private DNS (DoT) configurations. For "dot-automatic"/
- * "dot-strict", called only once `pollForPrivateDnsRuntimeMode` has already confirmed the device is
- * in the step's target runtime mode. For "dot-off" (`targetRuntimeMode === null`), called once the
- * tester has manually confirmed THEY selected Off in Android Settings -- there is no machine-provable
- * target to poll for. `configurationLabel` is derived ENTIRELY from a fresh native snapshot taken at
- * probe time (never from an earlier poll match, and never manually typed). Physical-device review
- * fixes applied here: (1) drift between detection and execution, and (2) an "Off" claim that the
- * machine observes as definitely NOT off, both now HARD-gate the row to NOT_TESTABLE via classify()
- * instead of merely adding a note. */
-export async function runPrivateDnsProbeForStep(
-  step: DotWizardStepConfig,
-  preflight: {
-    m1BundleAccepted: boolean | null;
-    probeRuleConfirmedInBundle: boolean | null;
-    internetContinuityOk: boolean | null;
-    configuredUpstreamDnsResolverIpv4: string | null;
-  },
-  windowMs = 12_000,
-): Promise<DnsDiagnosticRecord> {
+/** Automated probe for Android system Private DNS (DoT) configurations. "dot-strict" is called
+ * only once `pollForPrivateDnsRuntimeMode` has already confirmed the device is in the target
+ * runtime mode. "dot-off"/"dot-automatic" (`targetRuntimeMode === null`) are called once the
+ * tester has manually confirmed their own selection in Android Settings -- neither has a
+ * machine-provable target to poll for (see DOT_WIZARD_STEPS doc comment). `configuredMode` /
+ * `observedRuntimeMode` are ALWAYS kept separate and explicit (2026-06 fix; `configurationLabel`
+ * remains only as a convenience combined display string).
+ *
+ * 2026-06 fix: every call now runs the full rigorous pre-probe readiness sequence
+ * (ensureProbeReadiness, defined below) FIRST -- read config, check protection, bounded recovery
+ * if needed, TUN/gateway/continuity re-verification, fresh DNS re-read. If that sequence does not
+ * clear, the fetch/observation probe itself is skipped entirely (never attempted) -- the row is
+ * still always recorded, honestly, as NOT_TESTABLE via classifyWithHardGate's own independent
+ * re-check of the same conditions (defense in depth: readiness.ready and the hard gate must
+ * always agree, by construction). There is no "continue anyway" path. */
+export async function runPrivateDnsProbeForStep(step: DotWizardStepConfig, preflight: PreflightCarry, windowMs = 12_000): Promise<DnsDiagnosticRecord> {
   const identity = ROW_PROBE_IDENTITY[step.id];
   const probeStartedAt = nowIso();
-  const truthSnapshot = await captureDnsDiagnosticTruthSnapshot(preflight);
-  const transportNetworkType = await getNetworkType();
-  let fetchOutcome: Awaited<ReturnType<typeof fetchProbeHost>> | null = null;
-  const event = await observeWindow(async () => {
-    fetchOutcome = await fetchProbeHost(identity.host, Math.min(windowMs, 8000));
-  }, windowMs);
-  const attributedEvent = isAttributedToProbe(event, identity.host, identity.ruleId) ? event : null;
-  const independentSuccess = (fetchOutcome as { outcome: string } | null)?.outcome === "resolved";
-  const observedMode = truthSnapshot.privateDnsRuntimeMode;
+
+  const readiness = await ensureProbeReadiness(preflight);
+  const observedMode = readiness.freshSnapshot.privateDnsRuntimeMode;
+  const machineObserved = describePrivateDnsRuntimeMode(observedMode, readiness.freshSnapshot.privateDnsServerName);
+  const configuredMode = step.targetRuntimeMode === null ? `${step.title} (tester-selected)` : step.title;
 
   const extraGateReasons: string[] = [];
-  if (step.targetRuntimeMode === null) {
-    // "Off" row: never machine-provable (see file header). If the machine observes a state that IS
-    // definitely inconsistent with Off (genuinely active encrypted DNS), that is a real
-    // contradiction with the tester's claim -- not just a labelling nuance.
-    if (observedMode === "STRICT" || observedMode === "ACTIVE_NO_HOSTNAME") {
-      extraGateReasons.push(
-        `Tester indicated Private DNS was set to Off, but the machine observed '${observedMode}' at probe time, which is inconsistent with Off -- this row's evidence cannot be trusted under the claimed configuration.`,
-      );
-    }
+  if (readiness.readinessFailureReason) extraGateReasons.push(readiness.readinessFailureReason);
+  if (step.id === "dot-off") {
+    // "Off" row: never machine-provable (see file header). Only a genuinely active encrypted-DNS
+    // state contradicts the tester's claim -- not just a labelling nuance.
+    const contradiction = describeOffModeContradiction(observedMode as ObservedPrivateDnsMode);
+    if (contradiction) extraGateReasons.push(contradiction);
+  } else if (step.id === "dot-automatic") {
+    // "Automatic" row (physical-device fix): never requires/waits for ACTIVE_NO_HOSTNAME.
+    // INACTIVE_OR_OFF is a perfectly legitimate Automatic outcome; only STRICT is a contradiction.
+    const contradiction = describeAutomaticModeContradiction(observedMode as ObservedPrivateDnsMode);
+    if (contradiction) extraGateReasons.push(contradiction);
   } else if (observedMode !== "UNAVAILABLE" && observedMode !== step.targetRuntimeMode) {
     extraGateReasons.push(`Runtime state drifted between detection and probe execution -- expected ${step.targetRuntimeMode}, observed ${observedMode} at probe time.`);
   }
 
-  const { classification, gateReasons } = classify(attributedEvent, independentSuccess, truthSnapshot, extraGateReasons);
-  const machineObserved = describePrivateDnsRuntimeMode(observedMode, truthSnapshot.privateDnsServerName);
-  const configurationLabel = step.targetRuntimeMode === null ? `${step.title} (tester-selected). Machine observed: ${machineObserved}` : `${step.title}: ${machineObserved}`;
+  let event: SecurityEvent | null = null;
+  let fetchOutcome: Awaited<ReturnType<typeof fetchProbeHost>> | null = null;
+  let transportNetworkType: string | null = null;
+  if (readiness.ready) {
+    transportNetworkType = await getNetworkType();
+    event = await observeWindow(async () => {
+      fetchOutcome = await fetchProbeHost(identity.host, Math.min(windowMs, 8000));
+    }, windowMs);
+  }
+  const attributedEvent = isAttributedToProbe(event, identity.host, identity.ruleId) ? event : null;
+  const independentSuccess = readiness.ready ? (fetchOutcome as { outcome: string } | null)?.outcome === "resolved" : null;
+
+  const { classification, gateReasons } = classifyWithHardGate(!!attributedEvent, independentSuccess, toGateInputs(readiness.freshSnapshot), extraGateReasons);
 
   return {
     id: `dot-${Date.now()}`,
+    stepId: step.id,
     category: "private-dns",
-    configurationLabel,
+    configurationLabel: `${configuredMode}. Machine observed: ${machineObserved}`,
+    configuredMode,
+    observedRuntimeMode: machineObserved,
+    protectionStateBeforeProbe: readiness.protectionStateBeforeProbe,
+    recoveryAttempted: readiness.recoveryAttempted,
+    protectionStateAfterRecovery: readiness.protectionStateAfterRecovery,
     probeHostname: identity.host,
     transportNetworkType,
     sawPlaintextUdp53: !!attributedEvent,
@@ -337,7 +390,7 @@ export async function runPrivateDnsProbeForStep(
     notes: [unrelatedEventNote(event, attributedEvent, identity.host), gateReasons.length > 0 ? `NOT_TESTABLE reason(s): ${gateReasons.join(" ")}` : null].filter((n): n is string => !!n).join(" ") || null,
     probeStartedAt,
     probeEndedAt: nowIso(),
-    truthSnapshot,
+    truthSnapshot: readiness.freshSnapshot,
   };
 }
 
@@ -421,14 +474,17 @@ export function startAppEmbeddedDohObservation(
 
 /** Builds the record for an app-embedded DoH probe from ONLY machine-observed evidence: Apollo's own
  * attributed event stream, and the backend's independent, server-verified receipt confirmation --
- * never a manually-reported judgment call. `truthSnapshot` must be captured by the caller
- * immediately before `Linking.openURL` was fired, so it reflects the exact state the probe ran under.
- * Physical-device review fix: if Apollo BOTH recorded a genuine attributed block AND the probe
- * page's server receipt independently confirmed arrival, that is a logical contradiction (a
- * genuinely blocked request could never reach the page to fire its receipt beacon) -- this is now
- * gated to NOT_TESTABLE via classify() rather than ever being displayed as CAPTURED. */
+ * never a manually-reported judgment call. `truthSnapshot`/`readiness` must be captured by the
+ * caller via `ensureProbeReadiness()` immediately before `Linking.openURL` was fired (2026-06 fix:
+ * DoH rows now run the SAME rigorous pre-probe readiness/recovery sequence as DoT rows -- previously
+ * they had none at all), so it reflects the exact state the probe ran under. Physical-device review
+ * fix: if Apollo BOTH recorded a genuine attributed block AND the probe page's server receipt
+ * independently confirmed arrival, that is a logical contradiction (a genuinely blocked request
+ * could never reach the page to fire its receipt beacon) -- this is gated to NOT_TESTABLE via
+ * classifyWithHardGate() rather than ever being displayed as CAPTURED. */
 export function buildAppEmbeddedDohRecord(
-  configurationLabel: string,
+  stepId: WizardRowId,
+  configuredMode: string,
   host: string,
   ruleId: string,
   nonce: string,
@@ -436,23 +492,33 @@ export function buildAppEmbeddedDohRecord(
   receiptConfirmed: boolean,
   probeStartedAt: string,
   transportNetworkType: string | null,
-  truthSnapshot: DnsDiagnosticTruthSnapshot,
+  readiness: ProbeReadiness,
 ): DnsDiagnosticRecord {
+  const truthSnapshot = readiness.freshSnapshot;
   const attributedEvent = isAttributedToProbe(event, host, ruleId) ? event : null;
-  const contradictionReasons: string[] = [];
+  const extraGateReasons: string[] = [];
+  if (readiness.readinessFailureReason) extraGateReasons.push(readiness.readinessFailureReason);
   if (attributedEvent && receiptConfirmed) {
-    contradictionReasons.push(
+    extraGateReasons.push(
       "Contradiction: Apollo recorded an attributed block AND the probe page's server receipt confirmed independently -- these cannot both be genuine, so this row cannot be trusted as CAPTURED.",
     );
   }
   // If Apollo captured/blocked it, the receipt should never have arrived at all (the request never
-  // reached the probe page) -- independentSuccess is only meaningful when there was nothing to capture.
-  const independentSuccess = attributedEvent ? null : receiptConfirmed;
-  const { classification, gateReasons } = classify(attributedEvent, independentSuccess, truthSnapshot, contradictionReasons);
+  // reached the probe page) -- independentSuccess is only meaningful when there was nothing to
+  // capture, and only meaningful at all if the probe was actually attempted (readiness.ready).
+  const independentSuccess = !readiness.ready ? null : attributedEvent ? null : receiptConfirmed;
+  const { classification, gateReasons } = classifyWithHardGate(!!attributedEvent, independentSuccess, toGateInputs(truthSnapshot), extraGateReasons);
+  const observedRuntimeMode = describePrivateDnsRuntimeMode(truthSnapshot.privateDnsRuntimeMode, truthSnapshot.privateDnsServerName);
   return {
     id: `doh-${Date.now()}`,
+    stepId,
     category: "app-embedded-doh",
-    configurationLabel,
+    configurationLabel: configuredMode,
+    configuredMode,
+    observedRuntimeMode,
+    protectionStateBeforeProbe: readiness.protectionStateBeforeProbe,
+    recoveryAttempted: readiness.recoveryAttempted,
+    protectionStateAfterRecovery: readiness.protectionStateAfterRecovery,
     probeHostname: buildDohProbeUrl(host, nonce),
     transportNetworkType,
     sawPlaintextUdp53: !!attributedEvent,
@@ -471,12 +537,25 @@ export function buildAppEmbeddedDohRecord(
 /** For preconditions that could not be met at all (e.g. native module unavailable, gate not active,
  * or Private DNS detection timed out and the tester chose not to retry) -- an explicit NOT_TESTABLE
  * record, never silently skipped and never guessed as UNOBSERVABLE. */
-export function notTestableRecord(category: DnsDiagnosticCategory, configurationLabel: string, reason: string, truthSnapshot: DnsDiagnosticTruthSnapshot, probeHostname = "n/a"): DnsDiagnosticRecord {
+export function notTestableRecord(
+  stepId: WizardRowId,
+  category: DnsDiagnosticCategory,
+  configuredMode: string,
+  reason: string,
+  truthSnapshot: DnsDiagnosticTruthSnapshot,
+  probeHostname = "n/a",
+): DnsDiagnosticRecord {
   const at = nowIso();
   return {
     id: `nt-${Date.now()}`,
+    stepId,
     category,
-    configurationLabel,
+    configurationLabel: configuredMode,
+    configuredMode,
+    observedRuntimeMode: describePrivateDnsRuntimeMode(truthSnapshot.privateDnsRuntimeMode, truthSnapshot.privateDnsServerName),
+    protectionStateBeforeProbe: truthSnapshot.protectionState,
+    recoveryAttempted: false,
+    protectionStateAfterRecovery: null,
     probeHostname,
     transportNetworkType: null,
     sawPlaintextUdp53: false,
@@ -569,6 +648,93 @@ async function checkInternetContinuity(): Promise<boolean> {
   } finally {
     clearTimeout(timer);
   }
+}
+
+export interface ProbeReadiness {
+  ready: boolean;
+  protectionStateBeforeProbe: string | null;
+  protectionStateAfterRecovery: string | null;
+  recoveryAttempted: boolean;
+  /** Fresh truth-of-state snapshot re-read AFTER the readiness/recovery sequence -- this is the
+   * snapshot every row must use for both display and classification, never a possibly-stale one
+   * captured before recovery ran. */
+  freshSnapshot: DnsDiagnosticTruthSnapshot;
+  readinessFailureReason: string | null;
+}
+
+/**
+ * 2026-06 physical-device fix: the rigorous pre-probe sequence required before EVERY row, DoT and
+ * DoH alike (previously DoH rows had NO readiness check at all, and DoT rows only captured a
+ * snapshot without ever attempting recovery -- exactly how a correctly-observed "Strict" reading
+ * got force-gated to NOT_TESTABLE on the Pixel 10 run after protection had silently dropped to
+ * STOPPED). Sequence: read config -> check protection -> bounded, defensive recovery attempt if not
+ * ACTIVE -> wait for ACTIVE -> TUN open -> dnsGatewayActive (+ ruleset didn't drift) -> Internet
+ * Continuity re-verified FRESH (never just carried forward from Preflight) -> re-read DNS state.
+ * There is no "continue anyway": if this doesn't clear, `ready` is false and the caller must skip
+ * the actual probe attempt and let classifyWithHardGate's own independent re-check of the same
+ * conditions record NOT_TESTABLE (defense in depth -- `ready` and the hard gate always agree, by
+ * construction, since both ultimately look at the same freshSnapshot).
+ *
+ * VPN-survives-Settings-transition (best-effort per explicit user decision, not blocking): this is
+ * the structural answer to that concern too -- opening Android Settings to change Private DNS does
+ * not, by itself, stop this app's foreground VpnService or kill the process; IF the OS or user
+ * revoked VPN consent / the tunnel dropped during that transition for any reason, THIS sequence is
+ * exactly what detects and attempts to recover from it before the next probe runs, rather than a
+ * separate native lifecycle change.
+ */
+export async function ensureProbeReadiness(preflight: PreflightCarry): Promise<ProbeReadiness> {
+  let status = GuardDogSecuritySDK.getProtectionState();
+  const protectionStateBeforeProbe = status.state;
+  let recoveryAttempted = false;
+  let protectionStateAfterRecovery: string | null = null;
+
+  if (needsRecovery(protectionStateBeforeProbe)) {
+    recoveryAttempted = true;
+    try {
+      status = await GuardDogSecuritySDK.startProtection();
+    } catch {
+      // Being unable to even ATTEMPT startProtection() (e.g. consent genuinely revoked) is itself
+      // captured by the terminal poll below settling at whatever getProtectionState() reports.
+    }
+    const startDeadline = Date.now() + ACTIVATION_START_PROTECTION_TIMEOUT_MS;
+    while (status.state !== "ACTIVE" && status.state !== "FAILED" && status.state !== "STOPPED" && status.state !== "REVOKED" && Date.now() < startDeadline) {
+      await sleep(ACTIVATION_POLL_MS);
+      status = GuardDogSecuritySDK.getProtectionState();
+    }
+    protectionStateAfterRecovery = status.state;
+  }
+
+  const recovery = decideRecoveryOutcome(protectionStateBeforeProbe, recoveryAttempted ? protectionStateAfterRecovery : null, recoveryAttempted);
+  let readinessFailureReason = recovery.failureReason;
+
+  if (!readinessFailureReason) {
+    const tunOpen = Platform.OS === "android" && GuardDogNative ? GuardDogNative.getRecoveryStatus().tunOpen : null;
+    if (tunOpen !== true) readinessFailureReason = "Native TUN was not confirmed open after the pre-probe readiness check.";
+  }
+
+  if (!readinessFailureReason) {
+    let gateStatus = GuardDogSecuritySDK.getWebsiteGateStatus();
+    const gateDeadline = Date.now() + ACTIVATION_GATE_ACTIVE_TIMEOUT_MS;
+    while (!gateStatus.dnsGatewayActive && Date.now() < gateDeadline) {
+      await sleep(ACTIVATION_POLL_MS);
+      gateStatus = GuardDogSecuritySDK.getWebsiteGateStatus();
+    }
+    if (!gateStatus.dnsGatewayActive) {
+      readinessFailureReason = "Website Gate DNS gateway was not confirmed active after the pre-probe readiness check.";
+    } else if (gateStatus.acceptedRulesetId !== DNS_DIAGNOSTIC_WIZARD_RULESET_ID) {
+      readinessFailureReason = `Accepted ruleset drifted before this probe (expected ${DNS_DIAGNOSTIC_WIZARD_RULESET_ID}, observed ${gateStatus.acceptedRulesetId ?? "none"}).`;
+    }
+  }
+
+  let internetContinuityOk = preflight.internetContinuityOk;
+  if (!readinessFailureReason) {
+    internetContinuityOk = await checkInternetContinuity();
+    if (!internetContinuityOk) readinessFailureReason = "Internet Continuity re-check failed immediately before this probe -- ordinary browsing would be broken.";
+  }
+
+  const freshSnapshot = await captureDnsDiagnosticTruthSnapshot({ ...preflight, internetContinuityOk });
+
+  return { ready: !readinessFailureReason, protectionStateBeforeProbe, protectionStateAfterRecovery, recoveryAttempted, freshSnapshot, readinessFailureReason };
 }
 
 /** Activates protection + the Website Gate using ONLY the stable public GuardDogSecuritySDK surface

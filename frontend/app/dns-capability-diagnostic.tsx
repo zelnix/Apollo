@@ -28,10 +28,12 @@ import {
   type DnsDiagnosticRecord,
   type DotWizardStepConfig,
   DOT_WIZARD_STEPS,
+  ensureProbeReadiness,
   generateProbeNonce,
   getNetworkType,
   notTestableRecord,
   pollForPrivateDnsRuntimeMode,
+  type ProbeReadiness,
   PRIVATE_DNS_POLL_HARD_TIMEOUT_MS,
   PRIVATE_DNS_POLL_STILL_CHECKING_AFTER_MS,
   ROW_PROBE_IDENTITY,
@@ -40,12 +42,15 @@ import {
 } from "@/src/diagnostics/dnsCapabilityDiagnostic";
 import { exportDnsCharacterizationJson, exportDnsCharacterizationPdf } from "@/src/diagnostics/dnsCapabilityDiagnosticReport";
 import { captureDnsDiagnosticTruthSnapshot } from "@/src/diagnostics/dnsCapabilityTruthSnapshot";
+import { appendPreflightAttempt, type AttemptKeyed, latestAttempt, upsertRecordByStepId } from "@/src/diagnostics/dnsWizardProbeGate";
 import { readBuildProvenance } from "@/src/harness/buildProvenance";
 import { readPhase6DeviceProvenance } from "@/src/harness/phase6DeviceProvenance";
 import { shareEvidenceFile } from "@/src/harness/proofReport";
 import { writeDnsDohStatus } from "@/src/harness/testRunStatus";
-import type { NativeDnsCapabilityDeviceSnapshot } from "@/src/sdk/nativeModule";
+import { GuardDogNative, type NativeDnsCapabilityDeviceSnapshot, type NativeOpenSettingsScreen } from "@/src/sdk/nativeModule";
 import { makeStyles, useTheme } from "@/src/theme";
+
+type ActivationAttempt = ActivationResult & AttemptKeyed;
 
 type WizardStepId = "preflight" | "dot-off" | "dot-automatic" | "dot-strict" | "doh-off" | "doh-on" | "final-report";
 type DohStepId = "doh-off" | "doh-on";
@@ -59,6 +64,14 @@ const STEP_TITLES: Record<WizardStepId, string> = {
   "doh-off": "Browser DoH — Off",
   "doh-on": "Browser DoH — On",
   "final-report": "Final report",
+};
+
+/** 2026-06 fix: human-readable labels for what `openPrivateDnsSettings()` actually opened -- see
+ * the native fallback chain in GuardDogExpoModule.kt. */
+const OPENED_SETTINGS_SCREEN_LABELS: Record<Exclude<NativeOpenSettingsScreen, "FAILED">, string> = {
+  PRIVATE_DNS_SETTINGS: "Private DNS settings screen",
+  NETWORK_SETTINGS: "Network & internet settings screen",
+  GENERIC_SETTINGS: "Settings app (generic)",
 };
 
 const useStyles = makeStyles((colors) => ({
@@ -94,6 +107,11 @@ function classificationTone(c: DnsDiagnosticRecord["classification"]): "good" | 
 function recordToRows(r: DnsDiagnosticRecord): [string, string][] {
   return [
     ["Category", r.category],
+    ["Configured mode", r.configuredMode],
+    ["Observed runtime mode", r.observedRuntimeMode],
+    ["Protection state before probe", r.protectionStateBeforeProbe ?? "n/a"],
+    ["Recovery attempted", r.recoveryAttempted ? "yes" : "no"],
+    ["Protection state after recovery", r.recoveryAttempted ? r.protectionStateAfterRecovery ?? "n/a" : "n/a (no recovery needed)"],
     ["Probe host", r.probeHostname],
     ["Network", r.transportNetworkType ?? "unknown"],
     ["Saw plaintext UDP/53", r.sawPlaintextUdp53 ? "yes" : "no"],
@@ -115,12 +133,19 @@ export default function DnsCapabilityDiagnosticScreen() {
   const [sessionId] = useState(() => `dns-doh-${Date.now()}`);
   const [sessionStartedAt] = useState(() => new Date().toISOString());
 
-  const [activation, setActivation] = useState<ActivationResult | null>(null);
+  // Immutable preflight provenance (2026-06 fix): "Retry activation" APPENDS a new attempt, never
+  // overwrites/erases a prior one -- even a prior SUCCESSFUL attempt must stay visible in the
+  // report if a later retry fails. Live gating always uses the LATEST attempt (see
+  // dnsWizardProbeGate.ts's appendPreflightAttempt/latestAttempt doc comments for why that's still
+  // correct: a later genuine failure means the CURRENT live session really is no longer trustworthy).
+  const [preflightAttempts, setPreflightAttempts] = useState<ActivationAttempt[]>([]);
+  const activation = latestAttempt(preflightAttempts);
   const [activating, setActivating] = useState(false);
   const [records, setRecords] = useState<DnsDiagnosticRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [stepResult, setStepResult] = useState<DnsDiagnosticRecord | null>(null);
+  const [lastOpenedSettingsScreen, setLastOpenedSettingsScreen] = useState<NativeOpenSettingsScreen | null>(null);
 
   // Carried through from the Preflight activation result into every per-row/per-step snapshot this
   // session (never re-derived per row -- see dnsCapabilityTruthSnapshot.ts doc comments).
@@ -143,7 +168,7 @@ export default function DnsCapabilityDiagnosticScreen() {
   const dohObservationRef = useRef<{ startedAt: string; finish: () => Promise<{ event: import("@/src/contracts/securityEventSchemas").SecurityEvent | null; receiptConfirmed: boolean }> } | null>(null);
   const dohNonceRef = useRef<string | null>(null);
   const dohStepRef = useRef<DohStepId | null>(null);
-  const dohTruthSnapshotRef = useRef<Awaited<ReturnType<typeof captureDnsDiagnosticTruthSnapshot>> | null>(null);
+  const dohReadinessRef = useRef<ProbeReadiness | null>(null);
   const dohNetTypeRef = useRef<string | null>(null);
   const dohWentBackgroundRef = useRef(false);
   const dohFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -178,8 +203,8 @@ export default function DnsCapabilityDiagnosticScreen() {
     writeDnsDohStatus(hasTruthViolation ? "needs_attention" : "completed");
   }, [currentStepId, records]);
 
-  /** Only ever called for "dot-automatic"/"dot-strict" (targetRuntimeMode is machine-provable for
-   * those). "dot-off" never polls-to-match -- see handleConfirmDotOff. */
+  /** Auto-polled ONLY for "dot-strict" (the sole row with a genuinely machine-provable target --
+   * 2026-06 fix: "dot-automatic" no longer polls-to-match, see handleConfirmManualDotStep). */
   async function handleStartDotPolling(step: DotWizardStepConfig) {
     if (step.targetRuntimeMode === null) return;
     setError(null);
@@ -200,7 +225,7 @@ export default function DnsCapabilityDiagnosticScreen() {
       setBusy(true);
       try {
         const record = await runPrivateDnsProbeForStep(step, preflightCarry);
-        setRecords((prev) => [record, ...prev]);
+        setRecords((prev) => upsertRecordByStepId(prev, record));
         setStepResult(record);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -215,17 +240,18 @@ export default function DnsCapabilityDiagnosticScreen() {
     }
   }
 
-  /** "dot-off" row: Android's public API can NEVER prove "Off" was selected (see
-   * dnsCapabilityDiagnostic.ts) -- so instead of polling-to-match, the tester explicitly confirms
-   * THEIR OWN selection here, and Apollo records the machine-observed state honestly alongside it
-   * (never displayed as "Off verified"). */
-  async function handleConfirmDotOff(step: DotWizardStepConfig) {
+  /** "dot-off" AND "dot-automatic" rows (2026-06 fix): Android's public API can NEVER prove either
+   * was selected (see dnsCapabilityDiagnostic.ts) -- so instead of polling-to-match, the tester
+   * explicitly confirms THEIR OWN selection here, and Apollo records the machine-observed state
+   * honestly alongside it (never displayed as a machine-verified match). The pre-probe readiness
+   * sequence (recovery, TUN/gateway/continuity re-check) runs inside runPrivateDnsProbeForStep. */
+  async function handleConfirmManualDotStep(step: DotWizardStepConfig) {
     setError(null);
     setStepResult(null);
     setBusy(true);
     try {
       const record = await runPrivateDnsProbeForStep(step, preflightCarry);
-      setRecords((prev) => [record, ...prev]);
+      setRecords((prev) => upsertRecordByStepId(prev, record));
       setStepResult(record);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -234,11 +260,12 @@ export default function DnsCapabilityDiagnosticScreen() {
     }
   }
 
-  // Auto-start automated detection the moment a machine-verifiable Private DNS step becomes
-  // current. "dot-off" is excluded -- it waits for the tester's manual confirmation instead.
+  // Auto-start automated detection the moment the ONE machine-verifiable Private DNS step becomes
+  // current. "dot-off"/"dot-automatic" are excluded (2026-06 fix) -- both wait for the tester's
+  // manual confirmation instead (see handleConfirmManualDotStep).
   useEffect(() => {
     pollCancelRef.current = false;
-    if ((currentStepId === "dot-automatic" || currentStepId === "dot-strict") && activation?.ok) {
+    if (currentStepId === "dot-strict" && activation?.ok) {
       const step = DOT_WIZARD_STEPS.find((s) => s.id === currentStepId);
       if (step) void handleStartDotPolling(step);
     }
@@ -263,11 +290,26 @@ export default function DnsCapabilityDiagnosticScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function openPrivateDnsSettings() {
-    if (Platform.OS === "android") {
-      Linking.sendIntent("android.settings.PRIVATE_DNS_SETTINGS").catch(() => Linking.openSettings());
-    } else {
-      Linking.openSettings();
+  /** 2026-06 fix: native `openPrivateDnsSettings()` bridge (Private DNS settings -> Network &
+   * internet -> generic Settings fallback chain, each verified resolvable before launch) replaces
+   * the old JS-only `Linking.sendIntent` guess with zero visibility into what actually opened.
+   * Falls back to the old JS approach only if the native module itself is unavailable (Expo Go / web). */
+  async function openPrivateDnsSettingsScreen() {
+    if (Platform.OS === "android" && GuardDogNative) {
+      try {
+        const result = GuardDogNative.openPrivateDnsSettings();
+        setLastOpenedSettingsScreen(result.openedScreen);
+        return;
+      } catch {
+        // fall through to the generic JS-only fallback below
+      }
+    }
+    try {
+      await Linking.sendIntent("android.settings.PRIVATE_DNS_SETTINGS");
+      setLastOpenedSettingsScreen("PRIVATE_DNS_SETTINGS");
+    } catch {
+      await Linking.openSettings();
+      setLastOpenedSettingsScreen("GENERIC_SETTINGS");
     }
   }
 
@@ -278,10 +320,10 @@ export default function DnsCapabilityDiagnosticScreen() {
       const snapshot = await captureDnsDiagnosticTruthSnapshot(preflightCarry);
       const reason =
         step.targetRuntimeMode === null
-          ? "Tester chose not to confirm the Off configuration for this row."
+          ? "Tester chose not to confirm this configuration for this row."
           : `Automated detection did not observe the target Private DNS runtime state (${step.targetRuntimeMode}) within ${PRIVATE_DNS_POLL_HARD_TIMEOUT_MS / 1000}s.`;
-      const record = notTestableRecord("private-dns", `${step.title}: not testable`, reason, snapshot, ROW_PROBE_IDENTITY[step.id].host);
-      setRecords((prev) => [record, ...prev]);
+      const record = notTestableRecord(step.id, "private-dns", `${step.title}: not testable`, reason, snapshot, ROW_PROBE_IDENTITY[step.id].host);
+      setRecords((prev) => upsertRecordByStepId(prev, record));
       setStepResult(record);
       setPollPhase("idle");
     } finally {
@@ -294,7 +336,9 @@ export default function DnsCapabilityDiagnosticScreen() {
     setError(null);
     try {
       const result = await activateWebsiteGateForDiagnostics();
-      setActivation(result);
+      // Immutable preflight provenance (2026-06 fix): APPEND, never replace -- a prior successful
+      // attempt must remain visible in the report even if this retry itself fails.
+      setPreflightAttempts((prev) => appendPreflightAttempt(prev, result));
       if (!result.ok) setError(result.reason);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -309,10 +353,20 @@ export default function DnsCapabilityDiagnosticScreen() {
     setBusy(true);
     try {
       const identity = ROW_PROBE_IDENTITY[step];
+      // 2026-06 fix: DoH rows now run the SAME rigorous pre-probe readiness/recovery sequence as
+      // DoT rows (previously they had none at all) -- BEFORE the tester is ever sent to the browser.
+      const readiness = await ensureProbeReadiness(preflightCarry);
+      if (!readiness.ready) {
+        const label = `${dohBrowserLabel.trim() || "Unnamed browser"} — ${step === "doh-on" ? "DoH ON" : "DoH OFF"} (not attempted)`;
+        const record = notTestableRecord(step, "app-embedded-doh", label, readiness.readinessFailureReason ?? "Not ready to probe.", readiness.freshSnapshot, identity.host);
+        setRecords((prev) => upsertRecordByStepId(prev, record));
+        setStepResult(record);
+        return;
+      }
       const nonce = generateProbeNonce();
       dohNonceRef.current = nonce;
       dohStepRef.current = step;
-      dohTruthSnapshotRef.current = await captureDnsDiagnosticTruthSnapshot(preflightCarry);
+      dohReadinessRef.current = readiness;
       dohNetTypeRef.current = await getNetworkType();
       const observation = startAppEmbeddedDohObservation(identity.host, identity.ruleId, nonce, 120_000);
       dohObservationRef.current = observation;
@@ -333,7 +387,8 @@ export default function DnsCapabilityDiagnosticScreen() {
     const observation = dohObservationRef.current;
     const nonce = dohNonceRef.current;
     const step = dohStepRef.current;
-    if (!observation || !nonce || !step) return;
+    const readiness = dohReadinessRef.current;
+    if (!observation || !nonce || !step || !readiness) return;
     const identity = ROW_PROBE_IDENTITY[step];
     dohObservationRef.current = null;
     if (dohFallbackTimerRef.current) {
@@ -344,9 +399,9 @@ export default function DnsCapabilityDiagnosticScreen() {
     setError(null);
     try {
       const { event, receiptConfirmed } = await observation.finish();
-      const label = `${dohBrowserLabel.trim() || "Unnamed browser"} — ${step === "doh-on" ? "DoH ON" : "DoH OFF"}`;
-      const record = buildAppEmbeddedDohRecord(label, identity.host, identity.ruleId, nonce, event, receiptConfirmed, observation.startedAt, dohNetTypeRef.current, dohTruthSnapshotRef.current!);
-      setRecords((prev) => [record, ...prev]);
+      const configuredMode = `${dohBrowserLabel.trim() || "Unnamed browser"} — ${step === "doh-on" ? "DoH ON" : "DoH OFF"}`;
+      const record = buildAppEmbeddedDohRecord(step, configuredMode, identity.host, identity.ruleId, nonce, event, receiptConfirmed, observation.startedAt, dohNetTypeRef.current, readiness);
+      setRecords((prev) => upsertRecordByStepId(prev, record));
       setStepResult(record);
       setDohPhase("idle");
     } catch (e) {
@@ -360,9 +415,9 @@ export default function DnsCapabilityDiagnosticScreen() {
     setBusy(true);
     try {
       const snapshot = await captureDnsDiagnosticTruthSnapshot(preflightCarry);
-      const label = `${dohBrowserLabel.trim() || "Unnamed browser"} — ${step === "doh-on" ? "DoH ON" : "DoH OFF"}`;
-      const record = notTestableRecord("app-embedded-doh", label, "Tester marked this configuration as not testable (e.g. that browser unavailable on this device).", snapshot, ROW_PROBE_IDENTITY[step].host);
-      setRecords((prev) => [record, ...prev]);
+      const configuredMode = `${dohBrowserLabel.trim() || "Unnamed browser"} — ${step === "doh-on" ? "DoH ON" : "DoH OFF"}`;
+      const record = notTestableRecord(step, "app-embedded-doh", configuredMode, "Tester marked this configuration as not testable (e.g. that browser unavailable on this device).", snapshot, ROW_PROBE_IDENTITY[step].host);
+      setRecords((prev) => upsertRecordByStepId(prev, record));
       setStepResult(record);
       setDohPhase("idle");
     } finally {
@@ -372,7 +427,18 @@ export default function DnsCapabilityDiagnosticScreen() {
 
   async function buildRun() {
     const [buildProvenance, deviceProvenance] = await Promise.all([readBuildProvenance(), Promise.resolve(readPhase6DeviceProvenance())]);
-    return { runId: sessionId, startedAt: sessionStartedAt, records: [...records].reverse(), buildProvenance, deviceProvenance, preflightSnapshot: activation?.preflightSnapshot ?? null };
+    return {
+      runId: sessionId,
+      startedAt: sessionStartedAt,
+      records: [...records].reverse(),
+      buildProvenance,
+      deviceProvenance,
+      preflightSnapshot: activation?.preflightSnapshot ?? null,
+      // Immutable preflight provenance (2026-06 fix): every attempt this session, in order --
+      // never just the latest one -- so a prior successful attempt stays visible even if a later
+      // retry failed.
+      preflightAttempts,
+    };
   }
 
   /** Single share action (physical-device review requested this instead of two separate
@@ -428,9 +494,21 @@ export default function DnsCapabilityDiagnosticScreen() {
                 Required once per session before any probe runs. Uses this wizard&apos;s OWN dedicated, separately-signed rule bundle (never the production Website Gate bundle, and never the frozen M2.1 bundle) -- 5 unique probe hosts, one per row below, so no row can ever reuse another row&apos;s cached DNS answer.
               </Text>
               <ActionButton title={activating ? "Activating…" : activation ? "Retry activation" : "Start diagnostic"} onPress={handleActivate} disabled={activating} testID="dns-doh-activate" />
+              {preflightAttempts.length > 1 ? (
+                <View style={styles.scopeBanner} testID="dns-doh-attempt-history">
+                  <Text style={styles.scopeBannerText}>
+                    Attempt history ({preflightAttempts.length}) — immutable, never overwritten by a later retry:
+                  </Text>
+                  {preflightAttempts.map((a) => (
+                    <Text key={a.attemptNumber} style={styles.scopeBannerText}>
+                      #{a.attemptNumber}: {a.ok ? "OK" : `Failed — ${a.reason}`}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
               {activation ? (
                 <>
-                  <KeyValue label="Status" value={activation.ok ? "Active" : `Failed: ${activation.reason}`} testID="dns-doh-activation-status" />
+                  <KeyValue label="Status" value={activation.ok ? `Active (attempt #${activation.attemptNumber})` : `Failed: ${activation.reason} (attempt #${activation.attemptNumber})`} testID="dns-doh-activation-status" />
                   <KeyValue
                     label="M1 protection bundle accepted"
                     value={activation.m1BundleAccepted === null ? "not checked (activation failed before this was attempted)" : activation.m1BundleAccepted ? "yes" : "NO — startProtection() cannot succeed without this"}
@@ -498,9 +576,10 @@ export default function DnsCapabilityDiagnosticScreen() {
             pollSnapshot={pollSnapshot}
             stepResult={stepResult}
             busy={busy}
-            onOpenSettings={openPrivateDnsSettings}
+            lastOpenedSettingsScreen={lastOpenedSettingsScreen}
+            onOpenSettings={() => void openPrivateDnsSettingsScreen()}
             onCheckAgain={() => void handleStartDotPolling(DOT_WIZARD_STEPS.find((s) => s.id === currentStepId)!)}
-            onConfirmOff={() => void handleConfirmDotOff(DOT_WIZARD_STEPS.find((s) => s.id === currentStepId)!)}
+            onConfirmManual={() => void handleConfirmManualDotStep(DOT_WIZARD_STEPS.find((s) => s.id === currentStepId)!)}
             onRecordNotTestable={() => void handleRecordDotNotTestable(DOT_WIZARD_STEPS.find((s) => s.id === currentStepId)!)}
             onContinue={() => goToStep(stepIndex + 1)}
           />
@@ -583,9 +662,10 @@ function DotStepCard({
   pollSnapshot,
   stepResult,
   busy,
+  lastOpenedSettingsScreen,
   onOpenSettings,
   onCheckAgain,
-  onConfirmOff,
+  onConfirmManual,
   onRecordNotTestable,
   onContinue,
 }: {
@@ -597,27 +677,37 @@ function DotStepCard({
   pollSnapshot: NativeDnsCapabilityDeviceSnapshot | null;
   stepResult: DnsDiagnosticRecord | null;
   busy: boolean;
+  lastOpenedSettingsScreen: NativeOpenSettingsScreen | null;
   onOpenSettings: () => void;
   onCheckAgain: () => void;
-  onConfirmOff: () => void;
+  onConfirmManual: () => void;
   onRecordNotTestable: () => void;
   onContinue: () => void;
 }) {
   const stillChecking = pollElapsedMs >= PRIVATE_DNS_POLL_STILL_CHECKING_AFTER_MS;
+  const openedScreenNote = lastOpenedSettingsScreen
+    ? lastOpenedSettingsScreen === "FAILED"
+      ? "Could not open any Settings screen automatically on this device — open Network & internet → Private DNS manually."
+      : `Opened: ${OPENED_SETTINGS_SCREEN_LABELS[lastOpenedSettingsScreen]}`
+    : null;
 
-  // "dot-off": Android's public API can never PROVE "Off" was selected -- no polling-to-match here.
-  // The tester confirms THEIR OWN selection; Apollo records the machine truth honestly alongside it.
+  // "dot-off"/"dot-automatic" (2026-06 fix): Android's public API can never PROVE either was
+  // selected -- no polling-to-match here. The tester confirms THEIR OWN selection; Apollo records
+  // the machine truth honestly alongside it.
   if (step.targetRuntimeMode === null) {
+    const manualCopy =
+      step.id === "dot-off"
+        ? 'Android cannot prove "Off" was selected -- it can only tell whether Private DNS is currently active, which is also true if Automatic\'s opportunistic probe happens to be inactive. So this one row needs your confirmation: after setting Off in Android Settings, tap below and Apollo will record the machine-observed state honestly alongside your selection (never displayed as "Off verified").'
+        : 'Android cannot prove "Automatic" was selected, and this row no longer waits for a specific machine-verified match -- the opportunistic DoT probe Automatic uses legitimately stays inactive on many real networks even when Automatic is genuinely selected. After choosing Automatic in Android Settings, tap below and Apollo will record whatever it actually observes, honestly, alongside your selection.';
     return (
       <Card title={step.title}>
         <Text style={styles.note}>{step.settingsInstruction}</Text>
-        <Text style={styles.note}>
-          Android cannot prove &quot;Off&quot; was selected -- it can only tell whether Private DNS is currently active, which is also true if Automatic&apos;s opportunistic probe happens to be inactive. So this one row needs your confirmation: after setting Off in Android Settings, tap below and Apollo will record the machine-observed state honestly alongside your selection (never displayed as &quot;Off verified&quot;).
-        </Text>
+        <Text style={styles.note}>{manualCopy}</Text>
         <ActionButton title="Open Private DNS Settings" secondary onPress={onOpenSettings} testID={`dns-wizard-${step.id}-open-settings`} />
+        {openedScreenNote ? <Text style={styles.note}>{openedScreenNote}</Text> : null}
         {!stepResult ? (
           <>
-            <ActionButton title={busy ? "Running…" : "I've set it to Off — Run probe"} onPress={onConfirmOff} disabled={busy} testID={`dns-wizard-${step.id}-confirm-off`} />
+            <ActionButton title={busy ? "Running…" : `I've set it to ${step.id === "dot-off" ? "Off" : "Automatic"} — Run probe`} onPress={onConfirmManual} disabled={busy} testID={`dns-wizard-${step.id}-confirm-manual`} />
             <ActionButton title="Record as not testable" secondary onPress={onRecordNotTestable} disabled={busy} testID={`dns-wizard-${step.id}-record-not-testable`} />
           </>
         ) : null}
@@ -640,6 +730,7 @@ function DotStepCard({
     <Card title={step.title}>
       <Text style={styles.note}>{step.settingsInstruction}</Text>
       <ActionButton title="Open Private DNS Settings" secondary onPress={onOpenSettings} testID={`dns-wizard-${step.id}-open-settings`} />
+      {openedScreenNote ? <Text style={styles.note}>{openedScreenNote}</Text> : null}
       {pollPhase === "polling" ? (
         <>
           <Text style={styles.timerText} testID={`dns-wizard-${step.id}-checking`}>
