@@ -30,6 +30,8 @@ const FULLY_READY: GateTruthInputs = {
   m1BundleAccepted: true,
   probeRuleConfirmedInBundle: true,
   internetContinuityOk: true,
+  configurationEstablished: true,
+  configurationNote: null,
   truthViolation: { violated: false, reasons: [] },
 };
 
@@ -51,6 +53,18 @@ test("hard gate: each required condition independently forces a gate reason", ()
   assert.match(evaluateHardClassificationGate({ ...FULLY_READY, dnsGatewayActive: false }).join(" "), /DNS gateway was not confirmed active/);
   assert.match(evaluateHardClassificationGate({ ...FULLY_READY, internetContinuityOk: false }).join(" "), /Internet Continuity was not confirmed PASS/);
   assert.match(evaluateHardClassificationGate({ ...FULLY_READY, truthViolation: { violated: true, reasons: ["x"] } }).join(" "), /Truth-of-state violation/);
+});
+
+test("hard gate: configurationEstablished is a REQUIRED explicit field (condition 8) -- false alone forces a gate reason using configurationNote", () => {
+  const reasons = evaluateHardClassificationGate({ ...FULLY_READY, configurationEstablished: false, configurationNote: "observed STRICT but tester claimed Off" });
+  assert.equal(reasons.length, 1);
+  assert.equal(reasons[0], "observed STRICT but tester claimed Off");
+});
+
+test("hard gate: configurationEstablished=false with no configurationNote still forces a generic gate reason (never silently passes)", () => {
+  const reasons = evaluateHardClassificationGate({ ...FULLY_READY, configurationEstablished: false, configurationNote: null });
+  assert.equal(reasons.length, 1);
+  assert.match(reasons[0], /not established\/tester-confirmed/);
 });
 
 test("hard gate: internet continuity failing alone means NO row may ever be classified CAPTURED/BYPASSED/UNOBSERVABLE", () => {

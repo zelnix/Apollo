@@ -29,6 +29,21 @@ export interface GateTruthInputs {
   m1BundleAccepted: boolean | null;
   probeRuleConfirmedInBundle: boolean | null;
   internetContinuityOk: boolean | null;
+  /**
+   * Condition 8 of the hard invariant (2026-06 SECOND fix round -- code review finding): this is
+   * now a REQUIRED, EXPLICIT struct field rather than something a caller had to remember to push
+   * into `extraReasons`. Previously a caller that forgot to run its own contradiction check could
+   * silently let a mismatched configuration pass the gate -- this makes that structurally
+   * impossible: TypeScript itself requires every call site to supply this field. True only when
+   * the requested configuration is established/tester-confirmed AND no contradiction was detected
+   * against the observed runtime (see describeOffModeContradiction/describeAutomaticModeContradiction
+   * and the Strict-hostname-survived-recovery check in dnsCapabilityDiagnostic.ts).
+   */
+  configurationEstablished: boolean;
+  /** Human-readable detail for why `configurationEstablished` is false (or a note when true) --
+   * kept separate from the boolean so the gate can still surface the SPECIFIC contradiction text
+   * (e.g. "observed STRICT but tester claimed Off") while the boolean itself stays mandatory. */
+  configurationNote: string | null;
   truthViolation: { violated: boolean; reasons: string[] };
 }
 
@@ -44,12 +59,15 @@ export interface GateTruthInputs {
  *   4. protection state ACTIVE
  *   5. native TUN open
  *   6. Website Gate DNS gateway active
- *   7. Internet Continuity re-verified PASS (fresh at probe time -- see `extraReasons`/caller;
- *      never just carried forward from Preflight without a fresh recheck)
- *   8. the requested configuration is established/tester-confirmed (checked by the caller via
- *      `extraReasons` -- e.g. a Private DNS runtime-mode contradiction, or a readiness/recovery
- *      failure reason)
+ *   7. Internet Continuity re-verified PASS (fresh at probe time; never just carried forward from
+ *      Preflight without a fresh recheck)
+ *   8. the requested configuration is established/tester-confirmed -- `configurationEstablished`,
+ *      a REQUIRED explicit field (2026-06 second fix round; was previously only representable via
+ *      caller-convention through `extraReasons`, which a caller could forget to populate)
  *   9. no truth-of-state violation flagged anywhere in the snapshot
+ * `extraReasons` remains available ONLY for genuinely orthogonal, ad hoc failure reasons that
+ * aren't one of the 9 named conditions above (e.g. a ruleset-drift detail, or a DoH
+ * attributed-event/receipt self-contradiction) -- never as a substitute for condition 8.
  */
 export function evaluateHardClassificationGate(snapshot: GateTruthInputs, extraReasons: string[] = []): string[] {
   const reasons = [...extraReasons];
@@ -63,6 +81,7 @@ export function evaluateHardClassificationGate(snapshot: GateTruthInputs, extraR
   if (snapshot.tunOpen !== true) reasons.push("Native TUN was not confirmed open at probe time.");
   if (snapshot.dnsGatewayActive !== true) reasons.push("Website Gate DNS gateway was not confirmed active at probe time.");
   if (snapshot.internetContinuityOk !== true) reasons.push(`Internet Continuity was not confirmed PASS at probe time (internetContinuityOk=${String(snapshot.internetContinuityOk)}).`);
+  if (snapshot.configurationEstablished !== true) reasons.push(snapshot.configurationNote ?? "The requested configuration was not established/tester-confirmed, or contradicted the observed runtime state.");
   if (snapshot.truthViolation.violated) reasons.push(`Truth-of-state violation flagged: ${snapshot.truthViolation.reasons.join(" ")}`);
   return reasons;
 }

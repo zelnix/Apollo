@@ -39,6 +39,7 @@ import {
   ROW_PROBE_IDENTITY,
   runPrivateDnsProbeForStep,
   startAppEmbeddedDohObservation,
+  verifyStillHealthyAfterProbe,
 } from "@/src/diagnostics/dnsCapabilityDiagnostic";
 import { exportDnsCharacterizationJson, exportDnsCharacterizationPdf } from "@/src/diagnostics/dnsCapabilityDiagnosticReport";
 import { captureDnsDiagnosticTruthSnapshot } from "@/src/diagnostics/dnsCapabilityTruthSnapshot";
@@ -224,7 +225,11 @@ export default function DnsCapabilityDiagnosticScreen() {
       setPollPhase("matched");
       setBusy(true);
       try {
-        const record = await runPrivateDnsProbeForStep(step, preflightCarry);
+        // 2026-06 second fix round (code review finding #5): for "dot-strict", carry forward the
+        // EXACT provider hostname observed at match time -- runPrivateDnsProbeForStep re-verifies
+        // it still matches after its own pre-probe readiness/recovery sequence, not just the mode.
+        const expectedStrictHostname = step.id === "dot-strict" ? result.finalSnapshot?.privateDnsServerName ?? null : null;
+        const record = await runPrivateDnsProbeForStep(step, preflightCarry, undefined, expectedStrictHostname);
         setRecords((prev) => upsertRecordByStepId(prev, record));
         setStepResult(record);
       } catch (e) {
@@ -293,16 +298,21 @@ export default function DnsCapabilityDiagnosticScreen() {
   /** 2026-06 fix: native `openPrivateDnsSettings()` bridge (Private DNS settings -> Network &
    * internet -> generic Settings fallback chain, each verified resolvable before launch) replaces
    * the old JS-only `Linking.sendIntent` guess with zero visibility into what actually opened.
-   * Falls back to the old JS approach only if the native module itself is unavailable (Expo Go / web). */
+   * 2026-06 SECOND fix round (code review finding #6): on a native diagnostic build, if the native
+   * bridge itself throws, REPORT the failure honestly -- do NOT fall back to `Linking.openSettings()`,
+   * which reopens Apollo's OWN app-specific settings page, exactly the regression this native
+   * bridge exists to eliminate. The JS-only `Linking` fallback chain is used ONLY when there is no
+   * native module at all (Expo Go / web preview), where this feature is documented as
+   * native-build-only and best-effort is reasonable so the wizard doesn't dead-end. */
   async function openPrivateDnsSettingsScreen() {
     if (Platform.OS === "android" && GuardDogNative) {
       try {
         const result = GuardDogNative.openPrivateDnsSettings();
         setLastOpenedSettingsScreen(result.openedScreen);
-        return;
       } catch {
-        // fall through to the generic JS-only fallback below
+        setLastOpenedSettingsScreen("FAILED");
       }
+      return;
     }
     try {
       await Linking.sendIntent("android.settings.PRIVATE_DNS_SETTINGS");
@@ -358,7 +368,14 @@ export default function DnsCapabilityDiagnosticScreen() {
       const readiness = await ensureProbeReadiness(preflightCarry);
       if (!readiness.ready) {
         const label = `${dohBrowserLabel.trim() || "Unnamed browser"} — ${step === "doh-on" ? "DoH ON" : "DoH OFF"} (not attempted)`;
-        const record = notTestableRecord(step, "app-embedded-doh", label, readiness.readinessFailureReason ?? "Not ready to probe.", readiness.freshSnapshot, identity.host);
+        // 2026-06 second fix round (code review finding #2): pass the readiness's OWN
+        // before/attempted/after evidence through -- notTestableRecord no longer silently
+        // hardcodes recoveryAttempted:false when a real recovery attempt already happened here.
+        const record = notTestableRecord(step, "app-embedded-doh", label, readiness.readinessFailureReason ?? "Not ready to probe.", readiness.freshSnapshot, identity.host, {
+          protectionStateBeforeProbe: readiness.protectionStateBeforeProbe,
+          recoveryAttempted: readiness.recoveryAttempted,
+          protectionStateAfterRecovery: readiness.protectionStateAfterRecovery,
+        });
         setRecords((prev) => upsertRecordByStepId(prev, record));
         setStepResult(record);
         return;
@@ -399,8 +416,26 @@ export default function DnsCapabilityDiagnosticScreen() {
     setError(null);
     try {
       const { event, receiptConfirmed } = await observation.finish();
+      // 2026-06 second fix round (code review finding #1, the most important one):
+      // verification-ONLY re-check of protection/TUN/gateway/continuity at the moment the tester
+      // actually returned from the browser -- NEVER attempts recovery. If Apollo dropped out while
+      // the browser was open, this probe must be forced NOT_TESTABLE rather than classified
+      // against the earlier, now-stale pre-open readiness snapshot.
+      const postProbeVerification = await verifyStillHealthyAfterProbe(preflightCarry);
       const configuredMode = `${dohBrowserLabel.trim() || "Unnamed browser"} — ${step === "doh-on" ? "DoH ON" : "DoH OFF"}`;
-      const record = buildAppEmbeddedDohRecord(step, configuredMode, identity.host, identity.ruleId, nonce, event, receiptConfirmed, observation.startedAt, dohNetTypeRef.current, readiness);
+      const record = buildAppEmbeddedDohRecord(
+        step,
+        configuredMode,
+        identity.host,
+        identity.ruleId,
+        nonce,
+        event,
+        receiptConfirmed,
+        observation.startedAt,
+        dohNetTypeRef.current,
+        readiness,
+        postProbeVerification,
+      );
       setRecords((prev) => upsertRecordByStepId(prev, record));
       setStepResult(record);
       setDohPhase("idle");
