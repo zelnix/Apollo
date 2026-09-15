@@ -37,6 +37,13 @@ export interface DnsDiagnosticTruthSnapshot {
    * re-derived per snapshot -- re-verifying the whole signed bundle on every row would be redundant;
    * the bundle cannot change mid-session without a fresh activation. */
   probeRuleConfirmedInBundle: boolean | null;
+  /** Carried through from the Preflight activation result (null before Preflight has run/attempted
+   * this). Physical-device review fix: a "DNS gateway active" reading does NOT by itself prove
+   * ordinary browsing still works -- see checkInternetContinuity() in dnsCapabilityDiagnostic.ts
+   * for the regression this guards against. `null` = never attempted; `false` = a known-good
+   * non-test destination was genuinely unreachable (Preflight must fail in this case); `true` =
+   * verified reachable. */
+  internetContinuityOk: boolean | null;
   activeNativeStackId: string | null;
   supportedAbis: string[];
   primaryAbi: string | null;
@@ -58,6 +65,7 @@ function computeTruthViolation(args: {
   tunOpen: boolean;
   m1BundleAccepted: boolean | null;
   probeRuleConfirmedInBundle: boolean | null;
+  internetContinuityOk: boolean | null;
 }): { violated: boolean; reasons: string[] } {
   const reasons: string[] = [];
   if (args.protectionState === "ACTIVE" && args.isVpnConsentRequired) {
@@ -82,19 +90,27 @@ function computeTruthViolation(args: {
   if (args.probeRuleConfirmedInBundle === false) {
     reasons.push("The dedicated probe rule is NOT confirmed present in the accepted signed bundle -- any capture below would be unattributable.");
   }
+  // dnsGatewayActive=true should be structurally impossible if Internet Continuity was ever
+  // confirmed to have failed this session -- Preflight always fails immediately when that happens,
+  // so seeing this combination in ANY snapshot would mean the load-bearing stop-cold guard was
+  // bypassed. Flagged rather than assumed.
+  if (args.dnsGatewayActive && args.internetContinuityOk === false) {
+    reasons.push("Website Gate DNS gateway reports active but Internet Continuity was confirmed FAILED -- ordinary browsing was broken and the wizard should have stopped, not continued.");
+  }
   return { violated: reasons.length > 0, reasons };
 }
 
 /**
- * Captures one fresh, fully machine-observed snapshot. `m1BundleAccepted` and
- * `probeRuleConfirmedInBundle` must be passed through from the Preflight activation result (or
- * null before Preflight has run/attempted this).
+ * Captures one fresh, fully machine-observed snapshot. `m1BundleAccepted`, `probeRuleConfirmedInBundle`,
+ * and `internetContinuityOk` must be passed through from the Preflight activation result (or null
+ * before Preflight has run/attempted each).
  */
 export async function captureDnsDiagnosticTruthSnapshot(preflight: {
   m1BundleAccepted: boolean | null;
   probeRuleConfirmedInBundle: boolean | null;
+  internetContinuityOk: boolean | null;
 }): Promise<DnsDiagnosticTruthSnapshot> {
-  const { m1BundleAccepted, probeRuleConfirmedInBundle } = preflight;
+  const { m1BundleAccepted, probeRuleConfirmedInBundle, internetContinuityOk } = preflight;
   const buildProvenance = await readBuildProvenance();
   const nativeAvailable = Platform.OS === "android" && !!GuardDogNative;
 
@@ -114,6 +130,7 @@ export async function captureDnsDiagnosticTruthSnapshot(preflight: {
       acceptedKeyId: null,
       m1BundleAccepted,
       probeRuleConfirmedInBundle,
+      internetContinuityOk,
       activeNativeStackId: null,
       supportedAbis: [],
       primaryAbi: null,
@@ -139,6 +156,7 @@ export async function captureDnsDiagnosticTruthSnapshot(preflight: {
     tunOpen: recovery.tunOpen,
     m1BundleAccepted,
     probeRuleConfirmedInBundle,
+    internetContinuityOk,
   });
 
   return {
@@ -156,6 +174,7 @@ export async function captureDnsDiagnosticTruthSnapshot(preflight: {
     acceptedKeyId: gateStatus.acceptedKeyId,
     m1BundleAccepted,
     probeRuleConfirmedInBundle,
+    internetContinuityOk,
     activeNativeStackId: dnsSnapshot.activeNativeStackId,
     supportedAbis: dnsSnapshot.supportedAbis,
     primaryAbi: dnsSnapshot.primaryAbi,

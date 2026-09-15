@@ -284,7 +284,7 @@ async function fetchProbeHost(host: string, timeoutMs: number): Promise<{ outcom
  * instead of merely adding a note. */
 export async function runPrivateDnsProbeForStep(
   step: DotWizardStepConfig,
-  preflight: { m1BundleAccepted: boolean | null; probeRuleConfirmedInBundle: boolean | null },
+  preflight: { m1BundleAccepted: boolean | null; probeRuleConfirmedInBundle: boolean | null; internetContinuityOk: boolean | null },
   windowMs = 12_000,
 ): Promise<DnsDiagnosticRecord> {
   const identity = ROW_PROBE_IDENTITY[step.id];
@@ -503,6 +503,13 @@ export interface ActivationResult {
    * `null` means activation failed BEFORE this bundle was ever fetched/inspected -- "not yet
    * checked", never conflated with `false` ("checked, and it's genuinely missing"). */
   probeRuleConfirmedInBundle: boolean | null;
+  /** True iff a known-good, definitely-not-a-test-domain HTTPS request completed successfully
+   * while the Website Gate's DNS pipeline was active -- proves ordinary browsing wasn't silently
+   * broken (see checkInternetContinuity() doc comment for the physical-device regression this
+   * guards against). `null` = never attempted (failed even earlier). `false` = the gate came up
+   * "active" but a normal, non-test destination was genuinely unreachable through it -- Preflight
+   * MUST fail in this case; no row may ever be classified while this is false. */
+  internetContinuityOk: boolean | null;
   /** Full machine-observed truth-of-state snapshot taken at the end of Preflight. Carried forward
    * as the `m1BundleAccepted`/`probeRuleConfirmedInBundle` baseline for every later per-row
    * snapshot this session. */
@@ -518,14 +525,47 @@ const ACTIVATION_START_PROTECTION_TIMEOUT_MS = 15_000;
 const ACTIVATION_GATE_ACTIVE_TIMEOUT_MS = 10_000;
 const ACTIVATION_POLL_MS = 250;
 
+/** Android's own standard captive-portal/connectivity-check endpoint -- a well-known, definitely
+ * non-test, non-blocklisted destination, never added to any ruleset, never classified as a wizard
+ * row. Used ONLY to prove ordinary DNS+HTTPS still works while the Website Gate is active. */
+const INTERNET_CONTINUITY_CHECK_URL = "https://connectivitycheck.gstatic.com/generate_204";
+const INTERNET_CONTINUITY_TIMEOUT_MS = 8_000;
+
+/** Physical-device regression guard (2026-09): a Pixel 10 run found that "DNS gateway active"
+ * alone does NOT prove ordinary browsing still works. Root cause (fixed alongside this check, see
+ * WEBSITE_GATE_DEFAULT_UPSTREAM_DNS_IPV4 in GuardDogSecuritySDK.ts): every caller of
+ * `configureWebsiteGate()` -- this wizard AND the frozen Phase 6A harness -- omitted
+ * `upstreamDnsResolverIpv4`, which the native module correctly (by its own prior contract) treated
+ * as an explicit request to fail open by silence for every non-block DNS query. Combined with the
+ * DNS gateway becoming the device's ONLY system DNS resolver while active, this meant EVERY
+ * ordinary (non-test) hostname lookup silently got no answer at all -- normal browsing broke
+ * completely, invisible to every existing acceptance test because none of them ever attempt a
+ * normal HTTPS request while the gate is active. Required invariant (never relaxed): Apollo ACTIVE
+ * must preserve ordinary internet connectivity; only explicitly authorized destinations may be
+ * dropped. This check is therefore load-bearing, not advisory -- Preflight MUST fail
+ * (INTERNET_CONTINUITY_FAILED) rather than let the wizard proceed to classify any row if it fails,
+ * even if the upstream-resolver fix above is somehow not present in a given build. */
+async function checkInternetContinuity(): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), INTERNET_CONTINUITY_TIMEOUT_MS);
+  try {
+    await fetch(INTERNET_CONTINUITY_CHECK_URL, { method: "GET", cache: "no-store", signal: controller.signal });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Activates protection + the Website Gate using ONLY the stable public GuardDogSecuritySDK surface
  * -- implemented fresh here (not imported) so this tool has zero code-level dependency on
  * phase6AutomatedHarness.ts, but now mirrors that frozen harness's PROVEN activation order exactly:
  * requestPermission -> fetch+configure M1 -> fetch+accept the M1 signed bundle -> configure the
  * Website Gate -> fetch+accept THIS WIZARD's OWN dedicated bundle (gd-m2-dns-diagnostic-wizard,
  * never the frozen gd-m2-website-gate v4) -> hydrate overrides -> verify the 5 probe rules ->
- * ONLY THEN startProtection() -> poll ACTIVE -> poll dnsGatewayActive. Never signs or publishes a
- * bundle; only reads currently-live ones.
+ * ONLY THEN startProtection() -> poll ACTIVE -> poll dnsGatewayActive -> verify Internet
+ * continuity. Never signs or publishes a bundle; only reads currently-live ones.
  *
  * Physical-device review fixes (2026-09):
  * 1. Ordering bug: this wizard previously called startProtection() having only ever
@@ -540,18 +580,25 @@ const ACTIVATION_POLL_MS = 250;
  * 3. `m1BundleAccepted` / `probeRuleConfirmedInBundle` are only ever MEANINGFULLY known once each
  *    bundle has actually been fetched and accepted -- every earlier failure path reports the
  *    not-yet-reached one(s) as `null` ("not yet checked"), never `false` ("confirmed absent"), so
- *    the truth snapshot's violation reasons never claim a check that never ran. */
+ *    the truth snapshot's violation reasons never claim a check that never ran.
+ * 4. Internet Continuity preflight (new, see checkInternetContinuity() above): a second physical
+ *    run found the DNS gateway coming up "active" while silently breaking ALL ordinary browsing.
+ *    Root-caused and fixed at the SDK layer; this check is the load-bearing safety net that stops
+ *    the wizard cold (INTERNET_CONTINUITY_FAILED) rather than let any row be classified against an
+ *    Apollo session that isn't honoring its own core invariant. */
 export async function activateWebsiteGateForDiagnostics(): Promise<ActivationResult> {
   const fail = async (
     reason: string,
     m1BundleAccepted: boolean | null = null,
     probeRuleConfirmedInBundle: boolean | null = null,
+    internetContinuityOk: boolean | null = null,
   ): Promise<ActivationResult> => ({
     ok: false,
     reason,
     m1BundleAccepted,
     probeRuleConfirmedInBundle,
-    preflightSnapshot: await captureDnsDiagnosticTruthSnapshot({ m1BundleAccepted, probeRuleConfirmedInBundle }),
+    internetContinuityOk,
+    preflightSnapshot: await captureDnsDiagnosticTruthSnapshot({ m1BundleAccepted, probeRuleConfirmedInBundle, internetContinuityOk }),
   });
   if (!GuardDogSecuritySDK.nativeAvailable) return fail("NATIVE_MODULE_UNAVAILABLE (Expo Go / web -- a native Android build is required)");
   const permission = await GuardDogSecuritySDK.requestPermission("vpn");
@@ -568,7 +615,9 @@ export async function activateWebsiteGateForDiagnostics(): Promise<ActivationRes
   if (!m1Acceptance.accepted) return fail(`M1_BUNDLE_REJECTED (${m1Acceptance.rejectReason})`, false);
 
   // Step 2: configure + accept THIS WIZARD's own dedicated bundle into the Website Gate slot --
-  // deliberately gd-m2-dns-diagnostic-wizard, never the frozen gd-m2-website-gate v4.
+  // deliberately gd-m2-dns-diagnostic-wizard, never the frozen gd-m2-website-gate v4. `{}` now
+  // safely defaults `upstreamDnsResolverIpv4` to a real resolver (see GuardDogSecuritySDK.ts) --
+  // it no longer silently means "never forward any ordinary DNS query."
   GuardDogSecuritySDK.configureWebsiteGate({});
   const bundle = await fetchLatestBundle(DNS_DIAGNOSTIC_WIZARD_RULESET_ID);
   const acceptance = GuardDogSecuritySDK.acceptWebsiteGateRuleBundle(bundle);
@@ -594,6 +643,21 @@ export async function activateWebsiteGateForDiagnostics(): Promise<ActivationRes
     gateStatus = GuardDogSecuritySDK.getWebsiteGateStatus();
   }
   if (!gateStatus.dnsGatewayActive) return fail("DNS_GATEWAY_NOT_ACTIVE", true, probeRuleConfirmedInBundle);
-  const preflightSnapshot = await captureDnsDiagnosticTruthSnapshot({ m1BundleAccepted: true, probeRuleConfirmedInBundle });
-  return { ok: true, reason: null, m1BundleAccepted: true, probeRuleConfirmedInBundle, preflightSnapshot };
+
+  // Step 4 (new): Internet Continuity preflight -- "DNS gateway active" alone does not prove
+  // ordinary browsing works. Required invariant: Apollo ACTIVE must preserve ordinary internet
+  // connectivity; only explicitly authorized destinations may be dropped. Stop cold, before any
+  // row can be classified, if a known-good non-test destination is unreachable.
+  const internetContinuityOk = await checkInternetContinuity();
+  if (!internetContinuityOk) {
+    return fail(
+      `INTERNET_CONTINUITY_FAILED (${INTERNET_CONTINUITY_CHECK_URL} was unreachable while the Website Gate was active -- ordinary browsing would be broken; do not proceed)`,
+      true,
+      probeRuleConfirmedInBundle,
+      false,
+    );
+  }
+
+  const preflightSnapshot = await captureDnsDiagnosticTruthSnapshot({ m1BundleAccepted: true, probeRuleConfirmedInBundle, internetContinuityOk });
+  return { ok: true, reason: null, m1BundleAccepted: true, probeRuleConfirmedInBundle, internetContinuityOk, preflightSnapshot };
 }

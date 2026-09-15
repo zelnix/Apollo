@@ -56,6 +56,7 @@ function truthSnapshotSection(title: string, s: DnsDiagnosticTruthSnapshot | nul
     ["DNS gateway active", s.dnsGatewayActive === null ? "n/a" : s.dnsGatewayActive ? "yes" : "no"],
     ["Accepted ruleset / bundle / key", `${s.acceptedRulesetId ?? "n/a"} / v${s.acceptedBundleVersion ?? "?"} / ${s.acceptedKeyId ?? "n/a"}`],
     ["M1 protection bundle accepted", s.m1BundleAccepted === null ? "n/a (never attempted)" : s.m1BundleAccepted ? "yes" : "NO"],
+    ["Internet continuity (non-test destination reachable)", s.internetContinuityOk === null ? "n/a (never attempted)" : s.internetContinuityOk ? "yes" : "NO — ordinary browsing would be broken"],
     ["Dedicated probe rule confirmed in bundle", s.probeRuleConfirmedInBundle === null ? "n/a" : s.probeRuleConfirmedInBundle ? "yes" : "NO"],
     ["Active native stack", s.activeNativeStackId ?? "n/a"],
     ["Supported ABIs / primary", `${s.supportedAbis.join(", ") || "n/a"} / ${s.primaryAbi ?? "n/a"}`],

@@ -67,11 +67,31 @@ export interface LocalAnalysis {
 // --- Gate Guard M2.1 Phase 5: Website Gate types. Additive only. ---
 
 export interface WebsiteGateConfig {
-  /** Real upstream DNS resolver Apollo forwards non-block queries to. Omit/null to fail open by
-   * silence (no forwarding) rather than fabricate an allow answer. */
+  /** Real upstream DNS resolver Apollo forwards non-block queries to over a `VpnService.protect()`ed
+   * socket (bypasses the tunnel, no loop) -- see docs/M2_WEBSITE_GATE_DESIGN.md §2's frozen
+   * invariant: "forward the REAL DNS answer untouched ... unrelated browsing provably unaffected."
+   * Defaults to `WEBSITE_GATE_DEFAULT_UPSTREAM_DNS_IPV4` (a well-known public resolver) whenever
+   * this key is OMITTED, because every caller in this app was previously omitting it -- which the
+   * native module (correctly, by its own contract) treated as an explicit request to fail open by
+   * silence for every non-block DNS query, i.e. give NO answer to any ordinary/non-test hostname
+   * lookup while the Website Gate's DNS pipeline is active. Combined with `addDnsServer()` making
+   * the gateway the device's ONLY system DNS resolver, this silently broke ALL ordinary internet
+   * browsing for the entire session -- a real physical-device regression, invisible to every
+   * existing test because none of them ever attempt a normal (non-test-domain) HTTPS request while
+   * the gate is active. Pass `null` EXPLICITLY (not by omission) if a future test genuinely needs
+   * to exercise the fail-open-by-silence path on purpose. */
   upstreamDnsResolverIpv4?: string | null;
   bindingLifetimeMs?: number;
 }
+
+/** Cloudflare's public DNS resolver -- literal IPv4, never itself resolved via DNS (no
+ * chicken-and-egg), used as the safe default real upstream (see `WebsiteGateConfig` doc comment
+ * above). Deliberately NOT the device's own pre-VPN DNS server (capturing that would need new
+ * native plumbing); a well-known public resolver is a strict improvement over the prior
+ * "no answer at all" behavior and preserves the user's original DNS provider choice for every
+ * destination that was never going to be intercepted anyway (M1/M2 route selectively, not by
+ * default -- see SelectiveRouteInstaller). */
+const WEBSITE_GATE_DEFAULT_UPSTREAM_DNS_IPV4 = "1.1.1.1";
 
 export interface WebsiteGateStatus extends NativeWebsiteGateStatus {
   /** false when running without the native module (Expo Go / web): nothing is enforced, this is a
@@ -171,7 +191,11 @@ class GuardDogSecuritySDKImpl {
 
   configureWebsiteGate(config: WebsiteGateConfig = {}): void {
     GuardDogNative?.configureWebsiteGate({
-      upstreamDnsResolverIpv4: config.upstreamDnsResolverIpv4 ?? null,
+      // Physical-device regression fix (2026-09): `undefined` (key omitted, every existing caller)
+      // now gets a real default upstream instead of silently becoming `null` (fail-open-by-silence
+      // for every ordinary DNS lookup) -- see WebsiteGateConfig's doc comment. `null` is still
+      // honored if a caller passes it EXPLICITLY.
+      upstreamDnsResolverIpv4: config.upstreamDnsResolverIpv4 === undefined ? WEBSITE_GATE_DEFAULT_UPSTREAM_DNS_IPV4 : config.upstreamDnsResolverIpv4,
       bindingLifetimeMs: config.bindingLifetimeMs ?? 30_000,
     });
   }

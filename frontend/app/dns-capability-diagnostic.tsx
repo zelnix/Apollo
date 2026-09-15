@@ -124,7 +124,11 @@ export default function DnsCapabilityDiagnosticScreen() {
 
   // Carried through from the Preflight activation result into every per-row/per-step snapshot this
   // session (never re-derived per row -- see dnsCapabilityTruthSnapshot.ts doc comments).
-  const preflightCarry = { m1BundleAccepted: activation?.m1BundleAccepted ?? null, probeRuleConfirmedInBundle: activation?.probeRuleConfirmedInBundle ?? null };
+  const preflightCarry = {
+    m1BundleAccepted: activation?.m1BundleAccepted ?? null,
+    probeRuleConfirmedInBundle: activation?.probeRuleConfirmedInBundle ?? null,
+    internetContinuityOk: activation?.internetContinuityOk ?? null,
+  };
 
   // --- Private DNS (DoT) automated polling sub-state ---
   const [pollPhase, setPollPhase] = useState<"idle" | "polling" | "matched" | "timed-out">("idle");
@@ -429,6 +433,10 @@ export default function DnsCapabilityDiagnosticScreen() {
                   <KeyValue
                     label="M1 protection bundle accepted"
                     value={activation.m1BundleAccepted === null ? "not checked (activation failed before this was attempted)" : activation.m1BundleAccepted ? "yes" : "NO — startProtection() cannot succeed without this"}
+                  />
+                  <KeyValue
+                    label="Internet continuity (non-test destination reachable)"
+                    value={activation.internetContinuityOk === null ? "not checked (activation failed before this was attempted)" : activation.internetContinuityOk ? "yes" : "NO — ordinary browsing would be broken"}
                   />
                   <KeyValue
                     label="All 5 probe rules confirmed in bundle"
