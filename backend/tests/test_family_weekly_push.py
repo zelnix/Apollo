@@ -64,33 +64,46 @@ class TestWeeklyCheckinScheduler:
 
     def test_window_and_week_key(self):
         import asyncio
+        from motor.motor_asyncio import AsyncIOMotorClient
         from routers import family_weekly as server
         # Sunday 2026-06-14 18:30 local (UTC+10 → 08:30Z) is inside the window; Saturday is not; Sunday 12:00 is not.
         assert server._week_key(datetime(2026, 6, 14, 18, 30)) == "2026-W24"
         assert 17 in server.WEEKLY_WINDOW and 20 in server.WEEKLY_WINDOW and 21 not in server.WEEKLY_WINDOW and 16 not in server.WEEKLY_WINDOW
 
         async def run():
-            g = f"guard{uuid.uuid4().hex[:12]}"; p = f"prot{uuid.uuid4().hex[:12]}"
-            await server.db.devices.insert_one({"device_id": g, "platform": "web", "adapter_mode": "mock", "app_version": "1", "tz_offset_minutes": 600, "created_at": server.now_utc(), "last_seen_at": server.now_utc()})
-            await server.db.devices.insert_one({"device_id": p, "platform": "web", "adapter_mode": "mock", "app_version": "1", "created_at": server.now_utc(), "last_seen_at": server.now_utc()})
-            await server.db.family_links.insert_one({"protected_device_id": p, "guardian_device_id": g, "owner_name": "Mum", "created_at": server.now_utc(), "deleted_at": None})
-            # Saturday 08:30Z (= Sat 18:30 local) → nothing
-            assert await server.weekly_checkin_tick(datetime(2026, 6, 13, 8, 30, tzinfo=timezone.utc)) == 0
-            # Sunday 02:00Z (= Sun 12:00 local) → outside window
-            assert await server.weekly_checkin_tick(datetime(2026, 6, 14, 2, 0, tzinfo=timezone.utc)) == 0
-            # opted out → skipped even inside the window
-            await server.db.devices.update_one({"device_id": g}, {"$set": {"weekly_checkin_enabled": False}})
-            r = await server.send_weekly_checkin(g, "2026-W24")
-            assert r == {"sent": False, "reason": "opted_out"}
-            await server.db.devices.update_one({"device_id": g}, {"$set": {"weekly_checkin_enabled": True}})
-            # dedupe: pretend this week was already sent
-            await server.db.weekly_checkin_sends.insert_one({"guardian_device_id": g, "week_key": "2026-W24", "sent_at": server.now_utc()})
-            assert await server.send_weekly_checkin(g, "2026-W24") == {"sent": False, "reason": "already_sent"}
-            # sentence helper
-            w = (await server._weekly_rollup(g))[0]
-            assert server.weekly_sentence(w) == "A quiet week for Mum. Nothing came up that needed a look."
-            w2 = {**w, "total": 3, "alerts": 2, "open_alerts": 0, "handled_alerts": 2}
-            assert server.weekly_sentence(w2) == "Mum had 2 alerts this week and handled them all. Quite so."
-            w3 = {**w, "total": 0, "last_seen_at": None}
-            assert server.weekly_sentence(w3).startswith("Apollo hasn't heard from Mum's phone")
+            # A fresh Motor client bound to THIS event loop, swapped in for the module's shared
+            # singleton for the duration of this call: asyncio.run() below creates/closes its own
+            # loop, and re-using a client whose internals were created under a PREVIOUS (now-closed)
+            # loop — e.g. by test_family_nudge.py's identical pattern running earlier in the same
+            # worker — raises "Event loop is closed". Restored/closed in finally so nothing leaks.
+            client = AsyncIOMotorClient(os.environ["MONGO_URL"])
+            orig_db = server.db
+            server.db = client[orig_db.name]
+            try:
+                g = f"guard{uuid.uuid4().hex[:12]}"; p = f"prot{uuid.uuid4().hex[:12]}"
+                await server.db.devices.insert_one({"device_id": g, "platform": "web", "adapter_mode": "mock", "app_version": "1", "tz_offset_minutes": 600, "created_at": server.now_utc(), "last_seen_at": server.now_utc()})
+                await server.db.devices.insert_one({"device_id": p, "platform": "web", "adapter_mode": "mock", "app_version": "1", "created_at": server.now_utc(), "last_seen_at": server.now_utc()})
+                await server.db.family_links.insert_one({"protected_device_id": p, "guardian_device_id": g, "owner_name": "Mum", "created_at": server.now_utc(), "deleted_at": None})
+                # Saturday 08:30Z (= Sat 18:30 local) → nothing
+                assert await server.weekly_checkin_tick(datetime(2026, 6, 13, 8, 30, tzinfo=timezone.utc)) == 0
+                # Sunday 02:00Z (= Sun 12:00 local) → outside window
+                assert await server.weekly_checkin_tick(datetime(2026, 6, 14, 2, 0, tzinfo=timezone.utc)) == 0
+                # opted out → skipped even inside the window
+                await server.db.devices.update_one({"device_id": g}, {"$set": {"weekly_checkin_enabled": False}})
+                r = await server.send_weekly_checkin(g, "2026-W24")
+                assert r == {"sent": False, "reason": "opted_out"}
+                await server.db.devices.update_one({"device_id": g}, {"$set": {"weekly_checkin_enabled": True}})
+                # dedupe: pretend this week was already sent
+                await server.db.weekly_checkin_sends.insert_one({"guardian_device_id": g, "week_key": "2026-W24", "sent_at": server.now_utc()})
+                assert await server.send_weekly_checkin(g, "2026-W24") == {"sent": False, "reason": "already_sent"}
+                # sentence helper
+                w = (await server._weekly_rollup(g))[0]
+                assert server.weekly_sentence(w) == "A quiet week for Mum. Nothing came up that needed a look."
+                w2 = {**w, "total": 3, "alerts": 2, "open_alerts": 0, "handled_alerts": 2}
+                assert server.weekly_sentence(w2) == "Mum had 2 alerts this week and handled them all. Quite so."
+                w3 = {**w, "total": 0, "last_seen_at": None}
+                assert server.weekly_sentence(w3).startswith("Apollo hasn't heard from Mum's phone")
+            finally:
+                server.db = orig_db
+                client.close()
         asyncio.run(run())
