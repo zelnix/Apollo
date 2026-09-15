@@ -43,6 +43,7 @@ import { captureDnsDiagnosticTruthSnapshot } from "@/src/diagnostics/dnsCapabili
 import { readBuildProvenance } from "@/src/harness/buildProvenance";
 import { readPhase6DeviceProvenance } from "@/src/harness/phase6DeviceProvenance";
 import { shareEvidenceFile } from "@/src/harness/proofReport";
+import { writeDnsDohStatus } from "@/src/harness/testRunStatus";
 import type { NativeDnsCapabilityDeviceSnapshot } from "@/src/sdk/nativeModule";
 import { makeStyles, useTheme } from "@/src/theme";
 
@@ -155,6 +156,18 @@ export default function DnsCapabilityDiagnosticScreen() {
     resetStepTransientState();
     setStepIndex(index);
   }
+
+  // Home-screen "at a glance" status pill (see src/harness/testRunStatus.ts) -- purely a UI
+  // signal, never read back by this wizard and never affects any classification/verdict here.
+  useEffect(() => {
+    if (currentStepId === "preflight" || currentStepId === "final-report") return;
+    writeDnsDohStatus("in_progress");
+  }, [currentStepId]);
+  useEffect(() => {
+    if (currentStepId !== "final-report") return;
+    const hasTruthViolation = records.some((r) => r.truthSnapshot.truthViolation.violated);
+    writeDnsDohStatus(hasTruthViolation ? "needs_attention" : "completed");
+  }, [currentStepId, records]);
 
   /** Only ever called for "dot-automatic"/"dot-strict" (targetRuntimeMode is machine-provable for
    * those). "dot-off" never polls-to-match -- see handleConfirmDotOff. */

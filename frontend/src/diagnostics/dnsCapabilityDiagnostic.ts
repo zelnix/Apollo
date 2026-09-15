@@ -14,9 +14,14 @@
 // Physical-device review fix: every row used to reprobe the SAME shared hostname
 // (dnsprobe.blocktest.btciq.app, M2.1's frozen row-4.1 host), which risked the OS/DNS resolver
 // caching an earlier row's genuine bypass resolution and silently reusing it for a LATER row --
-// making that later row look like a bypass with no fresh DNS query actually happening. Each row now
-// gets its own never-reused hostname (see ROW_PROBE_IDENTITY) so that cross-row cache reuse is
-// structurally impossible, not just unlikely.
+// making that later row look like a bypass with no fresh DNS query actually happening. Each of the
+// 4 automated/polling rows now gets its own never-reused hostname (dnsprobe2-5.blocktest.btciq.app,
+// confirmed real/provisioned by the domain operator 2026-09) so cross-row cache reuse is
+// structurally impossible for those rows. "dot-off" deliberately keeps reusing the original
+// dnsprobe.blocktest.btciq.app (domain operator's explicit choice, since a 5th net-new host wasn't
+// provisioned) -- accepted risk: if a prior M2.1 Phase 6A run resolved that host, "dot-off"'s own
+// probe could observe a stale cached answer rather than a fresh over-the-wire lookup. This is the
+// only row where that risk applies; see ROW_PROBE_IDENTITY below.
 //
 // Same strict-attribution principle the M2.1 freeze required for row 4.1 (see PRD): a genuine
 // THREAT_BLOCKED event only ever counts as evidence for a probe when its own `host` + `ruleId`
@@ -45,13 +50,15 @@ export interface RowProbeIdentity {
   ruleId: string;
 }
 
-/** One dedicated, never-reused hostname per row. See the file-header comment for why. */
+/** One dedicated, never-reused hostname per row (dot-off intentionally excepted -- see file-header
+ * comment: it reuses the pre-existing dnsprobe.blocktest.btciq.app by explicit domain-operator
+ * choice). All hosts confirmed real/provisioned 2026-09. */
 export const ROW_PROBE_IDENTITY: Record<WizardRowId, RowProbeIdentity> = {
-  "dot-off": { host: "dnswiz-dot-off.blocktest.btciq.app", ruleId: "m2-dns-wizard-dot-off-001" },
-  "dot-automatic": { host: "dnswiz-dot-automatic.blocktest.btciq.app", ruleId: "m2-dns-wizard-dot-automatic-001" },
-  "dot-strict": { host: "dnswiz-dot-strict.blocktest.btciq.app", ruleId: "m2-dns-wizard-dot-strict-001" },
-  "doh-off": { host: "dnswiz-doh-off.blocktest.btciq.app", ruleId: "m2-dns-wizard-doh-off-001" },
-  "doh-on": { host: "dnswiz-doh-on.blocktest.btciq.app", ruleId: "m2-dns-wizard-doh-on-001" },
+  "dot-off": { host: "dnsprobe.blocktest.btciq.app", ruleId: "m2-dns-wizard-dot-off-001" },
+  "dot-automatic": { host: "dnsprobe2.blocktest.btciq.app", ruleId: "m2-dns-wizard-dot-automatic-001" },
+  "dot-strict": { host: "dnsprobe3.blocktest.btciq.app", ruleId: "m2-dns-wizard-dot-strict-001" },
+  "doh-off": { host: "dnsprobe4.blocktest.btciq.app", ruleId: "m2-dns-wizard-doh-off-001" },
+  "doh-on": { host: "dnsprobe5.blocktest.btciq.app", ruleId: "m2-dns-wizard-doh-on-001" },
 };
 
 export type DnsDiagnosticCategory = "private-dns" | "app-embedded-doh";

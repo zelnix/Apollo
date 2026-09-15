@@ -12,10 +12,18 @@ actually occurred. Giving each row its own, never-reused hostname makes that cro
 structurally impossible. The M2.1 v4 bundle/`m2-block-dns-capability-001` rule stays completely
 untouched -- this is a brand-new, independent ruleset with its own version history.
 
-Idempotent: if the latest bundle for this ruleset already carries all 5 expected rules, this is a
-no-op. If it exists but is missing some (e.g. a prior partial run), the existing rules are carried
-forward byte-for-byte and only the missing ones are appended, exactly like
-add_dns_capability_rule.py's carry-forward pattern for the (unrelated, untouched) M2.1 bundle.
+Hostnames confirmed real/provisioned by the domain operator 2026-09: dnsprobe2-5.blocktest.btciq.app
+are net-new subdomains, one each for the 4 automated/polling rows (dot-automatic, dot-strict,
+doh-off, doh-on). "dot-off" is the domain operator's explicit exception -- it reuses the
+pre-existing dnsprobe.blocktest.btciq.app rather than a 5th net-new host; the accepted risk (that
+host may carry a stale cache entry from a prior M2.1 Phase 6A run) applies only to that one row.
+
+Idempotent AND replace-in-place: EXPECTED_RULES is authoritative for its 5 ruleIds -- if the latest
+bundle already carries the exact same 5 rules, this is a no-op; if any of those ruleIds previously
+had a different host (e.g. this script's first run in 2026-09 published speculative `dnswiz-*`
+placeholders before the domain operator confirmed the real hostnames above), that rule is replaced
+in-place under a NEW bundle version rather than appended as a duplicate. Any other, unrelated
+pre-existing rule under this ruleset is still carried forward byte-for-byte.
 
 Usage: cd backend && python scripts/create_dns_diagnostic_wizard_ruleset.py --confirm
 """
@@ -39,16 +47,17 @@ from app.services.rule_bundle_service import RuleBundleService  # noqa: E402
 
 RULESET_ID = "gd-m2-dns-diagnostic-wizard"
 
-# One dedicated, never-shared hostname per wizard row. Single-level subdomains of
-# `blocktest.btciq.app` (same domain the frozen M1/M2 controlled endpoints already use) so they can
-# reuse that domain's existing wildcard DNS/TLS coverage if one exists -- confirm with the domain
-# operator before the physical-device run; see docs/dns-capability-characterization.md §1a.
+# One dedicated, never-reused hostname per wizard row -- confirmed real/provisioned by the domain
+# operator 2026-09 (dnsprobe2-5 are net-new subdomains of blocktest.btciq.app; "dot-off" is the
+# domain operator's explicit exception, reusing the pre-existing dnsprobe.blocktest.btciq.app
+# instead of a 5th net-new host -- accepted risk: that host could carry a stale DNS cache entry
+# from a prior M2.1 Phase 6A run, since it's shared with the frozen gd-m2-website-gate ruleset).
 EXPECTED_RULES = [
-    RuleEntry(ruleId="m2-dns-wizard-dot-off-001", host="dnswiz-dot-off.blocktest.btciq.app", action="block", category="test-malicious"),
-    RuleEntry(ruleId="m2-dns-wizard-dot-automatic-001", host="dnswiz-dot-automatic.blocktest.btciq.app", action="block", category="test-malicious"),
-    RuleEntry(ruleId="m2-dns-wizard-dot-strict-001", host="dnswiz-dot-strict.blocktest.btciq.app", action="block", category="test-malicious"),
-    RuleEntry(ruleId="m2-dns-wizard-doh-off-001", host="dnswiz-doh-off.blocktest.btciq.app", action="block", category="test-malicious"),
-    RuleEntry(ruleId="m2-dns-wizard-doh-on-001", host="dnswiz-doh-on.blocktest.btciq.app", action="block", category="test-malicious"),
+    RuleEntry(ruleId="m2-dns-wizard-dot-off-001", host="dnsprobe.blocktest.btciq.app", action="block", category="test-malicious"),
+    RuleEntry(ruleId="m2-dns-wizard-dot-automatic-001", host="dnsprobe2.blocktest.btciq.app", action="block", category="test-malicious"),
+    RuleEntry(ruleId="m2-dns-wizard-dot-strict-001", host="dnsprobe3.blocktest.btciq.app", action="block", category="test-malicious"),
+    RuleEntry(ruleId="m2-dns-wizard-doh-off-001", host="dnsprobe4.blocktest.btciq.app", action="block", category="test-malicious"),
+    RuleEntry(ruleId="m2-dns-wizard-doh-on-001", host="dnsprobe5.blocktest.btciq.app", action="block", category="test-malicious"),
 ]
 
 
@@ -62,11 +71,16 @@ async def main() -> int:
     service = RuleBundleService(s, repo, keys)
 
     existing = await repo.latest(RULESET_ID)
-    carried_rules = list(existing.payload.rules) if existing else []
-    have = {(r.ruleId, r.host) for r in carried_rules}
-    missing = [r for r in EXPECTED_RULES if (r.ruleId, r.host) not in have]
+    prior_by_rule_id = {r.ruleId: r for r in (existing.payload.rules if existing else [])}
+    expected_ids = {r.ruleId for r in EXPECTED_RULES}
+    # EXPECTED_RULES is authoritative for its 5 ruleIds (replaces a placeholder host with the
+    # domain operator's confirmed real host in-place); any OTHER pre-existing rule under this
+    # ruleset (shouldn't normally happen) is carried forward byte-for-byte, unrelated to this fix.
+    changed = [r for r in EXPECTED_RULES if prior_by_rule_id.get(r.ruleId) != r]
+    extra_carried = [r for r in prior_by_rule_id.values() if r.ruleId not in expected_ids]
+    final_rules = [*EXPECTED_RULES, *extra_carried]
 
-    if existing is not None and not missing:
+    if existing is not None and not changed and not extra_carried:
         print(f"NO-OP: ruleset '{RULESET_ID}' v{existing.bundleVersion} already carries all 5 expected wizard rules -- nothing to do.")
         client.close()
         return 0
@@ -76,14 +90,14 @@ async def main() -> int:
         confirm="--confirm" in sys.argv,
         keyId=existing.keyId if existing else None,  # None -> RuleBundleService uses the default signing key
         purpose="m2-website-gate-block",
-        rules=[*carried_rules, *missing],
+        rules=final_rules,
     )
     enforce_signing_preconditions(s, request)  # raises SigningRefused (e.g. CONFIRMATION_REQUIRED, RULESET_NOT_ALLOWED)
     signed = await service.sign_and_publish(request)
     print(f"signed ruleset={signed.rulesetId} version={signed.bundleVersion} keyId={signed.keyId} rules={len(signed.payload.rules)} payloadHash={signed.payloadHash}")
-    if carried_rules:
-        print(f"carried forward unchanged: {[r.ruleId for r in carried_rules]}")
-    print(f"added: {[r.ruleId + ' -> ' + r.host for r in missing]}")
+    if extra_carried:
+        print(f"carried forward unchanged: {[r.ruleId for r in extra_carried]}")
+    print(f"replaced/confirmed: {[r.ruleId + ' -> ' + r.host for r in changed]}")
     client.close()
     return 0
 

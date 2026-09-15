@@ -2,11 +2,18 @@ import type { ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import type { HarnessStep, StepStatus } from "@/src/harness/androidBlockingProofHarness";
+import type { TestRunStatusValue } from "@/src/harness/testRunStatus";
 import { makeStyles, useTheme } from "@/src/theme";
 
 const useStyles = makeStyles((colors) => ({
   card: { backgroundColor: colors.surfaceSecondary, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border, gap: 8 },
   cardTitle: { color: colors.muted, fontSize: 12, letterSpacing: 1.2, textTransform: "uppercase", fontWeight: "700" },
+  // "emphasis" cards (currently: the two home-screen test-selection entry points) get a larger,
+  // bolder, higher-contrast header than the default subdued card title above -- everything else
+  // about cardTitle (uppercase, letterSpacing) is inherited by only overriding these three keys.
+  cardTitleEmphasis: { color: colors.onSurface, fontSize: 17, fontWeight: "800" },
+  cardHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  cardEyebrow: { fontSize: 11, fontWeight: "800", letterSpacing: 1.4, textTransform: "uppercase", marginBottom: 2 },
   row: { flexDirection: "row", alignItems: "center", gap: 12 },
   label: { color: colors.onSurfaceSecondary, fontSize: 15, fontWeight: "600", flex: 1 },
   value: { color: colors.onSurfaceTertiary, fontSize: 13, flexShrink: 1 },
@@ -39,12 +46,59 @@ const useStyles = makeStyles((colors) => ({
   resultRowValue: { fontSize: 11, flex: 1 },
 }));
 
-export function Card({ title, children, testID }: { title: string; children: ReactNode; testID?: string }) {
+export function Card({
+  title,
+  eyebrow,
+  eyebrowColor,
+  emphasis,
+  status,
+  children,
+  testID,
+}: {
+  title: string;
+  /** Small label rendered above the title, e.g. "PRIMARY TEST" / "SECONDARY TEST". */
+  eyebrow?: string;
+  eyebrowColor?: string;
+  /** Larger/bolder/higher-contrast title -- opt-in so ordinary cards stay visually quiet. */
+  emphasis?: boolean;
+  /** When set, renders a live status pill (see StatusPill) next to the title. */
+  status?: TestRunStatusValue;
+  children: ReactNode;
+  testID?: string;
+}) {
   const styles = useStyles();
+  const { colors } = useTheme();
   return (
     <View style={styles.card} testID={testID}>
-      <Text style={styles.cardTitle}>{title}</Text>
+      {eyebrow ? <Text style={[styles.cardEyebrow, { color: eyebrowColor ?? colors.brandPrimary }]}>{eyebrow}</Text> : null}
+      <View style={styles.cardHeaderRow}>
+        <Text style={[styles.cardTitle, emphasis && styles.cardTitleEmphasis, { flexShrink: 1 }]}>{title}</Text>
+        {status ? <StatusPill status={status} testID={testID ? `${testID}-status-pill` : undefined} /> : null}
+      </View>
       {children}
+    </View>
+  );
+}
+
+/** "At a glance" status pill for a test entry point -- see src/harness/testRunStatus.ts for how
+ * each value is derived (read-only against the underlying test's own persisted state). */
+export function StatusPill({ status, testID }: { status: TestRunStatusValue; testID?: string }) {
+  const styles = useStyles();
+  const { colors } = useTheme();
+  const config: Record<TestRunStatusValue, { label: string; bg: string; fg: string }> = {
+    not_started: { label: "NOT STARTED", bg: colors.surfaceTertiary, fg: colors.onSurfaceTertiary },
+    in_progress: { label: "IN PROGRESS", bg: colors.info, fg: colors.onInfo },
+    passed: { label: "PASSED", bg: colors.success, fg: colors.onSuccess },
+    completed: { label: "COMPLETED", bg: colors.success, fg: colors.onSuccess },
+    failed: { label: "FAILED", bg: colors.error, fg: colors.onError },
+    needs_attention: { label: "NEEDS ATTENTION", bg: colors.warning, fg: colors.onWarning },
+  };
+  const c = config[status] ?? config.not_started;
+  return (
+    <View style={[styles.badge, { backgroundColor: c.bg, paddingHorizontal: 10 }]} testID={testID}>
+      <Text style={[styles.badgeText, { color: c.fg }]} numberOfLines={1}>
+        {c.label}
+      </Text>
     </View>
   );
 }
@@ -95,7 +149,25 @@ export function StepRow({ step }: { step: HarnessStep }) {
   );
 }
 
-export function ActionButton({ title, onPress, secondary, disabled, testID }: { title: string; onPress: () => void; secondary?: boolean; disabled?: boolean; testID: string }) {
+export function ActionButton({
+  title,
+  onPress,
+  secondary,
+  disabled,
+  testID,
+  overrideBg,
+  overrideFg,
+}: {
+  title: string;
+  onPress: () => void;
+  secondary?: boolean;
+  disabled?: boolean;
+  testID: string;
+  /** Fixed-hue override (e.g. colors.accentOrange) for a CTA that must look the same regardless
+   * of light/dark scheme -- takes precedence over the primary/secondary theme colors. */
+  overrideBg?: string;
+  overrideFg?: string;
+}) {
   const styles = useStyles();
   return (
     <Pressable
@@ -103,9 +175,15 @@ export function ActionButton({ title, onPress, secondary, disabled, testID }: { 
       accessibilityRole="button"
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.button, secondary && styles.buttonSecondary, pressed && styles.pressed, disabled && styles.disabled]}
+      style={({ pressed }) => [
+        styles.button,
+        secondary && styles.buttonSecondary,
+        overrideBg ? { backgroundColor: overrideBg } : null,
+        pressed && styles.pressed,
+        disabled && styles.disabled,
+      ]}
     >
-      <Text style={[styles.buttonText, secondary && styles.buttonTextSecondary]}>{title}</Text>
+      <Text style={[styles.buttonText, secondary && styles.buttonTextSecondary, overrideFg ? { color: overrideFg } : null]}>{title}</Text>
     </Pressable>
   );
 }

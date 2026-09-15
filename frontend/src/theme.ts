@@ -67,6 +67,12 @@ const light = {
   border: "#DDE3EC",
   borderStrong: "#B8C2D1",
   divider: "#E6EAF0",
+
+  // Fixed-hue accent, deliberately NOT derived from brandPrimary/brandSecondary (those two swap
+  // meaning between light/dark). Used where a control must look the same orange regardless of
+  // color scheme -- e.g. the DNS/DoH diagnostic's secondary-test CTA on the home screen.
+  accentOrange: "#F59E0B",
+  onAccentOrange: "#1F1300",
 };
 
 const dark: ThemeColors = {
@@ -101,6 +107,9 @@ const dark: ThemeColors = {
   border: "#22304A",
   borderStrong: "#334A6E",
   divider: "#1C2A44",
+
+  accentOrange: "#F59E0B",
+  onAccentOrange: "#1F1300",
 };
 
 export type ThemeColors = typeof light;

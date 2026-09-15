@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -11,6 +11,7 @@ import { runAndroidRevokeProof } from "@/src/harness/androidRevokeProofHarness";
 import { readBuildProvenance, type BuildProvenance } from "@/src/harness/buildProvenance";
 import { buildProofReport, exportReportJson, exportReportPdf, type ProofReport, shareEvidenceFile } from "@/src/harness/proofReport";
 import { fetchLatestBundle, fetchM1Config } from "@/src/harness/ruleBundleFixtures";
+import { readDnsDohStatus, readPhase6Status } from "@/src/harness/testRunStatus";
 import { GuardDogSecuritySDK, type LocalAnalysis } from "@/src/sdk/GuardDogSecuritySDK";
 import { makeStyles, useTheme } from "@/src/theme";
 
@@ -47,6 +48,18 @@ export default function Index() {
   const [jsonUri, setJsonUri] = useState<string | null>(null);
   const [prompt, setPrompt] = useState<string | null>(null);
   const analyze = () => setAnalysis(GuardDogSecuritySDK.analyzeUrl(url));
+
+  // "At a glance" status for the two home-screen test entry points -- read-only against each
+  // test's own persisted state (see src/harness/testRunStatus.ts). Re-read on every focus so
+  // returning from either test screen updates the pill without a manual refresh.
+  const [phase6Status, setPhase6Status] = useState<Awaited<ReturnType<typeof readPhase6Status>>>("not_started");
+  const [dnsDohStatus, setDnsDohStatus] = useState<Awaited<ReturnType<typeof readDnsDohStatus>>>("not_started");
+  useFocusEffect(
+    useCallback(() => {
+      readPhase6Status().then(setPhase6Status);
+      readDnsDohStatus().then(setDnsDohStatus);
+    }, []),
+  );
 
   const config = useQuery({ queryKey: ["m1-config"], queryFn: fetchM1Config });
   const bundle = useQuery({ queryKey: ["m1-bundle", config.data?.rulesetId], queryFn: () => fetchLatestBundle(config.data!.rulesetId), enabled: !!config.data });
@@ -92,7 +105,7 @@ export default function Index() {
         <Text style={styles.subtitle}>{caps.platform} · {caps.selectiveIpBlocking ? "selective /32 enforcement available" : "no enforcement layer in this runtime"}</Text>
       </View>
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]} keyboardShouldPersistTaps="handled">
-        <Card title="Gate Guard M2.1 · Phase 6A" testID="phase6-nav-card">
+        <Card title="Gate Guard M2.1 · Phase 6A" eyebrow="PRIMARY TEST" eyebrowColor={colors.success} emphasis status={phase6Status} testID="phase6-nav-card">
           <Text style={styles.note}>Automated physical-device acceptance: press one button, the harness activates protection, runs every test it can trigger itself, judges every result from observed evidence, and pauses only for the handful of OS-level actions Android will not let this app perform on itself. Real evidence requires a native Android build.</Text>
           <View style={styles.actions}>
             <ActionButton title="Open Automated Acceptance Runner" onPress={() => router.push("/phase6-automated")} testID="open-phase6-automated-button" />
@@ -100,10 +113,16 @@ export default function Index() {
           </View>
         </Card>
 
-        <Card title="Out-of-band · DNS / DoH Capability Diagnostic" testID="dns-doh-nav-card">
+        <Card title="Out-of-band · DNS / DoH Capability Diagnostic" eyebrow="SECONDARY TEST" eyebrowColor={colors.accentOrange} emphasis status={dnsDohStatus} testID="dns-doh-nav-card">
           <Text style={styles.note}>M2.1 is FROZEN — this is separate, later characterization work: documents what Apollo can and cannot see under various Private DNS (DoT) and app-embedded DoH configurations. Observational only, no enforcement changes.</Text>
           <View style={styles.actions}>
-            <ActionButton title="Open DNS / DoH Diagnostic" secondary onPress={() => router.push("/dns-capability-diagnostic")} testID="open-dns-doh-diagnostic-button" />
+            <ActionButton
+              title="Open DNS / DoH Diagnostic"
+              overrideBg={colors.accentOrange}
+              overrideFg={colors.onAccentOrange}
+              onPress={() => router.push("/dns-capability-diagnostic")}
+              testID="open-dns-doh-diagnostic-button"
+            />
           </View>
         </Card>
 

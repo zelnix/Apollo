@@ -50,11 +50,18 @@ acceptance milestone (see §6, "Future mitigation candidates").
 
   | Row | Host | Rule ID |
   |---|---|---|
-  | Private DNS Off | `dnswiz-dot-off.blocktest.btciq.app` | `m2-dns-wizard-dot-off-001` |
-  | Private DNS Automatic | `dnswiz-dot-automatic.blocktest.btciq.app` | `m2-dns-wizard-dot-automatic-001` |
-  | Private DNS Strict | `dnswiz-dot-strict.blocktest.btciq.app` | `m2-dns-wizard-dot-strict-001` |
-  | Browser DoH Off | `dnswiz-doh-off.blocktest.btciq.app` | `m2-dns-wizard-doh-off-001` |
-  | Browser DoH On | `dnswiz-doh-on.blocktest.btciq.app` | `m2-dns-wizard-doh-on-001` |
+  | Private DNS Off | `dnsprobe.blocktest.btciq.app` (pre-existing, reused by explicit domain-operator choice) | `m2-dns-wizard-dot-off-001` |
+  | Private DNS Automatic | `dnsprobe2.blocktest.btciq.app` | `m2-dns-wizard-dot-automatic-001` |
+  | Private DNS Strict | `dnsprobe3.blocktest.btciq.app` | `m2-dns-wizard-dot-strict-001` |
+  | Browser DoH Off | `dnsprobe4.blocktest.btciq.app` | `m2-dns-wizard-doh-off-001` |
+  | Browser DoH On | `dnsprobe5.blocktest.btciq.app` | `m2-dns-wizard-doh-on-001` |
+
+  All 5 hostnames confirmed real/provisioned by the domain operator 2026-09 and signed into
+  `gd-m2-dns-diagnostic-wizard` bundle v2. "Private DNS Off" is the one accepted exception to the
+  never-reused-hostname rule above (the operator chose to reuse the pre-existing
+  `dnsprobe.blocktest.btciq.app` instead of provisioning a 5th net-new host) — that row alone
+  carries a residual risk of observing a stale cache entry left over from a prior M2.1 Phase 6A run,
+  since that host is shared with the frozen `gd-m2-website-gate` ruleset.
 
   **This tool never signs or republishes the M2.1 bundle** — only its own separate, additive-only
   ruleset above.
@@ -91,14 +98,14 @@ acceptance milestone (see §6, "Future mitigation candidates").
 
 ### 1a. Required infra dependency: 5 nonce-receipt probe pages + DNS/TLS
 
-Before running the wizard's DoT/DoH rows, the following must exist on the operator's side (outside
-this codebase — this repo cannot provision external DNS/TLS/hosting):
+**Status: RESOLVED 2026-09** — the domain operator confirmed all hostnames below are real/live and
+signed into `gd-m2-dns-diagnostic-wizard` bundle v2. Kept here as the reference spec for what must
+stay reachable through the physical-device run.
 
 1. **A real DNS record + valid TLS certificate for EACH of the 5 hostnames in the table above**
-   (`dnswiz-dot-off`, `dnswiz-dot-automatic`, `dnswiz-dot-strict`, `dnswiz-doh-off`,
-   `dnswiz-doh-on`, all `.blocktest.btciq.app`) — **net-new**, none of them reuse the existing
-   `dnsprobe.blocktest.btciq.app` record. Point all 5 at the same reachable HTTPS host that already
-   serves `blocktest.btciq.app`/`dnsprobe.blocktest.btciq.app` (simplest: if that domain already has
+   (`dnsprobe` reused for "Off"; `dnsprobe2`, `dnsprobe3`, `dnsprobe4`, `dnsprobe5` net-new, all
+   `.blocktest.btciq.app`). Point all 5 at the same reachable HTTPS host that already serves
+   `blocktest.btciq.app`/`dnsprobe.blocktest.btciq.app` (simplest: if that domain already has
    wildcard DNS/TLS coverage for one-level subdomains, as `dnsprobe.` suggests, these 5 should be
    covered automatically once the A-records exist — confirm before the physical-device run). Without
    this, a genuine DoT/DoH bypass will fail at DNS resolution or the TLS handshake before ever
@@ -134,8 +141,9 @@ this codebase — this repo cannot provision external DNS/TLS/hosting):
    **Verified 2026-09** (prior to this per-row hostname change): `GET
    https://guard-dog-m1.preview.emergentagent.com/api/dns-diagnostics/receipts/<nonce>` is externally
    HTTPS-reachable and returns the expected JSON shape right now — the receiving end is ready and
-   unaffected by this change; re-verify DNS/TLS + the static page for the 5 NEW hostnames above before
-   the physical-device run.
+   unaffected by this change. Before the physical-device run, still re-confirm the static probe page
+   itself is actually deployed and reachable at the 4 net-new hosts (`dnsprobe2-5`) — DNS/TLS being
+   confirmed by the domain operator does not by itself guarantee the `/dnsdiag/` page is deployed.
 
    The diagnostic tool constructs the exact URL to open per-row as
    `https://<row's dedicated host>/dnsdiag/?n=<random-nonce>` (see `buildDohProbeUrl` in

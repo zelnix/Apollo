@@ -16,11 +16,11 @@ DNS_WIZARD_RULESET_ID = "gd-m2-dns-diagnostic-wizard"
 M2_WEBSITE_GATE_RULESET_ID = "gd-m2-website-gate"
 
 WIZARD_RULES = [
-    {"ruleId": "m2-dns-wizard-dot-off-001", "host": "dnswiz-dot-off.blocktest.btciq.app", "action": "block", "category": "test-malicious"},
-    {"ruleId": "m2-dns-wizard-dot-automatic-001", "host": "dnswiz-dot-automatic.blocktest.btciq.app", "action": "block", "category": "test-malicious"},
-    {"ruleId": "m2-dns-wizard-dot-strict-001", "host": "dnswiz-dot-strict.blocktest.btciq.app", "action": "block", "category": "test-malicious"},
-    {"ruleId": "m2-dns-wizard-doh-off-001", "host": "dnswiz-doh-off.blocktest.btciq.app", "action": "block", "category": "test-malicious"},
-    {"ruleId": "m2-dns-wizard-doh-on-001", "host": "dnswiz-doh-on.blocktest.btciq.app", "action": "block", "category": "test-malicious"},
+    {"ruleId": "m2-dns-wizard-dot-off-001", "host": "dnsprobe.blocktest.btciq.app", "action": "block", "category": "test-malicious"},
+    {"ruleId": "m2-dns-wizard-dot-automatic-001", "host": "dnsprobe2.blocktest.btciq.app", "action": "block", "category": "test-malicious"},
+    {"ruleId": "m2-dns-wizard-dot-strict-001", "host": "dnsprobe3.blocktest.btciq.app", "action": "block", "category": "test-malicious"},
+    {"ruleId": "m2-dns-wizard-doh-off-001", "host": "dnsprobe4.blocktest.btciq.app", "action": "block", "category": "test-malicious"},
+    {"ruleId": "m2-dns-wizard-doh-on-001", "host": "dnsprobe5.blocktest.btciq.app", "action": "block", "category": "test-malicious"},
 ]
 
 
