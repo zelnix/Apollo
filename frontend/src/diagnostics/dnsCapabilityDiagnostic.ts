@@ -38,6 +38,7 @@
 // step's own row. All decision logic for the fix is centralized in the dependency-free
 // dnsWizardProbeGate.ts (own targeted `node --test` unit tests) so it can be exercised without a
 // native build; this file wires that pure logic to the real native/SDK reads.
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Network from "expo-network";
 import { Platform } from "react-native";
 
@@ -52,6 +53,8 @@ import {
   needsRecovery,
   type GateTruthInputs,
   type ObservedPrivateDnsMode,
+  checkDnsCacheFreshness,
+  recordHostProbedInMap,
 } from "@/src/diagnostics/dnsWizardProbeGate";
 import { fetchLatestBundle, fetchM1Config, toProtectionConfig } from "@/src/harness/ruleBundleFixtures";
 import { GuardDogSecuritySDK, WEBSITE_GATE_DEFAULT_UPSTREAM_DNS_IPV4 } from "@/src/sdk/GuardDogSecuritySDK";
@@ -78,6 +81,62 @@ export const ROW_PROBE_IDENTITY: Record<WizardRowId, RowProbeIdentity> = {
   "doh-off": { host: "dnsprobe4.blocktest.btciq.app", ruleId: "m2-dns-wizard-doh-off-001" },
   "doh-on": { host: "dnsprobe5.blocktest.btciq.app", ruleId: "m2-dns-wizard-doh-on-001" },
 };
+
+// --- DNS cache isolation across separate whole-wizard runs (2026-06 FIFTH fix round) ---
+//
+// The 5 hosts above are exact, real DNS records -- confirmed 2026-06 via a direct `dns.resolver`
+// query against the live zone that NONE of them are under a wildcard (only these exact 5 labels
+// resolve), and that every one of them has a 30s TTL. A brand-new hostname per run therefore cannot
+// be generated from the app without new external DNS provisioning. Instead: persist (across app
+// restarts, i.e. across completely separate wizard runs, not just this session) the last time each
+// exact host was actually probed, and require a generous cooldown -- well beyond the confirmed 30s
+// TTL, to also absorb any additional OS-level resolver caching this app cannot directly inspect or
+// flush -- before trusting a "no capture, but independent success" result as a genuine BYPASSED.
+const HOST_PROBE_TIMESTAMP_STORAGE_KEY = "gd-dns-wizard-host-probe-timestamps-v1";
+const DNS_CACHE_COOLDOWN_MS = 120_000; // 4x the confirmed 30s TTL
+
+async function readHostProbeTimestamps(): Promise<Record<string, string>> {
+  try {
+    const raw = await AsyncStorage.getItem(HOST_PROBE_TIMESTAMP_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, string>) : {};
+  } catch {
+    return {}; // best-effort read -- a storage error must never itself block/fail a probe
+  }
+}
+
+/** Thin AsyncStorage-backed wrapper around the pure recordHostProbedInMap (dnsWizardProbeGate.ts)
+ * -- that pure function is the single place the per-host isolation guarantee (recording one
+ * dedicated host, e.g. dnsprobe4, must never read/write/leak into a DIFFERENT host's, e.g.
+ * dnsprobe5, own timestamp) is enforced, and is directly `node --test`-able without AsyncStorage. */
+async function recordHostProbedNow(host: string): Promise<void> {
+  try {
+    const all = await readHostProbeTimestamps();
+    const { next } = recordHostProbedInMap(all, host, new Date().toISOString());
+    await AsyncStorage.setItem(HOST_PROBE_TIMESTAMP_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // best-effort write -- never blocks/throws the probe itself; worst case this specific
+    // freshness guarantee is unavailable next time, which checkDnsCacheFreshness's own
+    // null-timestamp branch already treats as "cannot prove staleness, don't invent a failure."
+  }
+}
+
+/** Exported for the DoH flow (dns-capability-diagnostic.tsx): DoH's actual "fetch" is the external
+ * browser navigation itself, which happens BEFORE buildAppEmbeddedDohRecord is ever called (only
+ * after the tester returns) -- so the caller must read+record this bookkeeping at the exact moment
+ * the probe URL navigation is actually launched (never before a successful Linking.openURL, so a
+ * failed/never-launched navigation can never poison this host's freshness timestamp), then carry
+ * the returned PREVIOUS timestamp through to buildAppEmbeddedDohRecord's own `lastProbedAt`
+ * parameter. Uses the SAME pure, per-host-isolated recordHostProbedInMap as the DoT path above. */
+export async function markDnsProbeHostQueriedNow(host: string): Promise<string | null> {
+  try {
+    const all = await readHostProbeTimestamps();
+    const { previous, next } = recordHostProbedInMap(all, host, new Date().toISOString());
+    await AsyncStorage.setItem(HOST_PROBE_TIMESTAMP_STORAGE_KEY, JSON.stringify(next));
+    return previous;
+  } catch {
+    return null; // best-effort -- never blocks the probe; worst case this row's freshness guarantee is unavailable
+  }
+}
 
 export type DnsDiagnosticCategory = "private-dns" | "app-embedded-doh";
 export type DnsDiagnosticClassification = "CAPTURED" | "BYPASSED" | "UNOBSERVABLE" | "NOT_TESTABLE";
@@ -389,6 +448,10 @@ export async function runPrivateDnsProbeForStep(
   const extraGateReasons: string[] = [];
   if (readiness.readinessFailureReason) extraGateReasons.push(readiness.readinessFailureReason);
 
+  // Read BEFORE this attempt's own probe -- this is what tells us whether THIS exact host was
+  // already queried recently by an earlier row/run (never this attempt's own upcoming query).
+  const lastProbedAt = readiness.ready ? (await readHostProbeTimestamps())[identity.host] ?? null : null;
+
   let event: SecurityEvent | null = null;
   let fetchOutcome: Awaited<ReturnType<typeof fetchProbeHost>> | null = null;
   let transportNetworkType: string | null = null;
@@ -397,9 +460,20 @@ export async function runPrivateDnsProbeForStep(
     event = await observeWindow(async () => {
       fetchOutcome = await fetchProbeHost(identity.host, Math.min(windowMs, 8000));
     }, windowMs);
+    // Record THIS attempt as having queried the host now, regardless of outcome -- the very next
+    // probe of this same host (same row retried, or a completely separate future wizard run) must
+    // see this timestamp to correctly judge its own freshness.
+    await recordHostProbedNow(identity.host);
   }
   const attributedEvent = isAttributedToProbe(event, identity.host, identity.ruleId) ? event : null;
   const independentSuccess = readiness.ready ? (fetchOutcome as { outcome: string } | null)?.outcome === "resolved" : null;
+
+  // DNS cache isolation (2026-06 FIFTH fix round): only ever relevant when there was no attributed
+  // capture -- a genuine capture proves a fresh wire-level query happened, cache or not.
+  if (!attributedEvent) {
+    const freshness = checkDnsCacheFreshness(lastProbedAt, Date.now(), DNS_CACHE_COOLDOWN_MS);
+    if (!freshness.freshnessGuaranteed && freshness.reason) extraGateReasons.push(freshness.reason);
+  }
 
   const { classification, gateReasons } = classifyWithHardGate(
     !!attributedEvent,
@@ -544,6 +618,7 @@ export function buildAppEmbeddedDohRecord(
   transportNetworkType: string | null,
   readiness: ProbeReadiness,
   postProbeVerification: PostProbeVerification,
+  lastProbedAt: string | null,
 ): DnsDiagnosticRecord {
   const truthSnapshot = postProbeVerification.freshSnapshot;
   const attributedEvent = isAttributedToProbe(event, host, ruleId) ? event : null;
@@ -560,6 +635,13 @@ export function buildAppEmbeddedDohRecord(
   // capture, and only meaningful at all if the probe was actually attempted AND still verified
   // healthy on return (readiness.ready && postProbeVerification.stillHealthy).
   const independentSuccess = !readiness.ready || !postProbeVerification.stillHealthy ? null : attributedEvent ? null : receiptConfirmed;
+  // DNS cache isolation (2026-06 FIFTH fix round): same reasoning as the DoT path -- only relevant
+  // when there was no attributed capture (a genuine capture proves a fresh wire-level query
+  // happened regardless of cache), and only when the probe was actually attempted at all.
+  if (!attributedEvent && readiness.ready) {
+    const freshness = checkDnsCacheFreshness(lastProbedAt, Date.now(), DNS_CACHE_COOLDOWN_MS);
+    if (!freshness.freshnessGuaranteed && freshness.reason) extraGateReasons.push(freshness.reason);
+  }
   // DoH's configuration (browser DoH toggle) has no automated contradiction check possible --
   // Android exposes neither the browser identity nor its DoH setting to a third-party app, so this
   // condition 8 is always structurally "established" for this category; the readiness/verification
@@ -787,7 +869,7 @@ export async function ensureProbeReadiness(preflight: PreflightCarry): Promise<P
       // captured by the terminal poll below settling at whatever getProtectionState() reports.
     }
     const startDeadline = Date.now() + ACTIVATION_START_PROTECTION_TIMEOUT_MS;
-    while (status.state !== "ACTIVE" && status.state !== "FAILED" && status.state !== "STOPPED" && status.state !== "REVOKED" && Date.now() < startDeadline) {
+    while (status.state !== "ACTIVE" && status.state !== "FAILED" && status.state !== "STOPPED" && status.state !== "REVOKED" && status.state !== "DEGRADED" && Date.now() < startDeadline) {
       await sleep(ACTIVATION_POLL_MS);
       status = GuardDogSecuritySDK.getProtectionState();
     }

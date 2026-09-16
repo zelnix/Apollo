@@ -31,6 +31,7 @@ import {
   ensureProbeReadiness,
   generateProbeNonce,
   getNetworkType,
+  markDnsProbeHostQueriedNow,
   notTestableRecord,
   pollForPrivateDnsRuntimeMode,
   type ProbeReadiness,
@@ -184,6 +185,14 @@ export default function DnsCapabilityDiagnosticScreen() {
   const dohNetTypeRef = useRef<string | null>(null);
   const dohWentBackgroundRef = useRef(false);
   const dohFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** DNS cache isolation (2026-06 FIFTH fix round): the PREVIOUS timestamp this exact probe host
+   * was queried at, captured by markDnsProbeHostQueriedNow() at the moment the browser navigation
+   * is actually launched (never before -- see handleStartDohStep) and consumed once by
+   * buildAppEmbeddedDohRecord() in finishDohObservation(). Explicitly cleared at the start of
+   * every row/retry, on a failed/never-launched navigation, on cancel-by-navigating-away
+   * (goToStep), and again immediately after this attempt completes -- so a stale value can never
+   * leak into a different row or a later retry of this same row. */
+  const dohLastProbedAtRef = useRef<string | null>(null);
 
   function resetStepTransientState() {
     setError(null);
@@ -199,6 +208,7 @@ export default function DnsCapabilityDiagnosticScreen() {
     pollCancelRef.current = true;
     if (dohFallbackTimerRef.current) clearTimeout(dohFallbackTimerRef.current);
     dohObservationRef.current = null;
+    dohLastProbedAtRef.current = null; // cancel-by-navigating-away -- never let this carry into the next step/retry
     resetStepTransientState();
     setStepIndex(index);
   }
@@ -372,8 +382,11 @@ export default function DnsCapabilityDiagnosticScreen() {
     setError(null);
     setStepResult(null);
     setBusy(true);
+    // Clear at the start of every row/retry (2026-06 FIFTH fix round guardrail) -- a retry must
+    // never inherit a stale timestamp captured by a previous, unrelated attempt.
+    dohLastProbedAtRef.current = null;
+    const identity = ROW_PROBE_IDENTITY[step];
     try {
-      const identity = ROW_PROBE_IDENTITY[step];
       // 2026-06 fix: DoH rows now run the SAME rigorous pre-probe readiness/recovery sequence as
       // DoT rows (previously they had none at all) -- BEFORE the tester is ever sent to the browser.
       const readiness = await ensureProbeReadiness(preflightCarry);
@@ -401,11 +414,40 @@ export default function DnsCapabilityDiagnosticScreen() {
       dohWentBackgroundRef.current = false;
       setDohPhase("observing");
       await Linking.openURL(buildDohProbeUrl(identity.host, nonce));
+      // DNS cache isolation (2026-06 FIFTH fix round): recorded ONLY after Linking.openURL has
+      // actually succeeded -- never before -- so a failed/never-launched navigation can never
+      // poison this exact host's freshness timestamp for a later row or a future whole-wizard run.
+      dohLastProbedAtRef.current = await markDnsProbeHostQueriedNow(identity.host);
       // Safety net in case AppState never reports background/active (e.g. multi-window/split-screen browsers).
       dohFallbackTimerRef.current = setTimeout(() => void finishDohObservation(), 125_000);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(message);
+      // Finalize this attempt honestly (2026-06 FIFTH fix round guardrail): if Linking.openURL (or
+      // anything earlier in this try) failed, no genuine probe happened -- unwind every piece of
+      // DoH transient state so neither a stale readiness/observation NOR a stale
+      // dohLastProbedAtRef can ever be picked up by a later retry or finishDohObservation call.
+      const observation = dohObservationRef.current;
       dohObservationRef.current = null;
+      dohLastProbedAtRef.current = null;
+      if (dohFallbackTimerRef.current) {
+        clearTimeout(dohFallbackTimerRef.current);
+        dohFallbackTimerRef.current = null;
+      }
+      if (observation) void observation.finish(); // releases the still-registered event subscription
+      const readiness = dohReadinessRef.current;
+      if (readiness) {
+        const snapshot = await captureDnsDiagnosticTruthSnapshot(preflightCarry);
+        const label = `${dohBrowserLabel.trim() || "Unnamed browser"} — ${DOH_UI_STATE_LABEL[step]}`;
+        const record = notTestableRecord(step, "app-embedded-doh", label, `Failed to open the probe URL in the browser -- no probe was actually attempted: ${message}`, snapshot, identity.host, {
+          protectionStateBeforeProbe: readiness.protectionStateBeforeProbe,
+          recoveryAttempted: readiness.recoveryAttempted,
+          protectionStateAfterRecovery: readiness.protectionStateAfterRecovery,
+        });
+        setRecords((prev) => upsertRecordByStepId(prev, record));
+        setStepResult(record);
+      }
+      setDohPhase("idle");
     } finally {
       setBusy(false);
     }
@@ -446,6 +488,7 @@ export default function DnsCapabilityDiagnosticScreen() {
         dohNetTypeRef.current,
         readiness,
         postProbeVerification,
+        dohLastProbedAtRef.current,
       );
       setRecords((prev) => upsertRecordByStepId(prev, record));
       setStepResult(record);
@@ -453,6 +496,9 @@ export default function DnsCapabilityDiagnosticScreen() {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
+      // Completion (success or failure here) -- clear immediately so this attempt's timestamp can
+      // never leak into the next row or a later retry of this same row (2026-06 FIFTH fix round).
+      dohLastProbedAtRef.current = null;
       setBusy(false);
     }
   }

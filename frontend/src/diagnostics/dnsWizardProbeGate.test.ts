@@ -11,6 +11,7 @@ import test from "node:test";
 import {
   anyAttemptEverSucceeded,
   appendPreflightAttempt,
+  checkDnsCacheFreshness,
   classifyWithHardGate,
   decideRecoveryOutcome,
   describeAutomaticModeContradiction,
@@ -18,6 +19,7 @@ import {
   evaluateHardClassificationGate,
   latestAttempt,
   needsRecovery,
+  recordHostProbedInMap,
   upsertRecordByStepId,
   type GateTruthInputs,
 } from "./dnsWizardProbeGate.ts";
@@ -221,4 +223,88 @@ test("latestAttempt: gating always uses the LATEST attempt, not 'was ever ok'", 
 
 test("latestAttempt: empty attempts -> null", () => {
   assert.equal(latestAttempt([]), null);
+});
+
+// --- DNS cache freshness (isolates separate whole-wizard runs from each other) ---
+
+test("DNS cache freshness: never probed before (null) -> freshness guaranteed", () => {
+  const check = checkDnsCacheFreshness(null, Date.now(), 120_000);
+  assert.equal(check.freshnessGuaranteed, true);
+  assert.equal(check.reason, null);
+});
+
+test("DNS cache freshness: probed well outside the cooldown window -> freshness guaranteed", () => {
+  const now = Date.now();
+  const lastProbedAt = new Date(now - 200_000).toISOString();
+  const check = checkDnsCacheFreshness(lastProbedAt, now, 120_000);
+  assert.equal(check.freshnessGuaranteed, true);
+});
+
+test("DNS cache freshness: probed inside the cooldown window -> NOT guaranteed, with a specific reason", () => {
+  const now = Date.now();
+  const lastProbedAt = new Date(now - 10_000).toISOString(); // 10s ago, cooldown is 120s
+  const check = checkDnsCacheFreshness(lastProbedAt, now, 120_000);
+  assert.equal(check.freshnessGuaranteed, false);
+  assert.match(check.reason ?? "", /last queried 10s ago/);
+  assert.match(check.reason ?? "", /cached DNS answer/);
+});
+
+test("DNS cache freshness: exactly at the cooldown boundary counts as guaranteed (>=, not >)", () => {
+  const now = Date.now();
+  const lastProbedAt = new Date(now - 120_000).toISOString();
+  const check = checkDnsCacheFreshness(lastProbedAt, now, 120_000);
+  assert.equal(check.freshnessGuaranteed, true);
+});
+
+test("DNS cache freshness: unparsable/clock-skew input never invents a false failure", () => {
+  assert.equal(checkDnsCacheFreshness("not-a-date", Date.now(), 120_000).freshnessGuaranteed, true);
+  const future = new Date(Date.now() + 60_000).toISOString();
+  assert.equal(checkDnsCacheFreshness(future, Date.now(), 120_000).freshnessGuaranteed, true);
+});
+
+// --- Per-host probe-timestamp bookkeeping (Browser "Use secure DNS" cache isolation, 2026-06 fix) ---
+
+test("recordHostProbedInMap: first probe for a host -> previous is null, map now carries its timestamp", () => {
+  const { previous, next } = recordHostProbedInMap({}, "dnsprobe4.blocktest.btciq.app", "2026-06-01T00:00:00.000Z");
+  assert.equal(previous, null);
+  assert.equal(next["dnsprobe4.blocktest.btciq.app"], "2026-06-01T00:00:00.000Z");
+});
+
+test("recordHostProbedInMap: a repeat probe of the SAME host (inside cooldown) returns its own prior timestamp as `previous`", () => {
+  const first = recordHostProbedInMap({}, "dnsprobe4.blocktest.btciq.app", "2026-06-01T00:00:00.000Z");
+  const second = recordHostProbedInMap(first.next, "dnsprobe4.blocktest.btciq.app", "2026-06-01T00:01:00.000Z");
+  assert.equal(second.previous, "2026-06-01T00:00:00.000Z");
+  assert.equal(second.next["dnsprobe4.blocktest.btciq.app"], "2026-06-01T00:01:00.000Z");
+});
+
+test("recordHostProbedInMap: separate hosts (dnsprobe4 vs dnsprobe5) keep fully independent histories -- probing one never leaks into the other's `previous` or timestamp", () => {
+  const afterDnsprobe4 = recordHostProbedInMap({}, "dnsprobe4.blocktest.btciq.app", "2026-06-01T00:00:00.000Z");
+  const afterDnsprobe5 = recordHostProbedInMap(afterDnsprobe4.next, "dnsprobe5.blocktest.btciq.app", "2026-06-01T00:05:00.000Z");
+  assert.equal(afterDnsprobe5.previous, null, "dnsprobe5 was never probed before -- must not inherit dnsprobe4's timestamp");
+  assert.equal(afterDnsprobe5.next["dnsprobe4.blocktest.btciq.app"], "2026-06-01T00:00:00.000Z", "dnsprobe4's own history must remain untouched");
+  assert.equal(afterDnsprobe5.next["dnsprobe5.blocktest.btciq.app"], "2026-06-01T00:05:00.000Z");
+});
+
+test("recordHostProbedInMap: never mutates the input map (immutable) -- no stale-ref leakage between calls/rows", () => {
+  const original = { "dnsprobe4.blocktest.btciq.app": "2026-06-01T00:00:00.000Z" };
+  const frozen = Object.freeze({ ...original });
+  const { next } = recordHostProbedInMap(frozen, "dnsprobe5.blocktest.btciq.app", "2026-06-01T00:05:00.000Z");
+  assert.deepEqual(frozen, original, "the input map object itself must never be mutated");
+  assert.notEqual(next, frozen, "a new map object must always be returned, never the same reference");
+});
+
+test("end-to-end cache isolation: repeating the SAME host inside the cooldown is NOT fresh; a DIFFERENT, never-probed host at the same moment IS fresh", () => {
+  const t0 = Date.now();
+  const afterFirst = recordHostProbedInMap({}, "dnsprobe4.blocktest.btciq.app", new Date(t0).toISOString());
+  const sameHostCheck = checkDnsCacheFreshness(afterFirst.next["dnsprobe4.blocktest.btciq.app"], t0 + 10_000, 120_000);
+  assert.equal(sameHostCheck.freshnessGuaranteed, false, "dnsprobe4 retried 10s later, inside the 120s cooldown");
+  const otherHostCheck = checkDnsCacheFreshness(afterFirst.next["dnsprobe5.blocktest.btciq.app"] ?? null, t0 + 10_000, 120_000);
+  assert.equal(otherHostCheck.freshnessGuaranteed, true, "dnsprobe5 has no history at all -- unaffected by dnsprobe4's own recent probe");
+});
+
+test("end-to-end cache isolation: repeating the SAME host AFTER the cooldown elapses is fresh again", () => {
+  const t0 = Date.now();
+  const afterFirst = recordHostProbedInMap({}, "dnsprobe4.blocktest.btciq.app", new Date(t0).toISOString());
+  const check = checkDnsCacheFreshness(afterFirst.next["dnsprobe4.blocktest.btciq.app"], t0 + 130_000, 120_000);
+  assert.equal(check.freshnessGuaranteed, true);
 });

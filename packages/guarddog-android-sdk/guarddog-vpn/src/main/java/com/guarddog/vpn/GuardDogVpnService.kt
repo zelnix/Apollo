@@ -159,7 +159,19 @@ class GuardDogVpnService : VpnService() {
             dropReporter = dropReporter,
             onError = { e: IOException ->
                 Log.w(TAG, "TUN read failed: ${e.message}")
-                state.transition(VpnLifecycleState.Degraded("TUN read error"))
+                // Physical-device coherence fix (2026-06, Pixel 10 finding): this callback runs on
+                // the background TUN-reader thread and previously ONLY transitioned lifecycle state
+                // to Degraded -- it never called cleanup(), so GuardDogVpnRuntime.websiteGateActive
+                // (and dropReporter/activeSession) stayed exactly as they were, stale, from before
+                // the error. A tester could then observe protection reporting DEGRADED/not-ACTIVE
+                // while the bridge's Website Gate status simultaneously (and falsely) still read
+                // dnsGatewayActive=true. Route the main-thread state transition through the SAME
+                // coherent cleanup -> transition -> stopForeground -> stopSelf sequence every other
+                // terminal path (fail/stopProtection/onRevoke) already uses, via degrade() below --
+                // a broken TUN read loop means nothing is genuinely being enforced anymore, so it
+                // must tear down exactly like any other terminal failure, never leave stale
+                // "still active" state behind.
+                mainHandler.post { degrade("TUN read error: ${e.message}") }
             },
             output = if (dnsGateway != null) FileOutputStream(pfd.fileDescriptor) else null,
             dnsGatewayIpv4 = websiteGateConfig?.dnsGatewayIpv4,
@@ -207,6 +219,21 @@ class GuardDogVpnService : VpnService() {
         Log.w(TAG, "protection start aborted: $reason")
         cleanup()
         state.transition(VpnLifecycleState.Failed(reason))
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    /** Physical-device coherence fix (2026-06): a runtime TUN failure (unlike a START-time failure)
+     * keeps the `Degraded` lifecycle label (distinct from `Failed` -- preserves the existing
+     * semantic distinction other callers/UI already rely on), but MUST still perform the exact same
+     * coherent teardown every other terminal path uses -- cleanup() (which resets
+     * `GuardDogVpnRuntime.websiteGateActive`/`dropReporter`/`activeSession` to their inactive
+     * defaults) BEFORE the state transition, then stop the foreground session outright. Must be
+     * called on the main thread (see the `mainHandler.post` call site in `establish()`). */
+    private fun degrade(reason: String) {
+        Log.w(TAG, "protection degraded: $reason")
+        cleanup()
+        state.transition(VpnLifecycleState.Degraded(reason))
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }

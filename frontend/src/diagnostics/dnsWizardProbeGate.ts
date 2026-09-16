@@ -226,3 +226,58 @@ export function latestAttempt<T>(attempts: T[]): T | null {
 export function anyAttemptEverSucceeded<T extends { ok: boolean }>(attempts: T[]): boolean {
   return attempts.some((a) => a.ok);
 }
+
+
+// --- DNS cache isolation across separate whole-wizard runs (2026-06 FIFTH fix round) ---
+
+export interface DnsCacheFreshnessCheck {
+  freshnessGuaranteed: boolean;
+  reason: string | null;
+}
+
+/**
+ * The 5 dedicated probe hostnames (`dnsprobe`..`dnsprobe5.blocktest.btciq.app`) are exact, real DNS
+ * records the domain operator provisioned -- confirmed 2026-06 (not under a wildcard, so brand-new
+ * per-run hostnames cannot be generated from the app without new external DNS provisioning; TTL on
+ * every one of the 5 records was directly confirmed at 30s). Instead, this tracks the last time
+ * THIS EXACT host was actually probed (persisted across app restarts / separate whole-wizard runs
+ * -- see readHostProbeTimestamps/recordHostProbedNow in dnsCapabilityDiagnostic.ts) and requires a
+ * generous safety-margin cooldown (well beyond the confirmed 30s TTL, to also absorb any additional
+ * OS-level resolver caching this app cannot directly inspect or flush) before trusting a "no
+ * capture, but independent success" result as a genuine BYPASSED verdict.
+ *
+ * Deliberately only ever needs to gate BYPASSED/UNOBSERVABLE, NEVER CAPTURED: if Apollo observed
+ * wire traffic at all, a fresh query genuinely occurred (a cached DNS answer produces zero wire
+ * traffic for Apollo to have any chance of seeing) -- callers must only invoke this when there was
+ * no attributed capture.
+ */
+export function checkDnsCacheFreshness(lastProbedAtIso: string | null, nowMs: number, cooldownMs: number): DnsCacheFreshnessCheck {
+  if (!lastProbedAtIso) return { freshnessGuaranteed: true, reason: null };
+  const elapsedMs = nowMs - new Date(lastProbedAtIso).getTime();
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 0) return { freshnessGuaranteed: true, reason: null }; // unparsable timestamp / clock skew -- never invent a false failure from bad input
+  if (elapsedMs >= cooldownMs) return { freshnessGuaranteed: true, reason: null };
+  return {
+    freshnessGuaranteed: false,
+    reason: `This exact probe host was last queried ${Math.round(elapsedMs / 1000)}s ago (cooldown ${Math.round(cooldownMs / 1000)}s, based on the DNS record's own confirmed TTL) -- a successful independent fetch this soon after cannot be trusted as a fresh over-the-wire lookup; it may be served from a cached DNS answer with zero wire traffic for Apollo to have observed.`,
+  };
+}
+
+// --- Per-host probe-timestamp bookkeeping (pure) ---
+//
+// The AsyncStorage-backed read/write in dnsCapabilityDiagnostic.ts (readHostProbeTimestamps /
+// recordHostProbedNow / markDnsProbeHostQueriedNow) is a thin wrapper around this pure map
+// operation -- kept here, dependency-free, so the exact per-host isolation guarantee (probing one
+// of the 5 dedicated hosts, e.g. dnsprobe4, must never read, write, or otherwise leak into a
+// DIFFERENT host's, e.g. dnsprobe5, own timestamp) is directly `node --test`-able without any
+// AsyncStorage/RN mocking.
+
+export type ProbeHostTimestamps = Record<string, string>;
+
+/** Pure, immutable: given the full persisted host->timestamp map, records `host` as probed at
+ * `nowIso`. Returns the PREVIOUS timestamp for that exact host only (or null if never probed
+ * before) alongside the next full map -- never mutates `map`, and never touches any other host's
+ * entry. This is the single place the "does recording one row's probe ever leak into another
+ * row's freshness check" guarantee is enforced. */
+export function recordHostProbedInMap(map: ProbeHostTimestamps, host: string, nowIso: string): { previous: string | null; next: ProbeHostTimestamps } {
+  return { previous: map[host] ?? null, next: { ...map, [host]: nowIso } };
+}
