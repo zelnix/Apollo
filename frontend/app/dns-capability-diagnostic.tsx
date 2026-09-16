@@ -189,6 +189,12 @@ export default function DnsCapabilityDiagnosticScreen() {
 
   // --- App-embedded DoH sub-state ---
   const [dohBrowserLabel, setDohBrowserLabel] = useState("");
+  /** 2026-06 EIGHTH fix round: the exact selected DoH provider/mode as shown in the browser's own
+   * "Use secure DNS" UI (e.g. "Cloudflare (1.1.1.1)", "Custom: dns.example.com") -- required for
+   * the "doh-on" row specifically, per the user's own explicit instruction to use a named/custom
+   * provider rather than an automatic/fallback configuration, and to record it in the report so a
+   * later reviewer can cross-check it against whether plaintext UDP/53 was actually observed. */
+  const [dohProviderLabel, setDohProviderLabel] = useState("");
   const [dohPhase, setDohPhase] = useState<"idle" | "observing">("idle");
   const dohObservationRef = useRef<{ startedAt: string; finish: () => Promise<{ event: import("@/src/contracts/securityEventSchemas").SecurityEvent | null; receiptConfirmed: boolean }> } | null>(null);
   const dohNonceRef = useRef<string | null>(null);
@@ -422,6 +428,27 @@ export default function DnsCapabilityDiagnosticScreen() {
     }
   }
 
+  /** 2026-06 EIGHTH fix round: single place `configuredMode`/`label` strings are built for every
+   * DoH row path (readiness-failure, launch-failure, success, tester-marked-not-testable) -- for
+   * "doh-on" specifically, ALWAYS includes the tester-recorded selected provider/mode so it is
+   * genuinely part of the report, not just a UI-only field. */
+  function buildDohConfiguredModeLabel(step: DohStepId, extraSuffix?: string): string {
+    const browser = dohBrowserLabel.trim() || "Unnamed browser";
+    const providerPart = step === "doh-on" ? ` (selected provider/mode: ${dohProviderLabel.trim() || "NOT RECORDED"})` : "";
+    return `${browser} — ${DOH_UI_STATE_LABEL[step]}${providerPart}${extraSuffix ?? ""}`;
+  }
+
+  /** 2026-06 EIGHTH fix round: required fields before a DoH probe may be launched -- browser
+   * name/version for both rows, PLUS the exact selected provider/mode for "doh-on" (per the
+   * user's instruction: use an explicitly selected named/custom provider, never leave it
+   * unrecorded/blank, so a plaintext-UDP/53 capture on this row can be cross-checked against what
+   * was actually configured). */
+  function dohRequiredFieldsMissing(step: DohStepId): boolean {
+    if (!dohBrowserLabel.trim()) return true;
+    if (step === "doh-on" && !dohProviderLabel.trim()) return true;
+    return false;
+  }
+
   /** 2026-06 SEVENTH fix round (browser-test sequencing/confounding fix): reads the CURRENT
    * Android system Private DNS runtime mode and requires it to be exactly INACTIVE_OR_OFF before
    * re-running the full pre-probe readiness sequence (protection ACTIVE, TUN open, DNS gateway
@@ -444,7 +471,24 @@ export default function DnsCapabilityDiagnosticScreen() {
       }
       const readiness = await ensureProbeReadiness(preflightCarry);
       setDohBaselineReadiness(readiness);
-      setDohBaselinePhase(readiness.ready ? "ready" : "not-ready");
+      if (!readiness.ready) {
+        setDohBaselinePhase("not-ready");
+        return;
+      }
+      // 2026-06 EIGHTH fix round guard (explicitly requested): ensureProbeReadiness() above may
+      // have attempted a recovery -- re-read Private DNS ONE more time, fresh, AFTER that
+      // readiness/recovery sequence has fully settled. If it somehow reverted to STRICT or
+      // ACTIVE_NO_HOSTNAME during that window, do NOT enable Continue with a now-stale "confirmed
+      // Off" -- force the tester back through "wrong-mode" instead.
+      const postReadinessSnapshot: NativeDnsCapabilityDeviceSnapshot | null = Platform.OS === "android" && GuardDogNative ? GuardDogNative.getDnsCapabilityDeviceSnapshot() : null;
+      const postReadinessMode: PrivateDnsRuntimeMode | "UNAVAILABLE" = postReadinessSnapshot?.privateDnsRuntimeMode ?? "UNAVAILABLE";
+      setDohBaselineObservedMode(postReadinessMode);
+      setDohBaselineServerName(postReadinessSnapshot?.privateDnsServerName ?? null);
+      if (postReadinessMode !== "INACTIVE_OR_OFF") {
+        setDohBaselinePhase("wrong-mode");
+        return;
+      }
+      setDohBaselinePhase("ready");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setDohBaselinePhase("idle");
@@ -454,6 +498,10 @@ export default function DnsCapabilityDiagnosticScreen() {
   }
 
   async function handleStartDohStep(step: DohStepId) {
+    if (dohRequiredFieldsMissing(step)) {
+      setError(step === "doh-on" ? "Enter both the browser name/version and the exact selected DoH provider/mode before running this probe." : "Enter the browser name/version before running this probe.");
+      return;
+    }
     setError(null);
     setStepResult(null);
     setBusy(true);
@@ -473,7 +521,7 @@ export default function DnsCapabilityDiagnosticScreen() {
       // DoT rows (previously they had none at all) -- BEFORE the tester is ever sent to the browser.
       const readiness = await ensureProbeReadiness(carry);
       if (!readiness.ready) {
-        const label = `${dohBrowserLabel.trim() || "Unnamed browser"} — ${DOH_UI_STATE_LABEL[step]} (not attempted)`;
+        const label = buildDohConfiguredModeLabel(step, " (not attempted)");
         // 2026-06 second fix round (code review finding #2): pass the readiness's OWN
         // before/attempted/after evidence through -- notTestableRecord no longer silently
         // hardcodes recoveryAttempted:false when a real recovery attempt already happened here.
@@ -522,7 +570,7 @@ export default function DnsCapabilityDiagnosticScreen() {
       const readiness = dohReadinessRef.current;
       if (readiness) {
         const snapshot = await captureDnsDiagnosticTruthSnapshot(carry);
-        const label = `${dohBrowserLabel.trim() || "Unnamed browser"} — ${DOH_UI_STATE_LABEL[step]}`;
+        const label = buildDohConfiguredModeLabel(step);
         const record = notTestableRecord(step, "app-embedded-doh", label, `Failed to open the probe URL in the browser -- no probe was actually attempted: ${message}`, snapshot, identity.host, {
           protectionStateBeforeProbe: readiness.protectionStateBeforeProbe,
           recoveryAttempted: readiness.recoveryAttempted,
@@ -566,7 +614,7 @@ export default function DnsCapabilityDiagnosticScreen() {
       // the browser was open, this probe must be forced NOT_TESTABLE rather than classified
       // against the earlier, now-stale pre-open readiness snapshot.
       const postProbeVerification = await verifyStillHealthyAfterProbe(carry);
-      const configuredMode = `${dohBrowserLabel.trim() || "Unnamed browser"} — ${DOH_UI_STATE_LABEL[step]}`;
+      const configuredMode = buildDohConfiguredModeLabel(step);
       const record = buildAppEmbeddedDohRecord(
         step,
         configuredMode,
@@ -600,7 +648,7 @@ export default function DnsCapabilityDiagnosticScreen() {
     setBusy(true);
     try {
       const snapshot = await captureDnsDiagnosticTruthSnapshot(preflightCarry);
-      const configuredMode = `${dohBrowserLabel.trim() || "Unnamed browser"} — ${DOH_UI_STATE_LABEL[step]}`;
+      const configuredMode = buildDohConfiguredModeLabel(step);
       const record = notTestableRecord(step, "app-embedded-doh", configuredMode, "Tester marked this configuration as not testable (e.g. that browser unavailable on this device).", snapshot, ROW_PROBE_IDENTITY[step].host);
       setRecords((prev) => upsertRecordByStepId(prev, record));
       setStepResult(record);
@@ -819,11 +867,29 @@ export default function DnsCapabilityDiagnosticScreen() {
             <Text style={styles.note}>
               Android cannot read another app&apos;s secure-DNS setting, so this is the one step in this wizard needing a manual change: in your browser&apos;s settings, turn {currentStepId === "doh-on" ? "ON" : "OFF"} the option labelled &quot;Use secure DNS&quot; (this is the browser&apos;s DNS-over-HTTPS / encrypted DNS setting, characterized internally as DoH), come back here, then tap the button below — Apollo will automatically generate a fresh probe nonce, open the probe page in that browser, and wait for either its own attributed capture or the page&apos;s independent server receipt.
             </Text>
-            <Text style={styles.note}>Browser name / version (optional, for your records only — not evidence):</Text>
+            <Text style={styles.note}>Browser name / version (required — recorded in the report):</Text>
             <TextInputLike value={dohBrowserLabel} onChangeText={setDohBrowserLabel} placeholder="e.g. Firefox 143" />
+            {currentStepId === "doh-on" ? (
+              <>
+                <Text style={styles.note}>
+                  Selected DoH provider/mode (required — use an explicitly named or custom provider from the browser&apos;s own &quot;Use secure DNS&quot; setting, NOT an automatic/fallback option):
+                </Text>
+                <TextInputLike value={dohProviderLabel} onChangeText={setDohProviderLabel} placeholder="e.g. Cloudflare (1.1.1.1), or Custom: dns.example.com" />
+              </>
+            ) : null}
             {dohPhase === "idle" ? (
               <>
-                <ActionButton title={busy ? "Opening…" : "I've changed it — Run probe"} onPress={() => void handleStartDohStep(currentStepId)} disabled={busy} testID={`dns-wizard-${currentStepId}-run`} />
+                <ActionButton
+                  title={busy ? "Opening…" : "I've changed it — Run probe"}
+                  onPress={() => void handleStartDohStep(currentStepId)}
+                  disabled={busy || dohRequiredFieldsMissing(currentStepId)}
+                  testID={`dns-wizard-${currentStepId}-run`}
+                />
+                {dohRequiredFieldsMissing(currentStepId) ? (
+                  <Text style={styles.timerText}>
+                    {currentStepId === "doh-on" ? "Enter both the browser name/version and the selected provider/mode above to continue." : "Enter the browser name/version above to continue."}
+                  </Text>
+                ) : null}
                 <ActionButton title="Mark this configuration NOT_TESTABLE" secondary onPress={() => void handleRecordDohNotTestable(currentStepId)} disabled={busy} testID={`dns-wizard-${currentStepId}-not-testable`} />
               </>
             ) : (

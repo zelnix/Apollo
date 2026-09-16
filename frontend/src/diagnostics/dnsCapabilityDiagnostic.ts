@@ -648,6 +648,16 @@ export function buildAppEmbeddedDohRecord(
   // failure reasons above cover the genuinely checkable conditions.
   const { classification, gateReasons } = classifyWithHardGate(!!attributedEvent, independentSuccess, toGateInputs(truthSnapshot, true, null), extraGateReasons);
   const observedRuntimeMode = describePrivateDnsRuntimeMode(truthSnapshot.privateDnsRuntimeMode, truthSnapshot.privateDnsServerName);
+  // 2026-06 EIGHTH fix round (explicit user instruction, evidence-interpretation caveat -- NOT a
+  // classification change): on the "doh-on" row specifically, a plaintext UDP/53 capture proves
+  // Apollo saw and stopped SOMETHING, but does NOT by itself prove the browser actually attempted
+  // genuine DoH transport for this lookup -- it may equally mean the browser fell back to
+  // ordinary DNS. Documented as a caveat note alongside whatever classification the hard gate
+  // already produced above; the gate/classification logic itself is completely untouched.
+  const dohOnPlaintextCaveat =
+    stepId === "doh-on" && attributedEvent
+      ? "Caveat: plaintext UDP/53 was observed on this 'Use secure DNS — On' row. This does NOT by itself prove Apollo intercepted genuine DoH transport -- the browser may have fallen back to ordinary DNS for this lookup instead of using DoH. Cross-check against the tester-recorded selected provider/mode in this row's configured mode."
+      : null;
   return {
     id: `doh-${Date.now()}`,
     stepId,
@@ -666,7 +676,8 @@ export function buildAppEmbeddedDohRecord(
     independentSuccess,
     independentSuccessSource: attributedEvent ? "not-applicable" : "controlled-server-receipt",
     classification,
-    notes: [unrelatedEventNote(event, attributedEvent, host), gateReasons.length > 0 ? `NOT_TESTABLE reason(s): ${gateReasons.join(" ")}` : null].filter((n): n is string => !!n).join(" ") || null,
+    notes:
+      [unrelatedEventNote(event, attributedEvent, host), gateReasons.length > 0 ? `NOT_TESTABLE reason(s): ${gateReasons.join(" ")}` : null, dohOnPlaintextCaveat].filter((n): n is string => !!n).join(" ") || null,
     probeStartedAt,
     probeEndedAt: nowIso(),
     truthSnapshot,
