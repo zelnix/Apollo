@@ -62,9 +62,20 @@ const STEP_TITLES: Record<WizardStepId, string> = {
   "dot-off": "Private DNS — Off",
   "dot-automatic": "Private DNS — Automatic",
   "dot-strict": "Private DNS — Strict",
-  "doh-off": "Browser DoH — Off",
-  "doh-on": "Browser DoH — On",
+  "doh-off": 'Browser "Use secure DNS" — Off',
+  "doh-on": 'Browser "Use secure DNS" — On',
   "final-report": "Final report",
+};
+
+/** 2026-06 THIRD fix round (user-facing terminology finding): testers see a browser setting
+ * literally labelled "Use secure DNS" -- NOT "DNS over HTTPS"/"DoH". All user-facing wizard/report
+ * copy now matches that exact wording to remove tester ambiguity; internal identifiers
+ * (WizardRowId "doh-off"/"doh-on", DnsDiagnosticCategory "app-embedded-doh", ROW_PROBE_IDENTITY,
+ * rule IDs) deliberately keep the DoH/encrypted-DNS technical terminology unchanged -- this is a
+ * copy-only fix. */
+const DOH_UI_STATE_LABEL: Record<DohStepId, string> = {
+  "doh-off": "Use secure DNS — Off",
+  "doh-on": "Use secure DNS — On",
 };
 
 /** 2026-06 fix: human-readable labels for what `openPrivateDnsSettings()` actually opened -- see
@@ -367,7 +378,7 @@ export default function DnsCapabilityDiagnosticScreen() {
       // DoT rows (previously they had none at all) -- BEFORE the tester is ever sent to the browser.
       const readiness = await ensureProbeReadiness(preflightCarry);
       if (!readiness.ready) {
-        const label = `${dohBrowserLabel.trim() || "Unnamed browser"} — ${step === "doh-on" ? "DoH ON" : "DoH OFF"} (not attempted)`;
+        const label = `${dohBrowserLabel.trim() || "Unnamed browser"} — ${DOH_UI_STATE_LABEL[step]} (not attempted)`;
         // 2026-06 second fix round (code review finding #2): pass the readiness's OWN
         // before/attempted/after evidence through -- notTestableRecord no longer silently
         // hardcodes recoveryAttempted:false when a real recovery attempt already happened here.
@@ -422,7 +433,7 @@ export default function DnsCapabilityDiagnosticScreen() {
       // the browser was open, this probe must be forced NOT_TESTABLE rather than classified
       // against the earlier, now-stale pre-open readiness snapshot.
       const postProbeVerification = await verifyStillHealthyAfterProbe(preflightCarry);
-      const configuredMode = `${dohBrowserLabel.trim() || "Unnamed browser"} — ${step === "doh-on" ? "DoH ON" : "DoH OFF"}`;
+      const configuredMode = `${dohBrowserLabel.trim() || "Unnamed browser"} — ${DOH_UI_STATE_LABEL[step]}`;
       const record = buildAppEmbeddedDohRecord(
         step,
         configuredMode,
@@ -450,7 +461,7 @@ export default function DnsCapabilityDiagnosticScreen() {
     setBusy(true);
     try {
       const snapshot = await captureDnsDiagnosticTruthSnapshot(preflightCarry);
-      const configuredMode = `${dohBrowserLabel.trim() || "Unnamed browser"} — ${step === "doh-on" ? "DoH ON" : "DoH OFF"}`;
+      const configuredMode = `${dohBrowserLabel.trim() || "Unnamed browser"} — ${DOH_UI_STATE_LABEL[step]}`;
       const record = notTestableRecord(step, "app-embedded-doh", configuredMode, "Tester marked this configuration as not testable (e.g. that browser unavailable on this device).", snapshot, ROW_PROBE_IDENTITY[step].host);
       setRecords((prev) => upsertRecordByStepId(prev, record));
       setStepResult(record);
@@ -623,7 +634,7 @@ export default function DnsCapabilityDiagnosticScreen() {
         {currentStepId === "doh-off" || currentStepId === "doh-on" ? (
           <Card title={STEP_TITLES[currentStepId]}>
             <Text style={styles.note}>
-              Android cannot read another app&apos;s DoH setting, so this is the one step in this wizard needing a manual change: turn {currentStepId === "doh-on" ? "ON" : "OFF"} DNS-over-HTTPS in your browser&apos;s settings now, come back here, then tap the button below — Apollo will automatically generate a fresh probe nonce, open the probe page in that browser, and wait for either its own attributed capture or the page&apos;s independent server receipt.
+              Android cannot read another app&apos;s secure-DNS setting, so this is the one step in this wizard needing a manual change: in your browser&apos;s settings, turn {currentStepId === "doh-on" ? "ON" : "OFF"} the option labelled &quot;Use secure DNS&quot; (this is the browser&apos;s DNS-over-HTTPS / encrypted DNS setting, characterized internally as DoH), come back here, then tap the button below — Apollo will automatically generate a fresh probe nonce, open the probe page in that browser, and wait for either its own attributed capture or the page&apos;s independent server receipt.
             </Text>
             <Text style={styles.note}>Browser name / version (optional, for your records only — not evidence):</Text>
             <TextInputLike value={dohBrowserLabel} onChangeText={setDohBrowserLabel} placeholder="e.g. Firefox 143" />

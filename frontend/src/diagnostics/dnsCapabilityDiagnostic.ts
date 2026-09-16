@@ -703,8 +703,31 @@ const INTERNET_CONTINUITY_TIMEOUT_MS = 8_000;
  * must preserve ordinary internet connectivity; only explicitly authorized destinations may be
  * dropped. This check is therefore load-bearing, not advisory -- Preflight MUST fail
  * (INTERNET_CONTINUITY_FAILED) rather than let the wizard proceed to classify any row if it fails,
- * even if the upstream-resolver fix above is somehow not present in a given build. */
+ * even if the upstream-resolver fix above is somehow not present in a given build.
+ *
+ * 2026-06 THIRD physical fix round (Pixel 10 finding): a raw `fetch()` alone is NOT a reliable
+ * proxy for "ordinary internet access" while Apollo is active. Apollo's own app-level traffic is
+ * routed through its OWN VPN tunnel/DNS-gateway pipeline, which can independently resolve/succeed
+ * even when the OS's SYSTEM-level network validation has genuinely failed -- exactly what happened
+ * when Strict Private DNS (dns.google) made Android show "Private DNS cannot be accessed": the
+ * system lost real internet access, yet this function's fetch could still have gone through Apollo's
+ * own tunnel and returned success, letting a row get classified (UNOBSERVABLE) instead of the
+ * required NOT_TESTABLE. Fixed by requiring the OS's OWN validated-reachability signal
+ * (`isInternetReachable`, backed on Android by `NetworkCapabilities.NET_CAPABILITY_VALIDATED` --
+ * the exact flag the system flips false for "Private DNS cannot be accessed") in addition to, never
+ * instead of, the fetch -- BOTH must hold. This is a strengthening of the check, not a weakening: it
+ * makes continuity fail in MORE genuinely-broken cases, never fewer. Never "fixed" by blocking
+ * DoT/853 or otherwise altering what's being tested -- see PRD "Strict dns.google breaks internet
+ * access" for the separate, still-open investigation into WHY Strict+Apollo causes this. */
 async function checkInternetContinuity(): Promise<boolean> {
+  let osValidatedReachable: boolean | null = null;
+  try {
+    osValidatedReachable = (await Network.getNetworkStateAsync()).isInternetReachable ?? null;
+  } catch {
+    osValidatedReachable = null; // unknown is never treated as proof of continuity below
+  }
+  if (osValidatedReachable !== true) return false;
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), INTERNET_CONTINUITY_TIMEOUT_MS);
   try {
