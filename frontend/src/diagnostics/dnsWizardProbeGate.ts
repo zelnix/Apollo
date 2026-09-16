@@ -327,6 +327,53 @@ export function resolveDohAttemptPreflightCarry(capturedRef: PreflightCarryLike 
   return capturedRef ?? SAFE_NULL_PREFLIGHT_CARRY;
 }
 
+// --- DoH attempt metadata (browser name/version + provider/mode) ref resolution (2026-06 NINTH fix round) ---
+
+export interface DohAttemptMeta {
+  browserLabel: string;
+  providerLabel: string;
+}
+
+/** The honest, fully-empty default -- `buildDohConfiguredModeLabel` below renders this as
+ * "Unnamed browser" / "NOT RECORDED", the SAME wording a genuinely-never-filled-in attempt would
+ * show. Falling back to it only ever honestly documents "nothing was captured for this attempt",
+ * never fabricates or leaks a value from a different attempt. */
+export const SAFE_EMPTY_DOH_ATTEMPT_META: DohAttemptMeta = { browserLabel: "", providerLabel: "" };
+
+/**
+ * Confirmed physical repro (2026-06 NINTH fix round): tester entered "Chrome 152.0.7977.83" into
+ * the browser name/version field (and, on the "doh-on" row, a selected provider/mode too), but
+ * the EXPORTED REPORT still recorded "Unnamed browser" / "NOT RECORDED" -- not because the field
+ * was skipped, but because `finishDohObservation()` was building `configuredMode` by reading the
+ * render-scoped `dohBrowserLabel`/`dohProviderLabel` React state DIRECTLY. `finishDohObservation`
+ * can run under the SAME mount-time `AppState` closure documented in
+ * `resolveDohAttemptPreflightCarry`'s doc comment above -- under that stale closure, those two
+ * state variables are frozen at whatever they were AT MOUNT (both empty strings, since the tester
+ * had not typed anything yet). Identical root cause, identical fix shape: the screen captures a
+ * FRESH `DohAttemptMeta` into a ref at the START of every `handleStartDohStep` call (always
+ * invoked live from an onPress, never a stale closure) and reads it back ONLY through this
+ * resolver in `finishDohObservation` -- never the render-scoped state variables directly. If the
+ * ref was somehow never populated, the honest `SAFE_EMPTY_DOH_ATTEMPT_META` default is returned
+ * (same "Unnamed browser"/"NOT RECORDED" wording as before), never a stale non-empty value left
+ * over from a previous attempt/row.
+ */
+export function resolveDohAttemptMeta(capturedRef: DohAttemptMeta | null): DohAttemptMeta {
+  return capturedRef ?? SAFE_EMPTY_DOH_ATTEMPT_META;
+}
+
+/** Pure: builds the exact `configuredMode`/label string for a DoH row from an ALREADY-RESOLVED
+ * `DohAttemptMeta` -- never reads any React state itself, so it is safe to call from a callback
+ * running under a stale closure as long as the caller resolved `meta` via `resolveDohAttemptMeta`
+ * (browser-return path) or supplied it live (launch-time path) first. `stepLabel` is the
+ * caller-supplied human label for the step (e.g. "Use secure DNS — Off") -- kept as a plain string
+ * parameter, never an app-specific constant import, so this file keeps its zero-RN-dependency
+ * contract. */
+export function buildDohConfiguredModeLabel(step: "doh-off" | "doh-on", stepLabel: string, meta: DohAttemptMeta, extraSuffix = ""): string {
+  const browser = meta.browserLabel.trim() || "Unnamed browser";
+  const providerPart = step === "doh-on" ? ` (selected provider/mode: ${meta.providerLabel.trim() || "NOT RECORDED"})` : "";
+  return `${browser} — ${stepLabel}${providerPart}${extraSuffix}`;
+}
+
 // --- Truth violation vs readiness concern split (2026-06 SEVENTH fix round) ---
 
 export interface TruthViolationInputs {

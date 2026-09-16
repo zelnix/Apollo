@@ -11,17 +11,21 @@ import test from "node:test";
 import {
   anyAttemptEverSucceeded,
   appendPreflightAttempt,
+  buildDohConfiguredModeLabel,
   checkDnsCacheFreshness,
   classifyWithHardGate,
   computeTruthViolationAndReadinessConcern,
   decideRecoveryOutcome,
   describeAutomaticModeContradiction,
   describeOffModeContradiction,
+  type DohAttemptMeta,
   evaluateHardClassificationGate,
   latestAttempt,
   needsRecovery,
   recordHostProbedInMap,
+  resolveDohAttemptMeta,
   resolveDohAttemptPreflightCarry,
+  SAFE_EMPTY_DOH_ATTEMPT_META,
   SAFE_NULL_PREFLIGHT_CARRY,
   upsertRecordByStepId,
   type GateTruthInputs,
@@ -400,4 +404,35 @@ test("regression (physical Pixel 10 report finding): dnsGatewayActive=true + int
 test("computeTruthViolationAndReadinessConcern: readinessConcern is null whenever the gateway is not active, even if continuity also failed (nothing contradictory or concerning to report about an inactive gateway)", () => {
   const result = computeTruthViolationAndReadinessConcern({ ...TRUTH_VIOLATION_BASE, dnsGatewayActive: false, internetContinuityOk: false });
   assert.equal(result.readinessConcern, null);
+});
+
+// --- DoH attempt metadata (browser name/version + provider/mode) ref resolution (2026-06 NINTH fix round) ---
+
+test("regression (confirmed physical repro): a genuinely captured browser label ('Chrome 152.0.7977.83') survives all the way to the built report label -- never falls back to 'Unnamed browser'", () => {
+  const captured: DohAttemptMeta = { browserLabel: "Chrome 152.0.7977.83", providerLabel: "" };
+  const label = buildDohConfiguredModeLabel("doh-off", "Use secure DNS — Off", resolveDohAttemptMeta(captured));
+  assert.match(label, /Chrome 152\.0\.7977\.83/);
+  assert.doesNotMatch(label, /Unnamed browser/);
+});
+
+test("regression (confirmed physical repro, doh-on row): a genuinely captured browser label AND a genuinely captured provider/mode BOTH survive to the built label -- neither falls back to its stale/empty default", () => {
+  const captured: DohAttemptMeta = { browserLabel: "Chrome 152.0.7977.83", providerLabel: "Cloudflare (1.1.1.1)" };
+  const label = buildDohConfiguredModeLabel("doh-on", "Use secure DNS — On", resolveDohAttemptMeta(captured));
+  assert.match(label, /Chrome 152\.0\.7977\.83/);
+  assert.match(label, /Cloudflare \(1\.1\.1\.1\)/);
+  assert.doesNotMatch(label, /Unnamed browser/);
+  assert.doesNotMatch(label, /NOT RECORDED/);
+});
+
+test("resolveDohAttemptMeta: a missing ref (never populated for this attempt) returns the honest, fully-empty default -- never silently substitutes a second, potentially-stale source of truth", () => {
+  assert.deepEqual(resolveDohAttemptMeta(null), SAFE_EMPTY_DOH_ATTEMPT_META);
+  const label = buildDohConfiguredModeLabel("doh-on", "Use secure DNS — On", resolveDohAttemptMeta(null));
+  assert.match(label, /Unnamed browser/);
+  assert.match(label, /NOT RECORDED/);
+});
+
+test("buildDohConfiguredModeLabel: 'doh-off' rows never render a provider/mode suffix at all (only 'doh-on' rows carry a selected provider)", () => {
+  const label = buildDohConfiguredModeLabel("doh-off", "Use secure DNS — Off", { browserLabel: "Chrome 152.0.7977.83", providerLabel: "Cloudflare (1.1.1.1)" });
+  assert.doesNotMatch(label, /Cloudflare/);
+  assert.doesNotMatch(label, /provider/);
 });

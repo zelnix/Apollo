@@ -45,7 +45,7 @@ import {
 } from "@/src/diagnostics/dnsCapabilityDiagnostic";
 import { exportDnsCharacterizationJson, exportDnsCharacterizationPdf } from "@/src/diagnostics/dnsCapabilityDiagnosticReport";
 import { captureDnsDiagnosticTruthSnapshot, describePrivateDnsRuntimeMode } from "@/src/diagnostics/dnsCapabilityTruthSnapshot";
-import { appendPreflightAttempt, type AttemptKeyed, latestAttempt, resolveDohAttemptPreflightCarry, upsertRecordByStepId } from "@/src/diagnostics/dnsWizardProbeGate";
+import { appendPreflightAttempt, type AttemptKeyed, buildDohConfiguredModeLabel, type DohAttemptMeta, latestAttempt, resolveDohAttemptMeta, resolveDohAttemptPreflightCarry, upsertRecordByStepId } from "@/src/diagnostics/dnsWizardProbeGate";
 import { readBuildProvenance } from "@/src/harness/buildProvenance";
 import { readPhase6DeviceProvenance } from "@/src/harness/phase6DeviceProvenance";
 import { shareEvidenceFile } from "@/src/harness/proofReport";
@@ -223,6 +223,16 @@ export default function DnsCapabilityDiagnosticScreen() {
    * `preflightCarry` variable directly. Cleared on the same lifecycle points as
    * dohLastProbedAtRef above. */
   const dohPreflightCarryRef = useRef<PreflightCarry | null>(null);
+  /** Metadata loss fix (2026-06 NINTH fix round -- see resolveDohAttemptMeta's doc comment in
+   * dnsWizardProbeGate.ts for the confirmed physical repro): the SAME stale-mount-closure problem
+   * that hit dohPreflightCarryRef in the SIXTH round also hit the browser name/version + selected
+   * provider/mode fields -- finishDohObservation() previously read the render-scoped
+   * `dohBrowserLabel`/`dohProviderLabel` state directly, which under the AppState subscription's
+   * mount-time closure is frozen at whatever it was AT MOUNT (both empty). Fixed with the exact
+   * same ref pattern: captured fresh at the start of every handleStartDohStep call, read back only
+   * via resolveDohAttemptMeta() in finishDohObservation, cleared on the same lifecycle points as
+   * dohPreflightCarryRef/dohLastProbedAtRef. */
+  const dohAttemptMetaRef = useRef<DohAttemptMeta | null>(null);
 
   // --- Neutral system-DNS baseline gate before browser testing (2026-06 SEVENTH fix round) ---
   //
@@ -259,6 +269,7 @@ export default function DnsCapabilityDiagnosticScreen() {
     dohObservationRef.current = null;
     dohLastProbedAtRef.current = null; // cancel-by-navigating-away -- never let this carry into the next step/retry
     dohPreflightCarryRef.current = null; // same lifecycle -- never let a stale carry survive a cancel/back navigation
+    dohAttemptMetaRef.current = null; // same lifecycle -- never let stale browser/provider metadata survive a cancel/back navigation
     resetStepTransientState();
     setStepIndex(index);
   }
@@ -363,7 +374,6 @@ export default function DnsCapabilityDiagnosticScreen() {
       }
     });
     return () => sub.remove();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /** 2026-06 fix: native `openPrivateDnsSettings()` bridge (Private DNS settings -> Network &
@@ -426,16 +436,6 @@ export default function DnsCapabilityDiagnosticScreen() {
     } finally {
       setActivating(false);
     }
-  }
-
-  /** 2026-06 EIGHTH fix round: single place `configuredMode`/`label` strings are built for every
-   * DoH row path (readiness-failure, launch-failure, success, tester-marked-not-testable) -- for
-   * "doh-on" specifically, ALWAYS includes the tester-recorded selected provider/mode so it is
-   * genuinely part of the report, not just a UI-only field. */
-  function buildDohConfiguredModeLabel(step: DohStepId, extraSuffix?: string): string {
-    const browser = dohBrowserLabel.trim() || "Unnamed browser";
-    const providerPart = step === "doh-on" ? ` (selected provider/mode: ${dohProviderLabel.trim() || "NOT RECORDED"})` : "";
-    return `${browser} — ${DOH_UI_STATE_LABEL[step]}${providerPart}${extraSuffix ?? ""}`;
   }
 
   /** 2026-06 EIGHTH fix round: required fields before a DoH probe may be launched -- browser
@@ -516,12 +516,20 @@ export default function DnsCapabilityDiagnosticScreen() {
     // never the render-scoped `preflightCarry` variable directly.
     const carry: PreflightCarry = { ...preflightCarry };
     dohPreflightCarryRef.current = carry;
+    // Metadata loss fix (2026-06 NINTH fix round): capture a FRESH DohAttemptMeta for THIS
+    // attempt right now, at the top of a call that is always invoked live from an onPress (never
+    // a stale closure) -- finishDohObservation() below reads ONLY this ref (via
+    // resolveDohAttemptMeta), NEVER the render-scoped dohBrowserLabel/dohProviderLabel state
+    // directly, so a browser return can never lose the tester's actual input back to
+    // "Unnamed browser"/"NOT RECORDED".
+    const attemptMeta: DohAttemptMeta = { browserLabel: dohBrowserLabel.trim(), providerLabel: dohProviderLabel.trim() };
+    dohAttemptMetaRef.current = attemptMeta;
     try {
       // 2026-06 fix: DoH rows now run the SAME rigorous pre-probe readiness/recovery sequence as
       // DoT rows (previously they had none at all) -- BEFORE the tester is ever sent to the browser.
       const readiness = await ensureProbeReadiness(carry);
       if (!readiness.ready) {
-        const label = buildDohConfiguredModeLabel(step, " (not attempted)");
+        const label = buildDohConfiguredModeLabel(step, DOH_UI_STATE_LABEL[step], attemptMeta, " (not attempted)");
         // 2026-06 second fix round (code review finding #2): pass the readiness's OWN
         // before/attempted/after evidence through -- notTestableRecord no longer silently
         // hardcodes recoveryAttempted:false when a real recovery attempt already happened here.
@@ -556,12 +564,13 @@ export default function DnsCapabilityDiagnosticScreen() {
       // Finalize this attempt honestly (2026-06 FIFTH fix round guardrail): if Linking.openURL (or
       // anything earlier in this try) failed, no genuine probe happened -- unwind every piece of
       // DoH transient state so neither a stale readiness/observation NOR a stale
-      // dohLastProbedAtRef/dohPreflightCarryRef can ever be picked up by a later retry or
-      // finishDohObservation call.
+      // dohLastProbedAtRef/dohPreflightCarryRef/dohAttemptMetaRef can ever be picked up by a later
+      // retry or finishDohObservation call.
       const observation = dohObservationRef.current;
       dohObservationRef.current = null;
       dohLastProbedAtRef.current = null;
       dohPreflightCarryRef.current = null;
+      dohAttemptMetaRef.current = null;
       if (dohFallbackTimerRef.current) {
         clearTimeout(dohFallbackTimerRef.current);
         dohFallbackTimerRef.current = null;
@@ -570,7 +579,7 @@ export default function DnsCapabilityDiagnosticScreen() {
       const readiness = dohReadinessRef.current;
       if (readiness) {
         const snapshot = await captureDnsDiagnosticTruthSnapshot(carry);
-        const label = buildDohConfiguredModeLabel(step);
+        const label = buildDohConfiguredModeLabel(step, DOH_UI_STATE_LABEL[step], attemptMeta);
         const record = notTestableRecord(step, "app-embedded-doh", label, `Failed to open the probe URL in the browser -- no probe was actually attempted: ${message}`, snapshot, identity.host, {
           protectionStateBeforeProbe: readiness.protectionStateBeforeProbe,
           recoveryAttempted: readiness.recoveryAttempted,
@@ -614,7 +623,14 @@ export default function DnsCapabilityDiagnosticScreen() {
       // the browser was open, this probe must be forced NOT_TESTABLE rather than classified
       // against the earlier, now-stale pre-open readiness snapshot.
       const postProbeVerification = await verifyStillHealthyAfterProbe(carry);
-      const configuredMode = buildDohConfiguredModeLabel(step);
+      // Metadata loss fix (2026-06 NINTH fix round): same reasoning as `carry` above -- this
+      // function may run under the stale mount-time closure, so `configuredMode` is built ONLY
+      // from the per-attempt ref (via resolveDohAttemptMeta), NEVER from the render-scoped
+      // `dohBrowserLabel`/`dohProviderLabel` state directly. This is the confirmed fix for the
+      // physical repro where a genuinely-entered "Chrome 152.0.7977.83" was lost back to
+      // "Unnamed browser" in the exported report.
+      const attemptMeta = resolveDohAttemptMeta(dohAttemptMetaRef.current);
+      const configuredMode = buildDohConfiguredModeLabel(step, DOH_UI_STATE_LABEL[step], attemptMeta);
       const record = buildAppEmbeddedDohRecord(
         step,
         configuredMode,
@@ -636,10 +652,11 @@ export default function DnsCapabilityDiagnosticScreen() {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       // Completion (success or failure here) -- clear immediately so this attempt's timestamp/
-      // carry can never leak into the next row or a later retry of this same row (2026-06 FIFTH /
-      // SIXTH fix rounds).
+      // carry/metadata can never leak into the next row or a later retry of this same row
+      // (2026-06 FIFTH / SIXTH / NINTH fix rounds).
       dohLastProbedAtRef.current = null;
       dohPreflightCarryRef.current = null;
+      dohAttemptMetaRef.current = null;
       setBusy(false);
     }
   }
@@ -648,7 +665,10 @@ export default function DnsCapabilityDiagnosticScreen() {
     setBusy(true);
     try {
       const snapshot = await captureDnsDiagnosticTruthSnapshot(preflightCarry);
-      const configuredMode = buildDohConfiguredModeLabel(step);
+      // Invoked live from onPress (never a stale closure) -- safe to build straight from the
+      // current render's state, but routed through the SAME pure builder as the other 3 call
+      // sites for consistency (2026-06 NINTH fix round).
+      const configuredMode = buildDohConfiguredModeLabel(step, DOH_UI_STATE_LABEL[step], { browserLabel: dohBrowserLabel.trim(), providerLabel: dohProviderLabel.trim() });
       const record = notTestableRecord(step, "app-embedded-doh", configuredMode, "Tester marked this configuration as not testable (e.g. that browser unavailable on this device).", snapshot, ROW_PROBE_IDENTITY[step].host);
       setRecords((prev) => upsertRecordByStepId(prev, record));
       setStepResult(record);
