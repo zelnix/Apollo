@@ -45,8 +45,14 @@ export function buildDnsCharacterizationJson(run: DnsCharacterizationRun): strin
 
 function recordRow(r: DnsDiagnosticRecord): string {
   const violation = r.truthSnapshot?.truthViolation;
-  const violationCell = violation?.violated ? `<span style="color:#b91c1c;font-weight:700">⚠ ${esc(violation.reasons.join(" "))}</span>` : "none";
-  return `<tr><td>${esc(r.category)}</td><td>${esc(r.configuredMode)}</td><td>${esc(r.observedRuntimeMode)}</td><td>${esc(r.protectionStateBeforeProbe)}</td><td>${r.recoveryAttempted ? "yes" : "no"}</td><td>${esc(r.recoveryAttempted ? r.protectionStateAfterRecovery : "n/a")}</td><td>${esc(r.probeHostname)}</td><td>${esc(r.transportNetworkType)}</td><td>${r.sawPlaintextUdp53 ? "yes" : "no"}</td><td>${r.websiteGateEventProduced ? "yes" : "no"}</td><td>${r.independentSuccess === null ? "n/a" : r.independentSuccess ? "yes" : "no"} (${esc(r.independentSuccessSource)})</td><td style="color:${CLASS_COLOR[r.classification] ?? "#64748b"};font-weight:800">${esc(r.classification)}<br/><span style="font-weight:400;font-size:9px">${esc(CLASSIFICATION_LABELS[r.classification])}</span></td><td style="font-size:9px">${violationCell}</td><td style="font-size:10px">${esc(r.notes)}</td></tr>`;
+  const readinessConcern = r.truthSnapshot?.readinessConcern;
+  const violationLine = violation?.violated ? `<div style="color:#b91c1c;font-weight:700">⚠ Truth violation: ${esc(violation.reasons.join(" "))}</div>` : "";
+  // 2026-06 SEVENTH fix round: kept visually/verbally distinct from a genuine truth violation --
+  // this is the environment not being healthy enough to test right now, never a contradiction in
+  // Apollo's own reported state (see computeTruthViolationAndReadinessConcern doc comment).
+  const readinessLine = readinessConcern ? `<div style="color:#92400e;font-weight:600">ⓘ Readiness concern (environmental, not a contradiction): ${esc(readinessConcern)}</div>` : "";
+  const stateCell = violationLine || readinessLine ? `${violationLine}${readinessLine}` : "none";
+  return `<tr><td>${esc(r.category)}</td><td>${esc(r.configuredMode)}</td><td>${esc(r.observedRuntimeMode)}</td><td>${esc(r.protectionStateBeforeProbe)}</td><td>${r.recoveryAttempted ? "yes" : "no"}</td><td>${esc(r.recoveryAttempted ? r.protectionStateAfterRecovery : "n/a")}</td><td>${esc(r.probeHostname)}</td><td>${esc(r.transportNetworkType)}</td><td>${r.sawPlaintextUdp53 ? "yes" : "no"}</td><td>${r.websiteGateEventProduced ? "yes" : "no"}</td><td>${r.independentSuccess === null ? "n/a" : r.independentSuccess ? "yes" : "no"} (${esc(r.independentSuccessSource)})</td><td style="color:${CLASS_COLOR[r.classification] ?? "#64748b"};font-weight:800">${esc(r.classification)}<br/><span style="font-weight:400;font-size:9px">${esc(CLASSIFICATION_LABELS[r.classification])}</span></td><td style="font-size:9px">${stateCell}</td><td style="font-size:10px">${esc(r.notes)}</td></tr>`;
 }
 
 function preflightAttemptsSection(attempts: (ActivationResult & AttemptKeyed)[]): string {
@@ -87,7 +93,13 @@ function truthSnapshotSection(title: string, s: DnsDiagnosticTruthSnapshot | nul
   const violationBanner = s.truthViolation.violated
     ? `<div style="border:2px solid #b91c1c;background:#fef2f2;padding:8px;border-radius:4px;margin:6px 0;font-size:11px;color:#7f1d1d"><strong>⚠ Truth-of-state violation:</strong> ${esc(s.truthViolation.reasons.join(" "))}</div>`
     : "";
-  return `<h3>${esc(title)}</h3>${violationBanner}<table border="1" cellpadding="4" style="border-collapse:collapse;width:100%;font-size:10px">${rows.map(([k, v]) => `<tr><td style="font-weight:700">${esc(k)}</td><td>${esc(v)}</td></tr>`).join("")}</table>`;
+  // 2026-06 SEVENTH fix round: a distinct, amber (not red) informational banner -- an
+  // environmental readiness concern is NOT a contradiction in Apollo's own state; see
+  // computeTruthViolationAndReadinessConcern's doc comment for the full rationale.
+  const readinessBanner = s.readinessConcern
+    ? `<div style="border:2px solid #d97706;background:#fffbeb;padding:8px;border-radius:4px;margin:6px 0;font-size:11px;color:#78350f"><strong>ⓘ Readiness concern (environmental, not a contradiction):</strong> ${esc(s.readinessConcern)}</div>`
+    : "";
+  return `<h3>${esc(title)}</h3>${violationBanner}${readinessBanner}<table border="1" cellpadding="4" style="border-collapse:collapse;width:100%;font-size:10px">${rows.map(([k, v]) => `<tr><td style="font-weight:700">${esc(k)}</td><td>${esc(v)}</td></tr>`).join("")}</table>`;
 }
 
 export function buildDnsCharacterizationHtml(run: DnsCharacterizationRun): string {
@@ -114,7 +126,7 @@ ${truthSnapshotSection("Preflight — full automated truth-of-state snapshot (la
 ${preflightAttemptsSection(run.preflightAttempts)}
 
 <table border="1" cellpadding="6" style="border-collapse:collapse;width:100%;font-size:11px;margin-top:16px">
-<thead><tr><th>Category</th><th>Configured mode</th><th>Observed runtime mode</th><th>Protection before probe</th><th>Recovery attempted</th><th>Protection after recovery</th><th>Probe host</th><th>Network</th><th>Saw plaintext UDP/53</th><th>Website Gate event</th><th>Independent success</th><th>Classification</th><th>Truth violation</th><th>Notes</th></tr></thead>
+<thead><tr><th>Category</th><th>Configured mode</th><th>Observed runtime mode</th><th>Protection before probe</th><th>Recovery attempted</th><th>Protection after recovery</th><th>Probe host</th><th>Network</th><th>Saw plaintext UDP/53</th><th>Website Gate event</th><th>Independent success</th><th>Classification</th><th>Truth violation / readiness concern</th><th>Notes</th></tr></thead>
 <tbody>${run.records.map(recordRow).join("") || `<tr><td colspan="14" style="color:#94a3b8">No probes recorded yet.</td></tr>`}</tbody>
 </table>
 

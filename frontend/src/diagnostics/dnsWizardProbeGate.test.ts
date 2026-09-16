@@ -13,6 +13,7 @@ import {
   appendPreflightAttempt,
   checkDnsCacheFreshness,
   classifyWithHardGate,
+  computeTruthViolationAndReadinessConcern,
   decideRecoveryOutcome,
   describeAutomaticModeContradiction,
   describeOffModeContradiction,
@@ -361,4 +362,42 @@ test("regression: the STALE all-null carry (the exact pre-fix bug shape -- pre-a
     truthViolation: { violated: false, reasons: [] },
   });
   assert.match(reasons.join(" "), /M1 signed rule bundle/);
+});
+
+// --- Truth violation vs readiness concern split (2026-06 SEVENTH fix round) ---
+
+const TRUTH_VIOLATION_BASE = {
+  protectionState: "ACTIVE",
+  isVpnConsentRequired: false,
+  dnsGatewayActive: true,
+  tunOpen: true,
+  m1BundleAccepted: true,
+  probeRuleConfirmedInBundle: true,
+  internetContinuityOk: true,
+};
+
+test("computeTruthViolationAndReadinessConcern: fully-coherent state -> no violation, no readiness concern", () => {
+  const result = computeTruthViolationAndReadinessConcern(TRUTH_VIOLATION_BASE);
+  assert.deepEqual(result.truthViolation, { violated: false, reasons: [] });
+  assert.equal(result.readinessConcern, null);
+});
+
+test("computeTruthViolationAndReadinessConcern: genuine internal contradictions (TUN closed while gateway active, ACTIVE without M1 accepted, etc.) are still flagged as truthViolation, unchanged", () => {
+  assert.equal(computeTruthViolationAndReadinessConcern({ ...TRUTH_VIOLATION_BASE, tunOpen: false }).truthViolation.violated, true);
+  assert.equal(computeTruthViolationAndReadinessConcern({ ...TRUTH_VIOLATION_BASE, protectionState: "STOPPED" }).truthViolation.violated, true);
+  assert.equal(computeTruthViolationAndReadinessConcern({ ...TRUTH_VIOLATION_BASE, m1BundleAccepted: false }).truthViolation.violated, true);
+  assert.equal(computeTruthViolationAndReadinessConcern({ ...TRUTH_VIOLATION_BASE, probeRuleConfirmedInBundle: false }).truthViolation.violated, true);
+  assert.equal(computeTruthViolationAndReadinessConcern({ ...TRUTH_VIOLATION_BASE, isVpnConsentRequired: true }).truthViolation.violated, true);
+});
+
+test("regression (physical Pixel 10 report finding): dnsGatewayActive=true + internetContinuityOk=false is NO LONGER a truthViolation -- it is a distinct, honestly-worded readinessConcern, since the per-row readiness re-check that discovered it already correctly halted that probe", () => {
+  const result = computeTruthViolationAndReadinessConcern({ ...TRUTH_VIOLATION_BASE, internetContinuityOk: false });
+  assert.deepEqual(result.truthViolation, { violated: false, reasons: [] }, "must NOT be flagged as a self-contradiction");
+  assert.match(result.readinessConcern ?? "", /ENVIRONMENTAL/);
+  assert.doesNotMatch(result.readinessConcern ?? "", /should have stopped/, "must never imply an internal software bug -- the row's own readiness check already correctly stopped it");
+});
+
+test("computeTruthViolationAndReadinessConcern: readinessConcern is null whenever the gateway is not active, even if continuity also failed (nothing contradictory or concerning to report about an inactive gateway)", () => {
+  const result = computeTruthViolationAndReadinessConcern({ ...TRUTH_VIOLATION_BASE, dnsGatewayActive: false, internetContinuityOk: false });
+  assert.equal(result.readinessConcern, null);
 });

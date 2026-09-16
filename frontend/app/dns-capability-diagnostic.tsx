@@ -44,26 +44,27 @@ import {
   verifyStillHealthyAfterProbe,
 } from "@/src/diagnostics/dnsCapabilityDiagnostic";
 import { exportDnsCharacterizationJson, exportDnsCharacterizationPdf } from "@/src/diagnostics/dnsCapabilityDiagnosticReport";
-import { captureDnsDiagnosticTruthSnapshot } from "@/src/diagnostics/dnsCapabilityTruthSnapshot";
+import { captureDnsDiagnosticTruthSnapshot, describePrivateDnsRuntimeMode } from "@/src/diagnostics/dnsCapabilityTruthSnapshot";
 import { appendPreflightAttempt, type AttemptKeyed, latestAttempt, resolveDohAttemptPreflightCarry, upsertRecordByStepId } from "@/src/diagnostics/dnsWizardProbeGate";
 import { readBuildProvenance } from "@/src/harness/buildProvenance";
 import { readPhase6DeviceProvenance } from "@/src/harness/phase6DeviceProvenance";
 import { shareEvidenceFile } from "@/src/harness/proofReport";
 import { writeDnsDohStatus } from "@/src/harness/testRunStatus";
-import { GuardDogNative, type NativeDnsCapabilityDeviceSnapshot, type NativeOpenSettingsScreen } from "@/src/sdk/nativeModule";
+import { GuardDogNative, type NativeDnsCapabilityDeviceSnapshot, type NativeOpenSettingsScreen, type PrivateDnsRuntimeMode } from "@/src/sdk/nativeModule";
 import { makeStyles, useTheme } from "@/src/theme";
 
 type ActivationAttempt = ActivationResult & AttemptKeyed;
 
-type WizardStepId = "preflight" | "dot-off" | "dot-automatic" | "dot-strict" | "doh-off" | "doh-on" | "final-report";
+type WizardStepId = "preflight" | "dot-off" | "dot-automatic" | "dot-strict" | "doh-baseline" | "doh-off" | "doh-on" | "final-report";
 type DohStepId = "doh-off" | "doh-on";
 
-const STEP_ORDER: WizardStepId[] = ["preflight", "dot-off", "dot-automatic", "dot-strict", "doh-off", "doh-on", "final-report"];
+const STEP_ORDER: WizardStepId[] = ["preflight", "dot-off", "dot-automatic", "dot-strict", "doh-baseline", "doh-off", "doh-on", "final-report"];
 const STEP_TITLES: Record<WizardStepId, string> = {
   preflight: "Preflight",
   "dot-off": "Private DNS — Off",
   "dot-automatic": "Private DNS — Automatic",
   "dot-strict": "Private DNS — Strict",
+  "doh-baseline": "Neutral system DNS baseline",
   "doh-off": 'Browser "Use secure DNS" — Off',
   "doh-on": 'Browser "Use secure DNS" — On',
   "final-report": "Final report",
@@ -110,6 +111,11 @@ const useStyles = makeStyles((colors) => ({
   timerText: { color: colors.onSurfaceTertiary, fontSize: 12, fontStyle: "italic" },
   violationBanner: { backgroundColor: colors.surfaceTertiary, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: colors.error, gap: 4 },
   violationText: { color: colors.error, fontSize: 12, fontWeight: "700" },
+  // 2026-06 SEVENTH fix round: deliberately amber/warning-toned, NOT the same red as
+  // violationBanner/violationText -- a readiness concern is environmental, never a contradiction
+  // in Apollo's own reported state (see computeTruthViolationAndReadinessConcern's doc comment).
+  readinessConcernBanner: { backgroundColor: colors.surfaceTertiary, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: colors.warning, gap: 4 },
+  readinessConcernText: { color: colors.warning, fontSize: 12, fontWeight: "600" },
 }));
 
 function classificationTone(c: DnsDiagnosticRecord["classification"]): "good" | "bad" | "neutral" {
@@ -132,6 +138,11 @@ function recordToRows(r: DnsDiagnosticRecord): [string, string][] {
     ["Independent success", r.independentSuccess === null ? "n/a" : r.independentSuccess ? `yes (${r.independentSuccessSource})` : `no (${r.independentSuccessSource})`],
     ["Meaning", CLASSIFICATION_LABELS[r.classification]],
     ...(r.truthSnapshot.truthViolation.violated ? ([["⚠ Truth violation", r.truthSnapshot.truthViolation.reasons.join(" ")]] as [string, string][]) : []),
+    // 2026-06 SEVENTH fix round: deliberately a SEPARATE row, never merged with "⚠ Truth
+    // violation" above -- an environmental readiness concern (e.g. gateway active while a
+    // per-row continuity re-check failed) is NOT a contradiction in Apollo's own state; see
+    // computeTruthViolationAndReadinessConcern's doc comment for the full rationale.
+    ...(r.truthSnapshot.readinessConcern ? ([["ⓘ Readiness concern", r.truthSnapshot.readinessConcern]] as [string, string][]) : []),
     ...(r.notes ? ([["Notes", r.notes]] as [string, string][]) : []),
   ];
 }
@@ -207,6 +218,21 @@ export default function DnsCapabilityDiagnosticScreen() {
    * dohLastProbedAtRef above. */
   const dohPreflightCarryRef = useRef<PreflightCarry | null>(null);
 
+  // --- Neutral system-DNS baseline gate before browser testing (2026-06 SEVENTH fix round) ---
+  //
+  // Physical Pixel 10 finding: the wizard previously went straight from "dot-strict" to the
+  // browser "Use secure DNS" rows, leaving Android system Private DNS set to Strict/dns.google
+  // the whole time -- so both browser rows inherited system-level encrypted DNS still being
+  // active, and their per-row Internet Continuity re-check correctly (but confusingly) failed
+  // before either browser probe could even run. This step requires the tester to switch system
+  // Private DNS back to Off and machine-confirms INACTIVE_OR_OFF (STRICT/ACTIVE_NO_HOSTNAME must
+  // NOT proceed -- either would still confound the browser test) before re-running the full
+  // readiness sequence and allowing "Continue" into doh-off/doh-on.
+  const [dohBaselinePhase, setDohBaselinePhase] = useState<"idle" | "checking" | "wrong-mode" | "ready" | "not-ready">("idle");
+  const [dohBaselineObservedMode, setDohBaselineObservedMode] = useState<PrivateDnsRuntimeMode | "UNAVAILABLE" | null>(null);
+  const [dohBaselineServerName, setDohBaselineServerName] = useState<string | null>(null);
+  const [dohBaselineReadiness, setDohBaselineReadiness] = useState<ProbeReadiness | null>(null);
+
   function resetStepTransientState() {
     setError(null);
     setStepResult(null);
@@ -214,6 +240,10 @@ export default function DnsCapabilityDiagnosticScreen() {
     setPollElapsedMs(0);
     setPollSnapshot(null);
     setDohPhase("idle");
+    setDohBaselinePhase("idle");
+    setDohBaselineObservedMode(null);
+    setDohBaselineServerName(null);
+    setDohBaselineReadiness(null);
     // dohBrowserLabel is deliberately NOT reset here -- entered once, carried across doh-off/doh-on.
   }
 
@@ -389,6 +419,37 @@ export default function DnsCapabilityDiagnosticScreen() {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setActivating(false);
+    }
+  }
+
+  /** 2026-06 SEVENTH fix round (browser-test sequencing/confounding fix): reads the CURRENT
+   * Android system Private DNS runtime mode and requires it to be exactly INACTIVE_OR_OFF before
+   * re-running the full pre-probe readiness sequence (protection ACTIVE, TUN open, DNS gateway
+   * active, fresh Internet Continuity PASS, no truth violation) -- both STRICT and
+   * ACTIVE_NO_HOSTNAME are rejected here because either would leave system-level encrypted DNS
+   * active and confound the browser "Use secure DNS" rows that immediately follow. */
+  async function handleCheckDohBaseline() {
+    setBusy(true);
+    setError(null);
+    setDohBaselinePhase("checking");
+    try {
+      const snapshot: NativeDnsCapabilityDeviceSnapshot | null = Platform.OS === "android" && GuardDogNative ? GuardDogNative.getDnsCapabilityDeviceSnapshot() : null;
+      const mode: PrivateDnsRuntimeMode | "UNAVAILABLE" = snapshot?.privateDnsRuntimeMode ?? "UNAVAILABLE";
+      setDohBaselineObservedMode(mode);
+      setDohBaselineServerName(snapshot?.privateDnsServerName ?? null);
+      if (mode !== "INACTIVE_OR_OFF") {
+        setDohBaselineReadiness(null);
+        setDohBaselinePhase("wrong-mode");
+        return;
+      }
+      const readiness = await ensureProbeReadiness(preflightCarry);
+      setDohBaselineReadiness(readiness);
+      setDohBaselinePhase(readiness.ready ? "ready" : "not-ready");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setDohBaselinePhase("idle");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -671,6 +732,12 @@ export default function DnsCapabilityDiagnosticScreen() {
                       ))}
                     </View>
                   ) : null}
+                  {activation.preflightSnapshot.readinessConcern ? (
+                    <View style={styles.readinessConcernBanner} testID="dns-doh-preflight-readiness-concern">
+                      <Text style={styles.readinessConcernText}>ⓘ Readiness concern (environmental, not a contradiction):</Text>
+                      <Text style={styles.readinessConcernText}>{activation.preflightSnapshot.readinessConcern}</Text>
+                    </View>
+                  ) : null}
                 </>
               ) : null}
             </Card>
@@ -707,6 +774,44 @@ export default function DnsCapabilityDiagnosticScreen() {
             onRecordNotTestable={() => void handleRecordDotNotTestable(DOT_WIZARD_STEPS.find((s) => s.id === currentStepId)!)}
             onContinue={() => goToStep(stepIndex + 1)}
           />
+        ) : null}
+
+        {currentStepId === "doh-baseline" ? (
+          <Card title={STEP_TITLES["doh-baseline"]}>
+            <Text style={styles.note}>
+              Before testing the browser&apos;s own &quot;Use secure DNS&quot; setting, Android&apos;s SYSTEM-level Private DNS must be switched back to Off — otherwise system-level encrypted DNS still being active (e.g. left over as Strict from the previous row) would confound the browser test and its Internet Continuity check would fail before the probe could even run. In Android Settings → Network &amp; internet → Private DNS, choose &quot;Off&quot;, come back here, then tap &quot;Check again&quot;.
+            </Text>
+            <ActionButton title="Open Private DNS settings" secondary onPress={() => void openPrivateDnsSettingsScreen()} disabled={busy} testID="dns-wizard-doh-baseline-open-settings" />
+            {lastOpenedSettingsScreen ? (
+              <Text style={styles.note}>
+                {lastOpenedSettingsScreen === "FAILED" ? "Could not open Settings automatically — please navigate there manually." : `Opened: ${OPENED_SETTINGS_SCREEN_LABELS[lastOpenedSettingsScreen]}`}
+              </Text>
+            ) : null}
+            <ActionButton title={dohBaselinePhase === "checking" ? "Checking…" : "Check again"} onPress={() => void handleCheckDohBaseline()} disabled={busy} testID="dns-wizard-doh-baseline-check" />
+            {dohBaselinePhase === "wrong-mode" ? (
+              <View style={styles.violationBanner}>
+                <Text style={styles.violationText}>
+                  System Private DNS is still {describePrivateDnsRuntimeMode(dohBaselineObservedMode === "UNAVAILABLE" || dohBaselineObservedMode === null ? "UNAVAILABLE" : dohBaselineObservedMode, dohBaselineServerName)} — this must be switched to Off before browser testing can proceed (Strict or Automatic would both leave system-level encrypted DNS active and confound the browser test). Please switch it to Off in Settings, then tap &quot;Check again&quot;.
+                </Text>
+              </View>
+            ) : null}
+            {dohBaselinePhase === "not-ready" && dohBaselineReadiness ? (
+              <View style={styles.readinessConcernBanner}>
+                <Text style={styles.readinessConcernText}>
+                  System Private DNS is confirmed Off, but the environment is not otherwise ready to test yet: {dohBaselineReadiness.readinessFailureReason ?? "Not ready."} Please resolve this and tap &quot;Check again&quot;.
+                </Text>
+              </View>
+            ) : null}
+            {dohBaselinePhase === "ready" ? (
+              <>
+                <KeyValue label="System Private DNS" value="INACTIVE_OR_OFF — confirmed" />
+                <KeyValue label="Protection" value="ACTIVE" />
+                <KeyValue label="Internet Continuity" value="PASS (fresh re-check)" />
+                <Text style={styles.note}>Neutral baseline confirmed — system-level encrypted DNS is no longer active. You can now continue to the browser &quot;Use secure DNS&quot; rows.</Text>
+                <ActionButton title="Continue" onPress={() => goToStep(stepIndex + 1)} testID="dns-wizard-doh-baseline-continue" />
+              </>
+            ) : null}
+          </Card>
         ) : null}
 
         {currentStepId === "doh-off" || currentStepId === "doh-on" ? (

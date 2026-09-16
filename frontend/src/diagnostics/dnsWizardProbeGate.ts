@@ -326,3 +326,65 @@ export const SAFE_NULL_PREFLIGHT_CARRY: PreflightCarryLike = {
 export function resolveDohAttemptPreflightCarry(capturedRef: PreflightCarryLike | null): PreflightCarryLike {
   return capturedRef ?? SAFE_NULL_PREFLIGHT_CARRY;
 }
+
+// --- Truth violation vs readiness concern split (2026-06 SEVENTH fix round) ---
+
+export interface TruthViolationInputs {
+  protectionState: string | null;
+  isVpnConsentRequired: boolean;
+  dnsGatewayActive: boolean;
+  tunOpen: boolean;
+  m1BundleAccepted: boolean | null;
+  probeRuleConfirmedInBundle: boolean | null;
+  internetContinuityOk: boolean | null;
+}
+
+export interface TruthViolationResult {
+  truthViolation: { violated: boolean; reasons: string[] };
+  /** A per-row ENVIRONMENTAL readiness concern -- deliberately distinct from a genuine internal
+   * self-contradiction in Apollo's own reported state. Physical Pixel 10 finding (2026-06
+   * SEVENTH round): `dnsGatewayActive=true` + `internetContinuityOk=false` observed at a PER-ROW
+   * `ensureProbeReadiness()` re-check (added specifically to catch continuity degrading well after
+   * Preflight's own one-time check, e.g. because Android system Private DNS Strict was still
+   * active) is NOT a contradiction in Apollo's own state machine -- the Website Gate genuinely
+   * being "active" says nothing about whether ordinary internet happens to work at that exact
+   * moment; that is precisely what the separate per-row continuity re-check exists to catch, and
+   * it did, correctly forcing that row to NOT_TESTABLE. Previously this combination was flagged as
+   * a `truthViolation` with wording claiming "the wizard should have stopped, not continued" --
+   * misleading on rows where the wizard's OWN readiness check had already correctly halted the
+   * probe. Kept as a separate, honestly-worded field so a later interpretation layer can
+   * distinguish "the environment wasn't healthy enough to test right now" from "the app's own
+   * state contradicts itself" -- with ZERO change to the hard gate's classification outcome:
+   * NOT_TESTABLE is still forced either way via `internetContinuityOk`'s own independent gate
+   * condition in `evaluateHardClassificationGate`. */
+  readinessConcern: string | null;
+}
+
+/** Same 5 genuine-self-contradiction checks as before, PLUS the dnsGatewayActive+!internetContinuityOk
+ * combination now returned as a separate `readinessConcern` instead of a 6th `truthViolation`
+ * reason (see doc comment above for why). Callers (dnsCapabilityTruthSnapshot.ts) attach both
+ * fields to the truth-of-state snapshot; report/UI layers render them under clearly different,
+ * differently-worded/colored labels. */
+export function computeTruthViolationAndReadinessConcern(args: TruthViolationInputs): TruthViolationResult {
+  const reasons: string[] = [];
+  if (args.protectionState === "ACTIVE" && args.isVpnConsentRequired) {
+    reasons.push("Protection state reports ACTIVE but the OS reports VPN consent is currently required -- contradictory.");
+  }
+  if (args.dnsGatewayActive && !args.tunOpen) {
+    reasons.push("Website Gate DNS gateway reports active but the native TUN is reportedly not open -- contradictory.");
+  }
+  if (args.dnsGatewayActive && args.protectionState !== "ACTIVE") {
+    reasons.push(`Website Gate DNS gateway reports active while protection state is "${args.protectionState ?? "unknown"}" (not ACTIVE) -- stale/invalid combination.`);
+  }
+  if (args.protectionState === "ACTIVE" && args.m1BundleAccepted !== true) {
+    reasons.push(`Protection state reports ACTIVE but the M1 signed rule bundle is not confirmed accepted (m1BundleAccepted=${String(args.m1BundleAccepted)}) -- contradictory.`);
+  }
+  if (args.probeRuleConfirmedInBundle === false) {
+    reasons.push("The dedicated probe rule is NOT confirmed present in the accepted signed bundle -- any capture below would be unattributable.");
+  }
+  const readinessConcern =
+    args.dnsGatewayActive && args.internetContinuityOk === false
+      ? "Website Gate DNS gateway reports active but Internet Continuity failed at this snapshot's capture time -- ordinary browsing was not confirmed working right now. This is a per-row ENVIRONMENTAL readiness failure (already independently forced NOT_TESTABLE via the hard gate's own continuity condition), not a contradiction in Apollo's own reported state."
+      : null;
+  return { truthViolation: { violated: reasons.length > 0, reasons }, readinessConcern };
+}

@@ -12,6 +12,7 @@ import { Platform } from "react-native";
 import { readBuildProvenance, type BuildProvenance } from "@/src/harness/buildProvenance";
 import { GuardDogSecuritySDK } from "@/src/sdk/GuardDogSecuritySDK";
 import { GuardDogNative, type NativeDnsCapabilityDeviceSnapshot, type PrivateDnsRuntimeMode } from "@/src/sdk/nativeModule";
+import { computeTruthViolationAndReadinessConcern } from "@/src/diagnostics/dnsWizardProbeGate";
 
 export interface DnsDiagnosticTruthSnapshot {
   capturedAt: string;
@@ -62,48 +63,16 @@ export interface DnsDiagnosticTruthSnapshot {
    * A violation is surfaced, never hidden or silently corrected -- evidence captured under a
    * flagged snapshot is shown as flagged, not discarded and not trusted blindly either. */
   truthViolation: { violated: boolean; reasons: string[] };
-}
-
-function computeTruthViolation(args: {
-  protectionState: string | null;
-  isVpnConsentRequired: boolean;
-  dnsGatewayActive: boolean;
-  tunOpen: boolean;
-  m1BundleAccepted: boolean | null;
-  probeRuleConfirmedInBundle: boolean | null;
-  internetContinuityOk: boolean | null;
-}): { violated: boolean; reasons: string[] } {
-  const reasons: string[] = [];
-  if (args.protectionState === "ACTIVE" && args.isVpnConsentRequired) {
-    reasons.push("Protection state reports ACTIVE but the OS reports VPN consent is currently required -- contradictory.");
-  }
-  if (args.dnsGatewayActive && !args.tunOpen) {
-    reasons.push("Website Gate DNS gateway reports active but the native TUN is reportedly not open -- contradictory.");
-  }
-  // Physical-device review fix: the DNS gateway pipeline can only genuinely be active while
-  // protection itself is ACTIVE -- dnsGatewayActive=true alongside any non-ACTIVE protectionState
-  // (e.g. INACTIVE, STOPPED, STARTING) is a stale/invalid combination, not a real "gate is up while
-  // protection is technically off" state. Flagged, never silently trusted.
-  if (args.dnsGatewayActive && args.protectionState !== "ACTIVE") {
-    reasons.push(`Website Gate DNS gateway reports active while protection state is "${args.protectionState ?? "unknown"}" (not ACTIVE) -- stale/invalid combination.`);
-  }
-  // protectionState === "ACTIVE" should be structurally impossible without m1BundleAccepted, since
-  // Preflight only ever calls startProtection() AFTER a successful acceptRuleBundle(M1) -- flagged
-  // rather than assumed, in case a future refactor breaks that ordering again.
-  if (args.protectionState === "ACTIVE" && args.m1BundleAccepted !== true) {
-    reasons.push(`Protection state reports ACTIVE but the M1 signed rule bundle is not confirmed accepted (m1BundleAccepted=${String(args.m1BundleAccepted)}) -- contradictory.`);
-  }
-  if (args.probeRuleConfirmedInBundle === false) {
-    reasons.push("The dedicated probe rule is NOT confirmed present in the accepted signed bundle -- any capture below would be unattributable.");
-  }
-  // dnsGatewayActive=true should be structurally impossible if Internet Continuity was ever
-  // confirmed to have failed this session -- Preflight always fails immediately when that happens,
-  // so seeing this combination in ANY snapshot would mean the load-bearing stop-cold guard was
-  // bypassed. Flagged rather than assumed.
-  if (args.dnsGatewayActive && args.internetContinuityOk === false) {
-    reasons.push("Website Gate DNS gateway reports active but Internet Continuity was confirmed FAILED -- ordinary browsing was broken and the wizard should have stopped, not continued.");
-  }
-  return { violated: reasons.length > 0, reasons };
+  /** Physical Pixel 10 finding (2026-06 SEVENTH fix round): a per-row ENVIRONMENTAL readiness
+   * concern -- e.g. the Website Gate DNS gateway genuinely reporting active while a fresh,
+   * per-row Internet Continuity re-check independently failed (see
+   * computeTruthViolationAndReadinessConcern in dnsWizardProbeGate.ts for the full rationale) --
+   * deliberately kept SEPARATE from `truthViolation` above: this is the environment not being
+   * healthy enough to test right now, never a contradiction in Apollo's own reported state. Does
+   * NOT change any classification outcome (NOT_TESTABLE is still forced independently via the
+   * hard gate's own continuity condition) -- purely a clearer, honestly-scoped label for
+   * report/UI display. `null` when no such concern applies to this snapshot. */
+  readinessConcern: string | null;
 }
 
 /**
@@ -148,6 +117,7 @@ export async function captureDnsDiagnosticTruthSnapshot(preflight: {
       networkTransport: null,
       buildProvenance,
       truthViolation: { violated: false, reasons: [] },
+      readinessConcern: null,
     };
   }
 
@@ -157,7 +127,7 @@ export async function captureDnsDiagnosticTruthSnapshot(preflight: {
   const recovery = GuardDogNative!.getRecoveryStatus();
   const isVpnConsentRequired = GuardDogNative!.isVpnConsentRequired();
 
-  const truthViolation = computeTruthViolation({
+  const { truthViolation, readinessConcern } = computeTruthViolationAndReadinessConcern({
     protectionState: protection.state,
     isVpnConsentRequired,
     dnsGatewayActive: gateStatus.dnsGatewayActive,
@@ -193,6 +163,7 @@ export async function captureDnsDiagnosticTruthSnapshot(preflight: {
     networkTransport: dnsSnapshot.networkTransport,
     buildProvenance,
     truthViolation,
+    readinessConcern,
   };
 }
 
