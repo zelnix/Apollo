@@ -18,7 +18,7 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, AppState, Linking, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { ActionButton, Card, InlineResultCard, KeyValue } from "@/src/components/harness-ui";
+import { ActionButton, Card, InlineResultCard, KeyValue, RadioGroup } from "@/src/components/harness-ui";
 import {
   activateWebsiteGateForDiagnostics,
   type ActivationResult,
@@ -50,7 +50,7 @@ import { readBuildProvenance } from "@/src/harness/buildProvenance";
 import { readPhase6DeviceProvenance } from "@/src/harness/phase6DeviceProvenance";
 import { shareEvidenceFile } from "@/src/harness/proofReport";
 import { writeDnsDohStatus } from "@/src/harness/testRunStatus";
-import { GuardDogNative, type NativeDnsCapabilityDeviceSnapshot, type NativeOpenSettingsScreen, type PrivateDnsRuntimeMode } from "@/src/sdk/nativeModule";
+import { GuardDogNative, type NativeDnsCapabilityDeviceSnapshot, type NativeInstalledBrowser, type NativeOpenSettingsScreen, type PrivateDnsRuntimeMode } from "@/src/sdk/nativeModule";
 import { makeStyles, useTheme } from "@/src/theme";
 
 type ActivationAttempt = ActivationResult & AttemptKeyed;
@@ -89,6 +89,29 @@ const OPENED_SETTINGS_SCREEN_LABELS: Record<Exclude<NativeOpenSettingsScreen, "F
   GENERIC_SETTINGS: "Settings app (generic)",
 };
 
+// 2026-06 TENTH fix round: structured Secure DNS provider/mode options for the "doh-on" row --
+// replaces the free-text provider field. "Choose another provider" in the browser's own "Use
+// secure DNS" UI is required to reach a genuinely named/custom provider; "Current service
+// provider"/"Automatic" is kept selectable for general characterization but explicitly marked as
+// unsuitable for the final pure-DoH validation (may fall back to ordinary DNS).
+const DOH_PROVIDER_OPTION_GOOGLE = "Google Public DNS";
+const DOH_PROVIDER_OPTION_CLOUDFLARE = "Cloudflare";
+const DOH_PROVIDER_OPTION_NEXTDNS = "NextDNS";
+const DOH_PROVIDER_OPTION_CUSTOM = "Custom provider";
+const DOH_PROVIDER_OPTION_OTHER = "Other named provider";
+const DOH_PROVIDER_OPTION_AUTOMATIC = "Automatic / current provider";
+const DOH_PROVIDER_OPTIONS = [
+  DOH_PROVIDER_OPTION_GOOGLE,
+  DOH_PROVIDER_OPTION_CLOUDFLARE,
+  DOH_PROVIDER_OPTION_NEXTDNS,
+  DOH_PROVIDER_OPTION_CUSTOM,
+  DOH_PROVIDER_OPTION_OTHER,
+  DOH_PROVIDER_OPTION_AUTOMATIC,
+];
+/** Options whose display text alone is never sufficient -- the one piece of information Android
+ * genuinely cannot expose (the exact provider name/URL as shown in the browser's own picker). */
+const DOH_PROVIDER_OPTIONS_REQUIRING_CUSTOM_TEXT = [DOH_PROVIDER_OPTION_CUSTOM, DOH_PROVIDER_OPTION_OTHER];
+
 const useStyles = makeStyles((colors) => ({
   root: { flex: 1, backgroundColor: colors.surface },
   header: { paddingHorizontal: 20, paddingBottom: 12, gap: 4 },
@@ -116,6 +139,12 @@ const useStyles = makeStyles((colors) => ({
   // in Apollo's own reported state (see computeTruthViolationAndReadinessConcern's doc comment).
   readinessConcernBanner: { backgroundColor: colors.surfaceTertiary, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: colors.warning, gap: 4 },
   readinessConcernText: { color: colors.warning, fontSize: 12, fontWeight: "600" },
+  // 2026-06 TENTH fix round: machine-enumerated browser picker rows (replaces the free-text
+  // browser name/version field) -- minimum 44pt touch target per mobile UX guidelines.
+  browserRow: { minHeight: 48, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceTertiary, gap: 2 },
+  browserRowSelected: { borderColor: colors.brandPrimary, borderWidth: 2 },
+  browserRowLabel: { color: colors.onSurface, fontSize: 13, fontWeight: "700" },
+  browserRowMeta: { color: colors.onSurfaceTertiary, fontSize: 11 },
 }));
 
 function classificationTone(c: DnsDiagnosticRecord["classification"]): "good" | "bad" | "neutral" {
@@ -188,13 +217,22 @@ export default function DnsCapabilityDiagnosticScreen() {
   const pollCancelRef = useRef(false);
 
   // --- App-embedded DoH sub-state ---
-  const [dohBrowserLabel, setDohBrowserLabel] = useState("");
-  /** 2026-06 EIGHTH fix round: the exact selected DoH provider/mode as shown in the browser's own
-   * "Use secure DNS" UI (e.g. "Cloudflare (1.1.1.1)", "Custom: dns.example.com") -- required for
-   * the "doh-on" row specifically, per the user's own explicit instruction to use a named/custom
-   * provider rather than an automatic/fallback configuration, and to record it in the report so a
-   * later reviewer can cross-check it against whether plaintext UDP/53 was actually observed. */
-  const [dohProviderLabel, setDohProviderLabel] = useState("");
+  //
+  // Tenth fix round (2026-06, explicit user instruction: "automate everything the OS can tell us;
+  // ask the tester only for information Android cannot expose") -- REPLACES the eighth/ninth
+  // rounds' free-text browser name/version field with a machine-enumerated list of installed
+  // HTTPS-capable apps (listHttpsCapableBrowsers()), and the free-text provider field with a
+  // structured selector -- the tester only ever taps a choice, never types identity Android can
+  // already report itself.
+  const [dohBrowserList, setDohBrowserList] = useState<NativeInstalledBrowser[]>([]);
+  const [dohBrowserListStatus, setDohBrowserListStatus] = useState<"idle" | "loading" | "loaded" | "unavailable" | "error">("idle");
+  const [dohSelectedBrowserPackage, setDohSelectedBrowserPackage] = useState<string | null>(null);
+  /** Structured Secure DNS provider/mode selection for the "doh-on" row -- see
+   * DOH_PROVIDER_OPTIONS below. "Custom provider"/"Other named provider" additionally require
+   * `dohProviderCustomText` (the one piece of information Android genuinely cannot expose: the
+   * exact provider name/URL the tester picked inside the browser's own UI). */
+  const [dohProviderModeLabel, setDohProviderModeLabel] = useState("");
+  const [dohProviderCustomText, setDohProviderCustomText] = useState("");
   const [dohPhase, setDohPhase] = useState<"idle" | "observing">("idle");
   const dohObservationRef = useRef<{ startedAt: string; finish: () => Promise<{ event: import("@/src/contracts/securityEventSchemas").SecurityEvent | null; receiptConfirmed: boolean }> } | null>(null);
   const dohNonceRef = useRef<string | null>(null);
@@ -225,13 +263,14 @@ export default function DnsCapabilityDiagnosticScreen() {
   const dohPreflightCarryRef = useRef<PreflightCarry | null>(null);
   /** Metadata loss fix (2026-06 NINTH fix round -- see resolveDohAttemptMeta's doc comment in
    * dnsWizardProbeGate.ts for the confirmed physical repro): the SAME stale-mount-closure problem
-   * that hit dohPreflightCarryRef in the SIXTH round also hit the browser name/version + selected
-   * provider/mode fields -- finishDohObservation() previously read the render-scoped
-   * `dohBrowserLabel`/`dohProviderLabel` state directly, which under the AppState subscription's
-   * mount-time closure is frozen at whatever it was AT MOUNT (both empty). Fixed with the exact
-   * same ref pattern: captured fresh at the start of every handleStartDohStep call, read back only
-   * via resolveDohAttemptMeta() in finishDohObservation, cleared on the same lifecycle points as
-   * dohPreflightCarryRef/dohLastProbedAtRef. */
+   * that hit dohPreflightCarryRef in the SIXTH round also hit the browser identity + selected
+   * provider/mode -- finishDohObservation() previously read render-scoped state directly, which
+   * under the AppState subscription's mount-time closure is frozen at whatever it was AT MOUNT
+   * (both empty). Fixed with the exact same ref pattern: captured fresh at the start of every
+   * handleStartDohStep call, read back only via resolveDohAttemptMeta() in finishDohObservation,
+   * cleared on the same lifecycle points as dohPreflightCarryRef/dohLastProbedAtRef. Tenth round:
+   * `browserLabel` is now built from machine-enumerated data (NativeInstalledBrowser), never
+   * tester free text. */
   const dohAttemptMetaRef = useRef<DohAttemptMeta | null>(null);
 
   // --- Neutral system-DNS baseline gate before browser testing (2026-06 SEVENTH fix round) ---
@@ -260,7 +299,8 @@ export default function DnsCapabilityDiagnosticScreen() {
     setDohBaselineObservedMode(null);
     setDohBaselineServerName(null);
     setDohBaselineReadiness(null);
-    // dohBrowserLabel is deliberately NOT reset here -- entered once, carried across doh-off/doh-on.
+    // dohSelectedBrowserPackage/dohProviderModeLabel/dohProviderCustomText are deliberately NOT
+    // reset here -- selected once, carried across doh-off/doh-on.
   }
 
   function goToStep(index: number) {
@@ -285,6 +325,17 @@ export default function DnsCapabilityDiagnosticScreen() {
     const hasTruthViolation = records.some((r) => r.truthSnapshot.truthViolation.violated);
     writeDnsDohStatus(hasTruthViolation ? "needs_attention" : "completed");
   }, [currentStepId, records]);
+
+  /** 2026-06 TENTH fix round: auto-load the machine-enumerated browser list the FIRST time the
+   * tester reaches either browser row -- re-runs correctly whenever `currentStepId` itself
+   * changes (a normal dependency-array effect, NOT the empty-deps AppState-style closure bug
+   * documented elsewhere in this file), so it is never stale. */
+  useEffect(() => {
+    if ((currentStepId === "doh-off" || currentStepId === "doh-on") && dohBrowserListStatus === "idle") {
+      void handleLoadBrowserList();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStepId]);
 
   /** Auto-polled ONLY for "dot-strict" (the sole row with a genuinely machine-provable target --
    * 2026-06 fix: "dot-automatic" no longer polls-to-match, see handleConfirmManualDotStep). */
@@ -438,14 +489,57 @@ export default function DnsCapabilityDiagnosticScreen() {
     }
   }
 
-  /** 2026-06 EIGHTH fix round: required fields before a DoH probe may be launched -- browser
-   * name/version for both rows, PLUS the exact selected provider/mode for "doh-on" (per the
-   * user's instruction: use an explicitly selected named/custom provider, never leave it
-   * unrecorded/blank, so a plaintext-UDP/53 capture on this row can be cross-checked against what
-   * was actually configured). */
+  /** 2026-06 TENTH fix round: enumerates installed HTTPS-capable browsers via the native module
+   * (never asks the tester to type identity Android can already report itself). Auto-selects the
+   * OS's own current default browser the FIRST time the list loads for this session; a later
+   * explicit tester selection is never overridden by a re-load. */
+  async function handleLoadBrowserList() {
+    if (Platform.OS !== "android" || !GuardDogNative) {
+      setDohBrowserListStatus("unavailable");
+      setDohBrowserList([]);
+      return;
+    }
+    setDohBrowserListStatus("loading");
+    setError(null);
+    try {
+      const list = GuardDogNative.listHttpsCapableBrowsers();
+      setDohBrowserList(list);
+      setDohBrowserListStatus("loaded");
+      setDohSelectedBrowserPackage((prev) => prev ?? list.find((b) => b.isDefaultBrowser)?.packageName ?? list[0]?.packageName ?? null);
+    } catch (e) {
+      setDohBrowserListStatus("error");
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  /** 2026-06 TENTH fix round: resolves the structured provider selection to the exact display
+   * string persisted in the report -- "Custom provider"/"Other named provider" append the
+   * tester-typed provider name/URL (the one piece Android cannot expose itself); "Automatic /
+   * current provider" is expanded to explicitly document it may fall back to ordinary DNS and is
+   * not suitable for the final pure-DoH validation run. */
+  function resolveDohProviderLabel(): string {
+    if (!dohProviderModeLabel) return "";
+    if (DOH_PROVIDER_OPTIONS_REQUIRING_CUSTOM_TEXT.includes(dohProviderModeLabel)) {
+      return dohProviderCustomText.trim() ? `${dohProviderModeLabel}: ${dohProviderCustomText.trim()}` : dohProviderModeLabel;
+    }
+    if (dohProviderModeLabel === DOH_PROVIDER_OPTION_AUTOMATIC) {
+      return "Automatic/current provider (may fall back to ordinary DNS -- not suitable for the final pure-DoH validation)";
+    }
+    return dohProviderModeLabel;
+  }
+
+  /** 2026-06 TENTH fix round: required fields before a DoH probe may be launched -- a selected
+   * (machine-enumerated, never free-typed) browser for both rows, PLUS a selected provider/mode
+   * for "doh-on" (and, if that selection is Custom/Other, the accompanying typed provider
+   * name/URL) -- per the user's instruction to use an explicitly selected named/custom provider,
+   * never leave it unrecorded/blank, so a plaintext-UDP/53 capture on this row can be
+   * cross-checked against what was actually configured. */
   function dohRequiredFieldsMissing(step: DohStepId): boolean {
-    if (!dohBrowserLabel.trim()) return true;
-    if (step === "doh-on" && !dohProviderLabel.trim()) return true;
+    if (!dohSelectedBrowserPackage) return true;
+    if (step === "doh-on") {
+      if (!dohProviderModeLabel) return true;
+      if (DOH_PROVIDER_OPTIONS_REQUIRING_CUSTOM_TEXT.includes(dohProviderModeLabel) && !dohProviderCustomText.trim()) return true;
+    }
     return false;
   }
 
@@ -499,7 +593,11 @@ export default function DnsCapabilityDiagnosticScreen() {
 
   async function handleStartDohStep(step: DohStepId) {
     if (dohRequiredFieldsMissing(step)) {
-      setError(step === "doh-on" ? "Enter both the browser name/version and the exact selected DoH provider/mode before running this probe." : "Enter the browser name/version before running this probe.");
+      setError(
+        step === "doh-on"
+          ? "Select a browser and a selected DoH provider/mode (with the provider name/URL if Custom/Other) before running this probe."
+          : "Select a browser before running this probe.",
+      );
       return;
     }
     setError(null);
@@ -516,13 +614,22 @@ export default function DnsCapabilityDiagnosticScreen() {
     // never the render-scoped `preflightCarry` variable directly.
     const carry: PreflightCarry = { ...preflightCarry };
     dohPreflightCarryRef.current = carry;
+    // 2026-06 TENTH fix round: the selected browser is machine-enumerated data (never tester free
+    // text) -- `dohRequiredFieldsMissing` above already guarantees `dohSelectedBrowserPackage` is
+    // set and present in `dohBrowserList` before this point.
+    const selectedBrowser = dohBrowserList.find((b) => b.packageName === dohSelectedBrowserPackage) ?? null;
     // Metadata loss fix (2026-06 NINTH fix round): capture a FRESH DohAttemptMeta for THIS
     // attempt right now, at the top of a call that is always invoked live from an onPress (never
     // a stale closure) -- finishDohObservation() below reads ONLY this ref (via
-    // resolveDohAttemptMeta), NEVER the render-scoped dohBrowserLabel/dohProviderLabel state
-    // directly, so a browser return can never lose the tester's actual input back to
-    // "Unnamed browser"/"NOT RECORDED".
-    const attemptMeta: DohAttemptMeta = { browserLabel: dohBrowserLabel.trim(), providerLabel: dohProviderLabel.trim() };
+    // resolveDohAttemptMeta), NEVER the render-scoped selection state directly, so a browser
+    // return can never lose the tester's actual selection back to "Unnamed browser"/"NOT
+    // RECORDED". Tenth round: browserLabel is now built from machine-enumerated identity.
+    const attemptMeta: DohAttemptMeta = {
+      browserLabel: selectedBrowser
+        ? `${selectedBrowser.appLabel} ${selectedBrowser.versionName} (${selectedBrowser.packageName}, version code ${selectedBrowser.versionCode}${selectedBrowser.isDefaultBrowser ? ", default browser" : ""})`
+        : "Unknown (native browser enumeration unavailable)",
+      providerLabel: step === "doh-on" ? resolveDohProviderLabel() : "",
+    };
     dohAttemptMetaRef.current = attemptMeta;
     try {
       // 2026-06 fix: DoH rows now run the SAME rigorous pre-probe readiness/recovery sequence as
@@ -551,8 +658,20 @@ export default function DnsCapabilityDiagnosticScreen() {
       dohObservationRef.current = observation;
       dohWentBackgroundRef.current = false;
       setDohPhase("observing");
-      await Linking.openURL(buildDohProbeUrl(identity.host, nonce));
-      // DNS cache isolation (2026-06 FIFTH fix round): recorded ONLY after Linking.openURL has
+      const probeUrl = buildDohProbeUrl(identity.host, nonce);
+      // 2026-06 TENTH fix round: launch EXPLICITLY into the selected browser package (never a
+      // generic ACTION_VIEW chooser that could silently open a different app than the one
+      // recorded in `attemptMeta` above) -- falls back to the generic Linking.openURL only when
+      // native browser-explicit-launch is unavailable (web/Expo Go preview; see
+      // <features_requiring_native_build> -- this whole flow requires a native build to exercise
+      // for real).
+      if (Platform.OS === "android" && GuardDogNative && selectedBrowser) {
+        const launchResult = GuardDogNative.openUrlInBrowserPackage(probeUrl, selectedBrowser.packageName);
+        if (!launchResult.opened) throw new Error(launchResult.reason ?? `Could not open ${selectedBrowser.appLabel}.`);
+      } else {
+        await Linking.openURL(probeUrl);
+      }
+      // DNS cache isolation (2026-06 FIFTH fix round): recorded ONLY after the browser launch has
       // actually succeeded -- never before -- so a failed/never-launched navigation can never
       // poison this exact host's freshness timestamp for a later row or a future whole-wizard run.
       dohLastProbedAtRef.current = await markDnsProbeHostQueriedNow(identity.host);
@@ -561,9 +680,9 @@ export default function DnsCapabilityDiagnosticScreen() {
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       setError(message);
-      // Finalize this attempt honestly (2026-06 FIFTH fix round guardrail): if Linking.openURL (or
-      // anything earlier in this try) failed, no genuine probe happened -- unwind every piece of
-      // DoH transient state so neither a stale readiness/observation NOR a stale
+      // Finalize this attempt honestly (2026-06 FIFTH fix round guardrail): if the browser launch
+      // (or anything earlier in this try) failed, no genuine probe happened -- unwind every piece
+      // of DoH transient state so neither a stale readiness/observation NOR a stale
       // dohLastProbedAtRef/dohPreflightCarryRef/dohAttemptMetaRef can ever be picked up by a later
       // retry or finishDohObservation call.
       const observation = dohObservationRef.current;
@@ -626,9 +745,10 @@ export default function DnsCapabilityDiagnosticScreen() {
       // Metadata loss fix (2026-06 NINTH fix round): same reasoning as `carry` above -- this
       // function may run under the stale mount-time closure, so `configuredMode` is built ONLY
       // from the per-attempt ref (via resolveDohAttemptMeta), NEVER from the render-scoped
-      // `dohBrowserLabel`/`dohProviderLabel` state directly. This is the confirmed fix for the
-      // physical repro where a genuinely-entered "Chrome 152.0.7977.83" was lost back to
-      // "Unnamed browser" in the exported report.
+      // selection state directly. This is the confirmed fix for the physical repro where a
+      // genuinely-entered "Chrome 152.0.7977.83" was lost back to "Unnamed browser" in the
+      // exported report; tenth round switched the SOURCE of that metadata to machine-enumerated
+      // browser identity instead of tester free text, but the ref-based fix shape is unchanged.
       const attemptMeta = resolveDohAttemptMeta(dohAttemptMetaRef.current);
       const configuredMode = buildDohConfiguredModeLabel(step, DOH_UI_STATE_LABEL[step], attemptMeta);
       const record = buildAppEmbeddedDohRecord(
@@ -667,8 +787,12 @@ export default function DnsCapabilityDiagnosticScreen() {
       const snapshot = await captureDnsDiagnosticTruthSnapshot(preflightCarry);
       // Invoked live from onPress (never a stale closure) -- safe to build straight from the
       // current render's state, but routed through the SAME pure builder as the other 3 call
-      // sites for consistency (2026-06 NINTH fix round).
-      const configuredMode = buildDohConfiguredModeLabel(step, DOH_UI_STATE_LABEL[step], { browserLabel: dohBrowserLabel.trim(), providerLabel: dohProviderLabel.trim() });
+      // sites for consistency (2026-06 NINTH/TENTH fix rounds).
+      const selectedBrowser = dohBrowserList.find((b) => b.packageName === dohSelectedBrowserPackage) ?? null;
+      const configuredMode = buildDohConfiguredModeLabel(step, DOH_UI_STATE_LABEL[step], {
+        browserLabel: selectedBrowser ? `${selectedBrowser.appLabel} ${selectedBrowser.versionName} (${selectedBrowser.packageName})` : "",
+        providerLabel: step === "doh-on" ? resolveDohProviderLabel() : "",
+      });
       const record = notTestableRecord(step, "app-embedded-doh", configuredMode, "Tester marked this configuration as not testable (e.g. that browser unavailable on this device).", snapshot, ROW_PROBE_IDENTITY[step].host);
       setRecords((prev) => upsertRecordByStepId(prev, record));
       setStepResult(record);
@@ -885,16 +1009,56 @@ export default function DnsCapabilityDiagnosticScreen() {
         {currentStepId === "doh-off" || currentStepId === "doh-on" ? (
           <Card title={STEP_TITLES[currentStepId]}>
             <Text style={styles.note}>
-              Android cannot read another app&apos;s secure-DNS setting, so this is the one step in this wizard needing a manual change: in your browser&apos;s settings, turn {currentStepId === "doh-on" ? "ON" : "OFF"} the option labelled &quot;Use secure DNS&quot; (this is the browser&apos;s DNS-over-HTTPS / encrypted DNS setting, characterized internally as DoH), come back here, then tap the button below — Apollo will automatically generate a fresh probe nonce, open the probe page in that browser, and wait for either its own attributed capture or the page&apos;s independent server receipt.
+              Android cannot read another app&apos;s secure-DNS setting, so this is the one step in this wizard needing a manual change: in your browser&apos;s settings, turn {currentStepId === "doh-on" ? "ON" : "OFF"} the option labelled &quot;Use secure DNS&quot; (this is the browser&apos;s DNS-over-HTTPS / encrypted DNS setting, characterized internally as DoH)
+              {currentStepId === "doh-on"
+                ? ', then tap "Choose another provider" and select an explicit named provider (e.g. Google, Cloudflare) rather than "Use your current service provider" -- that option is automatic/fallback-capable and does not identify a specific named DoH provider'
+                : ""}
+              , come back here, select the browser below, then tap the button — Apollo will automatically generate a fresh probe nonce, open the probe page in that exact browser, and wait for either its own attributed capture or the page&apos;s independent server receipt.
             </Text>
-            <Text style={styles.note}>Browser name / version (required — recorded in the report):</Text>
-            <TextInputLike value={dohBrowserLabel} onChangeText={setDohBrowserLabel} placeholder="e.g. Firefox 143" />
+            <Text style={styles.note}>Browser (machine-detected — required, tap to select):</Text>
+            {dohBrowserListStatus === "loading" ? <ActivityIndicator color={colors.brandPrimary} /> : null}
+            {dohBrowserListStatus === "unavailable" ? <Text style={styles.note}>Browser enumeration requires a native build — unavailable in Expo Go / web preview.</Text> : null}
+            {dohBrowserListStatus === "error" ? <Text style={styles.violationText}>Could not enumerate installed browsers.</Text> : null}
+            {dohBrowserListStatus === "loaded" && dohBrowserList.length === 0 ? <Text style={styles.note}>No HTTPS-capable browser was detected on this device.</Text> : null}
+            {dohBrowserList.length > 0 ? (
+              <View style={{ gap: 8 }}>
+                {dohBrowserList.map((b) => {
+                  const selected = b.packageName === dohSelectedBrowserPackage;
+                  return (
+                    <Pressable key={b.packageName} onPress={() => setDohSelectedBrowserPackage(b.packageName)} style={[styles.browserRow, selected ? styles.browserRowSelected : null]} testID={`dns-wizard-browser-${b.packageName}`}>
+                      <Text style={styles.browserRowLabel}>
+                        {selected ? "● " : "○ "}
+                        {b.appLabel} {b.versionName}
+                        {b.isDefaultBrowser ? " · Default browser" : ""}
+                      </Text>
+                      <Text style={styles.browserRowMeta}>
+                        {b.packageName} · version code {b.versionCode}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
+            <ActionButton title={dohBrowserListStatus === "loading" ? "Detecting…" : "Refresh browser list"} secondary onPress={() => void handleLoadBrowserList()} disabled={busy || dohBrowserListStatus === "loading"} testID={`dns-wizard-${currentStepId}-refresh-browsers`} />
             {currentStepId === "doh-on" ? (
               <>
-                <Text style={styles.note}>
-                  Selected DoH provider/mode (required — use an explicitly named or custom provider from the browser&apos;s own &quot;Use secure DNS&quot; setting, NOT an automatic/fallback option):
-                </Text>
-                <TextInputLike value={dohProviderLabel} onChangeText={setDohProviderLabel} placeholder="e.g. Cloudflare (1.1.1.1), or Custom: dns.example.com" />
+                <RadioGroup
+                  label={'Selected DoH provider/mode (required, from the browser\'s "Choose another provider" list):'}
+                  options={DOH_PROVIDER_OPTIONS}
+                  value={dohProviderModeLabel}
+                  onChange={setDohProviderModeLabel}
+                  testID="dns-wizard-doh-on-provider"
+                />
+                {DOH_PROVIDER_OPTIONS_REQUIRING_CUSTOM_TEXT.includes(dohProviderModeLabel) ? (
+                  <TextInputLike value={dohProviderCustomText} onChangeText={setDohProviderCustomText} placeholder="Provider name/URL exactly as shown in the browser" />
+                ) : null}
+                {dohProviderModeLabel === DOH_PROVIDER_OPTION_AUTOMATIC ? (
+                  <View style={styles.readinessConcernBanner}>
+                    <Text style={styles.readinessConcernText}>
+                      Automatic/current provider may fall back to ordinary DNS — not suitable for the final pure-DoH validation. Use only for general characterization; for the targeted DoH-only run, choose an explicit named/custom provider above.
+                    </Text>
+                  </View>
+                ) : null}
               </>
             ) : null}
             {dohPhase === "idle" ? (
@@ -907,7 +1071,7 @@ export default function DnsCapabilityDiagnosticScreen() {
                 />
                 {dohRequiredFieldsMissing(currentStepId) ? (
                   <Text style={styles.timerText}>
-                    {currentStepId === "doh-on" ? "Enter both the browser name/version and the selected provider/mode above to continue." : "Enter the browser name/version above to continue."}
+                    {currentStepId === "doh-on" ? "Select a browser and a DoH provider/mode above to continue (Custom/Other also needs the provider name/URL)." : "Select a browser above to continue."}
                   </Text>
                 ) : null}
                 <ActionButton title="Mark this configuration NOT_TESTABLE" secondary onPress={() => void handleRecordDohNotTestable(currentStepId)} disabled={busy} testID={`dns-wizard-${currentStepId}-not-testable`} />

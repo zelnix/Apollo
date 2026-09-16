@@ -376,6 +376,61 @@ class GuardDogExpoModule : Module() {
             }
             mapOf("openedScreen" to openedScreen)
         }
+
+        // DNS/DoH wizard, tenth fix round (explicit user instruction: "automate everything the OS
+        // can tell us; ask the tester only for information Android cannot expose"). Enumerates
+        // every installed app that can handle a generic https:// ACTION_VIEW intent -- the
+        // standard technique for listing installed browsers, since Android exposes no dedicated
+        // "list browsers" API. Deduplicated by package (a browser can register multiple matching
+        // activities); `isDefaultBrowser` compares against `packageManager.resolveActivity()`'s
+        // own answer for the SAME probe intent, i.e. Android's own current default-app choice --
+        // never guessed or hardcoded. A getPackageInfo() failure for any single candidate (e.g. it
+        // was uninstalled between the query and this loop) is skipped, never crashes the whole call.
+        Function("listHttpsCapableBrowsers") {
+            val pm = context.packageManager
+            val probeIntent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.example.com"))
+            val defaultPackage = pm.resolveActivity(probeIntent, 0)?.activityInfo?.packageName
+            val seenPackages = mutableSetOf<String>()
+            val browsers = mutableListOf<Map<String, Any?>>()
+            for (info in pm.queryIntentActivities(probeIntent, 0)) {
+                val pkg = info.activityInfo.packageName
+                if (!seenPackages.add(pkg)) continue
+                try {
+                    val pInfo = pm.getPackageInfo(pkg, 0)
+                    browsers.add(mapOf(
+                        "packageName" to pkg,
+                        "appLabel" to (info.loadLabel(pm)?.toString() ?: pkg),
+                        "versionName" to (pInfo.versionName ?: "unknown"),
+                        "versionCode" to pInfo.longVersionCode,
+                        "isDefaultBrowser" to (pkg == defaultPackage),
+                    ))
+                } catch (e: Exception) {
+                    // uninstalled/unreadable between the query and here -- skip, never crash the whole list.
+                }
+            }
+            browsers.sortedByDescending { it["isDefaultBrowser"] as Boolean }
+        }
+
+        // DNS/DoH wizard, tenth fix round: launches `url` EXPLICITLY into `packageName` (via
+        // Intent.setPackage) rather than a generic ACTION_VIEW that lets Android's chooser (or a
+        // stale last-used default) pick the app -- so the probe's machine-recorded browser
+        // identity (from listHttpsCapableBrowsers above) is provably the SAME app that actually
+        // opened the URL, never merely assumed. Verifies resolvability first via
+        // resolveActivity(); never throws on failure -- returns a truthful opened:false + reason
+        // instead, matching openPrivateDnsSettings's existing not-a-crash contract.
+        Function("openUrlInBrowserPackage") { url: String, packageName: String ->
+            try {
+                val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).setPackage(packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (intent.resolveActivity(context.packageManager) == null) {
+                    mapOf("opened" to false, "reason" to "Package $packageName cannot handle this URL on this device (resolveActivity returned null).")
+                } else {
+                    context.startActivity(intent)
+                    mapOf("opened" to true, "reason" to null)
+                }
+            } catch (e: Exception) {
+                mapOf("opened" to false, "reason" to (e.message ?: "unknown error launching $packageName"))
+            }
+        }
     }
 
     companion object {

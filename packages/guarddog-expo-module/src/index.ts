@@ -120,6 +120,28 @@ export interface NativeOpenSettingsResult {
   openedScreen: NativeOpenSettingsScreen;
 }
 
+// --- DNS/DoH wizard, tenth fix round: "automate everything the OS can tell us; ask the tester
+// only for information Android cannot expose." Replaces the free-text browser name/version field
+// with a machine-enumerated list of installed HTTPS-capable apps (the standard technique for
+// listing installed browsers on Android, since there is no dedicated "list browsers" API), and
+// launches the probe explicitly into the tester-selected package rather than a generic
+// ACTION_VIEW that could silently open a different app than the one recorded. ---
+
+export interface NativeInstalledBrowser {
+  packageName: string;
+  appLabel: string;
+  versionName: string;
+  versionCode: number | string;
+  /** Compares against `PackageManager.resolveActivity()`'s own answer for the SAME https:// probe
+   * intent -- Android's own current default-app choice, never guessed or hardcoded. */
+  isDefaultBrowser: boolean;
+}
+
+export interface NativeOpenUrlInBrowserResult {
+  opened: boolean;
+  reason: string | null;
+}
+
 export interface GuardDogNativeModule {
   getCapabilities(): Record<string, unknown>;
   getProtectionState(): NativeProtectionState;
@@ -154,6 +176,12 @@ export interface GuardDogNativeModule {
    * changing Private DNS (Private DNS settings -> Network & internet -> generic Settings
    * fallback chain, each verified resolvable before launch). Returns exactly which screen opened. */
   openPrivateDnsSettings(): NativeOpenSettingsResult;
+  /** Enumerates installed apps that can handle a generic https:// intent, deduplicated by
+   * package, sorted with the current OS default browser first. */
+  listHttpsCapableBrowsers(): NativeInstalledBrowser[];
+  /** Launches `url` explicitly into `packageName` (never a generic ACTION_VIEW chooser) so the
+   * machine-recorded browser identity is provably the app that actually opened the probe. */
+  openUrlInBrowserPackage(url: string, packageName: string): NativeOpenUrlInBrowserResult;
   addListener(eventName: string, listener: (payload: unknown) => void): { remove(): void };
 }
 
