@@ -207,3 +207,17 @@ Physical finding: "Off" Private DNS returned a false `BYPASSED` because the 5 de
 Verified: **39/39 `node --test` pass** (was 28); `tsc --noEmit` and `eslint` clean on every touched file (only the same pre-existing, unrelated repo-wide `.ts`-import-extension + `theme.ts` errors remain, plus the test file's expected `node:test` type-only errors — identical category as before, does not affect Metro/app bundling); web-preview screenshot smoke test confirms the Preflight screen still renders with no crash.
 **This completes Issue 1 (P0 — DNS cache isolation) only.** Per the user's own explicit correction: it does **NOT** resolve Issue 2 — the prior Pixel report showed `protection=FAILED` while the DNS gateway still reported `active`, and both "Use secure DNS" rows became `NOT_TESTABLE`. That state-coherence question is still open and requires native-side investigation before any freeze consideration. **Next physical action (per user): push this commit, run a fresh `native-gates` CI build (the currently-installed Pixel APK does not contain this JS/TS change — it's bundled into the APK, so a stale install would test old code), install the new APK, re-run the wizard, and inspect whether the protection/gateway state-coherence issue (Issue 2) persists.**
 
+### Agreed operational plan (2026-06) — before any further Issue 2 code changes
+User confirmed this is the right point to stop changing the wizard for now. Explicit status: cache isolation (Issue 1) fixed in code ✅; native state coherence (Issue 2) still open ❌; DNS/DoH characterization overall still **NOT FROZEN**.
+Agreed sequence (user-side, blocking further agent code changes on Issue 2 until complete):
+1. Push/save this version, record the commit SHA.
+2. Run a fresh `native-gates` CI run.
+3. Require all six jobs green.
+4. Record the new CI run ID, Android artifact ID, and APK SHA-256.
+5. Install that EXACT APK on the Pixel 10 (no stale install).
+6. Start a completely fresh wizard session.
+7. Export the PDF/JSON again.
+8. Judge Issue 2 strictly from that native evidence — no further speculative code fixes before this evidence exists.
+
+**Issue 2 investigation scope (narrow, native-side only, for the NEXT round once evidence is in hand):** when protection transitions to FAILED, determine whether `dnsGatewayActive=true` means (a) the DNS gateway really remains running, (b) the TUN/service remains partially alive, or (c) `getWebsiteGateStatus()` is returning stale state. Capture a native timeline: ACTIVE/DEGRADED → FAILED, TUN state, DNS-forwarder/gateway state, route state, cleanup actions. Invariant to enforce and test natively: **a terminal protection failure (FAILED/STOPPED/REVOKED) must never leave a stale "DNS gateway active" status** unless that is physically true and explicitly modeled as its own distinct degraded condition. If the gateway is genuinely still alive after protection failure → fix belongs in lifecycle/cleanup. If it has stopped and only the flag remains true → fix belongs in status derivation/state reset. Do **NOT** weaken the truth gate to make those rows pass — `NOT_TESTABLE` was the correct outcome while state was contradictory. Guiding principle carried forward: **Apollo acts, Higgins interprets** — the diagnostic core must establish ground truth first; Higgins Checkup is built on top of it later, not before.
+
