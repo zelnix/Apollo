@@ -20,8 +20,11 @@ import {
   latestAttempt,
   needsRecovery,
   recordHostProbedInMap,
+  resolveDohAttemptPreflightCarry,
+  SAFE_NULL_PREFLIGHT_CARRY,
   upsertRecordByStepId,
   type GateTruthInputs,
+  type PreflightCarryLike,
 } from "./dnsWizardProbeGate.ts";
 
 const FULLY_READY: GateTruthInputs = {
@@ -307,4 +310,55 @@ test("end-to-end cache isolation: repeating the SAME host AFTER the cooldown ela
   const afterFirst = recordHostProbedInMap({}, "dnsprobe4.blocktest.btciq.app", new Date(t0).toISOString());
   const check = checkDnsCacheFreshness(afterFirst.next["dnsprobe4.blocktest.btciq.app"], t0 + 130_000, 120_000);
   assert.equal(check.freshnessGuaranteed, true);
+});
+
+// --- Per-attempt PreflightCarry ref resolution (browser-return stale-closure fix, 2026-06 SIXTH round) ---
+
+const GENUINELY_ACCEPTED_CARRY: PreflightCarryLike = {
+  m1BundleAccepted: true,
+  probeRuleConfirmedInBundle: true,
+  internetContinuityOk: true,
+  configuredUpstreamDnsResolverIpv4: "1.1.1.1",
+};
+
+test("resolveDohAttemptPreflightCarry: a genuinely captured, non-null carry is returned exactly -- never overridden by a stale/null fallback", () => {
+  assert.deepEqual(resolveDohAttemptPreflightCarry(GENUINELY_ACCEPTED_CARRY), GENUINELY_ACCEPTED_CARRY);
+});
+
+test("resolveDohAttemptPreflightCarry: a missing ref (never populated for this attempt) returns the honest, fully-null default -- never silently substitutes a second, potentially-stale source of truth", () => {
+  assert.deepEqual(resolveDohAttemptPreflightCarry(null), SAFE_NULL_PREFLIGHT_CARRY);
+});
+
+test("regression (the exact physical-report bug): a genuinely accepted carry (m1BundleAccepted: true) survives all the way to the hard gate with ZERO gate reasons -- a browser return can never turn it back into a forced M1-bundle NOT_TESTABLE via a stale carry", () => {
+  const resolved = resolveDohAttemptPreflightCarry(GENUINELY_ACCEPTED_CARRY);
+  const reasons = evaluateHardClassificationGate({
+    nativeAvailable: true,
+    protectionState: "ACTIVE",
+    tunOpen: true,
+    dnsGatewayActive: true,
+    m1BundleAccepted: resolved.m1BundleAccepted,
+    probeRuleConfirmedInBundle: resolved.probeRuleConfirmedInBundle,
+    internetContinuityOk: resolved.internetContinuityOk,
+    configurationEstablished: true,
+    configurationNote: null,
+    truthViolation: { violated: false, reasons: [] },
+  });
+  assert.deepEqual(reasons, []);
+});
+
+test("regression: the STALE all-null carry (the exact pre-fix bug shape -- pre-activation state leaking into the browser-return path) is exactly what forces the M1-bundle NOT_TESTABLE reason seen in the physical report", () => {
+  const stale = resolveDohAttemptPreflightCarry(null); // simulates the ref never having been (re-)populated for this attempt -- same shape as the pre-fix stale closure
+  const reasons = evaluateHardClassificationGate({
+    nativeAvailable: true,
+    protectionState: "ACTIVE",
+    tunOpen: true,
+    dnsGatewayActive: true,
+    m1BundleAccepted: stale.m1BundleAccepted,
+    probeRuleConfirmedInBundle: stale.probeRuleConfirmedInBundle,
+    internetContinuityOk: stale.internetContinuityOk,
+    configurationEstablished: true,
+    configurationNote: null,
+    truthViolation: { violated: false, reasons: [] },
+  });
+  assert.match(reasons.join(" "), /M1 signed rule bundle/);
 });

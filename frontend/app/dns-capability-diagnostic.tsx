@@ -34,6 +34,7 @@ import {
   markDnsProbeHostQueriedNow,
   notTestableRecord,
   pollForPrivateDnsRuntimeMode,
+  type PreflightCarry,
   type ProbeReadiness,
   PRIVATE_DNS_POLL_HARD_TIMEOUT_MS,
   PRIVATE_DNS_POLL_STILL_CHECKING_AFTER_MS,
@@ -44,7 +45,7 @@ import {
 } from "@/src/diagnostics/dnsCapabilityDiagnostic";
 import { exportDnsCharacterizationJson, exportDnsCharacterizationPdf } from "@/src/diagnostics/dnsCapabilityDiagnosticReport";
 import { captureDnsDiagnosticTruthSnapshot } from "@/src/diagnostics/dnsCapabilityTruthSnapshot";
-import { appendPreflightAttempt, type AttemptKeyed, latestAttempt, upsertRecordByStepId } from "@/src/diagnostics/dnsWizardProbeGate";
+import { appendPreflightAttempt, type AttemptKeyed, latestAttempt, resolveDohAttemptPreflightCarry, upsertRecordByStepId } from "@/src/diagnostics/dnsWizardProbeGate";
 import { readBuildProvenance } from "@/src/harness/buildProvenance";
 import { readPhase6DeviceProvenance } from "@/src/harness/phase6DeviceProvenance";
 import { shareEvidenceFile } from "@/src/harness/proofReport";
@@ -193,6 +194,18 @@ export default function DnsCapabilityDiagnosticScreen() {
    * (goToStep), and again immediately after this attempt completes -- so a stale value can never
    * leak into a different row or a later retry of this same row. */
   const dohLastProbedAtRef = useRef<string | null>(null);
+  /** Browser-return stale-closure fix (2026-06 SIXTH fix round -- see dnsWizardProbeGate.ts's
+   * resolveDohAttemptPreflightCarry doc comment for the full physical-report root cause): the
+   * `AppState` subscription below that drives finishDohObservation() on browser-return is
+   * registered ONCE with an empty dependency array, so it only ever runs with the FIRST render's
+   * closure -- including whatever the render-scoped `preflightCarry` object was at MOUNT time
+   * (before Preflight activation ever completed). handleStartDohStep captures a FRESH
+   * `PreflightCarry` into this ref at the start of every attempt (always invoked live from an
+   * onPress, never a stale closure); finishDohObservation/verifyStillHealthyAfterProbe read ONLY
+   * from this ref (via resolveDohAttemptPreflightCarry), NEVER from the render-scoped
+   * `preflightCarry` variable directly. Cleared on the same lifecycle points as
+   * dohLastProbedAtRef above. */
+  const dohPreflightCarryRef = useRef<PreflightCarry | null>(null);
 
   function resetStepTransientState() {
     setError(null);
@@ -209,6 +222,7 @@ export default function DnsCapabilityDiagnosticScreen() {
     if (dohFallbackTimerRef.current) clearTimeout(dohFallbackTimerRef.current);
     dohObservationRef.current = null;
     dohLastProbedAtRef.current = null; // cancel-by-navigating-away -- never let this carry into the next step/retry
+    dohPreflightCarryRef.current = null; // same lifecycle -- never let a stale carry survive a cancel/back navigation
     resetStepTransientState();
     setStepIndex(index);
   }
@@ -386,10 +400,17 @@ export default function DnsCapabilityDiagnosticScreen() {
     // never inherit a stale timestamp captured by a previous, unrelated attempt.
     dohLastProbedAtRef.current = null;
     const identity = ROW_PROBE_IDENTITY[step];
+    // Browser-return stale-closure fix (2026-06 SIXTH fix round): capture a FRESH PreflightCarry
+    // for THIS attempt right now, at the top of a call that is always invoked live from an onPress
+    // (never a stale closure) -- everything downstream in this attempt's lifecycle, including the
+    // AppState-triggered finishDohObservation(), reads ONLY this `carry`/the ref it's stored in,
+    // never the render-scoped `preflightCarry` variable directly.
+    const carry: PreflightCarry = { ...preflightCarry };
+    dohPreflightCarryRef.current = carry;
     try {
       // 2026-06 fix: DoH rows now run the SAME rigorous pre-probe readiness/recovery sequence as
       // DoT rows (previously they had none at all) -- BEFORE the tester is ever sent to the browser.
-      const readiness = await ensureProbeReadiness(preflightCarry);
+      const readiness = await ensureProbeReadiness(carry);
       if (!readiness.ready) {
         const label = `${dohBrowserLabel.trim() || "Unnamed browser"} — ${DOH_UI_STATE_LABEL[step]} (not attempted)`;
         // 2026-06 second fix round (code review finding #2): pass the readiness's OWN
@@ -426,10 +447,12 @@ export default function DnsCapabilityDiagnosticScreen() {
       // Finalize this attempt honestly (2026-06 FIFTH fix round guardrail): if Linking.openURL (or
       // anything earlier in this try) failed, no genuine probe happened -- unwind every piece of
       // DoH transient state so neither a stale readiness/observation NOR a stale
-      // dohLastProbedAtRef can ever be picked up by a later retry or finishDohObservation call.
+      // dohLastProbedAtRef/dohPreflightCarryRef can ever be picked up by a later retry or
+      // finishDohObservation call.
       const observation = dohObservationRef.current;
       dohObservationRef.current = null;
       dohLastProbedAtRef.current = null;
+      dohPreflightCarryRef.current = null;
       if (dohFallbackTimerRef.current) {
         clearTimeout(dohFallbackTimerRef.current);
         dohFallbackTimerRef.current = null;
@@ -437,7 +460,7 @@ export default function DnsCapabilityDiagnosticScreen() {
       if (observation) void observation.finish(); // releases the still-registered event subscription
       const readiness = dohReadinessRef.current;
       if (readiness) {
-        const snapshot = await captureDnsDiagnosticTruthSnapshot(preflightCarry);
+        const snapshot = await captureDnsDiagnosticTruthSnapshot(carry);
         const label = `${dohBrowserLabel.trim() || "Unnamed browser"} — ${DOH_UI_STATE_LABEL[step]}`;
         const record = notTestableRecord(step, "app-embedded-doh", label, `Failed to open the probe URL in the browser -- no probe was actually attempted: ${message}`, snapshot, identity.host, {
           protectionStateBeforeProbe: readiness.protectionStateBeforeProbe,
@@ -469,12 +492,19 @@ export default function DnsCapabilityDiagnosticScreen() {
     setError(null);
     try {
       const { event, receiptConfirmed } = await observation.finish();
+      // Browser-return stale-closure fix (2026-06 SIXTH fix round): this function may be invoked
+      // from the AppState subscription's mount-time closure -- NEVER read the render-scoped
+      // `preflightCarry` variable directly here (it could be whatever it was AT MOUNT, before
+      // Preflight ever ran). resolveDohAttemptPreflightCarry reads ONLY the per-attempt ref
+      // handleStartDohStep just populated (or the honest all-null default if it was somehow never
+      // populated) -- never falls back to that second, potentially-stale source of truth.
+      const carry = resolveDohAttemptPreflightCarry(dohPreflightCarryRef.current);
       // 2026-06 second fix round (code review finding #1, the most important one):
       // verification-ONLY re-check of protection/TUN/gateway/continuity at the moment the tester
       // actually returned from the browser -- NEVER attempts recovery. If Apollo dropped out while
       // the browser was open, this probe must be forced NOT_TESTABLE rather than classified
       // against the earlier, now-stale pre-open readiness snapshot.
-      const postProbeVerification = await verifyStillHealthyAfterProbe(preflightCarry);
+      const postProbeVerification = await verifyStillHealthyAfterProbe(carry);
       const configuredMode = `${dohBrowserLabel.trim() || "Unnamed browser"} — ${DOH_UI_STATE_LABEL[step]}`;
       const record = buildAppEmbeddedDohRecord(
         step,
@@ -496,9 +526,11 @@ export default function DnsCapabilityDiagnosticScreen() {
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      // Completion (success or failure here) -- clear immediately so this attempt's timestamp can
-      // never leak into the next row or a later retry of this same row (2026-06 FIFTH fix round).
+      // Completion (success or failure here) -- clear immediately so this attempt's timestamp/
+      // carry can never leak into the next row or a later retry of this same row (2026-06 FIFTH /
+      // SIXTH fix rounds).
       dohLastProbedAtRef.current = null;
+      dohPreflightCarryRef.current = null;
       setBusy(false);
     }
   }

@@ -281,3 +281,48 @@ export type ProbeHostTimestamps = Record<string, string>;
 export function recordHostProbedInMap(map: ProbeHostTimestamps, host: string, nowIso: string): { previous: string | null; next: ProbeHostTimestamps } {
   return { previous: map[host] ?? null, next: { ...map, [host]: nowIso } };
 }
+
+// --- Per-attempt PreflightCarry ref resolution (2026-06 SIXTH fix round: browser-return stale-closure bug) ---
+
+/** Structural subset of dnsCapabilityDiagnostic.ts's `PreflightCarry` -- duplicated here (not
+ * imported), same zero-RN-dependency reason as `GateTruthInputs` above. */
+export interface PreflightCarryLike {
+  m1BundleAccepted: boolean | null;
+  probeRuleConfirmedInBundle: boolean | null;
+  internetContinuityOk: boolean | null;
+  configuredUpstreamDnsResolverIpv4: string | null;
+}
+
+/** The honest, fully-null default -- deliberately the SAME shape a genuinely-not-yet-attempted
+ * Preflight would report, so falling back to it only ever safely forces NOT_TESTABLE via the hard
+ * gate, never fabricates a false pass. */
+export const SAFE_NULL_PREFLIGHT_CARRY: PreflightCarryLike = {
+  m1BundleAccepted: null,
+  probeRuleConfirmedInBundle: null,
+  internetContinuityOk: null,
+  configuredUpstreamDnsResolverIpv4: null,
+};
+
+/**
+ * Physical Pixel 10 finding (2026-06): both "Use secure DNS" rows recorded protection ACTIVE, a
+ * genuine attributed plaintext-UDP/53 capture, AND were still force-classified NOT_TESTABLE with
+ * a contradiction claiming the M1 signed bundle was never confirmed accepted -- even though the
+ * SAME report's own Preflight section says "M1 protection bundle accepted: yes". Root cause: the
+ * screen's `AppState` subscription that drives the browser-return path (`finishDohObservation`)
+ * is registered ONCE with an empty effect dependency array, so it only ever runs with that FIRST
+ * render's closure -- including whatever the render-scoped `PreflightCarry` object was at MOUNT
+ * time (before Preflight activation had even run: `m1BundleAccepted` was still `null` then). Every
+ * later browser-return manufactured the exact contradiction seen in the PDF from that stale,
+ * closed-over object, never from the real, currently-accepted state.
+ *
+ * Fix: the screen captures a FRESH `PreflightCarry` into a ref at the START of every
+ * `handleStartDohStep` call (always invoked directly from a live onPress, never a stale closure)
+ * and reads it back ONLY through this resolver in `finishDohObservation`/
+ * `verifyStillHealthyAfterProbe` -- which NEVER falls back to that second, potentially-stale
+ * render-scoped variable. If the ref was somehow never populated for this attempt, the honest
+ * `SAFE_NULL_PREFLIGHT_CARRY` default is returned instead (safely forces NOT_TESTABLE via the hard
+ * gate), never a stale non-null value left over from a previous render/attempt.
+ */
+export function resolveDohAttemptPreflightCarry(capturedRef: PreflightCarryLike | null): PreflightCarryLike {
+  return capturedRef ?? SAFE_NULL_PREFLIGHT_CARRY;
+}
