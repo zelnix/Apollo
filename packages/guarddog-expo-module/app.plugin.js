@@ -8,6 +8,48 @@ const path = require("path");
 
 const MODULES = ["guarddog-core", "guarddog-vpn"];
 
+/**
+ * Pure (2026-06 TENTH fix round CI review finding): idempotently ensures `manifest` (the
+ * `mod.modResults.manifest` object from @expo/config-plugins, i.e. the JS shape of
+ * AndroidManifest.xml) declares the package-visibility `<queries>` element required for
+ * `PackageManager.queryIntentActivities()` (used by GuardDogExpoModule.listHttpsCapableBrowsers())
+ * to see installed HTTPS browsers on Android 11+ (API 30+) targets. Without this, the returned
+ * browser list can silently be incomplete even though the Kotlin implementation itself is
+ * correct. Scoped NARROWLY to ACTION_VIEW + BROWSABLE + https -- the officially recommended
+ * pattern for "see apps that can open web links" -- deliberately NEVER the broad
+ * QUERY_ALL_PACKAGES permission, which Google Play restricts and this diagnostic feature does not
+ * need. Exported (attached to the plugin function below) for a plain `node --test` regression
+ * test that needs no Android SDK/Gradle -- see app.plugin.test.js.
+ */
+function ensureHttpsBrowsableQuery(manifest) {
+  if (!Array.isArray(manifest.queries)) manifest.queries = [];
+  const hasHttpsViewQuery = manifest.queries.some(
+    (q) =>
+      Array.isArray(q.intent) &&
+      q.intent.some(
+        (i) =>
+          Array.isArray(i.action) &&
+          i.action.some((a) => a.$ && a.$["android:name"] === "android.intent.action.VIEW") &&
+          Array.isArray(i.category) &&
+          i.category.some((c) => c.$ && c.$["android:name"] === "android.intent.category.BROWSABLE") &&
+          Array.isArray(i.data) &&
+          i.data.some((d) => d.$ && d.$["android:scheme"] === "https"),
+      ),
+  );
+  if (!hasHttpsViewQuery) {
+    manifest.queries.push({
+      intent: [
+        {
+          action: [{ $: { "android:name": "android.intent.action.VIEW" } }],
+          category: [{ $: { "android:name": "android.intent.category.BROWSABLE" } }],
+          data: [{ $: { "android:scheme": "https" } }],
+        },
+      ],
+    });
+  }
+  return manifest;
+}
+
 // :guarddog-core applies org.jetbrains.kotlin.plugin.serialization without a version (versions live in the standalone SDK
 // root build). Inside the prebuilt app the plugin must be on the root buildscript classpath, matching the app's Kotlin version.
 function reactNativeKotlinVersion(projectRoot) {
@@ -49,6 +91,7 @@ function withGuardDogAndroidSdk(config) {
     for (const perm of ["android.permission.ACCESS_NETWORK_STATE", "android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED", "android.permission.POST_NOTIFICATIONS"]) {
       AndroidConfig.Permissions.addPermission(mod.modResults, perm);
     }
+    ensureHttpsBrowsableQuery(mod.modResults.manifest);
     return mod;
   });
   config = withDangerousMod(config, [
@@ -69,3 +112,4 @@ function withGuardDogAndroidSdk(config) {
 }
 
 module.exports = withGuardDogAndroidSdk;
+module.exports.ensureHttpsBrowsableQuery = ensureHttpsBrowsableQuery;

@@ -37,6 +37,12 @@ class GuardDogExpoModuleDefinitionTest {
                 "getDnsCapabilityDeviceSnapshot",
                 // DNS/DoH wizard 2026-06 fix round: native Settings navigation w/ fallback chain.
                 "openPrivateDnsSettings",
+                // DNS/DoH wizard 2026-06 TENTH fix round: automated browser identity + explicit-package
+                // launch (replaces the free-text browser name/version field) -- additive, none of the
+                // above touched. Found by this exact regression test on CI run 35100359294: the module
+                // compiled and evaluated correctly (124/124 other native tests passed), but this
+                // assertion's expected set was stale -- not an enforcement/definition-evaluation failure.
+                "listHttpsCapableBrowsers", "openUrlInBrowserPackage",
             ),
             definition.syncFunctions.keys,
         )
