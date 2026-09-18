@@ -1,0 +1,8 @@
+{
+  "name": "guarddog-expo-module",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Expo native module bridge for the Guard Dog security SDK (Android selective VPN block proof; iOS analysis-only).",
+  "main": "src/index.ts",
+  "peerDependencies": { "expo": "*", "react-native": "*" }
+}
