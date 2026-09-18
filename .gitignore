@@ -83,6 +83,13 @@ android-sdk/
 credentials.json
 *.key
 .credentials
+# NOTE (corrected): .env files ARE intentionally ignored — Emergent's platform automation
+# (emergent-agent-e1) actively re-enforces this and reverted an earlier attempt to commit
+# real secret values here (also blocked by GitHub push secret-scanning). Do NOT try to commit
+# backend/.env or frontend/.env again — the deploy pipeline's MANAGE_SECRETS step injects
+# secrets at deploy time through a separate mechanism, not via git.
+.env.local
+*.env.local
 .env
 .env.*
 *.env
