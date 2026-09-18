@@ -34,10 +34,11 @@
 //      (see build.gradle.kts comments in packages/guarddog-android-sdk) — so those two plugin ids
 //      resolve from the classpath Expo/RN already puts on the root build, with no addition needed.
 //
-// NOT resolved by this plugin (see docs/APOLLO_STAGE1C_BUILD_INTEGRATION.md "Flagged, not
-// executed" section): guarddog-core/guarddog-vpn declare `minSdk = 26`; this app's current
-// effective minSdk (via the RN version catalog) is 24. This is a product-scope decision (drops
-// Android 7.x support), not a build-wiring detail, so it is reported rather than silently changed.
+// NOT resolved by this plugin (handled instead via the "expo-build-properties" plugin entry in
+// app.json — see docs/APOLLO_STAGE1C_BUILD_INTEGRATION.md "Decision: raise Android minSdk to 26"):
+// guarddog-core/guarddog-vpn declare `minSdk = 26`; this app's own minSdk is raised to match via
+// expo-build-properties (a product-support decision — drops Android 7.x — approved 2026-06), not
+// by this plugin and not by touching certified GuardDog source.
 
 const { withSettingsGradle, withProjectBuildGradle, withDangerousMod } = require("@expo/config-plugins");
 const fs = require("fs");

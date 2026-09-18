@@ -1,10 +1,10 @@
 # Stage 1C — Production Build Integration (Report)
 
-**Status: GuardDog engine wired into Apollo's native Android build config; deterministically
-reproducible via `expo prebuild`. Real Gradle/Kotlin compilation could NOT be executed in this
-sandbox (no JDK/Android SDK/Gradle installed here) — see §4. Nothing beyond native build wiring
-was touched: consumer UI, Higgins, `SecurityPlatformAdapter.ts`, Patrol, and threat-event
-semantics are all unchanged.**
+**Status: Stage 1C structural integration COMPLETE, including the approved minSdk 24→26 change
+(§10). Stage 1C.1 (real native build gate) is BLOCKED — this sandbox has no JDK/Android
+SDK/Gradle, and no tool available to this agent triggers Emergent's real native build pipeline;
+see §11. Nothing beyond native build wiring was touched: consumer UI, Higgins,
+`SecurityPlatformAdapter.ts`, Patrol, and threat-event semantics are all unchanged.**
 
 ## 1. Config plugin(s) added/changed
 
@@ -148,21 +148,65 @@ plugin also fails fast (clear error, not a silent broken build) if the Stage 1B 
 ever goes missing. What is **not yet proven** reproducible is an actual successful Gradle build —
 that requires the real build pipeline (§4).
 
-## 10. Flagged, not executed — needs your decision before Stage 1D
+## 10. Decision: Android minSdk raised to 26 (approved 2026-06)
 
-**`guarddog-core`/`guarddog-vpn` declare `minSdk = 26`. This app's current effective `minSdk` is
-24** (React Native's own default, via its version catalog; this app has no
-`expo-build-properties` override today). This is a real, well-documented AGP manifest-merge
-constraint (a library's `minSdk` cannot exceed the consuming app's without the app raising its
-own floor) — I could not verify the exact failure mode with an actual Gradle run (§4), but I'm
-confident enough in this being a real requirement that I stopped rather than guess a fix:
-- **File/change required:** raise this app's `minSdk` to 26 via the `expo-build-properties`
-  config plugin (`android.minSdkVersion: 26` in `app.json`) — a change to Apollo's own build
-  config, not to certified GuardDog source.
-- **Effect on certified behavior:** none — GuardDog's own requirement doesn't change either way.
-- **Product-level effect:** this would drop support for Android 7.x/7.1 (API 24–25) devices
-  app-wide, not just for GuardDog. That's a product-scope decision, not a pure build-wiring
-  detail, so it's reported here rather than applied. **Not changed. Awaiting your call.**
+**Approved and implemented.** Apollo Production's Android `minSdk` is raised from 24 to 26
+(Android 8.0), done at the Apollo Production / config-plugin level — **not** by altering the
+certified GuardDog source to preserve Android 7.x compatibility, and **not** by hand-editing
+generated `android/` files.
+
+- **Mechanism:** added `expo-build-properties` (`npx expo install expo-build-properties`,
+  version `57.0.20`, matching Expo SDK 57) as a config plugin in `app.json`:
+  ```json
+  ["expo-build-properties", { "android": { "minSdkVersion": 26 } }]
+  ```
+  This is the standard, reproducible Expo mechanism for this exact kind of Gradle property
+  override — no manual `android/gradle.properties`/`build.gradle` edit.
+- **`targetSdk` is unaffected** — this change only raises the floor, not the target; `targetSdk`
+  stays at whatever RN 0.86.3's version catalog already pins (36), unchanged by this decision.
+- **Verified via clean `expo prebuild --platform android`:** generated `android/gradle.properties`
+  now contains `android.minSdkVersion=26` exactly.
+- **Product-support consequence, recorded explicitly:** Apollo's minimum supported Android
+  version is now **Android 8.0 / API 26**. Devices on Android 7.x/7.1 (API 24–25) can no longer
+  install the app. This trade-off was chosen deliberately over the alternative (patching the
+  certified engine to tolerate a lower floor), which was explicitly rejected to keep GuardDog
+  byte-identical to its certified source.
+- **Re-verified after this change:** `:guarddog-core`/`:guarddog-vpn` still each `include()`d
+  exactly once, `guarddog-expo-module` still autolinks exactly once (§2's structural checks all
+  re-ran clean), all 5 regression suites still pass (§5), `expo-doctor`/`eslint` unchanged (same
+  4 pre-existing, unrelated flags), and the Stage 1B SHA-256 manifest re-check still shows **zero
+  mismatches** across all 91 certified files.
+- **Future runtime test to add (not part of Stage 1C — recorded for the physical-device stage):**
+  on Android 8+, `systemExempted` foreground services are permitted for qualifying VPN apps, but
+  the OS can throw `ForegroundServiceTypeNotAllowedException` at runtime if the app doesn't
+  satisfy the qualifying conditions. A successful manifest merge does **not** prove this — it
+  must be proven on a real device during the later runtime/physical-device validation stage, not
+  assumed from build-time success.
+
+## 11. Stage 1C.1 — Real Native Build Gate: BLOCKED, cannot be executed from this sandbox
+
+This is the one part of the requested work that could not be performed, and needs to be said
+plainly rather than approximated:
+
+**This sandbox has no JDK, no Android SDK, no Gradle, and no tool available to this agent that
+triggers Emergent's actual native Android build pipeline.** Everything that does *not* require
+executing Gradle/Kotlin has been done and re-verified (structural module inclusion, autolinking
+resolution, generated config content, regression tests, source integrity) — see §§1–10. But the
+mandatory gate items that require an actual compile — Gradle configuration succeeding, Kotlin
+compilation of `guarddog-core`/`guarddog-vpn`/the Expo bridge, manifest *merge* actually running
+(not just the source declarations existing), duplicate class/resource/provider/service detection,
+and a real APK build — **cannot be produced by this agent in this environment.**
+
+Per this platform's own build model, an actual native Android compile only happens through the
+Emergent **Publish** flow (top-right of the app), which generates a real Android build (APK/AAB)
+using Emergent's own build infrastructure — this is a user-triggered action, not something
+available to an agent session via any tool here. **Stage 1C.1 cannot be closed without that
+step.**
+
+**What I did instead, so this isn't wasted effort:** every check that *can* be done without a
+real compiler was done and is clean (§§2,5,9,10) — so if/when a real build is triggered, the
+person doing it is not starting from zero; the wiring, module graph, and version alignment have
+already been verified as far as static inspection allows.
 
 ## 11. Confirmations (per Stage 1C scope)
 
@@ -179,9 +223,11 @@ confident enough in this being a real requirement that I stopped rather than gue
 
 ## 12. Ready for the next stage?
 
-**Ready for Stage 1D planning, with one open item (§10) needing your decision first**, and with
-the explicit caveat that an actual Gradle/Kotlin compile has never been executed against this
-wiring (only structurally/statically verified) — that must happen on a real native build before
-Stage 1D (production adapter/native-runtime wiring) goes further. Stopping here per instruction —
-not proceeding to adapter wiring, live VPN activation, Higgins integration, UI changes, or
-physical-device proof.
+**Stage 1C (structural integration) is complete.** Stage 1C.1 (real native build gate) is
+**blocked pending a real Android build via the Emergent Publish flow** — see §11. Stage 1D
+(runtime/adapter integration) has explicitly **not begun**: consumer UI, Higgins,
+`SecurityPlatformAdapter.ts` runtime behavior, Patrol, threat-event semantics, VPN start/stop
+from production UI, "Apollo is biting" behavior, and controlled threat tests are all untouched.
+Stopping here per instruction, pending either (a) the user triggering a real Android build so the
+compile result can actually be reported, or (b) further direction on how to proceed given this
+sandbox's tooling limits.
