@@ -8,6 +8,12 @@ until the open decisions in §8 are resolved and this document has been reviewed
 It does not modify, and this workspace has no access to, `m2-native-acceptance` or any
 `com.guarddog.*` source — see §0.
 
+**2026-06 correction:** §9/§10 record the settled bundle-signing key/trust architecture and a
+correction to the offline/backend-unreachable semantics originally described elsewhere. This
+copy is informational for Apollo main's contract; it is **not** the durable record — that lives
+in m2-native-acceptance's own decision document and must be updated there directly (agent
+sessions cannot relay instructions across Emergent projects).
+
 ## 0. Cross-project relationship (context, not a decision)
 
 Two separate Emergent projects/sessions are involved, and they are **not being merged**:
@@ -191,12 +197,67 @@ approval, not automatically once Stage 4 looks fine.
 5. **Who owns re-running m2-native-acceptance** if a regression is found in the frozen engine
    after import — this workspace, or the other project/session.
 
-## 9. Non-goals of this document
+## 9. Key & trust architecture for rule-bundle signing and revocation
+
+**Ownership note:** this is primarily an **m2-native-acceptance (engine-side)** decision — it
+governs how the native engine verifies which rule bundles/signing keys it trusts, which falls
+under "changes to the proven native engine" in §0's routing rule. It is recorded here anyway
+because Apollo main is the consumer of the resulting trust state (via `ProtectionStatus` /
+Higgins, see below) and needs an accurate contract to build against. **The authoritative,
+durable copy of this decision belongs in the m2 project's own decision record — this section
+mirrors it for Apollo main's benefit and is not a substitute for updating it there.**
+
+**Settled architecture: build-time pinned bootstrap trust + runtime-updatable signed trust
+manifest.**
+
+- The app ships with **two** pinned root public keys from day one — **primary** and
+  **recovery** — not one. This is what gives a way out of a root-key incident without
+  redesigning the trust model later.
+- Pinned roots do **not** directly sign everyday rule bundles. They verify a signed **Trusted
+  Key Manifest** that lists the currently valid production bundle-signing keys. That manifest
+  carries: active key IDs, revoked key IDs, not-before/expiry timestamps, a monotonic trust-set
+  version, overlapping keys (for safe rotation), and rollback protection.
+- The app may fetch an updated trust manifest at runtime, but it must verify that manifest
+  against an **already-trusted pinned root** before accepting it. **A fetched key is never
+  trusted merely because the backend supplied it.**
+- The device caches the **last-known-good** trust manifest and the **last-known-good** signed
+  rule bundle.
+- **Revocation latency is an honest, unavoidable limitation:** if a production signing key is
+  revoked via a newer signed manifest, a device that is offline cannot learn of that revocation
+  until it reconnects. This is documented as a known limitation, not hidden or "fixed" by
+  overclaiming.
+- **Root compromise recovery:** if the root trust key itself is ever compromised, recovery
+  requires a controlled app update — *unless* the second, pre-pinned recovery root (above) has
+  already been provisioned, in which case that gives a path out without an app update.
+
+## 10. Corrected offline / backend-unreachable semantics
+
+This corrects an earlier, overly broad framing ("fail-safe-not-fail-open if the backend is
+unreachable") that conflicts with Apollo's existing offline behavior (see the failure-contract
+work already shipped in this repo: `src/api/backendHealth.ts`, `ServiceBanner`,
+`ProtectionStatus.degradedReason`/`lastVerified`). Apollo must never kill ordinary internet
+access just because a signing backend is unreachable. The correct behavior:
+
+- Keep using the **last-known-good signed trust set and signed rule bundle** (§9).
+- Keep blocking **locally known-bad indicators** the device already holds verified rules for.
+- **Never** accept unsigned, unknown-key, rolled-back, or otherwise unverifiable bundles —
+  this half is a hard fail-*safe* rule and does not soften.
+- For **unknown/unverified traffic while offline**, **fail open** — do not break the person's
+  ordinary connectivity on an unverifiable guess.
+- Surface the protection state as **degraded/stale** when appropriate. This maps directly onto
+  fields `SecurityPlatformAdapter.ts` already defines — `ProtectionStatus.degradedReason` and
+  `ProtectionStatus.lastVerified` staleness — so no new Apollo-main-side field is needed; Higgins
+  can explain this state later (§5) using data that already exists in the contract.
+
+## 11. Non-goals of this document
 
 - No code changes in this repo.
 - No implementation of the Android Apollo adapter.
 - No import of any `com.guarddog.*` source.
 - No modification of `m2-native-acceptance`.
+- §9's key/trust architecture is recorded here for Apollo main's contract awareness only — it
+  does not durably live here; the m2 project's own decision record must be updated directly by
+  the user (agent sessions cannot relay across projects — confirmed via platform support).
 - Does not supersede `docs/android-consolidation-plan.md` or
   `docs/android-physical-device-acceptance.md` — it sits alongside them; that document's
   Android-specific freeze directives are incorporated by reference here, not duplicated or
