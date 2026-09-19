@@ -1,5 +1,13 @@
 # Apollo V1 — PRD & Build Log
 
+## Current status — Firebase configuration replacement
+- User supplied `f60xq9zf_google-services.json`; replaced `frontend/google-services.json` with its configuration for Firebase project `apollo-243ad` and Android package `app.apollo.hwg`. This supersedes the older `fit-beyond-50` configuration and its unrelated clients. `app.json` already points to this file with the correct package and bundle identifiers; no application code, security policy, or certified GuardDog source changed.
+- Focused validation passed: full supplied JSON object matches the saved file; Android/iOS identifiers match; exactly one Firebase client matches the Android package; Firebase project number/app ID are consistent; `npx expo config --json` resolves the correct package, file, and notifications plugin; security/boot tests 15/15; GuardDog SHA-256 provenance manifest 91/91. Restarted Expo and verified onboarding renders in the external preview. No full regression run for this config-only change; no APK generated or physical-device/push sign-off claimed.
+- **P0:** A fresh native Android build and physical-device launch past splash are still required. SafeStart is a fail-closed error screen, not proof of a successful native launch. This configuration update does not prove native launch or push delivery.
+- **P1:** Stage 1D runtime/adapter wiring remains blocked until explicit successful physical-device launch evidence. Then verify native start/stop and real packet blocking before claiming enforcement.
+- **P2:** Higgins/consumer UI integration and later iOS/desktop engine adapters remain deferred.
+- Firebase project changed: Android push-sending service-account credentials must belong to `apollo-243ad`. The uploaded client config is not a service-account credential; existing server-side push configuration was not changed or validated here.
+
 ## Original problem statement
 Privacy-first mobile security app (iOS/Android, Expo + FastAPI + MongoDB) that detects, explains and — only where verified — blocks dangerous links, suspicious websites, unsafe connections and known threats. Four exact states: Resting / Growling / Barking / Biting. Apollo's Patrol shows what happened. Capability-aware, truthful UI; on-device-first; minimal indicators to backend; native module bridge (Swift/Kotlin) from day one; HuCentAI SecureCore mock SDK contract.
 

@@ -511,3 +511,24 @@ backend:
   - task: "routers/analysis.py: gemini_second_opinion (gate2/message), gemini_app_opinion (gate7/app), gemini_account_opinion (gate8/account) refactored onto one shared _gemini_second_opinion_call() helper that retries ONCE on any failure (including the asyncio.wait_for 20s timeout) before falling back to explanation=None. A single transient timeout under concurrent load (e.g. several requests hitting the Gemini relay at once during a full-suite/xdist run) is otherwise recoverable and shouldn't silently drop an explanation that would normally succeed — same philosophy as the email retry-worth-it check. Never overrides the on-device verdict either way; only widens the window before the graceful None fallback. DRY bonus: 3 near-identical call/parse/truncate blocks collapsed into 1."
     implemented: true
     working: true  # full backend suite run 3x after the fix: 273/273, 272/273 (1 = pre-existing, already-documented test_iter7 log-tail race under xdist, confirmed passes alone — unrelated to Gemini), 273/273. Zero recurrence of the gate2/gate7/gate8 second-opinion timeout across all 3 runs. test_gate2_message.py + test_gate7_app.py + test_gate8_account.py also run standalone, 25/25 clean.
+
+## Stage 1C.1 — Firebase configuration replacement
+frontend:
+  - task: "Replace stale google-services.json with user-supplied apollo-243ad / app.apollo.hwg configuration"
+    implemented: true
+    working: true
+    file: "frontend/google-services.json"
+    needs_retesting: false
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Full uploaded JSON parity, matching app identity and unique client, Firebase project/app ID consistency, and resolved Expo config validated. SecurityConfig + SecurityBoot tests 15/15. GuardDog provenance SHA-256 checks 91/91. External preview onboarding renders after Expo restart. Config-only change: no backend or runtime edits."
+  - task: "Fresh Android build, physical-device launch past splash, and push delivery"
+    implemented: true
+    working: "NA"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        working: "NA"
+        comment: "Awaiting user device evidence. No APK generated in this session. New Firebase project requires matching Android push-sending service-account credentials; these were not changed or verified. Stage 1D remains blocked until successful physical-device launch is explicitly confirmed."
