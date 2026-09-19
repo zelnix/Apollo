@@ -532,3 +532,19 @@ frontend:
       - agent: "main"
         working: "NA"
         comment: "Awaiting user device evidence. No APK generated in this session. New Firebase project requires matching Android push-sending service-account credentials; these were not changed or verified. Stage 1D remains blocked until successful physical-device launch is explicitly confirmed."
+
+## Stage 1C.1 — recurring physical Android startup failure
+frontend:
+  - task: "Installed Android app launches past splash without stopping"
+    implemented: true
+    working: false
+    priority: "high"
+    stuck_count: 1
+    needs_retesting: true
+    status_history:
+      - agent: "user"
+        working: false
+        comment: "App installed and still stopping. Follow-up: Android shows Apollo keeps stopping, with apparent continued background presence; not a SafeStart screen. No device crash trace received yet."
+      - agent: "main"
+        working: false
+        comment: "No Android stack trace supplied. Server log shows healthy startup and /health 200, not a native crash. Firebase identifiers match; native autolinking includes ApolloSecurity and GuardDog. Initial native-initialization timing hypothesis retracted after inspecting Expo implementation. No speculative code/security/infrastructure changes made. Need logcat FATAL EXCEPTION/ReactNativeJS stack or SafeStart Why screenshot plus current build identification. Stage 1D blocked."
