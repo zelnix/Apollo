@@ -130,3 +130,7 @@ Current position: waiting on step 1 input (Step 7 stderr for build aa24dd73-eab7
 - Fix (user-approved): `frontend/plugins/withEasAppExtensionsDedupe.js` (dedupe appExtensions by targetName, first occurrence kept) registered FIRST in app.json plugins. Nothing else changed.
 - Verified: config/introspect exit 0; 3 write-back rounds clean; Android prebuild exit 0; GuardDog includes ×1 each, autolinking 1 project; SHA manifest 91/91; 35/35 regression tests.
 - Next: user reruns Publish → success criterion = Step 7 passes and pipeline reaches native Android build. Stage 1D NOT started.
+
+## Deployment health probe fix (this session)
+- Deployed backend log showed platform liveness probe `GET /health` (root, unauthenticated) → 404 → container restart loop. Added `@app.get("/health", include_in_schema=False)` returning `{"status":"ok"}` in server.py (no DB/auth). `/api/health` and all auth gating unchanged. Verified 200 locally; auth still 401 on protected routes; 71 backend tests (auth/admin/api-regression/failure-modes/health-touching) green.
+- Status board: Step 7 eas-update PASS ✅ · backend deployment reached ✅ · health probe FIXED 🔧 · Stage 1C.1 Android Gradle/Kotlin build NOT YET PROVEN ⏳ (need log lines: gradlew/assemble/compileKotlin/guarddog-core/guarddog-vpn/APK/AAB) · Stage 1D NOT STARTED.

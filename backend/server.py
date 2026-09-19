@@ -66,6 +66,13 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Apollo V1 API", lifespan=lifespan)
 
+
+@app.get("/health", include_in_schema=False)
+async def deployment_health():
+    """Root liveness probe for the deployment platform (unauthenticated, no DB). Device-facing health stays at /api/health."""
+    return {"status": "ok"}
+
+
 # Every device-facing router is mounted under /api behind the device bearer gate (public paths are listed in core.auth).
 for r in (health, devices, intel, patrol, ask, family, family_weekly, voice, push, analysis, gmail, imapmail, call):
     app.include_router(r.router, prefix="/api", dependencies=[Depends(enforce_device_auth)])
