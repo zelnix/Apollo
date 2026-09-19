@@ -10,7 +10,7 @@
     "backgroundColor": "#F5F7FA",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.hwg.apollo",
+      "bundleIdentifier": "app.apollo.hwg",
       "infoPlist": {
         "NSUserNotificationsUsageDescription": "Tell you when Apollo barks about a threat",
         "NSLocationWhenInUseUsageDescription": "Check whether your current Wi‑Fi is open or secured",
@@ -25,7 +25,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#F5F7FA"
       },
-      "package": "app.hwg.apollo",
+      "package": "app.apollo.hwg",
       "googleServicesFile": "./google-services.json",
       "permissions": [
         "android.permission.ACCESS_NETWORK_STATE",
@@ -134,10 +134,10 @@
               "appExtensions": [
                 {
                   "targetName": "ApolloContentBlocker",
-                  "bundleIdentifier": "app.hwg.apollo.contentblocker",
+                  "bundleIdentifier": "app.apollo.hwg.contentblocker",
                   "entitlements": {
                     "com.apple.security.application-groups": [
-                      "group.app.hwg.apollo.apollo"
+                      "group.app.apollo.hwg.apollo"
                     ]
                   }
                 }

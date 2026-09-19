@@ -1,9 +1,9 @@
 // Unit tests for the production security safeguard.
-// Run: cd frontend && yarn test:security   (node:test via tsx)
+// Run: cd frontend && yarn test:security   (node:test)
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { SecurityConfigurationError, validateSecurityConfig } from "../src/security/securityConfig.ts";
+import { NATIVE_SECURECORE_DEPENDENT_FEATURES, SecurityConfigurationError, validateSecurityConfig } from "../src/security/securityConfig.ts";
 
 const ok = (input: Parameters<typeof validateSecurityConfig>[0]) => assert.doesNotThrow(() => validateSecurityConfig(input));
 const rejected = (input: Parameters<typeof validateSecurityConfig>[0], needle: string) =>
@@ -12,11 +12,22 @@ const rejected = (input: Parameters<typeof validateSecurityConfig>[0], needle: s
 test("1. development + mock → allowed", () => ok({ appEnvironment: "development", secureCoreMode: "mock", securityAdapterMode: "mock" }));
 test("2. development + native → allowed", () => ok({ appEnvironment: "development", secureCoreMode: "native", securityAdapterMode: "native", nativeSecureCoreAvailable: true, nativeSecurityAdapterAvailable: true }));
 test("3. production + native → allowed", () => ok({ appEnvironment: "production", secureCoreMode: "native", securityAdapterMode: "native", nativeSecureCoreAvailable: true, nativeSecurityAdapterAvailable: true }));
-test("4. production + mock SecureCore → rejected", () => rejected({ appEnvironment: "production", secureCoreMode: "mock", securityAdapterMode: "native" }, "Production builds require native HuCentAI SecureCore"));
-test("5. production + mock SecurityAdapter → rejected", () => rejected({ appEnvironment: "production", secureCoreMode: "native", securityAdapterMode: "mock" }, "native Apollo Security Adapter"));
-test("6. native SecureCore selected but module unavailable → rejected (any env)", () => {
+test("4. production + mock SecureCore → allowed while no shipped feature depends on native SecureCore", () => {
+  assert.equal(NATIVE_SECURECORE_DEPENDENT_FEATURES.length, 0, "policy: SecureCore is a contract stub today");
+  ok({ appEnvironment: "production", secureCoreMode: "mock", securityAdapterMode: "native", nativeSecurityAdapterAvailable: true });
+});
+test("4b. production + mock SecureCore → rejected once a shipped feature depends on it", () => {
+  rejected(
+    { appEnvironment: "production", secureCoreMode: "mock", securityAdapterMode: "native", nativeSecurityAdapterAvailable: true, nativeSecureCoreDependentFeatures: ["attested-device-identity"] },
+    "attested-device-identity",
+  );
+  ok({ appEnvironment: "production", secureCoreMode: "native", securityAdapterMode: "native", nativeSecureCoreAvailable: true, nativeSecurityAdapterAvailable: true, nativeSecureCoreDependentFeatures: ["attested-device-identity"] });
+});
+test("5. production + mock SecurityAdapter → rejected (live control, never weakened)", () => rejected({ appEnvironment: "production", secureCoreMode: "mock", securityAdapterMode: "mock" }, "native Apollo Security Adapter"));
+test("6. native selected but module unavailable → rejected (any env)", () => {
   rejected({ appEnvironment: "development", secureCoreMode: "native", securityAdapterMode: "mock", nativeSecureCoreAvailable: false }, "required but unavailable");
   rejected({ appEnvironment: "production", secureCoreMode: "native", securityAdapterMode: "native", nativeSecureCoreAvailable: false }, "required but unavailable");
+  rejected({ appEnvironment: "production", secureCoreMode: "mock", securityAdapterMode: "native", nativeSecurityAdapterAvailable: false }, "native security module is required but unavailable");
   rejected({ appEnvironment: "staging", secureCoreMode: "mock", securityAdapterMode: "native", nativeSecurityAdapterAvailable: false }, "native security module is required but unavailable");
 });
 test("7. missing or invalid security mode / environment → rejected", () => {

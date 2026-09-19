@@ -14,6 +14,7 @@
     "start": "expo start",
     "security:preflight": "node scripts/security-preflight.mjs",
     "test:security": "node --test tests/securityConfig.test.ts",
+    "test:boot": "node --test tests/securityBoot.test.ts",
     "test:platform": "node --test tests/platformCapability.test.ts",
     "test:adapter-contract": "node --test tests/adapterContract.test.ts",
     "test:evidence-sync": "node --test tests/enforcementEvidenceSync.test.ts",

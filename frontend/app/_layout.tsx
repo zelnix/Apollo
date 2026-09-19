@@ -12,15 +12,21 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/src/components/error-boundary";
+import { SafeStartScreen } from "@/src/components/SafeStartScreen";
 import { ToastHost } from "@/src/components/Toast";
 import { loadNotifications } from "@/src/push/notifications";
 import { queryClient } from "@/src/query-client";
+import { getSecurityBootError } from "@/src/security/securityBoot";
 import { ShareIntakeListener } from "@/src/share/ShareIntakeListener";
 import { ApolloProvider } from "@/src/store/ApolloContext";
 import { useTheme } from "@/src/theme";
 
 LogBox.ignoreAllLogs(true);
 void SplashScreen.preventAutoHideAsync().catch(() => {});
+
+// Security boot boundary: if any security selector failed validation during module evaluation, the app
+// must not mount. Evaluated once — configuration is baked into the build.
+const SECURITY_BOOT_ERROR = getSecurityBootError();
 
 // Alert notifications — module scope so the handler/channel exist before any push arrives.
 // `loadNotifications()` is null on web and in Expo Go (remote push needs a native build).
@@ -59,7 +65,7 @@ export default function RootLayout() {
   useEffect(() => { if (loaded) void SplashScreen.hideAsync().catch(() => {}); }, [loaded]);
 
   useEffect(() => {
-    if (!Notifications) return;
+    if (!Notifications || SECURITY_BOOT_ERROR) return;
     // Warm tap (app open / backgrounded)
     const tapSub = Notifications.addNotificationResponseReceivedListener((response) => {
       openFromNotification(router, response.notification.request.content.data as Record<string, unknown>);
@@ -84,6 +90,8 @@ export default function RootLayout() {
   }, [router]);
 
   if (!loaded) return <View style={{ flex: 1, backgroundColor: colors.surface }} />;
+  // Fail closed, visibly: no providers, no navigation, no protection start-up behind this screen.
+  if (SECURITY_BOOT_ERROR) return <SafeStartScreen error={SECURITY_BOOT_ERROR} />;
 
   return (
     <ErrorBoundary>

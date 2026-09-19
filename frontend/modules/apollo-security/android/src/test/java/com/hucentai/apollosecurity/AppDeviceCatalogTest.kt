@@ -31,10 +31,10 @@ class AppDeviceCatalogTest {
   }
 
   @Test fun `accessibility setting parsing keeps third-party packages only`() {
-    val setting = "com.google.android.marvin.talkback/.TalkBackService:com.evil.helper/.Svc:app.hwg.apollo/.X:com.evil.helper/.Other:com.samsung.accessibility/.U"
-    assertEquals(listOf("com.evil.helper"), AppDeviceCatalog.thirdPartyServices(setting, "app.hwg.apollo"))
-    assertTrue(AppDeviceCatalog.thirdPartyServices(null, "app.hwg.apollo").isEmpty())
-    assertTrue(AppDeviceCatalog.thirdPartyServices("", "app.hwg.apollo").isEmpty())
+    val setting = "com.google.android.marvin.talkback/.TalkBackService:com.evil.helper/.Svc:app.apollo.hwg/.X:com.evil.helper/.Other:com.samsung.accessibility/.U"
+    assertEquals(listOf("com.evil.helper"), AppDeviceCatalog.thirdPartyServices(setting, "app.apollo.hwg"))
+    assertTrue(AppDeviceCatalog.thirdPartyServices(null, "app.apollo.hwg").isEmpty())
+    assertTrue(AppDeviceCatalog.thirdPartyServices("", "app.apollo.hwg").isEmpty())
   }
 
   @Test fun `permissions are translated to plain words and unknown ones are dropped`() {

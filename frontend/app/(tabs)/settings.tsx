@@ -14,7 +14,7 @@ import { APP_ENV } from "@/src/config/appEnvironment";
 import { APP_VERSION, buildLabel } from "@/src/config/buildInfo";
 import { PRIVACY_POLICY_SUMMARY } from "@/src/domain/privacy";
 import type { PushStatus } from "@/src/push/notifications";
-import { SECURECORE_LABEL, IS_MOCK_SECURECORE } from "@/src/security/securecore/SecureCore";
+import { SECURECORE_LABEL, SECURECORE_STATUS, IS_MOCK_SECURECORE } from "@/src/security/securecore/SecureCore";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 import { minimiseApp } from "@/src/utils/minimise";
@@ -212,8 +212,9 @@ export default function SettingsScreen() {
             <View style={s.row}><Text style={s.label}>Build</Text><Text style={s.mono} testID="settings-app-build">{buildLabel()}</Text></View>
             <View style={s.row}><Text style={s.label}>Environment</Text><Pill tone={APP_ENV === "production" ? "resting" : "growling"} label={APP_ENV} testID="settings-app-env" /></View>
             <View style={s.row}><Text style={s.label}>Security adapter</Text><Pill tone={isMock ? "unknown" : "resting"} label={adapterLabel} /></View>
-            <View style={s.row}><Text style={s.label}>SecureCore</Text><Pill tone={IS_MOCK_SECURECORE ? "unknown" : "resting"} label={IS_MOCK_SECURECORE ? "MOCK" : "Native"} /></View>
+            <View style={s.row}><Text style={s.label}>SecureCore</Text><Pill tone={IS_MOCK_SECURECORE ? "unknown" : "resting"} label={IS_MOCK_SECURECORE ? "NOT ACTIVE (MOCK)" : "Native"} testID="settings-securecore" /></View>
             <Body>{SECURECORE_LABEL}</Body>
+            <Body testID="settings-securecore-status">{SECURECORE_STATUS}</Body>
             {isMock ? <Button testID="settings-dev-tools" variant="secondary" label="Developer tools (mock scenarios)" onPress={() => router.push("/dev-tools")} /> : null}
           </Card>
         </View>

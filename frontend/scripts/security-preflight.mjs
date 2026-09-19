@@ -33,12 +33,20 @@ if (!["development", "staging", "production"].includes(cfg.EXPO_PUBLIC_APP_ENV))
 for (const k of ["EXPO_PUBLIC_SECURECORE_MODE", "EXPO_PUBLIC_SECURITY_MODE"]) {
   if (!["mock", "native"].includes(cfg[k])) errors.push(`${k} must be "mock" or "native" (got "${cfg[k]}").`);
 }
+// Shipped features that depend on native SecureCore — single source of truth is securityConfig.ts.
+const policySource = fs.readFileSync(path.join(root, "src/security/securityConfig.ts"), "utf8");
+const depMatch = policySource.match(/NATIVE_SECURECORE_DEPENDENT_FEATURES\s*(?::[^=]+)?=\s*\[([^\]]*)\]/);
+if (!depMatch) { console.error("[security-preflight] cannot read NATIVE_SECURECORE_DEPENDENT_FEATURES from securityConfig.ts"); process.exit(1); }
+const secureCoreDependents = [...depMatch[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+
 if (cfg.EXPO_PUBLIC_APP_ENV === "production") {
-  if (cfg.EXPO_PUBLIC_SECURECORE_MODE !== "native") errors.push("Production builds require native HuCentAI SecureCore (EXPO_PUBLIC_SECURECORE_MODE=native).");
   if (cfg.EXPO_PUBLIC_SECURITY_MODE !== "native") errors.push("Production builds require the native Apollo Security Adapter (EXPO_PUBLIC_SECURITY_MODE=native).");
+  if (secureCoreDependents.length > 0 && cfg.EXPO_PUBLIC_SECURECORE_MODE !== "native") {
+    errors.push(`Production builds require native HuCentAI SecureCore (EXPO_PUBLIC_SECURECORE_MODE=native) because these shipped features depend on it: ${secureCoreDependents.join(", ")}.`);
+  }
 }
 
-console.log(`[security-preflight] profile=${profile ?? "local"} env=${cfg.EXPO_PUBLIC_APP_ENV} securecore=${cfg.EXPO_PUBLIC_SECURECORE_MODE} adapter=${cfg.EXPO_PUBLIC_SECURITY_MODE}`);
+console.log(`[security-preflight] profile=${profile ?? "local"} env=${cfg.EXPO_PUBLIC_APP_ENV} securecore=${cfg.EXPO_PUBLIC_SECURECORE_MODE} adapter=${cfg.EXPO_PUBLIC_SECURITY_MODE} securecore-dependents=${secureCoreDependents.length}`);
 if (errors.length) {
   console.error("SECURITY CONFIGURATION ERROR:\n - " + errors.join("\n - "));
   process.exit(1);

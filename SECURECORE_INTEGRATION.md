@@ -83,28 +83,42 @@ Missing or invalid values throw at module load and fail the build preflight.
 
 ## 7. Production fail-closed rule — guarantees
 
-Enforced in **three** places, all sharing `src/security/securityConfig.ts` (pure, unit-tested):
+Policy amended 2026-06 so it describes the architecture that actually exists. Enforced in **three** places,
+all sharing `src/security/securityConfig.ts` (pure, unit-tested):
 
 1. **Runtime (app load)** — `src/config/appEnvironment.ts` validates `EXPO_PUBLIC_APP_ENV`
    (`development | staging | production`, never derived from `__DEV__`) plus both mode variables.
    `SecureCore.ts` and `securityAdapter.ts` re-validate with the real native-module availability.
-   Any violation throws `SecurityConfigurationError: SECURITY CONFIGURATION ERROR: …` before the UI mounts.
+   A violation is **recorded** on `src/security/securityBoot.ts` (first error wins) and the selector returns a
+   fail-closed stand-in whose every member throws; `app/_layout.tsx` reads `getSecurityBootError()` before
+   mounting anything and renders `SafeStartScreen` ("Apollo can't start safely." + the exact reason + Try again /
+   Close). No providers, navigation, protection start-up or background work run behind it. This replaced the
+   previous throw-at-module-load, which in a release Hermes bundle was an OS "Apollo keeps stopping" crash
+   (first physical-device run, Stage 1C.1).
 2. **Build time** — `scripts/security-preflight.mjs` runs as the EAS `eas-build-pre-install` hook
-   (and via `yarn security:preflight`). It fails the build if, for the production profile, either mode
-   is `mock`, or any setting is missing/invalid. `.env.production` pins all three values to production/native.
-3. **Tests** — `yarn test:security` (`tests/securityConfig.test.ts`, node:test) covers: dev+mock ✓,
-   dev+native ✓, prod+native ✓, prod+mock SecureCore ✗, prod+mock adapter ✗, native selected but module
-   unavailable ✗ (every environment), missing/invalid mode or environment ✗, staging+mock ✓.
+   (and via `yarn security:preflight`). It reads `NATIVE_SECURECORE_DEPENDENT_FEATURES` from
+   `securityConfig.ts` and fails a production build if the adapter mode is not native, if SecureCore is not
+   native while dependents exist, or if any setting is missing/invalid. `.env.production` pins
+   `APP_ENV=production`, `SECURITY_MODE=native`, `SECURECORE_MODE=mock`.
+3. **Tests** — `yarn test:security` (`tests/securityConfig.test.ts`, 9) and `yarn test:boot`
+   (`tests/securityBoot.test.ts`, 6: invalid production config → recorded error + stand-in, real adapter factory
+   never runs, stand-in can never yield a protection status, blocking copy never claims protection, valid
+   production config → normal start-up, missing native adapter → still blocked).
 
 Rules:
-- `production` ⇒ `EXPO_PUBLIC_SECURECORE_MODE=native` **and** `EXPO_PUBLIC_SECURITY_MODE=native`. No exceptions.
+- `production` ⇒ `EXPO_PUBLIC_SECURITY_MODE=native` **and** the `ApolloSecurity` module present. No exceptions —
+  this is the live enforcement/capability surface and is never weakened.
+- `production` ⇒ `EXPO_PUBLIC_SECURECORE_MODE=native` **only while** `NATIVE_SECURECORE_DEPENDENT_FEATURES`
+  is non-empty. Today it is empty: API identity is server-issued device tokens (`src/auth/deviceIdentity.ts`),
+  SecureCore is a contract stub, and the mock is permitted but shown in Settings as "NOT ACTIVE (MOCK)" with
+  `SECURECORE_STATUS`. Add a feature id to the list the moment production code depends on native SecureCore.
 - `development` and `staging` may use `mock`, including native builds installed on physical devices, but must
   set their mode explicitly — there is no fallback/default.
 - `native` mode with the module absent fails closed in **every** environment. There is never a silent
   fallback to the mock.
-- EAS profiles (managed by Emergent in `eas.json`) should set `EXPO_PUBLIC_APP_ENV` per profile
-  (`development`, `staging`, `production`); `.env.production` covers the production bundle even if the
-  profile omits it, and the preflight infers `production` from `EAS_BUILD_PROFILE=production`.
+- EAS profiles (managed by Emergent in `eas.json`) should set `EXPO_PUBLIC_APP_ENV` per profile;
+  `.env.production` covers the production bundle even if the profile omits it, and the preflight infers
+  `production` from `EAS_BUILD_PROFILE=production`.
 
 ## 8. How the app uses SecureCore today
 
