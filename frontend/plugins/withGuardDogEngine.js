@@ -47,12 +47,14 @@ const path = require("path");
 const MARKER = "GuardDog engine (Stage 1C)";
 const SERIALIZATION_MARKER = "GuardDog kotlin.serialization plugin (Stage 1C)";
 
-// packages/ lives one level above frontend/, i.e. two levels above frontend/android/.
-const PACKAGES_DIR_FROM_ANDROID = "../../packages";
+// packages/ lives inside the Expo project root (frontend/packages), i.e. one level above frontend/android/.
+// It MUST be inside frontend/ because Emergent runs `eas build` from frontend/ with no VCS, and eas-cli then
+// archives only the project root — anything outside frontend/ never reaches the EAS worker (Stage 1C.1 finding).
+const PACKAGES_DIR_FROM_ANDROID = "../packages";
 const REQUIRED_PATHS = [
-  "../packages/guarddog-android-sdk/guarddog-core",
-  "../packages/guarddog-android-sdk/guarddog-vpn",
-  "../packages/guarddog-expo-module",
+  "packages/guarddog-android-sdk/guarddog-core",
+  "packages/guarddog-android-sdk/guarddog-vpn",
+  "packages/guarddog-expo-module",
 ];
 
 /** Fail fast at prebuild time if the Stage 1B staged source is ever missing, instead of silently

@@ -220,6 +220,43 @@ throws on two `ShareExtension` entries. Fixed by `plugins/withEasAppExtensionsDe
 clean Android prebuild with GuardDog resolving exactly once and the 91-file SHA-256 manifest
 re-verified) in `docs/STAGE_1C1_STEP7_CONFIG_DIAGNOSTIC.md`.
 
+## 11b. Stage 1C.1 — first real EAS Android build reached PREBUILD; failed on package location; fixed
+
+EAS build `f2359ee5-b971-473c-9fb8-9b13f0f766c7` (the first run to reach the EAS Android worker) failed
+in PREBUILD, before any Gradle/Kotlin step:
+
+```
+[withGuardDogEngine] Missing staged GuardDog source at
+/home/expo/workingdir/packages/guarddog-android-sdk/guarddog-core
+```
+
+Cause: Emergent runs `eas build` from `frontend/` with no VCS; eas-cli (`NoVcsClient`) then archives only
+the project root (`frontend/`, honouring `.gitignore` files beneath it), so the sibling repo-root
+`packages/` was never uploaded (archive was 4.0 MB). Our fail-fast check fired exactly as designed.
+
+Fix (approved): `git mv packages frontend/packages` (91 renames, zero content changes) and three
+Apollo-owned path references updated — `withGuardDogEngine.js` (`REQUIRED_PATHS` → `packages/...`,
+`PACKAGES_DIR_FROM_ANDROID` → `../packages`) and `package.json` (`expo.autolinking.searchPaths` →
+`["./packages"]`). Generated settings.gradle now reads
+`project(':guarddog-core').projectDir = new File(rootDir, '../packages/guarddog-android-sdk/guarddog-core')`
+(and likewise for `guarddog-vpn`). §1/§2 snippets above showing `../packages` / `../../packages` are
+historical; the current values are as stated here.
+
+Verification: SHA-256 manifest 91/91 OK from the new location · `expo config --json` and
+`--type introspect` exit 0 · eas-cli archive simulation (same `ignore` semantics + `.gitignore` under
+`frontend/`) ships 320/320 tracked files incl. 91/91 under `packages/` · clean `expo prebuild
+--platform android` inside a copy of that archive **with no sibling `packages/`** exits 0 ·
+`include(':guarddog-core')` ×1, `include(':guarddog-vpn')` ×1, serialization classpath ×1, both
+`projectDir`s resolve · autolinking: `guarddog-expo-module` → 1 project
+(`packages/guarddog-expo-module/android`) · `android.minSdkVersion=26` · 35/35 regression tests.
+
+Non-blocking findings from the same worker log (not addressed here, by scope): expo-doctor 17/20 —
+missing peer dep `expo-asset` (required by expo-audio; "may crash outside Expo Go"), duplicate
+`react-native-svg` (15.15.4 vs 13.14.1 via @nandorojo/heroicons), patch-version drift. Phase result was
+"warning", the build continued past it.
+
+Status: Stage 1C.1 IN PROGRESS — Gradle/Kotlin compilation not yet reached. Stage 1D not started.
+
 ## 11. Confirmations (per Stage 1C scope)
 
 - Consumer UI, Higgins (`backend/routers/ask.py`), `SecurityPlatformAdapter.ts`, Patrol

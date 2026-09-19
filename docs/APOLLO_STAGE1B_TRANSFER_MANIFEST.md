@@ -1,5 +1,13 @@
 # Stage 1B — Production Engine Source Transfer (Manifest & Report)
 
+
+> **Location update (Stage 1C.1, 2026-06):** the staged directory was moved — via `git mv`, zero content
+> changes — from repo-root `packages/` to **`frontend/packages/`**. Reason: Emergent's Android pipeline runs
+> `eas build` from `frontend/` with no VCS, and eas-cli then archives only that project root, so a sibling
+> `packages/` never reached the EAS worker (prebuild failed on `withGuardDogEngine`'s source check). All 91 files
+> re-verified against `APOLLO_STAGE1B_SHA256_MANIFEST.txt` (relative paths, run from `frontend/packages/`):
+> 91/91 OK. Every `packages/...` path below now means `frontend/packages/...`.
+
 **Status: source staged, unwired.** Files have been copied byte-for-byte from the frozen,
 pinned commit into this repo under a new top-level `packages/` directory. **Nothing has been
 wired up** — `frontend/package.json`, any Expo config plugin, `SecurityPlatformAdapter.ts`,
