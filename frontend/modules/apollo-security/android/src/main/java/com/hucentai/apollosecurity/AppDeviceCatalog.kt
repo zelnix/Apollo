@@ -43,8 +43,10 @@ object AppDeviceCatalog {
   val MESSENGERS: Set<String> = setOf(
     "com.whatsapp", "org.telegram.messenger", "com.facebook.orca", "com.google.android.apps.messaging", "com.samsung.android.messaging",
   )
+  /** System package installers — an APK opened by the person (sideload) reports one of these as its installer. */
+  val INSTALLERS: Set<String> = setOf("com.google.android.packageinstaller", "com.android.packageinstaller")
   /** Everything Apollo needs to be able to see, for the manifest `<queries>` block. */
-  val VISIBLE_PACKAGES: List<String> = (RISK_CATALOG.keys + STORES.keys + BROWSERS + MESSENGERS).toList()
+  val VISIBLE_PACKAGES: List<String> = (RISK_CATALOG.keys + STORES.keys + BROWSERS + MESSENGERS + INSTALLERS).toList()
 
   /** Maps the installing package (PackageManager.getInstallSourceInfo) to the SDK contract's installSource. */
   fun installSource(installingPackage: String?): String = when {
@@ -52,7 +54,7 @@ object AppDeviceCatalog {
     STORES.containsKey(installingPackage) -> STORES.getValue(installingPackage)
     BROWSERS.contains(installingPackage) -> "browser"
     MESSENGERS.contains(installingPackage) -> "message"
-    installingPackage == "com.google.android.packageinstaller" || installingPackage == "com.android.packageinstaller" -> "browser" // sideloaded APK opened by the person
+    installingPackage in INSTALLERS -> "browser" // sideloaded APK opened by the person
     else -> "not_sure"
   }
 

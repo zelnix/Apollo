@@ -158,3 +158,38 @@ For build `aa24dd73-eab7-4d0f-8b83-4734adb870b8`, please provide:
 4. Whether `node_modules` were installed with yarn 1.x per `package.json` before Step 7 ran.
 
 Locally the same command passes with exit 0 on Node v24.19.0 / `@expo/cli` 57.0.21 / `expo` 57.0.19 at commit `a2c8ee0`.
+
+---
+
+## Stage 1C.1 — RUN_GRADLEW iteration 3 (EAS build `737fa306`, versionCode 107)
+
+**Progress confirmed by the log**
+- `:apollo-security:compileReleaseKotlin` ✅ (the `compileSdk` fix from iteration 2 worked)
+- `:guarddog-expo-module:compileReleaseKotlin` ✅, `:guarddog-core` ✅, `:guarddog-vpn` ✅ — **the certified engine compiles natively inside Apollo**
+- `:app:processReleaseGoogleServices` ✅, `:app:processReleaseManifest` ✅
+
+**Failure**: `:app:processReleaseResources` → AAPT
+`attribute 'android:name' in <package> tag must be a valid Java package name` × 9, from the merged manifest of
+`modules/apollo-security/android/src/main/AndroidManifest.xml` lines 46–54.
+
+**Root cause**: the `<queries>` block contained the nine `SYSTEM_PREFIXES` strings (`com.google.`, `com.android.`,
+`com.samsung.`, `com.sec.`, `com.motorola.`, `com.oneplus.`, `com.oppo.`, `com.miui.`, `com.huawei.`) as
+`<package>` entries. Those prefixes are only a string filter applied to `Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES`
+in `AppDeviceCatalog.thirdPartyServices()` — they never go to `PackageManager`, so they never needed package
+visibility, and a trailing-dot prefix is not a valid package name for AAPT. They also broke the JUnit
+manifest-contract test (`declared == VISIBLE_PACKAGES`).
+
+**Fix (commit after this note)**
+- Removed the nine prefix entries from the manifest `<queries>` block (37 valid entries remain).
+- `AppDeviceCatalog.kt`: added `INSTALLERS` (`com.google.android.packageinstaller`, `com.android.packageinstaller`)
+  to `VISIBLE_PACKAGES` so the manifest contract test matches exactly; `installSource()` now reads from it.
+- Verified: manifest parses as XML; every `<package android:name>` matches `[A-Za-z_]\w*(\.[A-Za-z_]\w*)+`;
+  manifest set == Kotlin `VISIBLE_PACKAGES` set (35 catalog + 2 installers = 37); Stage 1B SHA-256 manifest
+  `sha256sum -c` → all OK (GuardDog frozen source untouched).
+
+**Non-blocking note from deployment health check**: `frontend/google-services.json` carries a second, stale
+Android client (`life.fb50.app`) next to the correct `app.hwg.apollo` one. The Google Services Gradle task passed,
+so it is not a build blocker; remove the stale client in the Firebase console when convenient.
+
+## Next success criterion
+`:app:processReleaseResources` passes → `:app:bundleRelease` produces the AAB. That closes Stage 1C.1.

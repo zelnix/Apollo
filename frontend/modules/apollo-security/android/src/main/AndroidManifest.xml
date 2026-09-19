@@ -43,15 +43,6 @@
     <package android:name="com.samsung.android.messaging" />
     <package android:name="com.google.android.packageinstaller" />
     <package android:name="com.android.packageinstaller" />
-    <package android:name="com.google." />
-    <package android:name="com.android." />
-    <package android:name="com.samsung." />
-    <package android:name="com.sec." />
-    <package android:name="com.motorola." />
-    <package android:name="com.oneplus." />
-    <package android:name="com.oppo." />
-    <package android:name="com.miui." />
-    <package android:name="com.huawei." />
   </queries>
   <application>
     <service
