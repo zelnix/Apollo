@@ -117,3 +117,10 @@ Privacy-first mobile security app (iOS/Android, Expo + FastAPI + MongoDB) that d
 - Node v24.19.0, expo 57.0.19, @expo/cli 57.0.21, commit a2c8ee0 (clean tree).
 - Failure is NOT reproducible locally → requires Emergent stderr for build aa24dd73-eab7-4d0f-8b83-4734adb870b8.
 - Record: /app/docs/STAGE_1C1_STEP7_CONFIG_DIAGNOSTIC.md. No code changes made. Stage 1D NOT started.
+
+## Stage 1C.1 → 1D gate order (confirmed by user, binding)
+1. **Diagnose & Apply Exact Cloud Fix** — obtain Emergent's real Step 7 (`eas-update` → `expo config --json`) stderr; fix ONLY the exact exception; GuardDog source untouched unless the error directly implicates it. No speculative changes.
+2. **Rerun Publish** — confirm Step 7 clears and pipeline reaches native Android Gradle/Kotlin build (this is the actual Stage 1C.1 test).
+3. **Runtime Wiring (Stage 1D)** — only after native build succeeds; wire certified GuardDog engine into SecurityPlatformAdapter; preserve Truth-of-State rules.
+4. **Physical Device Proof** — install APK on real Android device; prove VPN start/stop; prove a real packet observed and intentionally blocked; verify enforcement evidence generated; only then allow THREAT_BLOCKED / "Apollo is biting."
+Current position: waiting on step 1 input (Step 7 stderr for build aa24dd73-eab7-4d0f-8b83-4734adb870b8). Do NOT start step 3.
