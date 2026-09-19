@@ -1,13 +1,19 @@
-apply plugin: 'com.android.library'
+// Expo SDK 57 module build. Uses `expo-module-gradle-plugin` (same pattern as the certified
+// packages/guarddog-expo-module), which supplies compileSdk/minSdk/targetSdk/Kotlin config from the root
+// project and applies the Pika compiler plugin required by Function/AsyncFunction definitions.
+// The legacy ExpoModulesCorePlugin.gradle path failed EAS build eb022c0b with
+// "project ':apollo-security' does not specify `compileSdk`" (Stage 1C.1).
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
 
 group = 'com.hucentai.apollosecurity'
 version = '1.0.0'
 
-def expoModulesCorePlugin = new File(project(":expo-modules-core").projectDir.absolutePath, "ExpoModulesCorePlugin.gradle")
-apply from: expoModulesCorePlugin
-applyKotlinExpoModulesCorePlugin()
-useCoreDependencies()
-useExpoPublishing()
+expoModule {
+  canBePublished false
+}
 
 android {
   namespace "com.hucentai.apollosecurity"

@@ -280,3 +280,23 @@ from production UI, "Apollo is biting" behavior, and controlled threat tests are
 Stopping here per instruction, pending either (a) the user triggering a real Android build so the
 compile result can actually be reported, or (b) further direction on how to proceed given this
 sandbox's tooling limits.
+
+## 11c. Stage 1C.1 — first Gradle run (EAS build `eb022c0b`): PREBUILD ✅, Gradle configuration ❌ on Apollo's own module; fixed
+
+Build `eb022c0b-8b19-43c0-9089-adbd553dd00c` confirmed the `frontend/packages` relocation works in the cloud
+(PREBUILD passed, 4.2 MB archive) and reached `RUN_GRADLEW` (Gradle 9.3.1, AGP 8.12.0, Kotlin 2.1.20,
+compileSdk 36, minSdk 26). It failed during project configuration — **not on GuardDog**:
+
+```
+A problem occurred configuring project ':apollo-security'.
+> Android Gradle Plugin: project ':apollo-security' does not specify `compileSdk` in build.gradle
+```
+
+Cause: Apollo's pre-existing local module `modules/apollo-security/android/build.gradle` used the legacy
+`ExpoModulesCorePlugin.gradle` + `applyKotlinExpoModulesCorePlugin()` path, which under SDK 57 no longer
+supplies `compileSdk`. Fix: migrated that Apollo-owned file to `plugins { id 'expo-module-gradle-plugin' }`
++ `expoModule { canBePublished false }` — the exact pattern the certified `guarddog-expo-module` already uses
+(whose header documents that the legacy path also causes a runtime "reified type parameter" crash).
+No certified file touched (SHA-256 manifest 91/91 re-verified). Prebuild in a simulated EAS archive exits 0;
+autolinking: `apollo-security` ×1, `guarddog-expo-module` ×1. Gradle cannot be executed in the sandbox
+(no JDK/Android SDK) — next cloud build is the test.
