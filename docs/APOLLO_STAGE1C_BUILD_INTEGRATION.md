@@ -208,6 +208,18 @@ real compiler was done and is clean (§§2,5,9,10) — so if/when a real build i
 person doing it is not starting from zero; the wiring, module graph, and version alignment have
 already been verified as far as static inspection allows.
 
+## 11a. Stage 1C.1 update — Step 7 (`eas-update`) gate root-caused and cleared; GuardDog exonerated
+
+The cloud pipeline's Step 7 failure (`expo config --json exited with non-zero code: 1`) was
+**not** caused by GuardDog, this plugin, `packages/`, autolinking search paths, Hermes, or Node.
+Root cause: Emergent's step removes `projectId`, `eas project:init` re-links and writes the
+plugin-evaluated `extra` back into `app.json` with `deepmerge` (arrays concatenate), doubling
+`extra.eas.build.experimental.ios.appExtensions`; expo-share-intent's compatibility checker then
+throws on two `ShareExtension` entries. Fixed by `plugins/withEasAppExtensionsDedupe.js`
+(first plugin in `app.json`). Full trace, reproduction, and 10-point verification (including a
+clean Android prebuild with GuardDog resolving exactly once and the 91-file SHA-256 manifest
+re-verified) in `docs/STAGE_1C1_STEP7_CONFIG_DIAGNOSTIC.md`.
+
 ## 11. Confirmations (per Stage 1C scope)
 
 - Consumer UI, Higgins (`backend/routers/ask.py`), `SecurityPlatformAdapter.ts`, Patrol

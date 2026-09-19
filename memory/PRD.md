@@ -124,3 +124,9 @@ Privacy-first mobile security app (iOS/Android, Expo + FastAPI + MongoDB) that d
 3. **Runtime Wiring (Stage 1D)** — only after native build succeeds; wire certified GuardDog engine into SecurityPlatformAdapter; preserve Truth-of-State rules.
 4. **Physical Device Proof** — install APK on real Android device; prove VPN start/stop; prove a real packet observed and intentionally blocked; verify enforcement evidence generated; only then allow THREAT_BLOCKED / "Apollo is biting."
 Current position: waiting on step 1 input (Step 7 stderr for build aa24dd73-eab7-4d0f-8b83-4734adb870b8). Do NOT start step 3.
+
+## Stage 1C.1 Step 7 — RESOLVED (this session)
+- Root cause (reproduced deterministically): Emergent removes projectId → `eas project:init` re-links → writes plugin-evaluated `extra` back to app.json via deepmerge (array CONCAT) → `appExtensions` doubled → expo-share-intent throws "more than one appExtensions for ShareExtension (2)" → exit 1. **GuardDog exonerated** (fresh install, no-git, Node 18/20/22/24, packages/ absent — all pass).
+- Fix (user-approved): `frontend/plugins/withEasAppExtensionsDedupe.js` (dedupe appExtensions by targetName, first occurrence kept) registered FIRST in app.json plugins. Nothing else changed.
+- Verified: config/introspect exit 0; 3 write-back rounds clean; Android prebuild exit 0; GuardDog includes ×1 each, autolinking 1 project; SHA manifest 91/91; 35/35 regression tests.
+- Next: user reruns Publish → success criterion = Step 7 passes and pipeline reaches native Android build. Stage 1D NOT started.
