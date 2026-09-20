@@ -57,3 +57,5 @@ Live purpose-limited checks executed on 2026-09-20 against the configured Gemini
 - Credentials, URL fragments and secret query parameters are removed before remote processing.
 - Raw submissions are not copied into Patrol, logs or analytics.
 - No scenario used “Apollo is biting” or claimed a packet was blocked.
+
+Stage 1D candidate building and Pixel acceptance are outside the current scope and are not follow-up actions for this delivery.

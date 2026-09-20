@@ -28,8 +28,9 @@ Complete Apollo's production-grade Text and Link Guard experience without waitin
 
 ### Priorities
 - **P0:** Keep all purpose-limited privacy, queue/evidence and Truth-of-State regressions green. No investigation may produce Biting.
-- **P1:** Supply/verify the dedicated controlled endpoint and ownership evidence, sign the host-scoped acceptance bundle, record final source SHA, create the candidate APK, record build ID + APK hash, then perform the Pixel run. Physical acceptance remains **NOT RUN**.
-- **P2:** After this delivery, improve scenario presentation/export and add macOS/Windows native enforcement adapters without changing the Android truth gate.
+- **P1:** Improve scenario presentation/export and continue consumer investigation quality work.
+- **Stopped by user:** Do not pursue the controlled endpoint, acceptance signing, Android candidate build, APK hashing or Pixel acceptance run. Physical acceptance remains **NOT RUN** and must not be implied.
+- **P2:** Consider macOS/Windows native enforcement adapters only if separately requested.
 
 ## P0 remediation stage — VERIFIED CLOSED (iteration 64)
 - User approved completion of the full P0 stage. P0-01 through P0-06 are implemented and individually recorded as **VERIFIED CLOSED** in `docs/STAGE1D_P0_REMEDIATION_BACKLOG.md`; original review identities and archived source remain intact.

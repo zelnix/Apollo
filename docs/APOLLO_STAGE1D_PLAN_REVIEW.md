@@ -2,6 +2,8 @@
 
 ## Parallel consumer delivery and candidate status — iteration 71
 
+**Current scope correction:** The user has stopped the controlled-endpoint, acceptance-signing, Android-build, APK-hash and Pixel-run work. Preserve the truthful `NOT CREATED` / `NOT RUN` record, but do not present these items as next actions.
+
 - Higgins' consumer investigation experience is part of this delivery, not a post-Pixel backlog. Text, Link and screenshot checks now show the submitted content, evidence findings, explicit uncertainty, Higgins' exact response and one primary action. Scam, genuine-looking and ambiguous live scenarios are recorded in `HIGGINS_SCENARIO_EVIDENCE.md`.
 - Purpose-limited cloud investigation is the current approved policy. Legacy blanket cloud-denial tests were replaced with assertions for secret redaction, SSRF-safe outbound handling, no raw Patrol/log retention, request-copy closure with a 15-minute maximum, and truthful non-enforcement results.
 - Stage 1D continues independently. Acceptance-profile preflight and frozen-source checks pass, but controlled endpoint ownership/configuration is incomplete. No Android build ID, APK hash, Pixel run ID, packet drop, Patrol delivery or physical notification result exists.

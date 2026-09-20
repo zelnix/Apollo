@@ -2,6 +2,8 @@
 
 ## Preparation status — 2026-09-20
 
+**Work stopped by user:** Do not establish the controlled endpoint, sign acceptance inputs, create the Android candidate, hash an APK or conduct the Pixel acceptance run under the current scope. The fields below remain intentionally unfulfilled and are retained only to prevent an accidental acceptance claim.
+
 | Required field | Current value |
 |---|---|
 | Build profile | `guarddog-acceptance` (internal Android APK, staging, native adapter) |
@@ -26,7 +28,7 @@
 
 The candidate configuration intentionally remains incomplete until the controlled acceptance endpoint is proven and a host-scoped bundle is signed. `controlledHost`, `controlledIpv4`, `controlledUrl`, `rulesetId`, and `signedBundleB64` are currently empty. The documented AWS endpoint path still returns HTTP 404 and ownership evidence has not been supplied. Do not generate or install an APK from placeholder inputs.
 
-Before installation, record the final source SHA, managed build ID, and APK SHA-256 in this file. During the Pixel run, associate the generated run ID and every result with that exact build.
+No installation or Pixel run is planned under the current scope.
 
 ## Physical truth gate
 
