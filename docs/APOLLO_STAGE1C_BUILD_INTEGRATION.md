@@ -1,10 +1,14 @@
 # Stage 1C — Production Build Integration (Report)
 
-**Status: Stage 1C structural integration COMPLETE, including the approved minSdk 24→26 change
-(§10). Stage 1C.1 (real native build gate) is BLOCKED — this sandbox has no JDK/Android
-SDK/Gradle, and no tool available to this agent triggers Emergent's real native build pipeline;
-see §11. Nothing beyond native build wiring was touched: consumer UI, Higgins,
-`SecurityPlatformAdapter.ts`, Patrol, and threat-event semantics are all unchanged.**
+**Current status (recorded 2026-09-20): Stage 1C structural integration is COMPLETE.
+Emergent Support reports successful deploys/Android builds and an emulator launch to Home
+after fixing duplicate SVG view registration. The exact crash, dependency chain and fix commit
+are recorded in §13. Stage 1C.1 physical-device launch acceptance is still PENDING on the
+user's Pixel 10 with a newly built APK; Stage 1D remains NOT STARTED.**
+
+Sections 1–11c retain historical build-stage observations and tooling limitations. Their
+earlier blocked statuses are not the current status. In particular, the duplicate SVG warning
+previously treated as non-blocking was later established as the launch-crash cause (§13).
 
 ## 1. Config plugin(s) added/changed
 
@@ -122,7 +126,8 @@ a full `testing_agent` pass wasn't — no JS runtime behavior changed):
 ## 6. Warnings
 
 - `expo-doctor`'s 4 flagged items (§5) are pre-existing and unrelated; not introduced by this
-  change.
+  change. **Later correction:** pre-existing does not mean harmless. The duplicate
+  `react-native-svg` finding caused the post-splash runtime crash; see §13.
 - The generated `android/` directory created during testing was deleted afterward (not checked
   in) — it's fully reproducible on demand (see §7), and this app has no precedent of committing
   generated native folders.
@@ -255,6 +260,9 @@ missing peer dep `expo-asset` (required by expo-audio; "may crash outside Expo G
 `react-native-svg` (15.15.4 vs 13.14.1 via @nandorojo/heroicons), patch-version drift. Phase result was
 "warning", the build continued past it.
 
+**Historical classification corrected by §13:** the SVG duplication was non-blocking for the
+build task, but **was a runtime launch blocker**. It must not remain on a harmless-warning backlog.
+
 Status: Stage 1C.1 IN PROGRESS — Gradle/Kotlin compilation not yet reached. Stage 1D not started.
 
 ## 11. Confirmations (per Stage 1C scope)
@@ -272,14 +280,12 @@ Status: Stage 1C.1 IN PROGRESS — Gradle/Kotlin compilation not yet reached. St
 
 ## 12. Ready for the next stage?
 
-**Stage 1C (structural integration) is complete.** Stage 1C.1 (real native build gate) is
-**blocked pending a real Android build via the Emergent Publish flow** — see §11. Stage 1D
-(runtime/adapter integration) has explicitly **not begun**: consumer UI, Higgins,
-`SecurityPlatformAdapter.ts` runtime behavior, Patrol, threat-event semantics, VPN start/stop
-from production UI, "Apollo is biting" behavior, and controlled threat tests are all untouched.
-Stopping here per instruction, pending either (a) the user triggering a real Android build so the
-compile result can actually be reported, or (b) further direction on how to proceed given this
-sandbox's tooling limits.
+**Stage 1C (structural integration) is complete.** Support reports that native builds now
+succeed and the fixed app reaches Home on an emulator (§13). **Do not advance to Stage 1D
+until the user confirms that a fresh post-fix APK launches and stays open on the Pixel 10.**
+Emulator success is not physical-device sign-off, and reaching Home is not proof of native
+enforcement. Stage 1D runtime wiring, VPN start/stop proof, real packet-block evidence and
+subsequent Higgins/consumer integration remain separate work.
 
 ## 11c. Stage 1C.1 — first Gradle run (EAS build `eb022c0b`): PREBUILD ✅, Gradle configuration ❌ on Apollo's own module; fixed
 
@@ -300,3 +306,94 @@ supplies `compileSdk`. Fix: migrated that Apollo-owned file to `plugins { id 'ex
 No certified file touched (SHA-256 manifest 91/91 re-verified). Prebuild in a simulated EAS archive exits 0;
 autolinking: `apollo-security` ×1, `guarddog-expo-module` ×1. Gradle cannot be executed in the sandbox
 (no JDK/Android SDK) — next cloud build is the test.
+
+## 13. Support resolution: post-splash crash (2026-09-19)
+
+### Provenance and exact failure
+
+- **Owner:** Emergent Support, ticket **257445** (attribution recorded in the fix commit).
+- **Fix commit:** `01a30ae72accc3c366492f0217d7fec3cdce866a`, authored
+  **2026-09-19 18:10:55 UTC**; subject:
+  `fix(android): pin react-native-svg to a single copy (yarn resolutions) to stop launch crash`.
+- **Symptom:** the installed APK exited about one second after launch, following the splash
+  screen. The user saw Android's **"Apollo keeps stopping"** dialog, not SafeStart. Apparent
+  continued background presence was reported, but was not proof that protection remained active.
+- **Exact exception recorded by Support in that commit:**
+
+  ```text
+  Invariant Violation: Tried to register two views with the same name RNSVGCircle
+  ```
+
+### Root cause and fix
+
+Two copies of `react-native-svg` were bundled and both registered the same native view names:
+
+```text
+Apollo frontend                 → react-native-svg 15.15.4
+@nandorojo/heroicons 0.3.0       → react-native-svg ^13.1.0 → 13.14.1
+```
+
+Support added **`"react-native-svg": "15.15.4"` to `resolutions`** in
+`frontend/package.json`. The direct dependency was already `15.15.4`; the fix forces the
+icon library's transitive dependency to use that same copy. Support also regenerated
+`frontend/yarn.lock`: the separate `13.14.1` entry was removed and both selectors now share
+the `15.15.4` entry:
+
+```yaml
+react-native-svg@15.15.4, react-native-svg@^13.1.0:
+  version "15.15.4"
+```
+
+The commit changes **only those two dependency files**. No app source, config plugin, security
+policy or certified GuardDog package was changed by this fix. The commit also records a bundle
+module-count reduction from **2747 to 2513**; this is supporting history, not an acceptance test.
+
+SafeStart/conditional SecureCore policy changes were earlier, separate work. A security-config
+unit-test failure was not evidence of this APK's actual crash cause. SafeStart does not
+deduplicate SVG native views. The earlier eager-native-module/timing hypothesis was retracted;
+it must not be recorded as this incident's root cause. Healthy backend `/health` logs, an API
+root `/` 404, Firebase client configuration and preview tunnelling likewise do not establish
+the cause of the recorded `RNSVGCircle` exception.
+
+### Verification and limits
+
+| Evidence | Result / provenance |
+|---|---|
+| Exact exception and dependency fix | Recorded in Support's commit above; commit body and two-file patch inspected on 2026-09-20 |
+| Deploys and Android builds complete | Support's message supplied by the user; not a new cloud run by this documentation session |
+| App reaches Home on an emulator | Support-reported test result; raw emulator logs, image/API level and APK hash were not supplied |
+| `yarn why react-native-svg` in the current workspace | One resolved `15.15.4`, hoisted for both the app and `@nandorojo/heroicons` |
+| Node resolution from app and icon-library locations | Both resolve the same `frontend/node_modules/react-native-svg/package.json`, version `15.15.4` |
+| Frozen GuardDog manifest | All 91 files match `APOLLO_STAGE1B_SHA256_MANIFEST.txt`, rechecked on 2026-09-20 |
+| New APK on the user's Pixel 10 | **Pending**; no post-fix physical-device success has been reported |
+| Native start/stop, packet blocking, push delivery | **Not established by this startup fix** |
+
+Support says the APK already on the phone predates the fix and will not update itself. A fresh
+**Publish → Build → install newly generated APK** is required. Record that build's ID, commit,
+APK SHA-256, Pixel Android version, and launch/reopen result when available. Do not relabel the
+old installed APK's crash as a failure of this new fix without checking build provenance.
+
+### Preventing recurrence
+
+1. Preserve the single-version SVG resolution and regenerated lockfile together. Do not remove
+   the resolution merely to silence Yarn's expected warning that `15.15.4` falls outside the
+   icon library's declared `^13.1.0` range. Reassess compatibility and icon rendering when upgrading.
+2. After dependency/icon-library changes, run `cd frontend && yarn why react-native-svg` and
+   confirm one version; check resolution from both consumers, not only the app's direct dependency.
+3. Treat duplicate native-view dependencies as possible **runtime blockers**, even when Gradle
+   succeeds. A successful build or web preview alone does not prove release APK startup.
+4. Smoke-test the rebuilt native app through splash → Home, icon rendering and close/reopen.
+   Keep physical-device launch acceptance separate from later native-enforcement proof.
+5. If this exact exception recurs, compare the APK's source commit and dependency lockfile with
+   the fix above before changing security selectors, backend health routes or GuardDog.
+
+### Related support statements and scope
+
+The user's support message also says deploy/build failures were resolved and that GitHub blocked
+the secret-bearing push, so keys were not exposed and rotation was unnecessary. These are
+**attributed support statements**, not an independent credential-exposure audit. No secret values
+are reproduced here. No additional platform-side fix commit was identified; do not invent a
+shared cause for deploy failures and the separately evidenced SVG crash.
+
+This record is documentation-only. Stage 1D remains paused pending the fresh physical-device
+launch result; the certified engine remains frozen.

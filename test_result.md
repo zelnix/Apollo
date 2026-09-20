@@ -533,7 +533,7 @@ frontend:
         working: "NA"
         comment: "Awaiting user device evidence. No APK generated in this session. New Firebase project requires matching Android push-sending service-account credentials; these were not changed or verified. Stage 1D remains blocked until successful physical-device launch is explicitly confirmed."
 
-## Stage 1C.1 — recurring physical Android startup failure
+## Stage 1C.1 — recurring physical Android startup failure (historical pre-Support APK)
 frontend:
   - task: "Installed Android app launches past splash without stopping"
     implemented: true
@@ -548,3 +548,27 @@ frontend:
       - agent: "main"
         working: false
         comment: "No Android stack trace supplied. Server log shows healthy startup and /health 200, not a native crash. Firebase identifiers match; native autolinking includes ApolloSecurity and GuardDog. Initial native-initialization timing hypothesis retracted after inspecting Expo implementation. No speculative code/security/infrastructure changes made. Need logcat FATAL EXCEPTION/ReactNativeJS stack or SafeStart Why screenshot plus current build identification. Stage 1D blocked."
+
+## Stage 1C.1 — Support fix provenance and current acceptance (recorded 2026-09-20)
+frontend:
+  - task: "Record Support's exact SVG launch-crash cause and dependency fix"
+    implemented: true
+    working: true
+    file: "docs/APOLLO_STAGE1C_BUILD_INTEGRATION.md, memory/PRD.md"
+    needs_retesting: false
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Inspected Support ticket 257445 fix commit 01a30ae72accc3c366492f0217d7fec3cdce866a: exact exception is Invariant Violation: Tried to register two views with the same name RNSVGCircle. heroicons 0.3.0 introduced SVG 13.14.1 beside app SVG 15.15.4; resolution plus lockfile force a single 15.15.4. Current yarn why and both consumers' Node resolution confirm deduplication. GuardDog SHA manifest 91/91. Documentation only; not a new native test run."
+  - task: "Fresh Support-fixed Android APK launches and reopens on the user's Pixel 10"
+    implemented: true
+    working: "NA"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "user"
+        working: "NA"
+        comment: "User relayed Support's successful deploy/build and emulator-to-Home result; Support says the phone's existing APK predates the fix. No post-fix Pixel result supplied."
+      - agent: "main"
+        working: "NA"
+        comment: "Await a fresh APK including 01a30ae, build ID/source commit/APK hash/Android version and launch-to-Home/reopen result. Emulator success is Support-reported, not independently rerun here. Stage 1D remains paused; startup success does not verify native packet blocking or push delivery."
