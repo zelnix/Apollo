@@ -208,6 +208,7 @@ export default function CheckEmail() {
             <TextInput testID="email-body" style={[s.input, { minHeight: 140 }]} value={raw} onChangeText={setRaw} placeholder="Paste the email (or the whole forwarded message with headers)…" placeholderTextColor={colors.muted} multiline textAlignVertical="top" autoCapitalize="none" autoCorrect={false} />
             <Button testID="email-run" label={busy ? "Sniffing…" : "Check this email"} onPress={() => void run()} disabled={busy || !(raw.trim() || from.trim() || subject.trim())} />
             <Button testID="email-check-screenshot" variant="secondary" label="Assess an email screenshot" onPress={() => router.push({ pathname: "/message", params: { openScreenshot: "1", source: "email" } })} />
+            <Body testID="email-preview-disclaimer">Preview note: choose the email screenshot manually. Apollo cannot read or retrieve a message from another app&apos;s notification preview.</Body>
           </>
         ) : a ? (
           <>
@@ -241,7 +242,8 @@ export default function CheckEmail() {
               <Card style={{ gap: spacing.xs }} testID="email-attachments">
                 <SectionTitle>Attachments mentioned</SectionTitle>
                 {a.parsed.attachments.map((at) => <View key={at} style={s.row}><Text style={[s.why, { flex: 1 }]} numberOfLines={1}>{at}</Text><Pill tone={a.riskyAttachments.includes(at) ? "barking" : "neutral"} label={a.riskyAttachments.includes(at) ? "Risky type" : "Document"} /></View>)}
-                <Button testID="email-check-file" variant="secondary" label="Check the file with Apollo" onPress={() => router.push("/file")} />
+                <Body testID="email-attachment-limitation">Apollo only found the attachment name in the pasted email. The file itself was not transferred. File Gate will ask you to select the actual attachment before inspecting its contents.</Body>
+                <Button testID="email-check-file" variant="secondary" label="Check the file with Apollo" onPress={() => router.push({ pathname: "/file", params: { source: "email" } })} accessibilityLabel="Open File Gate to select and inspect the attachment" accessibilityHint="The actual attachment must be selected before Apollo can inspect it." />
               </Card>
             ) : null}
             <Card style={{ gap: spacing.sm }} testID="email-actions">

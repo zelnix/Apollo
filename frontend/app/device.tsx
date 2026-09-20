@@ -2,23 +2,27 @@
 // reports. Produces a device security status (Protected / Review / Action / Recovery) — never a "full scan".
 import { Redirect, useRouter } from "expo-router";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
+import RefreshCw from "lucide-react-native/icons/refresh-cw";
 import X from "lucide-react-native/icons/x";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { markCheckDone } from "@/src/store/checkCompletion";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
-import { assessDevice, DEVICE_STATUS, EMPTY_SIGNALS, SELF_REPORT, type DeviceFinding, type DevicePlatform, type DeviceSignals, type SelfReport } from "@/src/domain/deviceAnalysis";
+import { assessDevice, deriveDeviceSecurityChanges, DEVICE_STATUS, EMPTY_SIGNALS, SELF_REPORT, type DeviceFinding, type DevicePlatform, type DeviceSecurityChange, type DeviceSignals, type SelfReport } from "@/src/domain/deviceAnalysis";
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { AppDeviceSdk } from "@/src/security/appDeviceSdk";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { openDeviceSettings, type SettingsTarget } from "@/src/utils/deviceSettings";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { storage } from "@/src/utils/storage";
 
 const TARGET: Record<string, SettingsTarget> = { D01: "apps", D01b: "apps", D02: "security", D03: "security", D04: "vpn", D05: "accessibility", D06: "apps", D07: "apps", D08: "unknown_sources", D09: "overlay", D10: "notification_access", D11: "developer" };
+const DEVICE_SNAPSHOT_KEY = "apollo.device.signals.v1";
+const SEVERITY_RANK: Record<DeviceFinding["severity"], number> = { high: 2, review: 1, info: 0 };
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -39,16 +43,36 @@ export default function CheckDevice() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { ready, setupDone, upsertEvent, deviceId, adapterLabel, showToast } = useApollo();
+  const { ready, setupDone, upsertEvent, deviceId, adapterLabel, showToast, protection, permissions, verifyNow } = useApollo();
   const platform: DevicePlatform = Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : "web";
   const [signals, setSignals] = useState<DeviceSignals>(EMPTY_SIGNALS(platform));
   const [self, setSelf] = useState<SelfReport>({});
   const [event, setEvent] = useState<PatrolEvent | null>(null);
   const [saving, setSaving] = useState(false);
-  useEffect(() => { void AppDeviceSdk.getDeviceSecuritySignals(platform).then(setSignals); }, [platform]);
-  const result = useMemo(() => assessDevice(signals, self), [signals, self]);
-  // The device check "runs" the moment real signals have been read and assessed — that is what Higgins asked for.
-  useEffect(() => { if (signals) void markCheckDone("device"); }, [signals]);
+  const [checking, setChecking] = useState(true);
+  const [changes, setChanges] = useState<DeviceSecurityChange[]>([]);
+  const refreshDevice = useCallback(async (notify = false) => {
+    setChecking(true);
+    try {
+      const [nextSignals, recent, previousRaw] = await Promise.all([AppDeviceSdk.getDeviceSecuritySignals(platform), AppDeviceSdk.getRecentAppSecurityEvents(), storage.getItem<string | null>(DEVICE_SNAPSHOT_KEY, null), verifyNow()]);
+      const previous = previousRaw ? JSON.parse(previousRaw) as DeviceSignals : null;
+      const observedChanges = deriveDeviceSecurityChanges(previous, nextSignals);
+      setSignals(nextSignals);
+      setChanges([...recent, ...observedChanges].filter((item, index, all) => all.findIndex((candidate) => candidate.eventType === item.eventType && candidate.appName === item.appName) === index));
+      await storage.setItem(DEVICE_SNAPSHOT_KEY, JSON.stringify(nextSignals));
+      void markCheckDone("device");
+      if (notify) showToast("Device Gate checked the signals this platform exposes.", "neutral");
+    } catch {
+      if (notify) showToast("Device Gate couldn't refresh every signal. The visible limits are listed below.", "growling");
+    } finally { setChecking(false); }
+  }, [platform, showToast, verifyNow]);
+  useEffect(() => { void refreshDevice(false); }, [refreshDevice]);
+  const context = useMemo(() => ({
+    protection: protection ? { requested: protection.requested, operational: protection.operational, degradedReason: protection.degradedReason,
+      permissionIssues: permissions.filter((permission) => permission.status === "denied" || permission.status === "blocked").map((permission) => permission.title), checkedAt: protection.checkedAt } : null,
+    recentChanges: changes,
+  }), [changes, permissions, protection]);
+  const result = useMemo(() => assessDevice(signals, self, context), [signals, self, context]);
   const meta = DEVICE_STATUS[result.status];
   const anySelf = Object.values(self).some(Boolean);
 
@@ -60,23 +84,34 @@ export default function CheckDevice() {
       showToast("Saved to Patrol. Apollo will stay with you.", "neutral");
     } finally { setSaving(false); }
   };
-  const open = (f: DeviceFinding) => void openDeviceSettings(TARGET[f.id] ?? "apps", f.settings, (m) => showToast(m, "neutral"));
+  const open = (f: DeviceFinding) => {
+    const dynamic: SettingsTarget | null = f.id.includes("vpn_change") ? "vpn" : f.id.includes("profile_change") ? "security" : f.id.includes("service_enabled") ? "accessibility" : null;
+    void openDeviceSettings(dynamic ?? TARGET[f.id] ?? (f.id === "D12" || f.id === "D13" ? "vpn" : "apps"), f.settings, (m) => showToast(m, "neutral"));
+  };
+  const firstAction = [...result.findings].sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity])[0] ?? null;
 
   if (ready && !setupDone) return <Redirect href="/" />;
 
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>Check my device</Text>
+        <Text style={s.title}>Device Gate</Text>
         <Pressable testID="device-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="device-scroll">
+        <Body testID="device-gate-scope">Device Gate checks existing apps with visible sensitive access, current security settings and Apollo&apos;s own protection health—not only recent installs. It does not continuously scan every dormant app, and app capabilities are not proof of malicious behaviour.</Body>
         <Card testID="device-status" style={{ borderColor: toneColor(colors, result.state), gap: spacing.sm }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><ShieldCheck size={22} color={toneColor(colors, result.state)} /><Pill tone={result.state} label={STATE_NAME[result.state]} testID="device-state" /></View>
           <Text style={s.statusTitle} testID="device-status-title">{meta.title}</Text>
           <Text style={s.why}>{STATE_LABEL[result.state]}</Text>
           <Text style={s.why} testID="device-summary">{result.summary}</Text>
           <Body>{meta.meaning}</Body>
+        </Card>
+
+        <Card testID="device-protection-health" style={{ gap: spacing.sm, borderColor: result.protectionHealth.status === "active" ? colors.resting : result.protectionHealth.status === "unavailable" ? colors.border : colors.growling }}>
+          <View style={s.row}><SectionTitle>Apollo protection health</SectionTitle><Pill testID="device-protection-health-status" tone={result.protectionHealth.status === "active" ? "resting" : result.protectionHealth.status === "unavailable" ? "unknown" : "growling"} label={result.protectionHealth.status === "active" ? "Active" : result.protectionHealth.status === "off" ? "Off" : result.protectionHealth.status === "needs_attention" ? "Needs attention" : "Unavailable"} /></View>
+          <Text style={s.label} testID="device-protection-health-title">{result.protectionHealth.title}</Text>
+          <Body testID="device-protection-health-detail">{result.protectionHealth.detail}</Body>
         </Card>
 
         {result.recoverySteps.length ? (
@@ -105,6 +140,14 @@ export default function CheckDevice() {
             ))}
           </View>
         ) : null}
+
+        <Card testID="device-higgins" style={{ gap: spacing.sm, borderColor: colors.navyBorder }}>
+          <SectionTitle>Higgins</SectionTitle>
+          <Body testID="device-higgins-explanation">{firstAction ? `${firstAction.title} is the first item to review. ${firstAction.action}` : "Apollo did not identify a meaningful concern within the signals this platform exposes. The visibility limits below still apply."}</Body>
+          {firstAction ? <Button testID="device-higgins-open-settings" label="Open relevant Settings" onPress={() => open(firstAction)} /> : null}
+          <Button testID="device-higgins-recheck" variant="secondary" icon={<RefreshCw size={17} color={colors.brand} />} label={checking ? "Checking again…" : "I changed it — check again"} onPress={() => void refreshDevice(true)} disabled={checking} />
+          <Body testID="device-higgins-tampering-rule">Apollo reports suspected tampering only when a specific high-confidence configuration or permission change was observed. A stopped service or missing permission alone is a protection gap, not proof of tampering.</Body>
+        </Card>
 
         <Card style={{ gap: spacing.sm }} testID="device-self-report">
           <SectionTitle>Tell Apollo what you&apos;ve noticed</SectionTitle>

@@ -113,9 +113,9 @@ export default function Home() {
     { testID: "home-scan-button", label: "Scan code", icon: <ScanLine size={20} color={colors.gold} />, route: "/scan" },
   ];
   const moreChecks: QuickCheck[] = [
-    { testID: "home-check-file-button", label: "Check a file", icon: <FileSearch size={20} color={colors.brand} />, route: "/file" },
+    { testID: "home-check-file-button", label: "File Gate", icon: <FileSearch size={20} color={colors.brand} />, route: "/file" },
     { testID: "home-check-app-button", label: "App Gate", icon: <Smartphone size={20} color={colors.brand} />, route: "/app-check" },
-    { testID: "home-check-device-button", label: "Check my device", icon: <ShieldCheck size={20} color={colors.brand} />, route: "/device" },
+    { testID: "home-check-device-button", label: "Device Gate", icon: <ShieldCheck size={20} color={colors.brand} />, route: "/device" },
     { testID: "home-check-network-button", label: "Network Gate", icon: <Wifi size={20} color={colors.brand} />, route: "/network" },
     { testID: "home-check-account-button", label: "Account Gate", icon: <KeyRound size={20} color={colors.brand} />, route: "/account" },
     { testID: "home-check-email-button", label: "Email Gate", icon: <Mail size={20} color={colors.brand} />, route: "/email" },

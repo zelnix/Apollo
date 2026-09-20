@@ -26,7 +26,7 @@ export function classifyShare(p: SharedPayload): ShareRoute {
     const mime = (file.mimeType ?? "").toLowerCase();
     const name = file.fileName ?? file.path.split("/").pop() ?? "shared file";
     if (mime.startsWith("image/") || /\.(png|jpe?g|webp|heic|heif)$/i.test(name)) return { kind: "screenshot", pathname: "/message", params: { imageUri: file.path, source: "share" }, reason: "It's an image — Apollo will read it as a screenshot of a message." };
-    return { kind: "file", pathname: "/file", params: { uri: file.path, name, mime: file.mimeType ?? "", size: String(file.size ?? ""), source: "share" }, reason: "It's a file — Apollo checks what it really is before trusting the name." };
+    return { kind: "file", pathname: "/file", params: { uri: file.path, name, mime: file.mimeType ?? "", size: String(file.size ?? ""), source: "unknown" }, reason: "It's a file — Apollo checks what it really is before trusting the name or where it was hosted." };
   }
   const raw = (p.text ?? "").trim();
   const url = p.webUrl?.trim() || extractUrl(raw);
@@ -45,7 +45,7 @@ export function alternativeRoutes(p: SharedPayload, chosen: ShareKind): ShareRou
   const all: ShareRoute[] = [];
   if (p.files?.[0]) {
     const f = p.files[0]; const name = f.fileName ?? f.path.split("/").pop() ?? "shared file";
-    all.push({ kind: "file", pathname: "/file", params: { uri: f.path, name, mime: f.mimeType ?? "", size: String(f.size ?? ""), source: "share" }, reason: "" }, { kind: "screenshot", pathname: "/message", params: { imageUri: f.path, source: "share" }, reason: "" });
+    all.push({ kind: "file", pathname: "/file", params: { uri: f.path, name, mime: f.mimeType ?? "", size: String(f.size ?? ""), source: "unknown" }, reason: "" }, { kind: "screenshot", pathname: "/message", params: { imageUri: f.path, source: "share" }, reason: "" });
   } else {
     const body = raw || url || "";
     if (url) all.push({ kind: "link", pathname: "/check", params: { url: url.startsWith("http") ? url : `https://${url}`, source: "share" }, reason: "" });

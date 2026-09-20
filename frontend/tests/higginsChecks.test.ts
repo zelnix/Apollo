@@ -11,6 +11,7 @@ test("trailer is stripped and ids parsed in order, deduped, unknown dropped", ()
 });
 test("no trailer → text untouched, no checks", () => { const r = parseChecks("Growling means uncertain."); assert.equal(r.text, "Growling means uncertain."); assert.deepEqual(r.checks, []); });
 test("tolerates case, 'CHECK:' and odd spacing", () => { assert.deepEqual(parseChecks("x\ncheck:  Link ;device").checks, ["link", "device"]); });
+test("File Gate is a supported Higgins check", () => { assert.deepEqual(parseChecks("Check the attachment.\nCHECKS: file, device").checks, ["file", "device"]); });
 test("completion only counts after Higgins asked", () => {
   assert.equal(isDone("2026-06-01T10:00:00Z", "2026-06-01T09:00:00Z"), true);
   assert.equal(isDone("2026-06-01T08:00:00Z", "2026-06-01T09:00:00Z"), false);
@@ -34,8 +35,8 @@ test("completion before the ask does not count", () => {
   assert.equal(pendingFollowUps([{ messageId: "a", askedAt: yesterday, checks: ["link"] }], { link: twoDays }, now).length, 1);
 });
 test("gentle wording", () => {
-  assert.equal(followUpLine(["device"], yesterday, now), "Yesterday I suggested Check my device. No rush at all — it's still waiting whenever you have a quiet moment.");
-  assert.match(followUpLine(["device", "account", "link"], twoDays, now), /^2 days ago I suggested Check my device, Account Gate and Check a link\. .*they're/);
+  assert.equal(followUpLine(["device"], yesterday, now), "Yesterday I suggested Device Gate. No rush at all — it's still waiting whenever you have a quiet moment.");
+  assert.match(followUpLine(["device", "account", "link"], twoDays, now), /^2 days ago I suggested Device Gate, Account Gate and Check a link\. .*they're/);
 });
 
 // --- "Run a check" always names the checks -----------------------------------------------------------------------
@@ -50,13 +51,13 @@ test("stale verification lists the standard checks; visibility lost and steady s
 test("post-incident cooldown lists checks that fit the resolved event's category", () => {
   assert.deepEqual(recommendedChecks({ recovering: true, visibilityLost: false, drivingEvent: { category: "account" } }), ["account", "device"]);
   assert.deepEqual(recommendedChecks({ recovering: true, visibilityLost: false, drivingEvent: { category: "connection" } }), ["network", "device"]);
-  assert.deepEqual(recommendedChecks({ recovering: true, visibilityLost: false, drivingEvent: { category: "known_threat" } }), ["device", "account"]);
+  assert.deepEqual(recommendedChecks({ recovering: true, visibilityLost: false, drivingEvent: { category: "known_threat" } }), ["file", "device", "account"]);
 });
 
 test("spoken form names every check and where to find it, in order", () => {
   const spoken = checksSpoken(["device", "account"]);
   assert.match(spoken, /2 checks I need you to run, most important first/);
-  assert.match(spoken, /first, Check my device — under Home → Check my device/);
+  assert.match(spoken, /first, Device Gate — under Gates → Device Gate/);
   assert.match(spoken, /second, Account Gate — under Home → Account Gate\./);
   assert.equal(checksSpoken(["link"]), "The check I need you to run is Check a link — under Home → Check a link.");
   assert.equal(checksSpoken([]), "");

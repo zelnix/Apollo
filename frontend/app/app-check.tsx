@@ -115,7 +115,7 @@ export default function CheckApp() {
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="app-scroll">
         {!result ? (
           <>
-            <Body>Apollo doesn&apos;t judge an app by its name. It looks at what the app can do, where it came from, and what was happening when you installed it. {sdkVisible ? "On this device Apollo can read the install source and permissions of known remote-access apps (AnyDesk, TeamViewer and similar). For any other app, tell it what you see in Settings — Apollo can't list your apps." : "On this build Apollo can't read other apps' permissions — tell it what you see in Settings."}</Body>
+            <Body testID="app-check-scope">Apollo checks an app whether it was installed today or has been on the device for months. It looks at capabilities, source, permissions and available behaviour evidence—not the name alone. {sdkVisible ? "On this device Apollo can read the install source and permissions of known remote-access apps (AnyDesk, TeamViewer and similar). For any other app, tell it what you see in Settings — Apollo can't list every app." : "On this build Apollo can't read other apps' permissions — tell it what you see in Settings."}</Body>
             <Text style={s.label}>App name</Text>
             <TextInput testID="app-name" style={s.input} value={name} onChangeText={setName} placeholder="e.g. Bank Security Update" placeholderTextColor={colors.muted} autoCapitalize="words" autoCorrect={false} />
             <Text style={s.label}>Developer (if shown)</Text>
@@ -152,6 +152,7 @@ export default function CheckApp() {
             </Card>}
             <Card style={{ gap: spacing.xs }} testID="app-access">
               <SectionTitle>Access</SectionTitle>
+              <Body testID="app-capability-evidence-note">Permissions show what this installed app could do; they are not proof that it behaved maliciously. An inactive or dormant app keeps those capabilities until you revoke them or remove it.</Body>
               {a.permissionNotes.length ? a.permissionNotes.map((n) => (
                 <Pressable key={n.id} testID={`app-access-${n.id}`} accessibilityRole="button" onPress={() => setPermSheet(n.id)} style={s.permRow}>
                   <View style={s.row}><Text style={s.label}>{n.label}</Text><Pill tone={n.expected ? "resting" : "growling"} label={n.expected ? "Fits purpose" : "More than it needs"} /></View>
@@ -174,6 +175,7 @@ export default function CheckApp() {
             <Card style={{ gap: spacing.sm }} testID="app-actions">
               {a.state !== "resting" ? <Button testID="app-open-settings" variant={a.state === "barking" ? "danger" : "primary"} label={a.state === "barking" ? "Remove / open Settings" : "Open Settings"} onPress={() => void openDeviceSettings(settingsFor(a)[0], settingsFor(a)[1], (m) => showToast(m, "neutral"))} /> : null}
               {a.permissionNotes.length ? <Button testID="app-review-perms" variant="secondary" label="Review permissions" onPress={() => void openDeviceSettings("apps", "Settings → Apps → the app → Permissions", (m) => showToast(m, "neutral"))} /> : null}
+              {(a.state !== "resting" || a.remoteCapable || a.permissionNotes.length > 0) ? <Button testID="app-check-device" variant="secondary" label="Check the rest of this device" onPress={() => router.push("/device")} /> : null}
               {a.stayWithMe && result.event ? <RecoveryFlow event={result.event} kinds={["remote", "banking_during_access", "password", "code", "accessibility"]} testID="app-recovery" /> : result.event ? <RecoveryFlow event={result.event} kinds={["remote", "accessibility", "profile", "password", "banking_during_access", "money"]} testID="app-recovery" /> : null}
               <Button testID="app-tell-why" variant="secondary" label="Tell me why" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { context: `App check: ${a.title}. State: ${STATE_NAME[a.state]}. ${a.technical.join("; ")}`, prompt: "Why is Apollo worried about this app and what should I do?" } })} />
               <Button testID="app-tech" variant="ghost" label="View technical details" onPress={() => setTech(true)} />

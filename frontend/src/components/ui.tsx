@@ -136,8 +136,8 @@ export function Body({ children, style, testID, numberOfLines }: { children: Rea
 
 type BtnVariant = "primary" | "secondary" | "ghost" | "danger" | "warning";
 
-export function Button({ label, onPress, variant = "primary", icon, disabled, testID, style }: {
-  label: string; onPress: () => void; variant?: BtnVariant; icon?: React.ReactNode; disabled?: boolean; testID: string; style?: StyleProp<ViewStyle>;
+export function Button({ label, onPress, variant = "primary", icon, disabled, testID, style, accessibilityLabel, accessibilityHint }: {
+  label: string; onPress: () => void; variant?: BtnVariant; icon?: React.ReactNode; disabled?: boolean; testID: string; style?: StyleProp<ViewStyle>; accessibilityLabel?: string; accessibilityHint?: string;
 }) {
   const s = useStyles();
   const { colors } = useTheme();
@@ -154,6 +154,8 @@ export function Button({ label, onPress, variant = "primary", icon, disabled, te
     <Pressable
       testID={testID}
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={() => { if (Platform.OS !== "web") void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onPress(); }}

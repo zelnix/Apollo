@@ -4,7 +4,7 @@ import type { MessagingCapabilities } from "@/src/security/messagingSdk";
 import type { CallProtectionCapabilities } from "@/src/security/callSdk";
 import { VERIFICATION_FRESHNESS_MS } from "./stateMachine.ts";
 
-export type GateId = "site" | "link" | "text" | "call" | "network" | "account" | "email" | "app";
+export type GateId = "site" | "link" | "text" | "call" | "network" | "account" | "email" | "file" | "app" | "device";
 export type GateStatus = "Active" | "Ready to check" | "Needs attention" | "Off" | "Unavailable on this device" | "Checking status";
 export type GateMode = "Automatic" | "Manual submission" | "Automatic + manual";
 export type GateAction = "restore_site" | "restore_text" | "restore_call" | "open";
@@ -78,10 +78,15 @@ export function buildGatesOverview(input: GatesInput): GatesOverview {
   if (input.online === false) link.setup = "Online reputation and page investigation are unavailable; on-device link checks remain available.";
   const account = manual("account", "Account Gate", "Checks an account alert or identifier when you submit it.", "/account");
   if (input.accountBreachConfigured === false) account.setup = "Live breach lookup is unavailable; submitted account-alert investigation remains available.";
+  const file = manual("file", "File Gate", "Checks a selected or shared download or attachment within supported local limits. Cloud hosting is not a safety signal; links and installed-app concerns are handed to the relevant Gate.", "/file");
+  const app = manual("app", "App Gate", "Checks an installed or proposed app from its source, capabilities, permissions and available behaviour evidence. No recent activity is not proof of safety.", "/app-check");
+  const device = manual("device", "Device Gate", "Runs an on-demand check of visible installed-app risks, sensitive permissions, security settings and Apollo protection health. It does not continuously scan every app.", "/device");
   const gates: GateItem[] = [site, link, text, call, network,
     account,
     email,
-    manual("app", "App Gate", "Checks an app or device concern from the details you provide.", "/app-check")];
+    file,
+    app,
+    device];
   const gaps = gates.filter((gate) => gate.status === "Needs attention" || gate.status === "Off");
   const checking = gates.some((gate) => gate.status === "Checking status");
   const activeAutomatic = gates.filter((gate) => gate.status === "Active" && gate.mode !== "Manual submission");
@@ -89,7 +94,7 @@ export function buildGatesOverview(input: GatesInput): GatesOverview {
     higgins: "Your link checks are available, but Site Gate is off. Restore Apollo’s protection permission to enable its automatic filtering.", primary: site, gates };
   if (gaps.length) return { summary: "Some protection needs attention", higgins: `${gaps[0].title} ${gaps[0].status === "Off" ? "is off" : "needs attention"}. ${gaps[0].setup ?? "Restore it, then wait for Apollo to confirm it is running."}`, primary: gaps[0], gates };
   if (checking) return { summary: "Checking protection status", higgins: "I’m checking which automatic protections are actually running. Manual Gates remain available when their cards say Ready to check.", primary: null, gates };
-  if (activeAutomatic.length) return { summary: "All available protection is active", higgins: "Apollo’s supported automatic protection is confirmed running. Gates marked Ready to check still require you to submit a message, number, link or other item.", primary: null, gates };
+  if (activeAutomatic.length) return { summary: "All available protection is active", higgins: "Apollo’s supported automatic protection is confirmed running. Gates marked Ready to check still require you to submit an item or start that check yourself.", primary: null, gates };
   return { summary: "Manual checks are ready", higgins: "This device has no confirmed automatic protection. Gates marked Ready to check can assess only the items you submit.", primary: null, gates };
 }
 

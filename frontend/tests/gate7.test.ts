@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { analyseApp, brandInName, isRemoteTool, type AppInput } from "../src/domain/appAnalysis.ts";
-import { assessDevice, EMPTY_SIGNALS } from "../src/domain/deviceAnalysis.ts";
+import { assessDevice, deriveDeviceSecurityChanges, EMPTY_SIGNALS } from "../src/domain/deviceAnalysis.ts";
 
 const app = (over: Partial<AppInput>): AppInput => ({ name: "Some App", source: "play_store", purpose: "other", permissions: [], context: {}, ...over });
 
@@ -141,4 +141,39 @@ test("observed VPN with unknown provider is reported as a fact, not a verdict (i
   assert.ok(!assessDevice({ ...EMPTY_SIGNALS("android"), vpnActive: true, vpnProviderKnown: true }).findings.some((x) => x.id.startsWith("D04")));
   // iOS management can be confirmed, never ruled out.
   assert.match(assessDevice(EMPTY_SIGNALS("ios")).cannotSee.find((c) => /management profile/.test(c)) ?? "", /never rule it out/);
+});
+
+test("Device Gate reports Apollo permission loss and stopped protection without alleging tampering", () => {
+  const r = assessDevice(EMPTY_SIGNALS("android"), {}, { protection: { requested: true, operational: false, degradedReason: "VPN service stopped", permissionIssues: ["Local VPN"], checkedAt: "2026-06-01T10:00:00Z" } });
+  assert.equal(r.protectionHealth.status, "needs_attention");
+  const finding = r.findings.find((item) => item.id === "D13");
+  assert.ok(finding);
+  assert.match(finding!.plain, /not proof.*tampered/i);
+  assert.equal(finding!.severity, "review");
+});
+
+test("dormant remote-access capability remains reviewable but is not called malicious activity", () => {
+  const r = assessDevice({ ...EMPTY_SIGNALS("android"), remoteAccessApps: ["AnyDesk"] });
+  const finding = r.findings.find((item) => item.id === "D06");
+  assert.ok(finding);
+  assert.match(finding!.plain, /does not prove.*active or malicious/i);
+  assert.match(finding!.plain, /dormant does not remove/i);
+});
+
+test("tampering wording requires a high-risk high-confidence observed change", () => {
+  const baseChange = { eventType: "permission_change" as const, appName: "Example", recommendedAction: "Review it", occurredAt: "2026-06-01T10:00:00Z" };
+  const review = assessDevice(EMPTY_SIGNALS("android"), {}, { recentChanges: [{ ...baseChange, status: "suspicious", confidence: "medium" }] });
+  assert.doesNotMatch(review.findings.map((item) => item.title).join(" "), /tampering/i);
+  const supported = assessDevice(EMPTY_SIGNALS("android"), {}, { recentChanges: [{ ...baseChange, status: "high_risk", confidence: "high" }] });
+  assert.match(supported.findings.map((item) => item.title).join(" "), /Possible tampering evidence/i);
+});
+
+test("snapshot comparison detects observable configuration drift without calling it tampering", () => {
+  const previous = { ...EMPTY_SIGNALS("android"), vpnActive: false, thirdPartyAccessibilityServices: [] as string[] };
+  const current = { ...previous, vpnActive: true, thirdPartyAccessibilityServices: ["com.example.helper"] };
+  const changes = deriveDeviceSecurityChanges(previous, current, "2026-06-01T10:00:00Z");
+  assert.deepEqual(changes.map((change) => change.eventType), ["vpn_change", "service_enabled"]);
+  const assessment = assessDevice(current, {}, { recentChanges: changes });
+  assert.match(assessment.findings.map((item) => item.title).join(" "), /Recent VPN change/);
+  assert.doesNotMatch(assessment.findings.map((item) => item.title).join(" "), /tampering/i);
 });

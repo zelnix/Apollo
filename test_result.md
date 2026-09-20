@@ -910,4 +910,68 @@ agent_communication:
   - agent: "user"
     message: "Clarified that File inspection and Device checks must remain represented in the handoff. Stage 1D physical-device work stays cancelled; next focus is Apollo and Higgins handling real situations well."
   - agent: "main"
-    message: "Confirmed File and Device workflows remain available from Home → Quick checks → All checks at /file and /device, with contextual handoffs from Share, Email, File, Network, App and Higgins. They are manual workflows, not current Gates overview status cards."
+    message: "Pre-iteration 74 clarification: File and Device remained available at /file and /device. Superseded by iteration 74, which promotes both to first-class main-overview Gate cards while preserving their manual Ready to check state."
+
+## Iteration 74 — File Gate and Device Gate promoted to ten-Gate overview
+frontend:
+  - task: "Add File Gate and Device Gate as first-class selectable cards in the main Gates overview"
+    implemented: true
+    working: true
+    file: "frontend/src/domain/gates.ts, frontend/app/(tabs)/guard.tsx, frontend/app/(tabs)/home.tsx"
+    needs_retesting: false
+    priority: "high"
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Overview now contains exactly ten Gate cards. File and Device reuse /file and /device and show Ready to check because they are manual checks, never Active without actual monitoring."
+      - agent: "testing"
+        working: true
+        comment: "Iteration 74 passed source, focused tests and mobile preview: 10 cards, File and Device Ready to check, both direct routes open."
+  - task: "Make File Gate source-neutral and route relevant file findings"
+    implemented: true
+    working: true
+    file: "frontend/app/file.tsx, frontend/src/domain/fileAnalysis.ts, frontend/src/share/classifyShare.ts, frontend/app/email.tsx"
+    needs_retesting: false
+    priority: "high"
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Selected/shared files use bounded local inspection; Google Drive/cloud hosting supplies no safety verdict. Disguised executables route to App Gate, profile/certificate concerns route to Device Gate, and Email attachment handoff discloses that the actual file must be selected."
+      - agent: "testing"
+        working: true
+        comment: "Cloud-source unit case passed and File Gate preview showed source-neutral copy. Follow-up disclosure issue was fixed with deterministic UI tests and direct Email-source route verification."
+  - task: "Assess existing device risks, Apollo protection health and observable configuration drift with evidence-aware language"
+    implemented: true
+    working: true
+    file: "frontend/app/device.tsx, frontend/src/domain/deviceAnalysis.ts, frontend/app/app-check.tsx"
+    needs_retesting: false
+    priority: "high"
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Device Gate checks current visible existing-app capabilities and settings, stores snapshots to detect changes, separates capability from behaviour, detects protection off/stopped/missing-permission states, and only uses suspected-tampering wording for specific high-risk/high-confidence observed changes. Higgins opens Settings and rechecks outcomes."
+      - agent: "testing"
+        working: true
+        comment: "Gate 7 scenarios and Device preview passed, including dormant capability, protection-gap wording, drift detection and Higgins recheck controls."
+  - task: "Extend Higgins routing to File Gate and Device Gate"
+    implemented: true
+    working: true
+    file: "frontend/src/domain/higginsChecks.ts, backend/routers/ask.py"
+    needs_retesting: false
+    priority: "medium"
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Higgins can recommend exact File and Device Gate routes, explains capability versus behaviour, and applies the evidence threshold for tampering language."
+verification:
+  frontend: "352/352 full suite; TypeScript and Expo lint clean"
+  backend: "301/301 full pytest suite; Python lint clean"
+  independent: "/app/test_reports/iteration_74.json — 23/23 focused checks passed"
+  preview: "10-Gate count/status/navigation, cloud file handoff, App→Device handoff, Device health/recheck, Email disclosure and accessible source context passed"
+  frozen_guarddog: "No changes"
+remaining_user_verification:
+  - "Gmail OAuth human consent still requires the exact stable callback in Google Cloud Console; it is separate from this ten-Gate work."
+cancelled:
+  - "Stage 1D physical-device acceptance remains cancelled and must not be restarted."
+next_focus:
+  - "Evaluate Apollo and Higgins against people's real situations: questioning quality, evidence, uncertainty, remediation and follow-up across all ten Gates."

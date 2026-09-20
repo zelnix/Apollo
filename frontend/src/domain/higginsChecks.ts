@@ -4,14 +4,15 @@
 
 import type { Capability, EventCategory } from "./types.ts";
 
-export type CheckId = "link" | "message" | "app" | "device" | "account" | "network";
+export type CheckId = "link" | "message" | "file" | "app" | "device" | "account" | "network";
 
 /** `where` is the path a person takes with their thumb — Higgins says it, the chip shows it, and the chip also jumps there. */
 export const CHECKS: Record<CheckId, { label: string; route: string; where: string }> = {
   link: { label: "Check a link", route: "/check", where: "Home → Check a link" },
   message: { label: "Check a message", route: "/message", where: "Home → Check a message" },
+  file: { label: "File Gate", route: "/file", where: "Gates → File Gate (or Home → All checks → File Gate)" },
   app: { label: "Check an app", route: "/app-check", where: "Home → Check an app" },
-  device: { label: "Check my device", route: "/device", where: "Home → Check my device" },
+  device: { label: "Device Gate", route: "/device", where: "Gates → Device Gate (or Home → All checks → Device Gate)" },
   account: { label: "Account Gate", route: "/account", where: "Home → Account Gate (or Gates tab → Open Account Gate)" },
   network: { label: "Network Gate", route: "/network", where: "Home → Network Gate (or Gates tab → Open Network Gate)" },
 };
@@ -46,7 +47,7 @@ export function progressLine(done: number, total: number): string {
 
 const BY_CATEGORY: Partial<Record<EventCategory, CheckId[]>> = {
   account: ["account", "device"], email: ["account", "message"], message: ["message", "account"], call: ["account", "device"],
-  app: ["app", "device"], device: ["device", "account"], connection: ["network", "device"], link: ["link", "account"], website: ["link", "account"],
+  app: ["app", "device"], device: ["device", "account"], connection: ["network", "device"], link: ["link", "account"], website: ["link", "account"], known_threat: ["file", "device", "account"],
 };
 const STALE_VERIFICATION: CheckId[] = ["device", "network", "account"];
 

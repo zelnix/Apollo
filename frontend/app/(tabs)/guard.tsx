@@ -2,12 +2,14 @@ import { useRouter } from "expo-router";
 import AppWindow from "lucide-react-native/icons/app-window";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronUp from "lucide-react-native/icons/chevron-up";
+import FileSearch from "lucide-react-native/icons/file-search";
 import Globe2 from "lucide-react-native/icons/globe";
 import Link2 from "lucide-react-native/icons/link-2";
 import Mail from "lucide-react-native/icons/mail";
 import MessageSquareText from "lucide-react-native/icons/message-square-text";
 import Phone from "lucide-react-native/icons/phone";
 import ShieldAlert from "lucide-react-native/icons/shield-alert";
+import ShieldCheck from "lucide-react-native/icons/shield-check";
 import UserRound from "lucide-react-native/icons/user-round";
 import Wifi from "lucide-react-native/icons/wifi";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -24,7 +26,7 @@ import { apiGet } from "@/src/api/client";
 import { useBackendHealth } from "@/src/api/backendHealth";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
-const ICON: Record<GateId, typeof Globe2> = { site: Globe2, link: Link2, text: MessageSquareText, call: Phone, network: Wifi, account: UserRound, email: Mail, app: AppWindow };
+const ICON: Record<GateId, typeof Globe2> = { site: Globe2, link: Link2, text: MessageSquareText, call: Phone, network: Wifi, account: UserRound, email: Mail, file: FileSearch, app: AppWindow, device: ShieldCheck };
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface }, content: { paddingHorizontal: spacing.xl, gap: spacing.xl, paddingBottom: spacing.xl },
   summary: { gap: spacing.md, borderColor: c.navyBorder }, summaryTitle: { fontFamily: fonts.displayBold, fontSize: 25, lineHeight: 31, color: c.onSurface },
@@ -160,7 +162,7 @@ export default function GatesScreen() {
         {overview.gates.filter((gate) => gate.mode !== "Manual submission").map((gate) => { const Icon = ICON[gate.id]; return <GateStatusCard key={gate.id} gate={gate} icon={<Icon size={19} color={colors.brand} />} onAction={() => onGateAction(gate)} />; })}
       </View>
       <View style={s.section}><SectionTitle>Checks you start</SectionTitle>
-        <Body testID="gates-manual-note">These Gates assess only what you submit. Ready to check does not mean Apollo is monitoring that entry point automatically.</Body>
+        <Body testID="gates-manual-note">These Gates assess what you submit or ask Apollo to inspect now. Ready to check does not mean Apollo continuously scans downloads, dormant apps or device settings.</Body>
         {overview.gates.filter((gate) => gate.mode === "Manual submission").map((gate) => { const Icon = ICON[gate.id]; return <GateStatusCard key={gate.id} gate={gate} icon={<Icon size={19} color={colors.brand} />} onAction={() => onGateAction(gate)} />; })}
       </View>
     </ScrollView>

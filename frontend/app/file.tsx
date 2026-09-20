@@ -9,6 +9,7 @@ import { Pressable, Switch, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { markCheckDone } from "@/src/store/checkCompletion";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
@@ -54,16 +55,18 @@ export default function CheckFile() {
       event = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "known_threat", state: a.state, status: "active", headline: `File: ${a.title}`, what_happened: a.verdict, why: a.why, what_to_do: a.recommendation, indicator_host: a.urls[0] ? a.urls[0].replace(/^https?:\/\//i, "").split("/")[0] : null, indicator_digest: null, local_indicator: a.technical[0], verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: null, scenario: a.scenario });
     }
     setResult({ a, event });
+    void markCheckDone("file");
   };
   const params = useLocalSearchParams<{ uri?: string; name?: string; mime?: string; size?: string; source?: string }>();
+  useEffect(() => { if (!params.uri && FILE_SOURCES.some((item) => item.id === params.source)) setSource(params.source as FileSource); }, [params.source, params.uri]);
   const pick = async () => {
     const res = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false });
     if (res.canceled || !res.assets[0]) return;
     await analyseAsset(res.assets[0]);
   };
   // Shared from another app (Share → Apollo): analyse the shared file straight away.
-  useEffect(() => { if (params.uri && !result) { setSource("message"); void analyseAsset({ uri: params.uri, name: params.name ?? params.uri.split("/").pop() ?? "shared file", mimeType: params.mime || null, size: params.size ? Number(params.size) : undefined }); } }, [params.uri]); // eslint-disable-line react-hooks/exhaustive-deps
-  const analyseAsset = async (asset: { uri: string; name: string; mimeType?: string | null; size?: number }) => {
+  useEffect(() => { if (params.uri && !result) { const incoming = FILE_SOURCES.some((item) => item.id === params.source) ? params.source as FileSource : "unknown"; setSource(incoming); void analyseAsset({ uri: params.uri, name: params.name ?? params.uri.split("/").pop() ?? "shared file", mimeType: params.mime || null, size: params.size ? Number(params.size) : undefined }, incoming); } }, [params.uri]); // eslint-disable-line react-hooks/exhaustive-deps
+  const analyseAsset = async (asset: { uri: string; name: string; mimeType?: string | null; size?: number }, assetSource: FileSource = source) => {
     setBusy(true);
     try {
       let inspected: Inspection = { headBytes: null, textSample: null };
@@ -71,7 +74,7 @@ export default function CheckFile() {
         const file = new File(asset.uri);
         inspected = inspectWithHandle(file);
       } catch { inspected.inspectionError = 'This build could not read the file contents.'; }
-      await finish(analyseFile({ name: asset.name, size: asset.size ?? undefined, mime: asset.mimeType ?? null, ...inspected, source, passwordInMessage: pw }));
+      await finish(analyseFile({ name: asset.name, size: asset.size ?? undefined, mime: asset.mimeType ?? null, ...inspected, source: assetSource, passwordInMessage: pw }));
     } catch (e) { showToast(e instanceof Error ? e.message : "Couldn't read that file.", "barking"); } finally { setBusy(false); }
   };
 
@@ -81,17 +84,17 @@ export default function CheckFile() {
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>Check this file</Text>
+        <Text style={s.title}>File Gate</Text>
         <Pressable testID="file-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="file-scroll">
         {!result ? (
           <>
-            <Body testID="file-inspection-scope">Apollo checks a signature and up to 200 KB locally, for files up to 20 MB. No archive extraction or malware scan. A name-only check does not read content. File bytes are never uploaded.</Body>
+            <Body testID="file-inspection-scope">Select or share any download or attachment, including one from Google Drive or another cloud service. Apollo checks a signature and up to 200 KB locally, for files up to 20 MB. Cloud hosting is not proof of safety. No archive extraction or malware scan. A name-only check does not read content. File bytes are never uploaded.</Body>
             <Text style={s.why}>Where did it come from?</Text>
-            <View style={s.chips}>{FILE_SOURCES.map((o) => <Pressable key={o.id} testID={`file-source-${o.id}`} accessibilityRole="button" onPress={() => setSource(o.id)} style={[s.chip, source === o.id && s.chipOn]}><Text style={s.chipText}>{o.label}</Text></Pressable>)}</View>
+            <View style={s.chips}>{FILE_SOURCES.map((o) => <Pressable key={o.id} testID={`file-source-${o.id}`} accessibilityRole="radio" accessibilityState={{ checked: source === o.id }} aria-checked={source === o.id} onPress={() => setSource(o.id)} style={[s.chip, source === o.id && s.chipOn]}><Text style={s.chipText}>{o.label}</Text></Pressable>)}</View>
             <View style={s.row}><Text style={s.why}>A password for it came in the same message</Text><Switch testID="file-pw" value={pw} onValueChange={setPw} trackColor={{ true: colors.growling, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View>
-            <Button testID="file-pick" label={busy ? "Sniffing…" : "Choose a file"} onPress={() => void pick()} disabled={busy} />
+            <Button testID="file-pick" label={busy ? "Checking file…" : "Select download or attachment"} onPress={() => void pick()} disabled={busy} />
             <SectionTitle>Or just check a file name</SectionTitle>
             <TextInput testID="file-name" style={s.input} value={nameOnly} onChangeText={setNameOnly} placeholder="e.g. Statement.pdf.exe" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} />
             <Button testID="file-name-check" variant="secondary" label="Check the name" onPress={() => void finish(analyseFile({ name: nameOnly.trim(), source, passwordInMessage: pw }))} disabled={!nameOnly.trim()} />
@@ -106,6 +109,11 @@ export default function CheckFile() {
               {a.why.map((w, i) => <Text key={i} style={s.why} testID={`file-why-${i}`}>• {w}</Text>)}
               <SectionTitle>Recommendation</SectionTitle>
               <Text style={s.why} testID="file-recommendation">{a.recommendation}</Text>
+            </Card>
+            <Card testID="file-higgins" style={{ gap: spacing.sm, borderColor: colors.navyBorder }}>
+              <SectionTitle>Higgins</SectionTitle>
+              <Body testID="file-higgins-explanation">I&apos;ve explained what Apollo actually inspected, what remains unknown and the safest next step. A familiar sender or cloud host is context—not proof that the file is safe.</Body>
+              <Body testID="file-higgins-next">{a.recommendation}</Body>
             </Card>
             {a.urls.length ? (
               <Card style={{ gap: spacing.sm }} testID="file-links">

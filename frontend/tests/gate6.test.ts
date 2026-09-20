@@ -9,7 +9,7 @@ const PDF = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37]);
 const ZIP = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0x00, 0x00]);
 const run = (name: string, source: FileSource = "unknown", extra: Partial<Parameters<typeof analyseFile>[0]> = {}) => analyseFile({ name, source, ...extra });
 
-test("F01 / acceptance 1: Statement.pdf.exe from unknown → barking, 'not really a PDF'", () => { const r = run("Statement.pdf.exe", "message", { headBytes: MZ }); assert.equal(r.state, "barking"); assert.equal(r.scenario, "F01"); assert.match(r.verdict, /not really a PDF/i); });
+test("F01 / acceptance 1: Statement.pdf.exe from unknown → barking, 'not really a PDF'", () => { const r = run("Statement.pdf.exe", "message", { headBytes: MZ }); assert.equal(r.state, "barking"); assert.equal(r.scenario, "F01"); assert.match(r.verdict, /not really a PDF/i); assert.equal(r.handoff, "app"); });
 test("F01b PDF name but MZ bytes → barking (trust bytes, not name)", () => { const r = run("Invoice.pdf", "email", { headBytes: MZ }); assert.equal(r.state, "barking"); assert.equal(r.realType, "exe"); });
 test("F14 RTL override trick → barking", () => { assert.equal(run("photo\u202eexe.jpg", "message", { headBytes: MZ }).state, "barking"); });
 test("F10 / acceptance 2: MeetingAgenda.pdf signature/sample cannot establish safety", () => { const r = run("MeetingAgenda.pdf", "known", { headBytes: PDF, textSample: "Agenda 1. Welcome 2. Budget" }); assert.equal(r.state, 'ears_up'); assert.match(r.verdict, /safety is not established/i); assert.doesNotMatch(r.recommendation, /fine to open/i); });
@@ -26,3 +26,11 @@ test("F16 / acceptance 5: unknown extension → ears_up, no bark", () => { const
 test("F19 nearby share ordinary image → ears_up (preview first)", () => { assert.equal(run("IMG_2201.jpg", "nearby").state, "ears_up"); });
 test("docx zip signature is office, not archive", () => { assert.equal(run("letter.docx", "known", { headBytes: ZIP }).realType, "office"); });
 test("magic bytes", () => { assert.equal(realTypeFromBytes(PDF), "pdf"); assert.equal(realTypeFromBytes(MZ), "exe"); assert.equal(realTypeFromBytes(null, "application/pdf"), "pdf"); });
+test("Google Drive or another cloud host never supplies a safety verdict", () => {
+  const dangerous = run("Statement.pdf.exe", "cloud", { headBytes: MZ });
+  assert.equal(dangerous.state, "barking");
+  assert.match(dangerous.why.join(" "), /Google Drive|cloud service/i);
+  const limited = run("Statement.pdf", "cloud", { headBytes: PDF });
+  assert.notEqual(limited.state, "resting");
+  assert.match(limited.why.join(" "), /does not verify/i);
+});

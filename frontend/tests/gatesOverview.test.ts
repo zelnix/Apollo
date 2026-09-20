@@ -52,3 +52,16 @@ test("Email Gate requires a fresh monitor heartbeat, not only an enabled toggle"
   const active = buildGatesOverview({ ...base, email: { checking: false, configured: true, connected: true, monitoringRequested: true, lastCheckedAt: new Date().toISOString(), lastErrorAt: null } });
   assert.equal(active.gates.find((gate) => gate.id === "email")?.status, "Active");
 });
+
+test("overview contains exactly ten first-class Gates including manual File and Device Gates", () => {
+  const result = buildGatesOverview(base);
+  assert.equal(result.gates.length, 10);
+  assert.deepEqual(result.gates.map((gate) => gate.id), ["site", "link", "text", "call", "network", "account", "email", "file", "app", "device"]);
+  for (const id of ["file", "app", "device"] as const) {
+    const gate = result.gates.find((item) => item.id === id);
+    assert.equal(gate?.status, "Ready to check");
+    assert.equal(gate?.mode, "Manual submission");
+  }
+  assert.match(result.gates.find((gate) => gate.id === "file")?.scope ?? "", /Cloud hosting is not a safety signal/);
+  assert.match(result.gates.find((gate) => gate.id === "device")?.scope ?? "", /does not continuously scan every app/);
+});
