@@ -493,7 +493,34 @@ All 91 frozen files and the existing public adapter/evidence contracts remain un
   negative, with P0-03 open; P0-02 separately gates consumer freshness/recovery.
 - Every new device run requires source SHA and APK build ID/hash, trust/contract scope and
   actual evidence. No runtime change or production-default cutover is approved.
-- GitHub main was read-only verified at `da60c03`; newer workspace documents are not assumed
-  synced. Save to GitHub and remote content verification remain required. No push was performed.
+- Revision 2 was later synced and independently verified at GitHub main
+  `956db060ec6905877371eeaeb703286f0b9c8f81`: all eight handoff files matched byte-for-byte,
+  including the original review. This supersedes the earlier `da60c03` / pending-sync observation.
 
 **Stage 1D implementation remains NOT STARTED until D1–D6 are resolved and implementation approved.**
+
+## 18. Concrete D1/D3 feasibility and ownership/trust design
+
+`STAGE1D_D1_D3_OWNERSHIP_TRUST_DESIGN.md` inspects the saved `956db060` source and supplies
+an explicit decision rather than another general-plan expansion:
+
+- The existing frozen Expo bridge's private test verifier cannot accept production trust
+  through its public APIs. A second Apollo engine alongside it would compete for shared
+  references and cannot retarget a reader that already captured the old reporter.
+- Conditional alternative: exclude the frozen Expo bridge from Android registration, retain
+  every source byte, and have one process-lifetime Apollo native owner construct the public
+  core/VPN SDK with approved public pins and a durable version store. Read-only autolinking
+  confirms exclusion is supported; no build/configuration change was made.
+- This alternative **changes the two-module topology**. It does not claim coexistence proof;
+  if both modules must remain loaded, defer production pending a new certified public bridge
+  ownership/trust interface. Exact native file changes and construction/publishing sequence
+  are documented for approval only.
+- Test-only vs production profiles, native trust ownership, signed-bundle admission, persistence
+  and build-pinned key rotation are concrete. Strict in-flight expiry/revocation is not assured
+  by the current frozen post-drop callback; that production guarantee remains an explicit blocker.
+- D1/D3 have a concrete design/feasibility result, **not implementation or production approval**.
+  Other decisions and all six P0 findings remain open. Launch PASS remains valid; GuardDog's
+  91-file freeze and existing public contracts remain unchanged.
+
+This new document/link update follows the verified Revision 2 sync and requires its own save
+and remote verification. No native build or device test was performed for this design check.

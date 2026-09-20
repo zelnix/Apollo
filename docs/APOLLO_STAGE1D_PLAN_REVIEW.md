@@ -11,6 +11,14 @@ resolutions, and the original `reviews/Apollo_Review_2026-09-20.md` (reviewed co
 `da60c0372650dead26caeb25c458f8ca7cebd6a2`). Intake is now resolved; **all six findings remain OPEN**.
 No runtime change, contract change, test-only build or production-default cutover is approved.
 
+**Focused D1/D3 follow-up:** `STAGE1D_D1_D3_OWNERSHIP_TRUST_DESIGN.md` now provides the
+concrete feasibility verdict and native alternative. The original JS-facade/frozen-bridge
+route cannot inject production trust. The proposed alternative excludes that bridge from
+Android registration and uses a single Apollo native owner of the public frozen core/VPN SDK.
+This is a scope/topology change requiring approval, **not proof that both modules coexist
+safely**. Its exact conditional files replace the earlier JS-facade ownership scope only if
+approved. D1/D3 remain OPEN for disposition and production-validity guarantees; D2/D4–D6 are unchanged.
+
 ## 1. Review result and source limitations
 
 The repository contains architectural direction in `APOLLO_PROTECTION_STAGE0.md` §§2–6,
@@ -104,9 +112,9 @@ allow-list for approval **before** editing them. Do not claim those designs are 
 
 | ID | Source-backed gap | Required developer decision / pass condition | Status |
 |---|---|---|---|
-| D1 — runtime ownership | Frozen `GuardDogExpoModule.kt:73–101` constructs the engine and assigns runtime references. One active VPN alone does not prove one owner. | One explicit owner for initialization, shared references, lifecycle and subscriptions. Prove loading **both ApolloSecurity and GuardDogSecurity** cannot construct competing owners, including load-order/reload/zero-VPN/one-VPN cases. Name ownership and lifecycle instrumentation without altering frozen source. | OPEN — recommendation incorporated; explicit ownership/proof design pending |
+| D1 — runtime ownership | Frozen bridge privately constructs the engine/writes globals; live readers capture a reporter, so adding another owner is unsafe even with one VPN. | Concrete owner/lifecycle/publishing design is in `STAGE1D_D1_D3_OWNERSHIP_TRUST_DESIGN.md`: proposed `ApolloGuardDogRuntime`, one engine per process, scoped consumer subscriptions, vendor Expo bridge excluded. This changes the both-modules topology; if both must remain, defer the production bridge route. Build/runtime prohibition and owner-count proof are specified, not yet performed. | OPEN — concrete design provided; topology approval/native proof outstanding |
 | D2 — status mechanism / coverage | Current `ProtectionStatus.enforcementMethod` cannot represent selective packet filtering; broader evidence mechanisms do not fix this status enum. | Never coerce to dns_filter/none/simulated. CE-01 proposes `packet_filter` with exhaustive consumer handling; separately review/approve that minimal change or defer incompatible integration. Truthful reporting overrides preserving an inaccurate enum. | OPEN — CE-01 not approved/implemented |
-| D3 — configuration / trust / signed rules | Frozen bridge constructs `TrustedKeyRegistry.m1Default()` with a test-only key; start also needs approved controlled inputs, consent and accepted signed authority. | Explicitly separate an approved **test-only acceptance build** from production. Identify test targets/bundles and label its scope. Before production approval, document trusted-key construction, ownership, delivery/reload/expiry/revocation and recovery without competing owners or frozen edits. Test trust is never production trust. | OPEN — no test-build authorization or approved production trust construction |
+| D3 — configuration / trust / signed rules | Frozen bridge offers no production registry/verifier injection. Public core constructors do, but live expiry/revocation is not guaranteed by post-drop callbacks. | Concrete build-pinned native profile/registry/verifier/version-store construction is specified in the focused D1/D3 design, with test/prod separation, build-pinned rotation and no JS trust API. Current bridge-only production route is rejected. Direct-SDK alternative requires topology approval, actual approved public inputs and an accepted/tested runtime-validity policy or new certified capability. | OPEN — construction design provided; production activation DEFERRED |
 | D4 — packet evidence translation | Bridge exports reduced native events, omitting original raw packet observation time/protocol/ports/mechanism; no polling evidence API exists. | Buffer genuine native events with original evidence IDs/provenance; distinguish receipt from delivery. Specify replay, dedup, retention and privacy rules below. Missing fields remain unknown; never manufacture packet details. P0-04/05 separately gate privacy-safe durable delivery. | OPEN — field mapping and explicit limits/retention choices pending |
 | D5 — manual block/unblock semantics | Signed bundles and ALLOW-only Website Gate overrides are not arbitrary block/unblock setters; URL analysis reads the M1 slot. | Publish the supported-operation matrix below. Unsupported actions return honest unsuccessful results without side effects. **Never silently translate unblock to an allow override** that bypasses approved threat policy. | OPEN — exact adapter/caller failure mapping pending |
 | D6 — lifecycle / fallback boundary | Start/stop return command-time snapshots, not completed lifecycle observations. | Await bounded fresh lifecycle/TUN/route observations. Acknowledgement is insufficient; timeout or contradictory observations stay explicitly UNRESOLVED. Verify recovery separately; no silent fallback or fabricated stopped/healthy state. P0-02 independently blocks consumer-health sign-off. | OPEN — observation/deadline/recovery design pending |
@@ -294,9 +302,11 @@ Read-only `git ls-remote https://github.com/zelnix/Apollo.git refs/heads/main` o
 confirmed that remote SHA. The workspace had saved the earlier plan at
 `7262e4a1732ebebe69e89ff183b7e18b93cebb21`; local save was not proof of a GitHub push.
 
-Revision 2 is prepared in the workspace. **Remote synchronization remains pending until Save
-to GitHub is completed and remote main plus the actual files/hashes are verified.** No direct
-push was performed and no synced claim is made. Include this plan, the original review, P0
-tracker, CE-01 proposal, device template and updated Stage 1C/memory/test records in that save.
-After confirmation, verify the target branch and file content—not just the existence of an
-unrelated commit. Stage 1D stays unstarted regardless of synchronization.
+**Revision 2 synchronization was subsequently VERIFIED:** GitHub main
+`956db060ec6905877371eeaeb703286f0b9c8f81` matched all eight handoff files byte-for-byte,
+including the original review hash. That verification supersedes the earlier “sync pending”
+wording and is not undone by later design work. No direct push was performed by the agent.
+
+The new focused D1/D3 design and these follow-up links are later workspace changes. They need
+their own Save to GitHub/content verification; do not pretend the previous sync included a
+document that did not exist then. Stage 1D stays unstarted regardless of synchronization.

@@ -621,3 +621,18 @@ frontend:
       - agent: "main"
         working: "NA"
         comment: "NOT STARTED per user instruction. Stage 1C.1 user-verified Pixel 10 launch remains PASS. Original P0 report now received and six findings separately OPEN; intake alone resolved. Need D1–D6 decisions, separate truthful contract approval or defer, final exact files/mappings and implementation approval. No runtime/contract/GuardDog changes, production-default cutover or device tests during this review. Full pipeline acceptance blocked by P0-05; native packet proof separate and unexecuted."
+
+## Focused D1/D3 ownership/trust design — source and read-only topology checks
+frontend:
+  - task: "Produce concrete ownership/trust construction and frozen-bridge feasibility verdict"
+    implemented: true
+    working: true
+    file: "docs/STAGE1D_D1_D3_OWNERSHIP_TRUST_DESIGN.md"
+    needs_retesting: false
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Design only at source956db060. Current bridge hides its test registry/verifier; public API cannot inject production trust. Source shows global runtime writes and captured reporter risk; no native competing-owner reproduction claimed. Public SDK constructors permit separate Apollo-owned construction if frozen Expo bridge is excluded. Normal read-only autolinking lists both modules; CLI --exclude guarddog-expo-module lists Apollo only; actual configuration unchanged. Conditional native owner/profile/store file list and sequence documented, not implemented."
+      - agent: "main"
+        working: true
+        comment: "Proposed alternative changes topology, not proof of safe coexistence. Build-pinned production public trust construction is specified; actual approved pins and runtime-validity guarantee remain blockers. Admission-time verification/post-drop callback cannot establish atomic in-flight expiry/revocation. D1/D3 await disposition; D2/D4–D6 and six P0s remain OPEN. Stage1D NOT STARTED. Prior eight-doc sync956db060 verified; focused design is a later workspace update."
