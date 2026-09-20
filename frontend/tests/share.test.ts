@@ -40,6 +40,10 @@ test("recoveries the user recorded are read back from why and ordered by urgency
   const plan = buildIncidentPlan([ev({ why: ["You told Apollo: entered a password."] }), ev({ why: ["You told Apollo: entered a password."] })]);
   const texts = plan.steps.map((s) => s.text); assert.equal(new Set(texts).size, texts.length); assert.match(plan.exposure.join(), /password was entered/);
 });
+test("structured recovery fields coexist with legacy recovery phrases", () => {
+  const kinds = inferRecoveryKinds([ev({ recovery_kinds: ["code"], why: ["You reported: entered a password."] }), ev({ why: ["You told Apollo: opened the link."] })]);
+  assert.deepEqual(kinds.slice().sort(), ["clicked", "code", "password"]);
+});
 test("no exposure → generic don't-act plan, contact the brand yourself", () => {
   const plan = buildIncidentPlan([ev({ claimed_brand: "ANZ" }), ev({ category: "call", claimed_brand: "ANZ" })]);
   assert.equal(plan.kinds.length, 0); assert.match(plan.steps[0].text, /Don't act/); assert.match(plan.steps[1].text, /Contact ANZ yourself/);

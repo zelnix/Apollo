@@ -8,7 +8,7 @@ import os
 import httpx
 from playwright.async_api import async_playwright
 
-BASE = os.environ.get("EXPO_PUBLIC_BACKEND_URL") or os.environ.get("EXPO_BACKEND_URL", "https://threat-patrol-1.preview.emergentagent.com")
+BASE = os.environ.get("EXPO_PUBLIC_BACKEND_URL") or os.environ.get("EXPO_BACKEND_URL", "https://device-file-gate.preview.emergentagent.com")
 BASE = BASE.rstrip("/")
 API = f"{BASE}/api"
 HDR = {"User-Agent": "apollo-e2e-iter31", "Content-Type": "application/json"}

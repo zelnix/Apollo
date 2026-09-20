@@ -22,6 +22,7 @@ import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { storage } from "@/src/utils/storage";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { issueContext, openHigginsHandoff } from "@/src/domain/higginsHandoff";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -89,7 +90,7 @@ export default function IncidentTimeline() {
             <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}><Pill tone={plan.state} label={STATE_NAME[plan.state]} testID="incident-state" /><Pill tone="neutral" label={`${linked.length} connected events`} testID="incident-count" />{plan.allResolved ? <Pill tone="resting" label="Handled" testID="incident-handled" /> : null}</View>
             <Text style={s.headline} testID="incident-headline">{plan.headline}</Text>
             <Text style={s.why}>{STATE_LABEL[plan.state]}</Text>
-            <Body>{plan.exposure.length ? `You told Apollo: ${plan.exposure.join("; ")}. The plan below starts with the most urgent step.` : "Apollo connected these because they happened close together and point at the same target. Nothing is lost if you haven't typed, paid or approved anything."}</Body>
+            <Body>{plan.exposure.length ? `You reported: ${plan.exposure.join("; ")}. The plan below starts with the most urgent step.` : "Apollo connected these because they happened close together and point at the same target. Nothing is lost if you haven't typed, paid or approved anything."}</Body>
             <HigginsReadAloud chunks={narrateIncident(plan, ticked)} label="Higgins, read the whole incident" testID="incident-read" />
           </Card>
 
@@ -142,7 +143,7 @@ export default function IncidentTimeline() {
           <Card style={{ gap: spacing.sm }} testID="incident-actions">
             <Button testID="incident-share-family" variant={shared ? "ghost" : "secondary"} label={sharing ? "Sharing…" : shared ? "Shared with family — update" : "Ask my family for help"} onPress={() => void shareWithFamily()} disabled={sharing} />
             {shared ? <Body testID="incident-shared-note">Your family can see this timeline and which steps you&apos;ve ticked — not your messages or links. They&apos;ll be nudged to call you.</Body> : <Body>Shares only the timeline headlines and the plan — never the message text or links.</Body>}
-            <Button testID="incident-ask" variant="secondary" label="Ask Higgins about this incident" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { context: `Incident: ${plan.headline}. Events in order: ${plan.timeline.map((e) => `${CATEGORY_LABEL[e.category]} — ${e.headline}`).join("; ")}. Exposure: ${plan.exposure.join(", ") || "none reported"}.`, prompt: "What should I do first, and what's the risk?" } })} />
+            <Button testID="incident-ask" variant="secondary" label="Ask Higgins about this incident" onPress={() => openHigginsHandoff(router, issueContext({ gate: "incident", issue_summary: plan.headline, assessment_state: plan.state, findings: plan.timeline.slice(0, 6).map((event) => ({ summary: `${CATEGORY_LABEL[event.category]}: ${event.headline}`, provenance: "observed", status: event.verified_block ? "confirmed" : event.state === "barking" ? "warning" : "uncertain" })), uncertainty: ["Connected timing and target do not prove every event had the same source."], confirmed_protective_actions: plan.timeline.filter((event) => event.verified_block).map((event) => event.headline), user_reported_actions: plan.exposure }), "What should I do first, and what's the risk?")} />
             {!plan.allResolved ? <Button testID="incident-resolve" variant={doneCount === plan.steps.length ? "primary" : "ghost"} label="I've done the steps — mark incident handled" onPress={() => void resolveAll()} /> : null}
           </Card>
         </ScrollView>

@@ -19,6 +19,7 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { openDeviceSettings, type SettingsTarget } from "@/src/utils/deviceSettings";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { storage } from "@/src/utils/storage";
+import { issueContext, openHigginsHandoff } from "@/src/domain/higginsHandoff";
 
 const TARGET: Record<string, SettingsTarget> = { D01: "apps", D01b: "apps", D02: "security", D03: "security", D04: "vpn", D05: "accessibility", D06: "apps", D07: "apps", D08: "unknown_sources", D09: "overlay", D10: "notification_access", D11: "developer" };
 const DEVICE_SNAPSHOT_KEY = "apollo.device.signals.v1";
@@ -51,6 +52,7 @@ export default function CheckDevice() {
   const [saving, setSaving] = useState(false);
   const [checking, setChecking] = useState(true);
   const [changes, setChanges] = useState<DeviceSecurityChange[]>([]);
+  const [settingsGuidance, setSettingsGuidance] = useState<string | null>(null);
   const refreshDevice = useCallback(async (notify = false) => {
     setChecking(true);
     try {
@@ -86,7 +88,8 @@ export default function CheckDevice() {
   };
   const open = (f: DeviceFinding) => {
     const dynamic: SettingsTarget | null = f.id.includes("vpn_change") ? "vpn" : f.id.includes("profile_change") ? "security" : f.id.includes("service_enabled") ? "accessibility" : null;
-    void openDeviceSettings(dynamic ?? TARGET[f.id] ?? (f.id === "D12" || f.id === "D13" ? "vpn" : "apps"), f.settings, (m) => showToast(m, "neutral"));
+    if (platform === "web") setSettingsGuidance(`${f.title}: ${f.settings}`);
+    else void openDeviceSettings(dynamic ?? TARGET[f.id] ?? (f.id === "D12" || f.id === "D13" ? "vpn" : "apps"), f.settings, (m) => showToast(m, "neutral"));
   };
   const firstAction = [...result.findings].sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity])[0] ?? null;
 
@@ -107,6 +110,7 @@ export default function CheckDevice() {
           <Text style={s.why} testID="device-summary">{result.summary}</Text>
           <Body>{meta.meaning}</Body>
         </Card>
+        {settingsGuidance ? <Card testID="device-settings-guidance" style={{ gap: spacing.sm }}><SectionTitle>Settings steps</SectionTitle><Body>{settingsGuidance}</Body><Button testID="device-settings-guidance-close" variant="ghost" label="Hide instructions" onPress={() => setSettingsGuidance(null)} /></Card> : null}
 
         <Card testID="device-protection-health" style={{ gap: spacing.sm, borderColor: result.protectionHealth.status === "active" ? colors.resting : result.protectionHealth.status === "unavailable" ? colors.border : colors.growling }}>
           <View style={s.row}><SectionTitle>Apollo protection health</SectionTitle><Pill testID="device-protection-health-status" tone={result.protectionHealth.status === "active" ? "resting" : result.protectionHealth.status === "unavailable" ? "unknown" : "growling"} label={result.protectionHealth.status === "active" ? "Active" : result.protectionHealth.status === "off" ? "Off" : result.protectionHealth.status === "needs_attention" ? "Needs attention" : "Unavailable"} /></View>
@@ -133,7 +137,7 @@ export default function CheckDevice() {
                 <Text style={s.why}>{f.action}</Text>
                 <Body>{f.settings}</Body>
                 <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}>
-                  <Button testID={`device-open-${f.id}`} variant={f.severity === "high" ? "danger" : "secondary"} label="Open Settings" onPress={() => open(f)} />
+                  <Button testID={`device-open-${f.id}`} variant={f.severity === "high" ? "danger" : "secondary"} label={platform === "web" ? "Show Settings steps" : "Open Settings"} onPress={() => open(f)} />
                   {f.handoff === "app" ? <Button testID={`device-app-${f.id}`} variant="ghost" label="Check this app" onPress={() => router.push("/app-check")} /> : null}
                 </View>
               </Card>
@@ -144,14 +148,14 @@ export default function CheckDevice() {
         <Card testID="device-higgins" style={{ gap: spacing.sm, borderColor: colors.navyBorder }}>
           <SectionTitle>Higgins</SectionTitle>
           <Body testID="device-higgins-explanation">{firstAction ? `${firstAction.title} is the first item to review. ${firstAction.action}` : "Apollo did not identify a meaningful concern within the signals this platform exposes. The visibility limits below still apply."}</Body>
-          {firstAction ? <Button testID="device-higgins-open-settings" label="Open relevant Settings" onPress={() => open(firstAction)} /> : null}
+          {firstAction ? <Button testID="device-higgins-open-settings" label={platform === "web" ? "Show relevant Settings steps" : "Open relevant Settings"} onPress={() => open(firstAction)} /> : null}
           <Button testID="device-higgins-recheck" variant="secondary" icon={<RefreshCw size={17} color={colors.brand} />} label={checking ? "Checking again…" : "I changed it — check again"} onPress={() => void refreshDevice(true)} disabled={checking} />
           <Body testID="device-higgins-tampering-rule">Apollo reports suspected tampering only when a specific high-confidence configuration or permission change was observed. A stopped service or missing permission alone is a protection gap, not proof of tampering.</Body>
         </Card>
 
         <Card style={{ gap: spacing.sm }} testID="device-self-report">
-          <SectionTitle>Tell Apollo what you&apos;ve noticed</SectionTitle>
-          <Body>{platform === "ios" ? "iPhone doesn't let any app inspect other apps or profiles, so Apollo relies on what you tell it." : signals.thirdPartyAccessibilityServices === null ? "This build can't read device settings automatically yet — tell Apollo what you've seen." : "Apollo adds what you tell it to what the Security SDK can see."}</Body>
+          <SectionTitle>Tell Higgins what you&apos;ve noticed</SectionTitle>
+          <Body>{platform === "ios" ? "iPhone doesn't let any app inspect other apps or profiles, so Higgins uses your report alongside Apollo's available device checks." : signals.thirdPartyAccessibilityServices === null ? "This build can't read these device settings automatically yet — tell Higgins what you've seen." : "Higgins keeps your report distinct from results Apollo observed through available device checks."}</Body>
           {SELF_REPORT.filter((o) => !(platform === "ios" && o.id === "unknownSourcesOn")).map((o) => (
             <View key={o.id} style={s.row}><Text style={[s.why, { flex: 1 }]}>{o.label}</Text><Switch testID={`device-self-${o.id}`} value={!!self[o.id]} onValueChange={(v) => setSelf((c) => ({ ...c, [o.id]: v }))} trackColor={{ true: o.id === "managementExpected" ? colors.resting : colors.growling, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View>
           ))}
@@ -167,7 +171,7 @@ export default function CheckDevice() {
           {result.status !== "protected" && !event ? <Button testID="device-save" label={saving ? "Saving…" : "Save to Patrol & stay with me"} onPress={() => void save()} disabled={saving} /> : null}
           {event ? <RecoveryFlow event={event} kinds={["remote", "banking_during_access", "accessibility", "profile", "password", "code"]} testID="device-recovery-flow" /> : null}
           <Button testID="device-check-app" variant="secondary" label="Check a specific app" onPress={() => router.push("/app-check")} />
-          <Button testID="device-ask" variant="ghost" label="Ask Higgins about my device" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { context: `Device check: ${meta.title}. ${result.summary} Findings: ${result.findings.map((f) => f.title).join("; ") || "none"}. Self-reported: ${Object.keys(self).filter((k) => self[k as keyof SelfReport]).join(", ") || "nothing"}.`, prompt: anySelf ? "What should I do first?" : "How do I keep my phone secure?" } })} />
+          <Button testID="device-ask" variant="ghost" label="Ask Higgins about my device" onPress={() => openHigginsHandoff(router, issueContext({ gate: "device", issue_summary: meta.title, assessment_state: result.state, findings: result.findings.slice(0, 6).map((finding) => ({ summary: `${finding.title}: ${finding.plain}`, provenance: "observed", status: finding.severity === "high" ? "warning" : "uncertain" })), uncertainty: result.cannotSee, confirmed_protective_actions: [], user_reported_actions: Object.keys(self).filter((key) => self[key as keyof SelfReport]) }), anySelf ? "What should I do first?" : "How do I keep my phone secure?")} />
         </Card>
       </ScrollView>
     </View>

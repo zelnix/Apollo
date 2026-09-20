@@ -13,7 +13,7 @@ export interface IncidentPlan { headline: string; state: ApolloState; timeline: 
 
 /** Urgency order for merging recovery kinds into one plan. */
 const KIND_ORDER: RecoveryKind[] = ["remote", "code", "mfa_approved", "password", "card", "money", "banking_during_access", "locked_out", "accessibility", "profile", "app", "download", "clicked", "called", "info"];
-/** Labels written into event.why by recordRecovery ("You told Apollo: …") — parsed back into kinds. */
+/** Legacy and display labels remain readable; new records use event.recovery_kinds. */
 const TOLD_LABEL: Record<RecoveryKind, string> = { clicked: "opened the link", password: "entered a password", code: "shared a verification code", money: "sent money", info: "shared personal information", app: "installed an app", card: "entered card or bank details", download: "downloaded a file", called: "called the number shown", remote: "gave someone remote access", accessibility: "granted accessibility access", profile: "installed a profile or certificate", banking_during_access: "used banking while they had access", mfa_approved: "approved a login prompt", locked_out: "lost access to the account" };
 const KIND_LABEL: Record<RecoveryKind, string> = { remote: "someone had remote access", code: "a verification code was shared", mfa_approved: "a login prompt was approved", password: "a password was entered", card: "card or bank details were entered", money: "money was sent", banking_during_access: "banking was used during the access", locked_out: "an account is locked", accessibility: "accessibility access was granted", profile: "a profile or certificate was installed", app: "an app was installed", download: "a file was downloaded", clicked: "a link was opened", called: "the number was called", info: "personal information was shared" };
 
@@ -21,7 +21,8 @@ const KIND_LABEL: Record<RecoveryKind, string> = { remote: "someone had remote a
 export function inferRecoveryKinds(events: PatrolEvent[]): RecoveryKind[] {
   const kinds = new Set<RecoveryKind>();
   for (const e of events) {
-    for (const w of e.why) { const m = w.match(/^You told Apollo: (.+)\.$/); if (m) for (const k of Object.keys(TOLD_LABEL) as RecoveryKind[]) if (TOLD_LABEL[k] === m[1]) kinds.add(k); }
+    for (const kind of e.recovery_kinds ?? []) if (kind in TOLD_LABEL) kinds.add(kind as RecoveryKind);
+    for (const w of e.why) { const m = w.match(/^(?:You told Apollo|You told Higgins|You reported): (.+)\.$/); if (m) for (const k of Object.keys(TOLD_LABEL) as RecoveryKind[]) if (TOLD_LABEL[k] === m[1]) kinds.add(k); }
     const sc = e.scenario ?? "";
     if (/^AC12/.test(sc)) kinds.add("code");
     if (/^AC11/.test(sc)) kinds.add("password");

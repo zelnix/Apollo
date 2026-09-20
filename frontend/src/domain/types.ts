@@ -122,6 +122,8 @@ export interface PatrolEvent {
   /** Cross-Platform Architecture Directive: raw enforcement evidence backing verified_block, if any.
    * The backend independently re-derives verified_block from this — it is never trusted as-is. */
   enforcement_evidence?: PatrolEnforcementEvidence | null;
+  /** Structured user-reported recovery actions. New records use this instead of parsing display text. */
+  recovery_kinds?: string[];
 }
 
 /**

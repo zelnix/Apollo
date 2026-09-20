@@ -16,7 +16,7 @@ from playwright.async_api import async_playwright
 
 BASE = os.environ.get(
     "EXPO_PUBLIC_BACKEND_URL",
-    "https://threat-patrol-1.preview.emergentagent.com",
+    "https://device-file-gate.preview.emergentagent.com",
 ).rstrip("/")
 
 

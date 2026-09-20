@@ -14,6 +14,7 @@ import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { CALL_ASKS, CALL_CLAIMS, type CallAnalysis, type CallAsk, type CallClaim } from "@/src/domain/callAnalysis";
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
+import { issueContext, openHigginsHandoff } from "@/src/domain/higginsHandoff";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -103,7 +104,7 @@ export default function CheckCall() {
               <Text style={s.why}>{STATE_LABEL[a.state]}</Text>
               <Text style={s.verdict} testID="call-verdict">{a.verdict}</Text>
               <Text style={s.why} testID="call-recommendation">{a.recommendation}</Text>
-              {a.state === "barking" || a.state === "growling" ? <Button testID="call-hangup-verify" label="Hang up & verify" icon={<PhoneOff size={18} color={colors.onBrandPrimary} />} onPress={() => setVerify(true)} /> : <Button testID="call-verify" variant="secondary" label="Verify caller" onPress={() => setVerify(true)} />}
+              {a.state === "barking" || a.state === "growling" ? <Button testID="call-hangup-verify" label="Show me how to verify safely" icon={<PhoneOff size={18} color={colors.onBrandPrimary} />} onPress={() => setVerify(true)} /> : <Button testID="call-verify" variant="secondary" label="Show me how to check the caller" onPress={() => setVerify(true)} />}
               <Button testID="call-why" variant="secondary" label="Tell me why" onPress={() => setWhy((w) => !w)} />
               {why ? <View style={{ gap: spacing.xs }}>{a.why.map((w, i) => <Text key={i} style={s.why} testID={`call-why-${i}`}>• {w}</Text>)}<Text style={s.small}>Based on: {a.basis.join(" · ")}</Text></View> : null}
             </Card>
@@ -113,8 +114,8 @@ export default function CheckCall() {
                 {result.event ? <RecoveryFlow event={result.event} kinds={["password", "code", "money", "card", "app", "remote", "called", "info"]} testID="call-recovery" /> : <Body>Nothing to recover from — this looked like an ordinary call.</Body>}
                 {result.event && (a.requestedActions.includes("install") || a.requestedActions.includes("remote") || a.requestedActions.includes("screen")) ? <Button testID="call-check-app" variant="warning" label="They asked me to install an app — check it" onPress={() => router.push({ pathname: "/app-check", params: { scent: result.event?.scent_id ?? result.event?.event_id ?? "" } })} /> : null}
                 {result.event && (a.requestedActions.includes("code") || a.requestedActions.includes("password")) ? <Button testID="call-check-account" variant="warning" label="They asked for a code or password — Account Gate" onPress={() => router.push({ pathname: "/account", params: { scent: result.event?.scent_id ?? result.event?.event_id ?? "" } })} /> : null}
-                <Button testID="call-tell-more" variant="ghost" label="Ask Higgins about this call" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { context: `Phone call check: ${a.title}. State: ${STATE_NAME[a.state]}. Caller claimed: ${a.claimedBrand ?? claim}. Asked for: ${a.requestedActions.join(", ")}.`, prompt: "What should I do about this phone call?" } })} />
-                {result.event ? <Button testID="call-mark-safe" variant="ghost" label="It was genuine — mark as safe" onPress={() => { void resolveEvent(result.event!); showToast("Marked as safe.", "resting"); goBackOrHome(router); }} /> : null}
+                <Button testID="call-tell-more" variant="ghost" label="Ask Higgins about this call" onPress={() => openHigginsHandoff(router, issueContext({ gate: "call", issue_summary: a.title, assessment_state: a.state, findings: a.why.slice(0, 6).map((summary) => ({ summary, provenance: "inferred", status: "uncertain" })), uncertainty: ["The caller's identity was not independently authenticated."], confirmed_protective_actions: [], user_reported_actions: a.requestedActions }), "What should I do about this phone call?")} />
+                {result.event ? <Button testID="call-mark-safe" variant="ghost" label="Mark as handled" onPress={() => { void resolveEvent(result.event!); showToast("Marked as handled. This does not verify the caller.", "neutral"); goBackOrHome(router); }} /> : null}
                 <Button testID="call-again" variant="ghost" label="Check another call" onPress={reset} />
               </Card>
             </View>

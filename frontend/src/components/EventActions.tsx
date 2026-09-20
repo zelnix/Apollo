@@ -8,6 +8,7 @@ import React, { useState } from "react";
 import { View } from "react-native";
 
 import type { PatrolEvent } from "@/src/domain/types";
+import { contextFromEvent, gateForCategory, openHigginsHandoff } from "@/src/domain/higginsHandoff";
 import { useApollo } from "@/src/store/ApolloContext";
 import { spacing } from "@/src/theme";
 import { Body, Button } from "./ui";
@@ -18,13 +19,13 @@ export function EventActions({ event }: { event: PatrolEvent }) {
   const [busy, setBusy] = useState<string | null>(null);
   const active = event.status === "active" || (event.status === "blocked" && !event.resolved_at);
   const wrap = (key: string, fn: () => Promise<unknown>) => async () => { setBusy(key); try { await fn(); } finally { setBusy(null); } };
-  const context = `Apollo state: ${event.state}. Status: ${event.status}. Domain: ${event.indicator_host ?? "n/a"}. Headline: ${event.headline}. Reasons: ${event.why.join(" ")}`;
+  const askHiggins = () => openHigginsHandoff(router, contextFromEvent(event, gateForCategory(event.category)), "Explain this issue and what I should do next.");
 
   if (!active) {
     return (
       <View style={{ gap: spacing.sm }}>
         <Body>This event is {event.status === "trusted" ? "trusted (this exact link only)" : event.status === "blocked" ? "blocked and contained" : "handled"}.</Body>
-        <Button testID="event-explain-button" variant="secondary" label="Ask Higgins to explain" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { prompt: "Explain this event and what I should do next.", context } })} />
+        <Button testID="event-explain-button" variant="secondary" label="Ask Higgins to explain" onPress={askHiggins} />
       </View>
     );
   }
@@ -41,10 +42,10 @@ export function EventActions({ event }: { event: PatrolEvent }) {
           {event.state === "growling" && event.trust_allowed ? (
             <Button testID="event-trust-button" variant="secondary" label="Trust this exact link" onPress={wrap("trust", () => trustEvent(event))} disabled={!!busy} />
           ) : null}
-          <Button testID="event-handled-button" variant="ghost" label="I've handled this" onPress={wrap("resolve", () => resolveEvent(event))} disabled={!!busy} />
+          <Button testID="event-handled-button" variant="ghost" label="Mark as handled" onPress={wrap("resolve", () => resolveEvent(event))} disabled={!!busy} />
         </>
       )}
-      <Button testID="event-explain-button" variant="ghost" label="Ask Higgins to explain" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { prompt: "Explain this event and what I should do next.", context } })} />
+      <Button testID="event-explain-button" variant="ghost" label="Ask Higgins to explain" onPress={askHiggins} />
     </View>
   );
 }

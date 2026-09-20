@@ -42,9 +42,9 @@ test("gentle wording", () => {
 // --- "Run a check" always names the checks -----------------------------------------------------------------------
 import { checksSpoken, recommendedChecks } from "../src/domain/higginsChecks.ts";
 
-test("stale verification lists the standard checks; visibility lost and steady states list none", () => {
+test("stale verification lists standard checks; visibility loss routes to Device Gate; steady state lists none", () => {
   assert.deepEqual(recommendedChecks({ recovering: true, visibilityLost: false, drivingEvent: null }), ["device", "network", "account"]);
-  assert.deepEqual(recommendedChecks({ recovering: false, visibilityLost: true, drivingEvent: null }), []);
+  assert.deepEqual(recommendedChecks({ recovering: false, visibilityLost: true, drivingEvent: null }), ["device"]);
   assert.deepEqual(recommendedChecks({ recovering: false, visibilityLost: false, drivingEvent: null }), []);
 });
 

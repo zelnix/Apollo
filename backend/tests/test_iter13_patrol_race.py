@@ -9,7 +9,7 @@ import aiohttp
 import pytest
 import requests
 
-BASE_URL = "https://threat-patrol-1.preview.emergentagent.com"
+BASE_URL = "https://device-file-gate.preview.emergentagent.com"
 API = f"{BASE_URL}/api"
 
 DEVICE_ID = f"race-{uuid.uuid4().hex[:12]}"

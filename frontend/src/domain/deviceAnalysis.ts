@@ -152,7 +152,7 @@ export function assessDevice(sig: DeviceSignals, self: SelfReport = {}, context:
 
   const cannotSee: string[] = [];
   if (p === "ios" || p === "web") cannotSee.push("The list of installed apps and their permissions (iOS doesn't expose this to any app).");
-  if (sig.thirdPartyAccessibilityServices === null && p !== "ios") cannotSee.push("Accessibility services (needs the native Security SDK).");
+  if (sig.thirdPartyAccessibilityServices === null && p !== "ios") cannotSee.push("Which third-party apps currently have Accessibility access (this build cannot read that setting)." );
   if (sig.managementProfile === "unknown") cannotSee.push(p === "ios" ? "Whether a management profile is installed — iOS only tells an app when it is managed itself, so Apollo can confirm management but never rule it out." : "Device-management / configuration profiles on this build.");
   if (sig.vpnActive === null) cannotSee.push("VPN state on this build.");
   if (sig.userTrustedCertificates === null) cannotSee.push("User-installed certificates on this build.");

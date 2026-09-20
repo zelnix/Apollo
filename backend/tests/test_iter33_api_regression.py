@@ -23,7 +23,7 @@ def _load_admin_key() -> str:
     raise RuntimeError("APOLLO_ADMIN_KEY not found")
 
 
-BASE_URL = (os.environ.get("EXPO_PUBLIC_BACKEND_URL") or "https://threat-patrol-1.preview.emergentagent.com").rstrip("/")
+BASE_URL = (os.environ.get("EXPO_PUBLIC_BACKEND_URL") or "https://device-file-gate.preview.emergentagent.com").rstrip("/")
 ADMIN_KEY = _load_admin_key()
 RAW = {"X-Apollo-Raw": "1"}  # bypass conftest auth-shim
 

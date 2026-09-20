@@ -9,6 +9,7 @@ import { LayoutAnimation, Linking, Pressable, Text, View } from "react-native";
 import { Body, Button, Card, Pill, SectionTitle, toneColor, toneTint } from "@/src/components/ui";
 import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
 import type { InvestigationFinding, InvestigationResult } from "@/src/domain/investigation";
+import { INVESTIGATION_ACTION_LABEL } from "@/src/domain/investigationActions";
 import type { ApolloState } from "@/src/domain/types";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
@@ -68,7 +69,7 @@ export function MessageAssessmentResult({ assessment, state, onPrimaryAction, su
       <Text testID={`${prefix}-risk-label`} style={s.overline}>{riskLabel}</Text>
       <Text testID={`${prefix}-headline`} style={s.title}>{assessment.higgins.headline}</Text>
       <Text testID={`${prefix}-next-action`} style={s.next}>{assessment.higgins.next_action}</Text>
-      <Button testID={testIDPrefix === "message" ? "message-primary-action" : "link-primary-action"} label={assessment.higgins.action_label} onPress={onPrimaryAction} />
+      <Button testID={`${prefix}-primary-action`} label={INVESTIGATION_ACTION_LABEL[assessment.higgins.action_kind]} onPress={onPrimaryAction} />
     </View>
     {submittedText ? <View testID={`${prefix}-submitted`} style={s.submitted}>
       <Text testID={`${prefix}-submitted-label`} style={s.overline}>{submittedLabel}</Text>

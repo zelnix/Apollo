@@ -54,7 +54,7 @@ export function analyseCall(input: CallInput): CallAnalysis {
   }
   const brand = input.brandName ?? sig?.claimedBrand ?? null;
   const who = brand ?? CLAIM_LABEL[claim];
-  const basis = ["What you told Apollo the caller asked for", ...(text ? ["The voicemail / transcript you shared"] : []), ...(input.number ? ["Caller number (reputation not available on this build)"] : []), "Recent Apollo events (Threat Scent)"];
+  const basis = ["What you reported the caller asked for", ...(text ? ["The voicemail / transcript you shared"] : []), ...(input.number ? ["Caller number (reputation not available on this build)"] : []), "Recent Apollo events (Threat Scent)"];
   const base = { claimedBrand: brand, requestedActions: [...asks], basis, verifyCaller: VERIFY[claim] };
   const R = (scenario: string, title: string, state: ApolloState, verdict: string, why: string[], recommendation: string): CallAnalysis => ({ ...base, scenario, title, state, verdict, why, recommendation });
   const urgencyWhy = sig?.urgency || sig?.threat ? [`It uses pressure: ${sig?.threat ? "threats or penalties" : "urgency"}.`] : [];

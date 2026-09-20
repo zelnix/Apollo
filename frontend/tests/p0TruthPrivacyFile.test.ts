@@ -200,10 +200,15 @@ test("explicit message payload preserves assessment context but redacts secret U
   const ask = enforceEgress("ask_apollo", {
     device_id: "dev-123",
     message: "private marker",
-    context: "phone +61400000000 password abc",
+    handoff_id: "handoff-privacy-1",
+    conversation_id: "handoff-privacy-1",
+    context: { gate: "call", issue_summary: "Suspicious caller", assessment_state: "growling",
+      findings: [{ summary: "Caller supplied phone +61400000000 and password abc", provenance: "user_reported", status: "uncertain" }],
+      uncertainty: ["Caller identity is unknown"], confirmed_protective_actions: [], user_reported_actions: [] },
   });
-  assert.match((ask as any).context, /Do not request passwords/i);
-  assert.doesNotMatch((ask as any).context, /\+6140|password abc/i);
+  assert.equal((ask as any).context.gate, "call");
+  assert.equal((ask as any).context.findings[0].provenance, "user_reported");
+  assert.doesNotMatch(JSON.stringify((ask as any).context), /\+6140|password abc/i);
 
   const family = enforceEgress("family", {
     device_id: "dev-123",

@@ -39,6 +39,31 @@ Make File Gate and Device Gate first-class members of Apollo's ten-Gate overview
 - **Stopped by user:** Do not pursue the controlled endpoint, acceptance signing, Android candidate build, APK hashing or Pixel acceptance run. Physical acceptance remains **NOT RUN** and must not be implied.
 - **P2:** Consider macOS/Windows native enforcement adapters only if separately requested.
 
+## Usability and Higgins handoff correction — completed
+
+### Problem statement
+Apollo performs supported checks and protective actions; Higgins interprets bounded findings and guides one truthful next action. Manual Gates inspect available evidence first, preserve unknowns, and never turn user selections into proof of safety or compromise.
+
+### Architecture implemented
+- Unique issue handoffs carry bounded Gate/state/provenance/uncertainty/confirmed-action/user-report context. Frontend and FastAPI/Pydantic boundaries reject extra fields and redact secrets/direct identifiers.
+- Mongo-backed handoff state provides processing/failed/completed idempotency. Conversation IDs isolate issue follow-ups; frontend states cover queued/submitting/streaming/failed/completed with persistent Retry, short references and per-issue counters.
+- Structured handoffs pass through a deterministic final Higgins boundary after Gemini review, guaranteeing explicit provenance, uncertainty, no unsupported capability promise and exactly one supported action.
+- Generated investigation actions use a shared validated dispatcher with fixed truthful labels and Gate-specific handlers.
+- New recovery actions use `recovery_kinds`; legacy “You told Apollo…” records remain parseable.
+
+### Implemented UX and evidence
+- File Gate begins with selected/shared evidence, displays supplied metadata/signature/sample limits, asks source/password only when relevant after inspection, and provides truthful filename-only fallback plus picker Retry.
+- Account Gate begins with screenshot/paste/description, extracts claims for correction, asks one relevant follow-up at a time, and preserves uncertainty in offline/cloud-assisted analysis.
+- Reports await success and retain Retry on failure. Event resolution says “Mark as handled.” Submitted-copy clearing never claims to delete originals.
+- Visibility-loss recommendations route to Device Gate; recommendation sheets dismiss before navigation.
+- Verification: final frontend **359/359** and backend **305/305**, TypeScript and JavaScript/Python lint clean. Scenario evidence and screenshot paths: `docs/APOLLO_SCENARIO_VERIFICATION.md`; action audit: `docs/APOLLO_BUTTON_AUDIT.md`; independent report: `test_reports/iteration_74.json` (its initial observability gap was closed by per-issue references/counters plus dedicated dedupe tests).
+
+### Current priorities
+- **P0:** None open for this correction.
+- **P1:** Physical-phone verification for native pickers/share metadata, Settings return, real app/device signals, large accessibility text and keyboard behavior.
+- **P2:** macOS/Windows native enforcement adapters.
+- **Cancelled:** Stage 1D packet-blocking/physical acceptance exercise; do not resume.
+
 ## P0 remediation stage — VERIFIED CLOSED (iteration 64)
 - User approved completion of the full P0 stage. P0-01 through P0-06 are implemented and individually recorded as **VERIFIED CLOSED** in `docs/STAGE1D_P0_REMEDIATION_BACKLOG.md`; original review identities and archived source remain intact.
 - Final punch list closed: durable evidence queue rejects acknowledged stale-version replay over newer pending state; `public_get` performs bounded per-hop HEAD preflight with explicit safe GET fallback; changed evidence identity binding returns 409 before fresh truth validation while new invalid Biting stays 422; `__apollo_test_setup=1` provides a non-persistent development-web-only test entry and is unavailable in production/native.

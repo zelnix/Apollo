@@ -18,6 +18,7 @@ import { NetworkAccountSdk, summariseNetworkEvents } from "@/src/security/networ
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { issueContext, openHigginsHandoff } from "@/src/domain/higginsHandoff";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -60,7 +61,8 @@ export default function CheckNetwork() {
   const site = capabilities.find((c) => c.id === "site_guard");
   const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
   const recentNet = events.filter((e) => e.category === "connection" && Date.parse(e.occurred_at) >= dayAgo);
-  const blocked = recentNet.filter((e) => e.state === "biting" || e.verified_block).length + (sdk?.blockedMalicious ?? 0);
+  const blocked = recentNet.filter((e) => e.verified_block).length;
+  const deviceReported = sdk?.blockedMalicious ?? 0;
   const unresolved = recentNet.filter((e) => e.status === "active" && e.state !== "resting").length;
   const scentCats = useMemo(() => { const now = Date.now(); return events.filter((e) => e.state !== "resting" && (e.category === "app" || e.category === "device") && now - Date.parse(e.occurred_at) <= SCENT_WINDOW_MS).map((e) => e.category); }, [events]);
   const vpnOn = network?.vpnActive === true || network?.type === "vpn";
@@ -100,7 +102,7 @@ export default function CheckNetwork() {
           <Text style={s.label}>Current network</Text>
           <Body testID="network-current">{!network?.connected ? "Not connected" : network.type === "wifi" ? `Wi‑Fi${network.ssid ? ` “${network.ssid}”` : " (name not revealed)"} · security ${network.wifiSecurity === "unknown" ? "not revealed" : network.wifiSecurity.toUpperCase()}${trustedSsids.includes(network.ssid ?? "") ? " · trusted" : ""}` : network.type === "cellular" ? "Mobile data" : `Connected via ${network.type}`}{vpnOn ? " · VPN on" : ""}</Body>
           <Text style={s.label}>Recent activity (24h)</Text>
-          <Body testID="network-recent">{blocked ? `${blocked} dangerous connection${blocked > 1 ? "s" : ""} blocked · ` : "No dangerous connections blocked · "}{unresolved ? `${unresolved} unresolved network item${unresolved > 1 ? "s" : ""}` : "No unresolved network issues"}</Body>
+          <Body testID="network-recent">{blocked ? `${blocked} confirmed protective block${blocked > 1 ? "s" : ""} · ` : "No confirmed protective blocks · "}{deviceReported ? `${deviceReported} additional connection${deviceReported > 1 ? "s" : ""} reported by available device signals · ` : ""}{unresolved ? `${unresolved} unresolved network item${unresolved > 1 ? "s" : ""}` : "No unresolved network issues"}</Body>
           {site?.status === "permission_required" ? <Body>Site Gate needs its protection permission. Open Gates and use Restore protection.</Body> : null}
           <Button testID="network-refresh" variant="ghost" label={refreshing ? "Checking…" : "Refresh"} onPress={verifyNow} disabled={refreshing} />
         </Card>
@@ -135,14 +137,14 @@ export default function CheckNetwork() {
               {a.ssid && !trustedSsids.includes(a.ssid) && (a.state === "resting" || a.state === "ears_up") && context !== "public" ? <Button testID="network-trust" variant="secondary" label={`Trust “${a.ssid}” — it's mine`} onPress={() => void trustNetwork(a.ssid!)} /> : null}
               <Button testID="network-tech" variant="ghost" label="View technical details" onPress={() => setTech((t) => !t)} />
               {tech ? a.technical.map((t, i) => <Body key={i} testID={`network-tech-${i}`}>{t}</Body>) : null}
-              <Button testID="network-ask" variant="ghost" label="Ask Higgins about this network" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { context: `Network check: ${a.title}. State: ${STATE_NAME[a.state]}. ${a.technical.join("; ")}`, prompt: "Is it OK to use this network?" } })} />
+              <Button testID="network-ask" variant="ghost" label="Ask Higgins about this network" onPress={() => openHigginsHandoff(router, issueContext({ gate: "network", issue_summary: a.title, assessment_state: a.state, findings: a.why.slice(0, 6).map((summary) => ({ summary, provenance: "inferred", status: a.state === "barking" ? "warning" : "uncertain" })), uncertainty: ["These signals do not establish that anyone intercepted traffic."], confirmed_protective_actions: [], user_reported_actions: context === "unknown" ? [] : [`Network context: ${context}`] }), "What should I do on this network?")} />
               <Button testID="network-again" variant="ghost" label="Check again" onPress={() => setResult(null)} />
             </Card>
           </>
         ) : null}
         <Card style={{ gap: spacing.xs }} testID="network-cannot-see">
           <SectionTitle>What Apollo can see here</SectionTitle>
-          <Body>{sdkLive ? "Native Security SDK: destination filtering, DNS/VPN state and network events." : "This build sees only what the platform reports: connection type, Wi‑Fi name (with location permission), captive portal and VPN flags. DNS queries, per-app traffic and destination blocking need the native Security SDK — Apollo won't pretend otherwise."}</Body>
+          <Body>{sdkLive ? "Available device checks: destination filtering status, DNS/VPN state and network events." : "This build sees only what the platform reports: connection type, Wi‑Fi name (with location permission), captive portal and VPN flags. It cannot read DNS queries, per-app traffic or confirm destination blocking — Apollo won't pretend otherwise."}</Body>
         </Card>
       </KeyboardAwareScrollView>
     </View>

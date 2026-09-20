@@ -21,6 +21,8 @@ import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { STATE_RANK } from "@/src/domain/stateMachine";
 import { patrolSafeSummary, type InvestigationResult } from "@/src/domain/investigation";
 import { redactUserSecrets } from "@/src/domain/privacy";
+import { issueContext, openHigginsHandoff } from "@/src/domain/higginsHandoff";
+import { dispatchInvestigationAction } from "@/src/domain/investigationActions";
 import { type MessageExplanation, type MessageUrlResult, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -214,7 +216,10 @@ export default function CheckEmail() {
           <>
             {result.assessment ? <MessageAssessmentResult assessment={result.assessment} state={a.state} testIDPrefix="email"
               submittedLabel="Email investigated" submittedTitle={a.parsed.fromAddress || from || "Sender not supplied"} submittedText={`${a.parsed.subject ?? subject}\n${a.parsed.body || raw}`.trim()}
-              onPrimaryAction={() => setVerify(true)} /> : <Card testID="email-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
+              onPrimaryAction={() => dispatchInvestigationAction(result.assessment!.higgins.action_kind, {
+                showVerification: () => setVerify(true), showCallingGuidance: () => setVerify(true), openAccount: () => router.push({ pathname: "/account", params: { text: `${a.parsed.subject ?? ""}\n${a.parsed.body}`.trim().slice(0, 3000), scent } }),
+                clearSubmittedCopy: () => { setRaw(""); setFrom(""); setSubject(""); showToast("The copy submitted to Apollo was cleared from this screen. The original email was not deleted.", "neutral"); }, showReview: () => setTech(true),
+              })} /> : <Card testID="email-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
               <View style={s.chips}><Pill tone={a.state} label={STATE_NAME[a.state]} testID="email-state" /><Pill tone="neutral" label={a.scenario} testID="email-scenario" />{a.claimedBrand ? <Pill tone="neutral" label={`Claims: ${a.claimedBrand}`} testID="email-brand" /> : null}</View>
               <Text style={s.why}>{STATE_LABEL[a.state]}</Text>
               <Text style={s.label} testID="email-title">{a.title}</Text>
@@ -248,10 +253,10 @@ export default function CheckEmail() {
             ) : null}
             <Card style={{ gap: spacing.sm }} testID="email-actions">
               {a.handoff.account ? <Button testID="email-check-account" variant={a.state === "barking" ? "warning" : "secondary"} label="It's about my account — Account Gate" onPress={() => router.push({ pathname: "/account", params: { text: `${a.parsed.subject ?? ""}\n${a.parsed.body}`.trim().slice(0, 3000), scent } })} /> : null}
-              <Button testID="email-verify-sender" variant="secondary" label="Verify sender safely" onPress={() => setVerify(true)} />
+              <Button testID="email-verify-sender" variant="secondary" label="Show me how to check the sender" onPress={() => setVerify(true)} />
               {result.explanation ? <><Text style={s.label}>Higgins&apos;s plain-language assessment</Text><Body testID="email-second-opinion">{result.explanation.summary}</Body></> : null}
               {result.event ? <RecoveryFlow event={result.event} kinds={["clicked", "password", "code", "money", "card", "info", "download"]} linkToCheck={a.urls[0] ?? null} testID="email-recovery" /> : null}
-              <Button testID="email-ask" variant="ghost" label="Tell me more (Ask Higgins)" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { context: `Email check: ${a.title}. State: ${STATE_NAME[a.state]}. ${a.technical.join("; ")}`, prompt: "What should I do about this email?" } })} />
+              <Button testID="email-ask" variant="ghost" label="Ask Higgins about this email" onPress={() => openHigginsHandoff(router, issueContext({ gate: "email", issue_summary: a.title, assessment_state: a.state, findings: a.why.slice(0, 6).map((summary) => ({ summary, provenance: "inferred", status: "uncertain" })), uncertainty: ["The sender was not independently authenticated."], confirmed_protective_actions: [], user_reported_actions: [] }), "What should I do about this email?")} />
               <Button testID="email-tech" variant="ghost" label="View technical details" onPress={() => setTech(true)} />
               <Button testID="email-again" variant="ghost" label="Check another email" onPress={() => { setResult(null); setRaw(""); setFrom(""); setSubject(""); }} />
             </Card>

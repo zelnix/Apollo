@@ -3,7 +3,7 @@
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import X from "lucide-react-native/icons/x";
 import React, { useEffect, useMemo, useState } from "react";
-import { Pressable, Switch, Text, TextInput, View } from "react-native";
+import { Platform, Pressable, Switch, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -22,6 +22,8 @@ import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { openDeviceSettings } from "@/src/utils/deviceSettings";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { issueContext, openHigginsHandoff } from "@/src/domain/higginsHandoff";
+import { dispatchInvestigationAction } from "@/src/domain/investigationActions";
 
 type Reputation = { remote_access_tool: string | null; known_security_vendor: string | null; impersonates_brand: string | null; official_store: boolean; note: string };
 type Remote = { reputation: Reputation; hosts: { host: string; verdict: "clean" | "malicious" | "unknown" }[]; explanation: { summary: string; why: string[]; recommendation: string } | null; assessment: InvestigationResult | null };
@@ -64,6 +66,13 @@ export default function CheckApp() {
   const [tech, setTech] = useState(false);
   const [permSheet, setPermSheet] = useState<AppPermission | null>(null);
   const [sdkVisible, setSdkVisible] = useState(false);
+  const [actionGuidance, setActionGuidance] = useState<string | null>(null);
+  const [reportState, setReportState] = useState<"idle" | "sending" | "failed" | "sent">("idle");
+  const showSettings = (analysis: AppAnalysis) => {
+    const [label, path] = settingsFor(analysis);
+    if (Platform.OS === "web") setActionGuidance(`${label}: ${path}`);
+    else void openDeviceSettings(label, path, (message) => showToast(message, "neutral"));
+  };
   useEffect(() => { void AppDeviceSdk.getAppDeviceCapabilities().then((c) => setSdkVisible(c.appPermissions === "supported")); }, []);
 
   // Threat Scent: non-resting events from other gates inside the window (call → link → download → install).
@@ -87,7 +96,7 @@ export default function CheckApp() {
       try {
         remote = await apiPost<Remote>("/app/analyse", "app_check", { device_id: deviceId ?? "local-device", name: name.trim().slice(0, 120), developer: developer.trim().slice(0, 120) || null, source: observedSource, purpose, permissions: observedPerms, hosts: network?.hosts.slice(0, 10) ?? [], local_state: a.state, scenario: a.scenario, second_opinion: true });
         const bad = remote.hosts.filter((h) => h.verdict === "malicious").length;
-        if (bad && !network?.blockedMalicious) a = analyseApp({ name: name.trim(), developer: developer.trim() || undefined, source: observedSource, purpose, permissions: observedPerms, context, network: { blockedMalicious: bad, unknownHosts: network?.unknownHosts ?? 0, hosts: network?.hosts ?? [] } });
+        if (bad && a.state !== "barking") a = { ...a, state: "barking", title: "Dangerous destination observed", verdict: `${bad} destination${bad > 1 ? "s have" : " has"} a malicious reputation. This does not prove the app is malicious or that Apollo blocked its traffic.`, why: [...a.why, "Threat intelligence identified a destination associated with this app as malicious."], handoff: "network" };
         if (remote.assessment?.risk === "warning" && a.state === "resting") a = { ...a, state: "growling", title: remote.assessment.higgins.headline,
           verdict: remote.assessment.higgins.what_was_found[0] ?? a.verdict, why: remote.assessment.findings.map((finding) => finding.title), recommendation: remote.assessment.higgins.next_action };
       } catch { /* offline: on-device engine is authoritative */ }
@@ -139,7 +148,13 @@ export default function CheckApp() {
           <>
             {result.remote?.assessment ? <MessageAssessmentResult assessment={result.remote.assessment} state={a.state} testIDPrefix="app"
               submittedLabel="App investigated" submittedTitle={developer || "Developer not supplied"} submittedText={name}
-              onPrimaryAction={() => a.state !== "resting" ? void openDeviceSettings(settingsFor(a)[0], settingsFor(a)[1], (message) => showToast(message, "neutral")) : showToast(result.remote!.assessment!.higgins.next_action, "neutral")} /> : <Card testID="app-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
+              onPrimaryAction={() => dispatchInvestigationAction(result.remote!.assessment!.higgins.action_kind, {
+                showVerification: () => setActionGuidance(result.remote!.assessment!.higgins.next_action),
+                showCallingGuidance: () => setActionGuidance(result.remote!.assessment!.higgins.next_action),
+                openAccount: () => router.push("/account"),
+                clearSubmittedCopy: () => { setName(""); setDeveloper(""); setActionGuidance("The submitted app name was cleared from this screen. The app was not uninstalled."); },
+                showReview: () => a.state !== "resting" ? showSettings(a) : setActionGuidance(result.remote!.assessment!.higgins.next_action),
+              })} /> : <Card testID="app-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
               <View style={s.chips}><Pill tone={a.state} label={STATE_NAME[a.state]} testID="app-state" /><Pill tone="neutral" label={a.scenario} testID="app-scenario" />{a.remoteCapable ? <Pill tone="barking" label="Remote access capable" testID="app-remote-pill" /> : null}</View>
               <Text style={s.why}>{STATE_LABEL[a.state]}</Text>
               <Text style={s.label} testID="app-title">{a.title}</Text>
@@ -162,7 +177,7 @@ export default function CheckApp() {
             </Card>
             <Card style={{ gap: spacing.xs }} testID="app-network">
               <SectionTitle>Network</SectionTitle>
-              {result.remote?.hosts.length ? result.remote.hosts.map((h) => <View key={h.host} style={s.row}><Text style={[s.why, { flex: 1 }]} numberOfLines={1}>{h.host}</Text><Pill tone={h.verdict === "malicious" ? "biting" : h.verdict === "clean" ? "resting" : "ears_up"} label={h.verdict === "malicious" ? "Blocked — dangerous" : h.verdict} /></View>)
+              {result.remote?.hosts.length ? result.remote.hosts.map((h) => <View key={h.host} style={s.row}><Text style={[s.why, { flex: 1 }]} numberOfLines={1}>{h.host}</Text><Pill tone={h.verdict === "malicious" ? "barking" : h.verdict === "clean" ? "resting" : "ears_up"} label={h.verdict === "malicious" ? "Known dangerous reputation" : h.verdict === "clean" ? "No reputation warning" : "Unknown reputation"} /></View>)
                 : <Body>{sdkVisible ? "No connections from this app have been seen yet." : "App-to-network behaviour isn't visible on this build. Check Network Gate and Site Gate for their separately verified status."}</Body>}
             </Card>
             {result.remote ? (
@@ -173,22 +188,24 @@ export default function CheckApp() {
               </Card>
             ) : null}
             <Card style={{ gap: spacing.sm }} testID="app-actions">
-              {a.state !== "resting" ? <Button testID="app-open-settings" variant={a.state === "barking" ? "danger" : "primary"} label={a.state === "barking" ? "Remove / open Settings" : "Open Settings"} onPress={() => void openDeviceSettings(settingsFor(a)[0], settingsFor(a)[1], (m) => showToast(m, "neutral"))} /> : null}
+              {actionGuidance ? <Card testID="app-action-guidance" style={{ gap: spacing.xs }}><SectionTitle>Next action</SectionTitle><Body>{actionGuidance}</Body><Button testID="app-action-guidance-close" variant="ghost" label="Hide instructions" onPress={() => setActionGuidance(null)} /></Card> : null}
+              {a.state !== "resting" ? <Button testID="app-open-settings" variant={a.state === "barking" ? "danger" : "primary"} label={Platform.OS === "web" ? "Show Settings steps" : a.state === "barking" ? "Open removal settings" : "Open Settings"} onPress={() => showSettings(a)} /> : null}
               {a.permissionNotes.length ? <Button testID="app-review-perms" variant="secondary" label="Review permissions" onPress={() => void openDeviceSettings("apps", "Settings → Apps → the app → Permissions", (m) => showToast(m, "neutral"))} /> : null}
               {(a.state !== "resting" || a.remoteCapable || a.permissionNotes.length > 0) ? <Button testID="app-check-device" variant="secondary" label="Check the rest of this device" onPress={() => router.push("/device")} /> : null}
               {a.stayWithMe && result.event ? <RecoveryFlow event={result.event} kinds={["remote", "banking_during_access", "password", "code", "accessibility"]} testID="app-recovery" /> : result.event ? <RecoveryFlow event={result.event} kinds={["remote", "accessibility", "profile", "password", "banking_during_access", "money"]} testID="app-recovery" /> : null}
-              <Button testID="app-tell-why" variant="secondary" label="Tell me why" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { context: `App check: ${a.title}. State: ${STATE_NAME[a.state]}. ${a.technical.join("; ")}`, prompt: "Why is Apollo worried about this app and what should I do?" } })} />
+              <Button testID="app-tell-why" variant="secondary" label="Ask Higgins why" onPress={() => openHigginsHandoff(router, issueContext({ gate: "app", issue_summary: a.title, assessment_state: a.state, findings: a.why.slice(0, 6).map((summary) => ({ summary, provenance: "inferred", status: a.state === "barking" ? "warning" : "uncertain" })), uncertainty: ["App capabilities are not proof that the app behaved maliciously."], confirmed_protective_actions: [], user_reported_actions: Object.keys(ctx).filter((key) => ctx[key as keyof typeof ctx]) }), "Why is this app concerning, and what should I do?")} />
               <Button testID="app-tech" variant="ghost" label="View technical details" onPress={() => setTech(true)} />
-              {result.event ? <Button testID="app-keep" variant="ghost" label="Keep app — I trust it" onPress={() => { void resolveEvent(result.event!); setResult({ ...result, event: { ...result.event!, status: "resolved" } }); }} /> : null}
-              {result.event ? <Button testID="app-report" variant="ghost" label="Report a mistake" onPress={async () => { try { await apiPost("/feedback", "feedback", { device_id: deviceId ?? "local-device", event_id: result.event!.event_id, kind: "false_positive", state: result.event!.state, host: null, sources: ["app_device_engine"], note: "" }); showToast("Thanks — a human will review this.", "neutral"); } catch { showToast("Couldn't send right now. Apollo kept a note locally.", "neutral"); } }} /> : null}
-              <Button testID="app-again" variant="ghost" label="Check another app" onPress={() => { setResult(null); setName(""); setDeveloper(""); setPerms([]); }} />
+              {result.event ? <Button testID="app-keep" variant="ghost" label="Mark as handled" onPress={() => { void resolveEvent(result.event!); setResult({ ...result, event: { ...result.event!, status: "resolved" } }); }} /> : null}
+              {reportState === "failed" ? <Body testID="app-report-error">The report was not sent. This app result remains available; retry when connected.</Body> : reportState === "sent" ? <Body testID="app-report-success">Report sent for review.</Body> : null}
+              {result.event && reportState !== "sent" ? <Button testID="app-report" variant="ghost" label={reportState === "sending" ? "Sending…" : reportState === "failed" ? "Retry report" : "Report a mistake"} disabled={reportState === "sending"} onPress={async () => { setReportState("sending"); try { await apiPost("/feedback", "feedback", { device_id: deviceId ?? "local-device", event_id: result.event!.event_id, kind: "false_positive", state: result.event!.state, host: null, sources: ["app_device_engine"], note: "" }); setReportState("sent"); } catch { setReportState("failed"); } }} /> : null}
+              <Button testID="app-again" variant="ghost" label="Check another app" onPress={() => { setResult(null); setName(""); setDeveloper(""); setPerms([]); setReportState("idle"); setActionGuidance(null); }} />
             </Card>
           </>
         ) : null}
       </KeyboardAwareScrollView>
       <Sheet visible={tech} onClose={() => setTech(false)} title="Technical details" testID="app-tech-sheet">
         {a?.technical.map((t, i) => <Body key={i} testID={`app-tech-${i}`}>{t}</Body>)}
-        <Body>Automatic install monitoring, permission reading and app-to-network correlation need the native Security SDK (Android). iOS never exposes other apps&apos; permissions to any app — Apollo won&apos;t pretend otherwise.</Body>
+        <Body>Automatic install monitoring, permission reading and app-to-network correlation are unavailable in this build. iOS never exposes other apps&apos; permissions to another app — Apollo won&apos;t pretend otherwise.</Body>
         <Button testID="app-tech-close" variant="ghost" label="Done" onPress={() => setTech(false)} />
       </Sheet>
       <Sheet visible={!!permSheet} onClose={() => setPermSheet(null)} title={permSheet ? PERMISSION_INFO[permSheet].label : ""} testID="app-perm-sheet">

@@ -36,6 +36,40 @@ export interface AccountAnalysis {
   providerLabel: string; claimedBrand: string | null; urls: string[]; suspiciousUrls: string[]; takeoverRisk: TakeoverRisk;
   stayWithMe: boolean; recoveryKinds: string[]; handoff: "web" | "none"; openOfficial: string; technical: string[];
 }
+export interface AccountEvidence {
+  kind: AlertKind;
+  provider: AccountProvider;
+  claimedService: string | null;
+  visibleSender: string | null;
+  urls: string[];
+  requestedActions: string[];
+}
+
+/** Local evidence extraction. These are claims/visible facts, never authentication or proof. */
+export function inspectAccountEvidence(text: string, sender = ""): AccountEvidence {
+  const combined = `${sender}\n${text}`.trim();
+  const lower = combined.toLowerCase();
+  const sig = combined ? extractSignals(sender, text) : null;
+  let kind: AlertKind = "other";
+  if (/password (?:was |has been )?changed|changed your password/.test(lower)) kind = "password_changed";
+  else if (/recovery (?:email|phone|details).*(?:changed|updated)|(?:email|phone).*(?:recovery).*(?:changed|updated)/.test(lower)) kind = "recovery_changed";
+  else if (/data breach|breach notice|information (?:was|may have been) exposed/.test(lower)) kind = "breach_notice";
+  else if (/approve (?:this |the )?(?:login|sign[- ]?in)|authentication request|mfa|two.factor prompt/.test(lower)) kind = "mfa_prompt";
+  else if (/password reset|reset (?:your |the )?password|reset code/.test(lower)) kind = "password_reset";
+  else if (/new (?:login|sign[- ]?in|device)|logged in from|sign[- ]?in from/.test(lower)) kind = "login_alert";
+  else if (/locked out|account (?:is )?locked|can't (?:sign|log) in/.test(lower)) kind = "locked_out";
+  else if (/security alert|suspicious (?:activity|sign[- ]?in)|unusual activity/.test(lower)) kind = "security_alert";
+  let provider: AccountProvider = "other";
+  if (/microsoft|outlook|office 365|live\.com/.test(lower)) provider = "microsoft";
+  else if (/google|gmail|youtube/.test(lower)) provider = "google";
+  else if (/apple|icloud/.test(lower)) provider = "apple";
+  else if (/paypal/.test(lower)) provider = "paypal";
+  else if (/facebook|instagram|meta/.test(lower)) provider = "facebook";
+  else if (/mygov|services australia|ato\b/.test(lower)) provider = "mygov";
+  else if (/commbank|westpac|\banz\b|\bnab\b|bank/.test(lower)) provider = "bank";
+  return { kind, provider, claimedService: sig?.claimedBrand ?? ACCOUNT_PROVIDERS.find((item) => item.id === provider)?.brand ?? null,
+    visibleSender: sender.trim() || null, urls: sig?.urls ?? [], requestedActions: sig?.requestedAction ? [sig.requestedAction] : [] };
+}
 
 function hostOf(u: string) { return u.replace(/^https?:\/\//i, "").split(/[/?#]/)[0].toLowerCase().replace(/^www\./, ""); }
 export function isOfficialHost(host: string, official: string[]) { return official.some((d) => host === d || host.endsWith(`.${d}`)); }
@@ -86,31 +120,31 @@ export function analyseAccountAlert(input: AccountInput): AccountAnalysis {
   if (suspiciousUrls.length && prov.id === "other") return R("AC19", "Alert with an unfamiliar link", "growling", "elevated", "This alert contains a link Apollo can't match to a known service. Check the link before doing anything.", ["Unknown alert + unknown link is how most account phishing starts.", "Nothing bad happens until you tap or type something."], "Check the link with Apollo, then open the service yourself instead of using it.", { handoff: "web" });
   // AC01 / AC02 — unexpected MFA prompt.
   if (input.kind === "mfa_prompt") {
-    if (input.userInitiated === true && !input.repeated) return R("AC20", "Login prompt you triggered", "resting", "low", `You just logged in to ${who} and the prompt arrived straight away — that's how it should work.`, ["Approving your own login is fine.", "Apollo will bark if a prompt arrives when you haven't logged in."], "Approve it if it matches what you're doing. Deny anything you didn't start.");
+    if (input.userInitiated === true && !input.repeated) return R("AC20", "Login prompt matching your recent action", "ears_up", "low", `The timing matches a login you reported starting, but that does not authenticate this prompt.`, ["Your report explains why a prompt may be expected.", "Check the service name, device and location in the official app before approving."], "Approve only if the prompt appears in the official app and every displayed detail matches the login you just started.");
     const fatigue = !!input.repeated;
-    return R(fatigue ? "AC02" : "AC01", fatigue ? "Repeated approval requests (MFA fatigue)" : "Login prompt you didn't start", input.userInitiated === null && !fatigue ? "growling" : "barking", fatigue || input.userInitiated === false ? "very_high" : "high",
+    return R(fatigue ? "AC02" : "AC01", fatigue ? "Repeated approval requests (MFA fatigue)" : input.userInitiated === false ? "Login prompt you didn't start" : "Login prompt to verify", input.userInitiated === null && !fatigue ? "growling" : "barking", fatigue || input.userInitiated === false ? "very_high" : "elevated",
       input.userInitiated === null && !fatigue ? "Not sure you started this? Then don't approve it. Deny it and log in yourself to check." : "Don't approve this login. Someone may already know your password.",
-      ["An approval prompt means someone typed your correct password and is waiting for you to let them in.", fatigue ? "Repeated prompts are meant to wear you down until you tap 'approve' by mistake." : "Denying costs you nothing; approving hands over the account.", ...scentWhy],
-      `Tap Deny / “It wasn't me”. Then ${OPEN_OFFICIAL[prov.id].charAt(0).toLowerCase()}${OPEN_OFFICIAL[prov.id].slice(1)} Change the password — it is probably known.`, { stayWithMe: fatigue || input.userInitiated === false, recoveryKinds: ["password", "mfa_approved", "code"] });
+      ["If the prompt is genuine, it can mean someone typed the correct password and is waiting for approval; the submitted alert alone cannot prove that.", fatigue ? "Repeated prompts are meant to wear you down until you tap 'approve' by mistake." : "Denying costs you nothing; approving could hand over the account.", ...scentWhy],
+      `Use the official app to tap Deny / “It wasn't me”. Then ${OPEN_OFFICIAL[prov.id].charAt(0).toLowerCase()}${OPEN_OFFICIAL[prov.id].slice(1)} ${input.userInitiated === false || fatigue ? "Change the password because an unrequested genuine prompt could mean it is known." : "Review recent activity before deciding whether to change the password."}`, { stayWithMe: fatigue || input.userInitiated === false, recoveryKinds: ["password", "mfa_approved", "code"] });
   }
   // AC14 — recovery email/phone changed unexpectedly.
   if (input.kind === "recovery_changed") {
-    if (input.userInitiated === true) return R("AC20", "Recovery details you changed", "resting", "low", "You changed the recovery details yourself. Nothing to do.", ["Official confirmations of your own changes are expected."], "Nothing to do.");
+    if (input.userInitiated === true) return R("AC20", "Recovery change matching your report", "ears_up", "low", "You reported making this change, but the alert itself is not authenticated.", ["Your report makes the change expected, not verified."], OPEN_OFFICIAL[prov.id]);
     return R("AC14", "Recovery email or phone changed", "barking", "very_high", `Someone may be taking over your ${who} account — changing recovery details is how they lock you out.`, ["Recovery details control who can reset the password next.", "Real providers send this alert precisely so you can undo it fast.", ...scentWhy], `${OPEN_OFFICIAL[prov.id]} Revert the recovery change, change the password and sign out all other sessions — in that order.`, { stayWithMe: true, recoveryKinds: ["password", "locked_out"] });
   }
   // AC06 — password was changed / reset without asking.
   if (input.kind === "password_changed") {
-    if (input.userInitiated === true) return R("AC20", "Password change you made", "resting", "low", "You changed the password yourself. This confirmation is normal.", ["Official confirmations of your own changes are expected."], "Nothing to do.");
+    if (input.userInitiated === true) return R("AC20", "Password change matching your report", "ears_up", "low", "You reported making this change, but the submitted alert is still only a claim.", ["Your report makes the timing expected, not the sender verified."], OPEN_OFFICIAL[prov.id]);
     return R("AC06", "Password changed — not by you", input.userInitiated === false ? "barking" : "growling", input.userInitiated === false ? "high" : "elevated", `If you didn't make this change, secure the account through ${who}'s official app or website now.`, ["A password change you didn't make means someone else could already be inside.", "Don't use any link in the alert to 'undo' it — go in through the front door.", ...scentWhy], `${OPEN_OFFICIAL[prov.id]} Use 'Forgot password' there if you can't sign in, then check recovery details and sessions.`, { stayWithMe: input.userInitiated === false, recoveryKinds: ["password", "locked_out"] });
   }
   // AC05 — genuine reset the user requested.
   if (input.kind === "password_reset") {
-    if (input.userInitiated === true) return R("AC05", "Password reset you requested", "resting", "low", `You asked ${who} for this reset and the link stays on their own domain. Fine to use.`, ["Requested by you, sent by the official domain.", "Close it if it arrived later than expected — request a fresh one instead."], "Use it soon; reset links expire. Choose a password you don't use anywhere else.");
+    if (input.userInitiated === true) return R("AC05", "Password reset matching your request", "ears_up", "low", urls.length ? `You reported requesting a reset. The visible link host matches ${who}'s configured domains, but that does not authenticate the message or make the link safe to use.` : `You reported requesting a reset, but no official destination was independently established from the submitted evidence.`, ["Your report makes a reset expected, not verified.", urls.length ? "A visible domain match is supporting evidence only." : "No link or official destination was available to check."], `Do not use the alert link. ${OPEN_OFFICIAL[prov.id]} Request a fresh reset there.`);
     return R("AC06", "Password reset you didn't ask for", "growling", "elevated", `Someone entered your email or phone into ${who}'s reset form. Nothing changes unless the link or code is used — so don't use it.`, ["A reset you didn't request usually means someone is probing your account.", "Ignoring it is safe; the link expires on its own.", ...scentWhy], `Ignore the link. ${OPEN_OFFICIAL[prov.id]} Check recent activity and make sure two-factor is on.`);
   }
   // AC07 / AC08 — new login alert.
   if (input.kind === "login_alert") {
-    if (input.userInitiated === true && !input.unusualLocation) return R("AC20", "Login you recognise", "resting", "low", "A new-device alert for a login you made is normal.", ["You confirmed this was you."], "Nothing to do.");
+    if (input.userInitiated === true && !input.unusualLocation) return R("AC20", "Login matching your report", "ears_up", "low", "You reported making this login, but the alert itself was not authenticated.", ["Your report explains the timing; it does not prove the sender or link is genuine."], OPEN_OFFICIAL[prov.id]);
     const unusual = !!input.unusualLocation;
     return R(unusual ? "AC08" : "AC07", unusual ? "Login from an unusual place" : "Login you don't recognise", input.userInitiated === false && (priorPhish || unusual) ? "growling" : "ears_up", input.userInitiated === false ? "elevated" : "low",
       unusual ? "The provider reports activity that doesn't match what you were doing. Locations can be wrong (VPNs, mobile networks) — but review it." : `A login you don't recognise deserves a look. Not every unknown login is an attacker — it can be your own laptop or a new app.`,
@@ -119,10 +153,10 @@ export function analyseAccountAlert(input: AccountInput): AccountAnalysis {
   // AC09 — breach notice.
   if (input.kind === "breach_notice") {
     const pw = /password/i.test(text);
-    return R("AC09", "Account in a known data breach", pw ? "growling" : "ears_up", pw ? "elevated" : "low", pw ? "This breach likely exposed passwords. Change the affected password — and anywhere you reused it." : `This account appears in a known data breach. Exposure of email or details alone isn't a takeover, but tighten things up.`, [pw ? "Leaked passwords are tried on other services within hours." : "Breached emails receive more targeted phishing — expect fake alerts.", "Turn on two-factor authentication where you haven't.", "Genuine breach notices don't ask you to log in through a link."], `${OPEN_OFFICIAL[prov.id]} Change the password there, enable two-factor, and change it anywhere else you reused it.`, { recoveryKinds: pw ? ["password"] : [] });
+    return R("AC09", "Claimed data breach notice", "ears_up", pw ? "elevated" : "low", pw ? "The submitted notice claims passwords were exposed. Apollo has not independently confirmed that claim." : "The submitted notice claims a data breach. Selecting or receiving this notice does not confirm a breach.", ["Treat the sender and breach claim as unverified until checked independently.", "Breach-themed alerts are also used for phishing.", "Use the separate breach lookup or the service's official app; never log in through the notice."], `${OPEN_OFFICIAL[prov.id]} Check the service's own security notice or use the separate breach lookup below.`, { recoveryKinds: [] });
   }
   // AC16 — genuine security alert (no off-domain link).
-  if (input.kind === "security_alert") return R("AC16", "Genuine-looking security alert", "ears_up", "low", `A real security alert isn't a scam — but act on it only through ${who}'s own app or site.`, [urls.length ? "Its links stay on the official domain." : "No suspicious links in it.", "Attackers copy these alerts, so never act through the message itself.", ...scentWhy], `${OPEN_OFFICIAL[prov.id]} Review recent activity and sessions there.`);
+  if (input.kind === "security_alert") return R("AC16", "Security alert to verify", "ears_up", "low", `The submitted alert does not contain a clear off-domain link, but Apollo has not authenticated the sender or its claims.`, [urls.length ? "The visible link host matches a configured official domain; that is supporting evidence only." : "No suspicious link was found in the submitted text.", "Attackers copy genuine alerts, so never act through the message itself.", ...scentWhy], `${OPEN_OFFICIAL[prov.id]} Review recent activity and sessions there.`);
   // AC19 — unknown notification with insufficient evidence.
   return R("AC19", "Unfamiliar account notification", "ears_up", "low", "Apollo can't tell much from this alone. Verify through the official service, not the notification.", ["No suspicious links or requests were found in it.", "Unknown isn't the same as dangerous."], OPEN_OFFICIAL[prov.id]);
 }

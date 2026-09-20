@@ -693,7 +693,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const recordRecovery = useCallback(async (event: PatrolEvent, kind: RecoveryKind) => {
     const label: Record<RecoveryKind, string> = { clicked: "Opened the link", password: "Entered a password", code: "Shared a verification code", money: "Sent money", info: "Shared personal information", app: "Installed an app", card: "Entered card or bank details", download: "Downloaded a file", called: "Called the number shown", remote: "Gave someone remote access", accessibility: "Granted accessibility access", profile: "Installed a profile or certificate", banking_during_access: "Used banking while they had access", mfa_approved: "Approved a login prompt", locked_out: "Lost access to the account" };
     const escalate = kind !== "clicked";
-    await upsertEvent({ ...event, state: escalate ? "barking" : event.state, status: "active", why: [...event.why, `You told Apollo: ${label[kind].toLowerCase()}.`], what_to_do: RECOVERY_STEPS[kind][0] });
+    await upsertEvent({ ...event, state: escalate ? "barking" : event.state, status: "active", why: [...event.why, `You reported: ${label[kind].toLowerCase()}.`], recovery_kinds: Array.from(new Set([...(event.recovery_kinds ?? []), kind])), what_to_do: RECOVERY_STEPS[kind][0] });
   }, [upsertEvent]);
 
   const toggleProtection = useCallback(async (on: boolean) => {

@@ -3,7 +3,7 @@ import os, sys, uuid, asyncio
 from datetime import datetime, timezone
 import pytest, requests
 
-BASE_URL = (os.environ.get("EXPO_BACKEND_URL") or os.environ.get("EXPO_PUBLIC_BACKEND_URL") or "https://threat-patrol-1.preview.emergentagent.com").rstrip("/")
+BASE_URL = (os.environ.get("EXPO_BACKEND_URL") or os.environ.get("EXPO_PUBLIC_BACKEND_URL") or "https://device-file-gate.preview.emergentagent.com").rstrip("/")
 sys.path.insert(0, "/app/backend")
 
 

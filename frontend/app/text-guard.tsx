@@ -22,6 +22,7 @@ import { MessagingSdk, type MessagingCapabilities } from "@/src/security/messagi
 import { type MessageOutcome, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { dispatchInvestigationAction } from "@/src/domain/investigationActions";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -146,12 +147,11 @@ export default function TextGuard() {
           <>
             {result.assessment ? <MessageAssessmentResult assessment={result.assessment} state={a.state}
               submittedLabel="Text investigated" submittedTitle={sender || "Sender not supplied"} submittedText={text}
-              onPrimaryAction={() => {
-                const kind = result.assessment!.higgins.action_kind;
-                if (kind === "check_account") setVerify(true);
-                else if (kind === "avoid_and_delete") { setText(""); setSender(""); showToast("Submitted content cleared from this screen.", "neutral"); }
-                else setVerify(true);
-              }} /> : <Card testID="textguard-result" style={{ borderColor: toneColor(colors, tone), gap: spacing.sm }}>
+              onPrimaryAction={() => dispatchInvestigationAction(result.assessment!.higgins.action_kind, {
+                showVerification: () => setVerify(true), openAccount: () => router.push({ pathname: "/account", params: { text, scent: result.event?.scent_id ?? result.event?.event_id ?? "" } }),
+                clearSubmittedCopy: () => { setText(""); setSender(""); showToast("The copy submitted to Apollo was cleared from this screen. The original message was not deleted.", "neutral"); },
+                showReview: () => setVerify(true),
+              })} /> : <Card testID="textguard-result" style={{ borderColor: toneColor(colors, tone), gap: spacing.sm }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" }}>
                 <Pill tone={tone} label={STATE_NAME[a.state]} testID="textguard-state" />
                 <Pill tone="neutral" label={a.scenarioTitle} />
@@ -180,9 +180,9 @@ export default function TextGuard() {
             ) : null}
 
             <Card style={{ gap: spacing.sm }}>
-              <Button testID="textguard-verify-sender" variant="secondary" label="Verify sender safely" onPress={() => setVerify(true)} />
+              <Button testID="textguard-verify-sender" variant="secondary" label="Show me how to check the sender" onPress={() => setVerify(true)} />
               {result.event ? <RecoveryFlow event={result.event} kinds={["clicked", "password", "code", "money", "info", "app"]} linkToCheck={a.signals.urls[0] ?? null} testID="textguard-recovery" /> : null}
-              {result.event ? <Button testID="textguard-mark-safe" variant="ghost" label="Mark as safe — I know this sender" onPress={() => { void (async () => { await resolveEvent(result.event!); showToast("Marked as safe. Apollo will stop flagging it.", "resting"); })(); }} /> : null}
+              {result.event ? <Button testID="textguard-mark-safe" variant="ghost" label="Mark as handled" onPress={() => { void (async () => { await resolveEvent(result.event!); showToast("Marked as handled. This does not verify the sender or suppress future alerts.", "neutral"); })(); }} /> : null}
             </Card>
           </>
         ) : null}

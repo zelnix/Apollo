@@ -32,7 +32,18 @@ test("message and Ask Higgins redact submitted login secrets before egress", () 
   assert.doesNotMatch(message.text, /Winter!42|4488|113355|ABCD-EFGH/);
   const ask = enforceEgress("ask_apollo", { device_id: "device-123", message: "My PIN is 4488", context: null });
   assert.equal(ask.message, "My PIN is [redacted]");
+  assert.equal(ask.conversation_id, "general");
   assert.equal(redactUserSecrets("I received a password reset link"), "I received a password reset link");
+});
+
+test("Ask Higgins accepts only bounded structured issue context and preserves provenance", () => {
+  const payload = enforceEgress("ask_apollo", { device_id: "device-123", message: "What next?", handoff_id: "handoff-123", conversation_id: "handoff-123", context: {
+    gate: "account", issue_summary: "Claimed password reset", assessment_state: "ears_up",
+    findings: [{ summary: "Visible sender claims Google", provenance: "observed", status: "uncertain" }],
+    uncertainty: ["Sender is not authenticated"], confirmed_protective_actions: [], user_reported_actions: ["Requested a reset"],
+  } });
+  assert.equal(payload.context.findings[0].provenance, "observed");
+  assert.throws(() => enforceEgress("ask_apollo", { ...payload, context: { ...payload.context, unrestricted_event: { password: "secret" } } }));
 });
 
 test("Patrol summary strips direct identifiers and secret codes", () => {

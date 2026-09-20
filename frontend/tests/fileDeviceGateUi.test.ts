@@ -17,9 +17,11 @@ test("Email Gate discloses preview and attachment-transfer limits before File Ga
 });
 
 test("File Gate preserves source context without treating cloud hosting as safety", () => {
-  assert.match(file, /accessibilityState=\{\{ checked: source === o\.id \}\}/);
+  assert.match(file, /accessibilityState=\{\{ checked: source === o\.id && pending\.sourceAnswered \}\}/);
   assert.match(file, /Cloud hosting is not proof of safety/);
   assert.match(file, /file-higgins-explanation/);
+  assert.ok(file.indexOf('testID="file-pick"') < file.indexOf('testID="file-source-followup"'));
+  assert.match(file, /file-picker-retry/);
 });
 
 test("Device and App Gates explain capability limits and supported remediation", () => {

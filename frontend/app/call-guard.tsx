@@ -22,6 +22,7 @@ import { CallSdk, type CallProtectionCapabilities } from "@/src/security/callSdk
 import { type CallRiskResult, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { dispatchInvestigationAction } from "@/src/domain/investigationActions";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -80,6 +81,7 @@ export default function CallGuard() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<CallRiskResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [actionGuidance, setActionGuidance] = useState<string | null>(null);
 
   const runCheck = async () => {
     if (!number.trim()) return;
@@ -173,7 +175,14 @@ export default function CallGuard() {
         {result ? (
           <>
           {result.assessment ? <MessageAssessmentResult assessment={result.assessment} state={result.decision === "avoid" ? "barking" : result.decision === "review" ? "growling" : "resting"}
-            testIDPrefix="call" submittedLabel="Number checked" submittedText={result.number} onPrimaryAction={() => showToast(result.assessment!.higgins.next_action, "neutral")} /> : null}
+            testIDPrefix="call" submittedLabel="Number checked" submittedText={result.number} onPrimaryAction={() => dispatchInvestigationAction(result.assessment!.higgins.action_kind, {
+              showVerification: () => setActionGuidance(result.assessment!.higgins.next_action),
+              showCallingGuidance: () => setActionGuidance(result.assessment!.higgins.next_action),
+              openAccount: () => router.push("/account"),
+              clearSubmittedCopy: () => { setNumber(""); setActionGuidance("The submitted number was cleared from this screen. It was not removed from your call history."); },
+              showReview: () => setActionGuidance(result.assessment!.higgins.next_action),
+            })} /> : null}
+          {actionGuidance ? <Card testID="callguard-action-guidance" style={{ gap: spacing.sm }}><SectionTitle>Next action</SectionTitle><Body>{actionGuidance}</Body><Button testID="callguard-action-guidance-close" variant="ghost" label="Hide instructions" onPress={() => setActionGuidance(null)} /></Card> : null}
           <Card testID="callguard-result-details" style={{ gap: spacing.sm }}>
             <View style={s.row}>
               <Pill tone={result.decision === "avoid" ? "barking" : result.decision === "review" ? "growling" : "unknown"} label={result.decision === "avoid" ? "High risk" : result.decision === "review" ? "Some risk" : "No strong signal"} testID="callguard-decision" />

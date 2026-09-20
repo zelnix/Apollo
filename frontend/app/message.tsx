@@ -22,6 +22,8 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { useScreenshotAccess } from "@/src/hooks/useScreenshotAccess";
 import { redactUserSecrets } from "@/src/domain/privacy";
+import { issueContext, openHigginsHandoff } from "@/src/domain/higginsHandoff";
+import { dispatchInvestigationAction } from "@/src/domain/investigationActions";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -139,12 +141,11 @@ export default function CheckMessage() {
           <>
             {result.assessment ? <MessageAssessmentResult assessment={result.assessment} state={a.state}
               submittedLabel={screenshotUri ? (params.source === "email" ? "Email screenshot investigated" : "Screenshot text investigated") : "Message investigated"}
-              submittedTitle={sender || "Sender not supplied"} submittedText={text} onPrimaryAction={() => {
-              const kind = result.assessment!.higgins.action_kind;
-              if (kind === "check_account") setVerify(true);
-              else if (kind === "avoid_and_delete") { setText(""); setSender(""); showToast("Submitted content cleared from this screen.", "neutral"); }
-              else setVerify(true);
-            }} /> : <Card testID="message-result" style={{ borderColor: toneColor(colors, tone), gap: spacing.sm }}>
+              submittedTitle={sender || "Sender not supplied"} submittedText={text} onPrimaryAction={() => dispatchInvestigationAction(result.assessment!.higgins.action_kind, {
+                showVerification: () => setVerify(true), openAccount: () => router.push({ pathname: "/account", params: { text, scent: result.event?.scent_id ?? result.event?.event_id ?? "" } }),
+                clearSubmittedCopy: () => { setText(""); setSender(""); setScreenshotUri(null); showToast("The copy submitted to Apollo was cleared from this screen. The original message was not deleted.", "neutral"); },
+                showReview: () => setVerify(true),
+              })} /> : <Card testID="message-result" style={{ borderColor: toneColor(colors, tone), gap: spacing.sm }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" }}>
                 <Pill tone={tone} label={STATE_NAME[a.state]} testID="message-state" />
                 <Pill tone="neutral" label={a.scenarioTitle} testID="message-scenario" />
@@ -157,7 +158,7 @@ export default function CheckMessage() {
               <SectionTitle>Recommendation</SectionTitle>
               <Text style={s.why} testID="message-recommendation">{result.explanation?.recommendation ?? a.recommendation}</Text>
               {a.signalLabels.length ? <View style={s.chips}>{a.signalLabels.map((l) => <Pill key={l} tone="unknown" label={l} />)}</View> : null}
-              {result.remoteError ? <Text style={s.small}>Second opinion unavailable — showing Apollo&apos;s on-device reading.</Text> : null}
+              {result.remoteError ? <Text style={s.small}>Second opinion unavailable — showing results from Apollo&apos;s device checks.</Text> : null}
             </Card>}
 
             {a.signals.urls.length ? (
@@ -181,11 +182,11 @@ export default function CheckMessage() {
             <View>
               <SectionTitle>What next</SectionTitle>
               <Card style={{ gap: spacing.sm }}>
-                <Button testID="message-verify-sender" variant="secondary" label="Verify sender safely" onPress={() => setVerify(true)} />
+                <Button testID="message-verify-sender" variant="secondary" label="Show me how to check the sender" onPress={() => setVerify(true)} />
                 {a.signals.loginRequest || a.signals.codeRequest || /password|sign[- ]?in|login|account/i.test(text) ? <Button testID="message-check-account" variant="secondary" label="It's about my account — open Account Gate" onPress={() => router.push({ pathname: "/account", params: { text, scent: result.event?.scent_id ?? result.event?.event_id ?? "" } })} /> : null}
-                <Button testID="message-tell-more" variant="secondary" label="Tell me more (Ask Higgins)" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { context: `Message check: ${a.scenarioTitle}. State: ${STATE_NAME[a.state]}. Signals: ${a.signalLabels.join(", ") || "none"}. Website: ${result.urls[0]?.host ?? "none"}.`, prompt: "Explain this message check in plain language and what I should do." } })} />
+                <Button testID="message-tell-more" variant="secondary" label="Ask Higgins about this message" onPress={() => openHigginsHandoff(router, issueContext({ gate: "text", issue_summary: a.scenarioTitle, assessment_state: a.state, findings: a.signalLabels.map((summary) => ({ summary, provenance: "observed", status: "uncertain" })), uncertainty: ["The sender was not independently authenticated."], confirmed_protective_actions: [], user_reported_actions: [] }), "Explain this message check in plain language and what I should do.")} />
                 {result.event ? <RecoveryFlow event={result.event} kinds={["called", "clicked", "password", "code", "money", "info", "app"]} linkToCheck={a.signals.urls[0] ?? null} testID="message-recovery" /> : null}
-                {result.event ? <Button testID="message-mark-safe" variant="ghost" label="Mark as safe — I know this sender" onPress={() => { void resolveEvent(result.event!); showToast("Marked as safe. Apollo will stop flagging it.", "resting"); goBackOrHome(router); }} /> : null}
+                {result.event ? <Button testID="message-mark-safe" variant="ghost" label="Mark as handled" onPress={() => { void resolveEvent(result.event!); showToast("Marked as handled. This does not verify the sender or suppress future alerts.", "neutral"); goBackOrHome(router); }} /> : null}
               </Card>
             </View>
           </>

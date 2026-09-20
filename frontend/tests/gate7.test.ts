@@ -49,7 +49,7 @@ test("A05 sideloaded accessibility + overlay → barking", () => {
   assert.equal(analyseApp(app({ name: "Secure Helper", source: "browser", purpose: "other", permissions: ["accessibility", "overlay"] })).state, "barking");
 });
 test("A06 overlay alone on a game → ears_up", () => { const r = analyseApp(app({ name: "Puzzle Blast", purpose: "game_media", permissions: ["overlay"] })); assert.equal(r.state, "ears_up"); assert.equal(r.scenario, "A06"); });
-test("A07 notification access on shopping app → ears_up", () => { const r = analyseApp(app({ name: "ShopFast", purpose: "shopping_social", permissions: ["notifications"] })); assert.equal(r.state, "resting"); });
+test("A07 notification access matching a reported purpose remains unverified", () => { const r = analyseApp(app({ name: "ShopFast", purpose: "shopping_social", permissions: ["notifications"] })); assert.equal(r.state, "ears_up"); });
 test("A07 notification access where purpose doesn't justify → ears_up", () => { const r = analyseApp(app({ name: "Wallpapers HD", purpose: "game_media", permissions: ["notifications"] })); assert.equal(r.state, "ears_up"); assert.equal(r.scenario, "A07"); });
 test("A08 SMS + calls on a game → growling", () => { const r = analyseApp(app({ name: "Dice Roller", purpose: "game_media", permissions: ["sms", "calls"] })); assert.equal(r.state, "growling"); assert.equal(r.scenario, "A08"); });
 test("A09 third-party keyboard → ears_up, not malicious, explains reach", () => {
@@ -60,16 +60,16 @@ test("A10 non-VPN app with VPN permission → growling + network handoff", () =>
   const r = analyseApp(app({ name: "Speed Booster", purpose: "cleaner", permissions: ["vpn"] }));
   assert.equal(r.state, "growling"); assert.equal(r.scenario, "A10"); assert.equal(r.handoff, "network");
 });
-test("A13 / acceptance 3: authenticator from official store → resting, no warning", () => {
+test("A13 authenticator reported from official store remains unverified", () => {
   const r = analyseApp(app({ name: "Microsoft Authenticator", source: "app_store", purpose: "security", permissions: ["camera", "notifications"] }));
-  assert.equal(r.state, "resting"); assert.equal(r.scenario, "A13"); assert.match(r.verdict, /didn't find anything worrying/i);
+  assert.equal(r.state, "ears_up"); assert.equal(r.scenario, "A13"); assert.match(r.verdict, /do not prove safety/i);
 });
-test("A13 password manager with accessibility (autofill) from store → resting", () => {
-  assert.equal(analyseApp(app({ name: "Bitwarden", source: "play_store", purpose: "security", permissions: ["accessibility", "keyboard"] })).state, "resting");
+test("A13 password manager selection does not become proof of safety", () => {
+  assert.equal(analyseApp(app({ name: "Bitwarden", source: "play_store", purpose: "security", permissions: ["accessibility", "keyboard"] })).state, "ears_up");
 });
-test("A14 / acceptance 4: app contacted blocked malicious domain → growling 'I blocked a dangerous connection', network handoff", () => {
+test("A14 aggregate app-network signal does not claim a confirmed block", () => {
   const r = analyseApp(app({ name: "Example Support", source: "play_store", purpose: "other", permissions: [], network: { blockedMalicious: 1, unknownHosts: 2, hosts: ["malicious-example.test"] } }));
-  assert.equal(r.state, "growling"); assert.equal(r.scenario, "A14"); assert.match(r.verdict, /I blocked a dangerous connection from this app/i); assert.equal(r.handoff, "network");
+  assert.equal(r.state, "growling"); assert.equal(r.scenario, "A14"); assert.match(r.verdict, /does not.*confirm an Apollo block/i); assert.equal(r.handoff, "network");
   assert.ok(!/malware/i.test(r.verdict));
 });
 test("A15 many unknown domains, nothing confirmed → ears_up, no cry wolf", () => {
@@ -84,8 +84,8 @@ test("A17 device admin on sideloaded app → barking; on store app → growling"
   assert.equal(analyseApp(app({ name: "Locker", source: "browser", purpose: "other", permissions: ["device_admin"] })).state, "barking");
   const r = analyseApp(app({ name: "Locker", source: "play_store", purpose: "other", permissions: ["device_admin"] })); assert.equal(r.state, "growling"); assert.equal(r.scenario, "A17");
 });
-test("A18 unknown app from official store, nothing suspicious → resting", () => {
-  const r = analyseApp(app({ name: "Tiny Notes", source: "play_store", purpose: "other", permissions: [] })); assert.equal(r.state, "resting"); assert.equal(r.scenario, "A18");
+test("A18 official-store selection is supporting evidence, not a safety verdict", () => {
+  const r = analyseApp(app({ name: "Tiny Notes", source: "play_store", purpose: "other", permissions: [] })); assert.equal(r.state, "ears_up"); assert.equal(r.scenario, "A18");
   assert.match(r.why.join(" "), /not proof of safety/i);
 });
 test("A18 not sure where it came from → ears_up", () => { assert.equal(analyseApp(app({ name: "Tiny Notes", source: "not_sure", purpose: "other" })).state, "ears_up"); });

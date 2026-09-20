@@ -58,6 +58,7 @@ async def lifespan(_: FastAPI):
     await ensure_evidence_receipt_indexes()
     await db.trust_entries.create_index("trust_id", unique=True)
     await db.ask_messages.create_index([("device_id", 1), ("created_at", 1)])
+    await db.ask_handoffs.create_index([("device_id", 1), ("handoff_id", 1)], unique=True)
     await db.blocklist.create_index("host", unique=True)
     await db.admin_audit.create_index([("at", -1)])
     await db.incident_notes.create_index("note_id")

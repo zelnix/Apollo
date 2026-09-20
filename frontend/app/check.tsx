@@ -29,6 +29,7 @@ import { useApollo, type CheckOutcome } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { useScreenshotAccess } from "@/src/hooks/useScreenshotAccess";
+import { dispatchInvestigationAction } from "@/src/domain/investigationActions";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -56,6 +57,8 @@ export default function CheckLink() {
   const { checkLink, events, isMock, ready, setupDone, deviceId, showToast, upsertEvent, recordPageAnalysis } = useApollo();
   const [verify, setVerify] = useState(false);
   const [report, setReport] = useState(false);
+  const [reportBusy, setReportBusy] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
   const [tech, setTech] = useState(false);
   const [page, setPage] = useState<PageAnalysis | null>(null);
   const [pageEvent, setPageEvent] = useState<PatrolEvent | null>(null);
@@ -93,7 +96,7 @@ export default function CheckLink() {
     } catch (error) { setPageError(error instanceof Error ? error.message : "Could not inspect that page."); }
   };
   const sendFeedback = async (kind: "false_positive" | "override", ev: { event_id: string; state: string; indicator_host: string | null }, sources: string[]) => {
-    try { await apiPost("/feedback", "feedback", { device_id: deviceId, event_id: ev.event_id, kind, state: ev.state, host: ev.indicator_host, sources, note: "" }); } catch { /* best effort */ }
+    await apiPost("/feedback", "feedback", { device_id: deviceId, event_id: ev.event_id, kind, state: ev.state, host: ev.indicator_host, sources, note: "" });
   };
   const params = useLocalSearchParams<{ url?: string; source?: string }>();
   const [input, setInput] = useState(params.url ? String(params.url) : "");
@@ -183,12 +186,11 @@ export default function CheckLink() {
             <Animated.View entering={FadeInDown.duration(350)}>
               {outcome.assessment ? <MessageAssessmentResult assessment={outcome.assessment} state={state} testIDPrefix="link"
                 submittedLabel="Link investigated" submittedTitle={outcome.local.host ?? "Submitted link"} submittedText={input}
-                onPrimaryAction={() => {
-                  const kind = outcome.assessment!.higgins.action_kind;
-                  if (kind === "check_account") router.push("/account");
-                  else if (kind === "avoid_and_delete") { setInput(""); showToast("The submitted link was cleared. Keep it closed and use the official app or website instead.", "neutral"); }
-                  else setVerify(true);
-                }} /> : outcome.investigationError ? <Card testID="link-investigation-error"><Body>Higgins&apos;s deeper investigation is unavailable: {outcome.investigationError} Apollo&apos;s deterministic and reputation findings remain below.</Body></Card> : null}
+                onPrimaryAction={() => dispatchInvestigationAction(outcome.assessment!.higgins.action_kind, {
+                  showVerification: () => setVerify(true), openAccount: () => router.push("/account"),
+                  clearSubmittedCopy: () => { setInput(""); showToast("The link submitted to Apollo was cleared from this screen. The original message or email was not deleted.", "neutral"); },
+                  showReview: () => setTech(true),
+                })} /> : outcome.investigationError ? <Card testID="link-investigation-error"><Body>Higgins&apos;s deeper investigation is unavailable: {outcome.investigationError} Apollo&apos;s deterministic and reputation findings remain below.</Body></Card> : null}
               <Card testID="check-result-card" style={{ borderColor: toneColor(colors, liveEvent?.state === "biting" && liveEvent.resolved_at ? "resting" : state), gap: spacing.sm }}>
                 <Text style={s.sub} testID="check-result-technical-label">Apollo technical decision</Text>
                 <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm }}><Pill tone={state} label={STATE_LABEL[state]} testID="check-result-state" /><HigginsSpeakButton compact text={`${STATE_LABEL[state]}. ${liveEvent?.state === "biting" ? "Apollo blocked a dangerous website." : (liveEvent?.headline ?? outcome.decision.headline)} ${liveEvent?.what_happened ?? outcome.decision.what_happened} What to do: ${liveEvent?.what_to_do ?? outcome.decision.what_to_do}`} testID="check-hear-higgins" /></View>
@@ -236,11 +238,11 @@ export default function CheckLink() {
               {liveEvent ? <View style={{ marginTop: spacing.md }}><EventActions event={liveEvent} /></View> : null}
               {liveEvent ? (
                 <Card style={{ marginTop: spacing.md, gap: spacing.sm }} testID="check-gate3-actions">
-                  <Button testID="check-verify-website" variant="secondary" label="Verify website" onPress={() => setVerify(true)} />
+                  <Button testID="check-verify-website" variant="secondary" label="Show me how to check the website" onPress={() => setVerify(true)} />
                   <Button testID="check-tech-details" variant="ghost" label={liveEvent.state === "biting" ? "What happened? / Technical details" : "Technical details"} onPress={() => setTech(true)} />
                   {liveEvent.state !== "resting" ? <RecoveryFlow event={liveEvent} kinds={["clicked", "password", "card", "code", "download", "app", "called"]} testID="check-recovery" /> : null}
                   {(liveEvent.state === "growling" || liveEvent.state === "ears_up") && liveEvent.status === "active" ? (
-                    <Button testID="check-continue-anyway" variant="ghost" label="Continue anyway (Apollo still recommends leaving)" onPress={() => { void upsertEvent({ ...liveEvent, why: [...liveEvent.why, "You chose to continue anyway. Apollo still recommends leaving this site."] }); void sendFeedback("override", liveEvent, outcome.intel?.sources.map((x) => x.name) ?? []); showToast("Recorded. Apollo still recommends leaving this site.", "growling"); }} />
+                    <Button testID="check-continue-anyway" variant="ghost" label="Record my choice to continue" onPress={() => { void upsertEvent({ ...liveEvent, why: [...liveEvent.why, "You chose to continue anyway. Apollo still recommends leaving this site."] }); void sendFeedback("override", liveEvent, outcome.intel?.sources.map((x) => x.name) ?? []).catch(() => undefined); showToast("Choice recorded. Apollo still recommends leaving this site.", "growling"); }} />
                   ) : null}
                   {liveEvent.state !== "resting" ? <Button testID="check-report-mistake" variant="ghost" label="Report mistake" onPress={() => setReport(true)} /> : null}
                 </Card>
@@ -282,7 +284,8 @@ export default function CheckLink() {
 
       <Sheet visible={report} onClose={() => setReport(false)} title="Report a mistake" testID="report-sheet">
         <Body>Think Apollo got this wrong? Your report includes the event, Apollo&apos;s decision, the domain and which intelligence sources responded — nothing else. A human reviews it; one report never whitelists a site for everyone.</Body>
-        <Button testID="report-send" label="Send report" onPress={() => { if (liveEvent) void sendFeedback("false_positive", liveEvent, outcome?.intel?.sources.map((x) => x.name) ?? []); setReport(false); showToast("Thanks — report sent for review.", "resting"); }} />
+        {reportError ? <Body testID="report-error">{reportError}</Body> : null}
+        <Button testID="report-send" label={reportBusy ? "Sending…" : reportError ? "Retry report" : "Send report"} disabled={reportBusy} onPress={() => { if (!liveEvent) return; setReportBusy(true); setReportError(null); void sendFeedback("false_positive", liveEvent, outcome?.intel?.sources.map((x) => x.name) ?? []).then(() => { setReport(false); showToast("Thanks — report sent for review.", "resting"); }).catch(() => setReportError("The report was not sent. Check your connection and retry." )).finally(() => setReportBusy(false)); }} />
         <Button testID="report-cancel" variant="ghost" label="Cancel" onPress={() => setReport(false)} />
       </Sheet>
       <ScreenshotPermissionSheet prefix="check" visible={!!photoAccess.permission} canAskAgain={photoAccess.permission?.canAskAgain ?? true}

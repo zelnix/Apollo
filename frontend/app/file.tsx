@@ -19,6 +19,7 @@ import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { issueContext, openHigginsHandoff } from "@/src/domain/higginsHandoff";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -34,20 +35,27 @@ const useStyles = makeStyles((c) => ({
   verdict: { fontFamily: fonts.displayBold, fontSize: 20, lineHeight: 26, color: c.onSurface },
   why: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurface },
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
+  passwordRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
 }));
+
+type FileAsset = { uri: string; name: string; mimeType?: string | null; size?: number };
+type PendingFile = { asset: FileAsset; inspected: Inspection; needsSource: boolean; needsPassword: boolean; sourceAnswered: boolean };
 
 export default function CheckFile() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { ready, setupDone, upsertEvent, deviceId, adapterLabel, showToast } = useApollo();
+  const { ready, setupDone, upsertEvent, deviceId, adapterLabel } = useApollo();
   const [source, setSource] = useState<FileSource>("unknown");
-  const [pw, setPw] = useState(false);
+  const [pw, setPw] = useState<boolean | null>(null);
   const [nameOnly, setNameOnly] = useState("");
   const [result, setResult] = useState<{ a: FileAnalysis; event: PatrolEvent | null } | null>(null);
   const [tech, setTech] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [pickerError, setPickerError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<{ asset: FileAsset; inspected: Inspection; realType: string } | null>(null);
+  const [pending, setPending] = useState<PendingFile | null>(null);
 
   const finish = async (a: FileAnalysis) => {
     let event: PatrolEvent | null = null;
@@ -60,9 +68,12 @@ export default function CheckFile() {
   const params = useLocalSearchParams<{ uri?: string; name?: string; mime?: string; size?: string; source?: string }>();
   useEffect(() => { if (!params.uri && FILE_SOURCES.some((item) => item.id === params.source)) setSource(params.source as FileSource); }, [params.source, params.uri]);
   const pick = async () => {
-    const res = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false });
-    if (res.canceled || !res.assets[0]) return;
-    await analyseAsset(res.assets[0]);
+    setPickerError(null);
+    try {
+      const res = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false });
+      if (res.canceled || !res.assets[0]) return;
+      await analyseAsset(res.assets[0], "unknown");
+    } catch (error) { setPickerError(error instanceof Error ? error.message : "Apollo could not open the file picker. Try again."); }
   };
   // Shared from another app (Share → Apollo): analyse the shared file straight away.
   useEffect(() => { if (params.uri && !result) { const incoming = FILE_SOURCES.some((item) => item.id === params.source) ? params.source as FileSource : "unknown"; setSource(incoming); void analyseAsset({ uri: params.uri, name: params.name ?? params.uri.split("/").pop() ?? "shared file", mimeType: params.mime || null, size: params.size ? Number(params.size) : undefined }, incoming); } }, [params.uri]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -74,8 +85,21 @@ export default function CheckFile() {
         const file = new File(asset.uri);
         inspected = inspectWithHandle(file);
       } catch { inspected.inspectionError = 'This build could not read the file contents.'; }
-      await finish(analyseFile({ name: asset.name, size: asset.size ?? undefined, mime: asset.mimeType ?? null, ...inspected, source: assetSource, passwordInMessage: pw }));
-    } catch (e) { showToast(e instanceof Error ? e.message : "Couldn't read that file.", "barking"); } finally { setBusy(false); }
+      const preliminary = analyseFile({ name: asset.name, size: asset.size ?? undefined, mime: asset.mimeType ?? null, ...inspected, source: assetSource, passwordInMessage: false });
+      setSelected({ asset, inspected, realType: preliminary.realType });
+      const extension = asset.name.toLowerCase().split(".").pop() ?? "";
+      const needsPassword = ["zip", "rar", "7z"].includes(preliminary.realType) || ["zip", "rar", "7z"].includes(extension);
+      const needsSource = (preliminary.state === "barking" || ["F01", "F03", "F04", "F13"].includes(preliminary.scenario)) && assetSource === "unknown";
+      if (needsPassword || needsSource) setPending({ asset, inspected, needsSource, needsPassword, sourceAnswered: assetSource !== "unknown" });
+      else await finish(preliminary);
+    } catch (e) { setPickerError(e instanceof Error ? e.message : "Apollo couldn't read that file. Choose it again or try another file."); } finally { setBusy(false); }
+  };
+  const completePending = async () => {
+    if (!pending || (pending.needsSource && !pending.sourceAnswered) || (pending.needsPassword && pw === null)) return;
+    setBusy(true);
+    try { await finish(analyseFile({ name: pending.asset.name, size: pending.asset.size, mime: pending.asset.mimeType ?? null, ...pending.inspected, source, passwordInMessage: pw === true })); setPending(null); }
+    catch (error) { setPickerError(error instanceof Error ? error.message : "Apollo couldn't finish this file check. Retry."); }
+    finally { setBusy(false); }
   };
 
   if (ready && !setupDone) return <Redirect href="/" />;
@@ -91,13 +115,13 @@ export default function CheckFile() {
         {!result ? (
           <>
             <Body testID="file-inspection-scope">Select or share any download or attachment, including one from Google Drive or another cloud service. Apollo checks a signature and up to 200 KB locally, for files up to 20 MB. Cloud hosting is not proof of safety. No archive extraction or malware scan. A name-only check does not read content. File bytes are never uploaded.</Body>
-            <Text style={s.why}>Where did it come from?</Text>
-            <View style={s.chips}>{FILE_SOURCES.map((o) => <Pressable key={o.id} testID={`file-source-${o.id}`} accessibilityRole="radio" accessibilityState={{ checked: source === o.id }} aria-checked={source === o.id} onPress={() => setSource(o.id)} style={[s.chip, source === o.id && s.chipOn]}><Text style={s.chipText}>{o.label}</Text></Pressable>)}</View>
-            <View style={s.row}><Text style={s.why}>A password for it came in the same message</Text><Switch testID="file-pw" value={pw} onValueChange={setPw} trackColor={{ true: colors.growling, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View>
-            <Button testID="file-pick" label={busy ? "Checking file…" : "Select download or attachment"} onPress={() => void pick()} disabled={busy} />
-            <SectionTitle>Or just check a file name</SectionTitle>
-            <TextInput testID="file-name" style={s.input} value={nameOnly} onChangeText={setNameOnly} placeholder="e.g. Statement.pdf.exe" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} />
-            <Button testID="file-name-check" variant="secondary" label="Check the name" onPress={() => void finish(analyseFile({ name: nameOnly.trim(), source, passwordInMessage: pw }))} disabled={!nameOnly.trim()} />
+            <Button testID="file-pick" label={busy ? "Inspecting file…" : "Choose a file"} onPress={() => void pick()} disabled={busy} />
+            {pickerError ? <Card testID="file-picker-error" style={{ gap: spacing.sm }}><Body>{pickerError}</Body><Button testID="file-picker-retry" variant="secondary" label="Try choosing again" onPress={() => void pick()} disabled={busy} /></Card> : null}
+            {selected ? <Card testID="file-evidence" style={{ gap: spacing.xs }}><SectionTitle>What Apollo inspected</SectionTitle><Body testID="file-evidence-name">Filename: {selected.asset.name}</Body><Body testID="file-evidence-size">Size: {selected.asset.size == null ? "not supplied" : `${selected.asset.size} bytes`}</Body><Body testID="file-evidence-mime">Supplied type: {selected.asset.mimeType || "unknown"}</Body><Body testID="file-evidence-signature">Signature result: {selected.realType}</Body><Body testID="file-evidence-sample">Content sample: {selected.inspected.inspectionError ? selected.inspected.inspectionError : selected.inspected.textSample ? "supported text was read locally" : "not readable or not present"}</Body></Card> : null}
+            {pending?.needsSource && !pending.sourceAnswered ? <Card testID="file-source-followup" style={{ gap: spacing.sm }}><SectionTitle>One detail could change the advice</SectionTitle><Body>Where did this file come from? Choose “Not sure” if the source is unknown.</Body><View style={s.chips}>{FILE_SOURCES.map((o) => <Pressable key={o.id} testID={`file-source-${o.id}`} accessibilityRole="radio" accessibilityState={{ checked: source === o.id && pending.sourceAnswered }} aria-checked={source === o.id && pending.sourceAnswered} onPress={() => { setSource(o.id); setPending((current) => current ? { ...current, sourceAnswered: true } : current); }} style={[s.chip, source === o.id && pending.sourceAnswered && s.chipOn]}><Text style={s.chipText}>{o.label}</Text></Pressable>)}</View></Card> : null}
+            {pending?.needsPassword && (!pending.needsSource || pending.sourceAnswered) ? <Card testID="file-password-followup" style={{ gap: spacing.sm }}><SectionTitle>One more detail</SectionTitle><View style={s.passwordRow}><Text style={[s.why, { flex: 1, flexShrink: 1 }]}>A password for this archive was supplied with it</Text><Switch style={{ flexShrink: 0 }} testID="file-pw" value={pw === true} onValueChange={(value) => setPw(value)} trackColor={{ true: colors.growling, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View><Body testID="file-password-answer">{pw === null ? "Not answered yet" : pw ? "You reported that a password was supplied." : "You reported that no password was supplied."}</Body>{pw === null ? <Button testID="file-pw-no" variant="secondary" label="No password was supplied" onPress={() => setPw(false)} /> : null}</Card> : null}
+            {pending ? <Button testID="file-finish-check" label={busy ? "Finishing check…" : "Finish file check"} onPress={() => void completePending()} disabled={busy || (pending.needsSource && !pending.sourceAnswered) || (pending.needsPassword && pw === null)} /> : null}
+            {!pending && !selected ? <><SectionTitle>Limited alternative: filename only</SectionTitle><Body>A filename-only check cannot read the signature or content and cannot establish safety.</Body><TextInput testID="file-name" style={s.input} value={nameOnly} onChangeText={setNameOnly} placeholder="e.g. Statement.pdf.exe" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} /><Button testID="file-name-check" variant="secondary" label="Check filename only" onPress={() => void finish(analyseFile({ name: nameOnly.trim(), source: "unknown", passwordInMessage: false }))} disabled={!nameOnly.trim()} /></> : null}
           </>
         ) : a ? (
           <>
@@ -126,15 +150,15 @@ export default function CheckFile() {
               {a.handoff === "network" ? <Button testID="file-check-device" label="I installed it — check my device" onPress={() => router.push("/device")} /> : null}
               <Button testID="file-tech" variant="secondary" label="View technical details" onPress={() => setTech(true)} />
               {result.event ? <RecoveryFlow event={result.event} kinds={["clicked", "app", "password", "card", "money", "download"]} testID="file-recovery" /> : null}
-              {result.event ? <Button testID="file-tell-more" variant="ghost" label="Ask Higgins about this file" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { context: `File check: ${a.title}. State: ${STATE_NAME[a.state]}. ${a.technical.join("; ")}`, prompt: "What should I do with this file?" } })} /> : null}
-              <Button testID="file-again" variant="ghost" label="Check another file" onPress={() => { setResult(null); setNameOnly(""); }} />
+              {result.event ? <Button testID="file-tell-more" variant="ghost" label="Ask Higgins about this file" onPress={() => openHigginsHandoff(router, issueContext({ gate: "file", issue_summary: a.title, assessment_state: a.state, findings: a.why.slice(0, 6).map((summary) => ({ summary, provenance: "inferred", status: a.state === "barking" ? "warning" : "uncertain" })), uncertainty: ["This inspection cannot establish that a file is safe."], confirmed_protective_actions: [], user_reported_actions: [] }), "What should I do with this file?")} /> : null}
+              <Button testID="file-again" variant="ghost" label="Check another file" onPress={() => { setResult(null); setNameOnly(""); setSelected(null); setPending(null); setPickerError(null); setPw(null); setSource("unknown"); }} />
             </Card>
           </>
         ) : null}
       </KeyboardAwareScrollView>
       <Sheet visible={tech} onClose={() => setTech(false)} title="Technical details" testID="file-tech-sheet">
         {a?.technical.map((t, i) => <Body key={i} testID={`file-tech-${i}`}>{t}</Body>)}
-        <Body>Deep malware scanning and hash reputation require the native Security SDK — not available in this build. Apollo shows only what it could verify.</Body>
+        <Body>Deep malware scanning and hash reputation are not available in this build. Apollo shows only the device checks that completed.</Body>
         <Button testID="file-tech-close" variant="ghost" label="Done" onPress={() => setTech(false)} />
       </Sheet>
     </View>

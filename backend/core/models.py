@@ -178,6 +178,8 @@ class PatrolEventIn(BaseModel):
     enforcement_evidence: Optional[EnforcementEvidenceIn] = None
     # Public, query/fragment-free references produced by the investigation service; never raw links.
     supporting_references: list[dict[str, str]] = Field(default_factory=list, max_length=6)
+    # Structured recovery actions reported by the person. Legacy display-text records remain readable.
+    recovery_kinds: list[Literal["clicked", "password", "code", "money", "info", "app", "card", "download", "called", "remote", "accessibility", "profile", "banking_during_access", "mfa_approved", "locked_out"]] = Field(default_factory=list, max_length=15)
 
 
 class PatrolEvent(PatrolEventIn, BaseDocument):
@@ -210,10 +212,38 @@ class TrustEntry(TrustIn, BaseDocument):
     deleted_at: Optional[datetime] = None
 
 
+class AskIssueFinding(BaseModel):
+    model_config = {"extra": "forbid"}
+    summary: str = Field(min_length=1, max_length=180)
+    provenance: Literal["observed", "inferred", "user_reported"]
+    status: Literal["confirmed", "warning", "uncertain"]
+
+
+class AskIssueContext(BaseModel):
+    model_config = {"extra": "forbid"}
+    gate: Literal["site", "link", "text", "call", "network", "account", "email", "app", "file", "device", "incident"]
+    issue_summary: str = Field(min_length=1, max_length=240)
+    assessment_state: Literal["sniffing", "resting", "ears_up", "growling", "barking", "biting", "unknown"]
+    findings: list[AskIssueFinding] = Field(default_factory=list, max_length=8)
+    uncertainty: list[str] = Field(default_factory=list, max_length=6)
+    confirmed_protective_actions: list[str] = Field(default_factory=list, max_length=4)
+    user_reported_actions: list[str] = Field(default_factory=list, max_length=6)
+
+    @field_validator("uncertainty", "confirmed_protective_actions", "user_reported_actions")
+    @classmethod
+    def validate_bounded_lines(cls, values: list[str]) -> list[str]:
+        if any(not value.strip() or len(value) > 180 for value in values):
+            raise ValueError("context lines must be 1-180 characters")
+        return values
+
+
 class AskRequest(BaseModel):
+    model_config = {"extra": "forbid"}
     device_id: str = Field(min_length=8, max_length=64)
     message: str = Field(min_length=1, max_length=2000)
-    context: Optional[str] = Field(default=None, max_length=1200)
+    context: Optional[AskIssueContext] = None
+    handoff_id: Optional[str] = Field(default=None, min_length=8, max_length=64, pattern=r"^[A-Za-z0-9-]+$")
+    conversation_id: str = Field(default="general", min_length=1, max_length=64, pattern=r"^[A-Za-z0-9-]+$")
 
 
 class AskMessage(BaseDocument):
@@ -221,6 +251,8 @@ class AskMessage(BaseDocument):
     role: Literal["user", "apollo", "higgins"]
     content: str
     created_at: datetime
+    conversation_id: str = "general"
+    handoff_id: Optional[str] = None
 
 
 # --------------------------------------------------------------------------- Call Guard (Gate 4 add-on)

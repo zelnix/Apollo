@@ -21,7 +21,7 @@ const useStyles = makeStyles((c) => ({
   progress: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary },
 }));
 
-export function HigginsChecks({ checks, askedAt, messageId, record = true, title = "I suggest" }: { checks: CheckId[]; askedAt: string; messageId: string; /** Remember this suggestion so Higgins can follow up a day later (off for follow-up cards and the Home hero). */ record?: boolean; title?: string }) {
+export function HigginsChecks({ checks, askedAt, messageId, record = true, title = "I suggest", onNavigate }: { checks: CheckId[]; askedAt: string; messageId: string; /** Remember this suggestion so Higgins can follow up a day later (off for follow-up cards and the Home hero). */ record?: boolean; title?: string; onNavigate?: () => void }) {
   const s = useStyles();
   const { colors } = useTheme();
   const router = useRouter();
@@ -35,7 +35,7 @@ export function HigginsChecks({ checks, askedAt, messageId, record = true, title
       {checks.map((c) => {
         const d = isDone(completed[c], askedAt);
         return (
-          <Pressable key={c} testID={`higgins-check-${c}`} accessibilityRole="link" accessibilityState={{ checked: d }} onPress={() => router.push(CHECKS[c].route as never)} style={[s.chip, d && s.chipDone]}>
+          <Pressable key={c} testID={`higgins-check-${c}`} accessibilityRole="link" accessibilityState={{ checked: d }} onPress={() => { onNavigate?.(); requestAnimationFrame(() => router.push(CHECKS[c].route as never)); }} style={[s.chip, d && s.chipDone]}>
             {d ? <Check size={18} color={colors.resting} /> : <ChevronRight size={18} color={colors.brand} />}
             <View style={{ flex: 1 }}><Text style={s.chipText}>{CHECKS[c].label}</Text><Text style={s.where}>{CHECKS[c].where}</Text></View>
             {d ? <Text style={s.doneText} testID={`higgins-check-${c}-done`}>Done</Text> : null}

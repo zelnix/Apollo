@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { analyseAccountAlert, isOfficialHost, type AccountInput } from "../src/domain/accountAnalysis.ts";
+import { analyseAccountAlert, inspectAccountEvidence, isOfficialHost, type AccountInput } from "../src/domain/accountAnalysis.ts";
 import { analyseNetwork, ssidMatches, type NetworkInput } from "../src/domain/networkAnalysis.ts";
 import type { NetworkStatus } from "../src/security/SecurityPlatformAdapter";
 import { summariseNetworkEvents } from "../src/domain/networkAnalysis.ts";
@@ -28,9 +28,9 @@ test("N04 open Wi‑Fi → ears_up, does not claim interception", () => {
 test("N05 captive portal with page address → growling + web handoff", () => {
   const r = analyseNetwork(net({ status: wifi({ captivePortal: true }), captiveUrl: "http://hotel-wifi-login.top/auth" })); assert.equal(r.state, "growling"); assert.equal(r.handoff, "web");
 });
-test("N06/N12 / acceptance 1: SDK blocked malicious destination → Guarding (biting), calm 'I blocked a dangerous connection', no bark", () => {
+test("N12 aggregate device signal never claims a confirmed block without enforcement evidence", () => {
   const r = analyseNetwork(net({ context: "home", sdk: { blockedMalicious: 1, c2Apps: [], unknownHosts: 0, dnsChanged: false, vpnChangedRecently: false } }));
-  assert.equal(r.state, "biting"); assert.match(r.verdict, /I blocked a dangerous connection\. No action needed\./);
+  assert.equal(r.state, "barking"); assert.match(r.verdict, /does not contain confirmed enforcement evidence/i); assert.doesNotMatch(r.verdict, /I blocked/);
 });
 test("N07 C2 traffic from an app → barking + app handoff", () => {
   const r = analyseNetwork(net({ sdk: { blockedMalicious: 3, c2Apps: ["Example Support"], unknownHosts: 0, dnsChanged: false, vpnChangedRecently: false } })); assert.equal(r.state, "barking"); assert.equal(r.handoff, "app"); assert.match(r.verdict, /Example Support/);
@@ -67,32 +67,33 @@ test("AC01 / acceptance 3: MFA prompt without logging in → barking 'Don't appr
 });
 test("AC01 not sure → growling, deny anyway", () => { const r = analyseAccountAlert(acc({ kind: "mfa_prompt", provider: "google", userInitiated: null })); assert.equal(r.state, "growling"); assert.match(r.verdict, /don't approve/i); });
 test("AC02 repeated prompts → barking MFA fatigue", () => { const r = analyseAccountAlert(acc({ kind: "mfa_prompt", provider: "microsoft", userInitiated: false, repeated: true })); assert.equal(r.scenario, "AC02"); assert.equal(r.state, "barking"); });
-test("AC20 / acceptance 6: MFA prompt right after own Microsoft login → resting", () => {
-  const r = analyseAccountAlert(acc({ kind: "mfa_prompt", provider: "microsoft", userInitiated: true })); assert.equal(r.state, "resting"); assert.equal(r.scenario, "AC20");
+test("AC20: reported MFA request remains unverified", () => {
+  const r = analyseAccountAlert(acc({ kind: "mfa_prompt", provider: "microsoft", userInitiated: true })); assert.equal(r.state, "ears_up"); assert.equal(r.scenario, "AC20"); assert.match(r.verdict, /does not authenticate/i);
 });
 test("AC04 fake password reset with off-domain link → barking + web handoff", () => {
   const r = analyseAccountAlert(acc({ kind: "password_reset", provider: "microsoft", userInitiated: null, text: "Your Microsoft password must be reset within 24 hours: https://microsoft-reset-secure.top/x" }));
   assert.equal(r.state, "barking"); assert.equal(r.scenario, "AC04"); assert.equal(r.handoff, "web"); assert.deepEqual(r.suspiciousUrls, ["https://microsoft-reset-secure.top/x"]);
 });
-test("AC05 genuine reset the user requested, official domain → resting", () => {
+test("AC05 requested reset with configured domain remains unverified", () => {
   const r = analyseAccountAlert(acc({ kind: "password_reset", provider: "microsoft", userInitiated: true, text: "Reset your password: https://account.live.com/password/reset?code=abc" }));
-  assert.equal(r.state, "resting"); assert.equal(r.scenario, "AC05"); assert.equal(r.suspiciousUrls.length, 0);
+  assert.equal(r.state, "ears_up"); assert.equal(r.scenario, "AC05"); assert.equal(r.suspiciousUrls.length, 0); assert.doesNotMatch(r.verdict, /Fine to use/i);
 });
 test("AC06 password reset not requested (official) → growling; password *changed* not by me → barking", () => {
   assert.equal(analyseAccountAlert(acc({ kind: "password_reset", provider: "google", userInitiated: false })).state, "growling");
   const r = analyseAccountAlert(acc({ kind: "password_changed", provider: "google", userInitiated: false })); assert.equal(r.state, "barking"); assert.match(r.verdict, /If you didn't make this change, secure the account through/);
 });
-test("AC07 new device login: expected → resting; unexpected → ears_up", () => {
-  assert.equal(analyseAccountAlert(acc({ kind: "login_alert", provider: "apple", userInitiated: true })).state, "resting");
+test("AC07 new device login: expected remains unverified; unexpected needs review", () => {
+  assert.equal(analyseAccountAlert(acc({ kind: "login_alert", provider: "apple", userInitiated: true })).state, "ears_up");
   const r = analyseAccountAlert(acc({ kind: "login_alert", provider: "apple", userInitiated: false })); assert.equal(r.state, "ears_up"); assert.equal(r.scenario, "AC07");
 });
 test("AC08 unusual location → ears_up (no overclaim); with prior phishing → growling", () => {
   assert.equal(analyseAccountAlert(acc({ kind: "login_alert", provider: "google", userInitiated: null, unusualLocation: true })).scenario, "AC08");
   assert.equal(analyseAccountAlert(acc({ kind: "login_alert", provider: "google", userInitiated: false, unusualLocation: true, recentScentCategories: ["message"] })).state, "growling");
 });
-test("AC09 breach notice → ears_up; mentions passwords → growling", () => {
-  assert.equal(analyseAccountAlert(acc({ kind: "breach_notice", provider: "other", text: "Your email appeared in a data breach." })).state, "ears_up");
-  assert.equal(analyseAccountAlert(acc({ kind: "breach_notice", provider: "other", text: "Breach included email addresses and passwords." })).state, "growling");
+test("AC09 selected breach notice remains a claim, even when it mentions passwords", () => {
+  const first = analyseAccountAlert(acc({ kind: "breach_notice", provider: "other", text: "Your email appeared in a data breach." }));
+  const second = analyseAccountAlert(acc({ kind: "breach_notice", provider: "other", text: "Breach included email addresses and passwords." }));
+  assert.equal(first.state, "ears_up"); assert.equal(second.state, "ears_up"); assert.match(second.verdict, /claims/i); assert.doesNotMatch(second.title, /known data breach/i);
 });
 test("AC11 entered password on suspicious page → barking + Stay With Me (password recovery)", () => {
   const r = analyseAccountAlert(acc({ kind: "other", provider: "bank", enteredPassword: true, recentScentCategories: ["message", "website"] })); assert.equal(r.state, "barking"); assert.equal(r.stayWithMe, true); assert.ok(r.recoveryKinds.includes("password"));
@@ -105,9 +106,9 @@ test("AC15 fake Google security alert with off-domain link → barking", () => {
   const r = analyseAccountAlert(acc({ kind: "security_alert", provider: "google", text: "Google: suspicious sign-in blocked. Secure your account now https://google-security-check.com/verify" }));
   assert.equal(r.state, "barking"); assert.equal(r.scenario, "AC15");
 });
-test("AC16 genuine security alert on official domain → ears_up, not a scam", () => {
+test("AC16 configured domain match is supporting evidence, not sender authentication", () => {
   const r = analyseAccountAlert(acc({ kind: "security_alert", provider: "google", text: "New sign-in on Windows. Review activity: https://myaccount.google.com/notifications" }));
-  assert.equal(r.state, "ears_up"); assert.equal(r.scenario, "AC16"); assert.match(r.verdict, /isn't a scam/);
+  assert.equal(r.state, "ears_up"); assert.equal(r.scenario, "AC16"); assert.match(r.verdict, /not authenticated/i);
 });
 test("AC17 / acceptance 4: real bank MFA prompt after fake bank SMS + credentials → barking + Stay With Me", () => {
   const r = analyseAccountAlert(acc({ kind: "mfa_prompt", provider: "bank", userInitiated: false, recentScentCategories: ["message", "website"], recentScentBrand: "CommBank" }));
@@ -116,3 +117,6 @@ test("AC17 / acceptance 4: real bank MFA prompt after fake bank SMS + credential
 test("AC18 locked out → barking + Stay With Me (locked_out recovery)", () => { const r = analyseAccountAlert(acc({ kind: "locked_out", provider: "microsoft" })); assert.equal(r.stayWithMe, true); assert.ok(r.recoveryKinds.includes("locked_out")); });
 test("AC19 unknown notification, nothing suspicious → ears_up, verify officially", () => { const r = analyseAccountAlert(acc({ kind: "other", provider: "other", text: "Your account activity summary is ready." })); assert.equal(r.state, "ears_up"); assert.equal(r.scenario, "AC19"); });
 test("official host matching", () => { assert.ok(isOfficialHost("account.live.com", ["live.com"])); assert.ok(!isOfficialHost("live.com.evil.top", ["live.com"])); assert.ok(!isOfficialHost("notlive.com", ["live.com"])); });
+test("evidence inspection does not default an empty submission to MFA", () => { assert.equal(inspectAccountEvidence("", "").kind, "other"); });
+test("password-change wording is inferred independently of any UI selector", () => { assert.equal(inspectAccountEvidence("Your password was changed", "Google").kind, "password_changed"); });
+test("a requested reset without a URL does not establish an official domain or safety", () => { const r = analyseAccountAlert(acc({ kind: "password_reset", provider: "google", userInitiated: true, text: "You requested a password reset" })); assert.equal(r.state, "ears_up"); assert.match(r.verdict, /no official destination/i); });

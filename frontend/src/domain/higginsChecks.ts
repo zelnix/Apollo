@@ -53,7 +53,8 @@ const STALE_VERIFICATION: CheckId[] = ["device", "network", "account"];
 
 /** The checks Higgins means when Apollo is growling for want of a fresh check. Empty when no check is being asked for. */
 export function recommendedChecks(r: { recovering: boolean; visibilityLost: boolean; drivingEvent: { category: EventCategory } | null }): CheckId[] {
-  if (r.visibilityLost || !r.recovering) return [];
+  if (r.visibilityLost) return ["device"];
+  if (!r.recovering) return [];
   if (r.drivingEvent) return BY_CATEGORY[r.drivingEvent.category] ?? ["device", "account"];
   return STALE_VERIFICATION;
 }

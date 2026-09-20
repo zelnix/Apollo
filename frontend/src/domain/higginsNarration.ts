@@ -32,7 +32,7 @@ export function narrateIncident(plan: IncidentPlan, ticked: Record<string, boole
   const n = plan.timeline.length;
   const chunks: NarrationChunk[] = [{
     id: "summary", label: "The incident",
-    text: `Higgins here. ${plan.headline}. ${STATE_LABEL[plan.state]}. Apollo connected ${n} event${n > 1 ? "s" : ""} because they happened close together and point at the same target.${plan.exposure.length ? ` You told Apollo: ${plan.exposure.join("; ")}.` : ""}`,
+    text: `Higgins here. ${plan.headline}. ${STATE_LABEL[plan.state]}. Apollo connected ${n} event${n > 1 ? "s" : ""} because they happened close together and point at the same target.${plan.exposure.length ? ` You reported: ${plan.exposure.join("; ")}.` : ""}`,
   }];
   plan.timeline.forEach((e, i) => {
     const lead = i === 0 ? "It began" : i === n - 1 ? "Finally" : "Then";

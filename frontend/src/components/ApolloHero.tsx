@@ -195,7 +195,7 @@ export function ApolloHero({ resolution, visibility, adapterLabel, isMock, capab
         </View>
       </View>
       <Sheet visible={checklistOpen} onClose={() => setChecklistOpen(false)} title="Checks Higgins recommends" testID="hero-checklist-sheet">
-        <HigginsChecks checks={checks} askedAt={askedAt} messageId="hero" record={false} title="" />
+        <HigginsChecks checks={checks} askedAt={askedAt} messageId="hero" record={false} title="" onNavigate={() => setChecklistOpen(false)} />
         {permissionNote ? <Body testID="hero-checklist-permission-note">{permissionNote}</Body> : null}
         <Button testID="hero-checklist-close" variant="ghost" label="Got it" onPress={() => setChecklistOpen(false)} />
       </Sheet>

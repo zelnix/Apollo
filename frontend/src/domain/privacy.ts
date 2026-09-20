@@ -14,10 +14,10 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   feedback: new Set(["device_id", "event_id", "kind", "state", "host", "sources", "note"]),
   patrol_sync: new Set([
     "event_id", "device_id", "category", "state", "status", "headline", "what_happened", "why", "what_to_do",
-    "indicator_host", "indicator_digest", "verified_block", "adapter_label", "occurred_at", "resolved_at", "background", "claimed_brand", "scenario", "scent_id", "enforcement_evidence", "supporting_references",
+    "indicator_host", "indicator_digest", "verified_block", "adapter_label", "occurred_at", "resolved_at", "background", "claimed_brand", "scenario", "scent_id", "enforcement_evidence", "supporting_references", "recovery_kinds",
   ]),
   trust_sync: new Set(["device_id", "indicator_type", "indicator_digest", "indicator_host", "event_id", "trust_id"]),
-  ask_apollo: new Set(["device_id", "message", "context"]),
+  ask_apollo: new Set(["device_id", "message", "context", "handoff_id", "conversation_id"]),
   device_register: new Set(["platform", "adapter_mode", "app_version", "tz_offset_minutes"]),
   // Alert notifications: the push token is an opaque delivery address (FCM/APNs), relayed and not stored by us.
   push_register: new Set(["user_id", "platform", "device_token"]),
@@ -54,7 +54,9 @@ const NON_SECRET_WORDS = new Set(["reset", "change", "changed", "request", "requ
 
 export function redactUserSecrets(value: string): string {
   return value.replace(/\b(password|passcode|p\.?i\.?n\.?|otp|one[- ]time(?: security)? code|verification code|security code|recovery code|username|login id)\b(\s*(?:is|was|:|=)\s*|\s+)([A-Za-z0-9!@#$%^&*_.+\-/]{3,96})/gi,
-    (full, label: string, joiner: string, secret: string) => NON_SECRET_WORDS.has(secret.toLowerCase()) ? full : `${label}${joiner}[redacted]`);
+    (full, label: string, joiner: string, secret: string) => NON_SECRET_WORDS.has(secret.toLowerCase()) ? full : `${label}${joiner}[redacted]`)
+    .replace(/\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/g, "[ip address]")
+    .replace(/\b(?:[A-F0-9]{1,4}:){2,7}[A-F0-9]{1,4}\b/gi, "[ip address]");
 }
 
 export class EgressViolation extends Error {
@@ -120,10 +122,49 @@ export function enforceEgress<T extends Record<string, unknown>>(endpoint: Egres
     if (Array.isArray(out.steps)) out.steps = out.steps.map((v: Record<string, unknown>) => ({ id: v.id, text: 'Review this recovery step on the protected phone together.' }));
   }
   if (endpoint === 'ask_apollo') {
-    if (typeof out.message === 'string') out.message = redactUserSecrets(out.message);
-    if (out.context) out.context = 'An Apollo security check needs explanation. Ask the person which check and what action they need help with. Do not request passwords, PINs, recovery codes, verification codes or private message content.';
+    if (typeof out.message !== 'string' || out.message.length > 2000) throw new EgressViolation(endpoint, 'message');
+    out.message = redactUserSecrets(out.message);
+    if (out.handoff_id != null && (typeof out.handoff_id !== 'string' || !/^[A-Za-z0-9-]{8,64}$/.test(out.handoff_id))) throw new EgressViolation(endpoint, 'handoff_id');
+    if (out.conversation_id == null) out.conversation_id = 'general';
+    if (typeof out.conversation_id !== 'string' || !/^[A-Za-z0-9-]{1,64}$/.test(out.conversation_id)) throw new EgressViolation(endpoint, 'conversation_id');
+    if (out.context != null) out.context = validateAskContext(out.context);
   }
   return out as T;
+}
+
+const ASK_CONTEXT_KEYS = new Set(['gate', 'issue_summary', 'assessment_state', 'findings', 'uncertainty', 'confirmed_protective_actions', 'user_reported_actions']);
+const ASK_FINDING_KEYS = new Set(['summary', 'provenance', 'status']);
+const ASK_GATES = new Set(['site', 'link', 'text', 'call', 'network', 'account', 'email', 'app', 'file', 'device', 'incident']);
+const ASK_STATES = new Set(['sniffing', 'resting', 'ears_up', 'growling', 'barking', 'biting', 'unknown']);
+function validateAskContext(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new EgressViolation('ask_apollo', 'context');
+  const raw = value as Record<string, unknown>;
+  if (Object.keys(raw).some((key) => !ASK_CONTEXT_KEYS.has(key)) || !ASK_GATES.has(String(raw.gate)) || !ASK_STATES.has(String(raw.assessment_state))) throw new EgressViolation('ask_apollo', 'context');
+  const cleanLine = (line: unknown, max = 180) => {
+    if (typeof line !== 'string' || !line.trim() || line.length > max) throw new EgressViolation('ask_apollo', 'context');
+    return redactUserSecrets(line.trim()).replace(/\+?\d[\d ()-]{8,}\d/g, "[phone]").replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]");
+  };
+  const lines = (key: string, limit: number) => {
+    const items = raw[key] ?? [];
+    if (!Array.isArray(items) || items.length > limit) throw new EgressViolation('ask_apollo', `context.${key}`);
+    return items.map((line) => cleanLine(line));
+  };
+  const findings = raw.findings ?? [];
+  if (!Array.isArray(findings) || findings.length > 8) throw new EgressViolation('ask_apollo', 'context.findings');
+  return {
+    gate: raw.gate,
+    issue_summary: cleanLine(raw.issue_summary, 240),
+    assessment_state: raw.assessment_state,
+    findings: findings.map((value) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new EgressViolation('ask_apollo', 'context.findings');
+      const finding = value as Record<string, unknown>;
+      if (Object.keys(finding).some((key) => !ASK_FINDING_KEYS.has(key)) || !['observed', 'inferred', 'user_reported'].includes(String(finding.provenance)) || !['confirmed', 'warning', 'uncertain'].includes(String(finding.status))) throw new EgressViolation('ask_apollo', 'context.findings');
+      return { summary: cleanLine(finding.summary), provenance: finding.provenance, status: finding.status };
+    }),
+    uncertainty: lines('uncertainty', 6),
+    confirmed_protective_actions: lines('confirmed_protective_actions', 4),
+    user_reported_actions: lines('user_reported_actions', 6),
+  };
 }
 
 const EVIDENCE_KEYS = new Set(['evidence_id', 'event_id', 'device_id', 'platform', 'os_version', 'sdk_version', 'observed_at', 'mechanism', 'direction', 'protocol', 'destination_ip', 'destination_domain', 'destination_port', 'app_id', 'process_name', 'attribution_confidence', 'matched_rule_id', 'threat_id', 'requested_action', 'enforced_action', 'result', 'rule_source', 'confidence', 'correlation_id']);

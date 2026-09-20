@@ -1,19 +1,23 @@
 // Gate 8 — Account Guard dashboard + Check Account Alert. Paste or describe a login/MFA/reset/breach alert;
 // Apollo distinguishes "something suspicious happened" from "your account is compromised". Never asks for passwords.
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
+import * as ImagePicker from "expo-image-picker";
+import { Image as ExpoImage } from "expo-image";
+import ImageIcon from "lucide-react-native/icons/image";
 import KeyRound from "lucide-react-native/icons/key-round";
 import X from "lucide-react-native/icons/x";
 import React, { useMemo, useState } from "react";
-import { Linking, Pressable, Switch, Text, TextInput, View } from "react-native";
+import { Linking, Pressable, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { markCheckDone } from "@/src/store/checkCompletion";
-import { apiPost } from "@/src/api/client";
+import { apiPost, apiUpload } from "@/src/api/client";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { MessageAssessmentResult } from "@/src/components/MessageAssessmentResult";
+import { ScreenshotPermissionSheet } from "@/src/components/ScreenshotPermissionSheet";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
-import { ACCOUNT_PROVIDERS, ALERT_KINDS, analyseAccountAlert, type AccountAnalysis, type AccountProvider, type AlertKind } from "@/src/domain/accountAnalysis";
+import { ACCOUNT_PROVIDERS, ALERT_KINDS, analyseAccountAlert, inspectAccountEvidence, type AccountAnalysis, type AccountEvidence, type AccountProvider, type AlertKind } from "@/src/domain/accountAnalysis";
 import { SCENT_WINDOW_MS } from "@/src/domain/threatScent";
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { patrolSafeSummary, type InvestigationResult } from "@/src/domain/investigation";
@@ -22,6 +26,9 @@ import { NetworkAccountSdk } from "@/src/security/networkAccountSdk";
 import { type RecoveryKind, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { issueContext, openHigginsHandoff } from "@/src/domain/higginsHandoff";
+import { dispatchInvestigationAction } from "@/src/domain/investigationActions";
+import { useScreenshotAccess } from "@/src/hooks/useScreenshotAccess";
 
 type Remote = { urls: { url: string; host: string; verdict: "clean" | "malicious" | "unknown"; official: boolean }[]; explanation: { summary: string; why: string[]; recommendation: string } | null; assessment: InvestigationResult };
 type Breach = { status: "not_configured" | "clear" | "found" | "unavailable"; breaches: { name: string; date: string; data: string[] }[]; password_exposed: boolean; detail: string; higgins: { headline: string; exact_response: string; next_action: string } };
@@ -45,6 +52,7 @@ const useStyles = makeStyles((c) => ({
   label: { fontFamily: fonts.textSemibold, fontSize: 15, color: c.onSurface },
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
   statTitle: { fontFamily: fonts.displayBold, fontSize: 20, color: c.onSurface },
+  preview: { width: "100%", height: 180, borderRadius: radius.md, backgroundColor: c.surfaceTertiary },
 }));
 
 export default function CheckAccount() {
@@ -54,13 +62,21 @@ export default function CheckAccount() {
   const router = useRouter();
   const params = useLocalSearchParams<{ text?: string; scent?: string }>();
   const { ready, setupDone, upsertEvent, resolveEvent, deviceId, adapterLabel, showToast, events } = useApollo();
-  const [kind, setKind] = useState<AlertKind>("mfa_prompt");
+  const [kind, setKind] = useState<AlertKind | null>(null);
   const [provider, setProvider] = useState<AccountProvider>("other");
   const [text, setText] = useState(params.text ?? "");
   const [sender, setSender] = useState("");
   const [initiated, setInitiated] = useState<boolean | null>(null);
-  const [flags, setFlags] = useState({ repeated: false, enteredPassword: false, enteredCode: false, unusualLocation: false });
+  const [answered, setAnswered] = useState({ initiated: false, repeated: false, location: false });
+  const [flags, setFlags] = useState<{ repeated: boolean | null; unusualLocation: boolean | null }>({ repeated: null, unusualLocation: null });
   const [busy, setBusy] = useState(false);
+  const [evidenceBusy, setEvidenceBusy] = useState(false);
+  const [evidenceReviewed, setEvidenceReviewed] = useState(false);
+  const [evidence, setEvidence] = useState<AccountEvidence | null>(null);
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  const [screenshotUri, setScreenshotUri] = useState<string | null>(null);
+  const [actionGuidance, setActionGuidance] = useState<string | null>(null);
+  const [reportState, setReportState] = useState<"idle" | "sending" | "failed" | "sent">("idle");
   const [result, setResult] = useState<{ a: AccountAnalysis; event: PatrolEvent | null; remote: Remote | null; linked: PatrolEvent | null } | null>(null);
   const [identifier, setIdentifier] = useState("");
   const [breach, setBreach] = useState<Breach | null>(null);
@@ -69,19 +85,44 @@ export default function CheckAccount() {
   const openAccount = events.filter((e) => e.category === "account" && e.status === "active" && e.state !== "resting");
   const recentLinked = useMemo(() => { const now = Date.now(); return events.filter((e) => e.state !== "resting" && ["message", "email", "website", "link", "call", "app", "connection"].includes(e.category) && now - Date.parse(e.occurred_at) <= SCENT_WINDOW_MS); }, [events]);
   const dashTone = openAccount.some((e) => e.state === "barking") ? "barking" : openAccount.length ? "growling" : "resting";
+  const inspectEvidence = (body = text, visibleSender = sender) => {
+    const inspected = inspectAccountEvidence(redactUserSecrets(body), visibleSender);
+    setEvidence(inspected); setKind(inspected.kind); setProvider(inspected.provider); setEvidenceReviewed(true); setEvidenceError(null);
+    setInitiated(null); setFlags({ repeated: null, unusualLocation: null }); setAnswered({ initiated: false, repeated: false, location: false });
+  };
+  const launchScreenshotPicker = async () => {
+    setEvidenceError(null);
+    try {
+      const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsEditing: false, quality: 0.9 });
+      if (picked.canceled || !picked.assets[0]) return;
+      if (!deviceId) throw new Error("Apollo is still preparing this device.");
+      const asset = picked.assets[0]; setScreenshotUri(asset.uri); setEvidenceBusy(true);
+      const extracted = await apiUpload<{ sender: string; text: string; urls: string[] }>("/message/extract", "message_extract", { device_id: deviceId }, { uri: asset.uri, name: asset.fileName ?? "account-alert.jpg", type: asset.mimeType ?? "image/jpeg" });
+      const combined = [extracted.text, ...extracted.urls.filter((url) => !extracted.text.includes(url))].filter(Boolean).join("\n");
+      setText(combined); setSender(extracted.sender); inspectEvidence(combined, extracted.sender);
+    } catch (error) { setEvidenceError(error instanceof Error ? error.message : "Apollo could not read that screenshot. Try another image or paste a description."); }
+    finally { setEvidenceBusy(false); }
+  };
+  const photoAccess = useScreenshotAccess(launchScreenshotPicker);
+  const needsInitiated = !!kind && ["mfa_prompt", "login_alert", "password_reset", "password_changed", "recovery_changed"].includes(kind);
+  const followUp = !evidenceReviewed ? null : needsInitiated && !answered.initiated ? "initiated" : kind === "mfa_prompt" && !answered.repeated ? "repeated" : kind === "login_alert" && !answered.location ? "location" : null;
 
   const run = async () => {
+    if (!kind || !evidenceReviewed || followUp) return;
+    const selectedKind = kind;
     setBusy(true);
     try {
     void markCheckDone("account");
       const safeText = redactUserSecrets(text); if (safeText !== text) setText(safeText);
       const prov = ACCOUNT_PROVIDERS.find((p) => p.id === provider)!;
-      const linked = recentLinked.find((e) => e.claimed_brand && ((prov.brand && e.claimed_brand.toLowerCase().includes(prov.brand.toLowerCase())) || (provider === "bank" && BANK_RE.test(e.claimed_brand)))) ?? (initiated === false || flags.enteredCode || flags.enteredPassword ? recentLinked[0] ?? null : null);
-      const input = { kind, provider, text: safeText.trim() || undefined, sender: sender.trim() || undefined, userInitiated: initiated, ...flags, recentScentCategories: (linked ? recentLinked : []).map((e) => e.category), recentScentBrand: linked?.claimed_brand ?? null };
+      const linked = recentLinked.find((e) => e.claimed_brand && ((prov.brand && e.claimed_brand.toLowerCase().includes(prov.brand.toLowerCase())) || (provider === "bank" && BANK_RE.test(e.claimed_brand)))) ?? (initiated === false ? recentLinked[0] ?? null : null);
+      const input = { kind: selectedKind, provider, text: safeText.trim() || undefined, sender: sender.trim() || undefined, userInitiated: initiated,
+        repeated: flags.repeated === true ? true : undefined, unusualLocation: flags.unusualLocation === true ? true : undefined,
+        recentScentCategories: (linked ? recentLinked : []).map((e) => e.category), recentScentBrand: linked?.claimed_brand ?? null };
       let a = analyseAccountAlert(input);
       let remote: Remote | null = null;
       try {
-        remote = await apiPost<Remote>("/account/analyse", "account_check", { device_id: deviceId ?? "local-device", kind, provider, sender: sender.trim(), text: safeText.trim(), urls: a.urls.slice(0, 10), local_state: a.state, scenario: a.scenario, second_opinion: true });
+        remote = await apiPost<Remote>("/account/analyse", "account_check", { device_id: deviceId ?? "local-device", kind: selectedKind, provider, sender: sender.trim(), text: safeText.trim(), urls: a.urls.slice(0, 10), local_state: a.state, scenario: a.scenario, second_opinion: true });
         if (remote.assessment.risk === "warning" && a.state === "resting") a = { ...a, state: "growling", why: [...a.why, "The contextual investigation found unresolved or suspicious details that need verification."] };
         const bad = remote.urls.find((u) => u.verdict === "malicious");
         if (bad && a.state !== "barking") a = { ...a, state: "barking", why: [...a.why, `The link (${bad.host}) is confirmed dangerous by Apollo's threat intelligence.`], handoff: "web" };
@@ -90,7 +131,7 @@ export default function CheckAccount() {
       if (a.state !== "resting") {
         event = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "account", state: a.state, status: "active", headline: `Account: ${remote?.assessment.higgins.headline ?? a.title}${a.providerLabel !== "Other / not sure" ? ` — ${a.providerLabel}` : ""}`, what_happened: patrolSafeSummary(remote?.assessment.higgins.what_was_found[0] ?? a.verdict), why: remote?.assessment.findings.map((finding) => finding.title).slice(0, 6) ?? a.why, what_to_do: remote?.assessment.higgins.next_action ?? a.recommendation, indicator_host: a.suspiciousUrls[0] ? a.suspiciousUrls[0].replace(/^https?:\/\//i, "").split("/")[0] : null, indicator_digest: null, local_indicator: null, verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: a.claimedBrand, scenario: a.scenario, scent_id: params.scent || linked?.scent_id || linked?.event_id || null, supporting_references: remote?.assessment.sources.filter((source) => source.url).map((source) => ({ label: source.label, url: source.url! })).slice(0, 6) });
         if (event.state !== a.state) a = { ...a, state: event.state, why: event.why };
-        void NetworkAccountSdk.submitAccountSecurityEvent({ kind, provider, state: a.state });
+        void NetworkAccountSdk.submitAccountSecurityEvent({ kind: selectedKind, provider, state: a.state });
       }
       setResult({ a, event, remote, linked });
     } finally { setBusy(false); }
@@ -124,31 +165,33 @@ export default function CheckAccount() {
 
         {!result ? (
           <>
-            <SectionTitle>Check an account alert</SectionTitle>
-            <Body>Paste or describe a login prompt, MFA request, password-reset or security email. Apollo never asks for your password — don&apos;t paste one.</Body>
-            <Text style={s.label}>What did you receive?</Text>
-            <View style={s.chips}>{ALERT_KINDS.map((o) => <Pressable key={o.id} testID={`account-kind-${o.id}`} accessibilityRole="button" onPress={() => setKind(o.id)} style={[s.chip, kind === o.id && s.chipOn]}><Text style={s.chipText}>{o.label}</Text></Pressable>)}</View>
-            <Text style={s.label}>Which service?</Text>
-            <View style={s.chips}>{ACCOUNT_PROVIDERS.map((o) => <Pressable key={o.id} testID={`account-provider-${o.id}`} accessibilityRole="button" onPress={() => setProvider(o.id)} style={[s.chip, provider === o.id && s.chipOn]}><Text style={s.chipText}>{o.label}</Text></Pressable>)}</View>
-            <Text style={s.label}>Did you just log in, request or make this change yourself?</Text>
-            <View style={s.chips}>
-              {([["yes", "Yes, that was me", true], ["no", "No, I didn't", false], ["unsure", "Not sure", null]] as const).map(([id, label, v]) => <Pressable key={id} testID={`account-initiated-${id}`} accessibilityRole="button" onPress={() => setInitiated(v)} style={[s.chip, initiated === v && (v === false ? s.chipNo : s.chipOn)]}><Text style={s.chipText}>{label}</Text></Pressable>)}
-            </View>
-            <Text style={s.label}>Paste the alert text (optional)</Text>
-            <TextInput testID="account-text" style={[s.input, { minHeight: 96 }]} value={text} onChangeText={setText} placeholder="e.g. Unusual sign-in activity detected. Verify now: https://…" placeholderTextColor={colors.muted} multiline textAlignVertical="top" autoCapitalize="none" autoCorrect={false} />
-            <TextInput testID="account-sender" style={s.input} value={sender} onChangeText={setSender} placeholder="Sender (email address or number, optional)" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} />
-            <View style={s.row}><Text style={[s.why, { flex: 1 }]}>I&apos;ve had several of these prompts in a row</Text><Switch testID="account-flag-repeated" value={flags.repeated} onValueChange={(v) => setFlags((f) => ({ ...f, repeated: v }))} trackColor={{ true: colors.barking, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View>
-            <View style={s.row}><Text style={[s.why, { flex: 1 }]}>The login was from a place or device that makes no sense</Text><Switch testID="account-flag-location" value={flags.unusualLocation} onValueChange={(v) => setFlags((f) => ({ ...f, unusualLocation: v }))} trackColor={{ true: colors.growling, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View>
-            <View style={s.row}><Text style={[s.why, { flex: 1 }]}>I entered my password on a page I&apos;m now unsure about</Text><Switch testID="account-flag-password" value={flags.enteredPassword} onValueChange={(v) => setFlags((f) => ({ ...f, enteredPassword: v }))} trackColor={{ true: colors.barking, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View>
-            <View style={s.row}><Text style={[s.why, { flex: 1 }]}>I typed or read out a verification code</Text><Switch testID="account-flag-code" value={flags.enteredCode} onValueChange={(v) => setFlags((f) => ({ ...f, enteredCode: v }))} trackColor={{ true: colors.barking, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View>
+            <SectionTitle>Start with what you received</SectionTitle>
+            <Body>Choose a screenshot, paste the alert, or describe it briefly. Apollo inspects the available evidence before asking anything else. Never paste a password or security code.</Body>
+            <Button testID="account-screenshot" label={evidenceBusy ? "Reading screenshot…" : "Choose alert screenshot"} icon={<ImageIcon size={18} color={colors.onBrandPrimary} />} onPress={() => void photoAccess.start()} disabled={evidenceBusy || busy} />
+            {screenshotUri ? <ExpoImage testID="account-screenshot-preview" source={{ uri: screenshotUri }} style={s.preview} contentFit="contain" accessibilityLabel="Account alert screenshot selected for investigation" /> : null}
+            <TextInput testID="account-text" style={[s.input, { minHeight: 96 }]} value={text} onChangeText={(value) => { setText(value); setEvidenceReviewed(false); }} placeholder="Paste the alert or write a short description" placeholderTextColor={colors.muted} multiline textAlignVertical="top" autoCapitalize="none" autoCorrect={false} />
+            <TextInput testID="account-sender" style={s.input} value={sender} onChangeText={(value) => { setSender(value); setEvidenceReviewed(false); }} placeholder="Visible sender, if shown" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} />
+            {evidenceError ? <Card testID="account-evidence-error" style={{ gap: spacing.sm }}><Body>{evidenceError}</Body><Button testID="account-evidence-retry" variant="secondary" label="Try screenshot again" onPress={() => void photoAccess.start()} /></Card> : null}
+            <Button testID="account-inspect" variant="secondary" label="Inspect submitted evidence" onPress={() => inspectEvidence()} disabled={evidenceBusy || !(text.trim() || sender.trim())} />
+            <Button testID="account-no-evidence" variant="ghost" label="I don't have the alert or screenshot" onPress={() => { setEvidence({ kind: "other", provider: "other", claimedService: null, visibleSender: null, urls: [], requestedActions: [] }); setKind("other"); setProvider("other"); setEvidenceReviewed(true); }} />
+            {evidenceReviewed && evidence ? <Card testID="account-evidence" style={{ gap: spacing.xs }}><SectionTitle>Facts found — correct anything below</SectionTitle><Body testID="account-evidence-service">Claimed service: {evidence.claimedService ?? "unknown"}</Body><Body testID="account-evidence-kind">Alert type suggested by wording: {ALERT_KINDS.find((item) => item.id === evidence.kind)?.label ?? "unknown"}</Body><Body testID="account-evidence-sender">Visible sender: {evidence.visibleSender ?? "not supplied"}</Body><Body testID="account-evidence-links">Visible links: {evidence.urls.length ? evidence.urls.join(", ") : "none found"}</Body><Body testID="account-evidence-actions">Requested action: {evidence.requestedActions.join("; ") || "none identified"}</Body><Body>These are claims and visible details, not proof that the sender, service or alert is genuine.</Body><Text style={s.label}>Alert type</Text><View style={s.chips}>{ALERT_KINDS.map((o) => <Pressable key={o.id} testID={`account-kind-${o.id}`} accessibilityRole="radio" accessibilityState={{ checked: kind === o.id }} onPress={() => { setKind(o.id); setInitiated(null); setFlags({ repeated: null, unusualLocation: null }); setAnswered({ initiated: false, repeated: false, location: false }); }} style={[s.chip, kind === o.id && s.chipOn]}><Text style={s.chipText}>{o.label}</Text></Pressable>)}</View><Text style={s.label}>Claimed service</Text><View style={s.chips}>{ACCOUNT_PROVIDERS.map((o) => <Pressable key={o.id} testID={`account-provider-${o.id}`} accessibilityRole="radio" accessibilityState={{ checked: provider === o.id }} onPress={() => setProvider(o.id)} style={[s.chip, provider === o.id && s.chipOn]}><Text style={s.chipText}>{o.label}</Text></Pressable>)}</View></Card> : null}
+            {followUp === "initiated" ? <Card testID="account-followup-initiated" style={{ gap: spacing.sm }}><SectionTitle>One question that changes the advice</SectionTitle><Body>Did you request or make this change?</Body><View style={s.chips}>{([["yes", "Yes", true], ["no", "No", false], ["unsure", "Not sure", null]] as const).map(([id, label, value]) => <Pressable key={id} testID={`account-initiated-${id}`} accessibilityRole="button" onPress={() => { setInitiated(value); setAnswered((current) => ({ ...current, initiated: true })); }} style={[s.chip, answered.initiated && initiated === value && (value === false ? s.chipNo : s.chipOn)]}><Text style={s.chipText}>{label}</Text></Pressable>)}</View></Card> : null}
+            {followUp === "repeated" ? <Card testID="account-followup-repeated" style={{ gap: spacing.sm }}><SectionTitle>One more question</SectionTitle><Body>Have several approval prompts arrived in a row?</Body><View style={s.chips}>{([["yes", "Yes", true], ["no", "No", false], ["unsure", "Not sure", null]] as const).map(([id, label, value]) => <Pressable key={id} testID={`account-repeated-${id}`} onPress={() => { setFlags((current) => ({ ...current, repeated: value })); setAnswered((current) => ({ ...current, repeated: true })); }} style={[s.chip, answered.repeated && flags.repeated === value && s.chipOn]}><Text style={s.chipText}>{label}</Text></Pressable>)}</View></Card> : null}
+            {followUp === "location" ? <Card testID="account-followup-location" style={{ gap: spacing.sm }}><SectionTitle>One more question</SectionTitle><Body>Does the shown device or location make sense for your login?</Body><View style={s.chips}>{([["yes", "Yes", false], ["no", "No", true], ["unsure", "Not sure", null]] as const).map(([id, label, value]) => <Pressable key={id} testID={`account-location-${id}`} onPress={() => { setFlags((current) => ({ ...current, unusualLocation: value })); setAnswered((current) => ({ ...current, location: true })); }} style={[s.chip, answered.location && flags.unusualLocation === value && s.chipOn]}><Text style={s.chipText}>{label}</Text></Pressable>)}</View></Card> : null}
             {recentLinked.length ? <Card style={{ gap: spacing.xs, borderColor: colors.growling }} testID="account-scent-notice"><Text style={s.label}>Threat Scent</Text><Body>Apollo saw {recentLinked.length} suspicious event{recentLinked.length > 1 ? "s" : ""} in the last 30 minutes{recentLinked[0].claimed_brand ? ` (about ${recentLinked[0].claimed_brand})` : ""}. An account alert now will be assessed as part of that sequence.</Body></Card> : null}
-            <Button testID="account-run" label={busy ? "Sniffing…" : "Check this alert"} onPress={() => void run()} disabled={busy} />
+            <Button testID="account-run" label={busy ? "Checking…" : "Assess this alert"} onPress={() => void run()} disabled={busy || !evidenceReviewed || !kind || !!followUp} />
           </>
         ) : a ? (
           <>
             {result.remote?.assessment ? <MessageAssessmentResult assessment={result.remote.assessment} state={a.state} testIDPrefix="account"
-              submittedLabel="Account alert investigated" submittedTitle={a.providerLabel} submittedText={text}
-              onPrimaryAction={() => showToast(result.remote!.assessment.higgins.next_action, "neutral")} /> : <Card testID="account-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
+              submittedLabel="Account alert investigated" submittedTitle={a.providerLabel} submittedText={text || "No alert content was available; assessment used only the corrected description choices."}
+              onPrimaryAction={() => dispatchInvestigationAction(result.remote!.assessment.higgins.action_kind, {
+                showVerification: () => setActionGuidance(result.remote!.assessment.higgins.next_action),
+                showCallingGuidance: () => setActionGuidance(result.remote!.assessment.higgins.next_action),
+                openAccount: () => setActionGuidance(result.remote!.assessment.higgins.next_action),
+                clearSubmittedCopy: () => { setText(""); setSender(""); setActionGuidance("The submitted copy was cleared from this screen. The original alert or message was not deleted."); },
+                showReview: () => setActionGuidance(result.remote!.assessment.higgins.next_action),
+              })} /> : <Card testID="account-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
               <View style={s.chips}><Pill tone={a.state} label={STATE_NAME[a.state]} testID="account-state" /><Pill tone="neutral" label={a.scenario} testID="account-scenario" /><Pill tone={a.takeoverRisk === "low" ? "resting" : a.takeoverRisk === "elevated" ? "growling" : "barking"} label={RISK_LABEL[a.takeoverRisk]} testID="account-risk" /></View>
               <Text style={s.why}>{STATE_LABEL[a.state]}</Text>
               <Text style={s.label} testID="account-title">{a.title}</Text>
@@ -163,20 +206,22 @@ export default function CheckAccount() {
               <Card style={{ gap: spacing.sm }} testID="account-links">
                 <SectionTitle>Links in the alert</SectionTitle>
                 {a.urls.map((u, i) => { const r = result.remote?.urls.find((x) => x.url === u || x.host === u.replace(/^https?:\/\//i, "").split("/")[0]); const sus = a.suspiciousUrls.includes(u); return (
-                  <View key={u} style={s.row}><View style={{ flex: 1 }}><Text style={s.why} numberOfLines={1}>{u}</Text><Pill tone={r?.verdict === "malicious" ? "barking" : sus ? "growling" : "resting"} label={r?.verdict === "malicious" ? "Malicious reputation warning" : sus ? `Not ${a.providerLabel === "Other / not sure" ? "a known official" : `${a.providerLabel}'s`} domain` : "Official domain"} /></View><Button testID={`account-check-link-${i}`} variant="secondary" label="Check" onPress={() => router.push({ pathname: "/check", params: { url: u.startsWith("http") ? u : `https://${u}`, source: "account" } })} /></View>); })}
+                  <View key={u} style={s.row}><View style={{ flex: 1 }}><Text style={s.why} numberOfLines={1}>{u}</Text><Pill tone={r?.verdict === "malicious" ? "barking" : sus ? "growling" : "unknown"} label={r?.verdict === "malicious" ? "Malicious reputation warning" : sus ? `Not ${a.providerLabel === "Other / not sure" ? "a known official" : `${a.providerLabel}'s`} domain` : "Matches configured official domain"} /></View><Button testID={`account-check-link-${i}`} variant="secondary" label="Check link" onPress={() => router.push({ pathname: "/check", params: { url: u.startsWith("http") ? u : `https://${u}`, source: "account" } })} /></View>); })}
               </Card>
             ) : null}
             <Card style={{ gap: spacing.sm }} testID="account-actions">
+              {actionGuidance ? <Card testID="account-action-guidance" style={{ gap: spacing.xs }}><SectionTitle>How to check</SectionTitle><Body>{actionGuidance}</Body><Button testID="account-action-guidance-close" variant="ghost" label="Hide instructions" onPress={() => setActionGuidance(null)} /></Card> : null}
               <Text style={s.label}>Go in through the front door</Text>
               <Body testID="account-open-official">{a.openOfficial}</Body>
               {result.event ? <RecoveryFlow event={result.event} kinds={recovery} testID="account-recovery" /> : null}
               {result.remote?.explanation && !result.remote.assessment ? <><Text style={s.label}>Higgins&apos;s plain-language assessment</Text><Body testID="account-second-opinion">{result.remote.explanation.summary}</Body></> : null}
-              <Button testID="account-ask" variant="secondary" label="Tell me more" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { context: `Account alert check: ${a.title} (${a.providerLabel}). State: ${STATE_NAME[a.state]}. ${a.technical.join("; ")}`, prompt: "What should I do about this account alert?" } })} />
+              <Button testID="account-ask" variant="secondary" label="Ask Higgins about this alert" onPress={() => openHigginsHandoff(router, issueContext({ gate: "account", issue_summary: a.title, assessment_state: a.state, findings: a.why.slice(0, 6).map((summary) => ({ summary, provenance: "inferred", status: a.state === "barking" ? "warning" : "uncertain" })), uncertainty: ["The alert's sender and claims were not independently authenticated."], confirmed_protective_actions: [], user_reported_actions: initiated === null ? [] : [initiated ? "Requested the change" : "Did not request the change"] }), "What should I do about this account alert?")} />
               <Button testID="account-tech" variant="ghost" label="View technical details" onPress={() => setTech((t) => !t)} />
               {tech ? a.technical.map((t, i) => <Body key={i} testID={`account-tech-${i}`}>{t}</Body>) : null}
-              {result.event ? <Button testID="account-resolve" variant="ghost" label="I've secured it — mark handled" onPress={() => { void resolveEvent(result.event!); setResult({ ...result, event: { ...result.event!, status: "resolved" } }); }} /> : null}
-              {result.event ? <Button testID="account-report" variant="ghost" label="Report a mistake" onPress={async () => { try { await apiPost("/feedback", "feedback", { device_id: deviceId ?? "local-device", event_id: result.event!.event_id, kind: "false_positive", state: result.event!.state, host: result.event!.indicator_host, sources: ["identity_account_engine"], note: "" }); showToast("Thanks — a human will review this.", "neutral"); } catch { showToast("Couldn't send right now.", "neutral"); } }} /> : null}
-              <Button testID="account-again" variant="ghost" label="Check another alert" onPress={() => { setResult(null); setText(""); setSender(""); setFlags({ repeated: false, enteredPassword: false, enteredCode: false, unusualLocation: false }); setInitiated(null); }} />
+              {result.event ? <Button testID="account-resolve" variant="ghost" label="Mark as handled" onPress={() => { void resolveEvent(result.event!); setResult({ ...result, event: { ...result.event!, status: "resolved" } }); }} /> : null}
+              {reportState === "failed" ? <Body testID="account-report-error">The report was not sent. Your result is still here; retry when connected.</Body> : reportState === "sent" ? <Body testID="account-report-success">Report sent for review.</Body> : null}
+              {result.event && reportState !== "sent" ? <Button testID="account-report" variant="ghost" label={reportState === "sending" ? "Sending…" : reportState === "failed" ? "Retry report" : "Report a mistake"} disabled={reportState === "sending"} onPress={async () => { setReportState("sending"); try { await apiPost("/feedback", "feedback", { device_id: deviceId ?? "local-device", event_id: result.event!.event_id, kind: "false_positive", state: result.event!.state, host: result.event!.indicator_host, sources: ["identity_account_engine"], note: "" }); setReportState("sent"); } catch { setReportState("failed"); } }} /> : null}
+              <Button testID="account-again" variant="ghost" label="Check another alert" onPress={() => { setResult(null); setText(""); setSender(""); setFlags({ repeated: null, unusualLocation: null }); setInitiated(null); setAnswered({ initiated: false, repeated: false, location: false }); setKind(null); setProvider("other"); setEvidence(null); setEvidenceReviewed(false); setScreenshotUri(null); setReportState("idle"); setActionGuidance(null); }} />
             </Card>
           </>
         ) : null}
@@ -206,6 +251,7 @@ export default function CheckAccount() {
           <Body>Apollo assesses what you submit. Ongoing notification or mailbox access stays off until you explicitly enable it. Apollo never asks for or stores your password.</Body>
         </Card>
       </KeyboardAwareScrollView>
+      <ScreenshotPermissionSheet prefix="account" visible={!!photoAccess.permission} canAskAgain={photoAccess.permission?.canAskAgain ?? true} checking={photoAccess.checking} onContinue={() => void photoAccess.continueAccess()} onClose={photoAccess.close} />
     </View>
   );
 }
