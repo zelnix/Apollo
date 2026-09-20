@@ -907,3 +907,7 @@ agent_communication:
     message: "Do not touch frontend/packages/guarddog-*. Stage 1D physical Pixel acceptance was cancelled by the user and is outside this retest. No mailbox username/password flow may be added."
   - agent: "testing"
     message: "Iteration 73 PASS for requested frontend scope; report: test_reports/iteration_73.json. No GuardDog or credential-flow regressions found."
+  - agent: "user"
+    message: "Clarified that File inspection and Device checks must remain represented in the handoff. Stage 1D physical-device work stays cancelled; next focus is Apollo and Higgins handling real situations well."
+  - agent: "main"
+    message: "Confirmed File and Device workflows remain available from Home → Quick checks → All checks at /file and /device, with contextual handoffs from Share, Email, File, Network, App and Higgins. They are manual workflows, not current Gates overview status cards."
