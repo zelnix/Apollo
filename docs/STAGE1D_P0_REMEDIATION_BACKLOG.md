@@ -5,6 +5,25 @@
 The P0 software remediation is complete and independently verified in `test_reports/iteration_64.json`.
 This does not claim native packet-block, start/stop, notification-delivery, or Stage 1D acceptance.
 
+### Post-closure correction — commit `21c126d` baseline
+
+Iteration 65 strengthened P0-03/P0-05 after four persistence/retention gaps were identified:
+
+- Every Patrol event retrieval revalidates historical packet truth; invalid legacy call-screening
+  Biting is persistently downgraded and its enforcement evidence removed. Weekly/admin retrieval
+  paths apply the same gate.
+- An identical evidence replay is read-only and returns the current stored record, preserving later
+  resolution/status changes.
+- Mongo now enforces unique `(device_id,event_id)` and `(device_id,evidence_id)` receipt bindings;
+  replacement and cross-event reuse fail with 409 under concurrent requests.
+- The device outbox retains at most 256 pending entries and never evicts pending evidence. Overflow
+  is persisted/reported and the locally retained event retries when capacity returns. Receipts are
+  capped at 1,024 and retained for 30 days.
+
+Evidence: main-agent full P0 backend **84/84**, frontend **21/21**, real Mongo race tests, preview
+Patrol render, and frozen-source manifest **91/91** from `frontend/packages`; independent iteration
+65 **50/50 backend**, **21/21 frontend + 2/2 preview checks**, including live unique-index proof.
+
 ## Source and intake provenance
 
 - Full original: [Apollo_Review_2026-09-20.md](reviews/Apollo_Review_2026-09-20.md), archived
@@ -88,7 +107,8 @@ This does not claim native packet-block, start/stop, notification-delivery, or S
   remediation**; P0-05 must also be resolved to exercise the full upload path honestly.
 - **Closure:** call-screening requests are represented as non-packet Barking events; frontend and
   backend packet gates reject call/manual/simulated evidence while retaining genuine packet
-  positives. Full negative-path regressions pass. **VERIFIED CLOSED.**
+  positives. Historical retrieval now applies and persists the same fail-closed decision. Full
+  negative-path regressions pass. **VERIFIED CLOSED.**
 
 ### P0-04 — approved privacy boundary and automatic processing
 
@@ -132,8 +152,9 @@ This does not claim native packet-block, start/stop, notification-delivery, or S
   full pipeline PASS. Notification eligibility/delivery remains independently observed.
 - **Closure:** the reviewed evidence schema crosses mapper → nested egress → authenticated API;
   the durable outbox distinguishes retryable/policy failures, survives restart, prevents stale
-  version overwrite, and uses server idempotency/conflict receipts. Offline/replay/race regressions
-  and live API fixtures pass. **VERIFIED CLOSED.**
+  version overwrite, is capacity/retention bounded without pending eviction, and uses dual-unique
+  server idempotency/conflict receipts. Identical replay is read-only. Offline/replay/race
+  regressions and live Mongo fixtures pass. **VERIFIED CLOSED.**
 
 ### P0-06 — unread/limited file inspection cannot authorize opening
 

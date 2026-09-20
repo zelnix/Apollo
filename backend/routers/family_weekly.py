@@ -15,6 +15,7 @@ from core.db import db, now_utc
 from routers.devices import in_quiet_hours
 from routers.push import PUSH_FAMILY, send_push
 from routers.family import _link_phone
+from services.patrol_policy import revalidate_stored_patrol
 
 router = APIRouter()
 
@@ -25,7 +26,8 @@ async def _weekly_rollup(guardian_device_id: str) -> list[dict[str, Any]]:
     out = []
     for ln in links:
         pid = ln["protected_device_id"]
-        evs = await db.patrol_events.find({"device_id": pid, "deleted_at": None, "occurred_at": {"$gte": since}}, {"state": 1, "status": 1, "category": 1, "occurred_at": 1}).to_list(500)
+        raw_events = await db.patrol_events.find({"device_id": pid, "deleted_at": None, "occurred_at": {"$gte": since}}).to_list(500)
+        evs = [await revalidate_stored_patrol(event) for event in raw_events]
         by_state = {k: 0 for k in ("sniffing", "resting", "ears_up", "growling", "barking", "biting")}
         for e in evs:
             by_state[e["state"]] = by_state.get(e["state"], 0) + 1

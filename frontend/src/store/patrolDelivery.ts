@@ -2,12 +2,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { apiPost } from '../api/client';
 import { DeliveryQueue, type DeliveryStatus } from './deliveryQueue';
 
-let status: DeliveryStatus = { pending: 0, blocked: 0, error: null };
+let status: DeliveryStatus = { pending: 0, blocked: 0, overflow: 0, error: null };
 const listeners = new Set<(s: DeliveryStatus) => void>();
 export const deliveryStatus = () => status;
 export const onDeliveryStatus = (fn: (s: DeliveryStatus) => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; };
 export function deliveryFailure() {
-  status = { ...status, error: 'Patrol could not save its delivery queue. Retry before closing Apollo.' };
+  status = { ...status, error: status.overflow
+    ? 'Delivery queue capacity was reached. Pending evidence was retained; local events will retry when space is available.'
+    : 'Patrol could not save its delivery queue. Retry before closing Apollo.' };
   listeners.forEach(fn => fn(status));
 }
 export const patrolDelivery = new DeliveryQueue({

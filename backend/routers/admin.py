@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, field_validator
 from core.db import db, now_utc
 from core.models import BlocklistEntry
 from routers.intel import intel_status
+from services.patrol_policy import revalidate_stored_patrol
 
 
 # Admin Audit Trail — every state-changing console action is written to `admin_audit` before it returns: who (the
@@ -57,6 +58,12 @@ async def admin_ping():
 @router.get("/stats")
 async def admin_stats():
     since = now_utc() - timedelta(days=7)
+    # Aggregates are retrieval too: lazily correct pre-gate claims before counting Biting.
+    async for event in db.patrol_events.find({
+        "occurred_at": {"$gte": since}, "deleted_at": None,
+        "$or": [{"state": "biting"}, {"verified_block": True}],
+    }):
+        await revalidate_stored_patrol(event)
     by_state = {r["_id"]: r["n"] async for r in db.patrol_events.aggregate([{"$match": {"occurred_at": {"$gte": since}, "deleted_at": None}}, {"$group": {"_id": "$state", "n": {"$sum": 1}}}])}
     return {
         "devices": {"total": await db.devices.count_documents({}), "active_credentials": await db.devices.count_documents({"revoked_at": None, "token_expires_at": {"$gt": now_utc()}}), "revoked": await db.devices.count_documents({"revoked_at": {"$ne": None}}), "seen_7d": await db.devices.count_documents({"last_seen_at": {"$gte": since}})},

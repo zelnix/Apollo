@@ -4,15 +4,17 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import uuid
 
 from fastapi import APIRouter, HTTPException, Query
+from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from core.db import db, now_utc
-from core.models import PatrolEvent, PatrolEventIn, PatrolEventPatch, TrustEntry, TrustIn
+from core.models import EnforcementEvidenceIn, PatrolEvent, PatrolEventIn, PatrolEventPatch, TrustEntry, TrustIn
 from routers.family import notify_guardians
 from routers.push import push_owner_alert
-from services.patrol_policy import packet_verified, minimal_patrol
+from services.patrol_policy import packet_verified, minimal_patrol, revalidate_stored_patrol
 
 router = APIRouter()
 
@@ -37,21 +39,57 @@ def _derive_verified_block(body: PatrolEventIn) -> bool:
     return packet_verified(body)
 
 
+def _evidence_fingerprint(evidence: EnforcementEvidenceIn | dict) -> str:
+    model = evidence if isinstance(evidence, EnforcementEvidenceIn) else EnforcementEvidenceIn.model_validate(evidence)
+    raw = json.dumps(model.model_dump(mode='json'), sort_keys=True, separators=(',', ':')).encode()
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _binding_matches(receipt: dict, body: PatrolEventIn, fingerprint: str) -> bool:
+    evidence = body.enforcement_evidence
+    return bool(evidence and receipt.get('device_id') == body.device_id and receipt.get('event_id') == body.event_id
+                and receipt.get('evidence_id') == evidence.evidence_id and receipt.get('fingerprint') == fingerprint)
+
+
+async def _claim_evidence_binding(body: PatrolEventIn, fingerprint: str) -> tuple[dict, bool]:
+    evidence = body.enforcement_evidence
+    assert evidence is not None
+    token = uuid.uuid4().hex
+    event_key = {'device_id': body.device_id, 'event_id': body.event_id}
+    inserted = {**event_key, 'evidence_id': evidence.evidence_id, 'fingerprint': fingerprint,
+                'claim_token': token, 'created_at': now_utc()}
+    try:
+        receipt = await db.evidence_receipts.find_one_and_update(
+            event_key, {'$setOnInsert': inserted}, upsert=True, return_document=ReturnDocument.AFTER)
+    except DuplicateKeyError:
+        receipt = await db.evidence_receipts.find_one({
+            'device_id': body.device_id,
+            '$or': [{'event_id': body.event_id}, {'evidence_id': evidence.evidence_id}],
+        })
+    if not receipt or not _binding_matches(receipt, body, fingerprint):
+        raise HTTPException(409, 'Event or evidence identity is already bound to a different payload')
+    return receipt, receipt.get('claim_token') == token
+
+
 @router.post("/patrol/events", response_model=PatrolEvent)
 async def upsert_event(body: PatrolEventIn):
     ts = now_utc()
-    evidence_key = None
-    fingerprint = None
-    receipt = None
+    existing = await db.patrol_events.find_one({'event_id': body.event_id, 'device_id': body.device_id})
+    fingerprint = _evidence_fingerprint(body.enforcement_evidence) if body.enforcement_evidence else None
     if body.enforcement_evidence:
-        evidence_key = {'device_id': body.device_id, 'evidence_id': body.enforcement_evidence.evidence_id}
-        fingerprint = hashlib.sha256(json.dumps(body.enforcement_evidence.model_dump(mode='json'), sort_keys=True).encode()).hexdigest()
-        # A previously claimed evidence identity is a conflict before it is a fresh truth claim.
-        # Check this first so changed event/payload reuse consistently returns 409 rather than the
-        # changed binding being reported as a generic unverified-Biting validation error.
-        receipt = await db.evidence_receipts.find_one(evidence_key)
-        if receipt and (receipt['event_id'] != body.event_id or receipt['fingerprint'] != fingerprint):
-            raise HTTPException(409, 'Evidence identity already belongs to a different event or payload')
+        receipt = await db.evidence_receipts.find_one({
+            'device_id': body.device_id,
+            '$or': [{'event_id': body.event_id}, {'evidence_id': body.enforcement_evidence.evidence_id}],
+        })
+        if receipt:
+            if not _binding_matches(receipt, body, fingerprint):
+                raise HTTPException(409, 'Event or evidence identity is already bound to a different payload')
+            if existing:
+                return PatrolEvent.from_mongo(await revalidate_stored_patrol(existing))
+        stored_evidence = (existing or {}).get('enforcement_evidence')
+        if stored_evidence and (_evidence_fingerprint(stored_evidence) != fingerprint
+                                or stored_evidence.get('evidence_id') != body.enforcement_evidence.evidence_id):
+            raise HTTPException(409, 'Event already has different enforcement evidence')
     verified = _derive_verified_block(body)
     # Cross-Platform Architecture Directive: state="biting" (THREAT_BLOCKED-equivalent) must never
     # be PERSISTED unless _derive_verified_block() says so — not just have its verified_block flag
@@ -67,15 +105,12 @@ async def upsert_event(body: PatrolEventIn):
         )
     payload = minimal_patrol(body, verified)
     payload["verified_block"] = verified  # never trust the client's claim directly
-    existing = await db.patrol_events.find_one({"event_id": body.event_id, "device_id": body.device_id})
-    if evidence_key and fingerprint and not receipt:
-        try:
-            receipt = await db.evidence_receipts.find_one_and_update(evidence_key,
-                {'$setOnInsert': {**evidence_key, 'event_id': body.event_id, 'fingerprint': fingerprint}}, upsert=True, return_document=True)
-        except DuplicateKeyError:
-            receipt = await db.evidence_receipts.find_one(evidence_key)
-        if receipt['event_id'] != body.event_id or receipt['fingerprint'] != fingerprint:
-            raise HTTPException(409, 'Evidence identity already belongs to a different event or payload')
+    claimed_here = False
+    if body.enforcement_evidence and fingerprint:
+        _, claimed_here = await _claim_evidence_binding(body, fingerprint)
+        existing = await db.patrol_events.find_one({'event_id': body.event_id, 'device_id': body.device_id})
+        if existing and not claimed_here:
+            return PatrolEvent.from_mongo(await revalidate_stored_patrol(existing))
     if existing:
         await db.patrol_events.update_one({"_id": existing["_id"]}, {"$set": {**payload, "updated_at": ts}})
         doc = await db.patrol_events.find_one({"_id": existing["_id"]})
@@ -84,7 +119,11 @@ async def upsert_event(body: PatrolEventIn):
     try:
         result = await db.patrol_events.insert_one(event.to_mongo())
     except DuplicateKeyError:
-        # Two syncs of the same event raced (e.g. link check + QR merge). Idempotent: apply as an update.
+        # Evidence replay is read-only: a concurrent identical request must never overwrite a later
+        # status/resolution. Non-evidence legacy races retain the existing last-write behavior.
+        if body.enforcement_evidence:
+            doc = await db.patrol_events.find_one({"event_id": body.event_id, "device_id": body.device_id})
+            return PatrolEvent.from_mongo(await revalidate_stored_patrol(doc))
         await db.patrol_events.update_one({"event_id": body.event_id, "device_id": body.device_id}, {"$set": {**payload, "updated_at": ts}})
         doc = await db.patrol_events.find_one({"event_id": body.event_id, "device_id": body.device_id})
         return PatrolEvent.from_mongo(doc)
@@ -101,7 +140,7 @@ async def upsert_event(body: PatrolEventIn):
 @router.get("/patrol/events", response_model=list[PatrolEvent])
 async def list_events(device_id: str = Query(min_length=8, max_length=64), limit: int = Query(default=200, le=500)):
     docs = await db.patrol_events.find({"device_id": device_id, "deleted_at": None}).sort("occurred_at", -1).to_list(limit)
-    return [PatrolEvent.from_mongo(d) for d in docs]
+    return [PatrolEvent.from_mongo(await revalidate_stored_patrol(d)) for d in docs]
 
 
 @router.patch("/patrol/events/{event_id}", response_model=PatrolEvent)
@@ -125,7 +164,7 @@ async def patch_event(event_id: str, body: PatrolEventPatch, device_id: str = Qu
             raise HTTPException(status_code=422, detail="state='biting' cannot be set via PATCH unless verified_block is already true on this event.")
         raise HTTPException(status_code=404, detail="Event not found")
     doc = await db.patrol_events.find_one({"event_id": event_id, "device_id": device_id})
-    return PatrolEvent.from_mongo(doc)
+    return PatrolEvent.from_mongo(await revalidate_stored_patrol(doc))
 
 
 @router.delete("/patrol/events")

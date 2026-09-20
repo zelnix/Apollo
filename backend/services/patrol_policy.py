@@ -1,7 +1,11 @@
 """Narrow packet evidence and minimal narrative policy, independent of SDK wire shapes."""
 import re
+from datetime import timezone
 from fastapi import HTTPException
-from core.db import now_utc
+from pydantic import ValidationError
+
+from core.db import db, now_utc
+from core.models import PatrolEventIn
 
 
 def domain_only(value):
@@ -51,3 +55,64 @@ def minimal_patrol(body, verified):
         adapter_label='Apollo on-device assessment', verified_block=verified,
     )
     return payload
+
+
+async def revalidate_stored_patrol(doc: dict) -> dict:
+    """Fail closed when old records predate the packet-only truth gate.
+
+    Retrieval is a security boundary too: historical call-screening/manual claims must not keep
+    presenting as packet-backed Biting merely because they were persisted by an older release.
+    The correction is written back once, while later resolved/trusted status remains intact.
+    """
+    if doc.get('state') != 'biting' and doc.get('verified_block') is not True:
+        return doc
+    try:
+        body = PatrolEventIn.model_validate(doc)
+        # MongoDB stores UTC datetimes without a timezone marker unless the client is configured
+        # tz-aware. Reattach UTC for revalidation; never infer a non-UTC zone.
+        if body.occurred_at.tzinfo is None:
+            body.occurred_at = body.occurred_at.replace(tzinfo=timezone.utc)
+        if body.enforcement_evidence and body.enforcement_evidence.observed_at.tzinfo is None:
+            body.enforcement_evidence.observed_at = body.enforcement_evidence.observed_at.replace(tzinfo=timezone.utc)
+        verified = packet_verified(body)
+    except (ValidationError, TypeError, ValueError):
+        verified = False
+    if verified:
+        if doc.get('verified_block') is not True:
+            await db.patrol_events.update_one({'_id': doc['_id']}, {'$set': {'verified_block': True}})
+            doc = {**doc, 'verified_block': True}
+        return doc
+
+    category = doc.get('category') if isinstance(doc.get('category'), str) else 'security'
+    status = doc.get('status')
+    if status == 'blocked':
+        status = 'resolved' if doc.get('resolved_at') else 'active'
+    updates = {
+        'state': 'barking' if doc.get('state') == 'biting' else doc.get('state', 'barking'),
+        'status': status,
+        'verified_block': False,
+        'headline': 'Apollo recorded a call-screening action' if category == 'call' else 'Apollo recorded a security check',
+        'what_happened': 'This historical record does not contain validated packet-drop evidence.',
+        'why': ['Only correlated packet-drop evidence can establish Biting.'],
+        'what_to_do': 'Review the original alert on your phone. This record does not prove a packet was blocked.',
+        'updated_at': now_utc(),
+    }
+    await db.patrol_events.update_one({'_id': doc['_id']}, {'$set': updates, '$unset': {'enforcement_evidence': ''}})
+    return {**doc, **updates, 'enforcement_evidence': None}
+
+
+async def ensure_evidence_receipt_indexes() -> None:
+    """Migrate historical duplicate event bindings before enforcing both unique identities."""
+    duplicate_groups = db.evidence_receipts.aggregate([
+        {'$group': {'_id': {'device_id': '$device_id', 'event_id': '$event_id'}, 'ids': {'$push': '$_id'}, 'count': {'$sum': 1}}},
+        {'$match': {'count': {'$gt': 1}}},
+    ])
+    async for group in duplicate_groups:
+        key = group['_id']
+        receipts = await db.evidence_receipts.find({'_id': {'$in': group['ids']}}).sort('_id', 1).to_list(100)
+        event = await db.patrol_events.find_one(key, {'enforcement_evidence.evidence_id': 1})
+        preferred = ((event or {}).get('enforcement_evidence') or {}).get('evidence_id')
+        keep = next((row for row in receipts if row.get('evidence_id') == preferred), receipts[0])
+        await db.evidence_receipts.delete_many({'_id': {'$in': [row['_id'] for row in receipts if row['_id'] != keep['_id']]}})
+    await db.evidence_receipts.create_index([('device_id', 1), ('evidence_id', 1)], unique=True)
+    await db.evidence_receipts.create_index([('device_id', 1), ('event_id', 1)], unique=True)

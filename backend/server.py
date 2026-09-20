@@ -26,6 +26,7 @@ from core.config import ADMIN_HEADER
 from core.db import client, db, now_utc
 from core.models import BlocklistEntry
 from core.privacy_boundary import PrivacyBoundary
+from services.patrol_policy import ensure_evidence_receipt_indexes
 from routers import admin, analysis, ask, call, devices, family, family_weekly, gmail, health, imapmail, intel, patrol, push, voice
 from routers.family_weekly import weekly_checkin_loop
 
@@ -51,7 +52,7 @@ async def lifespan(_: FastAPI):
     await db.imap_connections.create_index("device_id", unique=True)
     await db.phone_risk_cache.create_index("phone_e164", unique=True)
     await db.patrol_events.create_index([("device_id", 1), ("event_id", 1)], unique=True)
-    await db.evidence_receipts.create_index([('device_id', 1), ('evidence_id', 1)], unique=True)
+    await ensure_evidence_receipt_indexes()
     await db.trust_entries.create_index("trust_id", unique=True)
     await db.ask_messages.create_index([("device_id", 1), ("created_at", 1)])
     await db.blocklist.create_index("host", unique=True)

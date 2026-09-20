@@ -733,3 +733,43 @@ agent_communication:
     message: "Please independently verify the four iteration 63 blockers. Use /message?__apollo_test_setup=1 for deterministic preview entry. Do not alter frozen GuardDog source."
   - agent: "testing"
     message: "Iteration 64 PASS: backend 32/32, frontend 19/19 plus 2/2 preview checks, GuardDog 91/91; no blocker regressions reproduced."
+
+## Iteration 65 — P0-03/P0-05 post-closure persistence hardening
+backend:
+  - task: "Historical truth revalidation and immutable dual-unique evidence bindings"
+    implemented: true
+    working: true
+    file: "backend/services/patrol_policy.py, backend/routers/patrol.py, backend/server.py, backend/routers/family_weekly.py, backend/routers/admin.py"
+    needs_retesting: false
+    priority: "high"
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Historical retrieval persistently downgrades invalid call-screening Biting; identical evidence replay returns current stored status; event and evidence identities each have Mongo unique bindings with 409 conflict semantics under races. Full P0 backend matrix 84/84."
+      - agent: "testing"
+        working: true
+        comment: "Independent localhost/live-Mongo regressions 50/50, including real race and unique-index proof."
+frontend:
+  - task: "Bounded durable evidence outbox and receipt retention"
+    implemented: true
+    working: true
+    file: "frontend/src/store/deliveryQueue.ts, frontend/src/store/patrolDelivery.ts, frontend/src/components/PatrolDeliveryBanner.tsx"
+    needs_retesting: false
+    priority: "high"
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Pending capacity 256 with no eviction, explicit persisted overflow, local-event retry, receipt cap 1024 and 30-day TTL. Frontend P0 21/21 and preview PASS."
+      - agent: "testing"
+        working: true
+        comment: "Independent frontend 21/21 plus 2/2 preview checks; overflow/retention cases pass."
+test_plan:
+  current_focus:
+    - "P0 corrections complete; Stage 1D external certified inputs and physical-device run remain"
+  stuck_tasks:
+    - "Stage 1D candidate cannot produce truthful packet evidence from frozen bridge because protocol/port are omitted"
+  test_all: false
+  test_priority: "high_first"
+agent_communication:
+  - agent: "testing"
+    message: "Iteration 65 P0 PASS. Main-agent manifest run from frontend/packages confirms 91/91; tester's missing-path note came from a different working directory, not a digest mismatch."

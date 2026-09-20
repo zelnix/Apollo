@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { DeliveryQueue } from "../src/store/deliveryQueue.ts";
+import { DeliveryQueue, type DeliveryQueueOptions } from "../src/store/deliveryQueue.ts";
 import { shouldBypassSetup } from "../src/testing/setupBypass.ts";
 
 type Payload = Record<string, unknown>;
@@ -37,7 +37,7 @@ function deferred<T>() {
 function buildHarness() {
   let persisted: string | null = null;
   let now = 1_700_000_000_000;
-  const states: Array<{ pending: number; blocked: number; error: string | null }> = [];
+  const states: { pending: number; blocked: number; overflow: number; error: string | null }[] = [];
   const sends: Payload[] = [];
   let failWrites = 0;
   let sender: (body: Payload) => Promise<Payload> = async (body) => ackFor(body);
@@ -55,14 +55,14 @@ function buildHarness() {
       sends.push(body);
       return sender(body);
     },
-    changed: (status: { pending: number; blocked: number; error: string | null }) => {
+    changed: (status: { pending: number; blocked: number; overflow: number; error: string | null }) => {
       states.push(status);
     },
     now: () => now,
   };
 
   return {
-    queue: () => new DeliveryQueue(io),
+    queue: (options?: DeliveryQueueOptions) => new DeliveryQueue(io, options),
     setSender: (fn: (body: Payload) => Promise<Payload>) => {
       sender = fn;
     },
@@ -238,6 +238,39 @@ test("reverting to an older acknowledged version cannot replace newer pending", 
   await q.enqueue(v1);
   const j = h.getJournal() as any;
   assert.equal(j.pending["dev-1:ev-version"].payload.status, "resolved");
+});
+
+test("queue overflow is bounded, reported, and never evicts pending evidence", async () => {
+  const h = buildHarness();
+  const q = h.queue({ maxPending: 2, maxReceipts: 4, receiptTtlMs: 60_000 });
+  await q.enqueue(eventPayload({ event_id: "ev-1" }));
+  await q.enqueue(eventPayload({ event_id: "ev-2" }));
+  await assert.rejects(() => q.enqueue(eventPayload({ event_id: "ev-3" })), { name: "DeliveryQueueOverflow" });
+  let j = h.getJournal() as any;
+  assert.deepEqual(Object.keys(j.pending).sort(), ["dev-1:ev-1", "dev-1:ev-2"]);
+  assert.equal(h.states.at(-1)?.overflow, 1);
+  assert.match(h.states.at(-1)?.error ?? "", /No pending evidence was kept|Pending evidence was kept|capacity/i);
+  await q.flush("dev-1", true);
+  await q.enqueue(eventPayload({ event_id: "ev-3" }));
+  j = h.getJournal() as any;
+  assert.ok(j.pending["dev-1:ev-3"]);
+  assert.equal(h.states.at(-1)?.overflow, 0);
+});
+
+test("receipt history is bounded and expires by retention policy", async () => {
+  const h = buildHarness();
+  const q = h.queue({ maxPending: 4, maxReceipts: 2, receiptTtlMs: 100 });
+  for (let i = 1; i <= 3; i += 1) {
+    h.setNow(1_700_000_000_000 + i * 10);
+    await q.enqueue(eventPayload({ event_id: `receipt-${i}` }));
+    await q.flush("dev-1", true);
+  }
+  let j = h.getJournal() as any;
+  assert.equal(Object.keys(j.receipts).length, 2);
+  h.setNow(1_700_000_000_500);
+  await q.enqueue(eventPayload({ event_id: "receipt-4" }));
+  j = h.getJournal() as any;
+  assert.equal(Object.keys(j.receipts).length, 0);
 });
 
 test("setup bypass is explicit, preview-web-only, and never available in production/native", () => {
