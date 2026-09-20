@@ -594,3 +594,24 @@ frontend:
       - agent: "testing"
         working: true
         comment: "Independent report test_reports/iteration_61.json: 44/44 focused tests, ESLint/config checks, workflow wiring and preview smoke pass; actual audit888 packages/50 native names/0 duplicates/0 errors; SVG only15.15.4; GuardDog hashes91/91. No blocking defects. No hosted CI/native build/Pixel startup sign-off. Stage1D remains paused."
+
+## Stage 1D implementation/acceptance plan review only (2026-09-20)
+frontend:
+  - task: "Check proposed Stage 1D scope against frozen contract, evidence and P0-tracking requirements"
+    implemented: true
+    working: true
+    file: "docs/APOLLO_STAGE1D_PLAN_REVIEW.md, docs/STAGE1D_DEVICE_TEST_RECORD_TEMPLATE.md, docs/STAGE1D_P0_REMEDIATION_BACKLOG.md"
+    needs_retesting: false
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Plan-only source inspection at 0154e186fb4601495c3f4468f9a89ae0d18ce1f1. No pre-existing detailed Stage 1D plan or original P0 finding list located. Wrote explicitly proposed candidate file scope and exclusions; unresolved mapping/ownership/configuration/evidence decisions D1–D6; separate launch/start/stop/observed intentional packet-block gates; exact source commit and APK build ID mandatory per new device test; operational rollback plan. P0 source intake unresolved, no individual review findings fabricated or closed."
+  - task: "Stage 1D runtime implementation and real packet-blocking acceptance"
+    implemented: false
+    working: "NA"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        working: "NA"
+        comment: "NOT STARTED per user instruction. Stage 1C.1 user-verified Pixel 10 launch remains PASS; plan review does not re-open it or confer enforcement proof. Need original P0 report, D1–D6 decisions, final exact mapping/files and implementation approval. No runtime/contract/GuardDog changes or device tests performed during this review."

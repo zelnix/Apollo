@@ -452,3 +452,20 @@ It contains the guard/scanner/policy, CI workflow, combined preflight, Android/i
 tests and documentation. This is distinct from Support's SVG fix `01a30ae` and the earlier
 documentation-only base `137fb4a`. It identifies the guard source, not an independently verified
 source mapping for the user's APK. All 91 frozen GuardDog files still match the provenance manifest.
+
+## 16. Stage 1D plan-only review checkpoint (2026-09-20)
+
+User requested the exact scope/files/exclusions, separate acceptance evidence, frozen-source /
+rollback safeguards and per-finding P0 tracking **before runtime changes**. Results:
+
+- `APOLLO_STAGE1D_PLAN_REVIEW.md`: proposed exact candidate file allow-list, source-backed
+  unresolved interface/configuration/evidence decisions D1–D6, separate acceptance gates and
+  operational rollback plan. No pre-existing detailed developer implementation plan was found;
+  this proposal is not yet implementation approval.
+- `STAGE1D_DEVICE_TEST_RECORD_TEMPLATE.md`: source commit + APK build ID required for every new
+  run; launch, start, stop/recovery and real packet blocking have independent results.
+- `STAGE1D_P0_REMEDIATION_BACKLOG.md`: OPEN / source required. Original P0 review findings have
+  not been supplied or located; they cannot be invented, individually closed or treated as absent.
+
+**Stage 1C.1 launch remains PASS. Stage 1D implementation remains NOT STARTED.**
+All 91 frozen files and the existing public adapter/evidence contracts remain unchanged.
