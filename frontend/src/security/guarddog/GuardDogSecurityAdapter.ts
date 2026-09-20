@@ -4,6 +4,7 @@ import type { BlockResult, NativeUrlAnalysis, ProtectionStatus, SecurityPlatform
 import { AndroidSecurityAdapter } from "@/src/security/NativeSecurityAdapters";
 import { getNativeModule, NativeModuleUnavailable } from "@/src/security/nativeBridge";
 import { getGuardDogCandidateConfig } from "./GuardDogCandidateConfig";
+import { parseGuardDogCandidateEvidence } from "./GuardDogEvidenceBoundary";
 
 export class GuardDogSecurityAdapter implements SecurityPlatformAdapter {
   readonly kind = "android" as const;
@@ -36,6 +37,9 @@ export class GuardDogSecurityAdapter implements SecurityPlatformAdapter {
     sdkVersion: "guarddog-stage1d-candidate", capabilityVersion: "1", networkFiltering: "partial", packetVisibility: "partial",
     dnsVisibility: "none", processAttribution: "none", appAttribution: "none", domainVisibility: "partial", localBlocking: "partial",
     backgroundProtection: "full", offlineProtection: "partial", realTimeEvents: "partial", scope: ["ip:controlled-/32"] }); }
-  getEnforcementEvidence() { return this.json<EnforcementEvidence[]>(this.mod().getGuardDogCandidateEvidence()); }
-  async acknowledgeEnforcementEvidence(evidenceIds: string[]) { await this.mod().acknowledgeGuardDogCandidateEvidence(JSON.stringify(evidenceIds)); }
+  async getEnforcementEvidence(): Promise<EnforcementEvidence[]> { return parseGuardDogCandidateEvidence(await this.mod().getGuardDogCandidateEvidence()); }
+  async acknowledgeEnforcementEvidence(evidenceIds: string[]) {
+    const result = await this.json<{ persistenceError?: string | null }>(this.mod().acknowledgeGuardDogCandidateEvidence(JSON.stringify(evidenceIds)));
+    if (result.persistenceError) throw new Error(result.persistenceError);
+  }
 }

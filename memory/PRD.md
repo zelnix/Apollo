@@ -23,6 +23,14 @@
 - Concrete remaining run blockers: allocate/configure an Apollo-owned dedicated public IPv4 endpoint and exact DNS/TLS baseline, then sign its host-scoped bundle; trigger managed Android profile `guarddog-acceptance` through Publish. Native compilation/build ID and physical Pixel 10 acceptance are **NOT RUN** until those actions produce evidence.
 - Iteration 67 independent handoff verification passed crypto **2/2**, source guards **4/4**, and backend P0/Stage1D **50/50**. Main GuardDog manifest remains **91/91** when run from its manifest-relative `frontend/packages` directory.
 
+### Stage 1D post-`bb1a5fa` corrections — iteration 68
+- Acceptance evidence is now unique-run proof: generated run/probe IDs, observed native session, deliberate TCP source port, exact host/IP/port and packet observation window are all required; historical or untagged inbox records cannot pass.
+- Candidate runtime is one lazy process owner guarded by native build eligibility. Candidate/legacy start-stop operations share one serialized coordinator, and GuardDog start verifies legacy shutdown first.
+- Start/stop return only after observed session/TUN/route/reporter transitions or explicit timeout. Protection freshness is based on current native inspection, not lifecycle intention.
+- Native and JS boundaries validate supported protocol/source/action/result/confidence values. Unsupported protocol becomes `unknown`/`unverified` with raw metadata preserved. Native durable evidence is capped at 256 and exposes overflow/storage errors without crashing packet processing.
+- Historical signer dependency is absent from runtime/provisioner. Production remains legacy and generated default Android metadata is reset to acceptance=false.
+- Verification: frontend **60/60**, focused follow-up **11/11**, crypto **2/2**, backend independent **50/50**, candidate prebuild/autolinking PASS, preview isolation PASS, GuardDog **91/91**. Native compilation/JUnit, APK identifiers and Pixel acceptance remain **NOT RUN**.
+
 ## D3 policy reconciliation — signed runtime manifests restored; no implementation
 - User verified first D1/D3 doc sync at `09bb101d396c35ea4e6795c2a4794825961cf15e`, then correctly identified conflict with Stage 0 §§9–10. **The prior APK-pinned ordinary bundle-key / APK-only rotation proposal is WITHDRAWN.** Stage 0 is unchanged and remains the governing policy mirror; its authoritative engine-owner record is in the other project.
 - Added `docs/STAGE1D_D3_SIGNED_MANIFEST_RECONCILIATION.md`, answering the four concrete questions. Pinned primary/recovery ROOTS authenticate runtime signed trust manifests; manifests authorize/revoke everyday bundle keys with validity, overlap and monotonic trust state. Roots do not sign ordinary bundles. A fetched key is never trusted just because a backend supplies it. Recovery/version ordering requires certified engine-owner protocol; no ad-hoc override implemented here.

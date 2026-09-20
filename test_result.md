@@ -842,3 +842,29 @@ test_plan:
 agent_communication:
   - agent: "main"
     message: "Main frozen-source check executed from frontend/packages: 91/91 OK. Iteration 67 tester's path-layout warning is a working-directory issue, not a digest mismatch."
+
+## Iteration 68 — Stage 1D post-bb1a5fa acceptance corrections
+frontend:
+  - task: "Run-scoped proof, process owner, observed transitions, strict evidence boundary and bounded native inbox"
+    implemented: true
+    working: "source/prebuild verified; native compile/device not run"
+    file: "frontend/modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/ApolloGuardDogCandidateRuntime.kt, ApolloGuardDogLifecycle.kt, ApolloEvidenceInbox.kt, frontend/src/security/guarddog/GuardDogEvidenceBoundary.ts"
+    needs_retesting: true
+    priority: "critical"
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "New acceptance run requires run/probe/session/host/IP/port/time/new-ID correlation; runtime is one eligible process owner; all engine transitions serialize and await observed TUN/route/session/reporter state; native inbox capped 256 with surfaced non-throwing failures; public contract normalized/validated; historical signer absent."
+      - agent: "testing"
+        working: true
+        comment: "Independent iteration 68: backend 50/50, source/evidence/crypto 8/8, preview isolation PASS. Native compile/JUnit/Pixel NOT RUN. Requested stricter JS result validation; main aligned full JS/native public contract and follow-up 11/11 passed."
+test_plan:
+  current_focus:
+    - "Save corrected source to GitHub, provision dedicated endpoint, generate host-scoped bundle"
+    - "User triggers Publish Android profile guarddog-acceptance; run native JUnit and one Pixel workflow"
+  stuck_tasks:
+    - "No dedicated Apollo-owned public IPv4 host/DNS/TLS infrastructure or credentials"
+    - "Managed Publish and Pixel device access are user-triggered"
+agent_communication:
+  - agent: "main"
+    message: "GitHub bb1a5fa is now a reviewed baseline only. These iteration 68 corrections need a new Save to GitHub commit before build evidence can be linked."

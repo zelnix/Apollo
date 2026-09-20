@@ -13,8 +13,9 @@ export function toPatrolEnforcementEvidence(evidence: EnforcementEvidence): Patr
     event_id: evidence.eventId,
     device_id: evidence.deviceId,
     platform: evidence.platform,
-    os_version: typeof source.osVersion === "string" ? source.osVersion : null,
-    sdk_version: typeof source.sdkVersion === "string" ? source.sdkVersion : null,
+    // P0 privacy boundary: platform fingerprint details remain local.
+    os_version: null,
+    sdk_version: null,
     observed_at: evidence.observedAt,
     mechanism: evidence.mechanism,
     direction: evidence.direction,

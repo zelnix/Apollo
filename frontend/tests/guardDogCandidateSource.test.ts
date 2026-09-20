@@ -11,6 +11,9 @@ test("candidate has one Apollo-owned runtime and excludes the frozen Expo owner"
   assert.match(native, /GuardDogVpnRuntime\.reporter = reporter/);
   assert.match(native, /GuardDogSDKEngine/);
   assert.doesNotMatch(native, /GuardDogExpoModule/);
+  const module = read("../modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/ApolloSecurityModule.kt");
+  assert.match(module, /ApolloGuardDogProcessOwner\.get\(ctx\)/);
+  assert.doesNotMatch(module, /OnCreate \{ guardDogCandidate =/);
 });
 
 test("native correlation uses the original reporter evidence and never substitutes event time or port", () => {
@@ -21,6 +24,10 @@ test("native correlation uses the original reporter evidence and never substitut
   assert.match(native, /original\.enforcementEvidenceId/);
   assert.doesNotMatch(native, /destinationPort\s*\?:\s*443/);
   assert.doesNotMatch(native, /event\.occurredAt/);
+  assert.match(native, /acceptanceRunId/);
+  assert.match(native, /acceptanceProbeId/);
+  assert.match(native, /protectionSessionId/);
+  assert.match(native, /historicalIds/);
 });
 
 test("production defaults stay legacy while the candidate profile is test-only", () => {

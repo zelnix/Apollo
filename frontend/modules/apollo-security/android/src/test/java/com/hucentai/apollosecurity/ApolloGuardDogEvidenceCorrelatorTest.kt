@@ -34,6 +34,11 @@ class ApolloGuardDogEvidenceCorrelatorTest {
   @Test fun doesNotInferMissingPortAndRejectsMismatchedCorrelation() {
     val noPort = ApolloGuardDogEvidenceCorrelator.correlate(event, evidence.copy(destinationPort = null), "Android test")!!
     assertNull((noPort["destination"] as Map<*, *>)["port"])
+    assertEquals("unverified", noPort["result"])
+    val unsupported = ApolloGuardDogEvidenceCorrelator.correlate(event, evidence.copy(ipProtocol = 132), "Android test")!!
+    assertEquals("unknown", unsupported["protocol"])
+    assertEquals(132, (unsupported["sourceMetadata"] as Map<*, *>)["ipProtocolNumber"])
+    assertEquals("local_blocklist", unsupported["ruleSource"])
     assertNull(ApolloGuardDogEvidenceCorrelator.correlate(event.copy(enforcementEvidenceId = "other"), evidence, "Android test"))
     assertNull(ApolloGuardDogEvidenceCorrelator.correlate(event.copy(destinationIp = "192.0.2.9"), evidence, "Android test"))
   }

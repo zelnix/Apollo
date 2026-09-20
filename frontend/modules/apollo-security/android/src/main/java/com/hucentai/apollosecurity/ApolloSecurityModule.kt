@@ -31,7 +31,7 @@ class ApolloSecurityModule : Module() {
   private var protectionSince: String?
     get() = prefs.getString(KEY_SINCE, null)
     set(v) { prefs.edit().putString(KEY_SINCE, v).apply() }
-  private lateinit var guardDogCandidate: ApolloGuardDogCandidateRuntime
+  private fun guardDogCandidate(): ApolloGuardDogCandidateRuntime = ApolloGuardDogProcessOwner.get(ctx)
 
   companion object {
     private const val PREFS = "apollo_siteguard"
@@ -45,26 +45,21 @@ class ApolloSecurityModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("ApolloSecurity")
 
-    OnCreate { guardDogCandidate = ApolloGuardDogCandidateRuntime(ctx) }
-
     // Stage 1D acceptance candidate. These functions are deliberately separate from production
     // Site Guard; JS can only select them in the explicit non-production candidate profile.
-    Function("getGuardDogCandidateCapabilities") { guardDogCandidate.capabilities() }
-    Function("getGuardDogCandidateStatus") { guardDogCandidate.status() }
-    Function("configureGuardDogCandidate") { json: String ->
-      ctx.startService(Intent(ctx, ApolloDnsVpnService::class.java).setAction(ApolloDnsVpnService.ACTION_STOP))
-      guardDogCandidate.configure(json)
-    }
-    Function("acceptGuardDogCandidateBundle") { json: String -> guardDogCandidate.acceptBundle(json) }
-    AsyncFunction("startGuardDogCandidate") { guardDogCandidate.start() }
-    AsyncFunction("stopGuardDogCandidate") { guardDogCandidate.stop() }
-    Function("analyzeGuardDogCandidateUrl") { url: String -> guardDogCandidate.analyzeUrl(url) }
-    Function("getGuardDogCandidateEvidence") { guardDogCandidate.evidence() }
-    Function("acknowledgeGuardDogCandidateEvidence") { ids: String -> guardDogCandidate.acknowledgeEvidence(ids) }
-    Function("getGuardDogCandidateRecovery") { guardDogCandidate.recovery() }
-    AsyncFunction("probeGuardDogCandidateFresh") { timeoutMs: Int -> guardDogCandidate.freshProbe(timeoutMs) }
-    AsyncFunction("getGuardDogCandidateProvenance") { guardDogCandidate.provenance() }
-    AsyncFunction("runGuardDogCandidateAcceptance") { timeoutMs: Int -> guardDogCandidate.runConsolidatedAcceptance(timeoutMs) }
+    Function("getGuardDogCandidateCapabilities") { guardDogCandidate().capabilities() }
+    Function("getGuardDogCandidateStatus") { guardDogCandidate().status() }
+    Function("configureGuardDogCandidate") { json: String -> guardDogCandidate().configure(json) }
+    Function("acceptGuardDogCandidateBundle") { json: String -> guardDogCandidate().acceptBundle(json) }
+    AsyncFunction("startGuardDogCandidate") { guardDogCandidate().start() }
+    AsyncFunction("stopGuardDogCandidate") { guardDogCandidate().stop() }
+    Function("analyzeGuardDogCandidateUrl") { url: String -> guardDogCandidate().analyzeUrl(url) }
+    Function("getGuardDogCandidateEvidence") { guardDogCandidate().evidence() }
+    Function("acknowledgeGuardDogCandidateEvidence") { ids: String -> guardDogCandidate().acknowledgeEvidence(ids) }
+    Function("getGuardDogCandidateRecovery") { guardDogCandidate().recovery() }
+    AsyncFunction("probeGuardDogCandidateFresh") { timeoutMs: Int -> guardDogCandidate().freshProbe(timeoutMs) }
+    AsyncFunction("getGuardDogCandidateProvenance") { guardDogCandidate().provenance() }
+    AsyncFunction("runGuardDogCandidateAcceptance") { timeoutMs: Int -> guardDogCandidate().runConsolidatedAcceptance(timeoutMs) }
 
     AsyncFunction("getCapabilities") {
       val vpnGranted = VpnService.prepare(ctx) == null
@@ -161,24 +156,25 @@ class ApolloSecurityModule : Module() {
     }
 
     AsyncFunction("startProtection") {
-      requested = true
-      if (protectionSince == null) protectionSince = now()
-      if (VpnService.prepare(ctx) == null) {
-        ctx.startService(Intent(ctx, ApolloDnsVpnService::class.java).setAction(ApolloDnsVpnService.ACTION_START))
-        // Wait for establish() to actually succeed (or not) — up to 2 s — so the status we return is observed, not assumed.
-        var waited = 0
-        while (!ApolloDnsVpnService.isRunning && waited < 2000) { Thread.sleep(100); waited += 100 }
+      ApolloEnforcementTransitions.coordinator.serialized {
+        check(ApolloGuardDogProcessOwner.current()?.ownsEnforcement() != true) { "GuardDog owns the enforcement transition" }
+        requested = true
+        if (protectionSince == null) protectionSince = now()
+        if (VpnService.prepare(ctx) == null) {
+          ctx.startService(Intent(ctx, ApolloDnsVpnService::class.java).setAction(ApolloDnsVpnService.ACTION_START))
+          check(ApolloEnforcementTransitions.coordinator.await(4_000) { ApolloDnsVpnService.isRunning }) { "Legacy Site Guard start timed out" }
+        }
+        statusJson()
       }
-      statusJson()
     }
 
     AsyncFunction("stopProtection") {
-      requested = false
-      protectionSince = null
-      ctx.startService(Intent(ctx, ApolloDnsVpnService::class.java).setAction(ApolloDnsVpnService.ACTION_STOP))
-      var waited = 0
-      while (ApolloDnsVpnService.isRunning && waited < 1500) { Thread.sleep(100); waited += 100 }
-      statusJson()
+      ApolloEnforcementTransitions.coordinator.serialized {
+        requested = false; protectionSince = null
+        ctx.startService(Intent(ctx, ApolloDnsVpnService::class.java).setAction(ApolloDnsVpnService.ACTION_STOP))
+        check(ApolloEnforcementTransitions.coordinator.await(4_000) { !ApolloDnsVpnService.isRunning }) { "Legacy Site Guard stop timed out" }
+        statusJson()
+      }
     }
 
     AsyncFunction("getProtectionPermissions") {

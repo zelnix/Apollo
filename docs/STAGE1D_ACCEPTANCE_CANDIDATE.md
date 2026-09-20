@@ -77,5 +77,32 @@ Native compilation and Pixel 10 acceptance remain **NOT RUN** until that managed
   agent's manifest-path warning came from running the manifest at repository root, not a hash change.
 - Native Gradle/JUnit compilation, APK build identifiers and Pixel evidence remain **NOT RUN**.
 
+## Post-`bb1a5fa` source-review corrections — iteration 68
+
+Five candidate issues were corrected together before any Pixel run may count as acceptance:
+
+1. **Run-scoped proof:** every consolidated run creates unique run/probe IDs, captures the observed
+   GuardDog session, opens a deliberate TCP probe with a known source port, and accepts only newly
+   observed evidence matching run, probe, session, host, IP, port and observation window. Persisted
+   historical IDs and untagged evidence are explicit negatives.
+2. **Process ownership:** the candidate runtime is lazily created only after native build eligibility
+   and retained by one process owner across Expo module recreation. Candidate and legacy transitions
+   share one fair lock; GuardDog verifies legacy shutdown before issuing its start command.
+3. **Observed transitions:** start waits up to 10 seconds for ACTIVE state plus session, TUN, selective
+   route and reporter observations. Stop waits up to 8 seconds for observed recovery. Timeouts fail
+   explicitly; status freshness is created only by a current native observation.
+4. **Bridge/storage boundary:** unsupported IP protocol maps to public `unknown` + `unverified`, while
+   raw protocol/source stays local metadata. Native and JS validate the complete public contract.
+   Durable native retention is capped at 256, preserves existing pending records, reports overflow
+   and persistence failures, and never throws storage failures through the packet-reader callback.
+5. **Acceptance trust:** provisioning/runtime use only
+   `apollo-stage1d-acceptance-ed25519-001`; no historical `gd-m1-test` signer dependency remains.
+
+Behavioral native JUnit sources cover stale evidence, module recreation, competing operations,
+delayed transition/timeout, invalid evidence, bounded overflow and failed storage. Available checks:
+frontend **60/60**, bridge/source follow-up **11/11**, crypto **2/2**, backend independent **50/50**,
+candidate prebuild/autolinking PASS, default preview isolation PASS and frozen source **91/91**.
+Native Gradle/JUnit execution and Pixel acceptance remain **NOT RUN** pending the managed build.
+
 T1–T5 production trust certification remains outstanding and no candidate code is a production
 trust implementation or cutover approval.

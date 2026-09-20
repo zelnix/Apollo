@@ -28,9 +28,15 @@ import com.guarddog.vpn.VpnStateRepository
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.net.InetSocketAddress
+import java.net.Socket
+import java.net.SocketTimeoutException
+import java.net.URI
 import java.security.MessageDigest
 import java.time.Instant
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicReference
 
 private class ApolloBundleVersionStore(context: Context) : BundleVersionStore {
   private val prefs = context.getSharedPreferences("apollo_guarddog_bundle_versions", Context.MODE_PRIVATE)
@@ -44,11 +50,35 @@ private class ApolloBundleVersionStore(context: Context) : BundleVersionStore {
   }
 }
 
+internal data class AcceptanceProbeContext(
+  val runId: String, val probeId: String, val sessionId: String, val destinationHost: String, val destinationIp: String,
+  val destinationPort: Int, val sourcePort: Int, val startedAtEpochMillis: Long, val deadlineEpochMillis: Long,
+) {
+  fun matches(evidence: BlockedThreatEvidence, currentSessionId: String?): Boolean =
+    currentSessionId == sessionId && evidence.destinationIpv4 == destinationIp && evidence.destinationPort == destinationPort &&
+      evidence.sourcePort == sourcePort && evidence.ipProtocol == 6 &&
+      evidence.observedAtEpochMillis in startedAtEpochMillis..deadlineEpochMillis
+}
+
+internal data class AcceptanceEvidenceRef(
+  val evidenceId: String, val runId: String?, val probeId: String?, val sessionId: String?,
+  val destinationHost: String?, val destinationIp: String?, val destinationPort: Int?, val observedAtEpochMillis: Long?,
+)
+
+internal object ApolloAcceptanceEvidenceGate {
+  fun matches(record: AcceptanceEvidenceRef, run: AcceptanceProbeContext, historicalIds: Set<String>): Boolean =
+    record.evidenceId !in historicalIds && record.runId == run.runId && record.probeId == run.probeId &&
+      record.sessionId == run.sessionId && record.destinationIp == run.destinationIp && record.destinationPort == run.destinationPort &&
+      record.destinationHost == run.destinationHost &&
+      record.observedAtEpochMillis != null && record.observedAtEpochMillis in run.startedAtEpochMillis..run.deadlineEpochMillis
+}
+
 internal object ApolloGuardDogEvidenceCorrelator {
   fun correlate(event: SecurityEvent, original: BlockedThreatEvidence, osVersion: String): Map<String, Any?>? {
     if (!event.isGenuineBlock || event.enforcementEvidenceId != original.enforcementEvidenceId) return null
     if (event.destinationIp != original.destinationIpv4 || event.host.isNullOrBlank() || event.ruleId.isNullOrBlank()) return null
-    val protocol = when (original.ipProtocol) { 6 -> "tcp"; 17 -> "udp"; 1 -> "icmp"; else -> "iana-${original.ipProtocol}" }
+    val protocol = when (original.ipProtocol) { 6 -> "tcp"; 17 -> "udp"; else -> "unknown" }
+    val contractVerified = protocol != "unknown" && original.destinationPort != null
     return mapOf(
       "evidenceId" to original.enforcementEvidenceId, "eventId" to null, "deviceId" to null,
       "platform" to "android", "osVersion" to osVersion, "sdkVersion" to null,
@@ -57,67 +87,106 @@ internal object ApolloGuardDogEvidenceCorrelator {
       "destination" to mapOf("ip" to original.destinationIpv4, "domain" to event.host, "port" to original.destinationPort),
       "attribution" to mapOf("appId" to null, "processName" to null, "confidence" to "unavailable"),
       "matchedRuleId" to event.ruleId, "threatId" to null, "requestedAction" to "block", "enforcedAction" to "blocked",
-      "result" to "verified", "ruleSource" to "signed_guarddog_bundle", "confidence" to "high", "correlationId" to event.id,
+      "result" to if (contractVerified) "verified" else "unverified", "ruleSource" to "local_blocklist",
+      "confidence" to "high", "correlationId" to event.id,
       "sourceMetadata" to mapOf("ipProtocolNumber" to original.ipProtocol, "sourcePort" to original.sourcePort,
         "packetLength" to original.packetLength, "flowKey" to original.flowKey, "enforcementLayer" to original.enforcementLayer,
-        "rulesetId" to event.rulesetId, "bundleVersion" to event.bundleVersion),
+        "rawRuleSource" to "signed_guarddog_bundle", "rulesetId" to event.rulesetId, "bundleVersion" to event.bundleVersion),
     )
+  }
+
+  fun contractValid(record: Map<String, Any?>): Boolean {
+    val protocol = record["protocol"] as? String ?: return false
+    val result = record["result"] as? String ?: return false
+    val ruleSource = record["ruleSource"] as? String ?: return false
+    val requestedAction = record["requestedAction"] as? String ?: return false
+    val enforcedAction = record["enforcedAction"] as? String ?: return false
+    val confidence = record["confidence"] as? String ?: return false
+    val destination = record["destination"] as? Map<*, *> ?: return false
+    val attribution = record["attribution"] as? Map<*, *> ?: return false
+    val port = destination["port"]
+    val observed = record["observedAt"] as? String ?: return false
+    return (record["evidenceId"] as? String)?.isNotBlank() == true && record["platform"] == "android" && record["mechanism"] == "packet_filter" &&
+      record["direction"] == "outbound" && protocol in setOf("tcp", "udp", "dns", "http", "https", "unknown") &&
+      result in setOf("verified", "unverified", "failed") && ruleSource in
+      setOf("local_blocklist", "cloud_intel", "heuristic", "user_override", "unknown") &&
+      (destination["ip"] as? String)?.isNotBlank() == true && (destination["domain"] as? String)?.isNotBlank() == true &&
+      (port == null || port is Int && port in 1..65535) && attribution["confidence"] in setOf("high", "medium", "low", "unavailable") &&
+      requestedAction in setOf("block", "allow", "monitor") && enforcedAction in setOf("blocked", "allowed", "monitored", "none") &&
+      confidence in setOf("high", "medium", "low") && record["sourceMetadata"] is Map<*, *> &&
+      runCatching { Instant.parse(observed) }.isSuccess && (result != "verified" || protocol != "unknown" && port != null && enforcedAction == "blocked")
   }
 }
 
-/** Acceptance-only single owner for frozen GuardDog core/VPN. Production trust is deliberately absent. */
+private data class PendingEvidence(val evidence: BlockedThreatEvidence, val probe: AcceptanceProbeContext?)
+
+/** Process-owned, acceptance-only runtime over frozen GuardDog core/VPN. */
 internal class ApolloGuardDogCandidateRuntime(private val context: Context) {
+  private val transitions = ApolloEnforcementTransitions.coordinator
   private val state = VpnStateRepository.shared
   private val prefs = context.getSharedPreferences("apollo_guarddog_candidate", Context.MODE_PRIVATE)
+  private val inbox = BoundedEvidenceInbox(EVIDENCE_CAPACITY, SharedPreferencesEvidencePersistence(prefs)) {
+    runCatching { JSONObject(it).optString("evidenceId").takeIf(String::isNotBlank) }.getOrNull()
+  }
   private val engine = GuardDogSDKEngine(
     RuleBundleVerifier(TrustedKeyRegistry(mapOf(ACCEPTANCE_KEY_ID to ACCEPTANCE_PUBLIC_KEY_B64)), ApolloBundleVersionStore(context), SystemClock), state, SystemClock,
   )
-  private val pending = ConcurrentHashMap<String, BlockedThreatEvidence>()
+  private val pending = ConcurrentHashMap<String, PendingEvidence>()
+  private val activeProbe = AtomicReference<AcceptanceProbeContext?>(null)
   private var config: VpnConfig? = null
   private val reporter = ProtectionEnforcementReporter { evidence ->
-    pending[evidence.enforcementEvidenceId] = evidence
-    try { engine.reportBlockedPacket(evidence) } finally { pending.remove(evidence.enforcementEvidenceId) }
+    val probe = activeProbe.get()?.takeIf { it.matches(evidence, state.current().activeSessionId) }
+    pending[evidence.enforcementEvidenceId] = PendingEvidence(evidence, probe)
+    try { engine.reportBlockedPacket(evidence) }
+    catch (_: Throwable) { inbox.reportFailure("GuardDog engine event reporting failed") }
+    finally { pending.remove(evidence.enforcementEvidenceId) }
   }
 
   init {
+    migrateLegacyEvidence()
     state.osConsentCheck = { VpnService.prepare(context) == null }
     engine.addEventListener { event ->
-      val id = event.enforcementEvidenceId ?: return@addEventListener
-      val original = pending[id] ?: return@addEventListener
-      ApolloGuardDogEvidenceCorrelator.correlate(event, original, "Android ${android.os.Build.VERSION.RELEASE}")
-        ?.let { persistEvidence(JSONObject(it)) }
+      try {
+        val item = pending[event.enforcementEvidenceId ?: return@addEventListener] ?: return@addEventListener
+        val record = ApolloGuardDogEvidenceCorrelator.correlate(event, item.evidence, "Android ${android.os.Build.VERSION.RELEASE}") ?: return@addEventListener
+        if (!ApolloGuardDogEvidenceCorrelator.contractValid(record)) { inbox.reportFailure("Native evidence violated the public bridge contract"); return@addEventListener }
+        val mutable = record.toMutableMap()
+        item.probe?.let { probe ->
+          val source = (record["sourceMetadata"] as Map<*, *>).entries.associate { it.key.toString() to it.value }.toMutableMap()
+          source["acceptanceRunId"] = probe.runId; source["acceptanceProbeId"] = probe.probeId; source["protectionSessionId"] = probe.sessionId
+          mutable["sourceMetadata"] = source
+        }
+        inbox.append(JSONObject(mutable).toString())
+      } catch (_: Throwable) { inbox.reportFailure("Native evidence correlation or persistence failed") }
     }
   }
 
-  fun configure(raw: String): String {
+  fun configure(raw: String): String = transitions.serialized {
     requireAcceptanceEnabled()
-    val body = JSONObject(raw)
-    check(body.optString("profile") == PROFILE) { "GuardDog candidate profile is test-only" }
-    val next = VpnConfig(
-      controlledHost = body.getString("controlledHost"), controlledIpv4 = body.getString("controlledIpv4"),
-      controlledUrl = body.getString("controlledUrl"), rulesetId = body.getString("rulesetId"),
-      dedupeWindowMillis = body.optLong("dedupeWindowMs", 2_000L),
-    )
-    config = next
-    GuardDogVpnRuntime.config = next
-    GuardDogVpnRuntime.reporter = reporter
-    GuardDogVpnRuntime.websiteGateEngine = null
-    GuardDogVpnRuntime.websiteGateRouteConfig = null
-    return JSONObject().put("configured", true).put("profile", PROFILE).toString()
+    val body = JSONObject(raw); check(body.optString("profile") == PROFILE) { "GuardDog candidate profile is test-only" }
+    val next = VpnConfig(body.getString("controlledHost"), body.getString("controlledIpv4"), body.getString("controlledUrl"),
+      body.getString("rulesetId"), body.optLong("dedupeWindowMs", 2_000L))
+    config = next; GuardDogVpnRuntime.config = next; GuardDogVpnRuntime.reporter = reporter
+    GuardDogVpnRuntime.websiteGateEngine = null; GuardDogVpnRuntime.websiteGateRouteConfig = null
+    JSONObject().put("configured", true).put("profile", PROFILE).toString()
   }
 
-  fun acceptBundle(raw: String): String {
+  fun acceptBundle(raw: String): String = transitions.serialized {
     requireAcceptanceEnabled()
-    return when (val result = engine.acceptRuleBundle(raw)) {
-    is VerificationResult.Accepted -> JSONObject().put("accepted", true).put("rulesetId", result.bundle.rulesetId)
-      .put("bundleVersion", result.bundle.bundleVersion).put("expiresAt", result.bundle.expiresAt).toString()
-    is VerificationResult.Rejected -> JSONObject().put("accepted", false).put("reason", result.reason.name)
-      .put("detail", result.detail ?: JSONObject.NULL).toString()
+    when (val result = engine.acceptRuleBundle(raw)) {
+      is VerificationResult.Accepted -> JSONObject().put("accepted", true).put("rulesetId", result.bundle.rulesetId)
+        .put("bundleVersion", result.bundle.bundleVersion).put("expiresAt", result.bundle.expiresAt).toString()
+      is VerificationResult.Rejected -> JSONObject().put("accepted", false).put("reason", result.reason.name)
+        .put("detail", result.detail ?: JSONObject.NULL).toString()
     }
   }
 
-  fun start(): String {
-    requireAcceptanceEnabled()
+  fun start(): String = transitions.serialized { startLocked() }
+  fun stop(): String = transitions.serialized { stopLocked() }
+  fun ownsEnforcement(): Boolean = prefs.getBoolean("requested", false) || state.current().state in setOf(ProtectionState.STARTING, ProtectionState.ACTIVE)
+
+  private fun startLocked(): String {
+    requireAcceptanceEnabled(); ensureLegacyStopped()
     val activeConfig = checkNotNull(config) { "GuardDog candidate is not configured" }
     check(VpnService.prepare(context) == null) { "VPN consent is not granted" }
     check(engine.acceptedBundle() != null) { "No accepted signed acceptance bundle" }
@@ -130,74 +199,85 @@ internal class ApolloGuardDogCandidateRuntime(private val context: Context) {
       is BlockAuthorization.NotAuthorized -> error("Rule authority rejected target: ${authority.reason}")
       is BlockAuthorization.Authorized -> Unit
     }
-    prefs.edit().putBoolean("requested", true).putString("since", Instant.now().toString()).commit()
+    check(prefs.edit().putBoolean("requested", true).putString("since", Instant.now().toString()).commit()) { "Could not persist candidate request state" }
     context.startForegroundService(Intent(context, GuardDogVpnService::class.java).setAction(GuardDogVpnService.ACTION_START))
-    var waited = 0
-    while (state.current().state == ProtectionState.STARTING && waited < 5_000) { Thread.sleep(100); waited += 100 }
-    return status()
+    if (!transitions.await(START_TIMEOUT_MS) { actualOperational() }) {
+      context.startService(Intent(context, GuardDogVpnService::class.java).setAction(GuardDogVpnService.ACTION_STOP))
+      error("GuardDog start transition timed out before ACTIVE TUN/route/session/reporter observations")
+    }
+    return statusLocked()
   }
 
-  fun stop(): String {
+  private fun stopLocked(): String {
     context.startService(Intent(context, GuardDogVpnService::class.java).setAction(GuardDogVpnService.ACTION_STOP))
+    check(prefs.edit().putBoolean("requested", false).remove("since").commit()) { "Could not persist candidate stop request" }
+    if (!transitions.await(STOP_TIMEOUT_MS) { actualRecovered() }) error("GuardDog stop transition timed out before TUN/route/reporter recovery")
     engine.clearAuthorization()
-    prefs.edit().putBoolean("requested", false).remove("since").commit()
-    var waited = 0
-    while (state.current().state == ProtectionState.ACTIVE && waited < 3_000) { Thread.sleep(100); waited += 100 }
-    return status()
+    return statusLocked()
   }
 
-  fun status(): String {
-    val snapshot = state.current(); val operational = snapshot.state == ProtectionState.ACTIVE
-    val requested = prefs.getBoolean("requested", false)
+  private fun ensureLegacyStopped() {
+    if (!ApolloDnsVpnService.isRunning) return
+    context.startService(Intent(context, ApolloDnsVpnService::class.java).setAction(ApolloDnsVpnService.ACTION_STOP))
+    if (!transitions.await(LEGACY_STOP_TIMEOUT_MS) { !ApolloDnsVpnService.isRunning }) error("Legacy Site Guard did not stop before GuardDog start")
+  }
+
+  private fun actualOperational(): Boolean {
+    val snapshot = state.current(); val runtime = RecoveryInspector.inspect(context, state)
+    return snapshot.state == ProtectionState.ACTIVE && !snapshot.activeSessionId.isNullOrBlank() && runtime.lifecycle == "ACTIVE" &&
+      runtime.tunOpen && runtime.selectiveRouteActive && runtime.dropReporterAttached
+  }
+
+  private fun actualRecovered(): Boolean = state.current().state != ProtectionState.ACTIVE && RecoveryInspector.inspect(context, state).recovered
+
+  fun status(): String = transitions.serialized { statusLocked() }
+  private fun statusLocked(): String {
+    val snapshot = state.current(); val runtime = RecoveryInspector.inspect(context, state); val operational = actualOperational()
+    val requested = prefs.getBoolean("requested", false); val inboxStatus = inbox.status(); val checked = Instant.now().toString()
     return JSONObject().put("running", operational).put("requested", requested).put("operational", operational)
-      .put("enforcementMethod", "packet_filter")
-      .put("coverage", "Acceptance-only selective /32 packet filtering for the verified controlled endpoint.")
-      .put("coverageScope", JSONArray().put("ip:controlled-/32"))
-      .put("lastVerified", if (operational) Instant.ofEpochMilli(snapshot.updatedAtEpochMillis).toString() else JSONObject.NULL)
-      .put("degradedReason", if (requested && !operational) (snapshot.reason ?: snapshot.state.name) else JSONObject.NULL)
+      .put("enforcementMethod", "packet_filter").put("coverage", "Acceptance-only selective /32 packet filtering for the verified controlled endpoint.")
+      .put("coverageScope", JSONArray().put("ip:controlled-/32")).put("lastVerified", if (operational) checked else JSONObject.NULL)
+      .put("degradedReason", if (requested && !operational) (snapshot.reason ?: "TUN/route/session/reporter observation incomplete") else JSONObject.NULL)
       .put("visibility", if (operational) "full" else "none").put("since", prefs.getString("since", null) ?: JSONObject.NULL)
-      .put("adapterLabel", LABEL).put("checkedAt", Instant.now().toString()).put("candidateTestOnly", true).toString()
+      .put("adapterLabel", LABEL).put("checkedAt", checked).put("candidateTestOnly", true)
+      .put("nativeLifecycle", runtime.lifecycle).put("activeSessionId", snapshot.activeSessionId ?: JSONObject.NULL)
+      .put("tunOpen", runtime.tunOpen).put("selectiveRouteActive", runtime.selectiveRouteActive).put("dropReporterAttached", runtime.dropReporterAttached)
+      .put("evidencePending", inboxStatus.pending).put("evidenceCapacity", inboxStatus.capacity).put("evidenceOverflow", inboxStatus.overflow)
+      .put("evidencePersistenceError", inboxStatus.error ?: JSONObject.NULL).toString()
   }
 
-  fun capabilities(): String = JSONArray()
-    .put(JSONObject().put("id", "site_guard").put("title", "GuardDog Candidate").put("status",
-      if (state.current().state == ProtectionState.ACTIVE) "active" else if (VpnService.prepare(context) == null) "inactive" else "permission_required")
-      .put("detail", "Test-only selective packet enforcement for the controlled acceptance endpoint."))
-    .toString()
+  fun capabilities(): String = JSONArray().put(JSONObject().put("id", "site_guard").put("title", "GuardDog Candidate")
+    .put("status", if (actualOperational()) "active" else if (VpnService.prepare(context) == null) "inactive" else "permission_required")
+    .put("detail", "Test-only selective packet enforcement for the controlled acceptance endpoint.")).toString()
 
-  fun analyzeUrl(url: String): String {
-    requireAcceptanceEnabled()
-    val result = engine.analyzeUrl(url)
-    return if (result == null) JSONObject().put("supported", false).put("verdict", "unknown").put("reasons", JSONArray().put("URL was not accepted by the native sanitizer.")).toString()
-      else JSONObject().put("supported", true).put("verdict", result.verdict).put("reasons", JSONArray())
-        .put("sanitizedUrl", result.sanitizedUrl).put("host", result.host).put("ruleId", result.ruleId ?: JSONObject.NULL).toString()
+  fun analyzeUrl(url: String): String = transitions.serialized {
+    requireAcceptanceEnabled(); val result = engine.analyzeUrl(url)
+    if (result == null) JSONObject().put("supported", false).put("verdict", "unknown").put("reasons", JSONArray().put("URL was not accepted by the native sanitizer.")).toString()
+    else JSONObject().put("supported", true).put("verdict", result.verdict).put("reasons", JSONArray())
+      .put("sanitizedUrl", result.sanitizedUrl).put("host", result.host).put("ruleId", result.ruleId ?: JSONObject.NULL).toString()
   }
 
-  @Synchronized fun evidence(): String = JSONArray(prefs.getString(KEY_EVIDENCE, "[]")).toString()
-  @Synchronized fun acknowledgeEvidence(rawIds: String): String {
-    val ids = JSONArray(rawIds); val remove = mutableSetOf<String>()
-    for (i in 0 until ids.length()) remove.add(ids.getString(i))
-    val current = JSONArray(prefs.getString(KEY_EVIDENCE, "[]")); val kept = JSONArray()
-    for (i in 0 until current.length()) if (current.getJSONObject(i).optString("evidenceId") !in remove) kept.put(current.getJSONObject(i))
-    check(prefs.edit().putString(KEY_EVIDENCE, kept.toString()).commit()) { "Could not acknowledge native evidence" }
-    return JSONObject().put("acknowledged", current.length() - kept.length()).toString()
+  fun evidence(): String {
+    val valid = inbox.records().filter { raw -> runCatching { contractValidJson(JSONObject(raw)) }.getOrDefault(false) }
+    if (valid.size != inbox.status().pending) inbox.reportFailure("Invalid persisted native evidence was withheld at the bridge")
+    return "[${valid.joinToString(",")}]"
+  }
+  fun acknowledgeEvidence(rawIds: String): String {
+    val ids = JSONArray(rawIds); val remove = (0 until ids.length()).map { ids.getString(it) }.toSet()
+    val acknowledged = inbox.acknowledge(remove); val state = inbox.status()
+    return JSONObject().put("acknowledged", acknowledged).put("pending", state.pending)
+      .put("persistenceError", state.error ?: JSONObject.NULL).toString()
   }
 
-  fun recovery(): String {
-    val r = RecoveryInspector.inspect(context, state)
-    return JSONObject().put("lifecycle", r.lifecycle).put("tunOpen", r.tunOpen)
-      .put("selectiveRouteActive", r.selectiveRouteActive).put("vpnTransportPresent", r.vpnTransportPresent)
-      .put("routeCidr", r.routeCidr ?: JSONObject.NULL).put("dropReporterAttached", r.dropReporterAttached).put("recovered", r.recovered).toString()
-  }
+  fun recovery(): String { val r = RecoveryInspector.inspect(context, state); return JSONObject().put("lifecycle", r.lifecycle).put("tunOpen", r.tunOpen)
+    .put("selectiveRouteActive", r.selectiveRouteActive).put("vpnTransportPresent", r.vpnTransportPresent)
+    .put("routeCidr", r.routeCidr ?: JSONObject.NULL).put("dropReporterAttached", r.dropReporterAttached).put("recovered", r.recovered).toString() }
 
-  fun freshProbe(timeoutMs: Int): String {
-    val activeConfig = checkNotNull(config) { "GuardDog candidate is not configured" }
-    return JSONObject(FreshConnectionProbe.run(activeConfig.controlledUrl, activeConfig.controlledIpv4, timeoutMs, GuardDogVpnRuntime.resolver).toMap()).toString()
-  }
+  fun freshProbe(timeoutMs: Int): String { val activeConfig = checkNotNull(config) { "GuardDog candidate is not configured" }
+    return JSONObject(FreshConnectionProbe.run(activeConfig.controlledUrl, activeConfig.controlledIpv4, timeoutMs, GuardDogVpnRuntime.resolver).toMap()).toString() }
 
   fun provenance(): String {
-    val info = context.packageManager.getPackageInfo(context.packageName, 0); val apk = File(context.applicationInfo.sourceDir)
-    val digest = MessageDigest.getInstance("SHA-256")
+    val info = context.packageManager.getPackageInfo(context.packageName, 0); val apk = File(context.applicationInfo.sourceDir); val digest = MessageDigest.getInstance("SHA-256")
     apk.inputStream().use { input -> val buf = ByteArray(1 shl 16); while (true) { val n = input.read(buf); if (n < 0) break; digest.update(buf, 0, n) } }
     return JSONObject().put("apkSha256", digest.digest().joinToString("") { "%02x".format(it) }).put("apkSizeBytes", apk.length())
       .put("splitApks", context.applicationInfo.splitSourceDirs?.size ?: 0).put("packageName", context.packageName)
@@ -206,55 +286,106 @@ internal class ApolloGuardDogCandidateRuntime(private val context: Context) {
       .put("activeNativeStackId", STACK_ID).put("candidateTestOnly", true).toString()
   }
 
-  fun runConsolidatedAcceptance(timeoutMs: Int): String {
-    requireAcceptanceEnabled()
-    val startedAt = Instant.now().toString()
-    val build = JSONObject(provenance())
-    val baseline = JSONObject(freshProbe(timeoutMs))
+  fun runConsolidatedAcceptance(timeoutMs: Int): String = transitions.serialized {
+    requireAcceptanceEnabled(); val activeConfig = checkNotNull(config); val runId = UUID.randomUUID().toString(); val historical = evidenceIds()
+    val startedAt = Instant.now().toString(); val build = JSONObject(provenance()); val baseline = JSONObject(freshProbe(timeoutMs))
     check(baseline.optString("outcome") == "ok") { "Baseline controlled endpoint did not respond successfully" }
-    lateinit var active: JSONObject
-    lateinit var blocked: JSONObject
-    lateinit var captured: JSONArray
+    lateinit var active: JSONObject; lateinit var blocked: JSONObject; lateinit var captured: JSONArray; lateinit var runProbe: AcceptanceProbeContext
     try {
-      active = JSONObject(start())
-      check(active.optBoolean("operational")) { "GuardDog runtime did not become ACTIVE" }
-      blocked = JSONObject(freshProbe(timeoutMs))
-      check(blocked.optBoolean("synDropShape")) { "Fresh controlled connection did not show verified SYN-drop shape" }
-      captured = JSONArray(evidence())
-      check(captured.length() > 0) { "No correlated native packet evidence was persisted" }
-    } finally {
-      stop()
-    }
-    val recovery = JSONObject(recovery())
-    check(recovery.optBoolean("recovered")) { "VPN route/TUN recovery was not observed" }
-    val after = JSONObject(freshProbe(timeoutMs))
-    check(after.optString("outcome") == "ok") { "Controlled endpoint did not recover after stop" }
-    return JSONObject().put("candidateTestOnly", true).put("startedAt", startedAt).put("completedAt", Instant.now().toString())
-      .put("build", build).put("baseline", baseline).put("active", active).put("blocked", blocked)
-      .put("evidence", captured).put("recovery", recovery).put("afterStop", after).put("passed", true).toString()
+      active = JSONObject(startLocked()); val sessionId = active.getString("activeSessionId")
+      val probeResult = runIntentionalDropProbe(runId, sessionId, activeConfig, timeoutMs); blocked = probeResult.first; runProbe = probeResult.second
+      check(blocked.optBoolean("synDropShape")) { "Run-scoped controlled SYN did not show intentional drop shape" }
+      captured = matchingRunEvidence(runProbe, historical)
+      check(captured.length() > 0) { "No newly observed packet matched this run/probe/session/destination" }
+    } finally { stopLocked() }
+    val recovered = JSONObject(recovery()); check(recovered.optBoolean("recovered")) { "VPN route/TUN recovery was not observed" }
+    val after = JSONObject(freshProbe(timeoutMs)); check(after.optString("outcome") == "ok") { "Controlled endpoint did not recover after stop" }
+    JSONObject().put("candidateTestOnly", true).put("runId", runId).put("probeId", runProbe.probeId).put("sessionId", runProbe.sessionId)
+      .put("startedAt", startedAt).put("completedAt", Instant.now().toString()).put("build", build).put("baseline", baseline)
+      .put("active", active).put("blocked", blocked).put("evidence", captured).put("recovery", recovered).put("afterStop", after).put("passed", true).toString()
   }
 
-  @Synchronized private fun persistEvidence(record: JSONObject) {
-    val current = JSONArray(prefs.getString(KEY_EVIDENCE, "[]"))
-    for (i in 0 until current.length()) if (current.getJSONObject(i).optString("evidenceId") == record.getString("evidenceId")) return
-    current.put(record)
-    check(prefs.edit().putString(KEY_EVIDENCE, current.toString()).commit()) { "Could not persist native enforcement evidence" }
+  private fun runIntentionalDropProbe(runId: String, sessionId: String, activeConfig: VpnConfig, timeoutMs: Int): Pair<JSONObject, AcceptanceProbeContext> {
+    val uri = URI(activeConfig.controlledUrl); val port = if (uri.port > 0) uri.port else 443
+    val probeId = UUID.randomUUID().toString(); val socket = Socket(); socket.bind(InetSocketAddress(0)); val started = System.currentTimeMillis()
+    val probe = AcceptanceProbeContext(runId, probeId, sessionId, activeConfig.controlledHost, activeConfig.controlledIpv4,
+      port, socket.localPort, started, started + timeoutMs + 1_000)
+    check(activeProbe.compareAndSet(null, probe)) { "Another acceptance probe is active" }
+    var timedOut = false; var connected = false; var error: String? = null
+    try { socket.connect(InetSocketAddress(activeConfig.controlledIpv4, port), timeoutMs); connected = socket.isConnected }
+    catch (_: SocketTimeoutException) { timedOut = true }
+    catch (failure: Throwable) { error = failure.javaClass.simpleName }
+    if (timedOut) transitions.await(1_000, 25) { hasTaggedEvidence(probe) }
+    activeProbe.compareAndSet(probe, null); runCatching { socket.close() }
+    val elapsed = System.currentTimeMillis() - started; val dropShape = timedOut && !connected && elapsed >= (timeoutMs * 8L / 10L)
+    return JSONObject().put("runId", runId).put("probeId", probeId).put("sessionId", sessionId).put("sourcePort", probe.sourcePort)
+      .put("destinationIp", probe.destinationIp).put("destinationPort", port).put("timedOut", timedOut).put("connected", connected)
+      .put("elapsedMs", elapsed).put("error", error ?: JSONObject.NULL).put("synDropShape", dropShape) to probe
   }
 
-  private fun requireAcceptanceEnabled() {
-    val info = context.packageManager.getApplicationInfo(context.packageName, android.content.pm.PackageManager.GET_META_DATA)
-    check(info.metaData?.getBoolean(ACCEPTANCE_METADATA_KEY, false) == true) {
-      "GuardDog acceptance trust is disabled in this build"
+  private fun matchingRunEvidence(probe: AcceptanceProbeContext, historicalIds: Set<String>): JSONArray {
+    val matches = JSONArray()
+    inbox.records().forEach { raw ->
+      val record = JSONObject(raw); val source = record.optJSONObject("sourceMetadata") ?: JSONObject(); val destination = record.optJSONObject("destination") ?: JSONObject()
+      val ref = AcceptanceEvidenceRef(record.optString("evidenceId"), source.optString("acceptanceRunId").takeIf { it.isNotBlank() },
+        source.optString("acceptanceProbeId").takeIf { it.isNotBlank() }, source.optString("protectionSessionId").takeIf { it.isNotBlank() },
+        destination.optString("domain").takeIf { it.isNotBlank() }, destination.optString("ip").takeIf { it.isNotBlank() },
+        destination.optInt("port").takeIf { destination.has("port") && !destination.isNull("port") },
+        runCatching { Instant.parse(record.getString("observedAt")).toEpochMilli() }.getOrNull())
+      if (ApolloAcceptanceEvidenceGate.matches(ref, probe, historicalIds)) matches.put(record)
     }
+    return matches
   }
+
+  private fun evidenceIds(): Set<String> = inbox.records().mapNotNull { runCatching { JSONObject(it).optString("evidenceId") }.getOrNull() }.toSet()
+  private fun hasTaggedEvidence(probe: AcceptanceProbeContext): Boolean = inbox.records().any { raw ->
+    runCatching {
+      val source = JSONObject(raw).getJSONObject("sourceMetadata")
+      source.optString("acceptanceRunId") == probe.runId && source.optString("acceptanceProbeId") == probe.probeId &&
+        source.optString("protectionSessionId") == probe.sessionId
+    }.getOrDefault(false)
+  }
+
+  private fun migrateLegacyEvidence() {
+    val legacyKey = "pending_evidence"
+    if (!prefs.contains(legacyKey)) return
+    try {
+      val legacy = JSONArray(prefs.getString(legacyKey, "[]"))
+      for (index in 0 until legacy.length()) {
+        val record = legacy.getJSONObject(index)
+        if (contractValidJson(record)) inbox.append(record.toString()) else inbox.reportFailure("Invalid legacy native evidence was not migrated")
+      }
+      if (!prefs.edit().remove(legacyKey).commit()) inbox.reportFailure("Legacy native evidence storage could not be retired")
+    } catch (_: Throwable) { inbox.reportFailure("Legacy native evidence storage could not be bounded") }
+  }
+
+  private fun contractValidJson(record: JSONObject): Boolean {
+    val destination = record.optJSONObject("destination") ?: return false
+    val attribution = record.optJSONObject("attribution") ?: return false
+    val protocol = record.optString("protocol")
+    val result = record.optString("result")
+    val portValid = destination.isNull("port") || destination.optInt("port") in 1..65535
+    return record.optString("evidenceId").isNotBlank() && record.optString("platform") == "android" &&
+      record.optString("mechanism") == "packet_filter" && record.optString("direction") == "outbound" &&
+      protocol in setOf("tcp", "udp", "dns", "http", "https", "unknown") && result in setOf("verified", "unverified", "failed") &&
+      record.optString("ruleSource") in setOf("local_blocklist", "cloud_intel", "heuristic", "user_override", "unknown") &&
+      destination.optString("ip").isNotBlank() && destination.optString("domain").isNotBlank() && portValid &&
+      attribution.optString("confidence") in setOf("high", "medium", "low", "unavailable") &&
+      record.optString("requestedAction") in setOf("block", "allow", "monitor") &&
+      record.optString("enforcedAction") in setOf("blocked", "allowed", "monitored", "none") &&
+      record.optString("confidence") in setOf("high", "medium", "low") && record.optJSONObject("sourceMetadata") != null &&
+      runCatching { Instant.parse(record.getString("observedAt")) }.isSuccess &&
+      (result != "verified" || protocol != "unknown" && !destination.isNull("port") && record.optString("enforcedAction") == "blocked")
+  }
+
+  private fun requireAcceptanceEnabled() { check(ApolloGuardDogProcessOwner.isEligible(context)) { "GuardDog acceptance trust is disabled in this build" } }
 
   companion object {
-    const val PROFILE = "guarddog-stage1d-acceptance"
-    const val LABEL = "GuardDog acceptance runtime (test-only)"
-    const val STACK_ID = "apollo-owned-guarddog-core-vpn"
-    const val ACCEPTANCE_KEY_ID = "apollo-stage1d-acceptance-ed25519-001"
+    const val PROFILE = "guarddog-stage1d-acceptance"; const val LABEL = "GuardDog acceptance runtime (test-only)"
+    const val STACK_ID = "apollo-owned-guarddog-core-vpn"; const val ACCEPTANCE_KEY_ID = "apollo-stage1d-acceptance-ed25519-001"
     const val ACCEPTANCE_PUBLIC_KEY_B64 = "bZeQ3t9aAOC9/eg7sCrKB5hNLBRKk/SZlDmYBhxNQrk="
     const val ACCEPTANCE_METADATA_KEY = "app.apollo.guarddog.acceptanceEnabled"
-    private const val KEY_EVIDENCE = "pending_evidence"
+    const val EVIDENCE_CAPACITY = 256
+    private const val START_TIMEOUT_MS = 10_000L; private const val STOP_TIMEOUT_MS = 8_000L; private const val LEGACY_STOP_TIMEOUT_MS = 4_000L
   }
 }
