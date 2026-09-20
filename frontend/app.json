@@ -45,6 +45,7 @@
     },
     "plugins": [
       "./plugins/withEasAppExtensionsDedupe",
+      "./plugins/withNativeDependencyGuard",
       "expo-router",
       [
         "expo-notifications",

@@ -1,0 +1,174 @@
+env: load .env
+env: export EXPO_PACKAGER_HOSTNAME EXPO_PACKAGER_PROXY_URL EXPO_PUBLIC_APP_ENV EXPO_PUBLIC_BACKEND_URL EXPO_PUBLIC_SECURECORE_MODE EXPO_PUBLIC_SECURITY_MODE EXPO_TUNNEL_SUBDOMAIN EXPO_USE_FAST_RESOLVER METRO_CACHE_ROOT
+
+{
+  name: [32m'Apollo'[39m,
+  slug: [32m'frontend'[39m,
+  version: [32m'1.0.0'[39m,
+  orientation: [32m'portrait'[39m,
+  icon: [32m'./assets/images/icon.png'[39m,
+  scheme: [32m'apollo'[39m,
+  userInterfaceStyle: [32m'light'[39m,
+  backgroundColor: [32m'#F5F7FA'[39m,
+  plugins: [
+    [32m'./plugins/withEasAppExtensionsDedupe'[39m,
+    [32m'./plugins/withNativeDependencyGuard'[39m,
+    [32m'expo-router'[39m,
+    [
+      [32m'expo-notifications'[39m,
+      {
+        color: [32m'#0B1220'[39m,
+        defaultChannel: [32m'default'[39m,
+        sounds: [
+          [32m'./assets/sounds/apollo_bark.wav'[39m,
+          [32m'./assets/sounds/apollo_chime.wav'[39m
+        ]
+      }
+    ],
+    [
+      [32m'expo-splash-screen'[39m,
+      {
+        image: [32m'./assets/images/splash-image.png'[39m,
+        imageWidth: [33m200[39m,
+        resizeMode: [32m'contain'[39m,
+        backgroundColor: [32m'#F5F7FA'[39m
+      }
+    ],
+    [32m'expo-font'[39m,
+    [32m'expo-image'[39m,
+    [32m'expo-secure-store'[39m,
+    [32m'expo-web-browser'[39m,
+    [32m'expo-status-bar'[39m,
+    [
+      [32m'expo-share-intent'[39m,
+      {
+        androidIntentFilters: [
+          [32m'text/*'[39m,
+          [32m'image/*'[39m,
+          [32m'application/*'[39m
+        ],
+        androidMultiIntentFilters: [],
+        iosActivationRules: {
+          NSExtensionActivationSupportsWebURLWithMaxCount: [33m1[39m,
+          NSExtensionActivationSupportsText: [33mtrue[39m,
+          NSExtensionActivationSupportsImageWithMaxCount: [33m1[39m,
+          NSExtensionActivationSupportsFileWithMaxCount: [33m1[39m
+        }
+      }
+    ],
+    [32m'./plugins/withApolloSiteGuard'[39m,
+    [32m'./plugins/withApolloCallGuard'[39m,
+    [32m'./plugins/withGuardDogEngine'[39m,
+    [32m'expo-sharing'[39m,
+    [
+      [32m'expo-camera'[39m,
+      {
+        cameraPermission: [32m'Scan QR codes so Apollo can check where they lead'[39m,
+        microphonePermission: [33mfalse[39m,
+        recordAudioAndroid: [33mfalse[39m
+      }
+    ],
+    [
+      [32m'expo-image-picker'[39m,
+      {
+        photosPermission: [32m'Pick a screenshot of a message for Apollo to check'[39m,
+        cameraPermission: [33mfalse[39m,
+        microphonePermission: [33mfalse[39m
+      }
+    ],
+    [
+      [32m'expo-audio'[39m,
+      {
+        microphonePermission: [33mfalse[39m
+      }
+    ],
+    [
+      [32m'expo-build-properties'[39m,
+      {
+        android: {
+          minSdkVersion: [33m26[39m
+        }
+      }
+    ]
+  ],
+  description: [90mundefined[39m,
+  sdkVersion: [32m'57.0.0'[39m,
+  platforms: [
+    [32m'ios'[39m,
+    [32m'android'[39m,
+    [32m'web'[39m
+  ],
+  ios: {
+    supportsTablet: [33mtrue[39m,
+    bundleIdentifier: [32m'app.apollo.hwg'[39m,
+    infoPlist: {
+      NSUserNotificationsUsageDescription: [32m'Tell you when Apollo barks about a threat'[39m,
+      NSLocationWhenInUseUsageDescription: [32m'Check whether your current Wi‑Fi is open or secured'[39m,
+      NSMicrophoneUsageDescription: [32m'Record a short voice note to reassure family'[39m
+    },
+    entitlements: {
+      [32m'com.apple.developer.networking.wifi-info'[39m: [33mtrue[39m
+    }
+  },
+  android: {
+    package: [32m'app.apollo.hwg'[39m,
+    googleServicesFile: [32m'./google-services.json'[39m,
+    permissions: [
+      [32m'android.permission.ACCESS_NETWORK_STATE'[39m,
+      [32m'android.permission.INTERNET'[39m,
+      [32m'android.permission.ACCESS_FINE_LOCATION'[39m,
+      [32m'android.permission.POST_NOTIFICATIONS'[39m,
+      [32m'android.permission.RECORD_AUDIO'[39m,
+      [32m'android.permission.MODIFY_AUDIO_SETTINGS'[39m,
+      [32m'android.permission.FOREGROUND_SERVICE'[39m,
+      [32m'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK'[39m
+    ],
+    adaptiveIcon: {
+      foregroundImage: [32m'./assets/images/adaptive-icon.png'[39m,
+      backgroundColor: [32m'#F5F7FA'[39m
+    }
+  },
+  web: {
+    bundler: [32m'metro'[39m,
+    output: [32m'single'[39m,
+    themeColor: [32m'#F5F7FA'[39m,
+    backgroundColor: [32m'#F5F7FA'[39m,
+    favicon: [32m'./assets/images/favicon.png'[39m
+  },
+  experiments: {
+    typedRoutes: [33mtrue[39m
+  },
+  extra: {
+    eas: {
+      projectId: [32m'47cd97c4-e5a6-41fa-9fde-257a5de031af'[39m,
+      build: {
+        experimental: {
+          ios: {
+            appExtensions: [
+              {
+                targetName: [32m'ApolloContentBlocker'[39m,
+                bundleIdentifier: [32m'app.apollo.hwg.contentblocker'[39m,
+                entitlements: {
+                  [32m'com.apple.security.application-groups'[39m: [
+                    [32m'group.app.apollo.hwg.apollo'[39m
+                  ]
+                }
+              },
+              {
+                targetName: [32m'ShareExtension'[39m,
+                bundleIdentifier: [32m'app.apollo.hwg.share-extension'[39m,
+                entitlements: {
+                  [32m'com.apple.security.application-groups'[39m: [
+                    [32m'group.app.apollo.hwg'[39m
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    router: {}
+  }
+}
+

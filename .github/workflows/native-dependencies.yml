@@ -1,0 +1,41 @@
+name: Native dependency singleton guard
+
+on:
+  pull_request:
+    paths: ['frontend/**', '.github/workflows/native-dependencies.yml']
+  push:
+    paths: ['frontend/**', '.github/workflows/native-dependencies.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-singletons:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      EXPO_PUBLIC_APP_ENV: development
+      EXPO_PUBLIC_SECURITY_MODE: mock
+      EXPO_PUBLIC_SECURECORE_MODE: mock
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Use the locked package manager
+        run: corepack enable && corepack prepare yarn@1.22.22 --activate
+      - name: Install without changing the lockfile
+        run: yarn install --frozen-lockfile --non-interactive
+      - name: Audit the actual installed tree
+        run: node scripts/native-dependency-guard.cjs
+      - name: Run guard and security regression tests
+        run: node --test tests/nativeDependencyGuard.test.cjs tests/securityConfig.test.ts tests/securityBoot.test.ts
+      - name: Verify combined preflight
+        run: yarn security:preflight
+      - name: Verify frozen GuardDog source
+        working-directory: frontend/packages
+        run: sha256sum --check ../../docs/APOLLO_STAGE1B_SHA256_MANIFEST.txt

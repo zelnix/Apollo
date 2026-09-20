@@ -1,0 +1,990 @@
+{
+  "schemaVersion": 1,
+  "projectRoot": "/app/frontend",
+  "scannedRoots": [
+    "/app/frontend/modules",
+    "/app/frontend/node_modules",
+    "/app/frontend/packages"
+  ],
+  "scannedPackageCount": 888,
+  "requiredSingletons": [
+    "react-native",
+    "react-native-svg",
+    "react-native-reanimated",
+    "react-native-screens",
+    "react-native-gesture-handler",
+    "react-native-safe-area-context",
+    "react-native-webview",
+    "react-native-worklets",
+    "react-native-keyboard-controller",
+    "@react-native-async-storage/async-storage",
+    "expo",
+    "expo-modules-core"
+  ],
+  "packages": [
+    {
+      "name": "@expo/dom-webview",
+      "versions": [
+        "57.0.1"
+      ],
+      "installations": [
+        {
+          "version": "57.0.1",
+          "paths": [
+            "/app/frontend/node_modules/@expo/dom-webview"
+          ],
+          "realPath": "/app/frontend/node_modules/@expo/dom-webview"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "@expo/log-box",
+      "versions": [
+        "57.0.4"
+      ],
+      "installations": [
+        {
+          "version": "57.0.4",
+          "paths": [
+            "/app/frontend/node_modules/@expo/log-box"
+          ],
+          "realPath": "/app/frontend/node_modules/@expo/log-box"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json",
+        "podspec"
+      ]
+    },
+    {
+      "name": "@expo/ui",
+      "versions": [
+        "57.0.15"
+      ],
+      "installations": [
+        {
+          "version": "57.0.15",
+          "paths": [
+            "/app/frontend/node_modules/@expo/ui"
+          ],
+          "realPath": "/app/frontend/node_modules/@expo/ui"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "@react-native-async-storage/async-storage",
+      "versions": [
+        "2.2.0"
+      ],
+      "installations": [
+        {
+          "version": "2.2.0",
+          "paths": [
+            "/app/frontend/node_modules/@react-native-async-storage/async-storage"
+          ],
+          "realPath": "/app/frontend/node_modules/@react-native-async-storage/async-storage"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "podspec",
+        "required singleton"
+      ]
+    },
+    {
+      "name": "@react-native-masked-view/masked-view",
+      "versions": [
+        "0.3.2"
+      ],
+      "installations": [
+        {
+          "version": "0.3.2",
+          "paths": [
+            "/app/frontend/node_modules/@react-native-masked-view/masked-view"
+          ],
+          "realPath": "/app/frontend/node_modules/@react-native-masked-view/masked-view"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "podspec"
+      ]
+    },
+    {
+      "name": "expo",
+      "versions": [
+        "57.0.19"
+      ],
+      "installations": [
+        {
+          "version": "57.0.19",
+          "paths": [
+            "/app/frontend/node_modules/expo"
+          ],
+          "realPath": "/app/frontend/node_modules/expo"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json",
+        "podspec",
+        "required singleton"
+      ]
+    },
+    {
+      "name": "expo-application",
+      "versions": [
+        "57.0.2"
+      ],
+      "installations": [
+        {
+          "version": "57.0.2",
+          "paths": [
+            "/app/frontend/node_modules/expo-application"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-application"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-asset",
+      "versions": [
+        "57.0.16"
+      ],
+      "installations": [
+        {
+          "version": "57.0.16",
+          "paths": [
+            "/app/frontend/node_modules/expo-asset"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-asset"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-audio",
+      "versions": [
+        "57.0.4"
+      ],
+      "installations": [
+        {
+          "version": "57.0.4",
+          "paths": [
+            "/app/frontend/node_modules/expo-audio"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-audio"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-blur",
+      "versions": [
+        "57.0.2"
+      ],
+      "installations": [
+        {
+          "version": "57.0.2",
+          "paths": [
+            "/app/frontend/node_modules/expo-blur"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-blur"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-camera",
+      "versions": [
+        "57.0.4"
+      ],
+      "installations": [
+        {
+          "version": "57.0.4",
+          "paths": [
+            "/app/frontend/node_modules/expo-camera"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-camera"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-clipboard",
+      "versions": [
+        "57.0.1"
+      ],
+      "installations": [
+        {
+          "version": "57.0.1",
+          "paths": [
+            "/app/frontend/node_modules/expo-clipboard"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-clipboard"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-constants",
+      "versions": [
+        "57.0.17"
+      ],
+      "installations": [
+        {
+          "version": "57.0.17",
+          "paths": [
+            "/app/frontend/node_modules/expo-constants"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-constants"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-crypto",
+      "versions": [
+        "57.0.2"
+      ],
+      "installations": [
+        {
+          "version": "57.0.2",
+          "paths": [
+            "/app/frontend/node_modules/expo-crypto"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-crypto"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-device",
+      "versions": [
+        "57.0.1"
+      ],
+      "installations": [
+        {
+          "version": "57.0.1",
+          "paths": [
+            "/app/frontend/node_modules/expo-device"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-device"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-document-picker",
+      "versions": [
+        "57.0.1"
+      ],
+      "installations": [
+        {
+          "version": "57.0.1",
+          "paths": [
+            "/app/frontend/node_modules/expo-document-picker"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-document-picker"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-file-system",
+      "versions": [
+        "57.0.6"
+      ],
+      "installations": [
+        {
+          "version": "57.0.6",
+          "paths": [
+            "/app/frontend/node_modules/expo-file-system"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-file-system"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-font",
+      "versions": [
+        "57.0.3"
+      ],
+      "installations": [
+        {
+          "version": "57.0.3",
+          "paths": [
+            "/app/frontend/node_modules/expo-font"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-font"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-glass-effect",
+      "versions": [
+        "57.0.1"
+      ],
+      "installations": [
+        {
+          "version": "57.0.1",
+          "paths": [
+            "/app/frontend/node_modules/expo-glass-effect"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-glass-effect"
+        }
+      ],
+      "reasons": [
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-haptics",
+      "versions": [
+        "57.0.2"
+      ],
+      "installations": [
+        {
+          "version": "57.0.2",
+          "paths": [
+            "/app/frontend/node_modules/expo-haptics"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-haptics"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-image",
+      "versions": [
+        "57.0.4"
+      ],
+      "installations": [
+        {
+          "version": "57.0.4",
+          "paths": [
+            "/app/frontend/node_modules/expo-image"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-image"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-image-loader",
+      "versions": [
+        "57.0.1"
+      ],
+      "installations": [
+        {
+          "version": "57.0.1",
+          "paths": [
+            "/app/frontend/node_modules/expo-image-loader"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-image-loader"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-image-picker",
+      "versions": [
+        "57.0.16"
+      ],
+      "installations": [
+        {
+          "version": "57.0.16",
+          "paths": [
+            "/app/frontend/node_modules/expo-image-picker"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-image-picker"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-keep-awake",
+      "versions": [
+        "57.0.1"
+      ],
+      "installations": [
+        {
+          "version": "57.0.1",
+          "paths": [
+            "/app/frontend/node_modules/expo-keep-awake"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-keep-awake"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-linear-gradient",
+      "versions": [
+        "57.0.1"
+      ],
+      "installations": [
+        {
+          "version": "57.0.1",
+          "paths": [
+            "/app/frontend/node_modules/expo-linear-gradient"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-linear-gradient"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-linking",
+      "versions": [
+        "57.0.9"
+      ],
+      "installations": [
+        {
+          "version": "57.0.9",
+          "paths": [
+            "/app/frontend/node_modules/expo-linking"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-linking"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-modules-core",
+      "versions": [
+        "57.0.15"
+      ],
+      "installations": [
+        {
+          "version": "57.0.15",
+          "paths": [
+            "/app/frontend/node_modules/expo-modules-core"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-modules-core"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json",
+        "podspec",
+        "required singleton"
+      ]
+    },
+    {
+      "name": "expo-modules-jsi",
+      "versions": [
+        "57.0.7"
+      ],
+      "installations": [
+        {
+          "version": "57.0.7",
+          "paths": [
+            "/app/frontend/node_modules/expo-modules-jsi"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-modules-jsi"
+        }
+      ],
+      "reasons": [
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-network",
+      "versions": [
+        "57.0.1"
+      ],
+      "installations": [
+        {
+          "version": "57.0.1",
+          "paths": [
+            "/app/frontend/node_modules/expo-network"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-network"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-notifications",
+      "versions": [
+        "57.0.17"
+      ],
+      "installations": [
+        {
+          "version": "57.0.17",
+          "paths": [
+            "/app/frontend/node_modules/expo-notifications"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-notifications"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-print",
+      "versions": [
+        "57.0.1"
+      ],
+      "installations": [
+        {
+          "version": "57.0.1",
+          "paths": [
+            "/app/frontend/node_modules/expo-print"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-print"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-router",
+      "versions": [
+        "57.0.18"
+      ],
+      "installations": [
+        {
+          "version": "57.0.18",
+          "paths": [
+            "/app/frontend/node_modules/expo-router"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-router"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-secure-store",
+      "versions": [
+        "57.0.3"
+      ],
+      "installations": [
+        {
+          "version": "57.0.3",
+          "paths": [
+            "/app/frontend/node_modules/expo-secure-store"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-secure-store"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-share-intent",
+      "versions": [
+        "8.0.1"
+      ],
+      "installations": [
+        {
+          "version": "8.0.1",
+          "paths": [
+            "/app/frontend/node_modules/expo-share-intent"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-share-intent"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-sharing",
+      "versions": [
+        "57.0.18"
+      ],
+      "installations": [
+        {
+          "version": "57.0.18",
+          "paths": [
+            "/app/frontend/node_modules/expo-sharing"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-sharing"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-splash-screen",
+      "versions": [
+        "57.0.8"
+      ],
+      "installations": [
+        {
+          "version": "57.0.8",
+          "paths": [
+            "/app/frontend/node_modules/expo-splash-screen"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-splash-screen"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-status-bar",
+      "versions": [
+        "57.0.1"
+      ],
+      "installations": [
+        {
+          "version": "57.0.1",
+          "paths": [
+            "/app/frontend/node_modules/expo-status-bar"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-status-bar"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-symbols",
+      "versions": [
+        "57.0.2"
+      ],
+      "installations": [
+        {
+          "version": "57.0.2",
+          "paths": [
+            "/app/frontend/node_modules/expo-symbols"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-symbols"
+        }
+      ],
+      "reasons": [
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-system-ui",
+      "versions": [
+        "57.0.3"
+      ],
+      "installations": [
+        {
+          "version": "57.0.3",
+          "paths": [
+            "/app/frontend/node_modules/expo-system-ui"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-system-ui"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "expo-web-browser",
+      "versions": [
+        "57.0.2"
+      ],
+      "installations": [
+        {
+          "version": "57.0.2",
+          "paths": [
+            "/app/frontend/node_modules/expo-web-browser"
+          ],
+          "realPath": "/app/frontend/node_modules/expo-web-browser"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "guarddog-expo-module",
+      "versions": [
+        "0.1.0"
+      ],
+      "installations": [
+        {
+          "version": "0.1.0",
+          "paths": [
+            "/app/frontend/packages/guarddog-expo-module"
+          ],
+          "realPath": "/app/frontend/packages/guarddog-expo-module"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "expo-module.config.json"
+      ]
+    },
+    {
+      "name": "react-native",
+      "versions": [
+        "0.86.3"
+      ],
+      "installations": [
+        {
+          "version": "0.86.3",
+          "paths": [
+            "/app/frontend/node_modules/react-native"
+          ],
+          "realPath": "/app/frontend/node_modules/react-native"
+        }
+      ],
+      "reasons": [
+        "podspec",
+        "required singleton"
+      ]
+    },
+    {
+      "name": "react-native-gesture-handler",
+      "versions": [
+        "2.32.0"
+      ],
+      "installations": [
+        {
+          "version": "2.32.0",
+          "paths": [
+            "/app/frontend/node_modules/react-native-gesture-handler"
+          ],
+          "realPath": "/app/frontend/node_modules/react-native-gesture-handler"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "podspec",
+        "required singleton"
+      ]
+    },
+    {
+      "name": "react-native-keyboard-controller",
+      "versions": [
+        "1.21.9"
+      ],
+      "installations": [
+        {
+          "version": "1.21.9",
+          "paths": [
+            "/app/frontend/node_modules/react-native-keyboard-controller"
+          ],
+          "realPath": "/app/frontend/node_modules/react-native-keyboard-controller"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "podspec",
+        "required singleton"
+      ]
+    },
+    {
+      "name": "react-native-reanimated",
+      "versions": [
+        "4.5.1"
+      ],
+      "installations": [
+        {
+          "version": "4.5.1",
+          "paths": [
+            "/app/frontend/node_modules/react-native-reanimated"
+          ],
+          "realPath": "/app/frontend/node_modules/react-native-reanimated"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "podspec",
+        "required singleton"
+      ]
+    },
+    {
+      "name": "react-native-safe-area-context",
+      "versions": [
+        "5.7.0"
+      ],
+      "installations": [
+        {
+          "version": "5.7.0",
+          "paths": [
+            "/app/frontend/node_modules/react-native-safe-area-context"
+          ],
+          "realPath": "/app/frontend/node_modules/react-native-safe-area-context"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "podspec",
+        "required singleton"
+      ]
+    },
+    {
+      "name": "react-native-screens",
+      "versions": [
+        "4.26.2"
+      ],
+      "installations": [
+        {
+          "version": "4.26.2",
+          "paths": [
+            "/app/frontend/node_modules/react-native-screens"
+          ],
+          "realPath": "/app/frontend/node_modules/react-native-screens"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "podspec",
+        "required singleton"
+      ]
+    },
+    {
+      "name": "react-native-svg",
+      "versions": [
+        "15.15.4"
+      ],
+      "installations": [
+        {
+          "version": "15.15.4",
+          "paths": [
+            "/app/frontend/node_modules/react-native-svg"
+          ],
+          "realPath": "/app/frontend/node_modules/react-native-svg"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "podspec",
+        "required singleton"
+      ]
+    },
+    {
+      "name": "react-native-webview",
+      "versions": [
+        "13.16.1"
+      ],
+      "installations": [
+        {
+          "version": "13.16.1",
+          "paths": [
+            "/app/frontend/node_modules/react-native-webview"
+          ],
+          "realPath": "/app/frontend/node_modules/react-native-webview"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "podspec",
+        "required singleton"
+      ]
+    },
+    {
+      "name": "react-native-worklets",
+      "versions": [
+        "0.10.1"
+      ],
+      "installations": [
+        {
+          "version": "0.10.1",
+          "paths": [
+            "/app/frontend/node_modules/react-native-worklets"
+          ],
+          "realPath": "/app/frontend/node_modules/react-native-worklets"
+        }
+      ],
+      "reasons": [
+        "Android library",
+        "podspec",
+        "required singleton"
+      ]
+    }
+  ],
+  "duplicates": [],
+  "errors": [],
+  "status": "pass"
+}

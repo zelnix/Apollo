@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Build-time security preflight. Fails a production build when security modes are
-// mock, missing or invalid. Wired to the EAS "eas-build-pre-install" hook in
+// Build-time security and installed-native-dependency preflight. Production native
+// requirements follow securityConfig.ts. Wired to the EAS "eas-build-pre-install" hook in
 // package.json and runnable locally: `node scripts/security-preflight.mjs`.
 //
 // Environment resolution (first match wins): process.env → .env.<APP_ENV or NODE_ENV> → .env
@@ -8,6 +8,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import nativeGuard from "./native-dependency-guard.cjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const KEYS = ["EXPO_PUBLIC_APP_ENV", "EXPO_PUBLIC_SECURECORE_MODE", "EXPO_PUBLIC_SECURITY_MODE"];
@@ -52,3 +53,14 @@ if (errors.length) {
   process.exit(1);
 }
 console.log("[security-preflight] OK");
+
+// EAS invokes this lifecycle BEFORE dependency installation: there is no truthful tree
+// to inspect yet. Managed Android/iOS prebuild enforces the guard AFTER installation via
+// withNativeDependencyGuard. Manual/CI security:preflight never takes this deferral.
+if (process.env.npm_lifecycle_event === "eas-build-pre-install") {
+  console.log("[native-dependency-guard] DEFERRED: EAS pre-install; mandatory Android/iOS prebuild check runs after dependency installation.");
+} else {
+  const report = nativeGuard.auditNativeDependencies(root);
+  console.log(nativeGuard.formatReport(report));
+  if (report.status !== "pass") process.exit(report.status === "error" ? 2 : 1);
+}

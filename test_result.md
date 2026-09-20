@@ -572,3 +572,19 @@ frontend:
       - agent: "main"
         working: "NA"
         comment: "Await a fresh APK including 01a30ae, build ID/source commit/APK hash/Android version and launch-to-Home/reopen result. Emulator success is Support-reported, not independently rerun here. Stage 1D remains paused; startup success does not verify native packet blocking or push delivery."
+
+## Stage 1C safeguard — native dependency duplication guard (2026-09-20)
+frontend:
+  - task: "Fail CI/preflight/native prebuild on duplicate installed native packages"
+    implemented: true
+    working: true
+    priority: "high"
+    needs_retesting: false
+    file: "frontend/scripts/native-dependency-guard.cjs, frontend/scripts/native-dependencies/*, frontend/scripts/security-preflight.mjs, frontend/plugins/withNativeDependencyGuard.js, .github/workflows/native-dependencies.yml"
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Read-only guard reports every native version/path, inspects nested/scoped/hoisted packages and native metadata, rejects different/same-version physical duplicates, resolves symlink aliases without false duplicates. CI post-install + combined preflight + managed Android/iOS prebuild gates. Actual EAS pre-install defers dependency scan only until mandatory prebuild after installation. SVG pin15.15.4 and lockfile unchanged; no GuardDog edits."
+      - agent: "testing"
+        working: true
+        comment: "Independent report test_reports/iteration_61.json: 44/44 focused tests, ESLint/config checks, workflow wiring and preview smoke pass; actual audit888 packages/50 native names/0 duplicates/0 errors; SVG only15.15.4; GuardDog hashes91/91. No blocking defects. No hosted CI/native build/Pixel startup sign-off. Stage1D remains paused."

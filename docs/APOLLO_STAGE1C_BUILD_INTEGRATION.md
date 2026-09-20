@@ -397,3 +397,22 @@ shared cause for deploy failures and the separately evidenced SVG crash.
 
 This record is documentation-only. Stage 1D remains paused pending the fresh physical-device
 launch result; the certified engine remains frozen.
+
+## 14. Post-merge/native-build dependency singleton safeguard (2026-09-20)
+
+Recurrence prevention is now implemented, not just a manual `yarn why` checklist. See
+[NATIVE_DEPENDENCY_GUARD.md](NATIVE_DEPENDENCY_GUARD.md) for policy, commands, the complete
+installed native inventory, regression evidence and lifecycle limitations.
+
+- `frontend/scripts/native-dependency-guard.cjs` recursively inspects the installed tree and
+  fails on multiple physical copies of native packages, including different-version and
+  same-version copies. Every version/path is reported; symlinks to one physical copy are allowed.
+- Covers the seven requested RN modules, RN/Expo core, and automatically discovered Expo/scoped/
+  third-party native packages. No dependencies are modified; SVG remains pinned to **15.15.4**.
+- `.github/workflows/native-dependencies.yml` checks post-install PR/push trees; existing
+  `yarn security:preflight` invokes the guard. The early EAS pre-install lifecycle explicitly
+  defers only the dependency scan; registered Android/iOS prebuild mods enforce it after install.
+- One-time audit: **888 installed packages inspected; 50 native package names; zero duplicates**.
+- Focused tests: **44/44**, independently verified (`test_reports/iteration_61.json`), with
+  zero defects in the scoped checks and GuardDog hashes **91/91 unchanged**. No native runtime wiring, backend, UI/Higgins or frozen
+  GuardDog source changed. **Stage 1D stays paused until fresh APK verification on Pixel 10.**
