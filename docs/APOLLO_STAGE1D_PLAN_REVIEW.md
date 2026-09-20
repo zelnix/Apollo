@@ -17,7 +17,10 @@ route cannot inject production trust. The proposed alternative excludes that bri
 Android registration and uses a single Apollo native owner of the public frozen core/VPN SDK.
 This is a scope/topology change requiring approval, **not proof that both modules coexist
 safely**. Its exact conditional files replace the earlier JS-facade ownership scope only if
-approved. D1/D3 remain OPEN for disposition and production-validity guarantees; D2/D4–D6 are unchanged.
+approved. The follow-up's APK-only bundle-key rotation proposal was inconsistent with Stage 0
+and is **withdrawn**: `STAGE1D_D3_SIGNED_MANIFEST_RECONCILIATION.md` restores primary/recovery
+roots, runtime signed manifests and the agreed offline behavior. D1/D3 remain OPEN for
+approval/certified capability evidence; D2/D4–D6 are unchanged.
 
 ## 1. Review result and source limitations
 
@@ -114,7 +117,7 @@ allow-list for approval **before** editing them. Do not claim those designs are 
 |---|---|---|---|
 | D1 — runtime ownership | Frozen bridge privately constructs the engine/writes globals; live readers capture a reporter, so adding another owner is unsafe even with one VPN. | Concrete owner/lifecycle/publishing design is in `STAGE1D_D1_D3_OWNERSHIP_TRUST_DESIGN.md`: proposed `ApolloGuardDogRuntime`, one engine per process, scoped consumer subscriptions, vendor Expo bridge excluded. This changes the both-modules topology; if both must remain, defer the production bridge route. Build/runtime prohibition and owner-count proof are specified, not yet performed. | OPEN — concrete design provided; topology approval/native proof outstanding |
 | D2 — status mechanism / coverage | Current `ProtectionStatus.enforcementMethod` cannot represent selective packet filtering; broader evidence mechanisms do not fix this status enum. | Never coerce to dns_filter/none/simulated. CE-01 proposes `packet_filter` with exhaustive consumer handling; separately review/approve that minimal change or defer incompatible integration. Truthful reporting overrides preserving an inaccurate enum. | OPEN — CE-01 not approved/implemented |
-| D3 — configuration / trust / signed rules | Frozen bridge offers no production registry/verifier injection. Public core constructors do, but live expiry/revocation is not guaranteed by post-drop callbacks. | Concrete build-pinned native profile/registry/verifier/version-store construction is specified in the focused D1/D3 design, with test/prod separation, build-pinned rotation and no JS trust API. Current bridge-only production route is rejected. Direct-SDK alternative requires topology approval, actual approved public inputs and an accepted/tested runtime-validity policy or new certified capability. | OPEN — construction design provided; production activation DEFERRED |
+| D3 — configuration / trust / signed rules | Registry/bundle-verification primitives exist, but the frozen bridge has test trust and no certified primary/recovery manifest/authority controller is exposed. | `STAGE1D_D3_SIGNED_MANIFEST_RECONCILIATION.md` explicitly withdraws APK-only bundle-key rotation. Pinned roots verify runtime signed manifests; one owner stages/applies key changes and revalidates existing M1/M2 authority. Known expiry, learned revocation and offline-valid-cache operation have separate outcomes. Engine-owner T1–T5 semantics/proofs are requested, not implemented. | OPEN — policy conflict corrected; certified trust/transition interfaces and production approval outstanding |
 | D4 — packet evidence translation | Bridge exports reduced native events, omitting original raw packet observation time/protocol/ports/mechanism; no polling evidence API exists. | Buffer genuine native events with original evidence IDs/provenance; distinguish receipt from delivery. Specify replay, dedup, retention and privacy rules below. Missing fields remain unknown; never manufacture packet details. P0-04/05 separately gate privacy-safe durable delivery. | OPEN — field mapping and explicit limits/retention choices pending |
 | D5 — manual block/unblock semantics | Signed bundles and ALLOW-only Website Gate overrides are not arbitrary block/unblock setters; URL analysis reads the M1 slot. | Publish the supported-operation matrix below. Unsupported actions return honest unsuccessful results without side effects. **Never silently translate unblock to an allow override** that bypasses approved threat policy. | OPEN — exact adapter/caller failure mapping pending |
 | D6 — lifecycle / fallback boundary | Start/stop return command-time snapshots, not completed lifecycle observations. | Await bounded fresh lifecycle/TUN/route observations. Acknowledgement is insufficient; timeout or contradictory observations stay explicitly UNRESOLVED. Verify recovery separately; no silent fallback or fabricated stopped/healthy state. P0-02 independently blocks consumer-health sign-off. | OPEN — observation/deadline/recovery design pending |
@@ -129,9 +132,12 @@ findings are now separately identified; the decision IDs are not their replaceme
   bridge's global runtime references. Loading both modules must be tested, not only starting one VPN.
 - Define test-only acceptance build identity, controlled targets, signer/public key IDs, bundle
   authority, configuration and explicit approval. None has been authorized by this revision.
-- Production path requires a named trust owner, public-key bootstrap/registry construction,
-  authorized bundle issuance/delivery, monotonicity, expiry/revocation and recovery policy,
-  and a compatible frozen public surface. Private signing keys never belong in the app.
+- Production follows Stage 0 §§9–10: pinned PRIMARY/RECOVERY roots authenticate runtime
+  signed manifests; ordinary bundle keys rotate through those manifests, not mandatory APK
+  replacement. A named engine-side trust owner must provide manifest/recovery verification,
+  trust/bundle ledgers, current-authority transitions and tested expiry/revocation behavior.
+  Private signing keys never belong in the app. Offline revocation delay is acknowledged;
+  valid cached known-bad rules continue and unknown traffic fails open.
 - The current test registry is not that production construction. If it cannot be replaced
   through approved public interfaces without competing owners, defer production integration
   and return the issue to the engine owner; do not patch the frozen packages or waive checks.
@@ -307,6 +313,7 @@ confirmed that remote SHA. The workspace had saved the earlier plan at
 including the original review hash. That verification supersedes the earlier “sync pending”
 wording and is not undone by later design work. No direct push was performed by the agent.
 
-The new focused D1/D3 design and these follow-up links are later workspace changes. They need
-their own Save to GitHub/content verification; do not pretend the previous sync included a
-document that did not exist then. Stage 1D stays unstarted regardless of synchronization.
+The first focused D1/D3 design was subsequently user-verified on GitHub at `09bb101`.
+The later D3 policy reconciliation is new workspace documentation and needs its own save /
+remote verification. Do not treat either earlier sync as verification of future revisions.
+Stage 1D stays unstarted regardless of synchronization.

@@ -515,12 +515,39 @@ an explicit decision rather than another general-plan expansion:
   if both modules must remain loaded, defer production pending a new certified public bridge
   ownership/trust interface. Exact native file changes and construction/publishing sequence
   are documented for approval only.
-- Test-only vs production profiles, native trust ownership, signed-bundle admission, persistence
-  and build-pinned key rotation are concrete. Strict in-flight expiry/revocation is not assured
-  by the current frozen post-drop callback; that production guarantee remains an explicit blocker.
+- The initial APK-pinned bundle-key rotation proposal was later found inconsistent with
+  Stage 0 and is **withdrawn** (§19). The source findings about ownership and post-drop
+  callbacks remain valid; the required policy is signed runtime manifests plus explicit,
+  tested validity/shutdown behavior, not instantaneous offline revocation discovery.
 - D1/D3 have a concrete design/feasibility result, **not implementation or production approval**.
   Other decisions and all six P0 findings remain open. Launch PASS remains valid; GuardDog's
   91-file freeze and existing public contracts remain unchanged.
 
 This new document/link update follows the verified Revision 2 sync and requires its own save
 and remote verification. No native build or device test was performed for this design check.
+
+## 19. Focused D3 reconciliation with settled Stage 0 trust policy
+
+The user verified the first D1/D3 design sync at `09bb101`, then identified its conflict with
+Stage 0 §§9–10. `STAGE1D_D3_SIGNED_MANIFEST_RECONCILIATION.md` corrects it explicitly:
+
+- App-pinned **primary/recovery ROOTS**, not APK-pinned everyday bundle keys, authenticate a
+  runtime-updatable signed manifest. Active/revoked keys, validity, overlap and monotonic
+  trust state govern subsequent independent signed-bundle verification. Recovery-root use
+  and disabled-primary/version ordering require a certified protocol, not a JS override.
+- The single owner applies verified generations with durable staging, admission quiescence,
+  registry coordination and revalidation/invalidation of existing M1/M2 authority. Changing
+  `TrustedKeyRegistry` alone does not remove private accepted bundles or live routes.
+- Known expiry, newly verified revocation and offline inability to discover a newer revocation
+  are separate. Valid last-known-good known-bad rules continue offline; unknown traffic fails
+  open; invalid updates are never accepted. Defined/tested cutoff and shutdown observations
+  replace overclaims of instantaneous offline discovery or post-drop event suppression.
+- Certified T1–T5 manifest verification, recovery/persistence, authority transition and
+  diagnostics semantics are requested from the engine owner. Existing primitives may be
+  reused where those guarantees are proved; no trust mechanism is reconstructed in Apollo main.
+- APK-only ordinary key rotation is withdrawn in the earlier design and current handoff.
+  Stage 0 itself, current contracts, runtime/configuration and 91 frozen files are unchanged.
+
+**Launch PASS, six P0 findings OPEN, Stage 1D NOT STARTED, production design/cutover unapproved.**
+The new reconciliation is documentation only; earlier GitHub verifications remain historical
+facts, not a claim that this later document is already synced or any trust test has run.

@@ -20,6 +20,10 @@ no runtime changes, test-only acceptance build or production-default cutover is 
 | Selected engine / configuration fingerprint | REQUIRED; do not infer from OS name |
 | Explicit owner / both-native-modules initialization trace | REQUIRED; one active VPN alone does not prove one engine/subscription owner |
 | Trust mode / test-only build authorization or approved production trust design | REQUIRED; frozen bridge test keys are never production trust |
+| Bootstrap primary/recovery root set / authorized signer role | REQUIRED for trust tests; ordinary bundle keys must not impersonate roots |
+| Manifest trust version/epoch, signed-envelope hash, validity and effective key set | REQUIRED; record applied versus merely verified/staged generation |
+| Trust update timeline | Raw receipt / signature verification / durable stage / admission cutoff / stop request / quiescence / commit / restart / network recovery |
+| Freshness distinctions | Last successful manifest UPDATE, last local signature re-verification, bundle validity and actual native observation are separate; cached re-verification is not new revocation knowledge |
 | Approved contract revision / CE-01 decision | REQUIRED; current contract unchanged unless a separate approval and hash rebaseline are recorded |
 | Frozen GuardDog source commit | `e5d11be912c76775c5a8b27b53218211484ca8bd` |
 | Frozen 91-file manifest verification output | REQUIRED |
@@ -62,6 +66,13 @@ and does not satisfy a required acceptance row.
 | A6 explicit legacy rollback | GuardDog stopped/route removed, rebuilt rollback artifact identified, legacy selection confirmed, no dual engine/data wipe | NOT RUN | |
 | Additional close/reopen/reboot/background tests | Record each explicitly; launch does not imply these passed | NOT RUN | |
 | DoH/DoT/QUIC/IPv6 scope characterization | Record actual bypass/limitations; never assume broad protection | NOT RUN | |
+| D3 primary/recovery manifest verification | Known pinned root authentication, disabled-primary recovery and rollback/conflict rules; no trust from backend-supplied root | NOT RUN — certified interfaces pending | |
+| D3 runtime key rotation/revocation | Overlap/add/retire keys through signed manifest updates on the SAME APK; revalidate/invalidate existing M1/M2 authority, not only future verification | NOT RUN — certified interfaces pending | |
+| D3 known expiry | Observe effective cutoff/admission gate/teardown and separate recovery; no unsigned validity extension | NOT RUN | |
+| D3 newly learned revocation | Verify higher signed manifest, durably stage/apply, invalidate affected authority; an unsigned invalid response cannot disable valid cache | NOT RUN | |
+| D3 offline without new revocation knowledge | Valid cached known-bad enforcement continues; unknown traffic fails open; reconnect later learns updates; no instantaneous offline knowledge claim | NOT RUN | |
+| D3 offline known expiry/revocation | Invalid authority is not resurrected; ordinary access and degraded status follow actual release/recovery observations | NOT RUN | |
+| D3 interrupted trust transition / IO / clock uncertainty | No false applied receipt, mixed generation or silent floor reset; uncertainty/recovery failures explicit | NOT RUN | |
 
 ## Native packet-evidence linkage for A4N
 
@@ -88,6 +99,11 @@ and does not satisfy a required acceptance row.
 P0-05 does not prevent a real native drop from being proved under A4N. Conversely, A4N does
 not prove delivery or close P0-05. Copy this template for the actual candidate run and update
 blocked dependencies only after their separate fixes/verification, never merely after launch.
+
+D3's reconciled policy and engine-owner interface requests are in
+`STAGE1D_D3_SIGNED_MANIFEST_RECONCILIATION.md`. Its proposed timing targets are not measured
+SDK guarantees: record actual times, missed deadlines and in-flight behavior; a failed bound
+is not PASS. Manifest installation, native quiescence and restored network access remain separate.
 
 ## Final disposition
 

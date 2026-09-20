@@ -636,3 +636,12 @@ frontend:
       - agent: "main"
         working: true
         comment: "Proposed alternative changes topology, not proof of safe coexistence. Build-pinned production public trust construction is specified; actual approved pins and runtime-validity guarantee remain blockers. Admission-time verification/post-drop callback cannot establish atomic in-flight expiry/revocation. D1/D3 await disposition; D2/D4–D6 and six P0s remain OPEN. Stage1D NOT STARTED. Prior eight-doc sync956db060 verified; focused design is a later workspace update."
+      - agent: "user"
+        working: true
+        comment: "First design sync09bb101 verified. Identified production-policy conflict: Stage0 requires pinned PRIMARY/RECOVERY roots and runtime signed manifests, not APK-only ordinary-key rotation. Requested focused D3 reconciliation; offline revocation delay is already acknowledged, not an instantaneous guarantee. No implementation approval."
+      - agent: "main"
+        working: true
+        comment: "The prior build-pinned ordinary-key proposal is WITHDRAWN. New STAGE1D_D3_SIGNED_MANIFEST_RECONCILIATION.md defines root/manifest verification, single-owner generation transition/revalidation, separate known-expiry/newly-verified-revocation/offline behaviors, and requested certified T1–T5 semantics. Policy conflict corrected only; D3 production implementation/interfaces/proof remain open. No trust/auth/runtime code or device tests performed."
+      - agent: "main"
+        working: true
+        comment: "Documentation/source validation passed: four D3 questions addressed, old APK-only ordinary-key claims superseded, separate offline/expiry/revocation outcomes, certified interfaces labelled absent/proposed, Stage0 unchanged, no frontend/backend/config/dependency/CI edits, public contract/original-review hashes unchanged, GuardDog91/91 and all six P0s/D1–D6 OPEN. No native tests run; candidate timing bounds require ratification/measurement and are not current SDK guarantees."

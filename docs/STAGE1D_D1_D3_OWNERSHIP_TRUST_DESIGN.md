@@ -5,6 +5,12 @@
 **Scope:** concrete design / feasibility only. No runtime or packaging changes made.
 Stage 1C.1 launch remains **PASS**. Stage 1D implementation / production cutover remain **NOT APPROVED**.
 
+**D3 policy correction:** this document's first revision incorrectly proposed APK-pinned
+everyday bundle keys / APK-only rotation. That proposal is **WITHDRAWN**, not a replacement
+for Stage 0 §§9–10. The governing primary/recovery-root → signed runtime manifest → bundle-key
+architecture and required certified interfaces are now specified in
+`STAGE1D_D3_SIGNED_MANIFEST_RECONCILIATION.md`. D1's conditional topology remains unapproved.
+
 ## 1. Decision to make — not another generic integration plan
 
 **The original “Apollo JS facade → frozen GuardDogSecurity bridge” topology cannot be given
@@ -22,7 +28,7 @@ the proposed integration boundary; it is not a silent implementation detail or a
 |---|---|---|---|
 | Existing `ApolloSecurity` + frozen `GuardDogSecurity`, Apollo only consumes bridge APIs | Existing Apollo module contains no GuardDog constructor; frozen bridge owns an engine per module `OnCreate`. Process/context-lifetime uniqueness is not proved. | Bridge initializes only its private test registry; cannot inject production keys through exposed functions. | **No production integration through this bridge as-is.** Any explicitly approved test-only use needs its own bounded lifecycle proof. |
 | Add an Apollo-owned engine while leaving the frozen bridge registered | Both can initialize engines/write shared reporter, engine and consent references even with no VPN active; a live reader captures an older reporter. | New production registry would not update the frozen bridge's hidden verifier. | **REJECT.** Last-writer-wins is not ownership; starting only one VPN does not fix it. |
-| Apollo-owned native owner + frozen core/VPN; exclude frozen Expo bridge | Exactly one planned construction/publishing site; bridge competition is prevented by build topology. | Public constructors support an independent non-test registry and durable version store. | **Source/API-feasible alternative**, subject to approval, compilation/device proof and the production limitations in §6. Not a production sign-off. |
+| Apollo-owned native owner + frozen core/VPN; exclude frozen Expo bridge | Exactly one planned construction/publishing site; bridge competition is prevented by build topology. | Public constructors/registry mutation are usable primitives, but a certified signed-manifest/authority controller is missing. | **Source/API-feasible ownership direction**, not implementation of the agreed production trust architecture. Requires D3 reconciliation interfaces and native acceptance. |
 | Keep both native modules loaded and require production injection into the frozen bridge | No public ownership transfer/adoption contract exists. | No public production-trust injection API exists. | **DEFER** unless the engine owner supplies a separately approved/certified bridge revision. Do not patch the current frozen source. |
 
 **Important:** excluding the bridge is NOT proof that two competing owners coexist safely.
@@ -75,7 +81,7 @@ Proposed Kotlin object in Apollo's own module:
 Design pseudocode, using real frozen constructor signatures; **not implemented code**:
 
 ```kotlin
-val registry = TrustedKeyRegistry(validatedProfilePublicKeys)
+val registry = TrustedKeyRegistry(verifiedManifestActiveBundleKeys)
 val versions = ApolloGuardDogBundleVersionStore(applicationContext, profileNamespace)
 val verifier = RuleBundleVerifier(registry, versions, SystemClock)
 val engine = GuardDogSDKEngine(verifier, VpnStateRepository.shared, SystemClock)
@@ -86,7 +92,10 @@ Within the single owner's initialization transaction:
 1. Verify compiled native profile and topology: vendor Expo bridge absent, one Apollo module,
    expected frozen libraries; do not accept profile/keys from JavaScript. In legacy profile,
    do **not** construct or publish a GuardDog engine at all.
-2. Load/validate approved public pins and the durable version store (§4). On failure, publish
+2. Load the two approved bootstrap roots, a certified-verified manifest snapshot and the
+   durable trust/bundle stores (§4). The registry contains manifest-authorized bundle keys,
+   not the roots themselves. The required manifest controller is not in the frozen snapshot.
+   On failure, publish
    no reporter/config and expose a qualified initialization error. Never substitute test trust
    or an in-memory production store to keep startup looking successful.
 3. Construct the one engine with the existing `VpnStateRepository.shared`; register one
@@ -131,89 +140,67 @@ This explicitly replaces the proposed two-module ownership proof with a **prohib
 negative test**, requiring review approval. In the unchanged current build both modules still
 register; no claim is made that this alternative is already applied.
 
-## 4. Concrete trust configuration: build-pinned native profiles
+## 4. Corrected trust configuration: pinned roots, runtime signed manifest
 
-### 4.1 Profiles and input contract
+The prior APK-only everyday key rotation model is withdrawn. Read
+`STAGE1D_D3_SIGNED_MANIFEST_RECONCILIATION.md` for the authoritative reconciliation with
+Stage 0 §§9–10; do not implement production trust from the superseded first revision.
 
-Use a native build-selected, immutable profile: **LEGACY / GUARDDOG_ACCEPTANCE / GUARDDOG_PRODUCTION**.
-These names are proposed native configuration, not current app settings. A JS selector must
-agree with the native profile; it cannot change trust mode, trusted keys or route authority.
+### 4.1 Profiles and bootstrap ownership
 
-| Profile | Construction / allowed use |
-|---|---|
-| LEGACY (retained default) | Existing Apollo protection; no Apollo-owned GuardDog initialization. No default cutover in this task. |
-| GUARDDOG_ACCEPTANCE | Explicitly approved, labelled test-only APK and controlled target. Separate test pins, rule namespace and version ledger; test signer stays outside the app. No public/pilot production assurance from this profile. |
-| GUARDDOG_PRODUCTION | Only separately approved production public keys, rule authority and target scope. Reject the certified test key by **both key ID and raw key bytes**, including renamed copies. Missing/invalid production pins block initialization. |
+Native profiles remain proposed **LEGACY / GUARDDOG_ACCEPTANCE / GUARDDOG_PRODUCTION**; JS
+cannot change trust mode. LEGACY remains default; no production-default cutover is approved.
+Acceptance roots/keys/ledgers are separate and do not confer production assurance.
 
-Concrete provisioning artifact: one build-selected native asset
-`apollo-guarddog/trust.json`, generated from a reviewed build input, covered by the APK's
-application-signing chain. Required fields: schema version, profile, trust configuration
-version, authorized key IDs with 32-byte Ed25519 public keys/fingerprints, permitted ruleset
-IDs/purpose, packaged minimum version/envelope floors where defined, and configuration ID.
-Validate these against expected release inputs before `TrustedKeyRegistry(map)` construction.
-Native compiled profile and asset profile must agree. Test/prod assets never substitute for
-each other; production owner must never call `m1Default()`.
+The production native bootstrap asset is `apollo-guarddog/bootstrap-roots.json`: two
+distinct PRIMARY/RECOVERY public root keys, IDs/fingerprints/roles, schema/profile/trust domain.
+It does **not** statically select all ordinary bundle keys. A root-authenticated, valid,
+non-rolled-back manifest supplies those keys at runtime through the single owner's certified
+trust controller. Roots must not become ordinary bundle signers, and a fetched key is never
+trusted simply because a backend or JS supplied it.
 
-Only public keys go into the APK. The frozen core itself contains the public test-key constant;
-therefore **do not claim that its literal bytes disappear from the APK**. The enforceable check
-is that the active production trust map excludes that key and the production construction path
-does not invoke the test factory. Private signer material never ships or appears in logs.
+No private keys ship. The frozen core may still contain the public test-key literal; the
+production root set and effective bundle-key registry must exclude certification test trust.
+Do not mistake removal of a literal from the APK for a functioning trust protocol.
 
-**Ownership of inputs:** a named Apollo release/security approver must provide/approve public
-key fingerprints, rule-signing authority and scope; the build process packages the approved
-artifact; the native owner is the only runtime registry constructor. No particular individual,
-production key, ruleset or controlled production endpoint has been supplied/approved yet.
-Those are concrete provisioning blockers, not permission to use the certification defaults.
+### 4.2 Runtime update and persistent authority
 
-### 4.2 Bundle admission and version persistence
+- Primary/recovery roots authenticate the signed Trusted Key Manifest, with active/revoked
+  bundle keys, validity, overlap, trust-version rollback protection and certified recovery roles.
+- The same native owner/controller applies verified changes; it does not create a new engine
+  for every update or expose unrestricted JS registry setters. Ordinary key rotation happens
+  through verified manifests and signed bundle updates **without an APK update**.
+- Cache signed last-known-good manifests and raw signed bundles, authenticated hashes,
+  trust-set/recovery floors and separate bundle-version floors. Rejected/tampered updates do
+  not replace valid caches; corruption/failed writes are not an empty-store recovery strategy.
+- Coordinate reader/admission quiescence, registry update and revalidation/invalidation of
+  **both M1 and M2** accepted bundles and derived bindings before reporting the new generation
+  applied. `trust/retire` alone does not clear private accepted authority. Required certified
+  T1–T5 semantics and staged/committed receipts are defined in the reconciliation document.
+- Apollo transports raw signed updates and consumes diagnostics. The engine owner must
+  provide/certify manifest verification, recovery and authority-transition logic, consistent
+  with Stage 0 ownership. This is not permission to rebuild trust algorithms in the Apollo shim.
 
-For an initial bounded implementation, admit an externally signed bundle supplied as an
-approved build asset. Do not invent a new live bundle-delivery endpoint under D1/D3. A later
-network update path requires its own allowed destinations, privacy, failure and authenticity
-design (P0-01 is still open). Bundle content/signatures are validated by the frozen verifier,
-not by trusting a server response or a JS `verified` flag.
+### 4.3 Three separate validity cases, not instantaneous offline revocation
 
-- Use actual `RuleBundleVerifier(registry, durableStore, SystemClock)` and
-  `engine.acceptRuleBundle(rawJson)`, with rollback protection enabled. Apply owner-side
-  ruleset/profile/scope admission before starting; do not reinterpret an M2 slot as M1 authority.
-- `ApolloGuardDogBundleVersionStore` implements `highestAccepted` and `recordAccepted`,
-  preserving highest version **and authenticated envelope hash**. Use a serialized atomic
-  file under Android no-backup storage; persist before admitting an accepted result for use.
-  Corrupt/unreadable/failed writes block use, not a reset to an empty in-memory store.
-- Separate acceptance and production ledger namespaces. Do not import certification test
-  versions as production trust; do not reset production floors on stop, reload or normal update.
-  Restore/migration without trustworthy continuity requires explicit recovery, not silent reset.
-- Reverify before every authorization/start, including restart and foreground recovery when
-  policy calls for renewed observation. Rule refresh must not replace reporter/config under a live TUN.
-- No unrestricted JS `trust(key)`, `retire(key)` or verifier replacement endpoint. The initial
-  production trust model is **build-pinned rotation**: a reviewed new APK introduces/retires
-  keys, with revalidation in its new process. Immediate fleet-wide/offline key revocation is
-  **not** supplied by this model and must not be claimed.
+1. **Known expiry:** authenticated deadlines remain meaningful offline; if no valid successor
+   exists, invalidate affected authority and observe the defined teardown/recovery. No unsigned
+   grace period or fabricated fresh verification is introduced.
+2. **New verified revocation:** close new affected admission, durably record/apply the new trust
+   generation, invalidate affected existing authority and observe completion. Never fall back
+   to a now-revoked cached key merely because replacement delivery fails.
+3. **Offline without knowledge of a newer revocation:** keep valid last-known-good rules for
+   locally known-bad traffic; unknown/unverified traffic fails open. Backend failure alone does
+   not kill ordinary connectivity. Revocation discovery waits for reconnect/verified update,
+   with known cached expiry independently limiting use. This delay is an acknowledged policy
+   limitation, not a missing promise of instantaneous offline revocation.
 
-### 4.3 Production limitation that cannot be hidden behind the new constructor
-
-Injecting production pins solves **who can sign a newly admitted bundle**; it does not prove
-that the frozen data path continuously enforces expiry/revocation of an already admitted rule.
-
-- `RuleBundleVerifier.kt:77–96` checks time/rollback when `verify` runs.
-- `GuardDogSDKEngine.kt:109–119` authorizes from its retained accepted bundle without a new
-  expiry check; the M1 block-event branch at `203–214` checks destination + ACTIVE, not current
-  bundle expiry/key membership. M2 binding TTL is a separate condition, not production key revocation.
-- `PacketDropReporter.kt:55–97` drops first and reports evidence afterward. The public reporter
-  callback is **not a pre-drop policy hook**. Withholding an event cannot undo an already dropped packet.
-- Replacing/retiring a registry key affects future verification; it does not by itself stop
-  an established route, purge all admitted authority or retarget a reader that captured an engine.
-
-Consequently, the owner must refuse invalid/expired admission, stop before policy replacement,
-and request observed teardown on expiry/revocation—but an asynchronous stop/timer is **not
-proof of atomic expiry at every in-flight packet**. Do not redefine `expiresAt` as “admission
-only” or claim zero-window revocation merely to make the unchanged SDK appear sufficient.
-
-**Production activation stays DEFERRED** until the reviewer accepts an explicit, tested
-validity/shutdown policy or the engine owner provides a separately certified pre-drop validity /
-atomic teardown capability appropriate to the required guarantee. There is no such public
-per-packet authorization callback in the inspected frozen reader/reporter. No local frozen
-source edits are proposed. This is a D3 feasibility limitation, **not a fabricated seventh P0**.
+The current verifier validates expiry at admission; the packet reporter calls back after a
+drop. Event suppression is not packet prevention. The required production contract is explicit,
+measured validity/invalidation/shutdown behavior (including failed bounds and in-flight work),
+not an invented zero-latency global guarantee. Existing primitives may be reused where the
+engine owner can certify the accepted semantics; missing capabilities require approved upstream
+work. No frozen source edits or runtime tests occurred here; D3 production approval remains open.
 
 ## 5. Exact conditional files for the recommended alternative
 
@@ -225,19 +212,21 @@ proposal if approved. It is a larger native boundary change; all entries below r
 | `frontend/package.json` | Android autolinking exclusion only; keep dependency versions, lockfile and SVG pin unchanged |
 | `frontend/modules/apollo-security/android/build.gradle` | Direct core/VPN project dependencies and native profile/generated-asset wiring, with no vendor-source edits |
 | `frontend/plugins/withGuardDogEngine.js` | Preserve library includes/provenance; assert correct bridge-excluded topology when Apollo ownership is selected |
-| `frontend/plugins/withApolloGuardDogOwner.js` (new) | Produce native build profile and exactly one approved trust asset; reject missing/mixed profile inputs before native compilation |
+| `frontend/plugins/withApolloGuardDogOwner.js` (new) | Produce native profile and approved two-root bootstrap input; never substitute APK-only ordinary bundle-key trust; reject mixed/missing profiles |
 | `frontend/app.json` | Register that Apollo-owned plugin only after topology/design approval; no application ID or production default change implied |
 | `frontend/modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/ApolloSecurityModule.kt` | Attach/detach from the process owner; route selected operations, guard legacy service start in GuardDog mode, retain non-enforcement features |
 | `frontend/modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/guarddog/ApolloGuardDogRuntime.kt` (new) | Single engine/verifier/registry owner and shared runtime publishing; no arbitrary second engine or ownership replacement |
-| `frontend/modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/guarddog/ApolloPinnedTrustConfig.kt` (new) | Validate native profile, public pins/fingerprints, allowed rulesets and test/prod separation; no signer private keys |
+| `frontend/modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/guarddog/ApolloTrustBootstrapConfig.kt` (new) | Load profile and pinned PRIMARY/RECOVERY roots for the certified manifest controller; no local reimplementation or private keys |
 | `frontend/modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/guarddog/ApolloGuardDogBundleVersionStore.kt` (new) | Durable monotonic version + signed-envelope identity, atomic writes and explicit failure/recovery |
 | `frontend/scripts/guarddog-ownership-preflight.cjs` (new) | Check profile-specific autolink/provider/dependency topology; fail attempted dual ownership before build |
 | `frontend/tests/guardDogOwnerPackaging.test.cjs` (new) | Test profile/config generation and expected/forbidden registrations without editing frozen packages |
 | `frontend/modules/apollo-security/android/src/androidTest/java/com/hucentai/apollosecurity/guarddog/ApolloGuardDogOwnershipTest.kt` (new) | Concurrent/repeated module attach, React reload, object identities, listener counts and prohibited bridge inclusion |
 | `frontend/modules/apollo-security/android/src/androidTest/java/com/hucentai/apollosecurity/guarddog/ApolloGuardDogTrustTest.kt` (new) | Test/prod rejection, signed admission, expiry/revocation limitations, persistence/error and restart cases |
 
-Actual public trust/bundle inputs are provisioned separately; no placeholder key or fake
-production bundle is proposed for shipping. Test-framework wiring must be reviewed with the
+This native allow-list is **not sufficient on its own**: the certified signed-manifest and
+authority-controller interfaces requested in the D3 reconciliation must be delivered first.
+Actual root/public inputs and signed manifests/bundles are provisioned separately; no placeholder
+key or fake production bundle is proposed for shipping. Test-framework wiring must be reviewed with the
 build file before implementation. D2's CE-01 and D4–D6 adapter/evidence/lifecycle work remain
 separate prerequisites; this document does not approve their files or UI/backend/P0 fixes.
 
@@ -253,8 +242,8 @@ separate prerequisites; this document does not approve their files or UI/backend
 | Both-module negative (NOT RUN) | Deliberately include the vendor bridge in an owner-enabled build: preflight/APK registration check fails. Runtime foreign-reference check must refuse initialization, never overwrite it. This is exclusion evidence, not a coexistence claim. |
 | Live reader safety (NOT RUN) | No reporter/config replacement during async start or a live TUN; captured reporter identity remains the owner; recovery verified before reconfiguration. |
 | Test/prod trust separation (NOT RUN) | Production refuses known/renamed test key, wrong profile, unknown key, invalid signature, mismatched ruleset and corrupt/missing store; no fallback. Acceptance fixtures never confer production approval. |
-| Persistence/rotation (NOT RUN) | Exact-envelope retry accepted; lower version and equal-version conflict rejected; process restart preserves floor; write failure/restore uncertainty blocks use; new-key APK revalidates rather than inheriting assumed trust. |
-| Runtime validity (NOT RUN / production blocker) | Exercise expiry, wall-clock change, key retirement policy, in-flight packet/start/stop races and timeout; record actual teardown bounds. Native drop vs evidence suppression must not be confused. No strict pre-drop guarantee is claimed from the public post-drop callback. |
+| Persistence/rotation (NOT RUN) | Root-verified runtime manifest rotation/revocation without an APK update; independent trust/bundle floors and recovery state; exact replay idempotent, same-version conflict rejected; interrupted apply cannot falsely report installed or restore durably revoked trust. |
+| Runtime validity (NOT RUN / production blocker) | Separately test known expiry, newly verified revocation and offline valid cache/unknown revocation; record admission/stop/quiescence/recovery bounds and failures. A post-drop callback cannot prevent a drop; no instantaneous offline knowledge guarantee is claimed. |
 
 Every device test still needs source SHA + APK build identifier/hash + device/OS/profile and
 original native evidence. No native build/emulator/device tests were performed here. Native
@@ -268,9 +257,10 @@ rejection negative remains required under P0-03. All six original P0 findings re
 2. **Review the direct-SDK / excluded-bridge native topology above** as a scope change, or require
    both modules to remain registered and defer production until a new certified bridge supports
    explicit process ownership and trust injection. Do not mix the two designs.
-3. For the alternative, approve the native profile/public-pin/ledger ownership model and obtain
-   actual approved public inputs. Independently settle the runtime validity limitation before
-   any production activation; constructor feasibility is not enforcement assurance.
+3. For the alternative, retain Stage 0's primary/recovery roots and runtime signed-manifest
+   architecture. Obtain the engine-owner certified T1–T5 semantics, actual bootstrap inputs
+   and measured validity/shutdown evidence before production approval. Constructor feasibility
+   and APK-pinned bundle keys are not substitutes for the agreed trust architecture.
 
 **D1/D3 now have a concrete source-backed design and feasibility verdict, but remain OPEN for
 reviewer disposition / unresolved production guarantees. Stage 1D is NOT STARTED.** D2, D4,
