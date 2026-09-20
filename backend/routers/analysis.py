@@ -103,6 +103,8 @@ async def gemini_second_opinion(body: MessageAnalyseIn, url_results: list[Messag
 
 @router.post("/message/analyse", response_model=MessageAnalyseOut)
 async def message_analyse(body: MessageAnalyseIn):
+    if body.text != '[local-only]' or body.sender or body.second_opinion or body.signals or body.claimed_brand:
+        raise HTTPException(403, 'Raw message cloud processing is disabled. Submit minimal origins only.')
     # Email/Text Guard: every link gets the SAME full assessment as a manual Check-a-Link — redirect
     # chain expansion + Safe Browsing/blocklist + RDAP domain-info — automatically, run concurrently
     # so checking several links costs no more latency than the slowest one.
@@ -469,6 +471,8 @@ async def gemini_account_opinion(body: AccountAnalyseIn, urls: list[AccountUrlRe
 
 @router.post("/account/analyse", response_model=AccountAnalyseOut)
 async def account_analyse(body: AccountAnalyseIn):
+    if body.text not in ('', '[local-only]') or body.sender or body.second_opinion:
+        raise HTTPException(403, 'Raw account-alert cloud processing is disabled. Submit minimal origins only.')
     official = OFFICIAL_DOMAINS.get(body.provider, [])
     results: list[AccountUrlResult] = []
     for raw in body.urls[:10]:

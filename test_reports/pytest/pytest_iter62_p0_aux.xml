@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="5" failures="4" skipped="0" tests="26" time="5.297" timestamp="2026-09-20T03:55:40.337361+00:00" hostname="agent-env-c344520a-3bf7-4318-a5a2-68836b7a4140"><testcase classname="tests.test_device_auth.TestCredentialLifecycle" name="test_register_is_server_issued_and_unique" time="0.404" /><testcase classname="tests.test_rdap_domain_info.TestDomainInfoBasic" name="test_google_domain_info_shape" time="0.001"><error message="failed on setup with &quot;requests.exceptions.MissingSchema: Invalid URL '/api/devices/register': No scheme supplied. Perhaps you meant https:///api/devices/register?&quot;">backend/tests/test_rdap_domain_info.py:25: in s
+    r = sess.post(f"{API}/devices/register", json={"platform": "web", "adapter_mode": "mock"}, timeout=15)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/sessions.py:712: in post
+    return self.request("POST", url, data=data, json=json, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/tests/conftest.py:50: in _shimmed_request
+    return _orig_request(self, method, url, **kw)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/sessions.py:635: in request
+    prep = self.prepare_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/sessions.py:541: in prepare_request
+    p.prepare(
+/root/.venv/lib/python3.11/site-packages/requests/models.py:439: in prepare
+    self.prepare_url(url, params)
+/root/.venv/lib/python3.11/site-packages/requests/models.py:514: in prepare_url
+    raise MissingSchema(
+E   requests.exceptions.MissingSchema: Invalid URL '/api/devices/register': No scheme supplied. Perhaps you meant https:///api/devices/register?</error></testcase><testcase classname="tests.test_rdap_domain_info.TestDomainInfoBasic" name="test_second_call_cached_same_data" time="0.000"><error message="failed on setup with &quot;requests.exceptions.MissingSchema: Invalid URL '/api/devices/register': No scheme supplied. Perhaps you meant https:///api/devices/register?&quot;">backend/tests/test_rdap_domain_info.py:25: in s
+    r = sess.post(f"{API}/devices/register", json={"platform": "web", "adapter_mode": "mock"}, timeout=15)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/sessions.py:712: in post
+    return self.request("POST", url, data=data, json=json, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/tests/conftest.py:50: in _shimmed_request
+    return _orig_request(self, method, url, **kw)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/sessions.py:635: in request
+    prep = self.prepare_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/sessions.py:541: in prepare_request
+    p.prepare(
+/root/.venv/lib/python3.11/site-packages/requests/models.py:439: in prepare
+    self.prepare_url(url, params)
+/root/.venv/lib/python3.11/site-packages/requests/models.py:514: in prepare_url
+    raise MissingSchema(
+E   requests.exceptions.MissingSchema: Invalid URL '/api/devices/register': No scheme supplied. Perhaps you meant https:///api/devices/register?</error></testcase><testcase classname="tests.test_rdap_domain_info.TestDomainInfoBasic" name="test_expand_true_includes_domain_info" time="0.000"><error message="failed on setup with &quot;requests.exceptions.MissingSchema: Invalid URL '/api/devices/register': No scheme supplied. Perhaps you meant https:///api/devices/register?&quot;">backend/tests/test_rdap_domain_info.py:25: in s
+    r = sess.post(f"{API}/devices/register", json={"platform": "web", "adapter_mode": "mock"}, timeout=15)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/sessions.py:712: in post
+    return self.request("POST", url, data=data, json=json, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/tests/conftest.py:50: in _shimmed_request
+    return _orig_request(self, method, url, **kw)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/sessions.py:635: in request
+    prep = self.prepare_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/sessions.py:541: in prepare_request
+    p.prepare(
+/root/.venv/lib/python3.11/site-packages/requests/models.py:439: in prepare
+    self.prepare_url(url, params)
+/root/.venv/lib/python3.11/site-packages/requests/models.py:514: in prepare_url
+    raise MissingSchema(
+E   requests.exceptions.MissingSchema: Invalid URL '/api/devices/register': No scheme supplied. Perhaps you meant https:///api/devices/register?</error></testcase><testcase classname="tests.test_rdap_domain_info.TestDomainInfoBasic" name="test_domain_indicator_type_lookup" time="0.000"><error message="failed on setup with &quot;requests.exceptions.MissingSchema: Invalid URL '/api/devices/register': No scheme supplied. Perhaps you meant https:///api/devices/register?&quot;">backend/tests/test_rdap_domain_info.py:25: in s
+    r = sess.post(f"{API}/devices/register", json={"platform": "web", "adapter_mode": "mock"}, timeout=15)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/sessions.py:712: in post
+    return self.request("POST", url, data=data, json=json, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/tests/conftest.py:50: in _shimmed_request
+    return _orig_request(self, method, url, **kw)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/sessions.py:635: in request
+    prep = self.prepare_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/sessions.py:541: in prepare_request
+    p.prepare(
+/root/.venv/lib/python3.11/site-packages/requests/models.py:439: in prepare
+    self.prepare_url(url, params)
+/root/.venv/lib/python3.11/site-packages/requests/models.py:514: in prepare_url
+    raise MissingSchema(
+E   requests.exceptions.MissingSchema: Invalid URL '/api/devices/register': No scheme supplied. Perhaps you meant https:///api/devices/register?</error></testcase><testcase classname="tests.test_device_auth.TestTokenLifecycle" name="test_expired_token_is_rejected_and_recovery_is_a_new_identity" time="0.611" /><testcase classname="tests.test_device_auth.TestCredentialLifecycle" name="test_missing_or_malformed_credentials_fail_closed_401" time="0.730" /><testcase classname="tests.test_device_auth.TestTokenLifecycle" name="test_concurrent_rotation_only_one_winner" time="0.347" /><testcase classname="tests.test_device_auth.TestTokenLifecycle" name="test_revoked_device_never_regains_access" time="0.695" /><testcase classname="tests.test_device_auth.TestCredentialLifecycle" name="test_rotation_is_atomic_and_old_token_dies" time="0.551" /><testcase classname="tests.test_device_auth.TestCredentialLifecycle" name="test_revocation" time="0.450" /><testcase classname="tests.test_device_auth.TestTokenLifecycle" name="test_email_confirm_link_is_single_use_and_expires" time="0.649" /><testcase classname="tests.test_device_auth.TestCredentialLifecycle" name="test_public_paths_stay_public" time="0.234" /><testcase classname="tests.test_device_auth.TestOwnershipEnforcement" name="test_device_id_in_query_path_and_body_must_match_token" time="0.791" /><testcase classname="tests.test_gate_imap.TestImapConnect" name="test_connect_invalid_host_chars_returns_400_fast" time="0.262"><failure message="AssertionError: expected 400, got 403: {&quot;detail&quot;:&quot;Unavailable under Apollo’s local-first privacy policy. Use an on-device check instead.&quot;}&#10;assert 403 == 400&#10; +  where 403 = &lt;Response [403]&gt;.status_code">backend/tests/test_gate_imap.py:84: in test_connect_invalid_host_chars_returns_400_fast
+    assert r.status_code == 400, f"expected 400, got {r.status_code}: {r.text}"
+E   AssertionError: expected 400, got 403: {"detail":"Unavailable under Apollo’s local-first privacy policy. Use an on-device check instead."}
+E   assert 403 == 400
+E    +  where 403 = &lt;Response [403]&gt;.status_code</failure></testcase><testcase classname="tests.test_gate_imap.TestImapConnect" name="test_connect_unreachable_host_returns_400_gracefully" time="0.069"><failure message="AssertionError: expected 400, got 403: {&quot;detail&quot;:&quot;Unavailable under Apollo’s local-first privacy policy. Use an on-device check instead.&quot;}&#10;assert 403 == 400&#10; +  where 403 = &lt;Response [403]&gt;.status_code">backend/tests/test_gate_imap.py:103: in test_connect_unreachable_host_returns_400_gracefully
+    assert r.status_code == 400, f"expected 400, got {r.status_code}: {r.text}"
+E   AssertionError: expected 400, got 403: {"detail":"Unavailable under Apollo’s local-first privacy policy. Use an on-device check instead."}
+E   assert 403 == 400
+E    +  where 403 = &lt;Response [403]&gt;.status_code</failure></testcase><testcase classname="tests.test_gate_imap.TestImapConnect" name="test_connect_missing_fields_is_422" time="0.068"><failure message="assert 403 == 422&#10; +  where 403 = &lt;Response [403]&gt;.status_code">backend/tests/test_gate_imap.py:113: in test_connect_missing_fields_is_422
+    assert r.status_code == 422
+E   assert 403 == 422
+E    +  where 403 = &lt;Response [403]&gt;.status_code</failure></testcase><testcase classname="tests.test_gate_imap.TestImapDisconnect" name="test_disconnect_with_no_existing_connection_succeeds" time="0.075" /><testcase classname="tests.test_gate_imap.TestImapDisconnect" name="test_status_still_disconnected_after_delete" time="0.115" /><testcase classname="tests.test_gate_imap.TestImapProviders" name="test_providers_list_shape" time="0.247" /><testcase classname="tests.test_device_auth.TestOwnershipEnforcement" name="test_family_flow_with_two_authenticated_devices" time="1.289" /><testcase classname="tests.test_gate_imap.TestImapStatus" name="test_status_before_connection" time="0.071" /><testcase classname="tests.test_gate_imap.TestImapScan" name="test_scan_without_connection_returns_404" time="0.072"><failure message="AssertionError: expected 404, got 403: {&quot;detail&quot;:&quot;Unavailable under Apollo’s local-first privacy policy. Use an on-device check instead.&quot;}&#10;assert 403 == 404&#10; +  where 403 = &lt;Response [403]&gt;.status_code">backend/tests/test_gate_imap.py:119: in test_scan_without_connection_returns_404
+    assert r.status_code == 404, f"expected 404, got {r.status_code}: {r.text}"
+E   AssertionError: expected 404, got 403: {"detail":"Unavailable under Apollo’s local-first privacy policy. Use an on-device check instead."}
+E   assert 403 == 404
+E    +  where 403 = &lt;Response [403]&gt;.status_code</failure></testcase><testcase classname="tests.test_rdap_domain_info.TestDomainInfoBestEffort" name="test_bad_tld_never_fails_request" time="0.001"><error message="failed on setup with &quot;requests.exceptions.MissingSchema: Invalid URL '/api/devices/register': No scheme supplied. Perhaps you meant https:///api/devices/register?&quot;">backend/tests/test_rdap_domain_info.py:25: in s
+    r = sess.post(f"{API}/devices/register", json={"platform": "web", "adapter_mode": "mock"}, timeout=15)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/sessions.py:712: in post
+    return self.request("POST", url, data=data, json=json, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/tests/conftest.py:50: in _shimmed_request
+    return _orig_request(self, method, url, **kw)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/sessions.py:635: in request
+    prep = self.prepare_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/requests/sessions.py:541: in prepare_request
+    p.prepare(
+/root/.venv/lib/python3.11/site-packages/requests/models.py:439: in prepare
+    self.prepare_url(url, params)
+/root/.venv/lib/python3.11/site-packages/requests/models.py:514: in prepare_url
+    raise MissingSchema(
+E   requests.exceptions.MissingSchema: Invalid URL '/api/devices/register': No scheme supplied. Perhaps you meant https:///api/devices/register?</error></testcase><testcase classname="tests.test_device_auth.TestOwnershipEnforcement" name="test_legacy_device_ids_cannot_be_claimed" time="0.069" /><testcase classname="tests.test_gate_imap.TestParseMessageUnit" name="test_parse_message_extracts_anchor_mismatch_and_headers" time="0.317" /></testsuite></testsuites>

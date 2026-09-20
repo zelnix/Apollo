@@ -12,17 +12,12 @@ import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+import { PRIVACY_FLOWS, LOCAL_ONLY_CONTENT } from '@/src/domain/privacyInventory';
 
-export const DISCLOSURE_VERSION = "2026-06";
+export const DISCLOSURE_VERSION = "P0-local-first-v1";
 
-const LEAVES_DEVICE = [
-  { what: "The link you ask Apollo to check", when: "Only when you tap “Check with Apollo” (or share a link into Apollo)", detail: "Credentials and #fragments are removed first. Sent to Apollo's server and, for reputation, to Google Safe Browsing. Stored only as a keyed digest, never the raw link." },
-  { what: "A Patrol event summary", when: "After each check or protection change", detail: "Headline, plain-language reasons, the website domain and Apollo's state. The full link stays on your device." },
-  { what: "Your question to Ask Higgins", when: "Only when you send a message", detail: "Plus, if you tap “Ask Higgins to explain” on an event, a short event summary (domain and reasons). Processed by Google Gemini." },
-  { what: "The sentence Higgins reads aloud", when: "Only when you tap “Hear Higgins”", detail: "The exact words already on your screen (links removed) are turned into speech by OpenAI's text-to-speech service. The audio is cached on Apollo's server; nothing else is sent." },
-  { what: "An anonymous device ID", when: "With every request", detail: "A random identifier created on this device. Not linked to your name, phone number, email, Apple ID or Google account." },
-];
-const NEVER_LEAVES = ["Your messages, emails, contacts or photos", "The content of web pages you visit", "Your browsing history", "Your location", "Device identifiers such as IMEI, serial number or advertising ID", "Anything from your clipboard unless you choose to check it"];
+const LEAVES_DEVICE = PRIVACY_FLOWS;
+const NEVER_LEAVES = LOCAL_ONLY_CONTENT;
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -60,13 +55,13 @@ export default function PrivacyDisclosure() {
         {setupDone ? <Pressable testID="disclosure-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable> : null}
       </View>
       <ScrollView contentContainerStyle={[s.content, { paddingBottom: spacing.xl }]} testID="disclosure-scroll">
-        <Body>Apollo is a brand of Harmony Wellness Group, which is responsible for this app and the information it handles. Apollo is built for Australians under the Privacy Act 1988 and the Australian Privacy Principles. This page lists exactly what leaves your phone and when. Nothing else does.</Body>
+        <Body testID="disclosure-intro">Apollo is a brand of Harmony Wellness Group. Security checks are local-first. The processing inventory below explains limited online checks and optional communication features. This engineering disclosure is not a legal compliance certification.</Body>
 
         <View>
           <SectionTitle>What leaves your device, and when</SectionTitle>
           <Card testID="disclosure-leaves">
-            {LEAVES_DEVICE.map((row) => (
-              <View key={row.what} style={s.item}>
+            {LEAVES_DEVICE.map((row, i) => (
+              <View key={row.what} style={s.item} testID={`disclosure-flow-${i}`}>
                 <Text style={s.what}>{row.what}</Text>
                 <Text style={s.when}>{row.when}</Text>
                 <Body>{row.detail}</Body>
@@ -76,7 +71,7 @@ export default function PrivacyDisclosure() {
         </View>
 
         <View>
-          <SectionTitle>What never leaves your device</SectionTitle>
+          <SectionTitle>What stays local in security checks</SectionTitle>
           <Card testID="disclosure-never" style={{ gap: spacing.sm }}>
             {NEVER_LEAVES.map((line) => <Body key={line}>• {line}</Body>)}
             <Pill tone="resting" label="Enforced in code: an allow-list blocks anything else" />
@@ -86,10 +81,7 @@ export default function PrivacyDisclosure() {
         <View>
           <SectionTitle>Where data goes and how long it stays</SectionTitle>
           <Card style={{ gap: spacing.sm }}>
-            <Body>• Apollo&apos;s server keeps Patrol summaries and trusted-link digests for your device ID until you clear them (Settings → Clear Patrol history / Revoke).</Body>
-            <Body>• Reputation results are cached by digest for at most the time Google allows (minutes to hours), then expire automatically.</Body>
-            <Body>• Ask Higgins conversation history is kept for your device ID until you clear it.</Body>
-            <Body>• Overseas disclosure: reputation checks (Google Safe Browsing) and Ask Higgins (Google Gemini) and Hear Higgins (OpenAI text-to-speech) are processed by Google, which may be outside Australia (APP 8).</Body>
+            <Body testID="disclosure-retention">Retention and recipients are listed per flow above. Google, OpenAI, managed storage and messaging services may process data outside Australia. Expiry of a cached result is not deletion. Soft-deleted Patrol data and prior family deliveries may remain stored.</Body>
           </Card>
         </View>
 
@@ -98,10 +90,10 @@ export default function PrivacyDisclosure() {
           <Card style={{ gap: spacing.sm }}>
             <Body>• Turn protection off at any time in Guard.</Body>
             <Body>• Revoke any trusted link and clear all history in Settings.</Body>
-            <Body>• Deleting the app removes the device identity; server-side summaries become unlinkable.</Body>
+            <Body>• Deleting the app does not erase server records or information already delivered to family.</Body>
           </Card>
         </View>
-        <Text style={s.legal}>Disclosure version {DISCLOSURE_VERSION}. Apollo does not sell data, run advertising, or use your data to train AI models.</Text>
+        <Text style={s.legal} testID="disclosure-version">Disclosure version {DISCLOSURE_VERSION}. Optional communication features transmit the content you choose to send; never include passwords or verification codes.</Text>
       </ScrollView>
       {!setupDone ? (
         <View style={[s.footer, { paddingBottom: insets.bottom + spacing.lg }]}>

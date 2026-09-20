@@ -9,11 +9,29 @@ Covers:
 """
 import os
 import time
+from pathlib import Path
 
 import pytest
 import requests
 
-BASE_URL = (os.environ.get("EXPO_BACKEND_URL") or os.environ.get("EXPO_PUBLIC_BACKEND_URL") or "").rstrip("/")
+def _base_url() -> str:
+    base = os.environ.get("EXPO_BACKEND_URL") or os.environ.get("EXPO_PUBLIC_BACKEND_URL")
+    if not base:
+        env_file = Path(__file__).resolve().parents[2] / "frontend" / ".env"
+        if env_file.exists():
+            for line in env_file.read_text().splitlines():
+                if line.startswith("EXPO_PUBLIC_BACKEND_URL="):
+                    base = line.split("=", 1)[1].strip()
+                    break
+                if line.startswith("EXPO_BACKEND_URL="):
+                    base = line.split("=", 1)[1].strip()
+                    break
+    if not base:
+        raise RuntimeError("EXPO_PUBLIC_BACKEND_URL (or EXPO_BACKEND_URL) is required")
+    return base.rstrip("/")
+
+
+BASE_URL = _base_url()
 API = f"{BASE_URL}/api"
 
 

@@ -11,22 +11,19 @@ HTTP client). Caps redirects, response size and total time. No JavaScript execut
 plain HTTP GET + static HTML parse, the same thing an anonymous visitor's browser would first
 receive before running any script.
 
-Known limitation: the safety check re-resolves DNS once; the actual connection resolves again via
-httpx (a theoretical DNS-rebinding window between the two). Acceptable for a best-effort, opt-in
-content read triggered by an explicit user tap — this is not a hardened forward proxy.
+All connections use the shared pinned-address transport, including redirects.
 """
 from __future__ import annotations
 
 import asyncio
-import ipaddress
 import re
-import socket
 from dataclasses import dataclass, field
 from urllib.parse import urljoin, urlparse
 
 import httpx
 
 from core.config import logger
+from services.outbound import public_get, public_ip, resolve_public, OutboundBlocked
 
 MAX_BYTES = 1_500_000
 MAX_REDIRECTS = 3
@@ -53,20 +50,11 @@ class CrawledPage:
 
 
 async def _resolve_ips(host: str) -> list[str]:
-    loop = asyncio.get_event_loop()
-    try:
-        infos = await loop.getaddrinfo(host, None)
-    except socket.gaierror as exc:
-        raise CrawlBlocked("dns_failed") from exc
-    return list({info[4][0] for info in infos})
+    return await resolve_public(host, 443)
 
 
 def _is_blocked_ip(ip_str: str) -> bool:
-    try:
-        ip = ipaddress.ip_address(ip_str)
-    except ValueError:
-        return True
-    return ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip.is_unspecified
+    return not public_ip(ip_str)
 
 
 async def _assert_public_host(host: str) -> None:
@@ -105,36 +93,13 @@ def _parse_html(final_url: str, html: str) -> CrawledPage:
 async def fetch_page(url: str) -> CrawledPage:
     """Fetch + parse a page. Raises CrawlBlocked for every failure/refusal mode — never returns
     partial/garbage data silently. Nothing fetched here is persisted."""
-    current = url
-    async with httpx.AsyncClient(
-        timeout=FETCH_TIMEOUT, follow_redirects=False,
-        headers={"User-Agent": "Mozilla/5.0 (compatible; ApolloGuardDog/1.0; +security-check)", "Accept": "text/html,application/xhtml+xml"},
-    ) as http:
-        for _ in range(MAX_REDIRECTS + 1):
-            parsed = urlparse(current)
-            if parsed.scheme not in ALLOWED_SCHEMES or not parsed.hostname:
-                raise CrawlBlocked("invalid_url")
-            await _assert_public_host(parsed.hostname)
-            try:
-                async with http.stream("GET", current) as resp:
-                    if resp.status_code in (301, 302, 303, 307, 308):
-                        loc = resp.headers.get("location")
-                        if not loc:
-                            raise CrawlBlocked("redirect_no_location")
-                        current = urljoin(current, loc)
-                        continue
-                    if resp.status_code >= 400:
-                        raise CrawlBlocked(f"http_{resp.status_code}")
-                    ctype = resp.headers.get("content-type", "")
-                    if "text/html" not in ctype and "text/plain" not in ctype:
-                        raise CrawlBlocked("not_html")
-                    chunks = bytearray()
-                    async for chunk in resp.aiter_bytes():
-                        chunks.extend(chunk)
-                        if len(chunks) > MAX_BYTES:
-                            break
-                    html = bytes(chunks).decode(resp.encoding or "utf-8", errors="ignore")
-                    return _parse_html(str(resp.url), html)
-            except httpx.HTTPError as exc:
-                raise CrawlBlocked("fetch_failed") from exc
-        raise CrawlBlocked("too_many_redirects")
+    try:
+        resp = await public_get(url, MAX_REDIRECTS)
+        if resp.status_code >= 400:
+            raise CrawlBlocked(f"http_{resp.status_code}")
+        ctype = resp.headers.get("content-type", "")
+        if not any(t in ctype for t in ("text/html", "text/plain", "application/xhtml+xml")):
+            raise CrawlBlocked("not_html")
+        return _parse_html(str(resp.url), resp.text)
+    except (httpx.HTTPError, OutboundBlocked, asyncio.TimeoutError) as exc:
+        raise CrawlBlocked(str(exc) if isinstance(exc, OutboundBlocked) else "fetch_failed") from exc

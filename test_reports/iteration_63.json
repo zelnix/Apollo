@@ -1,0 +1,91 @@
+{
+  "summary": "Implemented and executed new P0 frontend/backend test suites, updated obsolete backend suites to current local-first contracts, and reran all relevant backend suites with exact counts.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "transport boundary (services/outbound.public_get)",
+        "issue": "HEAD405->GET fallback path is not implemented; unit test captured only GET (no HEAD preflight).",
+        "priority": "HIGH"
+      },
+      {
+        "endpoint": "POST /api/patrol/events",
+        "issue": "Reusing evidence_id with changed binding is rejected as 422 validation error, not expected conflict semantics (409) in P0 fixture flow.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Delivery queue versioning",
+        "issue": "Regression reproduced: enqueueing an older acknowledged payload can replace a newer pending payload for same event key.",
+        "affected_testIDs": []
+      },
+      {
+        "flow": "Mobile web payload capture via deep routes",
+        "issue": "Onboarding/setup redirects prevented stable end-to-end capture of message/email/account outbound JSON in one deterministic run.",
+        "affected_testIDs": [
+          "message-sender",
+          "account-text"
+        ]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/frontend/tests/p0Delivery.test.ts",
+    "/app/frontend/tests/p0TruthPrivacyFile.test.ts",
+    "/app/backend/tests/test_p0_outbound_unit.py",
+    "/app/backend/tests/test_p0_mapper_e2e_fixture.py",
+    "/app/backend/tests/test_enforcement_evidence_gate.py",
+    "/app/backend/tests/test_gate2_message.py",
+    "/app/backend/tests/test_gate8_account.py",
+    "/app/backend/tests/test_gate3_page_crawl.py",
+    "/app/backend/tests/test_gate3_page_extract.py",
+    "/app/backend/tests/test_rdap_domain_info.py",
+    "/app/backend/tests/test_gate_imap.py",
+    "/app/backend/tests/test_gate4_call.py",
+    "/app/backend/tests/test_gate4_callguard_risk.py",
+    "/app/test_reports/pytest/pytest_iter63_relevant_final.xml"
+  ],
+  "action_items": [
+    "Implement/confirm outbound HEAD preflight fallback logic (HEAD 405 -> GET) or align test/contract explicitly.",
+    "Align patrol evidence-id changed-binding response contract (expected 409 conflict vs current 422).",
+    "Fix deliveryQueue stale-version re-enqueue behavior so older acknowledged payload cannot overwrite newer pending payload.",
+    "Add deterministic setup-bypass fixture/state for mobile web payload-capture UI tests to avoid onboarding redirect interference."
+  ],
+  "critical_code_review_comments": [
+    "Queue version monotonicity invariant still breaks under older payload replay while newer pending exists.",
+    "Transport public_get does not currently demonstrate HEAD preflight + 405 fallback pathway.",
+    "Many suites previously hardcoded fallback URLs and outdated expectations; updated to env-driven local-first 403 contract while preserving negative assertions."
+  ],
+  "updated_files": [
+    "/app/frontend/tests/p0Delivery.test.ts",
+    "/app/frontend/tests/p0TruthPrivacyFile.test.ts",
+    "/app/backend/tests/test_p0_outbound_unit.py",
+    "/app/backend/tests/test_p0_mapper_e2e_fixture.py",
+    "/app/backend/tests/test_enforcement_evidence_gate.py",
+    "/app/backend/tests/test_gate2_message.py",
+    "/app/backend/tests/test_gate8_account.py",
+    "/app/backend/tests/test_gate3_page_crawl.py",
+    "/app/backend/tests/test_gate3_page_extract.py",
+    "/app/backend/tests/test_rdap_domain_info.py",
+    "/app/backend/tests/test_gate_imap.py",
+    "/app/backend/tests/test_gate4_call.py",
+    "/app/backend/tests/test_gate4_callguard_risk.py",
+    "/app/test_result.md",
+    "/app/test_reports/iteration_63.json"
+  ],
+  "success_rate": {
+    "backend": "97.1% (68/70 relevant backend tests passed)",
+    "frontend": "94.4% (17/18 new node tests passed)"
+  },
+  "seed_data_creation": "Created ephemeral registered devices and patrol events during live API tests; no persistent seeded fixtures committed.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Per-P0 coverage matrix: P0-01 outbound hardened transport tests added and run (1 fail: HEAD405 fallback); P0-02 delivery queue durability/version tests added and run (1 fail: stale-version overwrite); P0-03 truth/privacy/file tests added and run (all pass); P0-04 mapper->payload->egress->live patrol E2E fixture added and run (1 fail: changed-binding expected 409 got 422); P0-05 obsolete backend suites migrated to disabled-403/minimal-sentinel contracts and rerun (pass); P0-06 focused payload/lifecycle browser checks attempted with mobile viewport; onboarding redirects prevented deterministic full capture in final run.",
+  "rca_of_issue": "RCA 1: deliveryQueue enqueue currently allows overwrite when pending exists with different version, enabling older acknowledged payload replay to replace newer pending. RCA 2: outbound.public_get currently calls public_stream with GET directly and does not exhibit HEAD preflight fallback behavior. RCA 3: changed evidence-id binding path is rejected by packet-backed invariant before conflict-type handling, yielding 422 instead of desired 409 semantics."
+}

@@ -20,9 +20,9 @@ import java.util.UUID
  *   - `autoRisky` — numbers THIS device previously looked up (via the backend's IPQualityScore
  *                   proxy — see services/phonerisk.py) and found to be high-risk. Per-device only;
  *                   nothing here is shared with other Apollo users in this build (see PRD).
- * A number in `block` or `autoRisky` is REJECTED before it ever rings — that rejection IS the
- * enforcement action, recorded as EnforcementEvidence the instant respondToCall() is called with
- * rejectCall=true (see EnforcementEvidence.verifiedCallBlock). Every other number rings completely
+ * A number in `block` or `autoRisky` causes a rejection REQUEST. Android supplies no separate
+ * completion receipt here. The record is unverified and must never represent a packet drop.
+ * Every other number rings completely
  * normally; Apollo never delays or silences a call based on a guess. Unknown numbers with no local
  * signal are queued (bounded, deduped) for the app to look up next time it's open — the 3rd-party
  * reputation lookup itself is too slow/unreliable to run inside this service's ~5 s response window.
@@ -112,7 +112,7 @@ class ApolloCallScreeningService : CallScreeningService() {
           evidenceId = UUID.randomUUID().toString(), observedAt = Instant.now().toString(), number = number,
           ruleSource = if (number in block) "user_override" else "cloud_intel",
           osVersion = "Android ${android.os.Build.VERSION.RELEASE}", sdkVersion = ApolloDnsVpnService.MODULE_VERSION,
-        ))
+        ).copy(result = "unverified", enforcedAction = "none", destinationDomain = null, matchedRuleId = "call_local_rule"))
         return
       }
       // No local signal at all — let it ring normally, and queue for a background reputation lookup.

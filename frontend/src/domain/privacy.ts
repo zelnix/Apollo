@@ -1,3 +1,4 @@
+import { domainOnly, packetFields, evidenceToken } from './packetEvidence.ts';
 // Data egress policy, enforced in code. Every outbound payload passes through
 // `enforceEgress` which rejects anything outside the allow-list.
 // Raw personal content (page text, messages, contacts, photos, identifiers
@@ -13,7 +14,7 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   feedback: new Set(["device_id", "event_id", "kind", "state", "host", "sources", "note"]),
   patrol_sync: new Set([
     "event_id", "device_id", "category", "state", "status", "headline", "what_happened", "why", "what_to_do",
-    "indicator_host", "indicator_digest", "verified_block", "adapter_label", "occurred_at", "resolved_at", "background", "claimed_brand", "scenario", "scent_id",
+    "indicator_host", "indicator_digest", "verified_block", "adapter_label", "occurred_at", "resolved_at", "background", "claimed_brand", "scenario", "scent_id", "enforcement_evidence",
   ]),
   trust_sync: new Set(["device_id", "indicator_type", "indicator_digest", "indicator_host", "event_id", "trust_id"]),
   ask_apollo: new Set(["device_id", "message", "context"]),
@@ -61,31 +62,76 @@ export class EgressViolation extends Error {
 }
 
 export function enforceEgress<T extends Record<string, unknown>>(endpoint: EgressEndpoint, payload: T): T {
+  if (['message_extract', 'page_extract', 'page_crawl', 'gmail_scan', 'imap_connect', 'imap_scan', 'call_risk_check', 'breach_check'].includes(endpoint)) throw new EgressViolation(endpoint, 'cloud processing disabled; use an on-device check');
   const allowed = ALLOWED_KEYS[endpoint];
   const out: Record<string, unknown> = {};
   for (const key of Object.keys(payload)) {
     if (FORBIDDEN_KEYS.has(key) || !allowed.has(key)) throw new EgressViolation(endpoint, key);
     out[key] = payload[key];
   }
+  if (endpoint === 'message_check' || endpoint === 'account_check') {
+    if ((out.text && out.text !== '[local-only]') || out.sender || out.second_opinion || out.claimed_brand || (Array.isArray(out.signals) && out.signals.length)) throw new EgressViolation(endpoint, 'raw content');
+    out.urls = Array.isArray(out.urls) ? out.urls.map(u => minimalIndicator(String(u))).slice(0, 10) : [];
+  }
+  if (endpoint === 'intel_check') {
+    if (typeof out.value === 'string') out.value = out.indicator_type === 'domain' ? new URL(minimalIndicator(out.value)).hostname : minimalIndicator(out.value);
+    if (Array.isArray(out.values)) out.values = out.values.map(v => minimalIndicator(String(v)));
+  }
+  if (endpoint === 'patrol_sync') {
+    const ev = out.enforcement_evidence as Record<string, unknown> | null | undefined;
+    if (ev) validateEvidence(ev, out);
+    if (out.category === 'call' && (ev || out.verified_block || out.state === 'biting' || out.indicator_host)) throw new EgressViolation(endpoint, 'call packet claim');
+    if (out.indicator_host != null && !domainOnly(out.indicator_host)) throw new EgressViolation(endpoint, 'indicator_host');
+    for (const key of ['headline', 'what_happened', 'what_to_do', 'adapter_label']) {
+      if (typeof out[key] !== 'string' || /https?:\/\/|[+@]|\b\d[\d ()-]{6,}\d/.test(out[key] as string)) throw new EgressViolation(endpoint, key);
+    }
+    if (!Array.isArray(out.why) || out.why.some(w => typeof w !== 'string' || w.length > 160)) throw new EgressViolation(endpoint, 'why');
+    const category = String(out.category);
+    if (!['link', 'website', 'connection', 'known_threat', 'protection', 'system', 'message', 'call', 'app', 'device', 'account', 'email'].includes(category)) throw new EgressViolation(endpoint, 'category');
+    for (const key of ['event_id', 'device_id', 'scent_id']) if (out[key] != null && !evidenceToken(out[key])) throw new EgressViolation(endpoint, key);
+    out.headline = ev ? 'Apollo observed a blocked connection' : `Apollo recorded a ${category} check`;
+    out.what_happened = ev ? 'An observed packet was intentionally blocked by the on-device filter.' : 'A local assessment was recorded. Details stay on the device.';
+    out.why = [ev ? 'Packet-backed enforcement evidence is attached.' : 'Only a minimal security summary is shared.'];
+    out.what_to_do = 'Review the original alert on your phone. A past check does not establish current safety.';
+    out.claimed_brand = null;
+    out.scenario = typeof out.scenario === 'string' && /^[A-Z]{1,3}\d{1,3}[a-z]?$/.test(out.scenario) ? out.scenario : null;
+    out.adapter_label = 'Apollo on-device assessment';
+  }
+  if (endpoint === 'family' && Array.isArray(out.events)) {
+    out.headline = 'Shared Apollo security incident';
+    out.events = out.events.map((v: Record<string, unknown>) => ({ event_id: v.event_id, category: v.category,
+      state: v.state, headline: 'Security check — review with the protected person', occurred_at: v.occurred_at, status: v.status }));
+    if (Array.isArray(out.steps)) out.steps = out.steps.map((v: Record<string, unknown>) => ({ id: v.id, text: 'Review this recovery step on the protected phone together.' }));
+  }
+  if (endpoint === 'ask_apollo' && out.context) out.context = 'An Apollo security check needs explanation. Ask the person which check and what action they need help with. Do not request passwords, codes or private message content.';
   return out as T;
+}
+
+const EVIDENCE_KEYS = new Set(['evidence_id', 'event_id', 'device_id', 'platform', 'os_version', 'sdk_version', 'observed_at', 'mechanism', 'direction', 'protocol', 'destination_ip', 'destination_domain', 'destination_port', 'app_id', 'process_name', 'attribution_confidence', 'matched_rule_id', 'threat_id', 'requested_action', 'enforced_action', 'result', 'rule_source', 'confidence', 'correlation_id']);
+function validateEvidence(ev: Record<string, unknown>, event: Record<string, unknown>) {
+  for (const key of Object.keys(ev)) if (!EVIDENCE_KEYS.has(key)) throw new EgressViolation('patrol_sync', `enforcement_evidence.${key}`);
+  for (const key of ['os_version', 'sdk_version', 'destination_ip', 'app_id', 'process_name', 'threat_id', 'correlation_id']) if (ev[key] != null) throw new EgressViolation('patrol_sync', `enforcement_evidence.${key}`);
+  if (!packetFields(ev as any) || (ev.event_id != null && (ev.event_id !== event.event_id || !evidenceToken(ev.event_id))) ||
+    (ev.device_id != null && ev.device_id !== event.device_id) || Date.parse(String(ev.observed_at)) !== Date.parse(String(event.occurred_at))) throw new EgressViolation('patrol_sync', 'enforcement_evidence');
 }
 
 /** Reduce a URL to the minimal indicator we are willing to send for reputation checks. */
 export function minimalIndicator(normalizedUrl: string): string {
-  const u = new URL(normalizedUrl);
+  const u = new URL(normalizedUrl.includes('://') ? normalizedUrl : `https://${normalizedUrl}`);
+  if (!['http:', 'https:'].includes(u.protocol)) throw new EgressViolation('intel_check', 'scheme');
   u.username = "";
   u.password = "";
   u.hash = "";
+  u.search = '';
+  u.pathname = '/'; // origin-only: paths can contain private document IDs and reset tokens too
   return u.toString();
 }
 
 export const PRIVACY_POLICY_SUMMARY = [
   "Links you check are analysed on your device first.",
-  "Only the link itself (no page content, no messages) is sent for reputation checks, stripped of credentials and fragments.",
-  "If you choose \"Let Apollo read the page\", Apollo fetches that page directly to look for scam signs — the content is checked and discarded, never stored.",
-  "If you connect Gmail (read-only, optional), Apollo fetches your recent inbox only when you tap \"Scan my inbox\" — messages are checked on the spot and discarded; only Apollo's encrypted connection token is kept until you disconnect.",
-  "If you connect another inbox via IMAP (read-only, optional), your host/username/app-password are sent once to set up the connection, then encrypted — the same \"scan and discard\" rule applies.",
-  "Call Guard checks a caller's number only when you ask, or when a call rings with no existing signal on your device — the number is checked and discarded, never stored beyond a short-lived risk-score cache. Your personal block/allow list stays on your device.",
+  "Only website origins (no path, query, credentials or fragments) are sent for reputation checks. This is not a full-page or full-link scan.",
+  "Messages and account alerts are analysed locally. Automatic notification checks do not make cloud requests.",
+  "Cloud screenshots, page-content analysis, inbox connections, breach-identifier and caller-number lookups are disabled. Existing inbox connections can be disconnected.",
   "Patrol sync stores event summaries and the website domain only. The full link stays on your device.",
   "Apollo uses an anonymous device ID. No account, no email. A phone number is shared only if you choose to add one so family can call you.",
   "Ask Higgins sends only your question and, if you choose, a short event summary.",

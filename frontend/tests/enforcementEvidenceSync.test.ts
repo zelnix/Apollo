@@ -15,12 +15,13 @@ const sample: EnforcementEvidence = {
   result: "verified", ruleSource: "local_blocklist", confidence: "high", sourceMetadata: {}, correlationId: null,
 };
 
-test("1. maps every camelCase/nested SDK field to its snake_case/flat backend counterpart, losslessly", () => {
+test("1. maps minimal SDK evidence while deliberately dropping identifying fields", () => {
   const mapped = toPatrolEnforcementEvidence(sample);
   assert.equal(mapped.evidence_id, sample.evidenceId);
   assert.equal(mapped.device_id, sample.deviceId);
-  assert.equal(mapped.os_version, sample.osVersion);
-  assert.equal(mapped.sdk_version, sample.sdkVersion);
+  // P0 privacy boundary: sensitive OS/SDK fingerprinting is intentionally stripped.
+  assert.equal(mapped.os_version, null);
+  assert.equal(mapped.sdk_version, null);
   assert.equal(mapped.observed_at, sample.observedAt);
   assert.equal(mapped.destination_domain, sample.destination.domain);
   assert.equal(mapped.destination_ip, sample.destination.ip);

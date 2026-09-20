@@ -29,13 +29,18 @@ import { canTransition, resolveApolloState, type StateResolution } from "@/src/d
 import type { ApolloState, Capability, Decision, DomainInfo, IntelResult, LocalAnalysis, PatrolEvent } from "@/src/domain/types";
 import { IS_MOCK_SECURITY, SECURITY_MODE, securityAdapter } from "@/src/security/securityAdapter";
 import type { BlockResult, NetworkStatus, ProtectionPermission, ProtectionStatus } from "@/src/security/SecurityPlatformAdapter";
-import { isVerifiedEnforcement } from "@/src/security/PlatformCapabilityProfile";
+import { isPacketEvidence as isVerifiedEnforcement, normalizeHistoricalEvent } from '@/src/domain/packetEvidence';
+import { freshObservation, unavailableObservation, boundedObservation } from '@/src/domain/protectionObservation';
+import { patrolPayload } from '@/src/domain/patrolPayload';
+import { patrolDelivery, deliveryFailure } from './patrolDelivery';
 import { toPatrolEnforcementEvidence } from "@/src/domain/enforcementEvidenceSync";
 import { SecureCore } from "@/src/security/securecore/SecureCore";
 import { getPushStatus, registerForPush, type PushStatus } from "@/src/push/notifications";
 import { MessagingSdk } from "@/src/security/messagingSdk";
 import { CallSdk } from "@/src/security/callSdk";
 import { storage } from "@/src/utils/storage";
+import { shouldBypassSetup } from "@/src/testing/setupBypass";
+import { RECOVERY_STEPS, type RecoveryKind } from "@/src/domain/recovery";
 
 const deviceMeta = () => ({ platform: Platform.OS, adapter_mode: SECURITY_MODE, app_version: "1.0.0", tz_offset_minutes: -new Date().getTimezoneOffset() });
 
@@ -56,7 +61,6 @@ export interface CallRiskResult {
   decision: "allow" | "review" | "avoid"; cached: boolean; checked_at: string; source: "ipqualityscore" | "not_configured";
 }
 export { RECOVERY_STEPS, type RecoveryKind } from "@/src/domain/recovery";
-import { RECOVERY_STEPS, type RecoveryKind } from "@/src/domain/recovery";
 
 interface ApolloContextValue {
   ready: boolean;
@@ -146,6 +150,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const [toast, setToast] = useState<ApolloContextValue["toast"]>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [tick, setTick] = useState(0);
+  const probeGeneration = useRef(0);
 
   // Quiet hours (local + synced to backend so growling pushes are held) and battery saver.
   const [quietHours, setQuietHoursState] = useState<QuietHours>(DEFAULT_QUIET);
@@ -179,18 +184,27 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   // operate on a stale snapshot and overwrite each other.
   const eventsRef = useRef<PatrolEvent[]>([]);
   useEffect(() => { eventsRef.current = events; }, [events]);
-  const persistEvents = useCallback(async (next: PatrolEvent[]) => { eventsRef.current = next; setEvents(next); await storage.setItem(K.events, JSON.stringify(next)); }, []);
+  const persistEvents = useCallback(async (next: PatrolEvent[]) => {
+    eventsRef.current = next; setEvents(next);
+    if (!await storage.setItem(K.events, JSON.stringify(next))) { deliveryFailure(); throw new Error('Patrol could not save the event locally'); }
+  }, []);
   const persistTrust = useCallback(async (next: TrustEntry[]) => { setTrust(next); await storage.setItem(K.trust, JSON.stringify(next)); }, []);
 
   const refresh = useCallback(async (minVisibleMs = 0) => {
+    const generation = ++probeGeneration.current;
     setRefreshing(true);
     const hold = new Promise((r) => setTimeout(r, minVisibleMs));
     try {
-      const [caps, status, perms, net, evidence] = await Promise.all([
+      const [caps, status, perms, net, evidence] = await boundedObservation(Promise.all([
         securityAdapter.getCapabilities(), securityAdapter.getProtectionStatus(), securityAdapter.getProtectionPermissions(), securityAdapter.getNetworkStatus(),
         securityAdapter.getEnforcementEvidence().catch(() => []),
-      ]);
-      setCapabilities(caps); setProtection(status); setPermissions(perms); setNetwork(net);
+      ]));
+      if (generation !== probeGeneration.current) return;
+      const observed = freshObservation(status) ? status : unavailableObservation(status);
+      setCapabilities(caps); setProtection(observed); setPermissions(perms); setNetwork(net);
+      const verified = freshObservation(status) ? status.lastVerified : null;
+      setLastVerifiedAt(verified);
+      await storage.setItem(K.verified, verified);
       // Connection Guard: raise one growling event per distinct unsafe network condition (trusted networks stay quiet).
       const a = assessConnection(net, trustedSsidsRef.current);
       if (a.state && status.running && lastConnectionKey.current !== a.key) {
@@ -203,7 +217,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         setEvents((prev) => { const next = [ev, ...prev]; void storage.setItem(K.events, JSON.stringify(next)); return next; });
         void syncEventRef.current?.(ev);
       } else if (!a.state) lastConnectionKey.current = a.key;
-      await syncEnforcementEvidence(evidence);
+      await syncEnforcementEvidence(evidence).catch(deliveryFailure);
+    } catch {
+      if (generation === probeGeneration.current) { setProtection(p => unavailableObservation(p)); setLastVerifiedAt(null); setCapabilities([]); }
     } finally { await hold; setRefreshing(false); }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -224,21 +240,17 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     // isVerifiedEnforcement() + the evidenceId dedupe below together guarantee repeated evidence for
     // the same real block can never create duplicate "biting" events.
     const fresh = evidence.filter((e) => isVerifiedEnforcement(e) && !seen.has(e.evidenceId));
-    if (!fresh.length) return;
-    for (const e of fresh) seen.add(e.evidenceId);
-    const capped = Array.from(seen).slice(-200);
-    seenEvidenceRef.current = new Set(capped);
-    await storage.setItem(K.seenEvidence, JSON.stringify(capped));
     for (const e of fresh) {
-      const isCall = e.mechanism === "call_screening";
+      const isCall = false; // Call screening is processed separately; never packet-backed Biting.
       const domain = e.destination.domain ?? e.destination.ip ?? (isCall ? "an unknown caller" : "a threat");
       // Upgrade an existing card for this exact host/number (e.g. it was flagged/barking earlier) in
       // place, rather than spawning a duplicate — one destination should read as one continuous story.
       // Calls use `local_indicator` (never synced — see syncEvent) instead of `indicator_host`,
       // matching the same privacy choice Check This Call already makes for phone numbers.
-      const existing = eventsRef.current.find((x) => (isCall ? x.local_indicator === domain : x.indicator_host === domain) && x.state !== "biting");
+      const existing = eventsRef.current.find(x => x.event_id === (e.eventId ?? e.evidenceId));
+      if (existing) { await syncEventRef.current?.(existing); seen.add(e.evidenceId); continue; }
       const base: PatrolEvent = existing ?? {
-        event_id: Crypto.randomUUID(), device_id: deviceIdRef.current ?? "local", category: isCall ? "call" : "connection", state: "barking", status: "active",
+        event_id: e.eventId ?? e.evidenceId, device_id: deviceIdRef.current ?? "local", category: "connection", state: "barking", status: "active",
         headline: "", what_happened: "", why: [], what_to_do: "", indicator_host: isCall ? null : domain, local_indicator: isCall ? domain : undefined, indicator_digest: null,
         verified_block: false, adapter_label: securityAdapter.label, occurred_at: e.observedAt, resolved_at: null, trust_allowed: false,
       };
@@ -254,16 +266,28 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         ...base, state: "biting", status: "blocked", headline,
         what_happened: whatHappened,
         why: [...base.why, whyLine],
-        what_to_do: isCall ? "Nothing more to do. Apollo verified this call was blocked." : "Nothing more to do. Apollo verified this destination is blocked.",
+        what_to_do: "This connection was blocked. If you already shared details or money, review the recovery steps.",
         indicator_host: isCall ? null : domain, local_indicator: isCall ? domain : base.local_indicator,
         verified_block: true, adapter_label: securityAdapter.label, occurred_at: e.observedAt, resolved_at: null,
         background: true, enforcement_evidence: toPatrolEnforcementEvidence(e),
       };
-      setEvents((prev) => { const next = [ev, ...prev.filter((x) => x.event_id !== ev.event_id)]; void storage.setItem(K.events, JSON.stringify(next)); return next; });
-      void syncEventRef.current?.(ev);
+      await persistEvents([ev, ...eventsRef.current.filter(x => x.event_id !== ev.event_id)]);
+      await syncEventRef.current?.(ev);
+      seen.add(e.evidenceId); // local dedupe ONLY; delivery receipts live in the durable outbox.
       showToast(isCall ? `Apollo blocked a call from ${domain}.` : `Apollo blocked ${domain}.`, "biting");
     }
-  }, [showToast]);
+    for (const e of evidence.filter(x => x.mechanism === 'call_screening' && x.requestedAction === 'block' && !seen.has(x.evidenceId))) {
+      const ev: PatrolEvent = {
+        event_id: e.eventId ?? e.evidenceId, device_id: deviceIdRef.current ?? 'local', category: 'call', state: 'barking', status: 'active',
+        headline: 'Call rejection requested', what_happened: 'Call Guard submitted a rejection request to Android. No separate completion receipt is available.',
+        why: ['This is a call-screening action, not an observed packet drop.'], what_to_do: 'If the call still reaches you, do not share private information. Review Call Guard.',
+        indicator_host: null, indicator_digest: null, local_indicator: e.destination.domain, verified_block: false,
+        adapter_label: securityAdapter.label, occurred_at: e.observedAt, resolved_at: null, trust_allowed: false, background: true,
+      };
+      await persistEvents([ev, ...eventsRef.current.filter(x => x.event_id !== ev.event_id)]);
+      await syncEventRef.current?.(ev); seen.add(e.evidenceId);
+    }
+  }, [showToast, persistEvents]);
   const lastConnectionKey = useRef<string | null>(null);
   const deviceIdRef = useRef<string | null>(null);
   useEffect(() => { deviceIdRef.current = deviceId; }, [deviceId]);
@@ -287,9 +311,6 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const verifyNow = useCallback(async () => {
     // Keep the Sniffing state visible for at least a beat so the user sees Apollo actually checking.
     await refresh(900);
-    const ts = new Date().toISOString();
-    setLastVerifiedAt(ts);
-    await storage.setItem(K.verified, ts);
   }, [refresh]);
 
   // Boot
@@ -297,12 +318,15 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       try {
         await SecureCore.initialize();
-        const [done, ev, tr, ver, protOn] = await Promise.all([
+        const [storedDone, ev, tr, protOn] = await Promise.all([
           storage.getItem<boolean>(K.setup, false), storage.getItem<string | null>(K.events, null), storage.getItem<string | null>(K.trust, null),
-          storage.getItem<string | null>(K.verified, null), storage.getItem<boolean>(K.protection, false),
+          storage.getItem<boolean>(K.protection, false),
         ]);
+        const href = typeof globalThis.location?.href === "string" ? globalThis.location.href : "";
+        const done = storedDone || shouldBypassSetup(Platform.OS, __DEV__, href);
         setSetupDone(!!done);
-        if (ev) setEvents(JSON.parse(ev)); if (tr) setTrust(JSON.parse(tr)); setLastVerifiedAt(ver ?? null);
+        if (ev) { const restored = (JSON.parse(ev) as PatrolEvent[]).map(normalizeHistoricalEvent); eventsRef.current = restored; setEvents(restored); }
+        if (tr) setTrust(JSON.parse(tr)); setLastVerifiedAt(null); // persisted observations are never live boot health
         if (done) {
           // Server-issued identity. Legacy (pre-token) installs have none and get a fresh identity — never a claimed one.
           let identity = await getDeviceIdentity();
@@ -313,7 +337,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
             setDeviceId(identity.deviceId);
             void apiPost("/devices/heartbeat", "device_register", deviceMeta()).catch(() => undefined); // never blocks boot; offline is fine
           }
-          if (protOn) await securityAdapter.startProtection();
+          if (protOn) { try { await boundedObservation(securityAdapter.startProtection()); } catch { /* observe below; never infer success */ } }
         }
         await refresh();
       } finally { setReady(true); }
@@ -356,12 +380,20 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       }
       wasReachable = h.reachable;
     });
-    const sub = AppState.addEventListener("change", (st) => { if (st === "active" && getBackendHealth().reachable === false) void probeBackend(); });
+    const sub = AppState.addEventListener("change", (st) => {
+      if (st === 'active') { setProtection(p => unavailableObservation(p)); setLastVerifiedAt(null); void refresh(); }
+      else { ++probeGeneration.current; setProtection(p => unavailableObservation(p)); setLastVerifiedAt(null); }
+      if (st === "active" && getBackendHealth().reachable === false) void probeBackend();
+    });
     return () => { off(); sub.remove(); if (timer) clearInterval(timer); };
-  }, [lowPower, qc]);
+  }, [lowPower, qc, refresh]);
 
   // Re-resolve state over time so cooldown/freshness windows expire visibly (slower in battery saver).
-  useEffect(() => { const t = setInterval(() => setTick((n) => n + 1), lowPower ? 120000 : 30000); return () => clearInterval(t); }, [lowPower]);
+  useEffect(() => { const t = setInterval(() => {
+    setTick(n => n + 1);
+    setProtection(p => freshObservation(p) ? p : unavailableObservation(p));
+  }, 1000); return () => clearInterval(t); }, []);
+  useEffect(() => { const t = setInterval(() => { if (AppState.currentState !== 'background') void refresh(); }, lowPower ? 60000 : 30000); return () => clearInterval(t); }, [lowPower, refresh]);
 
   // Alert notifications: re-register on every launch once the device identity exists (tokens rotate).
   // Only ask for permission once setup completes (completeSetup → enablePush); silent re-register otherwise.
@@ -397,7 +429,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!remoteEvents.data) return;
     const known = new Set(events.map((e) => e.event_id));
-    const missing = remoteEvents.data.filter((e) => !known.has(e.event_id));
+    const missing = remoteEvents.data.filter((e) => !known.has(e.event_id)).map(normalizeHistoricalEvent);
     if (missing.length) void persistEvents([...events, ...missing].sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at)));
   }, [remoteEvents.data]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -408,16 +440,28 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   }, [remoteTrust.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const syncEvent = useCallback(async (e: PatrolEvent) => {
-    if (!deviceId) return;
-    const { local_indicator: _omit, trust_allowed: _omit2, ...rest } = e; // never leaves device
-    try { await apiPost("/patrol/events", "patrol_sync", { ...rest, device_id: deviceId }); qc.invalidateQueries({ queryKey: ["patrol", deviceId] }); } catch { /* offline: local copy is authoritative */ }
-  }, [deviceId, qc]);
+    if (!deviceId || (e.device_id !== 'local' && e.device_id !== deviceId)) return;
+    try { await patrolDelivery.enqueue(patrolPayload(e, deviceId)); void patrolDelivery.flush(deviceId).catch(deliveryFailure); }
+    catch { deliveryFailure(); }
+  }, [deviceId]);
   useEffect(() => { syncEventRef.current = syncEvent; }, [syncEvent]);
+  useEffect(() => {
+    if (!deviceId || !ready) return;
+    const retry = async () => {
+      try {
+        for (const e of eventsRef.current) if (e.device_id === deviceId || e.device_id === 'local') await patrolDelivery.enqueue(patrolPayload(e, deviceId));
+        await patrolDelivery.flush(deviceId);
+      } catch { deliveryFailure(); }
+    };
+    void retry(); const timer = setInterval(() => void retry(), 15000);
+    const sub = AppState.addEventListener('change', s => { if (s === 'active') void retry(); });
+    return () => { clearInterval(timer); sub.remove(); };
+  }, [deviceId, ready]);
 
   const upsertEvent = useCallback(async (input: PatrolEvent) => {
     // Threat Scent: link this event to related recent events (same brand/host within 30 min).
     // When two different gates are involved (e.g. message → link), the sequence escalates to barking.
-    let e = input;
+    let e = normalizeHistoricalEvent(input);
     const events = eventsRef.current;
     if (e.state !== "resting" && !events.some((x) => x.event_id === e.event_id)) {
       const scent = findScentFor(e, events) ?? e.event_id;
@@ -438,8 +482,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     let urls: MessageUrlResult[] = []; let explanation: MessageExplanation | null = null; let remoteError: string | null = null;
     try {
       const r = await apiPost<{ urls?: unknown; explanation?: unknown }>("/message/analyse", "message_check", {
-        device_id: deviceId ?? undefined, sender: sender.trim().slice(0, 80), text: text.slice(0, 4000), urls: analysis.signals.urls.slice(0, 10),
-        local_state: analysis.state, scenario: analysis.scenario, signals: analysis.signalLabels, claimed_brand: analysis.signals.claimedBrand, second_opinion: true,
+        device_id: deviceId ?? undefined, sender: '', text: '[local-only]', urls: analysis.signals.urls.slice(0, 10).map(minimalIndicator),
+        local_state: analysis.state, scenario: analysis.scenario, signals: [], claimed_brand: null, second_opinion: false,
       });
       // Contract guard: only well-formed url verdicts count; anything else is dropped (unknown), never treated as clean.
       urls = Array.isArray(r.urls) ? (r.urls as MessageUrlResult[]).filter((u) => u && typeof u.url === "string" && typeof u.host === "string" && ["clean", "malicious", "unknown"].includes(u.verdict) && Array.isArray(u.threat_types)) : [];
@@ -460,7 +504,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       event = await upsertEvent({
         event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "message", state, status: "active",
         headline: `${analysis.scenarioTitle}${analysis.signals.claimedBrand ? ` — claims to be ${analysis.signals.claimedBrand}` : ""}`,
-        what_happened: explanation?.summary ?? analysis.verdict, why, what_to_do: explanation?.recommendation ?? analysis.recommendation,
+        what_happened: analysis.verdict, why, what_to_do: analysis.recommendation,
         indicator_host: firstHost, indicator_digest: null, local_indicator: analysis.signals.urls[0] ?? null, verified_block: false, adapter_label: securityAdapter.label,
         occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: analysis.signals.claimedBrand, scenario: analysis.scenario,
       });
@@ -489,12 +533,16 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           const text = typeof item?.text === "string" ? item.text : "";
           if (!text.trim()) continue;
           const sender = typeof item?.sender === "string" ? item.sender : "";
-          try {
-            const outcome = await checkMessage(sender, text);
-            if (outcome.analysis.state !== "resting") {
-              showToast(`Apollo flagged a text message: ${outcome.analysis.scenarioTitle}`, outcome.analysis.state);
-            }
-          } catch { /* one bad captured item shouldn't stop the rest of the queue */ }
+          // Captured notifications NEVER trigger cloud analysis or indicator upload.
+          const analysis = analyseMessage(sender, text);
+          if (analysis.state !== 'resting') {
+            const ev: PatrolEvent = { event_id: Crypto.randomUUID(), device_id: 'local-notification', category: 'message', state: analysis.state,
+              status: 'active', headline: analysis.scenarioTitle, what_happened: analysis.verdict, why: analysis.why,
+              what_to_do: analysis.recommendation, indicator_host: null, indicator_digest: null, verified_block: false,
+              adapter_label: securityAdapter.label, occurred_at: new Date().toISOString(), resolved_at: null };
+            await persistEvents([ev, ...eventsRef.current]);
+            showToast(`Apollo flagged a text message: ${analysis.scenarioTitle}`, analysis.state);
+          }
         }
       } catch { /* native module unavailable or listener not granted — nothing to drain */ }
     };
@@ -502,7 +550,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const timer = setInterval(() => void poll(), lowPower ? 120000 : 45000);
     const sub = AppState.addEventListener("change", (st) => { if (st === "active") void poll(); });
     return () => { cancelled = true; clearInterval(timer); sub.remove(); };
-  }, [checkMessage, showToast, lowPower]);
+  }, [persistEvents, showToast, lowPower]);
 
   // Shared by scanGmailInbox/scanImapInbox: runs each fetched message through the on-device email
   // engine + Email Guard's automatic pre-click link assessment, filing a Patrol event for anything
@@ -630,7 +678,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         for (const item of items) {
           if (cancelled) return;
           if (!item?.number) continue;
-          try { await checkNumberRisk(item.number); } catch { /* one bad item shouldn't stop the rest of the queue */ }
+          // Do not upload incoming caller numbers automatically. Local lists still screen calls.
         }
       } catch { /* native module unavailable — nothing to drain */ }
     };
@@ -647,21 +695,22 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   }, [upsertEvent]);
 
   const toggleProtection = useCallback(async (on: boolean) => {
-    const status = on ? await securityAdapter.startProtection() : await securityAdapter.stopProtection();
+    ++probeGeneration.current; setProtection(p => unavailableObservation(p)); setLastVerifiedAt(null);
+    try { await boundedObservation(on ? securityAdapter.startProtection() : securityAdapter.stopProtection()); }
+    catch { showToast('Protection request was not confirmed. Checking current status.', 'growling'); }
     await storage.setItem(K.protection, on);
-    setProtection(status);
     await refresh();
     const ev: PatrolEvent = {
       event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "protection", state: "resting", status: "resolved",
-      headline: on ? "Protection turned on" : "Protection turned off",
-      what_happened: on ? "You turned Apollo's protection on." : "You turned Apollo's protection off. Apollo cannot see anything while it is off.",
-      why: [], what_to_do: on ? "Nothing to do." : "Turn protection back on when you want Apollo watching.",
+      headline: on ? 'Enable protection requested' : 'Disable protection requested',
+      what_happened: 'This records your request, not proof of current protection. Guard shows the latest observed status.',
+      why: [], what_to_do: 'Check Guard for the current observation and any required permissions.',
       indicator_host: null, indicator_digest: null, verified_block: false, adapter_label: securityAdapter.label,
       occurred_at: new Date().toISOString(), resolved_at: new Date().toISOString(),
     };
     await upsertEvent(ev);
     if (on) await verifyNow();
-  }, [deviceId, refresh, upsertEvent, verifyNow]);
+  }, [deviceId, refresh, upsertEvent, verifyNow, showToast]);
 
   const requestPermission = useCallback(async (id: ProtectionPermission["id"]) => {
     const p = await securityAdapter.requestProtectionPermission(id);
@@ -709,11 +758,10 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     // (see syncEnforcementEvidence, driven by real EnforcementEvidence) may do that. isVerifiedEnforcement()
     // below is always false for tap-driven evidence today — kept as the single defensive gate so that
     // guarantee can never silently change without this line catching it.
-    const evidence = result.evidence && isVerifiedEnforcement(result.evidence) ? toPatrolEnforcementEvidence(result.evidence) : null;
     if (result.verified) {
       await upsertEvent({ ...event, status: "active", verified_block: false, adapter_label: result.adapterLabel, why: [...event.why, result.detail],
         what_to_do: "Apollo has put a block in place for this destination. This card will update the moment Apollo actually sees and stops a connection attempt to it.",
-        enforcement_evidence: evidence });
+        enforcement_evidence: null });
       showToast(`Block rule active for ${host}. Apollo will confirm once it sees a connection.`, "barking");
     } else {
       await upsertEvent({ ...event, state: "barking", status: "active", verified_block: false, why: [...event.why, `Block not verified: ${result.detail}`],
@@ -747,13 +795,20 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   }, [deviceId, persistTrust, qc, showToast, trust]);
 
   const clearPatrol = useCallback(async () => {
-    await persistEvents([]);
-    if (deviceId) { try { await apiDelete(`/patrol/events?device_id=${deviceId}`); qc.invalidateQueries({ queryKey: ["patrol", deviceId] }); } catch { /* ok */ } }
-    showToast("Patrol history cleared", "neutral");
+    if (!deviceId) { showToast('Reconnect before clearing synced Patrol history.', 'growling'); return; }
+    try {
+      await patrolDelivery.pauseForClear(deviceId);
+      await apiDelete(`/patrol/events?device_id=${deviceId}`);
+      await patrolDelivery.clearPaused(deviceId, eventsRef.current.map(e => e.event_id));
+      await persistEvents([]);
+      qc.setQueryData(['patrol', deviceId], []);
+      showToast('Patrol history hidden. This does not physically erase server records.', 'neutral');
+    } catch { showToast('History was not confirmed cleared. Local records are retained; reconnect and retry.', 'growling'); }
+    finally { patrolDelivery.resume(deviceId); }
   }, [deviceId, persistEvents, qc, showToast]);
 
-  const visibility = useMemo(() => visibilityFrom(capabilities, !!(protection?.requested ?? protection?.running)), [capabilities, protection]);
-  const resolution = useMemo(() => resolveApolloState({ events, visibility, lastVerifiedAt }), [events, visibility, lastVerifiedAt]);
+  const visibility = useMemo(() => visibilityFrom(capabilities, freshObservation(protection)), [capabilities, protection, tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const resolution = useMemo(() => resolveApolloState({ events, visibility, lastVerifiedAt, now: Date.now() }), [events, visibility, lastVerifiedAt, tick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const value: ApolloContextValue = {
     ready, setupDone, deviceId, identityReset, reRegisterDevice, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label, isMock: IS_MOCK_SECURITY,

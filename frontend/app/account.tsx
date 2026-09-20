@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { markCheckDone } from "@/src/store/checkCompletion";
 import { apiPost } from "@/src/api/client";
+import { minimalIndicator } from '@/src/domain/privacy';
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { ACCOUNT_PROVIDERS, ALERT_KINDS, analyseAccountAlert, type AccountAnalysis, type AccountProvider, type AlertKind } from "@/src/domain/accountAnalysis";
@@ -77,7 +78,7 @@ export default function CheckAccount() {
       let a = analyseAccountAlert(input);
       let remote: Remote | null = null;
       try {
-        remote = await apiPost<Remote>("/account/analyse", "account_check", { device_id: deviceId ?? "local-device", kind, provider, sender: sender.trim().slice(0, 80), text: text.trim().slice(0, 4000), urls: a.urls.slice(0, 10), local_state: a.state, scenario: a.scenario, second_opinion: true });
+        remote = await apiPost<Remote>("/account/analyse", "account_check", { device_id: deviceId ?? "local-device", kind, provider, sender: '', text: '[local-only]', urls: a.urls.slice(0, 10).map(minimalIndicator), local_state: a.state, scenario: a.scenario, second_opinion: false });
         const bad = remote.urls.find((u) => u.verdict === "malicious");
         if (bad && a.state !== "barking") a = { ...a, state: "barking", why: [...a.why, `The link (${bad.host}) is confirmed dangerous by Apollo's threat intelligence.`], handoff: "web" };
       } catch { /* offline: on-device engine is authoritative */ }
@@ -176,9 +177,9 @@ export default function CheckAccount() {
 
         <Card style={{ gap: spacing.sm }} testID="account-breach">
           <SectionTitle>Has this email appeared in a breach?</SectionTitle>
-          <Body>Sent once to the breach service, never stored by Apollo. Exposure isn&apos;t a takeover — it&apos;s a reason to tighten up.</Body>
+          <Body testID="account-breach-policy">Identifier-based cloud lookups are disabled by the local-first policy. No email address will be sent.</Body>
           <TextInput testID="account-breach-id" style={s.input} value={identifier} onChangeText={setIdentifier} placeholder="you@example.com" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" />
-          <Button testID="account-breach-run" variant="secondary" label="Check breach exposure" onPress={() => void checkBreach()} disabled={identifier.trim().length < 3} />
+          <Button testID="account-breach-run" variant="secondary" label="Breach lookup unavailable" onPress={() => void checkBreach()} disabled />
           {breach ? (
             <View style={{ gap: spacing.xs }} testID="account-breach-result">
               <Pill tone={breach.status === "found" ? (breach.password_exposed ? "growling" : "ears_up") : breach.status === "clear" ? "resting" : "unknown"} label={breach.status === "found" ? (breach.password_exposed ? "Passwords exposed" : "Appears in a breach") : breach.status === "clear" ? "Not found" : breach.status === "not_configured" ? "Not connected" : "Unavailable"} testID="account-breach-status" />

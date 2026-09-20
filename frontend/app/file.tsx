@@ -13,6 +13,7 @@ import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { analyseFile, FILE_SOURCES, type FileAnalysis, type FileSource } from "@/src/domain/fileAnalysis";
+import { inspectWithHandle, type Inspection } from '@/src/domain/fileInspection';
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -65,15 +66,12 @@ export default function CheckFile() {
   const analyseAsset = async (asset: { uri: string; name: string; mimeType?: string | null; size?: number }) => {
     setBusy(true);
     try {
-      let head: Uint8Array | null = null; let text: string | null = null;
+      let inspected: Inspection = { headBytes: null, textSample: null };
       try {
         const file = new File(asset.uri);
-        const bytes = await file.bytes();
-        head = bytes.slice(0, 16);
-        const sample = bytes.slice(0, 200_000);
-        text = Array.from(sample).map((b) => (b >= 32 && b < 127 ? String.fromCharCode(b) : " ")).join("");
-      } catch { /* web or unreadable: fall back to name + MIME */ }
-      await finish(analyseFile({ name: asset.name, size: asset.size ?? undefined, mime: asset.mimeType ?? null, headBytes: head, textSample: text, source, passwordInMessage: pw }));
+        inspected = inspectWithHandle(file);
+      } catch { inspected.inspectionError = 'This build could not read the file contents.'; }
+      await finish(analyseFile({ name: asset.name, size: asset.size ?? undefined, mime: asset.mimeType ?? null, ...inspected, source, passwordInMessage: pw }));
     } catch (e) { showToast(e instanceof Error ? e.message : "Couldn't read that file.", "barking"); } finally { setBusy(false); }
   };
 
@@ -89,7 +87,7 @@ export default function CheckFile() {
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="file-scroll">
         {!result ? (
           <>
-            <Body>Apollo checks what a file really is before trusting what it says it is. Only the file&apos;s signature and any links inside are read — on your phone, nothing uploaded.</Body>
+            <Body testID="file-inspection-scope">Apollo checks a signature and up to 200 KB locally, for files up to 20 MB. No archive extraction or malware scan. A name-only check does not read content. File bytes are never uploaded.</Body>
             <Text style={s.why}>Where did it come from?</Text>
             <View style={s.chips}>{FILE_SOURCES.map((o) => <Pressable key={o.id} testID={`file-source-${o.id}`} accessibilityRole="button" onPress={() => setSource(o.id)} style={[s.chip, source === o.id && s.chipOn]}><Text style={s.chipText}>{o.label}</Text></Pressable>)}</View>
             <View style={s.row}><Text style={s.why}>A password for it came in the same message</Text><Switch testID="file-pw" value={pw} onValueChange={setPw} trackColor={{ true: colors.growling, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View>
@@ -101,7 +99,7 @@ export default function CheckFile() {
         ) : a ? (
           <>
             <Card testID="file-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
-              <View style={s.chips}><Pill tone={a.state} label={STATE_NAME[a.state]} testID="file-state" /><Pill tone="neutral" label={a.title} testID="file-scenario" /><Pill tone="neutral" label={`Real type: ${a.realType}`} testID="file-realtype" /></View>
+              <View style={s.chips}><Pill tone={a.state} label={STATE_NAME[a.state]} testID="file-state" /><Pill tone="neutral" label={a.title} testID="file-scenario" /><Pill tone="neutral" label={`Signature hint: ${a.realType}`} testID="file-realtype" /></View>
               <Text style={s.why}>{STATE_LABEL[a.state]}</Text>
               <Text style={s.verdict} testID="file-verdict">{a.verdict}</Text>
               <SectionTitle>Why?</SectionTitle>

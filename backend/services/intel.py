@@ -15,6 +15,7 @@ from core.config import SAFE_BROWSING_API_KEY, SB_ENDPOINT, SB_THREAT_TYPES, URL
 from core.db import db, now_utc
 from core.models import BlocklistEntry, IntelCheckResponse, IntelSource, ReputationCache, Verdict
 from services.rdap import lookup_domain_cached
+from services.outbound import public_stream, REDIRECTS
 
 def digest(value: str) -> str:
     return hmac.new(URL_HMAC_SECRET.encode(), value.encode(), sha256).hexdigest()
@@ -31,8 +32,10 @@ def sanitize_url(raw: str) -> tuple[str, str]:
     if parsed.scheme not in {"http", "https"} or not hostname:
         raise HTTPException(status_code=422, detail="Only http/https links can be checked")
     host = hostname.lower()
-    netloc = host if port is None else f"{host}:{port}"
-    clean = urlunparse((parsed.scheme, netloc, parsed.path or "/", parsed.params, parsed.query, ""))
+    netloc = f"[{host}]" if ":" in host else host
+    if port is not None:
+        netloc = f"{netloc}:{port}"
+    clean = urlunparse((parsed.scheme, netloc, "/", "", "", ""))
     return clean, host
 
 
@@ -119,17 +122,16 @@ async def expand_redirects(url: str, max_hops: int = 5) -> list[str]:
     """Follow HTTP redirects without downloading bodies. Returns the URL chain (first → final)."""
     chain = [url]
     try:
-        async with httpx.AsyncClient(timeout=6.0, follow_redirects=False, headers={"User-Agent": "Mozilla/5.0 (Apollo link check)"}) as http:
+        async with asyncio.timeout(12):
             cur = url
-            for _ in range(max_hops):
-                try:
-                    resp = await http.head(cur)
-                    if resp.status_code in (405, 403, 400):
-                        resp = await http.get(cur)
-                except httpx.HTTPError:
-                    break
-                loc = resp.headers.get("location")
-                if resp.status_code not in (301, 302, 303, 307, 308) or not loc:
+            for _ in range(min(max_hops, 5)):
+                async with public_stream("HEAD", cur) as resp:
+                    status, loc = resp.status_code, resp.headers.get("location")
+                if status in (405, 403, 400):
+                    # Headers only; close without buffering any GET body.
+                    async with public_stream("GET", cur) as resp:
+                        status, loc = resp.status_code, resp.headers.get("location")
+                if status not in REDIRECTS or not loc:
                     break
                 nxt = str(httpx.URL(cur).join(loc))
                 if nxt in chain:

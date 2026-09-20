@@ -1,15 +1,13 @@
 // Gate 2 — Check a message. Paste (or share / screenshot) a suspicious text, get a plain-language
 // verdict, verify the sender safely, hand links to the link check, and enter recovery if needed.
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
-import * as ImagePicker from "expo-image-picker";
 import ImageIcon from "lucide-react-native/icons/image";
 import X from "lucide-react-native/icons/x";
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Linking, Platform, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { apiPost } from "@/src/api/client";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
@@ -42,7 +40,7 @@ export default function CheckMessage() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ text?: string; sender?: string; source?: string; imageUri?: string }>();
-  const { ready, setupDone, deviceId, checkMessage, resolveEvent, showToast } = useApollo();
+  const { ready, setupDone, checkMessage, resolveEvent, showToast } = useApollo();
   const [sender, setSender] = useState(params.sender ? String(params.sender) : "");
   const [text, setText] = useState(params.text ? String(params.text) : "");
   const [busy, setBusy] = useState<"idle" | "reading" | "checking">("idle");
@@ -59,34 +57,13 @@ export default function CheckMessage() {
   useEffect(() => { if (params.text && ready && setupDone && !autoRan.current) { autoRan.current = true; void run(String(params.text), params.sender ? String(params.sender) : ""); } }, [params.text, params.sender, ready, setupDone]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pickScreenshot = async () => {
-    const perm = await ImagePicker.getMediaLibraryPermissionsAsync();
-    if (perm.status !== "granted") {
-      if (!perm.canAskAgain) { showToast("Photo access is off. Allow it in Settings to use screenshots.", "growling"); void Linking.openSettings(); return; }
-      const asked = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (asked.status !== "granted") { showToast("Apollo only needs the screenshot you pick — nothing else.", "neutral"); return; }
-    }
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.6, base64: true, allowsEditing: false });
-    if (res.canceled || !res.assets[0]?.base64) return;
-    await readScreenshot(res.assets[0].base64);
+    setError('Screenshot reading is unavailable locally. Paste the text instead; the image will not be uploaded.');
   };
   // Screenshot shared from another app (Share → Apollo): read it as soon as the screen opens.
   useEffect(() => {
     if (!params.imageUri) return;
-    (async () => {
-      try { const { File } = await import("expo-file-system"); const b64 = await new File(params.imageUri!).base64(); await readScreenshot(b64); }
-      catch { setError("Couldn't read the shared image on this build."); }
-    })();
-  }, [params.imageUri]); // eslint-disable-line react-hooks/exhaustive-deps
-  const readScreenshot = async (base64: string) => {
-    setBusy("reading"); setError(null);
-    try {
-      const r = await apiPost<{ sender: string; text: string; urls: string[] }>("/message/extract", "message_extract", { device_id: deviceId ?? undefined, image_base64: base64 });
-      if (r.sender && !sender) setSender(r.sender);
-      const extra = r.urls.filter((u) => !r.text.includes(u));
-      setText([r.text, ...extra].filter(Boolean).join("\n"));
-      showToast("Screenshot read. Check it when you're ready.", "resting");
-    } catch (e) { setError(e instanceof Error ? e.message : "Couldn't read that screenshot."); } finally { setBusy("idle"); }
-  };
+    setError('This shared image was not read or uploaded. Paste its text for an on-device check.');
+  }, [params.imageUri]);
 
   if (ready && !setupDone) return <Redirect href="/" />;
   const a = result?.analysis;
@@ -99,14 +76,14 @@ export default function CheckMessage() {
         <Pressable testID="message-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="message-scroll">
-        <Body>Paste a suspicious text, chat or email. Apollo reads it on your device first, then checks any links. Nothing is monitored automatically.</Body>
+        <Body testID="message-privacy">Message text and sender stay on your device. Manual checks send only website origins for reputation. Optional Android notification checks stay entirely local.</Body>
         <TextInput testID="message-sender" style={s.input} value={sender} onChangeText={setSender} placeholder="Sender (number, name or handle) — optional" placeholderTextColor={colors.muted} autoCorrect={false} />
         <TextInput testID="message-text" style={[s.input, s.multi]} value={text} onChangeText={setText} placeholder="Paste the message here" placeholderTextColor={colors.muted} multiline autoCorrect={false} />
         <View style={s.actions}>
           <Button testID="message-check" label={busy === "checking" ? "Sniffing…" : "Check message"} onPress={() => void run()} disabled={!text.trim() || busy !== "idle"} style={{ flex: 1 }} />
           {Platform.OS !== "web" ? <Button testID="message-screenshot" variant="secondary" label={busy === "reading" ? "Reading…" : "Screenshot"} icon={<ImageIcon size={18} color={colors.onSurface} />} onPress={() => void pickScreenshot()} disabled={busy !== "idle"} /> : null}
         </View>
-        <Text style={s.small}>Tapping Check shares the message text with Apollo for analysis. It isn&apos;t stored.</Text>
+        <Text style={s.small} testID="message-local-only">No message text or screenshots are uploaded. Local pattern checks are limited, not a guarantee of safety.</Text>
         {error ? <Card testID="message-error"><Body>{error}</Body></Card> : null}
         {busy === "checking" ? (
           <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }} testID="message-sniffing">

@@ -129,7 +129,7 @@ export default function TextGuard() {
             <TextInput testID="textguard-sender" style={s.input} value={sender} onChangeText={setSender} placeholder="Sender (number, name or handle) — optional" placeholderTextColor={colors.muted} autoCorrect={false} />
             <TextInput testID="textguard-text" style={[s.input, s.multi]} value={text} onChangeText={setText} placeholder="Paste the text message here" placeholderTextColor={colors.muted} multiline autoCorrect={false} />
             <Button testID="textguard-check" label={busy ? "Sniffing…" : "Check message"} onPress={() => void run()} disabled={!text.trim() || busy} />
-            <Text style={s.small}>Tapping Check shares the message text with Apollo for analysis. It isn&apos;t stored.</Text>
+            <Text style={s.small} testID="textguard-privacy">Message text stays on your phone. Manual checks send only website origins; automatic checks are entirely local.</Text>
           </Card>
         </View>
 
@@ -163,7 +163,7 @@ export default function TextGuard() {
                   {a.signals.urls.map((u) => (
                     <View key={u} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
                       <Text style={[s.why, { flex: 1 }]} numberOfLines={1}>{u}</Text>
-                      <Button variant="secondary" label="Check link" onPress={() => router.push({ pathname: "/check", params: { url: u.startsWith("http") ? u : `https://${u}`, source: "message" } })} />
+                      <Button testID={`textguard-check-link-${a.signals.urls.indexOf(u)}`} variant="secondary" label="Check link" onPress={() => router.push({ pathname: "/check", params: { url: u.startsWith("http") ? u : `https://${u}`, source: "message" } })} />
                     </View>
                   ))}
                 </Card>

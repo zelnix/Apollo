@@ -39,7 +39,7 @@ export function RecoveryFlow({ event, kinds, linkToCheck, testID = "recovery" }:
       <Sheet visible={!!kind} onClose={() => setKind(null)} title="Stay with me — here's what to do" testID={`${testID}-sheet`}>
         {kind ? RECOVERY_STEPS[kind].map((step, i) => <View key={i} style={s.step}><Text style={s.num}>{i + 1}</Text><Text style={s.text} testID={`${testID}-step-${i}`}>{step}</Text></View>) : null}
         {kind === "clicked" && linkToCheck ? <Button testID={`${testID}-check-link`} label="Check the link now" onPress={() => { setKind(null); router.push({ pathname: "/check", params: { url: linkToCheck.startsWith("http") ? linkToCheck : `https://${linkToCheck}`, source: "message" } }); }} /> : null}
-        {kind === "clicked" && !linkToCheck ? <Body>If you only looked at the page and didn't type anything, you're most likely fine. Apollo has recorded it.</Body> : null}
+        {kind === "clicked" && !linkToCheck ? <Body testID={`${testID}-limited-observation`}>Apollo recorded that you opened something. This does not establish its safety. If you downloaded software or shared information, select that recovery step too.</Body> : null}
         <Body>This is recorded in Patrol so you can come back to it. Ask Higgins any time.</Body>
         <Button testID={`${testID}-close`} variant="ghost" label="Done" onPress={() => setKind(null)} />
       </Sheet>

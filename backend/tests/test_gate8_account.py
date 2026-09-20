@@ -1,14 +1,30 @@
-# Gate 8 — Network & Accounts backend tests.
-# POST /api/account/analyse (link intel + official-domain match + optional Gemini), POST /api/account/breach
-# (HIBP when configured, truthful not_configured otherwise), and Patrol events with category "account".
+# Gate 8 — local-first account policy tests.
 import os
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 import requests
 
-BASE_URL = (os.environ.get("EXPO_BACKEND_URL") or os.environ.get("EXPO_PUBLIC_BACKEND_URL") or "https://threat-patrol-1.preview.emergentagent.com").rstrip("/")
+def _base_url() -> str:
+    base = os.environ.get("EXPO_BACKEND_URL") or os.environ.get("EXPO_PUBLIC_BACKEND_URL")
+    if not base:
+        env_file = Path(__file__).resolve().parents[2] / "frontend" / ".env"
+        if env_file.exists():
+            for line in env_file.read_text().splitlines():
+                if line.startswith("EXPO_PUBLIC_BACKEND_URL="):
+                    base = line.split("=", 1)[1].strip()
+                    break
+                if line.startswith("EXPO_BACKEND_URL="):
+                    base = line.split("=", 1)[1].strip()
+                    break
+    if not base:
+        raise RuntimeError("EXPO_PUBLIC_BACKEND_URL (or EXPO_BACKEND_URL) is required")
+    return base.rstrip("/")
+
+
+BASE_URL = _base_url()
 
 
 @pytest.fixture
@@ -30,47 +46,41 @@ def _analyse(api_client, device_id, **over):
 
 
 class TestAccountAnalyse:
-    def test_off_domain_malicious_link_flagged(self, api_client, device_id):
-        r = _analyse(api_client, device_id, text="Unusual sign-in. Verify now https://phishing.apollo.test/login", urls=["https://phishing.apollo.test/login", "https://account.microsoft.com/security"], local_state="barking", scenario="AC15")
-        assert r.status_code == 200, r.text
-        by = {u["host"]: u for u in r.json()["urls"]}
-        assert by["phishing.apollo.test"]["verdict"] == "malicious" and by["phishing.apollo.test"]["official"] is False
-        assert by["account.microsoft.com"]["official"] is True
+    def test_raw_account_alert_cloud_processing_is_blocked(self, api_client, device_id):
+        r = _analyse(
+            api_client,
+            device_id,
+            text="Unusual sign-in. Verify now https://phishing.apollo.test/login",
+            urls=["https://phishing.apollo.test/login"],
+            local_state="barking",
+            scenario="AC15",
+            second_opinion=True,
+        )
+        assert r.status_code == 403, r.text
 
-    def test_official_domain_match_is_suffix_safe(self, api_client, device_id):
-        d = _analyse(api_client, device_id, provider="google", urls=["https://myaccount.google.com/x", "https://google.com.evil.top/x"]).json()
-        by = {u["host"]: u["official"] for u in d["urls"]}
-        assert by["myaccount.google.com"] is True and by["google.com.evil.top"] is False
-
-    def test_password_values_are_scrubbed(self, api_client, device_id):
-        # The validator rewrites "password: xyz" before anything is processed; the endpoint must still succeed.
-        r = _analyse(api_client, device_id, text="Reset done. password: hunter2 — keep it safe")
+    def test_local_only_minimal_payload_succeeds(self, api_client, device_id):
+        r = _analyse(
+            api_client,
+            device_id,
+            sender="",
+            text="[local-only]",
+            urls=["https://myaccount.google.com/login?token=secret"],
+            second_opinion=False,
+            provider="google",
+        )
         assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["gemini_used"] is False
+        assert isinstance(data["urls"], list)
 
     def test_validation(self, api_client, device_id):
         assert _analyse(api_client, device_id, local_state="not_a_state").status_code == 422
-        # device_id validity is now enforced by device authentication (401/403), not by field length — see test_device_auth.py
-
-    def test_second_opinion_never_errors(self, api_client, device_id):
-        r = _analyse(api_client, device_id, kind="mfa_prompt", local_state="barking", scenario="AC01", second_opinion=True)
-        assert r.status_code == 200, r.text
-        d = r.json()
-        if d["gemini_used"]:
-            assert set(d["explanation"]) >= {"summary", "why", "recommendation"}
 
 
 class TestBreachCheck:
-    def test_breach_lookup_is_truthful_about_configuration(self, api_client, device_id):
+    def test_breach_lookup_is_intentionally_disabled(self, api_client, device_id):
         r = api_client.post(f"{BASE_URL}/api/account/breach", json={"device_id": device_id, "identifier": "test@example.com"}, timeout=30)
-        assert r.status_code == 200, r.text
-        d = r.json()
-        assert d["status"] in ("not_configured", "clear", "found", "unavailable")
-        assert d["detail"]
-        if d["status"] == "not_configured":
-            assert "isn't connected" in d["detail"]
-
-    def test_breach_validation(self, api_client, device_id):
-        assert api_client.post(f"{BASE_URL}/api/account/breach", json={"device_id": device_id, "identifier": "a"}).status_code == 422
+        assert r.status_code == 403, r.text
 
 
 class TestPatrolAccountEvents:

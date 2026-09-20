@@ -11,13 +11,12 @@ export const FILE_SOURCES: { id: FileSource; label: string }[] = [
 ];
 
 export type RealType = "pdf" | "image" | "office" | "office_macro" | "zip" | "rar" | "7z" | "apk" | "exe" | "script" | "profile" | "certificate" | "text" | "audio_video" | "unknown";
-export interface FileInput { name: string; size?: number; mime?: string | null; headBytes?: Uint8Array | null; textSample?: string | null; source: FileSource; passwordInMessage?: boolean }
+export interface FileInput { name: string; size?: number; mime?: string | null; headBytes?: Uint8Array | null; textSample?: string | null; source: FileSource; passwordInMessage?: boolean; inspectionError?: string }
 export interface FileAnalysis { scenario: string; title: string; state: ApolloState; verdict: string; why: string[]; recommendation: string; realType: RealType; claimedType: string; urls: string[]; handoff: "app" | "network" | "web" | "none"; technical: string[] }
 
 const DANGEROUS_EXT = new Set(["exe", "scr", "bat", "cmd", "com", "pif", "msi", "js", "jse", "vbs", "vbe", "ps1", "wsf", "hta", "jar", "sh", "lnk", "dll"]);
 const DOC_EXT = new Set(["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "rtf", "csv", "odt"]);
 const IMG_EXT = new Set(["jpg", "jpeg", "png", "gif", "heic", "webp", "bmp", "svg"]);
-const MEDIA_EXT = new Set(["mp3", "mp4", "mov", "m4a", "wav", "avi", "mkv"]);
 
 export function realTypeFromBytes(b?: Uint8Array | null, mime?: string | null): RealType {
   if (b && b.length >= 4) {
@@ -55,7 +54,7 @@ export function analyseFile(f: FileInput): FileAnalysis {
   const ext = parts.length > 1 ? parts[parts.length - 1] : "";
   const inner = parts.length > 2 ? parts[parts.length - 2] : "";
   const doubleExt = parts.length > 2 && (DOC_EXT.has(inner) || IMG_EXT.has(inner)) && DANGEROUS_EXT.has(ext);
-  let real = realTypeFromBytes(f.headBytes, f.mime);
+  let real = realTypeFromBytes(f.headBytes); // MIME and filename are claims, never inspected bytes
   if (real === "zip" && ext === "apk") real = "apk";
   if (real === "zip" && ["docx", "xlsx", "pptx", "docm", "xlsm", "pptm"].includes(ext)) real = /m$/.test(ext) ? "office_macro" : "office";
   if (real === "unknown" && (ext === "docm" || ext === "xlsm" || ext === "pptm")) real = "office_macro";
@@ -63,15 +62,14 @@ export function analyseFile(f: FileInput): FileAnalysis {
   if (real === "unknown" && (ext === "mobileconfig" || ext === "plist")) real = "profile";
   if (real === "unknown" && ["cer", "crt", "pem", "der", "p12", "pfx"].includes(ext)) real = "certificate";
   if (real === "unknown" && DANGEROUS_EXT.has(ext)) real = ext === "exe" || ext === "msi" || ext === "scr" || ext === "com" || ext === "pif" || ext === "dll" ? "exe" : "script";
-  if (real === "unknown" && ext === "pdf" && !f.headBytes) real = "pdf";
-  if (real === "unknown" && IMG_EXT.has(ext) && !f.headBytes) real = "image";
-  if (real === "unknown" && MEDIA_EXT.has(ext)) real = "audio_video";
   if (real === "unknown" && (ext === "zip" || ext === "rar" || ext === "7z") && !f.headBytes) real = ext as RealType;
   const claimedType = ext ? ext.toUpperCase() : "no extension";
   const urls = Array.from(new Set(((f.textSample ?? "").match(URL_RE) ?? []).map((u) => u.replace(/[.,;:)]+$/, "")))).slice(0, 10);
   const technical = [`Name: ${name}`, `Extension: ${claimedType}`, `Real type (signature/MIME): ${real}`, f.mime ? `MIME: ${f.mime}` : "", f.size ? `Size: ${Math.round(f.size / 1024)} KB` : "", rtl ? "Contains right-to-left override characters" : "", urls.length ? `Embedded links: ${urls.length}` : ""].filter(Boolean);
   const unexpected = f.source === "unknown" || f.source === "message" || f.source === "nearby";
-  const R = (scenario: string, title: string, state: ApolloState, verdict: string, why: string[], recommendation: string, handoff: FileAnalysis["handoff"] = "none"): FileAnalysis => ({ scenario, title, state, verdict, why, recommendation, realType: real, claimedType, urls, handoff, technical });
+  const inspected = !!f.headBytes && f.headBytes.length >= 4 && !f.inspectionError;
+  technical.push(inspected ? 'Inspected signature and at most 200,000 bytes of a plain-text sample. No archive extraction or malware scan.' : `File contents not inspected. ${f.inspectionError ?? 'Only the supplied name and context were available.'}`);
+  const R = (scenario: string, title: string, state: ApolloState, verdict: string, why: string[], recommendation: string, handoff: FileAnalysis["handoff"] = "none"): FileAnalysis => ({ scenario, title, state, verdict: inspected ? verdict : `I couldn't inspect this file. ${title}: based only on the supplied name and context.`, why: inspected ? [...why, 'Limited signature/sample check only. Other content, compressed data and links outside the sample were not inspected.'] : [`The name claims ${claimedType}. No content was read; type and safety are unknown.`], recommendation, realType: inspected ? real : 'unknown', claimedType, urls, handoff, technical });
 
   const looksDoc = DOC_EXT.has(ext) || IMG_EXT.has(ext) || DOC_EXT.has(inner) || IMG_EXT.has(inner);
   if ((real === "exe" || real === "script") && (looksDoc || doubleExt || rtl)) return R("F01", "Disguised executable", "barking", `This file is not really a ${DOC_EXT.has(inner) || DOC_EXT.has(ext) ? (inner || ext).toUpperCase() : "document"}. Don't open it.`, [`Its name suggests a ${inner ? inner.toUpperCase() : ext.toUpperCase()} file.`, "Its actual type is executable content.", rtl ? "The name uses hidden characters to disguise its real extension." : unexpected ? "It came from an unexpected source." : "Documents never need to be executable."], "Delete it unless you can independently verify the sender. Don't 'open with' anything.");
@@ -84,6 +82,7 @@ export function analyseFile(f: FileInput): FileAnalysis {
   }
   if (real === "office_macro") return R("F08", "Macro-enabled document", unexpected ? "growling" : "ears_up", "This document can run macros (active content).", ["Macro-enabled files (.docm/.xlsm) can run code when opened.", unexpected ? "It came from an unexpected source." : "Some businesses use macros legitimately.", "Apollo can't confirm what the macro does."], "Open only in protected view / with macros disabled, and only if you expected it.");
   if (urls.length) return R(/invoice|statement|receipt|payment|overdue/i.test(name) ? "F05" : "F06", /invoice|statement|receipt|payment|overdue/i.test(name) ? "Invoice with links" : "Document with links", "ears_up", "This document contains links. Apollo will check where they lead before you tap them.", [`${urls.length} link${urls.length > 1 ? "s" : ""} found inside.`, /invoice|statement|payment|overdue/i.test(name) ? "Invoices with changed bank details or urgent payment links are a common scam." : "Links inside documents skip your email's link filters.", "Check each link with Apollo before opening."], "Don't pay or log in via links in the document until Apollo has checked them.", "web");
-  if (real === "pdf" || real === "office" || real === "image" || real === "text" || real === "audio_video") return R("F10", "Ordinary file", f.source === "nearby" ? "ears_up" : "resting", "I didn't find any obvious signs of danger.", [`Real type matches its name (${real}).`, "No executable content, macros or links detected.", f.source === "nearby" ? "It arrived from a nearby device you may not know — preview before opening." : "Apollo can't guarantee any file is 100% safe — this is what it could see."], f.source === "nearby" ? "Preview it first. Delete it if you weren't expecting anything." : "Fine to open. Come back to Apollo if it asks you to enable anything.");
-  return R("F16", "Unknown file type", "ears_up", "I don't know this file type well yet.", [`Extension ${claimedType} isn't one Apollo recognises.`, "No malicious signs detected — but no way to confirm it's harmless either.", unexpected ? "It came from an unexpected source." : "Ask the sender what it is before opening."], "Don't open it unless you know exactly what it is and who sent it.");
+  if (!inspected) return R('F16', 'File not inspected', 'ears_up', 'Its contents and safety are unknown.', ['The supplied filename is not proof of file type.'], 'Do not open it based on this check. Verify the sender independently.');
+  if (real === 'pdf' || real === 'office' || real === 'image' || real === 'text' || real === 'audio_video') return R('F10', 'Limited file inspection', 'ears_up', 'Only the signature and a small sample were inspected. Safety is not established.', [`The signature suggests ${real}; the full format was not parsed.`, 'Macros, embedded programs and additional links may be outside the inspected sample or compressed.'], 'Do not treat this result as permission to open the file. Verify the sender; never enable macros or install software it requests.');
+  return R('F16', 'Unknown file type', 'ears_up', 'The inspected bytes do not establish the file type or safety.', [`Supplied extension: ${claimedType}.`], 'Do not open it based on this check. Verify what it is with the sender independently.');
 }

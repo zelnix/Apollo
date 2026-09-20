@@ -101,6 +101,29 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+## P0 remediation stage — current implementation and targeted follow-up
+backend:
+  - task: "P0-01/03/04/05 hardened pinned outbound transport, packet-only evidence, local-first processing and evidence receipts"
+    implemented: true
+    working: "NA"
+    needs_retesting: true
+    priority: "high"
+    status_history:
+      - agent: "main"
+        comment: "iteration_62 has 23 passing new tests but does not cover actual numeric connect/SNI/redirect/fallback, frontend mapper-egress-auth-Mongo dispatch path or failure races. Do not close full stage on that subset. Need targeted follow-up. GuardDog remains 91/91 unchanged. No auth source changes."
+frontend:
+  - task: "P0-02/03/04/05/06 freshness/clock, packet gates, privacy inventory, durable queue, bounded file inspection"
+    implemented: true
+    working: "NA"
+    needs_retesting: true
+    priority: "high"
+    status_history:
+      - agent: "main"
+        comment: "Mobile routes compile/load and legacy Gate suites passed. Fixed discovered queue ack-storage-failure/restart-status/version-reversion cases; pause before clear to prevent in-flight resurrection; bounded health probes and caller rejection qualified. Need new pure tests for queue, state clock/recovery, packet+egress, file read bounds; no physical device or live packet proof is claimed."
+agent_communication:
+  - agent: "main"
+    message: "Current report iteration_62; not historical iteration_1. Only test/report edits by testing agent. Retire obsolete tests by rewriting unsafe inputs/expectations to current allowed behavior, preserving negatives; do not merely delete tests. Capture exact totals and remaining failures."
+
 ## Iteration 6 — Alert notifications (Emergent managed push) + Guardian Reply verification
 backend:
   - task: "POST /api/register-push relay + send_push helper; push to owner on background barking/biting events, to paired guardian devices in notify_guardians, and to protected owner on guardian ack"
@@ -645,3 +668,68 @@ frontend:
       - agent: "main"
         working: true
         comment: "Documentation/source validation passed: four D3 questions addressed, old APK-only ordinary-key claims superseded, separate offline/expiry/revocation outcomes, certified interfaces labelled absent/proposed, Stage0 unchanged, no frontend/backend/config/dependency/CI edits, public contract/original-review hashes unchanged, GuardDog91/91 and all six P0s/D1–D6 OPEN. No native tests run; candidate timing bounds require ratification/measurement and are not current SDK guarantees."
+
+
+## Iteration 63 — P0 completion follow-up (testing-agent)
+backend:
+  - task: "P0 relevant suites rerun incl outbound transport, evidence gate, legacy disabled routes, mapper E2E fixture"
+    implemented: true
+    working: false
+    file: "backend/tests/*.py"
+    needs_retesting: true
+    status_history:
+      - agent: "testing"
+        comment: "Relevant backend suites: 70 total, 68 pass, 2 fail. Fails: test_head_405_then_get_headers_only_no_body_consumption (HEAD fallback missing), test_frontend_mapper_payload_hits_live_patrol_once_and_rejects_changed_reuse (changed binding returns 422 not expected 409)."
+frontend:
+  - task: "P0 delivery + truth/privacy/file node tests and focused payload-capture checks"
+    implemented: true
+    working: false
+    file: "frontend/tests/p0Delivery.test.ts, frontend/tests/p0TruthPrivacyFile.test.ts"
+    needs_retesting: true
+    status_history:
+      - agent: "testing"
+        comment: "Node tests: 18 total, 17 pass, 1 fail (older acknowledged version re-enqueue replaces newer pending version). Browser payload capture was partially blocked by onboarding route-state; one run showed no cloud screenshot/call-risk requests but could not complete reliable API body capture across setup redirects."
+agent_communication:
+  - agent: "testing"
+    message: "Only test/report files edited. Two backend failures + one frontend queue regression remain blocking full P0 closure."
+
+## Iteration 64 — P0 punch-list remediation (main-agent)
+backend:
+  - task: "P0-01 HEAD preflight and P0-05 evidence conflict contract"
+    implemented: true
+    working: true
+    file: "backend/services/outbound.py, backend/routers/patrol.py"
+    needs_retesting: false
+    priority: "high"
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "public_get now performs a bounded HEAD preflight per hop, explicitly falls back to GET for 400/403/405, and validates/re-resolves redirects. Existing evidence identity conflicts are checked before fresh Biting validation so changed reuse consistently returns 409; new invalid claims remain 422 and do not reserve a receipt. Focused backend 32/32 and full relevant P0 matrix 81/81 pass."
+      - agent: "testing"
+        working: true
+        comment: "Iteration 64 independently passed backend blocker suites 32/32; no critical or minor backend issues."
+frontend:
+  - task: "P0-05 monotonic delivery queue and deterministic payload-capture setup"
+    implemented: true
+    working: true
+    file: "frontend/src/store/deliveryQueue.ts, frontend/src/testing/setupBypass.ts, frontend/src/store/ApolloContext.tsx"
+    needs_retesting: false
+    priority: "high"
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "An exactly acknowledged older payload can no longer replace a newer pending payload. Added explicit __apollo_test_setup=1 bypass restricted to development web preview and never persisted or enabled in production/native. Frontend P0 node tests 19/19 pass; direct /message preview route showed message-sender without onboarding. GuardDog provenance remains 91/91 unchanged."
+      - agent: "testing"
+        working: true
+        comment: "Iteration 64 independently passed frontend P0 tests 19/19 and 2/2 preview bypass/default checks; GuardDog manifest 91/91 unchanged."
+test_plan:
+  current_focus:
+    - "P0-01 through P0-06 software remediation closed; retain native device acceptance as separate Stage 1D work"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+agent_communication:
+  - agent: "main"
+    message: "Please independently verify the four iteration 63 blockers. Use /message?__apollo_test_setup=1 for deterministic preview entry. Do not alter frozen GuardDog source."
+  - agent: "testing"
+    message: "Iteration 64 PASS: backend 32/32, frontend 19/19 plus 2/2 preview checks, GuardDog 91/91; no blocker regressions reproduced."

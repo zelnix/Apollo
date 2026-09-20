@@ -104,6 +104,14 @@ def _parse_message(raw: bytes) -> dict[str, Any]:
 
 
 def _scan_sync(host: str, port: int, use_ssl: bool, username: str, password: str, limit: int) -> list[dict[str, Any]]:
+    # P0-01/P0-04: there is no approved remote mailbox-processing policy. No socket may
+    # be opened, even by an internal caller bypassing the HTTP boundary. Re-enable only
+    # after an approved host/993-only TLS policy and pinned-address transport exist.
+    raise HTTPException(403, "Remote mailbox processing is disabled by privacy policy")
+
+
+def _disabled_legacy_scan(host: str, port: int, use_ssl: bool, username: str, password: str, limit: int) -> list[dict[str, Any]]:
+    raise HTTPException(403, "Remote mailbox processing is disabled by privacy policy")
     context = ssl.create_default_context()
     client = imaplib.IMAP4_SSL(host, port, ssl_context=context, timeout=IMAP_TIMEOUT) if use_ssl else imaplib.IMAP4(host, port, timeout=IMAP_TIMEOUT)
     try:

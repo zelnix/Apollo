@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 
 from fastapi import APIRouter, HTTPException, Query
 from pymongo.errors import DuplicateKeyError
@@ -10,6 +12,7 @@ from core.db import db, now_utc
 from core.models import PatrolEvent, PatrolEventIn, PatrolEventPatch, TrustEntry, TrustIn
 from routers.family import notify_guardians
 from routers.push import push_owner_alert
+from services.patrol_policy import packet_verified, minimal_patrol
 
 router = APIRouter()
 
@@ -31,21 +34,24 @@ def _derive_verified_block(body: PatrolEventIn) -> bool:
          evidence can never authorise another device's block.
     Mirrors isVerifiedEnforcement() in frontend/src/security/PlatformCapabilityProfile.ts exactly.
     """
-    ev = body.enforcement_evidence
-    if ev is None:
-        return False
-    if ev.result != "verified" or ev.enforced_action != "blocked":
-        return False
-    if ev.mechanism in _NEVER_VERIFIED_MECHANISMS:
-        return False
-    if ev.device_id and ev.device_id != body.device_id:
-        return False
-    return True
+    return packet_verified(body)
 
 
 @router.post("/patrol/events", response_model=PatrolEvent)
 async def upsert_event(body: PatrolEventIn):
     ts = now_utc()
+    evidence_key = None
+    fingerprint = None
+    receipt = None
+    if body.enforcement_evidence:
+        evidence_key = {'device_id': body.device_id, 'evidence_id': body.enforcement_evidence.evidence_id}
+        fingerprint = hashlib.sha256(json.dumps(body.enforcement_evidence.model_dump(mode='json'), sort_keys=True).encode()).hexdigest()
+        # A previously claimed evidence identity is a conflict before it is a fresh truth claim.
+        # Check this first so changed event/payload reuse consistently returns 409 rather than the
+        # changed binding being reported as a generic unverified-Biting validation error.
+        receipt = await db.evidence_receipts.find_one(evidence_key)
+        if receipt and (receipt['event_id'] != body.event_id or receipt['fingerprint'] != fingerprint):
+            raise HTTPException(409, 'Evidence identity already belongs to a different event or payload')
     verified = _derive_verified_block(body)
     # Cross-Platform Architecture Directive: state="biting" (THREAT_BLOCKED-equivalent) must never
     # be PERSISTED unless _derive_verified_block() says so — not just have its verified_block flag
@@ -59,9 +65,17 @@ async def upsert_event(body: PatrolEventIn):
             detail="state='biting' requires validated enforcement_evidence (see _derive_verified_block); "
             "rejecting rather than persisting an unverified Biting claim. Submit a non-biting state instead.",
         )
-    payload = body.model_dump()
+    payload = minimal_patrol(body, verified)
     payload["verified_block"] = verified  # never trust the client's claim directly
     existing = await db.patrol_events.find_one({"event_id": body.event_id, "device_id": body.device_id})
+    if evidence_key and fingerprint and not receipt:
+        try:
+            receipt = await db.evidence_receipts.find_one_and_update(evidence_key,
+                {'$setOnInsert': {**evidence_key, 'event_id': body.event_id, 'fingerprint': fingerprint}}, upsert=True, return_document=True)
+        except DuplicateKeyError:
+            receipt = await db.evidence_receipts.find_one(evidence_key)
+        if receipt['event_id'] != body.event_id or receipt['fingerprint'] != fingerprint:
+            raise HTTPException(409, 'Evidence identity already belongs to a different event or payload')
     if existing:
         await db.patrol_events.update_one({"_id": existing["_id"]}, {"$set": {**payload, "updated_at": ts}})
         doc = await db.patrol_events.find_one({"_id": existing["_id"]})
@@ -101,6 +115,9 @@ async def patch_event(event_id: str, body: PatrolEventPatch, device_id: str = Qu
         # status/resolved_at/what_to_do on an already-verified block); otherwise this is the exact
         # PATCH-based loophole around the biting gate and must be rejected the same way POST is.
         query["verified_block"] = True
+        prior = await db.patrol_events.find_one(query)
+        if not prior or not _derive_verified_block(PatrolEventIn(**prior)):
+            raise HTTPException(422, 'Stored record lacks packet-backed evidence')
     updates["updated_at"] = now_utc()
     result = await db.patrol_events.update_one(query, {"$set": updates})
     if result.matched_count == 0:

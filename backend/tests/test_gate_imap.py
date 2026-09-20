@@ -15,11 +15,24 @@ import requests
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
-BASE_URL = (
-    os.environ.get("EXPO_BACKEND_URL")
-    or os.environ.get("EXPO_PUBLIC_BACKEND_URL")
-    or "https://threat-patrol-1.preview.emergentagent.com"
-).rstrip("/")
+def _base_url() -> str:
+    base = os.environ.get("EXPO_BACKEND_URL") or os.environ.get("EXPO_PUBLIC_BACKEND_URL")
+    if not base:
+        env_file = Path(__file__).resolve().parents[2] / "frontend" / ".env"
+        if env_file.exists():
+            for line in env_file.read_text().splitlines():
+                if line.startswith("EXPO_PUBLIC_BACKEND_URL="):
+                    base = line.split("=", 1)[1].strip()
+                    break
+                if line.startswith("EXPO_BACKEND_URL="):
+                    base = line.split("=", 1)[1].strip()
+                    break
+    if not base:
+        raise RuntimeError("EXPO_PUBLIC_BACKEND_URL (or EXPO_BACKEND_URL) is required")
+    return base.rstrip("/")
+
+
+BASE_URL = _base_url()
 
 # Make services.imapmail importable for the pure unit test.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -66,7 +79,7 @@ class TestImapStatus:
 
 
 class TestImapConnect:
-    def test_connect_invalid_host_chars_returns_400_fast(self, api, device_id):
+    def test_connect_invalid_host_chars_returns_403_due_local_first_policy(self, api, device_id):
         start = time.time()
         r = api.post(
             f"{BASE_URL}/api/imap/connections",
@@ -81,11 +94,11 @@ class TestImapConnect:
             timeout=25,
         )
         elapsed = time.time() - start
-        assert r.status_code == 400, f"expected 400, got {r.status_code}: {r.text}"
+        assert r.status_code == 403, f"expected 403, got {r.status_code}: {r.text}"
         assert elapsed < 25
-        assert "invalid" in r.json().get("detail", "").lower()
+        assert "local-first privacy policy" in r.json().get("detail", "")
 
-    def test_connect_unreachable_host_returns_400_gracefully(self, api, device_id):
+    def test_connect_unreachable_host_returns_403_gracefully(self, api, device_id):
         start = time.time()
         r = api.post(
             f"{BASE_URL}/api/imap/connections",
@@ -100,24 +113,24 @@ class TestImapConnect:
             timeout=30,
         )
         elapsed = time.time() - start
-        assert r.status_code == 400, f"expected 400, got {r.status_code}: {r.text}"
+        assert r.status_code == 403, f"expected 403, got {r.status_code}: {r.text}"
         assert elapsed < 30, f"took too long: {elapsed}s"
-        assert len(r.json().get("detail", "")) > 0
+        assert "local-first privacy policy" in r.json().get("detail", "")
 
-    def test_connect_missing_fields_is_422(self, api, device_id):
+    def test_connect_missing_fields_is_still_403_when_route_disabled(self, api, device_id):
         r = api.post(
             f"{BASE_URL}/api/imap/connections",
             json={"device_id": device_id, "host": "imap.gmail.com"},
             timeout=15,
         )
-        assert r.status_code == 422
+        assert r.status_code == 403
 
 
 class TestImapScan:
-    def test_scan_without_connection_returns_404(self, api, device_id):
+    def test_scan_without_connection_returns_403_when_route_disabled(self, api, device_id):
         r = api.post(f"{BASE_URL}/api/imap/scan", json={"device_id": device_id}, timeout=20)
-        assert r.status_code == 404, f"expected 404, got {r.status_code}: {r.text}"
-        assert "no imap inbox is connected" in r.json().get("detail", "").lower()
+        assert r.status_code == 403, f"expected 403, got {r.status_code}: {r.text}"
+        assert "local-first privacy policy" in r.json().get("detail", "")
 
 
 class TestImapDisconnect:

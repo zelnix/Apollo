@@ -18,6 +18,7 @@ import { analyseEmail, type EmailAnalysis } from "@/src/domain/emailAnalysis";
 import { evaluateLinkGuardFindings, extractAnchorsFromPlainText } from "@/src/domain/linkGuard";
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { STATE_RANK } from "@/src/domain/stateMachine";
+import { minimalIndicator } from '@/src/domain/privacy';
 import { type MessageExplanation, type MessageUrlResult, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -52,8 +53,8 @@ export default function CheckEmail() {
   const [tech, setTech] = useState(false);
   const [gmailConnected, setGmailConnected] = useState<boolean | null>(null);
   const [gmailConfigured, setGmailConfigured] = useState(true);
-  const [gmailBusy, setGmailBusy] = useState(false);
-  const [scanBusy, setScanBusy] = useState(false);
+  const [, setGmailBusy] = useState(false);
+  const [, setScanBusy] = useState(false);
   const [scanSummary, setScanSummary] = useState<{ text: string; flagged: number } | null>(null);
 
   useEffect(() => {
@@ -105,7 +106,7 @@ export default function CheckEmail() {
   const [imapPassword, setImapPassword] = useState("");
   const [imapConnecting, setImapConnecting] = useState(false);
   const [imapError, setImapError] = useState<string | null>(null);
-  const [imapScanBusy, setImapScanBusy] = useState(false);
+  const [, setImapScanBusy] = useState(false);
   const [imapScanSummary, setImapScanSummary] = useState<{ text: string; flagged: number } | null>(null);
 
   useEffect(() => {
@@ -158,8 +159,8 @@ export default function CheckEmail() {
       let urls: MessageUrlResult[] = []; let explanation: MessageExplanation | null = null;
       try {
         const r = await apiPost<{ urls: MessageUrlResult[]; explanation: MessageExplanation | null }>("/message/analyse", "message_check", {
-          device_id: deviceId ?? "local-device", sender: (a.parsed.fromAddress ?? a.parsed.fromName ?? "").slice(0, 80), text: `${a.parsed.subject ?? ""}\n${a.parsed.body}`.trim().slice(0, 4000) || "(no body)", urls: a.urls.slice(0, 10),
-          local_state: a.state, scenario: a.scenario, signals: a.signalLabels.slice(0, 20), claimed_brand: a.claimedBrand, second_opinion: true,
+          device_id: deviceId ?? 'local-device', sender: '', text: '[local-only]', urls: a.urls.slice(0, 10).map(minimalIndicator),
+          local_state: a.state, scenario: a.scenario, signals: [], claimed_brand: null, second_opinion: false,
         });
         urls = r.urls; explanation = r.explanation;
         // Email Guard: automatic pre-click assessment — redirect chain + RDAP domain-info (already
@@ -199,7 +200,7 @@ export default function CheckEmail() {
                 ) : gmailConnected ? (
                   <>
                     <View style={s.chips}><Pill tone="resting" label="Gmail connected — read-only" testID="email-gmail-connected" /></View>
-                    <Button testID="email-gmail-scan" label={scanBusy ? "Scanning your inbox…" : "Scan my inbox now"} onPress={() => void scanInbox()} disabled={scanBusy} />
+                    <Button testID="email-gmail-scan" label="Inbox scanning disabled — local-only policy" onPress={() => void scanInbox()} disabled />
                     {scanSummary ? (
                       <>
                         <Body testID="email-gmail-scan-summary">{scanSummary.text}</Body>
@@ -210,8 +211,8 @@ export default function CheckEmail() {
                   </>
                 ) : (
                   <>
-                    <Body>Apollo can scan your recent Gmail for scams — read-only access, one tap to scan, nothing stored. Disconnect anytime.</Body>
-                    <Button testID="email-gmail-connect" variant="secondary" icon={<Mail size={18} color={colors.onSurface} />} label={gmailBusy ? "Connecting…" : "Connect Gmail (read-only)"} onPress={() => void connectGmail()} disabled={gmailBusy} />
+                    <Body testID="email-gmail-policy">Cloud inbox connections are disabled. Paste an email for a local check.</Body>
+                    <Button testID="email-gmail-connect" variant="secondary" icon={<Mail size={18} color={colors.onSurface} />} label="Gmail connection unavailable" onPress={() => void connectGmail()} disabled />
                   </>
                 )}
               </Card>
@@ -224,7 +225,7 @@ export default function CheckEmail() {
                 ) : imapConnected ? (
                   <>
                     <View style={s.chips}><Pill tone="resting" label={`Connected — ${imapAccount?.username ?? "read-only"}`} testID="email-imap-connected" /></View>
-                    <Button testID="email-imap-scan" label={imapScanBusy ? "Scanning your inbox…" : "Scan my inbox now"} onPress={() => void scanImap()} disabled={imapScanBusy} />
+                    <Button testID="email-imap-scan" label="Inbox scanning disabled — local-only policy" onPress={() => void scanImap()} disabled />
                     {imapScanSummary ? (
                       <>
                         <Body testID="email-imap-scan-summary">{imapScanSummary.text}</Body>
@@ -235,13 +236,13 @@ export default function CheckEmail() {
                   </>
                 ) : (
                   <>
-                    <Body>Works with any provider via IMAP — Outlook, Yahoo, iCloud or your own domain. You&apos;ll need an app password from your provider, not your normal password.</Body>
-                    <Button testID="email-imap-connect-open" variant="secondary" icon={<Mail size={18} color={colors.onSurface} />} label="Connect via IMAP (read-only)" onPress={() => setImapSheet(true)} />
+                    <Body testID="email-imap-policy">IMAP processing is disabled. No mailbox credentials are requested or sent.</Body>
+                    <Button testID="email-imap-connect-open" variant="secondary" icon={<Mail size={18} color={colors.onSurface} />} label="IMAP connection unavailable" onPress={() => setImapSheet(true)} disabled />
                   </>
                 )}
               </Card>
             ) : null}
-            <Body>Forward the email to yourself and paste it here — including the From / Subject lines if you can — or fill the fields. Apollo reads it on your phone first; only the text and links you paste are checked for reputation. Apollo never reads your inbox unless you connect one above.</Body>
+            <Body testID="email-local-only">Paste the email here. Sender, subject and body stay on your phone. Only website origins are sent for reputation checks; inbox scanning is disabled.</Body>
             <TextInput testID="email-from" style={s.input} value={from} onChangeText={setFrom} placeholder="From (e.g. CommBank <alerts@cb-secure.top>)" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} />
             <TextInput testID="email-subject" style={s.input} value={subject} onChangeText={setSubject} placeholder="Subject" placeholderTextColor={colors.muted} autoCorrect={false} />
             <TextInput testID="email-body" style={[s.input, { minHeight: 140 }]} value={raw} onChangeText={setRaw} placeholder="Paste the email (or the whole forwarded message with headers)…" placeholderTextColor={colors.muted} multiline textAlignVertical="top" autoCapitalize="none" autoCorrect={false} />

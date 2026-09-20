@@ -8,8 +8,9 @@
 
 **Revision 2:** incorporates the user's six named P0 findings, six recommended design
 resolutions, and the original `reviews/Apollo_Review_2026-09-20.md` (reviewed commit
-`da60c0372650dead26caeb25c458f8ca7cebd6a2`). Intake is now resolved; **all six findings remain OPEN**.
-No runtime change, contract change, test-only build or production-default cutover is approved.
+`da60c0372650dead26caeb25c458f8ca7cebd6a2`). Intake is resolved and the separate P0 remediation
+has since reached **six VERIFIED CLOSED findings** (`test_reports/iteration_64.json`). Stage 1D,
+native runtime acceptance and production-default cutover remain unapproved and NOT STARTED.
 
 **Focused D1/D3 follow-up:** `STAGE1D_D1_D3_OWNERSHIP_TRUST_DESIGN.md` now provides the
 concrete feasibility verdict and native alternative. The original JS-facade/frozen-bridge
@@ -46,7 +47,7 @@ the six detailed design decisions and required acceptance dependencies are still
 | Source SHA + APK build identifier per device run | Mandatory in new record template; historical launch PASS is retained, not retroactively given invented provenance |
 | Separate launch, start/stop and real packet blocking | Separate gates defined below; only historical launch is passed |
 | Biting only after observed intentional packet drop | Mandatory native-to-product chain; DNS/rule/configuration events alone expressly excluded |
-| Keep each P0 open until verified | Six individual OPEN entries; intake only resolved. P0-05 blocks end-to-end upload acceptance, not independent native blocking proof |
+| Keep each P0 open until verified | Satisfied: six individually verified closed entries; software closure does not substitute for native blocking or notification-delivery proof |
 
 ## 2. Proposed Stage 1D scope — exact candidate changes
 
@@ -202,10 +203,10 @@ keys out of artifacts; only authorized controlled targets and necessary packet m
 | A0 — immutable/build checks | Frozen hashes, approved contract revision/hashes, native dependency report, focused tests, actual native build log; D1 dual-module ownership trace | 91/91 frozen files unchanged; current contracts unchanged unless CE-01 separately approved and explicitly rebaselined; no native duplicates/competing owners or unauthorized changes. |
 | A1 — launch | Fresh APK identity + physical-device launch observation | Baseline Pixel 10 launch remains PASS by user confirmation. A changed Stage 1D APK must separately launch without a crash, unintended VPN start or false protection claim. |
 | A2 — protection start | Request/ack timestamps; bounded fresh consent/lifecycle/TUN/route observations; unrelated connectivity check | ACTIVE only after actual mechanism observed. One explicit owner even when both modules load; no second active VPN. Timeout/conflicting observations are UNRESOLVED, not successful start. **Zero block claims without traffic.** |
-| A3 — protection stop / recovery | Stop request/ack plus bounded inactive/TUN-closed/route-removed observations; separately observed connection recovery | Actual release and recovery, not acknowledgement. Timeout/contradiction remains UNRESOLVED. Existing consumer freshness/recovery cannot be signed off while P0-02 persists. |
+| A3 — protection stop / recovery | Stop request/ack plus bounded inactive/TUN-closed/route-removed observations; separately observed connection recovery | Actual release and recovery, not acknowledgement. Timeout/contradiction remains UNRESOLVED. P0-02 software remediation is closed; physical lifecycle evidence is still required here. |
 | A4N — native intentional packet block | Authorized rule/bundle + baseline connection; real TUN packet observation and intentional drop; matching native event/evidence ID, destination and available times | **PASS only for an observed intentional native packet drop.** Can pass independently of upload failures. Browser failure, DNS binding/rule match or uncorrelated counter is insufficient. Label test-only scope/trust; no production claim. |
-| A4E — end-to-end evidence delivery | A4N evidence → mapper → narrow privacy egress → authenticated API → persisted Patrol → eligible notification; offline/restart retry and replay | **BLOCKED by OPEN P0-05** until its fix/verification. P0-04 governs the payload; P0-03 governs packet-only classification. A4N PASS, local visibility or mapper-only tests cannot satisfy this row. Require actual persistence/acknowledgement and observed eligible delivery. |
-| A5 — product truth / negative paths | Same APK, native and consumer/backend observations; explicit call-rejection and stale-health cases | No packet-backed THREAT_BLOCKED/Biting without A4N-quality evidence. Call rejection is always non-packet. A5-call blocked by P0-03, A5-health by P0-02, full upload-path negatives by P0-05. Open dependencies cannot be recorded PASS. |
+| A4E — end-to-end evidence delivery | A4N evidence → mapper → narrow privacy egress → authenticated API → persisted Patrol → eligible notification; offline/restart retry and replay | P0-04/05 software paths are verified and this row is **UNBLOCKED, NOT PASSED**. A4N PASS, local visibility or mapper-only tests cannot satisfy it; require actual device persistence/acknowledgement and observed eligible notification delivery. |
+| A5 — product truth / negative paths | Same APK, native and consumer/backend observations; explicit call-rejection and stale-health cases | P0-02/03/05 software negatives are verified; this native row remains **NOT RUN**. No packet-backed THREAT_BLOCKED/Biting without A4N-quality evidence; call rejection is always non-packet. |
 | A6 — explicit rollback | New rollback-build identity + completed A3 + legacy selection / lifecycle evidence | Legacy path works again with no simultaneous engines, no data wipe, no replayed fake block evidence and no claim that rollback itself proves enforcement. |
 
 **Mandatory negative cases for A5:** **call rejection/call-screening evidence (submitted or
@@ -232,12 +233,12 @@ or replaced by a speculative authentication finding.
 
 | Open finding | Acceptance consequence |
 |---|---|
-| P0-01 | Separate backend exposure/outbound-connection remediation; launch/native integration does not close it |
-| P0-02 | Blocks consumer live-health/freshness/recovery sign-off; native lifecycle observations can be recorded separately |
-| P0-03 | Blocks packet-only call-rejection negative sign-off through the consumer/backend path |
-| P0-04 | Blocks privacy-boundary assurance; constrains all D4/P0-05 retained/transmitted nested evidence |
-| P0-05 | **Blocks A4E full Patrol/backend/eligible-notification acceptance; does not prevent independent A4N native proof** |
-| P0-06 | Separate file-safety assurance remediation; no inference of closure from a VPN or launch test |
+| P0-01 | VERIFIED CLOSED — hardened outbound transport; native integration did not infer closure |
+| P0-02 | VERIFIED CLOSED — software freshness/recovery; physical lifecycle observation remains separate |
+| P0-03 | VERIFIED CLOSED — call screening remains non-packet throughout consumer/backend path |
+| P0-04 | VERIFIED CLOSED — local-first and nested evidence privacy boundary enforced |
+| P0-05 | VERIFIED CLOSED — durable/idempotent narrow evidence path; A4E device observation remains separate |
+| P0-06 | VERIFIED CLOSED — limited/unread files receive no safety authorization |
 
 No overall Stage 1D/end-to-end PASS may silently ignore blocked rows. Native-only results
 must be labelled native-only. Test-only acceptance and production approval are separate.
@@ -290,16 +291,16 @@ a51bbfa95b6c88984bd1cf2f45da3db449f568732eae16c17824f6af956a3426  frontend/src/s
 
 ## 6. P0 tracking and exit from this review
 
-The separate tracker is `STAGE1D_P0_REMEDIATION_BACKLOG.md`: **six findings OPEN, zero verified
-closed, P0-INTAKE resolved only**. The original is archived for the developer, including its
-other P1/P2 recommendations. No P0 is closed by this plan, SVG fix, dependency guard or launch PASS.
+The separate tracker is `STAGE1D_P0_REMEDIATION_BACKLOG.md`: **zero findings open, six verified
+closed**. The original remains archived, including its P1/P2 recommendations. Closure comes from
+the separate remediation and iterations 62–64, not this plan, SVG fix, dependency guard or launch PASS.
 
 Before any Stage 1D implementation: settle D1–D6 with exact method /
 field mappings, inputs and revised files if necessary; confirm acceptance/rollback ownership;
-and obtain implementation approval. P0 fixes remain separate tracked work and may not be
-silently bundled or declared resolved. P0-05 must be verified before A4E can pass; call rejection
-must pass its explicit negative criterion after P0-03 remediation. This does not reopen the
-passed Stage 1C.1 launch gate or approve a production-default cutover.
+and obtain implementation approval. P0 remediation is separately verified closed. A4E and the
+native call/lifecycle rows still require physical-device evidence; software closure does not pass
+them automatically. This does not reopen the passed Stage 1C.1 launch gate or approve a
+production-default cutover.
 
 ## 7. Workspace / GitHub synchronization — distinct evidence
 

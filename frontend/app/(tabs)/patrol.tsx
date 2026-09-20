@@ -4,6 +4,7 @@ import { FlatList, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { PatrolItem } from "@/src/components/PatrolItem";
+import { PatrolDeliveryBanner } from '@/src/components/PatrolDeliveryBanner';
 import { Body, Card, Pill, ScreenHeader, toneColor, toneTint } from "@/src/components/ui";
 import type { ApolloState, PatrolEvent } from "@/src/domain/types";
 import { useApollo } from "@/src/store/ApolloContext";
@@ -86,6 +87,7 @@ export default function Patrol() {
         </ScrollView>
       </View>
       <FlatList
+        ListHeaderComponent={<PatrolDeliveryBanner />}
         data={rows}
         keyExtractor={(r) => r.key}
         contentContainerStyle={s.list}

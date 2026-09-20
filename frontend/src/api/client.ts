@@ -44,6 +44,7 @@ async function fetchWithBudget(url: string, init: RequestInit, timeoutMs: number
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  if (path.split('?')[0] === '/gmail/connect') throw new ApiError(403, 'Inbox connections are disabled under the local-first privacy policy.');
   const auth = await authHeaders();
   const res = await fetchWithBudget(`${API_BASE}${path}`, { ...init, headers: { "Content-Type": "application/json", ...auth, ...(init?.headers ?? {}) } }, timeoutFor(path));
   if (!res.ok) {

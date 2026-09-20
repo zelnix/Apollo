@@ -4,6 +4,7 @@
 // recent escalation was resolved, and (c) visibility not lost.
 
 import type { ApolloState, PatrolEvent, Visibility } from "./types";
+import { eventHasPacketProof } from './packetEvidence.ts';
 
 export const STATE_RANK: Record<ApolloState, number> = { sniffing: 0, resting: 0, ears_up: 1, growling: 2, barking: 3, biting: 4 };
 
@@ -37,9 +38,20 @@ export function isActive(e: PatrolEvent): boolean {
 export function resolveApolloState(input: StateInput): StateResolution {
   const now = input.now ?? Date.now();
   const active = input.events.filter(isActive);
+  const verifiedAt = input.lastVerifiedAt ? Date.parse(input.lastVerifiedAt) : 0;
+  const verificationFresh = verifiedAt > 0 && verifiedAt <= now && now - verifiedAt <= VERIFICATION_FRESHNESS_MS;
+  const visibilityLost = input.visibility === 'none' || !verificationFresh;
+
+  // Present health always remains visible, even alongside historical incidents.
+  if (visibilityLost) return {
+    state: active.some(e => e.state === 'barking') ? 'barking' : 'growling',
+    reason: input.visibility === 'none' ? 'Current protection is unavailable or unverified. Previous blocks remain in Patrol.' : 'Protection observation has expired. Open Guard to check again.',
+    recovering: false, visibilityLost: true, drivingEvent: active.sort(byNewest)[0] ?? null,
+  };
 
   // Biting only if a verified block exists. Never inferred.
-  const biting = active.find((e) => e.state === "biting" && e.verified_block);
+  const biting = active.find((e) => e.state === "biting" && e.verified_block && eventHasPacketProof(e) &&
+    Date.parse(e.occurred_at) <= now && now - Date.parse(e.occurred_at) < RECOVERY_COOLDOWN_MS);
   if (biting) {
     return { state: "biting", reason: "Apollo verified and blocked a threat.", recovering: false, visibilityLost: false, drivingEvent: biting };
   }
@@ -60,14 +72,12 @@ export function resolveApolloState(input: StateInput): StateResolution {
   const recentlyResolved = input.events
     .filter((e) => e.resolved_at && e.state !== "resting")
     .sort((a, b) => Date.parse(b.resolved_at!) - Date.parse(a.resolved_at!))[0];
-  const verifiedAt = input.lastVerifiedAt ? Date.parse(input.lastVerifiedAt) : 0;
-  const verificationFresh = verifiedAt > 0 && now - verifiedAt <= VERIFICATION_FRESHNESS_MS;
 
   if (recentlyResolved) {
     const resolvedAt = Date.parse(recentlyResolved.resolved_at!);
     const withinCooldown = now - resolvedAt < RECOVERY_COOLDOWN_MS;
     const verifiedAfterResolve = verifiedAt > resolvedAt;
-    if (withinCooldown && !verifiedAfterResolve) {
+    if (withinCooldown || !verifiedAfterResolve) {
       // Hold at growling (lowest alert) rather than snapping back to resting.
       return {
         state: "growling",
@@ -79,15 +89,12 @@ export function resolveApolloState(input: StateInput): StateResolution {
     }
   }
 
-  if (input.visibility === "none") {
-    return { state: "growling", reason: "Apollo cannot see anything right now. Protection is not active.", recovering: false, visibilityLost: true, drivingEvent: null };
-  }
   if (!verificationFresh) {
     return { state: "growling", reason: "Apollo has not verified protection recently — tap Hear Higgins and I'll list the checks to run.", recovering: true, visibilityLost: false, drivingEvent: null };
   }
   return {
     state: "resting",
-    reason: input.visibility === "limited" ? "Safe within the checks Apollo can see. Some protections are not active." : "Safe within the checks Apollo can see.",
+    reason: input.visibility === "limited" ? "Protection observed within its limited coverage. Earlier incidents remain in Patrol." : "Protection was freshly observed. Earlier incidents remain in Patrol.",
     recovering: false,
     visibilityLost: false,
     drivingEvent: null,

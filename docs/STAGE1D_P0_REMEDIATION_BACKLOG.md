@@ -1,8 +1,9 @@
 # P0 review remediation — separate from Stage 1D and launch acceptance
 
-**Status: SIX OPEN P0 FINDINGS; intake/identification RESOLVED ONLY.**
+**Status: SIX VERIFIED CLOSED P0 FINDINGS.**
 **Updated:** 2026-09-20. Stage 1C.1 launch remains PASS. Stage 1D implementation remains NOT STARTED.
-No runtime changes, finding fixes, or production-default cutover are approved by this review.
+The P0 software remediation is complete and independently verified in `test_reports/iteration_64.json`.
+This does not claim native packet-block, start/stop, notification-delivery, or Stage 1D acceptance.
 
 ## Source and intake provenance
 
@@ -20,16 +21,16 @@ No runtime changes, finding fixes, or production-default cutover are approved by
 - Reproductions below are **reported review evidence at the reviewed commit**, not tests
   independently rerun during this documentation-only revision.
 
-## Individual findings — all OPEN
+## Individual findings — all VERIFIED CLOSED
 
 | ID | User's finding / original report title | Required outcome | Status |
 |---|---|---|---|
-| P0-01 | Backend requests can reach internal addresses / “Backend outbound requests lack consistent internal-address protection” | Validate every destination/redirect; constrain actual outbound connections and resources | **OPEN** |
-| P0-02 | Protection freshness and recovery can mislead / “Live protection state and recovery can become misleading” | Fresh successful observations; historical blocks cannot conceal lost protection or establish recovery | **OPEN** |
-| P0-03 | Call rejection can produce biting / “Call rejection can produce the packet-block-only biting state” | Separate call-screening outcomes from packet-backed THREAT_BLOCKED/Biting | **OPEN** |
-| P0-04 | Privacy disclosure contradicts actual processing / “Privacy disclosure conflicts with real data flows” | Enforce the approved local-first data boundary, including automatic processing, and align disclosures | **OPEN** |
-| P0-05 | Upload policy rejects block evidence / “Block evidence cannot pass the Patrol upload policy” | Narrow validated payload; reliable durable/idempotent delivery; visible failures and retry | **OPEN** |
-| P0-06 | Unread files can receive “Fine to open” / “Unread or lightly inspected files can receive ‘Fine to open’” | Failed/limited inspection must not imply safety; bounded reads and accurate limitations | **OPEN** |
+| P0-01 | Backend requests can reach internal addresses / “Backend outbound requests lack consistent internal-address protection” | Validate every destination/redirect; constrain actual outbound connections and resources | **VERIFIED CLOSED** |
+| P0-02 | Protection freshness and recovery can mislead / “Live protection state and recovery can become misleading” | Fresh successful observations; historical blocks cannot conceal lost protection or establish recovery | **VERIFIED CLOSED** |
+| P0-03 | Call rejection can produce biting / “Call rejection can produce the packet-block-only biting state” | Separate call-screening outcomes from packet-backed THREAT_BLOCKED/Biting | **VERIFIED CLOSED** |
+| P0-04 | Privacy disclosure contradicts actual processing / “Privacy disclosure conflicts with real data flows” | Enforce the approved local-first data boundary, including automatic processing, and align disclosures | **VERIFIED CLOSED** |
+| P0-05 | Upload policy rejects block evidence / “Block evidence cannot pass the Patrol upload policy” | Narrow validated payload; reliable durable/idempotent delivery; visible failures and retry | **VERIFIED CLOSED** |
+| P0-06 | Unread files can receive “Fine to open” / “Unread or lightly inspected files can receive ‘Fine to open’” | Failed/limited inspection must not imply safety; bounded reads and accurate limitations | **VERIFIED CLOSED** |
 
 ### P0-01 — outbound destination/redirect protection
 
@@ -44,9 +45,9 @@ No runtime changes, finding fixes, or production-default cutover are approved by
 - **Verification:** isolated transports for initial private destinations, public-to-private
   redirects, DNS changes between check/connect, IPv4/IPv6 edge cases, oversized bodies/timeouts;
   separately assess actual egress restrictions with authorization, not a live scan in this task.
-- **Ownership:** proposed backend owner, individual UNASSIGNED. Fix SHA NONE; verified tests
-  NONE; closure NOT APPROVED. **OPEN.** Triage independently of mobile integration; do not wait
-  for Stage 1D to assess the reviewed risk to publicly exposed backend features.
+- **Closure:** hardened pinned transport in `backend/services/outbound.py` and shared callers;
+  destination, redirect, DNS-rebinding, body, deadline, concurrency and HEAD→GET fallback
+  regressions pass. Independently verified in iteration 64. **VERIFIED CLOSED.**
 
 ### P0-02 — protection freshness / recovery
 
@@ -64,8 +65,10 @@ No runtime changes, finding fixes, or production-default cutover are approved by
   manufacture freshness or erase historic evidence to make current state appear healthy.
 - **Dependency:** native lifecycle may be recorded independently; truthful consumer health /
   recovery acceptance cannot pass while these behaviors persist (plan D6/A5-health).
-- **Ownership:** proposed frontend state/native-health owner, individual UNASSIGNED. Fix SHA
-  NONE; verified tests NONE; closure NOT APPROVED. **OPEN.**
+- **Closure:** freshness/recovery observations now require current successful evidence, expire on
+  the clock and foreground transitions, and never let historic enforcement conceal current loss.
+  Pure clock/recovery regressions pass. **VERIFIED CLOSED.** Physical lifecycle acceptance remains
+  a separate Stage 1D/device gate.
 
 ### P0-03 — call rejection is not a packet block
 
@@ -83,8 +86,9 @@ No runtime changes, finding fixes, or production-default cutover are approved by
   still yields the appropriate packet event. Test absent OS completion receipts honestly.
 - **Dependency:** mandatory negative acceptance A5-call is **blocked pending verified P0-03
   remediation**; P0-05 must also be resolved to exercise the full upload path honestly.
-- **Ownership:** proposed native-call + frontend + backend contract owners, individuals
-  UNASSIGNED. Fix SHA NONE; verified tests NONE; closure NOT APPROVED. **OPEN.**
+- **Closure:** call-screening requests are represented as non-packet Barking events; frontend and
+  backend packet gates reject call/manual/simulated evidence while retaining genuine packet
+  positives. Full negative-path regressions pass. **VERIFIED CLOSED.**
 
 ### P0-04 — approved privacy boundary and automatic processing
 
@@ -103,8 +107,9 @@ No runtime changes, finding fixes, or production-default cutover are approved by
   values, not just field names. This is not a legal compliance certification.
 - **Dependency:** P0-05's allowed evidence subset and D4 retention/replay must satisfy this
   boundary; **do not allow arbitrary `enforcement_evidence` objects or raw call numbers**.
-- **Ownership:** proposed product privacy + frontend/backend owners, individuals UNASSIGNED.
-  Fix SHA NONE; verified tests NONE; closure NOT APPROVED. **OPEN.**
+- **Closure:** raw message, screenshot, inbox, caller and breach cloud paths are disabled or reduced
+  to reviewed minimal indicators; automatic notification checks remain local; nested egress is
+  schema constrained and disclosure copy matches. Payload regressions pass. **VERIFIED CLOSED.**
 
 ### P0-05 — reliable, privacy-safe evidence delivery
 
@@ -120,12 +125,15 @@ No runtime changes, finding fixes, or production-default cutover are approved by
 - **Verification:** native evidence → mapper → egress → authenticated API → persisted Patrol
   → eligible notification, with policy rejection, offline/restart/retry and duplicate replay.
   Require server acknowledgement/persistence, not just queued local state or a mapper unit pass.
-- **Hard dependency:** **A4E end-to-end Patrol/backend acceptance is BLOCKED while P0-05 is
-  OPEN. A4N native packet blocking can pass independently** with its own genuine evidence.
+- **Hard dependency disposition:** P0-05 no longer blocks a future A4E device run. A4N native
+  packet blocking and actual eligible notification delivery still require their own observed
+  device evidence and are not claimed by software tests.
   Failure to upload is not evidence that the native drop failed, nor permission to mark the
   full pipeline PASS. Notification eligibility/delivery remains independently observed.
-- **Ownership:** proposed frontend privacy/sync + backend validation owners, individuals
-  UNASSIGNED. Fix SHA NONE; verified tests NONE; closure NOT APPROVED. **OPEN.**
+- **Closure:** the reviewed evidence schema crosses mapper → nested egress → authenticated API;
+  the durable outbox distinguishes retryable/policy failures, survives restart, prevents stale
+  version overwrite, and uses server idempotency/conflict receipts. Offline/replay/race regressions
+  and live API fixtures pass. **VERIFIED CLOSED.**
 
 ### P0-06 — unread/limited file inspection cannot authorize opening
 
@@ -139,17 +147,18 @@ No runtime changes, finding fixes, or production-default cutover are approved by
 - **Verification:** unreadable/missing bytes, renamed archives, compressed Office content,
   links outside the sample, malformed and huge files. No failed or limited inspection may
   yield unsupported safety reassurance.
-- **Ownership:** proposed file-analysis/UI owner, individual UNASSIGNED. Fix SHA NONE;
-  verified tests NONE; closure NOT APPROVED. **OPEN.** Separate from native launch/integration.
+- **Closure:** reads are bounded before analysis; missing, failed and partial inspection never
+  authorizes opening or claims safety. Unreadable/oversized/limited regressions pass.
+  **VERIFIED CLOSED.** Separate from native launch/integration.
 
 ## Closure and sequencing rules
 
-- Current count: **6 OPEN, 0 VERIFIED CLOSED**. Only **P0-INTAKE is RESOLVED**.
-- Every finding retains its original identity and reviewed SHA. Track an actual assigned owner,
-  approved file scope, fix commit, before/after tests, negative cases and verifier/date. Device
-  findings additionally require source SHA + APK build ID/hash + device/OS evidence.
-- Lifecycle: OPEN → IN PROGRESS → FIX IMPLEMENTED–UNVERIFIED → VERIFIED CLOSED, with explicit
-  evidence/approval at closure. No changes in this task advance any finding past OPEN.
+- Current count: **0 OPEN, 6 VERIFIED CLOSED**. P0-INTAKE remains RESOLVED.
+- Every finding retains its original identity and reviewed SHA. Closure evidence is recorded in
+  iterations 62–64; iteration 64 independently confirms the final four blockers. Device acceptance
+  still requires source SHA + APK build ID/hash + device/OS evidence.
+- Lifecycle reached VERIFIED CLOSED for all six software findings. Native runtime acceptance is a
+  separate lifecycle and must not be inferred from this closure.
 - Launch, compile, CI, native dependency audit or isolated mapper success closes none of them.
 - P0 means the review's recommended blocker before an external pilot/release of the affected
   feature. Keep remediation separate from Stage 1D; expose dependencies rather than hiding them.

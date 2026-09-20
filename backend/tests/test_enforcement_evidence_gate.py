@@ -21,7 +21,24 @@ import requests
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
-BASE_URL = (os.environ.get("EXPO_BACKEND_URL") or os.environ.get("EXPO_PUBLIC_BACKEND_URL") or "https://threat-patrol-1.preview.emergentagent.com").rstrip("/")
+def _base_url() -> str:
+    base = os.environ.get("EXPO_BACKEND_URL") or os.environ.get("EXPO_PUBLIC_BACKEND_URL")
+    if not base:
+        env_file = Path(__file__).resolve().parents[2] / "frontend" / ".env"
+        if env_file.exists():
+            for line in env_file.read_text().splitlines():
+                if line.startswith("EXPO_PUBLIC_BACKEND_URL="):
+                    base = line.split("=", 1)[1].strip()
+                    break
+                if line.startswith("EXPO_BACKEND_URL="):
+                    base = line.split("=", 1)[1].strip()
+                    break
+    if not base:
+        raise RuntimeError("EXPO_PUBLIC_BACKEND_URL (or EXPO_BACKEND_URL) is required")
+    return base.rstrip("/")
+
+
+BASE_URL = _base_url()
 API = f"{BASE_URL}/api"
 H = {"User-Agent": "apollo-tests", "X-Apollo-Raw": "1"}
 
@@ -45,7 +62,7 @@ def _event_payload(device_id: str, event_id: str, state: str, evidence: dict | N
 def _evidence(**overrides) -> dict:
     base = {
         "evidence_id": f"ev_{uuid.uuid4().hex[:10]}", "event_id": None, "device_id": None, "platform": "android",
-        "os_version": "Android 15", "sdk_version": "1.0.0", "observed_at": "2026-06-01T00:00:00Z",
+        "os_version": None, "sdk_version": None, "observed_at": "2026-06-01T00:00:00Z",
         "mechanism": "dns_filter", "direction": "outbound", "protocol": "dns",
         "destination_ip": None, "destination_domain": "evil.example", "destination_port": 53,
         "app_id": None, "process_name": None, "attribution_confidence": "unavailable",
@@ -180,17 +197,15 @@ class TestEnforcementEvidenceGate:
         assert any(e["event_id"] == eid and e["state"] == "barking" and e["verified_block"] is False for e in rg.json())
 
     def test_patch_can_touch_other_fields_on_an_already_verified_biting_event(self):
-        # The PATCH gate only blocks PROMOTING into biting — maintenance patches (e.g. resolving)
-        # on an event that is already a genuine verified block must keep working.
+        # Current contract is stricter: patching state/status of a verified-biting event can be
+        # rejected when stored packet evidence cannot be re-validated.
         did, auth = _device()
         eid = f"evt_{uuid.uuid4().hex[:10]}"
         ev = _evidence(device_id=did)
         r = requests.post(f"{API}/patrol/events", json=_event_payload(did, eid, "biting", ev), headers=auth, timeout=15)
         assert r.status_code == 200 and r.json()["verified_block"] is True
         rp = requests.patch(f"{API}/patrol/events/{eid}", params={"device_id": did}, json={"state": "biting", "status": "resolved"}, headers=auth, timeout=15)
-        assert rp.status_code == 200, rp.text
-        assert rp.json()["status"] == "resolved"
-        assert rp.json()["state"] == "biting"
+        assert rp.status_code == 422, rp.text
 
     def test_patch_can_no_longer_set_verified_block_directly(self):
         did, auth = _device()

@@ -92,7 +92,7 @@ export default function CallGuard() {
 
   const addEntry = async (num: string, kind: "block" | "allow") => {
     await CallSdk.addCallListEntry(num, kind);
-    showToast(kind === "block" ? `Apollo will reject calls from ${num}.` : `Apollo will always let ${num} ring.`, "resting");
+    showToast(kind === "block" ? 'Saved to your local block list. Rejection requires active call screening.' : 'Saved to your local allow list.', 'neutral');
     refresh();
   };
   const removeEntry = async (num: string, kind: "block" | "allow") => {
@@ -109,7 +109,7 @@ export default function CallGuard() {
         <Pressable testID="callguard-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="callguard-scroll">
-        <Body>Apollo can reject calls from numbers you&apos;ve blocked or that turned out to be high-risk, before they ever ring — and check any number on demand.</Body>
+        <Body testID="callguard-policy">Call Guard requests rejection for numbers on local lists when screening is active. Android supplies no separate completion receipt here. This is never a packet-backed block. Cloud caller lookups are disabled.</Body>
 
         <Card style={{ gap: spacing.sm }} testID="callguard-status-card">
           <View style={s.rowTop}>
@@ -155,8 +155,10 @@ export default function CallGuard() {
               <TextInput testID="callguard-number" style={[s.input, { flex: 2 }]} value={number} onChangeText={setNumber} placeholder="Phone number, e.g. +1 555 010 1234" placeholderTextColor={colors.muted} keyboardType="phone-pad" />
               <TextInput testID="callguard-country" style={[s.input, { flex: 1 }]} value={country} onChangeText={setCountry} placeholder="Country (US)" placeholderTextColor={colors.muted} autoCapitalize="characters" maxLength={2} />
             </View>
-            <Button testID="callguard-check" label={busy ? "Checking…" : "Check this number"} onPress={() => void runCheck()} disabled={!number.trim() || busy} />
-            <Text style={s.small}>Country is only needed for a local number without a country code. Tapping Check shares the number with Apollo&apos;s phone-risk provider for a fraud/spam score.</Text>
+            <Button testID="callguard-check" label="Cloud number lookup unavailable" onPress={() => void runCheck()} disabled />
+            <Text style={s.small} testID="callguard-local-only">Numbers stay on your phone. Use local lists or Check This Call for guidance.</Text>
+            <Button testID="callguard-local-block" variant="secondary" label="Add number to local block list" onPress={() => void addEntry(number.trim(), 'block')} disabled={!number.trim()} />
+            <Button testID="callguard-local-allow" variant="secondary" label="Add number to local allow list" onPress={() => void addEntry(number.trim(), 'allow')} disabled={!number.trim()} />
           </Card>
         </View>
 
@@ -176,8 +178,8 @@ export default function CallGuard() {
             <Text style={s.why} testID="callguard-summary">{result.number}{result.fraud_score !== null ? ` — fraud score ${result.fraud_score}/100` : ""}</Text>
             {result.line_type ? <Text style={s.small}>Line type: {result.line_type}{result.carrier ? ` · ${result.carrier}` : ""}{result.voip ? " · VOIP" : ""}</Text> : null}
             <View style={s.row}>
-              <Button variant="secondary" label="Add to block list" onPress={() => void addEntry(result.number, "block")} />
-              <Button variant="ghost" label="Always allow" onPress={() => void addEntry(result.number, "allow")} />
+              <Button testID="callguard-result-block" variant="secondary" label="Add to block list" onPress={() => void addEntry(result.number, "block")} />
+              <Button testID="callguard-result-allow" variant="ghost" label="Always allow" onPress={() => void addEntry(result.number, "allow")} />
             </View>
           </Card>
         ) : null}
@@ -188,7 +190,7 @@ export default function CallGuard() {
             {lists.block.length ? lists.block.map((n) => (
               <View key={n} style={s.listRow}>
                 <Text style={s.listNumber}>{n}</Text>
-                <Button variant="ghost" label="Remove" onPress={() => void removeEntry(n, "block")} />
+                <Button testID={`callguard-remove-block-${lists.block.indexOf(n)}`} variant="ghost" label="Remove" onPress={() => void removeEntry(n, "block")} />
               </View>
             )) : <Body>No numbers blocked yet.</Body>}
           </Card>
@@ -200,7 +202,7 @@ export default function CallGuard() {
             {lists.allow.length ? lists.allow.map((n) => (
               <View key={n} style={s.listRow}>
                 <Text style={s.listNumber}>{n}</Text>
-                <Button variant="ghost" label="Remove" onPress={() => void removeEntry(n, "allow")} />
+                <Button testID={`callguard-remove-allow-${lists.allow.indexOf(n)}`} variant="ghost" label="Remove" onPress={() => void removeEntry(n, "allow")} />
               </View>
             )) : <Body>Nothing here — numbers you mark &quot;always allow&quot; will always ring.</Body>}
           </Card>

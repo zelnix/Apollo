@@ -121,6 +121,7 @@ EnforcementResult = Literal["verified", "unverified", "failed"]
 
 
 class EnforcementEvidenceIn(BaseModel):
+    model_config = {"extra": "forbid"}
     evidence_id: str = Field(min_length=1, max_length=64)
     event_id: Optional[str] = Field(default=None, max_length=64)
     device_id: Optional[str] = Field(default=None, max_length=64)

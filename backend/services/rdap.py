@@ -17,6 +17,7 @@ import httpx
 from core.config import logger
 from core.db import db, now_utc
 from core.models import DomainInfo, DomainInfoCache
+from services.outbound import public_get
 
 IANA_BOOTSTRAP_URL = "https://data.iana.org/rdap/dns.json"
 RDAP_TIMEOUT = httpx.Timeout(connect=3.0, read=5.0, write=3.0, pool=3.0)
@@ -55,7 +56,7 @@ async def _get_bootstrap(http: httpx.AsyncClient) -> dict:
     async with _bootstrap_lock:
         if _bootstrap_cache["data"] and now_utc() < _bootstrap_cache["expires_at"]:
             return _bootstrap_cache["data"]
-        resp = await http.get(IANA_BOOTSTRAP_URL)
+        resp = await public_get(IANA_BOOTSTRAP_URL)
         resp.raise_for_status()
         data = resp.json()
         _bootstrap_cache["data"] = data
@@ -122,11 +123,11 @@ def _parse_rdap(domain: str, body: dict, base: str) -> DomainInfo:
 
 
 async def _fetch_live(domain: str) -> DomainInfo:
-    async with httpx.AsyncClient(timeout=RDAP_TIMEOUT, headers={"Accept": "application/rdap+json, application/json", "User-Agent": "ApolloV1-RDAP/1.0"}, follow_redirects=True) as http:
+    async with httpx.AsyncClient(timeout=RDAP_TIMEOUT, trust_env=False, follow_redirects=False) as http:
         base = await _base_url_for(domain, http)
         if not base:
             return DomainInfo(domain=domain, available=False, error="no_authoritative_service")
-        resp = await http.get(f"{base}domain/{quote(domain, safe='.')}")
+        resp = await public_get(f"{base}domain/{quote(domain, safe='.')}")
         if resp.status_code == 404:
             return DomainInfo(domain=domain, available=False, error="not_found")
         resp.raise_for_status()
