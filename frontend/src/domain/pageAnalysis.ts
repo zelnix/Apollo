@@ -102,7 +102,7 @@ export function analysePage(p: PageSignals, urlHint?: string | null): PageAnalys
       why: flags.length ? flags : ["Business details are shown.", "Prices look ordinary.", "Standard payment methods."],
       recommendation: state === "resting" ? "Small or new doesn't mean fraudulent. Pay by card (not transfer) so you can dispute if needed." : "Look the business up independently before paying. Pay by card, never bank transfer or crypto." };
   }
-  return { ...base, scenario: "W20", title: "Ordinary web page", state: "resting", verdict: "Apollo sees nothing suspicious on this page.",
+  return { ...base, scenario: "W20", title: "No concern identified", state: "resting", verdict: "No concern was identified within the completed page checks.",
     why: ["No security scare or impersonation.", "No request for passwords, codes or payment.", "No install, download or wallet request."],
     recommendation: "Nothing to do. Ads and trackers are a privacy matter, not a security threat." };
 }

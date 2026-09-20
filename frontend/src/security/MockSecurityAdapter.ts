@@ -46,13 +46,13 @@ class MockSecurityAdapterImpl implements SecurityPlatformAdapter {
     const filterGranted = this.permissions.network_filter === "granted";
     const unavailable = this.scenario === "PROTECTION_UNAVAILABLE";
     return [
-      { id: "link_guard", title: "Link Guard", status: this.running ? "active" : "available", detail: this.running ? "Checks links you paste or share into Apollo." : "Turn on protection to check links you paste or share." },
+      { id: "link_guard", title: "Link Gate", status: this.running ? "active" : "available", detail: "Checks links you paste or share into Apollo; it is a manual check." },
       { id: "known_threats", title: "Known Threat Lookup", status: this.running ? "active" : "available", detail: "Privacy-preserving reputation checks using the link only." },
-      { id: "site_guard", title: "Site Guard", status: unavailable ? "unsupported" : filterGranted ? (this.running ? "active" : "inactive") : "permission_required", detail: unavailable ? "This device cannot run a content filter." : filterGranted ? "Warns about suspicious websites in supported browsers." : "Needs the network filter permission to see website visits." },
-      { id: "connection_guard", title: "Connection Guard", status: this.running ? "active" : "available", detail: this.running ? "Warns about open or captive Wi‑Fi (simulated in mock mode)." : "Turn on protection to assess Wi‑Fi connections." },
+      { id: "site_guard", title: "Site Gate", status: unavailable ? "unsupported" : filterGranted ? (this.running ? "active" : "inactive") : "permission_required", detail: unavailable ? "This device cannot run a content filter." : filterGranted ? "Warns about suspicious websites in supported browsers." : "Needs the network filter permission to see website visits." },
+      { id: "connection_guard", title: "Network Gate", status: this.running ? "active" : "available", detail: this.running ? "Warns about supported open or captive Wi‑Fi conditions." : "Checks network details when submitted." },
       { id: "share_intake", title: "Share to Apollo", status: Platform.OS === "web" ? "coming_later" : "available", detail: Platform.OS === "web" ? "Share links, messages, emails, screenshots and files from other apps straight into the right Apollo check. Needs the native build (share sheet); on this preview use the Shared-with-Apollo screen via the apollo://share link." : "Share links, messages, emails, screenshots and files from other apps: Share → Apollo. Apollo works out which check fits and lets you switch." },
-      { id: "message_guard", title: "Message Guard", status: this.running ? "active" : "available", detail: "Checks texts and chats you paste, share or screenshot into Apollo. Apollo never reads your messages automatically — the operating system doesn't allow it, and Apollo won't pretend otherwise." },
-      { id: "app_guard", title: "App & Device Guard", status: this.running ? "active" : "available", detail: "Check This App and Check My Device work from what you tell Apollo. Automatic install monitoring, permission reading and app-to-network correlation need the native Security SDK (Android); iOS never exposes other apps' permissions." },
+      { id: "message_guard", title: "Text Gate", status: this.running ? "active" : "available", detail: "Checks texts and chats you paste, share or screenshot into Apollo. Automatic access is never assumed." },
+      { id: "app_guard", title: "App Gate", status: this.running ? "active" : "available", detail: "Checks an app or device concern from the details you provide." },
     ];
   }
 

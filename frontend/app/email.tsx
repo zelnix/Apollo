@@ -5,8 +5,8 @@ import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import Mail from "lucide-react-native/icons/mail";
 import X from "lucide-react-native/icons/x";
-import React, { useEffect, useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import React, { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -20,9 +20,12 @@ import { evaluateLinkGuardFindings, extractAnchorsFromPlainText } from "@/src/do
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { STATE_RANK } from "@/src/domain/stateMachine";
 import { patrolSafeSummary, type InvestigationResult } from "@/src/domain/investigation";
+import { redactUserSecrets } from "@/src/domain/privacy";
 import { type MessageExplanation, type MessageUrlResult, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+
+const GMAIL_STATUS_UI_TIMEOUT_MS = 8000;
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -44,7 +47,7 @@ export default function CheckEmail() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const params = useLocalSearchParams<{ text?: string }>();
-  const { ready, setupDone, upsertEvent, deviceId, adapterLabel, showToast, scanGmailInbox, scanImapInbox } = useApollo();
+  const { ready, setupDone, upsertEvent, deviceId, adapterLabel, showToast, scanGmailInbox } = useApollo();
   const [from, setFrom] = useState("");
   const [subject, setSubject] = useState("");
   const [raw, setRaw] = useState(params.text ?? "");
@@ -55,16 +58,36 @@ export default function CheckEmail() {
   const [gmailConnected, setGmailConnected] = useState<boolean | null>(null);
   const [gmailConfigured, setGmailConfigured] = useState(true);
   const [gmailMonitoring, setGmailMonitoring] = useState(false);
-  const [, setGmailBusy] = useState(false);
-  const [, setScanBusy] = useState(false);
+  const [gmailBusy, setGmailBusy] = useState(false);
+  const [scanBusy, setScanBusy] = useState(false);
+  const [gmailStatusError, setGmailStatusError] = useState<string | null>(null);
   const [scanSummary, setScanSummary] = useState<{ text: string; flagged: number } | null>(null);
 
-  useEffect(() => {
+  const refreshGmailStatus = useCallback(async () => {
     if (!deviceId) return;
-    apiGet<{ connected: boolean; configured: boolean; monitoring_enabled: boolean }>(`/gmail/status?device_id=${deviceId}`)
-      .then((r) => { setGmailConnected(r.connected); setGmailConfigured(r.configured); setGmailMonitoring(r.monitoring_enabled); })
-      .catch(() => setGmailConnected(false));
+    setGmailConnected(null);
+    setGmailStatusError(null);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    try {
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Gmail status took too long to answer.")), GMAIL_STATUS_UI_TIMEOUT_MS);
+      });
+      const response = await Promise.race([
+        apiGet<{ connected: boolean; configured: boolean; monitoring_enabled: boolean }>(`/gmail/status?device_id=${deviceId}`),
+        timeout,
+      ]);
+      setGmailConnected(response.connected);
+      setGmailConfigured(response.configured);
+      setGmailMonitoring(response.monitoring_enabled);
+    } catch {
+      setGmailConnected(false);
+      setGmailStatusError("Apollo couldn't confirm the Gmail connection. Manual email checks remain available.");
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }, [deviceId]);
+
+  useEffect(() => { void refreshGmailStatus(); }, [refreshGmailStatus]);
 
   // Gmail read-only connect: browser-based OAuth (Web-application client — see backend/services/gmail.py).
   // Native OAuth needs a development/standalone build; this button still works in the web preview.
@@ -75,7 +98,7 @@ export default function CheckEmail() {
       const redirect = Linking.createURL("/email");
       const { authorization_url } = await apiGet<{ authorization_url: string }>(`/gmail/connect?device_id=${deviceId}&app_redirect=${encodeURIComponent(redirect)}`);
       const res = await WebBrowser.openAuthSessionAsync(authorization_url, redirect);
-      if (res.type === "success" && res.url.includes("gmail=connected")) { setGmailConnected(true); setGmailMonitoring(false); showToast("Gmail connected — monitoring stays off until you enable it.", "resting"); }
+      if (res.type === "success" && res.url.includes("gmail=connected")) { setGmailConnected(true); setGmailMonitoring(false); showToast("Gmail OAuth connected — monitoring stays off until you enable it.", "resting"); }
       else if (res.type === "success" && res.url.includes("gmail=denied")) showToast("Gmail connection was cancelled.", "neutral");
       else if (res.type !== "cancel" && res.type !== "dismiss") showToast("Couldn't connect Gmail right now.", "growling");
     } catch (e) { showToast(e instanceof Error ? e.message : "Couldn't connect Gmail right now.", "growling"); } finally { setGmailBusy(false); }
@@ -99,90 +122,29 @@ export default function CheckEmail() {
     try {
       const { checked, flagged } = await scanGmailInbox();
       const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
-      setScanSummary({ text: flagged.length ? `Checked ${plural(checked, "email")} — ${plural(flagged.length, "one")} need${flagged.length === 1 ? "s" : ""} a look.` : `Checked ${plural(checked, "email")} — nothing suspicious found.`, flagged: flagged.length });
-      showToast(flagged.length ? `Found ${plural(flagged.length, "email")} needing a look` : "Nothing suspicious in your recent inbox", flagged.length ? "growling" : "resting");
+      setScanSummary({ text: flagged.length ? `Checked ${plural(checked, "email")} — ${plural(flagged.length, "email")} need${flagged.length === 1 ? "s" : ""} a look.` : `Checked ${plural(checked, "email")} — no concerns were identified within those checks.`, flagged: flagged.length });
+      showToast(flagged.length ? `Found ${plural(flagged.length, "email")} needing a look` : "No concerns identified in the checked Gmail messages", flagged.length ? "growling" : "resting");
     } catch (e) { showToast(e instanceof Error ? e.message : "Couldn't scan your inbox right now.", "growling"); } finally { setScanBusy(false); }
-  };
-
-  const [imapConnected, setImapConnected] = useState<boolean | null>(null);
-  const [imapConfigured, setImapConfigured] = useState(true);
-  const [imapMonitoring, setImapMonitoring] = useState(false);
-  const [imapAccount, setImapAccount] = useState<{ host: string; username: string } | null>(null);
-  const [imapSheet, setImapSheet] = useState(false);
-  const [imapHost, setImapHost] = useState("");
-  const [imapPort, setImapPort] = useState("993");
-  const [imapUsername, setImapUsername] = useState("");
-  const [imapPassword, setImapPassword] = useState("");
-  const [imapConnecting, setImapConnecting] = useState(false);
-  const [imapError, setImapError] = useState<string | null>(null);
-  const [, setImapScanBusy] = useState(false);
-  const [imapScanSummary, setImapScanSummary] = useState<{ text: string; flagged: number } | null>(null);
-
-  useEffect(() => {
-    if (!deviceId) return;
-    apiGet<{ connected: boolean; configured: boolean; host: string | null; username: string | null; monitoring_enabled: boolean }>(`/imap/status?device_id=${deviceId}`)
-      .then((r) => { setImapConnected(r.connected); setImapConfigured(r.configured); setImapMonitoring(r.monitoring_enabled); setImapAccount(r.connected && r.host && r.username ? { host: r.host, username: r.username } : null); })
-      .catch(() => setImapConnected(false));
-  }, [deviceId]);
-
-  const PROVIDER_PRESETS = [
-    { label: "Gmail", host: "imap.gmail.com", port: "993" },
-    { label: "Outlook", host: "outlook.office365.com", port: "993" },
-    { label: "Yahoo", host: "imap.mail.yahoo.com", port: "993" },
-    { label: "iCloud", host: "imap.mail.me.com", port: "993" },
-  ];
-
-  const connectImap = async () => {
-    if (!deviceId || !imapHost.trim() || !imapUsername.trim() || !imapPassword) { setImapError("Fill in host, username and app password."); return; }
-    setImapConnecting(true); setImapError(null);
-    try {
-      const port = Number.parseInt(imapPort, 10) || 993;
-      await apiPost("/imap/connections", "imap_connect", { device_id: deviceId, host: imapHost.trim(), port, ssl: true, username: imapUsername.trim(), app_password: imapPassword });
-      setImapConnected(true); setImapMonitoring(false); setImapAccount({ host: imapHost.trim(), username: imapUsername.trim() });
-      setImapSheet(false); setImapPassword("");
-      showToast("Inbox connected — read-only access.", "resting");
-    } catch (e) { setImapError(e instanceof Error ? e.message : "Couldn't connect — check the host, port and app password."); } finally { setImapConnecting(false); }
-  };
-
-  const disconnectImap = async () => {
-    if (!deviceId) return;
-    try { await apiDelete(`/imap/connection?device_id=${deviceId}`); } catch { /* already gone */ }
-    setImapConnected(false); setImapMonitoring(false); setImapAccount(null); setImapScanSummary(null);
-    showToast("Inbox disconnected.", "neutral");
-  };
-  const toggleImapMonitoring = async () => {
-    if (!deviceId) return;
-    const enabled = !imapMonitoring;
-    await apiPost("/imap/monitoring", "imap_monitor", { device_id: deviceId, enabled });
-    setImapMonitoring(enabled); showToast(enabled ? "Ongoing inbox assessment enabled." : "Ongoing inbox assessment stopped.", enabled ? "resting" : "neutral");
-  };
-
-  const scanImap = async () => {
-    setImapScanBusy(true); setImapScanSummary(null);
-    try {
-      const { checked, flagged } = await scanImapInbox();
-      const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
-      setImapScanSummary({ text: flagged.length ? `Checked ${plural(checked, "email")} — ${plural(flagged.length, "one")} need${flagged.length === 1 ? "s" : ""} a look.` : `Checked ${plural(checked, "email")} — nothing suspicious found.`, flagged: flagged.length });
-      showToast(flagged.length ? `Found ${plural(flagged.length, "email")} needing a look` : "Nothing suspicious in your recent inbox", flagged.length ? "growling" : "resting");
-    } catch (e) { showToast(e instanceof Error ? e.message : "Couldn't scan your inbox right now.", "growling"); } finally { setImapScanBusy(false); }
   };
 
   const run = async () => {
     setBusy(true);
     try {
-      let a = analyseEmail(raw, { from, subject });
+      const safeRaw = redactUserSecrets(raw); const safeSubject = redactUserSecrets(subject);
+      if (safeRaw !== raw) setRaw(safeRaw); if (safeSubject !== subject) setSubject(safeSubject);
+      let a = analyseEmail(safeRaw, { from, subject: safeSubject });
       let urls: MessageUrlResult[] = []; let explanation: MessageExplanation | null = null; let assessment: InvestigationResult | null = null;
       try {
         const r = await apiPost<{ urls: MessageUrlResult[]; explanation: MessageExplanation | null; assessment: InvestigationResult }>("/message/analyse", "message_check", {
-          device_id: deviceId ?? 'local-device', sender: from.trim(), text: `${subject}\n${raw}`.slice(0, 4000), urls: a.urls.slice(0, 10),
+          device_id: deviceId ?? 'local-device', sender: from.trim(), text: `${safeSubject}\n${safeRaw}`.slice(0, 4000), urls: a.urls.slice(0, 10),
           local_state: a.state, scenario: a.scenario, signals: a.signalLabels.slice(0, 20), claimed_brand: a.claimedBrand, second_opinion: true,
         });
         urls = r.urls; explanation = r.explanation; assessment = r.assessment;
         if (assessment.risk === "warning" && a.state === "resting") a = { ...a, state: "growling", why: [...a.why, "The contextual investigation found unresolved or suspicious details that need verification."] };
-        // Email Guard: automatic pre-click assessment — redirect chain + RDAP domain-info (already
+        // Email Gate: automatic pre-click assessment — redirect chain + RDAP domain-info (already
         // inside `urls`) plus any display-text-vs-real-destination mismatch recoverable from the
         // plain pasted text. Can only raise state to growling/barking, never biting.
-        const guard = evaluateLinkGuardFindings(urls, extractAnchorsFromPlainText(raw));
+        const guard = evaluateLinkGuardFindings(urls, extractAnchorsFromPlainText(safeRaw));
         if (STATE_RANK[guard.state] > STATE_RANK[a.state]) a = { ...a, state: guard.state, why: [...a.why, ...guard.why] };
         else if (guard.why.length) a = { ...a, why: [...a.why, ...guard.why] };
       } catch { /* offline: on-device result stands */ }
@@ -202,7 +164,7 @@ export default function CheckEmail() {
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>Check an email</Text>
+        <Text style={s.title}>Email Gate</Text>
         <Pressable testID="email-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="email-scroll">
@@ -212,52 +174,30 @@ export default function CheckEmail() {
               <Card testID="email-gmail-card" style={{ gap: spacing.sm }}>
                 <SectionTitle>Connect Gmail (optional)</SectionTitle>
                 {gmailConnected === null ? (
-                  <Body>Checking connection…</Body>
+                  <View testID="email-gmail-checking" style={s.row}>
+                    <Body>Checking connection…</Body>
+                    <ActivityIndicator color={colors.brand} />
+                  </View>
                 ) : gmailConnected ? (
                   <>
-                    <View style={s.chips}><Pill tone="resting" label="Gmail connected — read-only" testID="email-gmail-connected" /></View>
-                    <Button testID="email-gmail-scan" label="Assess recent Gmail" onPress={() => void scanInbox()} />
-                    <Button testID="email-gmail-monitoring" variant="secondary" label={gmailMonitoring ? "Stop ongoing Gmail monitoring" : "Enable ongoing Gmail monitoring"} onPress={() => void toggleGmailMonitoring()} />
-                    <Body testID="email-gmail-monitoring-status">{gmailMonitoring ? "Opted in: Apollo checks recent Gmail periodically and stores summaries only." : "Ongoing monitoring is off."}</Body>
+                    <View style={s.chips}><Pill tone="resting" label="Gmail OAuth connected — read-only" testID="email-gmail-connected" /></View>
+                    <Button testID="email-gmail-scan" label={scanBusy ? "Assessing recent Gmail…" : "Assess recent Gmail"} icon={scanBusy ? <ActivityIndicator color={colors.onBrandPrimary} /> : undefined} onPress={() => void scanInbox()} disabled={scanBusy || gmailBusy} />
+                    <Button testID="email-gmail-monitoring" variant="secondary" label={gmailMonitoring ? "Stop ongoing Gmail monitoring" : "Enable ongoing Gmail monitoring"} onPress={() => void toggleGmailMonitoring()} disabled={scanBusy || gmailBusy} />
+                    <Body testID="email-gmail-monitoring-status">{gmailMonitoring ? "Monitoring requested. Gates shows Active only after a fresh successful monitor check." : "Ongoing monitoring is off."}</Body>
                     {scanSummary ? (
                       <>
                         <Body testID="email-gmail-scan-summary">{scanSummary.text}</Body>
                         {scanSummary.flagged ? <Button testID="email-gmail-view-patrol" variant="secondary" label="View in Patrol" onPress={() => router.push("/(tabs)/patrol")} /> : null}
                       </>
                     ) : null}
-                    <Button testID="email-gmail-disconnect" variant="ghost" label="Disconnect Gmail" onPress={() => void disconnectGmail()} />
+                    <Button testID="email-gmail-disconnect" variant="ghost" label="Disconnect Gmail" onPress={() => void disconnectGmail()} disabled={scanBusy || gmailBusy} />
                   </>
                 ) : (
                   <>
-                    <Body testID="email-gmail-policy">Connecting Gmail is optional and read-only. Recent messages are used for the assessment, then discarded; only summaries and safe references may enter Patrol.</Body>
-                    <Button testID="email-gmail-connect" variant="secondary" icon={<Mail size={18} color={colors.onSurface} />} label="Connect Gmail read-only" onPress={() => void connectGmail()} />
-                  </>
-                )}
-              </Card>
-            ) : null}
-            {imapConfigured ? (
-              <Card testID="email-imap-card" style={{ gap: spacing.sm }}>
-                <SectionTitle>Connect another inbox (optional)</SectionTitle>
-                {imapConnected === null ? (
-                  <Body>Checking connection…</Body>
-                ) : imapConnected ? (
-                  <>
-                    <View style={s.chips}><Pill tone="resting" label={`Connected — ${imapAccount?.username ?? "read-only"}`} testID="email-imap-connected" /></View>
-                    <Button testID="email-imap-scan" label="Assess recent inbox" onPress={() => void scanImap()} />
-                    <Button testID="email-imap-monitoring" variant="secondary" label={imapMonitoring ? "Stop ongoing inbox monitoring" : "Enable ongoing inbox monitoring"} onPress={() => void toggleImapMonitoring()} />
-                    <Body testID="email-imap-monitoring-status">{imapMonitoring ? "Opted in: Apollo checks this inbox periodically and stores summaries only." : "Ongoing monitoring is off."}</Body>
-                    {imapScanSummary ? (
-                      <>
-                        <Body testID="email-imap-scan-summary">{imapScanSummary.text}</Body>
-                        {imapScanSummary.flagged ? <Button testID="email-imap-view-patrol" variant="secondary" label="View in Patrol" onPress={() => router.push("/(tabs)/patrol")} /> : null}
-                      </>
-                    ) : null}
-                    <Button testID="email-imap-disconnect" variant="ghost" label="Disconnect this inbox" onPress={() => void disconnectImap()} />
-                  </>
-                ) : (
-                  <>
-                    <Body testID="email-imap-policy">Connecting IMAP is optional. Apollo stores the encrypted app password only while connected. Message content is assessed request-by-request and discarded.</Body>
-                    <Button testID="email-imap-connect-open" variant="secondary" icon={<Mail size={18} color={colors.onSurface} />} label="Connect an inbox" onPress={() => setImapSheet(true)} />
+                    {gmailStatusError ? <Body testID="email-gmail-status-error">{gmailStatusError}</Body> : null}
+                    <Body testID="email-gmail-policy">Connecting Gmail uses Google&apos;s read-only OAuth consent. Apollo never asks for or stores your Gmail username or password. Recent messages are used for the assessment, then discarded; only summaries and safe references may enter Patrol.</Body>
+                    <Button testID="email-gmail-connect" variant="secondary" icon={gmailBusy ? <ActivityIndicator color={colors.brand} /> : <Mail size={18} color={colors.onSurface} />} label={gmailBusy ? "Opening Google…" : "Connect Gmail read-only"} onPress={() => void connectGmail()} disabled={gmailBusy || !deviceId} />
+                    {gmailStatusError ? <Button testID="email-gmail-status-retry" variant="ghost" label="Check connection again" onPress={() => void refreshGmailStatus()} disabled={!deviceId} /> : null}
                   </>
                 )}
               </Card>
@@ -267,11 +207,13 @@ export default function CheckEmail() {
             <TextInput testID="email-subject" style={s.input} value={subject} onChangeText={setSubject} placeholder="Subject" placeholderTextColor={colors.muted} autoCorrect={false} />
             <TextInput testID="email-body" style={[s.input, { minHeight: 140 }]} value={raw} onChangeText={setRaw} placeholder="Paste the email (or the whole forwarded message with headers)…" placeholderTextColor={colors.muted} multiline textAlignVertical="top" autoCapitalize="none" autoCorrect={false} />
             <Button testID="email-run" label={busy ? "Sniffing…" : "Check this email"} onPress={() => void run()} disabled={busy || !(raw.trim() || from.trim() || subject.trim())} />
+            <Button testID="email-check-screenshot" variant="secondary" label="Assess an email screenshot" onPress={() => router.push({ pathname: "/message", params: { openScreenshot: "1", source: "email" } })} />
           </>
         ) : a ? (
           <>
-            {result.assessment ? <MessageAssessmentResult assessment={result.assessment} state={a.state} onPrimaryAction={() => setVerify(true)} /> : null}
-            <Card testID="email-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
+            {result.assessment ? <MessageAssessmentResult assessment={result.assessment} state={a.state} testIDPrefix="email"
+              submittedLabel="Email investigated" submittedTitle={a.parsed.fromAddress || from || "Sender not supplied"} submittedText={`${a.parsed.subject ?? subject}\n${a.parsed.body || raw}`.trim()}
+              onPrimaryAction={() => setVerify(true)} /> : <Card testID="email-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
               <View style={s.chips}><Pill tone={a.state} label={STATE_NAME[a.state]} testID="email-state" /><Pill tone="neutral" label={a.scenario} testID="email-scenario" />{a.claimedBrand ? <Pill tone="neutral" label={`Claims: ${a.claimedBrand}`} testID="email-brand" /> : null}</View>
               <Text style={s.why}>{STATE_LABEL[a.state]}</Text>
               <Text style={s.label} testID="email-title">{a.title}</Text>
@@ -281,7 +223,7 @@ export default function CheckEmail() {
               <SectionTitle>What to do</SectionTitle>
               <Text style={s.why} testID="email-recommendation">{a.recommendation}</Text>
               {a.signalLabels.length ? <View style={s.chips}>{a.signalLabels.map((l) => <Pill key={l} tone="neutral" label={l} />)}</View> : null}
-            </Card>
+            </Card>}
             <Card style={{ gap: spacing.xs }} testID="email-sender">
               <SectionTitle>Who sent it</SectionTitle>
               <Body testID="email-sender-line">{a.parsed.fromName ? `${a.parsed.fromName} ` : ""}{a.parsed.fromAddress ? `<${a.parsed.fromAddress}>` : "(no address given)"}</Body>
@@ -303,9 +245,9 @@ export default function CheckEmail() {
               </Card>
             ) : null}
             <Card style={{ gap: spacing.sm }} testID="email-actions">
-              {a.handoff.account ? <Button testID="email-check-account" variant={a.state === "barking" ? "warning" : "secondary"} label="It's about my account — Account Guard" onPress={() => router.push({ pathname: "/account", params: { text: `${a.parsed.subject ?? ""}\n${a.parsed.body}`.trim().slice(0, 3000), scent } })} /> : null}
+              {a.handoff.account ? <Button testID="email-check-account" variant={a.state === "barking" ? "warning" : "secondary"} label="It's about my account — Account Gate" onPress={() => router.push({ pathname: "/account", params: { text: `${a.parsed.subject ?? ""}\n${a.parsed.body}`.trim().slice(0, 3000), scent } })} /> : null}
               <Button testID="email-verify-sender" variant="secondary" label="Verify sender safely" onPress={() => setVerify(true)} />
-              {result.explanation ? <><Text style={s.label}>Apollo&apos;s plain-language take</Text><Body testID="email-second-opinion">{result.explanation.summary}</Body></> : null}
+              {result.explanation ? <><Text style={s.label}>Higgins&apos;s plain-language assessment</Text><Body testID="email-second-opinion">{result.explanation.summary}</Body></> : null}
               {result.event ? <RecoveryFlow event={result.event} kinds={["clicked", "password", "code", "money", "card", "info", "download"]} linkToCheck={a.urls[0] ?? null} testID="email-recovery" /> : null}
               <Button testID="email-ask" variant="ghost" label="Tell me more (Ask Higgins)" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { context: `Email check: ${a.title}. State: ${STATE_NAME[a.state]}. ${a.technical.join("; ")}`, prompt: "What should I do about this email?" } })} />
               <Button testID="email-tech" variant="ghost" label="View technical details" onPress={() => setTech(true)} />
@@ -321,23 +263,6 @@ export default function CheckEmail() {
       <Sheet visible={tech} onClose={() => setTech(false)} title="Technical details" testID="email-tech-sheet">
         {a?.technical.map((t, i) => <Body key={i} testID={`email-tech-${i}`}>{t}</Body>)}
         <Button testID="email-tech-close" variant="ghost" label="Done" onPress={() => setTech(false)} />
-      </Sheet>
-      <Sheet visible={imapSheet} onClose={() => setImapSheet(false)} title="Connect an inbox via IMAP" testID="email-imap-sheet">
-        <Body>Use an app-specific password, not your normal account password — most providers require one for third-party apps like this.</Body>
-        <View style={s.chips}>
-          {PROVIDER_PRESETS.map((p) => (
-            <Pressable key={p.label} onPress={() => { setImapHost(p.host); setImapPort(p.port); }} testID={`email-imap-preset-${p.label.toLowerCase()}`}>
-              <Pill tone="neutral" label={p.label} />
-            </Pressable>
-          ))}
-        </View>
-        <TextInput testID="email-imap-host" style={s.input} value={imapHost} onChangeText={setImapHost} placeholder="IMAP host (e.g. imap.gmail.com)" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} />
-        <TextInput testID="email-imap-port" style={s.input} value={imapPort} onChangeText={setImapPort} placeholder="Port (993 for SSL)" placeholderTextColor={colors.muted} keyboardType="number-pad" />
-        <TextInput testID="email-imap-username" style={s.input} value={imapUsername} onChangeText={setImapUsername} placeholder="Email address" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" />
-        <TextInput testID="email-imap-password" style={s.input} value={imapPassword} onChangeText={setImapPassword} placeholder="App password" placeholderTextColor={colors.muted} secureTextEntry autoCapitalize="none" autoCorrect={false} />
-        {imapError ? <Body testID="email-imap-error">{imapError}</Body> : null}
-        <Button testID="email-imap-connect" label={imapConnecting ? "Connecting…" : "Connect"} onPress={() => void connectImap()} disabled={imapConnecting} />
-        <Button testID="email-imap-cancel" variant="ghost" label="Cancel" onPress={() => setImapSheet(false)} disabled={imapConnecting} />
       </Sheet>
     </View>
   );

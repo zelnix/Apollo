@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="2" failures="0" skipped="0" tests="15" time="1.544" timestamp="2026-09-20T12:00:24.960011+00:00" hostname="agent-env-c344520a-3bf7-4318-a5a2-68836b7a4140"><testcase classname="" name="tests.test_investigation_fallback" time="0.000"><error message="collection failure">ImportError while importing test module '/app/backend/tests/test_investigation_fallback.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/usr/local/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/tests/test_investigation_fallback.py:2: in &lt;module&gt;
+    from services.investigation import InvestigationEntities, InvestigationSource, _fallback
+E   ModuleNotFoundError: No module named 'services'</error></testcase><testcase classname="" name="tests.test_user_secret_redaction" time="0.000"><error message="collection failure">ImportError while importing test module '/app/backend/tests/test_user_secret_redaction.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/usr/local/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend/tests/test_user_secret_redaction.py:4: in &lt;module&gt;
+    from core.redaction import redact_user_secrets
+E   ModuleNotFoundError: No module named 'core'</error></testcase><testcase classname="tests.test_imap_removed" name="test_legacy_imap_routes_are_removed" time="0.741" /><testcase classname="tests.test_gate_gmail.TestGmailConnect" name="test_connect_returns_valid_authorization_url" time="0.448" /><testcase classname="tests.test_gate_gmail.TestGmailConnect" name="test_connect_rejects_invalid_redirect_scheme[javascript://evil]" time="0.065" /><testcase classname="tests.test_gate_gmail.TestGmailConnect" name="test_connect_rejects_invalid_redirect_scheme[ftp://x]" time="0.106" /><testcase classname="tests.test_gate_gmail.TestGmailConnect" name="test_connect_rejects_invalid_redirect_scheme[evil://x]" time="0.067" /><testcase classname="tests.test_gate_gmail.TestGmailConnect" name="test_connect_missing_device_id_is_422" time="0.111" /><testcase classname="tests.test_imap_removed" name="test_frontend_has_no_mailbox_username_or_password_collection" time="0.000" /><testcase classname="tests.test_gate_gmail.TestGmailCallback" name="test_callback_bogus_state_returns_400_not_crash" time="0.116" /><testcase classname="tests.test_gate_gmail.TestGmailDisconnect" name="test_disconnect_with_no_existing_connection_succeeds" time="0.066" /><testcase classname="tests.test_gate_gmail.TestGmailCallback" name="test_callback_no_state_at_all_returns_400" time="0.063" /><testcase classname="tests.test_gate_gmail.TestGmailDisconnect" name="test_status_still_disconnected_after_delete" time="0.108" /><testcase classname="tests.test_gate_gmail.TestGmailStatus" name="test_status_before_connection" time="0.257" /><testcase classname="tests.test_gate_gmail.TestGmailScan" name="test_scan_without_connection_returns_404" time="0.066" /></testsuite></testsuites>

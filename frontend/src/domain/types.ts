@@ -2,7 +2,7 @@
 // capability model and privacy policy. Platform-agnostic: no React, no native.
 
 // Six-state model. `sniffing` is transient (analysing), `ears_up` is a low-confidence pattern match,
-// `biting` is the internal key for the verified-block state shown to users as "Guarding".
+// `biting` is the internal key for a confirmed protective block.
 export type ApolloState = "sniffing" | "resting" | "ears_up" | "growling" | "barking" | "biting";
 
 /** Semantically exact wording for each state. Never paraphrase these in the UI. */
@@ -10,24 +10,24 @@ export type ApolloState = "sniffing" | "resting" | "ears_up" | "growling" | "bar
 /** Ordered low → high for comparisons in UI code (mirrors stateMachine STATE_RANK). */
 export const STATE_RANK_ORDER: ApolloState[] = ["sniffing", "resting", "ears_up", "growling", "barking", "biting"];
 
-export const STATE_NAME: Record<ApolloState, string> = { sniffing: "Sniffing", resting: "Patrolling", ears_up: "Ears up", growling: "Growling", barking: "Barking", biting: "Guarding" };
+export const STATE_NAME: Record<ApolloState, string> = { sniffing: "Checking", resting: "Resting", ears_up: "Growling", growling: "Growling", barking: "Barking", biting: "Biting" };
 
 export const STATE_LABEL: Record<ApolloState, string> = {
   sniffing: "Apollo is sniffing",
-  resting: "Apollo is patrolling",
-  ears_up: "Apollo's ears are up",
+  resting: "Apollo is resting",
+  ears_up: "Apollo is growling",
   growling: "Apollo is growling",
   barking: "Apollo is barking",
-  biting: "Apollo is guarding",
+  biting: "Apollo is biting",
 };
 
 export const STATE_MEANING: Record<ApolloState, string> = {
-  sniffing: "Apollo is having a closer look before he decides. Do allow him a moment.",
-  resting: "On the lookout. All is well within the checks Apollo can currently see.",
-  ears_up: "This matches a pattern Apollo knows. Not confirmed — a careful look is in order.",
-  growling: "Something looks suspicious, though it is not yet confirmed.",
-  barking: "This one needs your decision. I would suggest you act on it now.",
-  biting: "Apollo verified a threat and blocked it. He is standing guard.",
+  sniffing: "The current checks are still running; no assessment is final yet.",
+  resting: "No concern was identified within the checks that completed.",
+  ears_up: "A possible concern needs caution or further investigation.",
+  growling: "A possible concern needs caution or further investigation.",
+  barking: "A significant concern requires your attention.",
+  biting: "An actual protective block was confirmed by device evidence.",
 };
 
 export type Visibility = "full" | "limited" | "none";

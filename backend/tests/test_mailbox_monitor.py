@@ -49,6 +49,9 @@ async def test_enabled_mailbox_monitor_is_summary_only_and_idempotent(monkeypatc
     assert events[0]["state"] == "barking" and events[0]["verified_block"] is False
     assert raw_secret not in str(events[0])
     assert await db.mailbox_assessment_receipts.count_documents({"device_id": device_id}) == 1
+    connection = await db.gmail_connections.find_one({"device_id": device_id}, {"_id": 0})
+    assert connection["monitor_last_checked_at"] is not None
+    assert connection.get("monitor_last_error_at") is None
     await db.gmail_connections.delete_many({"device_id": device_id})
     await db.patrol_events.delete_many({"device_id": device_id})
     await db.mailbox_assessment_receipts.delete_many({"device_id": device_id})

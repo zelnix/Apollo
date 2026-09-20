@@ -27,7 +27,7 @@ TOKEN_TTL_DAYS = 365
 EMAIL_BASE_URL = os.environ.get("EMERGENT_INTEGRATIONS_BASE_URL", "https://integrations.emergentagent.com")
 EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY", "")
 EMAIL_FROM_NAME = os.environ["EMAIL_FROM_NAME"]
-PUBLIC_BASE = os.environ.get("PUBLIC_API_BASE", "")  # e.g. https://<host>; confirm links are first-party
+PUBLIC_BASE = os.environ.get("PUBLIC_API_BASE", "").rstrip("/")  # canonical public origin; no trailing slash
 
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
 HIGGINS_TTS = {"model": "tts-1", "voice": "fable", "speed": 0.95}
@@ -46,12 +46,7 @@ GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 GOOGLE_GMAIL_REDIRECT_URI = f"{PUBLIC_BASE}/api/gmail/oauth/callback" if PUBLIC_BASE else ""
 GMAIL_TOKEN_ENCRYPTION_KEY = os.environ.get("GMAIL_TOKEN_ENCRYPTION_KEY", "")
 
-# Generic IMAP connection (Gate 1 add-on, Phase 3) — no OAuth app to register; each user supplies
-# their own host/port/username/app-password at connect time. Separate encryption key from Gmail's
-# (different credential type/blast radius), empty → /api/imap/* returns "not_configured".
-IMAP_CREDENTIAL_KEY = os.environ.get("IMAP_CREDENTIAL_KEY", "")
-
-# Call Guard (Gate 4 add-on) — IPQualityScore phone fraud/spam risk scoring. Proxied entirely
+# Call Gate (Gate 4 add-on) — IPQualityScore phone fraud/spam risk scoring. Proxied entirely
 # server-side (never called from the client — see services/phonerisk.py). Empty key →
 # /api/call/risk-check reports source="not_configured", never a crash or a fabricated score.
 IPQS_API_KEY = os.environ.get("IPQS_API_KEY", "")
@@ -60,4 +55,5 @@ IPQS_ENDPOINT = "https://www.ipqualityscore.com/api/json/phone"
 HIGGINS_VOICE = ("You speak as Higgins — Apollo's handler: a sophisticated, older English gentleman, very proper and butler-like. Courteous, unhurried, "
                  "dry warmth, never theatrical. Refer to Apollo (the guard dog) in the third person — 'Apollo is growling at this one', 'Apollo has it in hand'. "
                  "Use light butler turns of phrase sparingly ('if I may', 'I would suggest', 'quite so', 'do allow me') — at most one per answer. Do not use 'sir' or 'madam'. "
+                 "You provide every explanation and recommendation but never claim that you detect or block. Apollo detects, warns and blocks only where supported and confirmed. "
                  "Australian spelling. Plain words; every technical term gets a one-line explanation.")

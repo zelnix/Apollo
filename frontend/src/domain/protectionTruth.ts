@@ -4,24 +4,17 @@ import type { ProtectionStatus } from "../security/SecurityPlatformAdapter.ts";
 
 export interface MasterCopy { title: string; line: string; requested: boolean; operational: boolean }
 
-const METHOD_LABEL: Record<ProtectionStatus["enforcementMethod"], string> = {
-  dns_filter: "DNS protection active on this device",
-  content_blocker: "Safari content blocker active",
-  packet_filter: "Selective packet filter active on this device",
-  simulated: "Demo only — nothing enforced",
-  none: "No enforcement on this device",
-};
-
 /**
  * @param online false while the security service is unreachable — local enforcement is unaffected, online checks are.
  * Mixed states are reported as such: DNS filter operational + service down = "guarding what he can", never "off duty".
  */
 export function masterCopy(p: ProtectionStatus | null, online: boolean = true): MasterCopy {
+  if (!p) return { title: "Checking protection status", line: "Apollo has not yet established the current protection state.", requested: false, operational: false };
   const requested = !!(p?.requested ?? p?.running);
   const operational = !!p?.operational;
-  if (!requested) return { title: "Apollo is off duty", line: "Protection is off. Apollo cannot see or block anything until you turn him back on.", requested, operational };
-  if (operational && online) return { title: "Apollo is guarding", line: `Site Guard active · ${METHOD_LABEL[p!.enforcementMethod]}.`, requested, operational };
-  if (operational) return { title: "Apollo is guarding what he can", line: `Site Guard active · ${METHOD_LABEL[p!.enforcementMethod]} · Online checks unavailable right now.`, requested, operational };
-  const guard = `Site Guard ${p?.enforcementMethod === "simulated" ? "simulated" : "unavailable"}`;
-  return { title: "Apollo is guarding what he can", line: online ? `${guard} · Link checks remain active.` : `${guard} · Online checks unavailable right now · On-device link checks remain active.`, requested, operational };
+  if (!requested) return { title: "Some protection needs attention", line: "Site Gate is off. Manual Link Gate checks remain available.", requested, operational };
+  if (operational && online) return { title: "All available protection is active", line: `Site Gate is confirmed active.`, requested, operational };
+  if (operational) return { title: "Some checks are unavailable", line: `Site Gate remains confirmed active; online investigations are unavailable right now.`, requested, operational };
+  const guard = `Site Gate ${p?.enforcementMethod === "simulated" ? "unavailable on this device" : "needs attention"}`;
+  return { title: "Some protection needs attention", line: online ? `${guard} · Link checks remain active.` : `${guard} · Online checks unavailable right now · On-device link checks remain active.`, requested, operational };
 }

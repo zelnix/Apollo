@@ -7,18 +7,17 @@ import type { ProtectionStatus } from "../src/security/SecurityPlatformAdapter.t
 
 const st = (o: Partial<ProtectionStatus>): ProtectionStatus => ({ running: false, requested: false, operational: false, enforcementMethod: "none", coverage: "", coverageScope: [], lastVerified: null, degradedReason: null, visibility: "none", since: null, adapterLabel: "x", checkedAt: "", ...o });
 
-test("off duty when not requested, even if something claims to run", () => { const c = masterCopy(st({ operational: true, running: true })); assert.equal(c.title, "Apollo is off duty"); });
-test("guarding only when requested AND operational", () => {
-  assert.equal(masterCopy(st({ requested: true, operational: true, running: true, enforcementMethod: "dns_filter" })).title, "Apollo is guarding");
-  assert.match(masterCopy(st({ requested: true, operational: true, running: true, enforcementMethod: "dns_filter" })).line, /DNS protection active/);
-  assert.match(masterCopy(st({ requested: true, operational: true, running: true, enforcementMethod: "content_blocker" })).line, /Safari content blocker active/);
+test("off setting is a protection gap even if something claims to run", () => { const c = masterCopy(st({ operational: true, running: true })); assert.equal(c.title, "Some protection needs attention"); });
+test("active only when requested AND operational", () => {
+  assert.equal(masterCopy(st({ requested: true, operational: true, running: true, enforcementMethod: "dns_filter" })).title, "All available protection is active");
+  assert.match(masterCopy(st({ requested: true, operational: true, running: true, enforcementMethod: "dns_filter" })).line, /Site Gate is confirmed active/);
 });
-test("requested but not operational → guarding what he can, link checks remain", () => {
+test("requested but not operational → needs attention, link checks remain", () => {
   const c = masterCopy(st({ requested: true, operational: false }));
-  assert.equal(c.title, "Apollo is guarding what he can"); assert.match(c.line, /unavailable · Link checks remain active/);
+  assert.equal(c.title, "Some protection needs attention"); assert.match(c.line, /needs attention · Link checks remain active/);
 });
-test("mock adapter can never read as guarding", () => {
+test("preview adapter can never read as active", () => {
   const c = masterCopy(st({ requested: true, operational: false, enforcementMethod: "simulated" }));
-  assert.equal(c.title, "Apollo is guarding what he can"); assert.match(c.line, /simulated/);
+  assert.equal(c.title, "Some protection needs attention"); assert.match(c.line, /unavailable on this device/);
 });
-test("null status is off duty", () => { assert.equal(masterCopy(null).title, "Apollo is off duty"); });
+test("null status is checking", () => { assert.equal(masterCopy(null).title, "Checking protection status"); });

@@ -11,6 +11,7 @@ from fastapi.responses import StreamingResponse
 from core.config import GEMINI_API_KEY, HIGGINS_VOICE, logger
 from core.db import db, now_utc
 from core.models import AskMessage, AskRequest
+from core.redaction import redact_user_secrets
 
 router = APIRouter()
 
@@ -23,10 +24,10 @@ Apollo's checks — exact name, what it is for, and WHERE TO FIND IT in the app:
 - "Check a message" (an SMS, email or chat text, especially one asking you to act) — Home → Check a message.
 - "Check an app" (an app you were told to install, or that asked for unusual permissions such as accessibility or screen sharing) — Home → Check an app.
 - "Check my device" (someone had remote access, a profile/VPN you didn't add, accessibility turned on) — Home → Check my device.
-- "Account Guard" (a login, MFA prompt or password reset you didn't start; a breach; details typed into a fake page) — Home → Account Guard, or the Guard tab → Open Account Guard.
-- "Network Guard" (odd Wi-Fi, a sign-in page that appeared, a VPN you don't recognise) — Home → Network Guard, or the Guard tab → Open Network Guard.
-When you advise a check: name the exact check(s), say in one short clause where to tap to find each, and say what it will tell them. Tie it to Apollo's state: Growling = unusual but unconfirmed, so run the check that confirms; Barking = act first (hang up / don't tap / don't share codes), then run the check(s) that limit the damage — Account Guard whenever details or codes were shared, Check my device whenever someone connected remotely; Biting = Apollo already blocked it — reassure, then Account Guard only if something was typed before the block. Then end the reply with one final line in this exact machine-readable form: CHECKS: <ids> — using only these ids: link, message, app, device, account, network (comma-separated, most important first). Omit that line entirely when no check is needed. Never invent other checks.
-Rules: no fear theatrics, no jargon without a one-line explanation, no fake certainty. If something is uncertain, say so plainly. Never ask for passwords, codes or personal details. Keep answers short (under 150 words) with clear next steps. If asked about things outside online safety, redirect with good grace."""
+- "Account Gate" (a login, MFA prompt or password reset you didn't start; a breach; details typed into a fake page) — Home → Account Gate, or the Gates tab → Open Account Gate.
+- "Network Gate" (odd Wi-Fi, a sign-in page that appeared, a VPN you don't recognise) — Home → Network Gate, or the Gates tab → Open Network Gate.
+When you advise a check: name the exact check(s), say in one short clause where to tap to find each, and say what it will tell them. Tie it to Apollo's behaviour: Growling = possible concern needing caution or investigation; Barking = significant concern, so act first (hang up / don't tap / don't share codes), then run the checks that limit damage — Account Gate whenever details or codes were shared, Check my device whenever someone connected remotely; Biting = Apollo confirmed one actual protective block, but that does not prove every other threat is contained. You are Higgins: provide every explanation and recommendation, but never claim that you detect or block. Apollo detects, warns and blocks only where supported and confirmed. Then end the reply with one final line in this exact machine-readable form: CHECKS: <ids> — using only these ids: link, message, app, device, account, network (comma-separated, most important first). Omit that line entirely when no check is needed. Never invent other checks.
+Rules: no fear theatrics, no jargon without a one-line explanation, no fake certainty. If something is uncertain, say so plainly. Never ask for, repeat or store a password, login username, PIN, recovery code, verification code, OTP or one-time security code. If the user says they pasted one, tell them it was redacted and give the appropriate account-recovery action without asking them to resend it. Keep answers short (under 150 words) with clear next steps. If asked about things outside online safety, redirect with good grace."""
 
 
 async def gemini_stream(device_id: str, message: str, context: Optional[str]) -> AsyncIterator[str]:
@@ -55,7 +56,7 @@ async def gemini_stream(device_id: str, message: str, context: Optional[str]) ->
             yield f"data: {json.dumps({'delta': ev.content})}\n\n"
         elif isinstance(ev, StreamDone):
             break
-    await db.ask_messages.insert_one(AskMessage(device_id=device_id, role="apollo", content=full, created_at=now_utc()).to_mongo())
+    await db.ask_messages.insert_one(AskMessage(device_id=device_id, role="higgins", content=redact_user_secrets(full), created_at=now_utc()).to_mongo())
     yield f"data: {json.dumps({'done': True})}\n\n"
 
 
@@ -63,11 +64,12 @@ async def gemini_stream(device_id: str, message: str, context: Optional[str]) ->
 async def ask_stream(body: AskRequest):
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=503, detail="Ask Higgins is not configured")
-    await db.ask_messages.insert_one(AskMessage(device_id=body.device_id, role="user", content=body.message, created_at=now_utc()).to_mongo())
+    safe_message = redact_user_secrets(body.message)
+    await db.ask_messages.insert_one(AskMessage(device_id=body.device_id, role="user", content=safe_message, created_at=now_utc()).to_mongo())
 
     async def gen():
         try:
-            async for chunk in gemini_stream(body.device_id, body.message, body.context):
+            async for chunk in gemini_stream(body.device_id, safe_message, body.context):
                 yield chunk
         except Exception as exc:  # noqa: BLE001
             logger.warning("ask stream failed: %s", type(exc).__name__)

@@ -31,7 +31,7 @@ export function RecoveryFlow({ event, kinds, linkToCheck, testID = "recovery" }:
   const [kind, setKind] = useState<RecoveryKind | null>(null);
   return (
     <>
-      <Button testID={`${testID}-open`} variant="warning" label="I already clicked / paid / shared…" onPress={() => setPick(true)} />
+      <Button testID={`${testID}-open`} variant="warning" label="I already called, clicked or shared…" onPress={() => setPick(true)} />
       <Sheet visible={pick} onClose={() => setPick(false)} title="What happened?" testID={`${testID}-pick-sheet`}>
         {kinds.map((k) => <Button key={k} testID={`${testID}-pick-${k}`} variant="secondary" label={RECOVERY_TITLE[k]} onPress={() => { setPick(false); setKind(k); void recordRecovery(event, k); }} />)}
         <Button testID={`${testID}-pick-cancel`} variant="ghost" label="Cancel" onPress={() => setPick(false)} />

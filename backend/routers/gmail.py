@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
-from core.config import logger
+from core.config import GOOGLE_GMAIL_REDIRECT_URI, logger
 from core.db import db, now_utc
 from services import gmail as gmail_service
 
@@ -47,6 +47,7 @@ async def gmail_connect(device_id: str = Query(min_length=8, max_length=64), app
         raise HTTPException(400, "Invalid redirect target")
     state = secrets.token_urlsafe(24)
     await db.gmail_oauth_states.insert_one({"state": state, "device_id": device_id, "app_redirect": app_redirect, "created_at": now_utc(), "expires_at": now_utc() + timedelta(minutes=10)})
+    logger.info("gmail oauth start redirect_uri=%s", GOOGLE_GMAIL_REDIRECT_URI)
     return GmailConnectOut(authorization_url=gmail_service.build_authorization_url(state))
 
 
@@ -85,7 +86,10 @@ async def gmail_callback(code: Optional[str] = None, state: Optional[str] = None
 async def gmail_status(device_id: str = Query(min_length=8, max_length=64)):
     row = await gmail_service.get_connection(device_id)
     return {"connected": row is not None, "configured": gmail_service.configured(),
-            "monitoring_enabled": bool(row and row.get("monitoring_enabled"))}
+            "oauth_redirect_uri": GOOGLE_GMAIL_REDIRECT_URI if gmail_service.configured() else None,
+            "monitoring_enabled": bool(row and row.get("monitoring_enabled")),
+            "monitor_last_checked_at": row.get("monitor_last_checked_at") if row else None,
+            "monitor_last_error_at": row.get("monitor_last_error_at") if row else None}
 
 
 class GmailMonitoringIn(BaseModel):

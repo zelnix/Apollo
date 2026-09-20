@@ -17,6 +17,7 @@ import { ACCOUNT_PROVIDERS, ALERT_KINDS, analyseAccountAlert, type AccountAnalys
 import { SCENT_WINDOW_MS } from "@/src/domain/threatScent";
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { patrolSafeSummary, type InvestigationResult } from "@/src/domain/investigation";
+import { redactUserSecrets } from "@/src/domain/privacy";
 import { NetworkAccountSdk } from "@/src/security/networkAccountSdk";
 import { type RecoveryKind, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -73,13 +74,14 @@ export default function CheckAccount() {
     setBusy(true);
     try {
     void markCheckDone("account");
+      const safeText = redactUserSecrets(text); if (safeText !== text) setText(safeText);
       const prov = ACCOUNT_PROVIDERS.find((p) => p.id === provider)!;
       const linked = recentLinked.find((e) => e.claimed_brand && ((prov.brand && e.claimed_brand.toLowerCase().includes(prov.brand.toLowerCase())) || (provider === "bank" && BANK_RE.test(e.claimed_brand)))) ?? (initiated === false || flags.enteredCode || flags.enteredPassword ? recentLinked[0] ?? null : null);
-      const input = { kind, provider, text: text.trim() || undefined, sender: sender.trim() || undefined, userInitiated: initiated, ...flags, recentScentCategories: (linked ? recentLinked : []).map((e) => e.category), recentScentBrand: linked?.claimed_brand ?? null };
+      const input = { kind, provider, text: safeText.trim() || undefined, sender: sender.trim() || undefined, userInitiated: initiated, ...flags, recentScentCategories: (linked ? recentLinked : []).map((e) => e.category), recentScentBrand: linked?.claimed_brand ?? null };
       let a = analyseAccountAlert(input);
       let remote: Remote | null = null;
       try {
-        remote = await apiPost<Remote>("/account/analyse", "account_check", { device_id: deviceId ?? "local-device", kind, provider, sender: sender.trim(), text: text.trim(), urls: a.urls.slice(0, 10), local_state: a.state, scenario: a.scenario, second_opinion: true });
+        remote = await apiPost<Remote>("/account/analyse", "account_check", { device_id: deviceId ?? "local-device", kind, provider, sender: sender.trim(), text: safeText.trim(), urls: a.urls.slice(0, 10), local_state: a.state, scenario: a.scenario, second_opinion: true });
         if (remote.assessment.risk === "warning" && a.state === "resting") a = { ...a, state: "growling", why: [...a.why, "The contextual investigation found unresolved or suspicious details that need verification."] };
         const bad = remote.urls.find((u) => u.verdict === "malicious");
         if (bad && a.state !== "barking") a = { ...a, state: "barking", why: [...a.why, `The link (${bad.host}) is confirmed dangerous by Apollo's threat intelligence.`], handoff: "web" };
@@ -105,7 +107,7 @@ export default function CheckAccount() {
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>Account Guard</Text>
+        <Text style={s.title}>Account Gate</Text>
         <Pressable testID="account-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="account-scroll">
@@ -144,8 +146,9 @@ export default function CheckAccount() {
           </>
         ) : a ? (
           <>
-            {result.remote?.assessment ? <MessageAssessmentResult assessment={result.remote.assessment} state={a.state} onPrimaryAction={() => showToast(result.remote!.assessment.higgins.next_action, "neutral")} /> : null}
-            <Card testID="account-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
+            {result.remote?.assessment ? <MessageAssessmentResult assessment={result.remote.assessment} state={a.state} testIDPrefix="account"
+              submittedLabel="Account alert investigated" submittedTitle={a.providerLabel} submittedText={text}
+              onPrimaryAction={() => showToast(result.remote!.assessment.higgins.next_action, "neutral")} /> : <Card testID="account-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
               <View style={s.chips}><Pill tone={a.state} label={STATE_NAME[a.state]} testID="account-state" /><Pill tone="neutral" label={a.scenario} testID="account-scenario" /><Pill tone={a.takeoverRisk === "low" ? "resting" : a.takeoverRisk === "elevated" ? "growling" : "barking"} label={RISK_LABEL[a.takeoverRisk]} testID="account-risk" /></View>
               <Text style={s.why}>{STATE_LABEL[a.state]}</Text>
               <Text style={s.label} testID="account-title">{a.title}</Text>
@@ -155,7 +158,7 @@ export default function CheckAccount() {
               {result.linked ? <Text style={s.why} testID="account-linked">• Connected to: {result.linked.headline} (Threat Scent). These events may be connected — do not approve the login request.</Text> : null}
               <SectionTitle>What to do</SectionTitle>
               <Text style={s.why} testID="account-recommendation">{a.recommendation}</Text>
-            </Card>
+            </Card>}
             {a.urls.length ? (
               <Card style={{ gap: spacing.sm }} testID="account-links">
                 <SectionTitle>Links in the alert</SectionTitle>
@@ -167,7 +170,7 @@ export default function CheckAccount() {
               <Text style={s.label}>Go in through the front door</Text>
               <Body testID="account-open-official">{a.openOfficial}</Body>
               {result.event ? <RecoveryFlow event={result.event} kinds={recovery} testID="account-recovery" /> : null}
-              {result.remote?.explanation ? <><Text style={s.label}>Apollo&apos;s plain-language take</Text><Body testID="account-second-opinion">{result.remote.explanation.summary}</Body></> : null}
+              {result.remote?.explanation && !result.remote.assessment ? <><Text style={s.label}>Higgins&apos;s plain-language assessment</Text><Body testID="account-second-opinion">{result.remote.explanation.summary}</Body></> : null}
               <Button testID="account-ask" variant="secondary" label="Tell me more" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { context: `Account alert check: ${a.title} (${a.providerLabel}). State: ${STATE_NAME[a.state]}. ${a.technical.join("; ")}`, prompt: "What should I do about this account alert?" } })} />
               <Button testID="account-tech" variant="ghost" label="View technical details" onPress={() => setTech((t) => !t)} />
               {tech ? a.technical.map((t, i) => <Body key={i} testID={`account-tech-${i}`}>{t}</Body>) : null}

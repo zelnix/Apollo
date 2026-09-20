@@ -12,8 +12,8 @@ export const CHECKS: Record<CheckId, { label: string; route: string; where: stri
   message: { label: "Check a message", route: "/message", where: "Home → Check a message" },
   app: { label: "Check an app", route: "/app-check", where: "Home → Check an app" },
   device: { label: "Check my device", route: "/device", where: "Home → Check my device" },
-  account: { label: "Account Guard", route: "/account", where: "Home → Account Guard (or Guard tab → Open Account Guard)" },
-  network: { label: "Network Guard", route: "/network", where: "Home → Network Guard (or Guard tab → Open Network Guard)" },
+  account: { label: "Account Gate", route: "/account", where: "Home → Account Gate (or Gates tab → Open Account Gate)" },
+  network: { label: "Network Gate", route: "/network", where: "Home → Network Gate (or Gates tab → Open Network Gate)" },
 };
 
 const IDS = Object.keys(CHECKS) as CheckId[];
@@ -71,9 +71,9 @@ export function checksSpoken(checks: CheckId[]): string {
 export function higginsPermissionNote(capabilities: Capability[]): string | null {
   const gaps = capabilities.filter((c) => c.status === "permission_required");
   if (!gaps.length) return null;
-  const names = gaps.map((c) => c.title);
+  const names = gaps.map((c) => c.title.replace(/ Guard$/i, " Gate"));
   const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-  return `I don't have permission for ${list} yet, so I can't verify ${names.length === 1 ? "it" : "them"} myself. Turn ${names.length === 1 ? "it" : "them"} on in Guard so I can check properly.`;
+  return `I don't have permission for ${list} yet, so I can't verify ${names.length === 1 ? "it" : "them"}. Open Gates to restore ${names.length === 1 ? "that permission" : "those permissions"}, then wait for Apollo to confirm the protection is running.`;
 }
 // --- Follow-up: a day later, Higgins gently notices what is still waiting ------------------------------------------
 export interface Suggestion { messageId: string; askedAt: string; checks: CheckId[]; snoozedUntil?: string }

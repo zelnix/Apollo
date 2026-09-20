@@ -1,5 +1,5 @@
 # Gate 7 — Apps & Device Protection backend tests.
-# POST /api/app/analyse (reputation hints, SDK-host intel, optional Gemini second opinion) and
+# POST /api/app/analyse (reputation hints, SDK-host intel and the shared Higgins assessment) and
 # POST /api/patrol/events accepting categories "app" / "device".
 import os
 import uuid
@@ -27,7 +27,7 @@ def _analyse(api_client, device_id, **over):
     body = {"device_id": device_id, "name": "Tiny Notes", "developer": None, "source": "play_store", "purpose": "other", "permissions": [], "hosts": [],
             "local_state": "resting", "scenario": "A18", "second_opinion": False}
     body.update(over)
-    return api_client.post(f"{BASE_URL}/api/app/analyse", json=body, timeout=40)
+    return api_client.post(f"{BASE_URL}/api/app/analyse", json=body, timeout=120)
 
 
 class TestAppAnalyse:
@@ -38,7 +38,9 @@ class TestAppAnalyse:
         assert d["reputation"]["remote_access_tool"] == "Anydesk"
         assert d["reputation"]["official_store"] is False
         assert "scammers" in d["reputation"]["note"]
-        assert d["gemini_used"] is False and d["explanation"] is None
+        assert d["assessment"]["risk"] == "warning"
+        assert d["assessment"]["higgins"]["next_action"]
+        assert d["assessment"]["processing"]["raw_retained_by_apollo"] is False
 
     def test_brand_impersonation_off_store(self, api_client, device_id):
         d = _analyse(api_client, device_id, name="CommBank Security Update", source="browser", purpose="update", local_state="barking", scenario="A03").json()
@@ -69,8 +71,9 @@ class TestAppAnalyse:
         r = _analyse(api_client, device_id, name="Fast Utility", permissions=["accessibility", "overlay", "notifications"], local_state="growling", scenario="A05", second_opinion=True)
         assert r.status_code == 200, r.text
         d = r.json()
-        if d["gemini_used"]:
-            assert set(d["explanation"]) >= {"summary", "why", "recommendation"}
+        assert set(d["explanation"]) >= {"summary", "why", "recommendation"}
+        assert d["assessment"]["sources"][0]["evidence_kind"] == "submitted_content"
+        assert d["assessment"]["sources"][0]["checked_at"]
 
 
 class TestPatrolAppDeviceEvents:

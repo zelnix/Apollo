@@ -126,7 +126,7 @@ export default function SettingsScreen() {
               <Text style={s.label}>Battery saver</Text>
               <Switch testID="settings-lowpower-switch" value={lowPower} onValueChange={(v) => void setLowPower(v)} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} />
             </View>
-            <Body>Pauses Apollo&apos;s animations and checks status less often while the app is open. Protection is unaffected — Apollo keeps guarding in the background, so you can minimise the app whenever you like.</Body>
+            <Body>Pauses Apollo&apos;s animations and checks status less often while the app is open. It does not change the protection status shown in Gates; supported native protection may continue when confirmed active.</Body>
             <Button testID="settings-minimise" variant="secondary" label="Minimise Apollo now" onPress={() => void minimiseApp(showToast)} />
           </Card>
         </View>
@@ -140,9 +140,9 @@ export default function SettingsScreen() {
         </View>
 
         <View>
-          <SectionTitle>Launch gates</SectionTitle>
+          <SectionTitle>Engine benchmark</SectionTitle>
           <Card style={{ gap: spacing.sm }}>
-            <Body>Run the labelled threat corpus and clean set against Apollo&apos;s engine to check the ≥90% detection and &lt;2% false-positive gates.</Body>
+            <Body>Run the labelled threat corpus and clean set against Apollo&apos;s engine to check its detection and false-positive thresholds.</Body>
             <Button testID="settings-benchmark" variant="secondary" label="Run threat benchmark" onPress={() => router.push("/benchmark")} />
           </Card>
         </View>
@@ -190,7 +190,7 @@ export default function SettingsScreen() {
           <Card style={{ gap: spacing.md }} testID="settings-higgins">
             <Body>Higgins is Apollo&apos;s handler — a proper old English gentleman who explains what Apollo saw. Tap &quot;Hear Higgins&quot; anywhere to have it read aloud.</Body>
             <View style={s.row}>
-              <View style={{ flex: 1 }}><Text style={s.label}>Read alerts aloud automatically</Text><Body>When Apollo barks or guards after a check, Higgins speaks up without being asked.</Body></View>
+              <View style={{ flex: 1 }}><Text style={s.label}>Read alerts aloud automatically</Text><Body>When Apollo barks or bites after a check, Higgins explains the evidence and recommended action without being asked.</Body></View>
               <Switch testID="settings-higgins-auto" value={higginsAuto} onValueChange={(v) => { setHigginsAutoState(v); void setHigginsAuto(v); }} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} />
             </View>
             <Button testID="settings-higgins-sample" variant="secondary" label={higgins.busy ? "One moment…" : higgins.speaking ? "Stop" : "Hear a sample"} onPress={() => void higgins.speak("Good evening. Higgins here — Apollo's handler. Apollo is patrolling and all is well within the checks he can see. Should he growl or bark, I shall explain exactly what he saw and what to do. Nothing more alarming than that.").catch((e: Error) => showToast(e.message, "neutral"))} />
@@ -201,7 +201,7 @@ export default function SettingsScreen() {
           <SectionTitle>About</SectionTitle>
           <Card style={{ gap: spacing.sm }} testID="settings-about">
             <Text style={s.label}>Apollo is a brand of Harmony Wellness Group.</Text>
-            <Body>Apollo is the guard dog; Higgins is his handler and the voice you hear. Australia-first, privacy-first — no account, no tracking.</Body>
+            <Body>Apollo is the cyber guard dog: he detects, warns and blocks only where supported and confirmed. Higgins is his handler and provides every written or spoken assessment and recommendation; Higgins never performs blocking.</Body>
           </Card>
         </View>
 

@@ -1,260 +1,168 @@
 import { useRouter } from "expo-router";
-import ChevronRight from "lucide-react-native/icons/chevron-right";
-import Globe from "lucide-react-native/icons/globe";
-import KeyRound from "lucide-react-native/icons/key-round";
+import AppWindow from "lucide-react-native/icons/app-window";
+import ChevronDown from "lucide-react-native/icons/chevron-down";
+import ChevronUp from "lucide-react-native/icons/chevron-up";
+import Globe2 from "lucide-react-native/icons/globe";
 import Link2 from "lucide-react-native/icons/link-2";
-import MessageSquareWarning from "lucide-react-native/icons/message-square-warning";
-import PhoneOff from "lucide-react-native/icons/phone-off";
-import Radar from "lucide-react-native/icons/radar";
-import Share2 from "lucide-react-native/icons/share-2";
-import ShieldCheck from "lucide-react-native/icons/shield-check";
-import Smartphone from "lucide-react-native/icons/smartphone";
+import Mail from "lucide-react-native/icons/mail";
+import MessageSquareText from "lucide-react-native/icons/message-square-text";
+import Phone from "lucide-react-native/icons/phone";
+import ShieldAlert from "lucide-react-native/icons/shield-alert";
+import UserRound from "lucide-react-native/icons/user-round";
 import Wifi from "lucide-react-native/icons/wifi";
-import React, { useState } from "react";
-import { Linking, Platform, Pressable, ScrollView, Switch, Text, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AppState, LayoutAnimation, Linking, Platform, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useBackendHealth } from "@/src/api/backendHealth";
-import { ServiceBanner } from "@/src/components/ServiceBanner";
-import { Sheet } from "@/src/components/Sheet";
-import { Body, Button, Card, DevTag, Pill, ScreenHeader, SectionTitle, capabilityTone } from "@/src/components/ui";
-import { CAPABILITY_STATUS_LABEL } from "@/src/domain/capability";
-import { assessConnection } from "@/src/domain/connection";
-import { masterCopy } from "@/src/domain/protectionTruth";
-import type { Capability } from "@/src/domain/types";
-import type { ProtectionPermission } from "@/src/security/SecurityPlatformAdapter";
+import { GateStatusCard } from "@/src/components/GateStatusCard";
+import { Body, Button, Card, Pill, ScreenHeader, SectionTitle } from "@/src/components/ui";
+import { buildGatesOverview, type GateId, type GateItem } from "@/src/domain/gates";
+import { CallSdk, type CallProtectionCapabilities } from "@/src/security/callSdk";
+import { MessagingSdk, type MessagingCapabilities } from "@/src/security/messagingSdk";
 import { useApollo } from "@/src/store/ApolloContext";
+import { apiGet } from "@/src/api/client";
+import { useBackendHealth } from "@/src/api/backendHealth";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
-/** One small icon per capability, matched to what it actually watches — never a generic shield for everything. */
-const CAP_ICON: Record<Capability["id"], React.ComponentType<{ size?: number; color?: string }>> = {
-  link_guard: Link2,
-  known_threats: Radar,
-  site_guard: Globe,
-  connection_guard: Wifi,
-  share_intake: Share2,
-  message_guard: MessageSquareWarning,
-  app_guard: Smartphone,
-};
-
+const ICON: Record<GateId, typeof Globe2> = { site: Globe2, link: Link2, text: MessageSquareText, call: Phone, network: Wifi, account: UserRound, email: Mail, app: AppWindow };
 const useStyles = makeStyles((c) => ({
-  root: { flex: 1, backgroundColor: c.surface },
-  content: { paddingHorizontal: spacing.xl, gap: spacing.xl, paddingBottom: spacing.xl },
-  masterRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.lg },
-  masterTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  masterTitle: { fontFamily: fonts.displayBold, fontSize: 18, color: c.brand },
-  capCard: { gap: spacing.sm, marginBottom: spacing.md },
-  guardRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
-  guardTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flex: 1 },
-  capTop: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  iconWell: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.navyTint, alignItems: "center", justifyContent: "center" },
-  capTitle: { fontFamily: fonts.displayBold, fontSize: 16, color: c.brand },
-  permRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm },
-  permTitle: { fontFamily: fonts.textMedium, fontSize: 15, color: c.onSurface },
-  netLine: { fontFamily: fonts.textMedium, fontSize: 15, color: c.onSurface },
+  root: { flex: 1, backgroundColor: c.surface }, content: { paddingHorizontal: spacing.xl, gap: spacing.xl, paddingBottom: spacing.xl },
+  summary: { gap: spacing.md, borderColor: c.navyBorder }, summaryTitle: { fontFamily: fonts.displayBold, fontSize: 25, lineHeight: 31, color: c.onSurface },
+  higginsLabel: { fontFamily: fonts.textSemibold, fontSize: 12, letterSpacing: 1.1, textTransform: "uppercase", color: c.brand },
+  higgins: { fontFamily: fonts.text, fontSize: 16, lineHeight: 24, color: c.onSurface }, section: { gap: spacing.md },
+  notice: { gap: spacing.sm, borderColor: c.goldBorder, backgroundColor: c.goldTint }, detailButton: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: c.border, paddingTop: spacing.sm },
+  detailText: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.brand }, detailRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md, paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: c.divider },
+  detailLabel: { flex: 1, fontFamily: fonts.textMedium, fontSize: 14, color: c.onSurface }, small: { fontFamily: fonts.text, fontSize: 12, lineHeight: 18, color: c.onSurfaceSecondary },
+  switchRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md, paddingVertical: spacing.sm }, switchCopy: { flex: 1, gap: 2 },
 }));
 
-const PERMISSION_TONE: Record<ProtectionPermission["status"], "resting" | "growling" | "barking" | "unknown" | "neutral"> = { granted: "resting", undetermined: "neutral", denied: "growling", blocked: "barking", not_applicable: "unknown" };
+export default function GatesScreen() {
+  const s = useStyles(); const { colors } = useTheme(); const insets = useSafeAreaInsets(); const router = useRouter();
+  const { protection, permissions, capabilities, network, refreshing, verifyNow, toggleProtection, requestPermission, deviceId } = useApollo();
+  const service = useBackendHealth();
+  const [messaging, setMessaging] = useState<MessagingCapabilities | null>(null);
+  const [calls, setCalls] = useState<CallProtectionCapabilities | null>(null);
+  const [emailRuntime, setEmailRuntime] = useState<{ checking: boolean; configured: boolean; connected: boolean; monitoringRequested: boolean; lastCheckedAt: string | null; lastErrorAt: string | null }>({ checking: true, configured: true, connected: false, monitoringRequested: false, lastCheckedAt: null, lastErrorAt: null });
+  const [breachConfigured, setBreachConfigured] = useState<boolean | undefined>(undefined);
+  const [details, setDetails] = useState(false); const [notice, setNotice] = useState<string | null>(null); const [restoring, setRestoring] = useState<GateId | null>(null);
+  const pendingSettings = useRef<GateId | null>(null);
+  const refreshGateCapabilities = useCallback(async () => {
+    const [nextMessaging, nextCalls] = await Promise.all([MessagingSdk.getMessagingCapabilities(), CallSdk.getCallProtectionCapabilities()]);
+    setMessaging(nextMessaging); setCalls(nextCalls); return { nextMessaging, nextCalls };
+  }, []);
+  useEffect(() => { void refreshGateCapabilities(); }, [refreshGateCapabilities]);
+  useEffect(() => {
+    if (!deviceId) return;
+    type MailStatus = { configured: boolean; connected: boolean; monitoring_enabled: boolean; monitor_last_checked_at: string | null; monitor_last_error_at: string | null };
+    apiGet<MailStatus>(`/gmail/status?device_id=${deviceId}`)
+      .then((gmail) => setEmailRuntime({ checking: false, configured: gmail.configured, connected: gmail.connected, monitoringRequested: gmail.monitoring_enabled,
+        lastCheckedAt: gmail.monitor_last_checked_at, lastErrorAt: gmail.monitor_last_error_at }))
+      .catch(() => setEmailRuntime((current) => ({ ...current, checking: false, configured: false })));
+  }, [deviceId]);
+  useEffect(() => { if (deviceId) apiGet<{ breach_lookup_configured: boolean }>("/account/status").then((value) => setBreachConfigured(value.breach_lookup_configured)).catch(() => setBreachConfigured(false)); }, [deviceId]);
 
-export default function Guard() {
-  const s = useStyles();
-  const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
-  const router = useRouter();
-  const { capabilities, protection, permissions, network, events, toggleProtection, requestPermission, isMock, showToast, trustedSsids, trustNetwork, forgetNetwork } = useApollo();
-  const [busy, setBusy] = useState(false);
-  const netCap = capabilities.find((c) => c.id === "connection_guard");
-  const connectionSummary = assessConnection(network, trustedSsids).summary;
-  const netOpen = events.filter((e) => e.category === "connection" && e.status === "active" && e.state !== "resting").length;
-  const accountOpen = events.filter((e) => e.category === "account" && e.status === "active" && e.state !== "resting");
-  const messageOpen = events.filter((e) => e.category === "message" && e.status === "active" && e.state !== "resting");
-  const callOpen = events.filter((e) => e.category === "call" && e.status === "active" && e.state !== "resting");
-  // One sheet, two views. Closing one Modal and opening another in the same tick fails on iOS/Android
-  // (the second never presents), so capability → permission switches content inside the same Modal.
-  const [sheet, setSheet] = useState<{ kind: "cap"; cap: Capability } | { kind: "perm"; perm: ProtectionPermission } | null>(null);
-  const explain = sheet?.kind === "perm" ? sheet.perm : null;
-  const selected = sheet?.kind === "cap" ? sheet.cap : null;
-  const needsSettings = (p: ProtectionPermission) => p.status === "blocked" || (p.status === "denied" && !p.canAskAgain);
+  const overview = useMemo(() => buildGatesOverview({ platform: Platform.OS, checking: refreshing, protection, permissions, capabilities, messaging, calls, email: emailRuntime,
+    online: service.reachable !== false, accountBreachConfigured: breachConfigured }),
+    [refreshing, protection, permissions, capabilities, messaging, calls, emailRuntime, service.reachable, breachConfigured]);
 
-  const onToggle = async (on: boolean) => { setBusy(true); try { await toggleProtection(on); } finally { setBusy(false); } };
+  const verifyRestoration = useCallback(async (id: GateId) => {
+    setRestoring(id); setNotice("I’m waiting for Apollo to verify whether the protection is actually running.");
+    try {
+      if (id === "site") {
+        const observed = await verifyNow();
+        setNotice(observed?.operational && !!observed.lastVerified ? "Protection is confirmed running. Site Gate is active."
+          : `Site Gate is still not confirmed running. ${observed?.degradedReason ?? "Open the device protection settings and complete the remaining permission step."}`);
+      } else {
+        const latest = await refreshGateCapabilities();
+        const active = id === "text" ? latest.nextMessaging.smsFiltering === "supported" : latest.nextCalls.callScreening === "supported";
+        setNotice(active ? `${id === "text" ? "Text" : "Call"} Gate is confirmed active.`
+          : `${id === "text" ? "Text" : "Call"} Gate is still off. Return to Settings and complete the requested role or permission.`);
+      }
+    } catch {
+      setNotice(`${id === "site" ? "Site" : id === "text" ? "Text" : "Call"} Gate could not be verified. Check the device permission or role, then try again.`);
+    } finally { setRestoring(null); }
+  }, [refreshGateCapabilities, verifyNow]);
 
-  // Three facts from the security layer, reported — never inferred here: requested, operational, verified.
-  // Plus one from the network layer: is the security service reachable (online checks) — local enforcement is unaffected.
-  const health = useBackendHealth();
-  const { title: masterTitle, line: masterLine, requested, operational } = masterCopy(protection, health.reachable !== false);
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state !== "active" || !pendingSettings.current) return;
+      const id = pendingSettings.current; pendingSettings.current = null; void verifyRestoration(id);
+    });
+    return () => sub.remove();
+  }, [verifyRestoration]);
 
-  const ask = async (perm: ProtectionPermission) => {
-    setSheet(null);
-    if (needsSettings(perm)) { void Linking.openSettings(); return; }
-    const result = await requestPermission(perm.id);
-    showToast(result.status === "granted" ? `${perm.title} permission granted` : `${perm.title} permission not granted`, result.status === "granted" ? "resting" : "barking");
+  const restoreSite = async () => {
+    setRestoring("site"); setNotice(null);
+    try {
+      const missing = permissions.find((p) => (p.id === "network_filter" || p.id === "vpn_config") && p.status !== "granted" && p.status !== "not_applicable");
+      if (missing?.status === "blocked" || (missing && !missing.canAskAgain)) {
+        pendingSettings.current = "site"; setNotice("Open Settings and restore Apollo’s protection permission. I’ll check again when you return."); await Linking.openSettings(); return;
+      }
+      if (missing) {
+        const result = await requestPermission(missing.id);
+        if (result.status !== "granted" && result.status !== "not_applicable") {
+          setNotice(result.canAskAgain ? "The permission was not granted. Tap Restore protection to try again." : "The permission is blocked. Tap Restore protection to open Settings."); return;
+        }
+      }
+      await toggleProtection(true); await verifyRestoration("site");
+    } catch {
+      setNotice("Site Gate restoration could not be completed. Open the device protection settings, complete the remaining permission, then return and try again.");
+    } finally { setRestoring(null); }
   };
 
-  return (
-    <View style={s.root}>
-      <View style={{ paddingTop: insets.top + spacing.md }}>
-        <ScreenHeader title="Guard" testID="guard-header" right={isMock ? <DevTag label="Mock" /> : null} />
+  const restoreNativeGate = async (id: "text" | "call") => {
+    setRestoring(id); setNotice(null);
+    try {
+      const result = id === "text" ? await MessagingSdk.openSmsListenerSettings() : await CallSdk.requestCallScreeningRole();
+      if (!result.opened) { setNotice(`${id === "text" ? "Text" : "Call"} Gate cannot open its protection settings on this device. Manual checks remain available.`); return; }
+      pendingSettings.current = id; setNotice(`Complete the ${id === "text" ? "notification access" : "call-screening"} step in Settings. I’ll verify it when you return.`);
+    } catch {
+      setNotice(`${id === "text" ? "Text" : "Call"} Gate settings could not be opened. Manual checks remain available.`);
+    } finally { setRestoring(null); }
+  };
+
+  const onGateAction = (gate: GateItem) => {
+    if (gate.action === "open" && gate.route) { router.push(gate.route as never); return; }
+    if (gate.action === "restore_site") void restoreSite();
+    else if (gate.action === "restore_text") void restoreNativeGate("text");
+    else if (gate.action === "restore_call") void restoreNativeGate("call");
+  };
+
+  const gap = overview.gates.some((gate) => gate.status === "Needs attention" || gate.status === "Off");
+  const checkingSummary = overview.summary === "Checking protection status";
+  const summaryTone = checkingSummary ? "neutral" : gap ? "barking" : overview.summary === "All available protection is active" ? "resting" : "unknown";
+  const summaryLabel = checkingSummary ? "Checking status" : gap ? "Needs attention" : overview.summary === "All available protection is active" ? "Active" : "Manual only";
+  return <View style={s.root} testID="gates-screen">
+    <View style={{ paddingTop: insets.top + spacing.md }}><ScreenHeader title="Gates" testID="gates-header" /></View>
+    <ScrollView contentContainerStyle={s.content} testID="gates-scroll">
+      <Card testID="gates-summary-card" style={s.summary}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><ShieldAlert size={21} color={gap ? colors.barking : colors.brand} />
+          <Pill testID="gates-summary-status" tone={summaryTone} label={summaryLabel} /></View>
+        <Text testID="gates-summary" style={s.summaryTitle}>{overview.summary}</Text>
+        <Text style={s.higginsLabel}>Higgins</Text><Text testID="gates-higgins" style={s.higgins}>{notice ?? overview.higgins}</Text>
+        {overview.primary ? <Button testID="gates-primary-action" label={restoring ? "Checking…" : overview.primary.actionLabel} onPress={() => onGateAction(overview.primary!)} disabled={!!restoring} /> : null}
+        <Pressable testID="gates-more-details" accessibilityRole="button" accessibilityState={{ expanded: details }} style={s.detailButton}
+          onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setDetails((value) => !value); }}>
+          <Text style={s.detailText}>More details</Text>{details ? <ChevronUp size={19} color={colors.brand} /> : <ChevronDown size={19} color={colors.brand} />}
+        </Pressable>
+        {details ? <View testID="gates-technical-details">
+          <View style={s.switchRow}><View style={s.switchCopy}><Text style={s.detailLabel}>Requested setting</Text><Text style={s.small}>This setting alone does not prove protection is running.</Text></View>
+            <Switch testID="gates-protection-switch" value={!!protection?.requested} onValueChange={(value) => void toggleProtection(value)} trackColor={{ false: colors.borderStrong, true: colors.resting }} thumbColor={colors.onSurface} /></View>
+          <View style={s.detailRow}><Text style={s.detailLabel}>Confirmed running</Text><Pill testID="gates-confirmed-running" tone={protection?.operational && protection.lastVerified ? "resting" : "growling"} label={protection?.operational && protection.lastVerified ? "Yes" : "No"} /></View>
+          <View style={s.detailRow}><Text style={s.detailLabel}>Enforcement</Text><Text style={s.small}>{protection?.enforcementMethod ?? "Not established"}</Text></View>
+          <View style={s.detailRow}><Text style={s.detailLabel}>DNS / VPN visibility</Text><Text style={s.small}>{network?.inspectable ? "Observed by adapter" : "Not observed"}</Text></View>
+          <View style={s.detailRow}><Text style={s.detailLabel}>Last checked</Text><Text style={s.small}>{protection?.checkedAt ? new Date(protection.checkedAt).toLocaleTimeString() : "Not established"}</Text></View>
+          {permissions.map((permission) => <View key={permission.id} style={s.detailRow} testID={`gates-permission-${permission.id}`}><Text style={s.detailLabel}>{permission.title}</Text><Pill tone={permission.status === "granted" ? "resting" : permission.status === "not_applicable" ? "unknown" : "growling"} label={permission.status.replaceAll("_", " ")} /></View>)}
+        </View> : null}
+      </Card>
+
+      <View style={s.section}><SectionTitle>Automatic protection and monitoring</SectionTitle>
+        {overview.gates.filter((gate) => gate.mode !== "Manual submission").map((gate) => { const Icon = ICON[gate.id]; return <GateStatusCard key={gate.id} gate={gate} icon={<Icon size={19} color={colors.brand} />} onAction={() => onGateAction(gate)} />; })}
       </View>
-      <ScrollView contentContainerStyle={s.content} testID="guard-scroll">
-        <ServiceBanner />
-        <Card testID="guard-master-card" style={{ gap: spacing.sm }}>
-          <View style={s.masterRow}>
-            <View style={{ flex: 1, gap: 4 }}>
-              <View style={s.masterTitleRow}>
-                <View style={s.iconWell}><ShieldCheck size={18} color={colors.brand} /></View>
-                <Text style={s.masterTitle} testID="guard-master-title">{masterTitle}</Text>
-              </View>
-              <Body testID="guard-master-line">{masterLine}</Body>
-            </View>
-            <Switch testID="guard-protection-switch" value={requested} onValueChange={onToggle} disabled={busy} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} />
-          </View>
-          {requested ? (
-            <View style={{ gap: 4 }} testID="guard-master-truth">
-              <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}>
-                <Pill tone="neutral" label="Requested: on" testID="guard-truth-requested" />
-                <Pill tone={operational ? "resting" : "growling"} label={operational ? "Enforcement: active" : "Enforcement: not active"} testID="guard-truth-operational" />
-                <Pill tone={operational ? "resting" : "unknown"} label={protection?.lastVerified ? `Verified ${new Date(protection.lastVerified).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Not yet verified"} testID="guard-truth-verified" />
-              </View>
-              <Body testID="guard-master-coverage">{protection?.coverage}</Body>
-              {protection?.degradedReason ? <Body testID="guard-master-degraded">{protection.degradedReason}</Body> : null}
-            </View>
-          ) : null}
-        </Card>
-
-        <View>
-          <SectionTitle>Network & Accounts</SectionTitle>
-          <Card style={s.capCard} testID="guard-network-card">
-            <View style={s.guardRow}>
-              <View style={s.guardTitleRow}>
-                <View style={s.iconWell}><Wifi size={16} color={colors.brand} /></View>
-                <Text style={s.capTitle}>Network Guard</Text>
-              </View>
-              <Pill tone={netCap ? capabilityTone(netCap.status) : "unknown"} label={netCap ? CAPABILITY_STATUS_LABEL[netCap.status] : "Unknown"} testID="guard-network-status" />
-            </View>
-            <Body testID="guard-network-summary">{!requested ? "Protection is off — Apollo isn't watching connections." : `${connectionSummary} ${netOpen ? `${netOpen} unresolved network item${netOpen > 1 ? "s" : ""}.` : "No unresolved network issues."}`}</Body>
-            <Button testID="guard-open-network" variant="secondary" label="Open Network Guard" onPress={() => router.push("/network")} />
-          </Card>
-          <Card style={s.capCard} testID="guard-account-card">
-            <View style={s.guardRow}>
-              <View style={s.guardTitleRow}>
-                <View style={s.iconWell}><KeyRound size={16} color={colors.brand} /></View>
-                <Text style={s.capTitle}>Account Guard</Text>
-              </View>
-              <Pill tone={accountOpen.some((e) => e.state === "barking") ? "barking" : accountOpen.length ? "growling" : "resting"} label={accountOpen.length ? `${accountOpen.length} need${accountOpen.length > 1 ? "" : "s"} attention` : "All good"} testID="guard-account-status" />
-            </View>
-            <Body testID="guard-account-summary">{accountOpen.length ? accountOpen.slice(0, 2).map((e) => e.headline.replace(/^Account: /, "")).join(" · ") : "No unresolved account-security issues. Check any login, MFA or password-reset alert you're unsure about."}</Body>
-            <Button testID="guard-open-account" variant="secondary" label="Open Account Guard" onPress={() => router.push("/account")} />
-          </Card>
-        </View>
-
-        <View>
-          <SectionTitle>Messages</SectionTitle>
-          <Card style={s.capCard} testID="guard-textguard-card">
-            <View style={s.guardRow}>
-              <View style={s.guardTitleRow}>
-                <View style={s.iconWell}><MessageSquareWarning size={16} color={colors.brand} /></View>
-                <Text style={s.capTitle}>Text Guard</Text>
-              </View>
-              <Pill tone={messageOpen.some((e) => e.state === "barking") ? "barking" : messageOpen.length ? "growling" : "resting"} label={messageOpen.length ? `${messageOpen.length} need${messageOpen.length > 1 ? "" : "s"} attention` : "All good"} testID="guard-textguard-status" />
-            </View>
-            <Body testID="guard-textguard-summary">{messageOpen.length ? messageOpen.slice(0, 2).map((e) => e.headline).join(" · ") : Platform.OS === "android" ? "Paste a text, or turn on automatic scanning of new message notifications." : "Paste a text, or share it to Apollo from Messages."}</Body>
-            <Button testID="guard-open-textguard" variant="secondary" label="Open Text Guard" onPress={() => router.push("/text-guard")} />
-          </Card>
-        </View>
-
-        <View>
-          <SectionTitle>Calls</SectionTitle>
-          <Card style={s.capCard} testID="guard-callguard-card">
-            <View style={s.guardRow}>
-              <View style={s.guardTitleRow}>
-                <View style={s.iconWell}><PhoneOff size={16} color={colors.brand} /></View>
-                <Text style={s.capTitle}>Call Guard</Text>
-              </View>
-              <Pill tone={callOpen.some((e) => e.state === "barking") ? "barking" : callOpen.length ? "growling" : "resting"} label={callOpen.length ? `${callOpen.length} need${callOpen.length > 1 ? "" : "s"} attention` : "All good"} testID="guard-callguard-status" />
-            </View>
-            <Body testID="guard-callguard-summary">{callOpen.length ? callOpen.slice(0, 2).map((e) => e.headline).join(" · ") : "Check a number, or turn on automatic call screening."}</Body>
-            <Button testID="guard-open-callguard" variant="secondary" label="Open Call Guard" onPress={() => router.push("/call-guard")} />
-          </Card>
-        </View>
-
-        <View>
-          <SectionTitle>Capabilities</SectionTitle>
-          {capabilities.map((cap) => {
-            const CapIcon = CAP_ICON[cap.id];
-            const actionable = cap.status === "permission_required";
-            return (
-              <Card key={cap.id} style={s.capCard} testID={`guard-cap-${cap.id}`}>
-                <Pressable disabled={!actionable} onPress={() => setSheet({ kind: "cap", cap })} testID={`guard-cap-${cap.id}-press`} accessibilityRole={actionable ? "button" : undefined} style={s.capTop}>
-                  <View style={s.iconWell}><CapIcon size={18} color={colors.brand} /></View>
-                  <Text style={[s.capTitle, { flex: 1 }]}>{cap.title}</Text>
-                  <Pill tone={capabilityTone(cap.status)} label={CAPABILITY_STATUS_LABEL[cap.status]} testID={`guard-cap-${cap.id}-status`} />
-                  {actionable ? <ChevronRight size={18} color={colors.onSurfaceSecondary} /> : null}
-                </Pressable>
-                <Body>{cap.detail}</Body>
-                {actionable ? (
-                  <Button testID={`guard-cap-${cap.id}-fix`} variant="secondary" label="What's needed" onPress={() => setSheet({ kind: "cap", cap })} />
-                ) : null}
-              </Card>
-            );
-          })}
-        </View>
-
-        <View>
-          <SectionTitle>Permissions</SectionTitle>
-          <Card testID="guard-permissions">
-            {permissions.map((p) => (
-              <View key={p.id} style={s.permRow} testID={`guard-perm-${p.id}`}>
-                <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={s.permTitle}>{p.title}</Text>
-                  <Body>{p.why}</Body>
-                </View>
-                {p.status === "granted" || p.status === "not_applicable" ? (
-                  <Pill tone={PERMISSION_TONE[p.status]} label={p.status === "granted" ? "Granted" : "N/A"} />
-                ) : (
-                  <Button testID={`guard-perm-${p.id}-request`} variant={p.status === "blocked" ? "warning" : "secondary"} label={needsSettings(p) ? "Open Settings" : "Allow"} onPress={() => setSheet({ kind: "perm", perm: p })} />
-                )}
-              </View>
-            ))}
-          </Card>
-        </View>
-
-        <View>
-          <SectionTitle>Connection</SectionTitle>
-          <Card testID="guard-network">
-            <Text style={s.netLine}>{network ? (network.connected ? `Connected via ${network.type}${network.ssid ? ` · ${network.ssid}` : ""}` : "Not connected") : "Checking…"}</Text>
-            <Body>{assessConnection(network, trustedSsids).summary}</Body>
-            {network?.type === "wifi" ? <Pill tone={trustedSsids.includes(network.ssid ?? "") ? "resting" : network.wifiSecurity === "open" || network.wifiSecurity === "wep" || network.captivePortal ? "growling" : network.wifiSecurity === "unknown" ? "unknown" : "resting"} label={trustedSsids.includes(network.ssid ?? "") ? "Trusted network" : network.captivePortal ? "Captive portal" : network.wifiSecurity === "n/a" ? "Wi‑Fi" : `Wi‑Fi: ${network.wifiSecurity}`} testID="guard-wifi-pill" /> : null}
-            {network?.type === "wifi" && network.ssid ? (
-              trustedSsids.includes(network.ssid)
-                ? <Button testID="guard-forget-network" variant="ghost" label="Forget this network" onPress={() => forgetNetwork(network.ssid!)} style={{ marginTop: spacing.sm }} />
-                : <Button testID="guard-trust-network" variant="secondary" label="Trust this network (home / work)" onPress={() => trustNetwork(network.ssid!)} style={{ marginTop: spacing.sm }} />
-            ) : null}
-            {trustedSsids.length ? <Body style={{ marginTop: spacing.sm }}>Trusted networks: {trustedSsids.join(", ")}</Body> : null}
-          </Card>
-        </View>
-
-        <Button testID="guard-check-link" label="Check a link" onPress={() => router.push("/check")} />
-      </ScrollView>
-
-      <Sheet visible={!!sheet} onClose={() => setSheet(null)} title={explain?.title ?? selected?.title ?? ""} testID={explain ? "permission-sheet" : "capability-sheet"}>
-        {explain ? (
-          <>
-            <Body>{explain.why}</Body>
-            <Body>{needsSettings(explain) ? "This permission was declined before. You can enable it in your device settings." : "Apollo only asks when you choose to enable a protection. You can change this any time."}</Body>
-            <Button testID="permission-sheet-continue" label={needsSettings(explain) ? "Open Settings" : "Continue"} onPress={() => void ask(explain)} />
-            <Button testID="permission-sheet-cancel" variant="ghost" label="Not now" onPress={() => setSheet(null)} />
-          </>
-        ) : selected ? (
-          <>
-            <Body>{selected.detail}</Body>
-            <Body>Grant the permission below to enable this protection. Until then, Apollo shows it as not active.</Body>
-            {permissions.filter((p) => p.status !== "granted" && p.status !== "not_applicable").map((p) => (
-              <Button key={p.id} testID={`capability-sheet-perm-${p.id}`} label={needsSettings(p) ? `Open Settings for ${p.title}` : `Allow ${p.title}`} onPress={() => setSheet({ kind: "perm", perm: p })} />
-            ))}
-            <Button testID="capability-sheet-close" variant="ghost" label="Close" onPress={() => setSheet(null)} />
-          </>
-        ) : null}
-      </Sheet>
-    </View>
-  );
+      <View style={s.section}><SectionTitle>Checks you start</SectionTitle>
+        <Body testID="gates-manual-note">These Gates assess only what you submit. Ready to check does not mean Apollo is monitoring that entry point automatically.</Body>
+        {overview.gates.filter((gate) => gate.mode === "Manual submission").map((gate) => { const Icon = ICON[gate.id]; return <GateStatusCard key={gate.id} gate={gate} icon={<Icon size={19} color={colors.brand} />} onAction={() => onGateAction(gate)} />; })}
+      </View>
+    </ScrollView>
+  </View>;
 }

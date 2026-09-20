@@ -35,7 +35,7 @@ test("completion before the ask does not count", () => {
 });
 test("gentle wording", () => {
   assert.equal(followUpLine(["device"], yesterday, now), "Yesterday I suggested Check my device. No rush at all — it's still waiting whenever you have a quiet moment.");
-  assert.match(followUpLine(["device", "account", "link"], twoDays, now), /^2 days ago I suggested Check my device, Account Guard and Check a link\. .*they're/);
+  assert.match(followUpLine(["device", "account", "link"], twoDays, now), /^2 days ago I suggested Check my device, Account Gate and Check a link\. .*they're/);
 });
 
 // --- "Run a check" always names the checks -----------------------------------------------------------------------
@@ -57,7 +57,7 @@ test("spoken form names every check and where to find it, in order", () => {
   const spoken = checksSpoken(["device", "account"]);
   assert.match(spoken, /2 checks I need you to run, most important first/);
   assert.match(spoken, /first, Check my device — under Home → Check my device/);
-  assert.match(spoken, /second, Account Guard — under Home → Account Guard\./);
+  assert.match(spoken, /second, Account Gate — under Home → Account Gate\./);
   assert.equal(checksSpoken(["link"]), "The check I need you to run is Check a link — under Home → Check a link.");
   assert.equal(checksSpoken([]), "");
 });
@@ -67,12 +67,12 @@ import { higginsPermissionNote } from "../src/domain/higginsChecks.ts";
 test("permission note: null when nothing is gated, first-person and named when it is", () => {
   assert.equal(higginsPermissionNote([{ id: "site_guard", title: "Site Guard", status: "active", detail: "" }]), null);
   const one = higginsPermissionNote([{ id: "site_guard", title: "Site Guard", status: "permission_required", detail: "" }]);
-  assert.match(one!, /^I don't have permission for Site Guard yet/);
-  assert.match(one!, /Turn it on in Guard/);
+  assert.match(one!, /^I don't have permission for Site Gate yet/);
+  assert.match(one!, /Open Gates/);
   const two = higginsPermissionNote([
     { id: "site_guard", title: "Site Guard", status: "permission_required", detail: "" },
     { id: "connection_guard", title: "Network Guard", status: "permission_required", detail: "" },
   ]);
-  assert.match(two!, /Site Guard and Network Guard yet/);
-  assert.match(two!, /Turn them on in Guard/);
+  assert.match(two!, /Site Gate and Network Gate yet/);
+  assert.match(two!, /Open Gates/);
 });

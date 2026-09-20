@@ -21,6 +21,7 @@ import { apiUpload } from "@/src/api/client";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { useScreenshotAccess } from "@/src/hooks/useScreenshotAccess";
+import { redactUserSecrets } from "@/src/domain/privacy";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -61,9 +62,11 @@ export default function CheckMessage() {
   const autoPicker = useRef(false);
 
   const run = async (t = text, snd = sender) => {
-    if (!t.trim()) return;
+    const safeText = redactUserSecrets(t);
+    if (!safeText.trim()) return;
+    if (safeText !== t) setText(safeText);
     setBusy("checking"); setError(null); setResult(null);
-    try { setResult(await checkMessage(snd, t)); } catch (e) { setError(e instanceof Error ? e.message : "Could not check this message."); } finally { setBusy("idle"); }
+    try { setResult(await checkMessage(snd, safeText)); } catch (e) { setError(e instanceof Error ? e.message : "Could not check this message."); } finally { setBusy("idle"); }
   };
   useEffect(() => { if (params.text && ready && setupDone && !autoRan.current) { autoRan.current = true; void run(String(params.text), params.sender ? String(params.sender) : ""); } }, [params.text, params.sender, ready, setupDone]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -108,7 +111,7 @@ export default function CheckMessage() {
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>Check a message</Text>
+        <Text style={s.title}>{params.source === "email" ? "Email Gate" : "Text Gate"}</Text>
         <Pressable testID="message-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="message-scroll">
@@ -135,10 +138,10 @@ export default function CheckMessage() {
         {result && a ? (
           <>
             {result.assessment ? <MessageAssessmentResult assessment={result.assessment} state={a.state}
-              submittedLabel={screenshotUri ? "Screenshot text investigated" : "Message investigated"}
+              submittedLabel={screenshotUri ? (params.source === "email" ? "Email screenshot investigated" : "Screenshot text investigated") : "Message investigated"}
               submittedTitle={sender || "Sender not supplied"} submittedText={text} onPrimaryAction={() => {
               const kind = result.assessment!.higgins.action_kind;
-              if (kind === "check_account") router.push("/account");
+              if (kind === "check_account") setVerify(true);
               else if (kind === "avoid_and_delete") { setText(""); setSender(""); showToast("Submitted content cleared from this screen.", "neutral"); }
               else setVerify(true);
             }} /> : <Card testID="message-result" style={{ borderColor: toneColor(colors, tone), gap: spacing.sm }}>
@@ -179,9 +182,9 @@ export default function CheckMessage() {
               <SectionTitle>What next</SectionTitle>
               <Card style={{ gap: spacing.sm }}>
                 <Button testID="message-verify-sender" variant="secondary" label="Verify sender safely" onPress={() => setVerify(true)} />
-                {a.signals.loginRequest || a.signals.codeRequest || /password|sign[- ]?in|login|account/i.test(text) ? <Button testID="message-check-account" variant="secondary" label="It's about my account — check with Account Guard" onPress={() => router.push({ pathname: "/account", params: { text, scent: result.event?.scent_id ?? result.event?.event_id ?? "" } })} /> : null}
+                {a.signals.loginRequest || a.signals.codeRequest || /password|sign[- ]?in|login|account/i.test(text) ? <Button testID="message-check-account" variant="secondary" label="It's about my account — open Account Gate" onPress={() => router.push({ pathname: "/account", params: { text, scent: result.event?.scent_id ?? result.event?.event_id ?? "" } })} /> : null}
                 <Button testID="message-tell-more" variant="secondary" label="Tell me more (Ask Higgins)" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { context: `Message check: ${a.scenarioTitle}. State: ${STATE_NAME[a.state]}. Signals: ${a.signalLabels.join(", ") || "none"}. Website: ${result.urls[0]?.host ?? "none"}.`, prompt: "Explain this message check in plain language and what I should do." } })} />
-                {result.event ? <RecoveryFlow event={result.event} kinds={["clicked", "password", "code", "money", "info", "app"]} linkToCheck={a.signals.urls[0] ?? null} testID="message-recovery" /> : null}
+                {result.event ? <RecoveryFlow event={result.event} kinds={["called", "clicked", "password", "code", "money", "info", "app"]} linkToCheck={a.signals.urls[0] ?? null} testID="message-recovery" /> : null}
                 {result.event ? <Button testID="message-mark-safe" variant="ghost" label="Mark as safe — I know this sender" onPress={() => { void resolveEvent(result.event!); showToast("Marked as safe. Apollo will stop flagging it.", "resting"); goBackOrHome(router); }} /> : null}
               </Card>
             </View>
@@ -189,7 +192,7 @@ export default function CheckMessage() {
         ) : null}
       </KeyboardAwareScrollView>
 
-      <Sheet visible={verify} onClose={() => setVerify(false)} title="Verify the sender" testID="verify-sender-sheet">
+      <Sheet visible={verify} onClose={() => setVerify(false)} title={a?.signals.callbackRequest ? (a.signals.claimedBrand?.toLowerCase() === "paypal" ? "Check PayPal independently" : "Check the account independently") : "Verify the sender"} testID="verify-sender-sheet">
         <Body>{a?.verifySender}</Body>
         <Body>Never verify using a number, link or email that only appears in the suspicious message.</Body>
         <Button testID="verify-sender-close" variant="ghost" label="Got it" onPress={() => setVerify(false)} />

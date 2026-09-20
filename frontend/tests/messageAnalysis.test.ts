@@ -6,6 +6,7 @@ import { test } from "node:test";
 import { analyseMessage } from "../src/domain/messageAnalysis.ts";
 
 const cases: { id: string; sender: string; text: string; expect: string[]; scenario?: string }[] = [
+  { id: "M16 PayPal alleged-charge callback", sender: "+5591981395859", text: "ALERT — Unauthorized Charge Flagged. PayPal: Our security monitoring system just flagged a suspicious transaction linked to your account. Merchant: NovaTech Electronics Pty Ltd. Amount: A$412.50 Date: Sep 20, 2026 Ref ID: #PL-582911. If you recognize this charge, no action is needed. If this wasn't you, contact our fraud response line at +61 (1800) 316556 within 4 hours to freeze the transaction before funds are released. Accounts left unverified past this window will be locked automatically. — Security Team (AU) +61 (1800) 316556 PayPal ©2026 Payment Services. All rights reserved.", expect: ["barking"], scenario: "M16" },
   { id: "M01 parcel", sender: "+61 480 000 111", text: "AusPost: Your package could not be delivered. Pay $2.95 to reschedule at auspost-redelivery-au.top/track", expect: ["growling"], scenario: "M01" },
   { id: "M02 bank", sender: "+61 400 000 222", text: "CommBank Alert: A $4,820 payment has been detected. Secure your account immediately at commbank-secure-verify.xyz/login", expect: ["barking"], scenario: "M02" },
   { id: "M03 toll", sender: "Linkt", text: "Your toll payment is overdue. Pay now to avoid additional penalties: linkt-pay-notice.com", expect: ["growling"], scenario: "M03" },
@@ -43,6 +44,22 @@ test("M05 must not be declared fraudulent outright", () => {
   const r = analyseMessage("+61 411 222 333", "Hi Mum, new number — dropped my phone in the pool!");
   assert.equal(r.state, "ears_up");
   assert.match(r.verdict, /pattern/i);
+});
+
+test("PayPal acceptance case is a callback trap, not a payment request", () => {
+  const text = cases[0].text;
+  const r = analyseMessage(cases[0].sender, text);
+  assert.equal(r.scenarioTitle, "Alleged-charge callback trap");
+  assert.equal(r.signals.callbackNumber, "+61 (1800) 316556");
+  assert.equal(r.signals.requestedAction, "call a supplied number about an alleged charge");
+  assert.match(r.recommendation, /existing PayPal app/i);
+  assert.doesNotMatch(`${r.verdict} ${r.recommendation}`, /charge (?:is|was) absent|charge does not exist/i);
+});
+
+test("resting message does not use the forbidden Ordinary message label", () => {
+  const r = analyseMessage("City Dental", "Your appointment is confirmed for Tuesday at 3:30 pm. No payment is due.");
+  assert.equal(r.state, "resting");
+  assert.equal(r.scenarioTitle, "No concern identified");
 });
 
 test("Detection ≥ 90% across threat scenarios, 0 false positives on clean set", () => {

@@ -30,6 +30,7 @@ const useStyles = makeStyles((c) => ({
   source: { minHeight: 44, gap: spacing.xs, paddingVertical: spacing.sm },
   sourceLabel: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.brand },
   small: { fontFamily: fonts.text, fontSize: 12, lineHeight: 18, color: c.onSurfaceSecondary },
+  evidenceKind: { fontFamily: fonts.textSemibold, fontSize: 11, letterSpacing: 0.5, textTransform: "uppercase", color: c.onSurfaceSecondary },
   privacy: { flexDirection: "row", gap: spacing.sm, alignItems: "flex-start", paddingTop: spacing.sm, borderTopWidth: 1, borderColor: c.border },
 }));
 
@@ -37,6 +38,7 @@ function Finding({ finding, index, prefix }: { finding: InvestigationFinding; in
   const s = useStyles(); const { colors } = useTheme();
   const tone = finding.status === "suspicious" ? colors.barking : finding.status === "corroborated" ? colors.resting : colors.unknown;
   return <View testID={`${prefix}-finding-${index}`} style={[s.finding, { borderLeftColor: tone }]}>
+    <Text testID={`${prefix}-finding-${index}-kind`} style={s.evidenceKind}>{finding.evidence_kind === "external_verification" ? "External verification" : finding.evidence_kind === "submitted_content" ? "Message evidence" : "Inference"}</Text>
     <Text testID={`${prefix}-finding-${index}-title`} style={s.findingTitle}>{finding.title}</Text>
     <Body testID={`${prefix}-finding-${index}-detail`}>{finding.detail}</Body>
   </View>;
@@ -49,16 +51,16 @@ interface Props {
   submittedLabel?: string;
   submittedTitle?: string;
   submittedText?: string;
-  testIDPrefix?: "message" | "link";
+  testIDPrefix?: "message" | "link" | "call" | "app" | "email" | "account";
 }
 
 export function MessageAssessmentResult({ assessment, state, onPrimaryAction, submittedLabel = "You submitted",
   submittedTitle, submittedText, testIDPrefix = "message" }: Props) {
   const s = useStyles(); const { colors } = useTheme(); const [details, setDetails] = useState(false);
-  const prefix = testIDPrefix === "message" ? "message-assessment" : "link-assessment";
+  const prefix = testIDPrefix === "message" ? "message-assessment" : `${testIDPrefix}-assessment`;
   const riskLabel = assessment.risk === "warning" ? "Scam warning" : assessment.risk === "clear" ? "No strong scam signs" : "Needs verification";
   const truthLabel = state === "biting" ? "Observed packet blocked" : assessment.risk === "warning" ? "Warning — nothing was blocked" : "Assessment only — nothing was blocked";
-  return <Card testID={testIDPrefix === "message" ? "message-assessment" : "link-assessment"} style={[s.card, { borderColor: toneColor(colors, state) }]}>
+  return <Card testID={testIDPrefix === "message" ? "message-assessment" : `${testIDPrefix}-assessment`} style={[s.card, { borderColor: toneColor(colors, state) }]}>
     <View style={[s.hero, { backgroundColor: toneTint(colors, state) }]}>
       <View style={s.row}><ShieldAlert size={22} color={toneColor(colors, state)} />
         <Pill testID={`${prefix}-truth`} tone={state} label={truthLabel} />
@@ -89,13 +91,22 @@ export function MessageAssessmentResult({ assessment, state, onPrimaryAction, su
     </View>
     <Pressable testID={`${prefix}-more-details`} accessibilityRole="button" accessibilityState={{ expanded: details }} style={s.detailButton}
       onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setDetails((value) => !value); }}>
-      <Text style={s.detailLabel}>More details</Text>{details ? <ChevronUp size={20} color={colors.brand} /> : <ChevronDown size={20} color={colors.brand} />}
+      <Text style={s.detailLabel}>{details ? "Hide details" : "Show details"}</Text>{details ? <ChevronUp size={20} color={colors.brand} /> : <ChevronDown size={20} color={colors.brand} />}
     </Pressable>
     {details ? <View testID={`${prefix}-details`} style={{ gap: spacing.lg }}>
+      <View testID={`${prefix}-entities`}><SectionTitle>Identified in the submission</SectionTitle>
+        {assessment.entities.claimed_organisations.length ? <Body testID={`${prefix}-entities-organisations`}>Claimed organisations: {assessment.entities.claimed_organisations.join(", ")}</Body> : null}
+        {assessment.entities.mentioned_names?.length ? <Body testID={`${prefix}-entities-names`}>Names mentioned: {assessment.entities.mentioned_names.join(", ")}</Body> : null}
+        {assessment.entities.sender_phone_numbers?.length ? <Body testID={`${prefix}-entities-sender-numbers`}>Sender numbers: {assessment.entities.sender_phone_numbers.join(", ")}</Body> : null}
+        {assessment.entities.callback_details.length ? <Body testID={`${prefix}-entities-callback-numbers`}>Callback numbers: {assessment.entities.callback_details.join(", ")}</Body> : null}
+        {assessment.entities.requested_actions.length ? <Body testID={`${prefix}-entities-actions`}>Requested action: {assessment.entities.requested_actions.join("; ")}</Body> : null}
+        {assessment.entities.suspected_deception?.length ? <Body testID={`${prefix}-entities-deception`}>Suspected deception: {assessment.entities.suspected_deception.join("; ")}</Body> : null}
+      </View>
       <View><SectionTitle>Why it matters</SectionTitle>{assessment.higgins.why_it_matters.map((item, i) => <Body key={i} testID={`${prefix}-why-${i}`}>• {item}</Body>)}</View>
       <View><SectionTitle>Sources</SectionTitle>{assessment.sources.map((source) => <Pressable key={source.source_id} testID={`${prefix}-source-${source.source_id}`}
         disabled={!source.url} onPress={() => source.url ? void Linking.openURL(source.url) : undefined} style={s.source}>
         <View style={s.row}><Text testID={`${prefix}-source-${source.source_id}-label`} style={s.sourceLabel}>{source.label}</Text>{source.url ? <ExternalLink size={15} color={colors.brand} /> : null}</View>
+        <Text testID={`${prefix}-source-${source.source_id}-kind`} style={s.evidenceKind}>{source.evidence_kind === "submitted_content" ? "Submitted evidence" : "External verification"}{source.checked_at ? ` · checked ${new Date(source.checked_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}</Text>
         <Body testID={`${prefix}-source-${source.source_id}-detail`}>{source.detail}</Body>
       </Pressable>)}</View>
     </View> : null}

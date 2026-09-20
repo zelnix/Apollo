@@ -13,7 +13,7 @@ export interface NarrationChunk { id: string; label: string; text: string }
 /** One event, read in order: state → what happened → why → what to do (→ contained). */
 export function narrateEvent(e: PatrolEvent): NarrationChunk[] {
   const chunks: NarrationChunk[] = [
-    { id: "state", label: "Apollo's state", text: `Higgins here. ${STATE_LABEL[e.state]}. ${STATE_MEANING[e.state]}` },
+    { id: "state", label: "Apollo's behaviour", text: `Higgins here. ${STATE_LABEL[e.state]}. ${STATE_MEANING[e.state]}` },
     { id: "what", label: "What happened", text: `What happened: ${strip(e.headline)}. ${e.what_happened}` },
   ];
   if (e.why.length) {

@@ -10,6 +10,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { markCheckDone } from "@/src/store/checkCompletion";
 import { apiPost } from "@/src/api/client";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
+import { MessageAssessmentResult } from "@/src/components/MessageAssessmentResult";
+import type { InvestigationResult } from "@/src/domain/investigation";
 import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { analyseApp, APP_PERMISSIONS, APP_PURPOSES, APP_SOURCES, PERMISSION_INFO, type AppAnalysis, type AppNetwork, type AppPermission, type AppPurpose, type AppSource } from "@/src/domain/appAnalysis";
@@ -22,7 +24,7 @@ import { openDeviceSettings } from "@/src/utils/deviceSettings";
 import { goBackOrHome } from "@/src/utils/navigation";
 
 type Reputation = { remote_access_tool: string | null; known_security_vendor: string | null; impersonates_brand: string | null; official_store: boolean; note: string };
-type Remote = { reputation: Reputation; hosts: { host: string; verdict: "clean" | "malicious" | "unknown" }[]; explanation: { summary: string; why: string[]; recommendation: string } | null };
+type Remote = { reputation: Reputation; hosts: { host: string; verdict: "clean" | "malicious" | "unknown" }[]; explanation: { summary: string; why: string[]; recommendation: string } | null; assessment: InvestigationResult | null };
 const LINKED_CATEGORIES = new Set(["call", "message", "link", "website", "known_threat"]);
 
 const useStyles = makeStyles((c) => ({
@@ -86,6 +88,8 @@ export default function CheckApp() {
         remote = await apiPost<Remote>("/app/analyse", "app_check", { device_id: deviceId ?? "local-device", name: name.trim().slice(0, 120), developer: developer.trim().slice(0, 120) || null, source: observedSource, purpose, permissions: observedPerms, hosts: network?.hosts.slice(0, 10) ?? [], local_state: a.state, scenario: a.scenario, second_opinion: true });
         const bad = remote.hosts.filter((h) => h.verdict === "malicious").length;
         if (bad && !network?.blockedMalicious) a = analyseApp({ name: name.trim(), developer: developer.trim() || undefined, source: observedSource, purpose, permissions: observedPerms, context, network: { blockedMalicious: bad, unknownHosts: network?.unknownHosts ?? 0, hosts: network?.hosts ?? [] } });
+        if (remote.assessment?.risk === "warning" && a.state === "resting") a = { ...a, state: "growling", title: remote.assessment.higgins.headline,
+          verdict: remote.assessment.higgins.what_was_found[0] ?? a.verdict, why: remote.assessment.findings.map((finding) => finding.title), recommendation: remote.assessment.higgins.next_action };
       } catch { /* offline: on-device engine is authoritative */ }
       let event: PatrolEvent | null = null;
       const linked = recentLinked.find((e) => (ctx.promptedByCaller && e.category === "call") || (ctx.promptedByMessageOrSite && e.category !== "call")) ?? (a.remoteCapable || a.scenario === "A16" ? recentLinked[0] : null) ?? null;
@@ -105,7 +109,7 @@ export default function CheckApp() {
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>Check this app</Text>
+        <Text style={s.title}>App Gate</Text>
         <Pressable testID="app-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="app-scroll">
@@ -133,7 +137,9 @@ export default function CheckApp() {
           </>
         ) : a ? (
           <>
-            <Card testID="app-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
+            {result.remote?.assessment ? <MessageAssessmentResult assessment={result.remote.assessment} state={a.state} testIDPrefix="app"
+              submittedLabel="App investigated" submittedTitle={developer || "Developer not supplied"} submittedText={name}
+              onPrimaryAction={() => a.state !== "resting" ? void openDeviceSettings(settingsFor(a)[0], settingsFor(a)[1], (message) => showToast(message, "neutral")) : showToast(result.remote!.assessment!.higgins.next_action, "neutral")} /> : <Card testID="app-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
               <View style={s.chips}><Pill tone={a.state} label={STATE_NAME[a.state]} testID="app-state" /><Pill tone="neutral" label={a.scenario} testID="app-scenario" />{a.remoteCapable ? <Pill tone="barking" label="Remote access capable" testID="app-remote-pill" /> : null}</View>
               <Text style={s.why}>{STATE_LABEL[a.state]}</Text>
               <Text style={s.label} testID="app-title">{a.title}</Text>
@@ -143,7 +149,7 @@ export default function CheckApp() {
               {result.linked ? <Text style={s.why} testID="app-linked">• Connected to: {result.linked.headline} (Threat Scent).</Text> : null}
               <SectionTitle>Recommendation</SectionTitle>
               <Text style={s.why} testID="app-recommendation">{a.recommendation}</Text>
-            </Card>
+            </Card>}
             <Card style={{ gap: spacing.xs }} testID="app-access">
               <SectionTitle>Access</SectionTitle>
               {a.permissionNotes.length ? a.permissionNotes.map((n) => (
@@ -156,13 +162,13 @@ export default function CheckApp() {
             <Card style={{ gap: spacing.xs }} testID="app-network">
               <SectionTitle>Network</SectionTitle>
               {result.remote?.hosts.length ? result.remote.hosts.map((h) => <View key={h.host} style={s.row}><Text style={[s.why, { flex: 1 }]} numberOfLines={1}>{h.host}</Text><Pill tone={h.verdict === "malicious" ? "biting" : h.verdict === "clean" ? "resting" : "ears_up"} label={h.verdict === "malicious" ? "Blocked — dangerous" : h.verdict} /></View>)
-                : <Body>{sdkVisible ? "No connections from this app have been seen yet." : "App-to-network behaviour isn't visible on this build. Apollo's Connection Guard still blocks known-dangerous destinations device-wide."}</Body>}
+                : <Body>{sdkVisible ? "No connections from this app have been seen yet." : "App-to-network behaviour isn't visible on this build. Check Network Gate and Site Gate for their separately verified status."}</Body>}
             </Card>
             {result.remote ? (
               <Card style={{ gap: spacing.xs }} testID="app-reputation">
                 <SectionTitle>Reputation</SectionTitle>
                 <Body testID="app-reputation-note">{result.remote.reputation.note}</Body>
-                {result.remote.explanation ? <><Text style={s.label}>Apollo&apos;s plain-language take</Text><Body testID="app-second-opinion">{result.remote.explanation.summary}</Body>{result.remote.explanation.why.map((w, i) => <Body key={i}>• {w}</Body>)}</> : null}
+                {result.remote.explanation && !result.remote.assessment ? <><Text style={s.label}>Higgins&apos;s plain-language assessment</Text><Body testID="app-second-opinion">{result.remote.explanation.summary}</Body>{result.remote.explanation.why.map((w, i) => <Body key={i}>• {w}</Body>)}</> : null}
               </Card>
             ) : null}
             <Card style={{ gap: spacing.sm }} testID="app-actions">

@@ -25,8 +25,8 @@ const STATE_LINES: Record<ApolloState | "lost", string[]> = {
   ears_up: ["Apollo's ears are up over something from earlier. Not alarming, but worth a glance when you have a moment.", "Apollo noticed a familiar pattern. A careful look would be prudent, though there's no cause for fuss."],
   growling: ["Apollo is growling at something from earlier. I'd suggest a look before you go on.", "Apollo has his hackles up — nothing confirmed, but do have a look at Patrol."],
   barking: ["I'm afraid Apollo is barking. There's a matter that needs your decision — Patrol will show you exactly what.", "Apollo is barking, and rightly so. Do attend to Patrol before anything else this morning."],
-  biting: ["Apollo blocked something dangerous and is standing guard. You're quite safe; no action needed unless you'd already entered details.", "Apollo has a threat firmly in hand. He'll stand guard while you get on with things."],
-  lost: ["Apollo can't see very much at the moment — some protections are off. Worth a look in Guard when convenient.", "Apollo's view is rather limited just now. Do check Guard so he can do his job properly."],
+  biting: ["Apollo confirmed and blocked one threat. That block does not cover every other risk; review Patrol if you had already entered details.", "Apollo has confirmed a protective block. Review the event if you had already called, clicked or shared information."],
+  lost: ["Apollo can't confirm some protection at the moment. Open Gates to see what needs attention.", "Apollo's current protection status is incomplete. Check Gates for the exact missing step."],
 };
 
 export interface Greeting { text: string; tone: ApolloState | "lost" }

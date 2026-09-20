@@ -1,16 +1,16 @@
 {
-  "project_name": "Apollo V1 - Higgins Integration",
+  "project_name": "Apollo V1 - Threat Patrol 1 (Gates & Higgins)",
   "theme": "Light Sentinel (High-Contrast, Authoritative, Technical)",
   "typography": {
     "strategy": "The 'Swiss Brutalist' Mobile Variant. Radical weight contrast. Technical but highly readable.",
-    "primary_font": "IBM Plex Sans (or system equivalent geometric sans like San Francisco/Roboto with adjusted tracking)",
+    "primary_font": "IBM Plex Sans (or system equivalent geometric sans)",
     "scale": {
-      "h1": "32px, bold, tracking-tight (Mobile Hero/Result Status)",
-      "h2": "24px, semi-bold, tracking-tight (Section Headers)",
-      "h3": "20px, medium (Card Titles)",
+      "h1": "32px, bold, tracking-tight (Hero/Status)",
+      "h2": "24px, semi-bold, tracking-tight (Gate Section Headers)",
+      "h3": "20px, medium (Gate Card Titles)",
       "body_lg": "18px, regular, leading-relaxed (Higgins AI Explanation)",
       "body": "16px, regular, leading-normal (General content)",
-      "caption": "13px, medium, tracking-wide, uppercase (Overlines, Privacy disclosures)"
+      "caption": "13px, medium, tracking-wide, uppercase (Labels, Overlines)"
     }
   },
   "colors": {
@@ -25,13 +25,21 @@
       "primary": "#0A0A0A",
       "secondary": "#4B5563",
       "inverse": "#FFFFFF",
-      "ai_highlight": "#1D4ED8"
+      "higgins_voice": "#1D4ED8"
+    },
+    "apollo_states": {
+      "resting": "#059669",
+      "growling": "#D97706",
+      "barking": "#EA580C",
+      "biting": "#DC2626"
     },
     "status": {
-      "scam_critical": "#DC2626",
-      "ambiguous_warning": "#D97706",
-      "genuine_safe": "#059669",
-      "info_action": "#2563EB"
+      "active": "#059669",
+      "ready_to_check": "#2563EB",
+      "needs_attention": "#D97706",
+      "off": "#6B7280",
+      "unavailable": "#9CA3AF",
+      "checking": "#4B5563"
     },
     "borders": {
       "light": "#E5E7EB",
@@ -40,79 +48,78 @@
     }
   },
   "visual_enhancers": {
-    "surfaces": "Tactile, sharp inner contrasts. We are avoiding standard soft shadows to maintain the 'Light Sentinel' technical edge.",
-    "borders": "1px solid borders on most cards. Use 2px left-border highlights to denote threat levels (Red/Yellow/Green).",
+    "surfaces": "Tactile, sharp inner contrasts. Use solid colored backgrounds over glassmorphism to preserve reading clarity for technical text.",
+    "borders": "1px solid borders on most cards. Use color-coded left-borders for Gate statuses.",
     "radii": {
       "small": "4px (Badges, tags)",
-      "medium": "8px (Inner cards, inputs)",
+      "medium": "8px (Inner Gate cards, inputs)",
       "large": "12px (Modals, main assessment cards)"
     },
     "shadows": {
-      "floating_action": "0px 4px 12px rgba(0, 0, 0, 0.1)",
-      "bottom_sheet": "0px -4px 16px rgba(0, 0, 0, 0.08)"
+      "floating_action": "0px 4px 12px rgba(0, 0, 0, 0.1)"
     }
   },
   "components": {
-    "message.js": {
-      "role": "Intake Hub (Text, Link, Screenshot)",
-      "layout": "Segmented control or tabbed input at the top (Text vs Link vs Photo). Large, tap-friendly input area.",
+    "GatesOverview": {
+      "component_path": "app/(tabs)/guard.js",
+      "role": "Gates Protection Overview",
+      "layout": "Scrollable dashboard with top-level Higgins status card followed by individual Gate cards.",
       "ui_details": [
-        "Text/Link Input: Large minimum height (minHeight: 120), 1px solid border (#E5E7EB), focuses to #2563EB.",
-        "Screenshot Intake: Dashed border dropzone/tap-zone, icon-heavy, immediate preview thumbnail upon selection.",
-        "Action Button: Full width, bottom-anchored, highly visible 'Investigate' button."
+        "Rename the navigation tab to 'Gates'. Replace 'Apollo is guarding what he can' with data-derived summary (e.g. 'Some protection needs attention').",
+        "Higgins Status Message: Shows precise explanation and Primary Button (e.g., 'Restore protection'). Triggers permission flow and re-verifies post-return.",
+        "Gate Cards: Represent Text Gate, Call Gate, Link Gate, Site Gate, Network Gate, Account Gate. Inventory remaining 'Guard' names and change to 'Gate'.",
+        "Each Gate card MUST display: 1) Current Status, 2) Capability summary, 3) Auto vs Manual mode, 4) Missing setup + 1 direct action to resolve.",
+        "Valid Gate Statuses: 'Active', 'Ready to check', 'Needs attention', 'Off', 'Unavailable on this device', 'Checking status'.",
+        "Move implementation details (VPN, DNS, Requested: on) behind 'More details'."
       ]
     },
-    "check.js": {
-      "role": "Investigation & Permissions Coordinator",
-      "layout": "Centered progress indicator with staggered loading steps, or a bottom sheet for permission requests.",
+    "MessageAssessmentResult": {
+      "component_path": "components/MessageAssessmentResult.js (or shared assessment component)",
+      "role": "Shared Investigation Result & Higgins Explanation",
+      "layout": "Bento-style scrollable view structured for clear evidence and Higgins' assessment.",
       "ui_details": [
-        "Progress Steps: Vertical list showing current state (e.g., 'Extracting text...', 'Checking reputation...', 'Higgins AI analyzing...').",
-        "Permissions (Guided): Bottom sheet modal. Icon + Title + 'Why we need this' explanation. Primary CTA to 'Open Settings'.",
-        "Return-State Recheck: Visual spinner on app re-entry confirming permission status."
-      ]
-    },
-    "MessageAssessmentResult.js": {
-      "role": "The Final Verdict & Higgins Explanation",
-      "layout": "Bento-style scrollable view. Strict visual hierarchy prioritizing the threat level and the single next action.",
-      "ui_details": [
-        "Threat Header: Massive Typography (Scam / Genuine / Ambiguous). Background tint (10% opacity of status color) with stark icon.",
-        "Higgins AI Card: The core element. Distinct visual treatment (e.g., subtle blue left-border, custom AI icon). Must show: 'Findings', 'Uncertainty level', and 'Exact Response'.",
-        "Single Action Button: Sticky at the bottom of the screen. High contrast. (e.g., 'Block Sender', 'Delete Message').",
-        "Privacy Disclosure: Small, muted text at the very bottom with a Lock icon: 'Purpose-limited processing. Data deleted in 15 mins.'"
+        "Structured Assessment: Identifies claimed organizations, numbers, domains, links, action, and suspected deception.",
+        "Higgins Voice: Clear assessment, specific verified/uncertain evidence, one primary safe action. Do not say 'no reports found' means safe.",
+        "Apollo State: Use 1 assessment to drive behavior (Resting, Growling, Barking, Biting) and labels/colors.",
+        "PayPal Example Support: Show alleged-charge callback trap investigation. Distinguish external verification from message evidence. Guide user to app.",
+        "Never show 'Ordinary message' or reassuring styling beside high-risk assessment.",
+        "Do not describe Higgins as performing blocking. Apollo does not speak."
       ]
     }
   },
   "layouts": {
-    "spacing_system": "Generous spacing. React Native Flexbox gaps: 4, 8, 16, 24, 32, 48. Padding inside cards must be 16px or 24px minimum.",
-    "screen_structure": "Use SafeAreaView. Header is minimal. Main content is ScrollView. Action buttons are strictly anchored to the bottom using position 'absolute' or Flex 'space-between'."
+    "spacing_system": "Generous spacing. React Native Flexbox gaps: 4, 8, 16, 24, 32. Padding inside cards must be 16px minimum.",
+    "screen_structure": "Use SafeAreaView. Header is minimal. Main content is ScrollView. Align dense content left, center only when needed for visual balance."
   },
   "motion": {
-    "philosophy": "Functional and authoritative. No bouncy/playful animations.",
+    "philosophy": "Functional and authoritative.",
     "interactions": [
-      "Use LayoutAnimation or Reanimated for expanding/collapsing Higgins' detailed findings.",
-      "Subtle opacity transition (200ms) when threat levels render.",
-      "Spinner/Skeleton loaders must use linear, precise sweeps, not soft pulses."
+      "Apollo Animation States: Map 'Resting', 'Growling', 'Barking', 'Biting' directly to the unified threat assessment.",
+      "Ensure transition flows map accurately when permissions are granted/restored.",
+      "Use LayoutAnimation for expanding/collapsing 'Show details' and 'More details'."
     ]
   },
   "accessibility": {
     "contrast": "All text must meet APCA / WCAG AA standard against background. Higgins AI explanations must use high-contrast dark grey/black.",
-    "screen_reader": "All status icons (threat levels) must have explicit accessibilityLabels.",
-    "testing": "All interactive elements and key text nodes MUST include testID (React Native equivalent of data-testid). E.g., testID='higgins-explanation-text', testID='action-button-block'."
+    "screen_reader": "All status icons and Apollo states must have explicit accessibilityLabels.",
+    "testing": "All interactive elements and key text nodes MUST include a `testID` attribute (React Native equivalent of data-testid). E.g., testID='gate-status-site-gate', testID='higgins-restore-protection-button'."
   },
   "instructions_to_main_agent": [
-    "This is a React Native / Expo environment. Do NOT use web-only paradigms (no DOM, no Tailwind standard classes unless NativeWind is explicitly configured; default to StyleSheet).",
-    "Focus STRICTLY on improving message.js, check.js, and MessageAssessmentResult.js.",
-    "Higgins consumer experience is the P0 priority here. Ensure the AI explanation clearly delineates 'Findings', 'Uncertainty', and 'Action'.",
-    "Preserve the existing Apollo V1 GuardDog logic, just wire the UI to consume the new deep threat investigation endpoints and Gemini responses.",
-    "Do NOT mock the 15-minute deletion text; ensure the UI clearly states this privacy limitation.",
-    "For testability, map the requested 'data-testid' rule to React Native's 'testID' prop."
+    "This is a React Native / Expo environment using .js files. Do NOT use web-only paradigms. Default to StyleSheet.",
+    "Apply the naming convention strictly: Guard -> Gate (Text Gate, Call Gate, Link Gate, Site Gate, Network Gate, Account Gate). Do NOT rename internal SDKs, API fields, or stored identifiers.",
+    "Update `app/(tabs)/guard.js` to implement the new Gates Protection Overview logic.",
+    "Ensure Higgins provides written/spoken explanations and actionable status messages ('Your link checks are available, but Site Gate is off...').",
+    "Ensure Apollo communicates purely through behavior/animation (Resting, Growling, Barking, Biting) driven by a single unified assessment.",
+    "Never describe Higgins as performing blocking.",
+    "Handle the PayPal acceptance scenario correctly: investigate callback numbers, do not claim charge is absent without evidence, explain the trap, guide to app.",
+    "Retain existing Light Sentinel visual language but apply the new structured rules and labels."
   ],
   "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
-    "You tend to converge toward generic, 'on distribution' outputs. Avoid this: make creative, distinctive mobile frontends that surprise and delight.",
-    "Create depth through layered design elements with z-index hierarchy (using shadows/elevation in RN).",
+    "You tend to converge toward generic outputs. Avoid this: make creative, distinctive mobile frontends.",
+    "Create depth through layered design elements with z-index hierarchy (using elevation in RN).",
     "Never use purely transparent backgrounds for overlays where text sits on top.",
-    "Ensure optical alignment over geometrical alignment (e.g., adjust padding for buttons with icons to look perfectly centered).",
+    "Ensure optical alignment over geometrical alignment (e.g., adjust padding for buttons with icons).",
     "Always use modern button styles (pill-shaped, or sharp rectangular with 8px radius) with interaction feedback (TouchableHighlight/TouchableOpacity).",
-    "NEVER use generic AI emoji (🤖🧠💭) as primary UI icons. Use standard vector icons (e.g., from Lucide-react-native or Expo vector icons)."
+    "NEVER use generic AI emoji (🤖🧠💭) as primary UI icons. Use standard vector icons."
   ]
 }

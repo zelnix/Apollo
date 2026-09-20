@@ -84,6 +84,11 @@ class TestAccountAnalyse:
 
 
 class TestBreachCheck:
+    def test_breach_status_is_explicit(self, api_client):
+        r = api_client.get(f"{BASE_URL}/api/account/status", timeout=30)
+        assert r.status_code == 200, r.text
+        assert isinstance(r.json()["breach_lookup_configured"], bool)
+
     def test_breach_lookup_has_truthful_purpose_limited_contract(self, api_client, device_id):
         r = api_client.post(f"{BASE_URL}/api/account/breach", json={"device_id": device_id, "identifier": "test@example.com"}, timeout=30)
         assert r.status_code == 200, r.text

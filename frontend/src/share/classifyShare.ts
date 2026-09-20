@@ -33,7 +33,7 @@ export function classifyShare(p: SharedPayload): ShareRoute {
   const withoutUrl = url ? raw.replace(url, "").trim() : raw;
   const headerHits = (raw.match(new RegExp(EMAIL_HEADER_RE.source, "gim")) ?? []).length;
   if (headerHits >= 2 || EMAIL_FORWARD_RE.test(raw) || (raw.length > 400 && EMAIL_BODY_RE.test(raw))) return { kind: "email", pathname: "/email", params: { text: raw.slice(0, 6000), source: "share" }, reason: headerHits >= 2 ? "It has email headers (From / Subject)." : "It reads like an email." };
-  if (ACCOUNT_RE.test(raw)) return { kind: "account", pathname: "/account", params: { text: raw.slice(0, 4000), source: "share" }, reason: "It talks about a login, code or password change — Account Guard handles those." };
+  if (ACCOUNT_RE.test(raw)) return { kind: "account", pathname: "/account", params: { text: raw.slice(0, 4000), source: "share" }, reason: "It talks about a login, code or password change — Account Gate handles those." };
   if (url && withoutUrl.length < 12) return { kind: "link", pathname: "/check", params: { url: url.startsWith("http") ? url : `https://${url}`, source: "share" }, reason: "It's just a link." };
   return { kind: "message", pathname: "/message", params: { text: raw.slice(0, 4000), source: "share" }, reason: url ? "A message with a link inside — Apollo reads the wording first, then the link." : "It reads like a text or chat message." };
 }

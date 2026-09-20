@@ -82,6 +82,14 @@ async def get_connection(device_id: str) -> Optional[dict]:
 
 
 async def disconnect(device_id: str) -> None:
+    row = await get_connection(device_id)
+    if row and _fernet:
+        try:
+            refresh = _fernet.decrypt(row["refresh_token_enc"].encode()).decode()
+            async with httpx.AsyncClient(timeout=10) as http:
+                await http.post("https://oauth2.googleapis.com/revoke", data={"token": refresh})
+        except Exception as exc:
+            logger.info("gmail provider revocation did not complete: %s", type(exc).__name__)
     await db.gmail_connections.delete_one({"device_id": device_id})
 
 

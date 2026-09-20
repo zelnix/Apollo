@@ -218,7 +218,7 @@ class AskRequest(BaseModel):
 
 class AskMessage(BaseDocument):
     device_id: str
-    role: Literal["user", "apollo"]
+    role: Literal["user", "apollo", "higgins"]
     content: str
     created_at: datetime
 
@@ -268,3 +268,4 @@ class CallRiskResponse(BaseModel):
     checked_at: datetime
     source: Literal["ipqualityscore", "not_configured"]
     higgins: dict[str, Any]
+    assessment: Optional[dict[str, Any]] = None

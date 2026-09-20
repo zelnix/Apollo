@@ -1,0 +1,69 @@
+{
+  "summary": "Ran targeted backend + mobile-web frontend verification for Gates rename/status logic, PayPal callback-trap acceptance, Gmail OAuth diagnostics, credential-removal contracts, and regression checks (node gate suites + lint/typecheck attempt).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Frontend lint/typecheck baseline",
+        "issue": "`yarn lint` fails with multiple blocking errors (react-hooks/set-state-in-effect, purity, immutability, variable-before-declaration) across tabs/guard, tabs/ask, account, app-check, check, file, network, VoiceNote, ApolloContext.",
+        "testID": "N/A",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Email Gate Gmail connect CTA",
+        "issue": "Email Gate stayed in 'Checking connection…' state during automation snapshot; Gmail connect button interaction could not be completed in that run from UI path.",
+        "affected_testIDs": [
+          "email-gmail-card",
+          "email-gmail-connect"
+        ]
+      },
+      {
+        "flow": "Gmail OAuth end-to-end",
+        "issue": "Provider redirect probe reached Google hosted sign-in URL with correct redirect_uri/scope, but consent completion was not executed (no credentials/consent in automation). Previously reported redirect_uri_mismatch remains an external Google Console + deployed PUBLIC_API_BASE registration blocker unless reproduced with human consent.",
+        "affected_testIDs": [
+          "email-gmail-connect"
+        ]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_gate_gmail.py",
+    "/app/backend/tests/test_imap_removed.py",
+    "/app/backend/tests/test_investigation_fallback.py",
+    "/app/backend/tests/test_user_secret_redaction.py",
+    "/app/test_reports/pytest/pytest_iter72_targeted.xml",
+    "/app/test_reports/pytest/pytest_iter72_targeted_part3.xml",
+    "/app/test_reports/artifacts_iter72_ui/textgate_paypal.jpeg",
+    "/app/test_reports/artifacts_iter72_ui_part4/callgate_result.jpeg",
+    "/app/test_reports/artifacts_iter72_ui_part4/emailgate_gmail.jpeg"
+  ],
+  "action_items": [
+    "Fix frontend lint blockers before claiming full regression pass (currently hard fail).",
+    "Retest Email Gate Gmail CTA path from 'Checking connection' to connect/disconnect states in UI automation.",
+    "For Gmail redirect_uri_mismatch user report: confirm stable deployed backend URL, register exact callback in Google Console, then rerun human consent flow.",
+    "Keep physical permission-restoration and Biting acceptance explicitly untested until device evidence is captured."
+  ],
+  "critical_code_review_comments": [
+    "Frontend currently cannot pass required lint gate due to many new strict React hook/purity rule violations.",
+    "API base key still uses EXPO_PUBLIC_BACKEND_URL in frontend client; environment guideline in this review references EXPO_BACKEND_URL naming. Align/document to avoid config drift."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_72.json"
+  ],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "82%"
+  },
+  "seed_data_creation": "No persistent seed data created; only transient device registrations and runtime checks.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Verified in UI: Gates labels/cards render with Site Gate = 'Unavailable on this device' on preview; PayPal exact message (+5591981395859 / +61(1800)316556 / A$412.50 / NovaTech / deadline-lock threat) produced Barking warning with callback-trap headline, 'Warning — nothing was blocked', and primary action 'Check PayPal app'. Call Gate produced shared assessment and explicit 'number reputation is supporting evidence only' disclaimer. IMAP removal backend tests pass (404 routes).",
+  "rca_of_issue": "Gmail provider flow diagnostics: /api/gmail/status and /api/gmail/connect return canonical callback (no double slash) and gmail.readonly scope. Redirect probe reaches Google sign-in page successfully, so pre-consent URL construction appears correct in preview. If redirect_uri_mismatch still occurs during user consent, likely root cause is Google Console authorized redirect mismatch against the user's stable deployed backend URL / callback registration, not runtime routing generation in preview."
+}

@@ -6,6 +6,8 @@ export interface InvestigationSource {
   url: string | null;
   status: 'supports' | 'contradicts' | 'inconclusive' | 'unavailable';
   detail: string;
+  evidence_kind?: "submitted_content" | "external_verification" | "inference";
+  checked_at?: string;
 }
 
 export interface InvestigationFinding {
@@ -13,15 +15,19 @@ export interface InvestigationFinding {
   title: string;
   detail: string;
   source_ids: string[];
+  evidence_kind?: "submitted_content" | "external_verification" | "inference";
 }
 
 export interface InvestigationEntities {
   claimed_organisations: string[];
   sender_details: string[];
+    sender_phone_numbers?: string[];
   callback_details: string[];
   links: string[];
   requested_actions: string[];
   transaction_claims: string[];
+    mentioned_names?: string[];
+    suspected_deception?: string[];
 }
 
 export interface HigginsAssessment {

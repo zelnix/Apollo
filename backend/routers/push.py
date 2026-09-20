@@ -67,8 +67,8 @@ async def push_test(body: PushTestIn):
     try:
         await send_push(
             recipients=[body.device_id],
-            data={"title": "Apollo is barking (test)", "message": "This is what a threat alert looks like. A real one names the website and tells you what to do.",
-                  "subtext": "No action needed — this is a test.", "action_url": "/settings", **PUSH_THREAT},
+            data={"title": "Apollo is barking (test)", "message": "Higgins: This is what a threat alert looks like. A real alert names the concern and the evidence.",
+                  "subtext": "Higgins: No action needed — this is a test.", "action_url": "/settings", **PUSH_THREAT},
             idempotency_key=f"test-{body.device_id}-{int(now_utc().timestamp())}",
         )
     except HTTPException as exc:
@@ -84,10 +84,10 @@ async def push_owner_alert(event: PatrolEvent) -> None:
             if await device_quiet_now(event.device_id):
                 logger.info("growling push suppressed by quiet hours")
                 return
-            data = {"title": "Apollo is growling", "message": event.headline, "subtext": event.what_to_do[:120], "action_url": f"/patrol/{event.event_id}", "channel_id": "growling"}
+            data = {"title": "Apollo is growling", "message": f"Higgins: {event.headline}", "subtext": f"Higgins: {event.what_to_do[:110]}", "action_url": f"/patrol/{event.event_id}", "channel_id": "growling"}
         else:
-            verb = "Apollo is barking" if event.state == "barking" else "Apollo blocked a threat"
-            data = {"title": verb, "message": event.headline, "subtext": event.what_to_do[:120], "action_url": f"/patrol/{event.event_id}", **PUSH_THREAT}
+            verb = "Apollo is barking" if event.state == "barking" else "Apollo is biting"
+            data = {"title": verb, "message": f"Higgins: {event.headline}", "subtext": f"Higgins: {event.what_to_do[:110]}", "action_url": f"/patrol/{event.event_id}", **PUSH_THREAT}
         await send_push(recipients=[event.device_id], data=data, idempotency_key=f"owner-{event.event_id}")
     except Exception as exc:  # noqa: BLE001
         logger.warning("owner push failed (non-blocking): %s", type(exc).__name__)

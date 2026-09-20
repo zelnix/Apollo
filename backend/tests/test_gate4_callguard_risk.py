@@ -1,4 +1,4 @@
-# Call Guard purpose-limited reputation lookup.
+# Call Gate purpose-limited reputation lookup.
 import os
 from pathlib import Path
 
@@ -42,6 +42,12 @@ class TestCallRiskCheck:
         assert data["higgins"]["warning_only"] is True
         assert data["higgins"]["next_action"]
         assert "authenticate" in data["higgins"]["could_not_establish"].lower()
+        assessment = data["assessment"]
+        assert assessment["sources"][0]["evidence_kind"] == "external_verification"
+        assert assessment["sources"][0]["checked_at"]
+        assert assessment["findings"][0]["status"] in {"suspicious", "unresolved"}
+        assert "does not authenticate" in assessment["sources"][0]["detail"].lower()
+        assert assessment["processing"]["raw_retained_by_apollo"] is False
 
     def test_requires_auth(self):
         s = requests.Session()

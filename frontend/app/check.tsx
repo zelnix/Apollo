@@ -128,7 +128,7 @@ export default function CheckLink() {
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>Check a link</Text>
+          <Text style={s.title}>Link Gate</Text>
         <Pressable testID="check-close" accessibilityRole="button" accessibilityLabel="Close" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={16}>
@@ -195,7 +195,7 @@ export default function CheckLink() {
                 {liveEvent?.state === "biting" && liveEvent.resolved_at ? <Pill tone="resting" label="Threat contained" testID="check-result-contained" /> : null}
                 {liveEvent?.state === "biting" ? (
                   <>
-                    <Text style={s.headline} testID="check-result-headline">Apollo is guarding — I blocked a dangerous website.</Text>
+                    <Text style={s.headline} testID="check-result-headline">Apollo is biting — a dangerous website was blocked on this device.</Text>
                     <Body>{outcome.decision.claimed_brand ? `It was pretending to be ${outcome.decision.claimed_brand}. ` : ""}No action is needed unless you already entered information.</Body>
                   </>
                 ) : (

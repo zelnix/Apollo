@@ -6,7 +6,7 @@
 # ids back to the legacy ones in response bodies so the tests' equality checks still hold.
 # Authentication itself is tested WITHOUT this shim in test_device_auth.py (it uses requests.post directly with
 # explicit headers and its own ids, which are never rewritten because they are real server ids).
-import fcntl, json, os, re, tempfile
+import fcntl, json, os, re, tempfile, time
 from pathlib import Path
 
 import pytest, requests
@@ -39,7 +39,19 @@ def _real(legacy: str) -> tuple[str, str]:
         except ValueError:
             shared = {}
         if legacy not in shared:
-            r = _orig_request(requests.Session(), "POST", f"{BASE_URL}/api/devices/register", json={"platform": "web", "adapter_mode": "mock"}, headers={"User-Agent": "apollo-tests"})
+            r = None
+            for attempt in range(3):
+                try:
+                    r = _orig_request(requests.Session(), "POST", f"{BASE_URL}/api/devices/register",
+                        json={"platform": "web", "adapter_mode": "mock"}, headers={"User-Agent": "apollo-tests"}, timeout=30)
+                    if r.status_code not in (502, 503, 504):
+                        break
+                except requests.RequestException:
+                    if attempt == 2:
+                        raise
+                time.sleep(0.5 * (attempt + 1))
+            assert r is not None
+            r.raise_for_status()
             j = r.json()
             shared[legacy] = [j["device_id"], j["device_token"]]
             fh.seek(0); fh.truncate(); fh.write(json.dumps(shared))

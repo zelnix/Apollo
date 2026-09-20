@@ -209,7 +209,7 @@ def test_ask_history(api_client):
     hist = r.json()
     roles = {m["role"] for m in hist}
     assert "user" in roles, hist
-    assert "apollo" in roles, hist
+    assert "higgins" in roles, hist
     # Regression: response_model_by_alias=False must be set so messages expose `id`
     # (not mongo `_id`), otherwise React FlatList/.map() key warnings appear on the Ask screen.
     for m in hist:

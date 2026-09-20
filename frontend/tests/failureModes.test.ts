@@ -82,13 +82,13 @@ test("stale/unknown intel never upgrades to medium confidence", () => {
 });
 
 // --- Mixed states -----------------------------------------------------------------------------------------------
-test("DNS filter operational + service down = guarding what he can, never off duty", () => {
+test("DNS filter operational + service down separates protection from online checks", () => {
   const c = masterCopy(st({ requested: true, operational: true, running: true, enforcementMethod: "dns_filter" }), false);
-  assert.equal(c.title, "Apollo is guarding what he can"); assert.match(c.line, /DNS protection active/); assert.match(c.line, /Online checks unavailable/);
-  assert.equal(masterCopy(st({ requested: true, operational: true, running: true, enforcementMethod: "dns_filter" }), true).title, "Apollo is guarding");
+  assert.equal(c.title, "Some checks are unavailable"); assert.match(c.line, /Site Gate remains confirmed active/); assert.match(c.line, /online investigations are unavailable/);
+  assert.equal(masterCopy(st({ requested: true, operational: true, running: true, enforcementMethod: "dns_filter" }), true).title, "All available protection is active");
 });
 test("mock adapter + service down: nothing enforced, nothing online, on-device checks remain", () => {
   const c = masterCopy(st({ requested: true, operational: false, enforcementMethod: "simulated" }), false);
-  assert.equal(c.title, "Apollo is guarding what he can"); assert.match(c.line, /simulated/); assert.match(c.line, /On-device link checks remain/);
+  assert.equal(c.title, "Some protection needs attention"); assert.match(c.line, /unavailable on this device/); assert.match(c.line, /On-device link checks remain/);
 });
-test("off duty stays off duty regardless of connectivity", () => { assert.equal(masterCopy(st({}), false).title, "Apollo is off duty"); });
+test("off setting remains a protection gap regardless of connectivity", () => { assert.equal(masterCopy(st({}), false).title, "Some protection needs attention"); });

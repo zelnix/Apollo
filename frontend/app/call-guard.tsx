@@ -15,6 +15,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { PatrolItem } from "@/src/components/PatrolItem";
+import { MessageAssessmentResult } from "@/src/components/MessageAssessmentResult";
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { STATE_LABEL, STATE_MEANING } from "@/src/domain/types";
 import { CallSdk, type CallProtectionCapabilities } from "@/src/security/callSdk";
@@ -105,7 +106,7 @@ export default function CallGuard() {
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>Call Guard</Text>
+        <Text style={s.title}>Call Gate</Text>
         <Pressable testID="callguard-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="callguard-scroll">
@@ -170,21 +171,22 @@ export default function CallGuard() {
         ) : null}
 
         {result ? (
-          <Card testID="callguard-result" style={{ gap: spacing.sm }}>
+          <>
+          {result.assessment ? <MessageAssessmentResult assessment={result.assessment} state={result.decision === "avoid" ? "barking" : result.decision === "review" ? "growling" : "resting"}
+            testIDPrefix="call" submittedLabel="Number checked" submittedText={result.number} onPrimaryAction={() => showToast(result.assessment!.higgins.next_action, "neutral")} /> : null}
+          <Card testID="callguard-result-details" style={{ gap: spacing.sm }}>
             <View style={s.row}>
-              <Pill tone={result.decision === "avoid" ? "barking" : result.decision === "review" ? "growling" : "resting"} label={result.decision === "avoid" ? "High risk" : result.decision === "review" ? "Some risk" : "Looks fine"} testID="callguard-decision" />
+              <Pill tone={result.decision === "avoid" ? "barking" : result.decision === "review" ? "growling" : "unknown"} label={result.decision === "avoid" ? "High risk" : result.decision === "review" ? "Some risk" : "No strong signal"} testID="callguard-decision" />
               {result.source === "not_configured" ? <Pill tone="unknown" label="Provider not configured" /> : null}
             </View>
             <Text style={s.why} testID="callguard-summary">{result.number}{result.fraud_score !== null ? ` — fraud score ${result.fraud_score}/100` : ""}</Text>
-            <Text style={s.why} testID="callguard-higgins-headline">{result.higgins.headline}</Text>
-            <Body testID="callguard-higgins-response">{result.higgins.exact_response}</Body>
-            <Body testID="callguard-higgins-unresolved">Could not establish: {result.higgins.could_not_establish}</Body>
+            <Body testID="callguard-result-limit">Number reputation is supporting evidence only. It does not authenticate the caller or establish where they are located.</Body>
             {result.line_type ? <Text style={s.small}>Line type: {result.line_type}{result.carrier ? ` · ${result.carrier}` : ""}{result.voip ? " · VOIP" : ""}</Text> : null}
             <View style={s.row}>
               <Button testID="callguard-result-block" variant="secondary" label="Add to block list" onPress={() => void addEntry(result.number, "block")} />
               <Button testID="callguard-result-allow" variant="ghost" label="Always allow" onPress={() => void addEntry(result.number, "allow")} />
             </View>
-          </Card>
+          </Card></>
         ) : null}
 
         <View>

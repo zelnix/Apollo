@@ -11,9 +11,9 @@ import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { exportPatrolPdf } from "@/src/utils/exportPatrol";
 
-type Filter = "all" | ApolloState | "active";
+type Filter = "all" | Exclude<ApolloState, "ears_up" | "growling"> | "growling_all" | "active";
 const FILTERS: { key: Filter; label: string }[] = [
-  { key: "all", label: "All" }, { key: "active", label: "Needs attention" }, { key: "biting", label: "Guarding" }, { key: "barking", label: "Barking" }, { key: "growling", label: "Growling" }, { key: "ears_up", label: "Ears up" }, { key: "resting", label: "Patrolling" },
+  { key: "all", label: "All" }, { key: "active", label: "Needs attention" }, { key: "biting", label: "Biting" }, { key: "barking", label: "Barking" }, { key: "growling_all", label: "Growling" }, { key: "resting", label: "Resting" },
 ];
 
 const useStyles = makeStyles((c) => ({
@@ -48,7 +48,8 @@ export default function Patrol() {
   };
 
   const rows = useMemo(() => {
-    const filtered = events.filter((e) => filter === "all" ? true : filter === "active" ? e.status === "active" || (e.status === "blocked" && !e.resolved_at) : e.state === filter);
+    const filtered = events.filter((e) => filter === "all" ? true : filter === "active" ? e.status === "active" || (e.status === "blocked" && !e.resolved_at)
+      : filter === "growling_all" ? e.state === "ears_up" || e.state === "growling" : e.state === filter);
     const out: ({ type: "day"; label: string; key: string } | { type: "event"; event: PatrolEvent; isLast: boolean; key: string })[] = [];
     let lastDay = "";
     filtered.forEach((e, i) => {
@@ -76,8 +77,9 @@ export default function Patrol() {
             // decorative, since it tells you which colour you're now looking at. "All" / "Needs attention" aren't
             // states, so they get the restrained gold accent instead of a borrowed status colour.
             const isStateFilter = f.key !== "all" && f.key !== "active";
-            const activeBorder = isStateFilter ? toneColor(colors, f.key as ApolloState) : colors.gold;
-            const activeTint = isStateFilter ? toneTint(colors, f.key as ApolloState) : colors.goldTint;
+            const tone = f.key === "growling_all" ? "growling" : f.key as ApolloState;
+            const activeBorder = isStateFilter ? toneColor(colors, tone) : colors.gold;
+            const activeTint = isStateFilter ? toneTint(colors, tone) : colors.goldTint;
             return (
               <Pressable key={f.key} testID={`patrol-filter-${f.key}`} onPress={() => setFilter(f.key)} style={[s.chip, active && { borderColor: activeBorder, backgroundColor: activeTint }]}>
                 <Text style={[s.chipText, active && { color: colors.onSurface, fontFamily: fonts.textSemibold }]}>{f.label}</Text>
@@ -96,7 +98,7 @@ export default function Patrol() {
         ListEmptyComponent={
           <Card testID="patrol-empty" style={{ gap: spacing.sm }}>
             <Text style={s.emptyTitle}>No security events{filter !== "all" ? " for this filter" : ""}</Text>
-            <Body>Apollo is watching within its supported checks. Everything Apollo does shows up here in plain language.</Body>
+            <Body>There are no recorded security events for this view. This does not establish that every Gate is active; check Gates for current protection availability.</Body>
           </Card>
         }
       />

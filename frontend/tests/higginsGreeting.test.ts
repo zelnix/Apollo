@@ -14,5 +14,5 @@ test("deterministic within a day, varies across days", () => {
   const texts = new Set([0, 1, 2].map((i) => higginsGreeting("resting", new Date(2026, 5, 15 + i, 8, 0)).text));
   assert.ok(texts.size > 1);
 });
-test("visibility lost points to Guard", () => { assert.match(higginsGreeting("lost", at(8)).text, /Guard/); });
+test("visibility lost points to Gates", () => { assert.match(higginsGreeting("lost", at(8)).text, /Gates/); });
 test("dayKey is local calendar day", () => { assert.equal(dayKey(new Date(2026, 5, 7, 23, 59)), "2026-06-07"); });

@@ -45,7 +45,7 @@ export function resolveApolloState(input: StateInput): StateResolution {
   // Present health always remains visible, even alongside historical incidents.
   if (visibilityLost) return {
     state: active.some(e => e.state === 'barking') ? 'barking' : 'growling',
-    reason: input.visibility === 'none' ? 'Current protection is unavailable or unverified. Previous blocks remain in Patrol.' : 'Protection observation has expired. Open Guard to check again.',
+    reason: input.visibility === 'none' ? 'Current protection is unavailable or unverified. Previous blocks remain in Patrol.' : 'Protection observation has expired. Open Gates to check again.',
     recovering: false, visibilityLost: true, drivingEvent: active.sort(byNewest)[0] ?? null,
   };
 

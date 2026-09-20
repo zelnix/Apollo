@@ -22,7 +22,7 @@ export default function TabsLayout() {
     return (
       <NativeTabs>
         <NativeTabs.Trigger name="home"><NativeTabs.Trigger.Icon sf="house.fill" /><NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label></NativeTabs.Trigger>
-        <NativeTabs.Trigger name="guard"><NativeTabs.Trigger.Icon sf="shield.fill" /><NativeTabs.Trigger.Label>Guard</NativeTabs.Trigger.Label></NativeTabs.Trigger>
+        <NativeTabs.Trigger name="guard"><NativeTabs.Trigger.Icon sf="shield.fill" /><NativeTabs.Trigger.Label>Gates</NativeTabs.Trigger.Label></NativeTabs.Trigger>
         <NativeTabs.Trigger name="patrol"><NativeTabs.Trigger.Icon sf="list.bullet.rectangle" /><NativeTabs.Trigger.Label>Patrol</NativeTabs.Trigger.Label></NativeTabs.Trigger>
         <NativeTabs.Trigger name="ask"><NativeTabs.Trigger.Icon sf="bubble.left.fill" /><NativeTabs.Trigger.Label>Higgins</NativeTabs.Trigger.Label></NativeTabs.Trigger>
         <NativeTabs.Trigger name="settings"><NativeTabs.Trigger.Icon sf="gearshape.fill" /><NativeTabs.Trigger.Label>Settings</NativeTabs.Trigger.Label></NativeTabs.Trigger>
@@ -51,7 +51,7 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen name="home" options={{ title: "Home", tabBarButtonTestID: "tab-home", tabBarIcon: tabIcon(Home), tabBarLabel: tabLabel("Home") }} />
-      <Tabs.Screen name="guard" options={{ title: "Guard", tabBarButtonTestID: "tab-guard", tabBarIcon: tabIcon(ShieldCheck), tabBarLabel: tabLabel("Guard") }} />
+      <Tabs.Screen name="guard" options={{ title: "Gates", tabBarButtonTestID: "tab-guard", tabBarIcon: tabIcon(ShieldCheck), tabBarLabel: tabLabel("Gates") }} />
       <Tabs.Screen name="patrol" options={{ title: "Patrol", tabBarButtonTestID: "tab-patrol", tabBarIcon: tabIcon(QueueList), tabBarLabel: tabLabel("Patrol") }} />
       <Tabs.Screen name="ask" options={{ title: "Higgins", tabBarButtonTestID: "tab-ask", tabBarIcon: tabIcon(ChatBubbleLeftRight), tabBarLabel: tabLabel("Higgins") }} />
       <Tabs.Screen name="settings" options={{ title: "Settings", tabBarButtonTestID: "tab-settings", tabBarIcon: tabIcon(Cog6Tooth), tabBarLabel: tabLabel("Settings") }} />

@@ -107,18 +107,18 @@ export default function Home() {
   const attentionCount = capabilities.filter((c) => c.status === "permission_required").length;
 
   const primaryChecks: QuickCheck[] = [
-    { testID: "home-check-link-button", label: "Link", icon: <Link2 size={20} color={colors.gold} />, route: "/check" },
-    { testID: "home-check-message-button", label: "Message", icon: <MessageSquareWarning size={20} color={colors.gold} />, route: "/message" },
-    { testID: "home-check-call-button", label: "Call", icon: <PhoneIncoming size={20} color={colors.gold} />, route: "/call" },
+    { testID: "home-check-link-button", label: "Link Gate", icon: <Link2 size={20} color={colors.gold} />, route: "/check" },
+    { testID: "home-check-message-button", label: "Text Gate", icon: <MessageSquareWarning size={20} color={colors.gold} />, route: "/message" },
+    { testID: "home-check-call-button", label: "Call Gate", icon: <PhoneIncoming size={20} color={colors.gold} />, route: "/call" },
     { testID: "home-scan-button", label: "Scan code", icon: <ScanLine size={20} color={colors.gold} />, route: "/scan" },
   ];
   const moreChecks: QuickCheck[] = [
     { testID: "home-check-file-button", label: "Check a file", icon: <FileSearch size={20} color={colors.brand} />, route: "/file" },
-    { testID: "home-check-app-button", label: "Check an app", icon: <Smartphone size={20} color={colors.brand} />, route: "/app-check" },
+    { testID: "home-check-app-button", label: "App Gate", icon: <Smartphone size={20} color={colors.brand} />, route: "/app-check" },
     { testID: "home-check-device-button", label: "Check my device", icon: <ShieldCheck size={20} color={colors.brand} />, route: "/device" },
-    { testID: "home-check-network-button", label: "Network Guard", icon: <Wifi size={20} color={colors.brand} />, route: "/network" },
-    { testID: "home-check-account-button", label: "Account Guard", icon: <KeyRound size={20} color={colors.brand} />, route: "/account" },
-    { testID: "home-check-email-button", label: "Check an email", icon: <Mail size={20} color={colors.brand} />, route: "/email" },
+    { testID: "home-check-network-button", label: "Network Gate", icon: <Wifi size={20} color={colors.brand} />, route: "/network" },
+    { testID: "home-check-account-button", label: "Account Gate", icon: <KeyRound size={20} color={colors.brand} />, route: "/account" },
+    { testID: "home-check-email-button", label: "Email Gate", icon: <Mail size={20} color={colors.brand} />, route: "/email" },
   ];
 
   return (
@@ -177,7 +177,7 @@ export default function Home() {
             </View>
             <Body>{activeCount} active{attentionCount ? ` · ${attentionCount} need${attentionCount > 1 ? "" : "s"} attention` : ""}</Body>
             <Pressable testID="home-open-guard" accessibilityRole="button" onPress={() => router.push("/(tabs)/guard")} style={s.cardLinkRow}>
-              <Text style={s.link}>Manage in Guard</Text>
+              <Text style={s.link}>Manage in Gates</Text>
               <ChevronRight size={14} color={colors.restingText} />
             </Pressable>
           </Card>

@@ -89,7 +89,7 @@ export default function TextGuard() {
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>Text Guard</Text>
+        <Text style={s.title}>Text Gate</Text>
         <Pressable testID="textguard-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="textguard-scroll">
@@ -148,7 +148,7 @@ export default function TextGuard() {
               submittedLabel="Text investigated" submittedTitle={sender || "Sender not supplied"} submittedText={text}
               onPrimaryAction={() => {
                 const kind = result.assessment!.higgins.action_kind;
-                if (kind === "check_account") router.push("/account");
+                if (kind === "check_account") setVerify(true);
                 else if (kind === "avoid_and_delete") { setText(""); setSender(""); showToast("Submitted content cleared from this screen.", "neutral"); }
                 else setVerify(true);
               }} /> : <Card testID="textguard-result" style={{ borderColor: toneColor(colors, tone), gap: spacing.sm }}>

@@ -61,6 +61,7 @@ export interface CallRiskResult {
   risky: boolean | null; voip: boolean | null; line_type: string | null; carrier: string | null; country: string | null;
   decision: "allow" | "review" | "avoid"; cached: boolean; checked_at: string; source: "ipqualityscore" | "not_configured";
   higgins: { headline: string; found: string; why: string; could_not_establish: string; next_action: string; exact_response: string; warning_only: boolean };
+  assessment?: InvestigationResult | null;
 }
 export { RECOVERY_STEPS, type RecoveryKind } from "@/src/domain/recovery";
 
@@ -79,8 +80,8 @@ interface ApolloContextValue {
   adapterLabel: string;
   isMock: boolean;
   refreshing: boolean;
-  refresh(minVisibleMs?: number): Promise<void>;
-  verifyNow(): Promise<void>;
+  refresh(minVisibleMs?: number): Promise<ProtectionStatus | null>;
+  verifyNow(): Promise<ProtectionStatus | null>;
   lastVerifiedAt: string | null;
   toggleProtection(on: boolean): Promise<void>;
   requestPermission(id: ProtectionPermission["id"]): Promise<ProtectionPermission>;
@@ -93,9 +94,6 @@ interface ApolloContextValue {
    * (never stored server-side), runs each through the same on-device email engine as the paste
    * flow, files Patrol events for anything non-resting, then discards the raw content. */
   scanGmailInbox(): Promise<{ checked: number; flagged: PatrolEvent[] }>;
-  /** Generic IMAP connection (Gate 1 add-on, Phase 3): same contract as scanGmailInbox, sourced
-   * from a user-supplied host/username/app-password connection instead of Gmail OAuth. */
-  scanImapInbox(): Promise<{ checked: number; flagged: PatrolEvent[] }>;
   recordRecovery(event: PatrolEvent, kind: RecoveryKind): Promise<void>;
   /** Gate 3 Phase B: merge a page-screenshot analysis into an existing link event, or create a new website event. */
   recordPageAnalysis(pa: PageAnalysis, existing: PatrolEvent | null): Promise<PatrolEvent | null>;
@@ -201,7 +199,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         securityAdapter.getCapabilities(), securityAdapter.getProtectionStatus(), securityAdapter.getProtectionPermissions(), securityAdapter.getNetworkStatus(),
         securityAdapter.getEnforcementEvidence().catch(() => []),
       ]));
-      if (generation !== probeGeneration.current) return;
+      if (generation !== probeGeneration.current) return null;
       const observed = freshObservation(status) ? status : unavailableObservation(status);
       setCapabilities(caps); setProtection(observed); setPermissions(perms); setNetwork(net);
       const verified = freshObservation(status) ? status.lastVerified : null;
@@ -220,8 +218,10 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         void syncEventRef.current?.(ev);
       } else if (!a.state) lastConnectionKey.current = a.key;
       await syncEnforcementEvidence(evidence).catch(deliveryFailure);
+      return observed;
     } catch {
       if (generation === probeGeneration.current) { setProtection(p => unavailableObservation(p)); setLastVerifiedAt(null); setCapabilities([]); }
+      return null;
     } finally { await hold; setRefreshing(false); }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -259,8 +259,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       if (!canTransition(base, "biting", { verifiedBlock: true })) continue; // defensive: same single gate everywhere
       const headline = isCall ? `Apollo blocked a call from ${domain}` : `Apollo blocked ${domain}`;
       const whatHappened = isCall
-        ? `Apollo's Call Guard rejected an incoming call from ${domain} on this device before it rang — it matched a number Apollo already knew was high-risk.`
-        : `Apollo's Site Guard observed a real connection attempt to ${domain} and blocked it on this device.`;
+        ? `Apollo's Call Gate rejected an incoming call from ${domain} on this device before it rang — it matched a number Apollo already knew was high-risk.`
+        : `Apollo's Site Gate observed a real connection attempt to ${domain} and blocked it on this device.`;
       const whyLine = isCall
         ? "The call was rejected before it rang — confirmed by the operating system, not assumed."
         : "Apollo's on-device filter matched this domain against a threat it already knew about and blocked the exact connection — confirmed by the operating system, not assumed.";
@@ -281,8 +281,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     for (const e of evidence.filter(x => x.mechanism === 'call_screening' && x.requestedAction === 'block' && !seen.has(x.evidenceId))) {
       const ev: PatrolEvent = {
         event_id: e.eventId ?? e.evidenceId, device_id: deviceIdRef.current ?? 'local', category: 'call', state: 'barking', status: 'active',
-        headline: 'Call rejection requested', what_happened: 'Call Guard submitted a rejection request to Android. No separate completion receipt is available.',
-        why: ['This is a call-screening action, not an observed packet drop.'], what_to_do: 'If the call still reaches you, do not share private information. Review Call Guard.',
+        headline: 'Call rejection requested', what_happened: 'Call Gate submitted a rejection request to Android. No separate completion receipt is available.',
+        why: ['This is a call-screening action, not an observed packet drop.'], what_to_do: 'If the call still reaches you, do not share private information. Review Call Gate.',
         indicator_host: null, indicator_digest: null, local_indicator: e.destination.domain, verified_block: false,
         adapter_label: securityAdapter.label, occurred_at: e.observedAt, resolved_at: null, trust_allowed: false, background: true,
       };
@@ -315,7 +315,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   const verifyNow = useCallback(async () => {
     // Keep the Sniffing state visible for at least a beat so the user sees Apollo actually checking.
-    await refresh(900);
+    return refresh(900);
   }, [refresh]);
 
   // Boot
@@ -556,8 +556,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true; clearInterval(timer); sub.remove(); };
   }, [checkMessage, showToast, lowPower]);
 
-  // Shared by scanGmailInbox/scanImapInbox: runs each fetched message through the on-device email
-  // engine + Email Guard's automatic pre-click link assessment, filing a Patrol event for anything
+  // Runs each OAuth-fetched Gmail message through the on-device email
+  // engine + Email Gate's automatic pre-click link assessment, filing a Patrol event for anything
   // non-resting. `messages` is only ever a local, request-scoped array — nothing here is persisted
   // beyond the Patrol event summary (matches the "checked and discarded" backend contract).
   const _scanInboxMessages = useCallback(async (messages: { id: string; from: string; subject: string; date: string; body: string; links: LinkAnchor[] }[], sourceLabel: string): Promise<{ checked: number; flagged: PatrolEvent[] }> => {
@@ -575,8 +575,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         urls = Array.isArray(r.urls) ? (r.urls as MessageUrlResult[]) : [];
         assessment = isInvestigationResult(r.assessment) ? r.assessment : null;
       } catch { /* on-device findings remain available if the purpose-limited service is offline */ }
-      // Email Guard: automatic pre-click assessment — redirect chain + RDAP domain-info (already
-      // inside `urls`) plus real HTML anchor mismatch detection (both Gmail and IMAP give us the
+      // Email Gate: automatic pre-click assessment — redirect chain + RDAP domain-info (already
+      // inside `urls`) plus real HTML anchor mismatch detection from the Gmail API
       // actual <a> pairs, unlike pasted plain text). Can only raise state to growling/barking, never biting.
       const guard = evaluateLinkGuardFindings(urls, m.links ?? []);
       if (STATE_RANK[guard.state] > STATE_RANK[a.state]) a = { ...a, state: guard.state };
@@ -602,12 +602,6 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     if (!deviceId) return { checked: 0, flagged: [] };
     const messages = await apiPost<{ id: string; from: string; subject: string; date: string; body: string; links: LinkAnchor[] }[]>("/gmail/scan", "gmail_scan", { device_id: deviceId });
     return _scanInboxMessages(messages, "Gmail");
-  }, [deviceId, _scanInboxMessages]);
-
-  const scanImapInbox = useCallback(async (): Promise<{ checked: number; flagged: PatrolEvent[] }> => {
-    if (!deviceId) return { checked: 0, flagged: [] };
-    const messages = await apiPost<{ id: string; from: string; subject: string; date: string; body: string; links: LinkAnchor[] }[]>("/imap/scan", "imap_scan", { device_id: deviceId });
-    return _scanInboxMessages(messages, "Inbox");
   }, [deviceId, _scanInboxMessages]);
 
   const recordPageAnalysis = useCallback(async (pa: PageAnalysis, existing: PatrolEvent | null): Promise<PatrolEvent | null> => {
@@ -711,8 +705,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const ev: PatrolEvent = {
       event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "protection", state: "resting", status: "resolved",
       headline: on ? 'Enable protection requested' : 'Disable protection requested',
-      what_happened: 'This records your request, not proof of current protection. Guard shows the latest observed status.',
-      why: [], what_to_do: 'Check Guard for the current observation and any required permissions.',
+      what_happened: 'This records your request, not proof of current protection. Gates shows the latest observed status.',
+      why: [], what_to_do: 'Check Gates for the current observation and any required permissions.',
       indicator_host: null, indicator_digest: null, verified_block: false, adapter_label: securityAdapter.label,
       occurred_at: new Date().toISOString(), resolved_at: new Date().toISOString(),
     };
@@ -742,7 +736,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     } catch (e) { intelError = e instanceof Error ? e.message : "Reputation check unavailable"; }
     const digest = intel?.indicator_digest ?? (await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, indicator));
     const trusted = trust.some((t) => t.indicator_digest === digest || t.local_indicator === indicator);
-    const decision = decide(local, intel, trusted);
+    let decision = decide(local, intel, trusted);
     let assessment: InvestigationResult | null = null; let investigationError: string | null = null;
     try {
       const remote = await apiPost<unknown>("/link/investigate", "link_investigation", {
@@ -752,6 +746,11 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       assessment = isInvestigationResult(remote) ? remote : null;
       if (!assessment) investigationError = FAILURE_MESSAGE.malformed;
     } catch (error) { investigationError = error instanceof Error ? error.message : "Higgins could not complete the deeper investigation."; }
+    if (assessment?.risk === "warning" && decision.state === "resting") {
+      decision = { ...decision, state: "growling", headline: assessment.higgins.headline,
+        what_happened: assessment.higgins.what_was_found[0] ?? decision.what_happened,
+        why: assessment.findings.map((finding) => finding.title).slice(0, 6), what_to_do: assessment.higgins.next_action };
+    }
     const isEvent = decision.state !== "resting" || trusted;
     const ev: PatrolEvent = {
       event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: intel?.verdict === "malicious" ? "known_threat" : "link",
@@ -833,7 +832,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   const value: ApolloContextValue = {
     ready, setupDone, deviceId, identityReset, reRegisterDevice, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label, isMock: IS_MOCK_SECURITY,
-    refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, scanGmailInbox, scanImapInbox, recordRecovery, upsertEvent, recordPageAnalysis, checkCall, checkNumberRisk,
+    refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, scanGmailInbox, recordRecovery, upsertEvent, recordPageAnalysis, checkCall, checkNumberRisk,
     pushStatus, enablePush, quietHours, quietNow, setQuietHours, lowPower, setLowPower,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

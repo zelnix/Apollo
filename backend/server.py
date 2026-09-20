@@ -28,7 +28,7 @@ from core.models import BlocklistEntry
 from core.privacy_boundary import PrivacyBoundary
 from services.patrol_policy import ensure_evidence_receipt_indexes
 from services.mailbox_monitor import mailbox_monitor_loop
-from routers import admin, analysis, ask, call, devices, family, family_weekly, gmail, health, imapmail, intel, patrol, push, voice
+from routers import admin, analysis, ask, call, devices, family, family_weekly, gmail, health, intel, patrol, push, voice
 from routers.family_weekly import weekly_checkin_loop
 
 SEED_BLOCKLIST = [
@@ -50,7 +50,8 @@ async def lifespan(_: FastAPI):
     await db.gmail_connections.create_index("device_id", unique=True)
     await db.gmail_oauth_states.create_index("state", unique=True)
     await db.gmail_oauth_states.create_index("expires_at", expireAfterSeconds=0)  # real TTL cleanup — these are short-lived CSRF tokens, not a security "truth" cache
-    await db.imap_connections.create_index("device_id", unique=True)
+    # Generic IMAP credentials are no longer accepted or stored. Remove any legacy encrypted rows.
+    await db.drop_collection("imap_connections")
     await db.mailbox_assessment_receipts.create_index([("provider", 1), ("device_id", 1), ("message_digest", 1)], unique=True)
     await db.phone_risk_cache.create_index("phone_e164", unique=True)
     await db.patrol_events.create_index([("device_id", 1), ("event_id", 1)], unique=True)
@@ -82,7 +83,7 @@ async def deployment_health():
 
 
 # Every device-facing router is mounted under /api behind the device bearer gate (public paths are listed in core.auth).
-for r in (health, devices, intel, patrol, ask, family, family_weekly, voice, push, analysis, gmail, imapmail, call):
+for r in (health, devices, intel, patrol, ask, family, family_weekly, voice, push, analysis, gmail, call):
     app.include_router(r.router, prefix="/api", dependencies=[Depends(enforce_device_auth)])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_admin_key)])
 

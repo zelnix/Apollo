@@ -5,7 +5,7 @@
 
 import type { ApolloState } from "./types";
 
-export type Scenario = "M01" | "M02" | "M03" | "M04" | "M05" | "M06" | "M07" | "M08" | "M09" | "M10" | "M11" | "M12" | "M13" | "M14" | "M15";
+export type Scenario = "M01" | "M02" | "M03" | "M04" | "M05" | "M06" | "M07" | "M08" | "M09" | "M10" | "M11" | "M12" | "M13" | "M14" | "M15" | "M16";
 
 export interface MessageSignals {
   urls: string[];
@@ -32,6 +32,11 @@ export interface MessageSignals {
   romanceEscalation: boolean;
   identityRequest: boolean;
   loginRequest: boolean;
+  callbackNumber: string | null;
+  callbackRequest: boolean;
+  allegedCharge: boolean;
+  deadlineThreat: boolean;
+  namedEntities: string[];
   unknownSender: boolean;
 }
 
@@ -66,6 +71,7 @@ const BRANDS: { re: RegExp; name: string; kind: MessageSignals["brandKind"] }[] 
 ];
 
 const has = (t: string, re: RegExp) => re.test(t);
+const CALLBACK_RE = /(?:\+?61[\s().-]*|0)(?:1800|1300|[2-478])(?:[\s().-]*\d){6,8}/i;
 
 export function extractSignals(sender: string, text: string): MessageSignals {
   const t = text.toLowerCase();
@@ -74,7 +80,7 @@ export function extractSignals(sender: string, text: string): MessageSignals {
   const paymentRequest = has(t, /\bpay(ment)?\b|\bfee\b|\bowe|\boverdue\b|\binvoice\b|\bbill\b|\btransfer\b|\bdeposit\b/);
   const smallPayment = has(t, /\$\s?[0-9]{1,2}(\.\d{2})?\b(?!\d)/) && !has(t, /\$\s?[0-9]{3,}/);
   const codeRequest = has(t, /\b(six|6|four|4)[- ]?digit\b|\bverification code\b|\bsecurity code\b|\bone[- ]time (code|password)\b|\botp\b|\bcode (that|we|i) (just )?sent\b|\bsend (me )?the code\b|\bread (me|out) the code\b/);
-  const urgency = has(t, /\bimmediately\b|\burgent(ly)?\b|\bright now\b|\bwithin (24|48) hours\b|\btoday\b|\bexpires?\b|\bfinal notice\b|\blast chance\b|\bact now\b|\bnow\b/);
+  const urgency = has(t, /\bimmediately\b|\burgent(ly)?\b|\bright now\b|\bwithin \d{1,2} (?:minutes?|hours?|days?)\b|\btoday\b|\bexpires?\b|\bfinal notice\b|\blast chance\b|\bact now\b|\bnow\b/);
   const threat = has(t, /\brestrict(ed)?\b|\bsuspend(ed)?\b|\blocked\b|\bpenalt(y|ies)\b|\bfine\b|\blegal action\b|\barrest\b|\bwarrant\b|\bcancel(led)?\b|\bdebt\b/);
   const giftCards = has(t, /\bgift ?cards?\b|\bitunes\b|\bgoogle play card\b|\bsteam card\b|\bvoucher codes?\b/);
   const crypto = has(t, /\bbitcoin\b|\bbtc\b|\bcrypto\b|\busdt\b|\bethereum\b|\bwallet address\b|\bbinance\b/);
@@ -91,14 +97,20 @@ export function extractSignals(sender: string, text: string): MessageSignals {
   const romanceEscalation = has(t, /\b(babe|baby|honey|my love|darling|sweetheart)\b/) && (moneyRequest || crypto || giftCards || has(t, /\btravel\b|\bflight\b|\bvisa\b|\bcustoms\b|\bhospital\b|\bemergency\b/));
   const identityRequest = has(t, /\bverify your identity\b|\bconfirm your (identity|details|information)\b|\bdate of birth\b|\bmedicare number\b|\btax file\b|\btfn\b|\bpassport\b|\bdriver'?s? licen[cs]e\b|\bcard (number|details)\b|\bcvv\b/);
   const loginRequest = has(t, /\blog ?in\b|\bsign ?in\b|\bverify (your )?account\b|\bsecure your account\b|\bupdate your (details|account|password)\b|\bconfirm your account\b|\breactivate\b|\bunlock your account\b/);
+  const callbackNumber = text.match(CALLBACK_RE)?.[0] ?? null;
+  const callbackRequest = !!callbackNumber && has(t, /\b(call|contact|phone|ring|fraud response|support line|helpline)\b/);
+  const allegedCharge = has(t, /\bunauthori[sz]ed charge\b|\bunrecogni[sz]ed (?:charge|transaction)\b|\bsuspicious transaction\b|\bmerchant\s*:|\bamount\s*:|\bfunds (?:are|will be) released\b/);
+  const deadlineThreat = has(t, /\bwithin \d{1,2} (?:minutes?|hours?|days?)\b|\baccounts? .{0,30}\blocked\b|\bfunds .{0,25}released\b/);
+  const namedEntities = Array.from(new Set(Array.from(text.matchAll(/\b(?:Merchant|from|to)\s*:\s*([A-Z][A-Za-z0-9&'’.-]+(?:\s+[A-Z][A-Za-z0-9&'’.-]+){0,4})/g), (match) => match[1].replace(/\s+(?:Pty|Ltd).*$/i, " $&").trim()))).slice(0, 6);
   const unknownSender = !sender.trim() || /unknown|private|no caller id/i.test(sender) || /^\+?\d[\d\s()-]{6,}$/.test(sender.trim());
 
-  const requestedAction = codeRequest ? "share a verification code" : giftCards ? "buy gift cards" : remoteAccess ? "install software / allow remote access"
+  const requestedAction = callbackRequest && allegedCharge ? "call a supplied number about an alleged charge" : codeRequest ? "share a verification code" : giftCards ? "buy gift cards" : remoteAccess ? "install software / allow remote access"
     : advanceFee ? "pay a fee to receive money" : paymentRequest && urls.length ? "pay via a link" : loginRequest ? "log in via a link" : identityRequest ? "share identity details"
     : moneyRequest ? "send money" : crypto ? "send cryptocurrency" : urls.length ? "open a link" : null;
 
   return { urls, claimedBrand: brand?.name ?? null, brandKind: brand?.kind ?? null, requestedAction, paymentRequest, smallPayment, codeRequest, urgency, threat, giftCards, crypto,
-    remoteAccess, newNumber, familyClaim, moneyRequest, platformSwitch, guaranteedReturns, jobOffer, advanceFee, fakePayment, extortion, romanceEscalation, identityRequest, loginRequest, unknownSender };
+    remoteAccess, newNumber, familyClaim, moneyRequest, platformSwitch, guaranteedReturns, jobOffer, advanceFee, fakePayment, extortion, romanceEscalation, identityRequest, loginRequest,
+    callbackNumber, callbackRequest, allegedCharge, deadlineThreat, namedEntities, unknownSender };
 }
 
 const VERIFY: Record<NonNullable<MessageSignals["brandKind"]> | "family" | "person" | "none", string> = {
@@ -116,6 +128,13 @@ const VERIFY: Record<NonNullable<MessageSignals["brandKind"]> | "family" | "pers
 
 function scenarioFor(s: MessageSignals): { scenario: Scenario; title: string; state: ApolloState; verdict: string; why: string[]; rec: string; verify: string } {
   const brand = s.claimedBrand ?? "the sender";
+  if (s.callbackRequest && s.allegedCharge) return { scenario: "M16", title: "Alleged-charge callback trap", state: "barking",
+    verdict: "This message tries to make you call a supplied number about an alleged charge.",
+    why: [s.claimedBrand ? `It claims to be ${s.claimedBrand} and names a charge or transaction.` : "It alleges a charge or transaction.",
+      s.callbackNumber ? `It directs you to call ${s.callbackNumber}, a number supplied by the message itself.` : "It directs you to a callback number supplied by the message.",
+      s.deadlineThreat ? "It combines a short deadline with a threat that funds will be released or the account locked." : "It pressures you to resolve the alleged charge by phone."],
+    rec: "Do not call the supplied number. Open your existing PayPal app independently and check Activity. If the charge appears there, report it from inside PayPal.",
+    verify: "Open the PayPal app you already use or type paypal.com yourself. Do not use the number in this message." };
   if (s.codeRequest) return { scenario: "M06", title: "Verification code request", state: "barking", verdict: "Someone is asking for a code that is meant only for you.",
     why: ["It asks you to share a verification or security code.", "Codes like this are used to take over accounts.", s.urgency ? "It pushes you to act quickly." : "No legitimate service asks you to read a code back to them."],
     rec: "Don't share that code. Verification codes are meant for you, not for someone contacting you.", verify: VERIFY[s.brandKind ?? "person"] };
@@ -161,7 +180,7 @@ function scenarioFor(s: MessageSignals): { scenario: Scenario; title: string; st
   if (s.urls.length && (s.urgency || s.threat || s.loginRequest || s.paymentRequest)) return { scenario: "M04", title: "Suspicious link with pressure", state: "growling", verdict: "This message pushes you to a link with urgency.",
     why: ["It contains a link.", s.threat ? "It threatens a consequence." : "It hurries you.", s.loginRequest ? "It asks you to log in." : "It asks you to act via the link."],
     rec: "Don't tap the link. Check the link with Apollo first, or go to the organisation yourself.", verify: VERIFY[s.brandKind ?? "none"] };
-  return { scenario: "M15", title: "Ordinary message", state: "resting", verdict: "Apollo sees nothing suspicious in this message.",
+  return { scenario: "M15", title: "No concern identified", state: "resting", verdict: "No concern was identified within the checks completed for this message.",
     why: ["No suspicious links.", "No payment, code or identity request.", "No impersonation or threat language."],
     rec: "Nothing to do. If it's from a number you don't know, reply cautiously and never share codes or payment details.", verify: VERIFY.none };
 }
@@ -184,6 +203,9 @@ export function analyseMessage(sender: string, text: string): MessageAnalysis {
   if (signals.giftCards) labels.push("Gift cards");
   if (signals.crypto) labels.push("Crypto");
   if (signals.remoteAccess) labels.push("Remote access");
+  if (signals.callbackRequest) labels.push("Callback request");
+  if (signals.allegedCharge) labels.push("Alleged charge");
+  if (signals.deadlineThreat) labels.push("Deadline / account threat");
   if (signals.newNumber) labels.push("New number");
   if (signals.unknownSender) labels.push("Unknown sender");
   return { state: r.state, scenario: r.scenario, scenarioTitle: r.title, verdict: r.verdict, why: r.why, recommendation: r.rec, signals, signalLabels: labels, verifySender: r.verify };

@@ -39,7 +39,7 @@ export function normalizeHistoricalEvent(e: PatrolEvent): PatrolEvent {
     headline: e.category === 'call' ? 'Call rejection requested' : 'Earlier block claim is not packet-verified',
     what_happened: 'This record does not establish an observed packet drop.',
     why: ['Historical evidence cannot establish current protection.'],
-    what_to_do: 'Review the event. Check Guard for current protection.',
+    what_to_do: 'Review the event. Check Gates for current protection.',
   };
   return e;
 }

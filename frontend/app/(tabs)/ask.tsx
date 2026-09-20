@@ -11,10 +11,11 @@ import { HigginsChecks } from "@/src/components/HigginsChecks";
 import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
 import { Pill, ScreenHeader } from "@/src/components/ui";
 import { parseChecks } from "@/src/domain/higginsChecks";
+import { redactUserSecrets } from "@/src/domain/privacy";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
-interface Msg { id: string; role: "user" | "apollo"; content: string; pending?: boolean; at: string }
+interface Msg { id: string; role: "user" | "higgins"; content: string; pending?: boolean; at: string }
 const SUGGESTIONS = ["What does it mean when Apollo growls?", "Why can't Apollo see my whole phone?", "How do I spot a scam text link?", "What should I do after Apollo barks?"];
 
 const useStyles = makeStyles((c) => ({
@@ -24,7 +25,7 @@ const useStyles = makeStyles((c) => ({
   user: { alignSelf: "flex-end", backgroundColor: c.surfaceSecondary, borderColor: c.border },
   // A thin gold accent, not a colour fill, marks this bubble as Higgins speaking — restrained brand
   // identity on the conversational screen, never a full-bubble wash.
-  apollo: { alignSelf: "flex-start", backgroundColor: c.surfaceTertiary, borderColor: c.surfaceTertiary, borderLeftWidth: 3, borderLeftColor: c.gold },
+  higgins: { alignSelf: "flex-start", backgroundColor: c.surfaceTertiary, borderColor: c.surfaceTertiary, borderLeftWidth: 3, borderLeftColor: c.gold },
   text: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurface },
   inputBar: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, backgroundColor: c.glass, borderTopWidth: 1, borderTopColor: c.border },
   input: { flex: 1, minHeight: 48, maxHeight: 120, backgroundColor: c.surfaceTertiary, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, fontFamily: fonts.text, fontSize: 15, color: c.onSurface },
@@ -50,23 +51,23 @@ export default function Ask() {
   const abortRef = useRef<(() => void) | null>(null);
   const contextUsed = useRef(false);
 
-  const history = useQuery({ queryKey: ["ask-history", deviceId], enabled: !!deviceId, queryFn: () => apiGet<{ id: string; role: "user" | "apollo"; content: string; created_at: string }[]>(`/ask/history?device_id=${deviceId}`) });
-  useEffect(() => { if (history.data && messages.length === 0) setMessages(history.data.map((m) => ({ id: m.id, role: m.role, content: m.content, at: m.created_at }))); }, [history.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  const history = useQuery({ queryKey: ["ask-history", deviceId], enabled: !!deviceId, queryFn: () => apiGet<{ id: string; role: "user" | "apollo" | "higgins"; content: string; created_at: string }[]>(`/ask/history?device_id=${deviceId}`) });
+  useEffect(() => { if (history.data && messages.length === 0) setMessages(history.data.map((m) => ({ id: m.id, role: m.role === "user" ? "user" : "higgins", content: m.content, at: m.created_at }))); }, [history.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const send = (msg: string, context?: string) => {
-    const clean = msg.trim();
+    const clean = redactUserSecrets(msg).trim();
     if (!clean || streaming || !deviceId) return;
     setError(null);
     const now = new Date().toISOString();
     const userMsg: Msg = { id: `u-${Date.now()}`, role: "user", content: clean, at: now };
-    const apolloMsg: Msg = { id: `a-${Date.now()}`, role: "apollo", content: "", pending: true, at: now };
-    setMessages((m) => [...m, userMsg, apolloMsg]);
+    const higginsMsg: Msg = { id: `h-${Date.now()}`, role: "higgins", content: "", pending: true, at: now };
+    setMessages((m) => [...m, userMsg, higginsMsg]);
     setText(""); setStreaming(true);
     abortRef.current = streamPost("/ask/stream", "ask_apollo", { device_id: deviceId, message: clean, ...(context ? { context } : {}) },
-      (delta) => setMessages((m) => m.map((x) => x.id === apolloMsg.id ? { ...x, content: x.content + delta, pending: false } : x)),
+      (delta) => setMessages((m) => m.map((x) => x.id === higginsMsg.id ? { ...x, content: x.content + delta, pending: false } : x)),
       (err) => {
         setStreaming(false);
-        if (err) { setError(err); setMessages((m) => m.filter((x) => x.id !== apolloMsg.id || x.content.length > 0)); }
+        if (err) { setError(err); setMessages((m) => m.filter((x) => x.id !== higginsMsg.id || x.content.length > 0)); }
         void qc.invalidateQueries({ queryKey: ["ask-history", deviceId] });
       });
   };
@@ -90,10 +91,10 @@ export default function Ask() {
           testID="ask-messages"
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
           renderItem={({ item }) => (
-            <View style={[s.bubble, item.role === "user" ? s.user : s.apollo]} testID={`ask-msg-${item.role}`}>
-              {item.pending ? <ActivityIndicator color={colors.gold} /> : <Text style={s.text}>{item.role === "apollo" ? parseChecks(item.content).text : item.content}</Text>}
-              {item.role === "apollo" && !item.pending ? <HigginsChecks checks={parseChecks(item.content).checks} askedAt={item.at} messageId={item.id} /> : null}
-              {item.role === "apollo" && !item.pending && item.content ? <View style={{ marginTop: spacing.sm }}><HigginsSpeakButton text={parseChecks(item.content).text} testID={`ask-hear-${item.id}`} /></View> : null}
+            <View style={[s.bubble, item.role === "user" ? s.user : s.higgins]} testID={`ask-msg-${item.role}`}>
+              {item.pending ? <ActivityIndicator color={colors.gold} /> : <Text style={s.text}>{item.role === "higgins" ? parseChecks(item.content).text : item.content}</Text>}
+              {item.role === "higgins" && !item.pending ? <HigginsChecks checks={parseChecks(item.content).checks} askedAt={item.at} messageId={item.id} /> : null}
+              {item.role === "higgins" && !item.pending && item.content ? <View style={{ marginTop: spacing.sm }}><HigginsSpeakButton text={parseChecks(item.content).text} testID={`ask-hear-${item.id}`} /></View> : null}
             </View>
           )}
         />

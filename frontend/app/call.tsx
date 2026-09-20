@@ -64,7 +64,7 @@ export default function CheckCall() {
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>Check this call</Text>
+        <Text style={s.title}>Call Gate</Text>
         <Pressable testID="call-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="call-scroll">
@@ -112,7 +112,7 @@ export default function CheckCall() {
               <Card style={{ gap: spacing.sm }}>
                 {result.event ? <RecoveryFlow event={result.event} kinds={["password", "code", "money", "card", "app", "remote", "called", "info"]} testID="call-recovery" /> : <Body>Nothing to recover from — this looked like an ordinary call.</Body>}
                 {result.event && (a.requestedActions.includes("install") || a.requestedActions.includes("remote") || a.requestedActions.includes("screen")) ? <Button testID="call-check-app" variant="warning" label="They asked me to install an app — check it" onPress={() => router.push({ pathname: "/app-check", params: { scent: result.event?.scent_id ?? result.event?.event_id ?? "" } })} /> : null}
-                {result.event && (a.requestedActions.includes("code") || a.requestedActions.includes("password")) ? <Button testID="call-check-account" variant="warning" label="They asked for a code or password — Account Guard" onPress={() => router.push({ pathname: "/account", params: { scent: result.event?.scent_id ?? result.event?.event_id ?? "" } })} /> : null}
+                {result.event && (a.requestedActions.includes("code") || a.requestedActions.includes("password")) ? <Button testID="call-check-account" variant="warning" label="They asked for a code or password — Account Gate" onPress={() => router.push({ pathname: "/account", params: { scent: result.event?.scent_id ?? result.event?.event_id ?? "" } })} /> : null}
                 <Button testID="call-tell-more" variant="ghost" label="Ask Higgins about this call" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { context: `Phone call check: ${a.title}. State: ${STATE_NAME[a.state]}. Caller claimed: ${a.claimedBrand ?? claim}. Asked for: ${a.requestedActions.join(", ")}.`, prompt: "What should I do about this phone call?" } })} />
                 {result.event ? <Button testID="call-mark-safe" variant="ghost" label="It was genuine — mark as safe" onPress={() => { void resolveEvent(result.event!); showToast("Marked as safe.", "resting"); goBackOrHome(router); }} /> : null}
                 <Button testID="call-again" variant="ghost" label="Check another call" onPress={reset} />

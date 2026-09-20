@@ -133,7 +133,7 @@ export default function Scan() {
                   <Button testID="scan-call" variant="secondary" label={`Call ${payload.phone}`} onPress={() => void Linking.openURL(payload.raw)} />
                 </> : null}
                 {canOpen && finalState === "resting" ? <Button testID="scan-open" label="Open website" onPress={() => void Linking.openURL(payload.url!)} /> : null}
-                {canOpen && finalState !== "resting" ? <Button testID="scan-open" variant="ghost" label="Open anyway (Apollo recommends not to)" onPress={() => void Linking.openURL(payload.url!)} /> : null}
+                {canOpen && finalState !== "resting" ? <Button testID="scan-open" variant="ghost" label="Open anyway (Higgins advises against it)" onPress={() => void Linking.openURL(payload.url!)} /> : null}
                 {payload.url && !canOpen ? <Body testID="scan-open-blocked">Apollo stopped this destination from opening. Use the organisation&apos;s official app instead.</Body> : null}
                 {payload.url ? <Button testID="scan-view-destination" variant="secondary" label="View destination details" onPress={() => router.push({ pathname: "/check", params: { url: payload.url, source: "qr" } })} /> : null}
                 {payload.type === "wifi" ? <Body>Connect via your phone&apos;s Wi‑Fi settings if you trust the venue. {payload.wifiSecurity === "open" ? "Avoid banking on this network." : ""}</Body> : null}

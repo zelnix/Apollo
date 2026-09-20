@@ -868,3 +868,42 @@ test_plan:
 agent_communication:
   - agent: "main"
     message: "GitHub bb1a5fa is now a reviewed baseline only. These iteration 68 corrections need a new Save to GitHub commit before build evidence can be linked."
+
+## Iteration 73 — Final frontend lint and Email Gate state remediation
+frontend:
+  - task: "Clear the iteration 72 frontend lint gate and make Gmail status/connect/scan progress truthful and actionable"
+    implemented: true
+    working: true
+    file: "frontend/app/email.tsx, frontend/src/domain/protectionTruth.ts"
+    needs_retesting: false
+    priority: "high"
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Current no-cache ESLint baseline has zero errors; removed the final unused protectionTruth warning. Email Gate now bounds its connection-status wait at 8 seconds, shows a truthful unavailable/retry state, and binds visible/disabled loading states to Gmail connect and inbox scan actions. TypeScript, yarn lint, Gate 1 13/13, Gate 7 37/37 and Gates Overview 6/6 pass. Preview confirms Email Gate reaches an enabled email-gmail-connect CTA and App Gate renders with an enabled app-run action."
+      - agent: "testing"
+        working: true
+        comment: "Iteration 73 frontend verification passed: lint/typecheck clean; Gate 1 13/13, Gate 7 37/37 and Gates Overview 6/6; Email Gate left Checking within 12 seconds, connect CTA was enabled and changed to disabled Opening Google state; App Gate form rendered and enabled app-run after input. Connected-mailbox scan busy state was source-verified because no connected Gmail session was available."
+  - task: "Human Gmail OAuth consent using the stable deployed callback"
+    implemented: true
+    working: "NA"
+    file: "backend/routers/gmail.py, backend/services/gmail.py"
+    needs_retesting: true
+    priority: "medium"
+    status_history:
+      - agent: "main"
+        working: "NA"
+        comment: "Code-side OAuth URL construction remains verified. Human Google consent still depends on registering the exact stable deployed callback in Google Cloud Console; preview automation cannot complete provider login."
+test_plan:
+  current_focus:
+    - "Frontend iteration 72 remediation is verified complete"
+    - "Human Gmail OAuth consent remains the only current user-verification item"
+  stuck_tasks:
+    - "Real Gmail OAuth consent requires user Google account interaction and exact stable deployed callback registration"
+  test_all: false
+  test_priority: "high_first"
+agent_communication:
+  - agent: "main"
+    message: "Do not touch frontend/packages/guarddog-*. Stage 1D physical Pixel acceptance was cancelled by the user and is outside this retest. No mailbox username/password flow may be added."
+  - agent: "testing"
+    message: "Iteration 73 PASS for requested frontend scope; report: test_reports/iteration_73.json. No GuardDog or credential-flow regressions found."

@@ -438,6 +438,7 @@ class AppAnalyseOut(BaseModel):
     hosts: list[AppHostResult]
     explanation: Optional[dict[str, Any]] = None
     gemini_used: bool = False
+    assessment: Optional[InvestigationResult] = None
 
 
 GATE7_EXPLAIN_PROMPT = HIGGINS_VOICE + """ You are the calm plain-language security guide for everyday Australians. You will be given facts about an app
@@ -487,8 +488,20 @@ async def app_analyse(body: AppAnalyseIn):
             hosts.append(AppHostResult(host=host, verdict=r.verdict, threat_types=r.threat_types, coverage=r.coverage))
         except HTTPException:
             continue
-    explanation = await gemini_app_opinion(body, rep, hosts) if body.second_opinion else None
-    return AppAnalyseOut(reputation=rep, hosts=hosts, explanation=explanation, gemini_used=explanation is not None)
+    urls = [f"https://{host.host}" for host in hosts]
+    url_context = [{"url": url, "host": host.host, "verdict": host.verdict, "coverage": host.coverage,
+                    "threat_types": host.threat_types, "redirect_chain": [], "final_url": url}
+                   for url, host in zip(urls, hosts)]
+    app_text = (f"App submitted for investigation: {body.name}. Developer: {body.developer or 'not supplied'}. "
+                f"Claimed purpose: {body.purpose}. Install source: {body.source}. "
+                f"Permissions: {', '.join(body.permissions) or 'none supplied'}.")
+    assessment = await investigate_message(sender=body.developer or "", text=app_text, urls=urls,
+        claimed_brand=rep.impersonates_brand, local_state=body.local_state, url_context=url_context,
+        local_findings=[rep.note, *[f"Permission submitted: {permission}" for permission in body.permissions[:8]]], use_model=body.second_opinion)
+    explanation = {"summary": assessment.higgins.headline, "why": assessment.higgins.why_it_matters,
+                   "recommendation": assessment.higgins.next_action}
+    return AppAnalyseOut(reputation=rep, hosts=hosts, explanation=explanation,
+        gemini_used=bool(assessment.processing.get("model_used")), assessment=assessment)
 
 
 # ---------------------------------------------------------------------------
@@ -597,6 +610,11 @@ class BreachCheckOut(BaseModel):
     password_exposed: bool = False
     detail: str
     higgins: dict[str, Any]
+
+
+@router.get("/account/status")
+async def account_status():
+    return {"breach_lookup_configured": bool(HIBP_API_KEY)}
 
 
 @router.post("/account/breach", response_model=BreachCheckOut)

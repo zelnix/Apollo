@@ -39,6 +39,7 @@ class TestGmailStatus:
         data = r.json()
         assert data["connected"] is False
         assert data["configured"] is True
+        assert data["oauth_redirect_uri"] == f"{BASE_URL}/api/gmail/oauth/callback"
 
 
 class TestGmailConnect:

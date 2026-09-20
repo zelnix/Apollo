@@ -4,7 +4,7 @@ import { domainOnly, packetFields, evidenceToken } from './packetEvidence.ts';
 // User-submitted content may leave the device only for the disclosed, one-off assessment the user
 // requested. It must not be copied into Patrol payloads, logs, analytics, or background monitoring.
 
-export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "device_register" | "family" | "push_register" | "push_test" | "device_settings" | "message_check" | "message_extract" | "link_investigation" | "feedback" | "page_extract" | "page_crawl" | "gmail_scan" | "gmail_monitor" | "imap_connect" | "imap_scan" | "imap_monitor" | "app_check" | "account_check" | "breach_check" | "voice" | "call_risk_check";
+export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "device_register" | "family" | "push_register" | "push_test" | "device_settings" | "message_check" | "message_extract" | "link_investigation" | "feedback" | "page_extract" | "page_crawl" | "gmail_scan" | "gmail_monitor" | "app_check" | "account_check" | "breach_check" | "voice" | "call_risk_check";
 
 const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   family: new Set(["device_id", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id", "scent_id", "headline", "state", "events", "steps", "done", "note", "resolved", "kind", "text", "from_name", "enabled", "preview_only", "guardian_name", "duration_s"]),
@@ -35,12 +35,6 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   // stored OAuth token; no email content is ever part of this request body.
   gmail_scan: new Set(["device_id"]),
   gmail_monitor: new Set(["device_id", "enabled"]),
-  // Generic IMAP connect (Gate 1 add-on, Phase 3): the user's own host/port/username/app-password,
-  // entered directly in the app — sent once to establish the connection, then encrypted server-side.
-  // Never logged; see backend/services/imapmail.py.
-  imap_connect: new Set(["device_id", "host", "port", "ssl", "username", "app_password"]),
-  imap_scan: new Set(["device_id"]),
-  imap_monitor: new Set(["device_id", "enabled"]),
   // Gate 7: only the app's name/developer/source/purpose/permission *labels* and SDK-reported hosts — never an app inventory.
   app_check: new Set(["device_id", "name", "developer", "source", "purpose", "permissions", "hosts", "local_state", "scenario", "second_opinion"]),
   // Gate 8: alert text leaves the device only when the user taps "Check this alert"; the breach lookup sends the identifier the user typed, nothing else.
@@ -56,6 +50,12 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
 
 /** Keys that must never appear in any outbound payload, regardless of endpoint. */
 const FORBIDDEN_KEYS = new Set(["local_indicator", "contacts", "messages", "sms", "email_body", "page_content", "clipboard", "location", "imei", "serial", "phone_number", "advertising_id"]);
+const NON_SECRET_WORDS = new Set(["reset", "change", "changed", "request", "requested", "prompt", "field", "link", "page", "screen", "required"]);
+
+export function redactUserSecrets(value: string): string {
+  return value.replace(/\b(password|passcode|p\.?i\.?n\.?|otp|one[- ]time(?: security)? code|verification code|security code|recovery code|username|login id)\b(\s*(?:is|was|:|=)\s*|\s+)([A-Za-z0-9!@#$%^&*_.+\-/]{3,96})/gi,
+    (full, label: string, joiner: string, secret: string) => NON_SECRET_WORDS.has(secret.toLowerCase()) ? full : `${label}${joiner}[redacted]`);
+}
 
 export class EgressViolation extends Error {
   constructor(endpoint: EgressEndpoint, key: string) {
@@ -73,6 +73,7 @@ export function enforceEgress<T extends Record<string, unknown>>(endpoint: Egres
   }
   if (endpoint === 'message_check' || endpoint === 'account_check') {
     if (typeof out.text !== 'string' || out.text.length > 4000 || typeof out.sender !== 'string' || out.sender.length > 80) throw new EgressViolation(endpoint, 'submission bounds');
+    out.text = redactUserSecrets(out.text);
     out.urls = Array.isArray(out.urls) ? out.urls.map(u => purposeLimitedUrl(String(u))).slice(0, 10) : [];
   }
   if (endpoint === 'link_investigation') {
@@ -118,7 +119,10 @@ export function enforceEgress<T extends Record<string, unknown>>(endpoint: Egres
       state: v.state, headline: 'Security check — review with the protected person', occurred_at: v.occurred_at, status: v.status }));
     if (Array.isArray(out.steps)) out.steps = out.steps.map((v: Record<string, unknown>) => ({ id: v.id, text: 'Review this recovery step on the protected phone together.' }));
   }
-  if (endpoint === 'ask_apollo' && out.context) out.context = 'An Apollo security check needs explanation. Ask the person which check and what action they need help with. Do not request passwords, codes or private message content.';
+  if (endpoint === 'ask_apollo') {
+    if (typeof out.message === 'string') out.message = redactUserSecrets(out.message);
+    if (out.context) out.context = 'An Apollo security check needs explanation. Ask the person which check and what action they need help with. Do not request passwords, PINs, recovery codes, verification codes or private message content.';
+  }
   return out as T;
 }
 

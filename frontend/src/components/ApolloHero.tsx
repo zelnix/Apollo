@@ -31,7 +31,7 @@ const STATE_GIF: Partial<Record<ApolloState, { src: number; label: string; testI
   sniffing: { src: require("../../assets/images/apollo-sniffing.gif"), label: "Apollo sniffing", testID: "apollo-hero-gif-sniffing" },
   growling: { src: require("../../assets/images/apollo-growling.gif"), label: "Apollo growling", testID: "apollo-hero-gif-growling" },
   barking: { src: require("../../assets/images/apollo-barking.gif"), label: "Apollo barking", testID: "apollo-hero-gif-barking" },
-  biting: { src: require("../../assets/images/apollo-barking.gif"), label: "Apollo barking", testID: "apollo-hero-gif-barking" },
+  biting: { src: require("../../assets/images/apollo-barking.gif"), label: "Apollo biting after a confirmed block", testID: "apollo-hero-gif-biting" },
   // ears_up: no GIF yet — drop apollo-ears-up.gif in here when it exists. Falls back to the static mark below.
 };
 
@@ -118,7 +118,7 @@ export function ApolloHero({ resolution, visibility, adapterLabel, isMock, capab
   const dogStyle = useAnimatedStyle(() => ({ transform: [{ translateY: ty.value }, { scale: scale.value }] }));
 
   const title = resolution.visibilityLost ? "Apollo can't see right now" : STATE_LABEL[resolution.state];
-  const meaning = resolution.visibilityLost ? "Protection is off or has no active checks. This is not a safe state." : STATE_MEANING[resolution.state];
+  const meaning = resolution.visibilityLost ? "Some protection is unavailable or unverified. This is a protection gap, not evidence of an attack." : STATE_MEANING[resolution.state];
   // "Run a check" is never said bare: the exact checks are listed (tappable, in a popup) and read aloud. Completion
   // counts from the start of today, so a check already done this morning shows as done.
   const checks = sniffing ? [] : recommendedChecks(resolution);
@@ -175,7 +175,8 @@ export function ApolloHero({ resolution, visibility, adapterLabel, isMock, capab
           </Animated.View>
         </View>
         <Text style={s.label} testID="apollo-state-label">{title}</Text>
-        <Text style={s.meaning}>{meaning}</Text>
+        <Text style={s.note} testID="apollo-higgins-label">HIGGINS</Text>
+        <Text style={s.meaning} testID="apollo-state-meaning">{meaning}</Text>
         <Text style={s.reason} testID="apollo-state-reason">{resolution.reason}</Text>
         <Animated.View style={bellPulseStyle}>
           <View style={[s.row, { alignItems: "center" }]}>
@@ -193,7 +194,7 @@ export function ApolloHero({ resolution, visibility, adapterLabel, isMock, capab
           {isMock ? <DevTag label={adapterLabel} testID="mock-adapter-pill" /> : null}
         </View>
       </View>
-      <Sheet visible={checklistOpen} onClose={() => setChecklistOpen(false)} title="Checks I need you to run" testID="hero-checklist-sheet">
+      <Sheet visible={checklistOpen} onClose={() => setChecklistOpen(false)} title="Checks Higgins recommends" testID="hero-checklist-sheet">
         <HigginsChecks checks={checks} askedAt={askedAt} messageId="hero" record={false} title="" />
         {permissionNote ? <Body testID="hero-checklist-permission-note">{permissionNote}</Body> : null}
         <Button testID="hero-checklist-close" variant="ghost" label="Got it" onPress={() => setChecklistOpen(false)} />

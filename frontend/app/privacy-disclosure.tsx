@@ -88,9 +88,9 @@ export default function PrivacyDisclosure() {
         <View>
           <SectionTitle>Your controls</SectionTitle>
           <Card style={{ gap: spacing.sm }}>
-            <Body>• Turn protection off at any time in Guard.</Body>
+            <Body>• Turn supported protection off at any time in Gates.</Body>
             <Body>• Revoke any trusted link and clear all history in Settings.</Body>
-            <Body>• Disconnect a mailbox or disable notification access to stop future monitoring.</Body>
+            <Body>• Disconnect Gmail OAuth or disable notification access to stop future monitoring.</Body>
             <Body>• Deleting the app does not erase server records or information already delivered to family.</Body>
           </Card>
         </View>

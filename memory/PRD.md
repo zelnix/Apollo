@@ -1,6 +1,6 @@
 # Apollo V1 — PRD & Build Log
 
-## Current delivery — purpose-limited Higgins UX + Stage 1D preparation (iteration 71)
+## Current delivery — Gates remediation and Email Gate state hardening (iteration 73)
 
 ### Problem statement
 Complete Apollo's production-grade Text and Link Guard experience without waiting for the separate Pixel blocking run. A person must be able to submit text, a link or a chosen screenshot and see the submitted content, investigated evidence, Higgins' exact explanation, explicit uncertainty and one clear action. Cloud checks are permitted only for the disclosed purpose, with secret redaction, SSRF-safe requests, no raw Patrol/log storage and request-copy closure immediately and no later than 15 minutes. Stage 1D remains separately gated by a real candidate build and an observed intentional packet drop.
@@ -12,6 +12,8 @@ Complete Apollo's production-grade Text and Link Guard experience without waitin
 - **Native candidate:** `guarddog-acceptance` remains an Android-only staging profile over one Apollo-owned runtime; production remains `legacy`. Imported `frontend/packages/guarddog-*` source is frozen.
 
 ### Implemented
+- **Iteration 73 frontend closure:** Cleared the current frontend lint gate and removed the final warning. Email Gate now leaves its Gmail status wait after eight seconds, presents a truthful retry state, and displays disabled loading labels/spinners while Gmail OAuth opens or a connected inbox scan runs. App Gate remains unchanged functionally and renders correctly.
+- **Credential policy correction:** Generic IMAP connection and every mailbox username/app-password input, route and storage function were removed. Existing `imap_connections` rows were purged. Gmail read-only OAuth remains the only mailbox connection path; Apollo never asks for or stores mailbox usernames or passwords. Text/Ask request boundaries redact passwords, usernames, PINs, recovery codes and one-time codes before external processing or history storage; existing Ask history was purged. See `docs/CREDENTIAL_REMOVAL_RECORD.md`.
 - Text, Link and screenshot results now show submitted content, scam/clear/uncertain hierarchy, findings, visible unresolved questions, Higgins' exact response, one primary action, safe sources and the processing boundary.
 - Chosen screenshots show a preview, run Gemini extraction and automatically continue into the same full investigation. Photo access is explained before prompting; denied settings access is rechecked when the app becomes active.
 - Added dedicated `/api/link/investigate`, client egress allow-list/redaction, safe long-request handling and Patrol-safe supporting references.
@@ -20,6 +22,7 @@ Complete Apollo's production-grade Text and Link Guard experience without waitin
 - Stage 1D acceptance profile and frozen source preflight pass. `docs/STAGE1D_CANDIDATE_RECORD.md` preserves the still-missing source/build/APK/Pixel fields instead of claiming acceptance.
 
 ### Verification
+- Iteration 73: frontend lint and TypeScript compile clean; Gate 1 **13/13**, Gate 7 **37/37**, Gates Overview **6/6**. Preview verification confirms Email Gate reaches an enabled Gmail connect CTA instead of remaining in “Checking connection…”, the OAuth launch shows a disabled “Opening Google…” state, and App Gate enables its assessment action after app-name input. Independent report: `/app/test_reports/iteration_73.json`.
 - Backend: **306 passed** (`python -m pytest -q`), including purpose-limited account/link contracts, secret redaction, SSRF boundaries, content-aware fallback and Stage 1D evidence rules.
 - Frontend: **332 passed** (`node --test tests/*.test.ts`), TypeScript compile clean, JavaScript/Python lint clean.
 - Browser: scam and genuine-looking Text Guard results rendered; genuine content uses “Assessment only — nothing was blocked.” A real nonblank JPEG completed preview → Gemini extraction → automatic Higgins investigation.
@@ -27,8 +30,8 @@ Complete Apollo's production-grade Text and Link Guard experience without waitin
 - Stage 1D: profile/frozen-source/key-permission preflight passes, but controlled acceptance inputs are incomplete and the documented endpoint returns HTTP 404. Android build, APK hash and Pixel acceptance remain not run.
 
 ### Priorities
-- **P0:** Keep all purpose-limited privacy, queue/evidence and Truth-of-State regressions green. No investigation may produce Biting.
-- **P1:** Improve scenario presentation/export and continue consumer investigation quality work.
+- **P0:** Complete. Keep all purpose-limited privacy, queue/evidence and Truth-of-State regressions green. No investigation may produce Biting.
+- **P1:** Complete human Gmail OAuth consent using the exact callback registered for the stable deployed backend, then optionally exercise the connected-inbox scan loading state end-to-end.
 - **Stopped by user:** Do not pursue the controlled endpoint, acceptance signing, Android candidate build, APK hashing or Pixel acceptance run. Physical acceptance remains **NOT RUN** and must not be implied.
 - **P2:** Consider macOS/Windows native enforcement adapters only if separately requested.
 

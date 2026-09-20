@@ -11,7 +11,7 @@ from core.config import logger
 from core.db import db, now_utc
 from core.models import PatrolEvent
 from routers.push import push_owner_alert
-from services import gmail, imapmail
+from services import gmail
 from services.intel import assess_indicator
 from services.investigation import investigate_message
 
@@ -72,15 +72,18 @@ async def _assess(provider: str, device_id: str, message: dict[str, Any]) -> Non
 
 
 async def monitor_enabled_mailboxes_once() -> None:
-    for provider, collection, scanner in (("gmail", db.gmail_connections, gmail.scan_inbox),
-                                           ("imap", db.imap_connections, imapmail.scan_inbox)):
+    for provider, collection, scanner in (("gmail", db.gmail_connections, gmail.scan_inbox),):
         async for row in collection.find({"monitoring_enabled": True}, {"_id": 0, "device_id": 1}):
             try:
                 messages = await scanner(row["device_id"])
                 for message in messages[:10]:
                     await _assess(provider, row["device_id"], message)
+                await collection.update_one({"device_id": row["device_id"]}, {"$set": {"monitor_last_checked_at": now_utc(),
+                    "monitor_last_error_at": None, "monitor_last_error": None}})
             except Exception as exc:
                 logger.warning("%s mailbox monitoring failed for one device: %s", provider, type(exc).__name__)
+                await collection.update_one({"device_id": row["device_id"]}, {"$set": {"monitor_last_error_at": now_utc(),
+                    "monitor_last_error": type(exc).__name__}})
 
 
 async def mailbox_monitor_loop() -> None:
