@@ -10,6 +10,7 @@ import os
 import socket
 import ssl
 import urllib.request
+from urllib.error import HTTPError, URLError
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse
@@ -19,6 +20,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 PINNED_PUBLIC_B64 = "bZeQ3t9aAOC9/eg7sCrKB5hNLBRKk/SZlDmYBhxNQrk="
 KEY_ID = "apollo-stage1d-acceptance-ed25519-001"
+EXPECTED_BODY = b"APOLLO_GUARDDOG_ACCEPTANCE_V1\n"
 
 
 def canonical(value: object) -> bytes:
@@ -49,11 +51,19 @@ def main() -> None:
     if resolved != [ipv4]:
         raise SystemExit(f"Dedicated binding failed: expected {[ipv4]}, resolved {resolved}")
     request = urllib.request.Request(url, headers={"User-Agent": "Apollo-GuardDog-Acceptance-Provisioner/1"})
-    with urllib.request.urlopen(request, timeout=10, context=ssl.create_default_context()) as response:
-        baseline_status = response.status
-        response.read(4096)
+    try:
+        with urllib.request.urlopen(request, timeout=10, context=ssl.create_default_context()) as response:
+            baseline_status = response.status
+            baseline_body = response.read(len(EXPECTED_BODY) + 1)
+            cache_control = response.headers.get("Cache-Control")
+    except HTTPError as error:
+        raise SystemExit(f"Controlled endpoint returned HTTP {error.code} at the exact acceptance path") from None
+    except URLError as error:
+        raise SystemExit(f"Controlled endpoint connection failed: {error.reason}") from None
     if not 200 <= baseline_status < 400:
         raise SystemExit(f"Controlled endpoint baseline failed with HTTP {baseline_status}")
+    if baseline_body != EXPECTED_BODY or cache_control != "no-store":
+        raise SystemExit(f"Controlled endpoint response mismatch: body={baseline_body!r}, cache={cache_control!r}")
 
     private_path = os.environ.get("GUARDDOG_ACCEPTANCE_PRIVATE_KEY_FILE", "").strip()
     if private_path:

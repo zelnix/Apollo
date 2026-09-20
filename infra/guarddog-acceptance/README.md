@@ -20,3 +20,16 @@ is a newly allocated public IPv4 dedicated to this acceptance endpoint.
 
 No hosting or DNS credentials are available to this agent, so steps 1–3 are NOT RUN. The example
 address in `endpoint.env.example` is documentation-only TEST-NET and is rejected by the verifier.
+
+## Current AWS target status
+
+- Saved source commit containing the five candidate corrections: `f19c23e`.
+- `blocktest.btciq.app` resolves to the single IPv4 `52.25.179.131`, which AWS publishes as EC2 in
+  `us-west-2`. TLS 1.3 is valid for the hostname through 2026-12-14.
+- The existing root page is HTTP 200, but `/apollo-guarddog-acceptance/v1` is currently HTTP 404.
+  Therefore endpoint verification and host-scoped signing remain blocked.
+- Add `nginx-location.conf` to the existing TLS server block, run `nginx -t`, reload NGINX, then run
+  `verify_endpoint.py`.
+- AWS ownership still requires read-only evidence of the Elastic IP allocation/association and exact
+  Route 53 A record. Use `collect_aws_ownership.sh` with a temporary AWS profile and an evidence
+  directory outside GitHub.

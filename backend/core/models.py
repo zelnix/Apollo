@@ -176,6 +176,8 @@ class PatrolEventIn(BaseModel):
     # Presence alone proves nothing — see _derive_verified_block in routers/patrol.py, the only place
     # allowed to turn this into verified_block=True.
     enforcement_evidence: Optional[EnforcementEvidenceIn] = None
+    # Public, query/fragment-free references produced by the investigation service; never raw links.
+    supporting_references: list[dict[str, str]] = Field(default_factory=list, max_length=6)
 
 
 class PatrolEvent(PatrolEventIn, BaseDocument):
@@ -265,3 +267,4 @@ class CallRiskResponse(BaseModel):
     cached: bool
     checked_at: datetime
     source: Literal["ipqualityscore", "not_configured"]
+    higgins: dict[str, Any]

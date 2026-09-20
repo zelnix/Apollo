@@ -27,6 +27,26 @@ from core.models import CallRiskResponse, PhoneRiskCache
 CACHE_TTL = timedelta(hours=24)  # IPQS risk/abuse signals change; don't cache indefinitely
 
 
+def _higgins(decision: str, data: dict) -> dict:
+    score = data.get("fraud_score")
+    if decision == "avoid":
+        found = "The number has strong reputation signals associated with fraud or recent abuse."
+        action = "Do not return the call using this number. Find the organisation's number in its official app or website."
+    elif decision == "review":
+        found = "The number has some reputation signals worth checking, but Apollo cannot establish who is calling."
+        action = "Let the call go to voicemail, then verify the caller using an independently sourced number."
+    else:
+        found = "The current reputation check did not find strong abuse signals for this number."
+        action = "If the call was unexpected, verify the caller independently before sharing information or sending money."
+    return {"headline": "Verify the caller independently", "found": found,
+            "why": f"Caller ID can be spoofed. A fraud score of {score}/100 is reputation evidence, not proof of identity." if score is not None else
+                   "Caller ID can be spoofed, and reputation data was unavailable or incomplete.",
+            "could_not_establish": "Apollo could not authenticate the person or organisation behind the number.",
+            "next_action": action,
+            "exact_response": f"{found} {action}",
+            "warning_only": True}
+
+
 def normalize_phone(raw: str, country: Optional[str]) -> str:
     """E.164 or raise 422 — mirrors the playbook's normalize_phone(); a local number needs a country."""
     try:
@@ -67,13 +87,14 @@ async def _query_ipqs(phone_e164: str) -> dict:
     return data
 
 
-async def check_phone_risk(raw_number: str, country: Optional[str]) -> CallRiskResponse:
+async def check_phone_risk(raw_number: str, country: Optional[str], *, persist_cache: bool = True) -> CallRiskResponse:
     phone = normalize_phone(raw_number, country)
     ts = now_utc()
     if not IPQS_API_KEY:
-        return CallRiskResponse(number=phone, decision="allow", cached=False, checked_at=ts, source="not_configured")
+        data = {"fraud_score": None}
+        return CallRiskResponse(number=phone, decision="allow", cached=False, checked_at=ts, source="not_configured", higgins=_higgins("allow", data))
 
-    cached = await db.phone_risk_cache.find_one({"phone_e164": phone})
+    cached = await db.phone_risk_cache.find_one({"phone_e164": phone}) if persist_cache else None
     if cached:
         rc = PhoneRiskCache.from_mongo(cached)
         if rc.expires_at.replace(tzinfo=timezone.utc) > ts:
@@ -81,6 +102,7 @@ async def check_phone_risk(raw_number: str, country: Optional[str]) -> CallRiskR
                 number=phone, valid=rc.valid, active=rc.active, fraud_score=rc.fraud_score, recent_abuse=rc.recent_abuse,
                 risky=rc.risky, voip=rc.voip, line_type=rc.line_type, carrier=rc.carrier, country=rc.country,
                 decision=_decision(rc.model_dump()), cached=True, checked_at=rc.checked_at, source="ipqualityscore",  # type: ignore[arg-type]
+                higgins=_higgins(_decision(rc.model_dump()), rc.model_dump()),
             )
 
     try:
@@ -96,10 +118,12 @@ async def check_phone_risk(raw_number: str, country: Optional[str]) -> CallRiskR
         line_type=data.get("line_type"), carrier=data.get("carrier"), country=data.get("country"),
         checked_at=ts, expires_at=ts + CACHE_TTL,
     )
-    await db.phone_risk_cache.update_one({"phone_e164": phone}, {"$set": record.to_mongo()}, upsert=True)
+    if persist_cache:
+        await db.phone_risk_cache.update_one({"phone_e164": phone}, {"$set": record.to_mongo()}, upsert=True)
     logger.info("phone risk checked (score=%s, decision=%s)", record.fraud_score, _decision(record.model_dump()))
     return CallRiskResponse(
         number=phone, valid=record.valid, active=record.active, fraud_score=record.fraud_score, recent_abuse=record.recent_abuse,
         risky=record.risky, voip=record.voip, line_type=record.line_type, carrier=record.carrier, country=record.country,
         decision=_decision(record.model_dump()), cached=False, checked_at=ts, source="ipqualityscore",  # type: ignore[arg-type]
+        higgins=_higgins(_decision(record.model_dump()), record.model_dump()),
     )

@@ -79,7 +79,7 @@ class TestImapStatus:
 
 
 class TestImapConnect:
-    def test_connect_invalid_host_chars_returns_403_due_local_first_policy(self, api, device_id):
+    def test_connect_invalid_host_is_rejected_or_reports_missing_server_config(self, api, device_id):
         start = time.time()
         r = api.post(
             f"{BASE_URL}/api/imap/connections",
@@ -94,11 +94,10 @@ class TestImapConnect:
             timeout=25,
         )
         elapsed = time.time() - start
-        assert r.status_code == 403, f"expected 403, got {r.status_code}: {r.text}"
+        assert r.status_code in (400, 503), r.text
         assert elapsed < 25
-        assert "local-first privacy policy" in r.json().get("detail", "")
 
-    def test_connect_unreachable_host_returns_403_gracefully(self, api, device_id):
+    def test_connect_unreachable_host_fails_boundedly(self, api, device_id):
         start = time.time()
         r = api.post(
             f"{BASE_URL}/api/imap/connections",
@@ -113,24 +112,22 @@ class TestImapConnect:
             timeout=30,
         )
         elapsed = time.time() - start
-        assert r.status_code == 403, f"expected 403, got {r.status_code}: {r.text}"
+        assert r.status_code in (400, 503), r.text
         assert elapsed < 30, f"took too long: {elapsed}s"
-        assert "local-first privacy policy" in r.json().get("detail", "")
 
-    def test_connect_missing_fields_is_still_403_when_route_disabled(self, api, device_id):
+    def test_connect_missing_fields_is_validation_error(self, api, device_id):
         r = api.post(
             f"{BASE_URL}/api/imap/connections",
             json={"device_id": device_id, "host": "imap.gmail.com"},
             timeout=15,
         )
-        assert r.status_code == 403
+        assert r.status_code == 422
 
 
 class TestImapScan:
-    def test_scan_without_connection_returns_403_when_route_disabled(self, api, device_id):
+    def test_scan_without_connection_returns_not_found(self, api, device_id):
         r = api.post(f"{BASE_URL}/api/imap/scan", json={"device_id": device_id}, timeout=20)
-        assert r.status_code == 403, f"expected 403, got {r.status_code}: {r.text}"
-        assert "local-first privacy policy" in r.json().get("detail", "")
+        assert r.status_code == 404, r.text
 
 
 class TestImapDisconnect:

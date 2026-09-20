@@ -101,18 +101,18 @@ def _valid_evidence(evidence_id: str, observed_at: str, domain: str = "evil.exam
         ("/call/risk-check", {}),
     ],
 )
-def test_privacy_boundary_disabled_routes_fail_closed(path: str, payload: dict):
+def test_purpose_limited_routes_still_require_device_auth(path: str, payload: dict):
     r = requests.post(f"{API}{path}", json=payload, headers=RAW, timeout=15)
-    assert r.status_code == 403, r.text
-    assert "local-first privacy policy" in r.json().get("detail", "")
+    assert r.status_code == 401, r.text
+    assert "device credential" in r.json().get("detail", "")
 
 
-def test_message_analyse_accepts_local_only_and_rejects_raw_content():
+def test_message_analyse_accepts_explicit_submission_without_claiming_a_block():
     did, auth = _register_device()
     raw = {
         "device_id": did,
         "sender": "+61400000000",
-        "text": "Raw message should not be accepted",
+        "text": "CommBank alert: verify a $4,820 payment at the supplied link.",
         "urls": ["https://example.com"],
         "local_state": "growling",
         "scenario": "M_RAW",
@@ -120,28 +120,17 @@ def test_message_analyse_accepts_local_only_and_rejects_raw_content():
         "claimed_brand": "CommBank",
         "second_opinion": True,
     }
-    blocked = requests.post(f"{API}/message/analyse", json=raw, headers=auth, timeout=20)
-    assert blocked.status_code == 403, blocked.text
-
-    local_only = {
-        "device_id": did,
-        "sender": "",
-        "text": "[local-only]",
-        "urls": ["https://example.com"],
-        "local_state": "growling",
-        "scenario": "M_LOCAL",
-        "signals": [],
-        "claimed_brand": None,
-        "second_opinion": False,
-    }
-    ok = requests.post(f"{API}/message/analyse", json=local_only, headers=auth, timeout=25)
+    ok = requests.post(f"{API}/message/analyse", json=raw, headers=auth, timeout=75)
     assert ok.status_code == 200, ok.text
     data = ok.json()
-    assert data["gemini_used"] is False
     assert isinstance(data["urls"], list)
+    assert data["assessment"]["processing"]["raw_retained_by_apollo"] is False
+    assert data["assessment"]["risk"] in ("warning", "uncertain")
+    assert "block" not in data["assessment"]["higgins"]["exact_response"].lower()
+    assert data["assessment"]["higgins"]["next_action"]
 
 
-def test_account_analyse_accepts_local_only_and_rejects_raw_content():
+def test_account_analyse_returns_evidence_grounded_assessment():
     did, auth = _register_device()
     raw = {
         "device_id": did,
@@ -154,25 +143,12 @@ def test_account_analyse_accepts_local_only_and_rejects_raw_content():
         "scenario": "AC_RAW",
         "second_opinion": True,
     }
-    blocked = requests.post(f"{API}/account/analyse", json=raw, headers=auth, timeout=20)
-    assert blocked.status_code == 403, blocked.text
-
-    local_only = {
-        "device_id": did,
-        "kind": "mfa_prompt",
-        "provider": "google",
-        "sender": "",
-        "text": "[local-only]",
-        "urls": ["https://example.com"],
-        "local_state": "growling",
-        "scenario": "AC_LOCAL",
-        "second_opinion": False,
-    }
-    ok = requests.post(f"{API}/account/analyse", json=local_only, headers=auth, timeout=20)
+    ok = requests.post(f"{API}/account/analyse", json=raw, headers=auth, timeout=75)
     assert ok.status_code == 200, ok.text
     data = ok.json()
-    assert data["gemini_used"] is False
     assert isinstance(data["urls"], list)
+    assert data["assessment"]["processing"]["raw_retained_by_apollo"] is False
+    assert data["assessment"]["higgins"]["next_action"]
 
 
 def test_call_screening_event_cannot_claim_biting_without_packet_evidence():

@@ -1,0 +1,184 @@
+{
+  "generated_at": 1789894404.570548,
+  "provider": "Gemini",
+  "scenarios": [
+    {
+      "name": "realistic_bank_scam",
+      "input": {
+        "sender": "+61 400 000 222",
+        "text": "CommBank Alert: A $4,820 payment has been detected. Secure your account immediately at https://commbank-secure-verify.xyz/login or call 02 8000 1234.",
+        "urls": [
+          "https://commbank-secure-verify.xyz/login"
+        ]
+      },
+      "status_code": 200,
+      "risk": "warning",
+      "gemini_used": true,
+      "findings": [
+        {
+          "status": "suspicious",
+          "title": "Unofficial Domain",
+          "detail": "The link provided uses a .xyz domain, which contradicts the bank's official .com.au domain. A domain is the unique name used to identify a website on the internet.",
+          "source_ids": [
+            "official-4"
+          ]
+        },
+        {
+          "status": "suspicious",
+          "title": "Website Resolution Failure",
+          "detail": "The website failed to load due to a DNS error, a common occurrence when fraudulent sites are removed. DNS is the system that connects a website name to its location on the internet.",
+          "source_ids": [
+            "page-1"
+          ]
+        },
+        {
+          "status": "suspicious",
+          "title": "Internal Pattern Warning",
+          "detail": "Apollo's internal analysis identified patterns frequently associated with deceptive messages.",
+          "source_ids": [
+            "local-1"
+          ]
+        }
+      ],
+      "higgins_exact_response": "A link to an unofficial .xyz domain Unofficial domains are often used to trick people into revealing their login details I could not establish: the true identity of the sender. Delete the message and verify your account status through the official CommBank app.",
+      "next_action": "Delete the message and verify your account status through the official CommBank app.",
+      "action_offered": "Avoid and Delete",
+      "could_not_establish": [
+        "The true identity of the sender",
+        "The validity of the alleged $4,820 transaction"
+      ],
+      "sources": [
+        {
+          "source_id": "local-1",
+          "label": "Apollo on-device message analysis",
+          "url": null,
+          "status": "inconclusive",
+          "detail": "Local message patterns produced a barking warning; this is not proof of sender identity or a packet block."
+        },
+        {
+          "source_id": "link-1",
+          "label": "Apollo link intelligence",
+          "url": null,
+          "status": "supports",
+          "detail": "commbank-secure-verify.xyz: clean; coverage full."
+        },
+        {
+          "source_id": "page-1",
+          "label": "Isolated webpage inspection",
+          "url": null,
+          "status": "unavailable",
+          "detail": "Inspection unavailable: dns_failed."
+        },
+        {
+          "source_id": "official-4",
+          "label": "CommBank official domain reference",
+          "url": "https://www.commbank.com.au/support/security.html",
+          "status": "contradicts",
+          "detail": "Official domain: commbank.com.au. No submitted link matches."
+        },
+        {
+          "source_id": "phone-1",
+          "label": "Caller-number reputation",
+          "url": null,
+          "status": "supports",
+          "detail": "Reputation result: allow; fraud score 0."
+        }
+      ],
+      "raw_retained_by_apollo": false,
+      "packet_block_claimed": false
+    },
+    {
+      "name": "genuine_appointment",
+      "input": {
+        "sender": "City Dental",
+        "text": "Hi Sarah, your dental appointment is confirmed for Tuesday at 3:30 pm. No payment is due. To reschedule, use the number on our official website.",
+        "urls": []
+      },
+      "status_code": 200,
+      "risk": "uncertain",
+      "gemini_used": true,
+      "findings": [
+        {
+          "status": "corroborated",
+          "title": "Safe message structure",
+          "detail": "The message contains no links or requests for immediate payment, which is typical of legitimate reminders.",
+          "source_ids": [
+            "local-1"
+          ]
+        },
+        {
+          "status": "unresolved",
+          "title": "Recipient identity",
+          "detail": "It is unclear if you are the 'Sarah' mentioned in the message.",
+          "source_ids": [
+            "local-1"
+          ]
+        }
+      ],
+      "higgins_exact_response": "A message confirming a dental appointment for Tuesday at 3:30 pm. Legitimate businesses often send reminders that do not require you to click links or provide personal details. I could not establish: whether you are the intended recipient of this specific message. Check your personal calendar to see if you have an appointment on Tuesday at 3:30 pm.",
+      "next_action": "Check your personal calendar to see if you have an appointment on Tuesday at 3:30 pm.",
+      "action_offered": "Review calendar",
+      "could_not_establish": [
+        "Whether you are the intended recipient of this specific message.",
+        "The specific location of the City Dental clinic mentioned."
+      ],
+      "sources": [
+        {
+          "source_id": "local-1",
+          "label": "Apollo on-device message analysis",
+          "url": null,
+          "status": "supports",
+          "detail": "No strong local scam pattern was found."
+        }
+      ],
+      "raw_retained_by_apollo": false,
+      "packet_block_claimed": false
+    },
+    {
+      "name": "ambiguous_new_number_request",
+      "input": {
+        "sender": "Unknown mobile",
+        "text": "Hi Mum, I dropped my phone and this is my new number. Can you send $600 today? I will pay you back Friday.",
+        "urls": []
+      },
+      "status_code": 200,
+      "risk": "warning",
+      "gemini_used": true,
+      "findings": [
+        {
+          "status": "suspicious",
+          "title": "Impersonation Pattern",
+          "detail": "The message uses a 'Hi Mum' script, which is a common method for financial deception.",
+          "source_ids": [
+            "local-1"
+          ]
+        },
+        {
+          "status": "unresolved",
+          "title": "Unverified Sender",
+          "detail": "The identity of the person behind this new number cannot be confirmed through available records.",
+          "source_ids": [
+            "local-1"
+          ]
+        }
+      ],
+      "higgins_exact_response": "A request for $600 from an unrecognised mobile number. Scammers use 'pattern analysis'\u2014checking for common phrases used in fraud\u2014to identify messages that pretend to be family members in distress. I could not establish: the actual identity of the sender. Call your child on their original, known phone number to verify this request.",
+      "next_action": "Call your child on their original, known phone number to verify this request.",
+      "action_offered": "Call known number",
+      "could_not_establish": [
+        "The actual identity of the sender."
+      ],
+      "sources": [
+        {
+          "source_id": "local-1",
+          "label": "Apollo on-device message analysis",
+          "url": null,
+          "status": "inconclusive",
+          "detail": "Local message patterns produced a growling warning; this is not proof of sender identity or a packet block."
+        }
+      ],
+      "raw_retained_by_apollo": false,
+      "packet_block_claimed": false
+    }
+  ]
+}

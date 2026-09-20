@@ -71,7 +71,8 @@ async def save_connection(device_id: str, refresh_token: str) -> None:
     enc = _fernet.encrypt(refresh_token.encode()).decode()
     await db.gmail_connections.update_one(
         {"device_id": device_id},
-        {"$set": {"refresh_token_enc": enc, "scopes": [SCOPE], "updated_at": now_utc()}, "$setOnInsert": {"device_id": device_id, "created_at": now_utc()}},
+        {"$set": {"refresh_token_enc": enc, "scopes": [SCOPE], "updated_at": now_utc()},
+         "$setOnInsert": {"device_id": device_id, "created_at": now_utc(), "monitoring_enabled": False}},
         upsert=True,
     )
 

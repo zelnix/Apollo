@@ -109,7 +109,7 @@ export default function CallGuard() {
         <Pressable testID="callguard-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="callguard-scroll">
-        <Body testID="callguard-policy">Call Guard requests rejection for numbers on local lists when screening is active. Android supplies no separate completion receipt here. This is never a packet-backed block. Cloud caller lookups are disabled.</Body>
+        <Body testID="callguard-policy">Submitting a number authorises one reputation lookup. Apollo does not persist the submitted number. Reputation is a warning only; call rejection is separate and never packet-backed Biting.</Body>
 
         <Card style={{ gap: spacing.sm }} testID="callguard-status-card">
           <View style={s.rowTop}>
@@ -155,8 +155,8 @@ export default function CallGuard() {
               <TextInput testID="callguard-number" style={[s.input, { flex: 2 }]} value={number} onChangeText={setNumber} placeholder="Phone number, e.g. +1 555 010 1234" placeholderTextColor={colors.muted} keyboardType="phone-pad" />
               <TextInput testID="callguard-country" style={[s.input, { flex: 1 }]} value={country} onChangeText={setCountry} placeholder="Country (US)" placeholderTextColor={colors.muted} autoCapitalize="characters" maxLength={2} />
             </View>
-            <Button testID="callguard-check" label="Cloud number lookup unavailable" onPress={() => void runCheck()} disabled />
-            <Text style={s.small} testID="callguard-local-only">Numbers stay on your phone. Use local lists or Check This Call for guidance.</Text>
+            <Button testID="callguard-check" label={busy ? "Checking…" : "Check caller reputation"} onPress={() => void runCheck()} disabled={busy || !number.trim()} />
+            <Text style={s.small} testID="callguard-processing-scope">The number is used for this check, then discarded by Apollo. Provider-side handling follows the configured reputation service policy.</Text>
             <Button testID="callguard-local-block" variant="secondary" label="Add number to local block list" onPress={() => void addEntry(number.trim(), 'block')} disabled={!number.trim()} />
             <Button testID="callguard-local-allow" variant="secondary" label="Add number to local allow list" onPress={() => void addEntry(number.trim(), 'allow')} disabled={!number.trim()} />
           </Card>
@@ -176,6 +176,9 @@ export default function CallGuard() {
               {result.source === "not_configured" ? <Pill tone="unknown" label="Provider not configured" /> : null}
             </View>
             <Text style={s.why} testID="callguard-summary">{result.number}{result.fraud_score !== null ? ` — fraud score ${result.fraud_score}/100` : ""}</Text>
+            <Text style={s.why} testID="callguard-higgins-headline">{result.higgins.headline}</Text>
+            <Body testID="callguard-higgins-response">{result.higgins.exact_response}</Body>
+            <Body testID="callguard-higgins-unresolved">Could not establish: {result.higgins.could_not_establish}</Body>
             {result.line_type ? <Text style={s.small}>Line type: {result.line_type}{result.carrier ? ` · ${result.carrier}` : ""}{result.voip ? " · VOIP" : ""}</Text> : null}
             <View style={s.row}>
               <Button testID="callguard-result-block" variant="secondary" label="Add to block list" onPress={() => void addEntry(result.number, "block")} />

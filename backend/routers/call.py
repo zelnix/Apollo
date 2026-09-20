@@ -12,4 +12,5 @@ router = APIRouter()
 
 @router.post("/call/risk-check", response_model=CallRiskResponse)
 async def call_risk_check(body: CallRiskRequest):
-    return await check_phone_risk(body.number, body.country)
+    # Purpose-limited manual/background lookup: Apollo does not persist the submitted number.
+    return await check_phone_risk(body.number, body.country, persist_cache=False)

@@ -179,11 +179,11 @@ test("enforceEgress rejects unknown/sensitive nested evidence keys", () => {
   assert.throws(() => enforceEgress("patrol_sync", payload2), EgressViolation);
 });
 
-test("raw content absent from message/family/ask payloads", () => {
+test("explicit message payload preserves assessment context but redacts secret URL values", () => {
   const msg = enforceEgress("message_check", {
     device_id: "dev-123",
-    sender: "",
-    text: "[local-only]",
+    sender: "Bank Alerts",
+    text: "Please review the claimed payment.",
     urls: ["https://example.com/reset?token=secret&email=user@example.com"],
     local_state: "growling",
     scenario: "M1",
@@ -191,7 +191,11 @@ test("raw content absent from message/family/ask payloads", () => {
     claimed_brand: null,
     second_opinion: false,
   } as any);
-  assert.equal((msg as any).urls[0], "https://example.com/");
+  assert.equal((msg as any).sender, "Bank Alerts");
+  assert.equal((msg as any).text, "Please review the claimed payment.");
+  assert.match((msg as any).urls[0], /^https:\/\/example\.com\/reset\?/);
+  assert.match((msg as any).urls[0], /token=%5Bredacted%5D/);
+  assert.doesNotMatch((msg as any).urls[0], /token=secret/);
 
   const ask = enforceEgress("ask_apollo", {
     device_id: "dev-123",

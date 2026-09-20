@@ -1,7 +1,4 @@
-"""Gate 3 screenshot extraction route under local-first policy.
-
-Cloud screenshot processing stays intentionally disabled (403).
-"""
+"""Gate 3 purpose-limited screenshot extraction contract."""
 from __future__ import annotations
 
 import os
@@ -33,16 +30,16 @@ BASE_URL = _base_url()
 @pytest.fixture(scope="module")
 def api():
     s = requests.Session()
-    s.headers.update({"Content-Type": "application/json", "User-Agent": "apollo-test"})
+    s.headers.update({"User-Agent": "apollo-test"})
     return s
 
 
-def test_page_extract_is_intentionally_disabled(api):
-    r = api.post(f"{BASE_URL}/api/page/extract", json={"device_id": "gate3page0001", "image_base64": "A" * 200}, timeout=15)
-    assert r.status_code == 403, r.text
-    assert "local-first privacy policy" in r.json().get("detail", "")
+def test_page_extract_rejects_invalid_image_without_persisting_it(api):
+    r = api.post(f"{BASE_URL}/api/page/extract", data={"device_id": "gate3page0001"},
+                 files={"file": ("page.txt", b"not an image", "text/plain")}, timeout=15)
+    assert r.status_code == 415, r.text
 
 
-def test_page_extract_contract_disabled_even_for_invalid_image(api):
-    r = api.post(f"{BASE_URL}/api/page/extract", json={"device_id": "gate3page0002", "image_base64": "abc"}, timeout=15)
-    assert r.status_code == 403, r.text
+def test_page_extract_schema_rejects_too_short_image(api):
+    r = api.post(f"{BASE_URL}/api/page/extract", data={"device_id": "gate3page0002"}, timeout=15)
+    assert r.status_code == 422, r.text

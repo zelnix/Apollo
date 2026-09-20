@@ -104,6 +104,8 @@ export interface PatrolEvent {
   indicator_digest: string | null;
   /** Full indicator (e.g. the link) — kept ON DEVICE ONLY, never synced. */
   local_indicator?: string | null;
+  /** Safe public references supporting the local assessment. Raw submitted links are excluded. */
+  supporting_references?: { label: string; url: string }[];
   verified_block: boolean;
   adapter_label: string;
   occurred_at: string;

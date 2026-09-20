@@ -7,6 +7,7 @@ import os
 import socket
 import ssl
 import urllib.request
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 
 EXPECTED_BODY = b"APOLLO_GUARDDOG_ACCEPTANCE_V1\n"
@@ -33,12 +34,17 @@ def main() -> None:
     if resolved != [ipv4]:
         raise SystemExit(f"Expected exclusive DNS answer {[ipv4]}, got {resolved}")
     request = urllib.request.Request(url, headers={"User-Agent": "Apollo-GuardDog-Endpoint-Verifier/1"})
-    with urllib.request.urlopen(request, timeout=10, context=ssl.create_default_context()) as response:
-        body = response.read(len(EXPECTED_BODY) + 1)
-        if response.status != 200 or body != EXPECTED_BODY:
-            raise SystemExit(f"Deterministic baseline mismatch: HTTP {response.status}, body={body!r}")
-        if response.headers.get("Cache-Control") != "no-store":
-            raise SystemExit("Controlled response must set Cache-Control: no-store")
+    try:
+        with urllib.request.urlopen(request, timeout=10, context=ssl.create_default_context()) as response:
+            body = response.read(len(EXPECTED_BODY) + 1)
+            if response.status != 200 or body != EXPECTED_BODY:
+                raise SystemExit(f"Deterministic baseline mismatch: HTTP {response.status}, body={body!r}")
+            if response.headers.get("Cache-Control") != "no-store":
+                raise SystemExit("Controlled response must set Cache-Control: no-store")
+    except HTTPError as error:
+        raise SystemExit(f"Controlled endpoint returned HTTP {error.code} at the exact acceptance path") from None
+    except URLError as error:
+        raise SystemExit(f"Controlled endpoint connection failed: {error.reason}") from None
     print(f"PASS host={host} dedicated_ipv4={ipv4} https=valid deterministic_response=valid")
 
 

@@ -1,17 +1,13 @@
-"""P0 policy stop: no raw messages/images/mailboxes or caller identifiers in cloud checks.
+"""Route-level privacy boundary for operations with no supported purpose-limited implementation.
 
-Routes/contracts remain registered for compatibility; forbidden operations fail explicitly
-BEFORE reading the request body or starting an OAuth/provider request. Disconnect stays usable.
+User-submitted assessment routes are now governed by their request schemas, bounded transports and
+request-scoped deletion controls rather than a blanket local-only ban.
 """
 from starlette.responses import JSONResponse
 
 DISABLED = {
-    '/api/message/extract', '/api/page/extract', '/api/page/crawl',
-    '/api/gmail/connect', '/api/gmail/oauth/callback', '/api/gmail/scan',
-    '/api/imap/connections', '/api/imap/scan', '/api/call/risk-check',
-    '/api/account/breach',
 }
-DETAIL = 'Unavailable under Apollo’s local-first privacy policy. Use an on-device check instead.'
+DETAIL = 'This operation has no supported purpose-limited processing path.'
 
 
 class PrivacyBoundary:

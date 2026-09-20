@@ -102,10 +102,10 @@ export default function TextGuard() {
           </View>
           {Platform.OS === "android" ? (
             smsOn ? (
-              <Body testID="textguard-auto-detail">Apollo checks new text-message notifications from your default messaging app as they arrive. It never reads your SMS inbox — only the notification, the moment it lands — and never a chat app you didn&apos;t ask it to watch.</Body>
+              <Body testID="textguard-auto-detail">Apollo checks new text-message notifications from your chosen messaging app as they arrive. Notification text is sent for the same purpose-limited assessment as a manual check, then discarded. Apollo never reads your SMS inbox or message history.</Body>
             ) : (
               <>
-                <Body testID="textguard-auto-detail">Apollo can watch for new text-message notifications and check them automatically — the same way as pasting a message. It reads only the notification text as it arrives, never your SMS inbox, message history or any other chat app.</Body>
+                <Body testID="textguard-auto-detail">Turning this on authorises ongoing assessment of new notifications from your chosen messaging app. Apollo reads only each notification as it arrives, never your SMS inbox or history, and does not retain the raw notification text.</Body>
                 <Button testID="textguard-turn-on" variant="secondary" label={openingSettings ? "Opening…" : "Turn on notification access"} onPress={() => void turnOn()} disabled={openingSettings} />
               </>
             )

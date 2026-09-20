@@ -84,7 +84,22 @@ async def gmail_callback(code: Optional[str] = None, state: Optional[str] = None
 @router.get("/gmail/status")
 async def gmail_status(device_id: str = Query(min_length=8, max_length=64)):
     row = await gmail_service.get_connection(device_id)
-    return {"connected": row is not None, "configured": gmail_service.configured()}
+    return {"connected": row is not None, "configured": gmail_service.configured(),
+            "monitoring_enabled": bool(row and row.get("monitoring_enabled"))}
+
+
+class GmailMonitoringIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)
+    enabled: bool
+
+
+@router.post("/gmail/monitoring")
+async def gmail_monitoring(body: GmailMonitoringIn):
+    result = await db.gmail_connections.update_one({"device_id": body.device_id},
+        {"$set": {"monitoring_enabled": body.enabled, "updated_at": now_utc()}})
+    if not result.matched_count:
+        raise HTTPException(404, "Connect Gmail before enabling monitoring")
+    return {"monitoring_enabled": body.enabled}
 
 
 @router.delete("/gmail/connection", status_code=204)

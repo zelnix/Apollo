@@ -1,9 +1,9 @@
 // Gate 8 — Security SDK contract for Network & Accounts. Network: NetworkExtension (iOS) / VpnService (Android)
 // domain filtering, VPN/DNS state, recent network events. Accounts: hand-off events from authorised provider
 // integrations and breach intelligence. Everything degrades to "not available" — never simulated as live protection.
-import { type NetworkSdkSummary, summariseNetworkEvents, type SdkNetworkEvent } from "@/src/domain/networkAnalysis";
-export { summariseNetworkEvents };
+import { summariseNetworkEvents, type SdkNetworkEvent } from "@/src/domain/networkAnalysis";
 import { getNativeModule } from "./nativeBridge";
+export { summariseNetworkEvents };
 
 export type NetCapabilityStatus = "supported" | "permission_required" | "unsupported";
 export interface NetworkProtectionCapabilities { domainFiltering: NetCapabilityStatus; dnsProtection: NetCapabilityStatus; vpnState: NetCapabilityStatus; wifiSecurityInfo: NetCapabilityStatus; appAttribution: NetCapabilityStatus; networkChangeEvents: NetCapabilityStatus }

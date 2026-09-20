@@ -2,13 +2,15 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import io
 import json
 import re
 import uuid
 from typing import Any, Literal, Optional
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field, field_validator
 
 from core.config import GEMINI_API_KEY, HIBP_API_KEY, HIGGINS_VOICE, logger
@@ -16,6 +18,7 @@ from core.config import GEMINI_API_KEY, HIBP_API_KEY, HIGGINS_VOICE, logger
 from core.models import ApolloState, DomainInfo, Verdict
 from services.intel import assess_indicator, run_intel_check, sanitize_url
 from services.webcrawl import CrawlBlocked, fetch_page
+from services.investigation import InvestigationResult, extract_message_screenshot, investigate_message, purpose_limited_url
 
 router = APIRouter()
 
@@ -34,6 +37,14 @@ class MessageAnalyseIn(BaseModel):
     signals: list[str] = Field(default_factory=list, max_length=20)
     claimed_brand: Optional[str] = Field(default=None, max_length=60)
     second_opinion: bool = True
+
+    @field_validator("urls")
+    @classmethod
+    def redact_url_secrets(cls, values: list[str]) -> list[str]:
+        try:
+            return [purpose_limited_url(value) for value in values]
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
 
 
 class MessageUrlResult(BaseModel):
@@ -55,6 +66,8 @@ class MessageAnalyseOut(BaseModel):
     urls: list[MessageUrlResult]
     explanation: Optional[dict[str, Any]] = None  # {summary, why[], recommendation}
     gemini_used: bool = False
+    ai_used: bool = False
+    assessment: InvestigationResult
 
 
 GATE2_EXPLAIN_PROMPT = HIGGINS_VOICE + """ You are the calm plain-language security guide for everyday Australians. You will be given a suspicious
@@ -73,12 +86,19 @@ never claim the device is compromised unless the findings say so; if the finding
 async def _gemini_second_opinion_call(*, session_prefix: str, system_message: str, prompt: str, log_label: str, timeout: int = 20, retries: int = 1) -> Optional[dict[str, Any]]:
     if not GEMINI_API_KEY:
         return None
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from emergentintegrations.llm.chat import LlmChat, StreamDone, TextDelta, UserMessage
     last_exc: Optional[Exception] = None
     for attempt in range(retries + 1):
-        chat = LlmChat(api_key=GEMINI_API_KEY, session_id=f"{session_prefix}-{uuid.uuid4().hex[:8]}", system_message=system_message).with_model("gemini", "gemini-3-flash-preview")
+        chat = (LlmChat(api_key=GEMINI_API_KEY, session_id=f"{session_prefix}-{uuid.uuid4().hex[:8]}", system_message=system_message)
+                .with_model("gemini", "gemini-3-flash-preview").with_params(temperature=0.1, max_tokens=900))
         try:
-            raw = await asyncio.wait_for(chat.send_message(UserMessage(text=prompt)), timeout=timeout)
+            chunks: list[str] = []
+            async def consume() -> None:
+                async for event in chat.stream_message(UserMessage(text=prompt)):
+                    if isinstance(event, TextDelta): chunks.append(event.content)
+                    elif isinstance(event, StreamDone): break
+            await asyncio.wait_for(consume(), timeout=timeout)
+            raw = "".join(chunks)
             txt = raw.strip()
             if txt.startswith("```"):
                 txt = txt.strip("`")
@@ -103,8 +123,6 @@ async def gemini_second_opinion(body: MessageAnalyseIn, url_results: list[Messag
 
 @router.post("/message/analyse", response_model=MessageAnalyseOut)
 async def message_analyse(body: MessageAnalyseIn):
-    if body.text != '[local-only]' or body.sender or body.second_opinion or body.signals or body.claimed_brand:
-        raise HTTPException(403, 'Raw message cloud processing is disabled. Submit minimal origins only.')
     # Email/Text Guard: every link gets the SAME full assessment as a manual Check-a-Link — redirect
     # chain expansion + Safe Browsing/blocklist + RDAP domain-info — automatically, run concurrently
     # so checking several links costs no more latency than the slowest one.
@@ -119,49 +137,56 @@ async def message_analyse(body: MessageAnalyseIn):
 
     checked = await asyncio.gather(*[_one(u) for u in body.urls[:10]])
     results = [r for r in checked if r is not None]
-    explanation = await gemini_second_opinion(body, results) if body.second_opinion else None
-    return MessageAnalyseOut(urls=results, explanation=explanation, gemini_used=explanation is not None)
-
-
-class MessageExtractIn(BaseModel):
-    device_id: str = Field(min_length=8, max_length=64)
-    image_base64: str = Field(min_length=100, max_length=6_000_000)
-
-
-GATE2_EXTRACT_PROMPT = """You read screenshots of text messages, chats, emails or QR codes for a security app. Extract exactly what is visible.
-Return ONLY JSON: {"sender": "<phone number, name or handle shown, else empty>", "text": "<the message text(s) verbatim, most recent last>",
-"urls": ["<every URL or domain visible, including any decoded from a QR code>"], "source": "<sms|whatsapp|imessage|email|messenger|telegram|other>"}.
-Do not add commentary. Do not guess text you cannot read."""
+    url_context = [{"url": result.url, "host": result.host, "verdict": result.verdict,
+                    "coverage": result.coverage, "threat_types": result.threat_types,
+                    "redirect_chain": result.redirect_chain, "final_url": result.final_url} for result in results]
+    assessment = await investigate_message(sender=body.sender, text=body.text, urls=[result.url for result in results],
+        claimed_brand=body.claimed_brand, local_state=body.local_state, url_context=url_context)
+    explanation = {"summary": assessment.higgins.headline, "why": assessment.higgins.why_it_matters,
+                   "recommendation": assessment.higgins.next_action}
+    model_used = bool(assessment.processing.get("model_used"))
+    return MessageAnalyseOut(urls=results, explanation=explanation, gemini_used=model_used, ai_used=model_used, assessment=assessment)
 
 
 @router.post("/message/extract")
-async def message_extract(body: MessageExtractIn):
-    """Screenshot → text/sender/URLs via Gemini vision. The image is processed once and not stored."""
-    if not GEMINI_API_KEY:
-        raise HTTPException(status_code=503, detail="Screenshot reading is not configured")
-    from emergentintegrations.llm.chat import ImageContent, LlmChat, UserMessage
-    chat = LlmChat(api_key=GEMINI_API_KEY, session_id=f"gate2x-{uuid.uuid4().hex[:8]}", system_message=GATE2_EXTRACT_PROMPT).with_model("gemini", "gemini-3-flash-preview")
+async def message_extract(device_id: str = Form(min_length=8, max_length=64), file: UploadFile = File(...)):
+    """Request-scoped screenshot OCR. Upload spooling is closed/deleted in every exit path."""
+    del device_id  # anonymous device authorises this one disclosed assessment; never persisted here
+    if file.content_type not in {"image/png", "image/jpeg", "image/webp"}:
+        await file.close()
+        raise HTTPException(415, "Choose a PNG, JPEG or WebP screenshot.")
     try:
-        raw = await asyncio.wait_for(chat.send_message(UserMessage(text="Extract the message from this screenshot.", file_contents=[ImageContent(body.image_base64)])), timeout=45)
-        txt = raw.strip()
-        if "{" in txt:
-            txt = txt[txt.find("{"):txt.rfind("}") + 1]
-        data = json.loads(txt)
+        data = await file.read(6_000_001)
+        if len(data) > 6_000_000:
+            raise HTTPException(413, "Screenshot is larger than 6 MB.")
+        if len(data) < 64:
+            raise HTTPException(422, "That screenshot is empty or unreadable.")
+        from PIL import Image
+        with Image.open(io.BytesIO(data)) as image:
+            image.verify()
+            if image.width * image.height > 24_000_000:
+                raise HTTPException(413, "Screenshot dimensions are too large.")
+        with Image.open(io.BytesIO(data)) as image:
+            image.load()
+            image.thumbnail((2048, 2048))
+            rendered = io.BytesIO()
+            image.convert("RGB").save(rendered, format="JPEG", quality=90, optimize=True)
+            processed = rendered.getvalue()
+        return await extract_message_screenshot(processed)
+    except HTTPException:
+        raise
     except Exception as exc:  # noqa: BLE001
-        logger.warning("gate2 extract failed: %s", type(exc).__name__)
+        logger.warning("message screenshot extraction failed: %s", type(exc).__name__)
         raise HTTPException(status_code=502, detail="Couldn't read that screenshot. Try a clearer image or paste the text.") from exc
-    return {"sender": str(data.get("sender", ""))[:80], "text": str(data.get("text", ""))[:4000], "urls": [str(u)[:500] for u in data.get("urls", [])][:10], "source": str(data.get("source", "other"))[:20]}
+    finally:
+        data = b"" if "data" in locals() else b""
+        processed = b"" if "processed" in locals() else b""
+        await file.close()
 
 
 # --------------------------------------------------------------------------- Gate 3 Phase B: page screenshot signals
 # Gemini vision extracts *security signals* from a screenshot of a web page (never stored). The on-device
 # rule engine (src/domain/pageAnalysis.ts) maps them to W08/W09/W10/W12/W18 and decides the dog state.
-class PageExtractIn(BaseModel):
-    device_id: str = Field(min_length=8, max_length=64)
-    image_base64: str = Field(min_length=100, max_length=6_000_000)
-    url_hint: Optional[str] = Field(default=None, max_length=2048)
-
-
 PAGE_EXTRACT_PROMPT = """You analyse a screenshot of a web page for a consumer security app. Report ONLY what is visible. Return ONLY JSON:
 {"visible_url": "<address bar URL/domain if visible, else empty>",
  "claimed_brand": "<organisation/brand the page presents as (logo, name), else empty>",
@@ -182,21 +207,43 @@ Never guess. If unreadable, use empty values."""
 
 
 @router.post("/page/extract")
-async def page_extract(body: PageExtractIn):
+async def page_extract(device_id: str = Form(min_length=8, max_length=64), url_hint: str = Form(default="", max_length=2048),
+                       file: UploadFile = File(...)):
+    del device_id
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=503, detail="Screenshot reading is not configured")
-    from emergentintegrations.llm.chat import ImageContent, LlmChat, UserMessage
-    chat = LlmChat(api_key=GEMINI_API_KEY, session_id=f"gate3p-{uuid.uuid4().hex[:8]}", system_message=PAGE_EXTRACT_PROMPT).with_model("gemini", "gemini-3-flash-preview")
-    hint = f" The user says the address was: {body.url_hint}" if body.url_hint else ""
+    if file.content_type not in {"image/png", "image/jpeg", "image/webp"}:
+        await file.close()
+        raise HTTPException(415, "Choose a PNG, JPEG or WebP screenshot.")
+    from emergentintegrations.llm.chat import ImageContent, LlmChat, StreamDone, TextDelta, UserMessage
+    hint = f" The user says the address was: {purpose_limited_url(url_hint)}" if url_hint else ""
     try:
-        raw = await asyncio.wait_for(chat.send_message(UserMessage(text=f"Extract the security signals from this page screenshot.{hint}", file_contents=[ImageContent(body.image_base64)])), timeout=45)
-        txt = raw.strip()
-        if "{" in txt:
-            txt = txt[txt.find("{"):txt.rfind("}") + 1]
+        raw_image = await file.read(6_000_001)
+        if len(raw_image) > 6_000_000: raise HTTPException(413, "Screenshot is larger than 6 MB.")
+        from PIL import Image
+        with Image.open(io.BytesIO(raw_image)) as image:
+            image.load()
+            if image.width * image.height > 24_000_000: raise HTTPException(413, "Screenshot dimensions are too large.")
+            image.thumbnail((2048, 2048)); rendered = io.BytesIO(); image.convert("RGB").save(rendered, format="JPEG", quality=90, optimize=True)
+            encoded = base64.b64encode(rendered.getvalue()).decode("ascii")
+        chunks: list[str] = []
+        chat = (LlmChat(api_key=GEMINI_API_KEY, session_id=f"gate3p-{uuid.uuid4().hex[:8]}", system_message=PAGE_EXTRACT_PROMPT)
+                .with_model("gemini", "gemini-3-flash-preview").with_params(temperature=0, max_tokens=1800))
+        async def consume() -> None:
+            async for event in chat.stream_message(UserMessage(text=f"Extract the security signals from this page screenshot.{hint}", file_contents=[ImageContent(encoded)])):
+                if isinstance(event, TextDelta): chunks.append(event.content)
+                elif isinstance(event, StreamDone): break
+        await asyncio.wait_for(consume(), timeout=55)
+        txt = "".join(chunks).strip(); txt = txt[txt.find("{"):txt.rfind("}") + 1] if "{" in txt and "}" in txt else txt
         data = json.loads(txt)
+    except HTTPException:
+        raise
     except Exception as exc:  # noqa: BLE001
         logger.warning("page extract failed: %s", type(exc).__name__)
         raise HTTPException(status_code=502, detail="Couldn't read that screenshot. Try a clearer image.") from exc
+    finally:
+        raw_image = b"" if "raw_image" in locals() else b""; encoded = "" if "encoded" in locals() else ""
+        await file.close()
     def s_(k: str, n: int = 200) -> str:
         return str(data.get(k) or "")[:n]
     def b_(k: str) -> bool:
@@ -208,7 +255,9 @@ async def page_extract(body: PageExtractIn):
             "virus_or_infection_claim": b_("virus_or_infection_claim"), "phone_number_to_call": s_("phone_number_to_call", 40), "remote_access_tool": s_("remote_access_tool", 40),
             "captcha_instructions": s_("captcha_instructions", 200), "wallet_connect_request": b_("wallet_connect_request"), "urgency_or_threat_text": s_("urgency_or_threat_text", 200),
             "prices_look_unrealistic": b_("prices_look_unrealistic"), "payment_methods": l_("payment_methods"), "business_identity": s_("business_identity", 200),
-            "os_or_security_branding": s_("os_or_security_branding", 60), "text_excerpt": s_("text_excerpt", 400)}
+            "os_or_security_branding": s_("os_or_security_branding", 60), "text_excerpt": s_("text_excerpt", 400),
+            "processing": {"raw_retained_by_apollo": False, "provider": "Gemini",
+                           "provider_note": "Apollo does not persist the screenshot. Gemini-side retention follows the configured API policy."}}
 
 
 # --------------------------------------------------------------------------- Gate 3 Phase C: "Let Apollo read the page"
@@ -274,13 +323,20 @@ async def page_crawl(body: PageCrawlIn):
         return {"error": "timeout", "detail": CRAWL_ERROR_DETAIL["timeout"], "signals": None, "higgins_note": None, "final_url": None, "gemini_used": False}
     if not GEMINI_API_KEY:
         return {"error": "not_configured", "detail": CRAWL_ERROR_DETAIL["not_configured"], "signals": None, "higgins_note": None, "final_url": page.final_url, "gemini_used": False}
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
+    from emergentintegrations.llm.chat import LlmChat, StreamDone, TextDelta, UserMessage
     content = (f"Page title: {page.title or '(none)'}\nVisible text (truncated, up to 6000 chars): {page.text[:4000] or '(none)'}\n"
                f"Form field types present: {', '.join(page.forms) or 'none'}\nButton/submit labels: {', '.join(page.buttons) or 'none'}\n"
                f"Outbound link hostnames sample: {', '.join(page.links_sample) or 'none'}\nFinal address after redirects: {page.final_url}")
-    chat = LlmChat(api_key=GEMINI_API_KEY, session_id=f"gate3crawl-{uuid.uuid4().hex[:8]}", system_message=PAGE_CRAWL_EXTRACT_PROMPT).with_model("gemini", "gemini-3-flash-preview")
+    chat = (LlmChat(api_key=GEMINI_API_KEY, session_id=f"gate3crawl-{uuid.uuid4().hex[:8]}", system_message=PAGE_CRAWL_EXTRACT_PROMPT)
+            .with_model("gemini", "gemini-3-flash-preview").with_params(temperature=0, max_tokens=1800))
     try:
-        raw = await asyncio.wait_for(chat.send_message(UserMessage(text=content)), timeout=25)
+        chunks: list[str] = []
+        async def consume() -> None:
+            async for event in chat.stream_message(UserMessage(text=content)):
+                if isinstance(event, TextDelta): chunks.append(event.content)
+                elif isinstance(event, StreamDone): break
+        await asyncio.wait_for(consume(), timeout=45)
+        raw = "".join(chunks)
         txt = raw.strip()
         if "{" in txt:
             txt = txt[txt.find("{"):txt.rfind("}") + 1]
@@ -433,6 +489,14 @@ class AccountAnalyseIn(BaseModel):
     scenario: str = Field(default="", max_length=40)
     second_opinion: bool = True
 
+    @field_validator("urls")
+    @classmethod
+    def redact_account_url_secrets(cls, values: list[str]) -> list[str]:
+        try:
+            return [purpose_limited_url(value) for value in values]
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
+
     @field_validator("text")
     @classmethod
     def no_passwords(cls, v: str) -> str:
@@ -453,6 +517,7 @@ class AccountAnalyseOut(BaseModel):
     urls: list[AccountUrlResult]
     explanation: Optional[dict[str, Any]] = None
     gemini_used: bool = False
+    assessment: InvestigationResult
 
 
 GATE8_EXPLAIN_PROMPT = HIGGINS_VOICE + """ You are the calm plain-language security guide for everyday Australians. You will be given an account-security
@@ -471,8 +536,6 @@ async def gemini_account_opinion(body: AccountAnalyseIn, urls: list[AccountUrlRe
 
 @router.post("/account/analyse", response_model=AccountAnalyseOut)
 async def account_analyse(body: AccountAnalyseIn):
-    if body.text not in ('', '[local-only]') or body.sender or body.second_opinion:
-        raise HTTPException(403, 'Raw account-alert cloud processing is disabled. Submit minimal origins only.')
     official = OFFICIAL_DOMAINS.get(body.provider, [])
     results: list[AccountUrlResult] = []
     for raw in body.urls[:10]:
@@ -483,8 +546,14 @@ async def account_analyse(body: AccountAnalyseIn):
             results.append(AccountUrlResult(url=normalized, host=host, verdict=r.verdict, threat_types=r.threat_types, coverage=r.coverage, official=is_official))
         except HTTPException:
             continue
-    explanation = await gemini_account_opinion(body, results) if body.second_opinion else None
-    return AccountAnalyseOut(urls=results, explanation=explanation, gemini_used=explanation is not None)
+    url_context = [{"url": row.url, "host": row.host, "verdict": row.verdict, "coverage": row.coverage,
+                    "official": row.official} for row in results]
+    assessment = await investigate_message(sender=body.sender, text=body.text, urls=[row.url for row in results],
+        claimed_brand=None if body.provider == "other" else body.provider, local_state=body.local_state, url_context=url_context)
+    explanation = {"summary": assessment.higgins.headline, "why": assessment.higgins.why_it_matters,
+                   "recommendation": assessment.higgins.next_action}
+    return AccountAnalyseOut(urls=results, explanation=explanation,
+        gemini_used=bool(assessment.processing.get("model_used")), assessment=assessment)
 
 
 class BreachCheckIn(BaseModel):
@@ -497,25 +566,39 @@ class BreachCheckOut(BaseModel):
     breaches: list[dict[str, Any]] = Field(default_factory=list)
     password_exposed: bool = False
     detail: str
+    higgins: dict[str, Any]
 
 
 @router.post("/account/breach", response_model=BreachCheckOut)
 async def account_breach(body: BreachCheckIn):
     """Breach exposure lookup (HIBP). The identifier is forwarded once and never stored or logged."""
     if not HIBP_API_KEY:
-        return BreachCheckOut(status="not_configured", detail="Breach intelligence isn't connected on this build. Apollo won't guess — you can check haveibeenpwned.com yourself.")
+        detail = "Breach intelligence isn't connected on this build. Apollo won't guess — you can check haveibeenpwned.com yourself."
+        return BreachCheckOut(status="not_configured", detail=detail, higgins={"headline": "Breach evidence is unavailable",
+            "exact_response": f"{detail} If the account alert was unexpected, secure the account through its official app or website.",
+            "next_action": "Open the official account and review recent sign-ins."})
     ident = body.identifier.strip().lower()
     try:
         async with httpx.AsyncClient(timeout=12) as client:
             r = await client.get(f"https://haveibeenpwned.com/api/v3/breachedaccount/{ident}", params={"truncateResponse": "false"},
                                  headers={"hibp-api-key": HIBP_API_KEY, "user-agent": "Apollo-GuardDog"})
     except httpx.HTTPError:
-        return BreachCheckOut(status="unavailable", detail="The breach service didn't answer. Try again later.")
+        detail = "The breach service didn't answer. Try again later."
+        return BreachCheckOut(status="unavailable", detail=detail, higgins={"headline": "Breach evidence is temporarily unavailable",
+            "exact_response": detail, "next_action": "Treat an unexpected alert as unverified and use the official recovery path."})
     if r.status_code == 404:
-        return BreachCheckOut(status="clear", detail="No known breach lists this account. That's good — not a guarantee.")
+        detail = "No known breach lists this account. That's good — not a guarantee."
+        return BreachCheckOut(status="clear", detail=detail, higgins={"headline": "No known breach match was found",
+            "exact_response": f"{detail} A recent phishing attempt or unreported breach may not appear here.",
+            "next_action": "If the alert was unexpected, review account activity and enable two-factor authentication."})
     if r.status_code != 200:
-        return BreachCheckOut(status="unavailable", detail="The breach service is unavailable right now.")
+        detail = "The breach service is unavailable right now."
+        return BreachCheckOut(status="unavailable", detail=detail, higgins={"headline": "Breach evidence is temporarily unavailable",
+            "exact_response": detail, "next_action": "Treat an unexpected alert as unverified and use the official recovery path."})
     data = r.json()
     breaches = [{"name": b.get("Title") or b.get("Name"), "date": b.get("BreachDate"), "data": (b.get("DataClasses") or [])[:8]} for b in data[:20]]
     pw = any("Passwords" in (b.get("DataClasses") or []) for b in data)
-    return BreachCheckOut(status="found", breaches=breaches, password_exposed=pw, detail=f"Found in {len(data)} known breach{'es' if len(data) != 1 else ''}.{' At least one included passwords.' if pw else ''}")
+    detail = f"Found in {len(data)} known breach{'es' if len(data) != 1 else ''}.{' At least one included passwords.' if pw else ''}"
+    action = "Change that password everywhere it was reused, then enable two-factor authentication." if pw else "Expect targeted phishing and enable two-factor authentication."
+    return BreachCheckOut(status="found", breaches=breaches, password_exposed=pw, detail=detail,
+        higgins={"headline": "This email appears in known breach data", "exact_response": f"{detail} {action}", "next_action": action})

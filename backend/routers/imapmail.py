@@ -8,6 +8,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from core.db import db, now_utc
 from services import imapmail
 
 router = APIRouter()
@@ -51,7 +52,22 @@ async def imap_connect(body: ImapConnectIn):
 @router.get("/imap/status")
 async def imap_status(device_id: str = Query(min_length=8, max_length=64)):
     row = await imapmail.get_connection(device_id)
-    return {"connected": row is not None, "configured": imapmail.configured(), "host": row.get("host") if row else None, "username": row.get("username") if row else None}
+    return {"connected": row is not None, "configured": imapmail.configured(), "host": row.get("host") if row else None,
+            "username": row.get("username") if row else None, "monitoring_enabled": bool(row and row.get("monitoring_enabled"))}
+
+
+class ImapMonitoringIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)
+    enabled: bool
+
+
+@router.post("/imap/monitoring")
+async def imap_monitoring(body: ImapMonitoringIn):
+    result = await db.imap_connections.update_one({"device_id": body.device_id},
+        {"$set": {"monitoring_enabled": body.enabled, "updated_at": now_utc()}})
+    if not result.matched_count:
+        raise HTTPException(404, "Connect the inbox before enabling monitoring")
+    return {"monitoring_enabled": body.enabled}
 
 
 @router.delete("/imap/connection", status_code=204)

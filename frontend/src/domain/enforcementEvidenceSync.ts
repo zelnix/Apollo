@@ -7,7 +7,6 @@ import type { EnforcementEvidence } from "@/src/security/PlatformCapabilityProfi
 import type { PatrolEnforcementEvidence } from "./types";
 
 export function toPatrolEnforcementEvidence(evidence: EnforcementEvidence): PatrolEnforcementEvidence {
-  const source = evidence.sourceMetadata ?? {};
   return {
     evidence_id: evidence.evidenceId,
     event_id: evidence.eventId,

@@ -4,25 +4,26 @@ import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import KeyRound from "lucide-react-native/icons/key-round";
 import X from "lucide-react-native/icons/x";
 import React, { useMemo, useState } from "react";
-import { Pressable, Switch, Text, TextInput, View } from "react-native";
+import { Linking, Pressable, Switch, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { markCheckDone } from "@/src/store/checkCompletion";
 import { apiPost } from "@/src/api/client";
-import { minimalIndicator } from '@/src/domain/privacy';
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
+import { MessageAssessmentResult } from "@/src/components/MessageAssessmentResult";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { ACCOUNT_PROVIDERS, ALERT_KINDS, analyseAccountAlert, type AccountAnalysis, type AccountProvider, type AlertKind } from "@/src/domain/accountAnalysis";
 import { SCENT_WINDOW_MS } from "@/src/domain/threatScent";
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
+import { patrolSafeSummary, type InvestigationResult } from "@/src/domain/investigation";
 import { NetworkAccountSdk } from "@/src/security/networkAccountSdk";
 import { type RecoveryKind, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 
-type Remote = { urls: { url: string; host: string; verdict: "clean" | "malicious" | "unknown"; official: boolean }[]; explanation: { summary: string; why: string[]; recommendation: string } | null };
-type Breach = { status: "not_configured" | "clear" | "found" | "unavailable"; breaches: { name: string; date: string; data: string[] }[]; password_exposed: boolean; detail: string };
+type Remote = { urls: { url: string; host: string; verdict: "clean" | "malicious" | "unknown"; official: boolean }[]; explanation: { summary: string; why: string[]; recommendation: string } | null; assessment: InvestigationResult };
+type Breach = { status: "not_configured" | "clear" | "found" | "unavailable"; breaches: { name: string; date: string; data: string[] }[]; password_exposed: boolean; detail: string; higgins: { headline: string; exact_response: string; next_action: string } };
 const RISK_LABEL = { low: "Low takeover risk", elevated: "Elevated takeover risk", high: "High takeover risk", very_high: "Very high takeover risk" } as const;
 const BANK_RE = /commbank|westpac|anz|nab|bank/i;
 
@@ -78,13 +79,14 @@ export default function CheckAccount() {
       let a = analyseAccountAlert(input);
       let remote: Remote | null = null;
       try {
-        remote = await apiPost<Remote>("/account/analyse", "account_check", { device_id: deviceId ?? "local-device", kind, provider, sender: '', text: '[local-only]', urls: a.urls.slice(0, 10).map(minimalIndicator), local_state: a.state, scenario: a.scenario, second_opinion: false });
+        remote = await apiPost<Remote>("/account/analyse", "account_check", { device_id: deviceId ?? "local-device", kind, provider, sender: sender.trim(), text: text.trim(), urls: a.urls.slice(0, 10), local_state: a.state, scenario: a.scenario, second_opinion: true });
+        if (remote.assessment.risk === "warning" && a.state === "resting") a = { ...a, state: "growling", why: [...a.why, "The contextual investigation found unresolved or suspicious details that need verification."] };
         const bad = remote.urls.find((u) => u.verdict === "malicious");
         if (bad && a.state !== "barking") a = { ...a, state: "barking", why: [...a.why, `The link (${bad.host}) is confirmed dangerous by Apollo's threat intelligence.`], handoff: "web" };
       } catch { /* offline: on-device engine is authoritative */ }
       let event: PatrolEvent | null = null;
       if (a.state !== "resting") {
-        event = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "account", state: a.state, status: "active", headline: `Account: ${a.title}${a.providerLabel !== "Other / not sure" ? ` — ${a.providerLabel}` : ""}`, what_happened: a.verdict, why: a.why, what_to_do: a.recommendation, indicator_host: a.suspiciousUrls[0] ? a.suspiciousUrls[0].replace(/^https?:\/\//i, "").split("/")[0] : null, indicator_digest: null, local_indicator: text.trim().slice(0, 200) || null, verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: a.claimedBrand, scenario: a.scenario, scent_id: params.scent || linked?.scent_id || linked?.event_id || null });
+        event = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "account", state: a.state, status: "active", headline: `Account: ${remote?.assessment.higgins.headline ?? a.title}${a.providerLabel !== "Other / not sure" ? ` — ${a.providerLabel}` : ""}`, what_happened: patrolSafeSummary(remote?.assessment.higgins.what_was_found[0] ?? a.verdict), why: remote?.assessment.findings.map((finding) => finding.title).slice(0, 6) ?? a.why, what_to_do: remote?.assessment.higgins.next_action ?? a.recommendation, indicator_host: a.suspiciousUrls[0] ? a.suspiciousUrls[0].replace(/^https?:\/\//i, "").split("/")[0] : null, indicator_digest: null, local_indicator: null, verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: a.claimedBrand, scenario: a.scenario, scent_id: params.scent || linked?.scent_id || linked?.event_id || null, supporting_references: remote?.assessment.sources.filter((source) => source.url).map((source) => ({ label: source.label, url: source.url! })).slice(0, 6) });
         if (event.state !== a.state) a = { ...a, state: event.state, why: event.why };
         void NetworkAccountSdk.submitAccountSecurityEvent({ kind, provider, state: a.state });
       }
@@ -92,7 +94,7 @@ export default function CheckAccount() {
     } finally { setBusy(false); }
   };
   const checkBreach = async () => {
-    try { setBreach(await apiPost<Breach>("/account/breach", "breach_check", { device_id: deviceId ?? "local-device", identifier: identifier.trim() })); }
+    try { setBreach(await apiPost<Breach>("/account/breach", "breach_check", { device_id: deviceId ?? "local-device", identifier: identifier.trim() })); setIdentifier(""); }
     catch (e) { showToast(e instanceof Error ? e.message : "Couldn't reach the breach service.", "neutral"); }
   };
 
@@ -142,6 +144,7 @@ export default function CheckAccount() {
           </>
         ) : a ? (
           <>
+            {result.remote?.assessment ? <MessageAssessmentResult assessment={result.remote.assessment} state={a.state} onPrimaryAction={() => showToast(result.remote!.assessment.higgins.next_action, "neutral")} /> : null}
             <Card testID="account-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
               <View style={s.chips}><Pill tone={a.state} label={STATE_NAME[a.state]} testID="account-state" /><Pill tone="neutral" label={a.scenario} testID="account-scenario" /><Pill tone={a.takeoverRisk === "low" ? "resting" : a.takeoverRisk === "elevated" ? "growling" : "barking"} label={RISK_LABEL[a.takeoverRisk]} testID="account-risk" /></View>
               <Text style={s.why}>{STATE_LABEL[a.state]}</Text>
@@ -157,7 +160,7 @@ export default function CheckAccount() {
               <Card style={{ gap: spacing.sm }} testID="account-links">
                 <SectionTitle>Links in the alert</SectionTitle>
                 {a.urls.map((u, i) => { const r = result.remote?.urls.find((x) => x.url === u || x.host === u.replace(/^https?:\/\//i, "").split("/")[0]); const sus = a.suspiciousUrls.includes(u); return (
-                  <View key={u} style={s.row}><View style={{ flex: 1 }}><Text style={s.why} numberOfLines={1}>{u}</Text><Pill tone={r?.verdict === "malicious" ? "biting" : sus ? "growling" : "resting"} label={r?.verdict === "malicious" ? "Confirmed dangerous" : sus ? `Not ${a.providerLabel === "Other / not sure" ? "a known official" : `${a.providerLabel}'s`} domain` : "Official domain"} /></View><Button testID={`account-check-link-${i}`} variant="secondary" label="Check" onPress={() => router.push({ pathname: "/check", params: { url: u.startsWith("http") ? u : `https://${u}`, source: "account" } })} /></View>); })}
+                  <View key={u} style={s.row}><View style={{ flex: 1 }}><Text style={s.why} numberOfLines={1}>{u}</Text><Pill tone={r?.verdict === "malicious" ? "barking" : sus ? "growling" : "resting"} label={r?.verdict === "malicious" ? "Malicious reputation warning" : sus ? `Not ${a.providerLabel === "Other / not sure" ? "a known official" : `${a.providerLabel}'s`} domain` : "Official domain"} /></View><Button testID={`account-check-link-${i}`} variant="secondary" label="Check" onPress={() => router.push({ pathname: "/check", params: { url: u.startsWith("http") ? u : `https://${u}`, source: "account" } })} /></View>); })}
               </Card>
             ) : null}
             <Card style={{ gap: spacing.sm }} testID="account-actions">
@@ -177,13 +180,19 @@ export default function CheckAccount() {
 
         <Card style={{ gap: spacing.sm }} testID="account-breach">
           <SectionTitle>Has this email appeared in a breach?</SectionTitle>
-          <Body testID="account-breach-policy">Identifier-based cloud lookups are disabled by the local-first policy. No email address will be sent.</Body>
+          <Body testID="account-breach-policy">Submitting an email address authorises one breach lookup. Apollo does not keep the identifier; the breach provider&apos;s configured retention policy still applies.</Body>
           <TextInput testID="account-breach-id" style={s.input} value={identifier} onChangeText={setIdentifier} placeholder="you@example.com" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" />
-          <Button testID="account-breach-run" variant="secondary" label="Breach lookup unavailable" onPress={() => void checkBreach()} disabled />
+          <Button testID="account-breach-run" variant="secondary" label="Check breach exposure" onPress={() => void checkBreach()} disabled={!identifier.trim()} />
           {breach ? (
             <View style={{ gap: spacing.xs }} testID="account-breach-result">
               <Pill tone={breach.status === "found" ? (breach.password_exposed ? "growling" : "ears_up") : breach.status === "clear" ? "resting" : "unknown"} label={breach.status === "found" ? (breach.password_exposed ? "Passwords exposed" : "Appears in a breach") : breach.status === "clear" ? "Not found" : breach.status === "not_configured" ? "Not connected" : "Unavailable"} testID="account-breach-status" />
               <Body testID="account-breach-detail">{breach.detail}</Body>
+              <Text style={s.label} testID="account-breach-higgins-title">{breach.higgins.headline}</Text>
+              <Body testID="account-breach-higgins-response">{breach.higgins.exact_response}</Body>
+              <Body testID="account-breach-next-action">Next: {breach.higgins.next_action}</Body>
+              <Pressable testID="account-breach-attribution" accessibilityRole="link" onPress={() => void Linking.openURL("https://haveibeenpwned.com/")}>
+                <Text style={s.label}>Data source: Have I Been Pwned</Text>
+              </Pressable>
               {breach.breaches.slice(0, 5).map((b) => <Body key={b.name}>• {b.name} ({b.date}) — {b.data.join(", ")}</Body>)}
               {breach.status === "found" ? <Body>{breach.password_exposed ? "Change that password everywhere you used it, and turn on two-factor authentication." : "Expect targeted phishing. Turn on two-factor authentication and don't reuse passwords."}</Body> : null}
             </View>
@@ -191,7 +200,7 @@ export default function CheckAccount() {
         </Card>
         <Card style={{ gap: spacing.xs }} testID="account-cannot-see">
           <SectionTitle>What Apollo can and can&apos;t see</SectionTitle>
-          <Body>Apollo can&apos;t read your email or notifications automatically, and never stores passwords. It works from what you paste or describe, plus authorised integrations (none connected on this build).</Body>
+          <Body>Apollo assesses what you submit. Ongoing notification or mailbox access stays off until you explicitly enable it. Apollo never asks for or stores your password.</Body>
         </Card>
       </KeyboardAwareScrollView>
     </View>

@@ -1,6 +1,6 @@
-// Gate 2 — Text & Messaging rule engine. Runs entirely on-device.
-// Extracts security signals from a pasted/shared message and maps them to the six-state model.
-// URL reputation and the optional Gemini explanation are layered on afterwards and never override
+// Gate 2 — Text & Messaging rule engine. Deterministic local analysis remains the first layer.
+// A disclosed item can receive purpose-limited Gemini investigation only after the user taps Check.
+// URL reputation and the contextual explanation are layered on afterwards and never override
 // a verdict downward from "barking" or upward past what the evidence supports.
 
 import type { ApolloState } from "./types";
@@ -191,6 +191,7 @@ export function analyseMessage(sender: string, text: string): MessageAnalysis {
 
 /** Link hand-off: a confirmed-malicious URL raises the message to Guarding (biting) semantics — verified evidence. */
 export function escalateForUrl(state: ApolloState, urlVerdict: "clean" | "malicious" | "unknown"): ApolloState {
-  if (urlVerdict === "malicious") return "biting";
+  // Reputation is a warning, never packet-backed enforcement evidence.
+  if (urlVerdict === "malicious") return "barking";
   return state;
 }

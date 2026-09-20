@@ -38,6 +38,11 @@ def packet_verified(body):
 def minimal_patrol(body, verified):
     payload = body.model_dump()
     e = body.enforcement_evidence
+    safe_refs = []
+    for ref in body.supporting_references[:6]:
+        label, url = str(ref.get('label', ''))[:100], str(ref.get('url', ''))[:500]
+        if label and url.startswith('https://') and '?' not in url and '#' not in url and '@' not in url:
+            safe_refs.append({'label': label, 'url': url})
     if e:
         if e.mechanism == 'call_screening' or not packet_verified(body):
             raise HTTPException(422, 'Only correlated packet-drop evidence may be uploaded')
@@ -53,6 +58,7 @@ def minimal_patrol(body, verified):
         indicator_host=body.indicator_host if body.category != 'call' and domain_only(body.indicator_host) else None,
         claimed_brand=None, scenario=body.scenario if body.scenario and re.fullmatch(r'[A-Z]{1,3}\d{1,3}[a-z]?', body.scenario) else None,
         adapter_label='Apollo on-device assessment', verified_block=verified,
+        supporting_references=safe_refs,
     )
     return payload
 

@@ -14,6 +14,7 @@ import asyncio
 import email
 import imaplib
 import re
+import socket
 import ssl
 from email import policy
 from email.parser import BytesParser
@@ -25,11 +26,13 @@ from fastapi import HTTPException
 
 from core.config import IMAP_CREDENTIAL_KEY, logger
 from core.db import db, now_utc
+from services.outbound import OutboundBlocked, resolve_public
 
 MAX_MESSAGES = 15
 MAX_RAW_BYTES = 2_000_000
 MAX_TEXT = 4000
 IMAP_TIMEOUT = 20
+_imap_slots = asyncio.Semaphore(4)
 
 _fernet: Optional[Fernet] = Fernet(IMAP_CREDENTIAL_KEY.encode()) if IMAP_CREDENTIAL_KEY else None
 
@@ -103,20 +106,22 @@ def _parse_message(raw: bytes) -> dict[str, Any]:
     }
 
 
-def _scan_sync(host: str, port: int, use_ssl: bool, username: str, password: str, limit: int) -> list[dict[str, Any]]:
-    # P0-01/P0-04: there is no approved remote mailbox-processing policy. No socket may
-    # be opened, even by an internal caller bypassing the HTTP boundary. Re-enable only
-    # after an approved host/993-only TLS policy and pinned-address transport exist.
-    raise HTTPException(403, "Remote mailbox processing is disabled by privacy policy")
+class _PinnedIMAP4SSL(imaplib.IMAP4_SSL):
+    """Connect to a prevalidated public IP while TLS verifies the original mailbox hostname."""
+    def __init__(self, host: str, pinned_ip: str, port: int, context: ssl.SSLContext, timeout: int):
+        self._pinned_ip = pinned_ip
+        super().__init__(host=host, port=port, ssl_context=context, timeout=timeout)
+
+    def _create_socket(self, timeout):
+        raw = socket.create_connection((self._pinned_ip, self.port), timeout)
+        return self.ssl_context.wrap_socket(raw, server_hostname=self.host)
 
 
-def _disabled_legacy_scan(host: str, port: int, use_ssl: bool, username: str, password: str, limit: int) -> list[dict[str, Any]]:
-    raise HTTPException(403, "Remote mailbox processing is disabled by privacy policy")
-    context = ssl.create_default_context()
-    client = imaplib.IMAP4_SSL(host, port, ssl_context=context, timeout=IMAP_TIMEOUT) if use_ssl else imaplib.IMAP4(host, port, timeout=IMAP_TIMEOUT)
+def _scan_sync(host: str, pinned_ip: str, port: int, use_ssl: bool, username: str, password: str, limit: int) -> list[dict[str, Any]]:
+    if not use_ssl or port != 993:
+        raise HTTPException(400, "Apollo supports IMAP over verified TLS on port 993 only")
+    client = _PinnedIMAP4SSL(host, pinned_ip, port, ssl.create_default_context(), IMAP_TIMEOUT)
     try:
-        if not use_ssl:
-            client.starttls(ssl_context=context)
         client.login(username, password)
         typ, _ = client.select("INBOX", readonly=True)  # readonly: never mutates the mailbox
         if typ != "OK":
@@ -153,7 +158,15 @@ def _disabled_legacy_scan(host: str, port: int, use_ssl: bool, username: str, pa
 async def test_connection(host: str, port: int, use_ssl: bool, username: str, password: str) -> None:
     """Raises on failure — used to validate credentials once, at connect time."""
     try:
-        await asyncio.wait_for(asyncio.to_thread(_scan_sync, host, port, use_ssl, username, password, 1), timeout=IMAP_TIMEOUT + 5)
+        if not use_ssl or port != 993:
+            raise HTTPException(400, "Apollo supports IMAP over verified TLS on port 993 only")
+        pinned_ip = (await resolve_public(host, port))[0]
+        async with _imap_slots:
+            await asyncio.wait_for(asyncio.to_thread(_scan_sync, host, pinned_ip, port, use_ssl, username, password, 1), timeout=IMAP_TIMEOUT + 5)
+    except OutboundBlocked as exc:
+        raise HTTPException(400, f"Mailbox host is not an approved public target: {exc}") from exc
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.info("imap test connection failed: %s", type(exc).__name__)
         raise HTTPException(400, "Couldn't connect — check the host, port and app password.") from exc
@@ -163,7 +176,7 @@ async def save_connection(device_id: str, host: str, port: int, use_ssl: bool, u
     await db.imap_connections.update_one(
         {"device_id": device_id},
         {"$set": {"host": host, "port": port, "ssl": use_ssl, "username": username, "password_enc": _encrypt(password), "updated_at": now_utc()},
-         "$setOnInsert": {"device_id": device_id, "created_at": now_utc()}},
+         "$setOnInsert": {"device_id": device_id, "created_at": now_utc(), "monitoring_enabled": False}},
         upsert=True,
     )
 
@@ -183,7 +196,15 @@ async def scan_inbox(device_id: str) -> list[dict[str, Any]]:
         raise HTTPException(404, "No IMAP inbox is connected")
     password = _decrypt(row["password_enc"])
     try:
-        return await asyncio.wait_for(asyncio.to_thread(_scan_sync, row["host"], row["port"], row["ssl"], row["username"], password, MAX_MESSAGES), timeout=IMAP_TIMEOUT + 10)
+        if not row["ssl"] or row["port"] != 993:
+            raise HTTPException(400, "Apollo supports IMAP over verified TLS on port 993 only")
+        pinned_ip = (await resolve_public(row["host"], row["port"]))[0]
+        async with _imap_slots:
+            return await asyncio.wait_for(asyncio.to_thread(_scan_sync, row["host"], pinned_ip, row["port"], row["ssl"], row["username"], password, MAX_MESSAGES), timeout=IMAP_TIMEOUT + 10)
+    except OutboundBlocked as exc:
+        raise HTTPException(400, f"Mailbox host is not an approved public target: {exc}") from exc
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.info("imap scan failed: %s", type(exc).__name__)
         raise HTTPException(401, "Couldn't read that inbox — the connection may need to be reconnected.") from exc

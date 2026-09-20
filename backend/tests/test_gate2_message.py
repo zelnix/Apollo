@@ -1,8 +1,5 @@
-"""Gate 2 (local-first policy) tests.
-
-Cloud screenshot extraction is intentionally disabled (403).
-Message analyse accepts only minimal local-only payloads.
-"""
+"""Gate 2 purpose-limited investigation and deletion-contract tests."""
+import io
 import os
 import uuid
 from pathlib import Path
@@ -39,11 +36,11 @@ def s():
 
 
 class TestMessageAnalyse:
-    def test_raw_message_cloud_processing_is_blocked(self, s):
+    def test_explicit_submission_returns_higgins_and_never_claims_a_block(self, s):
         body = {
             "device_id": "gate2test0001",
             "sender": "+61400000000",
-            "text": "verify now",
+            "text": "CommBank alert: verify a $4,820 payment at the supplied link.",
             "urls": ["https://example.com/login"],
             "local_state": "barking",
             "scenario": "M02",
@@ -51,33 +48,54 @@ class TestMessageAnalyse:
             "claimed_brand": "CommBank",
             "second_opinion": True,
         }
-        r = s.post(f"{API}/message/analyse", json=body, timeout=20)
-        assert r.status_code == 403, r.text
+        r = s.post(f"{API}/message/analyse", json=body, timeout=75)
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["assessment"]["higgins"]["next_action"]
+        assert data["assessment"]["processing"]["raw_retained_by_apollo"] is False
+        assert "packet" not in data["assessment"]["higgins"]["exact_response"].lower()
 
-    def test_local_only_payload_succeeds(self, s):
+    def test_genuine_message_stays_a_warning_or_clear_not_a_block(self, s):
         body = {
             "device_id": "gate2test0001",
-            "sender": "",
-            "text": "[local-only]",
-            "urls": ["https://testsafebrowsing.appspot.com/s/phishing.html"],
-            "local_state": "growling",
-            "scenario": "M_LOCAL",
+            "sender": "School Office",
+            "text": "Reminder: parent-teacher interviews are Tuesday at 4:30 pm. No reply needed.",
+            "urls": [],
+            "local_state": "resting",
+            "scenario": "M15",
             "signals": [],
             "claimed_brand": None,
             "second_opinion": False,
         }
-        r = s.post(f"{API}/message/analyse", json=body, timeout=30)
+        r = s.post(f"{API}/message/analyse", json=body, timeout=75)
         assert r.status_code == 200, r.text
         data = r.json()
         assert isinstance(data["urls"], list)
-        assert data.get("gemini_used") is False
+        assert data["assessment"]["risk"] in ("clear", "uncertain", "warning")
+        assert "blocked" not in data["assessment"]["higgins"]["exact_response"].lower()
 
 
 class TestMessageExtract:
-    def test_screenshot_extract_is_intentionally_disabled(self, s):
-        body = {"device_id": "gate2test0001", "image_base64": "A" * 200}
-        r = s.post(f"{API}/message/extract", json=body, timeout=15)
-        assert r.status_code == 403, r.text
+    def test_screenshot_upload_rejects_non_image(self):
+        r = requests.post(f"{API}/message/extract", data={"device_id": "gate2test0001"},
+                          files={"file": ("message.txt", b"not an image", "text/plain")}, timeout=15)
+        assert r.status_code == 415, r.text
+
+    def test_realistic_screenshot_is_extracted_request_scoped(self):
+        from PIL import Image, ImageDraw
+        image = Image.new("RGB", (1000, 420), "white")
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((20, 20, 980, 400), outline="black", width=4)
+        draw.text((55, 70), "CommBank Alert", fill="black")
+        draw.text((55, 150), "A $4,820 payment was detected.", fill="black")
+        draw.text((55, 230), "Visit commbank-secure-verify.xyz now", fill="black")
+        buf = io.BytesIO(); image.save(buf, format="PNG")
+        r = requests.post(f"{API}/message/extract", data={"device_id": "gate2test0001"},
+                          files={"file": ("message.png", buf.getvalue(), "image/png")}, timeout=90)
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert "CommBank" in data["text"] or "commbank" in " ".join(data["urls"]).lower()
+        assert data["processing"]["raw_retained_by_apollo"] is False
 
 
 class TestPatrolEventsGate2:

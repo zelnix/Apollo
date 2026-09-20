@@ -12,13 +12,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiDelete, apiGet, apiPost } from "@/src/api/client";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
+import { MessageAssessmentResult } from "@/src/components/MessageAssessmentResult";
 import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { analyseEmail, type EmailAnalysis } from "@/src/domain/emailAnalysis";
 import { evaluateLinkGuardFindings, extractAnchorsFromPlainText } from "@/src/domain/linkGuard";
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { STATE_RANK } from "@/src/domain/stateMachine";
-import { minimalIndicator } from '@/src/domain/privacy';
+import { patrolSafeSummary, type InvestigationResult } from "@/src/domain/investigation";
 import { type MessageExplanation, type MessageUrlResult, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -48,19 +49,20 @@ export default function CheckEmail() {
   const [subject, setSubject] = useState("");
   const [raw, setRaw] = useState(params.text ?? "");
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ a: EmailAnalysis; event: PatrolEvent | null; urls: MessageUrlResult[]; explanation: MessageExplanation | null } | null>(null);
+  const [result, setResult] = useState<{ a: EmailAnalysis; event: PatrolEvent | null; urls: MessageUrlResult[]; explanation: MessageExplanation | null; assessment: InvestigationResult | null } | null>(null);
   const [verify, setVerify] = useState(false);
   const [tech, setTech] = useState(false);
   const [gmailConnected, setGmailConnected] = useState<boolean | null>(null);
   const [gmailConfigured, setGmailConfigured] = useState(true);
+  const [gmailMonitoring, setGmailMonitoring] = useState(false);
   const [, setGmailBusy] = useState(false);
   const [, setScanBusy] = useState(false);
   const [scanSummary, setScanSummary] = useState<{ text: string; flagged: number } | null>(null);
 
   useEffect(() => {
     if (!deviceId) return;
-    apiGet<{ connected: boolean; configured: boolean }>(`/gmail/status?device_id=${deviceId}`)
-      .then((r) => { setGmailConnected(r.connected); setGmailConfigured(r.configured); })
+    apiGet<{ connected: boolean; configured: boolean; monitoring_enabled: boolean }>(`/gmail/status?device_id=${deviceId}`)
+      .then((r) => { setGmailConnected(r.connected); setGmailConfigured(r.configured); setGmailMonitoring(r.monitoring_enabled); })
       .catch(() => setGmailConnected(false));
   }, [deviceId]);
 
@@ -73,7 +75,7 @@ export default function CheckEmail() {
       const redirect = Linking.createURL("/email");
       const { authorization_url } = await apiGet<{ authorization_url: string }>(`/gmail/connect?device_id=${deviceId}&app_redirect=${encodeURIComponent(redirect)}`);
       const res = await WebBrowser.openAuthSessionAsync(authorization_url, redirect);
-      if (res.type === "success" && res.url.includes("gmail=connected")) { setGmailConnected(true); showToast("Gmail connected — read-only access.", "resting"); }
+      if (res.type === "success" && res.url.includes("gmail=connected")) { setGmailConnected(true); setGmailMonitoring(false); showToast("Gmail connected — monitoring stays off until you enable it.", "resting"); }
       else if (res.type === "success" && res.url.includes("gmail=denied")) showToast("Gmail connection was cancelled.", "neutral");
       else if (res.type !== "cancel" && res.type !== "dismiss") showToast("Couldn't connect Gmail right now.", "growling");
     } catch (e) { showToast(e instanceof Error ? e.message : "Couldn't connect Gmail right now.", "growling"); } finally { setGmailBusy(false); }
@@ -82,8 +84,14 @@ export default function CheckEmail() {
   const disconnectGmail = async () => {
     if (!deviceId) return;
     try { await apiDelete(`/gmail/connection?device_id=${deviceId}`); } catch { /* already gone */ }
-    setGmailConnected(false); setScanSummary(null);
+    setGmailConnected(false); setGmailMonitoring(false); setScanSummary(null);
     showToast("Gmail disconnected.", "neutral");
+  };
+  const toggleGmailMonitoring = async () => {
+    if (!deviceId) return;
+    const enabled = !gmailMonitoring;
+    await apiPost("/gmail/monitoring", "gmail_monitor", { device_id: deviceId, enabled });
+    setGmailMonitoring(enabled); showToast(enabled ? "Ongoing Gmail assessment enabled." : "Ongoing Gmail assessment stopped.", enabled ? "resting" : "neutral");
   };
 
   const scanInbox = async () => {
@@ -98,6 +106,7 @@ export default function CheckEmail() {
 
   const [imapConnected, setImapConnected] = useState<boolean | null>(null);
   const [imapConfigured, setImapConfigured] = useState(true);
+  const [imapMonitoring, setImapMonitoring] = useState(false);
   const [imapAccount, setImapAccount] = useState<{ host: string; username: string } | null>(null);
   const [imapSheet, setImapSheet] = useState(false);
   const [imapHost, setImapHost] = useState("");
@@ -111,8 +120,8 @@ export default function CheckEmail() {
 
   useEffect(() => {
     if (!deviceId) return;
-    apiGet<{ connected: boolean; configured: boolean; host: string | null; username: string | null }>(`/imap/status?device_id=${deviceId}`)
-      .then((r) => { setImapConnected(r.connected); setImapConfigured(r.configured); setImapAccount(r.connected && r.host && r.username ? { host: r.host, username: r.username } : null); })
+    apiGet<{ connected: boolean; configured: boolean; host: string | null; username: string | null; monitoring_enabled: boolean }>(`/imap/status?device_id=${deviceId}`)
+      .then((r) => { setImapConnected(r.connected); setImapConfigured(r.configured); setImapMonitoring(r.monitoring_enabled); setImapAccount(r.connected && r.host && r.username ? { host: r.host, username: r.username } : null); })
       .catch(() => setImapConnected(false));
   }, [deviceId]);
 
@@ -129,7 +138,7 @@ export default function CheckEmail() {
     try {
       const port = Number.parseInt(imapPort, 10) || 993;
       await apiPost("/imap/connections", "imap_connect", { device_id: deviceId, host: imapHost.trim(), port, ssl: true, username: imapUsername.trim(), app_password: imapPassword });
-      setImapConnected(true); setImapAccount({ host: imapHost.trim(), username: imapUsername.trim() });
+      setImapConnected(true); setImapMonitoring(false); setImapAccount({ host: imapHost.trim(), username: imapUsername.trim() });
       setImapSheet(false); setImapPassword("");
       showToast("Inbox connected — read-only access.", "resting");
     } catch (e) { setImapError(e instanceof Error ? e.message : "Couldn't connect — check the host, port and app password."); } finally { setImapConnecting(false); }
@@ -138,8 +147,14 @@ export default function CheckEmail() {
   const disconnectImap = async () => {
     if (!deviceId) return;
     try { await apiDelete(`/imap/connection?device_id=${deviceId}`); } catch { /* already gone */ }
-    setImapConnected(false); setImapAccount(null); setImapScanSummary(null);
+    setImapConnected(false); setImapMonitoring(false); setImapAccount(null); setImapScanSummary(null);
     showToast("Inbox disconnected.", "neutral");
+  };
+  const toggleImapMonitoring = async () => {
+    if (!deviceId) return;
+    const enabled = !imapMonitoring;
+    await apiPost("/imap/monitoring", "imap_monitor", { device_id: deviceId, enabled });
+    setImapMonitoring(enabled); showToast(enabled ? "Ongoing inbox assessment enabled." : "Ongoing inbox assessment stopped.", enabled ? "resting" : "neutral");
   };
 
   const scanImap = async () => {
@@ -156,13 +171,14 @@ export default function CheckEmail() {
     setBusy(true);
     try {
       let a = analyseEmail(raw, { from, subject });
-      let urls: MessageUrlResult[] = []; let explanation: MessageExplanation | null = null;
+      let urls: MessageUrlResult[] = []; let explanation: MessageExplanation | null = null; let assessment: InvestigationResult | null = null;
       try {
-        const r = await apiPost<{ urls: MessageUrlResult[]; explanation: MessageExplanation | null }>("/message/analyse", "message_check", {
-          device_id: deviceId ?? 'local-device', sender: '', text: '[local-only]', urls: a.urls.slice(0, 10).map(minimalIndicator),
-          local_state: a.state, scenario: a.scenario, signals: [], claimed_brand: null, second_opinion: false,
+        const r = await apiPost<{ urls: MessageUrlResult[]; explanation: MessageExplanation | null; assessment: InvestigationResult }>("/message/analyse", "message_check", {
+          device_id: deviceId ?? 'local-device', sender: from.trim(), text: `${subject}\n${raw}`.slice(0, 4000), urls: a.urls.slice(0, 10),
+          local_state: a.state, scenario: a.scenario, signals: a.signalLabels.slice(0, 20), claimed_brand: a.claimedBrand, second_opinion: true,
         });
-        urls = r.urls; explanation = r.explanation;
+        urls = r.urls; explanation = r.explanation; assessment = r.assessment;
+        if (assessment.risk === "warning" && a.state === "resting") a = { ...a, state: "growling", why: [...a.why, "The contextual investigation found unresolved or suspicious details that need verification."] };
         // Email Guard: automatic pre-click assessment — redirect chain + RDAP domain-info (already
         // inside `urls`) plus any display-text-vs-real-destination mismatch recoverable from the
         // plain pasted text. Can only raise state to growling/barking, never biting.
@@ -172,10 +188,10 @@ export default function CheckEmail() {
       } catch { /* offline: on-device result stands */ }
       let event: PatrolEvent | null = null;
       if (a.state !== "resting") {
-        event = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "email", state: a.state, status: "active", headline: `Email: ${a.title}`, what_happened: a.verdict, why: a.why, what_to_do: a.recommendation, indicator_host: a.lookalikeUrls[0] ? a.lookalikeUrls[0].replace(/^https?:\/\//i, "").split("/")[0] : a.senderDomain, indicator_digest: null, local_indicator: a.parsed.subject, verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: a.claimedBrand, scenario: a.scenario });
+        event = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "email", state: a.state, status: "active", headline: `Email: ${assessment?.higgins.headline ?? a.title}`, what_happened: patrolSafeSummary(assessment?.higgins.what_was_found[0] ?? a.verdict), why: assessment?.findings.map((finding) => finding.title).slice(0, 6) ?? a.why, what_to_do: assessment?.higgins.next_action ?? a.recommendation, indicator_host: a.lookalikeUrls[0] ? a.lookalikeUrls[0].replace(/^https?:\/\//i, "").split("/")[0] : a.senderDomain, indicator_digest: null, local_indicator: null, verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: a.claimedBrand, scenario: a.scenario, supporting_references: assessment?.sources.filter((source) => source.url).map((source) => ({ label: source.label, url: source.url! })).slice(0, 6) });
         if (event.state !== a.state) a = { ...a, state: event.state, why: event.why };
       }
-      setResult({ a, event, urls, explanation });
+      setResult({ a, event, urls, explanation, assessment });
     } catch (e) { showToast(e instanceof Error ? e.message : "Couldn't read that email.", "barking"); } finally { setBusy(false); }
   };
 
@@ -200,7 +216,9 @@ export default function CheckEmail() {
                 ) : gmailConnected ? (
                   <>
                     <View style={s.chips}><Pill tone="resting" label="Gmail connected — read-only" testID="email-gmail-connected" /></View>
-                    <Button testID="email-gmail-scan" label="Inbox scanning disabled — local-only policy" onPress={() => void scanInbox()} disabled />
+                    <Button testID="email-gmail-scan" label="Assess recent Gmail" onPress={() => void scanInbox()} />
+                    <Button testID="email-gmail-monitoring" variant="secondary" label={gmailMonitoring ? "Stop ongoing Gmail monitoring" : "Enable ongoing Gmail monitoring"} onPress={() => void toggleGmailMonitoring()} />
+                    <Body testID="email-gmail-monitoring-status">{gmailMonitoring ? "Opted in: Apollo checks recent Gmail periodically and stores summaries only." : "Ongoing monitoring is off."}</Body>
                     {scanSummary ? (
                       <>
                         <Body testID="email-gmail-scan-summary">{scanSummary.text}</Body>
@@ -211,8 +229,8 @@ export default function CheckEmail() {
                   </>
                 ) : (
                   <>
-                    <Body testID="email-gmail-policy">Cloud inbox connections are disabled. Paste an email for a local check.</Body>
-                    <Button testID="email-gmail-connect" variant="secondary" icon={<Mail size={18} color={colors.onSurface} />} label="Gmail connection unavailable" onPress={() => void connectGmail()} disabled />
+                    <Body testID="email-gmail-policy">Connecting Gmail is optional and read-only. Recent messages are used for the assessment, then discarded; only summaries and safe references may enter Patrol.</Body>
+                    <Button testID="email-gmail-connect" variant="secondary" icon={<Mail size={18} color={colors.onSurface} />} label="Connect Gmail read-only" onPress={() => void connectGmail()} />
                   </>
                 )}
               </Card>
@@ -225,7 +243,9 @@ export default function CheckEmail() {
                 ) : imapConnected ? (
                   <>
                     <View style={s.chips}><Pill tone="resting" label={`Connected — ${imapAccount?.username ?? "read-only"}`} testID="email-imap-connected" /></View>
-                    <Button testID="email-imap-scan" label="Inbox scanning disabled — local-only policy" onPress={() => void scanImap()} disabled />
+                    <Button testID="email-imap-scan" label="Assess recent inbox" onPress={() => void scanImap()} />
+                    <Button testID="email-imap-monitoring" variant="secondary" label={imapMonitoring ? "Stop ongoing inbox monitoring" : "Enable ongoing inbox monitoring"} onPress={() => void toggleImapMonitoring()} />
+                    <Body testID="email-imap-monitoring-status">{imapMonitoring ? "Opted in: Apollo checks this inbox periodically and stores summaries only." : "Ongoing monitoring is off."}</Body>
                     {imapScanSummary ? (
                       <>
                         <Body testID="email-imap-scan-summary">{imapScanSummary.text}</Body>
@@ -236,13 +256,13 @@ export default function CheckEmail() {
                   </>
                 ) : (
                   <>
-                    <Body testID="email-imap-policy">IMAP processing is disabled. No mailbox credentials are requested or sent.</Body>
-                    <Button testID="email-imap-connect-open" variant="secondary" icon={<Mail size={18} color={colors.onSurface} />} label="IMAP connection unavailable" onPress={() => setImapSheet(true)} disabled />
+                    <Body testID="email-imap-policy">Connecting IMAP is optional. Apollo stores the encrypted app password only while connected. Message content is assessed request-by-request and discarded.</Body>
+                    <Button testID="email-imap-connect-open" variant="secondary" icon={<Mail size={18} color={colors.onSurface} />} label="Connect an inbox" onPress={() => setImapSheet(true)} />
                   </>
                 )}
               </Card>
             ) : null}
-            <Body testID="email-local-only">Paste the email here. Sender, subject and body stay on your phone. Only website origins are sent for reputation checks; inbox scanning is disabled.</Body>
+            <Body testID="email-processing-scope">Submitting this email authorises one assessment of its sender, body and links. Apollo does not retain the full email; provider-side retention follows configured services.</Body>
             <TextInput testID="email-from" style={s.input} value={from} onChangeText={setFrom} placeholder="From (e.g. CommBank <alerts@cb-secure.top>)" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} />
             <TextInput testID="email-subject" style={s.input} value={subject} onChangeText={setSubject} placeholder="Subject" placeholderTextColor={colors.muted} autoCorrect={false} />
             <TextInput testID="email-body" style={[s.input, { minHeight: 140 }]} value={raw} onChangeText={setRaw} placeholder="Paste the email (or the whole forwarded message with headers)…" placeholderTextColor={colors.muted} multiline textAlignVertical="top" autoCapitalize="none" autoCorrect={false} />
@@ -250,6 +270,7 @@ export default function CheckEmail() {
           </>
         ) : a ? (
           <>
+            {result.assessment ? <MessageAssessmentResult assessment={result.assessment} state={a.state} onPrimaryAction={() => setVerify(true)} /> : null}
             <Card testID="email-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
               <View style={s.chips}><Pill tone={a.state} label={STATE_NAME[a.state]} testID="email-state" /><Pill tone="neutral" label={a.scenario} testID="email-scenario" />{a.claimedBrand ? <Pill tone="neutral" label={`Claims: ${a.claimedBrand}`} testID="email-brand" /> : null}</View>
               <Text style={s.why}>{STATE_LABEL[a.state]}</Text>

@@ -1,5 +1,4 @@
-# Call Guard add-on under local-first policy.
-# Number cloud lookups are intentionally disabled (403).
+# Call Guard purpose-limited reputation lookup.
 import os
 from pathlib import Path
 
@@ -35,13 +34,17 @@ def api():
 
 
 class TestCallRiskCheck:
-    def test_call_risk_lookup_is_intentionally_disabled(self, api):
-        r = api.post(f"{BASE_URL}/api/call/risk-check", json={"device_id": "callrisk0001", "number": "+18007132618"}, timeout=TIMEOUT)
-        assert r.status_code == 403, r.text
-        assert "local-first privacy policy" in r.json().get("detail", "")
+    def test_call_risk_lookup_returns_higgins_warning_not_block(self, api):
+        number = "+61293744000"
+        r = api.post(f"{BASE_URL}/api/call/risk-check", json={"device_id": "callrisk0001", "number": number, "country": "AU"}, timeout=40)
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["higgins"]["warning_only"] is True
+        assert data["higgins"]["next_action"]
+        assert "authenticate" in data["higgins"]["could_not_establish"].lower()
 
     def test_requires_auth(self):
         s = requests.Session()
         s.headers.update({"Content-Type": "application/json", "X-Apollo-Raw": "1"})
         r = s.post(f"{BASE_URL}/api/call/risk-check", json={"device_id": "x" * 10, "number": "+18007132618"}, timeout=TIMEOUT)
-        assert r.status_code == 403, r.text
+        assert r.status_code == 401, r.text

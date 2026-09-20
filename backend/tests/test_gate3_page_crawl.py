@@ -37,13 +37,21 @@ def api():
     return s
 
 
-def test_page_crawl_is_intentionally_disabled(api):
+def test_page_crawl_reads_a_public_page_with_bounded_static_inspection(api):
     r = api.post(f"{BASE_URL}/api/page/crawl", json={"device_id": "gate3crawl0001", "url": "https://example.com"}, timeout=20)
-    assert r.status_code == 403, r.text
-    assert "local-first privacy policy" in r.json().get("detail", "")
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["signals"]["visible_url"] == "https://example.com/"
+    assert data["final_url"] == "https://example.com/"
 
 
 @pytest.mark.parametrize("target", ["http://127.0.0.1:8001/api/health", "https://example.com"]) 
 def test_page_crawl_contract_is_stable_for_private_and_public_inputs(api, target):
     r = api.post(f"{BASE_URL}/api/page/crawl", json={"device_id": "gate3crawl0002", "url": target}, timeout=20)
-    assert r.status_code == 403, r.text
+    assert r.status_code == 200, r.text
+    data = r.json()
+    if target.startswith("http://127"):
+        assert data["error"] == "invalid_target"
+        assert data["signals"] is None
+    else:
+        assert data["signals"]["visible_url"] == "https://example.com/"

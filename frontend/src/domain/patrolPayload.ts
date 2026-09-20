@@ -17,5 +17,6 @@ export function patrolPayload(e: PatrolEvent, deviceId: string): Record<string, 
     resolved_at: e.resolved_at, background: !!e.background, claimed_brand: null,
     scenario: e.scenario && /^[A-Z]{1,3}\d{1,3}[a-z]?$/.test(e.scenario) ? e.scenario : null,
     scent_id: e.scent_id ?? null, enforcement_evidence: proof ? e.enforcement_evidence : null,
+    supporting_references: (e.supporting_references ?? []).filter((ref) => ref.url.startsWith('https://') && !/[?#@]/.test(ref.url)).slice(0, 6),
   };
 }

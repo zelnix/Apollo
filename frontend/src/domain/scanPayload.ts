@@ -28,7 +28,6 @@ const hostOf = (u: string) => { try { return new URL(u).hostname.toLowerCase(); 
 
 export function classifyPayload(rawIn: string): ScanPayload {
   const raw = rawIn.trim();
-  const lower = raw.toLowerCase();
   if (/^wifi:/i.test(raw)) {
     const ssid = /S:([^;]*)/i.exec(raw)?.[1] ?? "?"; const sec = /T:([^;]*)/i.exec(raw)?.[1] ?? "nopass";
     return { type: "wifi", raw, ssid, wifiSecurity: sec.toLowerCase() === "nopass" || !sec ? "open" : sec.toUpperCase(), preview: `This code contains Wi‑Fi credentials for “${ssid}”.` };

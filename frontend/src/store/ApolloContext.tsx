@@ -40,6 +40,7 @@ import { MessagingSdk } from "@/src/security/messagingSdk";
 import { CallSdk } from "@/src/security/callSdk";
 import { storage } from "@/src/utils/storage";
 import { shouldBypassSetup } from "@/src/testing/setupBypass";
+import { isInvestigationResult, patrolSafeSummary, type InvestigationResult } from "@/src/domain/investigation";
 import { RECOVERY_STEPS, type RecoveryKind } from "@/src/domain/recovery";
 
 const deviceMeta = () => ({ platform: Platform.OS, adapter_mode: SECURITY_MODE, app_version: "1.0.0", tz_offset_minutes: -new Date().getTimezoneOffset() });
@@ -51,7 +52,7 @@ export interface TrustEntry { trust_id: string; device_id: string; indicator_typ
 export interface CheckOutcome { local: LocalAnalysis; intel: IntelResult | null; intelError: string | null; decision: Decision; event: PatrolEvent | null }
 export interface MessageUrlResult { url: string; host: string; verdict: "clean" | "malicious" | "unknown"; threat_types: string[]; coverage: string; redirect_chain?: string[]; final_url?: string | null; domain_info?: DomainInfo | null }
 export interface MessageExplanation { summary: string; why: string[]; recommendation: string }
-export interface MessageOutcome { analysis: MessageAnalysis; urls: MessageUrlResult[]; explanation: MessageExplanation | null; remoteError: string | null; event: PatrolEvent | null }
+export interface MessageOutcome { analysis: MessageAnalysis; urls: MessageUrlResult[]; explanation: MessageExplanation | null; assessment: InvestigationResult | null; remoteError: string | null; event: PatrolEvent | null }
 /** Call Guard add-on: mirrors backend CallRiskResponse (routers/call.py). `decision` is heuristic/
  * probabilistic (IPQualityScore) — see services/phonerisk.py's Truth-of-State comment; it alone may
  * only reach "growling"/"barking" in the app, never a verified "biting" block. */
@@ -59,6 +60,7 @@ export interface CallRiskResult {
   number: string; valid: boolean | null; active: boolean | null; fraud_score: number | null; recent_abuse: boolean | null;
   risky: boolean | null; voip: boolean | null; line_type: string | null; carrier: string | null; country: string | null;
   decision: "allow" | "review" | "avoid"; cached: boolean; checked_at: string; source: "ipqualityscore" | "not_configured";
+  higgins: { headline: string; found: string; why: string; could_not_establish: string; next_action: string; exact_response: string; warning_only: boolean };
 }
 export { RECOVERY_STEPS, type RecoveryKind } from "@/src/domain/recovery";
 
@@ -482,16 +484,17 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   const checkMessage = useCallback(async (sender: string, text: string): Promise<MessageOutcome> => {
     const analysis = analyseMessage(sender, text);
-    let urls: MessageUrlResult[] = []; let explanation: MessageExplanation | null = null; let remoteError: string | null = null;
+    let urls: MessageUrlResult[] = []; let explanation: MessageExplanation | null = null; let assessment: InvestigationResult | null = null; let remoteError: string | null = null;
     try {
-      const r = await apiPost<{ urls?: unknown; explanation?: unknown }>("/message/analyse", "message_check", {
-        device_id: deviceId ?? undefined, sender: '', text: '[local-only]', urls: analysis.signals.urls.slice(0, 10).map(minimalIndicator),
-        local_state: analysis.state, scenario: analysis.scenario, signals: [], claimed_brand: null, second_opinion: false,
+      const r = await apiPost<{ urls?: unknown; explanation?: unknown; assessment?: unknown }>("/message/analyse", "message_check", {
+        device_id: deviceId ?? undefined, sender, text, urls: analysis.signals.urls.slice(0, 10),
+        local_state: analysis.state, scenario: analysis.scenario, signals: analysis.signalLabels, claimed_brand: analysis.signals.claimedBrand, second_opinion: true,
       });
       // Contract guard: only well-formed url verdicts count; anything else is dropped (unknown), never treated as clean.
       urls = Array.isArray(r.urls) ? (r.urls as MessageUrlResult[]).filter((u) => u && typeof u.url === "string" && typeof u.host === "string" && ["clean", "malicious", "unknown"].includes(u.verdict) && Array.isArray(u.threat_types)) : [];
       const ex = r.explanation as MessageExplanation | null | undefined;
       explanation = ex && typeof ex.summary === "string" && typeof ex.recommendation === "string" && Array.isArray(ex.why) ? ex : null;
+      assessment = isInvestigationResult(r.assessment) ? r.assessment : null;
     } catch (e) { remoteError = e instanceof Error ? e.message : "Apollo's second opinion is unavailable right now."; }
     let state = analysis.state; const why = [...analysis.why];
     // Email Guard / Text Guard: automatic pre-click assessment over every checked link (redirect
@@ -500,21 +503,25 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     // only ever raise state to growling/barking — never biting (see src/domain/linkGuard.ts).
     const guard = evaluateLinkGuardFindings(urls, extractAnchorsFromPlainText(text));
     if (STATE_RANK[guard.state] > STATE_RANK[state]) state = guard.state;
+    if (assessment?.risk === "warning" && STATE_RANK.growling > STATE_RANK[state]) state = "growling";
     why.push(...guard.why);
     const firstHost = urls[0]?.host ?? (analysis.signals.urls[0] ? analysis.signals.urls[0].replace(/^https?:\/\//i, "").split("/")[0].toLowerCase() : null);
     let event: PatrolEvent | null = null;
     if (state !== "resting") {
       event = await upsertEvent({
         event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "message", state, status: "active",
-        headline: `${analysis.scenarioTitle}${analysis.signals.claimedBrand ? ` — claims to be ${analysis.signals.claimedBrand}` : ""}`,
-        what_happened: analysis.verdict, why, what_to_do: analysis.recommendation,
-        indicator_host: firstHost, indicator_digest: null, local_indicator: analysis.signals.urls[0] ?? null, verified_block: false, adapter_label: securityAdapter.label,
+        headline: assessment?.higgins.headline ?? `${analysis.scenarioTitle}${analysis.signals.claimedBrand ? ` — claims to be ${analysis.signals.claimedBrand}` : ""}`,
+        what_happened: patrolSafeSummary(assessment?.higgins.what_was_found[0] ?? analysis.verdict),
+        why: assessment?.findings.map((finding) => finding.title).slice(0, 6) ?? why,
+        what_to_do: assessment?.higgins.next_action ?? analysis.recommendation,
+        indicator_host: firstHost, indicator_digest: null, local_indicator: firstHost ? `https://${firstHost}/` : null, verified_block: false, adapter_label: securityAdapter.label,
         occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: analysis.signals.claimedBrand, scenario: analysis.scenario,
+        supporting_references: assessment?.sources.filter((source) => source.url).map((source) => ({ label: source.label, url: source.url! })).slice(0, 6),
       });
       if (event.state !== state) { state = event.state; }
     }
     void markCheckDone("message");
-    return { analysis: { ...analysis, state, why }, urls, explanation, remoteError, event };
+    return { analysis: { ...analysis, state, why }, urls, explanation, assessment, remoteError, event };
   }, [deviceId, upsertEvent]);
 
   // Text Guard (Android only): drains notifications ApolloSmsListenerService captured from the
@@ -536,16 +543,10 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           const text = typeof item?.text === "string" ? item.text : "";
           if (!text.trim()) continue;
           const sender = typeof item?.sender === "string" ? item.sender : "";
-          // Captured notifications NEVER trigger cloud analysis or indicator upload.
-          const analysis = analyseMessage(sender, text);
-          if (analysis.state !== 'resting') {
-            const ev: PatrolEvent = { event_id: Crypto.randomUUID(), device_id: 'local-notification', category: 'message', state: analysis.state,
-              status: 'active', headline: analysis.scenarioTitle, what_happened: analysis.verdict, why: analysis.why,
-              what_to_do: analysis.recommendation, indicator_host: null, indicator_digest: null, verified_block: false,
-              adapter_label: securityAdapter.label, occurred_at: new Date().toISOString(), resolved_at: null };
-            await persistEvents([ev, ...eventsRef.current]);
-            showToast(`Apollo flagged a text message: ${analysis.scenarioTitle}`, analysis.state);
-          }
+          // Notification access is explicit opt-in. Each captured item gets the same disclosed,
+          // purpose-limited investigation as a manual submission; raw content is then discarded.
+          const outcome = await checkMessage(sender, text);
+          if (outcome.event) showToast(`Apollo assessed a text message: ${outcome.event.headline}`, outcome.event.state);
         }
       } catch { /* native module unavailable or listener not granted — nothing to drain */ }
     };
@@ -553,7 +554,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const timer = setInterval(() => void poll(), lowPower ? 120000 : 45000);
     const sub = AppState.addEventListener("change", (st) => { if (st === "active") void poll(); });
     return () => { cancelled = true; clearInterval(timer); sub.remove(); };
-  }, [persistEvents, showToast, lowPower]);
+  }, [checkMessage, showToast, lowPower]);
 
   // Shared by scanGmailInbox/scanImapInbox: runs each fetched message through the on-device email
   // engine + Email Guard's automatic pre-click link assessment, filing a Patrol event for anything
@@ -565,15 +566,15 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     for (const m of messages) {
       let a = analyseEmail(m.body, { from: m.from, subject: m.subject });
       let urls: MessageUrlResult[] = [];
-      if (a.urls.length) {
-        try {
-          const r = await apiPost<{ urls?: unknown }>("/message/analyse", "message_check", {
-            device_id: deviceId, sender: (m.from || "").slice(0, 80), text: `${m.subject}\n${m.body}`.slice(0, 4000), urls: a.urls.slice(0, 10),
-            local_state: a.state, scenario: a.scenario, signals: a.signalLabels.slice(0, 20), claimed_brand: a.claimedBrand, second_opinion: false,
-          });
-          urls = Array.isArray(r.urls) ? (r.urls as MessageUrlResult[]) : [];
-        } catch { /* offline/unavailable this pass — on-device result stands, Email Guard link findings just don't apply */ }
-      }
+      let assessment: InvestigationResult | null = null;
+      try {
+        const r = await apiPost<{ urls?: unknown; assessment?: unknown }>("/message/analyse", "message_check", {
+          device_id: deviceId, sender: (m.from || "").slice(0, 80), text: `${m.subject}\n${m.body}`.slice(0, 4000), urls: a.urls.slice(0, 10),
+          local_state: a.state, scenario: a.scenario, signals: a.signalLabels.slice(0, 20), claimed_brand: a.claimedBrand, second_opinion: true,
+        });
+        urls = Array.isArray(r.urls) ? (r.urls as MessageUrlResult[]) : [];
+        assessment = isInvestigationResult(r.assessment) ? r.assessment : null;
+      } catch { /* on-device findings remain available if the purpose-limited service is offline */ }
       // Email Guard: automatic pre-click assessment — redirect chain + RDAP domain-info (already
       // inside `urls`) plus real HTML anchor mismatch detection (both Gmail and IMAP give us the
       // actual <a> pairs, unlike pasted plain text). Can only raise state to growling/barking, never biting.
@@ -583,10 +584,14 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       if (a.state === "resting") continue;
       const event = await upsertEvent({
         event_id: Crypto.randomUUID(), device_id: deviceId, category: "email", state: a.state, status: "active",
-        headline: `${sourceLabel}: ${a.title}`, what_happened: a.verdict, why: a.why, what_to_do: a.recommendation,
+        headline: `${sourceLabel}: ${assessment?.higgins.headline ?? a.title}`,
+        what_happened: patrolSafeSummary(assessment?.higgins.what_was_found[0] ?? a.verdict),
+        why: assessment?.findings.map((finding) => finding.title).slice(0, 6) ?? a.why,
+        what_to_do: assessment?.higgins.next_action ?? a.recommendation,
         indicator_host: a.lookalikeUrls[0] ? a.lookalikeUrls[0].replace(/^https?:\/\//i, "").split("/")[0] : a.senderDomain,
         indicator_digest: null, local_indicator: a.parsed.subject, verified_block: false, adapter_label: securityAdapter.label,
         occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: a.claimedBrand, scenario: a.scenario,
+        supporting_references: assessment?.sources.filter((source) => source.url).map((source) => ({ label: source.label, url: source.url! })).slice(0, 6),
       });
       flagged.push(event);
     }

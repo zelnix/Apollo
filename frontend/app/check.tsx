@@ -1,4 +1,5 @@
 import * as Clipboard from "expo-clipboard";
+import * as ImagePicker from "expo-image-picker";
 import ImageIcon from "lucide-react-native/icons/image";
 import Globe from "lucide-react-native/icons/globe";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
@@ -10,7 +11,7 @@ import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { apiPost } from "@/src/api/client";
+import { apiPost, apiUpload } from "@/src/api/client";
 import { EventActions } from "@/src/components/EventActions";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
@@ -19,7 +20,7 @@ import { getHigginsAuto, speakHiggins } from "@/src/voice/higgins";
 import { Body, Button, Card, Pill, toneColor } from "@/src/components/ui";
 import { verifyWebsite } from "@/src/domain/brand";
 import { formatDomainInfoLine } from "@/src/domain/domainInfo";
-import { type PageAnalysis } from "@/src/domain/pageAnalysis";
+import { analysePage, type PageAnalysis, type PageSignals } from "@/src/domain/pageAnalysis";
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { useApollo, type CheckOutcome } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -47,22 +48,43 @@ export default function CheckLink() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { checkLink, events, isMock, ready, setupDone, deviceId, showToast, upsertEvent } = useApollo();
+  const { checkLink, events, isMock, ready, setupDone, deviceId, showToast, upsertEvent, recordPageAnalysis } = useApollo();
   const [verify, setVerify] = useState(false);
   const [report, setReport] = useState(false);
   const [tech, setTech] = useState(false);
-  const [page] = useState<PageAnalysis | null>(null);
-  const [pageEvent] = useState<PatrolEvent | null>(null);
+  const [page, setPage] = useState<PageAnalysis | null>(null);
+  const [pageEvent, setPageEvent] = useState<PatrolEvent | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
-  const [pageHigginsNote] = useState<string | null>(null);
+  const [pageHigginsNote, setPageHigginsNote] = useState<string | null>(null);
+  const applyPageSignals = async (signals: PageSignals, note: string | null) => {
+    const analysis = analysePage(signals, input);
+    setPage(analysis); setPageHigginsNote(note); setPageEvent(await recordPageAnalysis(analysis, pageEvent));
+  };
   const pickPage = async () => {
-    setPageError('Screenshot analysis is unavailable locally. No image will be read or uploaded.');
+    if (!deviceId) return;
+    try {
+      setPageError(null);
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) throw new Error("Allow photo access to choose the page screenshot you want assessed.");
+      const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsEditing: false, quality: 0.9 });
+      if (picked.canceled) return;
+      const asset = picked.assets[0];
+      const signals = await apiUpload<PageSignals>("/page/extract", "page_extract", { device_id: deviceId, url_hint: input.trim() },
+        { uri: asset.uri, name: asset.fileName ?? "page-screenshot.jpg", type: asset.mimeType ?? "image/jpeg" });
+      await applyPageSignals(signals, "Gemini extracted visible page signals; Apollo's local rules made the assessment.");
+    } catch (error) { setPageError(error instanceof Error ? error.message : "Could not assess that screenshot."); }
   };
   // Gate 3 Phase C: Apollo fetches the page itself (SSRF-safe, backend-only) instead of a screenshot.
   // Manual/opt-in, coexists with "Add a screenshot of the page" above — the content is checked and
   // discarded server-side, never stored (see routers/analysis.py page_crawl).
   const crawlPage = async () => {
-    setPageError('Cloud page-content analysis is disabled under the local-first privacy policy.');
+    if (!deviceId || !input.trim()) return;
+    try {
+      setPageError(null);
+      const result = await apiPost<{ signals: PageSignals | null; higgins_note: string | null; error: string | null; error_detail: string | null }>("/page/crawl", "page_crawl", { device_id: deviceId, url: input.trim() });
+      if (!result.signals) throw new Error(result.error_detail ?? "Apollo could not inspect that page.");
+      await applyPageSignals(result.signals, result.higgins_note);
+    } catch (error) { setPageError(error instanceof Error ? error.message : "Could not inspect that page."); }
   };
   const sendFeedback = async (kind: "false_positive" | "override", ev: { event_id: string; state: string; indicator_host: string | null }, sources: string[]) => {
     try { await apiPost("/feedback", "feedback", { device_id: deviceId, event_id: ev.event_id, kind, state: ev.state, host: ev.indicator_host, sources, note: "" }); } catch { /* best effort */ }
@@ -123,9 +145,9 @@ export default function CheckLink() {
           </View>
           {sourceLabel ? <Pill tone="neutral" label={sourceLabel} testID="check-source-pill" /> : null}
           <Button testID="check-submit-button" label={busy ? "Checking…" : "Check with Apollo"} onPress={() => run(input)} disabled={busy || !input.trim()} icon={busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : undefined} />
-          <Button testID="check-page-screenshot" variant="secondary" label="Screenshot reading unavailable" icon={<ImageIcon size={18} color={colors.onSurface} />} onPress={() => void pickPage()} />
-          <Button testID="check-page-crawl" variant="secondary" label="Page-content reading unavailable" icon={<Globe size={18} color={colors.onSurface} />} onPress={() => void crawlPage()} />
-          <Text style={s.hint} testID="check-privacy-scope">Local link patterns plus online website-origin reputation only. Paths, queries and private content are not uploaded or inspected online. Screenshots and page-content analysis are disabled.</Text>
+          <Button testID="check-page-screenshot" variant="secondary" label="Assess page screenshot" icon={<ImageIcon size={18} color={colors.onSurface} />} onPress={() => void pickPage()} />
+          <Button testID="check-page-crawl" variant="secondary" label="Inspect page safely" icon={<Globe size={18} color={colors.onSurface} />} onPress={() => void crawlPage()} disabled={!input.trim()} />
+          <Text style={s.hint} testID="check-privacy-scope">These are explicit one-off checks. Apollo fetches only public HTTP(S) content through SSRF protections or processes the chosen screenshot, then discards raw content. Gemini-side retention follows the configured API policy.</Text>
           {pageError ? <Card testID="check-page-error"><Body>{pageError}</Body></Card> : null}
           {page ? (
             <Animated.View entering={FadeInDown.duration(350)}>

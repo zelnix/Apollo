@@ -27,6 +27,7 @@ from core.db import client, db, now_utc
 from core.models import BlocklistEntry
 from core.privacy_boundary import PrivacyBoundary
 from services.patrol_policy import ensure_evidence_receipt_indexes
+from services.mailbox_monitor import mailbox_monitor_loop
 from routers import admin, analysis, ask, call, devices, family, family_weekly, gmail, health, imapmail, intel, patrol, push, voice
 from routers.family_weekly import weekly_checkin_loop
 
@@ -50,6 +51,7 @@ async def lifespan(_: FastAPI):
     await db.gmail_oauth_states.create_index("state", unique=True)
     await db.gmail_oauth_states.create_index("expires_at", expireAfterSeconds=0)  # real TTL cleanup — these are short-lived CSRF tokens, not a security "truth" cache
     await db.imap_connections.create_index("device_id", unique=True)
+    await db.mailbox_assessment_receipts.create_index([("provider", 1), ("device_id", 1), ("message_digest", 1)], unique=True)
     await db.phone_risk_cache.create_index("phone_e164", unique=True)
     await db.patrol_events.create_index([("device_id", 1), ("event_id", 1)], unique=True)
     await ensure_evidence_receipt_indexes()
@@ -62,8 +64,10 @@ async def lifespan(_: FastAPI):
         entry = BlocklistEntry(host=host, threat_type=threat, reason=reason, added_at=now_utc())
         await db.blocklist.update_one({"host": host}, {"$setOnInsert": entry.to_mongo()}, upsert=True)
     loop_task = asyncio.create_task(weekly_checkin_loop())
+    mailbox_task = asyncio.create_task(mailbox_monitor_loop())
     yield
     loop_task.cancel()
+    mailbox_task.cancel()
     client.close()
 
 
