@@ -128,6 +128,11 @@ const VERIFY: Record<NonNullable<MessageSignals["brandKind"]> | "family" | "pers
 
 function scenarioFor(s: MessageSignals): { scenario: Scenario; title: string; state: ApolloState; verdict: string; why: string[]; rec: string; verify: string } {
   const brand = s.claimedBrand ?? "the sender";
+  const courierHosts = ["auspost.com.au", "startrack.com.au", "dhl.com", "fedex.com", "ups.com", "sendle.com"];
+  const courierLinksOfficial = s.brandKind === "courier" && s.urls.length > 0 && s.urls.every((raw) => {
+    try { const host = new URL(raw.startsWith("http") ? raw : `https://${raw}`).hostname.toLowerCase(); return courierHosts.some((domain) => host === domain || host.endsWith(`.${domain}`)); }
+    catch { return false; }
+  });
   if (s.callbackRequest && s.allegedCharge) return { scenario: "M16", title: "Alleged-charge callback trap", state: "barking",
     verdict: "This message tries to make you call a supplied number about an alleged charge.",
     why: [s.claimedBrand ? `It claims to be ${s.claimedBrand} and names a charge or transaction.` : "It alleges a charge or transaction.",
@@ -156,6 +161,9 @@ function scenarioFor(s: MessageSignals): { scenario: Scenario; title: string; st
   if (s.familyClaim && (s.newNumber || s.moneyRequest)) return { scenario: "M05", title: "Hi Mum / Hi Dad pattern", state: "ears_up", verdict: "This matches a common family-impersonation scam pattern.",
     why: ["It claims to be a family member on a new or temporary number.", s.moneyRequest ? "It asks for help paying something." : "It sets up a reason for a later money request.", "It uses emotion to hurry you."],
     rec: "Before sending money, contact your family member using the number you already know.", verify: VERIFY.family };
+  if (courierLinksOfficial && !s.paymentRequest && !s.loginRequest && !s.identityRequest && !s.threat) return { scenario: "M15", title: "Delivery notification to verify", state: "ears_up", verdict: "The visible tracking link matches a configured courier domain, but the message sender is not authenticated.",
+    why: ["The destination matches a configured official courier domain.", "A visible domain match supports the claim but does not prove who sent the message.", "No payment, login, identity or threat request was found."],
+    rec: "Prefer the courier's official app or type its known address yourself. Use the message link only if you independently expected this delivery.", verify: VERIFY.courier };
   if (s.brandKind === "courier") return { scenario: "M01", title: "Parcel delivery scam", state: s.paymentRequest || s.urls.length ? "growling" : "ears_up", verdict: "This looks like a parcel-delivery scam.",
     why: ["It claims to be from a delivery company.", s.smallPayment || s.paymentRequest ? "It asks for an unexpected (often small) payment." : "It asks you to act on a parcel you may not be expecting.", s.urls.length ? "The link does not belong to the company being claimed." : "Real couriers don't text payment links."],
     rec: "Don't use the link. Track any parcel through the courier's official app or website.", verify: VERIFY.courier };

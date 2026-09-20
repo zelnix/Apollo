@@ -59,6 +59,7 @@ export function analyseEmail(raw: string, fields: { from?: string; subject?: str
   const replyToDomain = domainOf(parsed.replyTo);
   const claimText = `${parsed.fromName ?? ""} ${parsed.subject ?? ""} ${sig.claimedBrand ?? ""}`;
   const official = OFFICIAL.find((o) => o.re.test(claimText)) ?? (sig.claimedBrand ? OFFICIAL.find((o) => o.re.test(sig.claimedBrand!)) : undefined);
+  const senderMatchesConfiguredDomain = OFFICIAL.some((o) => !!senderDomain && o.domains.some((domain) => isSuffixOf(senderDomain, domain)));
   const brand = sig.claimedBrand ?? (official ? (parsed.fromName ?? "this organisation") : null);
   const senderOfficial = !!(senderDomain && official && official.domains.some((d) => isSuffixOf(senderDomain, d)));
   const senderMismatch = !!(official && senderDomain && !senderOfficial);
@@ -71,6 +72,7 @@ export function analyseEmail(raw: string, fields: { from?: string; subject?: str
   const invoice = /\binvoice\b|\bremittance\b|\bpayment details\b|\bbank details\b|\bbsb\b|\baccount number\b/i.test(full);
   const bankChange = invoice && /\b(new|updated|changed|different)\b.*\b(bank|account|bsb|payment) (details|account)\b/i.test(full);
   const accountAlert = sig.loginRequest || /\bpassword\b|\bsign[- ]?in\b|\blogin\b|\bverify (your )?(account|identity)\b|\bunusual (activity|sign)/i.test(full);
+  const securityAlert = /\bsecurity alert\b|\breview recent activity\b|\bsuspicious activity\b|\bnew device\b/i.test(full);
   const pressure = sig.urgency || sig.threat;
   const bec = /\b(ceo|director|manager|boss)\b/i.test(claimText) && (sig.giftCards || sig.moneyRequest || /\burgent(ly)?\b.*\b(transfer|pay|gift)/i.test(full)) && (!senderDomain || FREEMAIL.test(senderDomain) || replyMismatch);
   const signalLabels = [sig.claimedBrand && `Claims to be ${sig.claimedBrand}`, senderMismatch && "Sender domain isn't the brand's", replyMismatch && "Reply-To goes elsewhere", urls.length && `${urls.length} link${urls.length > 1 ? "s" : ""}`, lookalikeUrls.length && "Link off the official domain", riskyAttachments.length && "Risky attachment", sig.urgency && "Urgency", sig.threat && "Threat / penalty", accountAlert && "Account / login request", invoice && "Invoice / payment", sig.codeRequest && "Asks for a code"].filter(Boolean) as string[];
@@ -100,6 +102,7 @@ export function analyseEmail(raw: string, fields: { from?: string; subject?: str
   if (urls.length && pressure) return R("E09", "Urgent email with links", "growling", "It pushes you to act quickly through a link. Apollo will check where the link leads.", [`${urls.length} link${urls.length > 1 ? "s" : ""}, plus ${sig.threat ? "a threat or penalty" : "urgency"}.`, sig.unknownSender ? "The sender isn't someone you know." : "", "Nothing happens until you click — so check first."], "Check each link with Apollo before opening. Never log in or pay through an email link.");
   // E10 — invoice with links, no red flags.
   if (invoice && urls.length) return R("E10", "Invoice or payment email", "ears_up", "Invoices are routinely faked. Nothing obviously wrong here — but confirm before paying.", ["Links or attachments in invoices skip your usual checks.", "Check that the payee and amount match what you expected."], "Pay only via a payment method you've used with this business before, or confirm by phone.");
+  if (securityAlert) return R("E14", "Security alert to verify", "ears_up", "The email claims there is account activity to review. Pasted sender details cannot authenticate that claim.", [senderOfficial || senderMatchesConfiguredDomain ? "The visible sender domain matches a configured domain, which is supporting evidence only." : "The sender was not independently authenticated.", "Security alerts are copied in phishing emails."], senderMatchesConfiguredDomain ? "Do not reply or use details from the email. Open the claimed service's official app or type its known address yourself." : `Do not reply or use details from the email. ${verifySender}`);
   // E11 — official sender, expected content.
   if (official && senderOfficial) return R("E11", `Sent from ${brand}'s own domain`, urls.length ? "ears_up" : "resting", `This came from ${brand}'s official domain${urls.length ? ", and its links stay on their site" : ""}. That's a good sign — not a guarantee.`, [`Sender domain ${senderDomain} belongs to ${brand}.`, "Spoofing of a real domain is possible but rare; Apollo can't verify the mail server signatures from pasted text.", urls.length ? "Still: open the app yourself rather than tapping links when money or logins are involved." : ""], "If it asks you to do something, do it through the official app or by typing the address yourself.");
   // E12 — links from unknown sender, no pressure.

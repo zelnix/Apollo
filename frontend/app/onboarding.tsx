@@ -36,7 +36,7 @@ export default function Onboarding() {
   const { isMock, adapterLabel } = useApollo();
 
   return (
-    <View style={s.root}>
+    <View style={s.root} testID="initial-onboarding-root">
       <ScrollView contentContainerStyle={[s.content, { paddingTop: insets.top + spacing["2xl"], paddingBottom: spacing.xl }]} testID="onboarding-screen">
         <View style={{ alignItems: "flex-start", gap: spacing.md }}>
           <ApolloLogo size={112} testID="onboarding-logo" />

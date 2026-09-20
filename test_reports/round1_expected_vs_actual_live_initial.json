@@ -1,0 +1,1341 @@
+{
+  "round": "Round 1",
+  "mode": "live",
+  "generated_at": "2026-09-20T14:56:27.119639+00:00",
+  "base_url": "https://device-file-gate.preview.emergentagent.com",
+  "engine": {
+    "round": "Round 1",
+    "generated_at": "2026-09-20T14:50:21.221Z",
+    "expected_recorded_in": "frontend/scripts/round1-scenario-engine.ts",
+    "scenarios": [
+      {
+        "id": "site-threat-protection-gap",
+        "gate": "site",
+        "tone": "threatening",
+        "situation": "Risky browsing while automatic filtering permission is missing",
+        "expected": {
+          "gate": "site",
+          "state": "barking",
+          "detection": "Needs attention",
+          "investigation": "permission",
+          "higgins": "protection",
+          "action": "Restore protection"
+        },
+        "actual": {
+          "gate": "site",
+          "state": "barking",
+          "scenario": "SITE-GAP",
+          "detection": "Needs attention",
+          "investigation": "Protection permission must be restored and verified.",
+          "higgins": "Apollo's site check is barking. Needs attention. Unknown: A protection gap is not proof that a threat succeeded.. Next action: Restore protection",
+          "action": "Restore protection",
+          "uncertainty": "A protection gap is not proof that a threat succeeded."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "site-legitimate-active",
+        "gate": "site",
+        "tone": "legitimate",
+        "situation": "Fresh native observation confirms automatic filtering",
+        "expected": {
+          "gate": "site",
+          "state": "resting",
+          "detection": "Active",
+          "investigation": "filters",
+          "higgins": "active",
+          "action": "Open Link Gate"
+        },
+        "actual": {
+          "gate": "site",
+          "state": "resting",
+          "scenario": "SITE-ACTIVE",
+          "detection": "Active",
+          "investigation": "Automatically filters supported website traffic. A block is reported only after the device confirms it.",
+          "higgins": "Apollo's site check is resting. Active. Unknown: An active filter does not prove every site is safe.. Next action: Open Link Gate",
+          "action": "Open Link Gate",
+          "uncertainty": "An active filter does not prove every site is safe."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "site-ambiguous-stale",
+        "gate": "site",
+        "tone": "ambiguous",
+        "situation": "Protection was requested but verification is stale",
+        "expected": {
+          "gate": "site",
+          "state": "barking",
+          "detection": "Needs attention",
+          "investigation": "not confirmed",
+          "higgins": "unknown",
+          "action": "Restore protection"
+        },
+        "actual": {
+          "gate": "site",
+          "state": "barking",
+          "scenario": "SITE-STALE",
+          "detection": "Needs attention",
+          "investigation": "Apollo has not confirmed that filtering is running.",
+          "higgins": "Apollo's site check is barking. Needs attention. Unknown: Current enforcement is unknown until a fresh observation.. Next action: Restore protection",
+          "action": "Restore protection",
+          "uncertainty": "Current enforcement is unknown until a fresh observation."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "link-threat-bank",
+        "gate": "link",
+        "tone": "threatening",
+        "situation": "https://commbank-secure-verify.xyz/login",
+        "expected": {
+          "gate": "link",
+          "state": "barking",
+          "detection": "mentions",
+          "investigation": "malicious",
+          "higgins": "unknown",
+          "action": "keep the link closed"
+        },
+        "actual": {
+          "gate": "link",
+          "state": "barking",
+          "scenario": "malicious",
+          "detection": "Websites ending in .xyz are frequently used for scams. The address mentions \"commbank\" but is not that organisation's own domain. Words like \"login\" combined with other signals suggest a login or payment lure.",
+          "investigation": "commbank-secure-verify.xyz; malicious; completed local URL checks",
+          "higgins": "Apollo's link check is barking. Websites ending in .xyz are frequently used for scams. The address mentions \"commbank\" but is not that organisation's own domain. Words like \"login\" combined with other signals suggest a login or payment lure.. Unknown: Local URL checks do not authenticate the sender or current page.. Next action: Keep the link closed and use the claimed service's official app.",
+          "action": "Keep the link closed and use the claimed service's official app.",
+          "uncertainty": "Local URL checks do not authenticate the sender or current page."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "link-legitimate-public",
+        "gate": "link",
+        "tone": "legitimate",
+        "situation": "https://example.com/about",
+        "expected": {
+          "gate": "link",
+          "state": "resting",
+          "detection": "No local warning",
+          "investigation": "completed",
+          "higgins": "unknown",
+          "action": "open only if expected"
+        },
+        "actual": {
+          "gate": "link",
+          "state": "resting",
+          "scenario": "clean",
+          "detection": "No local warning was found",
+          "investigation": "example.com; clean; completed local URL checks",
+          "higgins": "Apollo's link check is resting. No local warning was found. Unknown: Local URL checks do not authenticate the sender or current page.. Next action: Open only if expected; the sender remains unauthenticated.",
+          "action": "Open only if expected; the sender remains unauthenticated.",
+          "uncertainty": "Local URL checks do not authenticate the sender or current page."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "link-ambiguous-short",
+        "gate": "link",
+        "tone": "ambiguous",
+        "situation": "https://bit.ly/example",
+        "expected": {
+          "gate": "link",
+          "state": "ears_up",
+          "detection": "shortened",
+          "investigation": "uncertain",
+          "higgins": "unknown",
+          "action": "expand or verify independently"
+        },
+        "actual": {
+          "gate": "link",
+          "state": "ears_up",
+          "scenario": "uncertain",
+          "detection": "This is a shortened link, so the real destination is hidden.",
+          "investigation": "bit.ly; uncertain; completed local URL checks",
+          "higgins": "Apollo's link check is ears_up. This is a shortened link, so the real destination is hidden.. Unknown: Local URL checks do not authenticate the sender or current page.. Next action: Expand or verify independently before opening.",
+          "action": "Expand or verify independently before opening.",
+          "uncertainty": "Local URL checks do not authenticate the sender or current page."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "text-threat-code",
+        "gate": "text",
+        "tone": "threatening",
+        "situation": "Bank Security: Your account is locked. Read me the verification code now.",
+        "expected": {
+          "gate": "text",
+          "state": "barking",
+          "detection": "Verification code request",
+          "investigation": "code",
+          "higgins": "unknown",
+          "action": "don't share"
+        },
+        "actual": {
+          "gate": "text",
+          "state": "barking",
+          "scenario": "M06",
+          "detection": "Verification code request",
+          "investigation": "Someone is asking for a code that is meant only for you. It asks you to share a verification or security code. Codes like this are used to take over accounts. It pushes you to act quickly.",
+          "higgins": "Apollo's text check is barking. Verification code request. Unknown: The sender identity cannot be established from submitted text alone.. Next action: Don't share that code. Verification codes are meant for you, not for someone contacting you.",
+          "action": "Don't share that code. Verification codes are meant for you, not for someone contacting you.",
+          "uncertainty": "The sender identity cannot be established from submitted text alone."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "text-legitimate-appointment",
+        "gate": "text",
+        "tone": "legitimate",
+        "situation": "City Dental: Your dental appointment is confirmed for Tuesday at 3:30 pm. No payment is due.",
+        "expected": {
+          "gate": "text",
+          "state": "resting",
+          "detection": "No concern identified",
+          "investigation": "no concern",
+          "higgins": "unknown",
+          "action": "nothing to do"
+        },
+        "actual": {
+          "gate": "text",
+          "state": "resting",
+          "scenario": "M15",
+          "detection": "No concern identified",
+          "investigation": "No concern was identified within the checks completed for this message. No suspicious links. No payment, code or identity request. No impersonation or threat language.",
+          "higgins": "Apollo's text check is resting. No concern identified. Unknown: The sender identity cannot be established from submitted text alone.. Next action: Nothing to do. If it's from a number you don't know, reply cautiously and never share codes or payment details.",
+          "action": "Nothing to do. If it's from a number you don't know, reply cautiously and never share codes or payment details.",
+          "uncertainty": "The sender identity cannot be established from submitted text alone."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "text-ambiguous-family",
+        "gate": "text",
+        "tone": "ambiguous",
+        "situation": "Unknown mobile: Hi Mum, new phone. Can you send $600 today?",
+        "expected": {
+          "gate": "text",
+          "state": "ears_up",
+          "detection": "Hi Mum",
+          "investigation": "family-impersonation",
+          "higgins": "unknown",
+          "action": "contact your family"
+        },
+        "actual": {
+          "gate": "text",
+          "state": "ears_up",
+          "scenario": "M05",
+          "detection": "Hi Mum / Hi Dad pattern",
+          "investigation": "This matches a common family-impersonation scam pattern. It claims to be a family member on a new or temporary number. It asks for help paying something. It uses emotion to hurry you.",
+          "higgins": "Apollo's text check is ears_up. Hi Mum / Hi Dad pattern. Unknown: The sender identity cannot be established from submitted text alone.. Next action: Before sending money, contact your family member using the number you already know.",
+          "action": "Before sending money, contact your family member using the number you already know.",
+          "uncertainty": "The sender identity cannot be established from submitted text alone."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "call-threat-code",
+        "gate": "call",
+        "tone": "threatening",
+        "situation": "bank: code, dont_hangup",
+        "expected": {
+          "gate": "call",
+          "state": "barking",
+          "detection": "Verification code",
+          "investigation": "caller",
+          "higgins": "unknown",
+          "action": "Hang up"
+        },
+        "actual": {
+          "gate": "call",
+          "state": "barking",
+          "scenario": "C03",
+          "detection": "Verification code request",
+          "investigation": "Do not share the code. The caller (your bank) asked you to read out a security code. A verification code can let someone into your account \u2014 it's for you, not for callers. Real organisations never ask you to read a code back to them.",
+          "higgins": "Apollo's call check is barking. Verification code request. Unknown: Caller ID and a submitted claim do not authenticate the caller.. Next action: Hang up. Open your bank's official app, or call the number on the back of your card. Banks will never mind you calling back \u2014 scammers will.",
+          "action": "Hang up. Open your bank's official app, or call the number on the back of your card. Banks will never mind you calling back \u2014 scammers will.",
+          "uncertainty": "Caller ID and a submitted claim do not authenticate the caller."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "call-legitimate-appointment",
+        "gate": "call",
+        "tone": "legitimate",
+        "situation": "business: nothing",
+        "expected": {
+          "gate": "call",
+          "state": "resting",
+          "detection": "Ordinary",
+          "investigation": "nothing suspicious",
+          "higgins": "unknown",
+          "action": "number listed"
+        },
+        "actual": {
+          "gate": "call",
+          "state": "resting",
+          "scenario": "C19",
+          "detection": "Ordinary call",
+          "investigation": "Nothing suspicious from what you've described. No request for money, codes, passwords or software. No impersonation of a bank or agency. Unknown number alone is not a warning sign.",
+          "higgins": "Apollo's call check is resting. Ordinary call. Unknown: Caller ID and a submitted claim do not authenticate the caller.. Next action: Look the business up yourself (their website or a directory) and call the number listed there.",
+          "action": "Look the business up yourself (their website or a directory) and call the number listed there.",
+          "uncertainty": "Caller ID and a submitted claim do not authenticate the caller."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "call-ambiguous-callback",
+        "gate": "call",
+        "tone": "ambiguous",
+        "situation": "unknown: callback",
+        "expected": {
+          "gate": "call",
+          "state": "ears_up",
+          "detection": "Callback",
+          "investigation": "premium",
+          "higgins": "unknown",
+          "action": "details you find yourself"
+        },
+        "actual": {
+          "gate": "call",
+          "state": "ears_up",
+          "scenario": "C18",
+          "detection": "Callback request",
+          "investigation": "Be careful calling unknown numbers back. Missed-call and callback scams use premium or overseas numbers. Not every international number is a scam \u2014 but don't call back one you don't recognise.",
+          "higgins": "Apollo's call check is ears_up. Callback request. Unknown: Caller ID and a submitted claim do not authenticate the caller.. Next action: If they claim to be from an organisation, hang up and contact it using details you find yourself \u2014 never a number they give you.",
+          "action": "If they claim to be from an organisation, hang up and contact it using details you find yourself \u2014 never a number they give you.",
+          "uncertainty": "Caller ID and a submitted claim do not authenticate the caller."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "network-threat-dangerous",
+        "gate": "network",
+        "tone": "threatening",
+        "situation": "{\"status\":{\"connected\":true,\"type\":\"wifi\",\"ssid\":\"Cafe Guest\",\"wifiSecurity\":\"open\",\"captivePortal\":false,\"vpnActive\":false,\"inspectable\":false},\"context\":\"public\",\"sdk\":{\"blockedMalicious\":0,\"c2Apps\":[\"Unknown Helper\"],\"unknownHosts\":0,\"dnsChanged\":false,\"vpnChangedRecently\":false}}",
+        "expected": {
+          "gate": "network",
+          "state": "barking",
+          "detection": "Dangerous traffic",
+          "investigation": "does not provide enough evidence",
+          "higgins": "unknown",
+          "action": "Check This App"
+        },
+        "actual": {
+          "gate": "network",
+          "state": "barking",
+          "scenario": "N07",
+          "detection": "Dangerous traffic reported from an app",
+          "investigation": "Available device signals associate Unknown Helper with known dangerous infrastructure. This summary does not provide enough evidence to confirm that Apollo blocked each connection. This is not a one-off bad link: the app was associated with repeated dangerous destinations. Review the app and the underlying event evidence before claiming enforcement.",
+          "higgins": "Apollo's network check is barking. Dangerous traffic reported from an app. Unknown: Available network signals do not establish interception or a confirmed block.. Next action: Open Check This App and remove it unless you can explain why it needs that traffic.",
+          "action": "Open Check This App and remove it unless you can explain why it needs that traffic.",
+          "uncertainty": "Available network signals do not establish interception or a confirmed block."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "network-legitimate-home",
+        "gate": "network",
+        "tone": "legitimate",
+        "situation": "{\"status\":{\"connected\":true,\"type\":\"wifi\",\"ssid\":\"Home\",\"wifiSecurity\":\"wpa3\",\"captivePortal\":false,\"vpnActive\":false,\"inspectable\":false},\"context\":\"home\"}",
+        "expected": {
+          "gate": "network",
+          "state": "resting",
+          "detection": "Home Wi",
+          "investigation": "No suspicious",
+          "higgins": "unknown",
+          "action": "Nothing to do"
+        },
+        "actual": {
+          "gate": "network",
+          "state": "resting",
+          "scenario": "N01",
+          "detection": "Home Wi\u2011Fi",
+          "investigation": "Nothing worrying on \u201cHome\u201d. No suspicious activity seen. Wi\u2011Fi security: WPA3. No dangerous destinations recorded.",
+          "higgins": "Apollo's network check is resting. Home Wi\u2011Fi. Unknown: Available network signals do not establish interception or a confirmed block.. Next action: Nothing to do.",
+          "action": "Nothing to do.",
+          "uncertainty": "Available network signals do not establish interception or a confirmed block."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "network-ambiguous-open",
+        "gate": "network",
+        "tone": "ambiguous",
+        "situation": "{\"status\":{\"connected\":true,\"type\":\"wifi\",\"ssid\":\"Cafe Guest\",\"wifiSecurity\":\"open\",\"captivePortal\":false,\"vpnActive\":false,\"inspectable\":false},\"context\":\"public\"}",
+        "expected": {
+          "gate": "network",
+          "state": "ears_up",
+          "detection": "Open Wi",
+          "investigation": "could",
+          "higgins": "unknown",
+          "action": "mobile data"
+        },
+        "actual": {
+          "gate": "network",
+          "state": "ears_up",
+          "scenario": "N04",
+          "detection": "Open Wi\u2011Fi (no encryption)",
+          "investigation": "This network doesn't use normal Wi\u2011Fi encryption. That doesn't mean anyone is listening \u2014 it means they could. Apps and https websites still encrypt their own traffic. Avoid banking or logging in to email here unless you're on a VPN you trust.",
+          "higgins": "Apollo's network check is ears_up. Open Wi\u2011Fi (no encryption). Unknown: Available network signals do not establish interception or a confirmed block.. Next action: Stick to https and your apps; use mobile data for anything sensitive.",
+          "action": "Stick to https and your apps; use mobile data for anything sensitive.",
+          "uncertainty": "Available network signals do not establish interception or a confirmed block."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "account-threat-reset",
+        "gate": "account",
+        "tone": "threatening",
+        "situation": "{\"kind\":\"password_reset\",\"provider\":\"microsoft\",\"text\":\"Reset now https://microsoft-reset-secure.top/login\",\"userInitiated\":false}",
+        "expected": {
+          "gate": "account",
+          "state": "barking",
+          "detection": "Fake password reset",
+          "investigation": "not Microsoft",
+          "higgins": "unknown",
+          "action": "open account"
+        },
+        "actual": {
+          "gate": "account",
+          "state": "barking",
+          "scenario": "AC04",
+          "detection": "Fake password reset",
+          "investigation": "This reset links to microsoft-reset-secure.top \u2014 not Microsoft's own domain. Microsoft wouldn't send you there. Real security alerts never need you to log in through the link they contain. It uses pressure (urgency or a threat) \u2014 the classic tell.",
+          "higgins": "Apollo's account check is barking. Fake password reset. Unknown: The sender and alert claims remain unauthenticated.. Next action: Don't tap the link. Open account.microsoft.com yourself (type it) or the Microsoft Authenticator app \u2014 never a link from the message. If you already entered anything, use Stay With Me below.",
+          "action": "Don't tap the link. Open account.microsoft.com yourself (type it) or the Microsoft Authenticator app \u2014 never a link from the message. If you already entered anything, use Stay With Me below.",
+          "uncertainty": "The sender and alert claims remain unauthenticated."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "account-legitimate-requested",
+        "gate": "account",
+        "tone": "legitimate",
+        "situation": "{\"kind\":\"password_reset\",\"provider\":\"google\",\"text\":\"You requested a reset https://accounts.google.com/signin/recovery\",\"userInitiated\":true}",
+        "expected": {
+          "gate": "account",
+          "state": "ears_up",
+          "detection": "matching your request",
+          "investigation": "does not authenticate",
+          "higgins": "unknown",
+          "action": "open myaccount"
+        },
+        "actual": {
+          "gate": "account",
+          "state": "ears_up",
+          "scenario": "AC05",
+          "detection": "Password reset matching your request",
+          "investigation": "You reported requesting a reset. The visible link host matches Google's configured domains, but that does not authenticate the message or make the link safe to use. Your report makes a reset expected, not verified. A visible domain match is supporting evidence only.",
+          "higgins": "Apollo's account check is ears_up. Password reset matching your request. Unknown: The sender and alert claims remain unauthenticated.. Next action: Do not use the alert link. Open myaccount.google.com yourself or the Gmail app \u2192 your profile \u2192 Manage your account \u2192 Security. Request a fresh reset there.",
+          "action": "Do not use the alert link. Open myaccount.google.com yourself or the Gmail app \u2192 your profile \u2192 Manage your account \u2192 Security. Request a fresh reset there.",
+          "uncertainty": "The sender and alert claims remain unauthenticated."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "account-ambiguous-breach",
+        "gate": "account",
+        "tone": "ambiguous",
+        "situation": "{\"kind\":\"breach_notice\",\"provider\":\"other\",\"text\":\"We may have experienced a data breach\",\"userInitiated\":null}",
+        "expected": {
+          "gate": "account",
+          "state": "ears_up",
+          "detection": "Claimed data breach",
+          "investigation": "does not confirm",
+          "higgins": "unknown",
+          "action": "official app"
+        },
+        "actual": {
+          "gate": "account",
+          "state": "ears_up",
+          "scenario": "AC09",
+          "detection": "Claimed data breach notice",
+          "investigation": "The submitted notice claims a data breach. Selecting or receiving this notice does not confirm a breach. Treat the sender and breach claim as unverified until checked independently. Breach-themed alerts are also used for phishing. Use the separate breach lookup or the service's official app; never log in through the notice.",
+          "higgins": "Apollo's account check is ears_up. Claimed data breach notice. Unknown: The sender and alert claims remain unauthenticated.. Next action: Open the service's official app, or type its address yourself. Never use a link or number from the alert. Check the service's own security notice or use the separate breach lookup below.",
+          "action": "Open the service's official app, or type its address yourself. Never use a link or number from the alert. Check the service's own security notice or use the separate breach lookup below.",
+          "uncertainty": "The sender and alert claims remain unauthenticated."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "email-threat-bank",
+        "gate": "email",
+        "tone": "threatening",
+        "situation": "CommBank <alerts@cb-secure.top> / Urgent account lock",
+        "expected": {
+          "gate": "email",
+          "state": "barking",
+          "detection": "impersonating",
+          "investigation": "domain",
+          "higgins": "unknown",
+          "action": "official"
+        },
+        "actual": {
+          "gate": "email",
+          "state": "barking",
+          "scenario": "E01",
+          "detection": "Email impersonating CommBank",
+          "investigation": "This email says it's from CommBank, but it wasn't sent from CommBank. It wants you to log in \u2014 that's how they take the account. It was sent from cb-secure.top, which isn't CommBank's domain. Its link goes to commbank-secure-verify.xyz, not CommBank's website. It uses pressure: urgency or a threat.",
+          "higgins": "Apollo's email check is barking. Email impersonating CommBank. Unknown: The submitted email does not independently authenticate its sender.. Next action: Delete it. Don't reply or use any link or number in the email. Open CommBank's official app, or type their address yourself, and check there. If you already clicked or logged in, use Stay With Me below.",
+          "action": "Delete it. Don't reply or use any link or number in the email. Open CommBank's official app, or type their address yourself, and check there. If you already clicked or logged in, use Stay With Me below.",
+          "uncertainty": "The submitted email does not independently authenticate its sender."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "email-legitimate-receipt",
+        "gate": "email",
+        "tone": "legitimate",
+        "situation": "receipts@example.com / Your receipt",
+        "expected": {
+          "gate": "email",
+          "state": "resting",
+          "detection": "Ordinary",
+          "investigation": "didn't find",
+          "higgins": "unknown",
+          "action": "Nothing"
+        },
+        "actual": {
+          "gate": "email",
+          "state": "resting",
+          "scenario": "E13",
+          "detection": "Ordinary email",
+          "investigation": "I didn't find anything worrying in this email. No links, risky attachments, impersonation or pressure detected. Apollo can only see what you pasted \u2014 not the mail server's authentication headers.",
+          "higgins": "Apollo's email check is resting. Ordinary email. Unknown: The submitted email does not independently authenticate its sender.. Next action: Nothing to do. Come back if it asks you to log in, pay or install anything.",
+          "action": "Nothing to do. Come back if it asks you to log in, pay or install anything.",
+          "uncertainty": "The submitted email does not independently authenticate its sender."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "email-ambiguous-security",
+        "gate": "email",
+        "tone": "ambiguous",
+        "situation": "security@google.com / Security alert",
+        "expected": {
+          "gate": "email",
+          "state": "ears_up",
+          "detection": "Security alert",
+          "investigation": "cannot authenticate",
+          "higgins": "unknown",
+          "action": "official"
+        },
+        "actual": {
+          "gate": "email",
+          "state": "ears_up",
+          "scenario": "E14",
+          "detection": "Security alert to verify",
+          "investigation": "The email claims there is account activity to review. Pasted sender details cannot authenticate that claim. The visible sender domain matches a configured domain, which is supporting evidence only. Security alerts are copied in phishing emails.",
+          "higgins": "Apollo's email check is ears_up. Security alert to verify. Unknown: The submitted email does not independently authenticate its sender.. Next action: Do not reply or use details from the email. Don't reply or use any link or number in the email. Open this organisation's official app, or type their address yourself, and check there.",
+          "action": "Do not reply or use details from the email. Don't reply or use any link or number in the email. Open this organisation's official app, or type their address yourself, and check there.",
+          "uncertainty": "The submitted email does not independently authenticate its sender."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "app-threat-remote",
+        "gate": "app",
+        "tone": "threatening",
+        "situation": "{\"name\":\"Quick Support\",\"source\":\"message\",\"purpose\":\"remote_support\",\"permissions\":[\"accessibility\",\"screen_share\"],\"context\":{\"promptedByCaller\":true,\"accessGrantedNow\":true}}",
+        "expected": {
+          "gate": "app",
+          "state": "barking",
+          "detection": "Remote",
+          "investigation": "control",
+          "higgins": "unknown",
+          "action": "remove"
+        },
+        "actual": {
+          "gate": "app",
+          "state": "barking",
+          "scenario": "A01",
+          "detection": "Remote access app during a suspicious call",
+          "investigation": "This app can let someone control or view your device. Because it was installed during a suspicious call, do not give the caller access. Remote-access and screen-sharing apps hand your screen \u2014 and often your taps \u2014 to another person. A caller told you to install it. Real banks and agencies never do this.",
+          "higgins": "Apollo's app check is barking. Remote access app during a suspicious call. Unknown: Capabilities and user-selected source/purpose are not proof of behaviour or safety.. Next action: End the session now: turn off Wi\u2011Fi and mobile data, hang up, then remove the app. Follow the Stay With Me steps below.",
+          "action": "End the session now: turn off Wi\u2011Fi and mobile data, hang up, then remove the app. Follow the Stay With Me steps below.",
+          "uncertainty": "Capabilities and user-selected source/purpose are not proof of behaviour or safety."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "app-legitimate-notes",
+        "gate": "app",
+        "tone": "legitimate",
+        "situation": "{\"name\":\"Tiny Notes\",\"source\":\"play_store\",\"purpose\":\"other\",\"permissions\":[],\"context\":{\"intentional\":true}}",
+        "expected": {
+          "gate": "app",
+          "state": "ears_up",
+          "detection": "official store",
+          "investigation": "do not prove safety",
+          "higgins": "unknown",
+          "action": "Re-check"
+        },
+        "actual": {
+          "gate": "app",
+          "state": "ears_up",
+          "scenario": "A18",
+          "detection": "App reported from the official store",
+          "investigation": "The available information did not establish a specific concern about Tiny Notes, but a store source and selected permissions do not prove safety. The source is a useful signal \u2014 not proof of safety or developer identity. No sensitive permissions were supplied or observed; unavailable permissions remain unknown. No malicious behaviour was established by the evidence available to this check.",
+          "higgins": "Apollo's app check is ears_up. App reported from the official store. Unknown: Capabilities and user-selected source/purpose are not proof of behaviour or safety.. Next action: No urgent action from this evidence alone. Re-check if its permissions change or it behaves unexpectedly.",
+          "action": "No urgent action from this evidence alone. Re-check if its permissions change or it behaves unexpectedly.",
+          "uncertainty": "Capabilities and user-selected source/purpose are not proof of behaviour or safety."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "app-ambiguous-cleaner",
+        "gate": "app",
+        "tone": "ambiguous",
+        "situation": "{\"name\":\"Super Cleaner\",\"source\":\"not_sure\",\"purpose\":\"cleaner\",\"permissions\":[\"notifications\",\"files\"],\"context\":{}}",
+        "expected": {
+          "gate": "app",
+          "state": "ears_up",
+          "detection": "notifications",
+          "investigation": "notification access",
+          "higgins": "unknown",
+          "action": "turn it off"
+        },
+        "actual": {
+          "gate": "app",
+          "state": "ears_up",
+          "scenario": "A07",
+          "detection": "Can read notifications",
+          "investigation": "Super Cleaner has notification access. This may allow an app to read notifications, including security codes or account alerts. This alone isn't malicious. Escalate if it's combined with a purpose that doesn't need it \u2014 it could read your security codes.",
+          "higgins": "Apollo's app check is ears_up. Can read notifications. Unknown: Capabilities and user-selected source/purpose are not proof of behaviour or safety.. Next action: If Super Cleaner doesn't need notification access for what you use it for, turn it off in Settings. Otherwise, keep an eye on it.",
+          "action": "If Super Cleaner doesn't need notification access for what you use it for, turn it off in Settings. Otherwise, keep an eye on it.",
+          "uncertainty": "Capabilities and user-selected source/purpose are not proof of behaviour or safety."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "file-threat-disguised",
+        "gate": "file",
+        "tone": "threatening",
+        "situation": "{\"name\":\"Statement.pdf.exe\",\"source\":\"unknown\",\"passwordInMessage\":false,\"headBytes\":[77,90,1,2]}",
+        "expected": {
+          "gate": "file",
+          "state": "barking",
+          "detection": "Executable",
+          "investigation": "not really a PDF",
+          "higgins": "unknown",
+          "action": "Delete it"
+        },
+        "actual": {
+          "gate": "file",
+          "state": "barking",
+          "scenario": "F01",
+          "detection": "Disguised executable",
+          "investigation": "This file is not really a PDF. Don't open it. Its name suggests a PDF file. Its actual type is executable content. It came from an unexpected source. Limited signature/sample check only. Other content, compressed data and links outside the sample were not inspected.",
+          "higgins": "Apollo's file check is barking. Disguised executable. Unknown: A bounded signature/sample check cannot establish file safety.. Next action: Delete it unless you can independently verify the sender. Don't 'open with' anything.",
+          "action": "Delete it unless you can independently verify the sender. Don't 'open with' anything.",
+          "uncertainty": "A bounded signature/sample check cannot establish file safety."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "file-legitimate-document",
+        "gate": "file",
+        "tone": "legitimate",
+        "situation": "{\"name\":\"Agenda.pdf\",\"source\":\"known\",\"passwordInMessage\":false,\"headBytes\":[37,80,68,70],\"textSample\":\"Meeting agenda\"}",
+        "expected": {
+          "gate": "file",
+          "state": "ears_up",
+          "detection": "Limited file",
+          "investigation": "Limited",
+          "higgins": "unknown",
+          "action": "Do not treat"
+        },
+        "actual": {
+          "gate": "file",
+          "state": "ears_up",
+          "scenario": "F10",
+          "detection": "Limited file inspection",
+          "investigation": "Only the signature and a small sample were inspected. Safety is not established. The signature suggests pdf; the full format was not parsed. Macros, embedded programs and additional links may be outside the inspected sample or compressed. Limited signature/sample check only. Other content, compressed data and links outside the sample were not inspected.",
+          "higgins": "Apollo's file check is ears_up. Limited file inspection. Unknown: A bounded signature/sample check cannot establish file safety.. Next action: Do not treat this result as permission to open the file. Verify the sender; never enable macros or install software it requests.",
+          "action": "Do not treat this result as permission to open the file. Verify the sender; never enable macros or install software it requests.",
+          "uncertainty": "A bounded signature/sample check cannot establish file safety."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "file-ambiguous-archive",
+        "gate": "file",
+        "tone": "ambiguous",
+        "situation": "{\"name\":\"Documents.zip\",\"source\":\"cloud\",\"passwordInMessage\":true,\"headBytes\":[80,75,3,4]}",
+        "expected": {
+          "gate": "file",
+          "state": "ears_up",
+          "detection": "Password",
+          "investigation": "Cloud",
+          "higgins": "unknown",
+          "action": "Don't extract"
+        },
+        "actual": {
+          "gate": "file",
+          "state": "ears_up",
+          "scenario": "F04",
+          "detection": "Password-protected archive",
+          "investigation": "A password sent alongside an archive is often used to sneak it past scanners. The password came in the same message as the file. Not every archive is dangerous. Check each file's real type after extracting \u2014 especially .exe, .js, .scr, .lnk. Being hosted on Google Drive or another cloud service does not verify the file, its contents or its sender. Limited signature/sample check only. Other content, compressed data and links outside the sample were not inspected.",
+          "higgins": "Apollo's file check is ears_up. Password-protected archive. Unknown: A bounded signature/sample check cannot establish file safety.. Next action: Don't extract it unless you expected it. Never run anything inside it.",
+          "action": "Don't extract it unless you expected it. Never run anything inside it.",
+          "uncertainty": "A bounded signature/sample check cannot establish file safety."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "device-threat-remote",
+        "gate": "device",
+        "tone": "threatening",
+        "situation": "{\"signals\":{\"platform\":\"android\",\"unknownSourcesEnabled\":null,\"thirdPartyAccessibilityServices\":[\"AnyDesk\"],\"overlayApps\":null,\"notificationAccessApps\":null,\"vpnActive\":null,\"vpnProviderKnown\":null,\"managementProfile\":\"unknown\",\"userTrustedCertificates\":null,\"remoteAccessApps\":[\"AnyDesk\"],\"developerOptions\":null},\"self\":{\"gaveRemoteAccess\":true,\"usedBankingDuringAccess\":true},\"protection\":{\"requested\":true,\"operational\":true,\"degradedReason\":null,\"permissionIssues\":[],\"checkedAt\":\"2026-09-20T14:50:21.197Z\"}}",
+        "expected": {
+          "gate": "device",
+          "state": "barking",
+          "detection": "Remote",
+          "investigation": "bank",
+          "higgins": "unknown",
+          "action": "End the session"
+        },
+        "actual": {
+          "gate": "device",
+          "state": "barking",
+          "scenario": "recovery",
+          "detection": "Remote access was granted",
+          "investigation": "Someone had access to this device. Work through the steps below \u2014 one at a time. Remote access was granted Whoever connected could see your screen and may have controlled your phone, read codes or opened your apps. Banking or email used during remote access Credentials and codes typed while someone watched should be treated as exposed. Accessibility access: AnyDesk Accessibility access can allow an app to read parts of your screen and interact with other apps. Remote-access apps installed: AnyDesk These apps have the capability to let someone else see or control your screen. Their presence does not prove a session is active or malicious, but being dormant does not remove that capability. Device-management / configuration profiles on this build. VPN state on this build. User-installed certificates on this build.",
+          "higgins": "Apollo's device check is barking. Remote access was granted. Unknown: Device-management / configuration profiles on this build.. Next action: End the session, remove the remote-access app, then review the accounts used while they were connected.",
+          "action": "End the session, remove the remote-access app, then review the accounts used while they were connected.",
+          "uncertainty": "Device-management / configuration profiles on this build."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "device-legitimate-observed",
+        "gate": "device",
+        "tone": "legitimate",
+        "situation": "{\"signals\":{\"platform\":\"android\",\"unknownSourcesEnabled\":false,\"thirdPartyAccessibilityServices\":[],\"overlayApps\":[],\"notificationAccessApps\":[],\"vpnActive\":false,\"vpnProviderKnown\":null,\"managementProfile\":\"none\",\"userTrustedCertificates\":0,\"remoteAccessApps\":[],\"developerOptions\":false},\"self\":{},\"protection\":{\"requested\":true,\"operational\":true,\"degradedReason\":null,\"permissionIssues\":[],\"checkedAt\":\"2026-09-20T14:50:21.197Z\"}}",
+        "expected": {
+          "gate": "device",
+          "state": "resting",
+          "detection": "Apollo protection",
+          "investigation": "No meaningful",
+          "higgins": "unknown",
+          "action": "operational"
+        },
+        "actual": {
+          "gate": "device",
+          "state": "resting",
+          "scenario": "protected",
+          "detection": "Apollo protection is confirmed running",
+          "investigation": "No meaningful issues within what Apollo can see on this Android device.  ",
+          "higgins": "Apollo's device check is resting. Apollo protection is confirmed running. Unknown: No platform visibility gap was reported.. Next action: The device reported protection operational at 02:50 PM.",
+          "action": "The device reported protection operational at 02:50 PM.",
+          "uncertainty": "No platform visibility gap was reported."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "device-ambiguous-limited",
+        "gate": "device",
+        "tone": "ambiguous",
+        "situation": "{\"signals\":{\"platform\":\"web\",\"unknownSourcesEnabled\":null,\"thirdPartyAccessibilityServices\":null,\"overlayApps\":null,\"notificationAccessApps\":null,\"vpnActive\":null,\"vpnProviderKnown\":null,\"managementProfile\":\"unknown\",\"userTrustedCertificates\":null,\"remoteAccessApps\":null,\"developerOptions\":null},\"self\":{},\"protection\":{\"requested\":true,\"operational\":false,\"degradedReason\":\"Unavailable in preview\",\"permissionIssues\":[],\"checkedAt\":\"2026-09-20T14:50:21.197Z\"}}",
+        "expected": {
+          "gate": "device",
+          "state": "growling",
+          "detection": "Protection",
+          "investigation": "unavailable",
+          "higgins": "unknown",
+          "action": "Restore"
+        },
+        "actual": {
+          "gate": "device",
+          "state": "growling",
+          "scenario": "review",
+          "detection": "Apollo protection stopped",
+          "investigation": "1 item worth reviewing. Nothing confirmed dangerous. Apollo protection stopped Unavailable in preview This is an observed protection gap, not proof that somebody tampered with the device. The list of installed apps and their permissions (iOS doesn't expose this to any app). Which third-party apps currently have Accessibility access (this build cannot read that setting). Device-management / configuration profiles on this build. VPN state on this build. User-installed certificates on this build. Which remote-access apps are installed.",
+          "higgins": "Apollo's device check is growling. Apollo protection stopped. Unknown: The list of installed apps and their permissions (iOS doesn't expose this to any app).. Next action: Restore the permission or protection service, then return to Device Gate and re-check.",
+          "action": "Restore the permission or protection service, then return to Device Gate and re-check.",
+          "uncertainty": "The list of installed apps and their permissions (iOS doesn't expose this to any app)."
+        },
+        "checks": {
+          "gate": true,
+          "state": true,
+          "detection": true,
+          "investigation": true,
+          "higgins": true,
+          "action": true
+        },
+        "pass": true,
+        "evidence": "automated"
+      }
+    ],
+    "multi_gate": [
+      {
+        "id": "multi-unexpected-purchase-message",
+        "tone": "threatening",
+        "situation": "I received an unexpected purchase message.",
+        "submitted": "PayPal: Your $799 purchase was approved. If this wasn't you, cancel now at https://paypal-cancel-security.xyz/login",
+        "userActions": [
+          "paste message",
+          "check included link",
+          "ask Higgins"
+        ],
+        "expected": {
+          "gates": [
+            "text",
+            "link",
+            "account"
+          ],
+          "finding": "unexpected purchase pressure and off-domain account link",
+          "uncertainty": "message does not prove a purchase occurred",
+          "action": "open PayPal independently"
+        },
+        "actual": {
+          "gates": [
+            "text",
+            "link",
+            "account"
+          ],
+          "text_state": "barking",
+          "text_finding": "Bank fraud message",
+          "link_level": "malicious",
+          "action": "Don't enter your password or verification code. Open your bank's app yourself to check."
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "multi-google-drive-file",
+        "tone": "ambiguous",
+        "situation": "Someone shared this file from Google Drive.",
+        "submitted": "Google Drive shared file: Invoice.pdf.exe",
+        "userActions": [
+          "share file to Apollo",
+          "leave origin as cloud",
+          "review post-inspection question"
+        ],
+        "expected": {
+          "gates": [
+            "file"
+          ],
+          "finding": "disguised executable; cloud hosting is not proof of safety",
+          "uncertainty": "sender and complete contents remain unknown",
+          "action": "keep closed and verify sender separately"
+        },
+        "actual": {
+          "gates": [
+            "file"
+          ],
+          "state": "barking",
+          "finding": "Disguised executable",
+          "evidence": "Its name suggests a PDF file. Its actual type is executable content. Documents never need to be executable. Being hosted on Google Drive or another cloud service does not verify the file, its contents or its sender. Limited signature/sample check only. Other content, compressed data and links outside the sample were not inspected.",
+          "action": "Delete it unless you can independently verify the sender. Don't 'open with' anything."
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "multi-caller-install-app",
+        "tone": "threatening",
+        "situation": "A caller asked me to install an app.",
+        "submitted": "Caller claiming tech support asked me to install Quick Support and allow remote access.",
+        "userActions": [
+          "describe call request",
+          "open App Gate",
+          "report permissions",
+          "answer whether access was granted"
+        ],
+        "expected": {
+          "gates": [
+            "call",
+            "app"
+          ],
+          "follow_up_gate": "device only if the person says access was granted or the app was installed",
+          "finding": "remote-access social engineering plus high-impact app capabilities",
+          "uncertainty": "capability does not prove an active session",
+          "action": "end call; do not grant access; review device if already granted"
+        },
+        "actual": {
+          "gates": [
+            "call",
+            "app"
+          ],
+          "call_state": "barking",
+          "call_finding": "Remote access request",
+          "app_state": "barking",
+          "app_finding": "Remote access app during a suspicious call",
+          "action": "Don't open it or read out any code it shows. Hang up and remove the app. Contact the organisation yourself using details you find independently."
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "multi-unfamiliar-installed-app",
+        "tone": "ambiguous",
+        "situation": "I found an unfamiliar app already on my phone.",
+        "submitted": "Unfamiliar helper app already on the phone with Accessibility access.",
+        "userActions": [
+          "select app",
+          "review observed capabilities",
+          "open Device Gate"
+        ],
+        "expected": {
+          "gates": [
+            "app",
+            "device"
+          ],
+          "finding": "unfamiliar app and observed high-impact access",
+          "uncertainty": "permissions do not prove malicious behaviour",
+          "action": "review access and remove if unrecognised"
+        },
+        "actual": {
+          "gates": [
+            "app",
+            "device"
+          ],
+          "app_state": "growling",
+          "app_finding": "Powerful accessibility access",
+          "device_state": "growling",
+          "device_finding": "Accessibility access: Device Helper",
+          "action": "Revoke accessibility access (Settings \u2192 Accessibility) unless you understand exactly why it needs it. Remove the app if you didn't choose it."
+        },
+        "pass": true,
+        "evidence": "automated"
+      },
+      {
+        "id": "multi-genuine-delivery-notification",
+        "tone": "legitimate",
+        "situation": "This is a genuine delivery notification.",
+        "submitted": "Australia Post: Your parcel is arriving tomorrow. Track in the AusPost app or at https://auspost.com.au/mypost/track/ABC123",
+        "userActions": [
+          "paste notification",
+          "check link",
+          "confirm expected delivery"
+        ],
+        "expected": {
+          "gates": [
+            "text",
+            "link"
+          ],
+          "finding": "delivery notification with configured official destination and no payment/login pressure",
+          "uncertainty": "sender identity is not authenticated from text alone",
+          "action": "prefer the official AusPost app"
+        },
+        "actual": {
+          "gates": [
+            "text",
+            "link"
+          ],
+          "text_state": "ears_up",
+          "text_finding": "Delivery notification to verify",
+          "link_level": "clean",
+          "link_signals": [],
+          "action": "Prefer the courier's official app or type its known address yourself. Use the message link only if you independently expected this delivery."
+        },
+        "pass": true,
+        "evidence": "automated"
+      }
+    ],
+    "summary": {
+      "total": 35,
+      "passed": 35,
+      "failed": 0,
+      "single_gate_total": 30,
+      "multi_gate_total": 5
+    },
+    "device_only": [
+      {
+        "id": "site-native-confirmed-block",
+        "gate": "site",
+        "reason": "Requires a real supported filter and device-recorded enforcement evidence."
+      },
+      {
+        "id": "call-native-screening-rejection",
+        "gate": "call",
+        "reason": "Requires a real incoming call and supported call-screening role."
+      },
+      {
+        "id": "file-native-share-provider",
+        "gate": "file",
+        "reason": "Requires Android/iOS share sheet, provider metadata and content URI access."
+      },
+      {
+        "id": "device-native-settings-return",
+        "gate": "device",
+        "reason": "Requires real Settings deep links and refresh after returning to Apollo."
+      },
+      {
+        "id": "app-native-inventory-permissions",
+        "gate": "app",
+        "reason": "Requires platform-exposed app inventory and permission observations."
+      },
+      {
+        "id": "network-native-enforcement",
+        "gate": "network",
+        "reason": "Requires real network events; Stage 1D packet-blocking acceptance remains cancelled."
+      }
+    ]
+  },
+  "browser": [
+    {
+      "id": "ui-site-popup",
+      "gate": "site",
+      "situation": "Ten-Gate overview and stopped-protection recommendation",
+      "expected": "All ten Gates visible; popup dismisses before the working Device Gate action",
+      "actual": "Ten Gates visible; Site card: Site Gate Unavailable on this device Automatic Automatic filtering for supported website traffic; this is separate from manual link checks. This device or build cannot run Apollo's automatic website filter. Open Link Gate. Recommendation popup dismissed before Device Gate.",
+      "outcome": "PASS",
+      "evidence": "browser",
+      "artifact": "/app/test_reports/round1_artifacts/live/ui-site-popup.png"
+    },
+    {
+      "id": "ui-link-threat",
+      "gate": "link",
+      "situation": "Threatening bank lookalike",
+      "expected": "Barking result; persistent trusted verification; truthful continue label",
+      "actual": "Threat state Apollo is barking; Apollo is growling at this link.; persistent verification instructions opened. Ambiguous shortened-link override label is truthful.",
+      "outcome": "PASS",
+      "evidence": "browser",
+      "artifact": "/app/test_reports/round1_artifacts/live/ui-link-threat.png"
+    },
+    {
+      "id": "ui-text-threat",
+      "gate": "text",
+      "situation": "Verification-code request",
+      "expected": "Barking result and persistent sender-check instructions",
+      "actual": "TimeoutError: Locator.wait_for: Timeout 90000ms exceeded. Call log: - waiting for get_by_test_id(\"textguard-result\") to be visible",
+      "outcome": "FAIL",
+      "evidence": "browser",
+      "artifact": "/app/test_reports/round1_artifacts/live/ui-text-threat.png"
+    },
+    {
+      "id": "ui-call-threat",
+      "gate": "call",
+      "situation": "Caller requests a security code",
+      "expected": "Threatening call result and trusted callback guidance",
+      "actual": "State Barking; Do not share the code.; independently trusted callback guidance opened.",
+      "outcome": "PASS",
+      "evidence": "browser",
+      "artifact": "/app/test_reports/round1_artifacts/live/ui-call-threat.png"
+    },
+    {
+      "id": "ui-network-ambiguous",
+      "gate": "network",
+      "situation": "Available preview network information",
+      "expected": "Unknown limitations remain visible; no unsupported block claim",
+      "actual": "State Resting; Connected via unknown. Nothing worrying.; limitation: WHAT APOLLO CAN SEE HERE This build sees only what the platform reports: connection type, Wi\u2011Fi name (with location permission), captive portal and VPN flags. It cannot read DNS queries, per-app traffic or confirm destination blocking \u2014 Apollo won't pretend ot",
+      "outcome": "PASS",
+      "evidence": "browser",
+      "artifact": "/app/test_reports/round1_artifacts/live/ui-network-ambiguous.png"
+    },
+    {
+      "id": "ui-account-unknown-report",
+      "gate": "account",
+      "situation": "No alert evidence plus offline report",
+      "expected": "Unknown stays unknown; no false report success; Retry; Mark as handled",
+      "actual": "No-evidence path stayed unknown; offline report showed Retry; online retry succeeded; resolution label is Mark as handled.",
+      "outcome": "PASS",
+      "evidence": "browser",
+      "artifact": "/app/test_reports/round1_artifacts/live/ui-account-unknown-report.png"
+    },
+    {
+      "id": "ui-email-threat",
+      "gate": "email",
+      "situation": "Bank-impersonation email",
+      "expected": "Threat result and independently trusted verification instructions",
+      "actual": "TimeoutError: Locator.wait_for: Timeout 90000ms exceeded. Call log: - waiting for get_by_test_id(\"email-result\") to be visible",
+      "outcome": "FAIL",
+      "evidence": "browser",
+      "artifact": "/app/test_reports/round1_artifacts/live/ui-email-threat.png"
+    },
+    {
+      "id": "ui-app-remote",
+      "gate": "app",
+      "situation": "Remote-support app prompted by caller",
+      "expected": "Capability risk plus working persistent Settings guidance",
+      "actual": "TimeoutError: Locator.wait_for: Timeout 90000ms exceeded. Call log: - waiting for get_by_test_id(\"app-result\") to be visible",
+      "outcome": "FAIL",
+      "evidence": "browser",
+      "artifact": "/app/test_reports/round1_artifacts/live/ui-app-remote.png"
+    },
+    {
+      "id": "ui-file-handoff",
+      "gate": "file",
+      "situation": "Disguised executable and post-open follow-up",
+      "expected": "Evidence-first follow-up; recovery; automatic Higgins Retry and continuity",
+      "actual": "Risky file source follow-up occurred after inspection; 'I already opened it' recovery worked; Higgins Retry and simpler follow-up preserved one conversation. Exact final Higgins response: Higgins here. Apollo's file check is barking. From Apollo's inference: The name claims EXE. No content was read; type and safety are unknown.. What remains unknown: This inspection cannot establish that a file is safe.. No protective action was confirmed for this issue. Next action: Keep the file closed and verify it with the sender through a separate contact method you already trust.",
+      "outcome": "PASS",
+      "evidence": "browser",
+      "artifact": "/app/test_reports/round1_artifacts/live/ui-file-handoff.png"
+    },
+    {
+      "id": "ui-device-setting",
+      "gate": "device",
+      "situation": "Observed protection health and setting follow-up",
+      "expected": "Visible limitation, working setting guidance and retained Higgins context",
+      "actual": "State Growling; 1 item worth reviewing. Nothing confirmed dangerous.; Settings guidance and follow-up stayed attached to Device Gate context. Exact final Higgins response: Higgins here. Apollo's device check is growling. From observed evidence: Apollo protection is off: Manual Gates still work, but Apollo has no confirmed automatic protection running.. What remains unknown: The list of installed apps and their permissions (iOS doesn't expose this to any app).. No protective action was confirmed for this issue. Next action: Use this result screen's first Settings action and review the named setting; do not change unrelated settings.",
+      "outcome": "PASS",
+      "evidence": "browser",
+      "artifact": "/app/test_reports/round1_artifacts/live/ui-device-setting.png"
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "summary": "Round 1 repeatable regression rerun passed with exit code 0. Deterministic engine passed 35/35 (30 single-Gate + 5 multi-Gate), browser journeys passed 10/10 with screenshots, and controlled-mode labelling remained explicit/non-live. Targeted frontend regressions and backend Ask handoff tests passed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Initial onboarding/entry screen",
+        "issue": "No reliable initial testID was detectable in first-load state during smoke check; automation had to infer load from rendered content/screenshot.",
+        "testID": "missing stable entry testID",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/scripts/run-apollo-round1.sh",
+    "/app/tests/run_round1_user_scenarios.py",
+    "/app/test_reports/round1_expected_vs_actual_repeatable.md",
+    "/app/test_reports/round1_expected_vs_actual_repeatable.json",
+    "/app/test_reports/round1_artifacts/repeatable",
+    "/app/test_reports/pytest/pytest_iter75_ask_handoff.xml"
+  ],
+  "action_items": [
+    "Optional: add a stable initial-screen testID for onboarding entry state to improve first-load automation reliability.",
+    "Optional: reduce Node test warning noise by declaring module type strategy for frontend test/runtime files."
+  ],
+  "critical_code_review_comments": [
+    "Repeatable-mode controls are clearly labelled in output (controlled 503 external fixtures + controlled Higgins SSE) and are not represented as live.",
+    "Round 1 runner currently defaults base URL in code when env is absent; acceptable for this permanent command use-case but note this differs from strict fail-fast env-only backend/frontend runtime policy.",
+    "Live-mode component compatibility requirement (fallback and live MessageAssessmentResult for Text/Email/App) is implemented in runner selectors via wait_for_any combinations and validated in this repeatable rerun path."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_75.json",
+    "/app/test_reports/round1_expected_vs_actual_repeatable.md",
+    "/app/test_reports/round1_expected_vs_actual_repeatable.json",
+    "/app/test_reports/round1_engine.json"
+  ],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "98%"
+  },
+  "seed_data_creation": "No persistent seed data created.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Repeatable command now reproduces full 10/10 browser journeys (prior stale report had 1/1 only). Artifacts refreshed under /app/test_reports/round1_artifacts/repeatable. Device-only list remains separate and Stage 1D remains cancelled.",
+  "rca_of_issue": "Smoke selector miss occurred because app loaded into onboarding state where expected home/gates testIDs were not present; screenshot confirmed app loaded successfully. This is a testability gap (missing stable initial testID), not a functional outage."
+}

@@ -25,6 +25,12 @@ test("N03 lookalike SSID → ears_up, can't confirm same network", () => {
 test("N04 open Wi‑Fi → ears_up, does not claim interception", () => {
   const r = analyseNetwork(net({ status: wifi({ wifiSecurity: "open" }), context: "public" })); assert.equal(r.state, "ears_up"); assert.equal(r.scenario, "N04"); assert.match(r.verdict, /doesn't mean anyone is listening/);
 });
+test("unknown or uninspectable network details remain uncertain", () => {
+  const r = analyseNetwork(net({ status: wifi({ type: "unknown", ssid: null, wifiSecurity: "unknown", inspectable: false }), context: "unknown" }));
+  assert.equal(r.state, "ears_up");
+  assert.match(r.verdict, /cannot inspect enough/i);
+  assert.doesNotMatch(r.verdict, /Nothing worrying/i);
+});
 test("N05 captive portal with page address → growling + web handoff", () => {
   const r = analyseNetwork(net({ status: wifi({ captivePortal: true }), captiveUrl: "http://hotel-wifi-login.top/auth" })); assert.equal(r.state, "growling"); assert.equal(r.handoff, "web");
 });

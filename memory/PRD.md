@@ -64,6 +64,18 @@ Apollo performs supported checks and protective actions; Higgins interprets boun
 - **P2:** macOS/Windows native enforcement adapters.
 - **Cancelled:** Stage 1D packet-blocking/physical acceptance exercise; do not resume.
 
+## Round 1 reusable user-scenario regression suite
+
+- Permanent semantic catalogue: `docs/APOLLO_ROUND1_SCENARIO_CATALOGUE.md`.
+- One repeatable command: `./scripts/run-apollo-round1.sh --mode repeatable`.
+- Separate bounded live mode: `./scripts/run-apollo-round1.sh --mode live`.
+- Coverage: threatening, legitimate and ambiguous situations for all ten Gates; five realistic multi-Gate situations; ten complete browser journeys including popups, trusted actions, offline Retry, automatic Higgins handoff, “I already opened it,” “Help me change that setting,” and simpler-explanation continuity.
+- Repeatable external responses are labelled controlled and are never represented as live. Device-only cases remain pending and are excluded from browser completion counts.
+- Final baseline: repeatable **35/35 semantic situations + 10/10 browser journeys**; bounded live **35/35 + 10/10**.
+- Readable reports: `test_reports/round1_expected_vs_actual_repeatable.md` and `test_reports/round1_expected_vs_actual_live.md`; machine reports use the matching `.json` names; screenshots are under `test_reports/round1_artifacts/{repeatable,live}`.
+- Regression totals after Round 1: frontend **364/364**, backend **305/305** (plus focused Higgins handoff **4/4**), TypeScript and JavaScript/Python lint clean.
+- Independent verification: `test_reports/iteration_75.json` (full Round 1 repeatable suite) and `test_reports/iteration_76.json` (fresh onboarding smoke selector/navigation).
+
 ## P0 remediation stage — VERIFIED CLOSED (iteration 64)
 - User approved completion of the full P0 stage. P0-01 through P0-06 are implemented and individually recorded as **VERIFIED CLOSED** in `docs/STAGE1D_P0_REMEDIATION_BACKLOG.md`; original review identities and archived source remain intact.
 - Final punch list closed: durable evidence queue rejects acknowledged stale-version replay over newer pending state; `public_get` performs bounded per-hop HEAD preflight with explicit safe GET fallback; changed evidence identity binding returns 409 before fresh truth validation while new invalid Biting stays 422; `__apollo_test_setup=1` provides a non-persistent development-web-only test entry and is unavailable in production/native.

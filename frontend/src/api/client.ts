@@ -33,11 +33,20 @@ async function authHeaders(): Promise<Record<string, string>> {
 
 async function fetchWithBudget(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
   const ctl = new AbortController();
-  const t = setTimeout(() => ctl.abort(), timeoutMs);
+  let timedOut = false;
+  let rejectTimeout: ((reason?: unknown) => void) | null = null;
+  const timeout = new Promise<never>((_resolve, reject) => { rejectTimeout = reject; });
+  const t = setTimeout(() => {
+    timedOut = true;
+    ctl.abort();
+    rejectTimeout?.(new Error("request timeout"));
+  }, timeoutMs);
   try {
-    return await fetch(url, { ...init, signal: ctl.signal });
+    // Some React Native Web fetch implementations do not settle after AbortController.abort(). The explicit
+    // race guarantees every user check reaches a truthful fallback instead of spinning forever.
+    return await Promise.race([fetch(url, { ...init, signal: ctl.signal }), timeout]);
   } catch {
-    const kind: FailureKind = ctl.signal.aborted ? "timeout" : "offline";
+    const kind: FailureKind = timedOut || ctl.signal.aborted ? "timeout" : "offline";
     markBackendFailure(kind);
     throw new ApiError(0, FAILURE_MESSAGE[kind], kind);
   } finally { clearTimeout(t); }

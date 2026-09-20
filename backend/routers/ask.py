@@ -57,10 +57,10 @@ def _context_prompt(context: Optional[AskIssueContext]) -> Optional[str]:
 
 def _safe_handoff_response(context: AskIssueContext) -> str:
     state = context.assessment_state.replace("_", " ")
-    evidence = context.findings[0].summary if context.findings else context.issue_summary
+    evidence = (context.findings[0].summary if context.findings else context.issue_summary).rstrip(" .")
     provenance = context.findings[0].provenance if context.findings else "inferred"
     source = {"observed": "observed evidence", "inferred": "Apollo's inference", "user_reported": "your report"}.get(provenance, "available evidence")
-    unknown = context.uncertainty[0] if context.uncertainty else "This result does not establish that the item is safe or that a threat succeeded."
+    unknown = (context.uncertainty[0] if context.uncertainty else "This result does not establish that the item is safe or that a threat succeeded").rstrip(" .")
     confirmed = f" Apollo confirmed: {context.confirmed_protective_actions[0]}" if context.confirmed_protective_actions else " No protective action was confirmed for this issue."
     reported = f" You reported: {context.user_reported_actions[0]}." if context.user_reported_actions else ""
     action = {
