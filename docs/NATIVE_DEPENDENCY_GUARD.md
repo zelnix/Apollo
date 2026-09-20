@@ -1,5 +1,9 @@
 # Post-merge / native-build dependency singleton safeguard
 
+**Saved implementation commit:** `6d71e8f4a48a8a0e22d5a74b4d6e395e7cc62094`.
+Verified from history after the implementation was saved; supersedes the completion report's
+temporary “commit pending” note. This is the guard's source revision, not a verified APK hash.
+
 Added 2026-09-20 after Support ticket 257445 / fix `01a30ae`: two installed versions of
 `react-native-svg` registered `RNSVGCircle` twice and crashed the Android app after splash.
 This guard is read-only. It does not install, deduplicate, upgrade, pin, delete, or rewrite dependencies.
@@ -161,5 +165,9 @@ Yarn range warning for heroicons; the physical installed tree, not that warning 
 - Independent verification also confirms CI YAML/command wiring, all 91 GuardDog hashes, SVG pin/lockfile preservation, the 888/50/0 audit and a loading preview. Raw audit: `test_reports/native_guard_audit_iter61.json`. No blocking defects or application-code changes were reported by the tester.
 - Hosted CI, full Gradle/Xcode builds and physical-device startup are **not claimed** by these checks.
 - Frozen GuardDog source must continue matching `APOLLO_STAGE1B_SHA256_MANIFEST.txt` (91 entries).
-- **Stage 1D remains paused until a fresh APK passes Pixel 10 launch verification.** Startup
-  acceptance and native packet-block proof remain separate from this dependency safeguard.
+- **Physical launch prerequisite passed by user confirmation on 2026-09-20:** the user reported
+  “App is running as expected” and explicitly confirmed a freshly built APK on Pixel 10.
+  This is separate device evidence, not a result of the automated guard tests. See Stage 1C §15.
+- **Stage 1D remains unstarted pending separate approval.** Native packet-block proof, repeated
+  reboot/reopen testing, push delivery and exact APK/build provenance were not established by
+  this confirmation or this dependency safeguard.

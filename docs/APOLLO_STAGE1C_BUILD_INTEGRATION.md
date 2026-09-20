@@ -3,8 +3,9 @@
 **Current status (recorded 2026-09-20): Stage 1C structural integration is COMPLETE.
 Emergent Support reports successful deploys/Android builds and an emulator launch to Home
 after fixing duplicate SVG view registration. The exact crash, dependency chain and fix commit
-are recorded in §13. Stage 1C.1 physical-device launch acceptance is still PENDING on the
-user's Pixel 10 with a newly built APK; Stage 1D remains NOT STARTED.**
+are recorded in §13. Stage 1C.1 physical-device launch acceptance is now PASSED by explicit
+user confirmation of the freshly built APK on Pixel 10 (§15). Stage 1D remains NOT STARTED,
+awaiting separate approval; launch success is not native-enforcement proof.**
 
 Sections 1–11c retain historical build-stage observations and tooling limitations. Their
 earlier blocked statuses are not the current status. In particular, the duplicate SVG warning
@@ -281,8 +282,9 @@ Status: Stage 1C.1 IN PROGRESS — Gradle/Kotlin compilation not yet reached. St
 ## 12. Ready for the next stage?
 
 **Stage 1C (structural integration) is complete.** Support reports that native builds now
-succeed and the fixed app reaches Home on an emulator (§13). **Do not advance to Stage 1D
-until the user confirms that a fresh post-fix APK launches and stays open on the Pixel 10.**
+succeed and the fixed app reaches Home on an emulator (§13). **The user has now confirmed
+that the fresh APK runs as expected on Pixel 10 (§15), satisfying the physical launch gate.
+Stage 1D is eligible for separate approval, but has not begun.**
 Emulator success is not physical-device sign-off, and reaching Home is not proof of native
 enforcement. Stage 1D runtime wiring, VPN start/stop proof, real packet-block evidence and
 subsequent Higgins/consumer integration remain separate work.
@@ -365,12 +367,13 @@ the cause of the recorded `RNSVGCircle` exception.
 | `yarn why react-native-svg` in the current workspace | One resolved `15.15.4`, hoisted for both the app and `@nandorojo/heroicons` |
 | Node resolution from app and icon-library locations | Both resolve the same `frontend/node_modules/react-native-svg/package.json`, version `15.15.4` |
 | Frozen GuardDog manifest | All 91 files match `APOLLO_STAGE1B_SHA256_MANIFEST.txt`, rechecked on 2026-09-20 |
-| New APK on the user's Pixel 10 | **Pending**; no post-fix physical-device success has been reported |
+| New APK on the user's Pixel 10 | **User-confirmed PASS on 2026-09-20**; “App is running as expected”, then explicit confirmation of fresh APK / Pixel 10 (§15) |
 | Native start/stop, packet blocking, push delivery | **Not established by this startup fix** |
 
-Support says the APK already on the phone predates the fix and will not update itself. A fresh
-**Publish → Build → install newly generated APK** is required. Record that build's ID, commit,
-APK SHA-256, Pixel Android version, and launch/reopen result when available. Do not relabel the
+At the time of Support's message, the installed APK predated the fix and needed replacement.
+The user has since confirmed successful operation of a freshly built APK on Pixel 10 (§15).
+Record that build's ID, commit, APK SHA-256, Pixel Android version, and specific reopen result
+when available; those details were not supplied with the launch confirmation. Do not relabel the
 old installed APK's crash as a failure of this new fix without checking build provenance.
 
 ### Preventing recurrence
@@ -395,8 +398,8 @@ the secret-bearing push, so keys were not exposed and rotation was unnecessary. 
 are reproduced here. No additional platform-side fix commit was identified; do not invent a
 shared cause for deploy failures and the separately evidenced SVG crash.
 
-This record is documentation-only. Stage 1D remains paused pending the fresh physical-device
-launch result; the certified engine remains frozen.
+This incident record is documentation-only. The later fresh physical-device launch confirmation
+is recorded in §15. Stage 1D remains unstarted pending separate approval; the certified engine remains frozen.
 
 ## 14. Post-merge/native-build dependency singleton safeguard (2026-09-20)
 
@@ -415,4 +418,37 @@ installed native inventory, regression evidence and lifecycle limitations.
 - One-time audit: **888 installed packages inspected; 50 native package names; zero duplicates**.
 - Focused tests: **44/44**, independently verified (`test_reports/iteration_61.json`), with
   zero defects in the scoped checks and GuardDog hashes **91/91 unchanged**. No native runtime wiring, backend, UI/Higgins or frozen
-  GuardDog source changed. **Stage 1D stays paused until fresh APK verification on Pixel 10.**
+  GuardDog source changed. Fresh Pixel 10 launch was subsequently user-verified (§15);
+  **Stage 1D remains unstarted pending approval.**
+
+## 15. Physical-device launch gate passed — user verification (2026-09-20)
+
+**Stage 1C.1 physical-device launch acceptance: PASS (user-verified).**
+
+- User's result: **“App is running as expected.”**
+- Follow-up explicitly asked whether this was **“the freshly built APK running on your Pixel 10”**.
+  User answered **“Yes.”** This is the required physical-device confirmation, not an inference
+  from the emulator test, a web preview or a still-running background notification.
+- Scope accepted: the fresh Android APK launches and operates as expected on the user's Pixel 10.
+  This closes the earlier post-splash launch blocker. The agent did not independently run that device.
+- Not supplied: exact APK/build ID, APK SHA-256, Android version, binary-to-source commit mapping,
+  raw device logs, an explicit repeated close/reopen result, or a reboot/long-duration test.
+  Do not fabricate these details or expand the user's confirmation into those additional tests.
+- Still separate/unverified: GuardDog runtime adapter wiring, native start/stop proof, packet
+  blocking, foreground-service eligibility under real enforcement, push delivery and iOS acceptance.
+- **Stage 1D is NOT STARTED.** The physical launch prerequisite is satisfied; future runtime work
+  still requires separate approval. No runtime, UI/Higgins, backend or certified-engine changes
+  were made while recording this result.
+
+### Saved dependency-guard implementation revision
+
+The previously pending feature commit is now available and was verified from Git history:
+
+```text
+6d71e8f4a48a8a0e22d5a74b4d6e395e7cc62094
+```
+
+It contains the guard/scanner/policy, CI workflow, combined preflight, Android/iOS prebuild plugin,
+tests and documentation. This is distinct from Support's SVG fix `01a30ae` and the earlier
+documentation-only base `137fb4a`. It identifies the guard source, not an independently verified
+source mapping for the user's APK. All 91 frozen GuardDog files still match the provenance manifest.
