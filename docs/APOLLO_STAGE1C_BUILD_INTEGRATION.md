@@ -5,7 +5,7 @@ Emergent Support reports successful deploys/Android builds and an emulator launc
 after fixing duplicate SVG view registration. The exact crash, dependency chain and fix commit
 are recorded in §13. Stage 1C.1 physical-device launch acceptance is now PASSED by explicit
 user confirmation of the freshly built APK on Pixel 10 (§15). Stage 1D remains NOT STARTED,
-awaiting separate approval; launch success is not native-enforcement proof.**
+awaiting resolution of D1–D6 and separate approval; launch success is not native-enforcement proof.**
 
 Sections 1–11c retain historical build-stage observations and tooling limitations. Their
 earlier blocked statuses are not the current status. In particular, the duplicate SVG warning
@@ -464,8 +464,36 @@ rollback safeguards and per-finding P0 tracking **before runtime changes**. Resu
   this proposal is not yet implementation approval.
 - `STAGE1D_DEVICE_TEST_RECORD_TEMPLATE.md`: source commit + APK build ID required for every new
   run; launch, start, stop/recovery and real packet blocking have independent results.
-- `STAGE1D_P0_REMEDIATION_BACKLOG.md`: OPEN / source required. Original P0 review findings have
-  not been supplied or located; they cannot be invented, individually closed or treated as absent.
+- `STAGE1D_P0_REMEDIATION_BACKLOG.md`: at the first plan check the original report was not
+  available. This intake gap is **now resolved by the uploaded report** (§17); all six actual
+  P0 findings are individually OPEN, not closed by launch or identification.
 
 **Stage 1C.1 launch remains PASS. Stage 1D implementation remains NOT STARTED.**
 All 91 frozen files and the existing public adapter/evidence contracts remain unchanged.
+
+## 17. Original review received; revised Stage 1D plan (2026-09-20)
+
+- Archived the full original at `docs/reviews/Apollo_Review_2026-09-20.md`, reviewed source
+  `da60c0372650dead26caeb25c458f8ca7cebd6a2`. Its historical launch-pending text is preserved
+  as original evidence; current **Stage 1C.1 launch remains PASS**.
+- **P0-INTAKE resolved only. P0-01–P0-06 each OPEN:** outbound internal-address requests;
+  misleading freshness/recovery; call rejection to biting; privacy/data-flow conflict;
+  rejected evidence upload; unsupported file-safety reassurance. Original sections, affected
+  files, outcomes, verification requirements and unassigned owners are in the separate tracker.
+- The user's six recommendations are now incorporated in the plan: one proven runtime owner
+  even with both modules loaded; truthful status via separately reviewed minimal extension or
+  defer; test-only vs production trust; native identity/provenance with defined buffer lifecycle;
+  honest unsupported block/unblock without implicit allow override; bounded observed start/stop
+  with unresolved timeout/conflict and independent recovery. Detailed design approvals remain OPEN.
+- `STAGE1D_CONTRACT_EXTENSION_PROPOSAL.md` (CE-01) proposes `packet_filter` plus necessary
+  exhaustive consumer/test handling. It is **not approved or implemented**. Public contracts
+  remain unchanged now; truthful reporting cannot be sacrificed to preserve an inadequate enum.
+- Acceptance is split: **A4N native packet proof can pass independently; A4E full Patrol/backend
+  delivery is BLOCKED by OPEN P0-05**. Call rejection is an explicit must-never-produce-Biting
+  negative, with P0-03 open; P0-02 separately gates consumer freshness/recovery.
+- Every new device run requires source SHA and APK build ID/hash, trust/contract scope and
+  actual evidence. No runtime change or production-default cutover is approved.
+- GitHub main was read-only verified at `da60c03`; newer workspace documents are not assumed
+  synced. Save to GitHub and remote content verification remain required. No push was performed.
+
+**Stage 1D implementation remains NOT STARTED until D1–D6 are resolved and implementation approved.**

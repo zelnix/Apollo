@@ -606,6 +606,12 @@ frontend:
       - agent: "main"
         working: true
         comment: "Plan-only source inspection at 0154e186fb4601495c3f4468f9a89ae0d18ce1f1. No pre-existing detailed Stage 1D plan or original P0 finding list located. Wrote explicitly proposed candidate file scope and exclusions; unresolved mapping/ownership/configuration/evidence decisions D1–D6; separate launch/start/stop/observed intentional packet-block gates; exact source commit and APK build ID mandatory per new device test; operational rollback plan. P0 source intake unresolved, no individual review findings fabricated or closed."
+      - agent: "user"
+        working: true
+        comment: "Supplied original Apollo_Review_2026-09-20.md at reviewed commit da60c0372650dead26caeb25c458f8ca7cebd6a2 and assigned P0-01–P0-06 to findings 1–6. Identifying findings closes intake only. Recommended six design directions, required separate native-vs-upload acceptance and call-rejection negative; no runtime or production cutover approved."
+      - agent: "main"
+        working: true
+        comment: "Revised plan/tracker/device template; archived original byte-for-byte (SHA-256 e2704cf1ee89850d8ca39fa50b136ce09575ff4e45e8cfafeb986288c6de2788); added CE-01 proposal only. P0 intake RESOLVED; all six findings OPEN, D1–D6 OPEN. A4E pipeline blocked by P0-05 while A4N native proof is independent; call negative blocked by P0-03; consumer freshness/recovery by P0-02. Documentation validations pass: six distinct open rows, dependencies and call negative, balanced code fences, unchanged public contract hashes/GuardDog91/91, no frontend/backend/config/dependency/CI changes. No fixes, new reproductions or device tests claimed. Remote main read-only verified da60c03; sync pending Save to GitHub and content verification."
   - task: "Stage 1D runtime implementation and real packet-blocking acceptance"
     implemented: false
     working: "NA"
@@ -614,4 +620,4 @@ frontend:
     status_history:
       - agent: "main"
         working: "NA"
-        comment: "NOT STARTED per user instruction. Stage 1C.1 user-verified Pixel 10 launch remains PASS; plan review does not re-open it or confer enforcement proof. Need original P0 report, D1–D6 decisions, final exact mapping/files and implementation approval. No runtime/contract/GuardDog changes or device tests performed during this review."
+        comment: "NOT STARTED per user instruction. Stage 1C.1 user-verified Pixel 10 launch remains PASS. Original P0 report now received and six findings separately OPEN; intake alone resolved. Need D1–D6 decisions, separate truthful contract approval or defer, final exact files/mappings and implementation approval. No runtime/contract/GuardDog changes, production-default cutover or device tests during this review. Full pipeline acceptance blocked by P0-05; native packet proof separate and unexecuted."
