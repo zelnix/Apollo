@@ -7,23 +7,24 @@ import type { EnforcementEvidence } from "@/src/security/PlatformCapabilityProfi
 import type { PatrolEnforcementEvidence } from "./types";
 
 export function toPatrolEnforcementEvidence(evidence: EnforcementEvidence): PatrolEnforcementEvidence {
+  const source = evidence.sourceMetadata ?? {};
   return {
     evidence_id: evidence.evidenceId,
     event_id: evidence.eventId,
     device_id: evidence.deviceId,
     platform: evidence.platform,
-    os_version: null,
-    sdk_version: null,
+    os_version: typeof source.osVersion === "string" ? source.osVersion : null,
+    sdk_version: typeof source.sdkVersion === "string" ? source.sdkVersion : null,
     observed_at: evidence.observedAt,
     mechanism: evidence.mechanism,
     direction: evidence.direction,
     protocol: evidence.protocol,
-    destination_ip: null,
+    destination_ip: evidence.destination.ip,
     destination_domain: evidence.destination.domain,
     destination_port: evidence.destination.port,
-    app_id: null,
-    process_name: null,
-    attribution_confidence: "unavailable",
+    app_id: evidence.attribution.appId,
+    process_name: evidence.attribution.processName,
+    attribution_confidence: evidence.attribution.confidence,
     matched_rule_id: evidence.matchedRuleId,
     threat_id: null,
     requested_action: evidence.requestedAction,
@@ -31,6 +32,6 @@ export function toPatrolEnforcementEvidence(evidence: EnforcementEvidence): Patr
     result: evidence.result,
     rule_source: evidence.ruleSource,
     confidence: evidence.confidence,
-    correlation_id: null,
+    correlation_id: evidence.correlationId,
   };
 }

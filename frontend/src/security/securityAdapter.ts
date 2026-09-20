@@ -10,6 +10,7 @@ import { SECURITY_CONFIG } from "@/src/config/appEnvironment";
 import { MockSecurityAdapter } from "./MockSecurityAdapter";
 import { getNativeModule } from "./nativeBridge";
 import { AndroidSecurityAdapter, IOSSecurityAdapter } from "./NativeSecurityAdapters";
+import { GuardDogSecurityAdapter } from "./guarddog/GuardDogSecurityAdapter";
 import { selectFailClosed } from "./securityBoot";
 import { validateSecurityConfig, SecurityConfigurationError, type SecurityMode } from "./securityConfig";
 import type { SecurityPlatformAdapter } from "./SecurityPlatformAdapter";
@@ -22,12 +23,14 @@ function selectAdapter(): SecurityPlatformAdapter {
   return selectFailClosed(
     () => validateSecurityConfig({
       appEnvironment: SECURITY_CONFIG.appEnvironment, secureCoreMode: SECURITY_CONFIG.secureCoreMode, securityAdapterMode: SECURITY_MODE,
+      androidEnforcementEngine: SECURITY_CONFIG.androidEnforcementEngine,
       nativeSecurityAdapterAvailable: SECURITY_MODE === "native" ? getNativeModule() != null : undefined,
     }),
     () => {
       if (SECURITY_MODE === "mock") return MockSecurityAdapter;
       if (Platform.OS === "ios") return IOSSecurityAdapter;
-      if (Platform.OS === "android") return AndroidSecurityAdapter;
+      if (Platform.OS === "android") return SECURITY_CONFIG.androidEnforcementEngine === "guarddog_acceptance"
+        ? new GuardDogSecurityAdapter() : AndroidSecurityAdapter;
       throw new SecurityConfigurationError(`Apollo native security is not supported on platform "${Platform.OS}".`);
     },
   );

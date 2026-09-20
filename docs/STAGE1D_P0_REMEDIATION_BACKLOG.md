@@ -1,7 +1,8 @@
 # P0 review remediation — separate from Stage 1D and launch acceptance
 
 **Status: SIX VERIFIED CLOSED P0 FINDINGS.**
-**Updated:** 2026-09-20. Stage 1C.1 launch remains PASS. Stage 1D implementation remains NOT STARTED.
+**Updated:** 2026-09-20. Stage 1C.1 launch remains PASS. A separate Stage 1D test candidate is now
+implemented; production certification/cutover and physical acceptance remain outstanding.
 The P0 software remediation is complete and independently verified in `test_reports/iteration_64.json`.
 This does not claim native packet-block, start/stop, notification-delivery, or Stage 1D acceptance.
 

@@ -13,6 +13,7 @@
 
 export type AppEnvironment = "development" | "staging" | "production";
 export type SecurityMode = "mock" | "native";
+export type AndroidEnforcementEngine = "legacy" | "guarddog_acceptance";
 
 export const APP_ENVIRONMENTS: readonly AppEnvironment[] = ["development", "staging", "production"];
 
@@ -35,6 +36,7 @@ export interface SecurityConfigInput {
   appEnvironment: string | undefined;
   secureCoreMode: string | undefined;
   securityAdapterMode: string | undefined;
+  androidEnforcementEngine?: string | undefined;
   /** Presence of the native modules. Pass `undefined` to skip the availability check (build-time preflight). */
   nativeSecureCoreAvailable?: boolean;
   nativeSecurityAdapterAvailable?: boolean;
@@ -46,6 +48,7 @@ export interface ValidatedSecurityConfig {
   appEnvironment: AppEnvironment;
   secureCoreMode: SecurityMode;
   securityAdapterMode: SecurityMode;
+  androidEnforcementEngine: AndroidEnforcementEngine;
 }
 
 function parseEnv(value: string | undefined): AppEnvironment {
@@ -63,6 +66,16 @@ export function validateSecurityConfig(input: SecurityConfigInput): ValidatedSec
   const appEnvironment = parseEnv(input.appEnvironment);
   const secureCoreMode = parseMode("EXPO_PUBLIC_SECURECORE_MODE", input.secureCoreMode);
   const securityAdapterMode = parseMode("EXPO_PUBLIC_SECURITY_MODE", input.securityAdapterMode);
+  const androidEnforcementEngine = input.androidEnforcementEngine ?? "legacy";
+  if (androidEnforcementEngine !== "legacy" && androidEnforcementEngine !== "guarddog_acceptance") {
+    throw new SecurityConfigurationError(`EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE="${androidEnforcementEngine}" is invalid.`);
+  }
+  if (appEnvironment === "production" && androidEnforcementEngine !== "legacy") {
+    throw new SecurityConfigurationError("The GuardDog Stage 1D candidate is test-only and cannot be selected in production.");
+  }
+  if (androidEnforcementEngine === "guarddog_acceptance" && securityAdapterMode !== "native") {
+    throw new SecurityConfigurationError("The GuardDog Stage 1D candidate requires EXPO_PUBLIC_SECURITY_MODE=native.");
+  }
 
   const dependents = input.nativeSecureCoreDependentFeatures ?? NATIVE_SECURECORE_DEPENDENT_FEATURES;
   if (appEnvironment === "production" && securityAdapterMode !== "native") {
@@ -77,5 +90,5 @@ export function validateSecurityConfig(input: SecurityConfigInput): ValidatedSec
   if (securityAdapterMode === "native" && input.nativeSecurityAdapterAvailable === false) {
     throw new SecurityConfigurationError("Apollo native security module is required but unavailable. Use an EAS build that includes modules/apollo-security.");
   }
-  return { appEnvironment, secureCoreMode, securityAdapterMode };
+  return { appEnvironment, secureCoreMode, securityAdapterMode, androidEnforcementEngine };
 }

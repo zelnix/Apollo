@@ -6,7 +6,17 @@
     "autolinking": {
       "searchPaths": [
         "./packages"
-      ]
+      ],
+      "android": {
+        "exclude": [
+          "guarddog-expo-module"
+        ]
+      },
+      "ios": {
+        "exclude": [
+          "guarddog-expo-module"
+        ]
+      }
     }
   },
   "scripts": {

@@ -1,10 +1,40 @@
 # Stage 1D — implementation / acceptance plan review
 
+## Acceptance-candidate implementation addendum — iteration 66
+
+The user authorized independent Stage 1D **test-candidate** implementation while keeping production
+certification separate. This addendum supersedes historical “NOT STARTED” wording for candidate work
+only; it does not approve production cutover.
+
+- **D1 candidate implemented:** `ApolloGuardDogCandidateRuntime` is the single candidate owner over
+  frozen core/VPN. `guarddog-expo-module` is excluded from autolinking. Production remains legacy.
+- **D2 candidate implemented:** additive `packet_filter` method and `guarddog_acceptance` selector;
+  security policy rejects the candidate in production or without native mode.
+- **D3 acceptance provisioning implemented, fixture unavailable:** pinned frozen test public key is
+  retained. No reachable git object contains the referenced signed bundle or matching private test
+  signer. The isolated provisioner checks key match, real clock, ownership, exact dedicated DNS/IP
+  and HTTPS baseline without writing private material. T1–T5 production certification stays OPEN.
+- **D4 candidate implemented:** Apollo wraps the existing reporter, captures original packet fields,
+  invokes the engine, and only correlates a genuine engine event with matching evidence ID and IP.
+  No port/time/protocol defaults are inferred. Native inbox → local Patrol → durable delivery → native
+  acknowledgement ordering is implemented.
+- **D5/D6 candidate implemented:** no manual unsigned block controls; lifecycle derives from frozen
+  `VpnStateRepository`/service state. One consolidated native acceptance function records APK
+  provenance, baseline, ACTIVE, fresh SYN-drop, evidence, stop/recovery and after-stop success.
+- **Packaging:** Expo Android prebuild passes; generated project includes `guarddog-core` and
+  `guarddog-vpn`, with no frozen Expo bridge. TypeScript/static/P0 suites pass and frozen SHA is 91/91.
+  Managed Android build is not executable inside this workspace (`eas` policy block; no local
+  Java/Android toolchain), so no APK/build ID or physical Pixel run is claimed.
+
+Detailed implementation/provisioning evidence: `STAGE1D_ACCEPTANCE_CANDIDATE.md` and
+`test_reports/iteration_66.json`.
+
 **Review date:** 2026-09-20. **Application source baseline inspected:**
 `0154e186fb4601495c3f4468f9a89ae0d18ce1f1`.
 
 **Stage 1C.1 launch: PASS (user-confirmed fresh APK on Pixel 10).**
-**Stage 1D implementation: NOT STARTED. This document is not implementation approval.**
+**Historical review state:** implementation was NOT STARTED when this plan was written. The test-only
+candidate described above is now implemented; production certification/cutover remains unapproved.
 
 **Revision 2:** incorporates the user's six named P0 findings, six recommended design
 resolutions, and the original `reviews/Apollo_Review_2026-09-20.md` (reviewed commit

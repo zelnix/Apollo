@@ -102,17 +102,17 @@ async def revalidate_stored_patrol(doc: dict) -> dict:
 
 
 async def ensure_evidence_receipt_indexes() -> None:
-    """Migrate historical duplicate event bindings before enforcing both unique identities."""
-    duplicate_groups = db.evidence_receipts.aggregate([
+    """Enforce both identities without ever deleting production receipts during startup."""
+    duplicate_groups = await db.evidence_receipts.aggregate([
         {'$group': {'_id': {'device_id': '$device_id', 'event_id': '$event_id'}, 'ids': {'$push': '$_id'}, 'count': {'$sum': 1}}},
         {'$match': {'count': {'$gt': 1}}},
-    ])
-    async for group in duplicate_groups:
-        key = group['_id']
-        receipts = await db.evidence_receipts.find({'_id': {'$in': group['ids']}}).sort('_id', 1).to_list(100)
-        event = await db.patrol_events.find_one(key, {'enforcement_evidence.evidence_id': 1})
-        preferred = ((event or {}).get('enforcement_evidence') or {}).get('evidence_id')
-        keep = next((row for row in receipts if row.get('evidence_id') == preferred), receipts[0])
-        await db.evidence_receipts.delete_many({'_id': {'$in': [row['_id'] for row in receipts if row['_id'] != keep['_id']]}})
+        {'$limit': 1},
+    ]).to_list(1)
+    if duplicate_groups:
+        group = duplicate_groups[0]
+        raise RuntimeError(
+            f"Duplicate evidence event binding requires explicit reviewed migration: {group['_id']} "
+            f"({group['count']} receipts); startup preserved every record"
+        )
     await db.evidence_receipts.create_index([('device_id', 1), ('evidence_id', 1)], unique=True)
     await db.evidence_receipts.create_index([('device_id', 1), ('event_id', 1)], unique=True)

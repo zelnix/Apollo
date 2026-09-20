@@ -37,3 +37,8 @@ test("7. missing or invalid security mode / environment → rejected", () => {
   rejected({ appEnvironment: "development", secureCoreMode: "mock", securityAdapterMode: "fake" }, "EXPO_PUBLIC_SECURITY_MODE");
 });
 test("staging + mock → allowed (explicit choice, incl. physical devices)", () => ok({ appEnvironment: "staging", secureCoreMode: "mock", securityAdapterMode: "mock" }));
+test("8. GuardDog acceptance candidate requires native and is prohibited in production", () => {
+  ok({ appEnvironment: "development", secureCoreMode: "mock", securityAdapterMode: "native", androidEnforcementEngine: "guarddog_acceptance" });
+  rejected({ appEnvironment: "development", secureCoreMode: "mock", securityAdapterMode: "mock", androidEnforcementEngine: "guarddog_acceptance" }, "requires EXPO_PUBLIC_SECURITY_MODE=native");
+  rejected({ appEnvironment: "production", secureCoreMode: "mock", securityAdapterMode: "native", androidEnforcementEngine: "guarddog_acceptance" }, "test-only");
+});

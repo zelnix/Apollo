@@ -4,17 +4,20 @@
 // nothing mock can be selected downstream.
 import { recordSecurityBootError } from "@/src/security/securityBoot";
 import { validateSecurityConfig, type AppEnvironment, type ValidatedSecurityConfig } from "@/src/security/securityConfig";
+import Constants from "expo-constants";
 
 function resolve(): ValidatedSecurityConfig {
   try {
+    const candidate = Constants.expoConfig?.extra?.guardDogCandidate as { engine?: string } | undefined;
     return validateSecurityConfig({
       appEnvironment: process.env.EXPO_PUBLIC_APP_ENV,
       secureCoreMode: process.env.EXPO_PUBLIC_SECURECORE_MODE,
       securityAdapterMode: process.env.EXPO_PUBLIC_SECURITY_MODE,
+      androidEnforcementEngine: candidate?.engine ?? process.env.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE,
     });
   } catch (error) {
     recordSecurityBootError(error);
-    return { appEnvironment: "production", secureCoreMode: "native", securityAdapterMode: "native" };
+    return { appEnvironment: "production", secureCoreMode: "native", securityAdapterMode: "native", androidEnforcementEngine: "legacy" };
   }
 }
 

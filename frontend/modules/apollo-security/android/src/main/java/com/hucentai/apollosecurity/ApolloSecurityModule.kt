@@ -31,6 +31,7 @@ class ApolloSecurityModule : Module() {
   private var protectionSince: String?
     get() = prefs.getString(KEY_SINCE, null)
     set(v) { prefs.edit().putString(KEY_SINCE, v).apply() }
+  private lateinit var guardDogCandidate: ApolloGuardDogCandidateRuntime
 
   companion object {
     private const val PREFS = "apollo_siteguard"
@@ -43,6 +44,27 @@ class ApolloSecurityModule : Module() {
 
   override fun definition() = ModuleDefinition {
     Name("ApolloSecurity")
+
+    OnCreate { guardDogCandidate = ApolloGuardDogCandidateRuntime(ctx) }
+
+    // Stage 1D acceptance candidate. These functions are deliberately separate from production
+    // Site Guard; JS can only select them in the explicit non-production candidate profile.
+    Function("getGuardDogCandidateCapabilities") { guardDogCandidate.capabilities() }
+    Function("getGuardDogCandidateStatus") { guardDogCandidate.status() }
+    Function("configureGuardDogCandidate") { json: String ->
+      ctx.startService(Intent(ctx, ApolloDnsVpnService::class.java).setAction(ApolloDnsVpnService.ACTION_STOP))
+      guardDogCandidate.configure(json)
+    }
+    Function("acceptGuardDogCandidateBundle") { json: String -> guardDogCandidate.acceptBundle(json) }
+    AsyncFunction("startGuardDogCandidate") { guardDogCandidate.start() }
+    AsyncFunction("stopGuardDogCandidate") { guardDogCandidate.stop() }
+    Function("analyzeGuardDogCandidateUrl") { url: String -> guardDogCandidate.analyzeUrl(url) }
+    Function("getGuardDogCandidateEvidence") { guardDogCandidate.evidence() }
+    Function("acknowledgeGuardDogCandidateEvidence") { ids: String -> guardDogCandidate.acknowledgeEvidence(ids) }
+    Function("getGuardDogCandidateRecovery") { guardDogCandidate.recovery() }
+    AsyncFunction("probeGuardDogCandidateFresh") { timeoutMs: Int -> guardDogCandidate.freshProbe(timeoutMs) }
+    AsyncFunction("getGuardDogCandidateProvenance") { guardDogCandidate.provenance() }
+    AsyncFunction("runGuardDogCandidateAcceptance") { timeoutMs: Int -> guardDogCandidate.runConsolidatedAcceptance(timeoutMs) }
 
     AsyncFunction("getCapabilities") {
       val vpnGranted = VpnService.prepare(ctx) == null

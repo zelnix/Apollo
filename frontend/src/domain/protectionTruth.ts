@@ -7,6 +7,7 @@ export interface MasterCopy { title: string; line: string; requested: boolean; o
 const METHOD_LABEL: Record<ProtectionStatus["enforcementMethod"], string> = {
   dns_filter: "DNS protection active on this device",
   content_blocker: "Safari content blocker active",
+  packet_filter: "Selective packet filter active on this device",
   simulated: "Demo only — nothing enforced",
   none: "No enforcement on this device",
 };

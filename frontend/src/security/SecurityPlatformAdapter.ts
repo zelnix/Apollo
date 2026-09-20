@@ -20,7 +20,7 @@ export interface ProtectionPermission {
 }
 
 /** How Site Guard actually enforces on this device. "simulated" only ever comes from the mock adapter. */
-export type EnforcementMethod = "dns_filter" | "content_blocker" | "none" | "simulated";
+export type EnforcementMethod = "dns_filter" | "content_blocker" | "packet_filter" | "none" | "simulated";
 
 /**
  * Truth-of-state contract. Three distinct facts, never collapsed into one Boolean:
@@ -110,4 +110,6 @@ export interface SecurityPlatformAdapter {
   getPlatformCapabilityProfile(): Promise<PlatformCapabilityProfile>;
   /** Recent enforcement evidence records. Mock MUST always return []. */
   getEnforcementEvidence(): Promise<EnforcementEvidence[]>;
+  /** Optional two-phase acknowledgement for adapters with a durable native evidence inbox. */
+  acknowledgeEnforcementEvidence?(evidenceIds: string[]): Promise<void>;
 }

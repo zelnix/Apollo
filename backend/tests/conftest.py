@@ -7,9 +7,13 @@
 # Authentication itself is tested WITHOUT this shim in test_device_auth.py (it uses requests.post directly with
 # explicit headers and its own ids, which are never rewritten because they are real server ids).
 import fcntl, json, os, re, tempfile
-import pytest, requests
+from pathlib import Path
 
-BASE_URL = (os.environ.get("EXPO_BACKEND_URL") or os.environ.get("EXPO_PUBLIC_BACKEND_URL") or "https://threat-patrol-1.preview.emergentagent.com").rstrip("/")
+import pytest, requests
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parents[2] / "frontend" / ".env")
+BASE_URL = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/")
 # One map per pytest run (all xdist workers of a run share PYTEST_XDIST_TESTRUNUID).
 _SHARED_MAP = os.path.join(tempfile.gettempdir(), f"apollo_shim_ids_{os.environ.get('PYTEST_XDIST_TESTRUNUID') or os.getppid()}.json")
 ID_KEYS = ("device_id", "user_id", "protected_device_id", "guardian_device_id")

@@ -1,0 +1,183 @@
+sha256sum: ./guarddog-android-sdk/build.gradle.kts: No such file or directory
+./guarddog-android-sdk/build.gradle.kts: FAILED open or read
+sha256sum: ./guarddog-android-sdk/gradle.properties: No such file or directory
+./guarddog-android-sdk/gradle.properties: FAILED open or read
+sha256sum: ./guarddog-android-sdk/gradle/wrapper/gradle-wrapper.jar: No such file or directory
+./guarddog-android-sdk/gradle/wrapper/gradle-wrapper.jar: FAILED open or read
+sha256sum: ./guarddog-android-sdk/gradle/wrapper/gradle-wrapper.properties: No such file or directory
+./guarddog-android-sdk/gradle/wrapper/gradle-wrapper.properties: FAILED open or read
+sha256sum: ./guarddog-android-sdk/gradlew: No such file or directory
+./guarddog-android-sdk/gradlew: FAILED open or read
+sha256sum: ./guarddog-android-sdk/gradlew.bat: No such file or directory
+./guarddog-android-sdk/gradlew.bat: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-core/build.gradle.kts: No such file or directory
+./guarddog-android-sdk/guarddog-core/build.gradle.kts: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/GuardDogSDKEngine.kt: No such file or directory
+./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/GuardDogSDKEngine.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/clock/Clock.kt: No such file or directory
+./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/clock/Clock.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/events/BlockedThreatEvidence.kt: No such file or directory
+./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/events/BlockedThreatEvidence.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/events/SecurityEvent.kt: No such file or directory
+./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/events/SecurityEvent.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/net/HostCanonicalizer.kt: No such file or directory
+./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/net/HostCanonicalizer.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/net/UrlSanitizer.kt: No such file or directory
+./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/net/UrlSanitizer.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/protection/ProtectionEnforcementReporter.kt: No such file or directory
+./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/protection/ProtectionEnforcementReporter.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/protection/ProtectionRuntimeStateProvider.kt: No such file or directory
+./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/protection/ProtectionRuntimeStateProvider.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/rules/BundleVersionStore.kt: No such file or directory
+./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/rules/BundleVersionStore.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/rules/RuleBundle.kt: No such file or directory
+./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/rules/RuleBundle.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/rules/RuleBundleVerifier.kt: No such file or directory
+./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/rules/RuleBundleVerifier.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/rules/TrustedKeyRegistry.kt: No such file or directory
+./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/rules/TrustedKeyRegistry.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-core/src/test/java/com/guarddog/core/GuardDogSDKEngineTest.kt: No such file or directory
+./guarddog-android-sdk/guarddog-core/src/test/java/com/guarddog/core/GuardDogSDKEngineTest.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-core/src/test/java/com/guarddog/core/net/HostCanonicalizerParityTest.kt: No such file or directory
+./guarddog-android-sdk/guarddog-core/src/test/java/com/guarddog/core/net/HostCanonicalizerParityTest.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-core/src/test/java/com/guarddog/core/net/UrlSanitizerParityTest.kt: No such file or directory
+./guarddog-android-sdk/guarddog-core/src/test/java/com/guarddog/core/net/UrlSanitizerParityTest.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-core/src/test/java/com/guarddog/core/rules/BundleVersionStoreTest.kt: No such file or directory
+./guarddog-android-sdk/guarddog-core/src/test/java/com/guarddog/core/rules/BundleVersionStoreTest.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-core/src/test/java/com/guarddog/core/rules/RuleBundleVerifierTest.kt: No such file or directory
+./guarddog-android-sdk/guarddog-core/src/test/java/com/guarddog/core/rules/RuleBundleVerifierTest.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/build.gradle.kts: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/build.gradle.kts: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/BlockedFlowDeduper.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/BlockedFlowDeduper.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/ControlledEndpointResolver.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/ControlledEndpointResolver.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/DnsGatewayPacketHandler.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/DnsGatewayPacketHandler.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/DnsPacketClassifier.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/DnsPacketClassifier.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/DnsQueryParser.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/DnsQueryParser.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/DnsResponseSynthesizer.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/DnsResponseSynthesizer.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/FreshConnectionProbe.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/FreshConnectionProbe.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/GuardDogVpnService.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/GuardDogVpnService.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/Ipv4PacketParser.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/Ipv4PacketParser.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/OffThreadBindingCheck.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/OffThreadBindingCheck.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/PacketDropReporter.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/PacketDropReporter.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/ProtectedUdpDnsForwarder.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/ProtectedUdpDnsForwarder.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/ProtectionNotificationFactory.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/ProtectionNotificationFactory.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/RecoveryStatus.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/RecoveryStatus.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/SelectiveRouteInstaller.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/SelectiveRouteInstaller.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/SinkholeBindingStore.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/SinkholeBindingStore.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/SocketProtector.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/SocketProtector.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/TunPacketReader.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/TunPacketReader.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/TunSession.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/TunSession.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/UpstreamDnsForwarder.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/UpstreamDnsForwarder.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/VpnConfig.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/VpnConfig.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/VpnLifecycleState.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/VpnLifecycleState.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/VpnStateRepository.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/VpnStateRepository.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/WebsiteGateAddressing.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/WebsiteGateAddressing.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/WebsiteGateOverrideStore.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/WebsiteGateOverrideStore.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/WebsiteGatePacketAuthorizer.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/WebsiteGatePacketAuthorizer.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/BlockedFlowDeduperTest.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/BlockedFlowDeduperTest.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/DnsGatewayPacketHandlerTest.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/DnsGatewayPacketHandlerTest.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/DnsPacketClassifierTest.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/DnsPacketClassifierTest.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/DnsQueryParserTest.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/DnsQueryParserTest.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/DnsResponseSynthesizerTest.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/DnsResponseSynthesizerTest.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/FreshConnectionProbeTest.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/FreshConnectionProbeTest.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/Ipv4PacketParserTest.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/Ipv4PacketParserTest.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/OffThreadBindingCheckTest.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/OffThreadBindingCheckTest.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/PacketDropReporterTest.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/PacketDropReporterTest.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/ProtectedUdpDnsForwarderTest.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/ProtectedUdpDnsForwarderTest.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/SelectiveRouteInstallerTest.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/SelectiveRouteInstallerTest.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/SinkholeBindingStoreTest.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/SinkholeBindingStoreTest.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/TunPacketReaderDnsGatewayTest.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/TunPacketReaderDnsGatewayTest.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/TunPacketReaderTest.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/TunPacketReaderTest.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/TunSessionRecoveryTest.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/TunSessionRecoveryTest.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/VpnLifecycleStateTest.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/VpnLifecycleStateTest.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/WebsiteGateAddressingTest.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/WebsiteGateAddressingTest.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/WebsiteGateOverrideStoreTest.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/WebsiteGateOverrideStoreTest.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/WebsiteGatePacketAuthorizerTest.kt: No such file or directory
+./guarddog-android-sdk/guarddog-vpn/src/test/java/com/guarddog/vpn/WebsiteGatePacketAuthorizerTest.kt: FAILED open or read
+sha256sum: ./guarddog-android-sdk/settings.gradle.kts: No such file or directory
+./guarddog-android-sdk/settings.gradle.kts: FAILED open or read
+sha256sum: ./guarddog-expo-module/android/build.gradle: No such file or directory
+./guarddog-expo-module/android/build.gradle: FAILED open or read
+sha256sum: ./guarddog-expo-module/android/src/main/java/com/guarddog/expo/GuardDogExpoAdapters.kt: No such file or directory
+./guarddog-expo-module/android/src/main/java/com/guarddog/expo/GuardDogExpoAdapters.kt: FAILED open or read
+sha256sum: ./guarddog-expo-module/android/src/main/java/com/guarddog/expo/GuardDogExpoModule.kt: No such file or directory
+./guarddog-expo-module/android/src/main/java/com/guarddog/expo/GuardDogExpoModule.kt: FAILED open or read
+sha256sum: ./guarddog-expo-module/android/src/main/java/com/guarddog/expo/dto/BridgeCapabilityRecord.kt: No such file or directory
+./guarddog-expo-module/android/src/main/java/com/guarddog/expo/dto/BridgeCapabilityRecord.kt: FAILED open or read
+sha256sum: ./guarddog-expo-module/android/src/main/java/com/guarddog/expo/dto/BridgeRuleBundleRecord.kt: No such file or directory
+./guarddog-expo-module/android/src/main/java/com/guarddog/expo/dto/BridgeRuleBundleRecord.kt: FAILED open or read
+sha256sum: ./guarddog-expo-module/android/src/main/java/com/guarddog/expo/dto/BridgeSecurityEventRecord.kt: No such file or directory
+./guarddog-expo-module/android/src/main/java/com/guarddog/expo/dto/BridgeSecurityEventRecord.kt: FAILED open or read
+sha256sum: ./guarddog-expo-module/android/src/main/java/com/guarddog/expo/dto/BridgeWebsiteGateRecord.kt: No such file or directory
+./guarddog-expo-module/android/src/main/java/com/guarddog/expo/dto/BridgeWebsiteGateRecord.kt: FAILED open or read
+sha256sum: ./guarddog-expo-module/android/src/test/java/com/guarddog/expo/GuardDogExpoModuleDefinitionTest.kt: No such file or directory
+./guarddog-expo-module/android/src/test/java/com/guarddog/expo/GuardDogExpoModuleDefinitionTest.kt: FAILED open or read
+sha256sum: ./guarddog-expo-module/app.plugin.js: No such file or directory
+./guarddog-expo-module/app.plugin.js: FAILED open or read
+sha256sum: ./guarddog-expo-module/app.plugin.test.js: No such file or directory
+./guarddog-expo-module/app.plugin.test.js: FAILED open or read
+sha256sum: ./guarddog-expo-module/expo-module.config.json: No such file or directory
+./guarddog-expo-module/expo-module.config.json: FAILED open or read
+sha256sum: ./guarddog-expo-module/ios/GuardDogExpoModule.podspec: No such file or directory
+./guarddog-expo-module/ios/GuardDogExpoModule.podspec: FAILED open or read
+sha256sum: ./guarddog-expo-module/ios/GuardDogExpoModule/Adapters/ExpoBridgeAdapters.swift: No such file or directory
+./guarddog-expo-module/ios/GuardDogExpoModule/Adapters/ExpoBridgeAdapters.swift: FAILED open or read
+sha256sum: ./guarddog-expo-module/ios/GuardDogExpoModule/DTO/BridgeCapabilityDTO.swift: No such file or directory
+./guarddog-expo-module/ios/GuardDogExpoModule/DTO/BridgeCapabilityDTO.swift: FAILED open or read
+sha256sum: ./guarddog-expo-module/ios/GuardDogExpoModule/DTO/BridgeSecurityEventDTO.swift: No such file or directory
+./guarddog-expo-module/ios/GuardDogExpoModule/DTO/BridgeSecurityEventDTO.swift: FAILED open or read
+sha256sum: ./guarddog-expo-module/ios/GuardDogExpoModule/GuardDogExpoModule.swift: No such file or directory
+./guarddog-expo-module/ios/GuardDogExpoModule/GuardDogExpoModule.swift: FAILED open or read
+sha256sum: ./guarddog-expo-module/ios/GuardDogExpoModule/Tests/BridgeDTOAdapterTests.swift: No such file or directory
+./guarddog-expo-module/ios/GuardDogExpoModule/Tests/BridgeDTOAdapterTests.swift: FAILED open or read
+sha256sum: ./guarddog-expo-module/package.json: No such file or directory
+./guarddog-expo-module/package.json: FAILED open or read
+sha256sum: ./guarddog-expo-module/src/index.ts: No such file or directory
+./guarddog-expo-module/src/index.ts: FAILED open or read
+sha256sum: WARNING: 91 listed files could not be read

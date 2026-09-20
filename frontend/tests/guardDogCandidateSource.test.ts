@@ -1,0 +1,41 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { test } from "node:test";
+
+const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
+
+test("candidate has one Apollo-owned runtime and excludes the frozen Expo owner", () => {
+  const pkg = JSON.parse(read("../package.json"));
+  assert.deepEqual(pkg.expo.autolinking.android.exclude, ["guarddog-expo-module"]);
+  const native = read("../modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/ApolloGuardDogCandidateRuntime.kt");
+  assert.match(native, /GuardDogVpnRuntime\.reporter = reporter/);
+  assert.match(native, /GuardDogSDKEngine/);
+  assert.doesNotMatch(native, /GuardDogExpoModule/);
+});
+
+test("native correlation uses the original reporter evidence and never substitutes event time or port", () => {
+  const native = read("../modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/ApolloGuardDogCandidateRuntime.kt");
+  assert.match(native, /original\.destinationPort/);
+  assert.match(native, /original\.ipProtocol/);
+  assert.match(native, /original\.observedAtEpochMillis/);
+  assert.match(native, /original\.enforcementEvidenceId/);
+  assert.doesNotMatch(native, /destinationPort\s*\?:\s*443/);
+  assert.doesNotMatch(native, /event\.occurredAt/);
+});
+
+test("production defaults stay legacy while the candidate profile is test-only", () => {
+  const eas = JSON.parse(read("../eas.json"));
+  assert.equal(eas.build.production.env.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE, "legacy");
+  assert.equal(eas.build["guarddog-acceptance"].env.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE, "guarddog_acceptance");
+  const config = read("../src/security/securityConfig.ts");
+  assert.match(config, /appEnvironment === "production" && androidEnforcementEngine !== "legacy"/);
+});
+
+test("fixture provisioner never writes the private key and verifies endpoint/key ownership inputs", () => {
+  const script = read("../scripts/provision_guarddog_acceptance.py");
+  assert.match(script, /GUARDDOG_ACCEPTANCE_PRIVATE_KEY_PKCS8_B64/);
+  assert.match(script, /GUARDDOG_ENDPOINT_OWNERSHIP_FILE/);
+  assert.match(script, /resolved != \[ipv4\]/);
+  assert.match(script, /public_raw/);
+  assert.doesNotMatch(script, /write_(text|bytes)\(private/);
+});

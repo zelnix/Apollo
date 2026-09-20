@@ -1,0 +1,83 @@
+{
+  "summary": "Executed Stage 1D-focused validation across frontend, backend, and Expo/Android generation checks. TypeScript, targeted node suites, and backend P0 suites passed; native build/physical run remain blocked by environment policy/tooling limits.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "test harness config (/app/backend/tests/conftest.py)",
+        "issue": "Fallback hardcoded backend URL exists in BASE_URL expression, which conflicts with strict env-only URL policy when env vars are missing."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "GuardDog acceptance action buttons",
+        "issue": "In legacy/default preview mode, buttons are visually active and Playwright `is_disabled()` reports false even while presses are no-op; disabled affordance/accessibility state is unclear.",
+        "testID": "guarddog-run-button / guarddog-permission-button",
+        "priority": "minor"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Web preview native-enforcement verification",
+        "issue": "Current preview path is MOCKED/default legacy and cannot certify native packet enforcement or physical device acceptance.",
+        "affected_testIDs": [
+          "guarddog-acceptance-screen",
+          "guarddog-acceptance-mode"
+        ]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/frontend/tests/guardDogCandidateSource.test.ts",
+    "/app/frontend/tests/securityConfig.test.ts",
+    "/app/frontend/tests/enforcementEvidenceSync.test.ts",
+    "/app/frontend/tests/p0Delivery.test.ts",
+    "/app/frontend/tests/p0TruthPrivacyFile.test.ts",
+    "/app/backend/tests/test_p0_patrol_persistence.py",
+    "/app/backend/tests/test_p0_policy_regression.py",
+    "/app/backend/tests/test_p0_mapper_e2e_fixture.py",
+    "/app/backend/tests/test_p0_outbound_unit.py",
+    "/app/backend/tests/test_p0_evidence_receipt_indexes.py",
+    "/app/backend/tests/test_enforcement_evidence_gate.py",
+    "/app/test_reports/pytest/pytest_iter66_stage1d_backend.xml",
+    "/app/test_reports/frontend_load_iter66.jpeg",
+    "/app/test_reports/guarddog_acceptance_click_iter66.jpeg",
+    "/app/test_reports/expo_config_json_iter66.json",
+    "/app/test_reports/expo_config_public_iter66.json",
+    "/app/test_reports/sha_manifest_check_iter66.txt"
+  ],
+  "action_items": [
+    "If strict policy is required, remove hardcoded BASE_URL fallback from backend test shim and fail fast on missing env vars.",
+    "For acceptance UX clarity, render explicit disabled style/accessibility state when candidate is not enabled.",
+    "For Stage 1D production certification evidence, run managed Android build + Pixel 10 one-run acceptance outside this workspace (EAS blocked here; local Java/Android SDK unavailable).",
+    "If 91-file SHA attestation is mandatory in this workspace, mount/restore manifest-referenced root paths (`./guarddog-android-sdk`, `./guarddog-expo-module`) or adjust verification pathing procedure."
+  ],
+  "critical_code_review_comments": [
+    "Candidate runtime wiring is present as requested: single GuardDogSDKEngine owner, reporter wrapper installed into GuardDogVpnRuntime, and correlation keyed by enforcement evidence ID + destination IP.",
+    "Correlation implementation preserves original reporter fields (`ipProtocol`, `destinationPort` including null, `sourcePort`, `observedAtEpochMillis`, evidence ID) and does not substitute `event.occurredAt` or default ports.",
+    "Generated Android project includes frozen guarddog-core/vpn modules and showed no `guarddog-expo-module` linkage matches after prebuild.",
+    "Kotlin static review found no obvious syntax/type mismatches in reviewed Stage 1D files; compile confirmation is blocked by missing Java toolchain in this environment."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_66.json",
+    "/app/test_reports/pytest/pytest_iter66_stage1d_backend.xml",
+    "/app/test_reports/frontend_load_iter66.jpeg",
+    "/app/test_reports/guarddog_acceptance_click_iter66.jpeg",
+    "/app/test_reports/expo_config_json_iter66.json",
+    "/app/test_reports/expo_config_public_iter66.json",
+    "/app/test_reports/sha_manifest_check_iter66.txt"
+  ],
+  "success_rate": {
+    "backend": "100% (50/50)",
+    "frontend": "100% (40/40 targeted node tests + 2/2 preview checks)"
+  },
+  "seed_data_creation": "Backend suites used isolated test device registrations through existing API flows via shim; no manual seed fixture committed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Validated requested Stage 1D checks without altering frozen GuardDog packages. `npx tsc --noEmit` passed; targeted candidate/P0 node suites passed; backend P0+evidence-gate suites passed; Expo prebuild succeeded and android settings include guarddog-core/vpn only. EAS is blocked and Gradle compile cannot run due missing JAVA_HOME. Web preview remains MOCKED/default legacy and is not native enforcement proof.",
+  "rca_of_issue": "Manifest verification failure is environmental/path-based: `sha256sum -c /app/docs/APOLLO_STAGE1B_SHA256_MANIFEST.txt` references 91 files under root-level `./guarddog-android-sdk` and `./guarddog-expo-module`, but this workspace stores staged sources under `/app/frontend/packages/...`, so all listed files fail with 'No such file or directory' rather than digest mismatch."
+}

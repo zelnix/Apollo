@@ -287,6 +287,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       await persistEvents([ev, ...eventsRef.current.filter(x => x.event_id !== ev.event_id)]);
       await syncEventRef.current?.(ev); seen.add(e.evidenceId);
     }
+    const retainedSeen = [...seen].slice(-2048);
+    await storage.setItem(K.seenEvidence, JSON.stringify(retainedSeen));
+    await securityAdapter.acknowledgeEnforcementEvidence?.(retainedSeen);
   }, [showToast, persistEvents]);
   const lastConnectionKey = useRef<string | null>(null);
   const deviceIdRef = useRef<string | null>(null);

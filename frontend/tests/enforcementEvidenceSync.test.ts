@@ -63,3 +63,17 @@ test("4. a manual 'Block' tap's rule-activation evidence (ApolloSecurityModule.b
   assert.equal(mapped.result, "unverified");
   assert.equal(mapped.enforced_action, "none");
 });
+
+test("5. GuardDog packet provenance keeps original destination and correlation without inventing identity", () => {
+  const candidate: EnforcementEvidence = {
+    ...sample, evidenceId: "native-evidence-7", deviceId: null, mechanism: "packet_filter", protocol: "tcp",
+    destination: { ip: "198.51.100.7", domain: "controlled.example", port: 443 }, correlationId: "engine-event-7",
+    ruleSource: "signed_guarddog_bundle", sourceMetadata: { ipProtocolNumber: 6, sourcePort: 53001, packetLength: 60 },
+  };
+  const mapped = toPatrolEnforcementEvidence(candidate);
+  assert.equal(mapped.destination_ip, "198.51.100.7");
+  assert.equal(mapped.destination_port, 443);
+  assert.equal(mapped.protocol, "tcp");
+  assert.equal(mapped.correlation_id, "engine-event-7");
+  assert.equal(mapped.device_id, null);
+});

@@ -22,6 +22,19 @@ export interface ApolloSecurityNativeModule {
   // NativeAdapterBase fails closed via NativeModuleUnavailable exactly like every other call.
   getPlatformCapabilityProfile(): Promise<string>;
   getEnforcementEvidence(): Promise<string>;
+  getGuardDogCandidateCapabilities(): Promise<string>;
+  getGuardDogCandidateStatus(): Promise<string>;
+  configureGuardDogCandidate(configJson: string): Promise<string>;
+  acceptGuardDogCandidateBundle(bundleJson: string): Promise<string>;
+  startGuardDogCandidate(): Promise<string>;
+  stopGuardDogCandidate(): Promise<string>;
+  analyzeGuardDogCandidateUrl(url: string): Promise<string>;
+  getGuardDogCandidateEvidence(): Promise<string>;
+  acknowledgeGuardDogCandidateEvidence(idsJson: string): Promise<string>;
+  getGuardDogCandidateRecovery(): Promise<string>;
+  probeGuardDogCandidateFresh(timeoutMs: number): Promise<string>;
+  getGuardDogCandidateProvenance(): Promise<string>;
+  runGuardDogCandidateAcceptance(timeoutMs: number): Promise<string>;
   // Gate 2 — Text & Messaging (SDK contract). Each returns a JSON string; see src/security/messagingSdk.ts.
   getMessagingCapabilities(): Promise<string>;
   analyseMessageMetadata(metadataJson: string): Promise<string>;

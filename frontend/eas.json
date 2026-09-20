@@ -1,0 +1,31 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "guarddog-acceptance": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "channel": "guarddog-stage1d-acceptance",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "staging",
+        "EXPO_PUBLIC_SECURITY_MODE": "native",
+        "EXPO_PUBLIC_SECURECORE_MODE": "mock",
+        "EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE": "guarddog_acceptance"
+      }
+    },
+    "production": {
+      "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "production",
+        "EXPO_PUBLIC_SECURITY_MODE": "native",
+        "EXPO_PUBLIC_SECURECORE_MODE": "mock",
+        "EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE": "legacy"
+      }
+    }
+  }
+}

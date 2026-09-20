@@ -106,7 +106,7 @@ backend:
   - task: "P0-01/03/04/05 hardened pinned outbound transport, packet-only evidence, local-first processing and evidence receipts"
     implemented: true
     working: "NA"
-    needs_retesting: true
+    needs_retesting: false
     priority: "high"
     status_history:
       - agent: "main"
@@ -773,3 +773,47 @@ test_plan:
 agent_communication:
   - agent: "testing"
     message: "Iteration 65 P0 PASS. Main-agent manifest run from frontend/packages confirms 91/91; tester's missing-path note came from a different working directory, not a digest mismatch."
+
+## Iteration 66 — Stage 1D test-only acceptance candidate
+frontend:
+  - task: "Apollo-owned GuardDog candidate runtime, adapter, packaging and consolidated acceptance"
+    implemented: true
+    working: "source/prebuild verified; native build/device not run"
+    file: "frontend/modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/ApolloGuardDogCandidateRuntime.kt, frontend/src/security/guarddog/, frontend/app/guarddog-acceptance.tsx"
+    needs_retesting: false
+    priority: "high"
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Single Apollo owner wraps frozen reporter, preserves original packet fields, correlates genuine event, excludes Expo bridge, keeps candidate non-production, and prepares one-run Pixel harness. TS/frontend 58/58, backend 50/50, prebuild PASS, SHA 91/91."
+      - agent: "testing"
+        working: true
+        comment: "Independent source/config/prebuild/frontend/backend checks pass. Native Gradle/EAS compile and physical run unavailable in workspace. Two minor findings (test URL fallback and disabled affordance) were fixed and self-tested."
+      - agent: "main"
+        working: true
+        comment: "Removed hardcoded backend test URL fallback; disabled acceptance controls now expose accessibility state and visible opacity. Lint, TS, 14/14 focused tests and 4/4 live Mongo tests pass."
+backend:
+  - task: "Stage 1D candidate compatibility with P0 truth/persistence"
+    implemented: true
+    working: true
+    file: "backend packet evidence and patrol persistence gates"
+    needs_retesting: false
+    priority: "high"
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "Selected live backend P0/evidence gate 50/50."
+test_plan:
+  current_focus:
+    - "Managed candidate APK compile and single Pixel 10 physical run"
+  stuck_tasks:
+    - "No private test signer matching pinned gd-m1-test-ed25519-001 public key"
+    - "No owned dedicated globally-routed single-IP HTTPS controlled endpoint"
+    - "Workspace blocks eas and has no Java/Android local build toolchain"
+  test_all: false
+  test_priority: "physical_acceptance_next"
+agent_communication:
+  - agent: "deployment"
+    message: "Actual startup data-deletion risk found and fixed: duplicate receipt bindings now fail closed without deletion; 15/15 targeted backend tests pass."
+  - agent: "troubleshoot"
+    message: "The remaining --tunnel warning is a false positive: platform-managed EXPO_PACKAGER_PROXY_URL is externally healthy, /etc supervisor is read-only, and adding a second tunnel would conflict. It is not an Android build blocker."
