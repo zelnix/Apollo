@@ -14,7 +14,7 @@ import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { PRIVACY_FLOWS, LOCAL_ONLY_CONTENT } from '@/src/domain/privacyInventory';
 
-export const DISCLOSURE_VERSION = "P0-local-first-v1";
+export const DISCLOSURE_VERSION = "purpose-limited-v2";
 
 const LEAVES_DEVICE = PRIVACY_FLOWS;
 const NEVER_LEAVES = LOCAL_ONLY_CONTENT;
@@ -55,7 +55,7 @@ export default function PrivacyDisclosure() {
         {setupDone ? <Pressable testID="disclosure-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable> : null}
       </View>
       <ScrollView contentContainerStyle={[s.content, { paddingBottom: spacing.xl }]} testID="disclosure-scroll">
-        <Body testID="disclosure-intro">Apollo is a brand of Harmony Wellness Group. Security checks are local-first. The processing inventory below explains limited online checks and optional communication features. This engineering disclosure is not a legal compliance certification.</Body>
+        <Body testID="disclosure-intro">Apollo is a brand of Harmony Wellness Group. Local detection is combined with purpose-limited online investigation only when you submit content or separately enable an optional connection. The inventory below explains what leaves your device, why and for how long. This engineering disclosure is not a legal compliance certification.</Body>
 
         <View>
           <SectionTitle>What leaves your device, and when</SectionTitle>
@@ -71,7 +71,7 @@ export default function PrivacyDisclosure() {
         </View>
 
         <View>
-          <SectionTitle>What stays local in security checks</SectionTitle>
+          <SectionTitle>What Apollo does not retain from assessments</SectionTitle>
           <Card testID="disclosure-never" style={{ gap: spacing.sm }}>
             {NEVER_LEAVES.map((line) => <Body key={line}>• {line}</Body>)}
             <Pill tone="resting" label="Enforced in code: an allow-list blocks anything else" />
@@ -81,7 +81,7 @@ export default function PrivacyDisclosure() {
         <View>
           <SectionTitle>Where data goes and how long it stays</SectionTitle>
           <Card style={{ gap: spacing.sm }}>
-            <Body testID="disclosure-retention">Retention and recipients are listed per flow above. Google, OpenAI, managed storage and messaging services may process data outside Australia. Expiry of a cached result is not deletion. Soft-deleted Patrol data and prior family deliveries may remain stored.</Body>
+            <Body testID="disclosure-retention">Assessment request copies close immediately after success, failure, timeout or cancellation and never later than 15 minutes. Provider-side retention follows each configured API policy. Google, OpenAI, managed storage and messaging services may process data outside Australia. Expiry of a cached reputation result is not deletion. Soft-deleted Patrol data and prior family deliveries may remain stored.</Body>
           </Card>
         </View>
 
@@ -90,6 +90,7 @@ export default function PrivacyDisclosure() {
           <Card style={{ gap: spacing.sm }}>
             <Body>• Turn protection off at any time in Guard.</Body>
             <Body>• Revoke any trusted link and clear all history in Settings.</Body>
+            <Body>• Disconnect a mailbox or disable notification access to stop future monitoring.</Body>
             <Body>• Deleting the app does not erase server records or information already delivered to family.</Body>
           </Card>
         </View>

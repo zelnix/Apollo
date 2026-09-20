@@ -1,84 +1,118 @@
 {
-  "theme": "Swiss & High-Contrast (Tactical Dark Mode)",
+  "project_name": "Apollo V1 - Higgins Integration",
+  "theme": "Light Sentinel (High-Contrast, Authoritative, Technical)",
   "typography": {
-    "heading_font": "Cabinet Grotesk, sans-serif",
-    "body_font": "IBM Plex Sans, sans-serif",
-    "mono_font": "IBM Plex Mono, monospace",
-    "rules": [
-      "H1 (Hero): text-4xl sm:text-5xl tracking-tighter font-black",
-      "H2: text-2xl sm:text-3xl tracking-tight font-bold",
-      "Overlines: uppercase text-xs tracking-[0.2em]",
-      "Never use Inter for headings."
-    ]
+    "strategy": "The 'Swiss Brutalist' Mobile Variant. Radical weight contrast. Technical but highly readable.",
+    "primary_font": "IBM Plex Sans (or system equivalent geometric sans like San Francisco/Roboto with adjusted tracking)",
+    "scale": {
+      "h1": "32px, bold, tracking-tight (Mobile Hero/Result Status)",
+      "h2": "24px, semi-bold, tracking-tight (Section Headers)",
+      "h3": "20px, medium (Card Titles)",
+      "body_lg": "18px, regular, leading-relaxed (Higgins AI Explanation)",
+      "body": "16px, regular, leading-normal (General content)",
+      "caption": "13px, medium, tracking-wide, uppercase (Overlines, Privacy disclosures)"
+    }
   },
   "colors": {
-    "background": "#0A0A0A",
-    "surface": "#141414",
-    "border": "rgba(255,255,255,0.1)",
-    "text_primary": "#FFFFFF",
-    "text_secondary": "#A1A1AA",
-    "accents": {
-      "block": "#FF3B30",
-      "warning": "#FFCC00",
-      "safe": "#34C759",
-      "action": "#007AFF"
+    "archetype": "Archetype 4: Swiss & High-Contrast (Authority, Clarity, Truth)",
+    "background": {
+      "primary": "#FFFFFF",
+      "secondary": "#F3F4F6",
+      "tertiary": "#E5E7EB",
+      "modal_overlay": "rgba(0,0,0,0.6)"
+    },
+    "text": {
+      "primary": "#0A0A0A",
+      "secondary": "#4B5563",
+      "inverse": "#FFFFFF",
+      "ai_highlight": "#1D4ED8"
+    },
+    "status": {
+      "scam_critical": "#DC2626",
+      "ambiguous_warning": "#D97706",
+      "genuine_safe": "#059669",
+      "info_action": "#2563EB"
+    },
+    "borders": {
+      "light": "#E5E7EB",
+      "focus": "#2563EB",
+      "threat": "#FCA5A5"
     }
   },
   "visual_enhancers": {
-    "glassmorphism": "Used for sticky header. bg-black/60 backdrop-blur-xl border-b border-white/10.",
-    "borders": "1px solid strokes (border-white/10). No soft shadows, use sharp boundaries.",
-    "textures": "Subtle noise overlay on the background to avoid digital flatness."
+    "surfaces": "Tactile, sharp inner contrasts. We are avoiding standard soft shadows to maintain the 'Light Sentinel' technical edge.",
+    "borders": "1px solid borders on most cards. Use 2px left-border highlights to denote threat levels (Red/Yellow/Green).",
+    "radii": {
+      "small": "4px (Badges, tags)",
+      "medium": "8px (Inner cards, inputs)",
+      "large": "12px (Modals, main assessment cards)"
+    },
+    "shadows": {
+      "floating_action": "0px 4px 12px rgba(0, 0, 0, 0.1)",
+      "bottom_sheet": "0px -4px 16px rgba(0, 0, 0, 0.08)"
+    }
   },
-  "component_name": {
-    "accordion": "Use Shadcn Accordion for 'More details'. Full-width, tap-friendly headers (min 48px), downward chevron on right.",
-    "button": "Shadcn Button. Sharp corners (rounded-none or rounded-sm). Action buttons in Volt Blue or Pure White.",
-    "badge": "Shadcn Badge for 'Corroborated', 'Suspicious', 'Unresolved' tags.",
-    "alert": "Shadcn Alert for the privacy disclosure. Muted, text-sm.",
-    "separator": "Shadcn Separator for dividing technical detail sections."
-  },
-  "grids": {
-    "bento_grid": "Mode B (High Density). Tight gap (gap-4 or gap-6). Use for displaying extracted claims (Organizations, Sender, Links, etc.).",
-    "cardless": "Avoid standard generic cards. Use 1px border grids that collapse (border-collapse) to create a technical, data-heavy look."
+  "components": {
+    "message.js": {
+      "role": "Intake Hub (Text, Link, Screenshot)",
+      "layout": "Segmented control or tabbed input at the top (Text vs Link vs Photo). Large, tap-friendly input area.",
+      "ui_details": [
+        "Text/Link Input: Large minimum height (minHeight: 120), 1px solid border (#E5E7EB), focuses to #2563EB.",
+        "Screenshot Intake: Dashed border dropzone/tap-zone, icon-heavy, immediate preview thumbnail upon selection.",
+        "Action Button: Full width, bottom-anchored, highly visible 'Investigate' button."
+      ]
+    },
+    "check.js": {
+      "role": "Investigation & Permissions Coordinator",
+      "layout": "Centered progress indicator with staggered loading steps, or a bottom sheet for permission requests.",
+      "ui_details": [
+        "Progress Steps: Vertical list showing current state (e.g., 'Extracting text...', 'Checking reputation...', 'Higgins AI analyzing...').",
+        "Permissions (Guided): Bottom sheet modal. Icon + Title + 'Why we need this' explanation. Primary CTA to 'Open Settings'.",
+        "Return-State Recheck: Visual spinner on app re-entry confirming permission status."
+      ]
+    },
+    "MessageAssessmentResult.js": {
+      "role": "The Final Verdict & Higgins Explanation",
+      "layout": "Bento-style scrollable view. Strict visual hierarchy prioritizing the threat level and the single next action.",
+      "ui_details": [
+        "Threat Header: Massive Typography (Scam / Genuine / Ambiguous). Background tint (10% opacity of status color) with stark icon.",
+        "Higgins AI Card: The core element. Distinct visual treatment (e.g., subtle blue left-border, custom AI icon). Must show: 'Findings', 'Uncertainty level', and 'Exact Response'.",
+        "Single Action Button: Sticky at the bottom of the screen. High contrast. (e.g., 'Block Sender', 'Delete Message').",
+        "Privacy Disclosure: Small, muted text at the very bottom with a Lock icon: 'Purpose-limited processing. Data deleted in 15 mins.'"
+      ]
+    }
   },
   "layouts": {
-    "spacing": "Generous spacing. p-6 or p-8 inside containers. py-20 for footers/bottom sections.",
-    "mobile_first": "Start with grid-cols-1. Ensure all elements are legible on small screens. Tap targets minimum 44px.",
-    "alignment": "Optical alignment over geometrical alignment. Content must flow logically from top to bottom."
+    "spacing_system": "Generous spacing. React Native Flexbox gaps: 4, 8, 16, 24, 32, 48. Padding inside cards must be 16px or 24px minimum.",
+    "screen_structure": "Use SafeAreaView. Header is minimal. Main content is ScrollView. Action buttons are strictly anchored to the bottom using position 'absolute' or Flex 'space-between'."
   },
   "motion": {
-    "accordion": "Subtle ease-out (200-300ms) for 'More details' expansion. Scroll into view on mobile.",
-    "hover": "Explicit text color changes on hover (e.g., hover:bg-white/10 hover:text-white).",
-    "micro_interactions": "Active states on buttons scale down slightly (-translate-y-px or scale-95)."
-  },
-  "accessibility": {
-    "contrast": "APCA standard. Ensure text on warning/block colors is readable (e.g., black text on Yellow warning background).",
-    "aria": "aria-expanded for accordions. aria-hidden for decorative icons.",
-    "data_testids": "MANDATORY. Add data-testid to all buttons, accordion triggers, and key result sections (e.g., data-testid='higgins-recommendation', data-testid='more-details-accordion')."
-  },
-  "media": {
-    "image_urls": [
-      {
-        "url": "https://images.unsplash.com/photo-1618060932014-4deda4932554?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzh8MHwxfHNlYXJjaHw0fHxjeWJlciUyMHNlY3VyaXR5JTIwc2hpZWxkJTIwbG9ja3xlbnwwfHx8fDE3ODk4OTI1MDZ8MA&ixlib=rb-4.1.0&q=85",
-        "description": "Red padlock on keyboard. Use as abstract header graphic for 'Block' state or Threat Assessment header.",
-        "category": "Hero Background / Threat Status"
-      },
-      {
-        "url": "https://images.unsplash.com/photo-1633250391894-397930e3f5f2?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzZ8MHwxfHNlYXJjaHwzfHxtb2JpbGUlMjBhcHAlMjBhYnN0cmFjdCUyMGRhdGElMjB0ZWNobm9sb2d5fGVufDB8fHx8MTc4OTg5MjUwNnww&ixlib=rb-4.1.0&q=85",
-        "description": "Mobile phone in front of laptop. Use for 'Screenshot Intake' or upload empty state.",
-        "category": "Upload / Intake Screen"
-      }
+    "philosophy": "Functional and authoritative. No bouncy/playful animations.",
+    "interactions": [
+      "Use LayoutAnimation or Reanimated for expanding/collapsing Higgins' detailed findings.",
+      "Subtle opacity transition (200ms) when threat levels render.",
+      "Spinner/Skeleton loaders must use linear, precise sweeps, not soft pulses."
     ]
   },
+  "accessibility": {
+    "contrast": "All text must meet APCA / WCAG AA standard against background. Higgins AI explanations must use high-contrast dark grey/black.",
+    "screen_reader": "All status icons (threat levels) must have explicit accessibilityLabels.",
+    "testing": "All interactive elements and key text nodes MUST include testID (React Native equivalent of data-testid). E.g., testID='higgins-explanation-text', testID='action-button-block'."
+  },
   "instructions_to_main_agent": [
-    "Focus primarily on app/message.js. Create the result hierarchy exactly as requested.",
-    "LEAD WITH ACTION: The top of the screen MUST show Higgins' clear next step recommendation and whether this is a WARNING or a BLOCK. 'Apollo is biting' is a BLOCK (requires red UI). Warnings use yellow.",
-    "HIGGINS EXPLANATION: Follow the hero with Higgins' clear text: What was found, why it matters, what could not be established.",
-    "EXTRACTION BENTO GRID: Show extracted data (claimed organizations, sender, links) using a technical Mode B grid. Use badges for 'Corroborated', 'Suspicious', 'Unresolved'.",
-    "MORE DETAILS: Put supporting sources, raw technical data, and relevant account/breach checks inside a Shadcn Accordion labeled 'More details'.",
-    "PRIVACY NOTICE: Add a bottom disclosure stating: 'Purpose-limited processing: Submitted content is assessed and immediately discarded...'.",
-    "SCREENSHOT INTAKE: Create a streamlined upload area for screenshot OCR submission.",
-    "Do NOT redesign unrelated screens. Only implement the message assessment and intake in app/message.js.",
-    "Never use purely transparent backgrounds in headers or dropdowns that content scrolls under. Use glassmorphism or solid backgrounds."
+    "This is a React Native / Expo environment. Do NOT use web-only paradigms (no DOM, no Tailwind standard classes unless NativeWind is explicitly configured; default to StyleSheet).",
+    "Focus STRICTLY on improving message.js, check.js, and MessageAssessmentResult.js.",
+    "Higgins consumer experience is the P0 priority here. Ensure the AI explanation clearly delineates 'Findings', 'Uncertainty', and 'Action'.",
+    "Preserve the existing Apollo V1 GuardDog logic, just wire the UI to consume the new deep threat investigation endpoints and Gemini responses.",
+    "Do NOT mock the 15-minute deletion text; ensure the UI clearly states this privacy limitation.",
+    "For testability, map the requested 'data-testid' rule to React Native's 'testID' prop."
   ],
-  "UNIVERSAL GUIDELINES FOR MAIN AGENT": "You tend to converge toward generic, 'on distribution' outputs. In frontend design, this creates what users call the 'AI slop' aesthetic. Avoid this: make creative, distinctive frontends that surprise and delight.\n- Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients\n- Don't make generic centered layouts, simplistic gradients, and uniform styling.\n- Create depth through layered design elements with z-index hierarchy\n- Use glass-morphism effects with backdrop filters (12-24px blur)\n- You MUST NOT apply universal transition. Eg: `transition: all`. This results in breaking transforms. Always add transitions for specific interactive elements like button, input excluding transforms\n- You MUST NOT center align the app container, ie do not add `.App { text-align: center; }` in the css file. This disrupts the human natural reading flow of text\n- Always use modern button styles like pill-shaped, or sharp button with interaction animations & color relevant to the app style\n- NEVER: use AI assistant Emoji characters like 🤖🧠💭💡🔮🎯 etc for icons.\n- Every interaction needs micro-animations - hover states, transitions, parallax effects, and entrance animations. Static = dead.\n- Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.\n- Subtle grain textures, noise overlays, custom cursors, selection states, and loading animations: separates good from extraordinary.\n- Main agent relies on these image URLs. Missing categories (especially sponsor logos) = main agent will use placeholder text which is FORBIDDEN\n- Prioritize using pre-existing components from src/components/ui when applicable\n- Create new components that match the style and conventions of existing components when needed\n- Examine existing components to understand the project's component patterns before creating new ones\n- Use `sonner` for toasts. Sonner component are located in `/app/src/components/ui/sonner.js` (or .tsx if applicable, adjust based on actual env).\n- All interactive and key informational elements MUST include a `data-testid` attribute to facilitate robust automated testing."
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "You tend to converge toward generic, 'on distribution' outputs. Avoid this: make creative, distinctive mobile frontends that surprise and delight.",
+    "Create depth through layered design elements with z-index hierarchy (using shadows/elevation in RN).",
+    "Never use purely transparent backgrounds for overlays where text sits on top.",
+    "Ensure optical alignment over geometrical alignment (e.g., adjust padding for buttons with icons to look perfectly centered).",
+    "Always use modern button styles (pill-shaped, or sharp rectangular with 8px radius) with interaction feedback (TouchableHighlight/TouchableOpacity).",
+    "NEVER use generic AI emoji (🤖🧠💭) as primary UI icons. Use standard vector icons (e.g., from Lucide-react-native or Expo vector icons)."
+  ]
 }

@@ -87,6 +87,8 @@ class TestPatrolEventsBackground:
         }
         if background is not None:
             p["background"] = background
+        if evidence:
+            p["occurred_at"] = evidence["observed_at"]
         return p
 
     def _valid_evidence(self, device_id: str):
@@ -104,7 +106,7 @@ class TestPatrolEventsBackground:
         # test_evidence_with_no_device_id_named_is_still_valid_everywhere_else).
         return {
             "evidence_id": f"ev-{uuid.uuid4().hex[:12]}", "event_id": None, "device_id": None, "platform": "android",
-            "os_version": "Android 15", "sdk_version": "1.0.0", "observed_at": datetime.now(timezone.utc).isoformat(),
+            "os_version": None, "sdk_version": None, "observed_at": datetime.now(timezone.utc).isoformat(),
             "mechanism": "dns_filter", "direction": "outbound", "protocol": "dns",
             "destination_ip": None, "destination_domain": "bad.example", "destination_port": 53,
             "app_id": None, "process_name": None, "attribution_confidence": "unavailable",

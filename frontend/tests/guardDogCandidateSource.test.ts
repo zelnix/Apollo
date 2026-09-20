@@ -51,3 +51,12 @@ test("fixture provisioner never writes the private key and verifies endpoint/key
   assert.match(script, /public_raw/);
   assert.doesNotMatch(script, /write_(text|bytes)\(private/);
 });
+
+test("candidate record cannot claim a build or Pixel acceptance before artifacts exist", () => {
+  const record = read("../../docs/STAGE1D_CANDIDATE_RECORD.md");
+  assert.match(record, /Exact build source SHA \| \*\*PENDING/);
+  assert.match(record, /Android build identifier \| \*\*NOT CREATED/);
+  assert.match(record, /APK SHA-256 \| \*\*NOT CREATED/);
+  assert.match(record, /Pixel run ID \| \*\*NOT RUN/);
+  assert.match(record, /observes a packet and intentionally drops it/);
+});

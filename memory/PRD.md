@@ -1,5 +1,36 @@
 # Apollo V1 — PRD & Build Log
 
+## Current delivery — purpose-limited Higgins UX + Stage 1D preparation (iteration 71)
+
+### Problem statement
+Complete Apollo's production-grade Text and Link Guard experience without waiting for the separate Pixel blocking run. A person must be able to submit text, a link or a chosen screenshot and see the submitted content, investigated evidence, Higgins' exact explanation, explicit uncertainty and one clear action. Cloud checks are permitted only for the disclosed purpose, with secret redaction, SSRF-safe requests, no raw Patrol/log storage and request-copy closure immediately and no later than 15 minutes. Stage 1D remains separately gated by a real candidate build and an observed intentional packet drop.
+
+### Architecture
+- **Mobile:** Expo Router + React Native. `message.tsx`, `text-guard.tsx` and `check.tsx` use the shared `MessageAssessmentResult`, guided screenshot-access hook/sheet and the Apollo context.
+- **Backend:** FastAPI routes `/api/message/analyse`, `/api/message/extract` and new `/api/link/investigate` call deterministic checks, bounded reputation/web/caller evidence and Gemini through `services/investigation.py`.
+- **Persistence:** MongoDB stores sanitised Patrol summaries/evidence only. Raw submitted assessment content is request-scoped and excluded from Patrol, logs and analytics.
+- **Native candidate:** `guarddog-acceptance` remains an Android-only staging profile over one Apollo-owned runtime; production remains `legacy`. Imported `frontend/packages/guarddog-*` source is frozen.
+
+### Implemented
+- Text, Link and screenshot results now show submitted content, scam/clear/uncertain hierarchy, findings, visible unresolved questions, Higgins' exact response, one primary action, safe sources and the processing boundary.
+- Chosen screenshots show a preview, run Gemini extraction and automatically continue into the same full investigation. Photo access is explained before prompting; denied settings access is rechecked when the app becomes active.
+- Added dedicated `/api/link/investigate`, client egress allow-list/redaction, safe long-request handling and Patrol-safe supporting references.
+- Replaced obsolete cloud-denial and raw-Patrol expectations with current purpose-limited, secret-redaction, SSRF and truthful-enforcement contracts; repaired legacy Biting fixtures without weakening packet-evidence validation.
+- Live scam, genuine-looking and ambiguous demonstrations are recorded in `docs/HIGGINS_SCENARIO_EVIDENCE.md`; screenshot completion evidence is in `test_reports/iteration_71_screenshot_retest.md`.
+- Stage 1D acceptance profile and frozen source preflight pass. `docs/STAGE1D_CANDIDATE_RECORD.md` preserves the still-missing source/build/APK/Pixel fields instead of claiming acceptance.
+
+### Verification
+- Backend: **306 passed** (`python -m pytest -q`), including purpose-limited account/link contracts, secret redaction, SSRF boundaries, content-aware fallback and Stage 1D evidence rules.
+- Frontend: **332 passed** (`node --test tests/*.test.ts`), TypeScript compile clean, JavaScript/Python lint clean.
+- Browser: scam and genuine-looking Text Guard results rendered; genuine content uses “Assessment only — nothing was blocked.” A real nonblank JPEG completed preview → Gemini extraction → automatic Higgins investigation.
+- Testing report: `/app/test_reports/iteration_71.json`; deterministic screenshot retest: `/app/test_reports/iteration_71_screenshot_retest.md`.
+- Stage 1D: profile/frozen-source/key-permission preflight passes, but controlled acceptance inputs are incomplete and the documented endpoint returns HTTP 404. Android build, APK hash and Pixel acceptance remain not run.
+
+### Priorities
+- **P0:** Keep all purpose-limited privacy, queue/evidence and Truth-of-State regressions green. No investigation may produce Biting.
+- **P1:** Supply/verify the dedicated controlled endpoint and ownership evidence, sign the host-scoped acceptance bundle, record final source SHA, create the candidate APK, record build ID + APK hash, then perform the Pixel run. Physical acceptance remains **NOT RUN**.
+- **P2:** After this delivery, improve scenario presentation/export and add macOS/Windows native enforcement adapters without changing the Android truth gate.
+
 ## P0 remediation stage — VERIFIED CLOSED (iteration 64)
 - User approved completion of the full P0 stage. P0-01 through P0-06 are implemented and individually recorded as **VERIFIED CLOSED** in `docs/STAGE1D_P0_REMEDIATION_BACKLOG.md`; original review identities and archived source remain intact.
 - Final punch list closed: durable evidence queue rejects acknowledged stale-version replay over newer pending state; `public_get` performs bounded per-hop HEAD preflight with explicit safe GET fallback; changed evidence identity binding returns 409 before fresh truth validation while new invalid Biting stays 422; `__apollo_test_setup=1` provides a non-persistent development-web-only test entry and is unavailable in production/native.

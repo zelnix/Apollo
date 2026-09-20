@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { PatrolItem } from "@/src/components/PatrolItem";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
+import { MessageAssessmentResult } from "@/src/components/MessageAssessmentResult";
 import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { STATE_LABEL, STATE_MEANING, STATE_NAME } from "@/src/domain/types";
@@ -92,7 +93,7 @@ export default function TextGuard() {
         <Pressable testID="textguard-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="textguard-scroll">
-        <Body>Apollo watches out for scam texts — dodgy links, verification-code requests, gift-card demands and more — the same way it checks any pasted message.</Body>
+        <Body testID="textguard-intro">Apollo investigates pasted texts and chosen screenshots using local scam detection, link and public evidence checks, and Higgins&apos;s Gemini explanation. Raw content is not retained by Apollo.</Body>
 
         <Card style={{ gap: spacing.sm }} testID="textguard-auto-card">
           <View style={s.rowTop}>
@@ -129,7 +130,8 @@ export default function TextGuard() {
             <TextInput testID="textguard-sender" style={s.input} value={sender} onChangeText={setSender} placeholder="Sender (number, name or handle) — optional" placeholderTextColor={colors.muted} autoCorrect={false} />
             <TextInput testID="textguard-text" style={[s.input, s.multi]} value={text} onChangeText={setText} placeholder="Paste the text message here" placeholderTextColor={colors.muted} multiline autoCorrect={false} />
             <Button testID="textguard-check" label={busy ? "Sniffing…" : "Check message"} onPress={() => void run()} disabled={!text.trim() || busy} />
-            <Text style={s.small} testID="textguard-privacy">Message text stays on your phone. Manual checks send only website origins; automatic checks are entirely local.</Text>
+            <Button testID="textguard-check-screenshot" variant="secondary" label="Investigate a message screenshot" onPress={() => router.push({ pathname: "/message", params: { openScreenshot: "1", source: "text-guard" } })} />
+            <Text style={s.small} testID="textguard-privacy">Submitting content authorises one purpose-limited investigation. Request copies close immediately and never later than 15 minutes. Ongoing notification checks require the separate opt-in above.</Text>
           </Card>
         </View>
 
@@ -142,7 +144,14 @@ export default function TextGuard() {
 
         {result && a ? (
           <>
-            <Card testID="textguard-result" style={{ borderColor: toneColor(colors, tone), gap: spacing.sm }}>
+            {result.assessment ? <MessageAssessmentResult assessment={result.assessment} state={a.state}
+              submittedLabel="Text investigated" submittedTitle={sender || "Sender not supplied"} submittedText={text}
+              onPrimaryAction={() => {
+                const kind = result.assessment!.higgins.action_kind;
+                if (kind === "check_account") router.push("/account");
+                else if (kind === "avoid_and_delete") { setText(""); setSender(""); showToast("Submitted content cleared from this screen.", "neutral"); }
+                else setVerify(true);
+              }} /> : <Card testID="textguard-result" style={{ borderColor: toneColor(colors, tone), gap: spacing.sm }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" }}>
                 <Pill tone={tone} label={STATE_NAME[a.state]} testID="textguard-state" />
                 <Pill tone="neutral" label={a.scenarioTitle} />
@@ -154,7 +163,7 @@ export default function TextGuard() {
               <SectionTitle>Recommendation</SectionTitle>
               <Text style={s.why} testID="textguard-recommendation">{result.explanation?.recommendation ?? a.recommendation}</Text>
               {a.signalLabels.length ? <View style={s.chips}>{a.signalLabels.map((l) => <Pill key={l} tone="unknown" label={l} />)}</View> : null}
-            </Card>
+            </Card>}
 
             {a.signals.urls.length ? (
               <View>

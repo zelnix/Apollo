@@ -70,6 +70,22 @@ class MessageAnalyseOut(BaseModel):
     assessment: InvestigationResult
 
 
+class LinkInvestigateIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)
+    url: str = Field(min_length=1, max_length=2048)
+    local_state: ApolloState
+    local_findings: list[str] = Field(default_factory=list, max_length=12)
+    claimed_brand: Optional[str] = Field(default=None, max_length=60)
+
+    @field_validator("url")
+    @classmethod
+    def redact_link_secrets(cls, value: str) -> str:
+        try:
+            return purpose_limited_url(value)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
+
+
 GATE2_EXPLAIN_PROMPT = HIGGINS_VOICE + """ You are the calm plain-language security guide for everyday Australians. You will be given a suspicious
 message plus the findings of an on-device rule engine. Do NOT change the verdict. Write for a worried, non-technical person.
 Return ONLY JSON: {"summary": "<one sentence, max 22 words>", "why": ["<3 short bullets, each max 16 words>"], "recommendation": "<one or two sentences, max 40 words>"}.
@@ -146,6 +162,20 @@ async def message_analyse(body: MessageAnalyseIn):
                    "recommendation": assessment.higgins.next_action}
     model_used = bool(assessment.processing.get("model_used"))
     return MessageAnalyseOut(urls=results, explanation=explanation, gemini_used=model_used, ai_used=model_used, assessment=assessment)
+
+
+@router.post("/link/investigate", response_model=InvestigationResult)
+async def link_investigate(body: LinkInvestigateIn):
+    """One disclosed, request-scoped link investigation. Raw URL context is never persisted here."""
+    del body.device_id
+    normalized, host = sanitize_url(body.url)
+    intel = await assess_indicator("url", normalized, True)
+    url_context = [{"url": normalized, "host": host, "verdict": intel.verdict,
+                    "coverage": intel.coverage, "threat_types": intel.threat_types,
+                    "redirect_chain": intel.redirect_chain, "final_url": intel.final_url}]
+    return await investigate_message(sender="", text=f"Submitted link: {normalized}", urls=[normalized],
+        claimed_brand=body.claimed_brand, local_state=body.local_state, url_context=url_context,
+        local_findings=body.local_findings)
 
 
 @router.post("/message/extract")

@@ -110,7 +110,7 @@ class TestPatrolEventsGate2:
             "status": "active",
             "headline": "Minimal summary",
             "what_happened": "Minimal summary",
-            "why": ["local-only"],
+            "why": ["Purpose-limited assessment summary"],
             "what_to_do": "Review on device",
             "adapter_label": "message-check",
             "occurred_at": "2026-01-15T10:00:00+00:00",

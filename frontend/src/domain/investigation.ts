@@ -49,6 +49,7 @@ export interface InvestigationResult {
     temporary_copy_policy?: string;
     provider?: string;
     model_used?: boolean;
+    maximum_processing_retention_minutes?: number;
     provider_note: string;
   };
 }

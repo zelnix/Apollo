@@ -1,10 +1,10 @@
 """Apollo V1 backend — application entry point (`uvicorn server:app`).
 
 Privacy posture:
-- Receives only minimal security indicators (a user-submitted link, a host name,
-  or an event summary). Never page content, contacts, messages or device data.
-- Reputation cache stores an HMAC digest of the indicator, never the raw value.
-- All deletes are soft deletes (deleted_at).
+- Explicit checks may use user-submitted text, links, chosen screenshots or mailbox items for one
+  disclosed, purpose-limited assessment. Request-scoped raw copies are not persisted by Apollo.
+- Credentials and secret URL parameters are removed before processing; outbound page fetches are bounded and SSRF-safe.
+- Patrol receives only sanitised summaries/evidence, and reputation caches store HMAC digests rather than raw indicators.
 
 Layout (Hardening Gate step 4 — split of the former monolith, zero behaviour change):
 - core/      config (env), db (Motor + document base), models (shared schemas), auth (device bearer + admin key)

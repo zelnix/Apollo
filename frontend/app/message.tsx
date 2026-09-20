@@ -2,6 +2,7 @@
 // verdict, verify the sender safely, hand links to the link check, and enter recovery if needed.
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
+import { Image as ExpoImage } from "expo-image";
 import ImageIcon from "lucide-react-native/icons/image";
 import X from "lucide-react-native/icons/x";
 import React, { useEffect, useRef, useState } from "react";
@@ -11,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { MessageAssessmentResult } from "@/src/components/MessageAssessmentResult";
+import { ScreenshotPermissionSheet } from "@/src/components/ScreenshotPermissionSheet";
 import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { STATE_LABEL, STATE_MEANING, STATE_NAME } from "@/src/domain/types";
@@ -18,6 +20,7 @@ import { type MessageOutcome, useApollo } from "@/src/store/ApolloContext";
 import { apiUpload } from "@/src/api/client";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { useScreenshotAccess } from "@/src/hooks/useScreenshotAccess";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -35,6 +38,8 @@ const useStyles = makeStyles((c) => ({
   small: { fontFamily: fonts.text, fontSize: 12, color: c.muted },
   step: { flexDirection: "row", gap: spacing.sm },
   stepNum: { fontFamily: fonts.displayBold, fontSize: 15, color: c.brandPrimary, width: 20 },
+  preview: { width: "100%", height: 180, borderRadius: radius.md, backgroundColor: c.surfaceTertiary },
+  progressRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
 }));
 
 export default function CheckMessage() {
@@ -42,7 +47,7 @@ export default function CheckMessage() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ text?: string; sender?: string; source?: string; imageUri?: string }>();
+  const params = useLocalSearchParams<{ text?: string; sender?: string; source?: string; imageUri?: string; openScreenshot?: string }>();
   const { ready, setupDone, deviceId, checkMessage, resolveEvent, showToast } = useApollo();
   const [sender, setSender] = useState(params.sender ? String(params.sender) : "");
   const [text, setText] = useState(params.text ? String(params.text) : "");
@@ -50,8 +55,10 @@ export default function CheckMessage() {
   const [result, setResult] = useState<MessageOutcome | null>(null);
   const [verify, setVerify] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [screenshotUri, setScreenshotUri] = useState<string | null>(params.imageUri ? String(params.imageUri) : null);
   const autoRan = useRef(false);
   const autoImage = useRef(false);
+  const autoPicker = useRef(false);
 
   const run = async (t = text, snd = sender) => {
     if (!t.trim()) return;
@@ -62,7 +69,7 @@ export default function CheckMessage() {
 
   const readScreenshot = async (uri: string, name: string, type: string) => {
     if (!deviceId) throw new Error("Apollo is still preparing this device.");
-    setBusy("reading"); setError(null); setResult(null);
+    setBusy("reading"); setError(null); setResult(null); setScreenshotUri(uri);
     try {
       const extracted = await apiUpload<{ sender: string; text: string; urls: string[] }>("/message/extract", "message_extract",
         { device_id: deviceId }, { uri, name, type });
@@ -71,16 +78,19 @@ export default function CheckMessage() {
       await run(combined, extracted.sender);
     } finally { setBusy("idle"); }
   };
-  const pickScreenshot = async () => {
+  const launchScreenshotPicker = async () => {
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) throw new Error("Allow photo access to choose the screenshot you want Apollo to assess.");
       const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsEditing: false, quality: 0.9 });
       if (picked.canceled) return;
       const asset = picked.assets[0];
       await readScreenshot(asset.uri, asset.fileName ?? "message-screenshot.jpg", asset.mimeType ?? "image/jpeg");
     } catch (e) { setError(e instanceof Error ? e.message : "Could not read that screenshot."); setBusy("idle"); }
   };
+  const photoAccess = useScreenshotAccess(launchScreenshotPicker);
+  useEffect(() => {
+    if (params.openScreenshot !== "1" || !ready || !setupDone || autoPicker.current) return;
+    autoPicker.current = true; void photoAccess.start();
+  }, [params.openScreenshot, ready, setupDone, photoAccess]);
   // Screenshot shared from another app (Share → Apollo): read it as soon as the screen opens.
   useEffect(() => {
     if (!params.imageUri || !deviceId || autoImage.current) return;
@@ -105,21 +115,28 @@ export default function CheckMessage() {
         <Body testID="message-privacy">Submitting this item authorises one purpose-limited assessment of its text, sender, links and chosen screenshot. Apollo does not retain the raw content. Background access remains off unless you enable it separately.</Body>
         <TextInput testID="message-sender" style={s.input} value={sender} onChangeText={setSender} placeholder="Sender (number, name or handle) — optional" placeholderTextColor={colors.muted} autoCorrect={false} />
         <TextInput testID="message-text" style={[s.input, s.multi]} value={text} onChangeText={setText} placeholder="Paste the message here" placeholderTextColor={colors.muted} multiline autoCorrect={false} />
+        {screenshotUri ? <ExpoImage testID="message-screenshot-preview" source={{ uri: screenshotUri }} style={s.preview} contentFit="contain" accessibilityLabel="Screenshot selected for investigation" /> : null}
         <View style={s.actions}>
           <Button testID="message-check" label={busy === "checking" ? "Sniffing…" : "Check message"} onPress={() => void run()} disabled={!text.trim() || busy !== "idle"} style={{ flex: 1 }} />
-          <Button testID="message-screenshot" variant="secondary" label={busy === "reading" ? "Reading…" : "Choose screenshot"} icon={<ImageIcon size={18} color={colors.onSurface} />} onPress={() => void pickScreenshot()} disabled={busy !== "idle"} />
+          <Button testID="message-screenshot" variant="secondary" label={busy === "reading" ? "Reading…" : "Choose screenshot"} icon={<ImageIcon size={18} color={colors.onSurface} />} onPress={() => void photoAccess.start()} disabled={busy !== "idle"} />
         </View>
         <Text style={s.small} testID="message-processing-scope">Apollo combines local detection, Gemini context, caller reputation and bounded webpage checks. Raw content is discarded after the assessment; provider-side retention follows the configured Gemini API policy.</Text>
         {error ? <Card testID="message-error"><Body>{error}</Body></Card> : null}
-        {busy === "checking" ? (
-          <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }} testID="message-sniffing">
-            <ActivityIndicator color={colors.sniffing} /><View style={{ flex: 1 }}><Text style={s.stateLabel}>{STATE_LABEL.sniffing}</Text><Body>{STATE_MEANING.sniffing}</Body></View>
+        {busy !== "idle" ? (
+          <Card style={{ gap: spacing.md }} testID="message-sniffing">
+            <View style={s.progressRow}><ActivityIndicator color={colors.sniffing} /><Text style={s.stateLabel}>{STATE_LABEL.sniffing}</Text></View>
+            <Body testID="message-progress-extract">{busy === "reading" ? "Reading the visible text and links in your chosen screenshot…" : "Reviewing the submitted wording and scam patterns…"}</Body>
+            <Body testID="message-progress-evidence">Checking links, public evidence and available reputation signals…</Body>
+            <Body testID="message-progress-higgins">Higgins is preparing a clear explanation, uncertainty and one next action.</Body>
+            <Body testID="message-progress-truth">{STATE_MEANING.sniffing}</Body>
           </Card>
         ) : null}
 
         {result && a ? (
           <>
-            {result.assessment ? <MessageAssessmentResult assessment={result.assessment} state={a.state} onPrimaryAction={() => {
+            {result.assessment ? <MessageAssessmentResult assessment={result.assessment} state={a.state}
+              submittedLabel={screenshotUri ? "Screenshot text investigated" : "Message investigated"}
+              submittedTitle={sender || "Sender not supplied"} submittedText={text} onPrimaryAction={() => {
               const kind = result.assessment!.higgins.action_kind;
               if (kind === "check_account") router.push("/account");
               else if (kind === "avoid_and_delete") { setText(""); setSender(""); showToast("Submitted content cleared from this screen.", "neutral"); }
@@ -177,6 +194,8 @@ export default function CheckMessage() {
         <Body>Never verify using a number, link or email that only appears in the suspicious message.</Body>
         <Button testID="verify-sender-close" variant="ghost" label="Got it" onPress={() => setVerify(false)} />
       </Sheet>
+      <ScreenshotPermissionSheet prefix="message" visible={!!photoAccess.permission} canAskAgain={photoAccess.permission?.canAskAgain ?? true}
+        checking={photoAccess.checking} onContinue={() => void photoAccess.continueAccess()} onClose={photoAccess.close} />
 
     </View>
   );

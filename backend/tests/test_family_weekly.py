@@ -20,6 +20,8 @@ def _pair(api, protected, guardian):
 def _event(api, device, state, status, days_ago=1, category="link", evidence=None):
     eid = uuid.uuid4().hex[:16]
     ts = (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat()
+    if evidence:
+        evidence = {**evidence, "observed_at": ts}
     r = api.post(f"{BASE_URL}/api/patrol/events", json={"event_id": eid, "device_id": device, "category": category, "state": state, "status": status, "headline": "x", "what_happened": "x", "why": [], "what_to_do": "x", "adapter_label": "mock", "occurred_at": ts, "enforcement_evidence": evidence})
     assert r.status_code in (200, 201), r.text
     return eid
@@ -36,7 +38,7 @@ def _valid_evidence():
     # inside enforcement_evidence, so naming it here would create a false mismatch.
     return {
         "evidence_id": f"ev-{uuid.uuid4().hex[:12]}", "event_id": None, "device_id": None, "platform": "android",
-        "os_version": "Android 15", "sdk_version": "1.0.0", "observed_at": datetime.now(timezone.utc).isoformat(),
+        "os_version": None, "sdk_version": None, "observed_at": datetime.now(timezone.utc).isoformat(),
         "mechanism": "dns_filter", "direction": "outbound", "protocol": "dns",
         "destination_ip": None, "destination_domain": "evil.example", "destination_port": 53,
         "app_id": None, "process_name": None, "attribution_confidence": "unavailable",

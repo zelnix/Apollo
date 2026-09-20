@@ -228,17 +228,31 @@ SYSTEM += " A clean reputation result means only that no current listing was fou
 
 def _fallback(entities: InvestigationEntities, local_state: str, sources: list[InvestigationSource]) -> tuple[list[InvestigationFinding], HigginsAssessment]:
     suspicious = bool(entities.requested_actions or entities.transaction_claims or any(s.status == "contradicts" for s in sources))
-    findings = [InvestigationFinding(status="suspicious" if suspicious else "unresolved", title="The request needs independent verification",
-        detail="The submitted content asks you to act, but Apollo could not establish that the sender is authorised to make that request.",
-        source_ids=[s.source_id for s in sources if s.status in ("contradicts", "inconclusive")][:4])]
-    next_action = "Do not use the supplied link or contact details. Open the organisation's official app or website yourself."
-    response = ("Apollo found a request that should be checked independently. The content may name a real organisation, but that does not establish who sent it. "
-                f"{next_action}")
-    return findings, HigginsAssessment(headline="Verify this outside the message", next_action=next_action, exact_response=response,
+    source_ids = [s.source_id for s in sources if s.status in ("contradicts", "inconclusive")][:4]
+    if not suspicious:
+        next_action = "Compare this with an appointment or conversation you already expect. If unsure, contact the sender through a channel you already use."
+        findings = [InvestigationFinding(status="unresolved", title="Sender identity remains unverified",
+            detail="Apollo found no strong scam request in the submitted wording, but a display name alone cannot authenticate who sent it.", source_ids=source_ids)]
+        return findings, HigginsAssessment(headline="No strong scam request found", next_action=next_action,
+            exact_response=f"No strong scam request was found in the submitted wording. {next_action}",
+            what_was_found=["No strong scam request was identified in the available wording."],
+            why_it_matters=["A plausible message can still be misdirected or sent by someone using an unverified display name."],
+            could_not_establish=["Apollo could not authenticate the person or organisation behind the message."],
+            action_label="Compare with your records", action_kind="review")
+    findings = [InvestigationFinding(status="suspicious", title="The request needs independent verification",
+        detail="The submitted content asks you to act, but Apollo could not establish that the sender is authorised to make that request.", source_ids=source_ids)]
+    if entities.transaction_claims and not entities.links:
+        next_action = "Do not send money yet. Contact the person through a phone number or account you already know."
+        action_label, action_kind = "Call known number", "call_known_number"
+    else:
+        next_action = "Do not use the supplied link or contact details. Open the organisation's official app or website yourself."
+        action_label, action_kind = "Verify in the official app", "verify_officially"
+    return findings, HigginsAssessment(headline="Verify this outside the message", next_action=next_action,
+        exact_response=f"Apollo found a request that should be checked independently. {next_action}",
         what_was_found=["A submitted message was checked with local patterns, link intelligence and available public evidence."],
-        why_it_matters=["Impersonation often combines a real organisation's name with unrelated contact details."],
+        why_it_matters=["Impersonation often combines a plausible story with pressure to act before verifying the sender."],
         could_not_establish=["Apollo could not authenticate the person or organisation behind the message."],
-        action_label="Verify in the official app", action_kind="verify_officially")
+        action_label=action_label, action_kind=action_kind)
 
 
 def _complete_higgins_response(higgins: HigginsAssessment) -> HigginsAssessment:
@@ -253,15 +267,20 @@ def _complete_higgins_response(higgins: HigginsAssessment) -> HigginsAssessment:
 
 
 async def investigate_message(*, sender: str, text: str, urls: list[str], claimed_brand: Optional[str],
-                              local_state: str, url_context: list[dict[str, Any]]) -> InvestigationResult:
+                              local_state: str, url_context: list[dict[str, Any]],
+                              local_findings: Optional[list[str]] = None) -> InvestigationResult:
     entities = deterministic_entities(sender, text, urls, claimed_brand)
     pages, phones = await asyncio.gather(
         asyncio.gather(*[_page_context(url) for url in urls[:3]]),
         _phone_context(entities.callback_details),
     )
-    sources: list[InvestigationSource] = [InvestigationSource(source_id="local-1", label="Apollo on-device message analysis", url=None,
+    bounded_local_findings = _unique([str(value)[:160] for value in (local_findings or [])], 8)
+    local_detail = ("; ".join(bounded_local_findings)[:240] if bounded_local_findings else
+        ("No strong local scam pattern was found." if local_state == "resting" else
+         f"Local content patterns produced a {local_state} warning; this is not proof of sender identity or a packet block."))
+    sources: list[InvestigationSource] = [InvestigationSource(source_id="local-1", label="Apollo on-device content analysis", url=None,
         status="supports" if local_state == "resting" else "inconclusive",
-        detail="No strong local scam pattern was found." if local_state == "resting" else f"Local message patterns produced a {local_state} warning; this is not proof of sender identity or a packet block.")]
+        detail=local_detail)]
     technical: list[str] = []
     for index, item in enumerate(url_context):
         sid = f"link-{index + 1}"
@@ -297,6 +316,7 @@ async def investigate_message(*, sender: str, text: str, urls: list[str], claime
     source_payload = [source.model_dump() for source in sources]
     prompt = (f"User-submitted sender: {sender[:80] or '(not supplied)'}\nUser-submitted content:\n{text[:4000]}\n\n"
               f"Deterministic extraction:\n{entities.model_dump_json()}\nLocal warning state: {local_state}\n"
+              f"Local deterministic findings:\n{json.dumps(bounded_local_findings)}\n"
               f"Available source records (the only permitted sources):\n{json.dumps(source_payload)}\n"
               f"Isolated page observations:\n{json.dumps(pages)}\nPhone observations:\n{json.dumps(phones)}")
     model = await _stream_json(SYSTEM, prompt)
@@ -352,6 +372,6 @@ async def investigate_message(*, sender: str, text: str, urls: list[str], claime
     return InvestigationResult(assessment_id=uuid.uuid4().hex, risk=risk, entities=entities, findings=findings, sources=sources,
         higgins=higgins, technical_summary=technical, processing={"raw_retained_by_apollo": False, "temporary_expiry_minutes": 0,
         "temporary_copy_policy": "Request/task-memory only; request-scoped copies close immediately on success, failure, timeout or cancellation.",
-        "provider": "Gemini", "model_used": model_used,
+        "provider": "Gemini", "model_used": model_used, "maximum_processing_retention_minutes": 15,
         "provider_note": "Apollo does not persist submitted content. Gemini-side retention follows the configured API policy.",
         "completed_at": datetime.now(timezone.utc).isoformat()})

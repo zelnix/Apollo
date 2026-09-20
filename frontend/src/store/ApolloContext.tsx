@@ -49,7 +49,7 @@ const K = { setup: "apollo.setup.done", events: "apollo.patrol.events", trust: "
 
 export interface TrustEntry { trust_id: string; device_id: string; indicator_type: "url" | "domain"; indicator_digest: string; indicator_host: string; event_id: string | null; created_at: string; local_indicator?: string }
 
-export interface CheckOutcome { local: LocalAnalysis; intel: IntelResult | null; intelError: string | null; decision: Decision; event: PatrolEvent | null }
+export interface CheckOutcome { local: LocalAnalysis; intel: IntelResult | null; intelError: string | null; decision: Decision; assessment: InvestigationResult | null; investigationError: string | null; event: PatrolEvent | null }
 export interface MessageUrlResult { url: string; host: string; verdict: "clean" | "malicious" | "unknown"; threat_types: string[]; coverage: string; redirect_chain?: string[]; final_url?: string | null; domain_info?: DomainInfo | null }
 export interface MessageExplanation { summary: string; why: string[]; recommendation: string }
 export interface MessageOutcome { analysis: MessageAnalysis; urls: MessageUrlResult[]; explanation: MessageExplanation | null; assessment: InvestigationResult | null; remoteError: string | null; event: PatrolEvent | null }
@@ -730,7 +730,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const local = analyseUrlLocally(input);
     if (!local.valid || !local.normalizedUrl || !local.host) {
       const decision: Decision = { state: "growling", headline: "That doesn't look like a web link", what_happened: "Apollo could not read this as a web address.", why: ["Only http and https links can be checked."], what_to_do: "Paste the full link, including the website name.", action_required: false, trust_allowed: false, block_offered: false, confidence: "low" };
-      return { local, intel: null, intelError: null, decision, event: null };
+      return { local, intel: null, intelError: null, decision, assessment: null, investigationError: null, event: null };
     }
     const indicator = minimalIndicator(local.normalizedUrl);
     let intel: IntelResult | null = null; let intelError: string | null = null;
@@ -743,18 +743,31 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const digest = intel?.indicator_digest ?? (await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, indicator));
     const trusted = trust.some((t) => t.indicator_digest === digest || t.local_indicator === indicator);
     const decision = decide(local, intel, trusted);
+    let assessment: InvestigationResult | null = null; let investigationError: string | null = null;
+    try {
+      const remote = await apiPost<unknown>("/link/investigate", "link_investigation", {
+        device_id: deviceId ?? undefined, url: local.normalizedUrl, local_state: decision.state,
+        local_findings: decision.why.slice(0, 12), claimed_brand: decision.claimed_brand ?? null,
+      });
+      assessment = isInvestigationResult(remote) ? remote : null;
+      if (!assessment) investigationError = FAILURE_MESSAGE.malformed;
+    } catch (error) { investigationError = error instanceof Error ? error.message : "Higgins could not complete the deeper investigation."; }
     const isEvent = decision.state !== "resting" || trusted;
     const ev: PatrolEvent = {
       event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: intel?.verdict === "malicious" ? "known_threat" : "link",
       state: decision.state, status: decision.state === "resting" ? "resolved" : "active",
-      headline: decision.headline, what_happened: decision.what_happened, why: decision.why, what_to_do: decision.what_to_do,
+      headline: assessment?.higgins.headline ?? decision.headline,
+      what_happened: patrolSafeSummary(assessment?.higgins.what_was_found[0] ?? decision.what_happened),
+      why: assessment?.findings.map((finding) => finding.title).slice(0, 6) ?? decision.why,
+      what_to_do: assessment?.higgins.next_action ?? decision.what_to_do,
       indicator_host: intel?.final_url ? (intel.redirect_chain?.[intel.redirect_chain.length - 1] ?? local.host) : local.host, indicator_digest: digest, local_indicator: indicator, verified_block: false, adapter_label: securityAdapter.label,
       occurred_at: new Date().toISOString(), resolved_at: decision.state === "resting" ? new Date().toISOString() : null, trust_allowed: decision.trust_allowed,
       claimed_brand: decision.claimed_brand ?? null,
+      supporting_references: assessment?.sources.filter((source) => source.url).map((source) => ({ label: source.label, url: source.url! })).slice(0, 6),
     };
     if (isEvent || decision.state === "resting") await upsertEvent(ev); // resting checks are still traceable in Patrol
     void markCheckDone("link");
-    return { local, intel, intelError, decision, event: ev };
+    return { local, intel, intelError, decision, assessment, investigationError, event: ev };
   }, [deviceId, trust, upsertEvent]);
 
   const blockEvent = useCallback(async (event: PatrolEvent) => {

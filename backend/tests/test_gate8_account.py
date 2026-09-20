@@ -1,4 +1,4 @@
-# Gate 8 — local-first account policy tests.
+# Gate 8 — purpose-limited account investigation policy tests.
 import os
 import uuid
 from datetime import datetime, timezone
@@ -46,7 +46,7 @@ def _analyse(api_client, device_id, **over):
 
 
 class TestAccountAnalyse:
-    def test_raw_account_alert_cloud_processing_is_blocked(self, api_client, device_id):
+    def test_explicit_account_alert_gets_purpose_limited_investigation(self, api_client, device_id):
         r = _analyse(
             api_client,
             device_id,
@@ -56,31 +56,41 @@ class TestAccountAnalyse:
             scenario="AC15",
             second_opinion=True,
         )
-        assert r.status_code == 403, r.text
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["assessment"]["higgins"]["next_action"]
+        assert data["assessment"]["processing"]["raw_retained_by_apollo"] is False
+        assert data["assessment"]["processing"]["maximum_processing_retention_minutes"] == 15
+        assert "packet" not in data["assessment"]["higgins"]["exact_response"].lower()
 
-    def test_local_only_minimal_payload_succeeds(self, api_client, device_id):
+    def test_secret_url_parameters_are_redacted_before_processing(self, api_client, device_id):
         r = _analyse(
             api_client,
             device_id,
             sender="",
-            text="[local-only]",
+            text="Google sign-in alert. Review the activity in your official account.",
             urls=["https://myaccount.google.com/login?token=secret"],
             second_opinion=False,
             provider="google",
         )
         assert r.status_code == 200, r.text
         data = r.json()
-        assert data["gemini_used"] is False
         assert isinstance(data["urls"], list)
+        assert "secret" not in data["urls"][0]["url"]
+        assert "?" not in data["urls"][0]["url"]  # reputation response is reduced further to origin only
 
     def test_validation(self, api_client, device_id):
         assert _analyse(api_client, device_id, local_state="not_a_state").status_code == 422
 
 
 class TestBreachCheck:
-    def test_breach_lookup_is_intentionally_disabled(self, api_client, device_id):
+    def test_breach_lookup_has_truthful_purpose_limited_contract(self, api_client, device_id):
         r = api_client.post(f"{BASE_URL}/api/account/breach", json={"device_id": device_id, "identifier": "test@example.com"}, timeout=30)
-        assert r.status_code == 403, r.text
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["status"] in {"not_configured", "clear", "found", "unavailable"}
+        assert data["higgins"]["next_action"]
+        assert "test@example.com" not in data["detail"]
 
 
 class TestPatrolAccountEvents:

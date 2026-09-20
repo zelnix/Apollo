@@ -4,7 +4,7 @@ import { domainOnly, packetFields, evidenceToken } from './packetEvidence.ts';
 // User-submitted content may leave the device only for the disclosed, one-off assessment the user
 // requested. It must not be copied into Patrol payloads, logs, analytics, or background monitoring.
 
-export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "device_register" | "family" | "push_register" | "push_test" | "device_settings" | "message_check" | "message_extract" | "feedback" | "page_extract" | "page_crawl" | "gmail_scan" | "gmail_monitor" | "imap_connect" | "imap_scan" | "imap_monitor" | "app_check" | "account_check" | "breach_check" | "voice" | "call_risk_check";
+export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "device_register" | "family" | "push_register" | "push_test" | "device_settings" | "message_check" | "message_extract" | "link_investigation" | "feedback" | "page_extract" | "page_crawl" | "gmail_scan" | "gmail_monitor" | "imap_connect" | "imap_scan" | "imap_monitor" | "app_check" | "account_check" | "breach_check" | "voice" | "call_risk_check";
 
 const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   family: new Set(["device_id", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id", "scent_id", "headline", "state", "events", "steps", "done", "note", "resolved", "kind", "text", "from_name", "enabled", "preview_only", "guardian_name", "duration_s"]),
@@ -25,6 +25,7 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   // Gate 2: message text + URLs leave the device only when the user taps "Check message" (shown as "Shared with Apollo for analysis").
   message_check: new Set(["device_id", "sender", "text", "urls", "local_state", "scenario", "signals", "claimed_brand", "second_opinion"]),
   message_extract: new Set(["device_id"]),
+  link_investigation: new Set(["device_id", "url", "local_state", "local_findings", "claimed_brand"]),
   page_extract: new Set(["device_id", "url_hint"]),
   // Gate 3 Phase C: only the link itself — Apollo fetches that page server-side and discards the
   // raw content once turned into short signals (see routers/analysis.py page_crawl, services/webcrawl.py).
@@ -73,6 +74,12 @@ export function enforceEgress<T extends Record<string, unknown>>(endpoint: Egres
   if (endpoint === 'message_check' || endpoint === 'account_check') {
     if (typeof out.text !== 'string' || out.text.length > 4000 || typeof out.sender !== 'string' || out.sender.length > 80) throw new EgressViolation(endpoint, 'submission bounds');
     out.urls = Array.isArray(out.urls) ? out.urls.map(u => purposeLimitedUrl(String(u))).slice(0, 10) : [];
+  }
+  if (endpoint === 'link_investigation') {
+    out.url = purposeLimitedUrl(String(out.url ?? ''));
+    if (!Array.isArray(out.local_findings) || out.local_findings.length > 12 || out.local_findings.some((value) => typeof value !== 'string' || value.length > 160)) {
+      throw new EgressViolation(endpoint, 'local_findings');
+    }
   }
   if (endpoint === 'intel_check') {
     if (typeof out.value === 'string') out.value = out.indicator_type === 'domain' ? new URL(minimalIndicator(out.value)).hostname : minimalIndicator(out.value);
@@ -153,7 +160,7 @@ export const PRIVACY_POLICY_SUMMARY = [
   "Submitted screenshots are processed only for the requested assessment and Apollo closes request-scoped upload copies after success or failure.",
   "Background notification access, mailbox connections and ongoing monitoring require separate opt-in. Automatic notification checks remain local unless you enable a supported connection.",
   "Patrol keeps the assessment summary and safe supporting references, not full messages, screenshots, files or sensitive tokens.",
-  "Apollo does not persist raw assessment content. Provider-side retention follows the configured Gemini API policy.",
+  "Apollo does not persist raw assessment content. Request copies close immediately and never later than 15 minutes; provider-side retention follows the configured API policy.",
   "Apollo uses an anonymous device ID. No account, no email. A phone number is shared only if you choose to add one so family can call you.",
   "Ask Higgins sends only your question and, if you choose, a short event summary.",
   "Hear Higgins sends only the sentence already on your screen so it can be read aloud.",

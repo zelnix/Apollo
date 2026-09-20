@@ -1,7 +1,4 @@
-"""Gate 3 page-crawl route under local-first policy.
-
-The route remains present for contract stability but cloud page crawling is intentionally disabled.
-"""
+"""Gate 3 purpose-limited page-crawl contract and SSRF boundary tests."""
 from __future__ import annotations
 
 import os
@@ -52,6 +49,7 @@ def test_page_crawl_contract_is_stable_for_private_and_public_inputs(api, target
     data = r.json()
     if target.startswith("http://127"):
         assert data["error"] == "invalid_target"
+        assert data["signals"] is None and data["higgins_note"] is None
         assert data["signals"] is None
     else:
         assert data["signals"]["visible_url"] == "https://example.com/"

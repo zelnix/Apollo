@@ -8,6 +8,7 @@ X-Apollo-Raw is present. We use X-Apollo-Raw for all direct auth tests.
 from __future__ import annotations
 
 import os
+import time
 import uuid
 from pathlib import Path
 
@@ -75,7 +76,13 @@ def test_intel_status_public():
 
 
 def test_docs_ui_loads():
-    r = _get(f"{BASE_URL}/docs")
+    r = None
+    for attempt in range(3):
+        r = _get(f"{BASE_URL}/docs")
+        if r.status_code not in (502, 503, 504):
+            break
+        time.sleep(0.5 * (attempt + 1))
+    assert r is not None
     assert r.status_code == 200
     assert "swagger" in r.text.lower() or "apollo" in r.text.lower()
 

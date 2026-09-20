@@ -1,5 +1,6 @@
 import * as Clipboard from "expo-clipboard";
 import * as ImagePicker from "expo-image-picker";
+import { Image as ExpoImage } from "expo-image";
 import ImageIcon from "lucide-react-native/icons/image";
 import Globe from "lucide-react-native/icons/globe";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
@@ -16,6 +17,8 @@ import { EventActions } from "@/src/components/EventActions";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
 import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
+import { MessageAssessmentResult } from "@/src/components/MessageAssessmentResult";
+import { ScreenshotPermissionSheet } from "@/src/components/ScreenshotPermissionSheet";
 import { getHigginsAuto, speakHiggins } from "@/src/voice/higgins";
 import { Body, Button, Card, Pill, toneColor } from "@/src/components/ui";
 import { verifyWebsite } from "@/src/domain/brand";
@@ -25,6 +28,7 @@ import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { useApollo, type CheckOutcome } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { useScreenshotAccess } from "@/src/hooks/useScreenshotAccess";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -41,6 +45,7 @@ const useStyles = makeStyles((c) => ({
   dot: { width: 6, height: 6, borderRadius: 3, marginTop: 8 },
   hint: { fontFamily: fonts.text, fontSize: 13, color: c.muted },
   sourceRow: { flexDirection: "row", justifyContent: "space-between", gap: spacing.md, paddingVertical: 4 },
+  preview: { width: "100%", height: 180, borderRadius: radius.md, backgroundColor: c.surfaceTertiary },
 }));
 
 export default function CheckLink() {
@@ -56,24 +61,25 @@ export default function CheckLink() {
   const [pageEvent, setPageEvent] = useState<PatrolEvent | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
   const [pageHigginsNote, setPageHigginsNote] = useState<string | null>(null);
+  const [pageScreenshotUri, setPageScreenshotUri] = useState<string | null>(null);
   const applyPageSignals = async (signals: PageSignals, note: string | null) => {
     const analysis = analysePage(signals, input);
     setPage(analysis); setPageHigginsNote(note); setPageEvent(await recordPageAnalysis(analysis, pageEvent));
   };
-  const pickPage = async () => {
+  const launchPagePicker = async () => {
     if (!deviceId) return;
     try {
       setPageError(null);
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) throw new Error("Allow photo access to choose the page screenshot you want assessed.");
       const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsEditing: false, quality: 0.9 });
       if (picked.canceled) return;
       const asset = picked.assets[0];
+      setPageScreenshotUri(asset.uri);
       const signals = await apiUpload<PageSignals>("/page/extract", "page_extract", { device_id: deviceId, url_hint: input.trim() },
         { uri: asset.uri, name: asset.fileName ?? "page-screenshot.jpg", type: asset.mimeType ?? "image/jpeg" });
       await applyPageSignals(signals, "Gemini extracted visible page signals; Apollo's local rules made the assessment.");
     } catch (error) { setPageError(error instanceof Error ? error.message : "Could not assess that screenshot."); }
   };
+  const photoAccess = useScreenshotAccess(launchPagePicker);
   // Gate 3 Phase C: Apollo fetches the page itself (SSRF-safe, backend-only) instead of a screenshot.
   // Manual/opt-in, coexists with "Add a screenshot of the page" above — the content is checked and
   // discarded server-side, never stored (see routers/analysis.py page_crawl).
@@ -145,13 +151,14 @@ export default function CheckLink() {
           </View>
           {sourceLabel ? <Pill tone="neutral" label={sourceLabel} testID="check-source-pill" /> : null}
           <Button testID="check-submit-button" label={busy ? "Checking…" : "Check with Apollo"} onPress={() => run(input)} disabled={busy || !input.trim()} icon={busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : undefined} />
-          <Button testID="check-page-screenshot" variant="secondary" label="Assess page screenshot" icon={<ImageIcon size={18} color={colors.onSurface} />} onPress={() => void pickPage()} />
+          <Button testID="check-page-screenshot" variant="secondary" label="Assess page screenshot" icon={<ImageIcon size={18} color={colors.onSurface} />} onPress={() => void photoAccess.start()} />
           <Button testID="check-page-crawl" variant="secondary" label="Inspect page safely" icon={<Globe size={18} color={colors.onSurface} />} onPress={() => void crawlPage()} disabled={!input.trim()} />
-          <Text style={s.hint} testID="check-privacy-scope">These are explicit one-off checks. Apollo fetches only public HTTP(S) content through SSRF protections or processes the chosen screenshot, then discards raw content. Gemini-side retention follows the configured API policy.</Text>
+          <Text style={s.hint} testID="check-privacy-scope">These are explicit one-off checks. Apollo fetches only public HTTP(S) content through SSRF protections or processes the chosen screenshot. Request copies close immediately and never later than 15 minutes. Gemini-side retention follows the configured API policy.</Text>
           {pageError ? <Card testID="check-page-error"><Body>{pageError}</Body></Card> : null}
           {page ? (
             <Animated.View entering={FadeInDown.duration(350)}>
               <Card testID="check-page-card" style={{ borderColor: toneColor(colors, page.state), gap: spacing.sm }}>
+                {pageScreenshotUri ? <ExpoImage testID="check-page-screenshot-preview" source={{ uri: pageScreenshotUri }} style={s.preview} contentFit="contain" accessibilityLabel="Page screenshot selected for investigation" /> : null}
                 <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap", alignItems: "center" }}>
                   <Pill tone={page.state} label={STATE_NAME[page.state]} testID="check-page-state" />
                   <Pill tone="neutral" label={page.title} testID="check-page-scenario" />
@@ -174,7 +181,16 @@ export default function CheckLink() {
 
           {outcome && state ? (
             <Animated.View entering={FadeInDown.duration(350)}>
+              {outcome.assessment ? <MessageAssessmentResult assessment={outcome.assessment} state={state} testIDPrefix="link"
+                submittedLabel="Link investigated" submittedTitle={outcome.local.host ?? "Submitted link"} submittedText={input}
+                onPrimaryAction={() => {
+                  const kind = outcome.assessment!.higgins.action_kind;
+                  if (kind === "check_account") router.push("/account");
+                  else if (kind === "avoid_and_delete") { setInput(""); showToast("The submitted link was cleared. Keep it closed and use the official app or website instead.", "neutral"); }
+                  else setVerify(true);
+                }} /> : outcome.investigationError ? <Card testID="link-investigation-error"><Body>Higgins&apos;s deeper investigation is unavailable: {outcome.investigationError} Apollo&apos;s deterministic and reputation findings remain below.</Body></Card> : null}
               <Card testID="check-result-card" style={{ borderColor: toneColor(colors, liveEvent?.state === "biting" && liveEvent.resolved_at ? "resting" : state), gap: spacing.sm }}>
+                <Text style={s.sub} testID="check-result-technical-label">Apollo technical decision</Text>
                 <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm }}><Pill tone={state} label={STATE_LABEL[state]} testID="check-result-state" /><HigginsSpeakButton compact text={`${STATE_LABEL[state]}. ${liveEvent?.state === "biting" ? "Apollo blocked a dangerous website." : (liveEvent?.headline ?? outcome.decision.headline)} ${liveEvent?.what_happened ?? outcome.decision.what_happened} What to do: ${liveEvent?.what_to_do ?? outcome.decision.what_to_do}`} testID="check-hear-higgins" /></View>
                 {liveEvent?.state === "biting" && liveEvent.resolved_at ? <Pill tone="resting" label="Threat contained" testID="check-result-contained" /> : null}
                 {liveEvent?.state === "biting" ? (
@@ -269,6 +285,8 @@ export default function CheckLink() {
         <Button testID="report-send" label="Send report" onPress={() => { if (liveEvent) void sendFeedback("false_positive", liveEvent, outcome?.intel?.sources.map((x) => x.name) ?? []); setReport(false); showToast("Thanks — report sent for review.", "resting"); }} />
         <Button testID="report-cancel" variant="ghost" label="Cancel" onPress={() => setReport(false)} />
       </Sheet>
+      <ScreenshotPermissionSheet prefix="check" visible={!!photoAccess.permission} canAskAgain={photoAccess.permission?.canAskAgain ?? true}
+        checking={photoAccess.checking} onContinue={() => void photoAccess.continueAccess()} onClose={photoAccess.close} />
     </View>
   );
 }

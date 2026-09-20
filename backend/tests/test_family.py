@@ -196,7 +196,8 @@ class TestSharedEvents:
         events = r2.json()
         match = [e for e in events if e["event_id"] == event_id]
         assert len(match) == 1, f"expected shared event, got {events}"
-        assert match[0]["headline"] == "Threat detected"
+        assert match[0]["headline"] == "Apollo recorded a known_threat check"
+        assert "Threat detected" not in match[0]["headline"]
         assert match[0]["from_label"] == "Alex"
 
     def test_resting_event_not_shared(self, s):
