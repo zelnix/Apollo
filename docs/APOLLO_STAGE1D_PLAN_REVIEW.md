@@ -10,10 +10,10 @@ only; it does not approve production cutover.
   frozen core/VPN. `guarddog-expo-module` is excluded from autolinking. Production remains legacy.
 - **D2 candidate implemented:** additive `packet_filter` method and `guarddog_acceptance` selector;
   security policy rejects the candidate in production or without native mode.
-- **D3 acceptance provisioning implemented, fixture unavailable:** pinned frozen test public key is
-  retained. No reachable git object contains the referenced signed bundle or matching private test
-  signer. The isolated provisioner checks key match, real clock, ownership, exact dedicated DNS/IP
-  and HTTPS baseline without writing private material. T1–T5 production certification stays OPEN.
+- **D3 acceptance trust rotated:** the Apollo-owned runtime now injects a distinct acceptance-only
+  public key into `TrustedKeyRegistry`; the mode-0600 private key remains outside source/APK. Current
+  valid/tampered/expired/unknown-key vectors and a real-clock verifier are present. Candidate trust is
+  disabled by native manifest metadata in production builds. T1–T5 production certification stays OPEN.
 - **D4 candidate implemented:** Apollo wraps the existing reporter, captures original packet fields,
   invokes the engine, and only correlates a genuine engine event with matching evidence ID and IP.
   No port/time/protocol defaults are inferred. Native inbox → local Patrol → durable delivery → native

@@ -92,6 +92,7 @@
       "./plugins/withApolloSiteGuard",
       "./plugins/withApolloCallGuard",
       "./plugins/withGuardDogEngine",
+      "./plugins/withGuardDogCandidateProfile",
       "expo-sharing",
       [
         "expo-camera",

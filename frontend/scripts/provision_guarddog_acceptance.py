@@ -17,8 +17,8 @@ from urllib.parse import urlparse
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-PINNED_PUBLIC_B64 = "ccf41NL6VHYQsH171Lw98hKiIoQFvAY0t171X4PL/ac="
-KEY_ID = "gd-m1-test-ed25519-001"
+PINNED_PUBLIC_B64 = "bZeQ3t9aAOC9/eg7sCrKB5hNLBRKk/SZlDmYBhxNQrk="
+KEY_ID = "apollo-stage1d-acceptance-ed25519-001"
 
 
 def canonical(value: object) -> bytes:
@@ -55,17 +55,26 @@ def main() -> None:
     if not 200 <= baseline_status < 400:
         raise SystemExit(f"Controlled endpoint baseline failed with HTTP {baseline_status}")
 
-    private_der = base64.b64decode(required("GUARDDOG_ACCEPTANCE_PRIVATE_KEY_PKCS8_B64"), validate=True)
-    key = serialization.load_der_private_key(private_der, password=None)
+    private_path = os.environ.get("GUARDDOG_ACCEPTANCE_PRIVATE_KEY_FILE", "").strip()
+    if private_path:
+        key_path = Path(private_path).resolve()
+        if key_path.is_relative_to(Path.cwd().resolve()):
+            raise SystemExit("Private acceptance key must remain outside the repository")
+        if key_path.stat().st_mode & 0o077:
+            raise SystemExit("Private acceptance key must not be readable by group or other users")
+        key = serialization.load_pem_private_key(key_path.read_bytes(), password=None)
+    else:
+        private_der = base64.b64decode(required("GUARDDOG_ACCEPTANCE_PRIVATE_KEY_PKCS8_B64"), validate=True)
+        key = serialization.load_der_private_key(private_der, password=None)
     if not isinstance(key, Ed25519PrivateKey):
         raise SystemExit("Acceptance key is not Ed25519")
     public_raw = key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
     if base64.b64encode(public_raw).decode() != PINNED_PUBLIC_B64:
-        raise SystemExit("Private signing fixture does not match TrustedKeyRegistry.m1Default()")
+        raise SystemExit("Private signing key does not match the Apollo acceptance public key")
 
     now = datetime.now(timezone.utc).replace(microsecond=0)
-    payload = {"rules": [{"ruleId": "gd-m1-controlled-block", "host": host, "action": "block", "matchType": "exact", "category": "acceptance"}]}
-    unsigned = {"schemaVersion": "1.0", "rulesetId": "gd-m1-controlled-block", "bundleVersion": int(required("GUARDDOG_BUNDLE_VERSION")),
+    payload = {"rules": [{"ruleId": "apollo-stage1d-controlled-block", "host": host, "action": "block", "matchType": "exact", "category": "acceptance"}]}
+    unsigned = {"schemaVersion": "1.0", "rulesetId": "apollo-stage1d-acceptance", "bundleVersion": int(required("GUARDDOG_BUNDLE_VERSION")),
                 "issuedAt": (now - timedelta(minutes=5)).isoformat().replace("+00:00", "Z"),
                 "expiresAt": (now + timedelta(hours=24)).isoformat().replace("+00:00", "Z"), "keyId": KEY_ID,
                 "payload": payload, "payloadHash": hashlib.sha256(canonical(payload)).hexdigest()}
@@ -80,7 +89,7 @@ def main() -> None:
         f"EXPO_PUBLIC_GUARDDOG_CONTROLLED_HOST={host}",
         f"EXPO_PUBLIC_GUARDDOG_CONTROLLED_IPV4={ipv4}",
         f"EXPO_PUBLIC_GUARDDOG_CONTROLLED_URL={url}",
-        "EXPO_PUBLIC_GUARDDOG_RULESET_ID=gd-m1-controlled-block",
+        "EXPO_PUBLIC_GUARDDOG_RULESET_ID=apollo-stage1d-acceptance",
         f"EXPO_PUBLIC_GUARDDOG_SIGNED_BUNDLE_B64={base64.b64encode(bundle_json.encode()).decode()}",
         "",
     ]))
@@ -89,6 +98,13 @@ def main() -> None:
                "ownershipEvidenceSha256": hashlib.sha256(ownership_path.read_bytes()).hexdigest(),
                "bundleSha256": hashlib.sha256(bundle_json.encode()).hexdigest(), "expiresAt": bundle["expiresAt"], "keyId": KEY_ID}
     (output / "provisioning-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
+    Path("guarddog-acceptance.config.json").write_text(json.dumps({
+        "controlledHost": host,
+        "controlledIpv4": ipv4,
+        "controlledUrl": url,
+        "rulesetId": "apollo-stage1d-acceptance",
+        "signedBundleB64": base64.b64encode(bundle_json.encode()).decode(),
+    }, indent=2) + "\n")
     print(json.dumps(receipt, indent=2))
 
 

@@ -807,9 +807,8 @@ test_plan:
   current_focus:
     - "Managed candidate APK compile and single Pixel 10 physical run"
   stuck_tasks:
-    - "No private test signer matching pinned gd-m1-test-ed25519-001 public key"
     - "No owned dedicated globally-routed single-IP HTTPS controlled endpoint"
-    - "Workspace blocks eas and has no Java/Android local build toolchain"
+    - "Managed Android profile guarddog-acceptance must be triggered by the user through Publish"
   test_all: false
   test_priority: "physical_acceptance_next"
 agent_communication:
@@ -817,3 +816,29 @@ agent_communication:
     message: "Actual startup data-deletion risk found and fixed: duplicate receipt bindings now fail closed without deletion; 15/15 targeted backend tests pass."
   - agent: "troubleshoot"
     message: "The remaining --tunnel warning is a false positive: platform-managed EXPO_PACKAGER_PROXY_URL is externally healthy, /etc supervisor is read-only, and adding a second tunnel would conflict. It is not an Android build blocker."
+
+## Iteration 67 — Stage 1D candidate handoff hardening
+frontend:
+  - task: "Independent acceptance trust, dedicated endpoint package, managed build handoff"
+    implemented: true
+    working: "source/prebuild verified; native compilation/device not run"
+    file: "frontend/modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/ApolloGuardDogCandidateRuntime.kt, frontend/plugins/withGuardDogCandidateProfile.js, frontend/modules/apollo-security/android/src/test/resources/guarddog-acceptance/, infra/guarddog-acceptance/"
+    needs_retesting: true
+    priority: "high"
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Generated distinct Ed25519 acceptance key outside repo/APK; injected public key through Apollo-owned TrustedKeyRegistry; added native production metadata gate; signed current valid/tampered/expired/unknown-key vectors; real-clock Python crypto 2/2 and selected frontend 31/31 pass. Candidate/production/legacy prebuild metadata true/rejected/false."
+      - agent: "testing"
+        working: true
+        comment: "Iteration 67 independent pass: crypto 2/2, source guards 4/4, backend P0/Stage1D 50/50, key/private-material/endpoint guards verified. Native compilation/JUnit/Pixel remain NOT RUN."
+test_plan:
+  current_focus:
+    - "Independent source/prebuild/crypto review, then user Save to GitHub"
+    - "Dedicated endpoint hosting/DNS/TLS, host-scoped bundle, managed build, one Pixel 10 run"
+  stuck_tasks:
+    - "No hosting/DNS credentials for a dedicated Apollo-owned public IPv4 endpoint"
+    - "GitHub Save and managed Publish are user-triggered platform actions"
+agent_communication:
+  - agent: "main"
+    message: "Main frozen-source check executed from frontend/packages: 91/91 OK. Iteration 67 tester's path-layout warning is a working-directory issue, not a digest mismatch."

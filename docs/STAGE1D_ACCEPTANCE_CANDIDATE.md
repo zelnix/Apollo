@@ -22,17 +22,22 @@ security policy rejects selecting this profile when `EXPO_PUBLIC_APP_ENV=product
 - `eas.json` contains an internal APK profile for the acceptance candidate and a separate production
   profile that explicitly selects `legacy`.
 
-## Acceptance fixture recovery result (current repository and git object history)
+## Acceptance trust rotation and fixture result
 
-- Pinned public fixture: `gd-m1-test-ed25519-001` /
-  `ccf41NL6VHYQsH171Lw98hKiIoQFvAY0t171X4PL/ac=` is present in frozen
-  `TrustedKeyRegistry.kt`.
-- The `security/test-vectors/signing/valid_bundle.json` content referenced by frozen tests is absent
-  from the working tree **and from all reachable git objects**. Therefore there is no bundle whose
-  signature/expiry can be rechecked against the real clock.
-- No private Ed25519 fixture matching that public key is present in repository files or reachable
-  git object names. This is correct for source control, but means a new short-lived signed bundle
-  cannot be produced in this workspace without access to that external test signer.
+- Historical `gd-m1-test-ed25519-001` trust is no longer used by the Apollo-owned runtime.
+- New acceptance-only key ID: `apollo-stage1d-acceptance-ed25519-001`; its public key is injected
+  through the existing `TrustedKeyRegistry(mapOf(...))` constructor in Apollo-owned code. Frozen
+  sources remain unchanged.
+- The private key was generated with mode `0600` at
+  `/root/.apollo-secrets/stage1d-acceptance-ed25519.pem`, outside the repository and APK. No private
+  material appears in source, public test vectors, app configuration or the generated Android tree.
+- Current public vectors cover valid, tampered, expired and unknown-key envelopes. Python real-clock
+  Ed25519 checks pass; equivalent native `RuleBundleVerifier` JUnit tests are packaged for the managed
+  Android build. The valid fixture expires `2027-03-19T05:30:31Z` and is scoped only to
+  `stage1d-acceptance-fixture.invalid`, never to physical acceptance.
+- Production prebuild writes `app.apollo.guarddog.acceptanceEnabled=false`; candidate staging writes
+  `true`; attempting a production candidate prebuild fails. The native verifier checks this metadata
+  before accepting an acceptance bundle.
 - The only historical endpoint values are `m1-block-test.guarddog.example` with `203.0.113.7` or
   `203.0.113.10`. The hostname currently has no IPv4 answer and both addresses are RFC 5737 TEST-NET,
   not owned/routable dedicated infrastructure. They are deliberately rejected and not reused.
@@ -41,8 +46,8 @@ security policy rejects selecting this profile when `EXPO_PUBLIC_APP_ENV=product
 
 Run `frontend/scripts/provision_guarddog_acceptance.py` only in an isolated signing job. It requires:
 
-1. `GUARDDOG_ACCEPTANCE_PRIVATE_KEY_PKCS8_B64` supplied from a secret manager; it is held in memory,
-   checked against the pinned public key and never written.
+1. `GUARDDOG_ACCEPTANCE_PRIVATE_KEY_FILE` pointing to the external mode-0600 key (or PKCS8 bytes from
+   a secret manager); it is checked against the Apollo acceptance public key and never copied.
 2. A current controlled host/IPv4/HTTPS URL and an ownership-evidence file. The host must resolve to
    exactly that one globally routed IPv4 and return a successful fresh HTTPS baseline.
 3. A monotonic `GUARDDOG_BUNDLE_VERSION`.
@@ -53,12 +58,24 @@ final signature, validity and rollback check.
 
 ## Concrete remaining physical-run inputs
 
-- Access to the external **private test signing fixture matching the pinned public key**.
 - A currently owned **dedicated globally routed IPv4 endpoint**, canonical hostname, valid HTTPS
   certificate and ownership evidence. No valid endpoint exists in the saved project assets.
-- A managed Android build invocation. Workspace `eas` commands are policy-blocked and local Gradle
-  cannot run because Java/Android build tools are absent. Candidate source/prebuild is ready; build ID,
-  APK hash and Pixel 10 run ID can only exist after the managed build is triggered.
+- After endpoint verification, the provisioner writes the public
+  `guarddog-acceptance.config.json`; save that generated public configuration with the source.
+- Managed build profile: `guarddog-acceptance` in `frontend/eas.json` — internal Android APK,
+  staging, native adapter, acceptance engine. Once source/config are saved, the required user action
+  is **Publish → Android build → profile `guarddog-acceptance`**. The resulting build ID/APK hash must
+  be copied into the Pixel record before running `/guarddog-acceptance` once.
+
+Native compilation and Pixel 10 acceptance remain **NOT RUN** until that managed build exists.
+
+## Iteration 67 independent verification
+
+- Acceptance crypto vectors **2/2**, source ownership/trust guards **4/4**, backend P0/Stage1D
+  regressions **50/50**.
+- Main frozen-source verification from `frontend/packages` remains **91/91 OK**. The independent
+  agent's manifest-path warning came from running the manifest at repository root, not a hash change.
+- Native Gradle/JUnit compilation, APK build identifiers and Pixel evidence remain **NOT RUN**.
 
 T1–T5 production trust certification remains outstanding and no candidate code is a production
 trust implementation or cutover approval.

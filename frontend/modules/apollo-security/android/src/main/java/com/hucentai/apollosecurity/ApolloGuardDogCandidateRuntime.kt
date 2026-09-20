@@ -70,7 +70,7 @@ internal class ApolloGuardDogCandidateRuntime(private val context: Context) {
   private val state = VpnStateRepository.shared
   private val prefs = context.getSharedPreferences("apollo_guarddog_candidate", Context.MODE_PRIVATE)
   private val engine = GuardDogSDKEngine(
-    RuleBundleVerifier(TrustedKeyRegistry.m1Default(), ApolloBundleVersionStore(context), SystemClock), state, SystemClock,
+    RuleBundleVerifier(TrustedKeyRegistry(mapOf(ACCEPTANCE_KEY_ID to ACCEPTANCE_PUBLIC_KEY_B64)), ApolloBundleVersionStore(context), SystemClock), state, SystemClock,
   )
   private val pending = ConcurrentHashMap<String, BlockedThreatEvidence>()
   private var config: VpnConfig? = null
@@ -90,6 +90,7 @@ internal class ApolloGuardDogCandidateRuntime(private val context: Context) {
   }
 
   fun configure(raw: String): String {
+    requireAcceptanceEnabled()
     val body = JSONObject(raw)
     check(body.optString("profile") == PROFILE) { "GuardDog candidate profile is test-only" }
     val next = VpnConfig(
@@ -105,14 +106,18 @@ internal class ApolloGuardDogCandidateRuntime(private val context: Context) {
     return JSONObject().put("configured", true).put("profile", PROFILE).toString()
   }
 
-  fun acceptBundle(raw: String): String = when (val result = engine.acceptRuleBundle(raw)) {
+  fun acceptBundle(raw: String): String {
+    requireAcceptanceEnabled()
+    return when (val result = engine.acceptRuleBundle(raw)) {
     is VerificationResult.Accepted -> JSONObject().put("accepted", true).put("rulesetId", result.bundle.rulesetId)
       .put("bundleVersion", result.bundle.bundleVersion).put("expiresAt", result.bundle.expiresAt).toString()
     is VerificationResult.Rejected -> JSONObject().put("accepted", false).put("reason", result.reason.name)
       .put("detail", result.detail ?: JSONObject.NULL).toString()
+    }
   }
 
   fun start(): String {
+    requireAcceptanceEnabled()
     val activeConfig = checkNotNull(config) { "GuardDog candidate is not configured" }
     check(VpnService.prepare(context) == null) { "VPN consent is not granted" }
     check(engine.acceptedBundle() != null) { "No accepted signed acceptance bundle" }
@@ -161,6 +166,7 @@ internal class ApolloGuardDogCandidateRuntime(private val context: Context) {
     .toString()
 
   fun analyzeUrl(url: String): String {
+    requireAcceptanceEnabled()
     val result = engine.analyzeUrl(url)
     return if (result == null) JSONObject().put("supported", false).put("verdict", "unknown").put("reasons", JSONArray().put("URL was not accepted by the native sanitizer.")).toString()
       else JSONObject().put("supported", true).put("verdict", result.verdict).put("reasons", JSONArray())
@@ -201,6 +207,7 @@ internal class ApolloGuardDogCandidateRuntime(private val context: Context) {
   }
 
   fun runConsolidatedAcceptance(timeoutMs: Int): String {
+    requireAcceptanceEnabled()
     val startedAt = Instant.now().toString()
     val build = JSONObject(provenance())
     val baseline = JSONObject(freshProbe(timeoutMs))
@@ -234,10 +241,20 @@ internal class ApolloGuardDogCandidateRuntime(private val context: Context) {
     check(prefs.edit().putString(KEY_EVIDENCE, current.toString()).commit()) { "Could not persist native enforcement evidence" }
   }
 
+  private fun requireAcceptanceEnabled() {
+    val info = context.packageManager.getApplicationInfo(context.packageName, android.content.pm.PackageManager.GET_META_DATA)
+    check(info.metaData?.getBoolean(ACCEPTANCE_METADATA_KEY, false) == true) {
+      "GuardDog acceptance trust is disabled in this build"
+    }
+  }
+
   companion object {
     const val PROFILE = "guarddog-stage1d-acceptance"
     const val LABEL = "GuardDog acceptance runtime (test-only)"
     const val STACK_ID = "apollo-owned-guarddog-core-vpn"
+    const val ACCEPTANCE_KEY_ID = "apollo-stage1d-acceptance-ed25519-001"
+    const val ACCEPTANCE_PUBLIC_KEY_B64 = "bZeQ3t9aAOC9/eg7sCrKB5hNLBRKk/SZlDmYBhxNQrk="
+    const val ACCEPTANCE_METADATA_KEY = "app.apollo.guarddog.acceptanceEnabled"
     private const val KEY_EVIDENCE = "pending_evidence"
   }
 }

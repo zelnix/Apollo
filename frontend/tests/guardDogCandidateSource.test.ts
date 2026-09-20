@@ -29,6 +29,11 @@ test("production defaults stay legacy while the candidate profile is test-only",
   assert.equal(eas.build["guarddog-acceptance"].env.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE, "guarddog_acceptance");
   const config = read("../src/security/securityConfig.ts");
   assert.match(config, /appEnvironment === "production" && androidEnforcementEngine !== "legacy"/);
+  const runtime = read("../modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/ApolloGuardDogCandidateRuntime.kt");
+  assert.match(runtime, /requireAcceptanceEnabled\(\)/);
+  assert.match(runtime, /app\.apollo\.guarddog\.acceptanceEnabled/);
+  assert.match(runtime, /apollo-stage1d-acceptance-ed25519-001/);
+  assert.doesNotMatch(runtime, /ccf41NL6VHYQsH171Lw98hKiIoQFvAY0t171X4PL\/ac=/);
 });
 
 test("fixture provisioner never writes the private key and verifies endpoint/key ownership inputs", () => {
