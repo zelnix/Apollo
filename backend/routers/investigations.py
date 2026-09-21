@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import re
@@ -215,6 +216,27 @@ async def put_chunk(case_id: str, upload_id: str, index: int, request: Request):
     return Response(status_code=204, headers=NO_STORE)
 
 
+LEASE_RENEWAL_SECONDS = 40
+
+
+async def _with_lease_renewal(collection, selector: dict, fence_field: str, fence: str, ts_field: str, coro):
+    """Keeps a renewable-ownership fence alive for the duration of a potentially long-running step: while `coro`
+    runs, `ts_field` is heartbeat-refreshed every LEASE_RENEWAL_SECONDS (well inside the staleness window used for
+    takeover) so a claim that is genuinely still being worked is never mistaken for dead and taken over mid-flight.
+    A fixed claim timestamp alone is NOT renewable ownership — this is what makes it so."""
+    async def _heartbeat():
+        while True:
+            await asyncio.sleep(LEASE_RENEWAL_SECONDS)
+            await collection.update_one({**selector, fence_field: fence}, {"$set": {ts_field: now_utc()}})
+    task = asyncio.ensure_future(_heartbeat())
+    try:
+        return await coro
+    finally:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+
 @router.post("/investigations/{case_id}/uploads/{upload_id}/complete", status_code=201)
 async def complete_upload(case_id: str, upload_id: str, body: ExpectedRevision, request: Request):
     owner = owner_of(request)
@@ -265,8 +287,21 @@ async def complete_upload(case_id: str, upload_id: str, body: ExpectedRevision, 
     # children/bytes are removed and the original is ingested again from the retained chunks, which are deleted only after commit.
     partial = await db.investigation_evidence.find_one({"owner_id": owner, "case_id": case_id, "client_item_id": meta["clientItemId"]}, {"_id": 0, "evidence_id": 1})
     if partial:
+        owning_upload = await db.investigation_uploads.find_one(
+            {"owner_id": owner, "case_id": case_id, "finalisation.state": "committed", "finalisation.evidence_id": partial["evidence_id"]}, {"_id": 0, "upload_id": 1})
+        if owning_upload and owning_upload["upload_id"] != upload_id:
+            # A DIFFERENT upload attempt already committed this exact evidence — cleanup must be specific to OUR OWN
+            # abandoned attempt only; a winning worker's evidence is never deleted just because we share a client item ID.
+            committed = await db.investigation_uploads.find_one_and_update(
+                {"owner_id": owner, "upload_id": upload_id, "finalisation.fence": fence},
+                {"$set": {"finalisation.state": "committed", "finalisation.evidence_id": partial["evidence_id"], "evidence_id": partial["evidence_id"]}})
+            if committed is not None:
+                await db.investigation_upload_chunks.delete_many({"owner_id": owner, "upload_id": upload_id})
+            row = await repo.get_evidence(owner, case_id, partial["evidence_id"])
+            return JSONResponse({"evidence": repo.evidence_view(row).wire(), "caseRevision": case["revision"], "replayed": True}, status_code=201, headers=NO_STORE)
         await repo.discard_incomplete_ingestion(owner, case_id, partial["evidence_id"])
-    item = await ev.ingest_file(owner, case, meta, data)
+    item = await _with_lease_renewal(db.investigation_uploads, {"owner_id": owner, "upload_id": upload_id}, "finalisation.fence", fence, "finalisation.started_at",
+                                     ev.ingest_file(owner, case, meta, data))
     # Commit is itself fenced: if this attempt was superseded while `ingest_file` was running, the write below matches
     # nothing and this attempt's own evidence is discarded rather than published as if it were authoritative.
     committed = await db.investigation_uploads.find_one_and_update(
@@ -497,37 +532,49 @@ async def _finish_device_submission(owner: str, case: dict, pending: dict) -> Op
     case_id, request_id = pending["case_id"], pending["request_id"]
     sub = pending["submission"]
     result = repo.dec_json(sub["result_ciphertext"])
-    if sub["state"] == "claimed":
+    if sub["state"] in ("claimed", "storing"):
+        # `from_state="claimed"` covers the untouched-claim path; a doc already sitting in "storing" (e.g. the
+        # sweeper picking up a crashed attempt) falls through to the staleness-takeover branch of the SAME call.
         fence = await _claim_submission_stage(owner, case_id, request_id, "claimed", "storing")
         if not fence:
             refreshed = (await db.investigation_device_requests.find_one({"owner_id": owner, "case_id": case_id, "request_id": request_id}, {"_id": 0, "submission": 1}) or {}).get("submission") or {}
-            return refreshed.get("evidence_id") if refreshed.get("state") in ("stored", "resumed") else None
+            return refreshed.get("evidence_id") if refreshed.get("state") in ("stored", "resuming", "resumed") else None
+        selector = {"owner_id": owner, "case_id": case_id, "request_id": request_id}
         existing = await db.investigation_evidence.find_one({"owner_id": owner, "case_id": case_id, "client_item_id": f"observation-{request_id}"}, {"_id": 0, "evidence_id": 1})
-        item_id = existing["evidence_id"] if existing else (await ev.ingest_observation(owner, case, f"observation-{request_id}", result)).id
+        item_id = existing["evidence_id"] if existing else (await _with_lease_renewal(
+            db.investigation_device_requests, selector, "submission.fence", fence, "submission.stage_started_at",
+            ev.ingest_observation(owner, case, f"observation-{request_id}", result))).id
         committed = await db.investigation_device_requests.find_one_and_update(
-            {"owner_id": owner, "case_id": case_id, "request_id": request_id, "submission.fence": fence},
+            {**selector, "submission.fence": fence},
             {"$set": {"submission.state": "stored", "submission.evidence_id": item_id, "evidence_id": item_id}})
         if not committed:  # fenced out mid-ingestion: our write never lands; defer entirely to the current owner
-            refreshed = (await db.investigation_device_requests.find_one({"owner_id": owner, "case_id": case_id, "request_id": request_id}, {"_id": 0, "submission": 1}) or {}).get("submission") or {}
+            refreshed = (await db.investigation_device_requests.find_one(selector, {"_id": 0, "submission": 1}) or {}).get("submission") or {}
             sub = refreshed or sub
         else:
             sub = {**sub, "state": "stored", "evidence_id": item_id}
-    if sub["state"] == "stored":
+    if sub["state"] in ("stored", "resuming"):
         fence = await _claim_submission_stage(owner, case_id, request_id, "stored", "resuming")
         if not fence:
             refreshed = (await db.investigation_device_requests.find_one({"owner_id": owner, "case_id": case_id, "request_id": request_id}, {"_id": 0, "submission": 1}) or {}).get("submission") or {}
             return refreshed.get("evidence_id", sub.get("evidence_id"))
-        job = await repo.get_job(owner, case_id, pending["job_id"])
-        if job.get("status") in ("waiting_device", "queued", "investigating", "retry_wait"):
-            checkpoint = repo.dec_json(job["checkpoint_ciphertext"]) if job.get("checkpoint_ciphertext") else {"contents": [], "rounds": 0}
-            if not any(r.get("evidenceId") == sub["evidence_id"] for r in checkpoint.get("deviceResults", [])):
-                checkpoint.setdefault("deviceResults", []).append({**result, "evidenceId": sub["evidence_id"]})
-            await db.investigation_jobs.update_one({"owner_id": owner, "job_id": job["job_id"]}, {"$set": {"checkpoint_ciphertext": repo.enc_json(checkpoint), "status": "queued", "lease_until": None}})
-            await db.investigation_cases.update_one({"owner_id": owner, "case_id": case_id, "status": {"$in": ["waiting_device", "queued"]}},
-                                                    {"$set": {"status": "queued"}, "$pull": {"pending_device_request_ids": request_id}, "$inc": {"revision": 1}})
-            jobs.launch(owner, case_id, job["job_id"])
+        selector = {"owner_id": owner, "case_id": case_id, "request_id": request_id}
+
+        async def _resume() -> None:
+            job = await repo.get_job(owner, case_id, pending["job_id"])
+            if job.get("status") in ("waiting_device", "queued", "investigating", "retry_wait"):
+                checkpoint = repo.dec_json(job["checkpoint_ciphertext"]) if job.get("checkpoint_ciphertext") else {"contents": [], "rounds": 0}
+                if not any(r.get("evidenceId") == sub["evidence_id"] for r in checkpoint.get("deviceResults", [])):
+                    checkpoint.setdefault("deviceResults", []).append({**result, "evidenceId": sub["evidence_id"]})
+                await db.investigation_jobs.update_one({"owner_id": owner, "job_id": job["job_id"]}, {"$set": {"checkpoint_ciphertext": repo.enc_json(checkpoint), "status": "queued", "lease_until": None}})
+                await db.investigation_cases.update_one({"owner_id": owner, "case_id": case_id, "status": {"$in": ["waiting_device", "queued"]}},
+                                                        {"$set": {"status": "queued"}, "$pull": {"pending_device_request_ids": request_id}, "$inc": {"revision": 1}})
+                jobs.launch(owner, case_id, job["job_id"])
+        # No multi-document transactions here (standalone MongoDB): the job/case writes above are protected instead by
+        # holding the SAME renewed fence for their whole duration — no other attempt can also be in "resuming" while
+        # this one is alive and heartbeating, so there is no concurrent writer to race against.
+        await _with_lease_renewal(db.investigation_device_requests, selector, "submission.fence", fence, "submission.stage_started_at", _resume())
         committed = await db.investigation_device_requests.find_one_and_update(
-            {"owner_id": owner, "case_id": case_id, "request_id": request_id, "submission.fence": fence},
+            {**selector, "submission.fence": fence},
             {"$set": {"submission.state": "resumed", "fulfilled": True, "result_digest": sub["digest"]}})
         if not committed:  # fenced out: another attempt owns the outcome; do not claim credit for the resume ourselves
             refreshed = (await db.investigation_device_requests.find_one({"owner_id": owner, "case_id": case_id, "request_id": request_id}, {"_id": 0, "submission": 1}) or {}).get("submission") or {}

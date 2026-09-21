@@ -50,6 +50,18 @@ def test_scanned_pdf_page_is_rendered_without_crashing():
     _run(lambda inv: _scanned_pdf_no_crash())
 
 
+def test_coverage_aggregates_across_text_and_image_children():
+    _run(lambda inv: _coverage_aggregation_across_children())
+
+
+def test_truncated_text_never_reaches_examined():
+    _run(lambda inv: _truncated_text_never_reaches_examined())
+
+
+def test_device_submission_resumes_from_a_crashed_storing_state():
+    _run(lambda inv: _device_submission_resumes_from_storing(inv))
+
+
 @pytest.mark.asyncio
 async def test_image_secret_preflight_flags_60k_truncation(monkeypatch):
     """The internal 60,000-character cap on a screenshot's transcription must mark itself as truncated —
@@ -146,7 +158,12 @@ async def _device_submission_happy_path(inv):
         "fulfilled": False, "submission": {"state": "claimed", "digest": "d1", "result_ciphertext": repo.enc_json(result.wire()), "evidence_id": None,
                                             "claimed_at": now_utc(), "fence": str(uuid.uuid4())}, "created_at": now_utc()})
     pending = await db.investigation_device_requests.find_one({"owner_id": owner, "case_id": case["case_id"], "request_id": request_id}, {"_id": 0})
-    item_id = await inv._finish_device_submission(owner, case, pending)
+    original_launch = inv.jobs.launch
+    inv.jobs.launch = lambda *a, **k: None  # do not actually spawn the real coordinator/Gemini run from a unit test
+    try:
+        item_id = await inv._finish_device_submission(owner, case, pending)
+    finally:
+        inv.jobs.launch = original_launch
     assert item_id
     fresh_job = await repo.get_job(owner, case["case_id"], job["job_id"])
     assert fresh_job["status"] == "queued"
@@ -201,6 +218,94 @@ async def _scanned_pdf_no_crash():
     assert row["coverage"].get("reason") != "parser failed; content not examined"
     children = await db.investigation_evidence.find({"owner_id": owner, "case_id": case["case_id"], "parent_id": item.id}, {"_id": 0}).to_list(None)
     assert any(c["kind"] == "image" for c in children)  # the scanned page was rasterised and stored as its own evidence
+
+
+async def _coverage_aggregation_across_children():
+    owner = f"persist-{uuid.uuid4().hex[:8]}"
+    await repo.ensure_indexes()
+    case = await repo.create_case(owner, "text", None)
+    from services.higgins import evidence as ev
+    from services.higgins.contracts import EvidenceItem, Coverage
+    expires = repo.utc(case["expires_at"])
+    # A 2-page PDF: page 1 has a text layer, page 2 is scanned (rendered as its own image child) — mirrors _derive's shape.
+    parent = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id="doc-1", origin="user_submission", kind="document",
+                          parent_id=None, collected_at=now_utc(), expires_at=expires, media_type="application/pdf", byte_length=100,
+                          coverage=Coverage(status="partial", unit="pages", total=2, examined=0), transformations=[], label="doc")
+    await repo.insert_evidence(owner, parent, {"filename": "doc.pdf"})
+    text_child = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id="doc-1.text", origin="user_submission", kind="text",
+                              parent_id=parent.id, collected_at=now_utc(), expires_at=expires, media_type="text/plain", byte_length=20,
+                              coverage=Coverage(status="not_started", unit="characters", total=20, examined=0), transformations=[], label="text")
+    await repo.insert_evidence(owner, text_child, {"pages": [{"page": 1, "start": 0, "end": 10, "readable": True}, {"page": 2, "start": 10, "end": 20, "readable": False}]})
+    await repo.store_bytes(owner, case["case_id"], text_child.id, b"page one text.......", expires)
+    image_child = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id="doc-1.page2", origin="user_submission", kind="image",
+                               parent_id=parent.id, collected_at=now_utc(), expires_at=expires, media_type="image/png", byte_length=5,
+                               coverage=Coverage(status="not_started", unit="items", total=1, examined=0), transformations=[], label="page 2 image")
+    await repo.insert_evidence(owner, image_child, {"page": 2, "derivedFrom": parent.id})
+    await repo.store_bytes(owner, case["case_id"], image_child.id, b"PNG!!", expires)
+
+    # Reading the rendered page-2 image FIRST must not, by itself, mark the WHOLE parent PDF "examined" — page 1 is still unread.
+    await ev.mark_examined(owner, case["case_id"], image_child.id, 0, 5, 5)
+    parent_row = await repo.get_evidence(owner, case["case_id"], parent.id)
+    assert parent_row["coverage"]["status"] == "partial" and parent_row["coverage"]["examined"] == 1
+
+    # Reading page-2's EMPTY extracted-text span (it has no text layer) must not double-count or fabricate examination of page 2.
+    await ev.mark_examined(owner, case["case_id"], text_child.id, 10, 20, 20)
+    parent_row = await repo.get_evidence(owner, case["case_id"], parent.id)
+    assert parent_row["coverage"]["examined"] == 1
+
+    # Reading page-1's readable text completes the document (both of its pages are now genuinely covered).
+    await ev.mark_examined(owner, case["case_id"], text_child.id, 0, 10, 20)
+    parent_row = await repo.get_evidence(owner, case["case_id"], parent.id)
+    assert parent_row["coverage"]["examined"] == 2 and parent_row["coverage"]["status"] == "examined" and parent_row["coverage"]["materialGap"] is False
+
+
+async def _truncated_text_never_reaches_examined():
+    owner = f"persist-{uuid.uuid4().hex[:8]}"
+    await repo.ensure_indexes()
+    case = await repo.create_case(owner, "text", None)
+    from services.higgins import evidence as ev
+    from services.higgins.contracts import EvidenceItem, Coverage
+    expires = repo.utc(case["expires_at"])
+    item = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id="shot-1.redacted", origin="apollo_inference", kind="text",
+                        parent_id=None, collected_at=now_utc(), expires_at=expires, media_type="text/plain", byte_length=60000,
+                        coverage=Coverage(status="not_started", unit="characters", total=60000, examined=0, material_gap=True,
+                                          reason="the transcription exceeded the 60,000-character processing budget and was truncated"),
+                        transformations=[], label="redacted transcription")
+    await repo.insert_evidence(owner, item, {})
+    await repo.store_bytes(owner, case["case_id"], item.id, b"A" * 60000, expires)
+    await ev.mark_examined(owner, case["case_id"], item.id, 0, 60000, 60000)  # the model reads EVERYTHING that was actually retained
+    row = await repo.get_evidence(owner, case["case_id"], item.id)
+    assert row["coverage"]["status"] == "partial"  # never "examined" — the untruncated remainder was never retained to read
+    assert row["coverage"]["materialGap"] is True
+
+
+async def _device_submission_resumes_from_storing(inv):
+    """Simulates the sweeper picking up a claim that crashed mid-"storing" (never reached the "stored" commit)."""
+    owner = f"persist-{uuid.uuid4().hex[:8]}"
+    await repo.ensure_indexes()
+    case = await repo.create_case(owner, "text", None)
+    turn_id = str(uuid.uuid4())
+    job = await repo.create_job(owner, case, turn_id, repo.digest("k4"), repo.digest("p4"), "turn", {"message": "q", "turnId": turn_id})
+    await repo.cas(owner, case["case_id"], {"revision": 0}, {"$set": {"active_job_id": job["job_id"], "active_turn_id": turn_id, "status": "waiting_device"}})
+    request_id = str(uuid.uuid4())
+    result = DeviceResult(request_id=request_id, case_revision=1, capability_id="cap.x", status="observed", values={"state": True})
+    stale_started = now_utc() - timedelta(seconds=200)
+    await db.investigation_device_requests.insert_one({"owner_id": owner, "case_id": case["case_id"], "request_id": request_id, "job_id": job["job_id"],
+        "request": {"id": request_id, "caseId": case["case_id"], "caseRevision": 1, "capabilityId": "cap.x", "fields": [], "reason": "test",
+                    "expiresAt": repo.utc(case["expires_at"]).isoformat()},
+        "fulfilled": False, "submission": {"state": "storing", "digest": "d1", "result_ciphertext": repo.enc_json(result.wire()), "evidence_id": None,
+                                            "claimed_at": stale_started, "fence": "crashed-fence", "stage_started_at": stale_started}, "created_at": now_utc()})
+    pending = await db.investigation_device_requests.find_one({"owner_id": owner, "case_id": case["case_id"], "request_id": request_id}, {"_id": 0})
+    assert pending["submission"]["state"] == "storing"  # this is what the sweeper's query would hand to _finish_device_submission
+    original_launch = inv.jobs.launch
+    inv.jobs.launch = lambda *a, **k: None  # do not actually spawn the real coordinator/Gemini run from a unit test
+    try:
+        item_id = await inv._finish_device_submission(owner, case, pending)
+    finally:
+        inv.jobs.launch = original_launch
+    assert item_id  # the crashed claim was taken over and completed, not silently ignored
+    final = await db.investigation_device_requests.find_one({"owner_id": owner, "request_id": request_id}, {"_id": 0})
+    assert final["submission"]["state"] == "resumed" and final["fulfilled"] is True
 
 
 if __name__ == "__main__":

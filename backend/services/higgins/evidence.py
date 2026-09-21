@@ -333,7 +333,7 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
             offsets, text, cursor = [], "", 0
             for number, page in enumerate(pages, start=1):
                 block = f"\n\n[page {number}]\n{page}"
-                offsets.append({"page": number, "start": cursor, "end": cursor + len(block)})
+                offsets.append({"page": number, "start": cursor, "end": cursor + len(block), "readable": number not in unreadable})
                 text += block
                 cursor += len(block)
             if len(text) > MAX_EXPANDED:
@@ -409,20 +409,46 @@ async def mark_examined(owner: str, case_id: str, evidence_id: str, start: int, 
     ranges = _union(coverage.get("examinedRanges", []), start, end)
     examined = sum(r["end"] - r["start"] for r in ranges)
     total = total if total is not None else coverage.get("total")
-    complete = total is not None and examined >= total
+    fully_read = total is not None and examined >= total
+    # A gap recorded at INGESTION time (truncation, incomplete transcription, parser failure, ...) is a fact about
+    # what was retained, not about what was read. Reading everything that WAS retained can never resolve it here —
+    # that only happens once the missing portion is actually processed (a future continuation turn), never by re-reading.
+    permanent_gap = bool(coverage.get("materialGap"))
+    complete = fully_read and not permanent_gap
     await repo.update_evidence(owner, case_id, evidence_id, {"$set": {"coverage.examinedRanges": ranges, "coverage.examined": min(examined, total or examined),
-                                                                      "coverage.status": "examined" if complete else "partial", "coverage.materialGap": not complete and bool(total)}})
-    # Only a DERIVED full-text child (document extraction) propagates coverage to its parent. A registered clue (origin
-    # apollo_inference, parentOffset) is a relationship, not inherited completion: reading one clue never examines the document.
-    if row.get("parent_id") and row.get("origin") != "apollo_inference":
-        meta = await repo.evidence_meta(row)
-        pages = meta.get("pages") or []
-        parent_update = {"coverage.status": "examined" if complete else "partial"}
-        if pages:
-            covered = [p for p in pages if any(r["start"] <= p["start"] and r["end"] >= p["end"] for r in ranges)]  # whole page only
-            parent_update["coverage.examined"] = len(covered)
-            parent_update["coverage.examinedRanges"] = [{"start": p["page"] - 1, "end": p["page"]} for p in covered]
-        await repo.update_evidence(owner, case_id, row["parent_id"], {"$set": parent_update})
+                                                                      "coverage.status": "examined" if complete else "partial",
+                                                                      "coverage.materialGap": permanent_gap or (not fully_read and bool(total))}})
+    # Only a DERIVED full-text child (document extraction) or a rendered scanned-page image propagates coverage to its
+    # parent. A registered clue (origin apollo_inference, parentOffset) is a relationship, not inherited completion:
+    # reading one clue never examines the document.
+    if not row.get("parent_id") or row.get("origin") == "apollo_inference":
+        return
+    parent = await repo.get_evidence(owner, case_id, row["parent_id"])
+    if parent["coverage"].get("unit") != "pages":
+        # Single-child parent (no page-level structure of its own): mirror this child's own outcome directly.
+        await repo.update_evidence(owner, case_id, row["parent_id"], {"$set": {"coverage.status": "examined" if complete else "partial"}})
+        return
+    # Multi-page parent (a scanned/mixed PDF): its own pages are covered by TWO kinds of children — the extracted-text
+    # child (page ranges in CHARACTER units, readable pages only) and each rendered scanned-page image (exactly one
+    # page each). Neither can singlehandedly complete the parent; their page coverage is combined here incrementally.
+    meta = await repo.evidence_meta(row)
+    covered_pages: set[int] = set()
+    if meta.get("pages"):  # the extracted-text child: a page counts only once fully covered AND it actually had a text layer
+        covered_pages = {p["page"] for p in meta["pages"] if p.get("readable", True) and any(r["start"] <= p["start"] and r["end"] >= p["end"] for r in ranges)}
+    elif meta.get("page") and complete:  # a single rendered scanned-page image child represents exactly that one page
+        covered_pages = {meta["page"]}
+    if not covered_pages:
+        return
+    parent_ranges = list(parent["coverage"].get("examinedRanges", []))
+    for page in covered_pages:
+        parent_ranges = _union(parent_ranges, page - 1, page)
+    parent_examined = sum(r["end"] - r["start"] for r in parent_ranges)
+    parent_total = parent["coverage"].get("total")
+    parent_gap = bool(parent["coverage"].get("omittedRanges"))  # pages beyond a processing budget remain a gap until a continuation turn resolves them
+    parent_complete = parent_total is not None and parent_examined >= parent_total and not parent_gap
+    await repo.update_evidence(owner, case_id, row["parent_id"], {"$set": {
+        "coverage.examinedRanges": parent_ranges, "coverage.examined": min(parent_examined, parent_total or parent_examined),
+        "coverage.status": "examined" if parent_complete else "partial", "coverage.materialGap": parent_gap or not parent_complete}})
 
 
 async def read_text(owner: str, case_id: str, evidence_id: str, start: Optional[int], end: Optional[int], pages: Optional[list[int]]) -> dict:
