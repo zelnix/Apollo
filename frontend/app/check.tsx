@@ -153,7 +153,8 @@ export default function CheckLink() {
             <Pressable testID="check-paste-button" accessibilityLabel="Paste" onPress={paste} style={s.paste}><ClipboardPaste size={20} color={colors.onSurfaceSecondary} /></Pressable>
           </View>
           {sourceLabel ? <Pill tone="neutral" label={sourceLabel} testID="check-source-pill" /> : null}
-          <Button testID="check-submit-button" label={busy ? "Checking…" : "Check with Apollo"} onPress={() => run(input)} disabled={busy || !input.trim()} icon={busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : undefined} />
+          <Button testID="check-submit-button" label={!deviceId ? "Preparing Apollo…" : busy ? "Checking…" : "Check with Apollo"} onPress={() => run(input)} disabled={!deviceId || busy || !input.trim()} icon={busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : undefined} />
+          {!deviceId ? <Body testID="check-device-preparing">Apollo is registering this device before online reputation and Higgins checks.</Body> : null}
           <Button testID="check-page-screenshot" variant="secondary" label="Assess page screenshot" icon={<ImageIcon size={18} color={colors.onSurface} />} onPress={() => void photoAccess.start()} />
           <Button testID="check-page-crawl" variant="secondary" label="Inspect page safely" icon={<Globe size={18} color={colors.onSurface} />} onPress={() => void crawlPage()} disabled={!input.trim()} />
           <Text style={s.hint} testID="check-privacy-scope">These are explicit one-off checks. Apollo fetches only public HTTP(S) content through SSRF protections or processes the chosen screenshot. Request copies close immediately and never later than 15 minutes. Gemini-side retention follows the configured API policy.</Text>

@@ -41,8 +41,10 @@ test("Ask Higgins accepts only bounded structured issue context and preserves pr
     gate: "account", issue_summary: "Claimed password reset", assessment_state: "ears_up",
     findings: [{ summary: "Visible sender claims Google", provenance: "observed", status: "uncertain" }],
     uncertainty: ["Sender is not authenticated"], confirmed_protective_actions: [], user_reported_actions: ["Requested a reset"],
+    available_actions: [{ label: "Open official app", instruction: "Open the service app from the home screen." }],
   } });
   assert.equal(payload.context.findings[0].provenance, "observed");
+  assert.equal(payload.context.available_actions[0].label, "Open official app");
   assert.throws(() => enforceEgress("ask_apollo", { ...payload, context: { ...payload.context, unrestricted_event: { password: "secret" } } }));
 });
 

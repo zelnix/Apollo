@@ -5,7 +5,7 @@ import { File } from "expo-file-system";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import X from "lucide-react-native/icons/x";
 import React, { useEffect, useState } from "react";
-import { Pressable, Switch, Text, TextInput, View } from "react-native";
+import { Platform, Pressable, Switch, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -14,7 +14,7 @@ import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { analyseFile, FILE_SOURCES, type FileAnalysis, type FileSource } from "@/src/domain/fileAnalysis";
-import { inspectWithHandle, type Inspection } from '@/src/domain/fileInspection';
+import { FILE_SIZE_LIMIT, inspectSample, inspectWithHandle, type Inspection } from '@/src/domain/fileInspection';
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -82,8 +82,16 @@ export default function CheckFile() {
     try {
       let inspected: Inspection = { headBytes: null, textSample: null };
       try {
-        const file = new File(asset.uri);
-        inspected = inspectWithHandle(file);
+        if (Platform.OS === "web") {
+          if (asset.size != null && (!Number.isFinite(asset.size) || asset.size <= 0 || asset.size > FILE_SIZE_LIMIT)) throw new Error("invalid file size");
+          const response = await fetch(asset.uri);
+          const bytes = new Uint8Array(await response.arrayBuffer());
+          if (!bytes.length || bytes.length > FILE_SIZE_LIMIT) throw new Error("invalid file size");
+          inspected = inspectSample(bytes);
+        } else {
+          const file = new File(asset.uri);
+          inspected = inspectWithHandle(file);
+        }
       } catch { inspected.inspectionError = 'This build could not read the file contents.'; }
       const preliminary = analyseFile({ name: asset.name, size: asset.size ?? undefined, mime: asset.mimeType ?? null, ...inspected, source: assetSource, passwordInMessage: false });
       setSelected({ asset, inspected, realType: preliminary.realType });
@@ -150,7 +158,16 @@ export default function CheckFile() {
               {a.handoff === "network" ? <Button testID="file-check-device" label="I installed it — check my device" onPress={() => router.push("/device")} /> : null}
               <Button testID="file-tech" variant="secondary" label="View technical details" onPress={() => setTech(true)} />
               {result.event ? <RecoveryFlow event={result.event} kinds={["clicked", "app", "password", "card", "money", "download"]} testID="file-recovery" /> : null}
-              {result.event ? <Button testID="file-tell-more" variant="ghost" label="Ask Higgins about this file" onPress={() => openHigginsHandoff(router, issueContext({ gate: "file", issue_summary: a.title, assessment_state: a.state, findings: a.why.slice(0, 6).map((summary) => ({ summary, provenance: "inferred", status: a.state === "barking" ? "warning" : "uncertain" })), uncertainty: ["This inspection cannot establish that a file is safe."], confirmed_protective_actions: [], user_reported_actions: [] }), "What should I do with this file?")} /> : null}
+              {result.event ? <Button testID="file-tell-more" variant="ghost" label="Ask Higgins about this file" onPress={() => openHigginsHandoff(router, issueContext({ gate: "file", issue_summary: a.title, assessment_state: a.state, findings: [
+                { summary: `Filename: ${selected?.asset.name ?? "not supplied"}`, provenance: "observed", status: "uncertain" },
+                { summary: `Supplied size/type: ${selected?.asset.size ?? "unknown"} bytes; ${selected?.asset.mimeType ?? "unknown"}`, provenance: "observed", status: "uncertain" },
+                { summary: `Signature result: ${a.realType}`, provenance: "observed", status: a.state === "barking" ? "warning" : "uncertain" },
+                { summary: selected?.inspected.inspectionError ? `Content sample unavailable: ${selected.inspected.inspectionError}` : selected?.inspected.textSample ? "A bounded supported text sample was read locally." : "No supported text sample was readable.", provenance: "observed", status: "uncertain" },
+                ...a.why.slice(0, 4).map((summary) => ({ summary, provenance: "inferred" as const, status: a.state === "barking" ? "warning" as const : "uncertain" as const })),
+              ], uncertainty: ["Only the signature and a bounded supported sample were inspected; complete contents and safety remain unknown."], confirmed_protective_actions: [], user_reported_actions: [], available_actions: [
+                { label: "Follow the File Gate recommendation", instruction: a.recommendation },
+                { label: "Use I already opened it", instruction: "Return to the File Gate result and use I already opened it in Stay With Me for recovery steps." },
+              ] }), "What should I do with this file?")} /> : null}
               <Button testID="file-again" variant="ghost" label="Check another file" onPress={() => { setResult(null); setNameOnly(""); setSelected(null); setPending(null); setPickerError(null); setPw(null); setSource("unknown"); }} />
             </Card>
           </>

@@ -21,6 +21,7 @@ export class ApiError extends Error {
 export const DEFAULT_TIMEOUT_MS = 20000;
 /** Endpoints that legitimately take longer (vision/LLM second opinions, TTS, redirect expansion). */
 const LONG_TIMEOUT_MS = 60000;
+const ASK_STREAM_TIMEOUT_MS = 90000;
 const LONG_PATHS = ["/message/extract", "/message/analyse", "/link/investigate", "/page/extract", "/page/crawl", "/voice/speak", "/app/analyse", "/account/analyse", "/intel/check", "/ask/", "/gmail/scan"];
 export function timeoutFor(path: string): number { return LONG_PATHS.some((p) => path.startsWith(p)) ? LONG_TIMEOUT_MS : DEFAULT_TIMEOUT_MS; }
 
@@ -115,7 +116,7 @@ export function streamPost(path: string, endpoint: EgressEndpoint, body: Record<
     if (!token) { finish("Apollo hasn't registered this device yet."); return; }
     xhr.setRequestHeader("Authorization", `Bearer ${token}`);
     xhr.send(JSON.stringify(enforceEgress(endpoint, body)));
-  });
+  }).catch((error: unknown) => finish(error instanceof Error ? error.message : "Apollo could not prepare this request."));
   const consume = () => {
     const text = xhr.responseText ?? "";
     const chunk = text.slice(seen);
@@ -125,7 +126,7 @@ export function streamPost(path: string, endpoint: EgressEndpoint, body: Record<
     for (const line of chunk.slice(0, lastBreak).split("\n")) {
       if (!line.startsWith("data: ")) continue;
       try {
-        const evt = JSON.parse(line.slice(6)) as { delta?: string; done?: boolean; error?: string };
+        const evt = JSON.parse(line.slice(6)) as { delta?: string; done?: boolean; error?: string; failure_kind?: string };
         if (evt.delta) onDelta(evt.delta);
         if (evt.error) finish(evt.error);
         if (evt.done) finish();
@@ -144,6 +145,6 @@ export function streamPost(path: string, endpoint: EgressEndpoint, body: Record<
   };
   xhr.onerror = () => { markBackendFailure("offline"); finish(FAILURE_MESSAGE.offline); };
   xhr.ontimeout = () => { markBackendFailure("timeout"); finish(FAILURE_MESSAGE.timeout); };
-  xhr.timeout = LONG_TIMEOUT_MS;
+  xhr.timeout = path.startsWith("/ask/") ? ASK_STREAM_TIMEOUT_MS : LONG_TIMEOUT_MS;
   return () => xhr.abort();
 }

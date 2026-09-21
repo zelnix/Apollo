@@ -132,8 +132,9 @@ export function enforceEgress<T extends Record<string, unknown>>(endpoint: Egres
   return out as T;
 }
 
-const ASK_CONTEXT_KEYS = new Set(['gate', 'issue_summary', 'assessment_state', 'findings', 'uncertainty', 'confirmed_protective_actions', 'user_reported_actions']);
+const ASK_CONTEXT_KEYS = new Set(['gate', 'issue_summary', 'assessment_state', 'findings', 'uncertainty', 'confirmed_protective_actions', 'user_reported_actions', 'available_actions']);
 const ASK_FINDING_KEYS = new Set(['summary', 'provenance', 'status']);
+const ASK_ACTION_KEYS = new Set(['label', 'instruction']);
 const ASK_GATES = new Set(['site', 'link', 'text', 'call', 'network', 'account', 'email', 'app', 'file', 'device', 'incident']);
 const ASK_STATES = new Set(['sniffing', 'resting', 'ears_up', 'growling', 'barking', 'biting', 'unknown']);
 function validateAskContext(value: unknown): Record<string, unknown> {
@@ -151,6 +152,8 @@ function validateAskContext(value: unknown): Record<string, unknown> {
   };
   const findings = raw.findings ?? [];
   if (!Array.isArray(findings) || findings.length > 8) throw new EgressViolation('ask_apollo', 'context.findings');
+  const actions = raw.available_actions ?? [];
+  if (!Array.isArray(actions) || actions.length > 4) throw new EgressViolation('ask_apollo', 'context.available_actions');
   return {
     gate: raw.gate,
     issue_summary: cleanLine(raw.issue_summary, 240),
@@ -164,6 +167,12 @@ function validateAskContext(value: unknown): Record<string, unknown> {
     uncertainty: lines('uncertainty', 6),
     confirmed_protective_actions: lines('confirmed_protective_actions', 4),
     user_reported_actions: lines('user_reported_actions', 6),
+    available_actions: actions.map((value) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new EgressViolation('ask_apollo', 'context.available_actions');
+      const action = value as Record<string, unknown>;
+      if (Object.keys(action).some((key) => !ASK_ACTION_KEYS.has(key))) throw new EgressViolation('ask_apollo', 'context.available_actions');
+      return { label: cleanLine(action.label, 80), instruction: cleanLine(action.instruction, 240) };
+    }),
   };
 }
 

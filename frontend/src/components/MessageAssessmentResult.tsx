@@ -35,6 +35,8 @@ const useStyles = makeStyles((c) => ({
   privacy: { flexDirection: "row", gap: spacing.sm, alignItems: "flex-start", paddingTop: spacing.sm, borderTopWidth: 1, borderColor: c.border },
 }));
 
+const SOURCE_STATUS_LABEL = { supports: "Supports", contradicts: "Concern found", inconclusive: "Inconclusive", unavailable: "Unavailable" } as const;
+
 function Finding({ finding, index, prefix }: { finding: InvestigationFinding; index: number; prefix: string }) {
   const s = useStyles(); const { colors } = useTheme();
   const tone = finding.status === "suspicious" ? colors.barking : finding.status === "corroborated" ? colors.resting : colors.unknown;
@@ -67,7 +69,7 @@ export function MessageAssessmentResult({ assessment, state, onPrimaryAction, su
         <Pill testID={`${prefix}-truth`} tone={state} label={truthLabel} />
       </View>
       <Text testID={`${prefix}-risk-label`} style={s.overline}>{riskLabel}</Text>
-      <Text testID={`${prefix}-investigation-mode`} style={s.overline}>{assessment.processing.model_used && !assessment.processing.fallback_used ? "Live investigation: Gemini completed" : `Live investigation incomplete — local fallback shown${assessment.processing.fallback_reasons?.length ? ` (${assessment.processing.fallback_reasons.join(", ")})` : ""}`}</Text>
+      <Text testID={`${prefix}-investigation-mode`} style={s.overline}>{assessment.processing.higgins_source === "gemini" && !assessment.processing.fallback_used ? `Live investigation: Gemini completed${assessment.processing.model_attempts && assessment.processing.model_attempts > 1 ? ` after ${assessment.processing.model_attempts} attempts` : ""} — response shown verbatim` : assessment.processing.higgins_source === "gemini" ? `Live investigation partial — Gemini response shown verbatim; fallback findings also used${assessment.processing.fallback_reasons?.length ? ` (${assessment.processing.fallback_reasons.join(", ")})` : ""}` : `Live investigation incomplete — deterministic fallback shown${assessment.processing.fallback_reasons?.length ? ` (${assessment.processing.fallback_reasons.join(", ")})` : ""}`}</Text>
       <Text testID={`${prefix}-headline`} style={s.title}>{assessment.higgins.headline}</Text>
       <Text testID={`${prefix}-next-action`} style={s.next}>{assessment.higgins.next_action}</Text>
       <Button testID={`${prefix}-primary-action`} label={INVESTIGATION_ACTION_LABEL[assessment.higgins.action_kind]} onPress={onPrimaryAction} />
@@ -108,6 +110,7 @@ export function MessageAssessmentResult({ assessment, state, onPrimaryAction, su
       <View><SectionTitle>Sources</SectionTitle>{assessment.sources.map((source) => <Pressable key={source.source_id} testID={`${prefix}-source-${source.source_id}`}
         disabled={!source.url} onPress={() => source.url ? void Linking.openURL(source.url) : undefined} style={s.source}>
         <View style={s.row}><Text testID={`${prefix}-source-${source.source_id}-label`} style={s.sourceLabel}>{source.label}</Text>{source.url ? <ExternalLink size={15} color={colors.brand} /> : null}</View>
+        <Text testID={`${prefix}-source-${source.source_id}-status`} style={s.evidenceKind}>{SOURCE_STATUS_LABEL[source.status]}</Text>
         <Text testID={`${prefix}-source-${source.source_id}-kind`} style={s.evidenceKind}>{source.evidence_kind === "submitted_content" ? "Submitted evidence" : "External verification"}{source.checked_at ? ` · checked ${new Date(source.checked_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : ""}</Text>
         <Body testID={`${prefix}-source-${source.source_id}-detail`}>{source.detail}</Body>
       </Pressable>)}</View>

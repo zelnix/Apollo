@@ -35,7 +35,19 @@ The issue context is structured. Preserve its provenance: observed evidence, inf
 The selected issue is already the result of its named Gate. Do not send the person back to the same Gate or claim another check has already run. Do not say File Gate scans for malware, reads a whole file, establishes safety or can tell whether contents are known harmful: it reads only a signature and a bounded supported sample and reports explicit limits. Do not say Account Gate can determine whether login details or codes were compromised: it assesses submitted alert evidence and reported actions, and any breach lookup is a separate explicit action. Never turn a model suggestion into a promise that Apollo can delete an original message/email/file, dial a number, open a destination, suppress future alerts or block traffic. Recommend one truthful action that the current app supports; use independently configured official apps, typed addresses, card/bill contact details or visible in-app instructions rather than contact details from suspicious content. Do not list multiple Gates as a substitute for that action.
 Rules: no fear theatrics, no jargon without a one-line explanation, no fake certainty. If something is uncertain, say so plainly. Never ask for, repeat or store a password, login username, PIN, recovery code, verification code, OTP or one-time security code. If the user says they pasted one, tell them it was redacted and give the appropriate account-recovery action without asking them to resend it. Keep answers short (under 150 words) with clear next steps. If asked about things outside online safety, redirect with good grace."""
 
-HANDOFF_SYSTEM_PROMPT = """\nThis is a structured issue handoff. Investigate and explain only Apollo's supplied findings and the person's question. Do not output CHECKS and do not send the person back through a Gate that already ran. Keep observed evidence, Apollo inference and the person's report distinct. State what remains unknown. End with exactly one concrete, supported next action. Make the final sentence an imperative instruction beginning with a clear action verb such as Keep, Open, Contact, Review, Remove, Avoid, Change, Deny or End. Do not claim safety, compromise, deletion, dialling, blocking or enforcement unless the structured context explicitly confirms it. Never invent app controls, Settings icons, toggles or navigation paths that are not named in the structured context; when an exact control is unavailable, direct the person to the visible action on the current result screen. For File issues, explain only the supplied signature/sample findings and limits; never describe additional File Gate capabilities. Do not use Apollo mascot-state phrases such as 'Apollo is growling' or 'Apollo is resting'. Use your own wording; do not copy a canned template."""
+HANDOFF_SYSTEM_PROMPT = """\nThis is a structured issue handoff. Never state that Apollo can, will or does determine, confirm or tell whether something is safe, harmful or compromised. Never state that Apollo has confirmed or determined safety, harm or compromise. Apollo reports only supplied observations and bounded inferences. Do not claim safety, compromise, deletion, dialling, blocking or enforcement unless the structured context explicitly confirms it. Investigate and explain only Apollo's supplied findings and the person's question. Do not output CHECKS and do not send the person back through a Gate that already ran. Keep observed evidence, Apollo inference and the person's report distinct. When the context includes uncertainty items, incorporate them using explicit uncertainty language such as cannot, uncertain, unknown, not confirmed, not established, limited, not inspected, no evidence or remains unverified. State what Apollo's bounded checks cannot determine. End with exactly one concrete, supported next action. Make the final sentence an imperative instruction beginning with a clear action verb such as Keep, Open, Contact, Review, Remove, Avoid, Change, Delete, Verify, Disable, Turn, Return, Deny or End. Never invent app controls, Settings icons, toggles or navigation paths that are not named in the structured context. When available_actions are supplied, use their labels and instructions as the complete set of supported in-app actions. When an exact control is unavailable, direct the person to the visible action on the Gate result screen. For File issues, explain only the supplied signature/sample findings and limits; never describe additional File Gate capabilities. Do not use Apollo mascot-state phrases such as 'Apollo is growling' or 'Apollo is resting'. Use your own wording; do not copy a canned template."""
+
+
+class HandoffContractError(ValueError):
+    def __init__(self, failures: list[str]):
+        self.failures = failures
+        super().__init__(f"Higgins response did not meet the structured handoff contract: {','.join(failures)}")
+
+
+class HigginsAnswerUnavailable(RuntimeError):
+    def __init__(self, kind: str):
+        self.kind = kind
+        super().__init__(kind)
 
 
 def _redact_tree(value: Any) -> Any:
@@ -57,24 +69,80 @@ def _context_prompt(context: Optional[AskIssueContext]) -> Optional[str]:
     return json.dumps(safe, ensure_ascii=False, separators=(",", ":"))
 
 
-def _guard_handoff_response(text: str, context: AskIssueContext) -> str:
+def _guard_handoff_response(text: str, context: AskIssueContext, *, require_uncertainty: bool = True, require_action: bool = True) -> str:
     """Reject unsafe or ungrounded model output; never substitute an injected answer."""
     checks_match = re.search(r"(?im)^\s*CHECKS:\s*([^\n]+)", text)
     checks = [item.strip().lower() for item in checks_match.group(1).split(",")] if checks_match else []
     same_gate = context.gate in checks
     multiple_routes = len(set(checks)) > 1
     unsupported = bool(re.search(r"\bI blocked\b|\bApollo is (?:growling|barking|resting|biting)|\b(?:settings icon.{0,30}top corner|background patrolling toggle)\b|\b(?:can|will|does) (?:tell|determine|confirm).{0,50}(?:safe|harmful|compromised)|\b(?:has|have) (?:confirmed|determined).{0,40}(?:safe|harmful|compromised)", text, re.I | re.S))
-    uncertainty_present = bool(re.search(r"\b(unknown|uncertain|cannot|can't|not confirmed|not establish|not prove|limited)\b", text, re.I))
-    action_present = bool(re.search(r"\b(next|do|open|keep|leave|contact|review|remove|avoid|use|check|change|deny|end)\b", text, re.I))
+    uncertainty_present = bool(re.search(r"\b(unknown|uncertain|cannot|can't|could not|couldn't|not confirmed|not establish(?:ed)?|not prove(?:n)?|limited|only.{0,40}inspect(?:ed|ion)|not inspected|no evidence|remain(?:s)? unverified)\b", text, re.I | re.S))
+    complete_sentence = bool(re.search(r"[.!?][\"')\]]?\s*$", text))
+    final_sentence = re.split(r"(?<=[.!?])\s+", text.strip())[-1]
+    action_present = bool(re.search(r"\b(next|do|open|keep|leave|contact|review|remove|avoid|use|check|change|deny|end|delete|verify|disable|enable|tap|navigate|turn|uninstall|return|follow|choose|close|stop|disconnect|lock|update|protect|seek)\b", final_sentence, re.I))
+    if not action_present and context.available_actions:
+        answer_words = set(re.findall(r"[a-z]{5,}", text.lower()))
+        grounded_words = set(re.findall(r"[a-z]{5,}", " ".join(f"{item.label} {item.instruction}" for item in context.available_actions).lower()))
+        action_present = len(answer_words & grounded_words) >= 2
     failures = []
     if same_gate: failures.append("same_gate_check")
     if multiple_routes: failures.append("multiple_check_routes")
     if unsupported: failures.append("unsupported_capability_claim")
-    if context.uncertainty and not uncertainty_present: failures.append("missing_uncertainty")
-    if not action_present: failures.append("missing_action")
+    if not complete_sentence: failures.append("truncated_response")
+    if require_uncertainty and context.uncertainty and not uncertainty_present: failures.append("missing_uncertainty")
+    if require_action and not action_present: failures.append("missing_action")
     if failures:
-        raise ValueError(f"Higgins response did not meet the structured handoff contract: {','.join(failures)}")
+        raise HandoffContractError(failures)
     return text.strip()
+
+
+async def _grounded_handoff_answer(device_id: str, prompt: str, system_prompt: str, context: AskIssueContext,
+                                   *, require_uncertainty: bool, require_action: bool) -> str:
+    """Retry real Gemini output once when transport or grounding validation fails; never replace it."""
+    from emergentintegrations.llm.chat import LlmChat, StreamDone, TextDelta, UserMessage
+
+    last_kind = "provider_failure"
+    correction = ""
+    for attempt in range(2):
+        chunks: list[str] = []
+        chat = (LlmChat(api_key=GEMINI_API_KEY, session_id=f"apollo-{device_id}-{uuid.uuid4().hex[:6]}", system_message=system_prompt)
+                .with_model("gemini", "gemini-3-flash-preview").with_params(temperature=0.1 if attempt == 0 else 0, max_tokens=1200))
+
+        async def consume() -> None:
+            async for event in chat.stream_message(UserMessage(text=prompt + correction)):
+                if isinstance(event, TextDelta):
+                    chunks.append(event.content)
+                elif isinstance(event, StreamDone):
+                    break
+
+        try:
+            await asyncio.wait_for(consume(), timeout=40)
+            raw = "".join(chunks).strip()
+            if not raw:
+                last_kind = "empty_response"
+                correction = "\n\nThe previous attempt was empty. Answer the original question now and follow every structured handoff rule."
+                continue
+            return redact_user_secrets(_guard_handoff_response(raw, context, require_uncertainty=require_uncertainty, require_action=require_action))
+        except HandoffContractError as exc:
+            last_kind = "contract_rejected"
+            logger.warning("Higgins handoff attempt %s rejected: %s", attempt + 1, ",".join(exc.failures))
+            correction = ("\n\nThe previous attempt was rejected for: " + ", ".join(exc.failures) + ". " +
+                          ("Include explicit uncertainty language: cannot, uncertain, unknown, not confirmed, not established or limited. " if "missing_uncertainty" in exc.failures else "") +
+                          ("End with one imperative using open, keep, contact, review, remove, avoid, check, change, delete, verify, disable, turn or return. " if "missing_action" in exc.failures else "") +
+                          ("Do not claim Apollo can, will or does determine, confirm or tell whether something is safe, harmful or compromised. Explain only what Apollo observed or inferred; never claim Apollo has the capability to determine safety or harm. " if "unsupported_capability_claim" in exc.failures else "") +
+                          ("Finish the entire response and end with complete punctuation. " if "truncated_response" in exc.failures else "") +
+                          "Use only supplied evidence and available_actions; do not copy this instruction into the answer.")
+        except asyncio.TimeoutError:
+            last_kind = "provider_timeout"
+            logger.warning("Higgins handoff attempt %s timed out", attempt + 1)
+            correction = "\n\nThe previous attempt timed out. Give one concise grounded answer under 120 words."
+        except Exception as exc:  # noqa: BLE001
+            last_kind = "provider_failure"
+            logger.warning("Higgins handoff attempt %s failed: %s", attempt + 1, type(exc).__name__)
+            correction = "\n\nThe previous attempt failed. Give one concise grounded answer under 120 words."
+        finally:
+            chunks.clear()
+    raise HigginsAnswerUnavailable(last_kind)
 
 
 async def _claim_handoff(device_id: str, handoff_id: str) -> tuple[str, Optional[str]]:
@@ -86,7 +154,7 @@ async def _claim_handoff(device_id: str, handoff_id: str) -> tuple[str, Optional
     try:
         result = await db.ask_handoffs.update_one(
             {"device_id": device_id, "handoff_id": handoff_id, "status": {"$ne": "processing"}},
-            {"$set": {"device_id": device_id, "handoff_id": handoff_id, "status": "processing", "response": None, "updated_at": now_utc()}},
+            {"$set": {"device_id": device_id, "handoff_id": handoff_id, "status": "processing", "response": None, "failure_kind": None, "updated_at": now_utc()}},
             upsert=True,
         )
         if result.upserted_id or result.modified_count:
@@ -118,28 +186,34 @@ async def gemini_stream(device_id: str, message: str, context: Optional[AskIssue
         prompt = f"Recent conversation:\n{history_text}\n\n{prompt}"
 
     system_prompt = HIGGINS_SYSTEM_PROMPT + (HANDOFF_SYSTEM_PROMPT if context else "")
-    chat = LlmChat(api_key=GEMINI_API_KEY, session_id=f"apollo-{device_id}-{uuid.uuid4().hex[:6]}", system_message=system_prompt).with_model(
-        "gemini", "gemini-3-flash-preview"
-    )
-    full = ""
-    buffered = context is not None
-    async for ev in chat.stream_message(UserMessage(text=prompt)):
-        if isinstance(ev, TextDelta):
-            full += ev.content
-            if not buffered:
-                yield f"data: {json.dumps({'delta': ev.content})}\n\n"
-        elif isinstance(ev, StreamDone):
-            break
-    if not full.strip():
-        raise RuntimeError("empty Higgins response")
-    safe_full = redact_user_secrets(_guard_handoff_response(full, context) if context else full)
-    if buffered:
+    if context:
+        follow_up = handoff_id is None
+        action_seeking = bool(re.search(r"\b(what should|what do|how (?:do|can)|help me|next|change|remove|delete|open|setting)\b", message, re.I))
+        uncertainty_seeking = bool(re.search(r"\b(safe|risk|danger|harm|compromis|trust|certain|sure|what (?:did|was) found)\b", message, re.I))
+        safe_full = await _grounded_handoff_answer(device_id, prompt, system_prompt, context,
+                                                   require_uncertainty=not follow_up or uncertainty_seeking,
+                                                   require_action=not follow_up or action_seeking)
         yield f"data: {json.dumps({'delta': safe_full})}\n\n"
-    await db.ask_messages.insert_one(AskMessage(device_id=device_id, role="higgins", content=safe_full, created_at=now_utc(),
+        full = safe_full
+    else:
+        chat = LlmChat(api_key=GEMINI_API_KEY, session_id=f"apollo-{device_id}-{uuid.uuid4().hex[:6]}", system_message=system_prompt).with_model(
+            "gemini", "gemini-3-flash-preview"
+        )
+        full = ""
+        async for ev in chat.stream_message(UserMessage(text=prompt)):
+            if isinstance(ev, TextDelta):
+                full += ev.content
+                yield f"data: {json.dumps({'delta': ev.content})}\n\n"
+            elif isinstance(ev, StreamDone):
+                break
+        if not full.strip():
+            raise HigginsAnswerUnavailable("empty_response")
+        full = redact_user_secrets(full)
+    await db.ask_messages.insert_one(AskMessage(device_id=device_id, role="higgins", content=full, created_at=now_utc(),
                                                 conversation_id=conversation_id, handoff_id=handoff_id).to_mongo())
     if handoff_id:
         await db.ask_handoffs.update_one({"device_id": device_id, "handoff_id": handoff_id},
-                                         {"$set": {"status": "completed", "response": safe_full, "updated_at": now_utc()}})
+                                         {"$set": {"status": "completed", "response": full, "failure_kind": None, "updated_at": now_utc()}})
     yield f"data: {json.dumps({'done': True})}\n\n"
 
 
@@ -177,10 +251,14 @@ async def ask_stream(body: AskRequest):
             raise
         except Exception as exc:  # noqa: BLE001
             logger.warning("ask stream failed: %s: %s", type(exc).__name__, str(exc)[:240])
+            failure_kind = exc.kind if isinstance(exc, HigginsAnswerUnavailable) else "unexpected_failure"
             if body.handoff_id:
                 await db.ask_handoffs.update_one({"device_id": body.device_id, "handoff_id": body.handoff_id},
-                                                 {"$set": {"status": "failed", "updated_at": now_utc()}})
-            yield f"data: {json.dumps({'error': 'I could not answer right now.'})}\n\n"
+                                                 {"$set": {"status": "failed", "failure_kind": failure_kind, "updated_at": now_utc()}})
+            message = ("Higgins' answer did not meet Apollo's evidence rules. Retry." if failure_kind == "contract_rejected" else
+                       "Higgins did not answer before the time limit. Retry." if failure_kind == "provider_timeout" else
+                       "Higgins could not answer right now. Retry.")
+            yield f"data: {json.dumps({'error': message, 'failure_kind': failure_kind})}\n\n"
 
     return StreamingResponse(gen(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 

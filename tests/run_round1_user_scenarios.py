@@ -37,10 +37,11 @@ class UiResult:
     outcome: str
     evidence: str = "browser"
     artifact: str | None = None
+    cause: str | None = None
 
 
-class IncompleteScenario(RuntimeError):
-    """A required real downstream service was unavailable or rejected its output."""
+class BlockedScenario(RuntimeError):
+    """A required real downstream service did not return usable evidence in the run budget."""
 
 
 def compact(value: str, limit: int = 260) -> str:
@@ -67,7 +68,7 @@ class Round1Browser:
         self.base = base_url.rstrip("/")
         self.mode = mode
         self.results: list[UiResult] = []
-        self.blockers: list[str] = []
+        self.partial_reasons: list[str] = []
 
     def assert_higgins_meaning(self, response: str, gate: str, supporting_text: str = "", require_gate: bool = True) -> str:
         lower = response.lower()
@@ -76,10 +77,14 @@ class Round1Browser:
         uncertainty = any(term in support_lower for term in ("unknown", "uncertain", "cannot", "can't", "not confirmed", "not prove", "limited", "could not establish", "requires a decision"))
         action = any(f" {verb} " in f" {support_lower} " for verb in ("do", "open", "keep", "leave", "contact", "review", "remove", "avoid", "use", "check", "change", "deny", "end", "delete", "tap", "turn", "refrain", "navigate", "proceed"))
         clarity = len(response.split()) <= 180
-        depth = "apollo" in lower and any(term in lower for term in ("found", "finding", "barking", "growling", "observed", "evidence", "decision"))
+        depth = len(response.split()) >= 20 and any(term in lower for term in ("because", "does not", "doesn't", "not match", "common", "means", "without", "missing", "absence", "determine", "identity", "evidence", "source", "access", "pressure", "permission", "request"))
         assert accuracy, f"Higgins response lost {gate} context or made an unsupported claim. Exact response: {response}"
         assert uncertainty, "Higgins did not preserve uncertainty"
         assert action, "Higgins did not provide a useful action"
+        if not clarity:
+            self.partial_reasons.append(f"Higgins answer for {gate} exceeded the concise-answer target")
+        if not depth:
+            self.partial_reasons.append(f"Higgins answer for {gate} did not explain why the evidence mattered")
         return f"accuracy={'yes' if accuracy else 'no'}, uncertainty={'yes' if uncertainty else 'no'}, action={'yes' if action else 'no'}, clarity={'yes' if clarity else 'no'}, depth={'yes' if depth else 'no'}"
 
     async def open(self, route: str) -> None:
@@ -97,27 +102,50 @@ class Round1Browser:
     async def require_live_investigation(self, prefix: str) -> None:
         mode = await visible_text(self.page, f"{prefix}-investigation-mode")
         if not mode or "incomplete" in mode.lower() or "fallback" in mode.lower():
-            self.blockers.append(f"{prefix.replace('-assessment', '')} live investigation did not complete: {mode or 'status missing'}")
+            self.partial_reasons.append(f"{prefix.replace('-assessment', '')} did not show a complete verbatim Gemini assessment: {mode or 'status missing'}")
+
+    async def assessment_trace(self, prefix: str) -> str:
+        mode = await full_text(self.page, f"{prefix}-investigation-mode")
+        more = self.page.get_by_test_id(f"{prefix}-more-details")
+        if await more.count():
+            await more.click()
+            await self.page.get_by_test_id(f"{prefix}-details").wait_for(timeout=30_000)
+        statuses = self.page.locator(f"[data-testid^='{prefix}-source-'][data-testid$='-status']")
+        rows = []
+        for index in range(await statuses.count()):
+            status_id = await statuses.nth(index).get_attribute("data-testid") or ""
+            source_root = status_id.removesuffix("-status")
+            label = await full_text(self.page, f"{source_root}-label")
+            status = compact(await statuses.nth(index).inner_text(), 40)
+            detail = await full_text(self.page, f"{source_root}-detail")
+            rows.append(f"{label}: {status} — {compact(detail, 180)}")
+        return f"Investigation display: {mode or 'missing'}. Sources shown: {' | '.join(rows) if rows else 'none'}"
+
+    @staticmethod
+    def higgins_failure(message: str) -> Exception:
+        lowered = message.lower()
+        if "time limit" in lowered or "could not answer right now" in lowered:
+            return BlockedScenario(f"Higgins provider did not return a usable answer: {message}")
+        return AssertionError(f"Higgins output was rejected before reaching the user: {message}")
 
     async def run(self, scenario_id: str, gate: str, situation: str, expected: str, body: Callable[[], Awaitable[str]]) -> None:
-        self.blockers = []
+        self.partial_reasons = []
         try:
             actual = await body()
             artifact = ARTIFACTS / self.mode / f"{scenario_id}.png"
             artifact.parent.mkdir(parents=True, exist_ok=True)
             await self.page.screenshot(path=str(artifact), full_page=False)
-            outcome = "INCOMPLETE" if self.blockers else "PASS"
-            if self.blockers:
-                actual = f"{actual} Blocked/incomplete: {'; '.join(self.blockers)}"
-            self.results.append(UiResult(scenario_id, gate, situation, expected, actual, outcome, artifact=str(artifact)))
+            outcome = "PARTIAL" if self.partial_reasons else "COMPLETE"
+            cause = "; ".join(self.partial_reasons) if self.partial_reasons else None
+            self.results.append(UiResult(scenario_id, gate, situation, expected, actual, outcome, artifact=str(artifact), cause=cause))
             print(f"{outcome} {scenario_id}: {actual}")
-        except IncompleteScenario as exc:
+        except BlockedScenario as exc:
             await self.page.context.set_offline(False)
             artifact = ARTIFACTS / self.mode / f"{scenario_id}.png"
             artifact.parent.mkdir(parents=True, exist_ok=True)
             await self.page.screenshot(path=str(artifact), full_page=False)
-            self.results.append(UiResult(scenario_id, gate, situation, expected, compact(str(exc)), "INCOMPLETE", artifact=str(artifact)))
-            print(f"INCOMPLETE {scenario_id}: {exc}")
+            self.results.append(UiResult(scenario_id, gate, situation, expected, compact(str(exc)), "BLOCKED", artifact=str(artifact), cause=str(exc)))
+            print(f"BLOCKED {scenario_id}: {exc}")
         except Exception as exc:  # noqa: BLE001 - scenario report must continue
             await self.page.context.set_offline(False)
             ARTIFACTS.mkdir(parents=True, exist_ok=True)
@@ -128,8 +156,8 @@ class Round1Browser:
             except Exception:  # noqa: BLE001
                 artifact = None
             message = f"{type(exc).__name__}: {exc}"
-            self.results.append(UiResult(scenario_id, gate, situation, expected, compact(message), "FAIL", artifact=str(artifact) if artifact else None))
-            print(f"FAIL {scenario_id}: {message}")
+            self.results.append(UiResult(scenario_id, gate, situation, expected, compact(message), "FAILED", artifact=str(artifact) if artifact else None, cause=message))
+            print(f"FAILED {scenario_id}: {message}")
 
     async def site(self) -> str:
         await self.open("/(tabs)/guard")
@@ -152,18 +180,21 @@ class Round1Browser:
     async def link(self) -> str:
         await self.open("/check")
         await self.page.get_by_test_id("check-url-input").fill("https://commbank-secure-verify.xyz/login")
+        await self.page.wait_for_function("document.querySelector('[data-testid=check-submit-button]')?.getAttribute('aria-disabled') !== 'true'", timeout=30_000)
         await self.page.get_by_test_id("check-submit-button").click()
         await self.page.get_by_test_id("check-result-card").wait_for(timeout=90_000)
         quality = "not available"
         exact = "not available"
         if await self.page.get_by_test_id("link-assessment").count() == 0:
-            self.blockers.append("real Gemini link investigation was unavailable")
+            investigation_error = await full_text(self.page, "link-investigation-error")
+            self.partial_reasons.append(f"real Gemini link investigation was unavailable; the user saw only the local result ({investigation_error or 'no detailed error rendered'})")
         else:
             await self.require_live_investigation("link-assessment")
             exact = await full_text(self.page, "link-assessment-exact-response")
             quality = self.assert_higgins_meaning(exact, "link", await full_text(self.page, "link-assessment"), require_gate=False)
+            trace = await self.assessment_trace("link-assessment")
         if await self.page.get_by_test_id("check-result-intel-unavailable").count():
-            self.blockers.append("real reputation lookup was unavailable")
+            self.partial_reasons.append("real reputation lookup was unavailable")
         state = await visible_text(self.page, "check-result-state")
         verdict = await visible_text(self.page, "check-result-headline") or await visible_text(self.page, "check-page-verdict")
         await self.page.get_by_test_id("check-verify-website").click()
@@ -176,7 +207,7 @@ class Round1Browser:
         assert await self.page.get_by_test_id("check-continue-anyway").count() == 1
         label = await self.page.get_by_test_id("check-continue-anyway").inner_text()
         assert "Record my choice" in label
-        return f"Threat state {state}; {verdict}; persistent verification instructions opened. Ambiguous shortened-link override label is truthful. Higgins quality: {quality}. Exact live Higgins response: {exact}"
+        return f"Threat state {state}; {verdict}; persistent verification instructions opened. Ambiguous shortened-link override label is truthful. Higgins quality: {quality}. Exact live Higgins response: {exact}. {trace if 'trace' in locals() else 'Investigation trace unavailable.'}"
 
     async def text(self) -> str:
         await self.open("/text-guard")
@@ -185,17 +216,18 @@ class Round1Browser:
         await self.page.get_by_test_id("textguard-check").click()
         rendered = await self.wait_for_any(("textguard-result", "message-assessment"))
         if rendered != "message-assessment":
-            self.blockers.append("real Gemini message investigation was unavailable")
+            self.partial_reasons.append("real Gemini message investigation was unavailable; the user saw only the local result")
             quality = "not available"; exact = "not available"
         else:
             await self.require_live_investigation("message-assessment")
             exact = await full_text(self.page, "message-assessment-exact-response")
             quality = self.assert_higgins_meaning(exact, "text", await full_text(self.page, "message-assessment"), require_gate=False)
+            trace = await self.assessment_trace("message-assessment")
         state = await visible_text(self.page, "textguard-state") or await visible_text(self.page, "message-assessment-risk-label")
         verdict = await visible_text(self.page, "textguard-verdict") or await visible_text(self.page, "message-assessment-headline")
         await self.page.get_by_test_id("textguard-verify-sender").click()
         await self.page.get_by_test_id("textguard-verify-sheet").wait_for()
-        return f"State {state}; {verdict}; sender-check instructions remained visible. Higgins quality: {quality}. Exact live Higgins response: {exact}"
+        return f"State {state}; {verdict}; sender-check instructions remained visible. Higgins quality: {quality}. Exact live Higgins response: {exact}. {trace if 'trace' in locals() else 'Investigation trace unavailable.'}"
 
     async def call(self) -> str:
         await self.open("/call")
@@ -231,7 +263,7 @@ class Round1Browser:
         await self.page.get_by_test_id("account-run").click()
         await self.page.get_by_test_id("account-actions").wait_for(timeout=90_000)
         if await self.page.get_by_test_id("account-assessment").count() == 0:
-            self.blockers.append("real Gemini account investigation was unavailable")
+            self.partial_reasons.append("real Gemini account investigation was unavailable; the user saw only the local result")
             quality = "not available"; exact = "not available"
         else:
             await self.require_live_investigation("account-assessment")
@@ -239,6 +271,7 @@ class Round1Browser:
             if any(claim in exact.lower() for claim in ("malicious code", "tracking pixel", "account is compromised", "delete the message")):
                 raise AssertionError(f"Higgins raised an unsupported alarm from an empty submission. Exact response: {exact}")
             quality = self.assert_higgins_meaning(exact, "account", await full_text(self.page, "account-assessment"), require_gate=False)
+            trace = await self.assessment_trace("account-assessment")
         root = await self.page.locator("#root").inner_text()
         assert "Login prompt you didn't start" not in root
         await self.page.context.set_offline(True)
@@ -250,7 +283,7 @@ class Round1Browser:
         await self.page.get_by_test_id("account-report-success").wait_for(timeout=60_000)
         resolve = self.page.get_by_test_id("account-resolve")
         assert await resolve.inner_text() == "Mark as handled"
-        return f"No-evidence path stayed unknown; offline report showed Retry; online retry succeeded; resolution label is Mark as handled. Higgins quality: {quality}. Exact live Higgins response: {exact}"
+        return f"No-evidence path stayed unknown; offline report showed Retry; online retry succeeded; resolution label is Mark as handled. Higgins quality: {quality}. Exact live Higgins response: {exact}. {trace if 'trace' in locals() else 'Investigation trace unavailable.'}"
 
     async def email(self) -> str:
         await self.open("/email")
@@ -260,17 +293,18 @@ class Round1Browser:
         await self.page.get_by_test_id("email-run").click()
         rendered = await self.wait_for_any(("email-result", "email-assessment"))
         if rendered != "email-assessment":
-            self.blockers.append("real Gemini email investigation was unavailable")
+            self.partial_reasons.append("real Gemini email investigation was unavailable; the user saw only the local result")
             quality = "not available"; exact = "not available"
         else:
             await self.require_live_investigation("email-assessment")
             exact = await full_text(self.page, "email-assessment-exact-response")
             quality = self.assert_higgins_meaning(exact, "email", await full_text(self.page, "email-assessment"), require_gate=False)
+            trace = await self.assessment_trace("email-assessment")
         state = await visible_text(self.page, "email-state") or await visible_text(self.page, "email-assessment-risk-label")
         verdict = await visible_text(self.page, "email-verdict") or await visible_text(self.page, "email-assessment-headline")
         await self.page.get_by_test_id("email-verify-sender").click()
         await self.page.get_by_test_id("email-verify-sheet").wait_for()
-        return f"State {state}; {verdict}; sender verification remained persistent and did not open suspicious content. Higgins quality: {quality}. Exact live Higgins response: {exact}"
+        return f"State {state}; {verdict}; sender verification remained persistent and did not open suspicious content. Higgins quality: {quality}. Exact live Higgins response: {exact}. {trace if 'trace' in locals() else 'Investigation trace unavailable.'}"
 
     async def app(self) -> str:
         await self.open("/app-check")
@@ -282,19 +316,20 @@ class Round1Browser:
         await self.page.get_by_test_id("app-run").click()
         rendered = await self.wait_for_any(("app-result", "app-assessment"))
         if rendered != "app-assessment":
-            self.blockers.append("real Gemini app investigation was unavailable")
+            self.partial_reasons.append("real Gemini app investigation was unavailable; the user saw only the local result")
             quality = "not available"; exact = "not available"
         else:
             await self.require_live_investigation("app-assessment")
             exact = await full_text(self.page, "app-assessment-exact-response")
             quality = self.assert_higgins_meaning(exact, "app", await full_text(self.page, "app-assessment"), require_gate=False)
+            trace = await self.assessment_trace("app-assessment")
         state = await visible_text(self.page, "app-state") or await visible_text(self.page, "app-assessment-risk-label")
         verdict = await visible_text(self.page, "app-verdict") or await visible_text(self.page, "app-assessment-headline")
         settings = self.page.get_by_test_id("app-open-settings")
         if await settings.count():
             await settings.click()
             await self.page.get_by_test_id("app-action-guidance").wait_for(timeout=30_000)
-        return f"State {state}; {verdict}; Settings action produced persistent guidance in browser. Higgins quality: {quality}. Exact live Higgins response: {exact}"
+        return f"State {state}; {verdict}; Settings action produced persistent guidance in browser. Higgins quality: {quality}. Exact live Higgins response: {exact}. {trace if 'trace' in locals() else 'Investigation trace unavailable.'}"
 
     async def file(self) -> str:
         await self.open("/file")
@@ -306,6 +341,8 @@ class Round1Browser:
         await self.page.get_by_test_id("file-source-unknown").click()
         await self.page.get_by_test_id("file-finish-check").click()
         await self.page.get_by_test_id("file-actions").wait_for(timeout=60_000)
+        file_state = await visible_text(self.page, "file-state")
+        file_verdict = await visible_text(self.page, "file-verdict")
         await self.page.get_by_test_id("file-recovery-open").click()
         await self.page.get_by_test_id("file-recovery-pick-clicked").click()
         await self.page.get_by_test_id("file-recovery-sheet").wait_for()
@@ -319,16 +356,18 @@ class Round1Browser:
         try:
             await self.page.wait_for_function("() => document.querySelector('[data-testid=ask-error-card]') || document.querySelector('[data-testid=ask-handoff-status]')?.textContent === 'This issue stays attached to your follow-up questions.'", timeout=90_000)
         except PlaywrightTimeoutError as exc:
-            raise IncompleteScenario("real Higgins did not finish the File answer within 90 seconds") from exc
+            raise BlockedScenario(f"File Gate showed {file_state}: {file_verdict}; recovery worked, but real Higgins did not finish within 90 seconds") from exc
         if await self.page.get_by_test_id("ask-error-card").count():
-            raise IncompleteScenario(f"real Higgins response unavailable after Retry: {await visible_text(self.page, 'ask-error')}")
+            raise self.higgins_failure(f"File Gate showed {file_state}: {file_verdict}; recovery worked. The user then saw: {await visible_text(self.page, 'ask-error')}")
         await self.page.wait_for_function("document.querySelector('[data-testid=ask-conversation-counts]')?.textContent === '1 question • 1 completed answer'", timeout=90_000)
         await self.page.get_by_test_id("ask-input").fill("Explain that more simply.")
         await self.page.get_by_test_id("ask-send-button").click()
         try:
-            await self.page.wait_for_function("document.querySelector('[data-testid=ask-conversation-counts]')?.textContent === '2 questions • 2 completed answers'", timeout=90_000)
+            await self.page.wait_for_function("() => document.querySelector('[data-testid=ask-error-card]') || document.querySelector('[data-testid=ask-conversation-counts]')?.textContent === '2 questions • 2 completed answers'", timeout=90_000)
         except PlaywrightTimeoutError as exc:
-            raise IncompleteScenario("real Higgins did not finish the File follow-up within 90 seconds") from exc
+            raise BlockedScenario(f"File Gate showed {file_state}: {file_verdict}; initial Higgins answer arrived, but the follow-up did not finish within 90 seconds") from exc
+        if await self.page.get_by_test_id("ask-error-card").count():
+            raise self.higgins_failure(f"File Gate showed {file_state}: {file_verdict}; the initial Higgins answer arrived. The user then saw on follow-up: {await visible_text(self.page, 'ask-error')}")
         raw_response = (await self.page.locator('[data-testid^="ask-message-h-"]').last.inner_text()).removesuffix("Hear Higgins").strip()
         quality = self.assert_higgins_meaning(raw_response, "file", f"{await visible_text(self.page, 'ask-active-gate')} {await visible_text(self.page, 'ask-active-summary')}")
         return f"Risky file source follow-up occurred after inspection; 'I already opened it' recovery worked; Higgins Retry and simpler follow-up preserved one conversation. Higgins quality: {quality}. Exact final Higgins response: {compact(raw_response, 1600)}"
@@ -347,15 +386,17 @@ class Round1Browser:
         try:
             await self.page.wait_for_function("() => document.querySelector('[data-testid=ask-error-card]') || document.querySelector('[data-testid=ask-handoff-status]')?.textContent === 'This issue stays attached to your follow-up questions.'", timeout=90_000)
         except PlaywrightTimeoutError as exc:
-            raise IncompleteScenario("real Higgins did not finish the Device answer within 90 seconds") from exc
+            raise BlockedScenario(f"Device Gate showed {state}: {summary}; Settings guidance opened, but real Higgins did not finish within 90 seconds") from exc
         if await self.page.get_by_test_id("ask-error-card").count():
-            raise IncompleteScenario(f"real Higgins response unavailable: {await visible_text(self.page, 'ask-error')}")
+            raise self.higgins_failure(f"Device Gate showed {state}: {summary}; Settings guidance opened. The user then saw: {await visible_text(self.page, 'ask-error')}")
         await self.page.get_by_test_id("ask-input").fill("Help me change that setting.")
         await self.page.get_by_test_id("ask-send-button").click()
         try:
-            await self.page.wait_for_function("document.querySelector('[data-testid=ask-conversation-counts]')?.textContent === '2 questions • 2 completed answers'", timeout=90_000)
+            await self.page.wait_for_function("() => document.querySelector('[data-testid=ask-error-card]') || document.querySelector('[data-testid=ask-conversation-counts]')?.textContent === '2 questions • 2 completed answers'", timeout=90_000)
         except PlaywrightTimeoutError as exc:
-            raise IncompleteScenario("real Higgins did not finish the Device follow-up within 90 seconds") from exc
+            raise BlockedScenario(f"Device Gate showed {state}: {summary}; initial Higgins answer arrived, but the setting follow-up did not finish within 90 seconds") from exc
+        if await self.page.get_by_test_id("ask-error-card").count():
+            raise self.higgins_failure(f"Device Gate showed {state}: {summary}; the initial Higgins answer arrived. The user then saw on follow-up: {await visible_text(self.page, 'ask-error')}")
         raw_response = (await self.page.locator('[data-testid^="ask-message-h-"]').last.inner_text()).removesuffix("Hear Higgins").strip()
         quality = self.assert_higgins_meaning(raw_response, "device", f"{await visible_text(self.page, 'ask-active-gate')} {await visible_text(self.page, 'ask-active-summary')}")
         return f"State {state}; {summary}; Settings guidance and follow-up stayed attached to Device Gate context. Higgins quality: {quality}. Exact final Higgins response: {compact(raw_response, 1600)}"
@@ -419,8 +460,8 @@ def markdown(engine: dict, ui: list[UiResult], base_url: str, mode: str) -> str:
         "## Outcome summary",
         "",
         f"- Local application-logic preflight: **{engine['summary']['passed']}/{engine['summary']['total']} matched expectations** — not counted as external investigation or Higgins acceptance",
-        f"- Browser journeys: **{sum(item.outcome == 'PASS' for item in ui)}/{len(ui)} passed**, **{sum(item.outcome == 'INCOMPLETE' for item in ui)} incomplete**, **{sum(item.outcome == 'FAIL' for item in ui)} failed**",
-        f"- Device-only scenarios: **{len(engine['device_only'])} pending and not counted as browser completions**",
+        f"- Browser journeys: **{sum(item.outcome == 'COMPLETE' for item in ui)}/{len(ui)} complete**, **{sum(item.outcome == 'PARTIAL' for item in ui)} partial**, **{sum(item.outcome == 'FAILED' for item in ui)} failed**, **{sum(item.outcome == 'BLOCKED' for item in ui)} blocked**",
+        f"- Device-only scenarios: **{len(engine['device_only'])} blocked from browser completion and not counted as complete**",
         "- External-source handling: **configured real services in every mode; no verdict, finding or Higgins response is injected**",
         "",
         "## Local preflight across all ten Gates — not downstream acceptance",
@@ -431,17 +472,20 @@ def markdown(engine: dict, ui: list[UiResult], base_url: str, mode: str) -> str:
     for item in engine["scenarios"]:
         expected = item["expected"]
         actual = item["actual"]
-        lines.append(f"| `{item['id']}` | {item['gate']} | {item['tone']} | {expected['state']}; {compact(expected['detection'], 70)}; {compact(expected['action'], 90)}; must not: {compact(', '.join(expected['mustNot']), 80)} | {actual['state']}; {compact(actual['detection'], 70)}; {compact(actual['action'], 90)} | {'PASS' if item['pass'] else 'FAIL'} |")
+        lines.append(f"| `{item['id']}` | {item['gate']} | {item['tone']} | {expected['state']}; {compact(expected['detection'], 70)}; {compact(expected['action'], 90)}; must not: {compact(', '.join(expected['mustNot']), 80)} | {actual['state']}; {compact(actual['detection'], 70)}; {compact(actual['action'], 90)} | {'COMPLETE' if item['pass'] else 'FAILED'} |")
     lines += ["", "## Realistic multi-Gate situations", "", "| ID | Situation | Expected Gate path / meaning | Actual | Outcome |", "|---|---|---|---|---|"]
     for item in engine.get("multi_gate", []):
-        lines.append(f"| `{item['id']}` | {item['situation']} | {compact(json.dumps(item['expected']), 190)} | {compact(json.dumps(item['actual']), 210)} | {'PASS' if item['pass'] else 'FAIL'} |")
+        lines.append(f"| `{item['id']}` | {item['situation']} | {compact(json.dumps(item['expected']), 190)} | {compact(json.dumps(item['actual']), 210)} | {'COMPLETE' if item['pass'] else 'FAILED'} |")
     lines += ["", "## Normal app journeys", "", "| ID | Gate | Situation | Expected | Actual | Outcome |", "|---|---|---|---|---|---|"]
     for item in ui:
         lines.append(f"| `{item.id}` | {item.gate} | {item.situation} | {compact(item.expected, 140)} | {compact(item.actual, 180)} | {item.outcome} |")
-    lines += ["", "## Device-only scenarios — not completed by browser evidence", ""]
+    lines += ["", "## Journey details — what the user actually saw", ""]
+    for item in ui:
+        lines += [f"### `{item.id}` — {item.outcome}", "", f"- **Expected:** {item.expected}", f"- **User saw:** {item.actual}", f"- **Cause/gap:** {item.cause or 'None observed in this run.'}", f"- **Artifact:** `{item.artifact}`", ""]
+    lines += ["## Device-only scenarios — blocked from browser evidence", ""]
     for item in engine["device_only"]:
-        lines.append(f"- `{item['id']}` ({item['gate']}): {item['reason']}")
-    weakest = [item for item in ui if item.outcome != "PASS" or "=no" in item.actual or "not available" in item.actual]
+        lines.append(f"- `{item['id']}` ({item['gate']}) — **BLOCKED**: {item['reason']}")
+    weakest = [item for item in ui if item.outcome != "COMPLETE" or "=no" in item.actual or "not available" in item.actual]
     lines += ["", "## Weakest outcomes", ""]
     if weakest:
         for item in weakest:
@@ -449,6 +493,21 @@ def markdown(engine: dict, ui: list[UiResult], base_url: str, mode: str) -> str:
     else:
         lines.append("- No incomplete, failed or semantically weak Higgins outcomes were observed in this run.")
     lines += [
+        "",
+        "## Runtime mocks, templates and deterministic fallbacks",
+        "",
+        "- Web preview native device/network/app observations remain simulated or unavailable and are never treated as physical-device evidence.",
+        "- The deterministic 35-scenario engine is expectation preflight only; it does not stand in for external investigation or a Higgins response.",
+        "- Investigation fallback assessments remain a runtime safety path when Gemini is unavailable or rejected. The UI labels them as deterministic fallback, and any journey using one is PARTIAL rather than complete.",
+        "- Structured Higgins handoffs retry real Gemini once after a transport or grounding rejection. They do not substitute a canned answer; after both attempts fail, the user sees a Retry error and the journey is FAILED or BLOCKED.",
+        "",
+        "## Remaining capability gaps",
+        "",
+        "- **Bounded evidence handoff:** Ask Higgins currently carries at most 8 findings, 6 uncertainty items and 4 supported actions. Each item is length-bounded; longer investigations can still lose lower-priority evidence.",
+        "- **Bounded investigation inputs:** Message/email text and isolated webpage excerpts are intentionally capped before Gemini processing. This protects privacy and latency but is not complete-document or complete-page analysis.",
+        "- **Restricted research:** Live investigation uses configured reputation sources, official-brand guidance and an SSRF-protected page fetch. It has no unrestricted general web-research tool; DNS/SSRF/provider failures remain unresolved evidence rather than inferred verdicts.",
+        "- **Provider/guard compatibility:** Real Gemini prose can still fail the unsupported-capability, uncertainty or action contract. Ask Higgins then shows a Retry error and does not silently replace the answer.",
+        "- **Native scope:** Physical Stage 1D work remains cancelled. Native macOS/Windows enforcement adapters remain backlog, while current device-specific Settings guidance is still reviewed in browser where possible.",
         "",
         "## Interpretation rule",
         "",
@@ -472,8 +531,8 @@ async def main() -> int:
     md_path = REPORT_DIR / f"round1_expected_vs_actual_{args.mode}.md"
     json_path.write_text(json.dumps(payload, indent=2) + "\n")
     md_path.write_text(markdown(engine, ui, args.base_url, args.mode))
-    failed = engine["summary"]["failed"] + sum(item.outcome == "FAIL" for item in ui)
-    incomplete = sum(item.outcome == "INCOMPLETE" for item in ui)
+    failed = engine["summary"]["failed"] + sum(item.outcome == "FAILED" for item in ui)
+    incomplete = sum(item.outcome in ("PARTIAL", "BLOCKED") for item in ui)
     print(f"Readable report: {md_path}")
     print(f"Machine report: {json_path}")
     return 1 if failed else 2 if incomplete else 0

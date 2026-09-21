@@ -219,6 +219,12 @@ class AskIssueFinding(BaseModel):
     status: Literal["confirmed", "warning", "uncertain"]
 
 
+class AskAvailableAction(BaseModel):
+    model_config = {"extra": "forbid"}
+    label: str = Field(min_length=1, max_length=80)
+    instruction: str = Field(min_length=1, max_length=240)
+
+
 class AskIssueContext(BaseModel):
     model_config = {"extra": "forbid"}
     gate: Literal["site", "link", "text", "call", "network", "account", "email", "app", "file", "device", "incident"]
@@ -228,6 +234,7 @@ class AskIssueContext(BaseModel):
     uncertainty: list[str] = Field(default_factory=list, max_length=6)
     confirmed_protective_actions: list[str] = Field(default_factory=list, max_length=4)
     user_reported_actions: list[str] = Field(default_factory=list, max_length=6)
+    available_actions: list[AskAvailableAction] = Field(default_factory=list, max_length=4)
 
     @field_validator("uncertainty", "confirmed_protective_actions", "user_reported_actions")
     @classmethod

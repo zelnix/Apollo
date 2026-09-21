@@ -1,11 +1,11 @@
 {
   "round": "Round 1",
   "mode": "live",
-  "generated_at": "2026-09-21T02:49:41.737237+00:00",
+  "generated_at": "2026-09-21T03:48:32.123684+00:00",
   "base_url": "https://device-file-gate.preview.emergentagent.com",
   "engine": {
     "round": "Round 1",
-    "generated_at": "2026-09-21T02:46:40.050Z",
+    "generated_at": "2026-09-21T03:47:34.569Z",
     "expected_recorded_in": "frontend/scripts/round1-scenario-engine.ts",
     "scenarios": [
       {
@@ -1107,7 +1107,7 @@
         "id": "device-threat-remote",
         "gate": "device",
         "tone": "threatening",
-        "situation": "{\"signals\":{\"platform\":\"android\",\"unknownSourcesEnabled\":null,\"thirdPartyAccessibilityServices\":[\"AnyDesk\"],\"overlayApps\":null,\"notificationAccessApps\":null,\"vpnActive\":null,\"vpnProviderKnown\":null,\"managementProfile\":\"unknown\",\"userTrustedCertificates\":null,\"remoteAccessApps\":[\"AnyDesk\"],\"developerOptions\":null},\"self\":{\"gaveRemoteAccess\":true,\"usedBankingDuringAccess\":true},\"protection\":{\"requested\":true,\"operational\":true,\"degradedReason\":null,\"permissionIssues\":[],\"checkedAt\":\"2026-09-21T02:46:40.026Z\"}}",
+        "situation": "{\"signals\":{\"platform\":\"android\",\"unknownSourcesEnabled\":null,\"thirdPartyAccessibilityServices\":[\"AnyDesk\"],\"overlayApps\":null,\"notificationAccessApps\":null,\"vpnActive\":null,\"vpnProviderKnown\":null,\"managementProfile\":\"unknown\",\"userTrustedCertificates\":null,\"remoteAccessApps\":[\"AnyDesk\"],\"developerOptions\":null},\"self\":{\"gaveRemoteAccess\":true,\"usedBankingDuringAccess\":true},\"protection\":{\"requested\":true,\"operational\":true,\"degradedReason\":null,\"permissionIssues\":[],\"checkedAt\":\"2026-09-21T03:47:34.546Z\"}}",
         "expected": {
           "gate": "device",
           "state": "barking",
@@ -1147,7 +1147,7 @@
         "id": "device-legitimate-observed",
         "gate": "device",
         "tone": "legitimate",
-        "situation": "{\"signals\":{\"platform\":\"android\",\"unknownSourcesEnabled\":false,\"thirdPartyAccessibilityServices\":[],\"overlayApps\":[],\"notificationAccessApps\":[],\"vpnActive\":false,\"vpnProviderKnown\":null,\"managementProfile\":\"none\",\"userTrustedCertificates\":0,\"remoteAccessApps\":[],\"developerOptions\":false},\"self\":{},\"protection\":{\"requested\":true,\"operational\":true,\"degradedReason\":null,\"permissionIssues\":[],\"checkedAt\":\"2026-09-21T02:46:40.026Z\"}}",
+        "situation": "{\"signals\":{\"platform\":\"android\",\"unknownSourcesEnabled\":false,\"thirdPartyAccessibilityServices\":[],\"overlayApps\":[],\"notificationAccessApps\":[],\"vpnActive\":false,\"vpnProviderKnown\":null,\"managementProfile\":\"none\",\"userTrustedCertificates\":0,\"remoteAccessApps\":[],\"developerOptions\":false},\"self\":{},\"protection\":{\"requested\":true,\"operational\":true,\"degradedReason\":null,\"permissionIssues\":[],\"checkedAt\":\"2026-09-21T03:47:34.546Z\"}}",
         "expected": {
           "gate": "device",
           "state": "resting",
@@ -1166,8 +1166,8 @@
           "scenario": "protected",
           "detection": "Apollo protection is confirmed running",
           "investigation": "No meaningful issues within what Apollo can see on this Android device.  ",
-          "higgins": "Apollo's device check is resting. Apollo protection is confirmed running. Unknown: No platform visibility gap was reported.. Next action: The device reported protection operational at 02:46 AM.",
-          "action": "The device reported protection operational at 02:46 AM.",
+          "higgins": "Apollo's device check is resting. Apollo protection is confirmed running. Unknown: No platform visibility gap was reported.. Next action: The device reported protection operational at 03:47 AM.",
+          "action": "The device reported protection operational at 03:47 AM.",
           "uncertainty": "No platform visibility gap was reported.",
           "mustNot": []
         },
@@ -1187,7 +1187,7 @@
         "id": "device-ambiguous-limited",
         "gate": "device",
         "tone": "ambiguous",
-        "situation": "{\"signals\":{\"platform\":\"web\",\"unknownSourcesEnabled\":null,\"thirdPartyAccessibilityServices\":null,\"overlayApps\":null,\"notificationAccessApps\":null,\"vpnActive\":null,\"vpnProviderKnown\":null,\"managementProfile\":\"unknown\",\"userTrustedCertificates\":null,\"remoteAccessApps\":null,\"developerOptions\":null},\"self\":{},\"protection\":{\"requested\":true,\"operational\":false,\"degradedReason\":\"Unavailable in preview\",\"permissionIssues\":[],\"checkedAt\":\"2026-09-21T02:46:40.026Z\"}}",
+        "situation": "{\"signals\":{\"platform\":\"web\",\"unknownSourcesEnabled\":null,\"thirdPartyAccessibilityServices\":null,\"overlayApps\":null,\"notificationAccessApps\":null,\"vpnActive\":null,\"vpnProviderKnown\":null,\"managementProfile\":\"unknown\",\"userTrustedCertificates\":null,\"remoteAccessApps\":null,\"developerOptions\":null},\"self\":{},\"protection\":{\"requested\":true,\"operational\":false,\"degradedReason\":\"Unavailable in preview\",\"permissionIssues\":[],\"checkedAt\":\"2026-09-21T03:47:34.546Z\"}}",
         "expected": {
           "gate": "device",
           "state": "growling",
@@ -1458,104 +1458,37 @@
   },
   "browser": [
     {
-      "id": "ui-site-popup",
-      "gate": "site",
-      "situation": "Ten-Gate overview and stopped-protection recommendation",
-      "expected": "All ten Gates visible; popup dismisses before the working Device Gate action",
-      "actual": "Ten Gates visible; Site card: Site Gate Unavailable on this device Automatic Automatic filtering for supported website traffic; this is separate from manual link checks. This device or build cannot run Apollo's automatic website filter. Open Link Gate. Recommendation popup dismissed before Device Gate.",
-      "outcome": "PASS",
-      "evidence": "browser",
-      "artifact": "/app/test_reports/round1_artifacts/live/ui-site-popup.png"
-    },
-    {
       "id": "ui-link-threat",
       "gate": "link",
       "situation": "Threatening bank lookalike",
       "expected": "Barking result; persistent trusted verification; truthful continue label",
-      "actual": "Threat state Apollo is barking; Verify this outside the message; persistent verification instructions opened. Ambiguous shortened-link override label is truthful. Higgins quality: accuracy=yes, uncertainty=yes, action=yes, clarity=yes, depth=yes. Exact live Higgins response: A submitted message was checked with local patterns, link intelligence and available public evidence. Impersonation often combines a plausible story with pressure to act before verifying the sender. I could not establish: apollo could not authenticate the person or organisation behind the message. Do not use the supplied link or contact details. Open the organisation's official app or website yourself. Blocked/incomplete: link live investigation did not complete: LIVE INVESTIGATION INCOMPLETE \u2014 LOCAL FALLBACK SHOWN (MODEL_CONFLICTED_WITH_AUTHORITATIVE_APOLLO_STATE)",
-      "outcome": "INCOMPLETE",
+      "actual": "Threat state Apollo is barking; This link does not belong to CommBank.; persistent verification instructions opened. Ambiguous shortened-link override label is truthful. Higgins quality: accuracy=yes, uncertainty=yes, action=yes, clarity=yes, depth=no. Exact live Higgins response: Please avoid the link and log in only via the official CommBank app. Apollo has noted that the provided link uses an unofficial '.xyz' TLD, which is the last part of a web address. Official communications from CommBank use 'commbank.com.au'. A technical inspection encountered a DNS failure, which is a failure to find the computer address for a website name. This often occurs with temporary scam pages. While no malicious listing was found, the domain\u2014the unique name of a website\u2014is not legitimate. If I may, I would suggest you treat this as a deceptive lure. Apollo has it in hand and confirms this address is not authorised.. Investigation display: LIVE INVESTIGATION: GEMINI COMPLETED \u2014 RESPONSE SHOWN VERBATIM. Sources shown: Submitted content analysis: INCONCLUSIVE \u2014 It looks like CommBank, but commbank-secure-verify.xyz is not one of CommBank's official domains.; Websites ending in .xyz are frequently used for scams.; The address mentions \"com | Apollo link intelligence: INCONCLUSIVE \u2014 commbank-secure-verify.xyz: clean; coverage full. No current listing was found; this does not authenticate the site or prove safety. | Isolated webpage inspection: UNAVAILABLE \u2014 Inspection unavailable: dns_failed. | CommBank official guidance: CONCERN FOUND \u2014 Official domain: commbank.com.au. No submitted link matches.",
+      "outcome": "PARTIAL",
       "evidence": "browser",
-      "artifact": "/app/test_reports/round1_artifacts/live/ui-link-threat.png"
-    },
-    {
-      "id": "ui-text-threat",
-      "gate": "text",
-      "situation": "Verification-code request",
-      "expected": "Barking result and persistent sender-check instructions",
-      "actual": "State SCAM WARNING; This message requests a sensitive security code following a claim of an account lock.; sender-check instructions remained visible. Higgins quality: accuracy=yes, uncertainty=yes, action=yes, clarity=yes, depth=no. Exact live Higgins response: A request for a sensitive verification code. Sharing a verification code can allow an unauthorised person to gain access to your bank account and funds. I could not establish: the actual identity of the sender. Contact your bank using a trusted phone number from their official website or the back of your physical bank card.",
-      "outcome": "PASS",
-      "evidence": "browser",
-      "artifact": "/app/test_reports/round1_artifacts/live/ui-text-threat.png"
-    },
-    {
-      "id": "ui-call-threat",
-      "gate": "call",
-      "situation": "Caller requests a security code",
-      "expected": "Threatening call result and trusted callback guidance",
-      "actual": "State Barking; Do not share the code.; independently trusted callback guidance opened.",
-      "outcome": "PASS",
-      "evidence": "browser",
-      "artifact": "/app/test_reports/round1_artifacts/live/ui-call-threat.png"
-    },
-    {
-      "id": "ui-network-ambiguous",
-      "gate": "network",
-      "situation": "Available preview network information",
-      "expected": "Unknown limitations remain visible; no unsupported block claim",
-      "actual": "State Growling; Apollo can see that a connection exists, but this build cannot inspect enough network details to call it clear.; limitation: WHAT APOLLO CAN SEE HERE This build sees only what the platform reports: connection type, Wi\u2011Fi name (with location permission), captive portal and VPN flags. It cannot read DNS queries, per-app traffic or confirm destination blocking \u2014 Apollo won't pretend ot",
-      "outcome": "PASS",
-      "evidence": "browser",
-      "artifact": "/app/test_reports/round1_artifacts/live/ui-network-ambiguous.png"
-    },
-    {
-      "id": "ui-account-unknown-report",
-      "gate": "account",
-      "situation": "No alert evidence plus offline report",
-      "expected": "Unknown stays unknown; no false report success; Retry; Mark as handled",
-      "actual": "No-evidence path stayed unknown; offline report showed Retry; online retry succeeded; resolution label is Mark as handled. Higgins quality: accuracy=yes, uncertainty=yes, action=yes, clarity=yes, depth=no. Exact live Higgins response: No content was provided in the submission. Without the message text or sender details, it is impossible to determine if a threat exists. I could not establish: the identity of the sender. Please provide a screenshot or a description of the message you wish to have assessed.",
-      "outcome": "PASS",
-      "evidence": "browser",
-      "artifact": "/app/test_reports/round1_artifacts/live/ui-account-unknown-report.png"
-    },
-    {
-      "id": "ui-email-threat",
-      "gate": "email",
-      "situation": "Bank-impersonation email",
-      "expected": "Threat result and independently trusted verification instructions",
-      "actual": "State SCAM WARNING; This message uses an unofficial address to request an urgent account verification.; sender verification remained persistent and did not open suspicious content. Higgins quality: accuracy=yes, uncertainty=yes, action=yes, clarity=yes, depth=no. Exact live Higgins response: Unofficial sender domain. Official communications from CommBank will only come from their verified domain. I could not establish: the current status of the website due to technical connection issues. Access your account only through the official CommBank app or by typing commbank.com.au directly into your browser.",
-      "outcome": "PASS",
-      "evidence": "browser",
-      "artifact": "/app/test_reports/round1_artifacts/live/ui-email-threat.png"
-    },
-    {
-      "id": "ui-app-remote",
-      "gate": "app",
-      "situation": "Remote-support app prompted by caller",
-      "expected": "Capability risk plus working persistent Settings guidance",
-      "actual": "State SCAM WARNING; Apollo has flagged this request for remote access as a significant risk.; Settings action produced persistent guidance in browser. Higgins quality: accuracy=yes, uncertainty=yes, action=yes, clarity=yes, depth=no. Exact live Higgins response: A request to install remote support software via a message link. Accessibility permissions can allow an app to capture passwords or move funds without your intervention. I could not establish: the identity of the sender. Please refrain from installing this application and delete the message immediately.",
-      "outcome": "PASS",
-      "evidence": "browser",
-      "artifact": "/app/test_reports/round1_artifacts/live/ui-app-remote.png"
+      "artifact": "/app/test_reports/round1_artifacts/live/ui-link-threat.png",
+      "cause": "Higgins answer for link did not explain why the evidence mattered"
     },
     {
       "id": "ui-file-handoff",
       "gate": "file",
       "situation": "Disguised executable and post-open follow-up",
       "expected": "Evidence-first follow-up; recovery; automatic Higgins Retry and continuity",
-      "actual": "real Higgins response unavailable after Retry: I could not answer right now.",
-      "outcome": "INCOMPLETE",
+      "actual": "AssertionError: Higgins output was rejected before reaching the user: File Gate showed Barking: This file is not really a PDF. Don't open it.; recovery worked. The user then saw: Higgins' answer did not meet Apollo's evidence rules. Retry.",
+      "outcome": "FAILED",
       "evidence": "browser",
-      "artifact": "/app/test_reports/round1_artifacts/live/ui-file-handoff.png"
+      "artifact": "/app/test_reports/round1_artifacts/live/ui-file-handoff.png",
+      "cause": "AssertionError: Higgins output was rejected before reaching the user: File Gate showed Barking: This file is not really a PDF. Don't open it.; recovery worked. The user then saw: Higgins' answer did not meet Apollo's evidence rules. Retry."
     },
     {
       "id": "ui-device-setting",
       "gate": "device",
       "situation": "Observed protection health and setting follow-up",
       "expected": "Visible limitation, working setting guidance and retained Higgins context",
-      "actual": "real Higgins did not finish the Device follow-up within 90 seconds",
-      "outcome": "INCOMPLETE",
+      "actual": "AssertionError: Higgins output was rejected before reaching the user: Device Gate showed Growling: 1 item worth reviewing. Nothing confirmed dangerous.; the initial Higgins answer arrived. The user then saw on follow-up: Higgins' answer did not meet Apollo's e",
+      "outcome": "FAILED",
       "evidence": "browser",
-      "artifact": "/app/test_reports/round1_artifacts/live/ui-device-setting.png"
+      "artifact": "/app/test_reports/round1_artifacts/live/ui-device-setting.png",
+      "cause": "AssertionError: Higgins output was rejected before reaching the user: Device Gate showed Growling: 1 item worth reviewing. Nothing confirmed dangerous.; the initial Higgins answer arrived. The user then saw on follow-up: Higgins' answer did not meet Apollo's evidence rules. Retry."
     }
   ]
 }
