@@ -101,6 +101,8 @@ export default function RootLayout() {
             <KeyboardProvider>
               <ApolloProvider>
                 <StatusBar style="dark" />
+                {/* Tablet/desktop: readable column width on wide windows (phones unaffected). Navigation stays identical across form factors. */}
+                <View style={{ flex: 1, width: "100%", maxWidth: 1180, alignSelf: "center" }}>
                 <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }}>
                   <Stack.Screen name="index" />
                   <Stack.Screen name="onboarding" />
@@ -125,6 +127,7 @@ export default function RootLayout() {
                   <Stack.Screen name="family/alert/[id]" options={{ presentation: "modal" }} />
                   <Stack.Screen name="family/incident/[id]" options={{ presentation: "modal" }} />
                 </Stack>
+                </View>
                 <ShareIntakeListener />
                 <ToastHost />
               </ApolloProvider>
