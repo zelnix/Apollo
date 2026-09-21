@@ -21,7 +21,7 @@ from core.config import EMAIL_FROM_NAME, PUBLIC_BASE, URL_HMAC_SECRET, logger
 from core.db import BaseDocument, db, now_utc
 from core.models import ApolloState, PatrolEvent
 from services.email import send_email, _wrap
-from services.storage import StorageError, get_object, put_object, voice_note_path
+from services.storage import StorageError, delete_object, get_object, put_object, voice_note_path
 from services.transcribe import caption_voice_note
 from routers.push import PUSH_FAMILY, PUSH_THREAT, send_push
 
@@ -242,6 +242,9 @@ async def unlink_device(link_id: str, device_id: str = Query(min_length=8, max_l
     )
     if not r.matched_count:
         raise HTTPException(status_code=404, detail="Unknown pairing.")
+    link = await db.family_links.find_one({"_id": oid}, {"protected_device_id": 1, "guardian_device_id": 1})
+    if link:  # the relationship ended: voice audio exchanged within it is purged (confirmed or retried by the sweeper)
+        await purge_voice_audio({"protected_device_id": link["protected_device_id"], "guardian_device_id": link["guardian_device_id"]}, "unlinked")
     return Response(status_code=204)
 
 
@@ -427,6 +430,28 @@ VOICE_TICKET_SECONDS = 600
 _background: set[asyncio.Task[None]] = set()  # keeps caption tasks referenced until done
 
 
+VOICE_RETENTION_DAYS = 30
+
+
+async def purge_voice_audio(query: dict, reason: str) -> int:
+    """Deletes stored audio for every voice note matching `query`. Confirmed deletions become `audio_state: purged`; unconfirmed ones stay
+    `purge_pending` and are retried by the sweeper, so a note is never reported as removed before the store confirms it."""
+    purged = 0
+    async for note in db.incident_notes.find({**query, "kind": "voice", "audio_state": {"$in": ["stored", "purge_pending", None]}}, {"_id": 1, "audio_path": 1}):
+        ok = await delete_object(note["audio_path"]) if note.get("audio_path") else True
+        await db.incident_notes.update_one({"_id": note["_id"]}, {"$set": {"audio_state": "purged" if ok else "purge_pending", "audio_purge_reason": reason,
+                                                                          **({"audio_purged_at": now_utc()} if ok else {})}, **({"$unset": {"audio_path": ""}} if ok else {})})
+        purged += int(ok)
+    return purged
+
+
+async def sweep_voice_audio() -> int:
+    """Retention sweep: expired audio and pending purges."""
+    expired = await purge_voice_audio({"audio_expires_at": {"$lte": now_utc()}, "audio_state": {"$in": ["stored", None]}}, "retention_expired")
+    retried = await purge_voice_audio({"audio_state": "purge_pending"}, "purge_retry")
+    return expired + retried
+
+
 def _voice_sig(note_id: str, exp: int) -> str:
     return hmac.new(URL_HMAC_SECRET.encode(), f"voice:{note_id}:{exp}".encode(), sha256).hexdigest()[:32]
 
@@ -465,7 +490,9 @@ async def add_voice_note(request: Request, scent_id: str, device_id: str = Form(
             "guardian_label": guardian_label, "kind": "voice", "text": f"{guardian_label} left you a voice note.", "phone": link.get("guardian_phone", ""),
             "duration_s": round(float(duration_s), 1), "content_type": ctype, "size": stored.get("size", len(data)), "created_at": now_utc(),
             "transcript": "", "transcript_language": None, "transcript_status": "pending"}  # caption arrives asynchronously (services/transcribe.py)
-    await db.incident_notes.insert_one({**note, "audio_path": stored.get("path", path)})
+    # Storage lifecycle (§10A): every stored voice note carries its retention deadline; audio is purged at expiry, on unlink of the
+    # guardian relationship, or on incident removal. `audio_state` is the truthful availability the client and reports rely on.
+    await db.incident_notes.insert_one({**note, "audio_path": stored.get("path", path), "audio_state": "stored", "audio_expires_at": now_utc() + timedelta(days=VOICE_RETENTION_DAYS)})
     task = asyncio.create_task(caption_voice_note(note_id, data, ext))
     _background.add(task)
     task.add_done_callback(_background.discard)
@@ -496,6 +523,9 @@ async def voice_play(note_id: str, exp: int = Query(...), sig: str = Query(min_l
     doc = await db.incident_notes.find_one({"note_id": note_id, "kind": "voice"})
     if not doc:
         raise HTTPException(status_code=404, detail="Voice note not found")
+    if doc.get("audio_state") in ("purged", "purge_pending") or not doc.get("audio_path"):
+        raise HTTPException(status_code=410, detail={"retention_expired": "This voice note reached its retention limit and its audio was removed.",
+                                                     "unlinked": "This voice note's audio was removed when the family link ended."}.get(doc.get("audio_purge_reason"), "This voice note's audio is no longer stored."))
     try:
         data, ctype = await get_object(doc["audio_path"])
     except StorageError as exc:

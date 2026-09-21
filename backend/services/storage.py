@@ -51,5 +51,17 @@ async def get_object(path: str) -> tuple[bytes, str]:
         raise StorageError(404, "This voice note is not available from the owner's storage.") from exc
 
 
+async def delete_object(path: str) -> bool:
+    """Deletes one stored object. Returns True when the store confirmed deletion (or the object is already gone); False when it could
+    not be confirmed, so the caller keeps the lifecycle record pending instead of pretending the audio is gone."""
+    if not storage_configured():
+        return False
+    try:
+        await asyncio.to_thread(_client().delete_object, Bucket=S3_BUCKET, Key=path)
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def voice_note_path(guardian_device_id: str, note_id: str, ext: str) -> str:
     return f"apollo-v1/family-voice/{guardian_device_id}/{note_id}.{ext}"

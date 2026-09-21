@@ -81,6 +81,7 @@ async def lifespan(_: FastAPI):
         while True:
             try:
                 await push.reconcile_receipts()
+                await family.sweep_voice_audio()
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001
