@@ -35,6 +35,7 @@ export interface HigginsIssueContext {
   user_reported_actions: string[];
   available_actions?: HigginsAvailableAction[];
   original_evidence?: HigginsOriginalEvidence[];
+  case_id?: string; // continue this shared investigation case instead of opening a new one
 }
 
 const recent = new Map<string, number>();
@@ -60,6 +61,7 @@ export function issueContext(input: HigginsIssueContext): HigginsIssueContext {
       label: redactUserSecrets(action.label).trim().slice(0, 80),
       instruction: redactUserSecrets(action.instruction).trim().slice(0, 240),
     })).filter((action) => action.label && action.instruction).slice(0, 4),
+    case_id: typeof input.case_id === "string" && input.case_id ? input.case_id : undefined,
     original_evidence: (input.original_evidence ?? []).map((item) => item.kind === "file" ? item : ({ kind: item.kind, value: redactUserSecrets(item.value).trim(), label: item.label?.slice(0, 80) })).filter((item) => item.kind === "file" ? !!item.uri : !!item.value),
   };
 }
@@ -71,6 +73,7 @@ export function parseHigginsIssueContext(raw: string): HigginsIssueContext | nul
     const states = ["sniffing", "resting", "ears_up", "growling", "barking", "biting", "unknown"];
     if (!value || !gates.includes(value.gate as HigginsGate) || !states.includes(String(value.assessment_state)) || typeof value.issue_summary !== "string" || !Array.isArray(value.findings) || !Array.isArray(value.uncertainty) || !Array.isArray(value.confirmed_protective_actions) || !Array.isArray(value.user_reported_actions)) return null;
     if (value.findings.some((finding) => !finding || typeof finding.summary !== "string" || !["observed", "inferred", "user_reported"].includes(finding.provenance) || !["confirmed", "warning", "uncertain"].includes(finding.status))) return null;
+    if (value.case_id != null && typeof value.case_id !== "string") return null;
     if (value.original_evidence != null && (!Array.isArray(value.original_evidence) || value.original_evidence.some((item) => !item || !["text", "url", "file"].includes(item.kind) || (item.kind === "file" ? typeof item.uri !== "string" : typeof item.value !== "string")))) return null;
     if (value.available_actions != null && (!Array.isArray(value.available_actions) || value.available_actions.some((action) => !action || typeof action.label !== "string" || typeof action.instruction !== "string"))) return null;
     return issueContext(value as HigginsIssueContext);

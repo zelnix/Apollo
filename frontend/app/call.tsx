@@ -1,6 +1,7 @@
 // Gate 4 — Check This Call. Designed for use under pressure during a live call: big buttons, short
 // answers, "Hang Up & Verify" first. No audio is recorded; analysis is from what the user selects
 // (plus an optional voicemail/transcript they paste).
+import { GateInvestigation } from "@/src/components/GateInvestigation";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import PhoneOff from "lucide-react-native/icons/phone-off";
 import X from "lucide-react-native/icons/x";
@@ -114,7 +115,7 @@ export default function CheckCall() {
                 {result.event ? <RecoveryFlow event={result.event} kinds={["password", "code", "money", "card", "app", "remote", "called", "info"]} testID="call-recovery" /> : <Body>Nothing to recover from — this looked like an ordinary call.</Body>}
                 {result.event && (a.requestedActions.includes("install") || a.requestedActions.includes("remote") || a.requestedActions.includes("screen")) ? <Button testID="call-check-app" variant="warning" label="They asked me to install an app — check it" onPress={() => router.push({ pathname: "/app-check", params: { scent: result.event?.scent_id ?? result.event?.event_id ?? "" } })} /> : null}
                 {result.event && (a.requestedActions.includes("code") || a.requestedActions.includes("password")) ? <Button testID="call-check-account" variant="warning" label="They asked for a code or password — Account Gate" onPress={() => router.push({ pathname: "/account", params: { scent: result.event?.scent_id ?? result.event?.event_id ?? "" } })} /> : null}
-                <Button testID="call-tell-more" variant="ghost" label="Ask Higgins about this call" onPress={() => openHigginsHandoff(router, issueContext({ gate: "call", issue_summary: a.title, assessment_state: a.state, findings: a.why.slice(0, 6).map((summary) => ({ summary, provenance: "inferred", status: "uncertain" })), uncertainty: ["The caller's identity was not independently authenticated."], confirmed_protective_actions: [], user_reported_actions: a.requestedActions, original_evidence: [{ kind: "text", value: `Caller number: ${number}\nWhat was said: ${transcript}`, label: "reported call" }] }), "What should I do about this phone call?")} />
+                <GateInvestigation testID="call-tell-more" label="Ask Higgins about this call" context={issueContext({ gate: "call", issue_summary: a.title, assessment_state: a.state, findings: a.why.slice(0, 6).map((summary) => ({ summary, provenance: "inferred", status: "uncertain" })), uncertainty: ["The caller's identity was not independently authenticated."], confirmed_protective_actions: [], user_reported_actions: a.requestedActions, original_evidence: [{ kind: "text", value: `Caller number: ${number}\nWhat was said: ${transcript}`, label: "reported call" }] })} question="What should I do about this phone call?" />
                 {result.event ? <Button testID="call-mark-safe" variant="ghost" label="Mark as handled" onPress={() => { void resolveEvent(result.event!); showToast("Marked as handled. This does not verify the caller.", "neutral"); goBackOrHome(router); }} /> : null}
                 <Button testID="call-again" variant="ghost" label="Check another call" onPress={reset} />
               </Card>

@@ -13,7 +13,7 @@ import { useApollo } from "@/src/store/ApolloContext";
 import { spacing } from "@/src/theme";
 import { Body, Button } from "./ui";
 
-export function EventActions({ event, originalEvidence }: { event: PatrolEvent; originalEvidence?: HigginsOriginalEvidence[] }) {
+export function EventActions({ event, originalEvidence, hideAsk = false }: { event: PatrolEvent; originalEvidence?: HigginsOriginalEvidence[]; hideAsk?: boolean }) {
   const { blockEvent, trustEvent, resolveEvent } = useApollo();
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
@@ -25,7 +25,7 @@ export function EventActions({ event, originalEvidence }: { event: PatrolEvent; 
     return (
       <View style={{ gap: spacing.sm }}>
         <Body>This event is {event.status === "trusted" ? "trusted (this exact link only)" : event.status === "blocked" ? "blocked and contained" : "handled"}.</Body>
-        <Button testID="event-explain-button" variant="secondary" label="Ask Higgins to explain" onPress={askHiggins} />
+        {hideAsk ? null : <Button testID="event-explain-button" variant="secondary" label="Ask Higgins to explain" onPress={askHiggins} />}
       </View>
     );
   }
@@ -45,7 +45,7 @@ export function EventActions({ event, originalEvidence }: { event: PatrolEvent; 
           <Button testID="event-handled-button" variant="ghost" label="Mark as handled" onPress={wrap("resolve", () => resolveEvent(event))} disabled={!!busy} />
         </>
       )}
-      <Button testID="event-explain-button" variant="ghost" label="Ask Higgins to explain" onPress={askHiggins} />
+      {hideAsk ? null : <Button testID="event-explain-button" variant="ghost" label="Ask Higgins to explain" onPress={askHiggins} />}
     </View>
   );
 }

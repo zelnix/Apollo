@@ -1,6 +1,7 @@
 // Gate 6 — Check This File. Reads only the file's first bytes (signature) and a text sample locally;
 // nothing is uploaded. URLs found inside are handed to Gate 3.
 import * as DocumentPicker from "expo-document-picker";
+import { GateInvestigation } from "@/src/components/GateInvestigation";
 import { File } from "expo-file-system";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import X from "lucide-react-native/icons/x";
@@ -167,7 +168,7 @@ export default function CheckFile() {
               {a.handoff === "network" ? <Button testID="file-check-device" label="I installed it — check my device" onPress={() => router.push("/device")} /> : null}
               <Button testID="file-tech" variant="secondary" label="View technical details" onPress={() => setTech(true)} />
               {result.event ? <RecoveryFlow event={result.event} kinds={["clicked", "app", "password", "card", "money", "download"]} testID="file-recovery" /> : null}
-              {result.event ? <Button testID="file-tell-more" variant="ghost" label="Ask Higgins about this file" onPress={() => openHigginsHandoff(router, issueContext({ gate: "file", issue_summary: a.title, assessment_state: a.state, findings: [
+              {result.event ? <GateInvestigation testID="file-tell-more" label="Ask Higgins about this file" context={issueContext({ gate: "file", issue_summary: a.title, assessment_state: a.state, findings: [
                 { summary: `Filename: ${selected?.asset.name ?? "not supplied"}`, provenance: "observed", status: "uncertain" },
                 { summary: `Supplied size/type: ${selected?.asset.size ?? "unknown"} bytes; ${selected?.asset.mimeType ?? "unknown"}`, provenance: "observed", status: "uncertain" },
                 { summary: `Signature result: ${a.realType}`, provenance: "observed", status: a.state === "barking" ? "warning" : "uncertain" },
@@ -176,7 +177,7 @@ export default function CheckFile() {
               ], uncertainty: ["Only the signature and a bounded supported sample were inspected; complete contents and safety remain unknown."], confirmed_protective_actions: [], user_reported_actions: [], original_evidence: selected ? [{ kind: "file", uri: selected.asset.uri, name: selected.asset.name, mediaType: selected.asset.mimeType || "application/octet-stream", size: selected.asset.size }] : [], available_actions: [
                 { label: "Follow the File Gate recommendation", instruction: a.recommendation },
                 { label: "Use I already opened it", instruction: "Return to the File Gate result and use I already opened it in Stay With Me for recovery steps." },
-              ] }), "What should I do with this file?")} /> : null}
+              ] })} question="What should I do with this file?" /> : null}
               <Button testID="file-again" variant="ghost" label="Check another file" onPress={() => { setResult(null); setNameOnly(""); setSelected(null); setPending(null); setPickerError(null); setPw(null); setSource("unknown"); }} />
             </Card>
           </>

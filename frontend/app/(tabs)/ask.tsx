@@ -1,6 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import SendHorizontal from "lucide-react-native/icons/send-horizontal";
-import * as Crypto from "expo-crypto";
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
@@ -12,7 +11,7 @@ import { clearHandoffTransfers, takeHandoff } from "@/src/domain/handoffTransfer
 import { parseHigginsIssueContext, type HigginsIssueContext } from "@/src/domain/higginsHandoff";
 import { redactInvestigationSecrets as redactUserSecrets } from "@/src/domain/privacy";
 import { useInvestigation } from "@/src/investigation/caseStore";
-import type { Gate } from "@/src/investigation/types";
+import { createCaseInput } from "@/src/investigation/fromContext";
 import { useApollo } from "@/src/store/ApolloContext";
 import { stopHiggins } from "@/src/voice/higgins";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -28,29 +27,11 @@ const useStyles = makeStyles((c) => ({
   disclaimer: { fontFamily: fonts.text, fontSize: 12, color: c.muted, paddingHorizontal: spacing.xl, paddingBottom: spacing.sm }, context: { marginHorizontal: spacing.xl, marginBottom: spacing.sm, gap: spacing.xs, borderColor: c.navyBorder },
 }));
 
-/** Handoff findings become Apollo's initial (revisable) observations in the shared case. */
-function initialFindings(context: HigginsIssueContext): string[] {
-  return [
-    `Apollo ${context.gate} check summary: ${context.issue_summary} (Apollo state: ${context.assessment_state})`,
-    ...context.findings.map((f) => `${f.provenance === "observed" ? "Observed" : f.provenance === "user_reported" ? "User reported" : "Apollo inferred"} (${f.status}): ${f.summary}`),
-    ...context.uncertainty.map((u) => `Uncertain: ${u}`),
-    ...context.confirmed_protective_actions.map((a) => `Confirmed protective action: ${a}`),
-    ...context.user_reported_actions.map((a) => `User reported action: ${a}`),
-  ];
-}
-
-function submissionsOf(context: HigginsIssueContext | null) {
-  return (context?.original_evidence ?? []).flatMap((item) => item.kind === "file" ? [] : [{ clientItemId: Crypto.randomUUID(), kind: item.kind, value: item.value, label: item.label ?? "" }]);
-}
-function filesOf(context: HigginsIssueContext | null) {
-  return (context?.original_evidence ?? []).flatMap((item) => item.kind === "file" ? [{ uri: item.uri, name: item.name, mediaType: item.mediaType }] : []);
-}
-
 export default function Ask() {
   const s = useStyles(); const { colors } = useTheme(); const insets = useSafeAreaInsets(); const router = useRouter();
   const { deviceId } = useApollo();
   const params = useLocalSearchParams<{ context?: string; prompt?: string; handoffId?: string }>();
-  const { state, start, ask, retry, cancel, remove } = useInvestigation();
+  const { state, start, ask, retry, cancel, remove, attach } = useInvestigation();
   const [text, setText] = useState(""); const [activeContext, setActiveContext] = useState<HigginsIssueContext | null>(null);
   const [routeError, setRouteError] = useState<string | null>(null);
   const seenRoute = useRef<string | null>(null); const scrollRef = useRef<ScrollView>(null);
@@ -61,8 +42,8 @@ export default function Ask() {
     if (!clean || busy || !deviceId) return;
     setText(""); setRouteError(null);
     if (state.caseData && state.phase !== "expired" && state.phase !== "idle") { void ask(clean); return; }
-    const ctx = context ?? activeContext;
-    void start({ gate: ctx && ctx.gate !== "incident" ? (ctx.gate as Gate) : null, question: clean, submissions: submissionsOf(ctx), initialFindingRefs: [], initialFindings: ctx ? initialFindings(ctx) : [] }, filesOf(ctx));
+    const { input, files } = createCaseInput(context ?? activeContext, clean);
+    void start(input, files);
   };
 
   useEffect(() => {
@@ -76,8 +57,10 @@ export default function Ask() {
     const question = transfer?.question ?? redactUserSecrets(String(params.prompt ?? "")).trim();
     setActiveContext(context);
     stopHiggins();
-    void start({ gate: context.gate !== "incident" ? (context.gate as Gate) : null, question, submissions: submissionsOf(context), initialFindingRefs: [], initialFindings: initialFindings(context) }, filesOf(context));
-  }, [params.handoffId, params.context, params.prompt, deviceId, router, start]);
+    if (context.case_id) { void attach(context.case_id).then((c) => { if (c && question) void ask(question); }); return; }
+    const { input, files } = createCaseInput(context, question);
+    void start(input, files);
+  }, [params.handoffId, params.context, params.prompt, deviceId, router, start, attach, ask]);
 
   const deleteAll = async () => { stopHiggins(); clearHandoffTransfers(); setActiveContext(null); setRouteError(null); await remove(); };
   const newQuestion = () => { if (busy) return; stopHiggins(); setActiveContext(null); void remove(); };

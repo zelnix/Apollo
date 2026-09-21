@@ -58,7 +58,7 @@ class TestCredentialLifecycle:
     def test_public_paths_stay_public(self):
         assert anon.get(f"{API}/health").status_code == 200
         assert anon.get(f"{API}/intel/status").status_code == 200
-        assert anon.get(f"{API}/voice/doesnotexist.mp3").status_code == 404  # public prefix, not 401
+        assert anon.get(f"{API}/voice/doesnotexist.wav").status_code == 401  # AR-15: audio is owner-scoped; nothing under /voice is public
 
 
 class TestOwnershipEnforcement:

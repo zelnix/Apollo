@@ -14,6 +14,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiPost, apiUpload } from "@/src/api/client";
 import { EventActions } from "@/src/components/EventActions";
+import { GateInvestigation } from "@/src/components/GateInvestigation";
+import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
 import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
@@ -236,7 +238,7 @@ export default function CheckLink() {
                 )) : outcome.intelError ? <Body testID="check-result-intel-error">Reputation check unavailable: {outcome.intelError}</Body> : null}
                 {isMock && liveEvent?.verified_block ? <Pill tone="unknown" label="Simulated block (mock adapter)" /> : null}
               </Card>
-              {liveEvent ? <View style={{ marginTop: spacing.md }}><EventActions event={liveEvent} originalEvidence={[...(input.trim() ? [{ kind: "url" as const, value: input.trim(), label: "checked link" }] : []), ...(outcome?.intel ? [{ kind: "text" as const, value: `Apollo link check: verdict ${outcome.intel.verdict}; coverage ${outcome.intel.coverage}; redirect chain ${outcome.intel.redirect_chain?.join(" → ") || "none observed"}; final URL ${outcome.intel.final_url ?? "not resolved"}; sources ${outcome.intel.sources.map((x) => `${x.name}=${x.status}`).join(", ")}`, label: "link check observations" }] : [])]} /></View> : null}
+              {liveEvent ? <View style={{ marginTop: spacing.md, gap: spacing.md }}><EventActions event={liveEvent} hideAsk /><GateInvestigation testID="check-investigation" label="Ask Higgins about this link" context={{ ...contextFromEvent(liveEvent, gateForCategory(liveEvent.category)), original_evidence: [...(input.trim() ? [{ kind: "url" as const, value: input.trim(), label: "checked link" }] : []), ...(outcome?.intel ? [{ kind: "text" as const, value: `Apollo link check: verdict ${outcome.intel.verdict}; coverage ${outcome.intel.coverage}; redirect chain ${outcome.intel.redirect_chain?.join(" → ") || "none observed"}; final URL ${outcome.intel.final_url ?? "not resolved"}; sources ${outcome.intel.sources.map((x) => `${x.name}=${x.status}`).join(", ")}`, label: "link check observations" }] : [])] }} question="Is this link or site safe to use, and what should I do?" /></View> : null}
               {liveEvent ? (
                 <Card style={{ marginTop: spacing.md, gap: spacing.sm }} testID="check-gate3-actions">
                   <Button testID="check-verify-website" variant="secondary" label="Show me how to check the website" onPress={() => setVerify(true)} />

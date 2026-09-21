@@ -1,5 +1,6 @@
 // Gate 2 — Check a message. Paste (or share / screenshot) a suspicious text, get a plain-language
 // verdict, verify the sender safely, hand links to the link check, and enter recovery if needed.
+import { GateInvestigation } from "@/src/components/GateInvestigation";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { Image as ExpoImage } from "expo-image";
@@ -184,7 +185,7 @@ export default function CheckMessage() {
               <Card style={{ gap: spacing.sm }}>
                 <Button testID="message-verify-sender" variant="secondary" label="Show me how to check the sender" onPress={() => setVerify(true)} />
                 {a.signals.loginRequest || a.signals.codeRequest || /password|sign[- ]?in|login|account/i.test(text) ? <Button testID="message-check-account" variant="secondary" label="It's about my account — open Account Gate" onPress={() => router.push({ pathname: "/account", params: { text, scent: result.event?.scent_id ?? result.event?.event_id ?? "" } })} /> : null}
-                <Button testID="message-tell-more" variant="secondary" label="Ask Higgins about this message" onPress={() => openHigginsHandoff(router, issueContext({ gate: "text", issue_summary: a.scenarioTitle, assessment_state: a.state, findings: a.signalLabels.map((summary) => ({ summary, provenance: "observed", status: "uncertain" })), uncertainty: ["The sender was not independently authenticated."], confirmed_protective_actions: [], user_reported_actions: [], original_evidence: [{ kind: "text", value: `From: ${sender}\n${text}`, label: "submitted message" }] }), "Explain this message check in plain language and what I should do.")} />
+                <GateInvestigation testID="message-tell-more" label="Ask Higgins about this message" context={issueContext({ gate: "text", issue_summary: a.scenarioTitle, assessment_state: a.state, findings: a.signalLabels.map((summary) => ({ summary, provenance: "observed", status: "uncertain" })), uncertainty: ["The sender was not independently authenticated."], confirmed_protective_actions: [], user_reported_actions: [], original_evidence: [{ kind: "text", value: `From: ${sender}\n${text}`, label: "submitted message" }] })} question="Explain this message check in plain language and what I should do." />
                 {result.event ? <RecoveryFlow event={result.event} kinds={["called", "clicked", "password", "code", "money", "info", "app"]} linkToCheck={a.signals.urls[0] ?? null} testID="message-recovery" /> : null}
                 {result.event ? <Button testID="message-mark-safe" variant="ghost" label="Mark as handled" onPress={() => { void resolveEvent(result.event!); showToast("Marked as handled. This does not verify the sender or suppress future alerts.", "neutral"); goBackOrHome(router); }} /> : null}
               </Card>

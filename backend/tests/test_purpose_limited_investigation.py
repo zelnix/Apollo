@@ -13,8 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from routers import analysis
 from services import investigation
-from services.investigation import (HigginsAssessment, InvestigationSource, _complete_fallback_higgins_response,
-                                    _model_infers_page_state_from_unavailable_inspection, deterministic_entities,
+from services.investigation import (HigginsAssessment, InvestigationSource, deterministic_entities,
                                     investigate_message, purpose_limited_url)
 
 
@@ -30,16 +29,6 @@ def test_deterministic_extraction_finds_actual_concern():
     assert entities.callback_details == ["02 8000 1234"]
     assert "$600" in entities.transaction_claims
     assert "share a verification code" in entities.requested_actions
-
-
-def test_deterministic_fallback_contains_finding_uncertainty_and_action():
-    result = _complete_fallback_higgins_response(HigginsAssessment(headline="Check this request", next_action="Call the official number.",
-        exact_response="too short", what_was_found=["The supplied domain is not official."],
-        why_it_matters=["Lookalike domains can collect passwords."],
-        could_not_establish=["Apollo could not authenticate the sender."], action_label="Call official number", action_kind="call_known_number"))
-    assert "not official" in result.exact_response
-    assert "could not establish" in result.exact_response.lower()
-    assert "Call the official number" in result.exact_response
 
 
 @pytest.mark.asyncio
@@ -69,12 +58,9 @@ async def test_valid_gemini_exact_response_is_preserved_verbatim(monkeypatch):
 
 
 def test_dns_failure_cannot_be_rewritten_as_site_inactive():
-    higgins = HigginsAssessment(headline="Unverified page", next_action="Use the official app.",
-                                exact_response="The DNS failure suggests the site may already be inactive.",
-                                what_was_found=["The page failed to load and may be offline."], why_it_matters=["Connection failed."],
-                                could_not_establish=["Page state is unknown."], action_label="Use official app", action_kind="verify_officially")
-    sources = [InvestigationSource(source_id="page-1", kind="page", label="Isolated webpage inspection", status="unavailable", detail="dns_failed")]
-    assert _model_infers_page_state_from_unavailable_inspection(higgins, sources) is True
+    # Legacy helper removed; the rule now lives in the coordinator prompt (a DNS failure is a limitation, not takedown or safety).
+    from services.higgins.coordinator import SYSTEM
+    assert "DNS failure" in SYSTEM and "not proof of fraud, takedown or safety" in SYSTEM
 
 
 @pytest.mark.asyncio

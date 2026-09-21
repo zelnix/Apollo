@@ -21,10 +21,12 @@ export function useInvestigation() {
   const stream = useRef<{ abort: () => void; lastSequence: () => number } | null>(null);
   const pending = useRef<{ turnId: string; key: string; message: string; answerTo: string | null } | null>(null);
   const expiryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const caseRef = useRef<InvestigationCase | null>(null);
   const update = (patch: Partial<CaseState> | ((prev: CaseState) => Partial<CaseState>)) => setState((prev) => ({ ...prev, ...(typeof patch === "function" ? patch(prev) : patch) }));
 
   const refresh = useCallback(async (caseId: string) => {
     const [{ case: caseData }, turns, sources] = await Promise.all([api.getCase(caseId), api.listTurns(caseId), api.listSources(caseId)]);
+    caseRef.current = caseData;
     update({ caseData, turns: turns.items, sources: sources.items, response: caseData.response, question: caseData.response?.question ?? null });
     return caseData;
   }, []);
@@ -82,14 +84,14 @@ export function useInvestigation() {
         job = (await api.submitTurn(created.id, { expectedRevision: revision, turnId: turn.turnId, message: input.question, answerToQuestionId: null, evidenceIds: [] }, turn.key)).job;
         caseData = (await api.getCase(created.id)).case;
       }
-      update({ caseData }); armExpiry(caseData); if (job) follow(caseData.id, job);
+      caseRef.current = caseData; update({ caseData }); armExpiry(caseData); if (job) follow(caseData.id, job);
       return caseData;
     } catch (e: unknown) { update({ phase: "failed", error: e instanceof Error ? e.message : "Apollo could not open the investigation." }); return null; }
   }, [armExpiry, follow]);
 
   const ask = useCallback(async (message: string) => {
-    const caseData = state.caseData; if (!caseData) return false;
-    const turn = pending.current?.message === message ? pending.current : { turnId: Crypto.randomUUID(), key: Crypto.randomUUID(), message, answerTo: state.question?.id ?? null };
+    const caseData = caseRef.current ?? state.caseData; if (!caseData) return false;
+    const turn = pending.current?.message === message ? pending.current : { turnId: Crypto.randomUUID(), key: Crypto.randomUUID(), message, answerTo: (caseRef.current?.response?.question ?? state.question)?.id ?? null };
     pending.current = turn;
     update({ phase: "working", error: null, failure: null, progress: ["Sending your follow-up to Higgins."] });
     try {
@@ -116,13 +118,25 @@ export function useInvestigation() {
     await refresh(caseData.id).then((c) => update({ phase: c.response ? "answered" : "idle", progress: [], error: c.response ? null : "Investigation cancelled." })).catch(() => update({ phase: "idle", progress: [] }));
   }, [state, refresh]);
 
+  /** Continue an existing case (e.g. from a Gate screen handoff). Rejoins an active job stream if one is running. */
+  const attach = useCallback(async (caseId: string) => {
+    stream.current?.abort(); pending.current = null;
+    setState({ ...EMPTY, phase: "creating", progress: ["Opening the investigation."] });
+    try {
+      const caseData = await refresh(caseId); armExpiry(caseData);
+      if (caseData.activeJobId) { const { job } = await api.getJob(caseId, caseData.activeJobId); follow(caseId, job, 0); }
+      else update({ phase: caseData.status === "failed" ? "failed" : caseData.response?.question ? "waiting_user" : caseData.response ? "answered" : "idle" });
+      return caseData;
+    } catch (e: unknown) { update({ phase: e instanceof ApiError && e.status === 410 ? "expired" : "failed", error: e instanceof Error ? e.message : "Could not open this investigation." }); return null; }
+  }, [refresh, armExpiry, follow]);
+
   const remove = useCallback(async () => {
     const caseData = state.caseData; stream.current?.abort(); pending.current = null;
     if (expiryTimer.current) clearTimeout(expiryTimer.current);
-    setState(EMPTY);
+    caseRef.current = null; setState(EMPTY);
     if (caseData) { try { await api.deleteCase(caseData.id); } catch { update({ error: "Local view cleared; server deletion could not be confirmed. Try again." }); } }
   }, [state.caseData]);
 
   useEffect(() => () => { stream.current?.abort(); if (expiryTimer.current) clearTimeout(expiryTimer.current); }, []);
-  return { state, start, ask, retry, cancel, remove };
+  return { state, start, ask, retry, cancel, remove, attach };
 }
