@@ -358,6 +358,9 @@ class SettingsPlanRequest(Wire):
     expected_revision: int
     target: str = Field(min_length=1, max_length=200)
     device: DeviceProfile
+    capability_id: Optional[str] = None  # supported action descriptor the plan is bound to (must be advertised by the device)
+    expected_field: str = "enabled"
+    expected_value: Union[bool, str, None] = None  # intended target value (e.g. False for "disable"); None = cannot be observed
 
 
 class RecheckRequest(Wire):

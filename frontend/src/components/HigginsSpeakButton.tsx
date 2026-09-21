@@ -17,7 +17,7 @@ const useStyles = makeStyles((c) => ({
   iconOn: { backgroundColor: c.restingTint },
 }));
 
-export function HigginsSpeakButton({ text, label = "Hear Higgins", compact = false, testID, onPress: onExtraPress }: { text: string; label?: string; compact?: boolean; testID?: string; /** Fires alongside the tap, before speech starts (e.g. to open a related popup). Not called when tapping to stop. */ onPress?: () => void }) {
+export function HigginsSpeakButton({ text, label = "Hear Higgins", compact = false, testID, onPress: onExtraPress, scopeId }: { text: string; label?: string; compact?: boolean; testID?: string; /** Investigation case ID: binds the audio to the case lifecycle. */ scopeId?: string; /** Fires alongside the tap, before speech starts (e.g. to open a related popup). Not called when tapping to stop. */ onPress?: () => void }) {
   const s = useStyles();
   const { colors } = useTheme();
   const { deviceId, showToast } = useApollo();
@@ -26,7 +26,7 @@ export function HigginsSpeakButton({ text, label = "Hear Higgins", compact = fal
   const active = !!speaking && speaking === text.trim();
   const onPress = () => {
     if (!active) onExtraPress?.();
-    void speak(text).catch((e: Error) => showToast(e.message || "I couldn't speak just now.", "neutral"));
+    void speak(text, scopeId).catch((e: Error) => showToast(e.message || "I couldn't speak just now.", "neutral"));
   };
   const Icon = active ? VolumeX : Volume2;
   if (compact) {

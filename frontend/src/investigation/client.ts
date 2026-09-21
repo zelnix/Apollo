@@ -32,6 +32,9 @@ export function submitTurn(caseId: string, body: { expectedRevision: number; tur
 export function resumeJob(caseId: string, jobId: string, expectedRevision: number) { return postWithKey<{ job: Job }>(`/investigations/${caseId}/jobs/${jobId}/resume`, { expectedRevision }, Crypto.randomUUID()); }
 export function cancelJob(caseId: string, jobId: string, expectedRevision: number) { return apiPost<{ status: string }>(`/investigations/${caseId}/jobs/${jobId}/cancel`, "investigation", { expectedRevision }); }
 export function submitDeviceResult(caseId: string, result: DeviceResult) { return apiPost<{ accepted: boolean; jobId: string }>(`/investigations/${caseId}/device-results`, "investigation", result as unknown as Record<string, unknown>); }
+export function addObservationEvidence(expectedRevision: number, caseId: string, deviceResult: DeviceResult) {
+  return apiPost<{ evidence: EvidenceItem; caseRevision: number }>(`/investigations/${caseId}/evidence`, "investigation", { expectedRevision, clientItemId: Crypto.randomUUID(), parentId: null, kind: "observation", deviceResult: deviceResult as unknown as Record<string, unknown> });
+}
 export function addTextEvidence(caseId: string, expectedRevision: number, text: string, label: string) {
   return apiPost<{ evidence: EvidenceItem; caseRevision: number }>(`/investigations/${caseId}/evidence`, "investigation", { expectedRevision, clientItemId: Crypto.randomUUID(), parentId: null, kind: "text", text, label });
 }

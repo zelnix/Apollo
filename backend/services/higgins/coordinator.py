@@ -77,7 +77,7 @@ def _json_object(text: str) -> Optional[dict]:
 
 async def _brief(owner: str, case: dict, payload: dict, device: Optional[dict]) -> tuple[list[types.Part], dict[str, Any]]:
     rows = await repo.list_evidence(owner, case["case_id"])
-    parts, inventory = await ev.model_parts(owner, case, rows)
+    parts, inventory, marks = await ev.model_parts(owner, case, rows)
     turns = await repo.accepted_turns(owner, case)
     history = [{"turnId": t.turn_id, "question": t.question, "answerOverview": t.response.overview, "answerExplanation": t.response.explanation_markdown,
                 "assessment": t.response.assessment, "completion": t.response.completion,
@@ -88,7 +88,7 @@ async def _brief(owner: str, case: dict, payload: dict, device: Optional[dict]) 
              "previousTurns": history, "openQuestion": open_question, "registeredSources": [{"sourceId": s["id"], "url": s["url"], "title": s["title"], "authority": s["authority"]} for s in sources],
              "evidenceInventory": inventory, "currentMessage": payload["message"], "answerToQuestionId": payload.get("answerToQuestionId"),
              "attachedEvidenceIds": payload.get("evidenceIds", [])}
-    return parts, brief
+    return parts, brief, marks
 
 
 def _serialise(contents: list[types.Content]) -> list[dict]:
@@ -108,25 +108,39 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
     payload = repo.dec_json(job["payload_ciphertext"])
     device = repo.device_profile(case)
     ctx = toolbox.ToolContext(owner, case, job, device)
-    checkpoint = repo.dec_json(job["checkpoint_ciphertext"]) if job.get("checkpoint_ciphertext") else None
+    # Reload the latest checkpoint after lease acquisition (R04): completed tool rounds are reused, never repeated.
+    fresh_job = await repo.get_job(owner, case["case_id"], job["job_id"])
+    checkpoint = repo.dec_json(fresh_job["checkpoint_ciphertext"]) if fresh_job.get("checkpoint_ciphertext") else None
+    pending_marks: list[tuple[str, int, int, int]] = []
     if checkpoint:
         contents = _restore(checkpoint["contents"])
         rounds = checkpoint.get("rounds", 0)
-        if checkpoint.get("question"):
-            ctx.question = checkpoint["question"]
-        for observed in checkpoint.get("deviceResults", []):
+        ctx.research_calls = checkpoint.get("researchCalls", 0)
+        ctx.question = checkpoint.get("question")
+        pending_marks = [tuple(m) for m in checkpoint.get("pendingMarks", [])]
+        for observed in checkpoint.pop("deviceResults", []):
             contents.append(types.Content(role="user", parts=[types.Part(text="DEVICE OBSERVATION RESULT (registered as evidence): " + json.dumps(observed, ensure_ascii=False, default=str))]))
-        await progress("observe", "Device observation received; resuming the investigation.")
+        if checkpoint.get("interruptedCall"):
+            contents.append(types.Content(role="user", parts=[types.Part(text=f"NOTE: the previous attempt was interrupted during tool call {checkpoint['interruptedCall']}; its outcome is unknown. Re-run it if the result matters.")]))
+        await progress("observe", "Resuming the investigation from its last completed step.")
     else:
         await progress("ingest", "Inventorying evidence and prior context.")
-        parts, brief = await _brief(owner, case, payload, device)
+        parts, brief, pending_marks = await _brief(owner, case, payload, device)
         contents = [types.Content(role="user", parts=[*parts, types.Part(text="INVESTIGATION BRIEF (JSON):\n" + json.dumps(brief, ensure_ascii=False, default=str))])]
         rounds = 0
+
+    async def save(extra: dict) -> None:
+        await repo.set_job(owner, job["job_id"], job["fence"], {"$set": {"checkpoint_ciphertext": repo.enc_json({"contents": _serialise(contents), "rounds": rounds, "question": ctx.question,
+                                                                                                             "researchCalls": ctx.research_calls, "pendingMarks": pending_marks, **extra})}})
     tool = types.Tool(function_declarations=toolbox.DECLARATIONS)
     result = None
     while True:
         await progress("assess", "Higgins is examining the evidence." if rounds == 0 else f"Research step {rounds}.")
         result = await provider.generate(SYSTEM, contents, tools=[tool], capability="functions")
+        if pending_marks:  # inline evidence counts as examined only once Gemini has actually received it (R05)
+            for evidence_id, start, end, total in pending_marks:
+                await ev.mark_examined(owner, case["case_id"], evidence_id, start, end, total)
+            pending_marks = []
         calls = [p.function_call for p in (result.content.parts or []) if p.function_call]
         if not calls:
             break
@@ -136,18 +150,21 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
         for call in calls:
             args = dict(call.args or {})
             await progress("research" if call.name != "request_device_observation" else "observe", f"Running {call.name.replace('_', ' ')}.")
+            await save({"interruptedCall": call.name})
             output = await toolbox.execute(ctx, call.name, args)
             responses.append(types.Part.from_function_response(name=call.name, response={"result": output}))
         contents.append(types.Content(role="user", parts=responses))
+        await save({"requestId": ctx.pending_request["id"]} if ctx.pending_request else {})
         if ctx.pending_request:
-            checkpoint = {"contents": _serialise(contents), "rounds": rounds, "question": ctx.question, "requestId": ctx.pending_request["id"]}
-            await repo.set_job(owner, job["job_id"], job["fence"], {"$set": {"checkpoint_ciphertext": repo.enc_json(checkpoint)}})
             return Outcome("waiting_device", request=ctx.pending_request)
         if rounds >= MAX_TOOL_ROUNDS:
             contents.append(types.Content(role="user", parts=[types.Part(text="Tool budget for this turn is exhausted. Return the final JSON now; mark completion 'partial' if material evidence remains.")]))
             result = await provider.generate(SYSTEM, contents, capability="text")
             break
-    evidence_ids = {row["evidence_id"] for row in await repo.list_evidence(owner, case["case_id"])}
+    rows = await repo.list_evidence(owner, case["case_id"])
+    evidence_ids = {row["evidence_id"] for row in rows}
+    gaps = {row["evidence_id"] for row in rows if row["availability"] == "available" and row["origin"] != "apollo_inference"
+            and (row["coverage"].get("materialGap") or row["coverage"].get("status") in ("not_started", "partial")) and row["kind"] in ("text", "document", "url", "image")}
     source_ids = {s["id"] for s in await repo.sources(owner, case["case_id"])}
     capability_ids = set((device or {}).get("capabilityIds", []))
     revision = (case.get("response_revision") or 0) + 1
@@ -155,7 +172,7 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
     data = _json_object(result.text)
     if data is not None:
         response, errors = validate(data, revision=revision, evidence_ids=evidence_ids, source_ids=source_ids, capability_ids=capability_ids,
-                                    pending_question=ctx.question, provider_complete=result.finish_reason == "STOP")
+                                    pending_question=ctx.question, provider_complete=result.finish_reason == "STOP", material_gaps=gaps)
     if response is None:
         await progress("respond", "Repairing the structure of Higgins' answer.")
         contents.append(result.content)
@@ -164,7 +181,7 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
         result = await provider.generate(SYSTEM, contents, json_output=True, capability="json")
         data = _json_object(result.text)
         response, errors = (None, ["no JSON object"]) if data is None else validate(data, revision=revision, evidence_ids=evidence_ids, source_ids=source_ids,
-                                                                                    capability_ids=capability_ids, pending_question=ctx.question, provider_complete=result.finish_reason == "STOP")
+                                                                                    capability_ids=capability_ids, pending_question=ctx.question, provider_complete=result.finish_reason == "STOP", material_gaps=gaps)
         if response is None:
             return Outcome("invalid", errors=errors)
     usage = result.usage or {}
@@ -174,9 +191,9 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
     commit = TurnCommit(turn_id=job["turn_id"], case_id=case["case_id"], input_revision=job["input_revision"], committed_revision=revision, question=payload["message"],
                         answer_to_question_id=payload.get("answerToQuestionId"), response=response, provider=provider_result,
                         evidence_ids=sorted(evidence_ids), source_ids=sorted(source_ids), committed_at=now_utc())
-    await repo.stage_turn(owner, commit, repo.utc(case["expires_at"]))
+    commit_id = await repo.stage_turn(owner, commit, job, repo.utc(case["expires_at"]))
     status = {"complete": "complete", "partial": "partial", "waiting_user": "waiting_user"}[response.completion]
-    updated = await repo.accept_turn(owner, case, job, commit, status, response.attention, response.question.wire() if response.question else None)
+    updated = await repo.accept_turn(owner, case, job, commit, commit_id, status, response.attention, response.question.wire() if response.question else None)
     if not updated:
         return Outcome("superseded")
     return Outcome("committed", commit=commit, case=updated)

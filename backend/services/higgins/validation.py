@@ -15,7 +15,7 @@ CAPABILITY_ACTIONS = {"open_settings", "request_permission", "recheck"}
 
 
 def validate(data: dict, *, revision: int, evidence_ids: set[str], source_ids: set[str], capability_ids: set[str],
-             pending_question: Optional[dict], provider_complete: bool) -> tuple[Optional[HigginsResponse], list[str]]:
+             pending_question: Optional[dict], provider_complete: bool, material_gaps: Optional[set[str]] = None) -> tuple[Optional[HigginsResponse], list[str]]:
     errors: list[str] = []
     try:
         model = ModelResponse.model_validate(data)
@@ -48,6 +48,9 @@ def validate(data: dict, *, revision: int, evidence_ids: set[str], source_ids: s
         errors.append("completion 'waiting_user' requires a question")
     if model.question and model.completion != "waiting_user":
         errors.append("a question requires completion 'waiting_user'")
+    unlisted_gaps = sorted((material_gaps or set()) - set(model.remaining_evidence_ids))
+    if model.completion == "complete" and unlisted_gaps:
+        errors.append(f"completion 'complete' is not supported: evidence {unlisted_gaps[:4]} has unexamined material content. Read it with read_evidence, or set completion 'partial' and list it in remainingEvidenceIds")
     if model.attention in ("action_needed", "urgent") and not model.attention_reason:
         errors.append("attention 'action_needed'/'urgent' requires attentionReason tied to findings")
     if errors:

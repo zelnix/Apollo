@@ -14,7 +14,7 @@ from typing import Any, Optional
 
 from fastapi import HTTPException
 from pymongo import ReturnDocument
-from pymongo.errors import DuplicateKeyError
+from pymongo.errors import DuplicateKeyError, OperationFailure
 
 from core.db import db, now_utc
 from services.higgins.capacity import LIFETIME_SECONDS, WORK_SECONDS
@@ -24,7 +24,7 @@ from services.higgins.encryption import decrypt, encrypt
 
 CHUNK_BYTES = 1024 * 1024
 CONTENT = ("investigation_evidence", "investigation_content_chunks", "investigation_events", "investigation_turn_commits",
-           "investigation_jobs", "investigation_device_requests", "investigation_settings_plans", "voice_cache")
+           "investigation_jobs", "investigation_device_requests", "investigation_settings_plans", "voice_cache", "investigation_uploads", "investigation_upload_chunks")
 
 
 def utc(value: datetime) -> datetime:
@@ -47,31 +47,46 @@ def http(status: int, code: str, message: str, **kw) -> HTTPException:
     return HTTPException(status, failure_body(code, message, **kw))
 
 
+async def _ttl(collection, seconds: int) -> None:
+    """Idempotent TTL backstop on expires_at; replaces an older definition with different options (R02: no extra hour)."""
+    try:
+        await collection.create_index("expires_at", expireAfterSeconds=seconds)
+    except OperationFailure:
+        await collection.drop_index("expires_at_1")
+        await collection.create_index("expires_at", expireAfterSeconds=seconds)
+
+
 async def ensure_indexes() -> None:
     await db.investigation_cases.create_index([("owner_id", 1), ("case_id", 1)], unique=True)
     await db.investigation_cases.create_index("expires_at")
     await db.investigation_cases.create_index([("cleanup_status", 1), ("expires_at", 1)])
     await db.investigation_idempotency.create_index([("owner_id", 1), ("operation", 1), ("key_digest", 1)], unique=True)
-    await db.investigation_idempotency.create_index("expires_at", expireAfterSeconds=0)
+    await _ttl(db.investigation_idempotency, 0)
     await db.investigation_evidence.create_index([("owner_id", 1), ("case_id", 1), ("evidence_id", 1)], unique=True)
     await db.investigation_evidence.create_index([("owner_id", 1), ("case_id", 1), ("client_item_id", 1)], unique=True)
-    await db.investigation_evidence.create_index("expires_at", expireAfterSeconds=3600)
+    await _ttl(db.investigation_evidence, 0)
     await db.investigation_content_chunks.create_index([("owner_id", 1), ("case_id", 1), ("evidence_id", 1), ("chunk_index", 1)], unique=True)
-    await db.investigation_content_chunks.create_index("expires_at", expireAfterSeconds=3600)
+    await _ttl(db.investigation_content_chunks, 0)
     await db.investigation_jobs.create_index([("owner_id", 1), ("case_id", 1), ("idempotency_key_digest", 1)], unique=True)
     await db.investigation_jobs.create_index([("owner_id", 1), ("job_id", 1)], unique=True)
     await db.investigation_jobs.create_index([("status", 1), ("lease_until", 1)])
-    await db.investigation_jobs.create_index("expires_at", expireAfterSeconds=3600)
-    await db.investigation_turn_commits.create_index([("owner_id", 1), ("case_id", 1), ("turn_id", 1)], unique=True)
-    await db.investigation_turn_commits.create_index("expires_at", expireAfterSeconds=3600)
+    await _ttl(db.investigation_jobs, 0)
+    await _ttl(db.investigation_turn_commits, 0)
     await db.investigation_events.create_index([("owner_id", 1), ("job_id", 1), ("sequence", 1)], unique=True)
-    await db.investigation_events.create_index("expires_at", expireAfterSeconds=3600)
+    await _ttl(db.investigation_events, 0)
     await db.investigation_cleanup.create_index([("owner_id", 1), ("case_id", 1), ("target_type", 1), ("target_id", 1)], unique=True)
     await db.investigation_cleanup.create_index("next_attempt_at")
     await db.investigation_device_requests.create_index([("owner_id", 1), ("case_id", 1), ("request_id", 1)], unique=True)
     await db.investigation_settings_plans.create_index([("owner_id", 1), ("case_id", 1), ("plan_id", 1)], unique=True)
     await db.investigation_uploads.create_index([("owner_id", 1), ("case_id", 1), ("upload_id", 1)], unique=True)
-    await db.investigation_uploads.create_index("expires_at", expireAfterSeconds=0)
+    await _ttl(db.investigation_uploads, 0)
+    await db.investigation_upload_chunks.create_index([("owner_id", 1), ("upload_id", 1), ("chunk_index", 1)], unique=True)
+    await _ttl(db.investigation_upload_chunks, 0)
+    try:
+        await db.investigation_turn_commits.drop_index("owner_id_1_case_id_1_turn_id_1")
+    except OperationFailure:
+        pass
+    await db.investigation_turn_commits.create_index([("owner_id", 1), ("case_id", 1), ("commit_id", 1)], unique=True)
     await db.investigation_reports.create_index([("owner_id", 1), ("report_id", 1)], unique=True)
 
 
@@ -93,6 +108,21 @@ async def remember(owner: str, operation: str, key: str, payload_digest: str, re
         pass
 
 
+# ------------------------------------------------------------------ lifecycle guard (R02)
+async def live_epoch(owner: str, case_id: str) -> Optional[str]:
+    """Current epoch of a live (not deleted/expired) case, or None. Writers call this immediately before and after awaited work."""
+    doc = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case_id, "deleted": False, "expires_at": {"$gt": now_utc()},
+                                                 "status": {"$nin": ["expired"]}}, {"_id": 0, "epoch": 1})
+    return doc["epoch"] if doc else None
+
+
+async def assert_live(owner: str, case_id: str, epoch: Optional[str] = None) -> str:
+    current = await live_epoch(owner, case_id)
+    if not current or (epoch and current != epoch):
+        raise http(410, "evidence_expired", "This investigation was deleted, cancelled or expired before the operation finished; nothing was stored.")
+    return current
+
+
 # ------------------------------------------------------------------ cases
 async def create_case(owner: str, gate: Optional[str], device_profile: Optional[dict]) -> dict:
     now = now_utc()
@@ -100,7 +130,7 @@ async def create_case(owner: str, gate: Optional[str], device_profile: Optional[
            "created_at": now, "updated_at": now, "expires_at": now + timedelta(seconds=LIFETIME_SECONDS), "active_job_id": None,
            "active_turn_id": None, "lease_fence": None, "response_ciphertext": None, "response_revision": None,
            "sources_ciphertext": enc_json([]), "device_profile_ciphertext": enc_json(device_profile) if device_profile else None,
-           "pending_device_request_ids": [], "accepted_turn_ids": [], "open_question_ciphertext": None,
+           "pending_device_request_ids": [], "accepted_commits": [], "open_question_ciphertext": None,
            "cleanup_status": "not_due", "deleted": False, "attention": "none"}
     await db.investigation_cases.insert_one(dict(doc))
     return doc
@@ -166,16 +196,24 @@ async def sources(owner: str, case_id: str) -> list[dict]:
     return dec_json(doc["sources_ciphertext"]) if doc and doc.get("sources_ciphertext") else []
 
 
-async def add_sources(owner: str, case_id: str, new: list[SourceReference]) -> None:
+async def add_sources(owner: str, case_id: str, new: list[SourceReference]) -> dict[str, str]:
+    """Canonical registration: returns {proposed id: stored id}; a repeated URL keeps its first ID."""
     current = await sources(owner, case_id)
-    known = {s["url"] for s in current}
-    current.extend(s.wire() for s in new if s.url not in known)
+    by_url = {s["url"]: s["id"] for s in current}
+    mapping = {}
+    for source in new:
+        if source.url in by_url:
+            mapping[source.id] = by_url[source.url]
+        else:
+            current.append(source.wire()); by_url[source.url] = source.id; mapping[source.id] = source.id
     await db.investigation_cases.update_one({"owner_id": owner, "case_id": case_id, "deleted": False}, {"$set": {"sources_ciphertext": enc_json(current)}})
+    return mapping
 
 
 # ------------------------------------------------------------------ evidence + chunks
 async def insert_evidence(owner: str, item: EvidenceItem, meta: dict) -> None:
-    doc = {"owner_id": owner, "case_id": item.case_id, "evidence_id": item.id, "client_item_id": item.client_item_id, "origin": item.origin,
+    epoch = await assert_live(owner, item.case_id)
+    doc = {"epoch": epoch, "owner_id": owner, "case_id": item.case_id, "evidence_id": item.id, "client_item_id": item.client_item_id, "origin": item.origin,
            "kind": item.kind, "parent_id": item.parent_id, "related_evidence_ids": item.related_evidence_ids, "collected_at": item.collected_at,
            "observed_at": item.observed_at, "expires_at": item.expires_at, "availability": item.availability, "media_type": item.media_type,
            "byte_length": item.byte_length, "coverage": item.coverage.wire(), "simulation": item.simulation.wire() if item.simulation else None,
@@ -217,13 +255,17 @@ async def update_evidence(owner: str, case_id: str, evidence_id: str, update: di
 
 
 async def store_bytes(owner: str, case_id: str, evidence_id: str, data: bytes, expires_at: datetime) -> int:
+    epoch = await assert_live(owner, case_id)
     count = 0
     for index in range(0, max(len(data), 1), CHUNK_BYTES):
         chunk = data[index:index + CHUNK_BYTES]
         await db.investigation_content_chunks.update_one(
             {"owner_id": owner, "case_id": case_id, "evidence_id": evidence_id, "chunk_index": count},
-            {"$set": {"ciphertext": encrypt(chunk), "length": len(chunk), "expires_at": expires_at}}, upsert=True)
+            {"$set": {"ciphertext": encrypt(chunk), "length": len(chunk), "expires_at": expires_at, "epoch": epoch}}, upsert=True)
         count += 1
+    if await live_epoch(owner, case_id) != epoch:  # scope ended during the write: undo, never leave publishable content
+        await db.investigation_content_chunks.delete_many({"owner_id": owner, "case_id": case_id, "evidence_id": evidence_id})
+        raise http(410, "evidence_expired", "This investigation ended while content was being stored; nothing was kept.")
     return count
 
 
@@ -277,7 +319,7 @@ async def acquire_lease(owner: str, job_id: str) -> Optional[dict]:
 
 
 async def heartbeat(owner: str, job_id: str, fence: str) -> bool:
-    result = await db.investigation_jobs.update_one({"owner_id": owner, "job_id": job_id, "fence": fence, "status": "investigating"},
+    result = await db.investigation_jobs.update_one({"owner_id": owner, "job_id": job_id, "fence": fence, "status": {"$in": ["investigating", "retry_wait"]}},
                                                     {"$set": {"lease_until": now_utc() + timedelta(seconds=30)}})
     return result.matched_count == 1
 
@@ -293,7 +335,9 @@ async def set_job(owner: str, job_id: str, fence: Optional[str], update: dict) -
 async def emit(owner: str, case_id: str, job_id: str, kind: str, payload: dict, revision: int, expires_at: datetime) -> int:
     job = await db.investigation_jobs.find_one_and_update({"owner_id": owner, "job_id": job_id}, {"$inc": {"last_sequence": 1}},
                                                           projection={"last_sequence": 1}, return_document=ReturnDocument.AFTER)
-    sequence = job["last_sequence"] if job else 1
+    if not job:  # job removed by cleanup: nothing may be published for it
+        return 0
+    sequence = job["last_sequence"]
     await db.investigation_events.insert_one({"owner_id": owner, "case_id": case_id, "job_id": job_id, "sequence": sequence, "type": kind, "revision": revision,
                                               "at": now_utc(), "payload_ciphertext": enc_json(payload), "expires_at": expires_at})
     return sequence
@@ -305,30 +349,44 @@ async def events_after(owner: str, job_id: str, after: int) -> list[dict]:
              "type": r["type"], "payload": dec_json(r["payload_ciphertext"])} for r in rows]
 
 
-# ------------------------------------------------------------------ authoritative turn commit
-async def stage_turn(owner: str, commit: TurnCommit, expires_at: datetime) -> None:
-    await db.investigation_turn_commits.update_one({"owner_id": owner, "case_id": commit.case_id, "turn_id": commit.turn_id},
-                                                    {"$set": {"commit_ciphertext": enc_json(commit.wire()), "staged": True, "expires_at": expires_at, "committed_at": commit.committed_at}}, upsert=True)
+# ------------------------------------------------------------------ authoritative turn commit (R01)
+async def stage_turn(owner: str, commit: TurnCommit, job: dict, expires_at: datetime) -> str:
+    """Immutable bundle per attempt: commit_id + payload digest. Never overwritten; visibility comes only from the case reference."""
+    commit_id = uuid.uuid4().hex
+    body = commit.wire()
+    await db.investigation_turn_commits.insert_one({"owner_id": owner, "case_id": commit.case_id, "turn_id": commit.turn_id, "commit_id": commit_id,
+                                                    "digest": digest(json.dumps(body, sort_keys=True, default=str)), "job_id": job["job_id"], "fence": job["fence"],
+                                                    "epoch": job["epoch"], "commit_ciphertext": enc_json(body), "committed_at": commit.committed_at, "expires_at": expires_at})
+    return commit_id
 
 
-async def accept_turn(owner: str, case: dict, job: dict, commit: TurnCommit, status: str, attention: str, open_question: Optional[dict]) -> Optional[dict]:
+async def accept_turn(owner: str, case: dict, job: dict, commit: TurnCommit, commit_id: str, status: str, attention: str, open_question: Optional[dict]) -> Optional[dict]:
     """Single CAS on the case control record makes answer + history authoritative together (spec §5)."""
-    updated = await cas(owner, case["case_id"], {"epoch": job["epoch"], "active_job_id": job["job_id"], "lease_fence": job["fence"]},
+    if any(ref["turn_id"] == commit.turn_id for ref in case.get("accepted_commits", [])):
+        return None  # logical turn already accepted by another attempt
+    updated = await cas(owner, case["case_id"], {"epoch": job["epoch"], "active_job_id": job["job_id"], "lease_fence": job["fence"],
+                                                 "accepted_commits.turn_id": {"$ne": commit.turn_id}},
                         {"$set": {"response_ciphertext": enc_json(commit.response.wire()), "response_revision": commit.committed_revision, "status": status,
                                   "active_job_id": None, "active_turn_id": None, "lease_fence": None, "attention": attention,
                                   "open_question_ciphertext": enc_json(open_question) if open_question else None},
-                         "$addToSet": {"accepted_turn_ids": commit.turn_id}})
-    if updated:
-        await db.investigation_turn_commits.update_one({"owner_id": owner, "case_id": case["case_id"], "turn_id": commit.turn_id}, {"$set": {"staged": False}})
-    else:
-        await db.investigation_turn_commits.delete_one({"owner_id": owner, "case_id": case["case_id"], "turn_id": commit.turn_id, "staged": True})
+                         "$push": {"accepted_commits": {"turn_id": commit.turn_id, "commit_id": commit_id, "job_id": job["job_id"], "revision": commit.committed_revision}}})
+    if not updated:  # losing attempt removes only its own unaccepted bundle
+        await db.investigation_turn_commits.delete_one({"owner_id": owner, "case_id": case["case_id"], "commit_id": commit_id})
     return updated
 
 
+async def accepted_commit_for(owner: str, case: dict, turn_id: str) -> Optional[dict]:
+    ref = next((r for r in case.get("accepted_commits", []) if r["turn_id"] == turn_id), None)
+    if not ref:
+        return None
+    return await db.investigation_turn_commits.find_one({"owner_id": owner, "case_id": case["case_id"], "commit_id": ref["commit_id"]}, {"_id": 0})
+
+
 async def accepted_turns(owner: str, case: dict) -> list[TurnCommit]:
-    rows = await db.investigation_turn_commits.find({"owner_id": owner, "case_id": case["case_id"], "staged": False, "turn_id": {"$in": case.get("accepted_turn_ids", [])},
-                                                     "expires_at": {"$gt": now_utc()}}, {"_id": 0}).sort("committed_at", 1).to_list(None)
-    return [TurnCommit.model_validate(dec_json(r["commit_ciphertext"])) for r in rows]
+    ids = [r["commit_id"] for r in case.get("accepted_commits", [])]
+    rows = await db.investigation_turn_commits.find({"owner_id": owner, "case_id": case["case_id"], "commit_id": {"$in": ids}, "expires_at": {"$gt": now_utc()}}, {"_id": 0}).to_list(None)
+    by_id = {r["commit_id"]: r for r in rows}
+    return [TurnCommit.model_validate(dec_json(by_id[i]["commit_ciphertext"])) for i in ids if i in by_id]
 
 
 # ------------------------------------------------------------------ lifecycle: cancel / delete / expire / cleanup
@@ -353,8 +411,7 @@ async def run_cleanup(owner: str, case_id: str) -> str:
             field = "device_id" if name == "voice_cache" else "owner_id"
             scope = {"scope_id": case_id} if name == "voice_cache" else {"case_id": case_id}
             await db[name].delete_many({field: owner, **scope})
-        await db.investigation_uploads.delete_many({"owner_id": owner, "case_id": case_id})
-        await db.investigation_cases.update_one({"owner_id": owner, "case_id": case_id}, {"$set": {"cleanup_status": "complete", "accepted_turn_ids": [], "pending_device_request_ids": []}})
+        await db.investigation_cases.update_one({"owner_id": owner, "case_id": case_id}, {"$set": {"cleanup_status": "complete", "accepted_commits": [], "pending_device_request_ids": []}})
         await db.investigation_cleanup.update_one({"owner_id": owner, "case_id": case_id, "target_type": "case", "target_id": case_id}, {"$set": {"state": "complete"}})
         return "complete"
     except Exception:  # noqa: BLE001 — retried by the sweeper; never logs content
@@ -375,5 +432,14 @@ async def sweep() -> None:
         await expire_case(doc["owner_id"], doc["case_id"])
     async for task in db.investigation_cleanup.find({"state": "pending", "next_attempt_at": {"$lte": now}}, {"_id": 0}):
         await run_cleanup(task["owner_id"], task["case_id"])
-    # Staged bundles never accepted within a work slice are reclaimed.
-    await db.investigation_turn_commits.delete_many({"staged": True, "committed_at": {"$lte": now - timedelta(seconds=WORK_SECONDS)}})
+    # Unreferenced bundles older than a work slice are reclaimed; every referenced bundle is excluded.
+    async for stale in db.investigation_turn_commits.find({"committed_at": {"$lte": now - timedelta(seconds=WORK_SECONDS)}}, {"_id": 0, "owner_id": 1, "case_id": 1, "commit_id": 1}):
+        case = await db.investigation_cases.find_one({"owner_id": stale["owner_id"], "case_id": stale["case_id"], "accepted_commits.commit_id": stale["commit_id"]}, {"_id": 1})
+        if not case:
+            await db.investigation_turn_commits.delete_one({"owner_id": stale["owner_id"], "case_id": stale["case_id"], "commit_id": stale["commit_id"]})
+    # Revisit completed cleanups: any late writer content for deleted/expired cases is removed again.
+    async for gone in db.investigation_cases.find({"deleted": True, "cleanup_status": "complete", "updated_at": {"$gte": now - timedelta(hours=1)}}, {"_id": 0, "owner_id": 1, "case_id": 1}):
+        for name in CONTENT:
+            field = "device_id" if name == "voice_cache" else "owner_id"
+            scope = {"scope_id": gone["case_id"]} if name == "voice_cache" else {"case_id": gone["case_id"]}
+            await db[name].delete_many({field: gone["owner_id"], **scope})

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "@/src/api/client";
 import * as api from "./client";
 import { currentDeviceProfile, observe } from "./deviceBroker";
+import { stopHiggins } from "@/src/voice/higgins";
 import type { CreateCase, Failure, HigginsResponse, InvestigationCase, InvestigationEvent, Job, Question, SourceReference, TurnCommit } from "./types";
 
 export type Phase = "idle" | "creating" | "working" | "reconnecting" | "waiting_device" | "waiting_user" | "answered" | "failed" | "expired";
@@ -12,6 +13,7 @@ export type Phase = "idle" | "creating" | "working" | "reconnecting" | "waiting_
 export interface CaseState {
   phase: Phase; caseData: InvestigationCase | null; job: Job | null; progress: string[]; response: HigginsResponse | null;
   sources: SourceReference[]; turns: TurnCommit[]; failure: Failure | null; question: Question | null; error: string | null;
+  undeleted?: string | null; // case whose server deletion still needs to be retried
 }
 
 const EMPTY: CaseState = { phase: "idle", caseData: null, job: null, progress: [], response: null, sources: [], turns: [], failure: null, question: null, error: null };
@@ -22,6 +24,7 @@ export function useInvestigation() {
   const pending = useRef<{ turnId: string; key: string; message: string; answerTo: string | null } | null>(null);
   const expiryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const caseRef = useRef<InvestigationCase | null>(null);
+  const generation = useRef(0); // bumped on start/attach/remove: stale callbacks from an older case are ignored
   const update = (patch: Partial<CaseState> | ((prev: CaseState) => Partial<CaseState>)) => setState((prev) => ({ ...prev, ...(typeof patch === "function" ? patch(prev) : patch) }));
 
   const refresh = useCallback(async (caseId: string) => {
@@ -33,31 +36,39 @@ export function useInvestigation() {
 
   const armExpiry = useCallback((caseData: InvestigationCase) => {
     if (expiryTimer.current) clearTimeout(expiryTimer.current);
-    expiryTimer.current = setTimeout(() => { stream.current?.abort(); setState({ ...EMPTY, phase: "expired", error: "This temporary investigation reached its 15-minute limit and was cleared. Submit the evidence again for a new check." }); }, Math.max(0, Date.parse(caseData.expiresAt) - Date.now()));
+    const gen = generation.current;
+    expiryTimer.current = setTimeout(() => { if (gen !== generation.current) return; stream.current?.abort(); stopHiggins(); setState({ ...EMPTY, phase: "expired", error: "This temporary investigation reached its 15-minute limit and was cleared. Submit the evidence again for a new check." }); }, Math.max(0, Date.parse(caseData.expiresAt) - Date.now()));
   }, []);
 
   const follow = useCallback((caseId: string, job: Job, after = 0) => {
     stream.current?.abort();
+    const gen = generation.current;
+    const live = () => gen === generation.current && caseRef.current?.id === caseId;
     update({ job, phase: "working" });
     stream.current = api.streamEvents(caseId, job.id, after, (event: InvestigationEvent) => {
+      if (!live()) return;
       if (event.type === "progress") update((prev) => ({ progress: [...prev.progress.slice(-6), event.payload.message] }));
       else if (event.type === "response") update({ response: event.payload.response, sources: event.payload.sources, question: event.payload.response.question });
       else if (event.type === "retry_scheduled") update((prev) => ({ progress: [...prev.progress.slice(-6), event.payload.failure.message], phase: "reconnecting" }));
       else if (event.type === "device_request") {
         update({ phase: "waiting_device" });
-        void observe(event.payload).then((result) => api.submitDeviceResult(caseId, result)).then(({ jobId }) => follow(caseId, { ...job, id: jobId }, 0)).catch((e: unknown) => update({ phase: "failed", error: e instanceof Error ? e.message : "Device observation could not be delivered." }));
+        const consumed = event.sequence;
+        void observe(event.payload).then((result) => api.submitDeviceResult(caseId, result)).then(({ jobId }) => { if (live()) follow(caseId, { ...job, id: jobId ?? job.id }, consumed); })
+          .catch((e: unknown) => { if (live()) update({ phase: "failed", error: e instanceof Error ? e.message : "Device observation could not be delivered." }); });
       } else if (event.type === "completed") { pending.current = null; void refresh(caseId).then((c) => update({ phase: event.payload.completion === "waiting_user" ? "waiting_user" : "answered", failure: null, caseData: c })); }
       else if (event.type === "partial") update({ failure: event.payload.reason });
-      else if (event.type === "failed") { void refresh(caseId); update({ phase: "failed", failure: event.payload, error: event.payload.message }); }
+      else if (event.type === "failed") { void refresh(caseId); update((prev) => ({ phase: "failed", failure: event.payload, error: event.payload.message, job: prev.job ? { ...prev.job, status: "failed", failure: event.payload } : prev.job })); }
       else if (event.type === "cancelled") { pending.current = null; void refresh(caseId).then(() => update({ phase: "answered", progress: [] })); }
-      else if (event.type === "expired") setState({ ...EMPTY, phase: "expired", error: "Temporary evidence expired before Higgins finished." });
+      else if (event.type === "expired") { stopHiggins(); setState({ ...EMPTY, phase: "expired", error: "Temporary evidence expired before Higgins finished." }); }
     }, (reason) => {
-      if (reason === "terminal") return;
+      if (!live() || reason === "terminal") return;
       if (reason === "unauthorized") { update({ phase: "failed", error: "Apollo needs to re-register this device." }); return; }
       // EOF without a terminal event: transport interruption → poll the same job, reconnect from the last sequence.
       update({ phase: "reconnecting" });
       setTimeout(() => {
+        if (!live()) return;
         api.getJob(caseId, job.id).then(({ job: fresh }) => {
+          if (!live()) return;
           if (["queued", "investigating", "retry_wait", "waiting_device"].includes(fresh.status)) follow(caseId, fresh, stream.current?.lastSequence() ?? 0);
           else void refresh(caseId).then((c) => update({ phase: fresh.status === "failed" ? "failed" : c.response?.question ? "waiting_user" : "answered", failure: fresh.failure, error: fresh.failure?.message ?? null, job: fresh }));
         }).catch((e: unknown) => update({ phase: "failed", error: e instanceof ApiError && e.status === 410 ? "This investigation expired." : "Connection lost. Retry to reconnect to the same investigation." }));
@@ -66,11 +77,14 @@ export function useInvestigation() {
   }, [refresh]);
 
   const start = useCallback(async (input: Omit<CreateCase, "deviceProfile">, files: { uri: string; name: string; mediaType: string }[] = []) => {
-    stream.current?.abort();
+    stream.current?.abort(); generation.current++; if (expiryTimer.current) clearTimeout(expiryTimer.current); caseRef.current = null;
     setState({ ...EMPTY, phase: "creating", progress: ["Creating the investigation case."] });
     try {
       // With files: open the case, upload every original first (inventory before synthesis), then ask.
+      const gen = generation.current;
       const { case: created, job: firstJob } = await api.createCase({ ...input, question: files.length ? "" : input.question, deviceProfile: currentDeviceProfile() });
+      if (gen !== generation.current) return null;
+      caseRef.current = created;
       let caseData = created; let job = firstJob;
       if (files.length) {
         let revision = created.revision;
@@ -120,7 +134,8 @@ export function useInvestigation() {
 
   /** Continue an existing case (e.g. from a Gate screen handoff). Rejoins an active job stream if one is running. */
   const attach = useCallback(async (caseId: string) => {
-    stream.current?.abort(); pending.current = null;
+    stream.current?.abort(); pending.current = null; generation.current++; if (expiryTimer.current) clearTimeout(expiryTimer.current);
+    caseRef.current = { id: caseId } as InvestigationCase;
     setState({ ...EMPTY, phase: "creating", progress: ["Opening the investigation."] });
     try {
       const caseData = await refresh(caseId); armExpiry(caseData);
@@ -133,10 +148,14 @@ export function useInvestigation() {
   const remove = useCallback(async () => {
     const caseData = state.caseData; stream.current?.abort(); pending.current = null;
     if (expiryTimer.current) clearTimeout(expiryTimer.current);
-    caseRef.current = null; setState(EMPTY);
-    if (caseData) { try { await api.deleteCase(caseData.id); } catch { update({ error: "Local view cleared; server deletion could not be confirmed. Try again." }); } }
+    generation.current++; caseRef.current = null; stopHiggins(); setState(EMPTY);
+    if (caseData) { try { await api.deleteCase(caseData.id); } catch { update({ error: "Local view cleared; server deletion could not be confirmed.", undeleted: caseData.id }); } }
   }, [state.caseData]);
 
+  const retryDelete = useCallback(async () => {
+    const id = state.undeleted; if (!id) return;
+    try { await api.deleteCase(id); update({ undeleted: null, error: null }); } catch (e: unknown) { if (e instanceof ApiError && (e.status === 404 || e.status === 410)) update({ undeleted: null, error: null }); }
+  }, [state.undeleted]);
   useEffect(() => () => { stream.current?.abort(); if (expiryTimer.current) clearTimeout(expiryTimer.current); }, []);
-  return { state, start, ask, retry, cancel, remove, attach };
+  return { state, start, ask, retry, cancel, remove, attach, retryDelete };
 }

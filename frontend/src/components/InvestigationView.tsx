@@ -8,6 +8,7 @@ import { Body, Button, Card, Pill, type Tone } from "@/src/components/ui";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import type { CaseState } from "@/src/investigation/caseStore";
 import type { ActionProposal, Attention, SourceReference } from "@/src/investigation/types";
+import { isExecutable, runAction, type ActionOutcome } from "@/src/settings/actions";
 
 const useStyles = makeStyles((c) => ({
   card: { gap: spacing.sm, borderColor: c.navyBorder }, higgins: { borderLeftWidth: 3, borderLeftColor: c.gold },
@@ -33,10 +34,11 @@ function SourceRow({ source, s }: { source: SourceReference; s: ReturnType<typeo
 }
 
 export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction, testID = "investigation" }: {
-  state: CaseState; onAnswer?: (text: string) => void; onRetry: () => void; onCancel: () => void; onAction?: (action: ActionProposal) => void; testID?: string;
+  state: CaseState; onAnswer?: (text: string) => void; onRetry: () => void; onCancel: () => void; onAction?: (action: ActionProposal, outcome: ActionOutcome) => void; testID?: string;
 }) {
   const s = useStyles(); const { colors } = useTheme();
   const [expanded, setExpanded] = useState(false); const [showSources, setShowSources] = useState(false);
+  const [actionNote, setActionNote] = useState<string | null>(null);
   const { phase, response, sources, turns, caseData, progress, failure, error, question } = state;
   const working = phase === "creating" || phase === "working" || phase === "reconnecting" || phase === "waiting_device";
   const usedSources = sources.filter((src) => response?.sourceIds.includes(src.id));
@@ -56,7 +58,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
         <Pill tone="neutral" label={response.assessment.replace(/_/g, " ")} testID="inv-assessment" /></View>
       <Text style={s.text} testID="inv-overview">{response.overview}</Text>
       {response.attentionReason ? <Text style={s.muted}>Why: {response.attentionReason}</Text> : null}
-      <HigginsSpeakButton text={expanded ? plain(response.explanationMarkdown) : response.overview} compact testID="inv-hear" />
+      <HigginsSpeakButton text={expanded ? plain(response.explanationMarkdown) : response.overview} compact testID="inv-hear" scopeId={caseData?.id} />
       <Button testID="inv-expand" variant="ghost" label={expanded ? "Hide full explanation" : "Show full explanation"} onPress={() => setExpanded((v) => !v)} />
       {expanded ? <View style={{ gap: spacing.sm }} testID="inv-explanation">
         <Text style={s.text}>{plain(response.explanationMarkdown)}</Text>
@@ -71,10 +73,18 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
       {showSources ? usedSources.map((src) => <SourceRow key={src.id} source={src} s={s} />) : null}
       {response.actions.length ? <Text style={s.heading}>Next step</Text> : null}
       {response.actions.map((action) => <View key={action.id} style={{ gap: spacing.xs }} testID={`inv-action-${action.id}`}>
-        <Button testID={`inv-action-button-${action.id}`} variant={action.id === response.recommendedActionId ? "primary" : "ghost"} label={action.label}
-          onPress={() => { if (action.kind === "open_verified_source") { const src = sources.find((x) => action.sourceIds.includes(x.id)); if (src) void WebBrowser.openBrowserAsync(src.url); } onAction?.(action); }} />
+        {isExecutable(action) ? <Button testID={`inv-action-button-${action.id}`} variant={action.id === response.recommendedActionId ? "primary" : "ghost"} label={action.label}
+          onPress={() => {
+            if (action.kind === "open_verified_source") { const src = sources.find((x) => action.sourceIds.includes(x.id)); if (src) void WebBrowser.openBrowserAsync(src.url); onAction?.(action, { kind: "opened" }); return; }
+            if (!caseData) return;
+            void runAction(action, caseData).then((outcome) => {
+              setActionNote(outcome.kind === "observed" ? `Apollo recorded a fresh observation (${outcome.result.status}); ask Higgins to re-check.` : outcome.kind === "opened" ? "Settings opened. When you return, ask Higgins to re-check." : outcome.reason);
+              onAction?.(action, outcome);
+            });
+          }} /> : <Text style={[s.text, { fontFamily: fonts.textMedium }]} testID={`inv-action-label-${action.id}`}>{action.id === response.recommendedActionId ? "Recommended: " : ""}{action.label}</Text>}
         <Text style={s.muted}>{action.instruction}</Text>
       </View>)}
+      {actionNote ? <Text style={s.muted} testID="inv-action-note">{actionNote}</Text> : null}
     </Card> : null}
     {question && phase === "waiting_user" ? <View style={s.question} testID="inv-question"><Text style={s.text}>{question.text}</Text><Text style={s.muted}>Why Higgins asks: {question.reasonNeeded}</Text>
       {question.answerType === "yes_no" ? <View style={s.row}><Button testID="inv-answer-yes" label="Yes" onPress={() => onAnswer?.("Yes")} /><Button testID="inv-answer-no" variant="ghost" label="No" onPress={() => onAnswer?.("No")} /></View> : null}

@@ -36,11 +36,12 @@ DECLARATIONS = [
     types.FunctionDeclaration(name="research_public_sources", description="Grounded web research about public organisations, numbers, domains, claims or scams. Give only minimal public identifiers, never private text.",
         parameters=types.Schema(type="OBJECT", properties={"question": types.Schema(type="STRING"), "entities": types.Schema(type="ARRAY", items=types.Schema(type="STRING")),
             "preferredDomains": types.Schema(type="ARRAY", items=types.Schema(type="STRING"))}, required=["question", "entities", "preferredDomains"])),
-    types.FunctionDeclaration(name="inspect_url", description="Safely fetch a registered URL evidence item: redirect chain, final URL, title, visible text (paged), forms and links.",
+    types.FunctionDeclaration(name="inspect_url", description="Safely fetch a registered URL evidence item (including 'link clue' child items registered from messages/documents, and links discovered during research once registered via register_clue): redirect chain, final URL, title, visible text (paged), forms and links.",
         parameters=types.Schema(type="OBJECT", properties={"urlEvidenceId": types.Schema(type="STRING"), "purpose": types.Schema(type="STRING"),
             "cursor": types.Schema(type="STRING", nullable=True)}, required=["urlEvidenceId", "purpose"])),
-    types.FunctionDeclaration(name="lookup_reputation", description="Configured reputation lookup for a url/domain/phone evidence item. No hit is not authentication.",
-        parameters=types.Schema(type="OBJECT", properties={"evidenceId": types.Schema(type="STRING"), "kind": types.Schema(type="STRING", enum=["url", "domain", "phone"])}, required=["evidenceId", "kind"])),
+    types.FunctionDeclaration(name="lookup_reputation", description="Configured reputation lookup for a url/domain/phone evidence item (clue items are listed in the inventory with their parent; `index` selects the nth link/number inside a larger item). No hit is not authentication.",
+        parameters=types.Schema(type="OBJECT", properties={"evidenceId": types.Schema(type="STRING"), "kind": types.Schema(type="STRING", enum=["url", "domain", "phone"]),
+            "index": types.Schema(type="INTEGER", nullable=True)}, required=["evidenceId", "kind"])),
     types.FunctionDeclaration(name="lookup_breach", description="Known-breach exposure check for an email identifier evidence item the person explicitly submitted for that purpose.",
         parameters=types.Schema(type="OBJECT", properties={"identifierEvidenceId": types.Schema(type="STRING")}, required=["identifierEvidenceId"])),
     types.FunctionDeclaration(name="research_application", description="Research an app's real identity: package/bundle, publisher, store listing, known abuse.",
@@ -50,6 +51,9 @@ DECLARATIONS = [
             "reason": types.Schema(type="STRING")}, required=["capabilityId", "fields", "reason"])),
     types.FunctionDeclaration(name="research_settings", description="Research official OEM/platform guidance for a settings target on the person's device profile.",
         parameters=types.Schema(type="OBJECT", properties={"target": types.Schema(type="STRING")}, required=["target"])),
+    types.FunctionDeclaration(name="register_clue", description="Register a newly discovered link or phone number (e.g. from a fetched page or research) as addressable evidence so it can be inspected or looked up.",
+        parameters=types.Schema(type="OBJECT", properties={"value": types.Schema(type="STRING"), "parentEvidenceId": types.Schema(type="STRING", nullable=True),
+            "kind": types.Schema(type="STRING", enum=["url", "phone"])}, required=["value", "kind"])),
     types.FunctionDeclaration(name="ask_user", description="Only when no tool can establish a fact: record a question about the person's intent, actions or consent. Then return your final response with the question field set.",
         parameters=types.Schema(type="OBJECT", properties={"text": types.Schema(type="STRING"), "reasonNeeded": types.Schema(type="STRING")}, required=["text", "reasonNeeded"])),
 ]
@@ -78,7 +82,7 @@ async def _grounded(ctx: ToolContext, question: str, entities: list[str], prefer
         return {"status": "budget_exhausted", "note": "research call budget for this turn reached"}
     ctx.research_calls += 1
     provider.require_capability(provider.TEXT_MODEL, "search")
-    prompt = json.dumps({"question": question[:600], "entities": [e[:120] for e in entities[:8]], "preferredDomains": preferred[:6]})
+    prompt = json.dumps({"question": question, "entities": entities[:32], "preferredDomains": preferred[:12]})
     try:
         result = await provider.generate(RESEARCH_SYSTEM, prompt, tools=[types.Tool(google_search=types.GoogleSearch())], capability="search")
     except provider.ProviderFailure as exc:
@@ -95,9 +99,17 @@ async def _grounded(ctx: ToolContext, question: str, entities: list[str], prefer
                                  evidence_ids=[])
         ctx.sources.append(source)
         registered.append({"sourceId": source.id, "title": source.title, "host": host, "authority": authority})
-    await repo.add_sources(ctx.owner, ctx.case_id, ctx.sources)
-    return {"status": "ok", "answer": result.text[:6000], "sources": registered, "providerComplete": result.finish_reason == "STOP",
-            "note": "Search results are leads; a source's own claims are not verification." if registered else "No grounded sources were returned; treat the answer as model recollection only."}
+    mapping = await repo.add_sources(ctx.owner, ctx.case_id, ctx.sources)
+    for entry in registered:
+        entry["sourceId"] = mapping.get(entry["sourceId"], entry["sourceId"])
+    # The complete research answer is retained as case evidence; the tool result carries a bounded view plus a read reference.
+    snapshot = await ev.ingest_text(ctx.owner, ctx.case, f"research-{uuid.uuid4().hex[:12]}", result.text, kind="source_snapshot", origin="external_source",
+                                    label=f"research: {question[:60]}", coverage=ev.Coverage(status="examined", unit="characters", total=len(result.text), examined=len(result.text)),
+                                    meta={"sourceIds": [e["sourceId"] for e in registered]})
+    return {"status": "ok", "answer": result.text[:8000], "answerEvidenceId": snapshot.id, "answerCharacters": len(result.text),
+            "truncatedInline": len(result.text) > 8000, "sources": registered, "providerComplete": result.finish_reason == "STOP",
+            "note": ("Full answer stored as evidence; use read_evidence for the rest. " if len(result.text) > 8000 else "") +
+                    ("Search results are leads; a source's own claims are not verification. Authority labels are hints from the publisher domain, not conclusions." if registered else "No grounded sources were returned; treat the answer as model recollection only.")}
 
 
 async def _url_text(ctx: ToolContext, evidence_id: str) -> str:
@@ -124,7 +136,7 @@ async def inspect_url(ctx: ToolContext, args: dict) -> dict:
         source = SourceReference(id=str(uuid.uuid4()), url=page.final_url, title=(page.title or final)[:200], retrieved_at=now_utc(), retrieval="fetched",
                                  authority="self_claimed", authority_basis="Content fetched from the destination itself", evidence_ids=[args["urlEvidenceId"]])
         ctx.sources.append(source)
-        await repo.add_sources(ctx.owner, ctx.case_id, [source])
+        source.id = (await repo.add_sources(ctx.owner, ctx.case_id, [source])).get(source.id, source.id)
         offset = int(args.get("cursor") or 0)
         text = page.text or ""
         await ev.mark_examined(ctx.owner, ctx.case_id, args["urlEvidenceId"], 0, 1, 1)
@@ -142,11 +154,14 @@ async def inspect_url(ctx: ToolContext, args: dict) -> dict:
 async def lookup_reputation(ctx: ToolContext, args: dict) -> dict:
     row = await repo.get_evidence(ctx.owner, ctx.case_id, args["evidenceId"])
     value = (await repo.read_bytes(ctx.owner, ctx.case_id, args["evidenceId"])).decode("utf-8", errors="replace").strip()
+    selector = int(args.get("index") or 0)
     if args["kind"] == "phone":
-        match = re.search(r"\+?[\d][\d\s().-]{6,}\d", value)
-        if not match:
+        matches = list(ev.PHONE_RE.finditer(value))
+        if not matches:
             return {"status": "invalid", "note": "No phone number found in that evidence item."}
-        number = re.sub(r"[\s().-]", "", match.group(0))
+        if selector >= len(matches):
+            return {"status": "invalid", "note": f"Only {len(matches)} number(s) in this item.", "numbers": [m.group(0) for m in matches][:20]}
+        number = re.sub(r"[\s().-]", "", matches[selector].group(0))
         region = None
         if not number.startswith("+"):
             locale = (ctx.device or {}).get("locale", "") or ""
@@ -162,10 +177,12 @@ async def lookup_reputation(ctx: ToolContext, args: dict) -> dict:
         data = result.model_dump(mode="json", include={"number", "valid", "active", "fraud_score", "recent_abuse", "risky", "voip", "line_type", "carrier", "country", "source", "checked_at"})
         return {"status": "ok", **data, "note": "Caller-ID or a reputation score never authenticates who is calling."}
     if row["kind"] != "url" and args["kind"] in ("url", "domain"):
-        match = ev.URL_RE.search(value)
-        if not match:
+        matches = ev.URL_RE.findall(value)
+        if not matches:
             return {"status": "invalid", "note": "No URL found in that evidence item."}
-        value = match.group(0)
+        if selector >= len(matches):
+            return {"status": "invalid", "note": f"Only {len(matches)} link(s) in this item.", "links": matches[:25]}
+        value = matches[selector]
     result = await intel.run_intel_check(args["kind"], value)
     return {"status": "ok", "verdict": result.verdict, "threatTypes": result.threat_types, "coverage": result.coverage,
             "sources": [s.model_dump(mode="json") for s in result.sources], "checkedAt": result.checked_at.isoformat(),
@@ -255,6 +272,14 @@ async def execute(ctx: ToolContext, name: str, args: dict) -> dict:
             return await research_settings(ctx, args)
         if name == "ask_user":
             return await ask_user(ctx, args)
+        if name == "register_clue":
+            value = str(args["value"]).strip()
+            if args["kind"] == "url" and not ev.URL_RE.fullmatch(value):
+                return {"status": "invalid", "note": "Not an http(s) URL."}
+            parent = str(args.get("parentEvidenceId") or "")
+            item = await (ev.ingest_url if args["kind"] == "url" else ev.ingest_text)(ctx.owner, ctx.case, f"clue-{uuid.uuid4().hex[:12]}", value, parent_id=parent or None,
+                                                                                         label=("discovered link" if args["kind"] == "url" else "discovered number"))
+            return {"status": "registered", "evidenceId": item.id, "kind": item.kind}
         return {"status": "unknown_tool"}
     except Exception as exc:  # noqa: BLE001 — a tool failure is evidence of a limitation, never a case failure
         from fastapi import HTTPException

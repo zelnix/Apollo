@@ -38,7 +38,7 @@ async def _emit(owner: str, case: dict, job: dict, kind: str, payload: dict) -> 
 
 async def _fail(owner: str, case: dict, job: dict, failure: Failure, *, partial: bool = False) -> None:
     await repo.set_job(owner, job["job_id"], job.get("fence"), {"$set": {"status": "failed", "failure": failure.wire(), "lease_until": None}})
-    await repo.cas(owner, case["case_id"], {"epoch": job["epoch"], "active_job_id": job["job_id"]},
+    await repo.cas(owner, case["case_id"], {"epoch": job["epoch"], "active_job_id": job["job_id"], **({"lease_fence": job["fence"]} if job.get("fence") else {})},
                    {"$set": {"status": "partial" if partial or case.get("response_ciphertext") else "failed", "active_job_id": None, "active_turn_id": None, "lease_fence": None}}, bump=False)
     if partial:
         await _emit(owner, case, job, "partial", {"responseRevision": case.get("response_revision"), "reason": failure.wire(), "canContinue": failure.retryable or failure.code != "provider_configuration"})
@@ -52,6 +52,15 @@ async def run(owner: str, case_id: str, job_id: str) -> None:
     case = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case_id}, {"_id": 0})
     if not case or case["deleted"] or case["epoch"] != job["epoch"] or repo.utc(case["expires_at"]) <= now_utc():
         await repo.set_job(owner, job_id, job["fence"], {"$set": {"status": "cancelled", "lease_until": None}})
+        return
+    accepted = await repo.accepted_commit_for(owner, case, job["turn_id"])
+    if accepted:  # crash after acceptance: repair job/event projections from the authoritative commit, no second conclusion
+        commit = repo.dec_json(accepted["commit_ciphertext"])
+        await repo.set_job(owner, job_id, job["fence"], {"$set": {"status": case["status"] if case["status"] in ("complete", "partial", "waiting_user") else "complete", "lease_until": None, "checkpoint_ciphertext": None}})
+        sources = await repo.sources(owner, case_id)
+        await _emit(owner, case, job, "response", {"response": commit["response"], "sources": [s for s in sources if s["id"] in set(commit["response"]["sourceIds"])]})
+        await _emit(owner, case, job, "completed", {"turnId": job["turn_id"], "responseRevision": commit["committedRevision"], "providerComplete": True,
+                                                    "completion": commit["response"]["completion"], "caseStatus": case["status"], "cleanupStatus": case.get("cleanup_status", "not_due"), "repaired": True})
         return
     fenced = await repo.cas(owner, case_id, {"epoch": job["epoch"], "active_job_id": job_id}, {"$set": {"lease_fence": job["fence"], "status": "investigating"}}, bump=False)
     if not fenced:
@@ -117,7 +126,7 @@ async def run(owner: str, case_id: str, job_id: str) -> None:
             return
         if outcome.kind == "superseded":
             await repo.set_job(owner, job_id, job["fence"], {"$set": {"status": "cancelled", "lease_until": None}})
-            await db.investigation_turn_commits.delete_one({"owner_id": owner, "case_id": case_id, "turn_id": job["turn_id"], "staged": True})
+            pass  # unaccepted bundles of this attempt are reclaimed by the sweeper; accepted history is never touched here
             return
         commit, updated = outcome.commit, outcome.case
         await repo.set_job(owner, job_id, job["fence"], {"$set": {"status": updated["status"], "lease_until": None, "checkpoint_ciphertext": None}})
@@ -143,8 +152,13 @@ async def run(owner: str, case_id: str, job_id: str) -> None:
 
 
 async def recover() -> None:
-    """Startup/sweeper: relaunch jobs whose lease expired while processing, or that never started."""
+    """Startup/sweeper: relaunch jobs whose lease expired while processing, or that never started; reconcile jobs past their work deadline."""
     now = now_utc()
+    async for job in db.investigation_jobs.find({"status": {"$in": ["queued", "investigating", "retry_wait"]}, "deadline_at": {"$lte": now},
+                                                 "$or": [{"lease_until": None}, {"lease_until": {"$lte": now}}]}, {"_id": 0}):
+        case = await db.investigation_cases.find_one({"owner_id": job["owner_id"], "case_id": job["case_id"]}, {"_id": 0})
+        if case:
+            await _fail(job["owner_id"], case, job, Failure(code="budget_exhausted", message="The work slice ended before Higgins finished. Retry to continue from the last completed step.", retryable=True), partial=True)
     async for job in db.investigation_jobs.find({"status": {"$in": ["queued", "investigating", "retry_wait"]}, "deadline_at": {"$gt": now},
                                                  "$or": [{"lease_until": None}, {"lease_until": {"$lte": now}}]}, {"_id": 0, "owner_id": 1, "case_id": 1, "job_id": 1}):
         launch(job["owner_id"], job["case_id"], job["job_id"])

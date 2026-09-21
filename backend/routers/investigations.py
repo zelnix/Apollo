@@ -5,12 +5,13 @@ import asyncio
 import json
 import re
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, Header, Request, Response, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import TypeAdapter, ValidationError
+from pymongo.errors import DuplicateKeyError
 
 from core.config import HIBP_API_KEY, IPQS_API_KEY, SAFE_BROWSING_API_KEY
 from core.db import db, now_utc
@@ -190,14 +191,22 @@ async def put_chunk(case_id: str, upload_id: str, index: int, request: Request):
     upload = await db.investigation_uploads.find_one({"owner_id": owner, "case_id": case_id, "upload_id": upload_id, "expires_at": {"$gt": now_utc()}}, {"_id": 0})
     if not upload:
         raise http(404, "not_found", "Unknown or expired upload.")
-    data = await request.body()
-    if len(data) > repo.CHUNK_BYTES or index < 0 or index * repo.CHUNK_BYTES >= upload["metadata"]["declaredBytes"]:
-        raise http(413, "budget_exhausted", "Chunk exceeds the declared size or chunk budget.")
-    existing = upload["chunks"].get(str(index))
-    digest = repo.digest(data.hex())
-    if existing and existing["digest"] != digest:
-        raise http(409, "conflict", "A different chunk was already stored at that index.")
-    await db.investigation_uploads.update_one({"owner_id": owner, "upload_id": upload_id}, {"$set": {f"chunks.{index}": {"digest": digest, "ciphertext": encrypt(data), "length": len(data)}}})
+    if index < 0 or index * repo.CHUNK_BYTES >= upload["metadata"]["declaredBytes"]:
+        raise http(413, "budget_exhausted", "Chunk index is outside the declared size.")
+    data, received = bytearray(), 0
+    async for piece in request.stream():  # stream-limited: never buffer more than one chunk
+        received += len(piece)
+        if received > repo.CHUNK_BYTES:
+            raise http(413, "budget_exhausted", "Chunk exceeds the chunk budget.")
+        data.extend(piece)
+    chunk_digest = repo.digest(bytes(data).hex())
+    try:
+        await db.investigation_upload_chunks.insert_one({"owner_id": owner, "case_id": case_id, "upload_id": upload_id, "chunk_index": index, "digest": chunk_digest,
+                                                          "ciphertext": encrypt(bytes(data)), "length": len(data), "expires_at": upload["expires_at"]})
+    except DuplicateKeyError:
+        existing = await db.investigation_upload_chunks.find_one({"owner_id": owner, "upload_id": upload_id, "chunk_index": index}, {"_id": 0, "digest": 1})
+        if existing and existing["digest"] != chunk_digest:
+            raise http(409, "conflict", "A different chunk was already stored at that index.")
     return Response(status_code=204, headers=NO_STORE)
 
 
@@ -205,20 +214,26 @@ async def put_chunk(case_id: str, upload_id: str, index: int, request: Request):
 async def complete_upload(case_id: str, upload_id: str, body: ExpectedRevision, request: Request):
     owner = owner_of(request)
     case = await repo.get_case(owner, case_id, for_mutation=True)
-    _revision_check(case, body.expected_revision)
-    upload = await db.investigation_uploads.find_one({"owner_id": owner, "case_id": case_id, "upload_id": upload_id, "expires_at": {"$gt": now_utc()}}, {"_id": 0})
+    upload = await db.investigation_uploads.find_one({"owner_id": owner, "case_id": case_id, "upload_id": upload_id}, {"_id": 0})
     if not upload:
         raise http(404, "not_found", "Unknown or expired upload.")
+    if upload.get("evidence_id"):  # finalisation replay resolves to the same evidence
+        row = await repo.get_evidence(owner, case_id, upload["evidence_id"])
+        return JSONResponse({"evidence": repo.evidence_view(row).wire(), "caseRevision": case["revision"], "replayed": True}, status_code=201, headers=NO_STORE)
+    _revision_check(case, body.expected_revision)
     declared = upload["metadata"]["declaredBytes"]
     expected_chunks = (declared + repo.CHUNK_BYTES - 1) // repo.CHUNK_BYTES
-    if sorted(int(k) for k in upload["chunks"]) != list(range(expected_chunks)):
-        raise http(409, "conflict", "The upload has missing chunks; a file with gaps cannot be accepted as complete.")
-    data = b"".join(decrypt(upload["chunks"][str(i)]["ciphertext"]) for i in range(expected_chunks))
-    await db.investigation_uploads.delete_one({"owner_id": owner, "upload_id": upload_id})
+    rows = await db.investigation_upload_chunks.find({"owner_id": owner, "upload_id": upload_id}, {"_id": 0}).sort("chunk_index", 1).to_list(None)
+    if [r["chunk_index"] for r in rows] != list(range(expected_chunks)):
+        raise http(409, "conflict", "The upload has missing chunks; a file with gaps cannot be accepted as complete. Uploaded chunks are kept for resumption.")
+    data = b"".join(decrypt(r["ciphertext"]) for r in rows)
     if len(data) != declared:
-        raise http(409, "conflict", "Received bytes do not match the declared length.")
+        raise http(409, "conflict", "Received bytes do not match the declared length. Uploaded chunks are kept for correction.")
     meta = {k: v for k, v in upload["metadata"].items() if k != "declaredBytes"}
     item = await ev.ingest_file(owner, case, meta, data)
+    # Upload state is released only after evidence is committed.
+    await db.investigation_uploads.update_one({"owner_id": owner, "upload_id": upload_id}, {"$set": {"evidence_id": item.id}})
+    await db.investigation_upload_chunks.delete_many({"owner_id": owner, "upload_id": upload_id})
     updated = await repo.cas(owner, case_id, {"revision": case["revision"]}, {"$set": {}})
     return JSONResponse({"evidence": item.wire(), "caseRevision": (updated or case)["revision"]}, status_code=201, headers=NO_STORE)
 
@@ -336,7 +351,7 @@ async def cancel_job(case_id: str, job_id: str, body: ExpectedRevision, request:
         await db.investigation_cases.update_one({"owner_id": owner, "case_id": case_id}, {"$set": {"epoch": uuid.uuid4().hex, "active_job_id": None, "active_turn_id": None, "lease_fence": None,
                                                                                                   "status": "partial" if case.get("response_ciphertext") else "queued", "updated_at": now_utc()}, "$inc": {"revision": 1}})
         await db.investigation_jobs.update_one({"owner_id": owner, "job_id": job_id}, {"$set": {"status": "cancelled", "lease_until": None, "checkpoint_ciphertext": None}})
-        await db.investigation_turn_commits.delete_one({"owner_id": owner, "case_id": case_id, "turn_id": job["turn_id"], "staged": True})
+        pass  # unaccepted bundles of this attempt are reclaimed by the sweeper; accepted history is never touched here
         await db.voice_cache.delete_many({"device_id": owner, "scope_id": case_id, "job_id": job_id})
         await repo.emit(owner, case_id, job_id, "cancelled", {"cleanupStatus": "complete"}, case["revision"] + 1, repo.utc(case["expires_at"]))
     return JSONResponse({"status": "cancelled", "cleanupStatus": "complete"}, status_code=202, headers=NO_STORE)
@@ -353,7 +368,11 @@ async def device_results(case_id: str, body: DeviceResult, request: Request):
     if pending["request"]["capabilityId"] != body.capability_id:
         raise http(409, "conflict", "The result does not match the requested capability.")
     if pending["fulfilled"]:
-        return JSONResponse({"accepted": True, "duplicate": True}, status_code=202, headers=NO_STORE)
+        if pending.get("result_digest") != repo.digest(body.model_dump_json()):
+            raise http(409, "conflict", "A different result was already recorded for this device request.")
+        return JSONResponse({"accepted": True, "duplicate": True, "evidenceId": pending.get("evidence_id"), "jobId": pending["job_id"]}, status_code=202, headers=NO_STORE)
+    if repo.utc(datetime.fromisoformat(pending["request"]["expiresAt"])) <= now_utc():
+        raise http(409, "conflict", "This device request expired before its result arrived. Higgins will ask again if the observation still matters.")
     device = repo.device_profile(case) or {}
     if body.simulation and device.get("evidenceOrigin") == "native":
         raise http(409, "conflict", "A native device profile cannot submit simulated observations.")
@@ -361,7 +380,8 @@ async def device_results(case_id: str, body: DeviceResult, request: Request):
     if unknown:
         raise http(409, "conflict", f"Fields {unknown[:4]} were not requested.")
     item = await ev.ingest_observation(owner, case, f"observation-{body.request_id}", body.wire())
-    await db.investigation_device_requests.update_one({"owner_id": owner, "case_id": case_id, "request_id": body.request_id}, {"$set": {"fulfilled": True, "evidence_id": item.id}})
+    await db.investigation_device_requests.update_one({"owner_id": owner, "case_id": case_id, "request_id": body.request_id},
+                                                       {"$set": {"fulfilled": True, "evidence_id": item.id, "result_digest": repo.digest(body.model_dump_json())}})
     job = await repo.get_job(owner, case_id, pending["job_id"])
     checkpoint = repo.dec_json(job["checkpoint_ciphertext"]) if job.get("checkpoint_ciphertext") else {"contents": [], "rounds": 0}
     checkpoint.setdefault("deviceResults", []).append({**body.wire(), "evidenceId": item.id})
@@ -381,14 +401,15 @@ async def settings_plan(case_id: str, body: SettingsPlanRequest, request: Reques
     research = await toolbox.research_settings(ctx, {"target": body.target})
     if research.get("status") != "ok":
         raise http(503, "provider_unavailable", "Settings research is unavailable right now; the investigation text remains usable.", retryable=True)
-    capability = next((c for c in body.device.capability_ids if body.target.lower().replace(" ", "_") in c.lower()), None)
+    capability = body.capability_id if body.capability_id in body.device.capability_ids else None
     settings_capability = next((c for c in body.device.capability_ids if c.startswith("open_settings")), None)
     mode = "permission_request" if capability and capability.startswith("permission.") else ("settings_link" if settings_capability else "instructions")
     steps = [line.strip("-• ").strip() for line in research["answer"].splitlines() if line.strip() and not line.lower().startswith("limitations")]
     plan = SettingsPlan(id=str(uuid.uuid4()), case_id=case_id, target=body.target, device=body.device, match=research["match"], mode=mode, instructions=steps[:20],
                         source_ids=[s["sourceId"] for s in research.get("sources", [])], execution_descriptor_id=capability or settings_capability,
-                        expected_observation=ExpectedObservation(capability_id=capability, field="enabled", expected_value=True) if capability else None)
-    await db.investigation_settings_plans.insert_one({"owner_id": owner, "case_id": case_id, "plan_id": plan.id, "plan_ciphertext": repo.enc_json(plan.wire()), "expires_at": repo.utc(case["expires_at"])})
+                        expected_observation=ExpectedObservation(capability_id=capability, field=body.expected_field, expected_value=body.expected_value) if capability and body.expected_value is not None else None)
+    await db.investigation_settings_plans.insert_one({"owner_id": owner, "case_id": case_id, "plan_id": plan.id, "plan_ciphertext": repo.enc_json(plan.wire()), "created_at": now_utc(),
+                                                      "expires_at": repo.utc(case["expires_at"])})
     return JSONResponse({"plan": plan.wire(), "researchNote": research.get("note")}, headers=NO_STORE)
 
 
@@ -410,8 +431,11 @@ async def recheck(case_id: str, plan_id: str, body: RecheckRequest, request: Req
         if result.get("capabilityId") != plan.expected_observation.capability_id:
             continue
         used.append(evidence_id)
-        if repo.utc(evidence["collected_at"]) < repo.utc(row.get("created_at", evidence["collected_at"])):
+        if repo.utc(evidence["collected_at"]) <= repo.utc(row["created_at"]) or (evidence.get("observed_at") and repo.utc(evidence["observed_at"]) <= repo.utc(row["created_at"])):
+            outcome, explanation = "cannot_observe", "The only matching observation predates the plan; a fresh observation taken after the change is required."
             continue
+        if evidence.get("simulation") and (repo.device_profile(await repo.get_case(owner, case_id)) or {}).get("evidenceOrigin") == "native":
+            continue  # a preview fixture never becomes native proof
         if result.get("status") != "observed":
             outcome, explanation = "cannot_observe", f"The device reported '{result.get('status')}' for this capability; the setting could not be read."
         elif result.get("values", {}).get(plan.expected_observation.field) == plan.expected_observation.expected_value:
@@ -447,6 +471,9 @@ async def _speech_job(owner: str, case: dict, job: dict, text: str) -> None:
                 return
             await repo.emit(owner, case["case_id"], job["job_id"], "progress", {"phase": "respond", "message": f"Preparing narration segment {index + 1}."}, case["revision"], repo.utc(case["expires_at"]))
             audio, _meta = await provider.speech_bytes(segment)
+            if await repo.live_epoch(owner, case["case_id"]) != job["epoch"]:  # late provider result after deletion/cancel/expiry is discarded
+                await repo.set_job(owner, job["job_id"], None, {"$set": {"status": "cancelled"}})
+                return
             audio_id = str(uuid.uuid4())
             await db.voice_cache.insert_one({"device_id": owner, "scope_id": case["case_id"], "job_id": job["job_id"], "audio_id": audio_id, "segment": index,
                                              "audio_ciphertext": encrypt(audio), "created_at": now_utc(), "expires_at": repo.utc(case["expires_at"]), "content_version": 1})

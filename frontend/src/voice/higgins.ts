@@ -19,6 +19,7 @@ let playbackError: string | null = null;
 let errorForText: string | null = null;
 let expires: ReturnType<typeof setTimeout> | null = null;
 let queue: { texts: string[]; index: number; deviceId: string; token: number; scope: string } | null = null;
+let caseBound = false; // audio scoped to an investigation case: its lifetime and deletion belong to the case
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach(listener => listener());
 
@@ -28,8 +29,8 @@ export function stopHiggins() {
   try { player?.pause(); player?.replace(null); } catch { /* no loaded playback */ }
   releaseUrl();
   if (expires) clearTimeout(expires); expires = null;
-  if (scopeId) void apiDelete(`/voice/sessions/${scopeId}`).catch(() => undefined);
-  scopeId = null; notify();
+  if (scopeId && !caseBound) void apiDelete(`/voice/sessions/${scopeId}`).catch(() => undefined);
+  scopeId = null; caseBound = false; notify();
 }
 
 function getPlayer(): AudioPlayer {
@@ -76,26 +77,27 @@ async function advance() {
   }
 }
 
-export async function speakHigginsSteps(texts: string[], deviceId: string | null): Promise<void> {
+/** `scope` = investigation case ID binds the narration to that case (cleaned up with it); otherwise a private one-off scope is used. */
+export async function speakHigginsSteps(texts: string[], deviceId: string | null, scope?: string): Promise<void> {
   if (!deviceId) throw new Error('Apollo is not registered yet.');
   const segments = texts.flatMap(text => speechSegments(text));
   if (!segments.length) return;
-  stopHiggins(); scopeId = Crypto.randomUUID(); speaking = texts.join('\n').trim();
+  stopHiggins(); scopeId = scope ?? Crypto.randomUUID(); caseBound = !!scope; speaking = texts.join('\n').trim();
   const q = { texts: segments, index: 0, deviceId, token: generation, scope: scopeId };
   queue = q; expires = setTimeout(stopHiggins, 15 * 60 * 1000); notify();
   try { await playSegment(q); } catch (error) { if (q.token === generation) stopHiggins(); throw error; }
 }
 
-export function speakHiggins(text: string, deviceId: string | null) { return speakHigginsSteps([text], deviceId); }
+export function speakHiggins(text: string, deviceId: string | null, scope?: string) { return speakHigginsSteps([text], deviceId, scope); }
 export function useHigginsReader(deviceId: string | null) {
   const [, render] = useState(0); const [busy, setBusy] = useState(false);
   useEffect(() => { const listener = () => render(value => value + 1); listeners.add(listener); return () => { listeners.delete(listener); }; }, []);
-  const read = useCallback(async (texts: string[]) => { setBusy(true); try { await speakHigginsSteps(texts, deviceId); } finally { setBusy(false); } }, [deviceId]);
+  const read = useCallback(async (texts: string[], scope?: string) => { setBusy(true); try { await speakHigginsSteps(texts, deviceId, scope); } finally { setBusy(false); } }, [deviceId]);
   return { read, stop: stopHiggins, progress: queue ? { index: queue.index, total: queue.texts.length } : null, busy, error: playbackError };
 }
 export function useHiggins(deviceId: string | null) {
   const reader = useHigginsReader(deviceId);
-  const speak = useCallback(async (text: string) => { if (speaking === text.trim()) stopHiggins(); else await reader.read([text]); }, [reader.read]); // eslint-disable-line react-hooks/exhaustive-deps
+  const speak = useCallback(async (text: string, scope?: string) => { if (speaking === text.trim()) stopHiggins(); else await reader.read([text], scope); }, [reader.read]); // eslint-disable-line react-hooks/exhaustive-deps
   return { speak, stop: stopHiggins, speaking, busy: reader.busy, error: reader.error, errorForText };
 }
 export async function getHigginsAuto(): Promise<boolean> { return storage.getItem<boolean>(K_AUTO, false).then(Boolean); }

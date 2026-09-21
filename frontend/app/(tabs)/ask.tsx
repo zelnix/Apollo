@@ -31,7 +31,7 @@ export default function Ask() {
   const s = useStyles(); const { colors } = useTheme(); const insets = useSafeAreaInsets(); const router = useRouter();
   const { deviceId } = useApollo();
   const params = useLocalSearchParams<{ context?: string; prompt?: string; handoffId?: string }>();
-  const { state, start, ask, retry, cancel, remove, attach } = useInvestigation();
+  const { state, start, ask, retry, cancel, remove, attach, retryDelete } = useInvestigation();
   const [text, setText] = useState(""); const [activeContext, setActiveContext] = useState<HigginsIssueContext | null>(null);
   const [routeError, setRouteError] = useState<string | null>(null);
   const seenRoute = useRef<string | null>(null); const scrollRef = useRef<ScrollView>(null);
@@ -64,7 +64,7 @@ export default function Ask() {
 
   const deleteAll = async () => { stopHiggins(); clearHandoffTransfers(); setActiveContext(null); setRouteError(null); await remove(); };
   const newQuestion = () => { if (busy) return; stopHiggins(); setActiveContext(null); void remove(); };
-  const status = state.phase === "answered" ? "Answer complete" : state.phase === "waiting_user" ? "Higgins needs one answer from you" : state.phase === "failed" ? "Answer incomplete — Retry available" : state.phase === "expired" ? "Temporary content expired" : busy ? "Higgins is investigating…" : "Temporary content expires within 15 minutes";
+  const status = state.phase === "answered" ? (state.response?.completion === "partial" ? "Answer is partial — more evidence remains to examine" : "Answer complete within scope") : state.phase === "waiting_user" ? "Higgins needs one answer from you" : state.phase === "failed" ? "Answer incomplete — Retry available" : state.phase === "expired" ? "Temporary content expired" : busy ? "Higgins is investigating…" : "Temporary content expires within 15 minutes";
   const completedTurns = state.turns.length;
   return <View style={s.root}>
     <View style={{ paddingTop: insets.top + spacing.md }}><ScreenHeader title="Ask Higgins" testID="ask-header" right={<Pill tone="neutral" label="Investigates with research" testID="ask-scope-pill" />} /></View>
@@ -75,10 +75,12 @@ export default function Ask() {
         <Button testID="ask-new-conversation" variant="ghost" label="Start an unrelated question" onPress={newQuestion} disabled={busy} /></Card> : null}
       <ScrollView ref={scrollRef} contentContainerStyle={s.list} testID="ask-messages" onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
         {state.phase === "idle" && !routeError ? <Body testID="ask-empty">Ask about a warning, a message, a link, a call or a setting. Higgins investigates with Apollo's evidence and real research, then explains plainly.</Body> : null}
-        <InvestigationView state={state} onAnswer={(answer) => void ask(answer)} onRetry={() => void retry()} onCancel={() => void cancel()} testID="ask-investigation" />
+        <InvestigationView state={state} onAnswer={(answer) => void ask(answer)} onRetry={() => void retry()} onCancel={() => void cancel()} testID="ask-investigation"
+          onAction={(action, outcome) => { if (outcome.kind === "observed") void ask(`I did "${action.label}". Please re-check using the fresh observation Apollo just recorded.`); }} />
         {routeError ? <Card style={s.context} testID="ask-error-card"><Text style={{ color: colors.barkingText, fontFamily: fonts.text }} testID="ask-error">{routeError}</Text></Card> : null}
       </ScrollView>
       {state.phase === "failed" ? <Button testID="ask-retry-button" label="Retry" onPress={() => void retry()} style={{ marginHorizontal: spacing.xl }} /> : null}
+      {state.undeleted ? <Button testID="ask-retry-delete" variant="ghost" label="Retry server deletion" onPress={() => void retryDelete()} /> : null}
       <Button testID="ask-clear-temporary-history" label="Clear temporary history" variant="ghost" onPress={() => void deleteAll()} />
       <Text testID="ask-processing-state" style={s.disclaimer}>{status}</Text>
       {!activeContext && !state.caseData ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipRow} testID="ask-suggestions">{SUGGESTIONS.map((question, index) => <Pressable key={question} testID={`ask-suggestion-${index}`} style={s.chip} onPress={() => submit(question)} disabled={busy}><Text style={s.chipText}>{question}</Text></Pressable>)}</ScrollView> : null}

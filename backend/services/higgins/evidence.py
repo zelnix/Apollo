@@ -29,6 +29,8 @@ READ_CHARS = 30_000
 SUPPORTED = {"application/pdf": "document", "image/png": "image", "image/jpeg": "image", "text/plain": "text",
              "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "document"}
 URL_RE = re.compile(r"https?://[^\s<>\"')\]]+", re.I)
+PHONE_RE = re.compile(r"(?<![\w@.])(?:\+?\d[\d\s().-]{7,}\d)(?![\w@])")
+MAX_CLUES = 64
 
 
 def sniff(data: bytes, declared: str) -> str:
@@ -87,7 +89,34 @@ async def ingest_text(owner: str, case: dict, client_item_id: str, text: str, *,
                         transformations=[*(transformations or []), *redactions], label=label or ("link" if kind == "url" else "text"))
     await repo.insert_evidence(owner, item, {**(meta or {}), "urls": URL_RE.findall(clean)[:512] if kind == "text" else []})
     await repo.store_bytes(owner, case["case_id"], item.id, clean.encode("utf-8"), item.expires_at)
+    if kind == "text" and ((origin == "user_submission" and not meta) or (meta or {}).get("registerClues")):
+        await register_clues(owner, case, item, clean)
     return item
+
+
+async def register_clues(owner: str, case: dict, parent: EvidenceItem, text: str) -> list[EvidenceItem]:
+    """Every link and callback number becomes an addressable child clue with its exact offset (R07)."""
+    clues: list[EvidenceItem] = []
+    seen: set[str] = set()
+    for kind, pattern in (("url", URL_RE), ("phone", PHONE_RE)):
+        for match in pattern.finditer(text):
+            value = match.group(0).rstrip(".,;")
+            if value in seen or len(clues) >= MAX_CLUES:
+                continue
+            if kind == "phone" and sum(c.isdigit() for c in value) < 8:
+                continue
+            seen.add(value)
+            clue = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=f"{parent.client_item_id}.clue{len(clues)}", origin="apollo_inference",
+                                kind="url" if kind == "url" else "text", parent_id=parent.id, collected_at=now_utc(), expires_at=parent.expires_at, media_type="text/plain",
+                                byte_length=len(value.encode("utf-8")), coverage=Coverage(status="not_started", unit="items", total=1, examined=0),
+                                transformations=[Transformation(kind="chunk", description=f"{kind} clue found at characters {match.start()}–{match.end()} of the parent item", source_start=match.start(), source_end=match.end())],
+                                label=(("link clue: " + re.sub(r"^https?://([^/]+).*$", r"\1", value)) if kind == "url" else "phone clue")[:80])
+            await repo.insert_evidence(owner, clue, {"value": value, "parentOffset": [match.start(), match.end()]})
+            await repo.store_bytes(owner, case["case_id"], clue.id, value.encode("utf-8"), clue.expires_at)
+            clues.append(clue)
+    if clues:
+        await repo.update_evidence(owner, case["case_id"], parent.id, {"$addToSet": {"related_evidence_ids": {"$each": [c.id for c in clues]}}})
+    return clues
 
 
 async def ingest_url(owner: str, case: dict, client_item_id: str, url: str, *, parent_id: Optional[str] = None, label: str = "") -> EvidenceItem:
@@ -110,12 +139,21 @@ async def ingest_observation(owner: str, case: dict, client_item_id: str, result
                              meta={"deviceResult": result})
 
 
+async def _purge_original_if_secret(owner: str, case: dict, item: EvidenceItem, text: str) -> None:
+    """Originals are never retained in recoverable form when they carry an authentication secret (R03)."""
+    if redact_investigation_secrets(text) != text:
+        await repo.db.investigation_content_chunks.delete_many({"owner_id": owner, "case_id": case["case_id"], "evidence_id": item.id})
+        await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"availability": "purged"}, "$push": {"transformations": Transformation(
+            kind="secret_redaction", description="The original file contained an authentication secret; only the redacted extracted text is retained. Signature, size and structure were recorded first.").wire()}})
+
+
 def _pdf_pages(data: bytes) -> tuple[list[str], list[str], list[int]]:
     from pypdf import PdfReader
     reader = PdfReader(io.BytesIO(data))
     if reader.is_encrypted:
         raise ValueError("encrypted")
     pages, links, unreadable = [], [], []
+    total_pages = len(reader.pages)
     for index, page in enumerate(reader.pages[:MAX_PAGES]):
         try:
             text = page.extract_text() or ""
@@ -132,13 +170,19 @@ def _pdf_pages(data: bytes) -> tuple[list[str], list[str], list[int]]:
                     links.append(f"page {index + 1}: {uri}")
             except Exception:  # noqa: BLE001
                 continue
-    return pages, links, sorted(set(unreadable))
+    return pages, links, sorted(set(unreadable)), total_pages
 
 
 def _docx_text(data: bytes) -> tuple[list[str], list[str]]:
     import docx
     document = docx.Document(io.BytesIO(data))
     paragraphs = [p.text for p in document.paragraphs]
+    for table in document.tables:  # tables are part of the document, not an omission
+        for row in table.rows:
+            paragraphs.append(" | ".join(cell.text for cell in row.cells))
+    for section in document.sections:
+        paragraphs.extend(p.text for p in section.header.paragraphs if p.text.strip())
+        paragraphs.extend(p.text for p in section.footer.paragraphs if p.text.strip())
     links = [rel.target_ref for rel in document.part.rels.values() if "hyperlink" in rel.reltype and rel.is_external]
     return paragraphs, links
 
@@ -152,6 +196,8 @@ async def ingest_file(owner: str, case: dict, meta_in: dict, data: bytes) -> Evi
     if detected != meta_in["mediaType"]:
         transformations.append(Transformation(kind="normalise", description=f"Declared type {meta_in['mediaType']} but bytes match {detected}; the detected type is used."))
     kind = SUPPORTED.get(detected, meta_in["kind"] if meta_in["kind"] != "document" else "attachment")
+    if kind == "text":
+        kind = "document"  # a TXT original is a document container; only its redacted derivative is model input
     expires = repo.utc(case["expires_at"])
     item = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=meta_in["clientItemId"], origin="user_submission", kind=kind,
                         parent_id=meta_in.get("parentId"), collected_at=now_utc(), expires_at=expires, media_type=detected, byte_length=len(data),
@@ -169,10 +215,10 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
     try:
         if detected == "application/pdf" or detected.endswith("wordprocessingml.document"):
             if detected == "application/pdf":
-                pages, links, unreadable = _pdf_pages(data)
+                pages, links, unreadable, total_pages = _pdf_pages(data)
             else:
                 paragraphs, links = _docx_text(data)
-                pages, unreadable = ["\n".join(paragraphs)], []
+                pages, unreadable, total_pages = ["\n".join(paragraphs)], [], 1
             offsets, text, cursor = [], "", 0
             for number, page in enumerate(pages, start=1):
                 block = f"\n\n[page {number}]\n{page}"
@@ -183,21 +229,26 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
                 raise ValueError("expanded")
             link_text = "\n".join(links)
             derived = await ingest_text(owner, case, f"{item.client_item_id}.text", text + ("\n\n[links]\n" + link_text if link_text else ""), parent_id=item.id,
-                                        label=f"extracted text ({len(pages)} pages)", meta={"pages": offsets, "links": links[:512]},
+                                        label=f"extracted text ({len(pages)} pages)", meta={"pages": offsets, "links": links[:512], "registerClues": True},
                                         transformations=[Transformation(kind="decode", description=f"Parser text layer of {len(pages)} page(s) with page markers; {len(links)} link target(s) collected. Scanned/unreadable pages: {unreadable or 'none'}.")])
-            coverage_update = {"status": "partial" if unreadable else "not_started", "unit": "pages", "total": len(pages), "examined": 0,
-                               "omittedRanges": [{"start": p - 1, "end": p, "reason": "no extractable text layer (scanned or image-only page)"} for p in unreadable],
-                               "materialGap": bool(unreadable), "reason": "parser extraction complete; model examination pending"}
+            omitted = [{"start": p - 1, "end": p, "reason": "no extractable text layer (scanned or image-only page)"} for p in unreadable]
+            if total_pages > len(pages):
+                omitted.append({"start": len(pages), "end": total_pages, "reason": f"beyond the {MAX_PAGES}-page processing budget; not extracted"})
+            coverage_update = {"status": "partial" if omitted else "not_started", "unit": "pages", "total": total_pages, "examined": 0, "omittedRanges": omitted,
+                               "materialGap": bool(omitted), "reason": "parser extraction complete; model examination pending"}
             await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"coverage": coverage_update, "related_evidence_ids": [derived.id]}})
+            await _purge_original_if_secret(owner, case, item, text)
         elif detected in ("image/png", "image/jpeg"):
             from PIL import Image
             with Image.open(io.BytesIO(data)) as image:
                 if image.width * image.height > MAX_IMAGE_PIXELS:
+                    await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"availability": "unavailable"}})
                     raise ValueError("pixels")
             await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"coverage.reason": "original image available to Gemini vision; not yet examined"}})
         elif detected == "text/plain":
-            derived = await ingest_text(owner, case, f"{item.client_item_id}.text", data.decode("utf-8", errors="replace"), parent_id=item.id, label="file text")
-            await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"related_evidence_ids": [derived.id]}})
+            derived = await ingest_text(owner, case, f"{item.client_item_id}.text", data.decode("utf-8", errors="replace"), parent_id=item.id, label="file text", meta={"registerClues": True})
+            await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"related_evidence_ids": [derived.id], "coverage": {"status": "not_started", "unit": "characters", "total": len(data.decode("utf-8", errors="replace")), "examined": 0}}})
+            await _purge_original_if_secret(owner, case, item, data.decode("utf-8", errors="replace"))
         else:
             reason = {"application/zip": "archive contents are not expanded; list only", "application/x-archive": "compressed archive is not expanded",
                       "application/vnd.microsoft.portable-executable": "Windows executable: signature inspected, never executed",
@@ -237,7 +288,7 @@ async def mark_examined(owner: str, case_id: str, evidence_id: str, start: int, 
         pages = meta.get("pages") or []
         parent_update = {"coverage.status": "examined" if complete else "partial"}
         if pages:
-            covered = [p for p in pages if any(r["start"] < p["end"] and r["end"] > p["start"] for r in ranges)]
+            covered = [p for p in pages if any(r["start"] <= p["start"] and r["end"] >= p["end"] for r in ranges)]  # whole page only
             parent_update["coverage.examined"] = len(covered)
             parent_update["coverage.examinedRanges"] = [{"start": p["page"] - 1, "end": p["page"]} for p in covered]
         await repo.update_evidence(owner, case_id, row["parent_id"], {"$set": parent_update})
@@ -268,9 +319,10 @@ async def read_text(owner: str, case_id: str, evidence_id: str, start: Optional[
             "hasMore": end < len(text), "pages": meta.get("pages", [])[:MAX_PAGES] if pages is None and meta.get("pages") else None}
 
 
-async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[types.Part], list[dict]]:
-    """Inline short text and images; long text is summarised by inventory and read by range via tools."""
-    parts, inventory = [], []
+async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[types.Part], list[dict], list[tuple[str, int, int, int]]]:
+    """Inline short text and images; long text is summarised by inventory and read by range via tools.
+    Returns pending examination marks (evidence_id, start, end, total) to apply only after Gemini succeeds."""
+    parts, inventory, marks = [], [], []
     for row in rows:
         entry = {"evidenceId": row["evidence_id"], "kind": row["kind"], "origin": row["origin"], "label": row.get("label", ""), "parentId": row.get("parent_id"),
                  "availability": row["availability"], "coverage": row["coverage"], "simulation": row.get("simulation"), "transformations": row.get("transformations", [])}
@@ -282,15 +334,15 @@ async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[ty
             if len(text) <= INLINE_TEXT_CHARS:
                 entry["content"] = text
                 if row["coverage"].get("unit") == "characters":
-                    await mark_examined(owner, case["case_id"], row["evidence_id"], 0, len(text), len(text))
+                    marks.append((row["evidence_id"], 0, len(text), len(text)))
             else:
                 entry["content"] = text[:2000]
                 entry["note"] = f"{len(text)} characters total; only the first 2000 are inline. Use read_evidence with ranges/pages to examine the rest before concluding."
-                await mark_examined(owner, case["case_id"], row["evidence_id"], 0, 2000, len(text))
+                marks.append((row["evidence_id"], 0, 2000, len(text)))
         elif row["kind"] == "image":
             data = await repo.read_bytes(owner, case["case_id"], row["evidence_id"])
             parts.append(types.Part.from_bytes(data=data, mime_type=row["media_type"]))
             entry["note"] = "original image supplied inline (previous part)"
-            await mark_examined(owner, case["case_id"], row["evidence_id"], 0, len(data), len(data))
+            marks.append((row["evidence_id"], 0, len(data), len(data)))
         inventory.append(entry)
-    return parts, inventory
+    return parts, inventory, marks

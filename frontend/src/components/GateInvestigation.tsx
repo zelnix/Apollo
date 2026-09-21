@@ -25,7 +25,8 @@ export function GateInvestigation({ context, question, label, testID }: { contex
   }, [key]);
   const busy = state.phase === "creating" || state.phase === "working" || state.phase === "reconnecting" || state.phase === "waiting_device";
   return <View style={{ gap: spacing.sm }} testID={testID}>
-    <InvestigationView state={state} onAnswer={(a) => void ask(a)} onRetry={() => void retry()} onCancel={() => void cancel()} testID={`${testID}-view`} />
+    <InvestigationView state={state} onAnswer={(a) => void ask(a)} onRetry={() => void retry()} onCancel={() => void cancel()} testID={`${testID}-view`}
+      onAction={(action, outcome) => { if (outcome.kind === "observed") void ask(`I did "${action.label}". Please re-check using the fresh observation Apollo just recorded.`); }} />
     <Button testID={`${testID}-ask`} variant="secondary" label={label} disabled={busy && !state.caseData}
       onPress={() => openHigginsHandoff(router, { ...context, case_id: state.caseData?.id }, state.caseData ? "" : question)} />
   </View>;
