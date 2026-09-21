@@ -47,7 +47,7 @@ Legend: ✅ complete · 🟡 partial · ⬜ not started · 🚫 blocked (named e
 | B15 | Recovery/retry | ✅ | 2 transient retries, jittered backoff, SDK retries disabled, deadline-bounded |
 | B16 | Answer validation + UI | ✅ | `InvestigationView` |
 | B17 | Narration | ✅ backend / 🟡 UI uses existing protected `/voice/speak` path |
-| C18 | Migrate all entry paths | 🟡 | Ask + Text/Email/Call/Account/File handoffs carry originals; Site/Link/Network/App/Device screens still summary-only |
+| C18 | Migrate all entry paths | ✅ handoffs / 🟡 Home quick checks & share targets | All ten Gate screens' "Ask Higgins" hand the original URL/message/email/call/alert/app description/file bytes/network+device observations into the shared case (`original_evidence`); Patrol event actions carry summaries only |
 | C19–C21 | Gate-specific work, observation semantics, guided settings UI | 🟡 / ⬜ | Backend plan/recheck ready; native contracts untouched |
 | C22 | Preview/native boundary | ⬜ | |
 | C23 | Delivery adapters | 🚫 | Email/push/storage remain explicit 503 stubs — need `RESEND_API_KEY`+sender, push credentials, object store |
@@ -64,5 +64,6 @@ Legend: ✅ complete · 🟡 partial · ⬜ not started · 🚫 blocked (named e
 | Device case with advertised capabilities | `device_request` → result accepted → checkpoint resume → completion without tampering claim; duplicate result safe; settings plan `match=exact` (Samsung) |
 | Browser: Ask general question | Progress → response → `waiting_user` question rendered |
 | Browser: Text Gate → "Ask Higgins" | Case with original message; 3 sources; two actions |
+| Browser: Link Gate (blocklisted test URL) → "Ask Higgins to explain" | Case with URL + link-check observations; Gemini revised Apollo's initial block hypothesis to `no_concern_found_within_scope` for Google's test page (AR-10 revisable assessment) |
 | `tests/test_investigation_engine.py` | 7/7 |
 | Legacy backend suite | 279 passed / 23 failed — identical failures to the pre-change baseline (26 failed incl. 2 obsolete tests removed) |

@@ -12,7 +12,7 @@ DELIVERED THIS SESSION (verified live with the owner key, no mocks):
   9 typed tools incl. Search-grounded research, device-observation pause/resume, settings plan + recheck, case speech, saved reports.
 - `routers/ask.py` is now a thin adapter over the same engine (one engine). Obsolete keyword-validator/fallback tests removed.
 - Frontend `src/investigation/{types,client,caseStore,deviceBroker}.ts`, `src/components/InvestigationView.tsx`;
-  `app/(tabs)/ask.tsx` rewritten onto cases; Text/Email/Call/Account/File handoffs carry original evidence (`original_evidence`).
+  `app/(tabs)/ask.tsx` rewritten onto cases; all ten Gate screens' Higgins handoffs carry original evidence (`original_evidence`, incl. Link/Site via `EventActions`).
 - Probes: `backend/tests/probe_investigation.py`, `probe_document.py`; regressions `backend/tests/test_investigation_engine.py` (7/7).
   Legacy suite: 279 pass / 23 fail — identical to pre-change baseline failures (voice mp3, push placeholder, gate4, prompt tests).
 
