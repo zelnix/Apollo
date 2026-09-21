@@ -47,6 +47,7 @@ class CrawledPage:
     forms: list[str] = field(default_factory=list)  # input types seen: password/email/tel
     buttons: list[str] = field(default_factory=list)  # button/submit label text
     links_sample: list[str] = field(default_factory=list)  # a few outbound link hosts
+    coverage: dict = field(default_factory=dict)
 
 
 async def _resolve_ips(host: str) -> list[str]:
@@ -69,8 +70,11 @@ def _parse_html(final_url: str, html: str) -> CrawledPage:
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup(["script", "style", "noscript"]):
         tag.decompose()
-    title = (soup.title.get_text(strip=True) if soup.title else "")[:200]
-    text = re.sub(r"\s+", " ", soup.get_text(" ")).strip()[:6000]
+    title = soup.title.get_text(strip=True) if soup.title else ""
+    text = re.sub(r"\s+", " ", soup.get_text(" ")).strip()
+    from services.higgins.capacity import TEXT
+    total = len(text)
+    text = text[:TEXT.value]
     forms: list[str] = []
     for inp in soup.find_all("input"):
         t = str(inp.get("type") or "text").lower()
@@ -81,13 +85,15 @@ def _parse_html(final_url: str, html: str) -> CrawledPage:
         label = b.get_text(strip=True) if hasattr(b, "get_text") else ""
         label = label or str(b.get("value") or "")
         if label:
-            buttons.append(label[:60])
+            buttons.append(label)
     links: list[str] = []
-    for a in soup.find_all("a", href=True)[:40]:
+    for a in soup.find_all("a", href=True):
         host = urlparse(urljoin(final_url, a["href"])).hostname
         if host and host not in links:
             links.append(host)
-    return CrawledPage(final_url=final_url, title=title, text=text, forms=forms, buttons=buttons[:15], links_sample=links[:10])
+    return CrawledPage(final_url=final_url, title=title, text=text, forms=forms, buttons=buttons, links_sample=links,
+        coverage={"status": "examined" if len(text) == total else "partial", "unit": "characters", "total": total,
+                  "examined": len(text), "omittedRanges": [] if len(text) == total else [{"start": len(text), "end": total, "reason": "request transport bound; further retrieval not implemented"}]})
 
 
 async def fetch_page(url: str) -> CrawledPage:

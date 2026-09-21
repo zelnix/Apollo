@@ -1,7 +1,8 @@
 import * as Crypto from "expo-crypto";
 
-import { redactUserSecrets } from "./privacy";
+import { redactInvestigationSecrets as redactUserSecrets } from "./privacy";
 import { handoffFingerprint, reserveHandoff } from "./handoffDedupe";
+import { storeHandoff } from './handoffTransfer';
 import type { ApolloState, EventCategory, PatrolEvent } from "./types";
 
 export type HigginsGate = "site" | "link" | "text" | "call" | "network" | "account" | "email" | "app" | "file" | "device" | "incident";
@@ -101,6 +102,7 @@ export function openHigginsHandoff(router: { push: (href: never) => void }, cont
   const now = Date.now();
   if (!reserveHandoff(recent, fingerprint, now)) return null;
   const handoffId = Crypto.randomUUID();
-  router.push({ pathname: "/(tabs)/ask", params: { handoffId, context: JSON.stringify(safe), prompt: cleanQuestion } } as never);
+  storeHandoff(handoffId, safe, cleanQuestion);
+  router.push({ pathname: "/(tabs)/ask", params: { handoffId } } as never);
   return handoffId;
 }

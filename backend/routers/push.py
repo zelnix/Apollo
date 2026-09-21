@@ -1,21 +1,19 @@
-"""Alert notifications via the Emergent-managed push relay."""
+"""Alert notification boundary. Managed relay removed; direct credentials required."""
 from __future__ import annotations
 
-from typing import Any, Literal, Optional
+from typing import Literal, Optional
 
-import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from core.config import PUSH_BASE_URL, PUSH_KEY, logger
-from core.db import db, now_utc
+from core.config import logger
+from core.db import now_utc
 from core.models import PatrolEvent
 from routers.devices import device_quiet_now
 
 router = APIRouter()
 
 
-_push_client = httpx.AsyncClient(base_url=PUSH_BASE_URL, headers={"X-Push-Key": PUSH_KEY}, timeout=10.0)
 # Sound routing — Android channel id + iOS aps.sound. Files bundled via expo-notifications `sounds` in app.json.
 PUSH_THREAT = {"channel_id": "threats", "sound": "apollo_bark.wav"}   # Apollo barks: threat alerts (owner + family)
 PUSH_FAMILY = {"channel_id": "family", "sound": "apollo_chime.wav"}   # softer chime: family replies
@@ -29,14 +27,7 @@ class RegisterPushBody(BaseModel):
 
 @router.post("/register-push", status_code=201)
 async def register_push(body: RegisterPushBody):
-    resp = await _push_client.post("/api/v1/push/users/register", json=body.model_dump())
-    if resp.status_code == 401:
-        raise HTTPException(status_code=500, detail="EMERGENT_PUSH_KEY missing or invalid")
-    if resp.status_code >= 500:
-        raise HTTPException(status_code=502, detail="Push provider unavailable")
-    resp.raise_for_status()
-    await db.devices.update_one({"device_id": body.user_id}, {"$set": {"push_registered_at": now_utc(), "push_platform": body.platform}})
-    return {"status": "registered"}
+    raise HTTPException(503, "Push delivery requires owner-managed push credentials and token migration. No device was registered for delivery.")
 
 
 async def send_push(recipients: list[str], data: dict, idempotency_key: Optional[str] = None) -> None:
@@ -46,15 +37,7 @@ async def send_push(recipients: list[str], data: dict, idempotency_key: Optional
         raise ValueError("max 100 recipients per /trigger call; chunk before sending")
     if "title" not in data or "message" not in data:
         raise ValueError("data must include title and message")
-    payload: dict[str, Any] = {"recipients": recipients, "data": data}
-    if idempotency_key:
-        payload["$idempotency_key"] = idempotency_key
-    resp = await _push_client.post("/api/v1/push/trigger", json=payload)
-    if resp.status_code == 401:
-        raise HTTPException(status_code=500, detail="EMERGENT_PUSH_KEY missing or invalid")
-    if resp.status_code >= 500:
-        raise HTTPException(status_code=502, detail="Push provider unavailable")
-    resp.raise_for_status()
+    raise HTTPException(503, "Push delivery requires owner-managed push credentials. No notification was sent.")
 
 
 class PushTestIn(BaseModel):

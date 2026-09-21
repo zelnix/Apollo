@@ -12,6 +12,8 @@ import asyncio
 import json
 import os
 import subprocess
+import hashlib
+import uuid
 import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -101,7 +103,7 @@ class Round1Browser:
 
     async def require_live_investigation(self, prefix: str) -> None:
         mode = await visible_text(self.page, f"{prefix}-investigation-mode")
-        if not mode or "incomplete" in mode.lower() or "fallback" in mode.lower():
+        if not mode or any(term in mode.lower() for term in ('incomplete', 'fallback', 'partial', 'further research is not', 'supplied-evidence')):
             self.partial_reasons.append(f"{prefix.replace('-assessment', '')} did not show a complete verbatim Gemini assessment: {mode or 'status missing'}")
 
     async def assessment_trace(self, prefix: str) -> str:
@@ -440,6 +442,7 @@ async def run_browser(base_url: str, mode: str, selected: set[str] | None = None
         ]
         for args in cases:
             if selected and args[0] not in selected:
+                runner.results.append(UiResult(args[0], args[1], args[2], args[3], 'Not selected in this run.', 'NOT_RUN', evidence='none'))
                 continue
             await runner.run(*args)
         await context.set_offline(False)
@@ -460,7 +463,7 @@ def markdown(engine: dict, ui: list[UiResult], base_url: str, mode: str) -> str:
         "## Outcome summary",
         "",
         f"- Local application-logic preflight: **{engine['summary']['passed']}/{engine['summary']['total']} matched expectations** — not counted as external investigation or Higgins acceptance",
-        f"- Browser journeys: **{sum(item.outcome == 'COMPLETE' for item in ui)}/{len(ui)} complete**, **{sum(item.outcome == 'PARTIAL' for item in ui)} partial**, **{sum(item.outcome == 'FAILED' for item in ui)} failed**, **{sum(item.outcome == 'BLOCKED' for item in ui)} blocked**",
+        f"- Browser journeys: **{sum(item.outcome == 'COMPLETE' for item in ui)}/{len(ui)} complete**, **{sum(item.outcome == 'PARTIAL' for item in ui)} partial**, **{sum(item.outcome == 'FAILED' for item in ui)} failed**, **{sum(item.outcome == 'BLOCKED' for item in ui)} blocked**, **{sum(item.outcome == 'NOT_RUN' for item in ui)} not run**",
         f"- Device-only scenarios: **{len(engine['device_only'])} blocked from browser completion and not counted as complete**",
         "- External-source handling: **configured real services in every mode; no verdict, finding or Higgins response is injected**",
         "",
@@ -498,7 +501,7 @@ def markdown(engine: dict, ui: list[UiResult], base_url: str, mode: str) -> str:
         "",
         "- Web preview native device/network/app observations remain simulated or unavailable and are never treated as physical-device evidence.",
         "- The deterministic 35-scenario engine is expectation preflight only; it does not stand in for external investigation or a Higgins response.",
-        "- Investigation fallback assessments remain a runtime safety path when Gemini is unavailable or rejected. The UI labels them as deterministic fallback, and any journey using one is PARTIAL rather than complete.",
+        "- No deterministic substitute Higgins investigation is accepted. Missing Gemini output is explicitly incomplete; supplied-evidence-only compatibility investigations are not full research acceptance.",
         "- Structured Higgins handoffs retry real Gemini once after a transport or grounding rejection. They do not substitute a canned answer; after both attempts fail, the user sees a Retry error and the journey is FAILED or BLOCKED.",
         "",
         "## Remaining capability gaps",
@@ -518,21 +521,39 @@ def markdown(engine: dict, ui: list[UiResult], base_url: str, mode: str) -> str:
 
 async def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base-url", default=os.getenv("APOLLO_SCENARIO_URL", "https://device-file-gate.preview.emergentagent.com"))
+    parser.add_argument("--base-url", default=os.getenv("APOLLO_SCENARIO_URL"))
     parser.add_argument("--mode", choices=("repeatable", "live"), default="repeatable")
     parser.add_argument("--scenario", action="append", help="Run only a named browser scenario; may be repeated. Deterministic catalogue still runs in full.")
     parser.add_argument("--skip-browser", action="store_true", help="Run deterministic scenarios only; browser journeys will be reported as skipped, not passed.")
     args = parser.parse_args()
+    if not args.base_url and not args.skip_browser:
+        parser.error('Set --base-url or APOLLO_SCENARIO_URL to this environment; no saved preview URL is assumed.')
+    global ARTIFACTS
+    run_id = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S') + '-' + uuid.uuid4().hex[:8]
+    run_dir = REPORT_DIR / 'round1_runs' / run_id
+    run_dir.mkdir(parents=True, exist_ok=False)
+    ARTIFACTS = run_dir / 'artifacts'
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     engine = run_engine()
-    ui = [] if args.skip_browser else await run_browser(args.base_url, args.mode, set(args.scenario or []) or None)
-    payload = {"round": "Round 1", "mode": args.mode, "generated_at": datetime.now(timezone.utc).isoformat(), "base_url": args.base_url, "engine": engine, "browser": [asdict(item) for item in ui]}
-    json_path = REPORT_DIR / f"round1_expected_vs_actual_{args.mode}.json"
-    md_path = REPORT_DIR / f"round1_expected_vs_actual_{args.mode}.md"
+    ui = [UiResult(f'not-run-{gate}', gate, 'Catalogue journey', 'Run the normal user journey.', 'Browser execution was skipped.', 'NOT_RUN', evidence='none')
+          for gate in ('site', 'link', 'text', 'call', 'network', 'account', 'email', 'app', 'file', 'device')] if args.skip_browser else await run_browser(args.base_url, args.mode, set(args.scenario or []) or None)
+    commit = subprocess.check_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD'], text=True).strip()
+    source_paths = [Path(__file__), FRONTEND / 'scripts/round1-scenario-engine.ts']
+    for directory in ('backend/core', 'backend/services', 'backend/routers', 'frontend/app', 'frontend/src'):
+        source_paths.extend(path for path in (ROOT / directory).rglob('*') if path.suffix in ('.py', '.ts', '.tsx') and '__pycache__' not in path.parts)
+    hashes = {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(set(source_paths))}
+    payload = {"round": "Round 1", 'run_id': run_id, 'commit': commit, 'selected_scenarios': args.scenario or [],
+               'source_hashes': hashes, 'working_tree_identity': 'source_hashes; commit is the Git base reference, not a claim that working files were committed',
+               'ai_provider': 'Gemini only', 'provider_configuration_verified': False,
+               'environment': {'base_url': args.base_url, 'physical_device_testing': 'CANCELLED'},
+               "mode": args.mode, "generated_at": datetime.now(timezone.utc).isoformat(), "base_url": args.base_url, "engine": engine, "browser": [asdict(item) for item in ui]}
+    json_path = run_dir / f"round1_expected_vs_actual_{args.mode}.json"
+    md_path = run_dir / f"round1_expected_vs_actual_{args.mode}.md"
     json_path.write_text(json.dumps(payload, indent=2) + "\n")
     md_path.write_text(markdown(engine, ui, args.base_url, args.mode))
+    (REPORT_DIR / 'round1_latest.json').write_text(json.dumps({'run_id': run_id, 'report': str(json_path.relative_to(ROOT))}, indent=2) + '\n')
     failed = engine["summary"]["failed"] + sum(item.outcome == "FAILED" for item in ui)
-    incomplete = sum(item.outcome in ("PARTIAL", "BLOCKED") for item in ui)
+    incomplete = sum(item.outcome in ("PARTIAL", "BLOCKED", "NOT_RUN") for item in ui)
     print(f"Readable report: {md_path}")
     print(f"Machine report: {json_path}")
     return 1 if failed else 2 if incomplete else 0

@@ -28,6 +28,7 @@ from core.models import BlocklistEntry
 from core.privacy_boundary import PrivacyBoundary
 from services.patrol_policy import ensure_evidence_receipt_indexes
 from services.mailbox_monitor import mailbox_monitor_loop
+from services.higgins.retention import migrate_and_index, sweep_loop
 from routers import admin, analysis, ask, call, devices, family, family_weekly, gmail, health, intel, patrol, push, voice
 from routers.family_weekly import weekly_checkin_loop
 
@@ -41,6 +42,7 @@ SEED_BLOCKLIST = [
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    await migrate_and_index()
     await db.devices.create_index("device_id", unique=True)
     await db.devices.create_index("token_hash", unique=True, partialFilterExpression={"token_hash": {"$type": "string"}})
     await db.reputation_cache.create_index("indicator_digest", unique=True)
@@ -67,9 +69,11 @@ async def lifespan(_: FastAPI):
         await db.blocklist.update_one({"host": host}, {"$setOnInsert": entry.to_mongo()}, upsert=True)
     loop_task = asyncio.create_task(weekly_checkin_loop())
     mailbox_task = asyncio.create_task(mailbox_monitor_loop())
+    cleanup_task = asyncio.create_task(sweep_loop())
     yield
     loop_task.cancel()
     mailbox_task.cancel()
+    cleanup_task.cancel()
     client.close()
 
 

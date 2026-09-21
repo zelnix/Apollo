@@ -10,14 +10,14 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   family: new Set(["device_id", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id", "scent_id", "headline", "state", "events", "steps", "done", "note", "resolved", "kind", "text", "from_name", "enabled", "preview_only", "guardian_name", "duration_s"]),
   intel_check: new Set(["indicator_type", "value", "values", "device_id", "expand"]),
   // Higgins' voice: only the sentence already shown on screen, so it can be read aloud.
-  voice: new Set(["device_id", "text"]),
+  voice: new Set(["device_id", "text", "scope_id"]),
   feedback: new Set(["device_id", "event_id", "kind", "state", "host", "sources", "note"]),
   patrol_sync: new Set([
     "event_id", "device_id", "category", "state", "status", "headline", "what_happened", "why", "what_to_do",
     "indicator_host", "indicator_digest", "verified_block", "adapter_label", "occurred_at", "resolved_at", "background", "claimed_brand", "scenario", "scent_id", "enforcement_evidence", "supporting_references", "recovery_kinds",
   ]),
   trust_sync: new Set(["device_id", "indicator_type", "indicator_digest", "indicator_host", "event_id", "trust_id"]),
-  ask_apollo: new Set(["device_id", "message", "context", "handoff_id", "conversation_id"]),
+  ask_apollo: new Set(["device_id", "message", "context", "handoff_id", "conversation_id", "turn_id"]),
   device_register: new Set(["platform", "adapter_mode", "app_version", "tz_offset_minutes"]),
   // Alert notifications: the push token is an opaque delivery address (FCM/APNs), relayed and not stored by us.
   push_register: new Set(["user_id", "platform", "device_token"]),
@@ -50,13 +50,21 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
 
 /** Keys that must never appear in any outbound payload, regardless of endpoint. */
 const FORBIDDEN_KEYS = new Set(["local_indicator", "contacts", "messages", "sms", "email_body", "page_content", "clipboard", "location", "imei", "serial", "phone_number", "advertising_id"]);
-const NON_SECRET_WORDS = new Set(["reset", "change", "changed", "request", "requested", "prompt", "field", "link", "page", "screen", "required"]);
+const NON_SECRET_WORDS = new Set(["reset", "change", "changed", "request", "requested", "prompt", "field", "link", "page", "screen", "required", "with", "without", "from", "using", "manager", "management", "sharing", "protection", "protected", "never", "should", "must"]);
 
 export function redactUserSecrets(value: string): string {
+  return redactInvestigationSecrets(value)
+    .replace(/\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/g, '[ip address]')
+    .replace(/\b(?:[A-F0-9]{1,4}:){2,7}[A-F0-9]{1,4}\b/gi, '[ip address]');
+}
+
+/** Private investigation evidence may retain relevant identifiers; durable Patrol does not. */
+export function redactInvestigationSecrets(value: string): string {
   return value.replace(/\b(password|passcode|p\.?i\.?n\.?|otp|one[- ]time(?: security)? code|verification code|security code|recovery code|username|login id)\b(\s*(?:is|was|:|=)\s*|\s+)([A-Za-z0-9!@#$%^&*_.+\-/]{3,96})/gi,
-    (full, label: string, joiner: string, secret: string) => NON_SECRET_WORDS.has(secret.toLowerCase()) ? full : `${label}${joiner}[redacted]`)
-    .replace(/\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/g, "[ip address]")
-    .replace(/\b(?:[A-F0-9]{1,4}:){2,7}[A-F0-9]{1,4}\b/gi, "[ip address]");
+    (full, label: string, joiner: string, secret: string) => NON_SECRET_WORDS.has(secret.toLowerCase()) && !/[:=]/.test(joiner) ? full : `${label}${joiner}[redacted]`)
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [redacted]')
+    .replace(/([?&](?:(?:access|refresh|auth|api)[_-]?)?(?:token|password|secret|key|code|session|signature)=)[^\s&#"']+/gi, '$1[redacted]')
+    .replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/g, '$1[redacted]@');
 }
 
 export class EgressViolation extends Error {
@@ -74,9 +82,9 @@ export function enforceEgress<T extends Record<string, unknown>>(endpoint: Egres
     out[key] = payload[key];
   }
   if (endpoint === 'message_check' || endpoint === 'account_check') {
-    if (typeof out.text !== 'string' || out.text.length > 4000 || typeof out.sender !== 'string' || out.sender.length > 80) throw new EgressViolation(endpoint, 'submission bounds');
-    out.text = redactUserSecrets(out.text);
-    out.urls = Array.isArray(out.urls) ? out.urls.map(u => purposeLimitedUrl(String(u))).slice(0, 10) : [];
+    if (typeof out.text !== 'string' || typeof out.sender !== 'string') throw new EgressViolation(endpoint, 'submission types');
+    out.text = redactInvestigationSecrets(out.text);
+    out.urls = Array.isArray(out.urls) ? out.urls.map(u => purposeLimitedUrl(String(u))) : [];
   }
   if (endpoint === 'link_investigation') {
     out.url = purposeLimitedUrl(String(out.url ?? ''));
@@ -122,8 +130,8 @@ export function enforceEgress<T extends Record<string, unknown>>(endpoint: Egres
     if (Array.isArray(out.steps)) out.steps = out.steps.map((v: Record<string, unknown>) => ({ id: v.id, text: 'Review this recovery step on the protected phone together.' }));
   }
   if (endpoint === 'ask_apollo') {
-    if (typeof out.message !== 'string' || out.message.length > 2000) throw new EgressViolation(endpoint, 'message');
-    out.message = redactUserSecrets(out.message);
+    if (typeof out.message !== 'string' || out.message.length > 262144) throw new EgressViolation(endpoint, 'message');
+    out.message = redactInvestigationSecrets(out.message);
     if (out.handoff_id != null && (typeof out.handoff_id !== 'string' || !/^[A-Za-z0-9-]{8,64}$/.test(out.handoff_id))) throw new EgressViolation(endpoint, 'handoff_id');
     if (out.conversation_id == null) out.conversation_id = 'general';
     if (typeof out.conversation_id !== 'string' || !/^[A-Za-z0-9-]{1,64}$/.test(out.conversation_id)) throw new EgressViolation(endpoint, 'conversation_id');
@@ -143,7 +151,7 @@ function validateAskContext(value: unknown): Record<string, unknown> {
   if (Object.keys(raw).some((key) => !ASK_CONTEXT_KEYS.has(key)) || !ASK_GATES.has(String(raw.gate)) || !ASK_STATES.has(String(raw.assessment_state))) throw new EgressViolation('ask_apollo', 'context');
   const cleanLine = (line: unknown, max = 180) => {
     if (typeof line !== 'string' || !line.trim() || line.length > max) throw new EgressViolation('ask_apollo', 'context');
-    return redactUserSecrets(line.trim()).replace(/\+?\d[\d ()-]{8,}\d/g, "[phone]").replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]");
+    return redactInvestigationSecrets(line.trim());
   };
   const lines = (key: string, limit: number) => {
     const items = raw[key] ?? [];
@@ -214,8 +222,8 @@ export const PRIVACY_POLICY_SUMMARY = [
   "Submitted screenshots are processed only for the requested assessment and Apollo closes request-scoped upload copies after success or failure.",
   "Background notification access, mailbox connections and ongoing monitoring require separate opt-in. Automatic notification checks remain local unless you enable a supported connection.",
   "Patrol keeps the assessment summary and safe supporting references, not full messages, screenshots, files or sensitive tokens.",
-  "Apollo does not persist raw assessment content. Request copies close immediately and never later than 15 minutes; provider-side retention follows the configured API policy.",
+  "Ask Higgins conversation content and generated speech are encrypted temporarily, for no more than 15 minutes. Clear temporary history invalidates them; provider-side retention follows your Gemini account policy.",
   "Apollo uses an anonymous device ID. No account, no email. A phone number is shared only if you choose to add one so family can call you.",
   "Ask Higgins sends only your question and, if you choose, a short event summary.",
-  "Hear Higgins sends only the sentence already on your screen so it can be read aloud.",
+  "Hear Higgins reads the displayed explanation in temporary protected audio sections. It uses the owner's Gemini account, not a different AI provider.",
 ];

@@ -20,8 +20,8 @@ export class ApiError extends Error {
 // service must never leave a check spinning; the caller degrades to "unavailable", never to "safe".
 export const DEFAULT_TIMEOUT_MS = 20000;
 /** Endpoints that legitimately take longer (vision/LLM second opinions, TTS, redirect expansion). */
-const LONG_TIMEOUT_MS = 60000;
-const ASK_STREAM_TIMEOUT_MS = 90000;
+const LONG_TIMEOUT_MS = 135000; // interim alignment while analysis routes migrate to asynchronous jobs
+const ASK_STREAM_TIMEOUT_MS = 135000; // compatibility transport: server's absolute work budget + transport margin
 const LONG_PATHS = ["/message/extract", "/message/analyse", "/link/investigate", "/page/extract", "/page/crawl", "/voice/speak", "/app/analyse", "/account/analyse", "/intel/check", "/ask/", "/gmail/scan"];
 export function timeoutFor(path: string): number { return LONG_PATHS.some((p) => path.startsWith(p)) ? LONG_TIMEOUT_MS : DEFAULT_TIMEOUT_MS; }
 
@@ -126,10 +126,11 @@ export function streamPost(path: string, endpoint: EgressEndpoint, body: Record<
     for (const line of chunk.slice(0, lastBreak).split("\n")) {
       if (!line.startsWith("data: ")) continue;
       try {
-        const evt = JSON.parse(line.slice(6)) as { delta?: string; done?: boolean; error?: string; failure_kind?: string };
+        const evt = JSON.parse(line.slice(6)) as { delta?: string; done?: boolean; error?: string; failure_kind?: string; provider_complete?: boolean; finish_reason?: string };
+        if (finished) continue;
         if (evt.delta) onDelta(evt.delta);
         if (evt.error) finish(evt.error);
-        if (evt.done) finish();
+        if (evt.done) finish(evt.provider_complete === true && evt.finish_reason === 'STOP' ? undefined : 'Higgins did not confirm a complete provider answer. Retry this question.');
       } catch { /* partial line */ }
     }
   };
@@ -141,10 +142,10 @@ export function streamPost(path: string, endpoint: EgressEndpoint, body: Record<
     if (xhr.status === 401) { void resetDeviceIdentity("Device credential rejected."); finish("Apollo needs to re-register this device. Try again in a moment."); }
     else if (xhr.status === 403) finish("This device isn't allowed to do that.");
     else if (xhr.status >= 400) finish("I couldn't answer right now.");
-    else finish();
+    else if (!finished) finish("The connection ended before Higgins completed this answer. Retry this question.");
   };
   xhr.onerror = () => { markBackendFailure("offline"); finish(FAILURE_MESSAGE.offline); };
   xhr.ontimeout = () => { markBackendFailure("timeout"); finish(FAILURE_MESSAGE.timeout); };
   xhr.timeout = path.startsWith("/ask/") ? ASK_STREAM_TIMEOUT_MS : LONG_TIMEOUT_MS;
-  return () => xhr.abort();
+  return () => { finished = true; xhr.abort(); };
 }

@@ -122,7 +122,7 @@ export default function CheckAccount() {
       let a = analyseAccountAlert(input);
       let remote: Remote | null = null;
       try {
-        remote = await apiPost<Remote>("/account/analyse", "account_check", { device_id: deviceId ?? "local-device", kind: selectedKind, provider, sender: sender.trim(), text: safeText.trim(), urls: a.urls.slice(0, 10), local_state: a.state, scenario: a.scenario, second_opinion: true });
+        remote = await apiPost<Remote>("/account/analyse", "account_check", { device_id: deviceId ?? "local-device", kind: selectedKind, provider, sender: sender.trim(), text: safeText.trim(), urls: a.urls, local_state: a.state, scenario: a.scenario, second_opinion: true });
         if (remote.assessment.risk === "warning" && a.state === "resting") a = { ...a, state: "growling", why: [...a.why, "The contextual investigation found unresolved or suspicious details that need verification."] };
         const bad = remote.urls.find((u) => u.verdict === "malicious");
         if (bad && a.state !== "barking") a = { ...a, state: "barking", why: [...a.why, `The link (${bad.host}) is confirmed dangerous by Apollo's threat intelligence.`], handoff: "web" };

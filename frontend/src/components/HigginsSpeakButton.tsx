@@ -21,8 +21,9 @@ export function HigginsSpeakButton({ text, label = "Hear Higgins", compact = fal
   const s = useStyles();
   const { colors } = useTheme();
   const { deviceId, showToast } = useApollo();
-  const { speak, speaking, busy } = useHiggins(deviceId);
-  const active = !!speaking && speaking === text.trim().slice(0, 1500);
+  const { speak, speaking, busy, error, errorForText } = useHiggins(deviceId);
+  React.useEffect(() => { if (error && errorForText === text.trim()) showToast(error, 'neutral'); }, [error, errorForText, text, showToast]);
+  const active = !!speaking && speaking === text.trim();
   const onPress = () => {
     if (!active) onExtraPress?.();
     void speak(text).catch((e: Error) => showToast(e.message || "I couldn't speak just now.", "neutral"));

@@ -1,3 +1,16 @@
+## 2026-09-21 continuation — Gemini-only migration (PARTIAL overall package)
+
+See `docs/GEMINI_ONLY_MIGRATION_STATUS.md` for evidence and the AR01–AR16 acceptance matrix.
+No testing agent authorised or used. Direct real-provider/API/mobile-preview checks performed instead.
+Local preflight: 35/35. Full ten browser journeys: NOT_RUN; no claim of full Round 1 completion.
+Immutable final run: `test_reports/round1_runs/20260921T052622-36a53a2b/round1_expected_vs_actual_repeatable.json` (194 source fingerprints).
+Final checks: Python static/compile, TypeScript/ESLint, Gemini-only config, request deadlines and AI opt-out pass.
+126 tracked native/package files plus Metro and the package entry remain unchanged from fork baseline 33a2383.
+Managed AI/email/push/storage paths removed. Direct email, push and family audio storage remain BLOCKED on owner configuration.
+Shared research/case/job engine and full-document ingestion remain unfinished. Physical Stage 1D remains CANCELLED.
+
+---
+
 #====================================================================================================
 # START - Testing Protocol - DO NOT EDIT OR REMOVE THIS SECTION
 #====================================================================================================

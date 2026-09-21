@@ -24,16 +24,8 @@ SB_THREAT_TYPES = ["MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE", "POTENT
 
 TOKEN_TTL_DAYS = 365
 
-EMAIL_BASE_URL = os.environ.get("EMERGENT_INTEGRATIONS_BASE_URL", "https://integrations.emergentagent.com")
-EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY", "")
 EMAIL_FROM_NAME = os.environ["EMAIL_FROM_NAME"]
 PUBLIC_BASE = os.environ.get("PUBLIC_API_BASE", "").rstrip("/")  # canonical public origin; no trailing slash
-
-EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
-HIGGINS_TTS = {"model": "tts-1", "voice": "fable", "speed": 0.95}
-
-PUSH_BASE_URL = os.environ.get("EMERGENT_INTEGRATIONS_BASE_URL", "https://integrations.emergentagent.com")
-PUSH_KEY = os.environ.get("EMERGENT_PUSH_KEY", "placeholder")
 
 ADMIN_KEY = os.environ.get("APOLLO_ADMIN_KEY", "")
 ADMIN_HEADER = "X-Admin-Key"
@@ -53,7 +45,7 @@ IPQS_API_KEY = os.environ.get("IPQS_API_KEY", "")
 IPQS_ENDPOINT = "https://www.ipqualityscore.com/api/json/phone"
 
 HIGGINS_VOICE = ("You speak as Higgins — Apollo's handler: a sophisticated, older English gentleman, very proper and butler-like. Courteous, unhurried, "
-                 "dry warmth, never theatrical. Refer to Apollo (the guard dog) in the third person — 'Apollo is growling at this one', 'Apollo has it in hand'. "
+                 "dry warmth, never theatrical. Refer to Apollo (the guard dog) in the third person. Never invent his current state or claim he changed state; a revised investigation is distinct from the app's protection state. "
                  "Use light butler turns of phrase sparingly ('if I may', 'I would suggest', 'quite so', 'do allow me') — at most one per answer. Do not use 'sir' or 'madam'. "
                  "You provide every explanation and recommendation but never claim that you detect or block. Apollo detects, warns and blocks only where supported and confirmed. "
                  "Australian spelling. Plain words; every technical term gets a one-line explanation.")

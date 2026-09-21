@@ -1,3 +1,34 @@
+## Current continuation status — 2026-09-21 (supersedes conflicting older handoffs)
+
+Controlling specification: owner-uploaded `Apollo_Final_Code_Review_and_Developer_Package-2.md`.
+All AI must use the existing owner GEMINI_API_KEY through direct Google SDK; no managed keys or other AI providers.
+The testing agent must not be invoked without explicit user approval. Stage 1D remains CANCELLED.
+
+Implemented: direct Gemini text/vision/transcription/speech adapter; removal of active managed dependencies/config;
+encrypted fixed-expiry Ask and speech storage with owner isolation, deletion fencing and cleanup; distinct turn retry
+identity, strict provider/application completion, opaque handoff navigation, no canned Higgins substitution or prose
+clipping; full-length speech segmentation; picker-copy ownership cleanup; conservative incident correlation;
+larger explicitly bounded primary text inputs; immutable regression reporting with NOT_RUN accounting.
+
+Verification: real Gemini text, follow-up replay, protected WAV, transcription, screenshot, 13,863-character input,
+encrypted DB content, expiry, live deletion race and mobile preview passed direct checks; local preflight 35/35.
+All ten full browser journeys were NOT_RUN in this iteration. No testing agent used. Not full architectural acceptance.
+
+BROKEN/BLOCKED pending direct owner credentials: guardian email, push delivery/registration, family voice object storage.
+These legacy relays were disconnected as instructed; direct replacements and historical remote-object cleanup are unfinished.
+Gmail OAuth/security-data services and frozen native packages preserved.
+
+P0: finish shared typed InvestigationCase/evidence/coverage models and durable job/tool coordinator; full original-evidence
+ingest, progress/resume/cancel, semantic claim/action grounding and image secret-preflight. P1: full Gate migrations,
+legitimate/ambiguous/threatening and failure matrix, native-free privacy/capacity validation; restore blocked integrations
+using owner configuration. P2/P4: existing backlog, native desktop adapters; physical Stage 1D remains cancelled.
+
+Full architecture, current models, key lifecycle, actual failures/fixes, configuration blockers and AR01–AR16 matrix:
+`docs/GEMINI_ONLY_MIGRATION_STATUS.md`. Preserve `INVESTIGATION_KEY_FILE` outside Git; never print key values.
+Current direct verification credentials are recorded by file reference in `memory/test_credentials.md`.
+
+---
+
 # Apollo V1 — PRD & Build Log
 
 ## Current delivery — ten first-class Gates with File and Device health (iteration 74)

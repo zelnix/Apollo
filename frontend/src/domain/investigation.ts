@@ -55,7 +55,9 @@ export interface InvestigationResult {
     temporary_copy_policy?: string;
     provider?: string;
     model_used?: boolean;
-    higgins_source?: "gemini" | "deterministic_fallback";
+    higgins_source?: "gemini" | "unavailable";
+    completion?: string;
+    coverage?: { submittedCharacters: number; submittedUrls: number; pageResults: number; numberResults: number; unavailableSourceIds: string[]; externalResearch: string };
     model_attempts?: number;
     model_failures?: string[];
     fallback_used?: boolean;

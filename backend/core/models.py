@@ -247,10 +247,11 @@ class AskIssueContext(BaseModel):
 class AskRequest(BaseModel):
     model_config = {"extra": "forbid"}
     device_id: str = Field(min_length=8, max_length=64)
-    message: str = Field(min_length=1, max_length=2000)
+    message: str = Field(min_length=1, max_length=262144)
     context: Optional[AskIssueContext] = None
     handoff_id: Optional[str] = Field(default=None, min_length=8, max_length=64, pattern=r"^[A-Za-z0-9-]+$")
     conversation_id: str = Field(default="general", min_length=1, max_length=64, pattern=r"^[A-Za-z0-9-]+$")
+    turn_id: Optional[str] = Field(default=None, min_length=8, max_length=64, pattern=r"^[A-Za-z0-9-]+$")
 
 
 class AskMessage(BaseDocument):
@@ -260,6 +261,7 @@ class AskMessage(BaseDocument):
     created_at: datetime
     conversation_id: str = "general"
     handoff_id: Optional[str] = None
+    expires_at: Optional[datetime] = None
 
 
 # --------------------------------------------------------------------------- Call Guard (Gate 4 add-on)

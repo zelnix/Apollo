@@ -9,7 +9,7 @@ export const SCENT_WINDOW_MS = 30 * 60 * 1000;
 export interface ThreatScent {
   scent_id: string;
   events: PatrolEvent[];
-  /** Highest state across linked events, escalated to barking when 2+ different gates are involved. */
+  /** Highest observed state; checking another Gate never independently increases severity. */
   state: ApolloState;
   brand: string | null;
   host: string | null;
@@ -22,15 +22,12 @@ function keysFor(e: PatrolEvent): string[] {
   if (e.indicator_host) {
     const host = e.indicator_host.toLowerCase().replace(/^www\./, "");
     keys.push(`host:${host}`);
-    // A host that contains a brand name ("commbank-secure-login.xyz") links to a message claiming that brand.
-    for (const b of BRAND_TOKENS) if (host.replace(/[^a-z0-9]/g, "").includes(b)) keys.push(`brand:${b}`);
   }
   return keys;
 }
-const BRAND_TOKENS = ["commbank", "westpac", "anz", "nab", "paypal", "auspost", "australiapost", "linkt", "ato", "mygov", "centrelink", "medicare", "telstra", "optus", "apple", "microsoft", "google", "netflix", "amazon"];
-const BRAND_ALIAS: Record<string, string> = { yourbank: "", adeliverycompany: "auspost", atolloperator: "linkt", agovernmentagency: "mygov", yourtelco: "telstra", atechcompany: "microsoft" };
+const GENERIC_BRANDS = new Set(['yourbank', 'adeliverycompany', 'atolloperator', 'agovernmentagency', 'yourtelco', 'atechcompany']);
 function normKeys(e: PatrolEvent): string[] {
-  return keysFor(e).map((k) => (k.startsWith("brand:") && BRAND_ALIAS[k.slice(6)] !== undefined ? (BRAND_ALIAS[k.slice(6)] ? `brand:${BRAND_ALIAS[k.slice(6)]}` : "") : k)).filter(Boolean);
+  return keysFor(e).filter(k => !k.startsWith('brand:') || !GENERIC_BRANDS.has(k.slice(6)));
 }
 
 /** Find an existing scent id that a new event should join (shared brand/host, or explicit scent, within the window). */
@@ -41,7 +38,9 @@ export function findScentFor(event: PatrolEvent, events: PatrolEvent[], now = Da
     if (e.event_id === event.event_id || e.state === "resting") continue;
     if (Math.abs(t - Date.parse(e.occurred_at)) > SCENT_WINDOW_MS) continue;
     if (event.scent_id && e.scent_id === event.scent_id) return e.scent_id;
-    if (normKeys(e).some((k) => keys.has(k))) return e.scent_id ?? e.event_id;
+    // Similar brands/hosts are leads, not proof that two checks share an incident.
+    // Only an explicit transferred incident reference joins cases.
+    if (event.scent_id === e.event_id && keys.size) return e.scent_id ?? e.event_id;
   }
   return null;
 }
@@ -56,9 +55,7 @@ export function buildScents(events: PatrolEvent[], now = Date.now()): ThreatScen
   for (const [scent_id, list] of groups) {
     if (list.length < 2) continue;
     const sorted = [...list].sort((a, b) => Date.parse(a.occurred_at) - Date.parse(b.occurred_at));
-    const gates = new Set(sorted.map((e) => e.category));
-    let state = sorted.reduce<ApolloState>((acc, e) => (STATE_RANK[e.state] > STATE_RANK[acc] ? e.state : acc), "resting");
-    if (gates.size >= 2 && STATE_RANK[state] < STATE_RANK.barking) state = "barking";
+    const state = sorted.reduce<ApolloState>((acc, e) => (STATE_RANK[e.state] > STATE_RANK[acc] ? e.state : acc), "resting");
     const brand = sorted.find((e) => e.claimed_brand)?.claimed_brand ?? null;
     const host = sorted.find((e) => e.indicator_host)?.indicator_host ?? null;
     const recent = now - Date.parse(sorted[sorted.length - 1].occurred_at) <= 24 * 60 * 60 * 1000;

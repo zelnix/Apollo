@@ -138,7 +138,7 @@ export default function CheckEmail() {
       let urls: MessageUrlResult[] = []; let explanation: MessageExplanation | null = null; let assessment: InvestigationResult | null = null;
       try {
         const r = await apiPost<{ urls: MessageUrlResult[]; explanation: MessageExplanation | null; assessment: InvestigationResult }>("/message/analyse", "message_check", {
-          device_id: deviceId ?? 'local-device', sender: from.trim(), text: `${safeSubject}\n${safeRaw}`.slice(0, 4000), urls: a.urls.slice(0, 10),
+          device_id: deviceId ?? 'local-device', sender: from.trim(), text: `${safeSubject}\n${safeRaw}`, urls: a.urls,
           local_state: a.state, scenario: a.scenario, signals: a.signalLabels.slice(0, 20), claimed_brand: a.claimedBrand, second_opinion: true,
         });
         urls = r.urls; explanation = r.explanation; assessment = r.assessment;

@@ -1,0 +1,102 @@
+"""Temporary encrypted content with fixed scope expiry and deletion fencing.
+
+Minimal tombstones outlive content; neither retries nor reads extend a scope.
+TTL is a backstop. Every read/publish checks expiry and the owner's generation.
+"""
+from __future__ import annotations
+
+import asyncio
+from datetime import timedelta, timezone
+import uuid
+
+from fastapi import HTTPException
+
+from core.db import db, now_utc
+from services.higgins.capacity import LIFETIME_SECONDS
+
+CONTENT_COLLECTIONS = ("ask_messages", "ask_handoffs", "voice_cache")
+
+
+def utc(value):
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+
+
+async def generation(owner: str) -> str:
+    await db.investigation_owners.update_one({"owner_id": owner},
+        {"$setOnInsert": {"generation": uuid.uuid4().hex}}, upsert=True)
+    value = await db.investigation_owners.find_one({"owner_id": owner}, {"_id": 0})
+    return value["generation"]
+
+
+async def open_scope(owner: str, scope_id: str) -> dict:
+    current = await generation(owner)
+    now = now_utc()
+    await db.investigation_scopes.update_one({"owner_id": owner, "scope_id": scope_id}, {"$setOnInsert": {
+        "owner_id": owner, "scope_id": scope_id, "generation": current, "created_at": now,
+        "expires_at": now + timedelta(seconds=LIFETIME_SECONDS), "deleted": False}}, upsert=True)
+    return await require_scope(owner, scope_id)
+
+
+async def require_scope(owner: str, scope_id: str) -> dict:
+    scope = await db.investigation_scopes.find_one({"owner_id": owner, "scope_id": scope_id}, {"_id": 0})
+    if not scope:
+        raise HTTPException(404, "Temporary investigation not found.")
+    if scope["deleted"] or utc(scope["expires_at"]) <= now_utc() or scope["generation"] != await generation(owner):
+        raise HTTPException(410, "The temporary investigation has expired or was deleted. Start a new check with the required evidence.")
+    return scope
+
+
+async def delete_scope(owner: str, scope_id: str) -> int:
+    await db.investigation_scopes.update_one({"owner_id": owner, "scope_id": scope_id}, {
+        "$set": {"deleted": True}, "$unset": {'context_ciphertext': ''}, "$setOnInsert": {"generation": await generation(owner),
+        "created_at": now_utc(), "expires_at": now_utc()}}, upsert=True)
+    count = 0
+    for name in CONTENT_COLLECTIONS:
+        result = await db[name].delete_many({"device_id": owner, "scope_id": scope_id})
+        count += result.deleted_count
+    return count
+
+
+async def delete_owner_content(owner: str) -> int:
+    # Invalidate before deletion; late workers keep the old generation and cannot publish.
+    await db.investigation_owners.update_one({"owner_id": owner}, {"$set": {"generation": uuid.uuid4().hex}}, upsert=True)
+    await db.investigation_scopes.update_many({"owner_id": owner}, {"$set": {"deleted": True}, '$unset': {'context_ciphertext': ''}})
+    count = 0
+    for name in CONTENT_COLLECTIONS:
+        result = await db[name].delete_many({"device_id": owner})
+        count += result.deleted_count
+    return count
+
+
+async def migrate_and_index() -> None:
+    await db.investigation_owners.create_index("owner_id", unique=True)
+    await db.investigation_scopes.create_index([("owner_id", 1), ("scope_id", 1)], unique=True)
+    await db.investigation_scopes.create_index("expires_at")  # preserve content-free deletion tombstones
+    for name in CONTENT_COLLECTIONS:
+        # Approved discard migration: only temporary chat/handoff/audio, never Patrol reports.
+        await db[name].delete_many({"content_version": {"$ne": 1}})
+        await db[name].create_index("expires_at", expireAfterSeconds=0)
+        await db[name].create_index([("device_id", 1), ("scope_id", 1)])
+    await db.voice_cache.create_index([("device_id", 1), ("audio_id", 1)], unique=True)
+
+
+async def sweep() -> None:
+    await db.investigation_scopes.update_many({'$or': [{'expires_at': {'$lte': now_utc()}}, {'deleted': True}]},
+                                              {'$unset': {'context_ciphertext': ''}})
+    for name in CONTENT_COLLECTIONS:
+        await db[name].delete_many({"expires_at": {"$lte": now_utc()}})
+    async for scope in db.investigation_scopes.find({"deleted": True}, {"_id": 0, "owner_id": 1, "scope_id": 1}):
+        await delete_scope(scope["owner_id"], scope["scope_id"])
+
+
+async def sweep_loop() -> None:
+    while True:
+        try:
+            await sweep()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # No content/errors from providers are logged. The next pass retries deletion.
+            from core.config import logger
+            logger.error("temporary_content_cleanup_failed")
+        await asyncio.sleep(30)

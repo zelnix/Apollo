@@ -487,7 +487,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     let urls: MessageUrlResult[] = []; let explanation: MessageExplanation | null = null; let assessment: InvestigationResult | null = null; let remoteError: string | null = null;
     try {
       const r = await apiPost<{ urls?: unknown; explanation?: unknown; assessment?: unknown }>("/message/analyse", "message_check", {
-        device_id: deviceId ?? undefined, sender, text, urls: analysis.signals.urls.slice(0, 10),
+        device_id: deviceId ?? undefined, sender, text, urls: analysis.signals.urls,
         local_state: analysis.state, scenario: analysis.scenario, signals: analysis.signalLabels, claimed_brand: analysis.signals.claimedBrand, second_opinion: true,
       });
       // Contract guard: only well-formed url verdicts count; anything else is dropped (unknown), never treated as clean.
@@ -569,7 +569,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       let assessment: InvestigationResult | null = null;
       try {
         const r = await apiPost<{ urls?: unknown; assessment?: unknown }>("/message/analyse", "message_check", {
-          device_id: deviceId, sender: (m.from || "").slice(0, 80), text: `${m.subject}\n${m.body}`.slice(0, 4000), urls: a.urls.slice(0, 10),
+          device_id: deviceId, sender: m.from || "", text: `${m.subject}\n${m.body}`, urls: a.urls,
           local_state: a.state, scenario: a.scenario, signals: a.signalLabels.slice(0, 20), claimed_brand: a.claimedBrand, second_opinion: true,
         });
         urls = Array.isArray(r.urls) ? (r.urls as MessageUrlResult[]) : [];

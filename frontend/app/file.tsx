@@ -20,6 +20,7 @@ import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { issueContext, openHigginsHandoff } from "@/src/domain/higginsHandoff";
+import { disposePickerCopy, sweepPickerCopies } from '@/src/domain/fileCopyLifecycle';
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -56,6 +57,12 @@ export default function CheckFile() {
   const [pickerError, setPickerError] = useState<string | null>(null);
   const [selected, setSelected] = useState<{ asset: FileAsset; inspected: Inspection; realType: string } | null>(null);
   const [pending, setPending] = useState<PendingFile | null>(null);
+  useEffect(() => { sweepPickerCopies(); const timer = setInterval(sweepPickerCopies, 60000); return () => clearInterval(timer); }, []);
+  useEffect(() => {
+    if (!selected) return;
+    const timer = setTimeout(() => { setSelected(null); setPending(null); setResult(null); setNameOnly(''); setPickerError('Temporary file evidence expired. Select the file again to continue.'); }, 15 * 60 * 1000);
+    return () => clearTimeout(timer);
+  }, [selected]);
 
   const finish = async (a: FileAnalysis) => {
     let event: PatrolEvent | null = null;
@@ -72,7 +79,8 @@ export default function CheckFile() {
     try {
       const res = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false });
       if (res.canceled || !res.assets[0]) return;
-      await analyseAsset(res.assets[0], "unknown");
+      try { await analyseAsset(res.assets[0], "unknown"); }
+      finally { if (!disposePickerCopy(res.assets[0].uri, true)) setPickerError('The check finished, but cleanup of the picker copy could not be confirmed. The original file was not deleted.'); }
     } catch (error) { setPickerError(error instanceof Error ? error.message : "Apollo could not open the file picker. Try again."); }
   };
   // Shared from another app (Share → Apollo): analyse the shared file straight away.
@@ -94,11 +102,12 @@ export default function CheckFile() {
         }
       } catch { inspected.inspectionError = 'This build could not read the file contents.'; }
       const preliminary = analyseFile({ name: asset.name, size: asset.size ?? undefined, mime: asset.mimeType ?? null, ...inspected, source: assetSource, passwordInMessage: false });
-      setSelected({ asset, inspected, realType: preliminary.realType });
+      const metadata: FileAsset = { name: asset.name, size: asset.size, mimeType: asset.mimeType, uri: '' };
+      setSelected({ asset: metadata, inspected, realType: preliminary.realType });
       const extension = asset.name.toLowerCase().split(".").pop() ?? "";
       const needsPassword = ["zip", "rar", "7z"].includes(preliminary.realType) || ["zip", "rar", "7z"].includes(extension);
       const needsSource = (preliminary.state === "barking" || ["F01", "F03", "F04", "F13"].includes(preliminary.scenario)) && assetSource === "unknown";
-      if (needsPassword || needsSource) setPending({ asset, inspected, needsSource, needsPassword, sourceAnswered: assetSource !== "unknown" });
+      if (needsPassword || needsSource) setPending({ asset: metadata, inspected, needsSource, needsPassword, sourceAnswered: assetSource !== "unknown" });
       else await finish(preliminary);
     } catch (e) { setPickerError(e instanceof Error ? e.message : "Apollo couldn't read that file. Choose it again or try another file."); } finally { setBusy(false); }
   };

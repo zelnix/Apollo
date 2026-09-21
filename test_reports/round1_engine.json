@@ -1,6 +1,6 @@
 {
   "round": "Round 1",
-  "generated_at": "2026-09-21T03:47:34.569Z",
+  "generated_at": "2026-09-21T05:26:22.317Z",
   "expected_recorded_in": "frontend/scripts/round1-scenario-engine.ts",
   "scenarios": [
     {
@@ -1102,7 +1102,7 @@
       "id": "device-threat-remote",
       "gate": "device",
       "tone": "threatening",
-      "situation": "{\"signals\":{\"platform\":\"android\",\"unknownSourcesEnabled\":null,\"thirdPartyAccessibilityServices\":[\"AnyDesk\"],\"overlayApps\":null,\"notificationAccessApps\":null,\"vpnActive\":null,\"vpnProviderKnown\":null,\"managementProfile\":\"unknown\",\"userTrustedCertificates\":null,\"remoteAccessApps\":[\"AnyDesk\"],\"developerOptions\":null},\"self\":{\"gaveRemoteAccess\":true,\"usedBankingDuringAccess\":true},\"protection\":{\"requested\":true,\"operational\":true,\"degradedReason\":null,\"permissionIssues\":[],\"checkedAt\":\"2026-09-21T03:47:34.546Z\"}}",
+      "situation": "{\"signals\":{\"platform\":\"android\",\"unknownSourcesEnabled\":null,\"thirdPartyAccessibilityServices\":[\"AnyDesk\"],\"overlayApps\":null,\"notificationAccessApps\":null,\"vpnActive\":null,\"vpnProviderKnown\":null,\"managementProfile\":\"unknown\",\"userTrustedCertificates\":null,\"remoteAccessApps\":[\"AnyDesk\"],\"developerOptions\":null},\"self\":{\"gaveRemoteAccess\":true,\"usedBankingDuringAccess\":true},\"protection\":{\"requested\":true,\"operational\":true,\"degradedReason\":null,\"permissionIssues\":[],\"checkedAt\":\"2026-09-21T05:26:22.293Z\"}}",
       "expected": {
         "gate": "device",
         "state": "barking",
@@ -1142,7 +1142,7 @@
       "id": "device-legitimate-observed",
       "gate": "device",
       "tone": "legitimate",
-      "situation": "{\"signals\":{\"platform\":\"android\",\"unknownSourcesEnabled\":false,\"thirdPartyAccessibilityServices\":[],\"overlayApps\":[],\"notificationAccessApps\":[],\"vpnActive\":false,\"vpnProviderKnown\":null,\"managementProfile\":\"none\",\"userTrustedCertificates\":0,\"remoteAccessApps\":[],\"developerOptions\":false},\"self\":{},\"protection\":{\"requested\":true,\"operational\":true,\"degradedReason\":null,\"permissionIssues\":[],\"checkedAt\":\"2026-09-21T03:47:34.546Z\"}}",
+      "situation": "{\"signals\":{\"platform\":\"android\",\"unknownSourcesEnabled\":false,\"thirdPartyAccessibilityServices\":[],\"overlayApps\":[],\"notificationAccessApps\":[],\"vpnActive\":false,\"vpnProviderKnown\":null,\"managementProfile\":\"none\",\"userTrustedCertificates\":0,\"remoteAccessApps\":[],\"developerOptions\":false},\"self\":{},\"protection\":{\"requested\":true,\"operational\":true,\"degradedReason\":null,\"permissionIssues\":[],\"checkedAt\":\"2026-09-21T05:26:22.293Z\"}}",
       "expected": {
         "gate": "device",
         "state": "resting",
@@ -1161,8 +1161,8 @@
         "scenario": "protected",
         "detection": "Apollo protection is confirmed running",
         "investigation": "No meaningful issues within what Apollo can see on this Android device.  ",
-        "higgins": "Apollo's device check is resting. Apollo protection is confirmed running. Unknown: No platform visibility gap was reported.. Next action: The device reported protection operational at 03:47 AM.",
-        "action": "The device reported protection operational at 03:47 AM.",
+        "higgins": "Apollo's device check is resting. Apollo protection is confirmed running. Unknown: No platform visibility gap was reported.. Next action: The device reported protection operational at 05:26 AM.",
+        "action": "The device reported protection operational at 05:26 AM.",
         "uncertainty": "No platform visibility gap was reported.",
         "mustNot": []
       },
@@ -1182,7 +1182,7 @@
       "id": "device-ambiguous-limited",
       "gate": "device",
       "tone": "ambiguous",
-      "situation": "{\"signals\":{\"platform\":\"web\",\"unknownSourcesEnabled\":null,\"thirdPartyAccessibilityServices\":null,\"overlayApps\":null,\"notificationAccessApps\":null,\"vpnActive\":null,\"vpnProviderKnown\":null,\"managementProfile\":\"unknown\",\"userTrustedCertificates\":null,\"remoteAccessApps\":null,\"developerOptions\":null},\"self\":{},\"protection\":{\"requested\":true,\"operational\":false,\"degradedReason\":\"Unavailable in preview\",\"permissionIssues\":[],\"checkedAt\":\"2026-09-21T03:47:34.546Z\"}}",
+      "situation": "{\"signals\":{\"platform\":\"web\",\"unknownSourcesEnabled\":null,\"thirdPartyAccessibilityServices\":null,\"overlayApps\":null,\"notificationAccessApps\":null,\"vpnActive\":null,\"vpnProviderKnown\":null,\"managementProfile\":\"unknown\",\"userTrustedCertificates\":null,\"remoteAccessApps\":null,\"developerOptions\":null},\"self\":{},\"protection\":{\"requested\":true,\"operational\":false,\"degradedReason\":\"Unavailable in preview\",\"permissionIssues\":[],\"checkedAt\":\"2026-09-21T05:26:22.293Z\"}}",
       "expected": {
         "gate": "device",
         "state": "growling",
