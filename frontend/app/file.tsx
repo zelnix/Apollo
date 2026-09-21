@@ -41,7 +41,7 @@ const useStyles = makeStyles((c) => ({
 }));
 
 type FileAsset = { uri: string; name: string; mimeType?: string | null; size?: number };
-type PendingFile = { asset: FileAsset; inspected: Inspection; needsSource: boolean; needsPassword: boolean; sourceAnswered: boolean };
+type PendingFile = { asset: FileAsset; inspected: Inspection; needsSource: boolean; needsPassword: boolean; sourceAnswered: boolean; owned: boolean };
 
 export default function CheckFile() {
   const s = useStyles();
@@ -56,14 +56,23 @@ export default function CheckFile() {
   const [tech, setTech] = useState(false);
   const [busy, setBusy] = useState(false);
   const [pickerError, setPickerError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<{ asset: FileAsset; inspected: Inspection; realType: string } | null>(null);
+  const [selected, setSelected] = useState<{ asset: FileAsset; inspected: Inspection; realType: string; owned: boolean } | null>(null);
   const [pending, setPending] = useState<PendingFile | null>(null);
+  // The temporary handle (an app-owned picker copy, or a shared-in URI we never own) is kept alive for the whole
+  // screen visit — a later "Ask Higgins" upload needs the SAME bytes local inspection just read. It is disposed only
+  // once this specific selection is done with: reset, unmount, or the 15-minute expiry below. Never the user's original.
+  const disposeSelection = (uri: string | null, owned: boolean) => { if (uri) disposePickerCopy(uri, owned); };
+  const selectedRef = React.useRef(selected);
+  selectedRef.current = selected;
   useEffect(() => { sweepPickerCopies(); const timer = setInterval(sweepPickerCopies, 60000); return () => clearInterval(timer); }, []);
   useEffect(() => {
     if (!selected) return;
-    const timer = setTimeout(() => { setSelected(null); setPending(null); setResult(null); setNameOnly(''); setPickerError('Temporary file evidence expired. Select the file again to continue.'); }, 15 * 60 * 1000);
+    const timer = setTimeout(() => { disposeSelection(selected.asset.uri, selected.owned); setSelected(null); setPending(null); setResult(null); setNameOnly(''); setPickerError('Temporary file evidence expired. Select the file again to continue.'); }, 15 * 60 * 1000);
     return () => clearTimeout(timer);
-  }, [selected]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.asset.uri]);
+  // Unmount: dispose whatever is CURRENTLY selected (read via ref so this one-time effect never sees a stale value).
+  useEffect(() => () => disposeSelection(selectedRef.current?.asset.uri ?? null, selectedRef.current?.owned ?? false), []);
 
   const finish = async (a: FileAnalysis) => {
     let event: PatrolEvent | null = null;
@@ -80,13 +89,15 @@ export default function CheckFile() {
     try {
       const res = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true, multiple: false });
       if (res.canceled || !res.assets[0]) return;
-      try { await analyseAsset(res.assets[0], "unknown"); }
-      finally { if (!disposePickerCopy(res.assets[0].uri, true)) setPickerError('The check finished, but cleanup of the picker copy could not be confirmed. The original file was not deleted.'); }
+      // The picker copy is owned by Apollo (it lives under our own cache directory) and stays alive past this local
+      // check — an "Ask Higgins" upload for THIS same submission may still need it. It is disposed by the reset/
+      // unmount/expiry handlers above, or by the 15-minute crash-recovery sweep, never eagerly right here.
+      await analyseAsset(res.assets[0], "unknown", true);
     } catch (error) { setPickerError(error instanceof Error ? error.message : "Apollo could not open the file picker. Try again."); }
   };
-  // Shared from another app (Share → Apollo): analyse the shared file straight away.
-  useEffect(() => { if (params.uri && !result) { const incoming = FILE_SOURCES.some((item) => item.id === params.source) ? params.source as FileSource : "unknown"; setSource(incoming); void analyseAsset({ uri: params.uri, name: params.name ?? params.uri.split("/").pop() ?? "shared file", mimeType: params.mime || null, size: params.size ? Number(params.size) : undefined }, incoming); } }, [params.uri]); // eslint-disable-line react-hooks/exhaustive-deps
-  const analyseAsset = async (asset: { uri: string; name: string; mimeType?: string | null; size?: number }, assetSource: FileSource = source) => {
+  // Shared from another app (Share → Apollo): analyse the shared file straight away. This URI is never ours to delete.
+  useEffect(() => { if (params.uri && !result) { const incoming = FILE_SOURCES.some((item) => item.id === params.source) ? params.source as FileSource : "unknown"; setSource(incoming); void analyseAsset({ uri: params.uri, name: params.name ?? params.uri.split("/").pop() ?? "shared file", mimeType: params.mime || null, size: params.size ? Number(params.size) : undefined }, incoming, false); } }, [params.uri]); // eslint-disable-line react-hooks/exhaustive-deps
+  const analyseAsset = async (asset: { uri: string; name: string; mimeType?: string | null; size?: number }, assetSource: FileSource = source, owned: boolean = false) => {
     setBusy(true);
     try {
       let inspected: Inspection = { headBytes: null, textSample: null };
@@ -103,12 +114,15 @@ export default function CheckFile() {
         }
       } catch { inspected.inspectionError = 'This build could not read the file contents.'; }
       const preliminary = analyseFile({ name: asset.name, size: asset.size ?? undefined, mime: asset.mimeType ?? null, ...inspected, source: assetSource, passwordInMessage: false });
-      const metadata: FileAsset = { name: asset.name, size: asset.size, mimeType: asset.mimeType, uri: '' };
-      setSelected({ asset: metadata, inspected, realType: preliminary.realType });
+      // The real, still-live handle is kept (never blanked) — Higgins needs it if the person later asks for a deeper,
+      // explicitly-authorised cloud check. Filenames/size/mime travel as METADATA describing the file, never as a
+      // substitute for its contents.
+      const metadata: FileAsset = { name: asset.name, size: asset.size, mimeType: asset.mimeType, uri: asset.uri };
+      setSelected({ asset: metadata, inspected, realType: preliminary.realType, owned });
       const extension = asset.name.toLowerCase().split(".").pop() ?? "";
       const needsPassword = ["zip", "rar", "7z"].includes(preliminary.realType) || ["zip", "rar", "7z"].includes(extension);
       const needsSource = (preliminary.state === "barking" || ["F01", "F03", "F04", "F13"].includes(preliminary.scenario)) && assetSource === "unknown";
-      if (needsPassword || needsSource) setPending({ asset: metadata, inspected, needsSource, needsPassword, sourceAnswered: assetSource !== "unknown" });
+      if (needsPassword || needsSource) setPending({ asset: metadata, inspected, needsSource, needsPassword, sourceAnswered: assetSource !== "unknown", owned });
       else await finish(preliminary);
     } catch (e) { setPickerError(e instanceof Error ? e.message : "Apollo couldn't read that file. Choose it again or try another file."); } finally { setBusy(false); }
   };
@@ -119,6 +133,7 @@ export default function CheckFile() {
     catch (error) { setPickerError(error instanceof Error ? error.message : "Apollo couldn't finish this file check. Retry."); }
     finally { setBusy(false); }
   };
+  const checkAnother = () => { disposeSelection(selected?.asset.uri ?? null, selected?.owned ?? false); setResult(null); setNameOnly(""); setSelected(null); setPending(null); setPickerError(null); setPw(null); setSource("unknown"); };
 
   if (ready && !setupDone) return <Redirect href="/" />;
   const a = result?.a;
@@ -132,7 +147,7 @@ export default function CheckFile() {
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="file-scroll">
         {!result ? (
           <>
-            <Body testID="file-inspection-scope">Select or share any download or attachment, including one from Google Drive or another cloud service. Apollo checks a signature and up to 200 KB locally, for files up to 20 MB. Cloud hosting is not proof of safety. No archive extraction or malware scan. A name-only check does not read content. File bytes are never uploaded.</Body>
+            <Body testID="file-inspection-scope">Select or share any download or attachment, including one from Google Drive or another cloud service. Apollo checks a signature and up to 200 KB locally, for files up to 20 MB. Cloud hosting is not proof of safety. No archive extraction or malware scan. A name-only check does not read content. This local check never uploads the file; asking Higgins about it afterwards does, only with your explicit action.</Body>
             <Button testID="file-pick" label={busy ? "Inspecting file…" : "Choose a file"} onPress={() => void pick()} disabled={busy} />
             {pickerError ? <Card testID="file-picker-error" style={{ gap: spacing.sm }}><Body>{pickerError}</Body><Button testID="file-picker-retry" variant="secondary" label="Try choosing again" onPress={() => void pick()} disabled={busy} /></Card> : null}
             {selected ? <Card testID="file-evidence" style={{ gap: spacing.xs }}><SectionTitle>What Apollo inspected</SectionTitle><Body testID="file-evidence-name">Filename: {selected.asset.name}</Body><Body testID="file-evidence-size">Size: {selected.asset.size == null ? "not supplied" : `${selected.asset.size} bytes`}</Body><Body testID="file-evidence-mime">Supplied type: {selected.asset.mimeType || "unknown"}</Body><Body testID="file-evidence-signature">Signature result: {selected.realType}</Body><Body testID="file-evidence-sample">Content sample: {selected.inspected.inspectionError ? selected.inspected.inspectionError : selected.inspected.textSample ? "supported text was read locally" : "not readable or not present"}</Body></Card> : null}
@@ -168,7 +183,7 @@ export default function CheckFile() {
               {a.handoff === "network" ? <Button testID="file-check-device" label="I installed it — check my device" onPress={() => router.push("/device")} /> : null}
               <Button testID="file-tech" variant="secondary" label="View technical details" onPress={() => setTech(true)} />
               {result.event ? <RecoveryFlow event={result.event} kinds={["clicked", "app", "password", "card", "money", "download"]} testID="file-recovery" /> : null}
-              {result.event ? <GateInvestigation submission={result} testID="file-tell-more" label="Ask Higgins about this file" context={issueContext({ gate: "file", issue_summary: a.title, assessment_state: a.state, findings: [
+              <GateInvestigation submission={result} testID="file-tell-more" label="Ask Higgins about this file" context={issueContext({ gate: "file", issue_summary: a.title, assessment_state: a.state, findings: [
                 { summary: `Filename: ${selected?.asset.name ?? "not supplied"}`, provenance: "observed", status: "uncertain" },
                 { summary: `Supplied size/type: ${selected?.asset.size ?? "unknown"} bytes; ${selected?.asset.mimeType ?? "unknown"}`, provenance: "observed", status: "uncertain" },
                 { summary: `Signature result: ${a.realType}`, provenance: "observed", status: a.state === "barking" ? "warning" : "uncertain" },
@@ -177,8 +192,8 @@ export default function CheckFile() {
               ], uncertainty: ["Only the signature and a bounded supported sample were inspected; complete contents and safety remain unknown."], confirmed_protective_actions: [], user_reported_actions: [], original_evidence: selected ? [{ kind: "file", uri: selected.asset.uri, name: selected.asset.name, mediaType: selected.asset.mimeType || "application/octet-stream", size: selected.asset.size }] : [], available_actions: [
                 { label: "Follow the File Gate recommendation", instruction: a.recommendation },
                 { label: "Use I already opened it", instruction: "Return to the File Gate result and use I already opened it in Stay With Me for recovery steps." },
-              ] })} question="What should I do with this file?" /> : null}
-              <Button testID="file-again" variant="ghost" label="Check another file" onPress={() => { setResult(null); setNameOnly(""); setSelected(null); setPending(null); setPickerError(null); setPw(null); setSource("unknown"); }} />
+              ] })} question="What should I do with this file?" />
+              <Button testID="file-again" variant="ghost" label="Check another file" onPress={checkAnother} />
             </Card>
           </>
         ) : null}

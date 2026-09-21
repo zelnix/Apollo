@@ -268,12 +268,13 @@ async def ingest_file(owner: str, case: dict, meta_in: dict, data: bytes) -> Evi
                 f"VISIBLE TEXT (verbatim, secrets replaced by [REDACTED]):\n{admission['redactedText']}\n\nVISUAL DESCRIPTION:\n{admission['visualDescription']}\n\n"
                 f"REDACTED ITEMS: {', '.join(admission['secretKinds']) or 'unspecified'}.")
             truncated = bool(admission.get("transcriptionTruncated"))
+            incomplete = truncated or not admission["transcriptionComplete"]
             transcription_gap_reason = ("the transcription exceeded the 60,000-character processing budget and was truncated; continuation is required to examine the remainder" if truncated
                                         else None if admission["transcriptionComplete"] else "the preflight reported its transcription as incomplete")
             derived = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=f"{item.client_item_id}.redacted", origin="apollo_inference", kind="text",
                                    parent_id=item.id, collected_at=now_utc(), expires_at=expires, media_type="text/plain", byte_length=len(text.encode("utf-8")),
                                    coverage=Coverage(status="not_started", unit="characters", total=len(text), examined=0,
-                                                     material_gap=truncated or not admission["transcriptionComplete"], reason=transcription_gap_reason),
+                                                     material_gap=incomplete, permanent_gap=incomplete, reason=transcription_gap_reason),
                                    transformations=[Transformation(kind="secret_redaction", description="Targeted redaction by the Gemini preflight: only secret values were replaced; other visible text is verbatim.")],
                                    label="redacted transcription of the withheld screenshot")
             await repo.insert_evidence(owner, derived, {"derivedFrom": item.id})
@@ -363,7 +364,7 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
             if total_pages > len(pages):
                 omitted.append({"start": len(pages), "end": total_pages, "reason": f"beyond the {MAX_PAGES}-page processing budget; not extracted"})
             coverage_update = {"status": "partial" if omitted else "not_started", "unit": "pages", "total": total_pages, "examined": 0, "omittedRanges": omitted,
-                               "materialGap": bool(omitted),
+                               "materialGap": bool(omitted), "permanentGap": bool(omitted),
                                "reason": "parser extraction complete; model examination pending" + (f"; {len(rendered_pages)} scanned page(s) rendered for visual reading" if rendered_pages else "")}
             await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"coverage": coverage_update, "related_evidence_ids": [derived.id, *rendered_ids]}})
             await _purge_original_if_secret(owner, case, item, text)
@@ -384,13 +385,13 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
                       "application/x-elf": "executable binary: signature inspected, never executed"}.get(detected, "unsupported format: signature and size only")
             await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"coverage": {"status": "unavailable", "unit": "bytes", "total": len(data), "examined": 16,
                                                                                     "examinedRanges": [{"start": 0, "end": 16}], "omittedRanges": [{"start": 16, "end": len(data), "reason": reason}],
-                                                                                    "reason": reason, "materialGap": True}}})
+                                                                                    "reason": reason, "materialGap": True, "permanentGap": True}}})
     except ValueError as exc:
         reason = {"encrypted": "document is encrypted; contents cannot be read", "expanded": "extracted content exceeds the expansion budget", "pixels": "image exceeds the 40-megapixel decode budget"}.get(str(exc), "malformed content")
         await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"coverage": {"status": "unavailable", "unit": "bytes", "total": len(data), "examined": 0,
-                                                                                "omittedRanges": [{"start": 0, "end": len(data), "reason": reason}], "reason": reason, "materialGap": True}}})
+                                                                                "omittedRanges": [{"start": 0, "end": len(data), "reason": reason}], "reason": reason, "materialGap": True, "permanentGap": True}}})
     except Exception:  # noqa: BLE001 — parser failure is an explicit gap, never a clean result
-        await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"coverage.status": "unavailable", "coverage.reason": "parser failed; content not examined", "coverage.materialGap": True}})
+        await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"coverage.status": "unavailable", "coverage.reason": "parser failed; content not examined", "coverage.materialGap": True, "coverage.permanentGap": True}})
 
 
 def _union(ranges: list[dict], start: int, end: int) -> list[dict]:
@@ -412,8 +413,11 @@ async def mark_examined(owner: str, case_id: str, evidence_id: str, start: int, 
     fully_read = total is not None and examined >= total
     # A gap recorded at INGESTION time (truncation, incomplete transcription, parser failure, ...) is a fact about
     # what was retained, not about what was read. Reading everything that WAS retained can never resolve it here —
-    # that only happens once the missing portion is actually processed (a future continuation turn), never by re-reading.
-    permanent_gap = bool(coverage.get("materialGap"))
+    # that only happens once the missing portion is actually processed (a future continuation turn), never by
+    # re-reading. `permanentGap` is set ONLY at ingestion and never rewritten below, so — unlike `materialGap`, which
+    # this function itself recomputes on every call as "not yet fully read" — it cannot be mistaken for resolved
+    # just because this same (already limited) retained content was eventually read in full.
+    permanent_gap = bool(coverage.get("permanentGap"))
     complete = fully_read and not permanent_gap
     await repo.update_evidence(owner, case_id, evidence_id, {"$set": {"coverage.examinedRanges": ranges, "coverage.examined": min(examined, total or examined),
                                                                       "coverage.status": "examined" if complete else "partial",

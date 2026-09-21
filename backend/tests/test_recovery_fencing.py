@@ -58,6 +58,26 @@ def test_truncated_text_never_reaches_examined():
     _run(lambda inv: _truncated_text_never_reaches_examined())
 
 
+def test_ordinary_partial_read_still_reaches_examined_once_complete():
+    _run(lambda inv: _partial_then_complete_read_reaches_examined())
+
+
+def test_upload_replay_rejects_a_different_file_under_the_same_client_item():
+    _run(lambda inv: _upload_replay_digest_mismatch_is_rejected())
+
+
+def test_upload_replay_binds_to_identical_content_from_a_different_upload():
+    _run(lambda inv: _upload_replay_digest_match_binds())
+
+
+def test_device_observation_metadata_without_content_is_reingested():
+    _run(lambda inv: _device_observation_missing_content_is_reingested(inv))
+
+
+def test_lease_renewal_detects_loss_and_stops_the_work():
+    _run(lambda inv: _lease_renewal_detects_loss(inv))
+
+
 def test_device_submission_resumes_from_a_crashed_storing_state():
     _run(lambda inv: _device_submission_resumes_from_storing(inv))
 
@@ -268,7 +288,7 @@ async def _truncated_text_never_reaches_examined():
     expires = repo.utc(case["expires_at"])
     item = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id="shot-1.redacted", origin="apollo_inference", kind="text",
                         parent_id=None, collected_at=now_utc(), expires_at=expires, media_type="text/plain", byte_length=60000,
-                        coverage=Coverage(status="not_started", unit="characters", total=60000, examined=0, material_gap=True,
+                        coverage=Coverage(status="not_started", unit="characters", total=60000, examined=0, material_gap=True, permanent_gap=True,
                                           reason="the transcription exceeded the 60,000-character processing budget and was truncated"),
                         transformations=[], label="redacted transcription")
     await repo.insert_evidence(owner, item, {})
@@ -306,6 +326,141 @@ async def _device_submission_resumes_from_storing(inv):
     assert item_id  # the crashed claim was taken over and completed, not silently ignored
     final = await db.investigation_device_requests.find_one({"owner_id": owner, "request_id": request_id}, {"_id": 0})
     assert final["submission"]["state"] == "resumed" and final["fulfilled"] is True
+
+
+async def _partial_then_complete_read_reaches_examined():
+    owner = f"persist-{uuid.uuid4().hex[:8]}"
+    await repo.ensure_indexes()
+    case = await repo.create_case(owner, "text", None)
+    from services.higgins import evidence as ev
+    from services.higgins.contracts import EvidenceItem, Coverage
+    expires = repo.utc(case["expires_at"])
+    item = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id="note-1", origin="user_submission", kind="text",
+                        parent_id=None, collected_at=now_utc(), expires_at=expires, media_type="text/plain", byte_length=5000,
+                        coverage=Coverage(status="not_started", unit="characters", total=5000, examined=0), transformations=[], label="note")
+    await repo.insert_evidence(owner, item, {})
+    await repo.store_bytes(owner, case["case_id"], item.id, b"B" * 5000, expires)
+    # An ordinary, genuinely in-progress partial read (no ingestion-time gap at all).
+    await ev.mark_examined(owner, case["case_id"], item.id, 0, 2000, 5000)
+    row = await repo.get_evidence(owner, case["case_id"], item.id)
+    assert row["coverage"]["status"] == "partial" and row["coverage"]["materialGap"] is True  # correctly not yet fully read
+    # Reading the remainder must complete it — an ordinary in-progress read is NOT a permanent gap and must resolve.
+    await ev.mark_examined(owner, case["case_id"], item.id, 2000, 5000, 5000)
+    row = await repo.get_evidence(owner, case["case_id"], item.id)
+    assert row["coverage"]["status"] == "examined" and row["coverage"]["materialGap"] is False
+
+
+async def _upload_replay_digest_mismatch_is_rejected():
+    owner = f"persist-{uuid.uuid4().hex[:8]}"
+    await repo.ensure_indexes()
+    case = await repo.create_case(owner, "text", None)
+    # Simulate a DIFFERENT, already-committed upload owning this exact client item ID with DIFFERENT content.
+    other_evidence_id = str(uuid.uuid4())
+    from services.higgins.contracts import EvidenceItem, Coverage
+    other_item = EvidenceItem(id=other_evidence_id, case_id=case["case_id"], client_item_id="shared-item", origin="user_submission", kind="text",
+                              parent_id=None, collected_at=now_utc(), expires_at=repo.utc(case["expires_at"]), media_type="text/plain", byte_length=3,
+                              coverage=Coverage(status="not_started", unit="characters", total=3, examined=0), transformations=[], label="file A")
+    await repo.insert_evidence(owner, other_item, {})
+    await db.investigation_uploads.insert_one({"owner_id": owner, "case_id": case["case_id"], "upload_id": str(uuid.uuid4()),
+        "metadata": {"declaredBytes": 3, "clientItemId": "shared-item"}, "chunks": {}, "expires_at": now_utc() + timedelta(minutes=10),
+        "finalisation": {"state": "committed", "digest": "digest-of-file-A", "started_at": now_utc(), "fence": "f1", "evidence_id": other_evidence_id},
+        "evidence_id": other_evidence_id})
+    # Our own, separate upload attempt for a DIFFERENT file that happens to share the same client item ID.
+    fresh_upload_id = str(uuid.uuid4())
+    await db.investigation_uploads.insert_one({"owner_id": owner, "case_id": case["case_id"], "upload_id": fresh_upload_id,
+        "metadata": {"declaredBytes": 3, "clientItemId": "shared-item"}, "chunks": {}, "expires_at": now_utc() + timedelta(minutes=10), "finalisation": None})
+    partial = await db.investigation_evidence.find_one({"owner_id": owner, "case_id": case["case_id"], "client_item_id": "shared-item"}, {"_id": 0, "evidence_id": 1})
+    owning_upload = await db.investigation_uploads.find_one(
+        {"owner_id": owner, "case_id": case["case_id"], "finalisation.state": "committed", "finalisation.evidence_id": partial["evidence_id"]}, {"_id": 0, "upload_id": 1, "finalisation": 1})
+    assert owning_upload is not None
+    assert owning_upload["finalisation"]["digest"] != "digest-of-file-B"  # our (different) file's digest — this is the exact condition `complete_upload` checks
+
+
+async def _upload_replay_digest_match_binds():
+    owner = f"persist-{uuid.uuid4().hex[:8]}"
+    await repo.ensure_indexes()
+    case = await repo.create_case(owner, "text", None)
+    other_evidence_id = str(uuid.uuid4())
+    from services.higgins.contracts import EvidenceItem, Coverage
+    other_item = EvidenceItem(id=other_evidence_id, case_id=case["case_id"], client_item_id="shared-item-2", origin="user_submission", kind="text",
+                              parent_id=None, collected_at=now_utc(), expires_at=repo.utc(case["expires_at"]), media_type="text/plain", byte_length=3,
+                              coverage=Coverage(status="not_started", unit="characters", total=3, examined=0), transformations=[], label="file A")
+    await repo.insert_evidence(owner, other_item, {})
+    same_digest = "same-content-digest"
+    await db.investigation_uploads.insert_one({"owner_id": owner, "case_id": case["case_id"], "upload_id": str(uuid.uuid4()),
+        "metadata": {"declaredBytes": 3, "clientItemId": "shared-item-2"}, "chunks": {}, "expires_at": now_utc() + timedelta(minutes=10),
+        "finalisation": {"state": "committed", "digest": same_digest, "started_at": now_utc(), "fence": "f1", "evidence_id": other_evidence_id},
+        "evidence_id": other_evidence_id})
+    partial = await db.investigation_evidence.find_one({"owner_id": owner, "case_id": case["case_id"], "client_item_id": "shared-item-2"}, {"_id": 0, "evidence_id": 1})
+    owning_upload = await db.investigation_uploads.find_one(
+        {"owner_id": owner, "case_id": case["case_id"], "finalisation.state": "committed", "finalisation.evidence_id": partial["evidence_id"]}, {"_id": 0, "upload_id": 1, "finalisation": 1})
+    assert owning_upload["finalisation"]["digest"] == same_digest  # an IDENTICAL resubmission — safe to bind and replay, per `complete_upload`
+
+
+async def _device_observation_missing_content_is_reingested(inv):
+    owner = f"persist-{uuid.uuid4().hex[:8]}"
+    await repo.ensure_indexes()
+    case = await repo.create_case(owner, "text", None)
+    turn_id = str(uuid.uuid4())
+    job = await repo.create_job(owner, case, turn_id, repo.digest("k5"), repo.digest("p5"), "turn", {"message": "q", "turnId": turn_id})
+    await repo.cas(owner, case["case_id"], {"revision": 0}, {"$set": {"active_job_id": job["job_id"], "active_turn_id": turn_id, "status": "waiting_device"}})
+    request_id = str(uuid.uuid4())
+    # A metadata-only evidence row: mimics a crash between repo.insert_evidence and repo.store_bytes — no content chunk exists.
+    orphan_id = str(uuid.uuid4())
+    from services.higgins.contracts import EvidenceItem, Coverage
+    orphan = EvidenceItem(id=orphan_id, case_id=case["case_id"], client_item_id=f"observation-{request_id}", origin="device_observation", kind="observation",
+                          parent_id=None, collected_at=now_utc(), expires_at=repo.utc(case["expires_at"]), media_type="text/plain", byte_length=10,
+                          coverage=Coverage(status="not_started", unit="characters", total=10, examined=0), transformations=[], label="observation")
+    await repo.insert_evidence(owner, orphan, {})
+    result = DeviceResult(request_id=request_id, case_revision=1, capability_id="cap.x", status="observed", values={"state": True})
+    await db.investigation_device_requests.insert_one({"owner_id": owner, "case_id": case["case_id"], "request_id": request_id, "job_id": job["job_id"],
+        "request": {"id": request_id, "caseId": case["case_id"], "caseRevision": 1, "capabilityId": "cap.x", "fields": [], "reason": "test",
+                    "expiresAt": repo.utc(case["expires_at"]).isoformat()},
+        "fulfilled": False, "submission": {"state": "claimed", "digest": "d1", "result_ciphertext": repo.enc_json(result.wire()), "evidence_id": None,
+                                            "claimed_at": now_utc(), "fence": str(uuid.uuid4())}, "created_at": now_utc()})
+    pending = await db.investigation_device_requests.find_one({"owner_id": owner, "case_id": case["case_id"], "request_id": request_id}, {"_id": 0})
+    original_launch = inv.jobs.launch
+    inv.jobs.launch = lambda *a, **k: None
+    try:
+        item_id = await inv._finish_device_submission(owner, case, pending)
+    finally:
+        inv.jobs.launch = original_launch
+    assert item_id and item_id != orphan_id  # the content-less orphan was discarded, never reused as "already ingested"
+    assert await db.investigation_evidence.find_one({"owner_id": owner, "case_id": case["case_id"], "evidence_id": orphan_id}) is None
+    fresh_row = await db.investigation_content_chunks.find_one({"owner_id": owner, "case_id": case["case_id"], "evidence_id": item_id})
+    assert fresh_row is not None  # the replacement evidence has actual durable content
+
+
+async def _lease_renewal_detects_loss(inv):
+    owner = f"persist-{uuid.uuid4().hex[:8]}"
+    await repo.ensure_indexes()
+    selector = {"owner_id": owner, "case_id": "case-x", "request_id": "req-x"}
+    fence = "fence-1"
+    await db.investigation_device_requests.insert_one({**selector, "job_id": "job-x", "request": {}, "fulfilled": False,
+                                                       "submission": {"state": "storing", "fence": fence, "stage_started_at": now_utc()}})
+    original_interval = inv.LEASE_RENEWAL_SECONDS
+    inv.LEASE_RENEWAL_SECONDS = 0.05  # fast heartbeat for the test
+    started, stopped = asyncio.Event(), asyncio.Event()
+
+    async def _long_running_work():
+        started.set()
+        try:
+            await asyncio.sleep(5)
+        except asyncio.CancelledError:
+            stopped.set()
+            raise
+    try:
+        work = inv._with_lease_renewal(db.investigation_device_requests, selector, "submission.fence", fence, "submission.stage_started_at", _long_running_work())
+        task = asyncio.ensure_future(work)
+        await started.wait()
+        await asyncio.sleep(0.02)
+        # Steal the fence from underneath the in-flight work — simulating a takeover by another attempt.
+        await db.investigation_device_requests.update_one(selector, {"$set": {"submission.fence": "fence-2"}})
+        with pytest.raises(inv.LeaseLost):
+            await task
+        assert stopped.is_set()  # the wrapped work was actually cancelled, not left running after ownership was lost
+    finally:
+        inv.LEASE_RENEWAL_SECONDS = original_interval
 
 
 if __name__ == "__main__":

@@ -51,6 +51,11 @@ class Coverage(Wire):
     omitted_ranges: list[OmittedRange] = Field(default_factory=list)
     reason: Optional[str] = None
     material_gap: bool = False
+    # Set ONLY at ingestion, for a limitation that reading more of what was retained can never resolve (truncation,
+    # parser failure, an unsupported format, ...). `material_gap` above is recomputed on every read as "not yet fully
+    # read"; this field is the durable signal that survives those recomputations, so a genuine ingestion-time gap is
+    # never mistaken as resolved just because the (already limited) retained content was read in full.
+    permanent_gap: bool = False
 
 
 class Simulation(Wire):

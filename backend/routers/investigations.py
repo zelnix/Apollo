@@ -219,22 +219,41 @@ async def put_chunk(case_id: str, upload_id: str, index: int, request: Request):
 LEASE_RENEWAL_SECONDS = 40
 
 
+class LeaseLost(Exception):
+    """Raised when a renewable-ownership fence stops matching mid-operation (another attempt took over, or the
+    claim was otherwise superseded) — the wrapped work is cancelled promptly rather than left running unsupervised."""
+
+
 async def _with_lease_renewal(collection, selector: dict, fence_field: str, fence: str, ts_field: str, coro):
-    """Keeps a renewable-ownership fence alive for the duration of a potentially long-running step: while `coro`
-    runs, `ts_field` is heartbeat-refreshed every LEASE_RENEWAL_SECONDS (well inside the staleness window used for
-    takeover) so a claim that is genuinely still being worked is never mistaken for dead and taken over mid-flight.
-    A fixed claim timestamp alone is NOT renewable ownership — this is what makes it so."""
+    """Keeps a renewable-ownership fence alive for a potentially long-running step, AND stops that step promptly if
+    ownership is lost. A heartbeat that only refreshes a timestamp while unrelated work keeps running underneath it
+    is not a guard — this races the heartbeat's own write against the work and cancels the work the moment a
+    renewal fails to match. The eventual authoritative write at the call site remains separately fenced regardless;
+    this only bounds how long a superseded attempt can keep doing work it no longer owns."""
+    lost = asyncio.Event()
+
     async def _heartbeat():
         while True:
             await asyncio.sleep(LEASE_RENEWAL_SECONDS)
-            await collection.update_one({**selector, fence_field: fence}, {"$set": {ts_field: now_utc()}})
-    task = asyncio.ensure_future(_heartbeat())
+            result = await collection.update_one({**selector, fence_field: fence}, {"$set": {ts_field: now_utc()}})
+            if result.matched_count == 0:
+                lost.set()
+                return
+
+    work = asyncio.ensure_future(coro)
+    beat = asyncio.ensure_future(_heartbeat())
     try:
-        return await coro
+        done, _pending = await asyncio.wait({work, beat}, return_when=asyncio.FIRST_COMPLETED)
+        if beat in done and work not in done:
+            work.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await work
+            raise LeaseLost(f"lost ownership of {selector} mid-operation")
+        return await work
     finally:
-        task.cancel()
+        beat.cancel()
         with contextlib.suppress(asyncio.CancelledError):
-            await task
+            await beat
 
 
 @router.post("/investigations/{case_id}/uploads/{upload_id}/complete", status_code=201)
@@ -288,10 +307,15 @@ async def complete_upload(case_id: str, upload_id: str, body: ExpectedRevision, 
     partial = await db.investigation_evidence.find_one({"owner_id": owner, "case_id": case_id, "client_item_id": meta["clientItemId"]}, {"_id": 0, "evidence_id": 1})
     if partial:
         owning_upload = await db.investigation_uploads.find_one(
-            {"owner_id": owner, "case_id": case_id, "finalisation.state": "committed", "finalisation.evidence_id": partial["evidence_id"]}, {"_id": 0, "upload_id": 1})
-        if owning_upload and owning_upload["upload_id"] != upload_id:
-            # A DIFFERENT upload attempt already committed this exact evidence — cleanup must be specific to OUR OWN
-            # abandoned attempt only; a winning worker's evidence is never deleted just because we share a client item ID.
+            {"owner_id": owner, "case_id": case_id, "finalisation.state": "committed", "finalisation.evidence_id": partial["evidence_id"]}, {"_id": 0, "upload_id": 1, "finalisation": 1})
+        if owning_upload and owning_upload["finalisation"]["digest"] != content_digest:
+            # A DIFFERENT, already-committed upload owns this client item ID with DIFFERENT content: a genuine
+            # identity collision, not a resubmission of the same file. Never substitute someone else's evidence for
+            # different bytes — the winning worker's content stays untouched and this attempt is rejected outright.
+            raise http(409, "conflict", "A different file was already submitted under this item; a changed file cannot reuse that result.")
+        if owning_upload:
+            # Identical content, already committed by a different upload attempt (e.g. a client retry that opened a
+            # fresh upload_id): bind THIS attempt to that exact, already-published result instead of re-ingesting.
             committed = await db.investigation_uploads.find_one_and_update(
                 {"owner_id": owner, "upload_id": upload_id, "finalisation.fence": fence},
                 {"$set": {"finalisation.state": "committed", "finalisation.evidence_id": partial["evidence_id"], "evidence_id": partial["evidence_id"]}})
@@ -299,9 +323,17 @@ async def complete_upload(case_id: str, upload_id: str, body: ExpectedRevision, 
                 await db.investigation_upload_chunks.delete_many({"owner_id": owner, "upload_id": upload_id})
             row = await repo.get_evidence(owner, case_id, partial["evidence_id"])
             return JSONResponse({"evidence": repo.evidence_view(row).wire(), "caseRevision": case["revision"], "replayed": True}, status_code=201, headers=NO_STORE)
+        # No committed owner at all: nobody ever published this row — safe to discard as an abandoned attempt and re-ingest fresh.
         await repo.discard_incomplete_ingestion(owner, case_id, partial["evidence_id"])
-    item = await _with_lease_renewal(db.investigation_uploads, {"owner_id": owner, "upload_id": upload_id}, "finalisation.fence", fence, "finalisation.started_at",
-                                     ev.ingest_file(owner, case, meta, data))
+    try:
+        item = await _with_lease_renewal(db.investigation_uploads, {"owner_id": owner, "upload_id": upload_id}, "finalisation.fence", fence, "finalisation.started_at",
+                                         ev.ingest_file(owner, case, meta, data))
+    except LeaseLost:
+        current = await db.investigation_uploads.find_one({"owner_id": owner, "upload_id": upload_id}, {"_id": 0})
+        if current and current.get("evidence_id"):
+            row = await repo.get_evidence(owner, case_id, current["evidence_id"])
+            return JSONResponse({"evidence": repo.evidence_view(row).wire(), "caseRevision": case["revision"], "replayed": True}, status_code=201, headers=NO_STORE)
+        raise http(409, "conflict", "This upload is being finalised by another attempt; retry to obtain the result.")
     # Commit is itself fenced: if this attempt was superseded while `ingest_file` was running, the write below matches
     # nothing and this attempt's own evidence is discarded rather than published as if it were authoritative.
     committed = await db.investigation_uploads.find_one_and_update(
@@ -541,9 +573,20 @@ async def _finish_device_submission(owner: str, case: dict, pending: dict) -> Op
             return refreshed.get("evidence_id") if refreshed.get("state") in ("stored", "resuming", "resumed") else None
         selector = {"owner_id": owner, "case_id": case_id, "request_id": request_id}
         existing = await db.investigation_evidence.find_one({"owner_id": owner, "case_id": case_id, "client_item_id": f"observation-{request_id}"}, {"_id": 0, "evidence_id": 1})
-        item_id = existing["evidence_id"] if existing else (await _with_lease_renewal(
-            db.investigation_device_requests, selector, "submission.fence", fence, "submission.stage_started_at",
-            ev.ingest_observation(owner, case, f"observation-{request_id}", result))).id
+        if existing and not await db.investigation_content_chunks.find_one({"owner_id": owner, "case_id": case_id, "evidence_id": existing["evidence_id"]}, {"_id": 0, "chunk_index": 1}):
+            # A metadata row exists but its content never finished storing (a crash between the metadata insert and
+            # the byte write) — that is NOT completed ingestion. Discard it and re-ingest fresh from the submission
+            # payload this claim already durably retained (`result`), never leaving a resumed investigation pointed
+            # at evidence with no actual content.
+            await repo.discard_incomplete_ingestion(owner, case_id, existing["evidence_id"])
+            existing = None
+        try:
+            item_id = existing["evidence_id"] if existing else (await _with_lease_renewal(
+                db.investigation_device_requests, selector, "submission.fence", fence, "submission.stage_started_at",
+                ev.ingest_observation(owner, case, f"observation-{request_id}", result))).id
+        except LeaseLost:
+            refreshed = (await db.investigation_device_requests.find_one(selector, {"_id": 0, "submission": 1}) or {}).get("submission") or {}
+            return refreshed.get("evidence_id") if refreshed.get("state") in ("stored", "resuming", "resumed") else None
         committed = await db.investigation_device_requests.find_one_and_update(
             {**selector, "submission.fence": fence},
             {"$set": {"submission.state": "stored", "submission.evidence_id": item_id, "evidence_id": item_id}})
@@ -561,18 +604,31 @@ async def _finish_device_submission(owner: str, case: dict, pending: dict) -> Op
 
         async def _resume() -> None:
             job = await repo.get_job(owner, case_id, pending["job_id"])
-            if job.get("status") in ("waiting_device", "queued", "investigating", "retry_wait"):
-                checkpoint = repo.dec_json(job["checkpoint_ciphertext"]) if job.get("checkpoint_ciphertext") else {"contents": [], "rounds": 0}
-                if not any(r.get("evidenceId") == sub["evidence_id"] for r in checkpoint.get("deviceResults", [])):
-                    checkpoint.setdefault("deviceResults", []).append({**result, "evidenceId": sub["evidence_id"]})
-                await db.investigation_jobs.update_one({"owner_id": owner, "job_id": job["job_id"]}, {"$set": {"checkpoint_ciphertext": repo.enc_json(checkpoint), "status": "queued", "lease_until": None}})
-                await db.investigation_cases.update_one({"owner_id": owner, "case_id": case_id, "status": {"$in": ["waiting_device", "queued"]}},
-                                                        {"$set": {"status": "queued"}, "$pull": {"pending_device_request_ids": request_id}, "$inc": {"revision": 1}})
-                jobs.launch(owner, case_id, job["job_id"])
+            if job.get("status") not in ("waiting_device", "queued", "investigating", "retry_wait"):
+                return
+            checkpoint = repo.dec_json(job["checkpoint_ciphertext"]) if job.get("checkpoint_ciphertext") else {"contents": [], "rounds": 0}
+            if not any(r.get("evidenceId") == sub["evidence_id"] for r in checkpoint.get("deviceResults", [])):
+                checkpoint.setdefault("deviceResults", []).append({**result, "evidenceId": sub["evidence_id"]})
+            # Atomic condition on the job's OWN state and lease — never overwrite a job that a live coordinator turn
+            # currently holds under an unexpired lease, or one that already moved to a terminal state elsewhere.
+            resumed_job = await db.investigation_jobs.find_one_and_update(
+                {"owner_id": owner, "job_id": job["job_id"], "status": {"$in": ["waiting_device", "queued", "retry_wait"]},
+                 "$or": [{"lease_until": None}, {"lease_until": {"$lte": now_utc()}}]},
+                {"$set": {"checkpoint_ciphertext": repo.enc_json(checkpoint), "status": "queued", "lease_until": None}})
+            if resumed_job is None:
+                return  # already advanced elsewhere, cancelled/expired, or actively leased by a live coordinator turn
+            await repo.cas(owner, case_id, {"status": {"$in": ["waiting_device", "queued"]}}, {"$set": {"status": "queued"}, "$pull": {"pending_device_request_ids": request_id}})
+            jobs.launch(owner, case_id, job["job_id"])
         # No multi-document transactions here (standalone MongoDB): the job/case writes above are protected instead by
         # holding the SAME renewed fence for their whole duration — no other attempt can also be in "resuming" while
-        # this one is alive and heartbeating, so there is no concurrent writer to race against.
-        await _with_lease_renewal(db.investigation_device_requests, selector, "submission.fence", fence, "submission.stage_started_at", _resume())
+        # this one is alive and heartbeating — AND each write is itself conditioned on the job's/case's own state, so
+        # a write that arrives after the fence is lost (heartbeat cancelled work promptly, but a write already in
+        # flight could still land) still cannot corrupt a state it no longer matches.
+        try:
+            await _with_lease_renewal(db.investigation_device_requests, selector, "submission.fence", fence, "submission.stage_started_at", _resume())
+        except LeaseLost:
+            refreshed = (await db.investigation_device_requests.find_one(selector, {"_id": 0, "submission": 1}) or {}).get("submission") or {}
+            return refreshed.get("evidence_id", sub.get("evidence_id"))
         committed = await db.investigation_device_requests.find_one_and_update(
             {**selector, "submission.fence": fence},
             {"$set": {"submission.state": "resumed", "fulfilled": True, "result_digest": sub["digest"]}})
