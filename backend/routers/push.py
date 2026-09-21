@@ -1,13 +1,17 @@
 """Alert notification boundary. Managed relay removed; direct credentials required."""
 from __future__ import annotations
 
+import os
+import re
+
+import httpx
 from typing import Literal, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from core.config import logger
-from core.db import now_utc
+from core.db import db, now_utc
 from core.models import PatrolEvent
 from routers.devices import device_quiet_now
 
@@ -25,9 +29,24 @@ class RegisterPushBody(BaseModel):
     device_token: str = Field(min_length=8, max_length=4096)
 
 
+EXPO_PUSH_ACCESS_TOKEN = os.environ.get("EXPO_PUSH_ACCESS_TOKEN", "")
+EXPO_PUSH_ENABLED = os.environ.get("EXPO_PUSH_ENABLED", "").lower() in ("1", "true", "yes")
+
+
+def push_configured() -> bool:
+    return EXPO_PUSH_ENABLED and bool(EXPO_PUSH_ACCESS_TOKEN)
+
+
 @router.post("/register-push", status_code=201)
-async def register_push(body: RegisterPushBody):
-    raise HTTPException(503, "Push delivery requires owner-managed push credentials and token migration. No device was registered for delivery.")
+async def register_push(body: RegisterPushBody, request: Request):
+    """Stores the owner project's Expo push token for the calling device (owner-scoped; token never returned)."""
+    if not push_configured():
+        raise HTTPException(503, "Push delivery requires the owner's Expo push credentials (EXPO_PUSH_ENABLED, EXPO_PUSH_ACCESS_TOKEN). No device was registered for delivery.")
+    if not re.match(r"^(ExponentPushToken|ExpoPushToken)\[[A-Za-z0-9_-]+\]$", body.device_token):
+        raise HTTPException(422, "Only Expo push tokens from the owner's project are accepted.")
+    owner = request.state.device["device_id"]
+    await db.push_tokens.update_one({"device_id": owner}, {"$set": {"platform": body.platform, "token": body.device_token, "updated_at": now_utc()}}, upsert=True)
+    return {"registered": True}
 
 
 async def send_push(recipients: list[str], data: dict, idempotency_key: Optional[str] = None) -> None:
@@ -37,7 +56,28 @@ async def send_push(recipients: list[str], data: dict, idempotency_key: Optional
         raise ValueError("max 100 recipients per /trigger call; chunk before sending")
     if "title" not in data or "message" not in data:
         raise ValueError("data must include title and message")
-    raise HTTPException(503, "Push delivery requires owner-managed push credentials. No notification was sent.")
+    if not push_configured():
+        raise HTTPException(503, "Push delivery requires owner-managed push credentials. No notification was sent.")
+    if idempotency_key and await db.delivery_receipts.find_one({"channel": "push", "idempotency_key": idempotency_key}, {"_id": 1}):
+        return
+    tokens = [t["token"] async for t in db.push_tokens.find({"device_id": {"$in": recipients}}, {"_id": 0, "token": 1})]
+    if not tokens:
+        return
+    messages = [{"to": token, "title": data["title"], "body": data["message"], "subtitle": data.get("subtext"), "data": {"action_url": data.get("action_url")},
+                 "channelId": data.get("channel_id"), "priority": "high" if data.get("channel_id") == "threat" else "default"} for token in tokens]
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.post("https://exp.host/--/api/v2/push/send", headers={"Authorization": f"Bearer {EXPO_PUSH_ACCESS_TOKEN}", "Accept": "application/json"}, json=messages)
+    except httpx.HTTPError:
+        raise HTTPException(503, "The push service did not answer. No notification was sent.")
+    if r.status_code >= 400:
+        raise HTTPException(503, "The push service rejected the notification.")
+    tickets = r.json().get("data", [])
+    for token, ticket in zip(tokens, tickets):
+        if ticket.get("details", {}).get("error") == "DeviceNotRegistered":
+            await db.push_tokens.delete_one({"token": token})
+    if idempotency_key:
+        await db.delivery_receipts.insert_one({"channel": "push", "idempotency_key": idempotency_key, "sent_at": now_utc(), "tickets": len(tickets)})
 
 
 class PushTestIn(BaseModel):

@@ -56,15 +56,16 @@ class TestRegisterPushValidation:
 
 # ------------------------- /api/register-push placeholder key ------------------
 class TestRegisterPushDev:
-    def test_valid_body_returns_500_placeholder_key(self, s):
+    def test_valid_body_without_owner_push_credentials_is_typed_503(self, s):
         """EMERGENT_PUSH_KEY=placeholder → 401 upstream → 500 with the specific detail."""
         r = s.post(f"{API}/register-push", json={
             "user_id": f"dev-{uuid.uuid4().hex[:12]}",
             "platform": "android",
             "device_token": f"tok-{uuid.uuid4().hex}",
         })
-        assert r.status_code == 500, r.text
-        assert r.json().get("detail") == "EMERGENT_PUSH_KEY missing or invalid"
+        # Emergent placeholder key removed: registration is owner-configured (Expo push credentials) and fails closed with a typed 503.
+        assert r.status_code == 503, r.text
+        assert "Expo push credentials" in r.json().get("detail", "")
 
 
 # ------------------------- /api/patrol/events background field ------------------

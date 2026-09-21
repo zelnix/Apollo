@@ -1,13 +1,26 @@
-"""Guardian invitations: legacy managed relay and fake-success recipient removed.
+"""Guardian email via the owner's Resend account (RESEND_API_KEY + verified RESEND_FROM_EMAIL).
 
-Direct sending is blocked until the owner supplies Resend credentials and a verified sender.
-Gmail read-only OAuth is unrelated and remains enabled.
+No managed relay, no fake-success recipient. Unconfigured → typed 503 for this delivery only.
+Every send is idempotent on (recipient, subject digest) within 10 minutes and leaves a receipt.
 """
 from html import escape
+import hashlib
+import os
 import re
+import uuid
 
+import httpx
 from fastapi import HTTPException
-from core.config import EMAIL_FROM_NAME
+
+from core.config import EMAIL_FROM_NAME, logger
+from core.db import db, now_utc
+
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "")
+
+
+def email_configured() -> bool:
+    return bool(RESEND_API_KEY and RESEND_FROM_EMAIL)
 
 _CRED_ASK = ("reply with your password", "reply with the code", "send your password", "cvv", "seed phrase", "verify your card", "confirm your bank details")
 
@@ -26,7 +39,25 @@ def _assert_safe_email(subject: str, html: str) -> None:
 
 async def send_email(*, to: str, subject: str, html: str) -> str:
     _assert_safe_email(subject, html)
-    raise HTTPException(503, "Guardian email requires RESEND_API_KEY and a verified RESEND_FROM_EMAIL. No email was sent.")
+    if not email_configured():
+        raise HTTPException(503, "Guardian email requires RESEND_API_KEY and a verified RESEND_FROM_EMAIL. No email was sent.")
+    key = hashlib.sha256(f"{to.lower()}|{subject}|{now_utc().strftime('%Y%m%d%H')}{now_utc().minute // 10}".encode()).hexdigest()
+    receipt = await db.delivery_receipts.find_one({"channel": "email", "idempotency_key": key}, {"_id": 0})
+    if receipt:
+        return receipt["provider_id"]
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.post("https://api.resend.com/emails", headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Idempotency-Key": key},
+                                  json={"from": f"{EMAIL_FROM_NAME} <{RESEND_FROM_EMAIL}>", "to": [to], "subject": subject, "html": html})
+    except httpx.HTTPError:
+        raise HTTPException(503, "The email service did not answer. No email was sent; try again shortly.")
+    if r.status_code >= 400:
+        logger.warning("resend rejected email status=%s", r.status_code)
+        raise HTTPException(502 if r.status_code >= 500 else 503, "The email service rejected this message. Check the sender domain verification in Resend.")
+    provider_id = str(r.json().get("id") or uuid.uuid4())
+    await db.delivery_receipts.insert_one({"channel": "email", "idempotency_key": key, "provider_id": provider_id, "to_digest": hashlib.sha256(to.lower().encode()).hexdigest(),
+                                           "subject": subject[:120], "sent_at": now_utc()})
+    return provider_id
 
 
 def _wrap(body: str) -> str:

@@ -48,8 +48,8 @@ class TestWeeklyCheckinApi:
         protected, guardian = f"prot{uuid.uuid4().hex[:12]}", f"guard{uuid.uuid4().hex[:12]}"
         _pair(api, protected, guardian)
         r = api.post(f"{BASE_URL}/api/family/weekly/send-now", json={"device_id": guardian})
-        # dev environment has a placeholder push key → 500/502 with a readable detail, never a stack trace
-        assert r.status_code in (200, 500, 502), r.text
+        # Without the owner's Expo push credentials the adapter answers a typed 503 with a readable detail, never a stack trace.
+        assert r.status_code in (200, 503), r.text
         if r.status_code != 200:
             assert isinstance(r.json()["detail"], str)
 
