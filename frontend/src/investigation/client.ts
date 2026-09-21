@@ -1,0 +1,79 @@
+// Case API client: idempotent create/turn, event stream with sequence-based reconnect, explicit terminal completion.
+import * as Crypto from "expo-crypto";
+import { Platform } from "react-native";
+
+import { API_BASE, ApiError, apiDelete, apiGet, apiPost } from "@/src/api/client";
+import { getDeviceToken } from "@/src/auth/deviceIdentity";
+import { enforceEgress } from "@/src/domain/privacy";
+import type { CreateCase, DeviceResult, EvidenceItem, InvestigationCase, InvestigationEvent, Job, SourceReference, TurnCommit } from "./types";
+
+async function postWithKey<T>(path: string, body: Record<string, unknown>, key: string): Promise<T> {
+  const token = await getDeviceToken();
+  if (!token) throw new ApiError(401, "Apollo hasn't registered this device yet.");
+  const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, "Idempotency-Key": key }, body: JSON.stringify(enforceEgress("investigation", body)) });
+  if (!res.ok) {
+    let message = res.statusText;
+    try { const data = await res.json(); message = data?.error?.message ?? data?.detail ?? message; } catch { /* keep */ }
+    throw new ApiError(res.status, typeof message === "string" ? message : JSON.stringify(message));
+  }
+  return (await res.json()) as T;
+}
+
+export function createCase(body: CreateCase, key = Crypto.randomUUID()) { return postWithKey<{ case: InvestigationCase; job: Job }>("/investigations", body as unknown as Record<string, unknown>, key); }
+export function getCase(caseId: string) { return apiGet<{ case: InvestigationCase }>(`/investigations/${caseId}`); }
+export function getJob(caseId: string, jobId: string) { return apiGet<{ job: Job; caseRevision: number; responseRevision: number | null }>(`/investigations/${caseId}/jobs/${jobId}`); }
+export function listTurns(caseId: string) { return apiGet<{ items: TurnCommit[]; total: number }>(`/investigations/${caseId}/turns`); }
+export function listSources(caseId: string) { return apiGet<{ items: SourceReference[]; total: number }>(`/investigations/${caseId}/sources`); }
+export function listEvidence(caseId: string) { return apiGet<{ items: EvidenceItem[]; total: number }>(`/investigations/${caseId}/evidence`); }
+export function deleteCase(caseId: string) { return apiDelete<void>(`/investigations/${caseId}`); }
+export function submitTurn(caseId: string, body: { expectedRevision: number; turnId: string; message: string; answerToQuestionId: string | null; evidenceIds: string[] }, key: string) {
+  return postWithKey<{ job: Job; caseRevision: number }>(`/investigations/${caseId}/turns`, body, key);
+}
+export function resumeJob(caseId: string, jobId: string, expectedRevision: number) { return postWithKey<{ job: Job }>(`/investigations/${caseId}/jobs/${jobId}/resume`, { expectedRevision }, Crypto.randomUUID()); }
+export function cancelJob(caseId: string, jobId: string, expectedRevision: number) { return apiPost<{ status: string }>(`/investigations/${caseId}/jobs/${jobId}/cancel`, "investigation", { expectedRevision }); }
+export function submitDeviceResult(caseId: string, result: DeviceResult) { return apiPost<{ accepted: boolean; jobId: string }>(`/investigations/${caseId}/device-results`, "investigation", result as unknown as Record<string, unknown>); }
+export function addTextEvidence(caseId: string, expectedRevision: number, text: string, label: string) {
+  return apiPost<{ evidence: EvidenceItem; caseRevision: number }>(`/investigations/${caseId}/evidence`, "investigation", { expectedRevision, clientItemId: Crypto.randomUUID(), parentId: null, kind: "text", text, label });
+}
+
+/** Multipart file evidence: the runtime's own file shape (web Blob / native {uri,name,type}); metadata carries revision and declared type. */
+export async function uploadFileEvidence(caseId: string, expectedRevision: number, file: { uri: string; name: string; mediaType: string }, kind: "image" | "document" | "audio" | "attachment") {
+  const token = await getDeviceToken();
+  if (!token) throw new ApiError(401, "Apollo hasn't registered this device yet.");
+  const form = new FormData();
+  form.append("metadata", JSON.stringify({ expectedRevision, clientItemId: Crypto.randomUUID(), parentId: null, kind, filename: file.name, mediaType: file.mediaType }));
+  if (Platform.OS === "web") form.append("file", await (await fetch(file.uri)).blob(), file.name);
+  else form.append("file", { uri: file.uri, name: file.name, type: file.mediaType } as unknown as Blob);
+  const res = await fetch(`${API_BASE}/investigations/${caseId}/evidence`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form });
+  if (!res.ok) { let message = res.statusText; try { const data = await res.json(); message = data?.error?.message ?? message; } catch { /* keep */ } throw new ApiError(res.status, message); }
+  return (await res.json()) as { evidence: EvidenceItem; caseRevision: number };
+}
+
+/** SSE over XHR with sequence-based reconnect. `onTerminal` fires only on an explicit terminal event; EOF alone is an interruption. */
+export function streamEvents(caseId: string, jobId: string, after: number, onEvent: (event: InvestigationEvent) => void, onEnd: (reason: "terminal" | "interrupted" | "unauthorized") => void) {
+  const xhr = new XMLHttpRequest();
+  let seen = 0; let finished = false; let last = after;
+  const end = (reason: "terminal" | "interrupted" | "unauthorized") => { if (!finished) { finished = true; onEnd(reason); } };
+  xhr.open("GET", `${API_BASE}/investigations/${caseId}/jobs/${jobId}/events?after=${after}`);
+  xhr.setRequestHeader("Accept", "text/event-stream");
+  void getDeviceToken().then((token) => { if (!token) { end("unauthorized"); return; } xhr.setRequestHeader("Authorization", `Bearer ${token}`); xhr.send(); });
+  const consume = () => {
+    const text = xhr.responseText ?? ""; const chunk = text.slice(seen); const lastBreak = chunk.lastIndexOf("\n\n");
+    if (lastBreak < 0) return; seen += lastBreak + 2;
+    for (const block of chunk.slice(0, lastBreak).split("\n\n")) {
+      const data = block.split("\n").find((line) => line.startsWith("data: "));
+      if (!data) continue;
+      try {
+        const event = JSON.parse(data.slice(6)) as InvestigationEvent;
+        if (event.sequence <= last) continue;
+        last = event.sequence; onEvent(event);
+        if (["completed", "failed", "cancelled", "expired", "device_request"].includes(event.type)) end("terminal");
+      } catch { /* partial */ }
+    }
+  };
+  xhr.onprogress = consume;
+  xhr.onload = () => { consume(); if (xhr.status === 401 || xhr.status === 403) end("unauthorized"); else end("interrupted"); };
+  xhr.onerror = () => end("interrupted");
+  xhr.timeout = 150000; xhr.ontimeout = () => end("interrupted");
+  return { abort: () => { finished = true; xhr.abort(); }, lastSequence: () => last };
+}

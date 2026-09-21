@@ -18,7 +18,8 @@ import asyncio
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 
 from core.auth import enforce_device_auth, require_admin_key
@@ -29,7 +30,9 @@ from core.privacy_boundary import PrivacyBoundary
 from services.patrol_policy import ensure_evidence_receipt_indexes
 from services.mailbox_monitor import mailbox_monitor_loop
 from services.higgins.retention import migrate_and_index, sweep_loop
-from routers import admin, analysis, ask, call, devices, family, family_weekly, gmail, health, intel, patrol, push, voice
+from services.higgins import jobs as investigation_jobs
+from services.higgins import repository as investigation_repository
+from routers import admin, analysis, ask, call, devices, family, family_weekly, gmail, health, intel, investigations, patrol, push, voice
 from routers.family_weekly import weekly_checkin_loop
 
 SEED_BLOCKLIST = [
@@ -43,6 +46,7 @@ SEED_BLOCKLIST = [
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await migrate_and_index()
+    await investigation_repository.ensure_indexes()
     await db.devices.create_index("device_id", unique=True)
     await db.devices.create_index("token_hash", unique=True, partialFilterExpression={"token_hash": {"$type": "string"}})
     await db.reputation_cache.create_index("indicator_digest", unique=True)
@@ -70,15 +74,24 @@ async def lifespan(_: FastAPI):
     loop_task = asyncio.create_task(weekly_checkin_loop())
     mailbox_task = asyncio.create_task(mailbox_monitor_loop())
     cleanup_task = asyncio.create_task(sweep_loop())
+    investigation_task = asyncio.create_task(investigation_jobs.sweep_loop())
     yield
     loop_task.cancel()
     mailbox_task.cancel()
     cleanup_task.cancel()
+    investigation_task.cancel()
     client.close()
 
 
 app = FastAPI(title="Apollo V1 API", lifespan=lifespan)
 app.add_middleware(PrivacyBoundary)
+
+
+@app.exception_handler(HTTPException)
+async def typed_failure_handler(_: Request, exc: HTTPException):
+    """Investigation routes raise the spec's `{"error": Failure}` body; legacy routes keep FastAPI's `{"detail": ...}`."""
+    body = exc.detail if isinstance(exc.detail, dict) and "error" in exc.detail else {"detail": exc.detail}
+    return JSONResponse(body, status_code=exc.status_code, headers=dict(exc.headers or {}))
 
 
 @app.get("/health", include_in_schema=False)
@@ -88,7 +101,7 @@ async def deployment_health():
 
 
 # Every device-facing router is mounted under /api behind the device bearer gate (public paths are listed in core.auth).
-for r in (health, devices, intel, patrol, ask, family, family_weekly, voice, push, analysis, gmail, call):
+for r in (health, devices, intel, patrol, investigations, ask, family, family_weekly, voice, push, analysis, gmail, call):
     app.include_router(r.router, prefix="/api", dependencies=[Depends(enforce_device_auth)])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_admin_key)])
 

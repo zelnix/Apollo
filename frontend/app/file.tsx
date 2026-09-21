@@ -173,7 +173,7 @@ export default function CheckFile() {
                 { summary: `Signature result: ${a.realType}`, provenance: "observed", status: a.state === "barking" ? "warning" : "uncertain" },
                 { summary: selected?.inspected.inspectionError ? `Content sample unavailable: ${selected.inspected.inspectionError}` : selected?.inspected.textSample ? "A bounded supported text sample was read locally." : "No supported text sample was readable.", provenance: "observed", status: "uncertain" },
                 ...a.why.slice(0, 4).map((summary) => ({ summary, provenance: "inferred" as const, status: a.state === "barking" ? "warning" as const : "uncertain" as const })),
-              ], uncertainty: ["Only the signature and a bounded supported sample were inspected; complete contents and safety remain unknown."], confirmed_protective_actions: [], user_reported_actions: [], available_actions: [
+              ], uncertainty: ["Only the signature and a bounded supported sample were inspected; complete contents and safety remain unknown."], confirmed_protective_actions: [], user_reported_actions: [], original_evidence: selected ? [{ kind: "file", uri: selected.asset.uri, name: selected.asset.name, mediaType: selected.asset.mimeType || "application/octet-stream", size: selected.asset.size }] : [], available_actions: [
                 { label: "Follow the File Gate recommendation", instruction: a.recommendation },
                 { label: "Use I already opened it", instruction: "Return to the File Gate result and use I already opened it in Stay With Me for recovery steps." },
               ] }), "What should I do with this file?")} /> : null}

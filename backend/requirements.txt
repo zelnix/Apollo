@@ -56,6 +56,7 @@ jq==1.12.0
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
 librt==0.15.0
+lxml==6.1.3
 markdown-it-py==4.2.0
 MarkupSafe==3.0.3
 mccabe==0.7.0
@@ -90,10 +91,12 @@ Pygments==2.21.0
 PyJWT==2.13.0
 pymongo==4.6.3
 pyparsing==3.3.2
+pypdf==6.19.0
 pytest==9.1.1
 pytest-asyncio==1.4.0
 pytest-xdist==3.8.0
 python-dateutil==2.9.0.post0
+python-docx==1.2.0
 python-dotenv==1.2.3
 python-jose==3.5.0
 python-multipart==0.0.32
