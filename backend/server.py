@@ -47,6 +47,7 @@ SEED_BLOCKLIST = [
 async def lifespan(_: FastAPI):
     await migrate_and_index()
     await investigation_repository.ensure_indexes()
+    await investigation_repository.backfill_work_epochs()
     await push.ensure_indexes()
     await db.devices.create_index("device_id", unique=True)
     await db.devices.create_index("token_hash", unique=True, partialFilterExpression={"token_hash": {"$type": "string"}})

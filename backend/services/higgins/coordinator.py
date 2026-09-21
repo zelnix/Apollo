@@ -52,10 +52,15 @@ When finished, reply with ONLY one JSON object (no markdown fence) exactly in th
  "findings":[{"text":"one fact or inference","basis":"observation|user_report|inference","confidence":"low|medium|high","evidenceIds":["registered evidenceId"],"sourceIds":["registered sourceId"],"supersedesFindingIds":[]}],
  "uncertainties":["what could not be established"], "scope":"what this investigation did and did not cover",
  "sourceIds":["registered sourceIds you relied on"], "remainingEvidenceIds":["evidenceIds not fully examined"],
- "actions":[{"kind":"instruction|open_settings|request_permission|recheck|open_verified_source","label":"short button label","instruction":"what the person does","capabilityId":null,"sourceIds":[]}],
+ "actions":[{"kind":"instruction|open_settings|request_permission|recheck|open_verified_source","label":"short button label","instruction":"what the person does","capabilityId":null,"sourceIds":[],"desiredField":null,"desiredValue":null}],
  "recommendedActionIndex":0, "question":null, "completion":"complete|partial|waiting_user"}
 Use the literal enum values shown (e.g. "basis":"inference"), never descriptions. question, when used, is {"text":"...","reasonNeeded":"...","answerType":"text|yes_no|choice","choices":[]}.
 findings[].evidenceIds/sourceIds must be registered IDs from the inventory or tool results; capability action kinds need an advertised capabilityId.
+For open_settings/request_permission actions with ONE clear observable target state (e.g. turn OFF unknown sources, turn ON notification
+access), set desiredField to the observed field name (e.g. "enabled", "granted", "state") and desiredValue to the exact value the person is
+working toward (true/false/a specific string) — this is bound into the plan the client uses to confirm the change, so it must be the real
+target, never a placeholder. When there is no single observable target (a multi-step instruction, or you are not sure which direction is
+intended), set both to null; the client will then leave that outcome unresolved rather than guess.
 """
 
 

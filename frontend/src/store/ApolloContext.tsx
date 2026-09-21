@@ -507,8 +507,19 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     // any display-text-vs-real-destination mismatch recoverable from the plain pasted text. This can
     // only ever raise state to growling/barking — never biting (see src/domain/linkGuard.ts).
     const guard = evaluateLinkGuardFindings(urls, extractAnchorsFromPlainText(text));
+    // One current answer (never two competing verdicts): once Higgins completes a genuine assessment over the
+    // supplied evidence — never a partial, failed or unavailable pass — its risk verdict is reconciled into the
+    // state shown, so the pill/label the person sees can't contradict Higgins' own conclusion (MessageAssessmentResult
+    // renders both from this same `state`). A "clear" verdict clears an Apollo-only heuristic flag rather than leaving
+    // it displayed alongside a "no strong scam signs" explanation; a "warning" verdict still only raises, never lowers,
+    // whatever Apollo already found. A verified malicious-URL match (hard evidence, applied below via `guard`) is
+    // never hidden either way — Higgins or not.
+    const higginsCurrent = assessment?.processing.higgins_source === "gemini" && assessment.processing.completion === "complete_within_supplied_evidence";
+    if (higginsCurrent) {
+      if (assessment!.risk === "warning" && STATE_RANK.growling > STATE_RANK[state]) state = "growling";
+      else if (assessment!.risk === "clear") state = "resting";
+    }
     if (STATE_RANK[guard.state] > STATE_RANK[state]) state = guard.state;
-    if (assessment?.risk === "warning" && STATE_RANK.growling > STATE_RANK[state]) state = "growling";
     why.push(...guard.why);
     const firstHost = urls[0]?.host ?? (analysis.signals.urls[0] ? analysis.signals.urls[0].replace(/^https?:\/\//i, "").split("/")[0].toLowerCase() : null);
     let event: PatrolEvent | null = null;

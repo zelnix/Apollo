@@ -46,19 +46,39 @@ async function openDescriptor(d: SettingsDescriptor): Promise<string | null> {
   throw new Error("This platform has no Settings destination Apollo can open.");
 }
 
-/** Creates and binds the settings plan for a descriptor BEFORE the destination opens, so the return recheck can compare against it. */
+/** Creates and binds the settings plan for a descriptor BEFORE the destination opens, so the return recheck can compare against it.
+ *  The intended field/value is ALWAYS the structured intent Higgins attached to the action — never inferred from `label`/
+ *  `instruction` wording. When Higgins left it null (no single observable target, or genuinely ambiguous), the plan is bound
+ *  with `expectedValue: null`, which the backend leaves unobservable — the recheck then reports "cannot_observe" rather than
+ *  guessing a direction. */
 async function bindPlan(action: ActionProposal, caseData: InvestigationCase, descriptor: SettingsDescriptor): Promise<string | null> {
   const capabilityId = observationCapabilityFor(descriptor.id);
   try {
     const fresh = await api.getCase(caseData.id);
     const { plan } = await api.createSettingsPlan(caseData.id, {
       expectedRevision: fresh.case.revision, target: `${action.label}. ${action.instruction}`.slice(0, 300), device: currentDeviceProfile(),
-      capabilityId, expectedField: capabilityId?.startsWith("permission.") ? "granted" : capabilityId === CAPABILITIES.protection ? "running" : "state",
-      expectedValue: capabilityId ? true : null,
+      capabilityId, expectedField: action.desiredField ?? (capabilityId?.startsWith("permission.") ? "granted" : capabilityId === CAPABILITIES.protection ? "running" : "state"),
+      expectedValue: action.desiredValue ?? null,
     });
     return plan.id;
   } catch {
     return null; // the destination still opens; the recheck then reports "cannot compare" instead of pretending to
+  }
+}
+
+/** Same binding for a `request_permission` action, which has no Settings descriptor of its own — only the capability the
+ *  permission observes. Intent still comes exclusively from `action.desiredField`/`desiredValue`. */
+async function bindPermissionPlan(action: ActionProposal, caseData: InvestigationCase): Promise<string | null> {
+  if (!action.capabilityId) return null;
+  try {
+    const fresh = await api.getCase(caseData.id);
+    const { plan } = await api.createSettingsPlan(caseData.id, {
+      expectedRevision: fresh.case.revision, target: `${action.label}. ${action.instruction}`.slice(0, 300), device: currentDeviceProfile(),
+      capabilityId: action.capabilityId, expectedField: action.desiredField ?? "granted", expectedValue: action.desiredValue ?? null,
+    });
+    return plan.id;
+  } catch {
+    return null;
   }
 }
 
@@ -79,7 +99,8 @@ export async function runAction(action: ActionProposal, caseData: InvestigationC
     if (!currentDeviceProfile().capabilityIds.includes(action.capabilityId)) return { kind: "unsupported", reason: "This device does not implement that observation." };
     if (action.kind === "request_permission" && action.capabilityId.startsWith("permission.")) {
       const id = action.capabilityId.slice("permission.".length) as ProtectionPermission["id"];
-      const attempt: ActionAttempt = { id: `${caseData.id}:${action.id}:${Date.now()}`, caseId: caseData.id, planId, descriptorId: action.capabilityId, startedAt: new Date().toISOString(), returnedAt: null, status: "requested" };
+      const boundPlanId = planId ?? await bindPermissionPlan(action, caseData);
+      const attempt: ActionAttempt = { id: `${caseData.id}:${action.id}:${Date.now()}`, caseId: caseData.id, planId: boundPlanId, descriptorId: action.capabilityId, startedAt: new Date().toISOString(), returnedAt: null, status: "requested" };
       await recordAttempt(attempt);
       await securityAdapter.requestProtectionPermission(id); // requested ≠ granted
       if (Platform.OS === "android" || Platform.OS === "ios") {

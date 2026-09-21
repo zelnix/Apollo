@@ -90,6 +90,21 @@ async def ensure_indexes() -> None:
     await db.investigation_reports.create_index([("owner_id", 1), ("report_id", 1)], unique=True)
 
 
+async def backfill_work_epochs() -> None:
+    """One-time, idempotent reconciliation for cases/jobs created before `work_epoch` existed. The field is missing
+    entirely on old documents, so the exact-match Mongo filters used throughout this module (e.g. `cas(...,
+    {"work_epoch": job.get("work_epoch", job["epoch"])}, ...)`) never match them even though the Python-side fallback
+    treats a missing `work_epoch` as equal to `epoch`. This sets the DB field itself to the case's/job's own current
+    `epoch`, which changes no behaviour (a case/job whose `work_epoch` already equals its `epoch` is exactly the
+    pre-migration invariant) and revives nothing: status, leases and history are left untouched."""
+    async for case in db.investigation_cases.find({"work_epoch": {"$exists": False}}, {"_id": 0, "owner_id": 1, "case_id": 1, "epoch": 1}):
+        await db.investigation_cases.update_one({"owner_id": case["owner_id"], "case_id": case["case_id"], "work_epoch": {"$exists": False}},
+                                                {"$set": {"work_epoch": case["epoch"]}})
+    async for job in db.investigation_jobs.find({"work_epoch": {"$exists": False}}, {"_id": 0, "owner_id": 1, "job_id": 1, "epoch": 1}):
+        await db.investigation_jobs.update_one({"owner_id": job["owner_id"], "job_id": job["job_id"], "work_epoch": {"$exists": False}},
+                                               {"$set": {"work_epoch": job["epoch"]}})
+
+
 # ------------------------------------------------------------------ idempotency
 async def idempotent(owner: str, operation: str, key: str, payload: str) -> tuple[Optional[dict], str]:
     """Returns (existing record or None, payload digest). Changed payload under the same key → 409."""

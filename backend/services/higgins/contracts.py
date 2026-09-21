@@ -128,6 +128,11 @@ class ActionProposal(Wire):
     execution_descriptor_id: Optional[str] = None
     requires_user_gesture: bool = True
     source_ids: list[str] = Field(default_factory=list)
+    # Structured intent for open_settings/request_permission actions, supplied by Higgins — the client binds a
+    # SettingsPlan to exactly this field/value and NEVER infers a direction from the label/instruction wording.
+    # Both are null when there is no single observable target (the plan is then left unresolvable by design).
+    desired_field: Optional[str] = None
+    desired_value: Union[bool, str, None] = None
 
 
 class HigginsResponse(Wire):
@@ -398,6 +403,8 @@ class ModelAction(Wire):
     instruction: str
     capability_id: Optional[str] = None
     source_ids: list[str] = Field(default_factory=list)
+    desired_field: Optional[str] = None
+    desired_value: Union[bool, str, None] = None
 
 
 class ModelQuestion(Wire):

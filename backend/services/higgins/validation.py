@@ -56,7 +56,8 @@ def validate(data: dict, *, revision: int, evidence_ids: set[str], source_ids: s
     if errors:
         return None, errors
     actions = [ActionProposal(id=str(uuid.uuid4()), kind=a.kind, label=a.label[:120], instruction=a.instruction, capability_id=a.capability_id,
-                              execution_descriptor_id=None, requires_user_gesture=a.kind != "instruction", source_ids=a.source_ids) for a in model.actions]
+                              execution_descriptor_id=None, requires_user_gesture=a.kind != "instruction", source_ids=a.source_ids,
+                              desired_field=a.desired_field, desired_value=a.desired_value) for a in model.actions]
     question = None
     if model.question:
         question = Question(id=(pending_question or {}).get("id", str(uuid.uuid4())), text=model.question.text, reason_needed=model.question.reason_needed,

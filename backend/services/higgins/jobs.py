@@ -165,8 +165,10 @@ async def recover() -> None:
             continue
         await _fail(job["owner_id"], case, job, Failure(code="budget_exhausted", message="The work slice ended before Higgins finished. Retry to continue from the last completed step.", retryable=True), partial=True)
     # Device submissions interrupted after the claim (crash before storage or before resume): finish them idempotently.
+    # "storing"/"resuming" are the fenced in-flight sub-states `_claim_submission_stage` uses for renewable ownership;
+    # a submission stuck there past its staleness window is taken over by the same call, never left stranded.
     from routers.investigations import _finish_device_submission  # local import: router depends on this module
-    async for pending in db.investigation_device_requests.find({"submission.state": {"$in": ["claimed", "stored"]}}, {"_id": 0}):
+    async for pending in db.investigation_device_requests.find({"submission.state": {"$in": ["claimed", "storing", "stored", "resuming"]}}, {"_id": 0}):
         case = await db.investigation_cases.find_one({"owner_id": pending["owner_id"], "case_id": pending["case_id"], "deleted": False}, {"_id": 0})
         if case:
             try:

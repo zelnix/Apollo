@@ -267,11 +267,13 @@ async def ingest_file(owner: str, case: dict, meta_in: dict, data: bytes) -> Evi
             text = redact_investigation_secrets(
                 f"VISIBLE TEXT (verbatim, secrets replaced by [REDACTED]):\n{admission['redactedText']}\n\nVISUAL DESCRIPTION:\n{admission['visualDescription']}\n\n"
                 f"REDACTED ITEMS: {', '.join(admission['secretKinds']) or 'unspecified'}.")
+            truncated = bool(admission.get("transcriptionTruncated"))
+            transcription_gap_reason = ("the transcription exceeded the 60,000-character processing budget and was truncated; continuation is required to examine the remainder" if truncated
+                                        else None if admission["transcriptionComplete"] else "the preflight reported its transcription as incomplete")
             derived = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=f"{item.client_item_id}.redacted", origin="apollo_inference", kind="text",
                                    parent_id=item.id, collected_at=now_utc(), expires_at=expires, media_type="text/plain", byte_length=len(text.encode("utf-8")),
                                    coverage=Coverage(status="not_started", unit="characters", total=len(text), examined=0,
-                                                     material_gap=admission["transcriptionComplete"] is False,
-                                                     reason=None if admission["transcriptionComplete"] else "the preflight reported its transcription as incomplete"),
+                                                     material_gap=truncated or not admission["transcriptionComplete"], reason=transcription_gap_reason),
                                    transformations=[Transformation(kind="secret_redaction", description="Targeted redaction by the Gemini preflight: only secret values were replaced; other visible text is verbatim.")],
                                    label="redacted transcription of the withheld screenshot")
             await repo.insert_evidence(owner, derived, {"derivedFrom": item.id})
@@ -307,13 +309,15 @@ async def _image_secret_preflight(data: bytes, media_type: str) -> dict:
     if not isinstance(contains, bool):  # a missing/ambiguous verdict is NOT "no secret"; it is an unavailable check
         return {"status": "unavailable:invalid_response", "containsSecret": None, "secretKinds": [], "redactedText": "", "visualDescription": "", "transcriptionComplete": None}
     kinds = [str(k)[:40] for k in (result.get("secretKinds") or []) if isinstance(k, (str, int))][:8]
-    redacted_text = str(result.get("redactedText") or "")[:60_000]
+    redacted_text_raw = str(result.get("redactedText") or "")
+    truncated = len(redacted_text_raw) > 60_000  # our own processing budget — independent of the model's own completeness claim below
+    redacted_text = redacted_text_raw[:60_000]
     visual = str(result.get("visualDescription") or "")[:8_000]
     complete = result.get("transcriptionComplete") if isinstance(result.get("transcriptionComplete"), bool) else None
     if contains and not redacted_text.strip() and not visual.strip():  # detected a secret but produced no usable redacted content: cannot admit anything
-        return {"status": "unavailable:no_redacted_content", "containsSecret": True, "secretKinds": kinds, "redactedText": "", "visualDescription": "", "transcriptionComplete": None}
+        return {"status": "unavailable:no_redacted_content", "containsSecret": True, "secretKinds": kinds, "redactedText": "", "visualDescription": "", "transcriptionComplete": None, "transcriptionTruncated": False}
     return {"status": "secret_detected" if contains else "clear", "containsSecret": contains, "secretKinds": kinds, "redactedText": redacted_text,
-            "visualDescription": visual, "transcriptionComplete": complete}
+            "visualDescription": visual, "transcriptionComplete": complete, "transcriptionTruncated": truncated}
 
 
 async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detected: str) -> None:
@@ -341,18 +345,21 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
             # Scanned/image-only pages: rasterise each (within budget) as a derived image so Gemini can read it visually. A rendered page
             # is addressable evidence with its own coverage; only pages beyond the render budget remain explicit omitted ranges.
             rendered_ids, rendered_pages = [], []
-            if detected == "application/pdf" and unreadable:
-                for number, png in _render_pdf_pages(data, unreadable[:MAX_SCANNED_PAGES]):
+            to_render = unreadable[:MAX_SCANNED_PAGES] if detected == "application/pdf" else []
+            if to_render:
+                for number, png in _render_pdf_pages(data, to_render):
                     page_item = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=f"{item.client_item_id}.page{number}", origin=item.origin, kind="image",
-                                             parent_id=item.id, collected_at=now_utc(), expires_at=expires, media_type="image/png", byte_length=len(png),
+                                             parent_id=item.id, collected_at=now_utc(), expires_at=item.expires_at, media_type="image/png", byte_length=len(png),
                                              coverage=Coverage(status="not_started", unit="items", total=1, examined=0, reason="rendered scanned page available to Gemini vision; not yet examined"),
-                                             transformations=[Transformation(kind="decode", description=f"Page {number} has no text layer; rasterised at {SCAN_DPI} DPI for visual reading. Layout and images preserved; no OCR text layer was invented.", lossy=True)],
+                                             transformations=[Transformation(kind="decode", description=f"Page {number} has no text layer; rasterised at {SCAN_DPI} DPI for visual reading. Layout and images preserved; no OCR text layer was invented.")],
                                              label=f"scanned page {number} (rendered image)")
                     await repo.insert_evidence(owner, page_item, {"page": number, "derivedFrom": item.id})
-                    await repo.store_bytes(owner, case["case_id"], page_item.id, png, expires)
+                    await repo.store_bytes(owner, case["case_id"], page_item.id, png, item.expires_at)
                     rendered_ids.append(page_item.id)
                     rendered_pages.append(number)
-            omitted = [{"start": p - 1, "end": p, "reason": "no extractable text layer (scanned or image-only page)"} for p in unreadable if p not in rendered_pages]
+            omitted = [{"start": p - 1, "end": p, "reason": "no extractable text layer (scanned or image-only page); rendering it also failed" if p in to_render
+                       else f"scanned page beyond this turn's {MAX_SCANNED_PAGES}-page visual-rendering budget; not yet examined — continue to process the remainder"}
+                      for p in unreadable if p not in rendered_pages]
             if total_pages > len(pages):
                 omitted.append({"start": len(pages), "end": total_pages, "reason": f"beyond the {MAX_PAGES}-page processing budget; not extracted"})
             coverage_update = {"status": "partial" if omitted else "not_started", "unit": "pages", "total": total_pages, "examined": 0, "omittedRanges": omitted,

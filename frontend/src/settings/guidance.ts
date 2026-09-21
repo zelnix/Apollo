@@ -63,9 +63,17 @@ export function descriptorById(id: string | null | undefined): SettingsDescripto
   return id ? SETTINGS_DESCRIPTORS.find((d) => d.id === id) ?? null : null;
 }
 
-/** Best supported descriptor for a plan target on this host; null when only instructions can be offered. */
+/** Best supported descriptor for a plan target on this host; null when only instructions can be offered. The MOST SPECIFIC
+ *  matching keyword wins (longest match), never simple declaration order — so a broad word like "notification" can't shadow
+ *  a more specific phrase like "notification access" that also appears in the same target text. */
 export function descriptorForTarget(target: string, platform: SettingsPlatform = currentSettingsPlatform()): SettingsDescriptor | null {
   const t = target.toLowerCase();
-  const candidates = supportedSettingsDescriptors(platform);
-  return candidates.find((d) => d.id !== "open_settings.app" && d.keywords.some((k) => t.includes(k))) ?? candidates.find((d) => d.id === "open_settings.app") ?? null;
+  const candidates = supportedSettingsDescriptors(platform).filter((d) => d.id !== "open_settings.app");
+  let best: { length: number; descriptor: SettingsDescriptor } | null = null;
+  for (const d of candidates) {
+    const length = d.keywords.filter((k) => t.includes(k)).reduce((max, k) => Math.max(max, k.length), 0);
+    if (length && (!best || length > best.length)) best = { length, descriptor: d };
+  }
+  if (best) return best.descriptor;
+  return supportedSettingsDescriptors(platform).find((d) => d.id === "open_settings.app") ?? null;
 }

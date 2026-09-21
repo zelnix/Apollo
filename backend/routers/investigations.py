@@ -12,6 +12,7 @@ from typing import Optional
 from fastapi import APIRouter, File, Form, Header, Request, Response, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import TypeAdapter, ValidationError
+from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from core.config import HIBP_API_KEY, IPQS_API_KEY, SAFE_BROWSING_API_KEY
@@ -235,27 +236,51 @@ async def complete_upload(case_id: str, upload_id: str, body: ExpectedRevision, 
         raise http(409, "conflict", "Received bytes do not match the declared length. Uploaded chunks are kept for correction.")
     meta = {k: v for k, v in upload["metadata"].items() if k != "declaredBytes"}
     content_digest = hashlib.sha256(data).hexdigest()
-    fin = upload.get("finalisation")  # exclusive, recoverable state: {"state": "ingesting"|"committed", "digest", "started_at", "evidence_id"}
+    fin = upload.get("finalisation")  # exclusive, renewable-ownership state: {"state": "ingesting"|"committed", "digest", "started_at", "fence", "evidence_id"}
     if fin and fin["digest"] != content_digest:
         raise http(409, "conflict", "The chunks differ from the ones that were being finalised; a changed file cannot complete the same upload.")
     if not fin:
+        fence = str(uuid.uuid4())
         claimed = await db.investigation_uploads.find_one_and_update({"owner_id": owner, "upload_id": upload_id, "finalisation": None},
-                                                                     {"$set": {"finalisation": {"state": "ingesting", "digest": content_digest, "started_at": now_utc(), "evidence_id": None}}})
+                                                                     {"$set": {"finalisation": {"state": "ingesting", "digest": content_digest, "started_at": now_utc(), "fence": fence, "evidence_id": None}}})
         if claimed is None:  # a concurrent finaliser holds the claim; it (or a later retry) completes ingestion
             raise http(409, "conflict", "This upload is being finalised by another request; retry to obtain the result.")
     elif fin["state"] == "ingesting" and (now_utc() - repo.utc(fin["started_at"])).total_seconds() < 120:
         raise http(409, "conflict", "This upload is being finalised; retry shortly.")  # exclusivity window; after it the attempt is presumed dead and redone
     else:
-        await db.investigation_uploads.update_one({"owner_id": owner, "upload_id": upload_id}, {"$set": {"finalisation.state": "ingesting", "finalisation.started_at": now_utc()}})
+        # Renewable-ownership takeover of a stale claim: the CAS matches the EXACT prior fence/started_at, so only one
+        # concurrent retry wins a fresh fence. The superseded attempt's own commit below is always gated on ITS OWN
+        # (now stale) fence and can never land after this — it discards its work instead of racing to finish.
+        fence = str(uuid.uuid4())
+        taken = await db.investigation_uploads.find_one_and_update(
+            {"owner_id": owner, "upload_id": upload_id, "finalisation.state": "ingesting", "finalisation.fence": fin.get("fence"), "finalisation.started_at": fin["started_at"]},
+            {"$set": {"finalisation.fence": fence, "finalisation.started_at": now_utc()}})
+        if taken is None:
+            current = await db.investigation_uploads.find_one({"owner_id": owner, "upload_id": upload_id}, {"_id": 0})
+            if current and current.get("evidence_id"):
+                row = await repo.get_evidence(owner, case_id, current["evidence_id"])
+                return JSONResponse({"evidence": repo.evidence_view(row).wire(), "caseRevision": case["revision"], "replayed": True}, status_code=201, headers=NO_STORE)
+            raise http(409, "conflict", "This upload is being finalised by another attempt; retry shortly.")
     # Resume/redo incomplete ingestion exclusively: a metadata row from an interrupted attempt is NOT completed ingestion. Its partial
     # children/bytes are removed and the original is ingested again from the retained chunks, which are deleted only after commit.
     partial = await db.investigation_evidence.find_one({"owner_id": owner, "case_id": case_id, "client_item_id": meta["clientItemId"]}, {"_id": 0, "evidence_id": 1})
     if partial:
         await repo.discard_incomplete_ingestion(owner, case_id, partial["evidence_id"])
     item = await ev.ingest_file(owner, case, meta, data)
-    await db.investigation_uploads.update_one({"owner_id": owner, "upload_id": upload_id}, {"$set": {"finalisation.state": "committed", "finalisation.evidence_id": item.id}})
+    # Commit is itself fenced: if this attempt was superseded while `ingest_file` was running, the write below matches
+    # nothing and this attempt's own evidence is discarded rather than published as if it were authoritative.
+    committed = await db.investigation_uploads.find_one_and_update(
+        {"owner_id": owner, "upload_id": upload_id, "finalisation.fence": fence},
+        {"$set": {"finalisation.state": "committed", "finalisation.evidence_id": item.id, "evidence_id": item.id}},
+        return_document=ReturnDocument.AFTER)
+    if committed is None:
+        await repo.discard_incomplete_ingestion(owner, case_id, item.id)
+        current = await db.investigation_uploads.find_one({"owner_id": owner, "upload_id": upload_id}, {"_id": 0})
+        if current and current.get("evidence_id"):
+            row = await repo.get_evidence(owner, case_id, current["evidence_id"])
+            return JSONResponse({"evidence": repo.evidence_view(row).wire(), "caseRevision": case["revision"], "replayed": True}, status_code=201, headers=NO_STORE)
+        raise http(409, "conflict", "This upload is being finalised by another attempt; retry to obtain the result.")
     # Upload state is released only after evidence is committed.
-    await db.investigation_uploads.update_one({"owner_id": owner, "upload_id": upload_id}, {"$set": {"evidence_id": item.id}})
     await db.investigation_upload_chunks.delete_many({"owner_id": owner, "upload_id": upload_id})
     updated = await repo.cas(owner, case_id, {"revision": case["revision"]}, {"$set": {}})
     return JSONResponse({"evidence": item.wire(), "caseRevision": (updated or case)["revision"]}, status_code=201, headers=NO_STORE)
@@ -424,7 +449,7 @@ async def device_results(case_id: str, body: DeviceResult, request: Request):
     # recoverable: an identical retry or the sweeper finishes ingestion and resumes the job; a changed retry gets 409.
     claimed = await db.investigation_device_requests.find_one_and_update(
         {"owner_id": owner, "case_id": case_id, "request_id": body.request_id, "submission": None},
-        {"$set": {"submission": {"state": "claimed", "digest": digest, "result_ciphertext": repo.enc_json(body.wire()), "evidence_id": None, "claimed_at": now_utc()}}})
+        {"$set": {"submission": {"state": "claimed", "digest": digest, "result_ciphertext": repo.enc_json(body.wire()), "evidence_id": None, "claimed_at": now_utc(), "fence": str(uuid.uuid4())}}})
     if claimed is None:
         current = await db.investigation_device_requests.find_one({"owner_id": owner, "case_id": case_id, "request_id": body.request_id}, {"_id": 0})
         if not current or not current.get("submission") or current["submission"]["digest"] != digest:
@@ -436,19 +461,62 @@ async def device_results(case_id: str, body: DeviceResult, request: Request):
     return JSONResponse({"accepted": True, "evidenceId": item_id, "jobId": pending["job_id"]}, status_code=202, headers=NO_STORE)
 
 
+DEVICE_SUBMISSION_STALE_SECONDS = 120
+
+
+async def _claim_submission_stage(owner: str, case_id: str, request_id: str, from_state: str, busy_state: str) -> Optional[str]:
+    """Fenced exclusive claim for one in-flight stage of device-submission recovery (renewable ownership): wins
+    immediately when `submission.state == from_state` (normal progression, or a fresh sweeper/retry pass on an
+    untouched claim), or by taking over a `busy_state` claim stuck past `DEVICE_SUBMISSION_STALE_SECONDS` — matched
+    by CAS on the EXACT prior fence/timestamp, so the timed-out attempt's own completion write below (always gated
+    on ITS OWN fence) can never land after this. Returns a fresh fence on success, else None (another live attempt
+    currently owns this stage; the caller backs off instead of racing it)."""
+    fence, now = uuid.uuid4().hex, now_utc()
+    won = await db.investigation_device_requests.find_one_and_update(
+        {"owner_id": owner, "case_id": case_id, "request_id": request_id, "submission.state": from_state},
+        {"$set": {"submission.state": busy_state, "submission.fence": fence, "submission.stage_started_at": now}})
+    if won:
+        return fence
+    current = await db.investigation_device_requests.find_one({"owner_id": owner, "case_id": case_id, "request_id": request_id}, {"_id": 0, "submission": 1})
+    sub = (current or {}).get("submission") or {}
+    if sub.get("state") == busy_state and sub.get("stage_started_at") and (now - repo.utc(sub["stage_started_at"])).total_seconds() >= DEVICE_SUBMISSION_STALE_SECONDS:
+        taken = await db.investigation_device_requests.find_one_and_update(
+            {"owner_id": owner, "case_id": case_id, "request_id": request_id, "submission.state": busy_state,
+             "submission.fence": sub.get("fence"), "submission.stage_started_at": sub["stage_started_at"]},
+            {"$set": {"submission.fence": fence, "submission.stage_started_at": now}})
+        if taken:
+            return fence
+    return None
+
+
 async def _finish_device_submission(owner: str, case: dict, pending: dict) -> Optional[str]:
-    """Idempotently advances a claimed device submission: claimed → stored (evidence durable) → resumed (job queued + launched).
-    Safe to call from the request path, an identical retry, or the recovery sweeper."""
-    case_id = pending["case_id"]
+    """Idempotently advances a claimed device submission: claimed → stored (evidence durable) → resumed (job queued
+    + launched), each transition gated by a renewable, fenced claim (`_claim_submission_stage`) so the request path,
+    an identical retry, and the recovery sweeper can run concurrently without a superseded attempt's write landing
+    after a takeover, and without two live attempts both ingesting or both resuming the same job."""
+    case_id, request_id = pending["case_id"], pending["request_id"]
     sub = pending["submission"]
     result = repo.dec_json(sub["result_ciphertext"])
     if sub["state"] == "claimed":
-        existing = await db.investigation_evidence.find_one({"owner_id": owner, "case_id": case_id, "client_item_id": f"observation-{pending['request_id']}"}, {"_id": 0, "evidence_id": 1})
-        item_id = existing["evidence_id"] if existing else (await ev.ingest_observation(owner, case, f"observation-{pending['request_id']}", result)).id
-        await db.investigation_device_requests.update_one({"owner_id": owner, "case_id": case_id, "request_id": pending["request_id"]},
-                                                           {"$set": {"submission.state": "stored", "submission.evidence_id": item_id, "evidence_id": item_id}})
-        sub = {**sub, "state": "stored", "evidence_id": item_id}
+        fence = await _claim_submission_stage(owner, case_id, request_id, "claimed", "storing")
+        if not fence:
+            refreshed = (await db.investigation_device_requests.find_one({"owner_id": owner, "case_id": case_id, "request_id": request_id}, {"_id": 0, "submission": 1}) or {}).get("submission") or {}
+            return refreshed.get("evidence_id") if refreshed.get("state") in ("stored", "resumed") else None
+        existing = await db.investigation_evidence.find_one({"owner_id": owner, "case_id": case_id, "client_item_id": f"observation-{request_id}"}, {"_id": 0, "evidence_id": 1})
+        item_id = existing["evidence_id"] if existing else (await ev.ingest_observation(owner, case, f"observation-{request_id}", result)).id
+        committed = await db.investigation_device_requests.find_one_and_update(
+            {"owner_id": owner, "case_id": case_id, "request_id": request_id, "submission.fence": fence},
+            {"$set": {"submission.state": "stored", "submission.evidence_id": item_id, "evidence_id": item_id}})
+        if not committed:  # fenced out mid-ingestion: our write never lands; defer entirely to the current owner
+            refreshed = (await db.investigation_device_requests.find_one({"owner_id": owner, "case_id": case_id, "request_id": request_id}, {"_id": 0, "submission": 1}) or {}).get("submission") or {}
+            sub = refreshed or sub
+        else:
+            sub = {**sub, "state": "stored", "evidence_id": item_id}
     if sub["state"] == "stored":
+        fence = await _claim_submission_stage(owner, case_id, request_id, "stored", "resuming")
+        if not fence:
+            refreshed = (await db.investigation_device_requests.find_one({"owner_id": owner, "case_id": case_id, "request_id": request_id}, {"_id": 0, "submission": 1}) or {}).get("submission") or {}
+            return refreshed.get("evidence_id", sub.get("evidence_id"))
         job = await repo.get_job(owner, case_id, pending["job_id"])
         if job.get("status") in ("waiting_device", "queued", "investigating", "retry_wait"):
             checkpoint = repo.dec_json(job["checkpoint_ciphertext"]) if job.get("checkpoint_ciphertext") else {"contents": [], "rounds": 0}
@@ -456,10 +524,14 @@ async def _finish_device_submission(owner: str, case: dict, pending: dict) -> Op
                 checkpoint.setdefault("deviceResults", []).append({**result, "evidenceId": sub["evidence_id"]})
             await db.investigation_jobs.update_one({"owner_id": owner, "job_id": job["job_id"]}, {"$set": {"checkpoint_ciphertext": repo.enc_json(checkpoint), "status": "queued", "lease_until": None}})
             await db.investigation_cases.update_one({"owner_id": owner, "case_id": case_id, "status": {"$in": ["waiting_device", "queued"]}},
-                                                    {"$set": {"status": "queued"}, "$pull": {"pending_device_request_ids": pending["request_id"]}, "$inc": {"revision": 1}})
+                                                    {"$set": {"status": "queued"}, "$pull": {"pending_device_request_ids": request_id}, "$inc": {"revision": 1}})
             jobs.launch(owner, case_id, job["job_id"])
-        await db.investigation_device_requests.update_one({"owner_id": owner, "case_id": case_id, "request_id": pending["request_id"]},
-                                                           {"$set": {"submission.state": "resumed", "fulfilled": True, "result_digest": sub["digest"]}})
+        committed = await db.investigation_device_requests.find_one_and_update(
+            {"owner_id": owner, "case_id": case_id, "request_id": request_id, "submission.fence": fence},
+            {"$set": {"submission.state": "resumed", "fulfilled": True, "result_digest": sub["digest"]}})
+        if not committed:  # fenced out: another attempt owns the outcome; do not claim credit for the resume ourselves
+            refreshed = (await db.investigation_device_requests.find_one({"owner_id": owner, "case_id": case_id, "request_id": request_id}, {"_id": 0, "submission": 1}) or {}).get("submission") or {}
+            sub = refreshed or sub
     return sub.get("evidence_id")
 
 
@@ -481,10 +553,19 @@ SETTINGS_DESCRIPTOR_KEYWORDS: dict[str, tuple[str, ...]] = {
 
 
 def _settings_descriptor_for(target: str, advertised: list[str]) -> Optional[str]:
+    """Picks the MOST SPECIFIC advertised destination for `target` — the longest matching keyword phrase wins,
+    never simple declaration order, so a broad word like "notification" can't shadow a more specific phrase like
+    "notification access" that also appears in the same target text."""
     t = target.lower()
+    best: Optional[tuple[int, str]] = None
     for descriptor, keywords in SETTINGS_DESCRIPTOR_KEYWORDS.items():
-        if descriptor in advertised and any(k in t for k in keywords):
-            return descriptor
+        if descriptor not in advertised:
+            continue
+        match_len = max((len(k) for k in keywords if k in t), default=0)
+        if match_len and (best is None or match_len > best[0]):
+            best = (match_len, descriptor)
+    if best:
+        return best[1]
     return "open_settings.app" if "open_settings.app" in advertised else None
 
 
