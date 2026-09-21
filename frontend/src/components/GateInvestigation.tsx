@@ -9,6 +9,7 @@ import { View } from "react-native";
 import { InvestigationView } from "@/src/components/InvestigationView";
 import { Button } from "@/src/components/ui";
 import { openHigginsHandoff, type HigginsIssueContext } from "@/src/domain/higginsHandoff";
+import { rememberCaseForEvent } from "@/src/investigation/caseIndex";
 import { useInvestigation } from "@/src/investigation/caseStore";
 import { createCaseInput } from "@/src/investigation/fromContext";
 import { spacing } from "@/src/theme";
@@ -31,7 +32,8 @@ export function GateInvestigation({ submission, context, question, label, testID
     if (started.current === submissionId) return;
     started.current = submissionId;
     const { input, files } = createCaseInput(context, question); // context snapshot taken once per submission
-    void (state.caseData ? remove().then(() => start(input, files)) : start(input, files));
+    const eventId = (submission as { event?: { event_id?: string } | null }).event?.event_id ?? null;
+    void (state.caseData ? remove().then(() => start(input, files)) : start(input, files)).then((c) => { if (c && eventId) void rememberCaseForEvent(eventId, c.id); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submissionId]);
   const busy = state.phase === "creating" || state.phase === "working" || state.phase === "reconnecting" || state.phase === "waiting_device";

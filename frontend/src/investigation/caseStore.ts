@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "@/src/api/client";
 import * as api from "./client";
 import { currentDeviceProfile, observe } from "./deviceBroker";
+import { forgetCase } from "./caseIndex";
 import { storage } from "@/src/utils/storage";
 import { stopHiggins } from "@/src/voice/higgins";
 import type { CreateCase, Failure, HigginsResponse, InvestigationCase, InvestigationEvent, Job, Question, SourceReference, TurnCommit } from "./types";
@@ -28,7 +29,7 @@ async function pendingDeletions(): Promise<string[]> {
 async function rememberDeletion(id: string) { const ids = await pendingDeletions(); if (!ids.includes(id)) await storage.setItem(UNDELETED_KEY, JSON.stringify([...ids, id])).catch(() => undefined); }
 async function forgetDeletion(id: string) { const ids = (await pendingDeletions()).filter((x) => x !== id); await storage.setItem(UNDELETED_KEY, JSON.stringify(ids)).catch(() => undefined); }
 /** A case created for a screen the person already left: delete it now, or remember to. */
-async function abandon(id: string) { try { await api.deleteCase(id); } catch { await rememberDeletion(id); } }
+async function abandon(id: string) { try { await api.deleteCase(id); } catch { await rememberDeletion(id); } await forgetCase(id); }
 
 export function useInvestigation() {
   const [state, setState] = useState<CaseState>(EMPTY);
@@ -195,7 +196,7 @@ export function useInvestigation() {
     const caseData = state.caseData; stream.current?.abort(); pending.current = null;
     if (expiryTimer.current) clearTimeout(expiryTimer.current);
     generation.current++; caseRef.current = null; stopHiggins(); setState((prev) => ({ ...EMPTY, undeleted: prev.undeleted }));
-    if (caseData) { try { await api.deleteCase(caseData.id); } catch { await rememberDeletion(caseData.id); update({ error: "Local view cleared; server deletion could not be confirmed.", undeleted: caseData.id }); } }
+    if (caseData) { await forgetCase(caseData.id); try { await api.deleteCase(caseData.id); } catch { await rememberDeletion(caseData.id); update({ error: "Local view cleared; server deletion could not be confirmed.", undeleted: caseData.id }); } }
   }, [state.caseData]);
 
   const retryDelete = useCallback(async () => {

@@ -9,6 +9,7 @@ import { View } from "react-native";
 
 import type { PatrolEvent } from "@/src/domain/types";
 import { contextFromEvent, gateForCategory, openHigginsHandoff, type HigginsOriginalEvidence } from "@/src/domain/higginsHandoff";
+import { caseForEvent } from "@/src/investigation/caseIndex";
 import { useApollo } from "@/src/store/ApolloContext";
 import { spacing } from "@/src/theme";
 import { Body, Button } from "./ui";
@@ -19,7 +20,9 @@ export function EventActions({ event, originalEvidence, hideAsk = false }: { eve
   const [busy, setBusy] = useState<string | null>(null);
   const active = event.status === "active" || (event.status === "blocked" && !event.resolved_at);
   const wrap = (key: string, fn: () => Promise<unknown>) => async () => { setBusy(key); try { await fn(); } finally { setBusy(null); } };
-  const askHiggins = () => openHigginsHandoff(router, { ...contextFromEvent(event, gateForCategory(event.category)), original_evidence: originalEvidence }, "Explain this issue and what I should do next.");
+  // Continue the case the Gate check already opened for this event when one exists; otherwise open a new case from the event.
+  const askHiggins = () => void caseForEvent(event.event_id).then((caseId) =>
+    openHigginsHandoff(router, { ...contextFromEvent(event, gateForCategory(event.category)), original_evidence: originalEvidence, ...(caseId ? { case_id: caseId } : {}) }, caseId ? "" : "Explain this issue and what I should do next."));
 
   if (!active) {
     return (
