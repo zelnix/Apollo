@@ -458,3 +458,24 @@ Current position: waiting on step 1 input (Step 7 stderr for build aa24dd73-eab7
 - EAS build eb022c0b: PREBUILD ✅ (relocation confirmed), RUN_GRADLEW ❌ "project ':apollo-security' does not specify compileSdk" — Apollo-owned modules/apollo-security legacy ExpoModulesCorePlugin path. Fixed by migrating to expo-module-gradle-plugin (same as certified module). Certified source untouched (SHA 91/91). Next: fresh Publish + Android build; watch for :guarddog-core/:guarddog-vpn compile.
 - Stage 1C.1 iteration 3 (2026-06): EAS build `737fa306` proved the certified GuardDog engine (`guarddog-core`, `guarddog-vpn`, `guarddog-expo-module`) and `apollo-security` all compile natively inside Apollo. Remaining failure `:app:processReleaseResources` (AAPT: `<package android:name>` must be a valid Java package name) traced to nine `SYSTEM_PREFIXES` strings (`com.google.` …) wrongly listed in `modules/apollo-security/android/src/main/AndroidManifest.xml` `<queries>`; removed them, added `INSTALLERS` to `AppDeviceCatalog.VISIBLE_PACKAGES` so the JUnit manifest-contract test still matches (37 entries). GuardDog SHA-256 manifest verified intact. Non-blocking: `google-services.json` has a stale `life.fb50.app` client beside `app.hwg.apollo`. Awaiting next Publish → Build; if `bundleRelease` succeeds Stage 1C.1 is closed and Stage 1D (runtime wiring) may begin.
 - Stage 1C.1 device run #1 (historical): Android app closed after splash. An invalid native SecureCore configuration was reproduced with the pure validator, but **was not verified as the cause of the installed APK crash**; Support later identified the exact `RNSVGCircle` duplicate-registration exception (Stage 1C §13). User-approved policy/SafeStart work remains separate: production still requires native Apollo Security Adapter; native SecureCore is required only while `NATIVE_SECURECORE_DEPENDENT_FEATURES` is non-empty; `.env.production` selects SecureCore mock / security adapter native. Settings labels SecureCore "NOT ACTIVE (MOCK)". Selectors record configuration errors via `securityBoot.ts`; `_layout.tsx` renders SafeStart without app providers/navigation when blocked. This is a configuration-error boundary, **not protection against all OS/process crashes**. Earlier tests: security 9/9, boot 6/6 and web SafeStart/onboarding checks. App identity changed to `app.apollo.hwg` (including iOS extension/app-group identifiers); the stale Firebase file noted at that time was subsequently replaced with the matching `apollo-243ad` config. These earlier changes did not deduplicate SVG. Stage 1D still requires a successful physical-device launch of the fresh Support-fixed APK.
+
+## 2026-09-21 product status (review `9cfb377` supersession)
+- **Problem statement:** Apollo must provide one durable, evidence-backed Higgins investigation across every Gate,
+  preserve original evidence until authoritative publication, recover safely from process/lease races, and ship
+  honest Android/iOS/desktop candidates while using only the owner's `GEMINI_API_KEY`.
+- **Architecture:** Expo mobile client and Tauri desktop shell; FastAPI/MongoDB Higgins coordinator with encrypted
+  temporary evidence, durable jobs/events/device requests, fenced leases, conditional checkpoints and 15-minute
+  scope expiry. EAS creates native Android/iOS candidates; Tauri creates desktop targets.
+- **Implemented now (P0):** durable device request identity and consume-before-ack; one-root atomic evidence manifest
+  publication; File Gate navigation-safe cache ownership; stable Device case; one shared Text/Email investigator;
+  complete opaque multi-item share envelope; Patrol event→case continuation.
+- **Delivery:** Android EAS build `18706c6e-cf91-418e-9536-94b1cf592f93` (fingerprint
+  `31a0394db69ca674b79ef91a3d0cf3c2b0e2e083`) finished successfully against the healthy compatible backend; APK
+  SHA-256 `50e51aff03ee69ed859386b734365a205fe9040fc240c5af896e7a3342503e91`. Linux Tauri
+  release binary SHA-256 is `f3d79697729e558c3351b4c6b44b4c2a739966e2a7ba0b1074bd216e5e794a2a`.
+- **P1 backlog:** Packages 3–5 limits/background/guided-action lifecycle; Android physical acceptance; signed iOS
+  build after Apple credentials; target-host Windows/macOS packages.
+- **P2 backlog:** Package 7 production GuardDog/configuration closure and credential-gated integrations.
+- **Verification policy:** no testing agent, Playwright, scenarios or live Gemini probes. Current bounded checks:
+  backend 42 focused Higgins tests + 2 Call Guard tests, frontend TypeScript/ESLint, Share suite 13/13, Rust
+  `cargo check`, Linux Tauri release compile, backend health HTTP 200.

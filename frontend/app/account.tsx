@@ -27,9 +27,10 @@ import { NetworkAccountSdk } from "@/src/security/networkAccountSdk";
 import { type RecoveryKind, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
-import { issueContext, openHigginsHandoff } from "@/src/domain/higginsHandoff";
+import { issueContext } from "@/src/domain/higginsHandoff";
 import { dispatchInvestigationAction } from "@/src/domain/investigationActions";
 import { useScreenshotAccess } from "@/src/hooks/useScreenshotAccess";
+import { getShareIntake } from "@/src/share/shareIntake";
 
 type Remote = { urls: { url: string; host: string; verdict: "clean" | "malicious" | "unknown"; official: boolean }[]; explanation: { summary: string; why: string[]; recommendation: string } | null; assessment: InvestigationResult };
 type Breach = { status: "not_configured" | "clear" | "found" | "unavailable"; breaches: { name: string; date: string; data: string[] }[]; password_exposed: boolean; detail: string; higgins: { headline: string; exact_response: string; next_action: string } };
@@ -61,11 +62,12 @@ export default function CheckAccount() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ text?: string; scent?: string }>();
+  const params = useLocalSearchParams<{ text?: string; scent?: string; sharedIntakeId?: string }>();
+  const shared = getShareIntake(params.sharedIntakeId);
   const { ready, setupDone, upsertEvent, resolveEvent, deviceId, adapterLabel, showToast, events } = useApollo();
   const [kind, setKind] = useState<AlertKind | null>(null);
   const [provider, setProvider] = useState<AccountProvider>("other");
-  const [text, setText] = useState(params.text ?? "");
+  const [text, setText] = useState(shared?.text || shared?.webUrl || params.text || "");
   const [sender, setSender] = useState("");
   const [initiated, setInitiated] = useState<boolean | null>(null);
   const [answered, setAnswered] = useState({ initiated: false, repeated: false, location: false });

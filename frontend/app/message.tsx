@@ -23,8 +23,9 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { useScreenshotAccess } from "@/src/hooks/useScreenshotAccess";
 import { redactUserSecrets } from "@/src/domain/privacy";
-import { issueContext, openHigginsHandoff } from "@/src/domain/higginsHandoff";
+import { issueContext } from "@/src/domain/higginsHandoff";
 import { dispatchInvestigationAction } from "@/src/domain/investigationActions";
+import { getShareIntake } from "@/src/share/shareIntake";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -51,15 +52,18 @@ export default function CheckMessage() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ text?: string; sender?: string; source?: string; imageUri?: string; openScreenshot?: string }>();
+  const params = useLocalSearchParams<{ text?: string; sender?: string; source?: string; imageUri?: string; openScreenshot?: string; sharedIntakeId?: string }>();
+  const shared = getShareIntake(params.sharedIntakeId);
+  const sharedText = shared?.text || shared?.webUrl || params.text || "";
+  const sharedImage = shared?.files?.find((file) => (file.mimeType ?? "").startsWith("image/"))?.path || params.imageUri || "";
   const { ready, setupDone, deviceId, checkMessage, resolveEvent, showToast } = useApollo();
   const [sender, setSender] = useState(params.sender ? String(params.sender) : "");
-  const [text, setText] = useState(params.text ? String(params.text) : "");
+  const [text, setText] = useState(String(sharedText));
   const [busy, setBusy] = useState<"idle" | "reading" | "checking">("idle");
   const [result, setResult] = useState<MessageOutcome | null>(null);
   const [verify, setVerify] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [screenshotUri, setScreenshotUri] = useState<string | null>(params.imageUri ? String(params.imageUri) : null);
+  const [screenshotUri, setScreenshotUri] = useState<string | null>(sharedImage ? String(sharedImage) : null);
   const autoRan = useRef(false);
   const autoImage = useRef(false);
   const autoPicker = useRef(false);
@@ -71,7 +75,7 @@ export default function CheckMessage() {
     setBusy("checking"); setError(null); setResult(null);
     try { setResult(await checkMessage(snd, safeText)); } catch (e) { setError(e instanceof Error ? e.message : "Could not check this message."); } finally { setBusy("idle"); }
   };
-  useEffect(() => { if (params.text && ready && setupDone && !autoRan.current) { autoRan.current = true; void run(String(params.text), params.sender ? String(params.sender) : ""); } }, [params.text, params.sender, ready, setupDone]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (sharedText && ready && setupDone && !autoRan.current) { autoRan.current = true; void run(String(sharedText), params.sender ? String(params.sender) : ""); } }, [sharedText, params.sender, ready, setupDone]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const readScreenshot = async (uri: string, name: string, type: string) => {
     if (!deviceId) throw new Error("Apollo is still preparing this device.");
@@ -99,13 +103,13 @@ export default function CheckMessage() {
   }, [params.openScreenshot, ready, setupDone, photoAccess]);
   // Screenshot shared from another app (Share → Apollo): read it as soon as the screen opens.
   useEffect(() => {
-    if (!params.imageUri || !deviceId || autoImage.current) return;
+    if (!sharedImage || !deviceId || autoImage.current) return;
     autoImage.current = true;
-    const uri = String(params.imageUri);
+    const uri = String(sharedImage);
     const ext = uri.split("?")[0].split(".").pop()?.toLowerCase();
     const type = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
     void readScreenshot(uri, `shared-message.${ext || "jpg"}`, type).catch((e) => { setError(e instanceof Error ? e.message : "Could not read that screenshot."); setBusy("idle"); });
-  }, [params.imageUri, deviceId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sharedImage, deviceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (ready && !setupDone) return <Redirect href="/" />;
   const a = result?.analysis;
@@ -185,7 +189,7 @@ export default function CheckMessage() {
               <Card style={{ gap: spacing.sm }}>
                 <Button testID="message-verify-sender" variant="secondary" label="Show me how to check the sender" onPress={() => setVerify(true)} />
                 {a.signals.loginRequest || a.signals.codeRequest || /password|sign[- ]?in|login|account/i.test(text) ? <Button testID="message-check-account" variant="secondary" label="It's about my account — open Account Gate" onPress={() => router.push({ pathname: "/account", params: { text, scent: result.event?.scent_id ?? result.event?.event_id ?? "" } })} /> : null}
-                <GateInvestigation submission={result} testID="message-tell-more" label="Ask Higgins about this message" autoStart={false} context={issueContext({ gate: "text", issue_summary: a.scenarioTitle, assessment_state: a.state, findings: a.signalLabels.map((summary) => ({ summary, provenance: "observed", status: "uncertain" })), uncertainty: ["The sender was not independently authenticated."], confirmed_protective_actions: [], user_reported_actions: [], original_evidence: [{ kind: "text", value: `From: ${sender}\n${text}`, label: screenshotUri ? "text extracted from the screenshot" : "submitted message" }, ...(screenshotUri ? [{ kind: "file" as const, uri: screenshotUri, name: "screenshot.jpg", mediaType: "image/jpeg" }] : []), ...(result.explanation ? [{ kind: "text" as const, value: `Apollo message check already performed (reuse; do not repeat the same lookups):\n${JSON.stringify(result.explanation).slice(0, 8000)}`, label: "apollo message check" }] : [])] })} question="Explain this message check in plain language and what I should do." />
+                <GateInvestigation submission={result} eventId={result.event?.event_id} testID="message-tell-more" label="Ask Higgins about this message" context={issueContext({ gate: "text", issue_summary: a.scenarioTitle, assessment_state: a.state, findings: a.signalLabels.map((summary) => ({ summary, provenance: "observed", status: "uncertain" })), uncertainty: ["The sender was not independently authenticated."], confirmed_protective_actions: [], user_reported_actions: [], event_id: result.event?.event_id, original_evidence: [{ kind: "text", value: `From: ${sender}\n${text}`, label: screenshotUri ? "text extracted from the screenshot" : "submitted message" }, ...(shared?.files?.map((file, index) => ({ kind: "file" as const, uri: file.path, name: file.fileName || `shared-attachment-${index + 1}`, mediaType: file.mimeType || "application/octet-stream", size: file.size ?? undefined })) ?? (screenshotUri ? [{ kind: "file" as const, uri: screenshotUri, name: "screenshot.jpg", mediaType: "image/jpeg" }] : []))] })} question="Explain this message check in plain language and what I should do." />
                 {result.event ? <RecoveryFlow event={result.event} kinds={["called", "clicked", "password", "code", "money", "info", "app"]} linkToCheck={a.signals.urls[0] ?? null} testID="message-recovery" /> : null}
                 {result.event ? <Button testID="message-mark-safe" variant="ghost" label="Mark as handled" onPress={() => { void resolveEvent(result.event!); showToast("Marked as handled. This does not verify the sender or suppress future alerts.", "neutral"); goBackOrHome(router); }} /> : null}
               </Card>

@@ -154,7 +154,9 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
                 ctx.research_calls = max(ctx.research_calls, ledger[key].get("researchCalls", ctx.research_calls))
             else:
                 await progress("research" if entry["name"] != "request_device_observation" else "observe", f"Running {entry['name'].replace('_', ' ')}.")
+                ctx.tool_call_key = key
                 output = await toolbox.execute(ctx, entry["name"], dict(entry["args"]))
+                ctx.tool_call_key = None
                 if isinstance(output, dict) and output.get("_pendingMark"):
                     pending_marks.append(tuple(output.pop("_pendingMark")))  # delivered ranges count as examined only after the next successful model request (S10)
                 ledger[key] = {"output": output, "researchCalls": ctx.research_calls, "at": now_utc().isoformat()}
@@ -166,6 +168,17 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
 
     tool = types.Tool(function_declarations=toolbox.DECLARATIONS)
     result = None
+    if not pending_batch:
+        # Reconstruct an interrupted observation wait from the durable request identity. This covers a crash after
+        # the tool inserted its request but before the checkpoint captured `requestId`; Gemini is never called again
+        # while an unresolved request from this job still exists.
+        outstanding = await repo.db.investigation_device_requests.find_one(
+            {"owner_id": owner, "case_id": case["case_id"], "job_id": job["job_id"], "fulfilled": False},
+            {"_id": 0, "request": 1},
+        )
+        if outstanding:
+            ctx.pending_request = outstanding["request"]
+            return Outcome("waiting_device", request=ctx.pending_request)
     if pending_batch:  # interrupted mid-round: finish the outstanding tool responses first (no Gemini call until the batch is answered)
         await answer_batch()
         if ctx.pending_request:

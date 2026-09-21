@@ -80,21 +80,30 @@ async def _case_budget(owner: str, case_id: str, adding: int) -> None:
 
 async def ingest_text(owner: str, case: dict, client_item_id: str, text: str, *, kind: str = "text", origin: str = "user_submission",
                       parent_id: Optional[str] = None, label: str = "", transformations: Optional[list[Transformation]] = None,
-                      coverage: Optional[Coverage] = None, meta: Optional[dict] = None, simulation=None, observed_at: Optional[datetime] = None) -> EvidenceItem:
+                      coverage: Optional[Coverage] = None, meta: Optional[dict] = None, simulation=None, observed_at: Optional[datetime] = None,
+                      publication_root_id: Optional[str] = None, ingestion_attempt_id: Optional[str] = None,
+                      publish: bool = True) -> EvidenceItem:
     clean, redactions = _redact(text)
     item = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=client_item_id, origin=origin, kind=kind, parent_id=parent_id,
                         collected_at=now_utc(), observed_at=observed_at, expires_at=repo.utc(case["expires_at"]), media_type="text/plain",
                         byte_length=len(clean.encode("utf-8")), simulation=simulation,
                         coverage=coverage or Coverage(status="not_started", unit="characters", total=len(clean), examined=0),
                         transformations=[*(transformations or []), *redactions], label=label or ("link" if kind == "url" else "text"))
-    await repo.insert_evidence(owner, item, {**(meta or {}), "urls": URL_RE.findall(clean)[:512] if kind == "text" else []})
-    await repo.store_bytes(owner, case["case_id"], item.id, clean.encode("utf-8"), item.expires_at)
+    root_id = publication_root_id or item.id
+    attempt_id = ingestion_attempt_id or root_id
+    await repo.insert_evidence(owner, item, {**(meta or {}), "urls": URL_RE.findall(clean)[:512] if kind == "text" else []},
+                               publication_root_id=root_id, ingestion_attempt_id=attempt_id)
+    await repo.store_bytes(owner, case["case_id"], item.id, clean.encode("utf-8"), item.expires_at, publish_root=False)
     if kind == "text" and ((origin == "user_submission" and not meta) or (meta or {}).get("registerClues")):
-        await register_clues(owner, case, item, clean)
+        await register_clues(owner, case, item, clean, publication_root_id=root_id, ingestion_attempt_id=attempt_id)
+    if publish and not await repo.publish_evidence_root(owner, case["case_id"], root_id, attempt_id):
+        await repo.discard_incomplete_ingestion(owner, case["case_id"], root_id)
+        raise http(409, "conflict", "Evidence publication was superseded before it committed. Retry the submission.")
     return item
 
 
-async def register_clues(owner: str, case: dict, parent: EvidenceItem, text: str) -> list[EvidenceItem]:
+async def register_clues(owner: str, case: dict, parent: EvidenceItem, text: str, *, publication_root_id: Optional[str] = None,
+                         ingestion_attempt_id: Optional[str] = None) -> list[EvidenceItem]:
     """Every link and callback number becomes an addressable child clue with its exact offset (R07).
     Full inventory first, then registration in document order (phones are never starved by many URLs); when the per-item
     budget is reached the omitted count and their offsets are recorded on the parent instead of vanishing silently (S10)."""
@@ -122,8 +131,10 @@ async def register_clues(owner: str, case: dict, parent: EvidenceItem, text: str
                             byte_length=len(value.encode("utf-8")), coverage=Coverage(status="not_started", unit="items", total=1, examined=0),
                             transformations=[Transformation(kind="chunk", description=f"{kind} clue found at characters {start}–{end} of the parent item", source_start=start, source_end=end)],
                             label=(("link clue: " + re.sub(r"^https?://([^/]+).*$", r"\1", value)) if kind == "url" else "phone clue")[:80])
-        await repo.insert_evidence(owner, clue, {"value": value, "parentOffset": [start, end]})
-        await repo.store_bytes(owner, case["case_id"], clue.id, value.encode("utf-8"), clue.expires_at)
+        await repo.insert_evidence(owner, clue, {"value": value, "parentOffset": [start, end]},
+                                   publication_root_id=publication_root_id or parent.id,
+                                   ingestion_attempt_id=ingestion_attempt_id or publication_root_id or parent.id)
+        await repo.store_bytes(owner, case["case_id"], clue.id, value.encode("utf-8"), clue.expires_at, publish_root=False)
         clues.append(clue)
     updates: dict = {}
     if clues:
@@ -244,6 +255,7 @@ async def ingest_file(owner: str, case: dict, meta_in: dict, data: bytes) -> Evi
     if kind == "text":
         kind = "document"  # a TXT original is a document container; only its redacted derivative is model input
     expires = repo.utc(case["expires_at"])
+    attempt_id = uuid.uuid4().hex
     item = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=meta_in["clientItemId"], origin="user_submission", kind=kind,
                         parent_id=meta_in.get("parentId"), collected_at=now_utc(), expires_at=expires, media_type=detected, byte_length=len(data),
                         coverage=Coverage(status="not_started", unit="bytes", total=len(data), examined=0), transformations=transformations,
@@ -262,7 +274,8 @@ async def ingest_file(owner: str, case: dict, meta_in: dict, data: bytes) -> Evi
                        if detected_secret else f"The image could not be checked for secrets before storage ({admission['status']}), so it was not kept. Submit it again; if it keeps failing, describe what it shows.")
         item = item.model_copy(update={"availability": "purged", "coverage": Coverage(status="unavailable", unit="bytes", total=len(data), examined=0, reason=reason),
                                        "transformations": [*transformations, Transformation(kind="secret_redaction", description=description)]})
-        await repo.insert_evidence(owner, item, {"filename": meta_in["filename"], "declaredMediaType": meta_in["mediaType"], "detectedMediaType": detected, "secretPreflight": admission})
+        await repo.insert_evidence(owner, item, {"filename": meta_in["filename"], "declaredMediaType": meta_in["mediaType"], "detectedMediaType": detected, "secretPreflight": admission},
+                                   publication_root_id=item.id, ingestion_attempt_id=attempt_id)
         if detected_secret:
             text = redact_investigation_secrets(
                 f"VISIBLE TEXT (verbatim, secrets replaced by [REDACTED]):\n{admission['redactedText']}\n\nVISUAL DESCRIPTION:\n{admission['visualDescription']}\n\n"
@@ -277,15 +290,22 @@ async def ingest_file(owner: str, case: dict, meta_in: dict, data: bytes) -> Evi
                                                      material_gap=incomplete, permanent_gap=incomplete, reason=transcription_gap_reason),
                                    transformations=[Transformation(kind="secret_redaction", description="Targeted redaction by the Gemini preflight: only secret values were replaced; other visible text is verbatim.")],
                                    label="redacted transcription of the withheld screenshot")
-            await repo.insert_evidence(owner, derived, {"derivedFrom": item.id})
-            await repo.store_bytes(owner, case["case_id"], derived.id, text.encode("utf-8"), expires)
+            await repo.insert_evidence(owner, derived, {"derivedFrom": item.id}, publication_root_id=item.id, ingestion_attempt_id=attempt_id)
+            await repo.store_bytes(owner, case["case_id"], derived.id, text.encode("utf-8"), expires, publish_root=False)
             await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"related_evidence_ids": [derived.id]}})
-            await register_clues(owner, case, derived, text)
+            await register_clues(owner, case, derived, text, publication_root_id=item.id, ingestion_attempt_id=attempt_id)
+        if not await repo.publish_evidence_root(owner, case["case_id"], item.id, attempt_id):
+            await repo.discard_incomplete_ingestion(owner, case["case_id"], item.id)
+            raise http(409, "conflict", "Evidence publication was superseded before it committed. Retry the upload.")
         return item
     await repo.insert_evidence(owner, item, {"filename": meta_in["filename"], "declaredMediaType": meta_in["mediaType"], "detectedMediaType": detected,
-                                             **({"secretPreflight": admission} if admission else {})})
-    await repo.store_bytes(owner, case["case_id"], item.id, data, expires)
-    await _derive(owner, case, item, data, detected)
+                                             **({"secretPreflight": admission} if admission else {})},
+                               publication_root_id=item.id, ingestion_attempt_id=attempt_id)
+    await repo.store_bytes(owner, case["case_id"], item.id, data, expires, publish_root=False)
+    await _derive(owner, case, item, data, detected, attempt_id)
+    if not await repo.publish_evidence_root(owner, case["case_id"], item.id, attempt_id):
+        await repo.discard_incomplete_ingestion(owner, case["case_id"], item.id)
+        raise http(409, "conflict", "Evidence publication was superseded before it committed. Retry the upload.")
     return item
 
 
@@ -321,7 +341,7 @@ async def _image_secret_preflight(data: bytes, media_type: str) -> dict:
             "visualDescription": visual, "transcriptionComplete": complete, "transcriptionTruncated": truncated}
 
 
-async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detected: str) -> None:
+async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detected: str, attempt_id: str) -> None:
     """Parser extraction is recorded as its own derived evidence with page/offset identities. Parsing is not examination."""
     coverage_update: dict = {}
     try:
@@ -342,7 +362,8 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
             link_text = "\n".join(links)
             derived = await ingest_text(owner, case, f"{item.client_item_id}.text", text + ("\n\n[links]\n" + link_text if link_text else ""), parent_id=item.id,
                                         label=f"extracted text ({len(pages)} pages)", meta={"pages": offsets, "links": links[:512], "registerClues": True},
-                                        transformations=[Transformation(kind="decode", description=f"Parser text layer of {len(pages)} page(s) with page markers; {len(links)} link target(s) collected. Scanned/unreadable pages: {unreadable or 'none'}.")])
+                                        transformations=[Transformation(kind="decode", description=f"Parser text layer of {len(pages)} page(s) with page markers; {len(links)} link target(s) collected. Scanned/unreadable pages: {unreadable or 'none'}.")],
+                                        publication_root_id=item.id, ingestion_attempt_id=attempt_id, publish=False)
             # Scanned/image-only pages: rasterise each (within budget) as a derived image so Gemini can read it visually. A rendered page
             # is addressable evidence with its own coverage; only pages beyond the render budget remain explicit omitted ranges.
             rendered_ids, rendered_pages = [], []
@@ -354,8 +375,8 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
                                              coverage=Coverage(status="not_started", unit="items", total=1, examined=0, reason="rendered scanned page available to Gemini vision; not yet examined"),
                                              transformations=[Transformation(kind="decode", description=f"Page {number} has no text layer; rasterised at {SCAN_DPI} DPI for visual reading. Layout and images preserved; no OCR text layer was invented.")],
                                              label=f"scanned page {number} (rendered image)")
-                    await repo.insert_evidence(owner, page_item, {"page": number, "derivedFrom": item.id})
-                    await repo.store_bytes(owner, case["case_id"], page_item.id, png, item.expires_at)
+                    await repo.insert_evidence(owner, page_item, {"page": number, "derivedFrom": item.id}, publication_root_id=item.id, ingestion_attempt_id=attempt_id)
+                    await repo.store_bytes(owner, case["case_id"], page_item.id, png, item.expires_at, publish_root=False)
                     rendered_ids.append(page_item.id)
                     rendered_pages.append(number)
             omitted = [{"start": p - 1, "end": p, "reason": "no extractable text layer (scanned or image-only page); rendering it also failed" if p in to_render
@@ -376,7 +397,8 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
                     raise ValueError("pixels")
             await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"coverage.reason": "original image available to Gemini vision; not yet examined"}})
         elif detected == "text/plain":
-            derived = await ingest_text(owner, case, f"{item.client_item_id}.text", data.decode("utf-8", errors="replace"), parent_id=item.id, label="file text", meta={"registerClues": True})
+            derived = await ingest_text(owner, case, f"{item.client_item_id}.text", data.decode("utf-8", errors="replace"), parent_id=item.id, label="file text", meta={"registerClues": True},
+                                        publication_root_id=item.id, ingestion_attempt_id=attempt_id, publish=False)
             await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"related_evidence_ids": [derived.id], "coverage": {"status": "not_started", "unit": "characters", "total": len(data.decode("utf-8", errors="replace")), "examined": 0}}})
             await _purge_original_if_secret(owner, case, item, data.decode("utf-8", errors="replace"))
         else:

@@ -1,5 +1,25 @@
 # Apollo build record
 
+## Android — 2026-09-21 Package 1/2 closure candidate
+
+| Field | Value |
+|---|---|
+| Build id | `18706c6e-cf91-418e-9536-94b1cf592f93` |
+| Result | **FINISHED** at `2026-09-21T18:52:03.479Z` |
+| Build page | https://expo.dev/accounts/emergent-em-user-fb71a8d3-adc2-4275-b1ec-2692228557b8/projects/threat-patrol-1/builds/18706c6e-cf91-418e-9536-94b1cf592f93 |
+| **APK download** | https://expo.dev/artifacts/eas/e6U7nUAuNc-tULLCTfLftpltfy7wll9oithASkmvk7U.apk |
+| EAS source fingerprint | `31a0394db69ca674b79ef91a3d0cf3c2b0e2e083` (`01a0c541-21a7-7d83-a8b9-5e0d153493a3`) |
+| EAS informational git field | `58fb1a066eaabe06a96c143da8d4ce171e254d6c`; working-source identity is the EAS fingerprint above |
+| App | `Apollo` 1.0.0 (versionCode 1), package `app.apollo.hwg`, Expo SDK 57 |
+| Profile | `device-test`: internal APK, staging backend, legacy enforcement selection; GuardDog/Apollo native modules still compiled successfully |
+| Compatible backend | `https://device-file-gate.preview.emergentagent.com` (`/api/health` HTTP 200) |
+| Size | 147,531,093 bytes |
+| SHA-256 | `50e51aff03ee69ed859386b734365a205fe9040fc240c5af896e7a3342503e91` |
+| Local verification copy | `/app/Apollo-Android-18706c6e.apk` |
+
+Native build log reached and completed release Kotlin/CMake/Gradle tasks for Apollo Security, GuardDog dependencies,
+`expo-share-intent` multi-item support and the application. This is compilation proof, not physical-device behavior proof.
+
 ## Android — `device-test` profile (installable candidate)
 
 | Field | Value |

@@ -20,7 +20,7 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { openDeviceSettings, type SettingsTarget } from "@/src/utils/deviceSettings";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { storage } from "@/src/utils/storage";
-import { issueContext, openHigginsHandoff } from "@/src/domain/higginsHandoff";
+import { issueContext } from "@/src/domain/higginsHandoff";
 
 const TARGET: Record<string, SettingsTarget> = { D01: "apps", D01b: "apps", D02: "security", D03: "security", D04: "vpn", D05: "accessibility", D06: "apps", D07: "apps", D08: "unknown_sources", D09: "overlay", D10: "notification_access", D11: "developer" };
 const DEVICE_SNAPSHOT_KEY = "apollo.device.signals.v1";
@@ -85,7 +85,7 @@ export default function CheckDevice() {
   // updated ONLY when a real device check cycle completes (mount, or "I changed it — check again") — never by a
   // self-report toggle alone, which instead lands in the live `result` shown on screen without restarting anything.
   const [submission, setSubmission] = useState<typeof result | null>(null);
-  useEffect(() => { if (!checking) setSubmission(result); }, [checking]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!checking) setSubmission((current) => current ?? result); }, [checking]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = async () => {
     setSaving(true);

@@ -160,3 +160,113 @@ Package 2 is now functionally complete per the mandate's own listed items (2.1�
 
 ## Untouched packages (3, most of 4, 5, 6, 7): NOT STARTED — see mandate text for exact scope per package.
 
+
+## 2026-09-21 continuation — review `9cfb377`, Package 1/2 closure and fresh platform candidates
+
+### Exact source and configuration identity
+- Starting reviewed source: git `9cfb3774d7210992d1d852d7d490c7272ab420bc`.
+- Saved-source baseline visible to EAS: git `58fb1a066eaabe06a96c143da8d4ce171e254d6c`.
+- Exact uploaded Android source fingerprint: EAS fingerprint `31a0394db69ca674b79ef91a3d0cf3c2b0e2e083`
+  (`01a0c541-21a7-7d83-a8b9-5e0d153493a3`). This fingerprint includes the working-source changes below even
+  though EAS's informational git field still names the last platform-created commit.
+- Independent non-secret source-tree digest after implementation: SHA-256
+  `7e0f0ff6f77706449d3452891cfcd9b0b98be814253c8319e058e61ca7818c23` (backend/frontend/desktop source;
+  excludes environment files, generated dependencies, caches, desktop target and export output).
+- Compatible backend: `https://device-file-gate.preview.emergentagent.com`, `/api/health` = HTTP 200 `apollo-v1`.
+- Provider boundary: static source/config audit confirms Higgins uses `GEMINI_API_KEY`; no Emergent-managed LLM key
+  was introduced or used. No live Gemini probe, scenario campaign, Playwright run or testing-agent run occurred.
+
+### Package 1 — COMPLETE for the review's remaining architecture boundaries
+1. **Durable device-result inbox / acknowledgement ordering** — `investigation_device_requests` remains the inbox.
+   A submission now becomes `fulfilled/resumed` only after one conditional job write records its request ID in
+   `consumed_device_request_ids` together with the resumed checkpoint. An active lease, stale status or lost fence
+   leaves the submission durably `stored` and explicitly returns `consumed:false`; the recovery sweep retries it.
+2. **One authoritative owner / conditional writes** — device resume now fences on job status, lease and unconsumed
+   request ID; the case projection CAS also checks `work_epoch`, `active_job_id` and the pending request identity.
+3. **Durable tool identity / reconstruction** — `request_device_observation` uses a deterministic UUID derived from
+   the persisted tool-call key and a unique `(owner_id, job_id, tool_call_key)` index. Coordinator recovery detects
+   the unresolved durable request before another Gemini call even if the process died before checkpointing its ID.
+4. **Attempt-isolated evidence publication** — evidence trees stage behind `publication_root_id` and
+   `ingestion_attempt_id`. Readers/list/inventory cannot see metadata/content/children until one atomic root-document
+   transition publishes the completed manifest. Abandoned attempts are deleted as a whole; pre-manifest historical
+   rows remain readable for compatibility.
+5. **Extraction gap vs reading progress** — retained behavior was verified, not collapsed: `permanentGap` remains the
+   ingestion/extraction limitation, while ordinary unread ranges update `materialGap` and can reach `examined` after
+   the retained content is read. Focused coverage tests pass.
+
+Changed backend files:
+- `backend/services/higgins/repository.py`
+- `backend/services/higgins/evidence.py`
+- `backend/services/higgins/tools.py`
+- `backend/services/higgins/coordinator.py`
+- `backend/routers/investigations.py`
+- `backend/services/investigation.py` (deterministic caller-reputation finding; no model call)
+- `backend/tests/test_recovery_fencing.py`
+
+Bounded verification: 42 focused Higgins persistence/evidence/engine tests pass; 17/17 recovery-fencing tests pass
+including new consume-before-ack, atomic publication and deterministic request-identity cases; Call Guard's two
+deterministic contract tests pass. Python lint/compile clean. No live provider behavior was exercised.
+
+### Package 2 — COMPLETE for File, Device, shared entry and Patrol continuity boundaries
+1. **File Gate acknowledgement boundary** — File Gate remains local-only until the explicit Ask action
+   (`autoStart=false`). Apollo cache copies no longer die on navigation into Ask. Resumable upload owns them until
+   backend durable publication; only then does `caseStore` call the scope-checking disposer. Explicit reset and the
+   15-minute sweep remain bounded cleanup. Original provider/shared files are never deleted.
+2. **Device Gate continuity** — the first completed check creates a stable submission/case. Self-report toggles and
+   later settings refreshes no longer replace the submission object and therefore cannot delete/recreate the case;
+   accepted answers and action observations continue in that case.
+3. **Text/Email single investigator path** — compatibility `/message/analyse` requests now set
+   `second_opinion:false`; they supply deterministic local/reputation observations only. Text and Email then auto-start
+   the one shared Higgins case, removing the prior duplicate legacy-Gemini-plus-shared-Gemini path.
+4. **Share intake completeness** — native share payloads are retained as one opaque 15-minute in-memory envelope;
+   raw text, URLs and file paths are absent from route strings; no `.slice(...)` truncation is used; every attachment
+   is preserved and supplied to the shared evidence inventory. Android ACTION_SEND_MULTIPLE and iOS multi-file/image
+   activation are enabled up to the configured 10-item extension limit.
+5. **Home/Share/Patrol continuity** — event IDs are carried in Higgins context; Gate-created and manually-created
+   cases are persisted in the Patrol event→case index. Patrol's Ask action resumes that case rather than opening a
+   duplicate investigation.
+
+Changed frontend files:
+- `frontend/src/investigation/caseStore.ts` (the existing `caseIndex.ts` is now consumed by all creation paths)
+- `frontend/src/components/GateInvestigation.tsx`
+- `frontend/src/domain/higginsHandoff.ts` (the existing scoped disposer in `fileCopyLifecycle.ts` is reused)
+- `frontend/src/share/shareIntake.ts` (new), `ShareIntakeListener.tsx`, `classifyShare.ts`
+- `frontend/app/share.tsx`, `file.tsx`, `device.tsx`, `message.tsx`, `email.tsx`, `account.tsx`, `check.tsx`,
+  `frontend/app/(tabs)/ask.tsx`
+- `frontend/src/store/ApolloContext.tsx`, `frontend/app.json`, `frontend/tests/share.test.ts`
+- Removed obsolete `openHigginsHandoff` imports from Gate screens now using `GateInvestigation`.
+
+Bounded verification: TypeScript compile clean; ESLint clean; Share/incident suite 13/13. No device journey or scenario
+campaign was run, per owner instruction.
+
+### Package 6 platform delivery — ACTIVE
+- **Android:** EAS internal APK build `18706c6e-cf91-418e-9536-94b1cf592f93`, application
+  `app.apollo.hwg`, profile `device-test`, source fingerprint above. Status: `FINISHED` at
+  `2026-09-21T18:52:03.479Z`.
+  Build page: `https://expo.dev/accounts/emergent-em-user-fb71a8d3-adc2-4275-b1ec-2692228557b8/projects/threat-patrol-1/builds/18706c6e-cf91-418e-9536-94b1cf592f93`.
+  APK: `https://expo.dev/artifacts/eas/e6U7nUAuNc-tULLCTfLftpltfy7wll9oithASkmvk7U.apk`;
+  147,531,093 bytes; SHA-256 `50e51aff03ee69ed859386b734365a205fe9040fc240c5af896e7a3342503e91`.
+  Downloaded verification copy: `/app/Apollo-Android-18706c6e.apk`.
+- **Desktop:** restored the Tauri CLI/Rust prerequisites, installed Linux WebKit/GTK build dependencies, and compiled
+  both `cargo check` and the Linux release host. Candidate binary:
+  `desktop/src-tauri/target/release/apollo-desktop`, SHA-256
+  `f3d79697729e558c3351b4c6b44b4c2a739966e2a7ba0b1074bd216e5e794a2a`. The shared Expo web export also succeeds.
+- **iOS:** compatible share-extension multi-item configuration is implemented. A signed device build remains blocked
+  only by unavailable Apple signing credentials/profile; missing credentials do not block Android/backend/desktop.
+- **Windows/macOS packages:** shared Tauri/Rust source compiles on Linux; `.msi/.nsis/.dmg/.app` outputs remain genuine
+  target-host build/signing work and were not falsely claimed from this Linux container.
+
+### Genuinely outstanding authorised work — continue without routine approval
+- **P0:** owner-led physical device acceptance of Android build `18706c6e...` (launch, share-multiple, File→Ask
+  upload retention, Device case continuation, native protection). Compilation succeeded; device behavior is not
+  inferred from that fact.
+- **P1 / Package 3:** document continuation slices beyond parser/context budgets; audit every content/clue limit and
+  return structured original observations without silent omission.
+- **P1 / Package 4:** protected Text/SMS storage lifecycle, Email background shared-engine work, App Gate platform
+  visibility, and remaining Gate-specific boundaries.
+- **P1 / Package 5:** guided Settings confirmations, saved-report vs temporary-case lifecycle, and family voice orphan
+  upload cleanup.
+- **P1 / Package 6:** iOS signed device build when owner credentials exist; Windows/macOS target builds and native
+  extension completion on their host toolchains.
+- **P2 / Package 7:** GuardDog production adapter/configuration closure and credential-gated integrations. Each missing
+  credential blocks only its named integration.

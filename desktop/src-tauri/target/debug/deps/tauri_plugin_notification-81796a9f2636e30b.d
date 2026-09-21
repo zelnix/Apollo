@@ -1,0 +1,10 @@
+/app/desktop/src-tauri/target/debug/deps/tauri_plugin_notification-81796a9f2636e30b.d: /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-plugin-notification-2.4.0/src/lib.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-plugin-notification-2.4.0/src/desktop.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-plugin-notification-2.4.0/src/commands.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-plugin-notification-2.4.0/src/error.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-plugin-notification-2.4.0/src/models.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-plugin-notification-2.4.0/src/init-iife.js
+
+/app/desktop/src-tauri/target/debug/deps/libtauri_plugin_notification-81796a9f2636e30b.rmeta: /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-plugin-notification-2.4.0/src/lib.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-plugin-notification-2.4.0/src/desktop.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-plugin-notification-2.4.0/src/commands.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-plugin-notification-2.4.0/src/error.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-plugin-notification-2.4.0/src/models.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-plugin-notification-2.4.0/src/init-iife.js
+
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-plugin-notification-2.4.0/src/lib.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-plugin-notification-2.4.0/src/desktop.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-plugin-notification-2.4.0/src/commands.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-plugin-notification-2.4.0/src/error.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-plugin-notification-2.4.0/src/models.rs:
+/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tauri-plugin-notification-2.4.0/src/init-iife.js:

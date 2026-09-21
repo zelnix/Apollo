@@ -36,6 +36,7 @@ export interface HigginsIssueContext {
   available_actions?: HigginsAvailableAction[];
   original_evidence?: HigginsOriginalEvidence[];
   case_id?: string; // continue this shared investigation case instead of opening a new one
+  event_id?: string; // Patrol issue this case belongs to
 }
 
 const recent = new Map<string, number>();
@@ -62,6 +63,7 @@ export function issueContext(input: HigginsIssueContext): HigginsIssueContext {
       instruction: redactUserSecrets(action.instruction).trim().slice(0, 240),
     })).filter((action) => action.label && action.instruction).slice(0, 4),
     case_id: typeof input.case_id === "string" && input.case_id ? input.case_id : undefined,
+    event_id: typeof input.event_id === "string" && input.event_id ? input.event_id : undefined,
     original_evidence: (input.original_evidence ?? []).map((item) => item.kind === "file" ? item : ({ kind: item.kind, value: redactUserSecrets(item.value).trim(), label: item.label?.slice(0, 80) })).filter((item) => item.kind === "file" ? !!item.uri : !!item.value),
   };
 }
@@ -74,6 +76,7 @@ export function parseHigginsIssueContext(raw: string): HigginsIssueContext | nul
     if (!value || !gates.includes(value.gate as HigginsGate) || !states.includes(String(value.assessment_state)) || typeof value.issue_summary !== "string" || !Array.isArray(value.findings) || !Array.isArray(value.uncertainty) || !Array.isArray(value.confirmed_protective_actions) || !Array.isArray(value.user_reported_actions)) return null;
     if (value.findings.some((finding) => !finding || typeof finding.summary !== "string" || !["observed", "inferred", "user_reported"].includes(finding.provenance) || !["confirmed", "warning", "uncertain"].includes(finding.status))) return null;
     if (value.case_id != null && typeof value.case_id !== "string") return null;
+    if (value.event_id != null && typeof value.event_id !== "string") return null;
     if (value.original_evidence != null && (!Array.isArray(value.original_evidence) || value.original_evidence.some((item) => !item || !["text", "url", "file"].includes(item.kind) || (item.kind === "file" ? typeof item.uri !== "string" : typeof item.value !== "string")))) return null;
     if (value.available_actions != null && (!Array.isArray(value.available_actions) || value.available_actions.some((action) => !action || typeof action.label !== "string" || typeof action.instruction !== "string"))) return null;
     return issueContext(value as HigginsIssueContext);
@@ -93,6 +96,7 @@ export function contextFromEvent(event: PatrolEvent, gate: HigginsGate, summary 
     confirmed_protective_actions: event.verified_block ? ["Apollo confirmed an on-device protective block."] : [],
     user_reported_actions: event.recovery_kinds ?? [],
     available_actions: [{ label: "Use the next action on this result", instruction: event.what_to_do }],
+    event_id: event.event_id,
   });
 }
 

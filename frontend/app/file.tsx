@@ -20,7 +20,8 @@ import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
-import { issueContext, openHigginsHandoff } from "@/src/domain/higginsHandoff";
+import { getShareIntake } from "@/src/share/shareIntake";
+import { issueContext } from "@/src/domain/higginsHandoff";
 import { disposePickerCopy, sweepPickerCopies } from '@/src/domain/fileCopyLifecycle';
 
 const useStyles = makeStyles((c) => ({
@@ -60,10 +61,8 @@ export default function CheckFile() {
   const [pending, setPending] = useState<PendingFile | null>(null);
   // The temporary handle (an app-owned picker copy, or a shared-in URI we never own) is kept alive for the whole
   // screen visit — a later "Ask Higgins" upload needs the SAME bytes local inspection just read. It is disposed only
-  // once this specific selection is done with: reset, unmount, or the 15-minute expiry below. Never the user's original.
+  // after durable publication, explicit reset, or the 15-minute expiry below. Never the user's original.
   const disposeSelection = (uri: string | null, owned: boolean) => { if (uri) disposePickerCopy(uri, owned); };
-  const selectedRef = React.useRef(selected);
-  selectedRef.current = selected;
   useEffect(() => { sweepPickerCopies(); const timer = setInterval(sweepPickerCopies, 60000); return () => clearInterval(timer); }, []);
   useEffect(() => {
     if (!selected) return;
@@ -71,8 +70,8 @@ export default function CheckFile() {
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.asset.uri]);
-  // Unmount: dispose whatever is CURRENTLY selected (read via ref so this one-time effect never sees a stale value).
-  useEffect(() => () => disposeSelection(selectedRef.current?.asset.uri ?? null, selectedRef.current?.owned ?? false), []);
+  // Navigation into Ask/Higgins intentionally does not dispose the picker copy. The shared case upload owns it until
+  // durable publication (or the bounded expiry sweep), making backgrounding/navigation safe.
 
   const finish = async (a: FileAnalysis) => {
     let event: PatrolEvent | null = null;
@@ -82,8 +81,11 @@ export default function CheckFile() {
     setResult({ a, event });
     void markCheckDone("file");
   };
-  const params = useLocalSearchParams<{ uri?: string; name?: string; mime?: string; size?: string; source?: string }>();
-  useEffect(() => { if (!params.uri && FILE_SOURCES.some((item) => item.id === params.source)) setSource(params.source as FileSource); }, [params.source, params.uri]);
+  const params = useLocalSearchParams<{ uri?: string; name?: string; mime?: string; size?: string; source?: string; sharedIntakeId?: string }>();
+  const shared = getShareIntake(params.sharedIntakeId);
+  const sharedFile = shared?.files?.[0];
+  const incomingUri = sharedFile?.path || params.uri;
+  useEffect(() => { if (!incomingUri && FILE_SOURCES.some((item) => item.id === params.source)) setSource(params.source as FileSource); }, [params.source, incomingUri]);
   const pick = async () => {
     setPickerError(null);
     try {
@@ -96,7 +98,7 @@ export default function CheckFile() {
     } catch (error) { setPickerError(error instanceof Error ? error.message : "Apollo could not open the file picker. Try again."); }
   };
   // Shared from another app (Share → Apollo): analyse the shared file straight away. This URI is never ours to delete.
-  useEffect(() => { if (params.uri && !result) { const incoming = FILE_SOURCES.some((item) => item.id === params.source) ? params.source as FileSource : "unknown"; setSource(incoming); void analyseAsset({ uri: params.uri, name: params.name ?? params.uri.split("/").pop() ?? "shared file", mimeType: params.mime || null, size: params.size ? Number(params.size) : undefined }, incoming, false); } }, [params.uri]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (incomingUri && !result) { const incoming = FILE_SOURCES.some((item) => item.id === params.source) ? params.source as FileSource : "unknown"; setSource(incoming); void analyseAsset({ uri: incomingUri, name: sharedFile?.fileName ?? params.name ?? incomingUri.split("/").pop() ?? "shared file", mimeType: sharedFile?.mimeType ?? params.mime ?? null, size: sharedFile?.size ?? (params.size ? Number(params.size) : undefined) }, incoming, false); } }, [incomingUri]); // eslint-disable-line react-hooks/exhaustive-deps
   const analyseAsset = async (asset: { uri: string; name: string; mimeType?: string | null; size?: number }, assetSource: FileSource = source, owned: boolean = false) => {
     setBusy(true);
     try {
@@ -183,16 +185,16 @@ export default function CheckFile() {
               {a.handoff === "network" ? <Button testID="file-check-device" label="I installed it — check my device" onPress={() => router.push("/device")} /> : null}
               <Button testID="file-tech" variant="secondary" label="View technical details" onPress={() => setTech(true)} />
               {result.event ? <RecoveryFlow event={result.event} kinds={["clicked", "app", "password", "card", "money", "download"]} testID="file-recovery" /> : null}
-              <GateInvestigation submission={result} testID="file-tell-more" label="Ask Higgins about this file" context={issueContext({ gate: "file", issue_summary: a.title, assessment_state: a.state, findings: [
+              <GateInvestigation submission={result} eventId={result.event?.event_id} testID="file-tell-more" label="Ask Higgins about this file" context={issueContext({ gate: "file", issue_summary: a.title, assessment_state: a.state, event_id: result.event?.event_id, findings: [
                 { summary: `Filename: ${selected?.asset.name ?? "not supplied"}`, provenance: "observed", status: "uncertain" },
                 { summary: `Supplied size/type: ${selected?.asset.size ?? "unknown"} bytes; ${selected?.asset.mimeType ?? "unknown"}`, provenance: "observed", status: "uncertain" },
                 { summary: `Signature result: ${a.realType}`, provenance: "observed", status: a.state === "barking" ? "warning" : "uncertain" },
                 { summary: selected?.inspected.inspectionError ? `Content sample unavailable: ${selected.inspected.inspectionError}` : selected?.inspected.textSample ? "A bounded supported text sample was read locally." : "No supported text sample was readable.", provenance: "observed", status: "uncertain" },
                 ...a.why.slice(0, 4).map((summary) => ({ summary, provenance: "inferred" as const, status: a.state === "barking" ? "warning" as const : "uncertain" as const })),
-              ], uncertainty: ["Only the signature and a bounded supported sample were inspected; complete contents and safety remain unknown."], confirmed_protective_actions: [], user_reported_actions: [], original_evidence: selected ? [{ kind: "file", uri: selected.asset.uri, name: selected.asset.name, mediaType: selected.asset.mimeType || "application/octet-stream", size: selected.asset.size }] : [], available_actions: [
+              ], uncertainty: ["Only the signature and a bounded supported sample were inspected; complete contents and safety remain unknown."], confirmed_protective_actions: [], user_reported_actions: [], original_evidence: shared ? [...(shared.text || shared.webUrl ? [{ kind: "text" as const, value: [shared.text, shared.webUrl].filter(Boolean).join("\n"), label: "shared text" }] : []), ...(shared.files ?? []).map((file, index) => ({ kind: "file" as const, uri: file.path, name: file.fileName || `shared-attachment-${index + 1}`, mediaType: file.mimeType || "application/octet-stream", size: file.size ?? undefined }))] : selected ? [{ kind: "file", uri: selected.asset.uri, name: selected.asset.name, mediaType: selected.asset.mimeType || "application/octet-stream", size: selected.asset.size }] : [], available_actions: [
                 { label: "Follow the File Gate recommendation", instruction: a.recommendation },
                 { label: "Use I already opened it", instruction: "Return to the File Gate result and use I already opened it in Stay With Me for recovery steps." },
-              ] })} question="What should I do with this file?" />
+              ] })} question="What should I do with this file?" autoStart={false} />
               <Button testID="file-again" variant="ghost" label="Check another file" onPress={checkAnother} />
             </Card>
           </>

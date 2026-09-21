@@ -23,7 +23,7 @@ import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { openDeviceSettings } from "@/src/utils/deviceSettings";
 import { goBackOrHome } from "@/src/utils/navigation";
-import { issueContext, openHigginsHandoff } from "@/src/domain/higginsHandoff";
+import { issueContext } from "@/src/domain/higginsHandoff";
 import { dispatchInvestigationAction } from "@/src/domain/investigationActions";
 
 type Reputation = { remote_access_tool: string | null; known_security_vendor: string | null; impersonates_brand: string | null; official_store: boolean; note: string };

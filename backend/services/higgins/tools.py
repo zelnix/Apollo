@@ -14,6 +14,7 @@ from typing import Any, Optional
 import httpx
 import phonenumbers
 from google.genai import types
+from pymongo.errors import DuplicateKeyError
 
 from core.config import HIBP_API_KEY
 from core.db import db, now_utc
@@ -65,6 +66,7 @@ class ToolContext:
         self.sources: list[SourceReference] = []
         self.fingerprints: set[str] = set()
         self.pending_request: Optional[dict] = None
+        self.tool_call_key: Optional[str] = None
         self.question: Optional[dict] = None
         self.research_calls = 0
 
@@ -221,11 +223,27 @@ async def request_device_observation(ctx: ToolContext, args: dict) -> dict:
     if ctx.pending_request:
         return {"status": "deferred", "note": "One device observation is collected at a time. Request this capability again after the pending result arrives."}
     ctx.fingerprints.add(fingerprint)
-    request = {"id": str(uuid.uuid4()), "caseId": ctx.case_id, "caseRevision": ctx.case["revision"], "capabilityId": args["capabilityId"],
+    call_key = ctx.tool_call_key or f"legacy:{args['capabilityId']}"
+    existing = await db.investigation_device_requests.find_one(
+        {"owner_id": ctx.owner, "job_id": ctx.job["job_id"], "tool_call_key": call_key}, {"_id": 0}
+    )
+    if existing:
+        ctx.pending_request = existing["request"]
+        return {"status": "pending", "requestId": existing["request_id"], "note": "The existing durable observation request is still pending; the investigation remains paused."}
+    request_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"apollo:{ctx.owner}:{ctx.case_id}:{ctx.job['job_id']}:{call_key}"))
+    request = {"id": request_id, "caseId": ctx.case_id, "caseRevision": ctx.case["revision"], "capabilityId": args["capabilityId"],
                "fields": [str(f) for f in args.get("fields", [])][:32], "reason": str(args.get("reason", ""))[:300],
                "expiresAt": min(repo.utc(ctx.case["expires_at"]), now_utc() + timedelta(seconds=120)).isoformat()}
-    await db.investigation_device_requests.insert_one({"owner_id": ctx.owner, "case_id": ctx.case_id, "request_id": request["id"], "job_id": ctx.job["job_id"],
-                                                        "request": request, "fulfilled": False, "submission": None, "created_at": now_utc()})
+    try:
+        await db.investigation_device_requests.insert_one({"owner_id": ctx.owner, "case_id": ctx.case_id, "request_id": request["id"], "job_id": ctx.job["job_id"],
+                                                            "tool_call_key": call_key, "request": request, "fulfilled": False, "submission": None, "created_at": now_utc()})
+    except DuplicateKeyError:
+        winner = await db.investigation_device_requests.find_one(
+            {"owner_id": ctx.owner, "job_id": ctx.job["job_id"], "tool_call_key": call_key}, {"_id": 0}
+        )
+        if not winner:
+            raise
+        request = winner["request"]
     ctx.pending_request = request
     return {"status": "pending", "requestId": request["id"], "note": "The app is being asked for this observation. The investigation pauses until it returns."}
 

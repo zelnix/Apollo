@@ -493,7 +493,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     try {
       const r = await apiPost<{ urls?: unknown; explanation?: unknown; assessment?: unknown }>("/message/analyse", "message_check", {
         device_id: deviceId ?? undefined, sender, text, urls: analysis.signals.urls,
-        local_state: analysis.state, scenario: analysis.scenario, signals: analysis.signalLabels, claimed_brand: analysis.signals.claimedBrand, second_opinion: true,
+        local_state: analysis.state, scenario: analysis.scenario, signals: analysis.signalLabels, claimed_brand: analysis.signals.claimedBrand, second_opinion: false,
       });
       // Contract guard: only well-formed url verdicts count; anything else is dropped (unknown), never treated as clean.
       urls = Array.isArray(r.urls) ? (r.urls as MessageUrlResult[]).filter((u) => u && typeof u.url === "string" && typeof u.host === "string" && ["clean", "malicious", "unknown"].includes(u.verdict) && Array.isArray(u.threat_types)) : [];
@@ -586,7 +586,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       try {
         const r = await apiPost<{ urls?: unknown; assessment?: unknown }>("/message/analyse", "message_check", {
           device_id: deviceId, sender: m.from || "", text: `${m.subject}\n${m.body}`, urls: a.urls,
-          local_state: a.state, scenario: a.scenario, signals: a.signalLabels.slice(0, 20), claimed_brand: a.claimedBrand, second_opinion: true,
+          local_state: a.state, scenario: a.scenario, signals: a.signalLabels.slice(0, 20), claimed_brand: a.claimedBrand, second_opinion: false,
         });
         urls = Array.isArray(r.urls) ? (r.urls as MessageUrlResult[]) : [];
         assessment = isInvestigationResult(r.assessment) ? r.assessment : null;

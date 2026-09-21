@@ -262,8 +262,15 @@ def phone_risk_investigation(result: Any) -> InvestigationResult:
     """A reputation observation is NOT a Gemini investigation/explanation."""
     source = InvestigationSource(source_id="phone-1", label="Caller-number reputation", status="inconclusive",
         detail=f"Source: {result.source}; decision: {result.decision}. Reputation does not authenticate identity.")
+    finding = InvestigationFinding(
+        status="suspicious" if result.decision in ("review", "avoid") else "unresolved",
+        title="Caller-number reputation requires verification" if result.decision != "allow" else "Caller identity remains unverified",
+        detail=("The reputation source reported risk signals for this number; this does not establish who is calling."
+                if result.decision != "allow" else "No strong reputation signal was returned, but number reputation cannot authenticate the caller."),
+        source_ids=[source.source_id], evidence_kind="external_verification",
+    )
     return InvestigationResult(assessment_id=str(uuid.uuid4()), risk="uncertain",
-        entities=InvestigationEntities(sender_phone_numbers=[result.number]), sources=[source], higgins=incomplete_status(),
+        entities=InvestigationEntities(sender_phone_numbers=[result.number]), findings=[finding], sources=[source], higgins=incomplete_status(),
         processing={"raw_retained_by_apollo": False, "temporary_expiry_minutes": 0, "provider": result.source,
             "model_used": False, "higgins_source": "unavailable", "fallback_used": False,
             "provider_note": "This is a number reputation observation, not a completed Higgins investigation."})

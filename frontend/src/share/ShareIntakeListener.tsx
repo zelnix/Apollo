@@ -8,6 +8,7 @@ import { useShareIntent } from "expo-share-intent";
 import { useEffect } from "react";
 
 import { useApollo } from "@/src/store/ApolloContext";
+import { putShareIntake } from "./shareIntake";
 
 export { extractUrl } from "./classifyShare";
 
@@ -18,13 +19,15 @@ export function ShareIntakeListener() {
 
   useEffect(() => {
     if (!ready || !setupDone || !hasShareIntent) return;
-    const file = shareIntent.files?.[0];
-    const params: Record<string, string> = {};
-    if (file) { params.fileUri = file.path; if (file.fileName) params.fileName = file.fileName; if (file.mimeType) params.mime = file.mimeType; if (file.size) params.size = String(file.size); }
-    if (shareIntent.webUrl) params.url = shareIntent.webUrl;
-    if (shareIntent.text) params.text = shareIntent.text.slice(0, 6000);
+    const hasPayload = !!(shareIntent.text || shareIntent.webUrl || shareIntent.files?.length);
+    if (!hasPayload) { resetShareIntent(); return; }
+    const intakeId = putShareIntake({
+      text: shareIntent.text ?? null,
+      webUrl: shareIntent.webUrl ?? null,
+      files: (shareIntent.files ?? []).map((file) => ({ path: file.path, fileName: file.fileName ?? null, mimeType: file.mimeType ?? null, size: file.size ?? null })),
+    });
     resetShareIntent();
-    if (Object.keys(params).length) router.push({ pathname: "/share", params });
+    router.push({ pathname: "/share", params: { intakeId } });
   }, [ready, setupDone, hasShareIntent, shareIntent, resetShareIntent, router]);
 
   return null;

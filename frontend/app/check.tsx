@@ -32,6 +32,8 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { useScreenshotAccess } from "@/src/hooks/useScreenshotAccess";
 import { dispatchInvestigationAction } from "@/src/domain/investigationActions";
+import { extractUrl } from "@/src/share/classifyShare";
+import { getShareIntake } from "@/src/share/shareIntake";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -100,8 +102,10 @@ export default function CheckLink() {
   const sendFeedback = async (kind: "false_positive" | "override", ev: { event_id: string; state: string; indicator_host: string | null }, sources: string[]) => {
     await apiPost("/feedback", "feedback", { device_id: deviceId, event_id: ev.event_id, kind, state: ev.state, host: ev.indicator_host, sources, note: "" });
   };
-  const params = useLocalSearchParams<{ url?: string; source?: string }>();
-  const [input, setInput] = useState(params.url ? String(params.url) : "");
+  const params = useLocalSearchParams<{ url?: string; source?: string; sharedIntakeId?: string }>();
+  const shared = getShareIntake(params.sharedIntakeId);
+  const sharedUrl = shared?.webUrl || extractUrl(shared?.text) || params.url || "";
+  const [input, setInput] = useState(String(sharedUrl));
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<CheckOutcome | null>(null);
   const autoRan = useRef(false);
@@ -123,8 +127,8 @@ export default function CheckLink() {
 
   // Shared / deep-linked / clipboard links run automatically once setup is complete.
   useEffect(() => {
-    if (params.url && ready && setupDone && !autoRan.current) { autoRan.current = true; void run(String(params.url)); }
-  }, [params.url, ready, setupDone, run]);
+    if (sharedUrl && ready && setupDone && !autoRan.current) { autoRan.current = true; void run(String(sharedUrl)); }
+  }, [sharedUrl, ready, setupDone, run]);
 
   if (ready && !setupDone) return <Redirect href="/onboarding" />;
   const paste = async () => { const t = await Clipboard.getStringAsync(); if (t) setInput(t.trim()); };

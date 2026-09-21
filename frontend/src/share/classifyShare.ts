@@ -25,17 +25,17 @@ export function classifyShare(p: SharedPayload): ShareRoute {
   if (file) {
     const mime = (file.mimeType ?? "").toLowerCase();
     const name = file.fileName ?? file.path.split("/").pop() ?? "shared file";
-    if (mime.startsWith("image/") || /\.(png|jpe?g|webp|heic|heif)$/i.test(name)) return { kind: "screenshot", pathname: "/message", params: { imageUri: file.path, source: "share" }, reason: "It's an image — Apollo will read it as a screenshot of a message." };
-    return { kind: "file", pathname: "/file", params: { uri: file.path, name, mime: file.mimeType ?? "", size: String(file.size ?? ""), source: "unknown" }, reason: "It's a file — Apollo checks what it really is before trusting the name or where it was hosted." };
+    if (mime.startsWith("image/") || /\.(png|jpe?g|webp|heic|heif)$/i.test(name)) return { kind: "screenshot", pathname: "/message", params: { source: "share" }, reason: "It's an image — Apollo will read it as a screenshot of a message." };
+    return { kind: "file", pathname: "/file", params: { source: "unknown" }, reason: "It's a file — Apollo checks what it really is before trusting the name or where it was hosted." };
   }
   const raw = (p.text ?? "").trim();
   const url = p.webUrl?.trim() || extractUrl(raw);
   const withoutUrl = url ? raw.replace(url, "").trim() : raw;
   const headerHits = (raw.match(new RegExp(EMAIL_HEADER_RE.source, "gim")) ?? []).length;
-  if (headerHits >= 2 || EMAIL_FORWARD_RE.test(raw) || (raw.length > 400 && EMAIL_BODY_RE.test(raw))) return { kind: "email", pathname: "/email", params: { text: raw.slice(0, 6000), source: "share" }, reason: headerHits >= 2 ? "It has email headers (From / Subject)." : "It reads like an email." };
-  if (ACCOUNT_RE.test(raw)) return { kind: "account", pathname: "/account", params: { text: raw.slice(0, 4000), source: "share" }, reason: "It talks about a login, code or password change — Account Gate handles those." };
-  if (url && withoutUrl.length < 12) return { kind: "link", pathname: "/check", params: { url: url.startsWith("http") ? url : `https://${url}`, source: "share" }, reason: "It's just a link." };
-  return { kind: "message", pathname: "/message", params: { text: raw.slice(0, 4000), source: "share" }, reason: url ? "A message with a link inside — Apollo reads the wording first, then the link." : "It reads like a text or chat message." };
+  if (headerHits >= 2 || EMAIL_FORWARD_RE.test(raw) || (raw.length > 400 && EMAIL_BODY_RE.test(raw))) return { kind: "email", pathname: "/email", params: { source: "share" }, reason: headerHits >= 2 ? "It has email headers (From / Subject)." : "It reads like an email." };
+  if (ACCOUNT_RE.test(raw)) return { kind: "account", pathname: "/account", params: { source: "share" }, reason: "It talks about a login, code or password change — Account Gate handles those." };
+  if (url && withoutUrl.length < 12) return { kind: "link", pathname: "/check", params: { source: "share" }, reason: "It's just a link." };
+  return { kind: "message", pathname: "/message", params: { source: "share" }, reason: url ? "A message with a link inside — Apollo reads the wording first, then the link." : "It reads like a text or chat message." };
 }
 
 /** Alternatives the user can pick if Apollo guessed wrong (same payload, different check). */
@@ -44,12 +44,11 @@ export function alternativeRoutes(p: SharedPayload, chosen: ShareKind): ShareRou
   const url = p.webUrl?.trim() || extractUrl(raw);
   const all: ShareRoute[] = [];
   if (p.files?.[0]) {
-    const f = p.files[0]; const name = f.fileName ?? f.path.split("/").pop() ?? "shared file";
-    all.push({ kind: "file", pathname: "/file", params: { uri: f.path, name, mime: f.mimeType ?? "", size: String(f.size ?? ""), source: "unknown" }, reason: "" }, { kind: "screenshot", pathname: "/message", params: { imageUri: f.path, source: "share" }, reason: "" });
+    all.push({ kind: "file", pathname: "/file", params: { source: "unknown" }, reason: "" }, { kind: "screenshot", pathname: "/message", params: { source: "share" }, reason: "" });
   } else {
     const body = raw || url || "";
-    if (url) all.push({ kind: "link", pathname: "/check", params: { url: url.startsWith("http") ? url : `https://${url}`, source: "share" }, reason: "" });
-    if (body) all.push({ kind: "message", pathname: "/message", params: { text: body.slice(0, 4000), source: "share" }, reason: "" }, { kind: "email", pathname: "/email", params: { text: body.slice(0, 6000), source: "share" }, reason: "" }, { kind: "account", pathname: "/account", params: { text: body.slice(0, 4000), source: "share" }, reason: "" });
+    if (url) all.push({ kind: "link", pathname: "/check", params: { source: "share" }, reason: "" });
+    if (body) all.push({ kind: "message", pathname: "/message", params: { source: "share" }, reason: "" }, { kind: "email", pathname: "/email", params: { source: "share" }, reason: "" }, { kind: "account", pathname: "/account", params: { source: "share" }, reason: "" });
   }
   return all.filter((r) => r.kind !== chosen);
 }

@@ -22,11 +22,12 @@ import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { STATE_RANK } from "@/src/domain/stateMachine";
 import { patrolSafeSummary, type InvestigationResult } from "@/src/domain/investigation";
 import { redactUserSecrets } from "@/src/domain/privacy";
-import { issueContext, openHigginsHandoff } from "@/src/domain/higginsHandoff";
+import { issueContext } from "@/src/domain/higginsHandoff";
 import { dispatchInvestigationAction } from "@/src/domain/investigationActions";
 import { type MessageExplanation, type MessageUrlResult, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { getShareIntake } from "@/src/share/shareIntake";
 
 const GMAIL_STATUS_UI_TIMEOUT_MS = 8000;
 
@@ -49,11 +50,12 @@ export default function CheckEmail() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ text?: string }>();
+  const params = useLocalSearchParams<{ text?: string; sharedIntakeId?: string }>();
+  const shared = getShareIntake(params.sharedIntakeId);
   const { ready, setupDone, upsertEvent, deviceId, adapterLabel, showToast, scanGmailInbox } = useApollo();
   const [from, setFrom] = useState("");
   const [subject, setSubject] = useState("");
-  const [raw, setRaw] = useState(params.text ?? "");
+  const [raw, setRaw] = useState(shared?.text || shared?.webUrl || params.text || "");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ a: EmailAnalysis; event: PatrolEvent | null; urls: MessageUrlResult[]; explanation: MessageExplanation | null; assessment: InvestigationResult | null } | null>(null);
   const [verify, setVerify] = useState(false);
@@ -140,7 +142,7 @@ export default function CheckEmail() {
       try {
         const r = await apiPost<{ urls: MessageUrlResult[]; explanation: MessageExplanation | null; assessment: InvestigationResult }>("/message/analyse", "message_check", {
           device_id: deviceId ?? 'local-device', sender: from.trim(), text: `${safeSubject}\n${safeRaw}`, urls: a.urls,
-          local_state: a.state, scenario: a.scenario, signals: a.signalLabels.slice(0, 20), claimed_brand: a.claimedBrand, second_opinion: true,
+          local_state: a.state, scenario: a.scenario, signals: a.signalLabels.slice(0, 20), claimed_brand: a.claimedBrand, second_opinion: false,
         });
         urls = r.urls; explanation = r.explanation; assessment = r.assessment;
         if (assessment.risk === "warning" && a.state === "resting") a = { ...a, state: "growling", why: [...a.why, "The contextual investigation found unresolved or suspicious details that need verification."] };
@@ -257,7 +259,7 @@ export default function CheckEmail() {
               <Button testID="email-verify-sender" variant="secondary" label="Show me how to check the sender" onPress={() => setVerify(true)} />
               {result.explanation ? <><Text style={s.label}>Higgins&apos;s plain-language assessment</Text><Body testID="email-second-opinion">{result.explanation.summary}</Body></> : null}
               {result.event ? <RecoveryFlow event={result.event} kinds={["clicked", "password", "code", "money", "card", "info", "download"]} linkToCheck={a.urls[0] ?? null} testID="email-recovery" /> : null}
-              <GateInvestigation submission={result} testID="email-ask" label="Ask Higgins about this email" autoStart={false} context={issueContext({ gate: "email", issue_summary: a.title, assessment_state: a.state, findings: a.why.slice(0, 6).map((summary) => ({ summary, provenance: "inferred", status: "uncertain" })), uncertainty: ["The sender was not independently authenticated."], confirmed_protective_actions: [], user_reported_actions: [], original_evidence: [{ kind: "text", value: `From: ${from}\nSubject: ${subject}\n\n${raw}`, label: "submitted email" }, ...(result.explanation ? [{ kind: "text" as const, value: `Apollo email check already performed (reuse; do not repeat the same lookups):\n${JSON.stringify(result.explanation).slice(0, 8000)}`, label: "apollo email check" }] : [])] })} question="What should I do about this email?" />
+              <GateInvestigation submission={result} eventId={result.event?.event_id} testID="email-ask" label="Ask Higgins about this email" context={issueContext({ gate: "email", issue_summary: a.title, assessment_state: a.state, findings: a.why.slice(0, 6).map((summary) => ({ summary, provenance: "inferred", status: "uncertain" })), uncertainty: ["The sender was not independently authenticated."], confirmed_protective_actions: [], user_reported_actions: [], event_id: result.event?.event_id, original_evidence: [{ kind: "text", value: `From: ${from}\nSubject: ${subject}\n\n${raw}`, label: "submitted email" }, ...(shared?.files?.map((file, index) => ({ kind: "file" as const, uri: file.path, name: file.fileName || `shared-attachment-${index + 1}`, mediaType: file.mimeType || "application/octet-stream", size: file.size ?? undefined })) ?? [])] })} question="What should I do about this email?" />
               <Button testID="email-tech" variant="ghost" label="View technical details" onPress={() => setTech(true)} />
               <Button testID="email-again" variant="ghost" label="Check another email" onPress={() => { setResult(null); setRaw(""); setFrom(""); setSubject(""); }} />
             </Card>

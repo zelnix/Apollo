@@ -82,6 +82,18 @@ def test_device_submission_resumes_from_a_crashed_storing_state():
     _run(lambda inv: _device_submission_resumes_from_storing(inv))
 
 
+def test_device_submission_is_not_acknowledged_before_job_consumes_it():
+    _run(lambda inv: _device_submission_waits_for_authoritative_consumption(inv))
+
+
+def test_incomplete_evidence_attempt_is_invisible_until_root_publication():
+    _run(lambda inv: _evidence_publication_is_atomic())
+
+
+def test_device_tool_request_replay_uses_one_durable_request_identity():
+    _run(lambda inv: _device_request_identity_is_durable())
+
+
 @pytest.mark.asyncio
 async def test_image_secret_preflight_flags_60k_truncation(monkeypatch):
     """The internal 60,000-character cap on a screenshot's transcription must mark itself as truncated —
@@ -251,17 +263,20 @@ async def _coverage_aggregation_across_children():
     parent = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id="doc-1", origin="user_submission", kind="document",
                           parent_id=None, collected_at=now_utc(), expires_at=expires, media_type="application/pdf", byte_length=100,
                           coverage=Coverage(status="partial", unit="pages", total=2, examined=0), transformations=[], label="doc")
-    await repo.insert_evidence(owner, parent, {"filename": "doc.pdf"})
+    attempt_id = uuid.uuid4().hex
+    await repo.insert_evidence(owner, parent, {"filename": "doc.pdf"}, publication_root_id=parent.id, ingestion_attempt_id=attempt_id)
     text_child = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id="doc-1.text", origin="user_submission", kind="text",
                               parent_id=parent.id, collected_at=now_utc(), expires_at=expires, media_type="text/plain", byte_length=20,
                               coverage=Coverage(status="not_started", unit="characters", total=20, examined=0), transformations=[], label="text")
-    await repo.insert_evidence(owner, text_child, {"pages": [{"page": 1, "start": 0, "end": 10, "readable": True}, {"page": 2, "start": 10, "end": 20, "readable": False}]})
-    await repo.store_bytes(owner, case["case_id"], text_child.id, b"page one text.......", expires)
+    await repo.insert_evidence(owner, text_child, {"pages": [{"page": 1, "start": 0, "end": 10, "readable": True}, {"page": 2, "start": 10, "end": 20, "readable": False}]},
+                               publication_root_id=parent.id, ingestion_attempt_id=attempt_id)
+    await repo.store_bytes(owner, case["case_id"], text_child.id, b"page one text.......", expires, publish_root=False)
     image_child = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id="doc-1.page2", origin="user_submission", kind="image",
                                parent_id=parent.id, collected_at=now_utc(), expires_at=expires, media_type="image/png", byte_length=5,
                                coverage=Coverage(status="not_started", unit="items", total=1, examined=0), transformations=[], label="page 2 image")
-    await repo.insert_evidence(owner, image_child, {"page": 2, "derivedFrom": parent.id})
-    await repo.store_bytes(owner, case["case_id"], image_child.id, b"PNG!!", expires)
+    await repo.insert_evidence(owner, image_child, {"page": 2, "derivedFrom": parent.id}, publication_root_id=parent.id, ingestion_attempt_id=attempt_id)
+    await repo.store_bytes(owner, case["case_id"], image_child.id, b"PNG!!", expires, publish_root=False)
+    assert await repo.publish_evidence_root(owner, case["case_id"], parent.id, attempt_id)
 
     # Reading the rendered page-2 image FIRST must not, by itself, mark the WHOLE parent PDF "examined" — page 1 is still unread.
     await ev.mark_examined(owner, case["case_id"], image_child.id, 0, 5, 5)
@@ -461,6 +476,70 @@ async def _lease_renewal_detects_loss(inv):
         assert stopped.is_set()  # the wrapped work was actually cancelled, not left running after ownership was lost
     finally:
         inv.LEASE_RENEWAL_SECONDS = original_interval
+
+
+async def _device_submission_waits_for_authoritative_consumption(inv):
+    owner = f"persist-{uuid.uuid4().hex[:8]}"
+    await repo.ensure_indexes()
+    case = await repo.create_case(owner, "device", None)
+    turn_id = str(uuid.uuid4())
+    job = await repo.create_job(owner, case, turn_id, repo.digest("consume-key"), repo.digest("consume-payload"), "turn", {"message": "q", "turnId": turn_id})
+    request_id = str(uuid.uuid4())
+    await db.investigation_jobs.update_one({"job_id": job["job_id"]}, {"$set": {"status": "waiting_device", "lease_until": now_utc() + timedelta(seconds=60)}})
+    await repo.cas(owner, case["case_id"], {"revision": 0}, {"$set": {"active_job_id": job["job_id"], "active_turn_id": turn_id,
+                                                                                  "status": "waiting_device", "pending_device_request_ids": [request_id]}})
+    result = DeviceResult(request_id=request_id, case_revision=1, capability_id="cap.x", status="observed", values={"state": True})
+    await db.investigation_device_requests.insert_one({"owner_id": owner, "case_id": case["case_id"], "request_id": request_id, "job_id": job["job_id"],
+        "request": {"id": request_id, "caseId": case["case_id"], "caseRevision": 1, "capabilityId": "cap.x", "fields": [], "reason": "test",
+                    "expiresAt": repo.utc(case["expires_at"]).isoformat()}, "fulfilled": False,
+        "submission": {"state": "claimed", "digest": "d1", "result_ciphertext": repo.enc_json(result.wire()), "evidence_id": None,
+                       "claimed_at": now_utc(), "fence": str(uuid.uuid4())}, "created_at": now_utc()})
+    pending = await db.investigation_device_requests.find_one({"owner_id": owner, "request_id": request_id}, {"_id": 0})
+    item_id = await inv._finish_device_submission(owner, await repo.get_case(owner, case["case_id"]), pending)
+    assert item_id
+    final = await db.investigation_device_requests.find_one({"owner_id": owner, "request_id": request_id}, {"_id": 0})
+    assert final["submission"]["state"] == "stored"
+    assert final["fulfilled"] is False
+    fresh_job = await repo.get_job(owner, case["case_id"], job["job_id"])
+    assert request_id not in fresh_job.get("consumed_device_request_ids", [])
+
+
+async def _evidence_publication_is_atomic():
+    from services.higgins.contracts import EvidenceItem, Coverage
+    from fastapi import HTTPException
+
+    owner = f"persist-{uuid.uuid4().hex[:8]}"
+    await repo.ensure_indexes()
+    case = await repo.create_case(owner, "file", None)
+    root_id, attempt_id = str(uuid.uuid4()), uuid.uuid4().hex
+    item = EvidenceItem(id=root_id, case_id=case["case_id"], client_item_id="atomic-file", origin="user_submission", kind="document",
+                        parent_id=None, collected_at=now_utc(), expires_at=repo.utc(case["expires_at"]), media_type="application/pdf", byte_length=4,
+                        coverage=Coverage(status="not_started", unit="bytes", total=4), transformations=[], label="document")
+    await repo.insert_evidence(owner, item, {}, publication_root_id=root_id, ingestion_attempt_id=attempt_id)
+    await repo.store_bytes(owner, case["case_id"], root_id, b"data", item.expires_at, publish_root=False)
+    assert await repo.list_evidence(owner, case["case_id"]) == []
+    with pytest.raises(HTTPException) as exc:
+        await repo.get_evidence(owner, case["case_id"], root_id)
+    assert exc.value.status_code == 409
+    assert await repo.publish_evidence_root(owner, case["case_id"], root_id, attempt_id)
+    assert [row["evidence_id"] for row in await repo.list_evidence(owner, case["case_id"])] == [root_id]
+
+
+async def _device_request_identity_is_durable():
+    from services.higgins import tools
+
+    owner = f"persist-{uuid.uuid4().hex[:8]}"
+    await repo.ensure_indexes()
+    case = await repo.create_case(owner, "device", {"platform": "android", "capabilityIds": ["cap.x"]})
+    job = {"job_id": str(uuid.uuid4())}
+    first = tools.ToolContext(owner, case, job, {"platform": "android", "capabilityIds": ["cap.x"]})
+    first.tool_call_key = "1:0:request_device_observation:abc"
+    result_one = await tools.request_device_observation(first, {"capabilityId": "cap.x", "fields": ["state"], "reason": "test"})
+    replay = tools.ToolContext(owner, case, job, {"platform": "android", "capabilityIds": ["cap.x"]})
+    replay.tool_call_key = first.tool_call_key
+    result_two = await tools.request_device_observation(replay, {"capabilityId": "cap.x", "fields": ["state"], "reason": "test"})
+    assert result_one["requestId"] == result_two["requestId"]
+    assert await db.investigation_device_requests.count_documents({"owner_id": owner, "job_id": job["job_id"]}) == 1
 
 
 if __name__ == "__main__":

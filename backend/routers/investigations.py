@@ -503,10 +503,12 @@ async def device_results(case_id: str, body: DeviceResult, request: Request):
         if submission["digest"] != digest:
             raise http(409, "conflict", "A different result was already recorded for this device request.")
         if submission["state"] == "resumed":
-            return JSONResponse({"accepted": True, "duplicate": True, "evidenceId": submission.get("evidence_id"), "jobId": pending["job_id"]}, status_code=202, headers=NO_STORE)
+            return JSONResponse({"accepted": True, "received": True, "consumed": True, "duplicate": True, "evidenceId": submission.get("evidence_id"), "jobId": pending["job_id"]}, status_code=202, headers=NO_STORE)
         # Identical retry of an interrupted submission: finish it (idempotent) instead of acknowledging without evidence.
         item_id = await _finish_device_submission(owner, case, pending)
-        return JSONResponse({"accepted": True, "duplicate": True, "evidenceId": item_id, "jobId": pending["job_id"]}, status_code=202, headers=NO_STORE)
+        current = await db.investigation_device_requests.find_one({"owner_id": owner, "case_id": case_id, "request_id": body.request_id}, {"_id": 0, "submission.state": 1})
+        consumed = (current or {}).get("submission", {}).get("state") == "resumed"
+        return JSONResponse({"accepted": consumed, "received": True, "consumed": consumed, "duplicate": True, "evidenceId": item_id, "jobId": pending["job_id"]}, status_code=202, headers=NO_STORE)
     if repo.utc(datetime.fromisoformat(pending["request"]["expiresAt"])) <= now_utc():
         raise http(409, "conflict", "This device request expired before its result arrived. Higgins will ask again if the observation still matters.")
     job = await repo.get_job(owner, case_id, pending["job_id"])
@@ -522,10 +524,14 @@ async def device_results(case_id: str, body: DeviceResult, request: Request):
         if not current or not current.get("submission") or current["submission"]["digest"] != digest:
             raise http(409, "conflict", "A different result was already recorded for this device request.")
         item_id = await _finish_device_submission(owner, case, current)
-        return JSONResponse({"accepted": True, "duplicate": True, "evidenceId": item_id, "jobId": pending["job_id"]}, status_code=202, headers=NO_STORE)
+        refreshed = await db.investigation_device_requests.find_one({"owner_id": owner, "case_id": case_id, "request_id": body.request_id}, {"_id": 0, "submission.state": 1})
+        consumed = (refreshed or {}).get("submission", {}).get("state") == "resumed"
+        return JSONResponse({"accepted": consumed, "received": True, "consumed": consumed, "duplicate": True, "evidenceId": item_id, "jobId": pending["job_id"]}, status_code=202, headers=NO_STORE)
     pending = await db.investigation_device_requests.find_one({"owner_id": owner, "case_id": case_id, "request_id": body.request_id}, {"_id": 0})
     item_id = await _finish_device_submission(owner, case, pending)
-    return JSONResponse({"accepted": True, "evidenceId": item_id, "jobId": pending["job_id"]}, status_code=202, headers=NO_STORE)
+    refreshed = await db.investigation_device_requests.find_one({"owner_id": owner, "case_id": case_id, "request_id": body.request_id}, {"_id": 0, "submission.state": 1})
+    consumed = (refreshed or {}).get("submission", {}).get("state") == "resumed"
+    return JSONResponse({"accepted": consumed, "received": True, "consumed": consumed, "evidenceId": item_id, "jobId": pending["job_id"]}, status_code=202, headers=NO_STORE)
 
 
 DEVICE_SUBMISSION_STALE_SECONDS = 120
@@ -602,10 +608,10 @@ async def _finish_device_submission(owner: str, case: dict, pending: dict) -> Op
             return refreshed.get("evidence_id", sub.get("evidence_id"))
         selector = {"owner_id": owner, "case_id": case_id, "request_id": request_id}
 
-        async def _resume() -> None:
+        async def _resume() -> bool:
             job = await repo.get_job(owner, case_id, pending["job_id"])
             if job.get("status") not in ("waiting_device", "queued", "investigating", "retry_wait"):
-                return
+                return request_id in job.get("consumed_device_request_ids", [])
             checkpoint = repo.dec_json(job["checkpoint_ciphertext"]) if job.get("checkpoint_ciphertext") else {"contents": [], "rounds": 0}
             if not any(r.get("evidenceId") == sub["evidence_id"] for r in checkpoint.get("deviceResults", [])):
                 checkpoint.setdefault("deviceResults", []).append({**result, "evidenceId": sub["evidence_id"]})
@@ -613,25 +619,33 @@ async def _finish_device_submission(owner: str, case: dict, pending: dict) -> Op
             # currently holds under an unexpired lease, or one that already moved to a terminal state elsewhere.
             resumed_job = await db.investigation_jobs.find_one_and_update(
                 {"owner_id": owner, "job_id": job["job_id"], "status": {"$in": ["waiting_device", "queued", "retry_wait"]},
+                 "consumed_device_request_ids": {"$ne": request_id},
                  "$or": [{"lease_until": None}, {"lease_until": {"$lte": now_utc()}}]},
-                {"$set": {"checkpoint_ciphertext": repo.enc_json(checkpoint), "status": "queued", "lease_until": None}})
+                {"$set": {"checkpoint_ciphertext": repo.enc_json(checkpoint), "status": "queued", "lease_until": None},
+                 "$addToSet": {"consumed_device_request_ids": request_id}})
             if resumed_job is None:
-                return  # already advanced elsewhere, cancelled/expired, or actively leased by a live coordinator turn
-            await repo.cas(owner, case_id, {"status": {"$in": ["waiting_device", "queued"]}}, {"$set": {"status": "queued"}, "$pull": {"pending_device_request_ids": request_id}})
+                current_job = await repo.get_job(owner, case_id, job["job_id"])
+                return request_id in current_job.get("consumed_device_request_ids", [])
+            await repo.cas(owner, case_id, {
+                "work_epoch": job.get("work_epoch", job["epoch"]), "active_job_id": job["job_id"],
+                "status": {"$in": ["waiting_device", "queued"]}, "pending_device_request_ids": request_id,
+            }, {"$set": {"status": "queued"}, "$pull": {"pending_device_request_ids": request_id}})
             jobs.launch(owner, case_id, job["job_id"])
+            return True
         # No multi-document transactions here (standalone MongoDB): the job/case writes above are protected instead by
         # holding the SAME renewed fence for their whole duration — no other attempt can also be in "resuming" while
         # this one is alive and heartbeating — AND each write is itself conditioned on the job's/case's own state, so
         # a write that arrives after the fence is lost (heartbeat cancelled work promptly, but a write already in
         # flight could still land) still cannot corrupt a state it no longer matches.
         try:
-            await _with_lease_renewal(db.investigation_device_requests, selector, "submission.fence", fence, "submission.stage_started_at", _resume())
+            consumed = await _with_lease_renewal(db.investigation_device_requests, selector, "submission.fence", fence, "submission.stage_started_at", _resume())
         except LeaseLost:
             refreshed = (await db.investigation_device_requests.find_one(selector, {"_id": 0, "submission": 1}) or {}).get("submission") or {}
             return refreshed.get("evidence_id", sub.get("evidence_id"))
         committed = await db.investigation_device_requests.find_one_and_update(
             {**selector, "submission.fence": fence},
-            {"$set": {"submission.state": "resumed", "fulfilled": True, "result_digest": sub["digest"]}})
+            {"$set": ({"submission.state": "resumed", "fulfilled": True, "result_digest": sub["digest"], "consumed_at": now_utc()}
+                      if consumed else {"submission.state": "stored", "submission.deferred_at": now_utc()})})
         if not committed:  # fenced out: another attempt owns the outcome; do not claim credit for the resume ourselves
             refreshed = (await db.investigation_device_requests.find_one({"owner_id": owner, "case_id": case_id, "request_id": request_id}, {"_id": 0, "submission": 1}) or {}).get("submission") or {}
             sub = refreshed or sub

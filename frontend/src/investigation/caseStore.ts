@@ -8,6 +8,7 @@ import { currentDeviceProfile, observe } from "./deviceBroker";
 import { forgetCase } from "./caseIndex";
 import { storage } from "@/src/utils/storage";
 import { stopHiggins } from "@/src/voice/higgins";
+import { disposePickerCopy } from "@/src/domain/fileCopyLifecycle";
 import type { CreateCase, Failure, HigginsResponse, InvestigationCase, InvestigationEvent, Job, Question, SourceReference, TurnCommit } from "./types";
 
 export type Phase = "idle" | "creating" | "working" | "reconnecting" | "waiting_device" | "waiting_user" | "answered" | "failed" | "expired";
@@ -122,6 +123,9 @@ export function useInvestigation() {
         const result = await api.uploadFileEvidenceResumable(caseId, revision, file, kind, i === startIndex ? startHandle : null,
           (handle) => { pendingUpload.current = { caseId, files, question, fileIndex: i, handle, revision }; });
         revision = result.caseRevision;
+        // Publication is the acknowledgement boundary. The helper deletes only Apollo cache copies; original
+        // document-provider/shared URIs remain untouched even though this call is deliberately best-effort.
+        await disposePickerCopy(file.uri, true);
         pendingUpload.current = null;
       } catch (e: unknown) {
         if (!live()) return null;

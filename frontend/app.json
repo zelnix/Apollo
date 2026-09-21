@@ -78,15 +78,15 @@
           "iosActivationRules": {
             "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
             "NSExtensionActivationSupportsText": true,
-            "NSExtensionActivationSupportsImageWithMaxCount": 1,
-            "NSExtensionActivationSupportsFileWithMaxCount": 1
+            "NSExtensionActivationSupportsImageWithMaxCount": 10,
+            "NSExtensionActivationSupportsFileWithMaxCount": 10
           },
           "androidIntentFilters": [
             "text/*",
             "image/*",
             "application/*"
           ],
-          "androidMultiIntentFilters": []
+          "androidMultiIntentFilters": ["*/*"]
         }
       ],
       "./plugins/withApolloSiteGuard",

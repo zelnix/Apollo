@@ -12,6 +12,7 @@ import { alternativeRoutes, classifyShare, SHARE_KIND_LABEL, type ShareRoute, ty
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { getShareIntake, putShareIntake } from "@/src/share/shareIntake";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -28,13 +29,15 @@ export default function ShareLanding() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ text?: string; url?: string; fileUri?: string; fileName?: string; mime?: string; size?: string }>();
+  const params = useLocalSearchParams<{ intakeId?: string; text?: string; url?: string; fileUri?: string; fileName?: string; mime?: string; size?: string }>();
   const { ready, setupDone } = useApollo();
-  const payload: SharedPayload = useMemo(() => ({ text: params.text ?? null, webUrl: params.url ?? null, files: params.fileUri ? [{ path: params.fileUri, fileName: params.fileName ?? null, mimeType: params.mime ?? null, size: params.size ? Number(params.size) : null }] : [] }), [params.text, params.url, params.fileUri, params.fileName, params.mime, params.size]);
+  const directPayload: SharedPayload = useMemo(() => ({ text: params.text ?? null, webUrl: params.url ?? null, files: params.fileUri ? [{ path: params.fileUri, fileName: params.fileName ?? null, mimeType: params.mime ?? null, size: params.size ? Number(params.size) : null }] : [] }), [params.text, params.url, params.fileUri, params.fileName, params.mime, params.size]);
+  const payload = useMemo(() => getShareIntake(params.intakeId) ?? directPayload, [params.intakeId, directPayload]);
+  const intakeId = useMemo(() => params.intakeId ?? putShareIntake(payload), [params.intakeId, payload]);
   const route = useMemo(() => classifyShare(payload), [payload]);
   const others = useMemo(() => alternativeRoutes(payload, route.kind), [payload, route.kind]);
-  const go = (r: ShareRoute) => router.replace({ pathname: r.pathname, params: r.params });
-  const preview = payload.files?.[0] ? `${payload.files[0].fileName ?? payload.files[0].path.split("/").pop()}${payload.files[0].mimeType ? ` · ${payload.files[0].mimeType}` : ""}` : (payload.webUrl || payload.text || "").slice(0, 400);
+  const go = (r: ShareRoute) => router.replace({ pathname: r.pathname, params: { ...r.params, sharedIntakeId: intakeId } });
+  const preview = payload.files?.[0] ? `${payload.files.length} attachment${payload.files.length === 1 ? "" : "s"}: ${payload.files[0].fileName ?? payload.files[0].path.split("/").pop()}${payload.files[0].mimeType ? ` · ${payload.files[0].mimeType}` : ""}` : (payload.webUrl || payload.text || "").slice(0, 400);
 
   if (ready && !setupDone) return <Redirect href="/" />;
   if (!preview) return <Redirect href="/(tabs)/home" />;

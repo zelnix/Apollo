@@ -3,11 +3,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { buildIncidentPlan, inferRecoveryKinds } from "../src/domain/incidentPlan.ts";
+import { buildWeeklyDigest } from "../src/domain/digest.ts";
 import type { PatrolEvent } from "../src/domain/types";
 import { alternativeRoutes, classifyShare } from "../src/share/classifyShare.ts";
 
-test("bare link → /check", () => { const r = classifyShare({ webUrl: "https://example.com/x" }); assert.equal(r.kind, "link"); assert.equal(r.pathname, "/check"); assert.equal(r.params.url, "https://example.com/x"); });
-test("bare domain in text → /check with https", () => { assert.equal(classifyShare({ text: "commbank-verify.top/login" }).params.url, "https://commbank-verify.top/login"); });
+test("bare link → /check without putting evidence in route params", () => { const r = classifyShare({ webUrl: "https://example.com/x" }); assert.equal(r.kind, "link"); assert.equal(r.pathname, "/check"); assert.equal(r.params.url, undefined); });
+test("bare domain in text → /check without putting evidence in route params", () => { assert.equal(classifyShare({ text: "commbank-verify.top/login" }).params.url, undefined); });
 test("SMS with link → /message", () => { const r = classifyShare({ text: "CommBank: your account is locked. Verify at https://cb-verify.top/x" }); assert.equal(r.kind, "message"); assert.equal(r.pathname, "/message"); });
 test("forwarded email with headers → /email", () => { const r = classifyShare({ text: "From: CommBank <a@b.top>\nSubject: Restricted\n\nDear customer, verify now https://x.top" }); assert.equal(r.kind, "email"); assert.equal(r.pathname, "/email"); });
 test("long email-like body without headers → /email", () => { const r = classifyShare({ text: `Dear customer, ${"we noticed unusual activity on your account and need you to confirm your details. ".repeat(8)} Kind regards, The Team` }); assert.equal(r.kind, "email"); });
@@ -17,8 +18,8 @@ test("MFA / login alert → /account", () => {
   assert.equal(classifyShare({ text: "Your verification code is 482913" }).kind, "account");
 });
 test("image file → /message screenshot; other file → /file", () => {
-  const img = classifyShare({ files: [{ path: "file:///tmp/shot.png", mimeType: "image/png", fileName: "shot.png" }] }); assert.equal(img.kind, "screenshot"); assert.equal(img.params.imageUri, "file:///tmp/shot.png");
-  const f = classifyShare({ files: [{ path: "file:///tmp/Invoice.pdf.exe", mimeType: "application/octet-stream", fileName: "Invoice.pdf.exe", size: 1200 }] }); assert.equal(f.kind, "file"); assert.equal(f.pathname, "/file"); assert.equal(f.params.name, "Invoice.pdf.exe"); assert.equal(f.params.size, "1200");
+  const img = classifyShare({ files: [{ path: "file:///tmp/shot.png", mimeType: "image/png", fileName: "shot.png" }] }); assert.equal(img.kind, "screenshot"); assert.equal(img.params.imageUri, undefined);
+  const f = classifyShare({ files: [{ path: "file:///tmp/Invoice.pdf.exe", mimeType: "application/octet-stream", fileName: "Invoice.pdf.exe", size: 1200 }, { path: "file:///tmp/body.txt", mimeType: "text/plain" }] }); assert.equal(f.kind, "file"); assert.equal(f.pathname, "/file"); assert.equal(f.params.name, undefined); assert.equal(f.params.size, undefined);
 });
 test("alternatives exclude the chosen kind and cover the others", () => {
   const p = { text: "Hi https://a.b/c" }; const alts = alternativeRoutes(p, "message").map((r) => r.kind);
@@ -50,7 +51,6 @@ test("no exposure → generic don't-act plan, contact the brand yourself", () =>
 });
 
 // ---- Weekly digest incidents ----
-import { buildWeeklyDigest } from "../src/domain/digest.ts";
 test("weekly digest groups 2+ linked events into incidents with stopped / still-open split", () => {
   const t0 = Date.now() - 3600_000;
   const d = buildWeeklyDigest([

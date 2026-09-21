@@ -12,6 +12,7 @@ import { parseHigginsIssueContext, type HigginsIssueContext } from "@/src/domain
 import { redactInvestigationSecrets as redactUserSecrets } from "@/src/domain/privacy";
 import { useInvestigation } from "@/src/investigation/caseStore";
 import { createCaseInput } from "@/src/investigation/fromContext";
+import { rememberCaseForEvent } from "@/src/investigation/caseIndex";
 import { useApollo } from "@/src/store/ApolloContext";
 import { stopHiggins } from "@/src/voice/higgins";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -43,7 +44,7 @@ export default function Ask() {
     setText(""); setRouteError(null);
     if (state.caseData && state.phase !== "expired" && state.phase !== "idle") { void ask(clean); return; }
     const { input, files } = createCaseInput(context ?? activeContext, clean);
-    void start(input, files);
+    void start(input, files).then((created) => { if (created && (context ?? activeContext)?.event_id) void rememberCaseForEvent((context ?? activeContext)!.event_id!, created.id); });
   };
 
   useEffect(() => {
@@ -59,7 +60,7 @@ export default function Ask() {
     stopHiggins();
     if (context.case_id) { void attach(context.case_id).then((c) => { if (c && question) void ask(question); }); return; }
     const { input, files } = createCaseInput(context, question);
-    void start(input, files);
+    void start(input, files).then((created) => { if (created && context.event_id) void rememberCaseForEvent(context.event_id, created.id); });
   }, [params.handoffId, params.context, params.prompt, deviceId, router, start, attach, ask]);
 
   const deleteAll = async () => { stopHiggins(); clearHandoffTransfers(); setActiveContext(null); setRouteError(null); await remove(); };
@@ -74,7 +75,7 @@ export default function Ask() {
         <Body testID="ask-conversation-counts">{completedTurns} completed answer{completedTurns === 1 ? "" : "s"} in this case</Body>
         <Button testID="ask-new-conversation" variant="ghost" label="Start an unrelated question" onPress={newQuestion} disabled={busy} /></Card> : null}
       <ScrollView ref={scrollRef} contentContainerStyle={s.list} testID="ask-messages" onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
-        {state.phase === "idle" && !routeError ? <Body testID="ask-empty">Ask about a warning, a message, a link, a call or a setting. Higgins investigates with Apollo's evidence and real research, then explains plainly.</Body> : null}
+        {state.phase === "idle" && !routeError ? <Body testID="ask-empty">Ask about a warning, a message, a link, a call or a setting. Higgins investigates with Apollo&apos;s evidence and real research, then explains plainly.</Body> : null}
         <InvestigationView state={state} onAnswer={(answer) => void ask(answer)} onRetry={() => void retry()} onCancel={() => void cancel()} testID="ask-investigation"
           onAction={(action, outcome) => { if (outcome.kind === "observed") void ask(`I did "${action.label}". Please re-check using the fresh observation Apollo just recorded.`); }} />
         {routeError ? <Card style={s.context} testID="ask-error-card"><Text style={{ color: colors.barkingText, fontFamily: fonts.text }} testID="ask-error">{routeError}</Text></Card> : null}
