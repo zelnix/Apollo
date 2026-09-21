@@ -1,44 +1,51 @@
-// Unit tests for the production security safeguard.
+// Unit tests for the runtime security policy (spec §1A: no mocks in the application runtime).
 // Run: cd frontend && yarn test:security   (node:test)
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { NATIVE_SECURECORE_DEPENDENT_FEATURES, SecurityConfigurationError, validateSecurityConfig } from "../src/security/securityConfig.ts";
+import { SecurityConfigurationError, validateSecurityConfig } from "../src/security/securityConfig.ts";
 
 const ok = (input: Parameters<typeof validateSecurityConfig>[0]) => assert.doesNotThrow(() => validateSecurityConfig(input));
 const rejected = (input: Parameters<typeof validateSecurityConfig>[0], needle: string) =>
   assert.throws(() => validateSecurityConfig(input), (e: unknown) => e instanceof SecurityConfigurationError && e.message.includes(needle));
 
-test("1. development + mock → allowed", () => ok({ appEnvironment: "development", secureCoreMode: "mock", securityAdapterMode: "mock" }));
-test("2. development + native → allowed", () => ok({ appEnvironment: "development", secureCoreMode: "native", securityAdapterMode: "native", nativeSecureCoreAvailable: true, nativeSecurityAdapterAvailable: true }));
-test("3. production + native → allowed", () => ok({ appEnvironment: "production", secureCoreMode: "native", securityAdapterMode: "native", nativeSecureCoreAvailable: true, nativeSecurityAdapterAvailable: true }));
-test("4. production + mock SecureCore → allowed while no shipped feature depends on native SecureCore", () => {
-  assert.equal(NATIVE_SECURECORE_DEPENDENT_FEATURES.length, 0, "policy: SecureCore is a contract stub today");
-  ok({ appEnvironment: "production", secureCoreMode: "mock", securityAdapterMode: "native", nativeSecurityAdapterAvailable: true });
+test("1. every environment is allowed on a native host that has the Apollo module", () => {
+  for (const appEnvironment of ["development", "staging", "production"] as const) {
+    ok({ appEnvironment, hostPlatform: "android", nativeSecurityAdapterAvailable: true });
+    ok({ appEnvironment, hostPlatform: "ios", nativeSecurityAdapterAvailable: true });
+    ok({ appEnvironment, hostPlatform: "web" });
+  }
 });
-test("4b. production + mock SecureCore → rejected once a shipped feature depends on it", () => {
-  rejected(
-    { appEnvironment: "production", secureCoreMode: "mock", securityAdapterMode: "native", nativeSecurityAdapterAvailable: true, nativeSecureCoreDependentFeatures: ["attested-device-identity"] },
-    "attested-device-identity",
-  );
-  ok({ appEnvironment: "production", secureCoreMode: "native", securityAdapterMode: "native", nativeSecureCoreAvailable: true, nativeSecurityAdapterAvailable: true, nativeSecureCoreDependentFeatures: ["attested-device-identity"] });
+test("2. native host without the Apollo module → rejected in every environment (never a mock substitute)", () => {
+  for (const appEnvironment of ["development", "staging", "production"] as const) {
+    rejected({ appEnvironment, hostPlatform: "android", nativeSecurityAdapterAvailable: false }, "native security module is required");
+    rejected({ appEnvironment, hostPlatform: "ios", nativeSecurityAdapterAvailable: false }, "native security module is required");
+  }
 });
-test("5. production + mock SecurityAdapter → rejected (live control, never weakened)", () => rejected({ appEnvironment: "production", secureCoreMode: "mock", securityAdapterMode: "mock" }, "native Apollo Security Adapter"));
-test("6. native selected but module unavailable → rejected (any env)", () => {
-  rejected({ appEnvironment: "development", secureCoreMode: "native", securityAdapterMode: "mock", nativeSecureCoreAvailable: false }, "required but unavailable");
-  rejected({ appEnvironment: "production", secureCoreMode: "native", securityAdapterMode: "native", nativeSecureCoreAvailable: false }, "required but unavailable");
-  rejected({ appEnvironment: "production", secureCoreMode: "mock", securityAdapterMode: "native", nativeSecurityAdapterAvailable: false }, "native security module is required but unavailable");
-  rejected({ appEnvironment: "staging", secureCoreMode: "mock", securityAdapterMode: "native", nativeSecurityAdapterAvailable: false }, "native security module is required but unavailable");
+test("3. the removed mode switches are not accepted as inputs any more", () => {
+  const legacy = { appEnvironment: "development", secureCoreMode: "mock", securityAdapterMode: "mock" } as unknown as Parameters<typeof validateSecurityConfig>[0];
+  const result = validateSecurityConfig(legacy);
+  assert.deepEqual(Object.keys(result).sort(), ["androidEnforcementEngine", "appEnvironment", "devicePreviewHarness"]);
+  assert.equal(result.devicePreviewHarness, "off");
 });
-test("7. missing or invalid security mode / environment → rejected", () => {
-  rejected({ appEnvironment: undefined, secureCoreMode: "mock", securityAdapterMode: "mock" }, "EXPO_PUBLIC_APP_ENV is missing");
-  rejected({ appEnvironment: "prod", secureCoreMode: "native", securityAdapterMode: "native" }, "is invalid");
-  rejected({ appEnvironment: "development", secureCoreMode: undefined, securityAdapterMode: "mock" }, "EXPO_PUBLIC_SECURECORE_MODE");
-  rejected({ appEnvironment: "development", secureCoreMode: "mock", securityAdapterMode: "fake" }, "EXPO_PUBLIC_SECURITY_MODE");
+test("4. device-preview harness: development web only", () => {
+  ok({ appEnvironment: "development", devicePreviewHarness: "enabled", hostPlatform: "web" });
+  ok({ appEnvironment: "development", devicePreviewHarness: "enabled" }); // preflight has no host platform
+  rejected({ appEnvironment: "staging", devicePreviewHarness: "enabled", hostPlatform: "web" }, "only permitted in development");
+  rejected({ appEnvironment: "production", devicePreviewHarness: "enabled", hostPlatform: "web" }, "only permitted in development");
+  rejected({ appEnvironment: "development", devicePreviewHarness: "enabled", hostPlatform: "android", nativeSecurityAdapterAvailable: true }, "web-only");
+  rejected({ appEnvironment: "development", devicePreviewHarness: "enabled", hostPlatform: "ios", nativeSecurityAdapterAvailable: true }, "web-only");
+  rejected({ appEnvironment: "development", devicePreviewHarness: "yes", hostPlatform: "web" }, "is invalid");
+  assert.equal(validateSecurityConfig({ appEnvironment: "production", devicePreviewHarness: "", hostPlatform: "web" }).devicePreviewHarness, "off");
+  assert.equal(validateSecurityConfig({ appEnvironment: "production", devicePreviewHarness: "off", hostPlatform: "web" }).devicePreviewHarness, "off");
 });
-test("staging + mock → allowed (explicit choice, incl. physical devices)", () => ok({ appEnvironment: "staging", secureCoreMode: "mock", securityAdapterMode: "mock" }));
-test("8. GuardDog acceptance candidate requires native and is prohibited in production", () => {
-  ok({ appEnvironment: "development", secureCoreMode: "mock", securityAdapterMode: "native", androidEnforcementEngine: "guarddog_acceptance" });
-  rejected({ appEnvironment: "development", secureCoreMode: "mock", securityAdapterMode: "mock", androidEnforcementEngine: "guarddog_acceptance" }, "requires EXPO_PUBLIC_SECURITY_MODE=native");
-  rejected({ appEnvironment: "production", secureCoreMode: "mock", securityAdapterMode: "native", androidEnforcementEngine: "guarddog_acceptance" }, "test-only");
+test("5. missing or invalid environment → rejected", () => {
+  rejected({ appEnvironment: undefined }, "EXPO_PUBLIC_APP_ENV is missing");
+  rejected({ appEnvironment: "prod" }, "is invalid");
+});
+test("6. GuardDog acceptance candidate is prohibited in production", () => {
+  ok({ appEnvironment: "development", androidEnforcementEngine: "guarddog_acceptance", hostPlatform: "android", nativeSecurityAdapterAvailable: true });
+  ok({ appEnvironment: "staging", androidEnforcementEngine: "guarddog_acceptance", hostPlatform: "android", nativeSecurityAdapterAvailable: true });
+  rejected({ appEnvironment: "production", androidEnforcementEngine: "guarddog_acceptance", hostPlatform: "android", nativeSecurityAdapterAvailable: true }, "test-only");
+  rejected({ appEnvironment: "development", androidEnforcementEngine: "other" }, "is invalid");
 });

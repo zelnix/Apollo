@@ -4,6 +4,20 @@
     "appVersionSource": "local"
   },
   "build": {
+    "device-test": {
+      "distribution": "internal",
+      "channel": "device-test",
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": false
+      },
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "staging",
+        "EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE": "legacy"
+      }
+    },
     "guarddog-acceptance": {
       "distribution": "internal",
       "channel": "guarddog-stage1d-acceptance",
@@ -12,8 +26,6 @@
       },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "staging",
-        "EXPO_PUBLIC_SECURITY_MODE": "native",
-        "EXPO_PUBLIC_SECURECORE_MODE": "mock",
         "EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE": "guarddog_acceptance"
       }
     },
@@ -21,8 +33,6 @@
       "channel": "production",
       "env": {
         "EXPO_PUBLIC_APP_ENV": "production",
-        "EXPO_PUBLIC_SECURITY_MODE": "native",
-        "EXPO_PUBLIC_SECURECORE_MODE": "mock",
         "EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE": "legacy"
       }
     }

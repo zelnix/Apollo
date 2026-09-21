@@ -5,18 +5,38 @@
 import type { Capability, Visibility } from "@/src/domain/types";
 import type { EnforcementEvidence, PlatformCapabilityProfile } from "./PlatformCapabilityProfile";
 
-// AdapterKind is deliberately narrower than SdkPlatform (see PlatformCapabilityProfile.ts):
-// it lists only the implementations this app can actually select at runtime today
-// (securityAdapter.ts). Windows/macOS have no adapter yet, but the capability/evidence
-// TYPES below already represent them so no redesign is needed when those adapters land.
-export type AdapterKind = "mock" | "ios" | "android";
+// AdapterKind lists only the hosts this app can actually select at runtime today (securityAdapter.ts):
+// real Kotlin/Swift modules, the real browser adapter, and the development-only device-preview harness.
+// Windows/macOS hosts are represented in the capability/evidence TYPES below and remain explicitly unimplemented.
+export type AdapterKind = "ios" | "android" | "web" | "preview_harness";
 
+export type PermissionUnavailableReason = "not_implemented" | "os_restricted" | "hardware_absent" | "configuration_missing" | "entitlement_missing" | "adapter_failed";
+
+/**
+ * PermissionObservation (spec §10A). `status`/`enabled`/`observedAt` are a FRESH OS observation; `requested`/`lastRequestedAt`
+ * are Apollo's own recorded request history. Missing historical knowledge is null, never an invented true.
+ */
 export interface ProtectionPermission {
   id: "network_filter" | "vpn_config" | "accessibility" | "notifications";
   title: string;
-  status: "granted" | "denied" | "undetermined" | "blocked" | "not_applicable";
+  status: "granted" | "denied" | "undetermined" | "blocked" | "restricted" | "not_applicable" | "unavailable";
   canAskAgain: boolean;
   why: string;
+  requested?: boolean | null;
+  lastRequestedAt?: string | null;
+  /** Service/special-access enablement, distinct from a permission grant. */
+  enabled?: boolean | null;
+  observedAt?: string | null;
+  unavailableReason?: PermissionUnavailableReason | null;
+}
+
+/** Real device facts a native host can report (never inferred from screen size). */
+export interface DeviceProfileFacts {
+  manufacturer: string | null;
+  model: string | null;
+  osVersion: string | null;
+  formFactor: "phone" | "tablet" | "desktop" | "laptop" | "convertible" | "unknown";
+  locale: string | null;
 }
 
 /** How Site Guard actually enforces on this device. "simulated" only ever comes from the mock adapter. */
@@ -108,8 +128,10 @@ export interface SecurityPlatformAdapter {
   requestProtectionPermission(id: ProtectionPermission["id"]): Promise<ProtectionPermission>;
   /** Cross-platform capability ceiling for this adapter's platform. See PlatformCapabilityProfile.ts. */
   getPlatformCapabilityProfile(): Promise<PlatformCapabilityProfile>;
-  /** Recent enforcement evidence records. Mock MUST always return []. */
+  /** Recent enforcement evidence records. Non-enforcing hosts MUST always return []. */
   getEnforcementEvidence(): Promise<EnforcementEvidence[]>;
+  /** Real device facts from the native host; browser/preview hosts return null (they cannot observe them). */
+  getDeviceProfileFacts?(): Promise<DeviceProfileFacts | null>;
   /** Optional two-phase acknowledgement for adapters with a durable native evidence inbox. */
   acknowledgeEnforcementEvidence?(evidenceIds: string[]): Promise<void>;
 }

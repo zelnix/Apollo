@@ -27,14 +27,14 @@ import { STATE_RANK } from "@/src/domain/stateMachine";
 import { findScentFor } from "@/src/domain/threatScent";
 import { canTransition, resolveApolloState, type StateResolution } from "@/src/domain/stateMachine";
 import type { ApolloState, Capability, Decision, DomainInfo, IntelResult, LocalAnalysis, PatrolEvent } from "@/src/domain/types";
-import { IS_MOCK_SECURITY, SECURITY_MODE, securityAdapter } from "@/src/security/securityAdapter";
+import { IS_PREVIEW_HARNESS, securityAdapter } from "@/src/security/securityAdapter";
+import { primeDeviceFacts } from "@/src/investigation/deviceBroker";
 import type { BlockResult, NetworkStatus, ProtectionPermission, ProtectionStatus } from "@/src/security/SecurityPlatformAdapter";
 import { isPacketEvidence as isVerifiedEnforcement, normalizeHistoricalEvent } from '@/src/domain/packetEvidence';
 import { freshObservation, unavailableObservation, boundedObservation } from '@/src/domain/protectionObservation';
 import { patrolPayload } from '@/src/domain/patrolPayload';
 import { patrolDelivery, deliveryFailure } from './patrolDelivery';
 import { toPatrolEnforcementEvidence } from "@/src/domain/enforcementEvidenceSync";
-import { SecureCore } from "@/src/security/securecore/SecureCore";
 import { getPushStatus, registerForPush, type PushStatus } from "@/src/push/notifications";
 import { MessagingSdk } from "@/src/security/messagingSdk";
 import { CallSdk } from "@/src/security/callSdk";
@@ -43,7 +43,7 @@ import { shouldBypassSetup } from "@/src/testing/setupBypass";
 import { isInvestigationResult, patrolSafeSummary, type InvestigationResult } from "@/src/domain/investigation";
 import { RECOVERY_STEPS, type RecoveryKind } from "@/src/domain/recovery";
 
-const deviceMeta = () => ({ platform: Platform.OS, adapter_mode: SECURITY_MODE, app_version: "1.0.0", tz_offset_minutes: -new Date().getTimezoneOffset() });
+const deviceMeta = () => ({ platform: Platform.OS, adapter_mode: securityAdapter.kind, app_version: "1.0.0", tz_offset_minutes: -new Date().getTimezoneOffset() });
 
 const K = { setup: "apollo.setup.done", events: "apollo.patrol.events", trust: "apollo.trust.entries", verified: "apollo.lastVerifiedAt", protection: "apollo.protection.on", wifi: "apollo.wifi.trusted", quiet: "apollo.quiet.hours", lowPower: "apollo.lowPower", seenEvidence: "apollo.evidence.seen" };
 
@@ -322,7 +322,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        await SecureCore.initialize();
+        await primeDeviceFacts();
         const [storedDone, ev, tr, protOn] = await Promise.all([
           storage.getItem<boolean>(K.setup, false), storage.getItem<string | null>(K.events, null), storage.getItem<string | null>(K.trust, null),
           storage.getItem<boolean>(K.protection, false),
@@ -831,7 +831,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const resolution = useMemo(() => resolveApolloState({ events, visibility, lastVerifiedAt, now: Date.now() }), [events, visibility, lastVerifiedAt, tick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const value: ApolloContextValue = {
-    ready, setupDone, deviceId, identityReset, reRegisterDevice, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label, isMock: IS_MOCK_SECURITY,
+    ready, setupDone, deviceId, identityReset, reRegisterDevice, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label, isMock: IS_PREVIEW_HARNESS,
     refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, scanGmailInbox, recordRecovery, upsertEvent, recordPageAnalysis, checkCall, checkNumberRisk,
     pushStatus, enablePush, quietHours, quietNow, setQuietHours, lowPower, setLowPower,
   };

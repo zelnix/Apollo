@@ -360,6 +360,16 @@ async def cancel_job(case_id: str, job_id: str, body: ExpectedRevision, request:
     return JSONResponse({"status": "cancelled", "cleanupStatus": "complete"}, status_code=202, headers=NO_STORE)
 
 
+def _canonical_result(body: DeviceResult, requested: list[str]) -> DeviceResult:
+    """Normalises a device result before hashing/storage: only requested fields, stable key order, no observed-at drift."""
+    values = {k: body.values[k] for k in sorted(body.values) if not requested or k in requested}
+    return body.model_copy(update={"values": values})
+
+
+def _result_digest(body: DeviceResult) -> str:
+    return repo.digest(json.dumps(body.wire(), sort_keys=True, separators=(",", ":")))
+
+
 # ------------------------------------------------------------------ device results
 @router.post("/investigations/{case_id}/device-results", status_code=202)
 async def device_results(case_id: str, body: DeviceResult, request: Request):
@@ -370,28 +380,66 @@ async def device_results(case_id: str, body: DeviceResult, request: Request):
         raise http(409, "conflict", "No outstanding device request with that ID for this investigation.")
     if pending["request"]["capabilityId"] != body.capability_id:
         raise http(409, "conflict", "The result does not match the requested capability.")
+    device = repo.device_profile(case) or {}
+    if body.simulation and device.get("evidenceOrigin") == "native":
+        raise http(409, "conflict", "A native device profile cannot submit simulated observations.")
+    body = _canonical_result(body, pending["request"]["fields"])  # canonicalise BEFORE hashing, for first submission and replay alike
+    digest = _result_digest(body)
     if pending["fulfilled"]:
-        if pending.get("result_digest") != repo.digest(body.model_dump_json()):
+        if pending.get("result_digest") != digest:
             raise http(409, "conflict", "A different result was already recorded for this device request.")
         return JSONResponse({"accepted": True, "duplicate": True, "evidenceId": pending.get("evidence_id"), "jobId": pending["job_id"]}, status_code=202, headers=NO_STORE)
     if repo.utc(datetime.fromisoformat(pending["request"]["expiresAt"])) <= now_utc():
         raise http(409, "conflict", "This device request expired before its result arrived. Higgins will ask again if the observation still matters.")
-    device = repo.device_profile(case) or {}
-    if body.simulation and device.get("evidenceOrigin") == "native":
-        raise http(409, "conflict", "A native device profile cannot submit simulated observations.")
-    requested = pending["request"]["fields"]
-    if requested:  # keep only requested fields; extra values are dropped rather than dead-ending the investigation
-        body = body.model_copy(update={"values": {k: v for k, v in body.values.items() if k in requested}})
-    item = await ev.ingest_observation(owner, case, f"observation-{body.request_id}", body.wire())
-    await db.investigation_device_requests.update_one({"owner_id": owner, "case_id": case_id, "request_id": body.request_id},
-                                                       {"$set": {"fulfilled": True, "evidence_id": item.id, "result_digest": repo.digest(body.model_dump_json())}})
     job = await repo.get_job(owner, case_id, pending["job_id"])
+    if job.get("status") in ("cancelled", "failed", "expired", "complete", "partial") or case.get("status") in ("cancelled", "expired"):
+        raise http(409, "conflict", "This device request was superseded (the investigation was cancelled, finished or expired); its result cannot restart work.")
+    # Atomic claim of (owner, case, request): exactly one submission proceeds to ingestion; a concurrent identical replay
+    # observes the claim and returns the same identifiers, a changed replay gets 409.
+    claimed = await db.investigation_device_requests.find_one_and_update(
+        {"owner_id": owner, "case_id": case_id, "request_id": body.request_id, "fulfilled": False},
+        {"$set": {"fulfilled": True, "result_digest": digest, "claimed_at": now_utc(), "continuation": {"evidence_id": None, "resumed": False}}})
+    if claimed is None:
+        current = await db.investigation_device_requests.find_one({"owner_id": owner, "case_id": case_id, "request_id": body.request_id}, {"_id": 0})
+        if not current or current.get("result_digest") != digest:
+            raise http(409, "conflict", "A different result was already recorded for this device request.")
+        return JSONResponse({"accepted": True, "duplicate": True, "evidenceId": current.get("evidence_id"), "jobId": current["job_id"]}, status_code=202, headers=NO_STORE)
+    item = await ev.ingest_observation(owner, case, f"observation-{body.request_id}", body.wire())
+    # Recoverable continuation record: evidence stored, job not yet resumed. jobs.recover() finishes this if the process dies here.
+    await db.investigation_device_requests.update_one({"owner_id": owner, "case_id": case_id, "request_id": body.request_id},
+                                                       {"$set": {"evidence_id": item.id, "continuation.evidence_id": item.id}})
     checkpoint = repo.dec_json(job["checkpoint_ciphertext"]) if job.get("checkpoint_ciphertext") else {"contents": [], "rounds": 0}
     checkpoint.setdefault("deviceResults", []).append({**body.wire(), "evidenceId": item.id})
     await db.investigation_jobs.update_one({"owner_id": owner, "job_id": job["job_id"]}, {"$set": {"checkpoint_ciphertext": repo.enc_json(checkpoint), "status": "queued", "lease_until": None}})
     await repo.cas(owner, case_id, {"revision": case["revision"]}, {"$set": {"status": "queued"}, "$pull": {"pending_device_request_ids": body.request_id}})
+    await db.investigation_device_requests.update_one({"owner_id": owner, "case_id": case_id, "request_id": body.request_id}, {"$set": {"continuation.resumed": True}})
     jobs.launch(owner, case_id, job["job_id"])
     return JSONResponse({"accepted": True, "evidenceId": item.id, "jobId": job["job_id"]}, status_code=202, headers=NO_STORE)
+
+
+# Settings destinations the client may advertise (mirrors frontend/src/settings/guidance.ts keywords). The plan binds to the
+# most specific destination the DEVICE advertised for this target; a generic app-settings page is the last resort, never a default
+# for unrelated targets.
+SETTINGS_DESCRIPTOR_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "open_settings.notifications": ("notification", "alert"),
+    "open_settings.vpn": ("vpn", "dns filter", "site gate"),
+    "open_settings.accessibility": ("accessibility",),
+    "open_settings.notification_access": ("notification access", "notification listener", "text gate"),
+    "open_settings.security": ("security", "lock screen", "screen lock", "play protect"),
+    "open_settings.unknown_sources": ("unknown source", "install unknown", "sideload"),
+    "open_settings.overlay": ("overlay", "display over", "draw over"),
+    "open_settings.developer": ("developer", "usb debugging"),
+    "open_settings.apps": ("uninstall", "installed app", "app list", "app info"),
+    "open_settings.safari_extensions": ("safari", "content blocker", "extension", "site gate"),
+}
+
+
+def _settings_descriptor_for(target: str, advertised: list[str]) -> Optional[str]:
+    t = target.lower()
+    for descriptor, keywords in SETTINGS_DESCRIPTOR_KEYWORDS.items():
+        if descriptor in advertised and any(k in t for k in keywords):
+            return descriptor
+    return "open_settings.app" if "open_settings.app" in advertised else None
 
 
 # ------------------------------------------------------------------ settings plans
@@ -405,7 +453,7 @@ async def settings_plan(case_id: str, body: SettingsPlanRequest, request: Reques
     if research.get("status") != "ok":
         raise http(503, "provider_unavailable", "Settings research is unavailable right now; the investigation text remains usable.", retryable=True)
     capability = body.capability_id if body.capability_id in body.device.capability_ids else None
-    settings_capability = next((c for c in body.device.capability_ids if c.startswith("open_settings")), None)
+    settings_capability = _settings_descriptor_for(body.target, body.device.capability_ids)
     mode = "permission_request" if capability and capability.startswith("permission.") else ("settings_link" if settings_capability else "instructions")
     steps = [line.strip("-• ").strip() for line in research["answer"].splitlines() if line.strip() and not line.lower().startswith("limitations")]
     plan = SettingsPlan(id=str(uuid.uuid4()), case_id=case_id, target=body.target, device=body.device, match=research["match"], mode=mode, instructions=steps[:20],

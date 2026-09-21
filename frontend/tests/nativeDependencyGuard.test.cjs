@@ -199,7 +199,7 @@ test('combined preflight is strict except for the actual EAS pre-install lifecyc
   fs.mkdirSync(path.join(root, 'src/security'), { recursive: true });
   fs.copyFileSync(path.resolve(__dirname, '../src/security/securityConfig.ts'), path.join(root, 'src/security/securityConfig.ts'));
   const run = lifecycle => spawnSync(process.execPath, [path.join(root, 'scripts/security-preflight.mjs')], {
-    encoding: 'utf8', env: { ...process.env, EXPO_PUBLIC_APP_ENV: 'development', EXPO_PUBLIC_SECURITY_MODE: 'mock', EXPO_PUBLIC_SECURECORE_MODE: 'mock', npm_lifecycle_event: lifecycle },
+    encoding: 'utf8', env: { ...process.env, EXPO_PUBLIC_APP_ENV: 'development', npm_lifecycle_event: lifecycle },
   });
   assert.equal(run('security:preflight').status, 2, 'no node_modules is not a pass');
   assert.match(run('eas-build-pre-install').stdout, /DEFERRED/);

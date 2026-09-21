@@ -1,6 +1,6 @@
 // Shared investigation view: faithful Higgins overview, expandable full explanation, findings, sources, coverage, question, actions, Retry/Cancel.
 import * as WebBrowser from "expo-web-browser";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
 import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
@@ -9,6 +9,7 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import type { CaseState } from "@/src/investigation/caseStore";
 import type { ActionProposal, Attention, SourceReference } from "@/src/investigation/types";
 import { isExecutable, runAction, type ActionOutcome } from "@/src/settings/actions";
+import { onRecheck } from "@/src/settings/recheck";
 
 const useStyles = makeStyles((c) => ({
   card: { gap: spacing.sm, borderColor: c.navyBorder }, higgins: { borderLeftWidth: 3, borderLeftColor: c.gold },
@@ -39,6 +40,14 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
   const s = useStyles(); const { colors } = useTheme();
   const [expanded, setExpanded] = useState(false); const [showSources, setShowSources] = useState(false);
   const [actionNote, setActionNote] = useState<string | null>(null);
+  // Fresh recheck after returning from a Settings destination opened for THIS case (recheck.ts completes the pending attempt).
+  useEffect(() => onRecheck((o) => {
+    if (!state.caseData || o.attempt.caseId !== state.caseData.id) return;
+    const fresh = o.observation ? `fresh observation: ${o.observation.status}${o.observation.unavailableReason ? ` (${o.observation.unavailableReason.replace("_", " ")})` : ""}` : "no observation possible on this device";
+    const verdict = o.plan ? ({ correct: "The setting now matches what Higgins asked for.", not_yet_correct: "The setting is not yet at the expected value.", cannot_observe: "Apollo cannot read this setting here — only you can confirm it.", failed: "The re-check failed." } as const)[o.plan.outcome] : "";
+    setActionNote(`Back from Settings — ${fresh}. ${verdict} ${o.plan?.explanation ?? ""}`.trim());
+  }), [state.caseData]);
+
   const { phase, response, sources, turns, caseData, progress, failure, error, question } = state;
   const working = phase === "creating" || phase === "working" || phase === "reconnecting" || phase === "waiting_device";
   const usedSources = sources.filter((src) => response?.sourceIds.includes(src.id));
@@ -75,10 +84,12 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
       {response.actions.map((action) => <View key={action.id} style={{ gap: spacing.xs }} testID={`inv-action-${action.id}`}>
         {isExecutable(action) ? <Button testID={`inv-action-button-${action.id}`} variant={action.id === response.recommendedActionId ? "primary" : "ghost"} label={action.label}
           onPress={() => {
-            if (action.kind === "open_verified_source") { const src = sources.find((x) => action.sourceIds.includes(x.id)); if (src) void WebBrowser.openBrowserAsync(src.url); onAction?.(action, { kind: "opened" }); return; }
+            if (action.kind === "open_verified_source") { const src = sources.find((x) => action.sourceIds.includes(x.id)); if (src) void WebBrowser.openBrowserAsync(src.url); onAction?.(action, { kind: "opened_source" }); return; }
             if (!caseData) return;
             void runAction(action, caseData).then((outcome) => {
-              setActionNote(outcome.kind === "observed" ? `Apollo recorded a fresh observation (${outcome.result.status}); ask Higgins to re-check.` : outcome.kind === "opened" ? "Settings opened. When you return, ask Higgins to re-check." : outcome.reason);
+              setActionNote(outcome.kind === "observed" ? `Apollo recorded a fresh observation (${outcome.result.status}${outcome.result.unavailableReason ? `: ${outcome.result.unavailableReason.replace("_", " ")}` : ""}); ask Higgins to re-check.`
+                : outcome.kind === "opened" ? `${outcome.descriptor.label} — opened${outcome.iosPath ? `. In Settings go to: ${outcome.iosPath}` : ""}. When you come back, Apollo takes a fresh check of that setting automatically.`
+                : outcome.kind === "opened_source" ? "Opened the source." : outcome.reason);
               onAction?.(action, outcome);
             });
           }} /> : <Text style={[s.text, { fontFamily: fonts.textMedium }]} testID={`inv-action-label-${action.id}`}>{action.id === response.recommendedActionId ? "Recommended: " : ""}{action.label}</Text>}

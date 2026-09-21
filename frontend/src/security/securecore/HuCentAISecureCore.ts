@@ -1,6 +1,5 @@
 // HuCentAI SecureCore — public interface. The application depends on this
-// contract only. Implementations: mock/MockSecureCore (dev) and
-// native/NativeSecureCore (Swift/Kotlin bridge, built by the security developer).
+// contract only. Implementation: native/NativeSecureCore (Swift/Kotlin bridge, built by the security developer).
 
 import type {
   AttestationResult, AuthenticationResult, DecryptionResult, DeviceIdentity, EncryptionResult, SecurityCapabilities, SecurityStatus,

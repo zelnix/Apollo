@@ -237,9 +237,16 @@ async def research_settings(ctx: ToolContext, args: dict) -> dict:
     entities = [device.platform, *(x for x in (device.manufacturer, device.model, device.os_version) if x)]
     result = await _grounded(ctx, f"Exact steps to {args['target']} on {' '.join(entities)}. Cite official manufacturer or platform support pages.", entities, list(OFFICIAL_HINT_DOMAINS))
     official = [s for s in result.get("sources", []) if s["authority"] == "official"]
-    exact = bool(device.manufacturer and any(device.manufacturer.lower() in s["title"].lower() or device.manufacturer.lower() in s["host"] for s in result.get("sources", [])))
+    # "exact" requires the manufacturer AND the platform/OS to appear in the SAME source; an OEM name alone (e.g. a Samsung
+    # page about a different OS version) is not an exact match. Otherwise a platform-wide official page is "platform_only".
+    def _mentions(src: dict, token: str) -> bool:
+        t = token.lower()
+        return t in src.get("title", "").lower() or t in src.get("host", "").lower() or t in src.get("snippet", "").lower()
+    os_tokens = [device.platform, *([device.os_version.split()[0]] if device.os_version else [])]
+    exact = bool(device.manufacturer and any(_mentions(s, device.manufacturer) and any(_mentions(s, o) for o in os_tokens) for s in result.get("sources", [])))
     result["match"] = "exact" if exact else ("platform_only" if official else "unresolved")
-    result["note"] = "Instructions from a platform-wide source apply generally; a manufacturer-specific page is required for an exact match." if not exact else "Manufacturer-matched guidance found."
+    result["note"] = ("Manufacturer- and platform-matched guidance found." if exact
+                      else "Instructions from a platform-wide source apply generally; a page matching both the manufacturer and this OS is required for an exact match.")
     return result
 
 

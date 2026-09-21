@@ -22,6 +22,8 @@ export interface ApolloSecurityNativeModule {
   // NativeAdapterBase fails closed via NativeModuleUnavailable exactly like every other call.
   getPlatformCapabilityProfile(): Promise<string>;
   getEnforcementEvidence(): Promise<string>;
+  /** Real manufacturer/model/OS/form-factor/locale facts (JSON DeviceProfileFacts). */
+  getDeviceProfileFacts(): Promise<string>;
   getGuardDogCandidateCapabilities(): Promise<string>;
   getGuardDogCandidateStatus(): Promise<string>;
   configureGuardDogCandidate(configJson: string): Promise<string>;

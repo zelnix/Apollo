@@ -118,7 +118,6 @@ export default function RootLayout() {
                   <Stack.Screen name="share" options={{ presentation: "modal" }} />
                   <Stack.Screen name="patrol/scent/[id]" options={{ presentation: "modal" }} />
                   <Stack.Screen name="patrol/[id]" options={{ presentation: "modal" }} />
-                  <Stack.Screen name="dev-tools" options={{ presentation: "modal" }} />
                   <Stack.Screen name="benchmark" options={{ presentation: "modal" }} />
                   <Stack.Screen name="privacy-disclosure" options={{ presentation: "modal" }} />
                   <Stack.Screen name="digest" options={{ presentation: "modal" }} />

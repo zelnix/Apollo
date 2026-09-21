@@ -198,6 +198,7 @@ class DeviceProfile(Wire):
     manufacturer: Optional[str] = None
     model: Optional[str] = None
     os_version: Optional[str] = None
+    form_factor: Literal["phone", "tablet", "desktop", "laptop", "convertible", "unknown"] = "unknown"
     locale: str = "en-AU"
     evidence_origin: Literal["native", "user_reported", "browser"] = "browser"
     capability_ids: list[str] = Field(default_factory=list)
@@ -216,6 +217,9 @@ class DeviceRequest(Wire):
 DeviceValue = Union[str, int, float, bool, list[str], None]
 
 
+UnavailableReason = Literal["not_implemented", "os_restricted", "hardware_absent", "configuration_missing", "entitlement_missing", "adapter_failed"]
+
+
 class DeviceResult(Wire):
     request_id: str
     case_revision: int
@@ -224,6 +228,8 @@ class DeviceResult(Wire):
     observed_at: Optional[datetime] = None
     values: dict[str, DeviceValue] = Field(default_factory=dict)
     simulation: Optional[Simulation] = None
+    # An observed result has no unavailable reason; an unavailable/failed result states its actual reason.
+    unavailable_reason: Optional[UnavailableReason] = None
 
 
 class ExpectedObservation(Wire):

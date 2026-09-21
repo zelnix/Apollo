@@ -11,7 +11,16 @@ import { fileURLToPath } from "node:url";
 import nativeGuard from "./native-dependency-guard.cjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const KEYS = ["EXPO_PUBLIC_APP_ENV", "EXPO_PUBLIC_SECURECORE_MODE", "EXPO_PUBLIC_SECURITY_MODE"];
+const KEYS = ["EXPO_PUBLIC_APP_ENV", "EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS", "EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE"];
+
+function walk(dir) {
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) return e.name === "node_modules" ? [] : walk(p);
+    return /\.(ts|tsx|js|mjs|cjs)$/.test(e.name) && !/\.d\.ts$/.test(e.name) ? [p] : [];
+  });
+}
 
 function readDotenv(file) {
   const out = {};
@@ -31,23 +40,24 @@ if (!cfg.EXPO_PUBLIC_APP_ENV && profile) cfg.EXPO_PUBLIC_APP_ENV = guessedEnv;
 
 const errors = [];
 if (!["development", "staging", "production"].includes(cfg.EXPO_PUBLIC_APP_ENV)) errors.push(`EXPO_PUBLIC_APP_ENV is missing or invalid (got "${cfg.EXPO_PUBLIC_APP_ENV}").`);
-for (const k of ["EXPO_PUBLIC_SECURECORE_MODE", "EXPO_PUBLIC_SECURITY_MODE"]) {
-  if (!["mock", "native"].includes(cfg[k])) errors.push(`${k} must be "mock" or "native" (got "${cfg[k]}").`);
+const harness = cfg.EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS;
+if (harness !== undefined && harness !== "" && harness !== "off" && harness !== "enabled") errors.push(`EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS="${harness}" is invalid.`);
+if (harness === "enabled" && cfg.EXPO_PUBLIC_APP_ENV !== "development") errors.push("The device-preview harness (simulated device inputs) is only permitted in development builds.");
+if (harness === "enabled" && profile) errors.push("The device-preview harness is web-only and can never be part of an EAS native build profile.");
+const engine = cfg.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE ?? "legacy";
+if (!["legacy", "guarddog_acceptance"].includes(engine)) errors.push(`EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE="${engine}" is invalid.`);
+if (cfg.EXPO_PUBLIC_APP_ENV === "production" && engine !== "legacy") errors.push("The GuardDog Stage 1D candidate is test-only and cannot be selected in production.");
+// Runtime-mock exclusion: no mock adapter/selector may exist in application source, and the preview harness may only be
+// referenced from the web-only host selector (never from a native or shared module).
+const appSources = ["src", "app", "modules/apollo-security/src"].flatMap((dir) => walk(path.join(root, dir)));
+for (const file of appSources) {
+  const text = fs.readFileSync(file, "utf8");
+  const rel = path.relative(root, file);
+  if (/tools\/preview-device-harness/.test(text) && rel !== "src/security/hostAdapter.web.ts") errors.push(`${rel} references the preview harness; only src/security/hostAdapter.web.ts may.`);
+  if (/EXPO_PUBLIC_SECURITY_MODE|EXPO_PUBLIC_SECURECORE_MODE|MockSecurityAdapter|MockSecureCore/.test(text)) errors.push(`${rel} references a removed runtime mock selector.`);
 }
-// Shipped features that depend on native SecureCore — single source of truth is securityConfig.ts.
-const policySource = fs.readFileSync(path.join(root, "src/security/securityConfig.ts"), "utf8");
-const depMatch = policySource.match(/NATIVE_SECURECORE_DEPENDENT_FEATURES\s*(?::[^=]+)?=\s*\[([^\]]*)\]/);
-if (!depMatch) { console.error("[security-preflight] cannot read NATIVE_SECURECORE_DEPENDENT_FEATURES from securityConfig.ts"); process.exit(1); }
-const secureCoreDependents = [...depMatch[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
 
-if (cfg.EXPO_PUBLIC_APP_ENV === "production") {
-  if (cfg.EXPO_PUBLIC_SECURITY_MODE !== "native") errors.push("Production builds require the native Apollo Security Adapter (EXPO_PUBLIC_SECURITY_MODE=native).");
-  if (secureCoreDependents.length > 0 && cfg.EXPO_PUBLIC_SECURECORE_MODE !== "native") {
-    errors.push(`Production builds require native HuCentAI SecureCore (EXPO_PUBLIC_SECURECORE_MODE=native) because these shipped features depend on it: ${secureCoreDependents.join(", ")}.`);
-  }
-}
-
-console.log(`[security-preflight] profile=${profile ?? "local"} env=${cfg.EXPO_PUBLIC_APP_ENV} securecore=${cfg.EXPO_PUBLIC_SECURECORE_MODE} adapter=${cfg.EXPO_PUBLIC_SECURITY_MODE} securecore-dependents=${secureCoreDependents.length}`);
+console.log(`[security-preflight] profile=${profile ?? "local"} env=${cfg.EXPO_PUBLIC_APP_ENV} engine=${engine} preview-harness=${harness || "off"} app-sources-scanned=${appSources.length}`);
 if (errors.length) {
   console.error("SECURITY CONFIGURATION ERROR:\n - " + errors.join("\n - "));
   process.exit(1);

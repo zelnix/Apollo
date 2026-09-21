@@ -3,6 +3,8 @@ import ExpoModulesCore
 import Network
 import NetworkExtension
 import SafariServices
+import UIKit
+import UserNotifications
 
 /// ApolloSecurity — iOS (Swift) security module.
 /// Site Guard = Safari Content Blocker extension (ApolloContentBlocker). The app
@@ -260,21 +262,48 @@ public class ApolloSecurityModule: Module {
 
     AsyncFunction("getProtectionPermissions") { (promise: Promise) in
       self.refreshBlockerState { enabled in
-        promise.resolve(self.json([
-          ["id": "network_filter", "title": "Safari content blocker", "status": enabled == true ? "granted" : "denied", "canAskAgain": true,
-           "why": "Enable Apollo under Settings › Safari › Extensions so Safari can block verified threat sites. Safari never shares what you browse with Apollo."],
-          ["id": "notifications", "title": "Notifications", "status": "undetermined", "canAskAgain": true, "why": "Lets Apollo tell you when it barks."],
-        ]))
+        // Notifications: a fresh UNUserNotificationCenter observation, separate from Apollo's recorded request history.
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+          let observedAt = self.now()
+          let notifState: String
+          switch settings.authorizationStatus {
+          case .authorized, .provisional, .ephemeral: notifState = "granted"
+          case .denied: notifState = "denied"
+          default: notifState = "undetermined"
+          }
+          promise.resolve(self.json([
+            self.perm("network_filter", "Safari content blocker", enabled == true ? "granted" : (enabled == false ? "denied" : "undetermined"), true,
+                      "Enable Apollo under Settings › Safari › Extensions so Safari can block verified threat sites. Safari never shares what you browse with Apollo.", observedAt, enabled: enabled),
+            self.perm("notifications", "Notifications", notifState, notifState != "denied", "Lets Apollo tell you when it barks.", observedAt, enabled: notifState == "granted"),
+            self.perm("vpn_config", "Local VPN", "not_applicable", false, "Apollo on iOS uses a Safari content blocker, not a VPN.", observedAt, enabled: nil, unavailableReason: "not_implemented"),
+            self.perm("accessibility", "Accessibility service", "not_applicable", false, "iOS exposes no accessibility-service permission to apps.", observedAt, enabled: nil, unavailableReason: "os_restricted"),
+          ]))
+        }
       }
     }
 
     AsyncFunction("requestProtectionPermission") { (id: String, promise: Promise) in
+      self.recordRequest(id)
+      let observedAt = self.now()
       if id == "network_filter", let url = URL(string: UIApplication.openSettingsURLString) {
         DispatchQueue.main.async { UIApplication.shared.open(url) }
-        promise.resolve(self.json(["id": id, "title": "Safari content blocker", "status": "undetermined", "canAskAgain": true, "why": "Opened Settings. Enable Apollo under Safari › Extensions, then return."]))
+        promise.resolve(self.json(self.perm(id, "Safari content blocker", "undetermined", true, "Opened Settings. Enable Apollo under Safari › Extensions, then return.", observedAt, enabled: nil)))
+      } else if id == "notifications" {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+          promise.resolve(self.json(self.perm(id, "Notifications", granted ? "granted" : "denied", false, granted ? "Granted." : "Declined in the system prompt. It can be changed under Settings › Apollo › Notifications.", self.now(), enabled: granted)))
+        }
       } else {
-        promise.resolve(self.json(["id": id, "title": id, "status": "undetermined", "canAskAgain": true, "why": "Not implemented in this build."]))
+        promise.resolve(self.json(self.perm(id, id, "not_applicable", false, "Apollo does not request this permission on iOS.", observedAt, enabled: nil, unavailableReason: "not_implemented")))
       }
+    }
+
+    // Real device facts for investigation guidance. Form factor comes from the interface idiom, never from screen width.
+    AsyncFunction("getDeviceProfileFacts") { () -> String in
+      let idiom = UIDevice.current.userInterfaceIdiom
+      let formFactor = idiom == .pad ? "tablet" : idiom == .phone ? "phone" : idiom == .mac ? "desktop" : "unknown"
+      var systemInfo = utsname(); uname(&systemInfo)
+      let machine = withUnsafePointer(to: &systemInfo.machine) { $0.withMemoryRebound(to: CChar.self, capacity: 1) { String(validatingUTF8: $0) } } ?? UIDevice.current.model
+      return self.json(["manufacturer": "Apple", "model": machine, "osVersion": self.platformVersion(), "formFactor": formFactor, "locale": Locale.current.identifier])
     }
 
     // Cross-Platform Architecture Directive: describes what THIS deployed mechanism — a Safari
@@ -372,6 +401,14 @@ public class ApolloSecurityModule: Module {
 
   private func now() -> String { ISO8601DateFormatter().string(from: Date()) }
   private func platformVersion() -> String { "iOS \(UIDevice.current.systemVersion)" }
+  /// `requested`/`lastRequestedAt` = Apollo's recorded request history; `status`/`enabled` = fresh OS observation.
+  private func perm(_ id: String, _ title: String, _ status: String, _ canAskAgain: Bool, _ why: String, _ observedAt: String, enabled: Bool?, unavailableReason: String? = nil) -> [String: Any] {
+    let requestedAt = UserDefaults.standard.string(forKey: "apollo.perm_requested_at.\(id)")
+    return ["id": id, "title": title, "status": status, "canAskAgain": canAskAgain, "why": why,
+            "requested": requestedAt != nil, "lastRequestedAt": requestedAt ?? NSNull(), "enabled": enabled ?? NSNull(),
+            "observedAt": observedAt, "unavailableReason": unavailableReason ?? NSNull()]
+  }
+  private func recordRequest(_ id: String) { UserDefaults.standard.set(now(), forKey: "apollo.perm_requested_at.\(id)") }
   private func json(_ value: Any) -> String {
     guard let data = try? JSONSerialization.data(withJSONObject: value), let s = String(data: data, encoding: .utf8) else { return "{}" }
     return s

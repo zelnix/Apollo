@@ -5,7 +5,7 @@ import { Platform } from "react-native";
 import { API_BASE, ApiError, apiDelete, apiGet, apiPost } from "@/src/api/client";
 import { getDeviceToken } from "@/src/auth/deviceIdentity";
 import { enforceEgress } from "@/src/domain/privacy";
-import type { CreateCase, DeviceResult, EvidenceItem, InvestigationCase, InvestigationEvent, Job, SourceReference, TurnCommit } from "./types";
+import type { CreateCase, DeviceProfile, DeviceResult, EvidenceItem, InvestigationCase, InvestigationEvent, Job, SourceReference, TurnCommit } from "./types";
 
 async function postWithKey<T>(path: string, body: Record<string, unknown>, key: string): Promise<T> {
   const token = await getDeviceToken();
@@ -34,6 +34,13 @@ export function cancelJob(caseId: string, jobId: string, expectedRevision: numbe
 export function submitDeviceResult(caseId: string, result: DeviceResult) { return apiPost<{ accepted: boolean; jobId: string }>(`/investigations/${caseId}/device-results`, "investigation", result as unknown as Record<string, unknown>); }
 export function addObservationEvidence(expectedRevision: number, caseId: string, deviceResult: DeviceResult) {
   return apiPost<{ evidence: EvidenceItem; caseRevision: number }>(`/investigations/${caseId}/evidence`, "investigation", { expectedRevision, clientItemId: Crypto.randomUUID(), parentId: null, kind: "observation", deviceResult: deviceResult as unknown as Record<string, unknown> });
+}
+export interface SettingsPlan { id: string; caseId: string; target: string; match: "exact" | "platform_only" | "unresolved"; mode: "permission_request" | "settings_link" | "instructions"; instructions: string[]; sourceIds: string[]; executionDescriptorId: string | null; expectedObservation: { capabilityId: string; field: string; expectedValue: boolean | string | null } | null }
+export function createSettingsPlan(caseId: string, body: { expectedRevision: number; target: string; device: DeviceProfile; capabilityId: string | null; expectedField: string; expectedValue: boolean | string | null }) {
+  return apiPost<{ plan: SettingsPlan; researchNote: string | null }>(`/investigations/${caseId}/settings-plan`, "investigation", body as unknown as Record<string, unknown>);
+}
+export function recheckPlan(caseId: string, planId: string, deviceResultIds: string[]) {
+  return apiPost<{ planId: string; checkedAt: string; outcome: "correct" | "not_yet_correct" | "cannot_observe" | "failed"; evidenceIds: string[]; explanation: string }>(`/investigations/${caseId}/settings-plan/${planId}/recheck`, "investigation", { deviceResultIds });
 }
 export function addTextEvidence(caseId: string, expectedRevision: number, text: string, label: string) {
   return apiPost<{ evidence: EvidenceItem; caseRevision: number }>(`/investigations/${caseId}/evidence`, "investigation", { expectedRevision, clientItemId: Crypto.randomUUID(), parentId: null, kind: "text", text, label });

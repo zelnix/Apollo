@@ -178,23 +178,73 @@ class ApolloSecurityModule : Module() {
     }
 
     AsyncFunction("getProtectionPermissions") {
+      val observedAt = now()
       val vpn = if (VpnService.prepare(ctx) == null) "granted" else "undetermined"
+      // Notifications: a fresh OS observation. `enabled` mirrors NotificationManager.areNotificationsEnabled(); on API 33+
+      // the runtime POST_NOTIFICATIONS grant is checked as well. Apollo's own request history is a separate fact.
+      val notificationsEnabled = androidx.core.app.NotificationManagerCompat.from(ctx).areNotificationsEnabled()
+      val postGranted = if (android.os.Build.VERSION.SDK_INT >= 33)
+        ctx.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED else true
+      val notificationsState = when {
+        notificationsEnabled && postGranted -> "granted"
+        requestedAt("notifications") != null -> "denied"
+        else -> "undetermined"
+      }
+      val listener = ApolloSmsListenerService.isEnabled(ctx)
       JSONArray().apply {
-        put(perm("vpn_config", "Local VPN (DNS filter)", vpn, true, "Lets Apollo filter DNS lookups on this device so verified threat domains cannot load. Only DNS passes through; no browsing data is collected."))
-        put(perm("notifications", "Notifications", "undetermined", true, "Lets Apollo tell you when it barks."))
+        put(perm("vpn_config", "Local VPN (DNS filter)", vpn, true, "Lets Apollo filter DNS lookups on this device so verified threat domains cannot load. Only DNS passes through; no browsing data is collected.", observedAt, enabled = vpn == "granted"))
+        put(perm("notifications", "Notifications", notificationsState, notificationsState != "denied" || android.os.Build.VERSION.SDK_INT < 33, "Lets Apollo tell you when it barks.", observedAt, enabled = notificationsEnabled && postGranted))
+        put(perm("network_filter", "Notification access (Text Gate)", if (listener) "granted" else "undetermined", true, "Lets Apollo read message notifications you allow so Text Gate can warn you. Apollo never reads SMS directly.", observedAt, enabled = listener))
+        put(perm("accessibility", "Accessibility service", "not_applicable", false, "Apollo does not use an accessibility service.", observedAt, enabled = null, unavailableReason = "not_implemented"))
       }.toString()
     }
 
     AsyncFunction("requestProtectionPermission") { id: String ->
-      if (id == "vpn_config") {
-        val intent = VpnService.prepare(ctx)
-        if (intent == null) perm("vpn_config", "Local VPN (DNS filter)", "granted", true, "Granted.").toString()
-        else {
-          intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-          appContext.currentActivity?.startActivity(intent) ?: ctx.startActivity(intent)
-          perm("vpn_config", "Local VPN (DNS filter)", "undetermined", true, "System VPN consent shown. Re-check after you respond.").toString()
+      recordRequest(id)
+      val observedAt = now()
+      when (id) {
+        "vpn_config" -> {
+          val intent = VpnService.prepare(ctx)
+          if (intent == null) perm("vpn_config", "Local VPN (DNS filter)", "granted", true, "Granted.", observedAt, enabled = true).toString()
+          else {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            appContext.currentActivity?.startActivity(intent) ?: ctx.startActivity(intent)
+            perm("vpn_config", "Local VPN (DNS filter)", "undetermined", true, "System VPN consent shown. Re-check after you respond.", observedAt, enabled = false).toString()
+          }
         }
-      } else perm(id, id, "undetermined", true, "Not implemented in this build.").toString()
+        "notifications" -> {
+          // Notification consent is granted in the system UI. Apollo opens its own notification settings page so the person
+          // decides there; the fresh state is read on return (getProtectionPermissions), never assumed.
+          val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+          appContext.currentActivity?.startActivity(intent) ?: ctx.startActivity(intent)
+          perm("notifications", "Notifications", "undetermined", true, "Notification settings opened. Re-check after you return.", observedAt, enabled = null).toString()
+        }
+        "network_filter" -> {
+          val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+          appContext.currentActivity?.startActivity(intent) ?: ctx.startActivity(intent)
+          perm("network_filter", "Notification access (Text Gate)", "undetermined", true, "Notification access settings opened. Re-check after you return.", observedAt, enabled = null).toString()
+        }
+        else -> perm(id, id, "not_applicable", false, "Apollo does not request this permission on Android.", observedAt, enabled = null, unavailableReason = "not_implemented").toString()
+      }
+    }
+
+    // Real device facts for investigation guidance (manufacturer/model/OS/form factor). No inference from screen width.
+    AsyncFunction("getDeviceProfileFacts") {
+      val cfg = ctx.resources.configuration
+      val pm = ctx.packageManager
+      val formFactor = when {
+        pm.hasSystemFeature("android.hardware.type.pc") -> "desktop"
+        pm.hasSystemFeature("android.software.leanback") -> "unknown"
+        cfg.smallestScreenWidthDp >= 600 -> "tablet"
+        else -> "phone"
+      }
+      JSONObject()
+        .put("manufacturer", android.os.Build.MANUFACTURER)
+        .put("model", android.os.Build.MODEL)
+        .put("osVersion", platformVersion())
+        .put("formFactor", formFactor)
+        .put("locale", java.util.Locale.getDefault().toLanguageTag())
+        .toString()
     }
 
     // Phase A — Apps & Device (AppDeviceSdk contract). Real signals within package-visibility limits; see AppDeviceSignals.
@@ -337,8 +387,16 @@ class ApolloSecurityModule : Module() {
 
   private fun cap(id: String, title: String, status: String, detail: String) =
     JSONObject().put("id", id).put("title", title).put("status", status).put("detail", detail)
-  private fun perm(id: String, title: String, status: String, canAskAgain: Boolean, why: String) =
-    JSONObject().put("id", id).put("title", title).put("status", status).put("canAskAgain", canAskAgain).put("why", why)
+  private fun perm(id: String, title: String, status: String, canAskAgain: Boolean, why: String, observedAt: String = now(), enabled: Boolean? = null, unavailableReason: String? = null): JSONObject {
+    // `requested`/`lastRequestedAt` = Apollo's own recorded request history (SharedPreferences); `status`/`enabled` = fresh OS observation.
+    val requestedAt = requestedAt(id)
+    return JSONObject().put("id", id).put("title", title).put("status", status).put("canAskAgain", canAskAgain).put("why", why)
+      .put("requested", requestedAt != null).put("lastRequestedAt", requestedAt ?: JSONObject.NULL)
+      .put("enabled", enabled ?: JSONObject.NULL).put("observedAt", observedAt).put("unavailableReason", unavailableReason ?: JSONObject.NULL)
+  }
+
+  private fun requestedAt(id: String): String? = prefs.getString("perm_requested_at_$id", null)
+  private fun recordRequest(id: String) { prefs.edit().putString("perm_requested_at_$id", now()).apply() }
 
   /**
    * requested  = what the person asked for (persisted intent)

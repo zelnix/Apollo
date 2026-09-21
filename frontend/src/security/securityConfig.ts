@@ -1,29 +1,20 @@
 // Security configuration policy — pure, dependency-free so it can be unit-tested
 // with node:test and reused by the build-time preflight script.
 //
-// Rules (policy amended 2026-06 to describe the architecture that actually exists):
+// Rules (spec §1A "no mocks in the application runtime"):
 //  - APP_ENV must be one of development | staging | production (never derived from __DEV__).
-//  - Modes must be exactly "mock" or "native".
-//  - production ⇒ the Apollo Security Adapter MUST be native (it is the live enforcement/capability
-//    surface). Mock is allowed in development and staging, including native builds on physical devices.
-//  - production ⇒ HuCentAI SecureCore MUST be native ONLY while a shipped feature depends on that native
-//    module (NATIVE_SECURECORE_DEPENDENT_FEATURES). API identity uses server-issued device tokens, so today
-//    SecureCore is a contract stub and the list is empty; the mock is permitted but must stay labelled as such.
-//  - native mode ⇒ the native module must be present (fail closed), in every environment.
+//  - There is NO mock/native mode switch any more. Android and iOS always use the Apollo native security
+//    module and fail closed when it is absent (Expo Go). Web always uses the real browser adapter.
+//  - The only permitted simulation is the separate device-preview harness (frontend/tools, web-only host selector),
+//    selectable ONLY by EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS=enabled in a *development* *web* host. Staging and
+//    production reject the flag; native hosts reject it regardless of environment.
+//  - The GuardDog Stage 1D candidate engine stays test-only (never production).
 
 export type AppEnvironment = "development" | "staging" | "production";
-export type SecurityMode = "mock" | "native";
 export type AndroidEnforcementEngine = "legacy" | "guarddog_acceptance";
+export type DevicePreviewHarness = "off" | "enabled";
 
 export const APP_ENVIRONMENTS: readonly AppEnvironment[] = ["development", "staging", "production"];
-
-/**
- * Shipped features that genuinely require the native HuCentAI SecureCore module (`HuCentAISecureCore`).
- * Add a feature id here the moment production code depends on native SecureCore — production builds will then
- * fail closed unless EXPO_PUBLIC_SECURECORE_MODE=native and the module is present. Read by the build-time
- * preflight (scripts/security-preflight.mjs) as well — keep it a plain literal array.
- */
-export const NATIVE_SECURECORE_DEPENDENT_FEATURES: readonly string[] = [];
 
 export class SecurityConfigurationError extends Error {
   constructor(message: string) {
@@ -34,21 +25,19 @@ export class SecurityConfigurationError extends Error {
 
 export interface SecurityConfigInput {
   appEnvironment: string | undefined;
-  secureCoreMode: string | undefined;
-  securityAdapterMode: string | undefined;
   androidEnforcementEngine?: string | undefined;
-  /** Presence of the native modules. Pass `undefined` to skip the availability check (build-time preflight). */
-  nativeSecureCoreAvailable?: boolean;
+  /** Raw EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS value. Anything other than "enabled" (or empty/"off") is rejected. */
+  devicePreviewHarness?: string | undefined;
+  /** react-native Platform.OS of the running host. Omit for build-time preflight. */
+  hostPlatform?: string | undefined;
+  /** Presence of the Apollo native module on a native host. Omit to skip the availability check (preflight). */
   nativeSecurityAdapterAvailable?: boolean;
-  /** Override of NATIVE_SECURECORE_DEPENDENT_FEATURES (tests only). */
-  nativeSecureCoreDependentFeatures?: readonly string[];
 }
 
 export interface ValidatedSecurityConfig {
   appEnvironment: AppEnvironment;
-  secureCoreMode: SecurityMode;
-  securityAdapterMode: SecurityMode;
   androidEnforcementEngine: AndroidEnforcementEngine;
+  devicePreviewHarness: DevicePreviewHarness;
 }
 
 function parseEnv(value: string | undefined): AppEnvironment {
@@ -57,15 +46,14 @@ function parseEnv(value: string | undefined): AppEnvironment {
   return value as AppEnvironment;
 }
 
-function parseMode(name: string, value: string | undefined): SecurityMode {
-  if (value !== "mock" && value !== "native") throw new SecurityConfigurationError(`${name} must be "mock" or "native" (got "${value ?? "undefined"}").`);
-  return value;
+function parseHarness(value: string | undefined): DevicePreviewHarness {
+  if (value === undefined || value === "" || value === "off") return "off";
+  if (value === "enabled") return "enabled";
+  throw new SecurityConfigurationError(`EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS="${value}" is invalid. Use "enabled" only for the development web preview host, otherwise leave it unset.`);
 }
 
 export function validateSecurityConfig(input: SecurityConfigInput): ValidatedSecurityConfig {
   const appEnvironment = parseEnv(input.appEnvironment);
-  const secureCoreMode = parseMode("EXPO_PUBLIC_SECURECORE_MODE", input.secureCoreMode);
-  const securityAdapterMode = parseMode("EXPO_PUBLIC_SECURITY_MODE", input.securityAdapterMode);
   const androidEnforcementEngine = input.androidEnforcementEngine ?? "legacy";
   if (androidEnforcementEngine !== "legacy" && androidEnforcementEngine !== "guarddog_acceptance") {
     throw new SecurityConfigurationError(`EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE="${androidEnforcementEngine}" is invalid.`);
@@ -73,22 +61,17 @@ export function validateSecurityConfig(input: SecurityConfigInput): ValidatedSec
   if (appEnvironment === "production" && androidEnforcementEngine !== "legacy") {
     throw new SecurityConfigurationError("The GuardDog Stage 1D candidate is test-only and cannot be selected in production.");
   }
-  if (androidEnforcementEngine === "guarddog_acceptance" && securityAdapterMode !== "native") {
-    throw new SecurityConfigurationError("The GuardDog Stage 1D candidate requires EXPO_PUBLIC_SECURITY_MODE=native.");
+  const devicePreviewHarness = parseHarness(input.devicePreviewHarness);
+  if (devicePreviewHarness === "enabled") {
+    if (appEnvironment !== "development") {
+      throw new SecurityConfigurationError(`The device-preview harness (simulated device inputs) is only permitted in development; this build is "${appEnvironment}".`);
+    }
+    if (input.hostPlatform !== undefined && input.hostPlatform !== "web") {
+      throw new SecurityConfigurationError(`The device-preview harness is web-only; it cannot be activated on "${input.hostPlatform}".`);
+    }
   }
-
-  const dependents = input.nativeSecureCoreDependentFeatures ?? NATIVE_SECURECORE_DEPENDENT_FEATURES;
-  if (appEnvironment === "production" && securityAdapterMode !== "native") {
-    throw new SecurityConfigurationError("Production builds require the native Apollo Security Adapter (EXPO_PUBLIC_SECURITY_MODE=native).");
+  if ((input.hostPlatform === "android" || input.hostPlatform === "ios") && input.nativeSecurityAdapterAvailable === false) {
+    throw new SecurityConfigurationError("Apollo native security module is required but unavailable. Use a build that includes modules/apollo-security (Expo Go cannot load it).");
   }
-  if (appEnvironment === "production" && dependents.length > 0 && secureCoreMode !== "native") {
-    throw new SecurityConfigurationError(`Production builds require native HuCentAI SecureCore (EXPO_PUBLIC_SECURECORE_MODE=native) because these shipped features depend on it: ${dependents.join(", ")}.`);
-  }
-  if (secureCoreMode === "native" && input.nativeSecureCoreAvailable === false) {
-    throw new SecurityConfigurationError("HuCentAI SecureCore native SDK is required but unavailable. Use an EAS build that includes the native module.");
-  }
-  if (securityAdapterMode === "native" && input.nativeSecurityAdapterAvailable === false) {
-    throw new SecurityConfigurationError("Apollo native security module is required but unavailable. Use an EAS build that includes modules/apollo-security.");
-  }
-  return { appEnvironment, secureCoreMode, securityAdapterMode, androidEnforcementEngine };
+  return { appEnvironment, androidEnforcementEngine, devicePreviewHarness };
 }

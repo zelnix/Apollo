@@ -22,7 +22,7 @@
 // mirrors how Swift/Kotlin can never be imported into Node either way — reading source is the
 // only cross-language contract check available without a native build either way.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -35,7 +35,8 @@ const read = (rel: string) => readFileSync(join(root, rel), "utf8");
 const ANDROID_KT = "modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/ApolloSecurityModule.kt";
 const IOS_SWIFT = "modules/apollo-security/ios/ApolloSecurityModule.swift";
 const NATIVE_ADAPTERS_TS = "src/security/NativeSecurityAdapters.ts";
-const MOCK_ADAPTER_TS = "src/security/MockSecurityAdapter.ts";
+const WEB_ADAPTER_TS = "src/security/WebSecurityAdapter.ts";
+const PREVIEW_HARNESS_TS = "tools/preview-device-harness/PreviewDeviceAdapter.ts";
 
 // Derive the required method list DIRECTLY from the interface source, so this test can never
 // silently drift out of sync with SecurityPlatformAdapter.ts the way a hand-maintained copy could.
@@ -94,9 +95,24 @@ test("Android and iOS JS bridge (NativeSecurityAdapters.ts) forwards every requi
   assert.match(src, /IOSSecurityAdapter[^=]*=\s*new NativeAdapterBase\("ios"/);
 });
 
-test("mock adapter (used in Expo Go / web preview) also implements the full contract", () => {
-  const src = read(MOCK_ADAPTER_TS);
-  for (const method of REQUIRED_METHODS) assert.match(src, new RegExp(`\\b${method}\\s*\\(`), `MockSecurityAdapter must implement ${method}()`);
+test("real browser adapter and the development-only preview harness both implement the full contract", () => {
+  for (const [name, file] of [["WebSecurityAdapter", WEB_ADAPTER_TS], ["PreviewDeviceAdapter", PREVIEW_HARNESS_TS]] as const) {
+    const src = read(file);
+    for (const method of REQUIRED_METHODS) assert.match(src, new RegExp(`\\b${method}\\s*\\(`), `${name} must implement ${method}()`);
+  }
+});
+
+test("no runtime mock exists in application source; the preview harness is reachable only from the web host selector", () => {
+  const walk = (dir: string): string[] => readdirSync(join(root, dir), { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? walk(join(dir, e.name)) : /\.(ts|tsx)$/.test(e.name) ? [join(dir, e.name)] : []);
+  for (const file of [...walk("src"), ...walk("app")]) {
+    const src = read(file);
+    assert.doesNotMatch(src, /MockSecurityAdapter|MockSecureCore|EXPO_PUBLIC_SECURITY_MODE|EXPO_PUBLIC_SECURECORE_MODE/, `${file} references a removed runtime mock`);
+    if (file !== "src/security/hostAdapter.web.ts") assert.doesNotMatch(src, /tools\/preview-device-harness/, `${file} must not import the preview harness`);
+  }
+  // Native bundles resolve hostAdapter.ts, which must not know about the web adapter or the harness at all.
+  assert.doesNotMatch(read("src/security/hostAdapter.ts"), /WebSecurityAdapter|preview-device-harness/);
+  assert.ok(existsSync(join(root, "src/security/hostAdapter.web.ts")));
 });
 
 test("Windows and macOS have no adapter export — not implemented, not implicitly supported", () => {
@@ -105,7 +121,7 @@ test("Windows and macOS have no adapter export — not implemented, not implicit
   assert.equal(PLATFORM_ADAPTER_IMPLEMENTED.windows, false);
   assert.equal(PLATFORM_ADAPTER_IMPLEMENTED.macos, false);
   // No WindowsSecurityAdapter / MacosSecurityAdapter export exists anywhere in src/security.
-  for (const path of [NATIVE_ADAPTERS_TS, MOCK_ADAPTER_TS, "src/security/securityAdapter.ts"]) {
+  for (const path of [NATIVE_ADAPTERS_TS, WEB_ADAPTER_TS, "src/security/securityAdapter.ts", "src/security/hostAdapter.ts", "src/security/hostAdapter.web.ts"]) {
     const src = read(path);
     assert.doesNotMatch(src, /WindowsSecurityAdapter|MacosSecurityAdapter|MacOSSecurityAdapter/i, `${path} must not implicitly claim a Windows/macOS adapter`);
   }
@@ -116,8 +132,8 @@ test("Windows and macOS have no adapter export — not implemented, not implicit
 });
 
 test("capability scope tags, where present, describe deployed reach — never implied enforcement", () => {
-  // The mock adapter enforces nothing anywhere: its scope must be empty, not a copy of a real OS baseline.
-  assert.deepEqual(PLATFORM_CAPABILITY_BASELINES.mock.scope, []);
+  // The browser (and the preview harness that reuses its baseline) enforces nothing anywhere: scope must be empty.
+  assert.deepEqual(PLATFORM_CAPABILITY_BASELINES.web.scope, []);
   for (const platform of ["android", "ios", "windows", "macos"] as const) {
     const scope = PLATFORM_CAPABILITY_BASELINES[platform].scope;
     assert.ok(Array.isArray(scope) && scope.length > 0, `${platform} baseline should document its scope`);

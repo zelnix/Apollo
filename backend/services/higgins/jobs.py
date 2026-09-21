@@ -152,13 +152,31 @@ async def run(owner: str, case_id: str, job_id: str) -> None:
 
 
 async def recover() -> None:
-    """Startup/sweeper: relaunch jobs whose lease expired while processing, or that never started; reconcile jobs past their work deadline."""
+    """Startup/sweeper: relaunch jobs whose lease expired while processing, or that never started; reconcile jobs past their work deadline.
+    An accepted turn is authoritative: a job whose turn was already accepted is repaired (via run()), never failed for a passed deadline."""
     now = now_utc()
     async for job in db.investigation_jobs.find({"status": {"$in": ["queued", "investigating", "retry_wait"]}, "deadline_at": {"$lte": now},
                                                  "$or": [{"lease_until": None}, {"lease_until": {"$lte": now}}]}, {"_id": 0}):
         case = await db.investigation_cases.find_one({"owner_id": job["owner_id"], "case_id": job["case_id"]}, {"_id": 0})
-        if case:
-            await _fail(job["owner_id"], case, job, Failure(code="budget_exhausted", message="The work slice ended before Higgins finished. Retry to continue from the last completed step.", retryable=True), partial=True)
+        if not case:
+            continue
+        if await repo.accepted_commit_for(job["owner_id"], case, job["turn_id"]):
+            launch(job["owner_id"], job["case_id"], job["job_id"])  # run() repairs projections from the accepted commit
+            continue
+        await _fail(job["owner_id"], case, job, Failure(code="budget_exhausted", message="The work slice ended before Higgins finished. Retry to continue from the last completed step.", retryable=True), partial=True)
+    # Device results whose evidence was stored but whose job was never resumed (crash between ingestion and launch).
+    async for pending in db.investigation_device_requests.find({"fulfilled": True, "continuation.resumed": False, "continuation.evidence_id": {"$ne": None}}, {"_id": 0}):
+        job = await db.investigation_jobs.find_one({"owner_id": pending["owner_id"], "job_id": pending["job_id"]}, {"_id": 0})
+        if job and job.get("status") in ("queued", "investigating", "waiting_device", "retry_wait"):
+            checkpoint = repo.dec_json(job["checkpoint_ciphertext"]) if job.get("checkpoint_ciphertext") else {"contents": [], "rounds": 0}
+            if not any(r.get("evidenceId") == pending["continuation"]["evidence_id"] for r in checkpoint.get("deviceResults", [])):
+                evidence = await db.investigation_evidence.find_one({"owner_id": pending["owner_id"], "evidence_id": pending["continuation"]["evidence_id"]}, {"_id": 0})
+                result = ((await repo.evidence_meta(evidence)).get("deviceResult") if evidence else None) or {}
+                checkpoint.setdefault("deviceResults", []).append({**result, "evidenceId": pending["continuation"]["evidence_id"]})
+            await db.investigation_jobs.update_one({"owner_id": pending["owner_id"], "job_id": job["job_id"]}, {"$set": {"checkpoint_ciphertext": repo.enc_json(checkpoint), "status": "queued", "lease_until": None}})
+            await db.investigation_cases.update_one({"owner_id": pending["owner_id"], "case_id": pending["case_id"], "status": "waiting_device"}, {"$set": {"status": "queued"}, "$pull": {"pending_device_request_ids": pending["request_id"]}})
+            launch(pending["owner_id"], pending["case_id"], job["job_id"])
+        await db.investigation_device_requests.update_one({"owner_id": pending["owner_id"], "request_id": pending["request_id"]}, {"$set": {"continuation.resumed": True}})
     async for job in db.investigation_jobs.find({"status": {"$in": ["queued", "investigating", "retry_wait"]}, "deadline_at": {"$gt": now},
                                                  "$or": [{"lease_until": None}, {"lease_until": {"$lte": now}}]}, {"_id": 0, "owner_id": 1, "case_id": 1, "job_id": 1}):
         launch(job["owner_id"], job["case_id"], job["job_id"])

@@ -17,10 +17,10 @@ const realAdapter: Adapter = {
   startProtection: async () => {},
 };
 
-// The release-build defect that surfaced on the first physical device: production, SecureCore pinned to
-// native, but no `HuCentAISecureCore` module exists in the binary.
-const PROD_MISSING_SECURECORE = { appEnvironment: "production", secureCoreMode: "native", securityAdapterMode: "native", nativeSecureCoreAvailable: false, nativeSecurityAdapterAvailable: true } as const;
-const PROD_VALID = { appEnvironment: "production", secureCoreMode: "mock", securityAdapterMode: "native", nativeSecurityAdapterAvailable: true } as const;
+// The release-build defect class that surfaced on the first physical device: a native host whose binary lacks the
+// required Apollo native module. There is no mock substitute; boot must fail closed without an OS crash.
+const PROD_MISSING_SECURECORE = { appEnvironment: "production", hostPlatform: "android", nativeSecurityAdapterAvailable: false } as const;
+const PROD_VALID = { appEnvironment: "production", hostPlatform: "android", nativeSecurityAdapterAvailable: true } as const;
 
 beforeEach(() => resetSecurityBootErrorForTests());
 
@@ -29,7 +29,7 @@ test("invalid production config → boot error recorded, selector returns a fail
   const adapter = selectFailClosed<Adapter>(() => validateSecurityConfig(PROD_MISSING_SECURECORE), () => { chosen++; return realAdapter; });
   const err = getSecurityBootError();
   assert.ok(err instanceof SecurityConfigurationError, "SecurityConfigurationError is recorded, not thrown");
-  assert.match(err.message, /HuCentAI SecureCore native SDK is required but unavailable/);
+  assert.match(err.message, /Apollo native security module is required but unavailable/);
   assert.equal(chosen, 0, "no protected feature initialises: the real adapter factory never ran");
   assert.notEqual(adapter, realAdapter);
 });

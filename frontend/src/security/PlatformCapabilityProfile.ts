@@ -18,7 +18,7 @@
 import type { EnforcementMethod } from "./SecurityPlatformAdapter";
 
 /** The four platforms the Apollo Security SDK is designed for, plus the dev-time mock. */
-export type SdkPlatform = "android" | "ios" | "windows" | "macos" | "mock";
+export type SdkPlatform = "android" | "ios" | "windows" | "macos" | "web";
 
 /**
  * Tri-state, never boolean: many OS-level capabilities are only PARTIALLY available
@@ -204,11 +204,10 @@ export const PLATFORM_CAPABILITY_BASELINES: Record<SdkPlatform, PlatformCapabili
     localBlocking: "full", backgroundProtection: "full", offlineProtection: "partial", realTimeEvents: "full",
     scope: ["system_extension:packet-filter", "system_extension:dns-proxy"],
   },
-  mock: {
-    platform: "mock", platformVersion: "n/a", sdkVersion: "mock", capabilityVersion: CAPABILITY_PROFILE_VERSION,
-    // The mock adapter enforces nothing on any device, ever. Every capability is reported "none" —
-    // never the host OS's real baseline above — so the preview can never be read as a real
-    // capability claim. Truth-of-state applies to reporting, not only to enforcement.
+  web: {
+    platform: "web", platformVersion: "n/a", sdkVersion: "browser", capabilityVersion: CAPABILITY_PROFILE_VERSION,
+    // A browser (and the development preview harness) enforces nothing on any device, ever. Every capability is
+    // reported "none" — never the host OS's real baseline above — so web can never be read as a real capability claim. Truth-of-state applies to reporting, not only to enforcement.
     networkFiltering: "none", packetVisibility: "none", dnsVisibility: "none",
     processAttribution: "none", appAttribution: "none", domainVisibility: "none",
     localBlocking: "none", backgroundProtection: "none", offlineProtection: "none", realTimeEvents: "none",
@@ -231,5 +230,5 @@ export const PLATFORM_ADAPTER_IMPLEMENTED: Record<SdkPlatform, boolean> = {
   ios: true,
   windows: false,
   macos: false,
-  mock: true,
+  web: true, // real browser adapter: genuine browser capabilities, native capabilities unavailable
 };
