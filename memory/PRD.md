@@ -1,3 +1,34 @@
+## Current continuation status — 2026-09-21, session 2 (supersedes the block below)
+
+Controlling specifications: `memory/Apollo_Complete_Developer_Instructions.md` (Stages A–D, US01–US35) consolidating
+`memory/Apollo_Final_Code_Review_and_Developer_Package-2.md`. Gemini only via owner `GEMINI_API_KEY`; no testing agent
+without explicit approval; Stage 1D cancelled; frozen `frontend/packages/guarddog-*` untouched.
+
+DELIVERED THIS SESSION (verified live with the owner key, no mocks):
+- Shared engine `backend/services/higgins/{contracts,repository,evidence,tools,validation,coordinator,jobs}.py` and
+  `backend/routers/investigations.py` (all spec §8 routes). Encrypted owner-scoped collections `investigation_*`,
+  lifecycle epoch, lease/fence, staged→single-CAS accepted turn commits, SSE events with `after=` reconnect,
+  resume/cancel/delete/expiry sweep, resumable uploads, PDF/DOCX/TXT/PNG/JPEG intake with page-level coverage,
+  9 typed tools incl. Search-grounded research, device-observation pause/resume, settings plan + recheck, case speech, saved reports.
+- `routers/ask.py` is now a thin adapter over the same engine (one engine). Obsolete keyword-validator/fallback tests removed.
+- Frontend `src/investigation/{types,client,caseStore,deviceBroker}.ts`, `src/components/InvestigationView.tsx`;
+  `app/(tabs)/ask.tsx` rewritten onto cases; Text/Email/Call/Account/File handoffs carry original evidence (`original_evidence`).
+- Probes: `backend/tests/probe_investigation.py`, `probe_document.py`; regressions `backend/tests/test_investigation_engine.py` (7/7).
+  Legacy suite: 279 pass / 23 fail — identical to pre-change baseline failures (voice mp3, push placeholder, gate4, prompt tests).
+
+STATUS: Stage A ✅ (native picker lifecycle unverified). Stage B ✅ core (frontend device broker returns honest `unavailable`;
+Gate screens' local state not yet case-driven). Stage C 🟡 (backend settings plan/recheck done; Site/Link/Network/App/Device
+handoffs summary-only; native permission semantics, preview isolation, `src/settings/*` not started). Stage D ⬜ (US01–US35 NOT RUN
+as a suite; only direct probes). Delivery adapters (email/push/storage) remain 503 stubs — blocked on owner credentials and unimplemented.
+
+NEXT: C18 remaining Gate handoffs with originals (Site/Link screenshot+URL, Network, App, Device); bind native observation
+adapters to `deviceBroker`; `src/settings/*` + Device screen recheck UI; AR-09 native contract; AR-11 preview isolation;
+extend `tests/run_round1_user_scenarios.py` with US01–US35 + `ScenarioOutcome` schema and run live; delivery adapters.
+Docs: `docs/APOLLO_IMPLEMENTATION_MATRIX.md`, `APOLLO_INVESTIGATION_ARCHITECTURE.md`, `APOLLO_CAPACITY_AND_RETENTION.md`,
+`APOLLO_SETTINGS_CAPABILITIES.md`, `APOLLO_INTEGRATION_CONFIGURATION.md`.
+
+---
+
 ## Current continuation status — 2026-09-21 (supersedes conflicting older handoffs)
 
 Controlling specification: owner-uploaded `Apollo_Final_Code_Review_and_Developer_Package-2.md`.

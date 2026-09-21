@@ -201,6 +201,8 @@ async def request_device_observation(ctx: ToolContext, args: dict) -> dict:
     fingerprint = f"device:{args['capabilityId']}"
     if fingerprint in ctx.fingerprints:
         return {"status": "duplicate", "note": "This observation was already requested in this turn."}
+    if ctx.pending_request:
+        return {"status": "deferred", "note": "One device observation is collected at a time. Request this capability again after the pending result arrives."}
     ctx.fingerprints.add(fingerprint)
     request = {"id": str(uuid.uuid4()), "caseId": ctx.case_id, "caseRevision": ctx.case["revision"], "capabilityId": args["capabilityId"],
                "fields": [str(f) for f in args.get("fields", [])][:32], "reason": str(args.get("reason", ""))[:300],

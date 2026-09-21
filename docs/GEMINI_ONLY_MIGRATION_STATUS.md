@@ -2,6 +2,8 @@
 
 **Date:** 2026-09-21. **Overall package: PARTIAL, not accepted as a completed ten-Gate rebuild.**
 
+> **Superseded for architecture status by `docs/APOLLO_IMPLEMENTATION_MATRIX.md` (same date, later session):** the shared case engine (contracts, encrypted repository, tool-enabled Gemini coordinator, durable jobs, case API, InvestigationView) now exists and is verified live. The acceptance matrix below reflects the earlier state and is retained as history.
+
 ## Controlling instructions
 
 The owner supplied `Apollo_Final_Code_Review_and_Developer_Package-2.md`, replacing package 1:
