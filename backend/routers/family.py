@@ -65,7 +65,7 @@ async def add_guardian(body: GuardianIn):
                  + (f'<p><a href="{link}">Yes, send me these alerts</a></p>' if link else "<p>Ask them to confirm this in the app.</p>")
                  + "<p>If you did not expect this, simply ignore this email.</p>")
     try:
-        await send_email(to=g.email, subject=f"{who} wants to share Apollo safety alerts with you", html=html)
+        await send_email(to=g.email, subject=f"{who} wants to share Apollo safety alerts with you", html=html, event_id=f"invite:{g.confirm_token}")
     except HTTPException as exc:
         await db.guardians.update_one({"guardian_id": g.guardian_id}, {"$set": {"deleted_at": now_utc()}})
         raise exc
@@ -125,7 +125,7 @@ async def notify_guardians(event: PatrolEvent) -> None:
             html = _wrap(f"<p>Hi {escape(g.get('name') or 'there')},</p><p>{who} {verb}: <strong>{escape(event.headline)}</strong></p>"
                          f"<p>{escape(event.what_happened)}</p><p><strong>What to do:</strong> {escape(event.what_to_do)}</p>"
                          f"<p>Website involved: {escape(event.indicator_host or 'n/a')}. A quick call to check in is usually the most helpful thing.</p>")
-            await send_email(to=g["email"], subject=f"Apollo alert: {who} {verb}", html=html)
+            await send_email(to=g["email"], subject=f"Apollo alert: {who} {verb}", html=html, event_id=f"alert:{event.event_id}:{g['guardian_id']}")
             await db.guardians.update_one({"guardian_id": g["guardian_id"]}, {"$set": {"sent_day": today, "sent_today": sent + 1}})
     except Exception as exc:  # noqa: BLE001
         logger.warning("guardian notify failed: %s", type(exc).__name__)
