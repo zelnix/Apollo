@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import re
 import uuid
@@ -233,7 +234,16 @@ async def complete_upload(case_id: str, upload_id: str, body: ExpectedRevision, 
     if len(data) != declared:
         raise http(409, "conflict", "Received bytes do not match the declared length. Uploaded chunks are kept for correction.")
     meta = {k: v for k, v in upload["metadata"].items() if k != "declaredBytes"}
-    item = await ev.ingest_file(owner, case, meta, data)
+    content_digest = hashlib.sha256(data).hexdigest()
+    if upload.get("finalise_digest") and upload["finalise_digest"] != content_digest:
+        raise http(409, "conflict", "The chunks differ from the ones that were being finalised; a changed file cannot complete the same upload.")
+    # Durable finalisation claim (R06): if ingestion succeeded earlier but the record update was lost, the retry resolves to the same evidence.
+    await db.investigation_uploads.update_one({"owner_id": owner, "upload_id": upload_id}, {"$set": {"finalise_digest": content_digest, "finalising_at": now_utc()}})
+    existing = await db.investigation_evidence.find_one({"owner_id": owner, "case_id": case_id, "client_item_id": meta["clientItemId"]}, {"_id": 0})
+    if existing:
+        item = repo.evidence_view(existing)
+    else:
+        item = await ev.ingest_file(owner, case, meta, data)
     # Upload state is released only after evidence is committed.
     await db.investigation_uploads.update_one({"owner_id": owner, "upload_id": upload_id}, {"$set": {"evidence_id": item.id}})
     await db.investigation_upload_chunks.delete_many({"owner_id": owner, "upload_id": upload_id})
