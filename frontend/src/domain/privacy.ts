@@ -22,7 +22,7 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   ask_apollo: new Set(["device_id", "message", "context", "handoff_id", "conversation_id", "turn_id"]),
   device_register: new Set(["platform", "adapter_mode", "app_version", "tz_offset_minutes"]),
   // Alert notifications: the push token is an opaque delivery address (FCM/APNs), relayed and not stored by us.
-  push_register: new Set(["user_id", "platform", "device_token"]),
+  push_register: new Set(["platform", "provider", "projectId", "device_token"]),
   push_test: new Set(["device_id"]),
   // Gate 2: message text + URLs leave the device only when the user taps "Check message" (shown as "Shared with Apollo for analysis").
   message_check: new Set(["device_id", "sender", "text", "urls", "local_state", "scenario", "signals", "claimed_brand", "second_opinion"]),

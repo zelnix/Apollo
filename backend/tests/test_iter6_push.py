@@ -57,15 +57,14 @@ class TestRegisterPushValidation:
 # ------------------------- /api/register-push placeholder key ------------------
 class TestRegisterPushDev:
     def test_valid_body_without_owner_push_credentials_is_typed_503(self, s):
-        """EMERGENT_PUSH_KEY=placeholder → 401 upstream → 500 with the specific detail."""
-        r = s.post(f"{API}/register-push", json={
-            "user_id": f"dev-{uuid.uuid4().hex[:12]}",
-            "platform": "android",
-            "device_token": f"tok-{uuid.uuid4().hex}",
-        })
-        # Emergent placeholder key removed: registration is owner-configured (Expo push credentials) and fails closed with a typed 503.
-        assert r.status_code == 503, r.text
-        assert "Expo push credentials" in r.json().get("detail", "")
+        """Spec §10A: raw FCM/APNs-looking tokens are rejected (422) before any configuration check; a valid Expo token
+        without the owner's push configuration fails closed with a typed 503 naming the missing setup."""
+        raw = s.post(f"{API}/register-push", json={"platform": "android", "provider": "expo", "projectId": "47cd97c4-e5a6-41fa-9fde-257a5de031af", "device_token": f"tok-{uuid.uuid4().hex}"})
+        assert raw.status_code == 422, raw.text
+        r = s.post(f"{API}/register-push", json={"platform": "android", "provider": "expo", "projectId": "47cd97c4-e5a6-41fa-9fde-257a5de031af", "device_token": f"ExponentPushToken[{uuid.uuid4().hex}]"})
+        assert r.status_code in (201, 503), r.text
+        if r.status_code == 503:
+            assert "Expo push configuration" in r.json().get("detail", "")
 
 
 # ------------------------- /api/patrol/events background field ------------------

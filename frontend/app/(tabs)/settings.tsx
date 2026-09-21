@@ -36,7 +36,7 @@ export default function SettingsScreen() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { deviceId, trust, revokeTrust, clearPatrol, adapterLabel, isMock, pushStatus, enablePush, quietHours, quietNow, setQuietHours, lowPower, setLowPower, showToast } = useApollo();
+  const { deviceId, trust, revokeTrust, clearPatrol, adapterLabel, isMock, pushStatus, pushRegistration, pushDetail, enablePush, quietHours, quietNow, setQuietHours, lowPower, setLowPower, showToast } = useApollo();
   const [higginsAuto, setHigginsAutoState] = useState(false);
   useEffect(() => { void getHigginsAuto().then(setHigginsAutoState); }, []);
   const higgins = useHiggins(deviceId);
@@ -45,8 +45,8 @@ export default function SettingsScreen() {
   const [preview, setPreview] = useState(false);
   const intel = useQuery({ queryKey: ["intel-status"], queryFn: () => apiGet<IntelStatus>("/intel/status"), staleTime: 60_000 });
   const testPush = useMutation({
-    mutationFn: () => apiPost<{ sent: boolean }>("/push/test", "push_test", { device_id: deviceId }),
-    onSuccess: () => showToast("Test bark sent — check your notifications.", "resting"),
+    mutationFn: () => apiPost<{ deliveryId: string; state: string; failureCode: string | null }>("/push/test", "push_test", { device_id: deviceId }),
+    onSuccess: (d) => showToast(d.state === "provider_accepted" ? "Test bark accepted by the push service — check your notifications." : d.state === "outcome_unknown" ? "The push service did not confirm in time; the outcome is unknown until reconciled." : d.state === "failed" ? `The push service rejected the test (${d.failureCode ?? "error"}).` : `Test bark ${d.state}.`, d.state === "failed" ? "barking" : "resting"),
     onError: (e) => showToast(e instanceof Error ? e.message : "Could not send the test alert.", "barking"),
   });
   const sb = intel.data?.safe_browsing;
@@ -91,7 +91,10 @@ export default function SettingsScreen() {
             {pushStatus === "blocked" ? <Button testID="settings-push-settings" variant="secondary" label="Open Settings to allow notifications" onPress={() => void Linking.openSettings()} /> : null}
             {pushStatus === "granted" ? (
               <>
-                <Button testID="settings-push-test" variant="secondary" label={testPush.isPending ? "Sending…" : "Send me a test bark"} onPress={() => testPush.mutate()} disabled={testPush.isPending} />
+                <View style={s.row}><Text style={s.label}>Registration</Text><Pill tone={pushRegistration === "registered" ? "resting" : pushRegistration === "unconfigured" ? "unknown" : "growling"} label={pushRegistration} testID="settings-push-registration" /></View>
+                {pushDetail ? <Body testID="settings-push-detail">{pushDetail}</Body> : null}
+                {pushRegistration === "pending" || pushRegistration === "failed" ? <Button testID="settings-push-retry" variant="ghost" label="Retry registration" onPress={() => void enablePush()} /> : null}
+                <Button testID="settings-push-test" variant="secondary" label={testPush.isPending ? "Sending…" : "Send me a test bark"} onPress={() => testPush.mutate()} disabled={testPush.isPending || pushRegistration !== "registered"} />
                 <Body>Minimise Apollo after tapping — the test arrives like a real alert, with the bark sound.</Body>
               </>
             ) : null}

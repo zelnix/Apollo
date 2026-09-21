@@ -1,5 +1,7 @@
 // Gate-embedded investigation: the initial Gate check runs through the shared case engine (originals + Apollo findings),
 // and "Ask Higgins" continues the SAME case on the Ask tab instead of opening a second context.
+// Investigation creation is bound to an explicit immutable submission (the Gate's result object for one check), never to
+// editable screen state: typing into the form after a result cannot start a billed investigation or delete the last case.
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef } from "react";
 import { View } from "react-native";
@@ -11,18 +13,27 @@ import { useInvestigation } from "@/src/investigation/caseStore";
 import { createCaseInput } from "@/src/investigation/fromContext";
 import { spacing } from "@/src/theme";
 
-export function GateInvestigation({ context, question, label, testID }: { context: HigginsIssueContext; question: string; label: string; testID: string }) {
+const submissionIds = new WeakMap<object, string>();
+let counter = 0;
+/** Stable id per submission object identity (a new Gate result = a new submission). */
+function submissionIdFor(submission: object): string {
+  let id = submissionIds.get(submission);
+  if (!id) { id = `submission-${++counter}-${Date.now()}`; submissionIds.set(submission, id); }
+  return id;
+}
+
+export function GateInvestigation({ submission, context, question, label, testID }: { submission: object; context: HigginsIssueContext; question: string; label: string; testID: string }) {
   const router = useRouter();
   const { state, start, ask, retry, cancel, remove } = useInvestigation();
-  const key = JSON.stringify([context.gate, context.original_evidence ?? [], context.issue_summary]);
+  const submissionId = submissionIdFor(submission);
   const started = useRef<string | null>(null);
   useEffect(() => {
-    if (started.current === key) return;
-    started.current = key;
-    const { input, files } = createCaseInput(context, question);
+    if (started.current === submissionId) return;
+    started.current = submissionId;
+    const { input, files } = createCaseInput(context, question); // context snapshot taken once per submission
     void (state.caseData ? remove().then(() => start(input, files)) : start(input, files));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [submissionId]);
   const busy = state.phase === "creating" || state.phase === "working" || state.phase === "reconnecting" || state.phase === "waiting_device";
   return <View style={{ gap: spacing.sm }} testID={testID}>
     <InvestigationView state={state} onAnswer={(a) => void ask(a)} onRetry={() => void retry()} onCancel={() => void cancel()} testID={`${testID}-view`}

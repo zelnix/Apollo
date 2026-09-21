@@ -35,7 +35,7 @@ import { freshObservation, unavailableObservation, boundedObservation } from '@/
 import { patrolPayload } from '@/src/domain/patrolPayload';
 import { patrolDelivery, deliveryFailure } from './patrolDelivery';
 import { toPatrolEnforcementEvidence } from "@/src/domain/enforcementEvidenceSync";
-import { getPushStatus, registerForPush, type PushStatus } from "@/src/push/notifications";
+import { getPushStatus, registerForPush, type PushState, type PushStatus } from "@/src/push/notifications";
 import { MessagingSdk } from "@/src/security/messagingSdk";
 import { CallSdk } from "@/src/security/callSdk";
 import { storage } from "@/src/utils/storage";
@@ -113,6 +113,9 @@ interface ApolloContextValue {
   toast: { message: string; tone: ApolloState | "neutral" } | null;
   showToast(message: string, tone?: ApolloState | "neutral"): void;
   pushStatus: PushStatus;
+  /** Backend registration state, separate from the OS permission (spec §10A). */
+  pushRegistration: PushState["registration"];
+  pushDetail: string | null;
   enablePush(): Promise<PushStatus>;
   quietHours: QuietHours;
   quietNow: boolean;
@@ -402,17 +405,19 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   // Alert notifications: re-register on every launch once the device identity exists (tokens rotate).
   // Only ask for permission once setup completes (completeSetup → enablePush); silent re-register otherwise.
-  const [pushStatus, setPushStatus] = useState<PushStatus>(Platform.OS === "web" ? "unsupported" : "undetermined");
+  const [pushState, setPushState] = useState<PushState>({ permission: Platform.OS === "web" ? "unsupported" : "undetermined", registration: "not_applicable", registrationId: null, detail: null });
+  const pushStatus = pushState.permission;
   useEffect(() => {
     if (!deviceId) return;
-    void registerForPush(deviceId, { ask: false }).then(setPushStatus).catch(() => getPushStatus().then(setPushStatus));
+    void registerForPush(deviceId, { ask: false }).then(setPushState).catch(() => getPushStatus().then((permission) => setPushState((prev) => ({ ...prev, permission }))));
     if (quietRef.current.enabled) void syncQuiet(quietRef.current, deviceId);
   }, [deviceId, syncQuiet]);
   const enablePush = useCallback(async () => {
     const id = deviceIdRef.current;
-    const st = id ? await registerForPush(id, { ask: true }) : await getPushStatus();
-    setPushStatus(st);
-    return st;
+    const st = id ? await registerForPush(id, { ask: true }) : { ...pushState, permission: await getPushStatus() };
+    setPushState(st);
+    return st.permission;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const completeSetup = useCallback(async () => {
@@ -425,7 +430,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     setSetupDone(true);
     await verifyNow();
     // Contextual ask: the user just turned protection on, so "tell me when Apollo barks" is expected here.
-    if (identity) { try { setPushStatus(await registerForPush(identity.deviceId, { ask: true })); } catch { /* never block setup */ } }
+    if (identity) { try { setPushState(await registerForPush(identity.deviceId, { ask: true })); } catch { /* never block setup */ } }
   }, [verifyNow]);
 
   // Remote Patrol + trust merge (device may have reinstalled). Local wins.
@@ -833,7 +838,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const value: ApolloContextValue = {
     ready, setupDone, deviceId, identityReset, reRegisterDevice, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label, isMock: IS_PREVIEW_HARNESS,
     refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, scanGmailInbox, recordRecovery, upsertEvent, recordPageAnalysis, checkCall, checkNumberRisk,
-    pushStatus, enablePush, quietHours, quietNow, setQuietHours, lowPower, setLowPower,
+    pushStatus, pushRegistration: pushState.registration, pushDetail: pushState.detail, enablePush, quietHours, quietNow, setQuietHours, lowPower, setLowPower,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

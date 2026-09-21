@@ -23,7 +23,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 
 from core.auth import enforce_device_auth, require_admin_key
-from core.config import ADMIN_HEADER
+from core.config import ADMIN_HEADER, logger
 from core.db import client, db, now_utc
 from core.models import BlocklistEntry
 from core.privacy_boundary import PrivacyBoundary
@@ -47,6 +47,7 @@ SEED_BLOCKLIST = [
 async def lifespan(_: FastAPI):
     await migrate_and_index()
     await investigation_repository.ensure_indexes()
+    await push.ensure_indexes()
     await db.devices.create_index("device_id", unique=True)
     await db.devices.create_index("token_hash", unique=True, partialFilterExpression={"token_hash": {"$type": "string"}})
     await db.reputation_cache.create_index("indicator_digest", unique=True)
@@ -75,7 +76,20 @@ async def lifespan(_: FastAPI):
     mailbox_task = asyncio.create_task(mailbox_monitor_loop())
     cleanup_task = asyncio.create_task(sweep_loop())
     investigation_task = asyncio.create_task(investigation_jobs.sweep_loop())
+
+    async def push_receipt_loop():
+        while True:
+            try:
+                await push.reconcile_receipts()
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001
+                logger.warning("push receipt reconciliation failed")
+            await asyncio.sleep(300)
+
+    receipts_task = asyncio.create_task(push_receipt_loop())
     yield
+    receipts_task.cancel()
     loop_task.cancel()
     mailbox_task.cancel()
     cleanup_task.cancel()

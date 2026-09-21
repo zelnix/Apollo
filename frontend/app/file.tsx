@@ -168,7 +168,7 @@ export default function CheckFile() {
               {a.handoff === "network" ? <Button testID="file-check-device" label="I installed it — check my device" onPress={() => router.push("/device")} /> : null}
               <Button testID="file-tech" variant="secondary" label="View technical details" onPress={() => setTech(true)} />
               {result.event ? <RecoveryFlow event={result.event} kinds={["clicked", "app", "password", "card", "money", "download"]} testID="file-recovery" /> : null}
-              {result.event ? <GateInvestigation testID="file-tell-more" label="Ask Higgins about this file" context={issueContext({ gate: "file", issue_summary: a.title, assessment_state: a.state, findings: [
+              {result.event ? <GateInvestigation submission={result} testID="file-tell-more" label="Ask Higgins about this file" context={issueContext({ gate: "file", issue_summary: a.title, assessment_state: a.state, findings: [
                 { summary: `Filename: ${selected?.asset.name ?? "not supplied"}`, provenance: "observed", status: "uncertain" },
                 { summary: `Supplied size/type: ${selected?.asset.size ?? "unknown"} bytes; ${selected?.asset.mimeType ?? "unknown"}`, provenance: "observed", status: "uncertain" },
                 { summary: `Signature result: ${a.realType}`, provenance: "observed", status: a.state === "barking" ? "warning" : "uncertain" },
