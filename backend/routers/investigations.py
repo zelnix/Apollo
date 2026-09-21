@@ -379,9 +379,9 @@ async def device_results(case_id: str, body: DeviceResult, request: Request):
     device = repo.device_profile(case) or {}
     if body.simulation and device.get("evidenceOrigin") == "native":
         raise http(409, "conflict", "A native device profile cannot submit simulated observations.")
-    unknown = [k for k in body.values if pending["request"]["fields"] and k not in pending["request"]["fields"]]
-    if unknown:
-        raise http(409, "conflict", f"Fields {unknown[:4]} were not requested.")
+    requested = pending["request"]["fields"]
+    if requested:  # keep only requested fields; extra values are dropped rather than dead-ending the investigation
+        body = body.model_copy(update={"values": {k: v for k, v in body.values.items() if k in requested}})
     item = await ev.ingest_observation(owner, case, f"observation-{body.request_id}", body.wire())
     await db.investigation_device_requests.update_one({"owner_id": owner, "case_id": case_id, "request_id": body.request_id},
                                                        {"$set": {"fulfilled": True, "evidence_id": item.id, "result_digest": repo.digest(body.model_dump_json())}})

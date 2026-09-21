@@ -1,0 +1,196 @@
+{
+  "run": "20260921T073223",
+  "base": "https://device-file-gate.preview.emergentagent.com",
+  "provider": "gemini (owner key)",
+  "mocked": false,
+  "scenarios": [
+    {
+      "id": "US03",
+      "status": "failed",
+      "expected": {
+        "assessment": [
+          "concern_found"
+        ],
+        "attention": [
+          "review",
+          "action_needed",
+          "urgent"
+        ],
+        "min_findings": 1
+      },
+      "actual": {
+        "assessment": "concern_found",
+        "attention": "urgent",
+        "completion": "Partial — more to examine",
+        "findings": [],
+        "sources": [],
+        "explanation": "",
+        "overview": "This message is a clear attempt at a payment redirection scam. Apollo has identified a request to change bank details buried within an exceptionally long and repetitive text. I suggest you ignore these instructions and verify any account changes directly with your strata manager through a trusted phone number.",
+        "evidence_labels": [],
+        "actions": [],
+        "caseId": null
+      },
+      "problems": [
+        "too few findings"
+      ],
+      "screenshot": "/app/test_reports/us_runs/20260921T073223/US03.png",
+      "seconds": 69.8
+    },
+    {
+      "id": "US06",
+      "status": "failed",
+      "expected": {
+        "assessment": [
+          "no_concern_found_within_scope",
+          "uncertain"
+        ],
+        "attention": [
+          "none",
+          "review"
+        ],
+        "max_actions_recommended": 1
+      },
+      "actual": {
+        "assessment": "no_concern_found_within_scope",
+        "attention": "No action needed",
+        "completion": "Complete within scope",
+        "findings": [],
+        "sources": [],
+        "explanation": "",
+        "overview": "This message appears to be a genuine appointment reminder, as it follows exemplary safety practices. Apollo is resting quite comfortably because the text lacks any suspicious links or phone numbers, which are the common tools of a scammer. I would suggest you simply verify the appointment against your own records or the physical letter mentioned.",
+        "evidence_labels": [],
+        "actions": [],
+        "caseId": null
+      },
+      "problems": [
+        "attention No action needed not in ['none', 'review']"
+      ],
+      "screenshot": "/app/test_reports/us_runs/20260921T073223/US06.png",
+      "seconds": 53.3
+    },
+    {
+      "id": "US05",
+      "status": "failed",
+      "expected": {
+        "assessment": [
+          "concern_found",
+          "uncertain"
+        ],
+        "attention": [
+          "review",
+          "action_needed",
+          "urgent"
+        ],
+        "clue_kinds": [
+          "phone clue"
+        ]
+      },
+      "actual": {
+        "assessment": "concern_found",
+        "attention": "review",
+        "completion": "Complete within scope",
+        "findings": [],
+        "sources": [],
+        "explanation": "",
+        "overview": "This message is a 'smishing' attempt designed to trick you into calling a fraudster by mixing a legitimate bank number with suspicious ones. Apollo correctly identified the threat because the message was sent from a mobile number rather than a verified bank gateway. I would suggest you disregard this message and only use official contact methods if you have concerns about your account.",
+        "evidence_labels": [],
+        "actions": [],
+        "caseId": null
+      },
+      "problems": [
+        "expected clues not registered"
+      ],
+      "screenshot": "/app/test_reports/us_runs/20260921T073223/US05.png",
+      "seconds": 64.1
+    },
+    {
+      "id": "US01",
+      "status": "failed",
+      "expected": {
+        "assessment": [
+          "concern_found",
+          "no_concern_found_within_scope",
+          "uncertain"
+        ],
+        "min_sources": 1,
+        "completion": [
+          "complete",
+          "partial"
+        ]
+      },
+      "actual": {
+        "assessment": "no_concern_found_within_scope",
+        "attention": "No action needed",
+        "completion": "Partial — more to examine",
+        "findings": [],
+        "sources": [],
+        "explanation": "",
+        "overview": "This link is an official test page created by Google to ensure security software is functioning correctly. It contains no real threats to your device or data, as it is merely a simulation. Apollo has quite rightly raised an alarm, confirming that he is alert and ready to protect you from genuine hazards.",
+        "evidence_labels": [],
+        "actions": [],
+        "caseId": null
+      },
+      "problems": [
+        "completion Partial — more to examine not in ['complete', 'partial']",
+        "no sources retrieved"
+      ],
+      "screenshot": "/app/test_reports/us_runs/20260921T073223/US01.png",
+      "seconds": 54.5
+    },
+    {
+      "id": "US24",
+      "status": "failed",
+      "expected": {
+        "completion": [
+          "complete",
+          "partial",
+          "waiting_user"
+        ],
+        "min_explanation_chars": 900
+      },
+      "actual": {},
+      "problems": [
+        "TimeoutError: Locator.wait_for: Timeout 180000ms exceeded.\nCall log:\n  - waiting for get_by_test_id(\"inv-response\").first to be visible\n"
+      ],
+      "screenshot": "/app/test_reports/us_runs/20260921T073223/US24.png",
+      "seconds": 183.8
+    },
+    {
+      "id": "US11",
+      "status": "complete",
+      "expected": {
+        "detected": "executable, never executed, declared/detected mismatch recorded"
+      },
+      "actual": {
+        "mediaType": "application/vnd.microsoft.portable-executable",
+        "kind": "attachment",
+        "transformations": [
+          {
+            "kind": "normalise",
+            "description": "Declared type application/pdf but bytes match application/vnd.microsoft.portable-executable; the detected type is used.",
+            "sourceStart": null,
+            "sourceEnd": null
+          }
+        ]
+      },
+      "problems": []
+    },
+    {
+      "id": "US35",
+      "status": "complete",
+      "expected": {
+        "all": 404
+      },
+      "actual": {
+        "codes": [
+          404,
+          404,
+          404,
+          404,
+          404
+        ]
+      },
+      "problems": []
+    }
+  ]
+}

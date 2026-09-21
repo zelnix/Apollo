@@ -1,0 +1,55 @@
+{
+  "run": "20260921T074911",
+  "base": "https://device-file-gate.preview.emergentagent.com",
+  "provider": "gemini (owner key)",
+  "mocked": false,
+  "scenarios": [
+    {
+      "id": "US24",
+      "status": "failed",
+      "expected": {
+        "completion": [
+          "complete",
+          "partial",
+          "waiting_user"
+        ],
+        "min_explanation_chars": 900
+      },
+      "actual": {
+        "assessment": "uncertain",
+        "attention": "urgent",
+        "completion": "waiting_user",
+        "findings": [
+          "Apollo warned the user about a file downloaded from a text message.",
+          "The user reports that Apollo's protection is currently stopped.",
+          "Device observations for protection status and security signals returned no data."
+        ],
+        "sources": [],
+        "explanation": "Apollo's 'bark' is an alert that he has detected something suspicious in the file you downloaded from the text message. The subsequent notification that protection has stopped is concerning, as it suggests a vital security layer may have been disabled. \n\nI have attempted to check the status of Apollo's protection and security signals directly, but the current readings are inconclusive. It is possible that the file or an associated process has interfered with Apollo's ability to report his status. My immediate recommendation is to avoid interacting with the downloaded file and to attempt to reactivate Apollo's protection manually. \n\nI am also looking into whether this is part of a known scam or malware campaign targeting individuals via text message. Identifying the sender or the file name would greatly assist in this regard.",
+        "overview": "Apollo has warned you about a downloaded file, and the reported stoppage of protection is a matter of immediate priority. I am investigating the nature of this file and why Apollo's shield has been lowered. For now, please do not open the file and, if possible, remove it from your device.",
+        "evidence_labels": [
+          "observation: protection.status",
+          "observation: security.signals",
+          "observation: permission.accessibility",
+          "observation: network.status"
+        ],
+        "actions": [
+          [
+            "instruction",
+            "Delete the file"
+          ],
+          [
+            "instruction",
+            "Restart Apollo Protection"
+          ]
+        ],
+        "caseId": "58146098-a9e3-4312-97a5-1567fc85c56c"
+      },
+      "problems": [
+        "explanation shorter than required"
+      ],
+      "screenshot": "/app/test_reports/us_runs/20260921T074911/US24.png",
+      "seconds": 66.0
+    }
+  ]
+}

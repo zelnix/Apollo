@@ -1,0 +1,51 @@
+{
+  "run": "20260921T073827",
+  "base": "https://device-file-gate.preview.emergentagent.com",
+  "provider": "gemini (owner key)",
+  "mocked": false,
+  "scenarios": [
+    {
+      "id": "US06",
+      "status": "failed",
+      "expected": {
+        "assessment": [
+          "no_concern_found_within_scope",
+          "uncertain"
+        ],
+        "attention": [
+          "none",
+          "review"
+        ],
+        "max_actions_recommended": 1
+      },
+      "actual": {
+        "assessment": "no_concern_found_within_scope",
+        "attention": "No action needed",
+        "completion": "Complete within scope",
+        "findings": [],
+        "sources": [],
+        "explanation": "",
+        "overview": "This message appears to be a standard dental appointment reminder and shows no signs of being a scam. Apollo has not identified any malicious elements, and the advice to call a number from your own records is a very safe practice. If you do not have such an appointment, it is likely a simple wrong number.",
+        "evidence_labels": [],
+        "actions": [],
+        "caseId": null
+      },
+      "problems": [
+        "attention No action needed not in ['none', 'review']"
+      ],
+      "screenshot": "/app/test_reports/us_runs/20260921T073827/US06.png",
+      "debug": {
+        "status": 403,
+        "hist": "{\"detail\":\"That device_id does not belong to this device.\"}",
+        "keys": [
+          "apollo.protection.on",
+          "apollo.device.identity.v2",
+          "apollo.checks.completed.v1",
+          "apollo.setup.done",
+          "apollo.lastVerifiedAt"
+        ]
+      },
+      "seconds": 39.7
+    }
+  ]
+}

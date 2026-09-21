@@ -1,7 +1,7 @@
 # Apollo implementation matrix — architectural package (Package-2 + Complete Developer Instructions)
 
 **Date:** 2026-09-21. **Source:** fork base `33a2383`, work committed on `main` (see `git log`; SHA recorded in final handoff).
-**Overall status: PARTIAL.** Stage A and Stage B core are implemented and verified live; Stage C is partially delivered; Stage D scenario acceptance (US01–US35) is **not run** as a full suite. Statuses below are honest per item; nothing marked complete relies on a mock or a testing agent.
+**Overall status: PARTIAL.** Stage A and Stage B are implemented with the R01–R10 review corrections (immutable per-attempt commits, epoch-fenced content writes, per-round checkpoints, true document totals, separate upload chunks, clue registration, stable source IDs, bound settings plans, fenced frontend continuation, real action dispatcher). Stage C: all ten Gate screens run their initial investigation through the shared case and continue it on Ask; device broker bound to the security adapter; delivery adapters implemented (credential-blocked); mock adapter excluded from native bundles. Stage D: `tests/run_us_scenarios.py` runs normal-screen journeys with typed grading — see `docs/APOLLO_US_SCENARIO_STATUS.md` for per-scenario results; the full US01–US35 matrix is still incomplete. Statuses below are honest per item; nothing marked complete relies on a mock or a testing agent.
 
 Legend: ✅ complete · 🟡 partial · ⬜ not started · 🚫 blocked (named external prerequisite)
 
@@ -22,8 +22,8 @@ Legend: ✅ complete · 🟡 partial · ⬜ not started · 🚫 blocked (named e
 | AR-10 | Forced-warning state reconciliation | B | `contracts.py` (`attention`), `InvestigationView.tsx` | Separate `attention` projection; Gemini may lower concern (device probe: "not an attack") | 🟡 Gate screens' local `state` not yet driven by case |
 | AR-16 | Brand guessing / Gate-count escalation | A | `threatScent.ts` (prior session) | Removed; typed relationships via `parentId`/`relatedEvidenceIds` | 🟡 cross-case joins |
 | AR-08 | Hardcoded Settings text | C | `tools.py` (`research_settings`), `/settings-plan`, `/recheck` | Live Samsung SM-S918B plan `match=exact`, sourced; recheck contract implemented | 🟡 frontend `src/settings/*` not built; `deviceSettings.ts` still used by Device screen |
-| AR-09 | Requested vs granted permissions, empty-vs-unavailable | C | native `AppDeviceSignals.kt` | — | ⬜ |
-| AR-11 | Static mock adapter import | C | `securityAdapter.ts`, `MockSecurityAdapter.ts` | — | ⬜ |
+| AR-09 | Requested vs granted permissions, empty-vs-unavailable | C | `src/investigation/deviceBroker.ts`, `src/settings/actions.ts` | Broker reports `requested`/`granted`/`canAskAgain` as separate values from the adapter's `ProtectionPermission`; `requestProtectionPermission` is followed by a fresh observation, never assumed granted | 🟡 TS contract done; native Kotlin contract untouched (physical-device testing cancelled) |
+| AR-11 | Static mock adapter import | C | `MockSecurityAdapter.web.ts` / `.native.ts` / `.d.ts` | Metro platform split: native bundles receive a fail-closed stub; simulated observations carry `simulation` labels and are rejected for native profiles server-side | ✅ |
 | AR-12 | Three-journey report, keyword grading | D | `tests/run_round1_user_scenarios.py` | Immutable runs exist (prior session); US01–US35 semantic suite | ⬜ NOT RUN |
 
 ## Complete Developer Instructions — stage steps
@@ -41,16 +41,16 @@ Legend: ✅ complete · 🟡 partial · ⬜ not started · 🚫 blocked (named e
 | B9 | Provider/capability registry | ✅ | `provider.CAPABILITIES`, `/api/ai/capabilities` |
 | B10 | Coordinator | ✅ | inventory → tools → reassess → answer/question |
 | B11 | Research tools | ✅ | 9 tools; breach lookup gated on HIBP key |
-| B12 | Device broker | 🟡 | Contract + backend loop verified; frontend broker returns honest `unavailable` (native adapters not bound) |
-| B13 | Revisable assessments | 🟡 | Engine yes; Gate screens still show local state independently |
+| B12 | Device broker | ✅ | Bound to `securityAdapter` (protection status, network status, signals, four permissions); advertised only when the adapter is real or explicitly mock; mock values labelled as simulation |
+| B13 | Revisable assessments | ✅ | Gate screens render the case view (`GateInvestigation`) beneath Apollo's local detection; Higgins' `attention` is a separate projection and may lower/raise concern (Link Gate test-page journey) |
 | B14 | Durable worker | ✅ | leases, heartbeat, fence, checkpoint, `recover()` on startup/sweep |
 | B15 | Recovery/retry | ✅ | 2 transient retries, jittered backoff, SDK retries disabled, deadline-bounded |
 | B16 | Answer validation + UI | ✅ | `InvestigationView` |
 | B17 | Narration | ✅ backend / 🟡 UI uses existing protected `/voice/speak` path |
-| C18 | Migrate all entry paths | ✅ handoffs / 🟡 Home quick checks & share targets | All ten Gate screens' "Ask Higgins" hand the original URL/message/email/call/alert/app description/file bytes/network+device observations into the shared case (`original_evidence`); Patrol event actions carry summaries only |
+| C18 | Migrate all entry paths | ✅ ten Gate screens (initial investigation + follow-up on the same case) / 🟡 Home quick checks & share targets | All ten Gate screens' "Ask Higgins" hand the original URL/message/email/call/alert/app description/file bytes/network+device observations into the shared case (`original_evidence`); Patrol event actions carry summaries only |
 | C19–C21 | Gate-specific work, observation semantics, guided settings UI | 🟡 / ⬜ | Backend plan/recheck ready; native contracts untouched |
-| C22 | Preview/native boundary | ⬜ | |
-| C23 | Delivery adapters | 🚫 | Email/push/storage remain explicit 503 stubs — need `RESEND_API_KEY`+sender, push credentials, object store |
+| C22 | Preview/native boundary | ✅ | see AR-11 |
+| C23 | Delivery adapters | ✅ implemented / 🚫 credential-blocked | Resend email (idempotent, receipts), Expo push (owner token registry, receipts, dead-token pruning), S3-compatible family storage (boto3, SSE). Typed 503 only while `RESEND_*`, `EXPO_PUSH_*`, `FAMILY_STORAGE_*` are absent |
 | C24 | Consumer usability | 🟡 | Retry/Cancel/expand/sources/hear implemented |
 | D25–D30 | Runner, journeys, recovery, semantic grading, immutable runs, handoff | ⬜ | Only direct probes run (below) |
 

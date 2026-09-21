@@ -46,14 +46,14 @@ export async function observe(request: DeviceRequest): Promise<DeviceResult> {
     }
     if (request.capabilityId === CAPABILITIES.signals) {
       const signals = await securityAdapter.getSecuritySignals();
-      return { ...base, status: "observed", values: { count: signals.length, signals: signals.slice(0, 50).map((x) => `${x.occurredAt} ${x.severity} ${x.code}: ${x.plain}`) } };
+      return { ...base, status: "observed", values: pick({ count: signals.length, signals: signals.slice(0, 50).map((x) => `${x.occurredAt} ${x.severity} ${x.code}: ${x.plain}`) }, request.fields) };
     }
     if (request.capabilityId.startsWith("permission.")) {
       const id = request.capabilityId.slice("permission.".length) as ProtectionPermission["id"];
       const permission = (await securityAdapter.getProtectionPermissions()).find((p) => p.id === id);
       if (!permission) return { ...base, status: "unavailable", observedAt: null, values: {} };
       if (permission.status === "not_applicable") return { ...base, status: "unavailable", values: { status: "not_applicable" } };
-      return { ...base, status: "observed", values: { status: permission.status, granted: permission.status === "granted", enabled: permission.status === "granted", canAskAgain: permission.canAskAgain, requestedByApollo: true } };
+      return { ...base, status: "observed", values: pick({ status: permission.status, granted: permission.status === "granted", enabled: permission.status === "granted", canAskAgain: permission.canAskAgain, requestedByApollo: true }, request.fields) };
     }
     return { ...base, status: "unavailable", observedAt: null, values: {} };
   } catch {
