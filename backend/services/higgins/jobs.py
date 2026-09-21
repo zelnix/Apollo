@@ -38,7 +38,7 @@ async def _emit(owner: str, case: dict, job: dict, kind: str, payload: dict) -> 
 
 async def _fail(owner: str, case: dict, job: dict, failure: Failure, *, partial: bool = False) -> None:
     await repo.set_job(owner, job["job_id"], job.get("fence"), {"$set": {"status": "failed", "failure": failure.wire(), "lease_until": None}})
-    await repo.cas(owner, case["case_id"], {"epoch": job["epoch"], "active_job_id": job["job_id"], **({"lease_fence": job["fence"]} if job.get("fence") else {})},
+    await repo.cas(owner, case["case_id"], {"epoch": job["epoch"], "work_epoch": job.get("work_epoch", job["epoch"]), "active_job_id": job["job_id"], **({"lease_fence": job["fence"]} if job.get("fence") else {})},
                    {"$set": {"status": "partial" if partial or case.get("response_ciphertext") else "failed", "active_job_id": None, "active_turn_id": None, "lease_fence": None}}, bump=False)
     if partial:
         await _emit(owner, case, job, "partial", {"responseRevision": case.get("response_revision"), "reason": failure.wire(), "canContinue": failure.retryable or failure.code != "provider_configuration"})
@@ -50,7 +50,7 @@ async def run(owner: str, case_id: str, job_id: str) -> None:
     if not job:
         return
     case = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case_id}, {"_id": 0})
-    if not case or case["deleted"] or case["epoch"] != job["epoch"] or repo.utc(case["expires_at"]) <= now_utc():
+    if not case or case["deleted"] or case["epoch"] != job["epoch"] or case.get("work_epoch", case["epoch"]) != job.get("work_epoch", job["epoch"]) or repo.utc(case["expires_at"]) <= now_utc():
         await repo.set_job(owner, job_id, job["fence"], {"$set": {"status": "cancelled", "lease_until": None}})
         return
     accepted = await repo.accepted_commit_for(owner, case, job["turn_id"])
@@ -62,7 +62,7 @@ async def run(owner: str, case_id: str, job_id: str) -> None:
         await _emit(owner, case, job, "completed", {"turnId": job["turn_id"], "responseRevision": commit["committedRevision"], "providerComplete": True,
                                                     "completion": commit["response"]["completion"], "caseStatus": case["status"], "cleanupStatus": case.get("cleanup_status", "not_due"), "repaired": True})
         return
-    fenced = await repo.cas(owner, case_id, {"epoch": job["epoch"], "active_job_id": job_id}, {"$set": {"lease_fence": job["fence"], "status": "investigating"}}, bump=False)
+    fenced = await repo.cas(owner, case_id, {"epoch": job["epoch"], "work_epoch": job.get("work_epoch", job["epoch"]), "active_job_id": job_id}, {"$set": {"lease_fence": job["fence"], "status": "investigating"}}, bump=False)
     if not fenced:
         await repo.set_job(owner, job_id, job["fence"], {"$set": {"status": "cancelled", "lease_until": None}})
         return
@@ -103,13 +103,13 @@ async def run(owner: str, case_id: str, job_id: str) -> None:
                     retry_at = now_utc() + timedelta(seconds=delay)
                     failure = Failure(code=exc.code, message=MESSAGES.get(exc.code, exc.code), retryable=True, retry_after_seconds=int(delay))
                     await repo.set_job(owner, job_id, job["fence"], {"$set": {"status": "retry_wait", "retry_at": retry_at, "failure": failure.wire()}})
-                    await repo.cas(owner, case_id, {"epoch": job["epoch"], "active_job_id": job_id}, {"$set": {"status": "retry_wait"}}, bump=False)
+                    await repo.cas(owner, case_id, {"epoch": job["epoch"], "work_epoch": job.get("work_epoch", job["epoch"]), "active_job_id": job_id}, {"$set": {"status": "retry_wait"}}, bump=False)
                     await _emit(owner, case, job, "retry_scheduled", {"retryAt": retry_at.isoformat(), "failure": failure.wire()})
                     await asyncio.sleep(delay)
                     if stop.is_set():
                         return
                     await repo.set_job(owner, job_id, job["fence"], {"$set": {"status": "investigating", "retry_at": None}})
-                    await repo.cas(owner, case_id, {"epoch": job["epoch"], "active_job_id": job_id}, {"$set": {"status": "investigating"}}, bump=False)
+                    await repo.cas(owner, case_id, {"epoch": job["epoch"], "work_epoch": job.get("work_epoch", job["epoch"]), "active_job_id": job_id}, {"$set": {"status": "investigating"}}, bump=False)
                     continue
                 code = exc.code if exc.code in MESSAGES else "provider_unavailable"
                 await _fail(owner, case, job, Failure(code=code, message=MESSAGES[code], retryable=exc.retryable), partial=True)
@@ -117,7 +117,7 @@ async def run(owner: str, case_id: str, job_id: str) -> None:
             break
         if outcome.kind == "waiting_device":
             await repo.set_job(owner, job_id, job["fence"], {"$set": {"status": "waiting_device", "lease_until": None}})
-            await repo.cas(owner, case_id, {"epoch": job["epoch"], "active_job_id": job_id},
+            await repo.cas(owner, case_id, {"epoch": job["epoch"], "work_epoch": job.get("work_epoch", job["epoch"]), "active_job_id": job_id},
                            {"$set": {"status": "waiting_device"}, "$addToSet": {"pending_device_request_ids": outcome.request["id"]}}, bump=False)
             await _emit(owner, case, job, "device_request", outcome.request)
             return
@@ -164,19 +164,15 @@ async def recover() -> None:
             launch(job["owner_id"], job["case_id"], job["job_id"])  # run() repairs projections from the accepted commit
             continue
         await _fail(job["owner_id"], case, job, Failure(code="budget_exhausted", message="The work slice ended before Higgins finished. Retry to continue from the last completed step.", retryable=True), partial=True)
-    # Device results whose evidence was stored but whose job was never resumed (crash between ingestion and launch).
-    async for pending in db.investigation_device_requests.find({"fulfilled": True, "continuation.resumed": False, "continuation.evidence_id": {"$ne": None}}, {"_id": 0}):
-        job = await db.investigation_jobs.find_one({"owner_id": pending["owner_id"], "job_id": pending["job_id"]}, {"_id": 0})
-        if job and job.get("status") in ("queued", "investigating", "waiting_device", "retry_wait"):
-            checkpoint = repo.dec_json(job["checkpoint_ciphertext"]) if job.get("checkpoint_ciphertext") else {"contents": [], "rounds": 0}
-            if not any(r.get("evidenceId") == pending["continuation"]["evidence_id"] for r in checkpoint.get("deviceResults", [])):
-                evidence = await db.investigation_evidence.find_one({"owner_id": pending["owner_id"], "evidence_id": pending["continuation"]["evidence_id"]}, {"_id": 0})
-                result = ((await repo.evidence_meta(evidence)).get("deviceResult") if evidence else None) or {}
-                checkpoint.setdefault("deviceResults", []).append({**result, "evidenceId": pending["continuation"]["evidence_id"]})
-            await db.investigation_jobs.update_one({"owner_id": pending["owner_id"], "job_id": job["job_id"]}, {"$set": {"checkpoint_ciphertext": repo.enc_json(checkpoint), "status": "queued", "lease_until": None}})
-            await db.investigation_cases.update_one({"owner_id": pending["owner_id"], "case_id": pending["case_id"], "status": "waiting_device"}, {"$set": {"status": "queued"}, "$pull": {"pending_device_request_ids": pending["request_id"]}})
-            launch(pending["owner_id"], pending["case_id"], job["job_id"])
-        await db.investigation_device_requests.update_one({"owner_id": pending["owner_id"], "request_id": pending["request_id"]}, {"$set": {"continuation.resumed": True}})
+    # Device submissions interrupted after the claim (crash before storage or before resume): finish them idempotently.
+    from routers.investigations import _finish_device_submission  # local import: router depends on this module
+    async for pending in db.investigation_device_requests.find({"submission.state": {"$in": ["claimed", "stored"]}}, {"_id": 0}):
+        case = await db.investigation_cases.find_one({"owner_id": pending["owner_id"], "case_id": pending["case_id"], "deleted": False}, {"_id": 0})
+        if case:
+            try:
+                await _finish_device_submission(pending["owner_id"], case, pending)
+            except Exception:  # noqa: BLE001
+                logger.exception("device submission recovery failed request=%s", pending["request_id"])
     async for job in db.investigation_jobs.find({"status": {"$in": ["queued", "investigating", "retry_wait"]}, "deadline_at": {"$gt": now},
                                                  "$or": [{"lease_until": None}, {"lease_until": {"$lte": now}}]}, {"_id": 0, "owner_id": 1, "case_id": 1, "job_id": 1}):
         launch(job["owner_id"], job["case_id"], job["job_id"])

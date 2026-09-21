@@ -225,7 +225,7 @@ async def request_device_observation(ctx: ToolContext, args: dict) -> dict:
                "fields": [str(f) for f in args.get("fields", [])][:32], "reason": str(args.get("reason", ""))[:300],
                "expiresAt": min(repo.utc(ctx.case["expires_at"]), now_utc() + timedelta(seconds=120)).isoformat()}
     await db.investigation_device_requests.insert_one({"owner_id": ctx.owner, "case_id": ctx.case_id, "request_id": request["id"], "job_id": ctx.job["job_id"],
-                                                        "request": request, "fulfilled": False, "created_at": now_utc()})
+                                                        "request": request, "fulfilled": False, "submission": None, "created_at": now_utc()})
     ctx.pending_request = request
     return {"status": "pending", "requestId": request["id"], "note": "The app is being asked for this observation. The investigation pauses until it returns."}
 

@@ -126,7 +126,7 @@ async def assert_live(owner: str, case_id: str, epoch: Optional[str] = None) -> 
 # ------------------------------------------------------------------ cases
 async def create_case(owner: str, gate: Optional[str], device_profile: Optional[dict]) -> dict:
     now = now_utc()
-    doc = {"owner_id": owner, "case_id": str(uuid.uuid4()), "revision": 0, "epoch": uuid.uuid4().hex, "gates": [gate] if gate else [], "status": "queued",
+    doc = {"owner_id": owner, "case_id": str(uuid.uuid4()), "revision": 0, "epoch": uuid.uuid4().hex, "work_epoch": uuid.uuid4().hex, "gates": [gate] if gate else [], "status": "queued",
            "created_at": now, "updated_at": now, "expires_at": now + timedelta(seconds=LIFETIME_SECONDS), "active_job_id": None,
            "active_turn_id": None, "lease_fence": None, "response_ciphertext": None, "response_revision": None,
            "sources_ciphertext": enc_json([]), "device_profile_ciphertext": enc_json(device_profile) if device_profile else None,
@@ -225,6 +225,15 @@ async def insert_evidence(owner: str, item: EvidenceItem, meta: dict) -> None:
     await settle_write(owner, item.case_id, epoch, db.investigation_evidence, {"owner_id": owner, "case_id": item.case_id, "evidence_id": item.id})
 
 
+async def discard_incomplete_ingestion(owner: str, case_id: str, evidence_id: str) -> None:
+    """Removes an evidence item whose ingestion never committed (upload finalisation interrupted), including derived children and bytes."""
+    children = [r["evidence_id"] async for r in db.investigation_evidence.find({"owner_id": owner, "case_id": case_id, "parent_id": evidence_id}, {"_id": 0, "evidence_id": 1})]
+    ids = [evidence_id, *children]
+    await db.investigation_content_chunks.delete_many({"owner_id": owner, "case_id": case_id, "evidence_id": {"$in": ids}})
+    await db.investigation_evidence.delete_many({"owner_id": owner, "case_id": case_id, "evidence_id": {"$in": ids}})
+    await db.investigation_cases.update_one({"owner_id": owner, "case_id": case_id}, {"$pull": {"evidence_ids": {"$in": ids}}})
+
+
 async def settle_write(owner: str, case_id: str, epoch: str, collection, selector: dict) -> None:
     """Writer-lease/tombstone protocol (S05). Every content write carries the case epoch observed BEFORE the awaited insert. After the
     insert the epoch is re-read: if the case was deleted/expired/regenerated meanwhile, the row is a late write and is removed here
@@ -311,7 +320,7 @@ async def create_job(owner: str, case: dict, turn_id: str, key_digest: str, payl
     deadline = min(utc(case["expires_at"]), now + timedelta(seconds=WORK_SECONDS))
     doc = {"owner_id": owner, "case_id": case["case_id"], "job_id": str(uuid.uuid4()), "turn_id": turn_id, "idempotency_key_digest": key_digest,
            "payload_digest": payload_digest, "kind": kind, "status": "queued", "attempt": 0, "created_at": now, "started_at": None, "deadline_at": deadline,
-           "retry_at": None, "lease_until": None, "fence": None, "epoch": case["epoch"], "input_revision": case["revision"], "last_sequence": 0,
+           "retry_at": None, "lease_until": None, "fence": None, "epoch": case["epoch"], "work_epoch": case.get("work_epoch", case["epoch"]), "input_revision": case["revision"], "last_sequence": 0,
            "failure": None, "payload_ciphertext": enc_json(payload), "checkpoint_ciphertext": None, "expires_at": utc(case["expires_at"])}
     await db.investigation_jobs.insert_one(dict(doc))
     return doc
@@ -394,7 +403,7 @@ async def accept_turn(owner: str, case: dict, job: dict, commit: TurnCommit, com
     if any(ref["turn_id"] == commit.turn_id for ref in case.get("accepted_commits", [])):
         await db.investigation_turn_commits.delete_one({"owner_id": owner, "case_id": case["case_id"], "commit_id": commit_id})
         return None  # logical turn already accepted by another attempt; this attempt removes only its own bundle
-    updated = await cas(owner, case["case_id"], {"epoch": job["epoch"], "active_job_id": job["job_id"], "lease_fence": job["fence"],
+    updated = await cas(owner, case["case_id"], {"epoch": job["epoch"], "work_epoch": job.get("work_epoch", job["epoch"]), "active_job_id": job["job_id"], "lease_fence": job["fence"],
                                                  "accepted_commits.turn_id": {"$ne": commit.turn_id}},
                         {"$set": {"response_ciphertext": enc_json(commit.response.wire()), "response_revision": commit.committed_revision, "status": status,
                                   "active_job_id": None, "active_turn_id": None, "lease_fence": None, "attention": attention,
@@ -421,7 +430,8 @@ async def accepted_turns(owner: str, case: dict) -> list[TurnCommit]:
 
 # ------------------------------------------------------------------ lifecycle: cancel / delete / expire / cleanup
 async def revoke(owner: str, case_id: str, status: str) -> Optional[dict]:
-    """Change the lifecycle epoch so no in-flight worker can commit; then schedule cleanup."""
+    """Deletion/expiry ONLY: change the content lifecycle epoch (all content rows become tombstones) and schedule cleanup.
+    Cancelling a turn never calls this; cancellation rotates `work_epoch` (worker fence) and leaves submitted evidence intact."""
     doc = await db.investigation_cases.find_one_and_update({"owner_id": owner, "case_id": case_id},
         {"$set": {"status": status, "epoch": uuid.uuid4().hex, "active_job_id": None, "lease_fence": None, "cleanup_status": "pending",
                   "deleted": status == "expired" or status == "deleted", "updated_at": now_utc()},

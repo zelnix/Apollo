@@ -222,23 +222,35 @@ async def ingest_file(owner: str, case: dict, meta_in: dict, data: bytes) -> Evi
                         coverage=Coverage(status="not_started", unit="bytes", total=len(data), examined=0), transformations=transformations,
                         label=f"{kind}: {re.sub(r'[^A-Za-z0-9._ -]', '_', meta_in['filename'])[:60]}")
     admission = await _image_secret_preflight(data, detected) if kind == "image" else None
-    if admission and admission.get("containsSecret"):
-        # Ephemeral admission (S06/R03): the original image is never stored durably when it visibly shows an authentication
-        # secret. Only the preflight's redacted description is retained so the surrounding context stays usable.
-        item = item.model_copy(update={"availability": "purged", "coverage": Coverage(status="unavailable", unit="bytes", total=len(data), examined=0,
-                                                                                       reason="original image withheld: it shows an authentication secret"),
-                                       "transformations": [*transformations, Transformation(kind="secret_redaction", description="The screenshot shows a password, one-time code, card number or similar secret. The original image was not stored; a redacted description of its visible content is retained instead.")]})
+    if admission and admission["status"] != "clear":
+        # Ephemeral admission (S06/R03). Two distinct outcomes, never conflated:
+        #  - secret_detected: the original is withheld; the preflight's FULL transcription with only the secrets replaced by [REDACTED]
+        #    plus a visual description are retained as derived text with explicit coverage, so non-secret evidence is not lost.
+        #  - unavailable: the check could not run/validate, so no unchecked original is stored; the person is told to resubmit.
+        detected_secret = admission["status"] == "secret_detected"
+        reason = ("original image withheld: it shows an authentication secret" if detected_secret
+                  else "original image not stored: the secret check was unavailable, so admission could not be decided")
+        description = ("The screenshot shows a password, one-time code, card number or similar secret. The original image was not stored; its visible text "
+                       "was transcribed with each secret replaced by [REDACTED] and a description of the visual layout was kept."
+                       if detected_secret else f"The image could not be checked for secrets before storage ({admission['status']}), so it was not kept. Submit it again; if it keeps failing, describe what it shows.")
+        item = item.model_copy(update={"availability": "purged", "coverage": Coverage(status="unavailable", unit="bytes", total=len(data), examined=0, reason=reason),
+                                       "transformations": [*transformations, Transformation(kind="secret_redaction", description=description)]})
         await repo.insert_evidence(owner, item, {"filename": meta_in["filename"], "declaredMediaType": meta_in["mediaType"], "detectedMediaType": detected, "secretPreflight": admission})
-        described = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=f"{item.client_item_id}.redacted", origin="apollo_inference", kind="text",
-                                 parent_id=item.id, collected_at=now_utc(), expires_at=expires, media_type="text/plain", byte_length=0,
-                                 coverage=Coverage(status="not_started", unit="characters", total=0, examined=0),
-                                 transformations=[Transformation(kind="secret_redaction", description="Redacted description of the withheld image, produced by the Gemini preflight.")],
-                                 label="redacted description of the withheld screenshot")
-        text = redact_investigation_secrets(str(admission.get("redactedDescription") or "The image content could not be described."))
-        described = described.model_copy(update={"byte_length": len(text.encode("utf-8")), "coverage": Coverage(status="not_started", unit="characters", total=len(text), examined=0)})
-        await repo.insert_evidence(owner, described, {"derivedFrom": item.id})
-        await repo.store_bytes(owner, case["case_id"], described.id, text.encode("utf-8"), expires)
-        await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"related_evidence_ids": [described.id]}})
+        if detected_secret:
+            text = redact_investigation_secrets(
+                f"VISIBLE TEXT (verbatim, secrets replaced by [REDACTED]):\n{admission['redactedText']}\n\nVISUAL DESCRIPTION:\n{admission['visualDescription']}\n\n"
+                f"REDACTED ITEMS: {', '.join(admission['secretKinds']) or 'unspecified'}.")
+            derived = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=f"{item.client_item_id}.redacted", origin="apollo_inference", kind="text",
+                                   parent_id=item.id, collected_at=now_utc(), expires_at=expires, media_type="text/plain", byte_length=len(text.encode("utf-8")),
+                                   coverage=Coverage(status="not_started", unit="characters", total=len(text), examined=0,
+                                                     material_gap=admission["transcriptionComplete"] is False,
+                                                     reason=None if admission["transcriptionComplete"] else "the preflight reported its transcription as incomplete"),
+                                   transformations=[Transformation(kind="secret_redaction", description="Targeted redaction by the Gemini preflight: only secret values were replaced; other visible text is verbatim.")],
+                                   label="redacted transcription of the withheld screenshot")
+            await repo.insert_evidence(owner, derived, {"derivedFrom": item.id})
+            await repo.store_bytes(owner, case["case_id"], derived.id, text.encode("utf-8"), expires)
+            await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"related_evidence_ids": [derived.id]}})
+            await register_clues(owner, case, derived, text)
         return item
     await repo.insert_evidence(owner, item, {"filename": meta_in["filename"], "declaredMediaType": meta_in["mediaType"], "detectedMediaType": detected,
                                              **({"secretPreflight": admission} if admission else {})})
@@ -248,22 +260,33 @@ async def ingest_file(owner: str, case: dict, meta_in: dict, data: bytes) -> Evi
 
 
 async def _image_secret_preflight(data: bytes, media_type: str) -> dict:
-    """Gemini-only visual admission check. Fails CLOSED: if the preflight cannot run, the image is treated as secret-bearing so no
-    unchecked original is stored durably; the person is told to resubmit."""
+    """Gemini-only visual admission check with STRICT response validation. Outcomes: `clear` (store original), `secret_detected`
+    (withhold original; keep targeted-redacted transcription), `unavailable` (check failed or response malformed: no unchecked original
+    is stored, and the person is told the check was unavailable — NOT that a secret was found)."""
     from services.higgins import provider
     from google.genai import types as gtypes
     prompt = [gtypes.Part.from_bytes(data=data, mime_type=media_type),
-              gtypes.Part(text="You are an admission filter. Does this image visibly show an authentication secret: a password, PIN, one-time code, "
-                               "recovery code, full card number, CVV, private key or session token? Answer JSON only: "
-                               '{"containsSecret": true|false, "secretKinds": ["..."], "redactedDescription": "one paragraph describing the visible content '
-                               'with every secret replaced by [REDACTED]; keep sender names, amounts, links, dates and instructions."}')]
+              gtypes.Part(text="You are an admission filter for screenshots. Decide whether the image VISIBLY shows an authentication secret: password, PIN, "
+                               "one-time code, recovery code, full card number, CVV, private key or session token. Then transcribe ALL visible text verbatim, "
+                               "replacing ONLY each secret value with [REDACTED] (keep sender names, amounts, links, phone numbers, dates, instructions exactly). "
+                               'Answer JSON only: {"containsSecret": true|false, "secretKinds": ["..."], "redactedText": "verbatim transcription with secrets '
+                               'replaced", "visualDescription": "layout, app/window, sender/recipient chrome, images or icons, without any secret", '
+                               '"transcriptionComplete": true|false}')]
     try:
         result, _ = await provider.generate_json("Return only the JSON object.", prompt, capability="vision")
-        return {"containsSecret": bool(result.get("containsSecret")), "secretKinds": [str(k) for k in result.get("secretKinds", [])][:8],
-                "redactedDescription": str(result.get("redactedDescription", ""))[:4000], "status": "ok"}
     except Exception as exc:  # noqa: BLE001
-        return {"containsSecret": True, "secretKinds": ["unknown"], "status": f"preflight_unavailable:{type(exc).__name__}",
-                "redactedDescription": "The image could not be checked for secrets before storage, so it was not kept. Please submit it again; if the problem persists, describe what it shows."}
+        return {"status": f"unavailable:{type(exc).__name__}", "containsSecret": None, "secretKinds": [], "redactedText": "", "visualDescription": "", "transcriptionComplete": None}
+    contains = result.get("containsSecret") if isinstance(result, dict) else None
+    if not isinstance(contains, bool):  # a missing/ambiguous verdict is NOT "no secret"; it is an unavailable check
+        return {"status": "unavailable:invalid_response", "containsSecret": None, "secretKinds": [], "redactedText": "", "visualDescription": "", "transcriptionComplete": None}
+    kinds = [str(k)[:40] for k in (result.get("secretKinds") or []) if isinstance(k, (str, int))][:8]
+    redacted_text = str(result.get("redactedText") or "")[:60_000]
+    visual = str(result.get("visualDescription") or "")[:8_000]
+    complete = result.get("transcriptionComplete") if isinstance(result.get("transcriptionComplete"), bool) else None
+    if contains and not redacted_text.strip() and not visual.strip():  # detected a secret but produced no usable redacted content: cannot admit anything
+        return {"status": "unavailable:no_redacted_content", "containsSecret": True, "secretKinds": kinds, "redactedText": "", "visualDescription": "", "transcriptionComplete": None}
+    return {"status": "secret_detected" if contains else "clear", "containsSecret": contains, "secretKinds": kinds, "redactedText": redacted_text,
+            "visualDescription": visual, "transcriptionComplete": complete}
 
 
 async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detected: str) -> None:

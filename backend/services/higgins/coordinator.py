@@ -5,6 +5,7 @@ Gemini supplies analysis; the coordinator owns IDs, sources, coverage, origin an
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import uuid
@@ -113,8 +114,10 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
     checkpoint = repo.dec_json(fresh_job["checkpoint_ciphertext"]) if fresh_job.get("checkpoint_ciphertext") else None
     pending_marks: list[tuple[str, int, int, int]] = []
     ledger: dict[str, dict] = {}  # per-call durable ledger (S08): completed paid tool outputs are reused, never re-run after a later call fails
+    pending_batch: list[dict] = []  # the tool-call batch Gemini asked for that has not yet been fully answered
     if checkpoint:
         ledger = checkpoint.get("toolLedger", {})
+        pending_batch = checkpoint.get("pendingBatch", [])
         contents = _restore(checkpoint["contents"])
         rounds = checkpoint.get("rounds", 0)
         ctx.research_calls = checkpoint.get("researchCalls", 0)
@@ -122,8 +125,6 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
         pending_marks = [tuple(m) for m in checkpoint.get("pendingMarks", [])]
         for observed in checkpoint.pop("deviceResults", []):
             contents.append(types.Content(role="user", parts=[types.Part(text="DEVICE OBSERVATION RESULT (registered as evidence): " + json.dumps(observed, ensure_ascii=False, default=str))]))
-        if checkpoint.get("interruptedCall"):
-            contents.append(types.Content(role="user", parts=[types.Part(text=f"NOTE: the previous attempt was interrupted during tool call {checkpoint['interruptedCall']}; its outcome is unknown. Re-run it if the result matters.")]))
         await progress("observe", "Resuming the investigation from its last completed step.")
     else:
         await progress("ingest", "Inventorying evidence and prior context.")
@@ -133,9 +134,37 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
 
     async def save(extra: dict) -> None:
         await repo.set_job(owner, job["job_id"], job["fence"], {"$set": {"checkpoint_ciphertext": repo.enc_json({"contents": _serialise(contents), "rounds": rounds, "question": ctx.question,
-                                                                                                             "researchCalls": ctx.research_calls, "pendingMarks": pending_marks, "toolLedger": ledger, **extra})}})
+                                                                                                             "researchCalls": ctx.research_calls, "pendingMarks": pending_marks, "toolLedger": ledger,
+                                                                                                             "pendingBatch": pending_batch, **extra})}})
+
+    async def answer_batch() -> None:
+        """Executes (or reuses from the ledger) every call of the pending batch, then appends the function responses. Persisted before
+        the first execution and after each call, so an interrupted round is completed here on resume BEFORE any new Gemini request."""
+        nonlocal pending_batch
+        responses = []
+        for entry in pending_batch:
+            key = entry["key"]
+            if key in ledger:  # completed in an earlier attempt: reuse, never pay again
+                output = ledger[key]["output"]
+                ctx.research_calls = max(ctx.research_calls, ledger[key].get("researchCalls", ctx.research_calls))
+            else:
+                await progress("research" if entry["name"] != "request_device_observation" else "observe", f"Running {entry['name'].replace('_', ' ')}.")
+                output = await toolbox.execute(ctx, entry["name"], dict(entry["args"]))
+                if isinstance(output, dict) and output.get("_pendingMark"):
+                    pending_marks.append(tuple(output.pop("_pendingMark")))  # delivered ranges count as examined only after the next successful model request (S10)
+                ledger[key] = {"output": output, "researchCalls": ctx.research_calls, "at": now_utc().isoformat()}
+                await save({})
+            responses.append(types.Part.from_function_response(name=entry["name"], response={"result": output}))
+        contents.append(types.Content(role="user", parts=responses))
+        pending_batch = []
+        await save({"requestId": ctx.pending_request["id"]} if ctx.pending_request else {})
+
     tool = types.Tool(function_declarations=toolbox.DECLARATIONS)
     result = None
+    if pending_batch:  # interrupted mid-round: finish the outstanding tool responses first (no Gemini call until the batch is answered)
+        await answer_batch()
+        if ctx.pending_request:
+            return Outcome("waiting_device", request=ctx.pending_request)
     while True:
         await progress("assess", "Higgins is examining the evidence." if rounds == 0 else f"Research step {rounds}.")
         result = await provider.generate(SYSTEM, contents, tools=[tool], capability="functions")
@@ -148,24 +177,11 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
             break
         rounds += 1
         contents.append(result.content)
-        responses = []
-        for index, call in enumerate(calls):
-            args = dict(call.args or {})
-            key = f"{rounds}:{index}:{call.name}"
-            if key in ledger:  # completed in an earlier attempt of this round: reuse, do not pay again
-                output = ledger[key]["output"]
-                ctx.research_calls = max(ctx.research_calls, ledger[key].get("researchCalls", ctx.research_calls))
-            else:
-                await progress("research" if call.name != "request_device_observation" else "observe", f"Running {call.name.replace('_', ' ')}.")
-                await save({"interruptedCall": call.name})
-                output = await toolbox.execute(ctx, call.name, args)
-                if isinstance(output, dict) and output.get("_pendingMark"):
-                    pending_marks.append(tuple(output.pop("_pendingMark")))  # delivered ranges count as examined only after the next successful model request (S10)
-                ledger[key] = {"output": output, "researchCalls": ctx.research_calls, "at": now_utc().isoformat()}
-                await save({"interruptedCall": None})
-            responses.append(types.Part.from_function_response(name=call.name, response={"result": output}))
-        contents.append(types.Content(role="user", parts=responses))
-        await save({"requestId": ctx.pending_request["id"]} if ctx.pending_request else {})
+        # Stable call identity = round + position + name + argument digest, so a replayed round matches its ledger entries exactly.
+        pending_batch = [{"key": f"{rounds}:{i}:{c.name}:{hashlib.sha256(json.dumps(dict(c.args or {}), sort_keys=True, default=str).encode()).hexdigest()[:16]}",
+                          "name": c.name, "args": dict(c.args or {})} for i, c in enumerate(calls)]
+        await save({})  # the model's request and the batch are durable before any paid tool runs
+        await answer_batch()
         if ctx.pending_request:
             return Outcome("waiting_device", request=ctx.pending_request)
         if rounds >= MAX_TOOL_ROUNDS:
