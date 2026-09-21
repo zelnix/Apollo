@@ -1,43 +1,28 @@
-# US01–US35 scenario status (2026-09-21, engine session)
+# US01–US35 scenario status (2026-09-21, corrections session)
 
 Statuses follow spec §19: `complete` (normal-screen journey achieved required outcomes with evidence), `partial` (useful outcome via a direct API probe or a subset of the journey; not the ordinary user route), `failed`, `blocked` (named prerequisite), `not_run`. **No scenario below is counted as passed on the strength of a direct API call alone.** Full-suite live execution through `tests/run_round1_user_scenarios.py` with the `ScenarioOutcome` schema is still to be done (Stage D25–D29).
 
+Runner: `tests/run_us_scenarios.py` (Playwright, 390×844, real Gemini + Search grounding, no mocks, typed grading on `assessment`/`attention`/`completion`/findings/sources/registered clues/turn count — never keywords). Immutable runs under `test_reports/us_runs/<timestamp>/outcomes.json` with screenshots. Latest: `20260921T073918` (US01/03/05/06, US11, US35) and `20260921T075047` (US24).
+
 | ID | Status | Evidence / gap |
 |---|---|---|
-| US01 scare page + support number | not_run | Site handoff now carries URL + link-check observations; screenshot evidence path exists via File/Text |
-| US02 delegated domain invoice | not_run | Engine researches organisations; Email handoff carries full email |
-| US03 late payment-redirection clue | partial | API probe: 23,912-char message, clue after ~22k found; follow-up "I already paid" answered in same case |
-| US04 25 URLs, decisive #24 | partial | Regression: 25 URLs inventoried, none dropped; Gemini disposition of #24 not run |
-| US05 three bank numbers | not_run | `lookup_reputation(phone)` with region inference implemented |
-| US06 benign appointment reminder | not_run | Validation permits `attention: none`, no action |
-| US07 Wi-Fi profile install | not_run | Network handoff carries signals text |
-| US08 reset code entered | not_run | Account handoff carries alert + user-reported action |
-| US09 Gmail attachment name only | not_run | Attachment bytes must be uploaded; filename alone stays metadata coverage |
-| US10 dormant remote-support app | not_run | `research_application` implemented; App handoff carries described app |
-| US11 EXE disguised as PDF | partial | Regression: MZ bytes declared PDF → detected executable, `normalise` transformation, coverage `unavailable`, never executed |
-| US12 50-page PDF, link page 47 | partial | API probe: page-47 clue found, reputation lookup, `urgent`; not via File screen |
-| US13 protection permission changed | partial | API probe: device request → result → resume, no tampering claim; settings plan `match=exact` |
-| US14 return without granting | partial | `/recheck` returns `not_yet_correct`/`cannot_observe`; Device screen UI not wired |
-| US15 four platforms | not_run | |
-| US16 12-turn correction | partial | 2 turns in one case verified; 12-turn budget/history compaction not exercised |
-| US17 connection drop | partial | Client reconnects from `after=`; server keeps job; fault injection not run |
-| US18 rate limit + source failure | not_run | Retry classification/backoff implemented |
-| US19 cancel/delete then revisit | partial | Delete → 410, idempotent repeat; expiry revisit not run |
-| US20 prompt injection | not_run | System prompt + tool authority boundaries in place |
-| US21 preview simulation labelled | not_run | AR-11 not started |
-| US22 unknown organisation | partial | Link probe researched AusPost/Linkt claims with grounded sources |
-| US23 screenshot vs OCR | not_run | Original image inline to Gemini implemented |
-| US24 >900-char answer with question | complete (browser) | Ask general question: long explanation rendered, `waiting_user` question shown |
-| US25 second question fails, Retry | partial | Idempotency: same key → same job; changed payload → 409; failure injection not run |
-| US26 benign notice via Email + Link | not_run | |
-| US27 read aloud then delete | not_run | Case speech job + cleanup implemented |
-| US28 storage failure before publish | not_run | Staged/accepted commit implemented; injection harness absent |
-| US29 old case expires, new continues | not_run | Per-case expiry timers implemented |
-| US30 guardian/family without delivery | blocked | Adapters unimplemented; 503 |
-| US31 advice mentions password + real secret | partial | Regression: secret redacted, advice retained |
-| US32 legitimate powerful permission | not_run | |
-| US33 internet ok, protection stopped | partial | Same probe as US13: concern separated from connectivity |
-| US34 readable vs encrypted document | partial | Encrypted PDF → `unavailable` coverage path implemented; not run end-to-end |
-| US35 guessed IDs from another owner | complete (API) | Regression: case/evidence/sources/turns/delete → 404 for another owner |
+| US01 scare page + support number | complete (Link screen, blocklisted test URL) | 3 findings, 7 sources; Higgins revised Apollo's block to `no_concern_found_within_scope` for Google's test page. Screenshot-of-scare-page variant not run |
+| US02 delegated domain invoice | not_run | |
+| US03 late payment-redirection clue | **complete (Text screen)** | 23k-char message; `concern_found`/`action_needed`; 4 findings, 2 sources; two phone clues registered; completion `partial` (honestly lists remaining) |
+| US04 25 URLs | partial | API regression only (inventory, none dropped) |
+| US05 three bank numbers | **complete (Text screen)** | three `phone clue` items registered; `concern_found`/`action_needed`; actions incl. `open_verified_source` |
+| US06 benign reminder | **complete (Text screen)** | `no_concern_found_within_scope`/`none`; one gentle instruction; research performed and disclosed |
+| US07–US10 | not_run | |
+| US11 EXE disguised as PDF | complete (API, as defined) | detected executable, `normalise` transformation, never executed |
+| US12 50-page PDF | partial | API probe (page-47 clue) — File screen journey not run |
+| US13 protection permission changed | partial | API probe + browser device loop (US24) |
+| US14–US23 | partial / not_run | see previous catalogue; US19 delete → 410 (API); US17 reconnect implemented, fault injection not run |
+| US24 File/Device follow-up with question | **complete (Ask screen)** | 4 real device observations (mock adapter, labelled `simulation` server-side), long answer ending in a question, answer continued the same case (2 accepted turns) |
+| US25 Retry identity | partial | idempotency regressions |
+| US26–US29 | not_run | |
+| US30 guardian/family delivery | blocked | adapters implemented; owner credentials absent |
+| US31 secret + advice | partial | regression: secret redacted, advice retained; original purge on secret implemented |
+| US32–US34 | not_run / partial (US33 via US13 probe) | |
+| US35 cross-owner | complete (API, as defined) | all 404 |
 
-Browser journeys executed this session (real Gemini, 390×844 preview): Ask general question (US24-like); Text Gate → "Ask Higgins" with original message → 3 sources, two actions (Text concerning variant). All other Gate journeys: **not_run**.
+Known UI gap: observation evidence carrying a `simulation` label is stored and rejected for native profiles, but the InvestigationView does not yet surface a visible "simulated (preview)" badge for it.

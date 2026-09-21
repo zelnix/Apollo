@@ -1,4 +1,24 @@
-## Current continuation status — 2026-09-21, session 2 (supersedes the block below)
+## Current continuation status — 2026-09-21, session 3 (supersedes the blocks below)
+
+Controlling docs: `memory/Apollo_Complete_Developer_Instructions.md` + `memory/Apollo_Saved_Source_Review_59725fc.md` (R01–R10).
+DONE this session (all committed locally; user must "Save to GitHub"): R01 immutable per-attempt commits + crash repair; R02 epoch-fenced
+content writes, TTL backstop at expires_at, cleanup revisit; R03 originals purged when they carry secrets, TXT as document; R04 per-round
+checkpoints, interrupted-call marker, retry_wait heartbeat, deadline reconciliation; R05 true page totals, tables/headers, whole-page rule,
+deferred examination marks, coverage-aware completion validation; R06 separate upload chunks, atomic digest, idempotent finalisation;
+R07 clue registration (links/numbers as child evidence), `register_clue` tool, full research snapshots, stable source IDs; R08 plans bound
+to capability/expected value/created_at, fresh-observation recheck; R09 generation-fenced store, sequence continuation, retryable deletion;
+R10 action dispatcher (`src/settings/actions.ts`), inert actions as text, case-bound narration, honest completion label.
+Gate integration: `GateInvestigation` on all ten Gate screens (initial investigation via shared case; Ask continues same case);
+device broker bound to `securityAdapter`; mock adapter platform-split out of native bundles; delivery adapters (Resend/Expo push/S3) implemented,
+credential-blocked; legacy failures classified (`docs/APOLLO_LEGACY_TEST_CLASSIFICATION.md`); US runner `tests/run_us_scenarios.py`
+(US01/03/05/06/24 complete via screens, US11/US35 via API). Tests: engine 7/7, persistence 3/3.
+REMAINING: full US01–US35 matrix (US02/04/07–10/12/14–23/25–29/32–34 through normal screens incl. File upload + Device recheck UI),
+`src/settings/{guidance,recheck}.ts` Device-screen UI, native Kotlin requested-vs-granted contract, simulated-observation badge in the view,
+image secret preflight (Gemini-only), 6 open legacy-route test defects (see classification), Home quick checks/share targets onto the case.
+
+---
+
+## Previous — 2026-09-21, session 2
 
 Controlling specifications: `memory/Apollo_Complete_Developer_Instructions.md` (Stages A–D, US01–US35) consolidating
 `memory/Apollo_Final_Code_Review_and_Developer_Package-2.md`. Gemini only via owner `GEMINI_API_KEY`; no testing agent
