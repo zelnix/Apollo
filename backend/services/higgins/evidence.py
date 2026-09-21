@@ -165,6 +165,33 @@ async def _purge_original_if_secret(owner: str, case: dict, item: EvidenceItem, 
             kind="secret_redaction", description="The original file contained an authentication secret; only the redacted extracted text is retained. Signature, size and structure were recorded first.").wire()}})
 
 
+MAX_SCANNED_PAGES = 12
+SCAN_DPI = 110
+
+
+def _render_pdf_pages(data: bytes, page_numbers: list[int]) -> list[tuple[int, bytes]]:
+    """Rasterises the given 1-based pages to PNG (bounded). Rendering failures yield no image; the page stays an explicit omitted range."""
+    try:
+        import pypdfium2 as pdfium
+        pdf = pdfium.PdfDocument(io.BytesIO(data))
+    except Exception:  # noqa: BLE001
+        return []
+    out: list[tuple[int, bytes]] = []
+    for number in page_numbers:
+        try:
+            page = pdf[number - 1]
+            bitmap = page.render(scale=SCAN_DPI / 72)
+            image = bitmap.to_pil()
+            if image.width * image.height > MAX_IMAGE_PIXELS:
+                image.thumbnail((2000, 2000))
+            buf = io.BytesIO()
+            image.save(buf, format="PNG", optimize=True)
+            out.append((number, buf.getvalue()))
+        except Exception:  # noqa: BLE001
+            continue
+    return out
+
+
 def _pdf_pages(data: bytes) -> tuple[list[str], list[str], list[int]]:
     from pypdf import PdfReader
     reader = PdfReader(io.BytesIO(data))
@@ -311,12 +338,27 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
             derived = await ingest_text(owner, case, f"{item.client_item_id}.text", text + ("\n\n[links]\n" + link_text if link_text else ""), parent_id=item.id,
                                         label=f"extracted text ({len(pages)} pages)", meta={"pages": offsets, "links": links[:512], "registerClues": True},
                                         transformations=[Transformation(kind="decode", description=f"Parser text layer of {len(pages)} page(s) with page markers; {len(links)} link target(s) collected. Scanned/unreadable pages: {unreadable or 'none'}.")])
-            omitted = [{"start": p - 1, "end": p, "reason": "no extractable text layer (scanned or image-only page)"} for p in unreadable]
+            # Scanned/image-only pages: rasterise each (within budget) as a derived image so Gemini can read it visually. A rendered page
+            # is addressable evidence with its own coverage; only pages beyond the render budget remain explicit omitted ranges.
+            rendered_ids, rendered_pages = [], []
+            if detected == "application/pdf" and unreadable:
+                for number, png in _render_pdf_pages(data, unreadable[:MAX_SCANNED_PAGES]):
+                    page_item = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=f"{item.client_item_id}.page{number}", origin=item.origin, kind="image",
+                                             parent_id=item.id, collected_at=now_utc(), expires_at=expires, media_type="image/png", byte_length=len(png),
+                                             coverage=Coverage(status="not_started", unit="items", total=1, examined=0, reason="rendered scanned page available to Gemini vision; not yet examined"),
+                                             transformations=[Transformation(kind="decode", description=f"Page {number} has no text layer; rasterised at {SCAN_DPI} DPI for visual reading. Layout and images preserved; no OCR text layer was invented.", lossy=True)],
+                                             label=f"scanned page {number} (rendered image)")
+                    await repo.insert_evidence(owner, page_item, {"page": number, "derivedFrom": item.id})
+                    await repo.store_bytes(owner, case["case_id"], page_item.id, png, expires)
+                    rendered_ids.append(page_item.id)
+                    rendered_pages.append(number)
+            omitted = [{"start": p - 1, "end": p, "reason": "no extractable text layer (scanned or image-only page)"} for p in unreadable if p not in rendered_pages]
             if total_pages > len(pages):
                 omitted.append({"start": len(pages), "end": total_pages, "reason": f"beyond the {MAX_PAGES}-page processing budget; not extracted"})
             coverage_update = {"status": "partial" if omitted else "not_started", "unit": "pages", "total": total_pages, "examined": 0, "omittedRanges": omitted,
-                               "materialGap": bool(omitted), "reason": "parser extraction complete; model examination pending"}
-            await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"coverage": coverage_update, "related_evidence_ids": [derived.id]}})
+                               "materialGap": bool(omitted),
+                               "reason": "parser extraction complete; model examination pending" + (f"; {len(rendered_pages)} scanned page(s) rendered for visual reading" if rendered_pages else "")}
+            await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"coverage": coverage_update, "related_evidence_ids": [derived.id, *rendered_ids]}})
             await _purge_original_if_secret(owner, case, item, text)
         elif detected in ("image/png", "image/jpeg"):
             from PIL import Image
