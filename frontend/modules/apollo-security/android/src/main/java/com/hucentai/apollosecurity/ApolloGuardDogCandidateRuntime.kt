@@ -135,7 +135,7 @@ internal class ApolloGuardDogCandidateRuntime(private val context: Context) {
   private val activeProbe = AtomicReference<AcceptanceProbeContext?>(null)
   private var config: VpnConfig? = null
   private val reporter = ProtectionEnforcementReporter { evidence ->
-    val probe = activeProbe.get()?.takeIf { it.matches(evidence, state.current().activeSessionId) }
+    val probe = activeProbe.get()?.takeIf { it.matches(evidence, currentSessionId()) }
     pending[evidence.enforcementEvidenceId] = PendingEvidence(evidence, probe)
     try { engine.reportBlockedPacket(evidence) }
     catch (_: Throwable) { inbox.reportFailure("GuardDog engine event reporting failed") }
@@ -222,9 +222,13 @@ internal class ApolloGuardDogCandidateRuntime(private val context: Context) {
     if (!transitions.await(LEGACY_STOP_TIMEOUT_MS) { !ApolloDnsVpnService.isRunning }) error("Legacy Site Guard did not stop before GuardDog start")
   }
 
+  /** Identity of the LIVE TUN session held by the certified engine (frozen SDK e5d11be exposes the session object, not an id string).
+   *  Derived from that object's identity, so it is stable for one session and null when no session exists — never invented. */
+  private fun currentSessionId(): String? = GuardDogVpnRuntime.activeSession?.let { "tun-" + Integer.toHexString(System.identityHashCode(it)) }
+
   private fun actualOperational(): Boolean {
     val snapshot = state.current(); val runtime = RecoveryInspector.inspect(context, state)
-    return snapshot.state == ProtectionState.ACTIVE && !snapshot.activeSessionId.isNullOrBlank() && runtime.lifecycle == "ACTIVE" &&
+    return snapshot.state == ProtectionState.ACTIVE && !currentSessionId().isNullOrBlank() && runtime.lifecycle == "ACTIVE" &&
       runtime.tunOpen && runtime.selectiveRouteActive && runtime.dropReporterAttached
   }
 
@@ -240,7 +244,7 @@ internal class ApolloGuardDogCandidateRuntime(private val context: Context) {
       .put("degradedReason", if (requested && !operational) (snapshot.reason ?: "TUN/route/session/reporter observation incomplete") else JSONObject.NULL)
       .put("visibility", if (operational) "full" else "none").put("since", prefs.getString("since", null) ?: JSONObject.NULL)
       .put("adapterLabel", LABEL).put("checkedAt", checked).put("candidateTestOnly", true)
-      .put("nativeLifecycle", runtime.lifecycle).put("activeSessionId", snapshot.activeSessionId ?: JSONObject.NULL)
+      .put("nativeLifecycle", runtime.lifecycle).put("activeSessionId", currentSessionId() ?: JSONObject.NULL)
       .put("tunOpen", runtime.tunOpen).put("selectiveRouteActive", runtime.selectiveRouteActive).put("dropReporterAttached", runtime.dropReporterAttached)
       .put("evidencePending", inboxStatus.pending).put("evidenceCapacity", inboxStatus.capacity).put("evidenceOverflow", inboxStatus.overflow)
       .put("evidencePersistenceError", inboxStatus.error ?: JSONObject.NULL).toString()
