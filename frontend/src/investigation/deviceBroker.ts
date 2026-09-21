@@ -40,7 +40,8 @@ function formFactor(): DeviceProfile["formFactor"] {
 }
 
 export function currentDeviceProfile(): DeviceProfile {
-  const platform = Platform.OS === "android" ? "android" : Platform.OS === "ios" ? "ios" : "web";
+  const platform: DeviceProfile["platform"] = Platform.OS === "android" ? "android" : Platform.OS === "ios" ? "ios"
+    : securityAdapter.kind === "windows" || securityAdapter.kind === "macos" ? securityAdapter.kind : "web";
   const settings = supportedSettingsDescriptors().map((d) => d.id);
   // Observations this host implements. Web: real reachability, real protection state ("none") and the browser's own
   // notification permission. Native/preview: the full adapter surface plus this platform's Settings destinations.
@@ -51,7 +52,7 @@ export function currentDeviceProfile(): DeviceProfile {
     platform,
     manufacturer: IS_NATIVE_HOST ? nativeFacts?.manufacturer ?? Device.manufacturer ?? null : null,
     model: IS_NATIVE_HOST ? nativeFacts?.model ?? Device.modelName ?? null : null,
-    osVersion: IS_NATIVE_HOST ? nativeFacts?.osVersion ?? `${Device.osName ?? Platform.OS} ${Device.osVersion ?? String(Platform.Version)}`.trim() : null,
+    osVersion: IS_NATIVE_HOST ? nativeFacts?.osVersion ?? (Platform.OS === "web" ? null : `${Device.osName ?? Platform.OS} ${Device.osVersion ?? String(Platform.Version)}`.trim()) : null,
     formFactor: IS_NATIVE_HOST ? formFactor() : "unknown",
     locale: nativeFacts?.locale ?? Localization.getLocales()[0]?.languageTag ?? "en-AU",
     evidenceOrigin: IS_NATIVE_HOST ? "native" : "browser",

@@ -2,6 +2,7 @@
 // Real OS facts arrive through typed, allowlisted Tauri commands (desktop/src-tauri/src/main.rs). Anything the desktop
 // host has not implemented yet is reported as unavailable with reason `not_implemented` — never simulated, never "safe".
 import type { Capability } from "@/src/domain/types";
+import { desktopHostKind } from "./desktopHost";
 import { PLATFORM_CAPABILITY_BASELINES, type EnforcementEvidence, type PlatformCapabilityProfile } from "./PlatformCapabilityProfile";
 import type {
   BlockResult, DeviceProfileFacts, NativeUrlAnalysis, NetworkStatus, ProtectionPermission, ProtectionStatus, SecurityPlatformAdapter, SecuritySignal,
@@ -12,8 +13,11 @@ type TauriGlobal = { __TAURI_INTERNALS__?: { invoke: Invoke }; __TAURI__?: { cor
 
 export function desktopHostPresent(): boolean {
   const g = globalThis as TauriGlobal;
-  return !!(g.__TAURI_INTERNALS__?.invoke || g.__TAURI__?.core?.invoke);
+  return !!(g.__TAURI_INTERNALS__?.invoke || g.__TAURI__?.core?.invoke) && desktopHostKind() != null;
 }
+
+/** Opens one of the fixed OS Settings destinations the desktop host allows (`open_settings_target`). */
+export function openDesktopSettings(target: string): Promise<void> { return invoke<void>("open_settings_target", { target }); }
 
 function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   const g = globalThis as TauriGlobal;
@@ -27,8 +31,9 @@ interface HostNetwork { connected: boolean; type: NetworkStatus["type"]; vpnActi
 interface HostPermission { id: ProtectionPermission["id"]; state: ProtectionPermission["status"]; enabled: boolean | null; requested: boolean | null; lastRequestedAt: string | null; unavailableReason: ProtectionPermission["unavailableReason"] }
 
 class DesktopSecurityAdapterImpl implements SecurityPlatformAdapter {
-  readonly kind = "web" as const; // desktop shell hosts the web bundle; `label`/profile identify the real desktop host
-  readonly label = "Apollo desktop host (Windows/macOS) — filtering not yet implemented";
+  // Explicit host identity: Higgins receives platform "windows"/"macos" with native-origin facts, not a browser profile.
+  readonly kind: "windows" | "macos" = desktopHostKind() ?? "windows";
+  readonly label = `Apollo desktop host (${desktopHostKind() === "macos" ? "macOS" : "Windows"}) — filtering not yet implemented`;
   private info: HostInfo | null = null;
 
   private async host(): Promise<HostInfo> { return this.info ?? (this.info = await invoke<HostInfo>("host_info")); }
@@ -60,13 +65,9 @@ class DesktopSecurityAdapterImpl implements SecurityPlatformAdapter {
   async unblockDestination(): Promise<BlockResult> { return { verified: false, method: "none", detail: "Nothing was blocked, so nothing was unblocked.", adapterLabel: this.label, blockedAt: null, evidence: null }; }
 
   async getNetworkStatus(): Promise<NetworkStatus> {
-    const checkedAt = new Date().toISOString();
-    try {
-      const n = await invoke<HostNetwork>("network_status");
-      return { connected: n.connected, type: n.type, isInternetReachable: null, inspectable: true, wifiSecurity: n.wifiSecurity, captivePortal: null, vpnActive: n.vpnActive, ssid: n.ssid, checkedAt };
-    } catch {
-      return { connected: true, type: "unknown", isInternetReachable: null, inspectable: false, wifiSecurity: "unknown", captivePortal: null, vpnActive: null, ssid: null, checkedAt };
-    }
+    // A failed host observation propagates (the broker records it as unavailable/adapter_failed); it is never reported as "connected".
+    const n = await invoke<HostNetwork>("network_status");
+    return { connected: n.connected, type: n.type, isInternetReachable: null, inspectable: true, wifiSecurity: n.wifiSecurity, captivePortal: null, vpnActive: n.vpnActive, ssid: n.ssid, checkedAt: new Date().toISOString() };
   }
   async getSecuritySignals(): Promise<SecuritySignal[]> { return []; }
   async startProtection(): Promise<ProtectionStatus> { return this.getProtectionStatus(); }

@@ -12,5 +12,5 @@ export const securityAdapter: SecurityPlatformAdapter = selectFailClosed(validat
 
 /** True only when the separate development web preview harness supplies simulated device inputs. */
 export const IS_PREVIEW_HARNESS = securityAdapter.kind === "preview_harness";
-/** True when a real native security host (Kotlin/Swift module) backs the adapter. */
-export const IS_NATIVE_HOST = securityAdapter.kind === "android" || securityAdapter.kind === "ios";
+/** True when a real native host backs the adapter: Kotlin/Swift module on mobile, or the Windows/macOS desktop host. */
+export const IS_NATIVE_HOST = securityAdapter.kind === "android" || securityAdapter.kind === "ios" || securityAdapter.kind === "windows" || securityAdapter.kind === "macos";

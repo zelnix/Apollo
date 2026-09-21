@@ -5,10 +5,9 @@
 import type { Capability, Visibility } from "@/src/domain/types";
 import type { EnforcementEvidence, PlatformCapabilityProfile } from "./PlatformCapabilityProfile";
 
-// AdapterKind lists only the hosts this app can actually select at runtime today (securityAdapter.ts):
-// real Kotlin/Swift modules, the real browser adapter, and the development-only device-preview harness.
-// Windows/macOS hosts are represented in the capability/evidence TYPES below and remain explicitly unimplemented.
-export type AdapterKind = "ios" | "android" | "web" | "preview_harness";
+// AdapterKind lists the hosts this app can select at runtime (securityAdapter.ts): real Kotlin/Swift modules, the Windows/macOS
+// desktop host (Tauri shell, typed commands), the real browser adapter, and the development-only device-preview harness.
+export type AdapterKind = "ios" | "android" | "windows" | "macos" | "web" | "preview_harness";
 
 export type PermissionUnavailableReason = "not_implemented" | "os_restricted" | "hardware_absent" | "configuration_missing" | "entitlement_missing" | "adapter_failed";
 

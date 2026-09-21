@@ -4,9 +4,10 @@
 // Applicability is decided by the running platform, not by an OEM name appearing in a search result.
 import { Platform } from "react-native";
 
+import { desktopHostKind } from "@/src/security/desktopHost";
 import type { ProtectionPermission } from "@/src/security/SecurityPlatformAdapter";
 
-export type SettingsPlatform = "android" | "ios" | "web";
+export type SettingsPlatform = "android" | "ios" | "windows" | "macos" | "web";
 
 export interface SettingsDescriptor {
   /** Capability id advertised to the case engine, e.g. "open_settings.vpn". */
@@ -17,6 +18,8 @@ export interface SettingsDescriptor {
   androidIntent?: string;
   /** iOS: Apple only lets an app open its own Settings page; this is the path the person follows from there. */
   iosPath?: string;
+  /** Windows/macOS: fixed target name accepted by the desktop host's `open_settings_target` command. */
+  desktopTarget?: string;
   /** Observation that can confirm the outcome after returning (null = only the person can confirm). */
   observes: ProtectionPermission["id"] | "protection" | null;
   /** Keywords used to match a plan target such as "enable notifications" to this descriptor. */
@@ -35,10 +38,20 @@ export const SETTINGS_DESCRIPTORS: readonly SettingsDescriptor[] = [
   { id: "open_settings.developer", label: "Open developer options", platforms: ["android"], androidIntent: "android.settings.APPLICATION_DEVELOPMENT_SETTINGS", observes: null, keywords: ["developer", "usb debugging"] },
   { id: "open_settings.apps", label: "Open app list", platforms: ["android"], androidIntent: "android.settings.MANAGE_APPLICATIONS_SETTINGS", observes: null, keywords: ["uninstall", "installed app", "app list", "app info"] },
   { id: "open_settings.safari_extensions", label: "Open Safari extension settings", platforms: ["ios"], iosPath: "Safari › Extensions › Apollo", observes: "network_filter", keywords: ["safari", "content blocker", "extension", "site gate"] },
+  // Desktop hosts (Tauri): fixed OS Settings destinations only.
+  { id: "open_settings.desktop_notifications", label: "Open notification settings", platforms: ["windows", "macos"], desktopTarget: "notifications", observes: "notifications", keywords: ["notification", "alert"] },
+  { id: "open_settings.desktop_network", label: "Open network settings", platforms: ["windows", "macos"], desktopTarget: "network", observes: null, keywords: ["network", "wi-fi", "wifi", "ethernet"] },
+  { id: "open_settings.desktop_vpn", label: "Open VPN settings", platforms: ["windows", "macos"], desktopTarget: "vpn", observes: null, keywords: ["vpn"] },
+  { id: "open_settings.desktop_apps", label: "Open installed apps", platforms: ["windows", "macos"], desktopTarget: "apps", observes: null, keywords: ["uninstall", "installed app", "app list", "program"] },
+  { id: "open_settings.desktop_security", label: "Open security settings", platforms: ["windows", "macos"], desktopTarget: "security", observes: null, keywords: ["security", "defender", "firewall", "antivirus", "gatekeeper"] },
+  { id: "open_settings.desktop_privacy", label: "Open privacy settings", platforms: ["windows", "macos"], desktopTarget: "privacy", observes: null, keywords: ["privacy", "camera", "microphone", "location"] },
 ];
 
 export function currentSettingsPlatform(): SettingsPlatform {
-  return Platform.OS === "android" ? "android" : Platform.OS === "ios" ? "ios" : "web";
+  if (Platform.OS === "android") return "android";
+  if (Platform.OS === "ios") return "ios";
+  const host = desktopHostKind();
+  return host ?? "web";
 }
 
 /** Descriptors this host can execute right now (web can execute none — the browser has no Settings destinations). */
