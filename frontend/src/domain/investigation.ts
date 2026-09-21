@@ -55,6 +55,8 @@ export interface InvestigationResult {
     temporary_copy_policy?: string;
     provider?: string;
     model_used?: boolean;
+    fallback_used?: boolean;
+    fallback_reasons?: string[];
     maximum_processing_retention_minutes?: number;
     provider_note: string;
   };

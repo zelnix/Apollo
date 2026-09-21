@@ -70,8 +70,8 @@ Apollo performs supported checks and protective actions; Higgins interprets boun
 - One repeatable command: `./scripts/run-apollo-round1.sh --mode repeatable`.
 - Separate bounded live mode: `./scripts/run-apollo-round1.sh --mode live`.
 - Coverage: threatening, legitimate and ambiguous situations for all ten Gates; five realistic multi-Gate situations; ten complete browser journeys including popups, trusted actions, offline Retry, automatic Higgins handoff, “I already opened it,” “Help me change that setting,” and simpler-explanation continuity.
-- Repeatable external responses are labelled controlled and are never represented as live. Device-only cases remain pending and are excluded from browser completion counts.
-- Final baseline: repeatable **35/35 semantic situations + 10/10 browser journeys**; bounded live **35/35 + 10/10**.
+- Synthetic inputs and preview-only device observations are allowed and explicitly labelled. All Gate selection, investigation, external lookups and Higgins responses are real; no expected verdict or response is injected. Unavailable services produce **INCOMPLETE**, never a substituted pass.
+- The 35/35 local semantic matches are preflight only, not investigation/Higgins acceptance. Browser reports carry the real downstream acceptance status and exact live Higgins responses.
 - Readable reports: `test_reports/round1_expected_vs_actual_repeatable.md` and `test_reports/round1_expected_vs_actual_live.md`; machine reports use the matching `.json` names; screenshots are under `test_reports/round1_artifacts/{repeatable,live}`.
 - Regression totals after Round 1: frontend **364/364**, backend **305/305** (plus focused Higgins handoff **4/4**), TypeScript and JavaScript/Python lint clean.
 - Independent verification: `test_reports/iteration_75.json` (full Round 1 repeatable suite) and `test_reports/iteration_76.json` (fresh onboarding smoke selector/navigation).

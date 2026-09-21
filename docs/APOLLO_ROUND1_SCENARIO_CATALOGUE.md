@@ -20,11 +20,11 @@ Live investigation mode is intentionally separate and bounded:
 ./scripts/run-apollo-round1.sh --mode live
 ```
 
-The repeatable mode uses fixed synthetic inputs, real Apollo application/domain logic, controlled external-service unavailability, and clearly labelled controlled Higgins SSE responses. It never presents those responses as Gemini or a live lookup. Live mode uses the configured services and reports unavailable integrations through the actual UI.
+Both modes use real configured downstream services. No verdict, investigation finding or Higgins response is injected. “Repeatable” means the scenario inputs and assessment expectations are fixed; external results and Higgins wording may vary. If a real service is unavailable or a Higgins answer fails the grounded-response contract, the journey is **INCOMPLETE** and the command exits non-zero. `--mode live` preserves a separate release/on-demand evidence record using the same real integrations.
 
 ## Permanent single-Gate situations
 
-Each Gate has threatening, legitimate and ambiguous situations. Full submitted content, user actions, expected state, findings, uncertainty, Higgins meaning and next action are encoded in the scenario engine and emitted into every report.
+Each Gate has threatening, legitimate and ambiguous situations. Full submitted content, user actions, expected state, findings, uncertainty, Higgins meaning, next action and prohibited claims are encoded before execution and emitted into every report. The 35 local engine checks are preflight for Apollo logic; they are not counted as acceptance of external investigation or Higgins quality.
 
 | Gate | Threatening ID | Legitimate ID | Ambiguous ID |
 |---|---|---|---|
@@ -68,7 +68,7 @@ The Playwright runner uses the visible Expo screens and controls; it does not ca
 
 ## Semantic acceptance
 
-Higgins text is not matched word-for-word. The runner requires the selected Gate context, a clear uncertainty statement and one explicit next action. It rejects unsupported first-person block claims and “verified safe” language. Exact responses are retained in the JSON/Markdown report and screenshots exclude user secrets.
+Higgins text is not matched word-for-word. The runner requires the selected Gate context, a clear uncertainty statement and one explicit next action. It rejects unsupported first-person block claims and “verified safe” language. Exact **real Gemini** responses are retained in the JSON/Markdown report and screenshots exclude user secrets. The backend buffers structured responses and rejects invalid model output; it never replaces it with canned wording.
 
 ## Device-only — never passed by preview
 

@@ -280,7 +280,8 @@ SYSTEM = HIGGINS_VOICE + """ You are Higgins, producing every written assessment
 "headline":"","next_action":"","exact_response":"","what_was_found":[],"why_it_matters":[],"could_not_establish":[],
 "action_label":"","action_kind":"verify_officially|avoid_and_delete|check_account|call_known_number|review"}.
 Do not quote secrets, passwords, verification codes, full account numbers, or long message passages. Source IDs must come from the supplied source list."""
-SYSTEM += " A clean reputation result means only that no current listing was found; it is not proof of safety or identity. DNS/HTTP inspection failure is unresolved and never evidence that a site was fraudulent, removed, or taken down."
+SYSTEM += " A clean reputation result means only that no current listing was found; it is not proof of safety or identity. DNS/HTTP inspection failure is unresolved and never evidence that a site was fraudulent, removed, or taken down. Do not write Apollo mascot state phrases such as 'Apollo is growling', 'Apollo is barking', 'Apollo is resting' or 'ears up'; the authoritative local state is rendered separately by the app."
+SYSTEM += " An empty submission or a report with no discernible content is insufficient evidence. Never infer hidden malicious code, tracking pixels, compromise or danger from absence of content, and never recommend deletion on that basis. Explain that nothing could be assessed and ask for a screenshot, pasted alert or short description if the person wants an assessment."
 
 
 def _fallback(entities: InvestigationEntities, local_state: str, sources: list[InvestigationSource]) -> tuple[list[InvestigationFinding], HigginsAssessment]:
@@ -396,6 +397,8 @@ async def investigate_message(*, sender: str, text: str, urls: list[str], claime
               f"Isolated page observations:\n{json.dumps(pages)}\nPhone observations:\n{json.dumps(phones)}")
     model = await _stream_json(SYSTEM, prompt) if use_model else None
     model_used = model is not None
+    fallback_used = not model_used
+    fallback_reasons: list[str] = ["model_unavailable_or_invalid_json"] if not model_used else []
     valid_ids = {source.source_id for source in sources}
     if model:
         entities = InvestigationEntities(
@@ -443,9 +446,15 @@ async def investigate_message(*, sender: str, text: str, urls: list[str], claime
         fallback_findings, fallback_higgins = _fallback(entities, local_state, sources)
         if not findings:
             findings = fallback_findings
+            fallback_used = True
+            fallback_reasons.append("model_findings_missing_or_invalid")
         allowed_actions = {"verify_officially", "avoid_and_delete", "check_account", "call_known_number", "review"}
         action_kind = model.get("action_kind") if model.get("action_kind") in allowed_actions else fallback_higgins.action_kind
         try:
+            required_higgins = ("headline", "next_action", "exact_response", "what_was_found", "why_it_matters", "could_not_establish", "action_label", "action_kind")
+            if any(not model.get(field) for field in required_higgins):
+                fallback_used = True
+                fallback_reasons.append("model_higgins_fields_incomplete")
             higgins = HigginsAssessment(headline=(str(model.get("headline") or fallback_higgins.headline))[:140],
                 next_action=(str(model.get("next_action") or fallback_higgins.next_action))[:260],
                 exact_response=(str(model.get("exact_response") or fallback_higgins.exact_response))[:900],
@@ -454,6 +463,8 @@ async def investigate_message(*, sender: str, text: str, urls: list[str], claime
                 could_not_establish=[str(x)[:220] for x in model.get("could_not_establish", [])][:6] or fallback_higgins.could_not_establish,
                 action_label=(str(model.get("action_label") or fallback_higgins.action_label))[:80], action_kind=action_kind)
             if "alleged-charge callback trap" in entities.suspected_deception:
+                fallback_used = True
+                fallback_reasons.append("deterministic_high_confidence_trap_override")
                 if not any("callback" in finding.title.lower() and finding.evidence_kind == "submitted_content" for finding in findings):
                     findings.insert(0, fallback_findings[0])
                 unresolved = _unique([*higgins.could_not_establish, *fallback_higgins.could_not_establish], 6)
@@ -464,15 +475,25 @@ async def investigate_message(*, sender: str, text: str, urls: list[str], claime
                     "what_was_found": _unique([*fallback_higgins.what_was_found, *model_found], 6),
                     "why_it_matters": _unique([*fallback_higgins.why_it_matters, *model_why], 6),
                     "could_not_establish": unresolved})
+            higgins_text = " ".join([higgins.headline, higgins.exact_response, *higgins.what_was_found, *higgins.why_it_matters])
+            if re.search(r"\bApollo is (?:growling|barking|resting|biting)|\bears up\b", higgins_text, re.I):
+                higgins = fallback_higgins
+                fallback_used = True
+                fallback_reasons.append("model_conflicted_with_authoritative_apollo_state")
         except Exception:
             higgins = fallback_higgins
+            fallback_used = True
+            fallback_reasons.append("model_higgins_validation_failed")
     else:
         findings, higgins = _fallback(entities, local_state, sources)
+        fallback_used = True
+        if "model_unavailable_or_invalid_json" not in fallback_reasons:
+            fallback_reasons.append("model_unavailable_or_invalid_json")
     higgins = _complete_higgins_response(higgins)
     risk: Literal["warning", "clear", "uncertain"] = "warning" if local_state in ("growling", "barking") or any(f.status == "suspicious" for f in findings) else "uncertain"
     return InvestigationResult(assessment_id=uuid.uuid4().hex, risk=risk, entities=entities, findings=findings, sources=sources,
         higgins=higgins, technical_summary=technical, processing={"raw_retained_by_apollo": False, "temporary_expiry_minutes": 0,
         "temporary_copy_policy": "Request/task-memory only; request-scoped copies close immediately on success, failure, timeout or cancellation.",
-        "provider": "Gemini", "model_used": model_used, "maximum_processing_retention_minutes": 15,
+        "provider": "Gemini", "model_used": model_used, "fallback_used": fallback_used, "fallback_reasons": list(dict.fromkeys(fallback_reasons)), "maximum_processing_retention_minutes": 15,
         "provider_note": "Apollo does not persist submitted content. Gemini-side retention follows the configured API policy.",
         "completed_at": datetime.now(timezone.utc).isoformat()})

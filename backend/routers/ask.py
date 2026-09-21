@@ -35,6 +35,8 @@ The issue context is structured. Preserve its provenance: observed evidence, inf
 The selected issue is already the result of its named Gate. Do not send the person back to the same Gate or claim another check has already run. Do not say File Gate scans for malware, reads a whole file, establishes safety or can tell whether contents are known harmful: it reads only a signature and a bounded supported sample and reports explicit limits. Do not say Account Gate can determine whether login details or codes were compromised: it assesses submitted alert evidence and reported actions, and any breach lookup is a separate explicit action. Never turn a model suggestion into a promise that Apollo can delete an original message/email/file, dial a number, open a destination, suppress future alerts or block traffic. Recommend one truthful action that the current app supports; use independently configured official apps, typed addresses, card/bill contact details or visible in-app instructions rather than contact details from suspicious content. Do not list multiple Gates as a substitute for that action.
 Rules: no fear theatrics, no jargon without a one-line explanation, no fake certainty. If something is uncertain, say so plainly. Never ask for, repeat or store a password, login username, PIN, recovery code, verification code, OTP or one-time security code. If the user says they pasted one, tell them it was redacted and give the appropriate account-recovery action without asking them to resend it. Keep answers short (under 150 words) with clear next steps. If asked about things outside online safety, redirect with good grace."""
 
+HANDOFF_SYSTEM_PROMPT = """\nThis is a structured issue handoff. Investigate and explain only Apollo's supplied findings and the person's question. Do not output CHECKS and do not send the person back through a Gate that already ran. Keep observed evidence, Apollo inference and the person's report distinct. State what remains unknown. End with exactly one concrete, supported next action. Make the final sentence an imperative instruction beginning with a clear action verb such as Keep, Open, Contact, Review, Remove, Avoid, Change, Deny or End. Do not claim safety, compromise, deletion, dialling, blocking or enforcement unless the structured context explicitly confirms it. Never invent app controls, Settings icons, toggles or navigation paths that are not named in the structured context; when an exact control is unavailable, direct the person to the visible action on the current result screen. For File issues, explain only the supplied signature/sample findings and limits; never describe additional File Gate capabilities. Do not use Apollo mascot-state phrases such as 'Apollo is growling' or 'Apollo is resting'. Use your own wording; do not copy a canned template."""
+
 
 def _redact_tree(value: Any) -> Any:
     if isinstance(value, str):
@@ -55,48 +57,24 @@ def _context_prompt(context: Optional[AskIssueContext]) -> Optional[str]:
     return json.dumps(safe, ensure_ascii=False, separators=(",", ":"))
 
 
-def _safe_handoff_response(context: AskIssueContext) -> str:
-    state = context.assessment_state.replace("_", " ")
-    evidence = (context.findings[0].summary if context.findings else context.issue_summary).rstrip(" .")
-    provenance = context.findings[0].provenance if context.findings else "inferred"
-    source = {"observed": "observed evidence", "inferred": "Apollo's inference", "user_reported": "your report"}.get(provenance, "available evidence")
-    unknown = (context.uncertainty[0] if context.uncertainty else "This result does not establish that the item is safe or that a threat succeeded").rstrip(" .")
-    confirmed = f" Apollo confirmed: {context.confirmed_protective_actions[0]}" if context.confirmed_protective_actions else " No protective action was confirmed for this issue."
-    reported = f" You reported: {context.user_reported_actions[0]}." if context.user_reported_actions else ""
-    action = {
-        "file": "Keep the file closed and verify it with the sender through a separate contact method you already trust.",
-        "account": "Open the claimed service's official app yourself and review its security activity there; do not use the alert's links or contact details.",
-        "email": "Open the claimed service's official app or type its known address yourself; do not use the email's links or contact details.",
-        "text": "Contact the claimed sender through a separate number or app you already trust; do not use details from the message.",
-        "call": "End the call and contact the organisation using a number from its official app, your card or a bill—not the caller's number.",
-        "link": "Leave the link closed and open the claimed service by typing its known address or using its official app.",
-        "site": "Leave the site and open the claimed service by typing its known address or using its official app.",
-        "app": "Use this result screen's Settings action to review the app's access; remove it if you do not recognise or need it.",
-        "device": "Use this result screen's first Settings action and review the named setting; do not change unrelated settings.",
-        "network": "Avoid sensitive activity on this network until you can use a network you trust.",
-        "incident": "Start with the first recovery step shown in this incident's action plan.",
-    }.get(context.gate, "Use the one next action shown on the result screen.")
-    return (f"Higgins here. Apollo's {context.gate} check is {state}. From {source}: {evidence}. "
-            f"What remains unknown: {unknown}.{confirmed}{reported}\n\nNext action: {action}")
-
-
 def _guard_handoff_response(text: str, context: AskIssueContext) -> str:
-    """A model response is never the executable capability contract.
-
-    Structured handoffs always render from the validated evidence envelope so every issue gets exactly one
-    supported action and the same provenance/uncertainty guarantees. The model call still occurs for Higgins'
-    investigation lifecycle; unrestricted wording never crosses this final user-facing boundary.
-    """
+    """Reject unsafe or ungrounded model output; never substitute an injected answer."""
     checks_match = re.search(r"(?im)^\s*CHECKS:\s*([^\n]+)", text)
     checks = [item.strip().lower() for item in checks_match.group(1).split(",")] if checks_match else []
-    gate_mentions = set(re.findall(r"\b(site|link|text|message|call|network|account|email|app|file|device) gate\b", text.lower()))
-    same_gate = context.gate in checks or context.gate in gate_mentions
-    multiple_routes = len(set(checks)) > 1 or len(gate_mentions) > 1
-    unsupported = bool(re.search(r"\bI blocked\b|tell you (?:whether|if).{0,40}(?:safe|harmful)|determine.{0,30}(?:compromised|safe)", text, re.I | re.S))
-    if context.gate == "file" and re.search(r"file gate.{0,100}(?:scan|malware|known to be harmful|safe)", text, re.I | re.S):
-        unsupported = True
-    _ = (same_gate, multiple_routes, unsupported)  # retained as audit signals for future telemetry
-    return _safe_handoff_response(context)
+    same_gate = context.gate in checks
+    multiple_routes = len(set(checks)) > 1
+    unsupported = bool(re.search(r"\bI blocked\b|\bApollo is (?:growling|barking|resting|biting)|\b(?:settings icon.{0,30}top corner|background patrolling toggle)\b|\b(?:can|will|does) (?:tell|determine|confirm).{0,50}(?:safe|harmful|compromised)|\b(?:has|have) (?:confirmed|determined).{0,40}(?:safe|harmful|compromised)", text, re.I | re.S))
+    uncertainty_present = bool(re.search(r"\b(unknown|uncertain|cannot|can't|not confirmed|not establish|not prove|limited)\b", text, re.I))
+    action_present = bool(re.search(r"\b(next|do|open|keep|leave|contact|review|remove|avoid|use|check|change|deny|end)\b", text, re.I))
+    failures = []
+    if same_gate: failures.append("same_gate_check")
+    if multiple_routes: failures.append("multiple_check_routes")
+    if unsupported: failures.append("unsupported_capability_claim")
+    if context.uncertainty and not uncertainty_present: failures.append("missing_uncertainty")
+    if not action_present: failures.append("missing_action")
+    if failures:
+        raise ValueError(f"Higgins response did not meet the structured handoff contract: {','.join(failures)}")
+    return text.strip()
 
 
 async def _claim_handoff(device_id: str, handoff_id: str) -> tuple[str, Optional[str]]:
@@ -139,7 +117,8 @@ async def gemini_stream(device_id: str, message: str, context: Optional[AskIssue
     if history_text:
         prompt = f"Recent conversation:\n{history_text}\n\n{prompt}"
 
-    chat = LlmChat(api_key=GEMINI_API_KEY, session_id=f"apollo-{device_id}-{uuid.uuid4().hex[:6]}", system_message=HIGGINS_SYSTEM_PROMPT).with_model(
+    system_prompt = HIGGINS_SYSTEM_PROMPT + (HANDOFF_SYSTEM_PROMPT if context else "")
+    chat = LlmChat(api_key=GEMINI_API_KEY, session_id=f"apollo-{device_id}-{uuid.uuid4().hex[:6]}", system_message=system_prompt).with_model(
         "gemini", "gemini-3-flash-preview"
     )
     full = ""
@@ -197,7 +176,7 @@ async def ask_stream(body: AskRequest):
                                                  {"$set": {"status": "failed", "updated_at": now_utc()}})
             raise
         except Exception as exc:  # noqa: BLE001
-            logger.warning("ask stream failed: %s", type(exc).__name__)
+            logger.warning("ask stream failed: %s: %s", type(exc).__name__, str(exc)[:240])
             if body.handoff_id:
                 await db.ask_handoffs.update_one({"device_id": body.device_id, "handoff_id": body.handoff_id},
                                                  {"$set": {"status": "failed", "updated_at": now_utc()}})

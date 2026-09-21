@@ -67,6 +67,7 @@ export function MessageAssessmentResult({ assessment, state, onPrimaryAction, su
         <Pill testID={`${prefix}-truth`} tone={state} label={truthLabel} />
       </View>
       <Text testID={`${prefix}-risk-label`} style={s.overline}>{riskLabel}</Text>
+      <Text testID={`${prefix}-investigation-mode`} style={s.overline}>{assessment.processing.model_used && !assessment.processing.fallback_used ? "Live investigation: Gemini completed" : `Live investigation incomplete — local fallback shown${assessment.processing.fallback_reasons?.length ? ` (${assessment.processing.fallback_reasons.join(", ")})` : ""}`}</Text>
       <Text testID={`${prefix}-headline`} style={s.title}>{assessment.higgins.headline}</Text>
       <Text testID={`${prefix}-next-action`} style={s.next}>{assessment.higgins.next_action}</Text>
       <Button testID={`${prefix}-primary-action`} label={INVESTIGATION_ACTION_LABEL[assessment.higgins.action_kind]} onPress={onPrimaryAction} />
@@ -80,7 +81,7 @@ export function MessageAssessmentResult({ assessment, state, onPrimaryAction, su
       <View style={[s.row, { justifyContent: "space-between" }]}><SectionTitle>Higgins says</SectionTitle>
         <HigginsSpeakButton compact text={assessment.higgins.exact_response} testID={`${prefix}-hear-higgins`} />
       </View>
-      <Text testID={testIDPrefix === "message" ? "higgins-exact-response" : "link-higgins-exact-response"} style={s.higgins}>{assessment.higgins.exact_response}</Text>
+      <Text testID={`${prefix}-exact-response`} style={s.higgins}>{assessment.higgins.exact_response}</Text>
     </View>
     <View style={{ gap: spacing.md }}><SectionTitle>What Apollo found</SectionTitle>
       {assessment.findings.slice(0, 4).map((finding, index) => <Finding key={`${finding.title}-${index}`} finding={finding} index={index} prefix={prefix} />)}

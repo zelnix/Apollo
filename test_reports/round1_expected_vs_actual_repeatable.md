@@ -1,19 +1,19 @@
 # Apollo Round 1 — expected versus actual
 
-Generated: 2026-09-20T15:32:28.885656+00:00
+Generated: 2026-09-21T02:42:45.804093+00:00
 Browser target: `https://device-file-gate.preview.emergentagent.com`
 Execution mode: **repeatable**
 
-Expected outcomes are source-controlled in `frontend/scripts/round1-scenario-engine.ts` before execution. Automated engine evidence, browser evidence and device-only work are deliberately separate.
+Expected outcomes are source-controlled in `frontend/scripts/round1-scenario-engine.ts` before execution. Local preflight, real downstream browser evidence and device-only work are deliberately separate. Local preflight is not investigation/Higgins acceptance.
 
 ## Outcome summary
 
-- Deterministic situations: **35/35 passed**
-- Browser journeys: **10/10 passed**
+- Local application-logic preflight: **35/35 matched expectations** — not counted as external investigation or Higgins acceptance
+- Browser journeys: **9/10 passed**, **1 incomplete**, **0 failed**
 - Device-only scenarios: **6 pending and not counted as browser completions**
-- External-source handling: **controlled 503 fixtures plus controlled Higgins SSE; never live**
+- External-source handling: **configured real services in every mode; no verdict, finding or Higgins response is injected**
 
-## All ten Gates: threatening, legitimate and ambiguous situations
+## Local preflight across all ten Gates — not downstream acceptance
 
 | ID | Gate | Situation | Expected state / detection / action | Actual state / detection / action | Outcome |
 |---|---|---|---|---|---|
@@ -45,7 +45,7 @@ Expected outcomes are source-controlled in `frontend/scripts/round1-scenario-eng
 | `file-legitimate-document` | file | legitimate | ears_up; Limited file; Do not treat; must not: verified safe, malware scan completed, cloud hosting makes it safe, original fil | ears_up; Limited file inspection; Do not treat this result as permission to open the file. Verify the sender; never enable m | PASS |
 | `file-ambiguous-archive` | file | ambiguous | ears_up; Password; Don't extract; must not: verified safe, malware scan completed, cloud hosting makes it safe, original fil | ears_up; Password-protected archive; Don't extract it unless you expected it. Never run anything inside it. | PASS |
 | `device-threat-remote` | device | threatening | barking; Remote; End the session; must not: threat was blocked, all apps were inspected | barking; Remote access was granted; End the session, remove the remote-access app, then review the accounts used while they we | PASS |
-| `device-legitimate-observed` | device | legitimate | resting; Apollo protection; operational; must not: threat was blocked, all apps were inspected | resting; Apollo protection is confirmed running; The device reported protection operational at 03:32 PM. | PASS |
+| `device-legitimate-observed` | device | legitimate | resting; Apollo protection; operational; must not: threat was blocked, all apps were inspected | resting; Apollo protection is confirmed running; The device reported protection operational at 02:40 AM. | PASS |
 | `device-ambiguous-limited` | device | ambiguous | growling; Protection; Restore; must not: threat was blocked, all apps were inspected | growling; Apollo protection stopped; Restore the permission or protection service, then return to Device Gate and re-check. | PASS |
 
 ## Realistic multi-Gate situations
@@ -63,15 +63,15 @@ Expected outcomes are source-controlled in `frontend/scripts/round1-scenario-eng
 | ID | Gate | Situation | Expected | Actual | Outcome |
 |---|---|---|---|---|---|
 | `ui-site-popup` | site | Ten-Gate overview and stopped-protection recommendation | All ten Gates visible; popup dismisses before the working Device Gate action | Ten Gates visible; Site card: Site Gate Unavailable on this device Automatic Automatic filtering for supported website traffic; this is separate from manual link checks. This devic | PASS |
-| `ui-link-threat` | link | Threatening bank lookalike | Barking result; persistent trusted verification; truthful continue label | Threat state Apollo is barking; Don't open commbank-secure-verify.xyz; persistent verification instructions opened. Ambiguous shortened-link override label is truthful. | PASS |
-| `ui-text-threat` | text | Verification-code request | Barking result and persistent sender-check instructions | State Barking; Someone is asking for a code that is meant only for you.; sender-check instructions remained visible. | PASS |
+| `ui-link-threat` | link | Threatening bank lookalike | Barking result; persistent trusted verification; truthful continue label | Threat state Apollo is barking; Avoid the link and use the official CommBank app or website.; persistent verification instructions opened. Ambiguous shortened-link override label i | PASS |
+| `ui-text-threat` | text | Verification-code request | Barking result and persistent sender-check instructions | State SCAM WARNING; This request for a security code is highly suspicious.; sender-check instructions remained visible. Higgins quality: accuracy=yes, uncertainty=yes, action=yes,  | PASS |
 | `ui-call-threat` | call | Caller requests a security code | Threatening call result and trusted callback guidance | State Barking; Do not share the code.; independently trusted callback guidance opened. | PASS |
 | `ui-network-ambiguous` | network | Available preview network information | Unknown limitations remain visible; no unsupported block claim | State Growling; Apollo can see that a connection exists, but this build cannot inspect enough network details to call it clear.; limitation: WHAT APOLLO CAN SEE HERE This build see | PASS |
-| `ui-account-unknown-report` | account | No alert evidence plus offline report | Unknown stays unknown; no false report success; Retry; Mark as handled | No-evidence path stayed unknown; offline report showed Retry; online retry succeeded; resolution label is Mark as handled. | PASS |
-| `ui-email-threat` | email | Bank-impersonation email | Threat result and independently trusted verification instructions | State Barking; This email says it's from CommBank, but it wasn't sent from CommBank. It wants you to log in — that's how they take the account.; sender verification remained persis | PASS |
-| `ui-app-remote` | app | Remote-support app prompted by caller | Capability risk plus working persistent Settings guidance | State Barking; This app can let someone control or view your device. Because it was installed during a suspicious call, do not give the caller access.; Settings action produced per | PASS |
-| `ui-file-handoff` | file | Disguised executable and post-open follow-up | Evidence-first follow-up; recovery; automatic Higgins Retry and continuity | Risky file source follow-up occurred after inspection; 'I already opened it' recovery worked; Higgins Retry and simpler follow-up preserved one conversation. Exact final Higgins re | PASS |
-| `ui-device-setting` | device | Observed protection health and setting follow-up | Visible limitation, working setting guidance and retained Higgins context | State Growling; 1 item worth reviewing. Nothing confirmed dangerous.; Settings guidance and follow-up stayed attached to Device Gate context. Exact final Higgins response: CONTROLL | PASS |
+| `ui-account-unknown-report` | account | No alert evidence plus offline report | Unknown stays unknown; no false report success; Retry; Mark as handled | No-evidence path stayed unknown; offline report showed Retry; online retry succeeded; resolution label is Mark as handled. Higgins quality: accuracy=yes, uncertainty=yes, action=ye | PASS |
+| `ui-email-threat` | email | Bank-impersonation email | Threat result and independently trusted verification instructions | State SCAM WARNING; Verify this outside the message; sender verification remained persistent and did not open suspicious content. Higgins quality: accuracy=yes, uncertainty=yes, ac | INCOMPLETE |
+| `ui-app-remote` | app | Remote-support app prompted by caller | Capability risk plus working persistent Settings guidance | State SCAM WARNING; Apollo is wary of the extensive control this application seeks.; Settings action produced persistent guidance in browser. Higgins quality: accuracy=yes, uncerta | PASS |
+| `ui-file-handoff` | file | Disguised executable and post-open follow-up | Evidence-first follow-up; recovery; automatic Higgins Retry and continuity | Risky file source follow-up occurred after inspection; 'I already opened it' recovery worked; Higgins Retry and simpler follow-up preserved one conversation. Higgins quality: accur | PASS |
+| `ui-device-setting` | device | Observed protection health and setting follow-up | Visible limitation, working setting guidance and retained Higgins context | State Growling; 1 item worth reviewing. Nothing confirmed dangerous.; Settings guidance and follow-up stayed attached to Device Gate context. Higgins quality: accuracy=yes, uncerta | PASS |
 
 ## Device-only scenarios — not completed by browser evidence
 
@@ -81,6 +81,16 @@ Expected outcomes are source-controlled in `frontend/scripts/round1-scenario-eng
 - `device-native-settings-return` (device): Requires real Settings deep links and refresh after returning to Apollo.
 - `app-native-inventory-permissions` (app): Requires platform-exposed app inventory and permission observations.
 - `network-native-enforcement` (network): Requires real network events; Stage 1D packet-blocking acceptance remains cancelled.
+
+## Weakest outcomes
+
+- `ui-link-threat` — **PASS**: Threat state Apollo is barking; Avoid the link and use the official CommBank app or website.; persistent verification instructions opened. Ambiguous shortened-link override label is truthful. Higgins quality: accuracy=yes, uncertainty=yes, action=yes, clarity=yes, depth=no. Exact live Higgins response: A link claiming to be from CommBank. Unofficial links are often used to steal login credentials. I could not establish: the actual content of the webpage. Do not click the link; instead, log in th
+- `ui-text-threat` — **PASS**: State SCAM WARNING; This request for a security code is highly suspicious.; sender-check instructions remained visible. Higgins quality: accuracy=yes, uncertainty=yes, action=yes, clarity=yes, depth=no. Exact live Higgins response: A request for a verification code. Sharing a verification code can allow an unauthorised person to access your funds or change your security settings. I could not establish: the identity of the sender. Do not share the code and verify your account status through an of
+- `ui-account-unknown-report` — **PASS**: No-evidence path stayed unknown; offline report showed Retry; online retry succeeded; resolution label is Mark as handled. Higgins quality: accuracy=yes, uncertainty=yes, action=yes, clarity=yes, depth=no. Exact live Higgins response: The submission was empty. Apollo cannot identify potential deceptions or risks without the original message content. I could not establish: the identity of the sender. Please provide a screenshot or the text of the message you wish to have assessed.
+- `ui-email-threat` — **INCOMPLETE**: State SCAM WARNING; Verify this outside the message; sender verification remained persistent and did not open suspicious content. Higgins quality: accuracy=yes, uncertainty=yes, action=yes, clarity=yes, depth=yes. Exact live Higgins response: A submitted message was checked with local patterns, link intelligence and available public evidence. Impersonation often combines a plausible story with pressure to act before verifying the sender. I could not establish: apollo could not authenticate the p
+- `ui-app-remote` — **PASS**: State SCAM WARNING; Apollo is wary of the extensive control this application seeks.; Settings action produced persistent guidance in browser. Higgins quality: accuracy=yes, uncertainty=yes, action=yes, clarity=yes, depth=no. Exact live Higgins response: Request for Accessibility permissions. Accessibility permissions can be used to capture passwords or interact with banking apps. I could not establish: the identity or legitimacy of the developer. Decline the permission requests and remove the ap
+- `ui-file-handoff` — **PASS**: Risky file source follow-up occurred after inspection; 'I already opened it' recovery worked; Higgins Retry and simpler follow-up preserved one conversation. Higgins quality: accuracy=yes, uncertainty=yes, action=yes, clarity=yes, depth=no. Exact final Higgins response: If I may, the situation is that this file is acting like a program. An executable is a file that carries out a set of instructions or runs software when opened. Apollo has spotted the name but cannot see what the file will actual
+- `ui-device-setting` — **PASS**: State Growling; 1 item worth reviewing. Nothing confirmed dangerous.; Settings guidance and follow-up stayed attached to Device Gate context. Higgins quality: accuracy=yes, uncertainty=yes, action=yes, clarity=yes, depth=no. Exact final Higgins response: Apollo has the matter in hand, but the situation remains uncertain because the automatic protection is disabled. This feature is a background monitor that looks for security threats without being asked. While it is off, it remains unknown if you
 
 ## Interpretation rule
 

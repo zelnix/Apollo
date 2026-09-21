@@ -1,11 +1,11 @@
 {
   "round": "Round 1",
   "mode": "live",
-  "generated_at": "2026-09-20T15:34:29.673679+00:00",
+  "generated_at": "2026-09-21T02:49:41.737237+00:00",
   "base_url": "https://device-file-gate.preview.emergentagent.com",
   "engine": {
     "round": "Round 1",
-    "generated_at": "2026-09-20T15:32:29.124Z",
+    "generated_at": "2026-09-21T02:46:40.050Z",
     "expected_recorded_in": "frontend/scripts/round1-scenario-engine.ts",
     "scenarios": [
       {
@@ -1107,7 +1107,7 @@
         "id": "device-threat-remote",
         "gate": "device",
         "tone": "threatening",
-        "situation": "{\"signals\":{\"platform\":\"android\",\"unknownSourcesEnabled\":null,\"thirdPartyAccessibilityServices\":[\"AnyDesk\"],\"overlayApps\":null,\"notificationAccessApps\":null,\"vpnActive\":null,\"vpnProviderKnown\":null,\"managementProfile\":\"unknown\",\"userTrustedCertificates\":null,\"remoteAccessApps\":[\"AnyDesk\"],\"developerOptions\":null},\"self\":{\"gaveRemoteAccess\":true,\"usedBankingDuringAccess\":true},\"protection\":{\"requested\":true,\"operational\":true,\"degradedReason\":null,\"permissionIssues\":[],\"checkedAt\":\"2026-09-20T15:32:29.099Z\"}}",
+        "situation": "{\"signals\":{\"platform\":\"android\",\"unknownSourcesEnabled\":null,\"thirdPartyAccessibilityServices\":[\"AnyDesk\"],\"overlayApps\":null,\"notificationAccessApps\":null,\"vpnActive\":null,\"vpnProviderKnown\":null,\"managementProfile\":\"unknown\",\"userTrustedCertificates\":null,\"remoteAccessApps\":[\"AnyDesk\"],\"developerOptions\":null},\"self\":{\"gaveRemoteAccess\":true,\"usedBankingDuringAccess\":true},\"protection\":{\"requested\":true,\"operational\":true,\"degradedReason\":null,\"permissionIssues\":[],\"checkedAt\":\"2026-09-21T02:46:40.026Z\"}}",
         "expected": {
           "gate": "device",
           "state": "barking",
@@ -1147,7 +1147,7 @@
         "id": "device-legitimate-observed",
         "gate": "device",
         "tone": "legitimate",
-        "situation": "{\"signals\":{\"platform\":\"android\",\"unknownSourcesEnabled\":false,\"thirdPartyAccessibilityServices\":[],\"overlayApps\":[],\"notificationAccessApps\":[],\"vpnActive\":false,\"vpnProviderKnown\":null,\"managementProfile\":\"none\",\"userTrustedCertificates\":0,\"remoteAccessApps\":[],\"developerOptions\":false},\"self\":{},\"protection\":{\"requested\":true,\"operational\":true,\"degradedReason\":null,\"permissionIssues\":[],\"checkedAt\":\"2026-09-20T15:32:29.099Z\"}}",
+        "situation": "{\"signals\":{\"platform\":\"android\",\"unknownSourcesEnabled\":false,\"thirdPartyAccessibilityServices\":[],\"overlayApps\":[],\"notificationAccessApps\":[],\"vpnActive\":false,\"vpnProviderKnown\":null,\"managementProfile\":\"none\",\"userTrustedCertificates\":0,\"remoteAccessApps\":[],\"developerOptions\":false},\"self\":{},\"protection\":{\"requested\":true,\"operational\":true,\"degradedReason\":null,\"permissionIssues\":[],\"checkedAt\":\"2026-09-21T02:46:40.026Z\"}}",
         "expected": {
           "gate": "device",
           "state": "resting",
@@ -1166,8 +1166,8 @@
           "scenario": "protected",
           "detection": "Apollo protection is confirmed running",
           "investigation": "No meaningful issues within what Apollo can see on this Android device.  ",
-          "higgins": "Apollo's device check is resting. Apollo protection is confirmed running. Unknown: No platform visibility gap was reported.. Next action: The device reported protection operational at 03:32 PM.",
-          "action": "The device reported protection operational at 03:32 PM.",
+          "higgins": "Apollo's device check is resting. Apollo protection is confirmed running. Unknown: No platform visibility gap was reported.. Next action: The device reported protection operational at 02:46 AM.",
+          "action": "The device reported protection operational at 02:46 AM.",
           "uncertainty": "No platform visibility gap was reported.",
           "mustNot": []
         },
@@ -1187,7 +1187,7 @@
         "id": "device-ambiguous-limited",
         "gate": "device",
         "tone": "ambiguous",
-        "situation": "{\"signals\":{\"platform\":\"web\",\"unknownSourcesEnabled\":null,\"thirdPartyAccessibilityServices\":null,\"overlayApps\":null,\"notificationAccessApps\":null,\"vpnActive\":null,\"vpnProviderKnown\":null,\"managementProfile\":\"unknown\",\"userTrustedCertificates\":null,\"remoteAccessApps\":null,\"developerOptions\":null},\"self\":{},\"protection\":{\"requested\":true,\"operational\":false,\"degradedReason\":\"Unavailable in preview\",\"permissionIssues\":[],\"checkedAt\":\"2026-09-20T15:32:29.099Z\"}}",
+        "situation": "{\"signals\":{\"platform\":\"web\",\"unknownSourcesEnabled\":null,\"thirdPartyAccessibilityServices\":null,\"overlayApps\":null,\"notificationAccessApps\":null,\"vpnActive\":null,\"vpnProviderKnown\":null,\"managementProfile\":\"unknown\",\"userTrustedCertificates\":null,\"remoteAccessApps\":null,\"developerOptions\":null},\"self\":{},\"protection\":{\"requested\":true,\"operational\":false,\"degradedReason\":\"Unavailable in preview\",\"permissionIssues\":[],\"checkedAt\":\"2026-09-21T02:46:40.026Z\"}}",
         "expected": {
           "gate": "device",
           "state": "growling",
@@ -1472,8 +1472,8 @@
       "gate": "link",
       "situation": "Threatening bank lookalike",
       "expected": "Barking result; persistent trusted verification; truthful continue label",
-      "actual": "Threat state Apollo is barking; Apollo is growling at this unofficial link.; persistent verification instructions opened. Ambiguous shortened-link override label is truthful.",
-      "outcome": "PASS",
+      "actual": "Threat state Apollo is barking; Verify this outside the message; persistent verification instructions opened. Ambiguous shortened-link override label is truthful. Higgins quality: accuracy=yes, uncertainty=yes, action=yes, clarity=yes, depth=yes. Exact live Higgins response: A submitted message was checked with local patterns, link intelligence and available public evidence. Impersonation often combines a plausible story with pressure to act before verifying the sender. I could not establish: apollo could not authenticate the person or organisation behind the message. Do not use the supplied link or contact details. Open the organisation's official app or website yourself. Blocked/incomplete: link live investigation did not complete: LIVE INVESTIGATION INCOMPLETE \u2014 LOCAL FALLBACK SHOWN (MODEL_CONFLICTED_WITH_AUTHORITATIVE_APOLLO_STATE)",
+      "outcome": "INCOMPLETE",
       "evidence": "browser",
       "artifact": "/app/test_reports/round1_artifacts/live/ui-link-threat.png"
     },
@@ -1482,7 +1482,7 @@
       "gate": "text",
       "situation": "Verification-code request",
       "expected": "Barking result and persistent sender-check instructions",
-      "actual": "State SCAM WARNING; Verify this outside the message; sender-check instructions remained visible.",
+      "actual": "State SCAM WARNING; This message requests a sensitive security code following a claim of an account lock.; sender-check instructions remained visible. Higgins quality: accuracy=yes, uncertainty=yes, action=yes, clarity=yes, depth=no. Exact live Higgins response: A request for a sensitive verification code. Sharing a verification code can allow an unauthorised person to gain access to your bank account and funds. I could not establish: the actual identity of the sender. Contact your bank using a trusted phone number from their official website or the back of your physical bank card.",
       "outcome": "PASS",
       "evidence": "browser",
       "artifact": "/app/test_reports/round1_artifacts/live/ui-text-threat.png"
@@ -1512,7 +1512,7 @@
       "gate": "account",
       "situation": "No alert evidence plus offline report",
       "expected": "Unknown stays unknown; no false report success; Retry; Mark as handled",
-      "actual": "No-evidence path stayed unknown; offline report showed Retry; online retry succeeded; resolution label is Mark as handled.",
+      "actual": "No-evidence path stayed unknown; offline report showed Retry; online retry succeeded; resolution label is Mark as handled. Higgins quality: accuracy=yes, uncertainty=yes, action=yes, clarity=yes, depth=no. Exact live Higgins response: No content was provided in the submission. Without the message text or sender details, it is impossible to determine if a threat exists. I could not establish: the identity of the sender. Please provide a screenshot or a description of the message you wish to have assessed.",
       "outcome": "PASS",
       "evidence": "browser",
       "artifact": "/app/test_reports/round1_artifacts/live/ui-account-unknown-report.png"
@@ -1522,7 +1522,7 @@
       "gate": "email",
       "situation": "Bank-impersonation email",
       "expected": "Threat result and independently trusted verification instructions",
-      "actual": "State SCAM WARNING; Apollo is growling at this one.; sender verification remained persistent and did not open suspicious content.",
+      "actual": "State SCAM WARNING; This message uses an unofficial address to request an urgent account verification.; sender verification remained persistent and did not open suspicious content. Higgins quality: accuracy=yes, uncertainty=yes, action=yes, clarity=yes, depth=no. Exact live Higgins response: Unofficial sender domain. Official communications from CommBank will only come from their verified domain. I could not establish: the current status of the website due to technical connection issues. Access your account only through the official CommBank app or by typing commbank.com.au directly into your browser.",
       "outcome": "PASS",
       "evidence": "browser",
       "artifact": "/app/test_reports/round1_artifacts/live/ui-email-threat.png"
@@ -1532,7 +1532,7 @@
       "gate": "app",
       "situation": "Remote-support app prompted by caller",
       "expected": "Capability risk plus working persistent Settings guidance",
-      "actual": "State SCAM WARNING; Apollo is growling at this request to install remote support software.; Settings action produced persistent guidance in browser.",
+      "actual": "State SCAM WARNING; Apollo has flagged this request for remote access as a significant risk.; Settings action produced persistent guidance in browser. Higgins quality: accuracy=yes, uncertainty=yes, action=yes, clarity=yes, depth=no. Exact live Higgins response: A request to install remote support software via a message link. Accessibility permissions can allow an app to capture passwords or move funds without your intervention. I could not establish: the identity of the sender. Please refrain from installing this application and delete the message immediately.",
       "outcome": "PASS",
       "evidence": "browser",
       "artifact": "/app/test_reports/round1_artifacts/live/ui-app-remote.png"
@@ -1542,8 +1542,8 @@
       "gate": "file",
       "situation": "Disguised executable and post-open follow-up",
       "expected": "Evidence-first follow-up; recovery; automatic Higgins Retry and continuity",
-      "actual": "Risky file source follow-up occurred after inspection; 'I already opened it' recovery worked; Higgins Retry and simpler follow-up preserved one conversation. Exact final Higgins response: Higgins here. Apollo's file check is barking. From Apollo's inference: The name claims EXE. No content was read; type and safety are unknown. What remains unknown: This inspection cannot establish that a file is safe. No protective action was confirmed for this issue. Next action: Keep the file closed and verify it with the sender through a separate contact method you already trust.",
-      "outcome": "PASS",
+      "actual": "real Higgins response unavailable after Retry: I could not answer right now.",
+      "outcome": "INCOMPLETE",
       "evidence": "browser",
       "artifact": "/app/test_reports/round1_artifacts/live/ui-file-handoff.png"
     },
@@ -1552,8 +1552,8 @@
       "gate": "device",
       "situation": "Observed protection health and setting follow-up",
       "expected": "Visible limitation, working setting guidance and retained Higgins context",
-      "actual": "State Growling; 1 item worth reviewing. Nothing confirmed dangerous.; Settings guidance and follow-up stayed attached to Device Gate context. Exact final Higgins response: Higgins here. Apollo's device check is growling. From observed evidence: Apollo protection is off: Manual Gates still work, but Apollo has no confirmed automatic protection running. What remains unknown: The list of installed apps and their permissions (iOS doesn't expose this to any app). No protective action was confirmed for this issue. Next action: Use this result screen's first Settings action and review the named setting; do not change unrelated settings.",
-      "outcome": "PASS",
+      "actual": "real Higgins did not finish the Device follow-up within 90 seconds",
+      "outcome": "INCOMPLETE",
       "evidence": "browser",
       "artifact": "/app/test_reports/round1_artifacts/live/ui-device-setting.png"
     }

@@ -53,13 +53,33 @@ def test_context_secrets_are_redacted_again_at_backend_boundary():
     assert "4488" not in (_context_prompt(request.context) or "")
 
 
-def test_capability_overclaim_is_replaced_before_streaming():
+def test_capability_overclaim_is_rejected_before_streaming():
     data = payload()
     data["context"]["gate"] = "file"
     data["context"]["issue_summary"] = "Disguised executable"
     request = AskRequest(**data)
-    guarded = _guard_handoff_response("File Gate will tell you if it is safe.\nCHECKS: file, device", request.context)
-    assert "tell you if it is safe" not in guarded
-    assert "CHECKS:" not in guarded
-    assert "No protective action was confirmed" in guarded
-    assert guarded.count("Next action:") == 1
+    with pytest.raises(ValueError, match="structured handoff contract"):
+        _guard_handoff_response("File Gate will tell you if it is safe.\nCHECKS: file, device", request.context)
+
+
+def test_grounded_model_response_is_preserved_not_replaced():
+    request = AskRequest(**payload())
+    response = "Apollo observed a visible sender claim, but the sender is not confirmed and the reset link remains uncertain. Open the claimed service's official app yourself and review security activity there."
+    assert _guard_handoff_response(response, request.context) == response
+
+
+def test_truthful_file_uncertainty_is_not_mistaken_for_a_capability_claim():
+    data = payload()
+    data["context"]["gate"] = "file"
+    request = AskRequest(**data)
+    response = "The File Gate cannot determine that this file is safe, and its contents remain unknown. Keep it closed and verify it with the sender separately."
+    assert _guard_handoff_response(response, request.context) == response
+
+
+def test_invented_device_control_and_mascot_state_are_rejected():
+    data = payload()
+    data["context"]["gate"] = "device"
+    request = AskRequest(**data)
+    response = "Apollo is growling. Use the Settings icon in the top corner and enable the Background Patrolling toggle. The current state is unknown."
+    with pytest.raises(ValueError, match="unsupported_capability_claim"):
+        _guard_handoff_response(response, request.context)
