@@ -1,3 +1,20 @@
+## Session 5 (2026-09-21) — builds + source-review corrections
+
+- **Android `device-test` APK BUILT**: EAS build `e32f6068-b349-4de8-ab5d-8c950a6596bf`, commit `fa9bf2f`, APK https://expo.dev/artifacts/eas/-R5J9ohNQ6k-MxXloAh_NuawortWikr6zDUyXPbaRlE.apk
+  (details/inspection in `docs/APOLLO_BUILD_RECORD.md`). First build `d54b2c70` failed on a pre-existing Kotlin error (fixed).
+  EAS is logged in in this workspace (`emergent-em-user-…`, project `threat-patrol-1`) — `npx eas-cli build --platform android --profile device-test --non-interactive --no-wait` works from `/app/frontend`.
+- iOS: blocked only on Apple credentials + device UDIDs (recorded).
+- Review corrections done: work_epoch vs content epoch (cancel keeps evidence); device submission claimed→stored→resumed with persisted
+  result + sweeper; exclusive recoverable upload finalisation; pending tool batch persisted/answered before Gemini (arg-hashed call ids);
+  strict preflight validation + targeted redaction (verbatim text with only secrets [REDACTED], visual description, coverage);
+  settings plan bound before opening Settings, attempts recorded before launch, native permission requests observed on return, failed
+  rechecks retained with retry button; desktop hosts explicit windows/macos identity + descriptors + failures propagate.
+- Product gaps: Patrol "Ask Higgins" continues the Gate's case (event→case index); scanned-PDF pages rasterised (pypdfium2) for Gemini
+  vision; family voice-note storage lifecycle (retention/purge/unlink/410); tablet/desktop max-width column.
+- NEXT EXACT TASK: (1) owner installs APK on Pixel 10 → report native-module behaviour; (2) iOS credentials then `eas build --platform ios --profile device-test`;
+  (3) desktop: real manufacturer/model (WMI/IOKit), SSID, WFP/Network Extension filtering service; (4) Text Gate duplicate-guidance dedupe;
+  (5) rerun Android build after any native change (`modules/apollo-security`).
+
 ## Current continuation status — 2026-09-21, session 4 (revision-1 package; supersedes the blocks below)
 
 Controlling doc: `memory/Apollo_Complete_Developer_Instructions-1.md` (owner revision: **developer scenario testing STOPPED**; no
