@@ -8,18 +8,18 @@ import React, { useState } from "react";
 import { View } from "react-native";
 
 import type { PatrolEvent } from "@/src/domain/types";
-import { contextFromEvent, gateForCategory, openHigginsHandoff } from "@/src/domain/higginsHandoff";
+import { contextFromEvent, gateForCategory, openHigginsHandoff, type HigginsOriginalEvidence } from "@/src/domain/higginsHandoff";
 import { useApollo } from "@/src/store/ApolloContext";
 import { spacing } from "@/src/theme";
 import { Body, Button } from "./ui";
 
-export function EventActions({ event }: { event: PatrolEvent }) {
+export function EventActions({ event, originalEvidence }: { event: PatrolEvent; originalEvidence?: HigginsOriginalEvidence[] }) {
   const { blockEvent, trustEvent, resolveEvent } = useApollo();
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const active = event.status === "active" || (event.status === "blocked" && !event.resolved_at);
   const wrap = (key: string, fn: () => Promise<unknown>) => async () => { setBusy(key); try { await fn(); } finally { setBusy(null); } };
-  const askHiggins = () => openHigginsHandoff(router, contextFromEvent(event, gateForCategory(event.category)), "Explain this issue and what I should do next.");
+  const askHiggins = () => openHigginsHandoff(router, { ...contextFromEvent(event, gateForCategory(event.category)), original_evidence: originalEvidence }, "Explain this issue and what I should do next.");
 
   if (!active) {
     return (

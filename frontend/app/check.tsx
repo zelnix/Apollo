@@ -178,7 +178,7 @@ export default function CheckLink() {
                     <Body testID="check-page-higgins-note">{pageHigginsNote}</Body>
                   </View>
                 ) : null}
-                {!outcome && pageEvent ? <View style={{ marginTop: spacing.sm, gap: spacing.sm }}><EventActions event={events.find((e) => e.event_id === pageEvent.event_id) ?? pageEvent} /><RecoveryFlow event={pageEvent} kinds={["clicked", "password", "card", "code", "download", "app", "called"]} testID="page-recovery" /></View> : null}
+                {!outcome && pageEvent ? <View style={{ marginTop: spacing.sm, gap: spacing.sm }}><EventActions event={events.find((e) => e.event_id === pageEvent.event_id) ?? pageEvent} originalEvidence={input.trim() ? [{ kind: "url", value: input.trim(), label: "checked link" }] : []} /><RecoveryFlow event={pageEvent} kinds={["clicked", "password", "card", "code", "download", "app", "called"]} testID="page-recovery" /></View> : null}
               </Card>
             </Animated.View>
           ) : null}
@@ -236,7 +236,7 @@ export default function CheckLink() {
                 )) : outcome.intelError ? <Body testID="check-result-intel-error">Reputation check unavailable: {outcome.intelError}</Body> : null}
                 {isMock && liveEvent?.verified_block ? <Pill tone="unknown" label="Simulated block (mock adapter)" /> : null}
               </Card>
-              {liveEvent ? <View style={{ marginTop: spacing.md }}><EventActions event={liveEvent} /></View> : null}
+              {liveEvent ? <View style={{ marginTop: spacing.md }}><EventActions event={liveEvent} originalEvidence={[...(input.trim() ? [{ kind: "url" as const, value: input.trim(), label: "checked link" }] : []), ...(outcome?.intel ? [{ kind: "text" as const, value: `Apollo link check: verdict ${outcome.intel.verdict}; coverage ${outcome.intel.coverage}; redirect chain ${outcome.intel.redirect_chain?.join(" → ") || "none observed"}; final URL ${outcome.intel.final_url ?? "not resolved"}; sources ${outcome.intel.sources.map((x) => `${x.name}=${x.status}`).join(", ")}`, label: "link check observations" }] : [])]} /></View> : null}
               {liveEvent ? (
                 <Card style={{ marginTop: spacing.md, gap: spacing.sm }} testID="check-gate3-actions">
                   <Button testID="check-verify-website" variant="secondary" label="Show me how to check the website" onPress={() => setVerify(true)} />
