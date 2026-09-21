@@ -186,6 +186,7 @@ async def sweep_loop() -> None:
     while True:
         try:
             await repo.sweep()
+            await repo.sweep_tombstones()
             await recover()
         except asyncio.CancelledError:
             raise

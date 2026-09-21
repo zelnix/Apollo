@@ -222,6 +222,29 @@ async def insert_evidence(owner: str, item: EvidenceItem, meta: dict) -> None:
         await db.investigation_evidence.insert_one(doc)
     except DuplicateKeyError as exc:
         raise http(409, "conflict", "That client item ID was already submitted to this investigation with different content.") from exc
+    await settle_write(owner, item.case_id, epoch, db.investigation_evidence, {"owner_id": owner, "case_id": item.case_id, "evidence_id": item.id})
+
+
+async def settle_write(owner: str, case_id: str, epoch: str, collection, selector: dict) -> None:
+    """Writer-lease/tombstone protocol (S05). Every content write carries the case epoch observed BEFORE the awaited insert. After the
+    insert the epoch is re-read: if the case was deleted/expired/regenerated meanwhile, the row is a late write and is removed here
+    (compensation). If this process dies before compensating, `sweep_tombstones` removes any row whose epoch is not the live epoch."""
+    if await live_epoch(owner, case_id) != epoch:
+        await collection.delete_many(selector)
+        raise http(410, "evidence_expired", "This investigation was deleted, cancelled or expired while the write was in flight; the write was rolled back.")
+
+
+async def sweep_tombstones() -> int:
+    """Removes content rows whose case epoch no longer matches a live case (late writers that never compensated)."""
+    removed = 0
+    async for case in db.investigation_cases.find({}, {"_id": 0, "owner_id": 1, "case_id": 1, "epoch": 1, "deleted": 1, "expires_at": 1}):
+        live = not case.get("deleted") and utc(case["expires_at"]) > now_utc()
+        selector = {"owner_id": case["owner_id"], "case_id": case["case_id"], **({"epoch": {"$exists": True, "$ne": case["epoch"]}} if live else {})}
+        for name in ("investigation_evidence", "investigation_content_chunks"):
+            removed += (await db[name].delete_many(selector)).deleted_count
+        if not live:
+            removed += (await db.investigation_events.delete_many({"owner_id": case["owner_id"], "case_id": case["case_id"]})).deleted_count
+    return removed
 
 
 def evidence_view(row: dict) -> EvidenceItem:
@@ -338,8 +361,14 @@ async def emit(owner: str, case_id: str, job_id: str, kind: str, payload: dict, 
     if not job:  # job removed by cleanup: nothing may be published for it
         return 0
     sequence = job["last_sequence"]
+    epoch = await live_epoch(owner, case_id)
+    if not epoch:  # case ended between sequence allocation and insert: publish nothing
+        return 0
     await db.investigation_events.insert_one({"owner_id": owner, "case_id": case_id, "job_id": job_id, "sequence": sequence, "type": kind, "revision": revision,
-                                              "at": now_utc(), "payload_ciphertext": enc_json(payload), "expires_at": expires_at})
+                                              "epoch": epoch, "at": now_utc(), "payload_ciphertext": enc_json(payload), "expires_at": expires_at})
+    if await live_epoch(owner, case_id) != epoch:  # late write after cleanup: remove it (sweep_tombstones is the backstop)
+        await db.investigation_events.delete_many({"owner_id": owner, "job_id": job_id, "sequence": sequence})
+        return 0
     return sequence
 
 

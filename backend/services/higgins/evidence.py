@@ -95,27 +95,45 @@ async def ingest_text(owner: str, case: dict, client_item_id: str, text: str, *,
 
 
 async def register_clues(owner: str, case: dict, parent: EvidenceItem, text: str) -> list[EvidenceItem]:
-    """Every link and callback number becomes an addressable child clue with its exact offset (R07)."""
-    clues: list[EvidenceItem] = []
+    """Every link and callback number becomes an addressable child clue with its exact offset (R07).
+    Full inventory first, then registration in document order (phones are never starved by many URLs); when the per-item
+    budget is reached the omitted count and their offsets are recorded on the parent instead of vanishing silently (S10)."""
+    found: list[tuple[str, str, int, int]] = []
     seen: set[str] = set()
     for kind, pattern in (("url", URL_RE), ("phone", PHONE_RE)):
         for match in pattern.finditer(text):
             value = match.group(0).rstrip(".,;")
-            if value in seen or len(clues) >= MAX_CLUES:
-                continue
-            if kind == "phone" and sum(c.isdigit() for c in value) < 8:
+            if value in seen or (kind == "phone" and sum(c.isdigit() for c in value) < 8):
                 continue
             seen.add(value)
-            clue = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=f"{parent.client_item_id}.clue{len(clues)}", origin="apollo_inference",
-                                kind="url" if kind == "url" else "text", parent_id=parent.id, collected_at=now_utc(), expires_at=parent.expires_at, media_type="text/plain",
-                                byte_length=len(value.encode("utf-8")), coverage=Coverage(status="not_started", unit="items", total=1, examined=0),
-                                transformations=[Transformation(kind="chunk", description=f"{kind} clue found at characters {match.start()}–{match.end()} of the parent item", source_start=match.start(), source_end=match.end())],
-                                label=(("link clue: " + re.sub(r"^https?://([^/]+).*$", r"\1", value)) if kind == "url" else "phone clue")[:80])
-            await repo.insert_evidence(owner, clue, {"value": value, "parentOffset": [match.start(), match.end()]})
-            await repo.store_bytes(owner, case["case_id"], clue.id, value.encode("utf-8"), clue.expires_at)
-            clues.append(clue)
+            found.append((kind, value, match.start(), match.end()))
+    found.sort(key=lambda f: f[2])  # document order: a decisive late phone number is registered before an early batch of links
+    phones = [f for f in found if f[0] == "phone"]
+    urls = [f for f in found if f[0] == "url"]
+    # Interleave so both kinds keep a share of the budget; phones (callback numbers) take priority when the budget is tight.
+    budget = min(MAX_CLUES, len(found))
+    phone_share = min(len(phones), max(budget // 2, budget - len(urls)))
+    selected = sorted(phones[:phone_share] + urls[:budget - phone_share], key=lambda f: f[2])
+    omitted = [f for f in found if f not in selected]
+    clues: list[EvidenceItem] = []
+    for kind, value, start, end in selected:
+        clue = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=f"{parent.client_item_id}.clue{len(clues)}", origin="apollo_inference",
+                            kind="url" if kind == "url" else "text", parent_id=parent.id, collected_at=now_utc(), expires_at=parent.expires_at, media_type="text/plain",
+                            byte_length=len(value.encode("utf-8")), coverage=Coverage(status="not_started", unit="items", total=1, examined=0),
+                            transformations=[Transformation(kind="chunk", description=f"{kind} clue found at characters {start}–{end} of the parent item", source_start=start, source_end=end)],
+                            label=(("link clue: " + re.sub(r"^https?://([^/]+).*$", r"\1", value)) if kind == "url" else "phone clue")[:80])
+        await repo.insert_evidence(owner, clue, {"value": value, "parentOffset": [start, end]})
+        await repo.store_bytes(owner, case["case_id"], clue.id, value.encode("utf-8"), clue.expires_at)
+        clues.append(clue)
+    updates: dict = {}
     if clues:
-        await repo.update_evidence(owner, case["case_id"], parent.id, {"$addToSet": {"related_evidence_ids": {"$each": [c.id for c in clues]}}})
+        updates["$addToSet"] = {"related_evidence_ids": {"$each": [c.id for c in clues]}}
+    if omitted:
+        updates["$set"] = {"clue_inventory": {"found": len(found), "registered": len(clues), "omitted": len(omitted),
+                                              "omittedOffsets": [[f[2], f[3], f[0]] for f in omitted[:256]],
+                                              "note": f"{len(omitted)} further {'clue' if len(omitted) == 1 else 'clues'} were found but not registered (per-item budget {MAX_CLUES}); read the parent ranges above to examine them."}}
+    if updates:
+        await repo.update_evidence(owner, case["case_id"], parent.id, updates)
     return clues
 
 
@@ -203,10 +221,49 @@ async def ingest_file(owner: str, case: dict, meta_in: dict, data: bytes) -> Evi
                         parent_id=meta_in.get("parentId"), collected_at=now_utc(), expires_at=expires, media_type=detected, byte_length=len(data),
                         coverage=Coverage(status="not_started", unit="bytes", total=len(data), examined=0), transformations=transformations,
                         label=f"{kind}: {re.sub(r'[^A-Za-z0-9._ -]', '_', meta_in['filename'])[:60]}")
-    await repo.insert_evidence(owner, item, {"filename": meta_in["filename"], "declaredMediaType": meta_in["mediaType"], "detectedMediaType": detected})
+    admission = await _image_secret_preflight(data, detected) if kind == "image" else None
+    if admission and admission.get("containsSecret"):
+        # Ephemeral admission (S06/R03): the original image is never stored durably when it visibly shows an authentication
+        # secret. Only the preflight's redacted description is retained so the surrounding context stays usable.
+        item = item.model_copy(update={"availability": "purged", "coverage": Coverage(status="unavailable", unit="bytes", total=len(data), examined=0,
+                                                                                       reason="original image withheld: it shows an authentication secret"),
+                                       "transformations": [*transformations, Transformation(kind="secret_redaction", description="The screenshot shows a password, one-time code, card number or similar secret. The original image was not stored; a redacted description of its visible content is retained instead.")]})
+        await repo.insert_evidence(owner, item, {"filename": meta_in["filename"], "declaredMediaType": meta_in["mediaType"], "detectedMediaType": detected, "secretPreflight": admission})
+        described = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=f"{item.client_item_id}.redacted", origin="apollo_inference", kind="text",
+                                 parent_id=item.id, collected_at=now_utc(), expires_at=expires, media_type="text/plain", byte_length=0,
+                                 coverage=Coverage(status="not_started", unit="characters", total=0, examined=0),
+                                 transformations=[Transformation(kind="secret_redaction", description="Redacted description of the withheld image, produced by the Gemini preflight.")],
+                                 label="redacted description of the withheld screenshot")
+        text = redact_investigation_secrets(str(admission.get("redactedDescription") or "The image content could not be described."))
+        described = described.model_copy(update={"byte_length": len(text.encode("utf-8")), "coverage": Coverage(status="not_started", unit="characters", total=len(text), examined=0)})
+        await repo.insert_evidence(owner, described, {"derivedFrom": item.id})
+        await repo.store_bytes(owner, case["case_id"], described.id, text.encode("utf-8"), expires)
+        await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"related_evidence_ids": [described.id]}})
+        return item
+    await repo.insert_evidence(owner, item, {"filename": meta_in["filename"], "declaredMediaType": meta_in["mediaType"], "detectedMediaType": detected,
+                                             **({"secretPreflight": admission} if admission else {})})
     await repo.store_bytes(owner, case["case_id"], item.id, data, expires)
     await _derive(owner, case, item, data, detected)
     return item
+
+
+async def _image_secret_preflight(data: bytes, media_type: str) -> dict:
+    """Gemini-only visual admission check. Fails CLOSED: if the preflight cannot run, the image is treated as secret-bearing so no
+    unchecked original is stored durably; the person is told to resubmit."""
+    from services.higgins import provider
+    from google.genai import types as gtypes
+    prompt = [gtypes.Part.from_bytes(data=data, mime_type=media_type),
+              gtypes.Part(text="You are an admission filter. Does this image visibly show an authentication secret: a password, PIN, one-time code, "
+                               "recovery code, full card number, CVV, private key or session token? Answer JSON only: "
+                               '{"containsSecret": true|false, "secretKinds": ["..."], "redactedDescription": "one paragraph describing the visible content '
+                               'with every secret replaced by [REDACTED]; keep sender names, amounts, links, dates and instructions."}')]
+    try:
+        result, _ = await provider.generate_json("Return only the JSON object.", prompt, capability="vision")
+        return {"containsSecret": bool(result.get("containsSecret")), "secretKinds": [str(k) for k in result.get("secretKinds", [])][:8],
+                "redactedDescription": str(result.get("redactedDescription", ""))[:4000], "status": "ok"}
+    except Exception as exc:  # noqa: BLE001
+        return {"containsSecret": True, "secretKinds": ["unknown"], "status": f"preflight_unavailable:{type(exc).__name__}",
+                "redactedDescription": "The image could not be checked for secrets before storage, so it was not kept. Please submit it again; if the problem persists, describe what it shows."}
 
 
 async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detected: str) -> None:
@@ -283,7 +340,9 @@ async def mark_examined(owner: str, case_id: str, evidence_id: str, start: int, 
     complete = total is not None and examined >= total
     await repo.update_evidence(owner, case_id, evidence_id, {"$set": {"coverage.examinedRanges": ranges, "coverage.examined": min(examined, total or examined),
                                                                       "coverage.status": "examined" if complete else "partial", "coverage.materialGap": not complete and bool(total)}})
-    if row.get("parent_id"):
+    # Only a DERIVED full-text child (document extraction) propagates coverage to its parent. A registered clue (origin
+    # apollo_inference, parentOffset) is a relationship, not inherited completion: reading one clue never examines the document.
+    if row.get("parent_id") and row.get("origin") != "apollo_inference":
         meta = await repo.evidence_meta(row)
         pages = meta.get("pages") or []
         parent_update = {"coverage.status": "examined" if complete else "partial"}
@@ -314,9 +373,9 @@ async def read_text(owner: str, case_id: str, evidence_id: str, start: Optional[
         start, end = selected[0]["start"], selected[-1]["end"]
     start = max(0, start or 0)
     end = min(len(text), end if end is not None else start + READ_CHARS, start + READ_CHARS)
-    await mark_examined(owner, case_id, evidence_id, start, end, len(text))
     return {"evidenceId": evidence_id, "totalCharacters": len(text), "start": start, "end": end, "content": text[start:end],
-            "hasMore": end < len(text), "pages": meta.get("pages", [])[:MAX_PAGES] if pages is None and meta.get("pages") else None}
+            "hasMore": end < len(text), "pages": meta.get("pages", [])[:MAX_PAGES] if pages is None and meta.get("pages") else None,
+            "_pendingMark": [evidence_id, start, end, len(text)]}  # applied by the coordinator after the model has actually received this range
 
 
 async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[types.Part], list[dict], list[tuple[str, int, int, int]]]:
@@ -326,6 +385,8 @@ async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[ty
     for row in rows:
         entry = {"evidenceId": row["evidence_id"], "kind": row["kind"], "origin": row["origin"], "label": row.get("label", ""), "parentId": row.get("parent_id"),
                  "availability": row["availability"], "coverage": row["coverage"], "simulation": row.get("simulation"), "transformations": row.get("transformations", [])}
+        if row.get("clue_inventory"):
+            entry["clueInventory"] = row["clue_inventory"]  # explicit deferred count/offsets: a budget cutoff is never "all clues investigated"
         if row["availability"] != "available":
             inventory.append(entry)
             continue

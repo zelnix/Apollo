@@ -112,7 +112,9 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
     fresh_job = await repo.get_job(owner, case["case_id"], job["job_id"])
     checkpoint = repo.dec_json(fresh_job["checkpoint_ciphertext"]) if fresh_job.get("checkpoint_ciphertext") else None
     pending_marks: list[tuple[str, int, int, int]] = []
+    ledger: dict[str, dict] = {}  # per-call durable ledger (S08): completed paid tool outputs are reused, never re-run after a later call fails
     if checkpoint:
+        ledger = checkpoint.get("toolLedger", {})
         contents = _restore(checkpoint["contents"])
         rounds = checkpoint.get("rounds", 0)
         ctx.research_calls = checkpoint.get("researchCalls", 0)
@@ -131,7 +133,7 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
 
     async def save(extra: dict) -> None:
         await repo.set_job(owner, job["job_id"], job["fence"], {"$set": {"checkpoint_ciphertext": repo.enc_json({"contents": _serialise(contents), "rounds": rounds, "question": ctx.question,
-                                                                                                             "researchCalls": ctx.research_calls, "pendingMarks": pending_marks, **extra})}})
+                                                                                                             "researchCalls": ctx.research_calls, "pendingMarks": pending_marks, "toolLedger": ledger, **extra})}})
     tool = types.Tool(function_declarations=toolbox.DECLARATIONS)
     result = None
     while True:
@@ -147,11 +149,20 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
         rounds += 1
         contents.append(result.content)
         responses = []
-        for call in calls:
+        for index, call in enumerate(calls):
             args = dict(call.args or {})
-            await progress("research" if call.name != "request_device_observation" else "observe", f"Running {call.name.replace('_', ' ')}.")
-            await save({"interruptedCall": call.name})
-            output = await toolbox.execute(ctx, call.name, args)
+            key = f"{rounds}:{index}:{call.name}"
+            if key in ledger:  # completed in an earlier attempt of this round: reuse, do not pay again
+                output = ledger[key]["output"]
+                ctx.research_calls = max(ctx.research_calls, ledger[key].get("researchCalls", ctx.research_calls))
+            else:
+                await progress("research" if call.name != "request_device_observation" else "observe", f"Running {call.name.replace('_', ' ')}.")
+                await save({"interruptedCall": call.name})
+                output = await toolbox.execute(ctx, call.name, args)
+                if isinstance(output, dict) and output.get("_pendingMark"):
+                    pending_marks.append(tuple(output.pop("_pendingMark")))  # delivered ranges count as examined only after the next successful model request (S10)
+                ledger[key] = {"output": output, "researchCalls": ctx.research_calls, "at": now_utc().isoformat()}
+                await save({"interruptedCall": None})
             responses.append(types.Part.from_function_response(name=call.name, response={"result": output}))
         contents.append(types.Content(role="user", parts=responses))
         await save({"requestId": ctx.pending_request["id"]} if ctx.pending_request else {})
