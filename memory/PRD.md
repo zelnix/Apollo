@@ -1,3 +1,45 @@
+## Current continuation status — 2026-09-21, session 4 (revision-1 package; supersedes the blocks below)
+
+Controlling doc: `memory/Apollo_Complete_Developer_Instructions-1.md` (owner revision: **developer scenario testing STOPPED**; no
+testing agent, no Playwright/Gemini scenario suites, no new scenario scripts/reports; finish functionality, bounded checks only —
+compile/tsc/lint/focused local tests; deliver installable builds; Windows/macOS are REQUIRED targets; zero runtime mocks).
+
+DONE this session (committed locally; owner must "Save to GitHub"):
+- S01 zero-mock runtime: `EXPO_PUBLIC_SECURITY_MODE`/`SECURECORE_MODE` removed; `MockSecurityAdapter*`, `securecore/SecureCore.ts`,
+  `securecore/mock/*`, `app/dev-tools.tsx` deleted; SecureCore boot dependency removed (Settings: "Not included"); real
+  `WebSecurityAdapter`; platform-split `hostAdapter.ts`/`.web.ts`; development-web-only preview harness in `frontend/tools/preview-device-harness/`
+  (label "MOCKED DEVICE INPUT — PREVIEW ONLY", `EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS=enabled` in dev `.env` only); preflight scans sources.
+- S02 real permissions/facts: Kotlin/Swift `getProtectionPermissions` read real notification/listener/blocker state with recorded
+  request history (`requested`/`lastRequestedAt`/`enabled`/`observedAt`/`unavailableReason`); `getDeviceProfileFacts` (manufacturer/model/OS/
+  form factor/locale); broker advertises only implemented capabilities; `DeviceProfile.formFactor`, `DeviceResult.unavailableReason` (backend contracts too).
+- S03 Settings: `src/settings/guidance.ts` descriptors (Android intents / iOS paths), `actions.ts` executes the bound descriptor and records
+  an `ActionAttempt`, `recheck.ts` takes a fresh observation on return and calls `/settings-plan/{id}/recheck`; backend binds plan to the
+  advertised descriptor by target; `research_settings` "exact" requires manufacturer AND OS in the same source.
+- S04 push protocol: `routers/push.py` rewritten (Expo token + projectId, registrationId, durable `push_deliveries` with unique
+  (owner,event,channel,recipient), per-ticket inspection, receipt reconciliation loop, 202 DeliveryStatus / 409 recipient_unregistered / 503 setup,
+  `GET /push/deliveries/{id}`, `GET /push/registration`, sound + `threats` channel fixed); frontend `getExpoPushTokenAsync({projectId})`,
+  permission vs registration state, bounded pending retry, Settings shows registration.
+- S05 writer-lease/tombstone: `settle_write`, epoch-fenced `emit`, `sweep_tombstones` in the job sweeper.
+- S06 Gemini-only image secret preflight (ephemeral admission; secret-bearing originals never stored; redacted description retained; fails closed) — verified live.
+- S07 client integrity: generation-guarded `refresh`/callbacks/ask/retry/cancel/attach, orphan-case abandonment, persisted deletion retry,
+  `GateInvestigation` bound to an immutable submission object on all nine Gate screens (typing never starts/deletes cases).
+- S08 durable per-call tool ledger; accepted-turn-first deadline recovery; atomic `(owner,case,request)` claim with canonical hashing,
+  superseded-request 409, recoverable continuation record + sweeper completion.
+- S09 Text screenshot original image + prior Apollo check, App typed native SDK observation + server lookups carried onto the case.
+- S10 clue inventory: document order, phone priority, explicit omitted counts/offsets to the model; clue reads never examine parents; read marks deferred.
+- S11 delivery: `eas.json` `device-test` profile (Android APK + iOS internal); `desktop/` Tauri v2 host scaffold + `DesktopSecurityAdapter`
+  (typed commands; filtering explicitly `not_implemented`); docs `APOLLO_PLATFORM_DELIVERY_MATRIX.md`, `APOLLO_RUNTIME_SIMULATION_AUDIT.md`.
+Checks: tsc clean, eslint 0 errors, frontend security/adapter/guard tests 49/49, backend engine+persistence 10/10, push tests 24/24, preflight OK.
+Builds: NO artifact produced in this sandbox (no EAS/Gradle/Xcode/Windows runner). Operator action: Publish → Android `device-test` profile.
+
+NEXT EXACT TASK: (1) trigger Android `device-test` build via Publish and record build ID/SHA in the delivery matrix; (2) iOS signing inputs;
+(3) desktop real manufacturer/model (WMI/IOKit), SSID, WFP/Network Extension filtering service; (4) S09 remaining entry routes
+(Home quick checks/share/Patrol onto the case; Text still runs `/message/analyse` first as the deterministic initial observation — keep,
+but stop showing contradictory duplicate guidance); (5) email idempotency/ambiguous outcomes + family storage lifecycle (§10A);
+(6) R06 upload-finalisation claim; (7) tablet/desktop layouts audit. Scenario execution: owner.
+
+---
+
 ## Current continuation status — 2026-09-21, session 3 (supersedes the blocks below)
 
 Controlling docs: `memory/Apollo_Complete_Developer_Instructions.md` + `memory/Apollo_Saved_Source_Review_59725fc.md` (R01–R10).

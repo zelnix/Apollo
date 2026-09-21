@@ -1,0 +1,33 @@
+# Apollo platform delivery matrix (spec §1A / §16) — updated 2026-09-21, revision-1 package
+
+Status vocabulary: `implemented` (code present and wired), `partial` (some operations real, rest reported `not_implemented`),
+`not_implemented` (open work, never relabelled "unsupported"), `os_restricted` (cited vendor constraint). Build status is the
+actual artifact outcome, not a claim. Owner scenario acceptance is **deferred — owner evaluation** for every row.
+
+## Hosts and packaging
+
+| Target | Device classes | Min OS / CPU (from SDK/build config) | Host | Build profile / command | Artifact produced in this session | Exact remaining blocker |
+|---|---|---|---|---|---|---|
+| Android | phones, tablets (sw600dp reported as tablet) | Android 7.0+ (Expo SDK 57 default `minSdkVersion` 24); arm64-v8a, armeabi-v7a, x86_64 | Expo app + `modules/apollo-security` (Kotlin, DNS `VpnService`, notification listener, call screening) | `eas.json` → `device-test` (internal APK, `EXPO_PUBLIC_APP_ENV=staging`, `legacy` engine); `eas build --platform android --profile device-test` | **Not produced here** — this sandbox has no EAS/Gradle runner | Operator action: **Publish → Android build with profile `device-test`** (or the CLI above from a machine with EAS access). Configuration is complete; preflight passes. |
+| iOS / iPadOS | iPhone, iPad (idiom-based form factor) | iOS 15.1+ (Expo SDK 57 default); arm64 | Expo app + Swift module (Safari content blocker, notifications, device facts) | `eas.json` → `device-test` (`ios.simulator=false`, internal distribution); `eas build --platform ios --profile device-test` | **Not produced here** | Requires Apple team signing/provisioning + registered test devices (or TestFlight) through the managed build channel. No simulator claim made. |
+| Windows | PCs, laptops, tablets, 2-in-1 | Windows 10 1809+ (WebView2); x64/arm64 | `desktop/` Tauri v2 shell + Rust typed commands + shared web bundle | `cd desktop && yarn build:windows` (MSI + NSIS) | **Not produced here** — no Windows runner in sandbox | Run the build on Windows; code-signing certificate for a trusted installer. Filtering service (WFP) is `not_implemented`. |
+| macOS | desktops, laptops | macOS 12+; arm64/x64 | same Tauri shell | `cd desktop && yarn build:macos` (.app + .dmg) | **Not produced here** | Run on macOS with Developer ID for signing/notarization. Network Extension content filter is `not_implemented`. |
+
+## Ten Gates × platform (implementation status; scenario status = deferred — owner evaluation for all)
+
+| Gate | Android | iOS/iPadOS | Windows (desktop host) | macOS (desktop host) | Notes / consent |
+|---|---|---|---|---|---|
+| Site | implemented (DNS VpnService filter; VPN consent) | implemented (Safari content blocker; Settings › Safari › Extensions) | `not_implemented` (WFP service) — manual link checks real | `not_implemented` (Network Extension) — manual link checks real | Filtering absence on desktop is missing implementation, not an OS restriction ([WFP](https://learn.microsoft.com/en-us/windows/win32/fwp/windows-filtering-platform-start-page)). |
+| Link | implemented | implemented | implemented (shared case + server checks) | implemented | — |
+| Text | implemented (opt-in notification-listener; screenshot original now carried onto the case) | implemented (paste/screenshot; no message access — `os_restricted`, Apple exposes none to apps) | implemented (paste/screenshot) | implemented | — |
+| Call | implemented (CallScreeningService role) | partial (CallKit directory; no per-call callback — `os_restricted`) | user-submitted concern only; no telephony (`hardware_absent`) | same | Device without telephony still investigates a submitted call concern. |
+| Network | implemented (transport/security/SSID with location consent) | partial (limited Wi‑Fi info — `os_restricted`) | partial (real interface/VPN enumeration; SSID/security `not_implemented`) | partial (same) | — |
+| Account | implemented | implemented | implemented | implemented | Server-side research; no credentials collected. |
+| Email | implemented (Gmail read-only OAuth) | implemented | implemented | implemented | — |
+| File | implemented (picker/share intake, bounded inspection, secret preflight for images) | implemented | partial (open/drop via dialog plugin; share target `not_implemented`) | partial | Cloud origin never treated as proof of safety. |
+| App | implemented (package-visibility limits; typed native observation now on the case) | partial (no app inventory — `os_restricted`) | `not_implemented` (installed-app inventory) | `not_implemented` | — |
+| Device | implemented (real permission state + request history, manufacturer/model/OS, Settings intents, return recheck) | implemented (notification state, content-blocker state, app Settings + path, return recheck) | partial (OS version/locale, fixed `ms-settings:` targets; manufacturer/model pending WMI) | partial (fixed `x-apple.systempreferences:` targets; model pending IOKit) | Settings plan → exact descriptor → return → fresh recheck implemented in `src/settings/*`. |
+
+## Shared behaviour on every host
+Gemini investigation (owner key, server-side), grounded research, case persistence/recovery, actionable guidance, speech playback and
+honest capability reporting (`unavailableReason`) are shared. No host ships a runtime mock (see `APOLLO_RUNTIME_SIMULATION_AUDIT.md`).
