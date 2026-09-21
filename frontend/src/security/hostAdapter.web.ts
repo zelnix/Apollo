@@ -7,6 +7,7 @@
 import { SECURITY_CONFIG } from "@/src/config/appEnvironment";
 import { validateSecurityConfig } from "./securityConfig";
 import type { SecurityPlatformAdapter } from "./SecurityPlatformAdapter";
+import { DesktopSecurityAdapter, desktopHostPresent } from "./DesktopSecurityAdapter";
 import { WebSecurityAdapter } from "./WebSecurityAdapter";
 
 export function validateHost(): void {
@@ -24,5 +25,7 @@ export function chooseHostAdapter(): SecurityPlatformAdapter {
     const harness = require("../../tools/preview-device-harness/PreviewDeviceAdapter") as typeof import("../../tools/preview-device-harness/PreviewDeviceAdapter");
     return harness.PreviewDeviceAdapter;
   }
+  // Inside the Windows/macOS desktop shell (/desktop, Tauri) the web bundle talks to the real host through typed commands.
+  if (desktopHostPresent()) return DesktopSecurityAdapter;
   return WebSecurityAdapter;
 }

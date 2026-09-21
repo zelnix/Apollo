@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Apollo",
+  "version": "1.0.0",
+  "identifier": "app.apollo.hwg.desktop",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:3000"
+  },
+  "app": {
+    "windows": [{ "title": "Apollo", "width": 1180, "height": 820, "minWidth": 390, "minHeight": 640, "resizable": true, "dragDropEnabled": true }],
+    "security": {
+      "csp": "default-src 'self' ipc: http://ipc.localhost; img-src 'self' data: blob: https:; connect-src 'self' ipc: http://ipc.localhost https://*.emergentagent.com https://exp.host; style-src 'self' 'unsafe-inline'; media-src 'self' blob: data:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["msi", "nsis", "dmg", "app"],
+    "icon": ["../../frontend/assets/images/icon.png"],
+    "windows": { "certificateThumbprint": null, "digestAlgorithm": "sha256", "timestampUrl": "http://timestamp.digicert.com", "webviewInstallMode": { "type": "downloadBootstrapper" } },
+    "macOS": { "minimumSystemVersion": "12.0", "signingIdentity": null, "hardenedRuntime": true, "entitlements": null }
+  },
+  "plugins": {}
+}

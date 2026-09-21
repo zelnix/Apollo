@@ -1,0 +1,16 @@
+{
+  "name": "apollo-desktop",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Apollo Windows/macOS host: Tauri v2 shell around the shared Expo web bundle with typed, allowlisted native commands.",
+  "scripts": {
+    "web:export": "cd ../frontend && EXPO_PUBLIC_APP_ENV=production npx expo export --platform web --output-dir ../desktop/dist",
+    "dev": "tauri dev",
+    "build": "yarn web:export && tauri build",
+    "build:windows": "yarn web:export && tauri build --bundles msi,nsis",
+    "build:macos": "yarn web:export && tauri build --bundles dmg,app"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.5.0"
+  }
+}
