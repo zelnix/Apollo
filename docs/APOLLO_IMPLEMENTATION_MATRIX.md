@@ -1,3 +1,20 @@
+## Revision-1 package status (2026-09-21, session 4) — S01–S12 from `Apollo_Complete_Developer_Instructions-1.md` §0
+
+| ID | Status | Files | Engineering checks performed | Owner acceptance |
+|---|---|---|---|---|
+| S01 runtime mocks | implemented | `src/security/{securityConfig,securityAdapter,hostAdapter,hostAdapter.web,WebSecurityAdapter}.ts`, `tools/preview-device-harness/`, deleted `MockSecurityAdapter*`, `securecore/SecureCore.ts`, `securecore/mock/*`, `app/dev-tools.tsx`; `eas.json`, `.env.production`, `scripts/security-preflight.mjs` | tsc, eslint, preflight OK, security/adapter/guard tests 49/49; see `APOLLO_RUNTIME_SIMULATION_AUDIT.md` | deferred |
+| S02 permissions/facts | implemented (Android/iOS); desktop partial | `ApolloSecurityModule.kt/.swift`, `SecurityPlatformAdapter.ts`, `nativeBridge.ts`, `NativeSecurityAdapters.ts`, `investigation/deviceBroker.ts`, `contracts.py` | tsc/eslint; native compile NOT run (no Gradle/Xcode here) | deferred |
+| S03 Settings | implemented | `src/settings/{guidance,actions,recheck}.ts`, `InvestigationView.tsx`, `routers/investigations.py` (descriptor binding), `tools.py::research_settings` | tsc/eslint; backend tests 10/10 | deferred |
+| S04 push/email | implemented (credential-blocked at runtime) | `routers/push.py`, `services/email.py`, `routers/family.py`, `src/push/notifications.ts`, `ApolloContext.tsx`, `settings.tsx` | push tests 24/24; family email tests remain credential-blocked (classified) | deferred |
+| S05 deletion | implemented (writer-lease/tombstone) | `repository.py::{settle_write,sweep_tombstones,emit}`, `jobs.py` | engine/persistence 10/10 | deferred |
+| S06 originals/secrets | implemented for images (Gemini preflight); scanned-PDF/embedded visuals still recorded as gaps | `evidence.py::{ingest_file,_image_secret_preflight}` | live preflight check (secret detected/redacted; benign passes) | deferred |
+| S07 client integrity | implemented | `caseStore.ts`, `GateInvestigation.tsx` + nine Gate screens | tsc/eslint; live check: editing after result did not restart the case | deferred |
+| S08 recovery | implemented | `coordinator.py` (per-call ledger, deferred marks), `jobs.py::recover`, `routers/investigations.py::device_results` | engine tests; live document probe complete | deferred |
+| S09 one case per route | partial: Text screenshot original + App native observation carried; Home/share/Patrol still on older paths; Text/App deterministic pre-checks retained as initial observations | `app/message.tsx`, `app/app-check.tsx` | tsc/eslint | deferred |
+| S10 completeness | implemented for clues/marks; vendor-domain hints remain hints | `evidence.py::{register_clues,mark_examined,read_text,model_parts}` | live document probe (clue registered, coverage totals correct) | deferred |
+| S11 delivery | configuration complete; **no artifact produced in this sandbox** | `eas.json` (`device-test`), `desktop/` (Tauri host) | preflight OK; build requires Publish/EAS or Windows/macOS runner | deferred |
+| S12 scenario testing | stopped per owner | `docs/APOLLO_US_SCENARIO_STATUS.md` relabelled | — | owner |
+
 # Apollo implementation matrix — architectural package (Package-2 + Complete Developer Instructions)
 
 **Date:** 2026-09-21. **Source:** fork base `33a2383`, work committed on `main` (see `git log`; SHA recorded in final handoff).
