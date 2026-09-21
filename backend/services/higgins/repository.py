@@ -363,7 +363,8 @@ async def stage_turn(owner: str, commit: TurnCommit, job: dict, expires_at: date
 async def accept_turn(owner: str, case: dict, job: dict, commit: TurnCommit, commit_id: str, status: str, attention: str, open_question: Optional[dict]) -> Optional[dict]:
     """Single CAS on the case control record makes answer + history authoritative together (spec §5)."""
     if any(ref["turn_id"] == commit.turn_id for ref in case.get("accepted_commits", [])):
-        return None  # logical turn already accepted by another attempt
+        await db.investigation_turn_commits.delete_one({"owner_id": owner, "case_id": case["case_id"], "commit_id": commit_id})
+        return None  # logical turn already accepted by another attempt; this attempt removes only its own bundle
     updated = await cas(owner, case["case_id"], {"epoch": job["epoch"], "active_job_id": job["job_id"], "lease_fence": job["fence"],
                                                  "accepted_commits.turn_id": {"$ne": commit.turn_id}},
                         {"$set": {"response_ciphertext": enc_json(commit.response.wire()), "response_revision": commit.committed_revision, "status": status,

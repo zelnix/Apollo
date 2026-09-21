@@ -107,9 +107,9 @@ export function gateForCategory(category: EventCategory): HigginsGate {
 /** One dispatcher for issue-specific Higgins actions. It deduplicates rapid taps before navigation. */
 export function openHigginsHandoff(router: { push: (href: never) => void }, context: HigginsIssueContext, question: string): string | null {
   const safe = issueContext(context);
-  const cleanQuestion = redactUserSecrets(question).trim().slice(0, 500);
-  if (!safe.issue_summary || !cleanQuestion) return null;
-  const fingerprint = handoffFingerprint(safe.gate, safe.issue_summary, safe.findings, cleanQuestion);
+  const cleanQuestion = redactUserSecrets(question).trim();  // never sliced: the question is part of the evidence
+  if (!safe.issue_summary || (!cleanQuestion && !safe.case_id)) return null;  // continuing an existing case needs no new question
+  const fingerprint = handoffFingerprint(safe.gate, safe.issue_summary, safe.findings, cleanQuestion || `case:${safe.case_id}`);
   const now = Date.now();
   if (!reserveHandoff(recent, fingerprint, now)) return null;
   const handoffId = Crypto.randomUUID();
