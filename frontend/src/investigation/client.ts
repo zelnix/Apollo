@@ -46,7 +46,7 @@ export function addTextEvidence(caseId: string, expectedRevision: number, text: 
   return apiPost<{ evidence: EvidenceItem; caseRevision: number }>(`/investigations/${caseId}/evidence`, "investigation", { expectedRevision, clientItemId: Crypto.randomUUID(), parentId: null, kind: "text", text, label });
 }
 
-/** Multipart file evidence: the runtime's own file shape (web Blob / native {uri,name,type}); metadata carries revision and declared type. */
+/** Multipart file evidence (single shot, no resume): kept only for callers that accept an all-or-nothing upload. */
 export async function uploadFileEvidence(caseId: string, expectedRevision: number, file: { uri: string; name: string; mediaType: string }, kind: "image" | "document" | "audio" | "attachment") {
   const token = await getDeviceToken();
   if (!token) throw new ApiError(401, "Apollo hasn't registered this device yet.");
@@ -57,6 +57,65 @@ export async function uploadFileEvidence(caseId: string, expectedRevision: numbe
   const res = await fetch(`${API_BASE}/investigations/${caseId}/evidence`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form });
   if (!res.ok) { let message = res.statusText; try { const data = await res.json(); message = data?.error?.message ?? message; } catch { /* keep */ } throw new ApiError(res.status, message); }
   return (await res.json()) as { evidence: EvidenceItem; caseRevision: number };
+}
+
+// ---------------------------------------------------------------- resumable / retry-safe file upload
+// The evidence-acknowledgement boundary is durable evidence publication on the SERVER, never "the request started"
+// or "bytes were sent". A file is read into memory exactly once per attempt; the resulting `FileUploadHandle` is
+// handed back to the caller after every step so a caller-held reference survives a failure and lets a RETRY resume
+// from the exact chunk reached — reusing the SAME upload session (each chunk PUT is idempotent server-side) — with
+// no duplicate upload, no re-reading the original file, and no risk of the original being deleted mid-transfer.
+const UPLOAD_CHUNK_BYTES = 1024 * 1024; // must match services.higgins.repository.CHUNK_BYTES
+
+export interface FileUploadHandle { uploadId: string; declaredBytes: number; bytes: Uint8Array; nextChunk: number }
+
+export function createUpload(caseId: string, body: { expectedRevision: number; clientItemId: string; parentId: string | null; kind: "image" | "document" | "audio" | "attachment"; filename: string; mediaType: string; declaredBytes: number }) {
+  return postWithKey<{ uploadId: string; chunkBytes: number; expiresAt: string }>(`/investigations/${caseId}/uploads`, body as unknown as Record<string, unknown>, Crypto.randomUUID());
+}
+
+async function putChunk(caseId: string, uploadId: string, index: number, chunk: Uint8Array): Promise<void> {
+  const token = await getDeviceToken();
+  if (!token) throw new ApiError(401, "Apollo hasn't registered this device yet.");
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt <= 1; attempt++) {
+    try {
+      const res = await fetch(`${API_BASE}/investigations/${caseId}/uploads/${uploadId}/chunks/${index}`, { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/octet-stream" }, body: chunk as unknown as BodyInit });
+      if (!res.ok) { let message = res.statusText; try { const data = await res.json(); message = data?.error?.message ?? message; } catch { /* keep */ } throw new ApiError(res.status, message); }
+      return;
+    } catch (e) { lastError = e; if (attempt === 0) await new Promise((r) => setTimeout(r, 500)); }
+  }
+  throw lastError instanceof Error ? lastError : new ApiError(0, "Chunk upload failed.");
+}
+
+export function completeUpload(caseId: string, uploadId: string, expectedRevision: number) {
+  return postWithKey<{ evidence: EvidenceItem; caseRevision: number; replayed?: boolean }>(`/investigations/${caseId}/uploads/${uploadId}/complete`, { expectedRevision }, Crypto.randomUUID());
+}
+
+/** Reads the file once (or reuses an in-flight `resume` handle's already-read bytes), uploads it chunk by chunk
+ * through the resumable endpoints, and finalises. `onHandle` is invoked after the session is created and after
+ * every chunk so the caller can retain the handle for a retry; nothing here ever touches the source file's URI
+ * after the initial read, and finalisation is the ONLY point at which the evidence becomes durably published. */
+export async function uploadFileEvidenceResumable(
+  caseId: string, expectedRevision: number, file: { uri: string; name: string; mediaType: string }, kind: "image" | "document" | "audio" | "attachment",
+  resume: FileUploadHandle | null, onHandle: (handle: FileUploadHandle) => void,
+): Promise<{ evidence: EvidenceItem; caseRevision: number }> {
+  let handle = resume;
+  if (!handle) {
+    const response = await fetch(file.uri);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const created = await createUpload(caseId, { expectedRevision, clientItemId: Crypto.randomUUID(), parentId: null, kind, filename: file.name, mediaType: file.mediaType, declaredBytes: bytes.length });
+    handle = { uploadId: created.uploadId, declaredBytes: bytes.length, bytes, nextChunk: 0 };
+    onHandle(handle);
+  }
+  const totalChunks = Math.max(1, Math.ceil(handle.declaredBytes / UPLOAD_CHUNK_BYTES));
+  for (let index = handle.nextChunk; index < totalChunks; index++) {
+    const start = index * UPLOAD_CHUNK_BYTES;
+    const chunk = handle.bytes.subarray(start, Math.min(start + UPLOAD_CHUNK_BYTES, handle.declaredBytes));
+    await putChunk(caseId, handle.uploadId, index, chunk);
+    handle = { ...handle, nextChunk: index + 1 };
+    onHandle(handle);
+  }
+  return await completeUpload(caseId, handle.uploadId, expectedRevision);
 }
 
 /** SSE over XHR with sequence-based reconnect. `onTerminal` fires only on an explicit terminal event; EOF alone is an interruption. */

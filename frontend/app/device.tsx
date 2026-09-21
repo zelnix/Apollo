@@ -78,6 +78,14 @@ export default function CheckDevice() {
   const result = useMemo(() => assessDevice(signals, self, context), [signals, self, context]);
   const meta = DEVICE_STATUS[result.status];
   const anySelf = Object.values(self).some(Boolean);
+  // The Gate's initial local assessment becomes Higgins' investigation submission — but `result` recomputes on
+  // EVERY self-report toggle (any `self` change) and after each recheck (`signals`/`context` change). A new object
+  // on every toggle would make GateInvestigation treat each toggle as a brand-new submission: it would discard the
+  // in-progress conversation and start a fresh, billed investigation each time. `submission` is a stable snapshot
+  // updated ONLY when a real device check cycle completes (mount, or "I changed it — check again") — never by a
+  // self-report toggle alone, which instead lands in the live `result` shown on screen without restarting anything.
+  const [submission, setSubmission] = useState<typeof result | null>(null);
+  useEffect(() => { if (!checking) setSubmission(result); }, [checking]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = async () => {
     setSaving(true);
@@ -93,6 +101,7 @@ export default function CheckDevice() {
     else void openDeviceSettings(dynamic ?? TARGET[f.id] ?? (f.id === "D12" || f.id === "D13" ? "vpn" : "apps"), f.settings, (m) => showToast(m, "neutral"));
   };
   const firstAction = [...result.findings].sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity])[0] ?? null;
+  const submissionFirstAction = useMemo(() => submission ? [...submission.findings].sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity])[0] ?? null : null, [submission]);
 
   if (ready && !setupDone) return <Redirect href="/" />;
 
@@ -172,10 +181,10 @@ export default function CheckDevice() {
           {result.status !== "protected" && !event ? <Button testID="device-save" label={saving ? "Saving…" : "Save to Patrol & stay with me"} onPress={() => void save()} disabled={saving} /> : null}
           {event ? <RecoveryFlow event={event} kinds={["remote", "banking_during_access", "accessibility", "profile", "password", "code"]} testID="device-recovery-flow" /> : null}
           <Button testID="device-check-app" variant="secondary" label="Check a specific app" onPress={() => router.push("/app-check")} />
-          <GateInvestigation submission={result} testID="device-ask" label="Ask Higgins about my device" context={issueContext({ gate: "device", issue_summary: meta.title, assessment_state: result.state, findings: result.findings.slice(0, 6).map((finding) => ({ summary: `${finding.title}: ${finding.plain}`, provenance: "observed", status: finding.severity === "high" ? "warning" : "uncertain" })), uncertainty: result.cannotSee, confirmed_protective_actions: [], user_reported_actions: Object.keys(self).filter((key) => self[key as keyof SelfReport]), original_evidence: [{ kind: "text", value: `Device assessment (visible settings and Apollo health only):\n${result.summary}\n${result.findings.map((f) => `${f.severity.toUpperCase()} ${f.title}: ${f.plain}`).join("\n")}\nApollo cannot see: ${result.cannotSee.join("; ") || "nothing additional listed"}`, label: "device observations" }], available_actions: [
-            ...(firstAction ? [{ label: platform === "web" ? "Show relevant Settings steps" : "Open relevant Settings", instruction: `${firstAction.action} ${firstAction.settings}` }] : []),
+          {submission ? <GateInvestigation submission={submission} testID="device-ask" label="Ask Higgins about my device" context={issueContext({ gate: "device", issue_summary: DEVICE_STATUS[submission.status].title, assessment_state: submission.state, findings: submission.findings.slice(0, 6).map((finding) => ({ summary: `${finding.title}: ${finding.plain}`, provenance: "observed", status: finding.severity === "high" ? "warning" : "uncertain" })), uncertainty: submission.cannotSee, confirmed_protective_actions: [], user_reported_actions: Object.keys(self).filter((key) => self[key as keyof SelfReport]), original_evidence: [{ kind: "text", value: `Device assessment (visible settings and Apollo health only):\n${submission.summary}\n${submission.findings.map((f) => `${f.severity.toUpperCase()} ${f.title}: ${f.plain}`).join("\n")}\nApollo cannot see: ${submission.cannotSee.join("; ") || "nothing additional listed"}`, label: "device observations" }], available_actions: [
+            ...(submissionFirstAction ? [{ label: platform === "web" ? "Show relevant Settings steps" : "Open relevant Settings", instruction: `${submissionFirstAction.action} ${submissionFirstAction.settings}` }] : []),
             { label: "I changed it — check again", instruction: "Return to Device Gate and choose I changed it — check again so Apollo refreshes the signals this platform exposes." },
-          ] })} question={anySelf ? "What should I do first?" : "How do I keep my phone secure?"} />
+          ] })} question={anySelf ? "What should I do first?" : "How do I keep my phone secure?"} /> : null}
         </Card>
       </ScrollView>
     </View>

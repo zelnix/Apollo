@@ -23,7 +23,7 @@ function submissionIdFor(submission: object): string {
   return id;
 }
 
-export function GateInvestigation({ submission, context, question, label, testID }: { submission: object; context: HigginsIssueContext; question: string; label: string; testID: string }) {
+export function GateInvestigation({ submission, context, question, label, testID, autoStart = true }: { submission: object; context: HigginsIssueContext; question: string; label: string; testID: string; autoStart?: boolean }) {
   const router = useRouter();
   const { state, start, ask, retry, cancel, remove } = useInvestigation();
   const submissionId = submissionIdFor(submission);
@@ -31,6 +31,11 @@ export function GateInvestigation({ submission, context, question, label, testID
   useEffect(() => {
     if (started.current === submissionId) return;
     started.current = submissionId;
+    // `autoStart=false`: a legacy, gate-specific assessment already ran its own Gemini pass for this exact
+    // submission (e.g. Text/Email Gate's "/message/analyse" second opinion). Starting the shared case here too
+    // would be a SECOND, duplicate Gemini investigation of the same content before the person asked for one.
+    // Deferred: the shared case starts the first time the person actually taps "Ask Higgins" below.
+    if (!autoStart) return;
     const { input, files } = createCaseInput(context, question); // context snapshot taken once per submission
     const eventId = (submission as { event?: { event_id?: string } | null }).event?.event_id ?? null;
     void (state.caseData ? remove().then(() => start(input, files)) : start(input, files)).then((c) => { if (c && eventId) void rememberCaseForEvent(eventId, c.id); });
