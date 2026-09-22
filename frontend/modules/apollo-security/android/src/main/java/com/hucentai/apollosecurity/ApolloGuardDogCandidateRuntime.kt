@@ -38,14 +38,14 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 
-private class ApolloBundleVersionStore(context: Context) : BundleVersionStore {
+internal class ApolloBundleVersionStore(context: Context, private val namespace: String = "acceptance") : BundleVersionStore {
   private val prefs = context.getSharedPreferences("apollo_guarddog_bundle_versions", Context.MODE_PRIVATE)
   override fun highestAccepted(rulesetId: String): AcceptedBundle? =
-    if (prefs.contains(rulesetId)) AcceptedBundle(prefs.getLong(rulesetId, 0), prefs.getString("$rulesetId.envelopeHash", null)) else null
+    if (prefs.contains("$namespace:$rulesetId")) AcceptedBundle(prefs.getLong("$namespace:$rulesetId", 0), prefs.getString("$namespace:$rulesetId.envelopeHash", null)) else null
   override fun recordAccepted(rulesetId: String, bundleVersion: Long, envelopeHash: String?) {
     val merged = InMemoryBundleVersionStore.merge(highestAccepted(rulesetId), AcceptedBundle(bundleVersion, envelopeHash))
-    val edit = prefs.edit().putLong(rulesetId, merged.bundleVersion)
-    if (merged.envelopeHash == null) edit.remove("$rulesetId.envelopeHash") else edit.putString("$rulesetId.envelopeHash", merged.envelopeHash)
+    val key = "$namespace:$rulesetId"; val edit = prefs.edit().putLong(key, merged.bundleVersion)
+    if (merged.envelopeHash == null) edit.remove("$key.envelopeHash") else edit.putString("$key.envelopeHash", merged.envelopeHash)
     check(edit.commit()) { "Could not persist GuardDog rollback state" }
   }
 }
