@@ -166,6 +166,7 @@ public class ApolloSecurityModule: Module {
       self.json(["smsFiltering": "unsupported", "linkInterception": "supported", "senderReputation": "unsupported", "shareExtension": "supported", "notificationIntegration": "unsupported"])
     }
     AsyncFunction("getRecentMessageSecurityEvents") { () -> String in "[]" }
+    AsyncFunction("acknowledgeMessageSecurityEvents") { (_ ids: String) -> String in self.json(["acknowledged": 0]) }
     AsyncFunction("openSmsListenerSettings") { () -> String in self.json(["opened": false]) }
 
     // Call Guard (CallSdk contract). `callScreening` reflects CXCallDirectoryManager's OWN reported

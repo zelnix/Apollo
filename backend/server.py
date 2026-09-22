@@ -28,7 +28,8 @@ from core.db import client, db, now_utc
 from core.models import BlocklistEntry
 from core.privacy_boundary import PrivacyBoundary
 from services.patrol_policy import ensure_evidence_receipt_indexes
-from services.mailbox_monitor import mailbox_monitor_loop
+from services.mailbox_monitor import ensure_indexes as ensure_mailbox_monitor_indexes, mailbox_monitor_loop
+from services.maintenance import ensure_indexes as ensure_maintenance_indexes, maintenance_loop
 from services.higgins.retention import migrate_and_index
 from services.higgins import repository as investigation_repository
 from routers import admin, analysis, ask, call, devices, family, family_weekly, gmail, health, intel, investigations, patrol, push, voice
@@ -47,6 +48,8 @@ async def lifespan(_: FastAPI):
     await migrate_and_index()
     await investigation_repository.ensure_indexes()
     await investigation_repository.backfill_work_epochs()
+    await ensure_maintenance_indexes()
+    await ensure_mailbox_monitor_indexes()
     await push.ensure_indexes()
     await db.devices.create_index("device_id", unique=True)
     await db.devices.create_index("token_hash", unique=True, partialFilterExpression={"token_hash": {"$type": "string"}})
@@ -85,10 +88,13 @@ async def lifespan(_: FastAPI):
             await asyncio.sleep(300)
 
     receipts_task = asyncio.create_task(push_receipt_loop())
+    maintenance_task = asyncio.create_task(maintenance_loop())
     yield
+    maintenance_task.cancel()
     receipts_task.cancel()
     loop_task.cancel()
     mailbox_task.cancel()
+    await asyncio.gather(maintenance_task, receipts_task, loop_task, mailbox_task, return_exceptions=True)
     client.close()
 
 

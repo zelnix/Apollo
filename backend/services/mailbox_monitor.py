@@ -1,4 +1,8 @@
-"""Opt-in mailbox monitor. Raw messages are request/task-memory only; Patrol stores summaries."""
+"""Opt-in mailbox monitor using the same durable Higgins case engine as every Gate.
+
+Raw messages exist only in Gmail response memory and encrypted temporary investigation evidence. Patrol keeps a
+redacted summary; case retention/recovery is owned by the Higgins maintenance worker.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -7,91 +11,137 @@ import re
 import uuid
 from typing import Any
 
+from pymongo.errors import DuplicateKeyError
+
 from core.config import logger
 from core.db import db, now_utc
 from core.models import PatrolEvent
+from core.redaction import redact_investigation_secrets
 from routers.push import push_owner_alert
 from services import gmail
-from services.intel import assess_indicator
-from services.investigation import investigate_message
+from services.higgins import evidence, jobs, repository as repo
+from services.higgins.contracts import HigginsResponse
 
 URL_RE = re.compile(r"(?i)\bhttps?://[^\s<>\]\[\"']+")
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
 PHONE_RE = re.compile(r"(?<!\w)(?:\+?\d[\s().-]*){9,14}(?!\w)")
+SCAN_SECONDS = 15 * 60
+PENDING_SECONDS = 20
 
 
 def _safe_summary(value: str) -> str:
-    return PHONE_RE.sub("[phone]", EMAIL_RE.sub("[email]", URL_RE.sub("[link]", value[:400])))
-
-
-async def _url_context(urls: list[str]) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for url in urls[:5]:
-        try:
-            intel = await asyncio.wait_for(assess_indicator(url), timeout=12)
-            rows.append({"url": url, "host": intel.host, "verdict": intel.verdict, "coverage": intel.coverage,
-                         "threat_types": intel.threat_types, "redirect_chain": intel.redirect_chain, "final_url": intel.final_url})
-        except Exception:
-            rows.append({"url": url, "host": "unknown", "verdict": "unknown", "coverage": "none"})
-    return rows
+    protected = redact_investigation_secrets(value)
+    return PHONE_RE.sub("[phone]", EMAIL_RE.sub("[email]", URL_RE.sub("[link]", protected)))[:400]
 
 
 def _message_digest(provider: str, message_id: str) -> str:
     return hashlib.sha256(f"{provider}:{message_id}".encode()).hexdigest()
 
 
-async def _assess(provider: str, device_id: str, message: dict[str, Any]) -> None:
+async def ensure_indexes() -> None:
+    await db.mailbox_assessment_receipts.create_index([("provider", 1), ("device_id", 1), ("message_digest", 1)], unique=True)
+    await db.mailbox_assessment_receipts.create_index([("state", 1), ("updated_at", 1)])
+
+
+async def _submit_shared_case(provider: str, device_id: str, message: dict[str, Any]) -> None:
     digest = _message_digest(provider, str(message.get("id", "")))
     key = {"provider": provider, "device_id": device_id, "message_digest": digest}
-    if await db.mailbox_assessment_receipts.find_one(key, {"_id": 1}):
+    try:
+        await db.mailbox_assessment_receipts.insert_one({**key, "state": "claimed", "created_at": now_utc(), "updated_at": now_utc()})
+    except DuplicateKeyError:
+        pass
+    receipt = await db.mailbox_assessment_receipts.find_one(key, {"_id": 0})
+    if not receipt or receipt.get("state") in ("submitted", "complete", "failed"):
         return
-    sender = str(message.get("from", ""))[:80]
-    subject = str(message.get("subject", ""))[:500]
-    body = str(message.get("body", ""))[:3500]
-    text = f"{subject}\n{body}".strip()
-    urls = list(dict.fromkeys([*URL_RE.findall(text), *[str(link.get("href", "")) for link in message.get("links", [])]]))[:10]
-    local_state = "growling" if urls or re.search(r"(?i)urgent|verify|payment|password|code|invoice|account|transfer", text) else "resting"
-    assessment = await investigate_message(sender=sender, text=text, urls=urls, claimed_brand=None,
-        local_state=local_state, url_context=await _url_context(urls))
-    if assessment.risk == "warning":
-        suspicious = any(finding.status == "suspicious" for finding in assessment.findings)
-        ts = now_utc()
-        doc = {"event_id": uuid.uuid4().hex, "device_id": device_id, "category": "email",
-               "state": "barking" if suspicious else "growling", "status": "active",
-               "headline": f"{provider.title()}: {assessment.higgins.headline}",
-               "what_happened": _safe_summary(assessment.higgins.what_was_found[0] if assessment.higgins.what_was_found else assessment.higgins.headline),
-               "why": [finding.title for finding in assessment.findings[:6]], "what_to_do": assessment.higgins.next_action,
-               "indicator_host": assessment.entities.links[0] if assessment.entities.links else None, "indicator_digest": None,
-               "verified_block": False, "adapter_label": "Apollo purpose-limited mailbox monitor",
-               "occurred_at": ts, "resolved_at": None, "enforcement_evidence": None,
-               "supporting_references": [{"label": source.label, "url": source.url} for source in assessment.sources if source.url][:6],
-               "created_at": ts, "updated_at": ts, "deleted_at": None}
-        await db.patrol_events.insert_one(doc)
-        await push_owner_alert(PatrolEvent.from_mongo(doc))
-    await db.mailbox_assessment_receipts.update_one(key, {"$setOnInsert": {**key, "processed_at": now_utc()}}, upsert=True)
+    sender = str(message.get("from", ""))
+    subject = str(message.get("subject", ""))
+    body = str(message.get("body", ""))
+    links = message.get("links", []) if isinstance(message.get("links"), list) else []
+    link_context = "\n".join(f"Displayed link text: {link.get('text', '')}\nActual destination: {link.get('href', '')}" for link in links if isinstance(link, dict))
+    link_section = f"\n\nHTML link destinations:\n{link_context}" if link_context else ""
+    text = f"From: {sender}\nSubject: {subject}\n\n{body}{link_section}".strip()
+    case = await repo.create_case(device_id, "email", None)
+    item = await evidence.ingest_text(device_id, case, f"mailbox-{digest}", text, label=f"{provider} message selected by ongoing monitoring")
+    local_findings = []
+    if URL_RE.search(text):
+        local_findings.append("The email contains one or more links requiring sender and destination verification.")
+    if re.search(r"(?i)urgent|verify|payment|password|code|invoice|account|transfer", text):
+        local_findings.append("The email contains urgency, account, credential or payment language worth checking.")
+    for index, finding in enumerate(local_findings):
+        await evidence.ingest_text(device_id, case, f"mailbox-{digest}-finding-{index}", finding, origin="apollo_inference",
+                                   label="Apollo background intake observation", coverage=evidence.Coverage(status="examined", unit="items", total=1, examined=1))
+    turn_id = str(uuid.uuid4())
+    payload = {"message": "Investigate this monitored email. Verify its sender, claims and every material link; explain one safe next action.",
+               "answerToQuestionId": None, "evidenceIds": [item.id], "turnId": turn_id}
+    job = await repo.create_job(device_id, case, turn_id, repo.digest(f"mailbox:{digest}"), repo.digest(str(payload)), "turn", payload)
+    updated = await repo.cas(device_id, case["case_id"], {"revision": case["revision"], "active_job_id": None},
+                             {"$set": {"status": "queued", "active_job_id": job["job_id"], "active_turn_id": turn_id}})
+    if not updated:
+        raise RuntimeError("mailbox case ownership conflict")
+    await db.mailbox_assessment_receipts.update_one(key, {"$set": {"state": "submitted", "case_id": case["case_id"], "job_id": job["job_id"], "updated_at": now_utc()}})
+    jobs.launch(device_id, case["case_id"], job["job_id"])
+
+
+async def _finalise_receipt(receipt: dict) -> None:
+    owner, case_id, job_id = receipt["device_id"], receipt["case_id"], receipt["job_id"]
+    try:
+        case = await repo.get_case(owner, case_id)
+        job = await repo.get_job(owner, case_id, job_id)
+    except Exception:
+        await db.mailbox_assessment_receipts.update_one({"provider": receipt["provider"], "device_id": owner, "message_digest": receipt["message_digest"]},
+                                                         {"$set": {"state": "failed", "failure": "temporary_case_unavailable", "updated_at": now_utc()}})
+        return
+    if job["status"] in ("queued", "investigating", "retry_wait", "waiting_device"):
+        return
+    selector = {"provider": receipt["provider"], "device_id": owner, "message_digest": receipt["message_digest"], "state": "submitted"}
+    if not case.get("response_ciphertext"):
+        if job["status"] in ("failed", "cancelled", "expired"):
+            await db.mailbox_assessment_receipts.update_one(selector, {"$set": {"state": "failed", "failure": job["status"], "updated_at": now_utc()}})
+        return
+    response = HigginsResponse.model_validate(repo.dec_json(case["response_ciphertext"]))
+    if response.attention != "none" or response.assessment != "no_concern_found_within_scope":
+        event_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"apollo-mailbox:{receipt['provider']}:{owner}:{receipt['message_digest']}"))
+        state = "barking" if response.attention in ("urgent", "action_needed") else "growling"
+        recommended = next((action for action in response.actions if action.id == response.recommended_action_id), response.actions[0] if response.actions else None)
+        doc = {"event_id": event_id, "device_id": owner, "category": "email", "state": state, "status": "active",
+               "headline": f"{receipt['provider'].title()}: {_safe_summary(response.overview)}", "what_happened": _safe_summary(response.overview),
+               "why": [_safe_summary(finding.text) for finding in response.findings[:6]],
+               "what_to_do": _safe_summary(recommended.instruction) if recommended else "Open Email Gate and verify the sender through an independent channel.",
+               "indicator_host": None, "indicator_digest": None, "verified_block": False, "adapter_label": "Apollo shared Higgins mailbox monitor",
+               "occurred_at": now_utc(), "resolved_at": None, "enforcement_evidence": None, "investigation_case_id": case_id,
+               "supporting_references": [], "created_at": now_utc(), "updated_at": now_utc(), "deleted_at": None}
+        inserted = await db.patrol_events.update_one({"device_id": owner, "event_id": event_id}, {"$setOnInsert": doc}, upsert=True)
+        if inserted.upserted_id:
+            await push_owner_alert(PatrolEvent.from_mongo(doc))
+    await db.mailbox_assessment_receipts.update_one(selector, {"$set": {"state": "complete", "processed_at": now_utc(), "updated_at": now_utc()}})
+
+
+async def finalise_pending_assessments() -> None:
+    async for receipt in db.mailbox_assessment_receipts.find({"state": "submitted"}, {"_id": 0}).limit(100):
+        await _finalise_receipt(receipt)
 
 
 async def monitor_enabled_mailboxes_once() -> None:
     for provider, collection, scanner in (("gmail", db.gmail_connections, gmail.scan_inbox),):
         async for row in collection.find({"monitoring_enabled": True}, {"_id": 0, "device_id": 1}):
             try:
-                messages = await scanner(row["device_id"])
-                for message in messages[:10]:
-                    await _assess(provider, row["device_id"], message)
-                await collection.update_one({"device_id": row["device_id"]}, {"$set": {"monitor_last_checked_at": now_utc(),
-                    "monitor_last_error_at": None, "monitor_last_error": None}})
-            except Exception as exc:
+                for message in await scanner(row["device_id"]):
+                    await _submit_shared_case(provider, row["device_id"], message)
+                await collection.update_one({"device_id": row["device_id"]}, {"$set": {"monitor_last_checked_at": now_utc(), "monitor_last_error_at": None, "monitor_last_error": None}})
+            except Exception as exc:  # noqa: BLE001
                 logger.warning("%s mailbox monitoring failed for one device: %s", provider, type(exc).__name__)
-                await collection.update_one({"device_id": row["device_id"]}, {"$set": {"monitor_last_error_at": now_utc(),
-                    "monitor_last_error": type(exc).__name__}})
+                await collection.update_one({"device_id": row["device_id"]}, {"$set": {"monitor_last_error_at": now_utc(), "monitor_last_error": type(exc).__name__}})
 
 
 async def mailbox_monitor_loop() -> None:
+    loop = asyncio.get_running_loop(); next_scan = 0.0
     while True:
         try:
-            await monitor_enabled_mailboxes_once()
+            await finalise_pending_assessments()
+            if loop.time() >= next_scan:
+                await monitor_enabled_mailboxes_once(); next_scan = loop.time() + SCAN_SECONDS
         except asyncio.CancelledError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             logger.warning("mailbox monitor pass failed: %s", type(exc).__name__)
-        await asyncio.sleep(15 * 60)
+        await asyncio.sleep(PENDING_SECONDS)

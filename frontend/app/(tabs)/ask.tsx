@@ -1,4 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
+import * as Crypto from "expo-crypto";
 import SendHorizontal from "lucide-react-native/icons/send-horizontal";
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
@@ -31,8 +32,8 @@ const useStyles = makeStyles((c) => ({
 export default function Ask() {
   const s = useStyles(); const { colors } = useTheme(); const insets = useSafeAreaInsets(); const router = useRouter();
   const { deviceId } = useApollo();
-  const params = useLocalSearchParams<{ context?: string; prompt?: string; handoffId?: string }>();
-  const { state, start, ask, retry, cancel, remove, attach, retryDelete } = useInvestigation();
+  const params = useLocalSearchParams<{ context?: string; prompt?: string; handoffId?: string; operationId?: string }>();
+  const { state, start, ask, retry, cancel, remove, attach, retryDelete } = useInvestigation(params.operationId ? String(params.operationId) : null);
   const [text, setText] = useState(""); const [activeContext, setActiveContext] = useState<HigginsIssueContext | null>(null);
   const [routeError, setRouteError] = useState<string | null>(null);
   const seenRoute = useRef<string | null>(null); const scrollRef = useRef<ScrollView>(null);
@@ -44,7 +45,9 @@ export default function Ask() {
     setText(""); setRouteError(null);
     if (state.caseData && state.phase !== "expired" && state.phase !== "idle") { void ask(clean); return; }
     const { input, files } = createCaseInput(context ?? activeContext, clean);
-    void start(input, files).then((created) => { if (created && (context ?? activeContext)?.event_id) void rememberCaseForEvent((context ?? activeContext)!.event_id!, created.id); });
+    const operationId = Crypto.randomUUID();
+    router.setParams({ operationId });
+    void start(input, files, operationId).then((created) => { if (created && (context ?? activeContext)?.event_id) void rememberCaseForEvent((context ?? activeContext)!.event_id!, created.id); });
   };
 
   useEffect(() => {
@@ -60,7 +63,9 @@ export default function Ask() {
     stopHiggins();
     if (context.case_id) { void attach(context.case_id).then((c) => { if (c && question) void ask(question); }); return; }
     const { input, files } = createCaseInput(context, question);
-    void start(input, files).then((created) => { if (created && context.event_id) void rememberCaseForEvent(context.event_id, created.id); });
+    const operationId = Crypto.randomUUID();
+    router.setParams({ operationId });
+    void start(input, files, operationId).then((created) => { if (created && context.event_id) void rememberCaseForEvent(context.event_id, created.id); });
   }, [params.handoffId, params.context, params.prompt, deviceId, router, start, attach, ask]);
 
   const deleteAll = async () => { stopHiggins(); clearHandoffTransfers(); setActiveContext(null); setRouteError(null); await remove(); };

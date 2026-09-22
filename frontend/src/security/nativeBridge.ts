@@ -43,6 +43,7 @@ export interface ApolloSecurityNativeModule {
   checkSenderReputation(sender: string): Promise<string>;
   registerShareHandler(): Promise<string>;
   getRecentMessageSecurityEvents(): Promise<string>;
+  acknowledgeMessageSecurityEvents(idsJson: string): Promise<string>;
   /** Text Guard (Android only): deep-links to Settings > Notification access so the person can
    * grant/revoke Apollo's NotificationListenerService permission (ApolloSmsListenerService.kt).
    * iOS reports { opened: false } — there is no equivalent settings screen on that platform. */

@@ -181,6 +181,17 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
                 ledger[key] = {"output": output, "researchCalls": ctx.research_calls, "at": now_utc().isoformat()}
                 await save({})
             responses.append(types.Part.from_function_response(name=entry["name"], response={"result": output}))
+            # Function-response JSON cannot carry usable image pixels. A committed PDF continuation therefore
+            # appends each newly published visual as an actual multimodal Part in the SAME next Gemini request.
+            # On interruption the ledger retains the manifest-backed evidence IDs and this block reconstructs the
+            # bytes before any new provider call, so image delivery is recoverable rather than best effort.
+            if entry["name"] == "continue_document" and isinstance(output, dict):
+                for visual_id in output.get("visualEvidenceIds", []):
+                    visual = await repo.get_evidence(owner, case["case_id"], visual_id)
+                    data = await repo.read_bytes(owner, case["case_id"], visual_id)
+                    responses.append(types.Part(text=f"CONTINUED PDF VISUAL EVIDENCE {visual_id} (registered image; inspect the following part)."))
+                    responses.append(types.Part.from_bytes(data=data, mime_type=visual.get("media_type") or "image/png"))
+                    pending_marks.append((visual_id, 0, len(data), len(data)))
         contents.append(types.Content(role="user", parts=responses))
         pending_batch = []
         await save({"requestId": ctx.pending_request["id"]} if ctx.pending_request else {})

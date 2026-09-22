@@ -1,3 +1,27 @@
+## Current 7-package continuation outcome (supersedes older open-item wording below)
+
+Verification for this pass is intentionally bounded: TypeScript compilation, ESLint, provider-disabled pytest fixtures, Rust unit/source checks and `cargo check`. No live Gemini probe, browser automation, scenario campaign, testing agent or managed AI key was used as acceptance evidence.
+
+| Work | Current outcome | Implementation evidence | Bounded verification | Refreshed install needed? |
+|---|---|---|---|---|
+| Previously supported source corrections | ✅ remain closed | No supported correction was reopened or relabelled as a new regression | Source review preserved | No |
+| Recovery and retention finding | ✅ repaired | Supervised maintenance runs temporary-content cleanup, case expiry/deletion retries, tombstones, job/device-inbox recovery and family-audio cleanup; component heartbeat/failure state is exposed at `/api/health` | maintenance pytest 3/3; recovery pytest; live health returned `status=ok`, worker healthy, zero component failures | Backend only — no |
+| Operation ownership finding | ✅ repaired | `transferManager.ts` is now the application-owned executor/retainer for create/upload/append/retry/terminal/expiry state; every callback is scoped by exact operation ID and bound case ID; Ask route/Gate submissions reattach by that operation ID | `tsc --noEmit`; ESLint clean; no global latest-operation lookup remains | **Yes** — next Android/iOS/desktop client candidate |
+| PDF continuation finding | ✅ repaired | Committed continuation manifest repairs parent links/extraction coverage and replays durable derived image bytes into Gemini model parts | provider-disabled recovery/PDF pytest included in 35/35 | Backend only — no |
+| Windows filtering finding | ✅ repaired | Generated PowerShell uses `$apolloTargetHost` throughout; reserved `$host` is absent from the generated Windows command | direct generated-command assertion; Rust unit test 1/1; `cargo check` passed | **Yes** — next Windows package |
+| Package 3 — depth and limits | ✅ implementation complete | Replayable `continue_clues`, bounded PDF/text continuation, explicit research entity cursor, complete handoff findings/actions, complete Gmail link destinations, structured device-observation provenance, explicit request rejection instead of silent primary-evidence clipping | provider-disabled recovery suite 35/35; Python lint/compile; TypeScript/ESLint | Backend and client changes; client portion needs refreshed candidate |
+| Package 4 — Gate/background behaviour | ✅ implementation complete | Android Text queue is AES-GCM/Keystore protected and acknowledge-after-durable-submit; automatic Text work uses the shared case manager; Gmail monitoring submits durable Higgins cases and finalises redacted Patrol summaries; Gate intake carries complete protected originals | mailbox pytest 1/1; Gmail 11/11; maintenance 3/3; TypeScript/ESLint | **Yes** for protected native Text queue; backend email worker does not |
+| Package 5 — actions/reports/lifecycle | ✅ implementation complete | Unobservable Settings changes have explicit user-reported confirmation evidence; saved reports page and delete; family audio upload has durable orphan-cleanup records plus retry sweeps | recovery suite includes settings/report/audio lifecycle; TypeScript/ESLint | UI changes need refreshed client; backend cleanup does not |
+| Package 6 — native delivery | 🟡 unblocked preparation continued | Windows source/check fixed; current Android correction set is consolidated in source; iOS targets/config remain prepared | Rust unit + `cargo check`; current APK deliberately not rebuilt during this repair pass | Next Android candidate required; iOS requires Apple signing/UDIDs; Windows/macOS artifacts require matching build hosts/signing |
+| Package 7 — production protection | 🟡 staged, production cutover separate | Existing GuardDog acceptance selector remains non-production-only and configuration rejects candidate selection in production | source/config inspection plus TypeScript/ESLint | Production protection implementation remains backlog; no production-default cutover claimed |
+
+### Current external blockers and artifact truth
+
+- The existing Android APK remains available for device feedback but **does not contain** this pass's operation manager, report UI or protected native Text queue.
+- Apple team credentials and test-device UDIDs block only the iOS signed internal artifact.
+- Trusted Windows/macOS installers require their platform build hosts and signing identities; source compilation is not represented as an installer.
+- Family voice upload requires owner-managed `FAMILY_STORAGE_*`; guardian email and push delivery retain their separately reported service-credential requirements.
+
 ## Revision-1 package status (2026-09-21, session 4) — S01–S12 from `Apollo_Complete_Developer_Instructions-1.md` §0
 
 | ID | Status | Files | Engineering checks performed | Owner acceptance |

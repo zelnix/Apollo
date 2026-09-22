@@ -7,6 +7,7 @@ import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
 import { Body, Button, Card, Pill, type Tone } from "@/src/components/ui";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import type { CaseState } from "@/src/investigation/caseStore";
+import * as investigationApi from "@/src/investigation/client";
 import type { ActionProposal, Attention, SourceReference } from "@/src/investigation/types";
 import { isExecutable, runAction, type ActionOutcome } from "@/src/settings/actions";
 import { onRecheck, retryFailedAttempt } from "@/src/settings/recheck";
@@ -40,6 +41,11 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
   const s = useStyles(); const { colors } = useTheme();
   const [expanded, setExpanded] = useState(false); const [showSources, setShowSources] = useState(false);
   const [actionNote, setActionNote] = useState<string | null>(null);
+  const [confirmablePlanId, setConfirmablePlanId] = useState<string | null>(null);
+  const [reports, setReports] = useState<investigationApi.SavedReport[]>([]);
+  const [reportsOpen, setReportsOpen] = useState(false);
+  const [reportNext, setReportNext] = useState<number | null>(null);
+  const [reportNote, setReportNote] = useState<string | null>(null);
   // Fresh recheck after returning from a Settings destination opened for THIS case (recheck.ts completes the pending attempt).
   useEffect(() => onRecheck((o) => {
     if (!state.caseData || o.attempt.caseId !== state.caseData.id) return;
@@ -47,8 +53,13 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
     const verdict = o.plan ? ({ correct: "The setting now matches what Higgins asked for.", not_yet_correct: "The setting is not yet at the expected value.", cannot_observe: "Apollo cannot read this setting here — only you can confirm it.", failed: "The re-check failed." } as const)[o.plan.outcome] : "";
     setActionNote(`Back from Settings — ${fresh}. ${verdict} ${o.plan?.explanation ?? ""}`.trim());
     setFailedRecheck(o.attempt.status === "failed" && o.plan?.outcome === "failed");
+    setConfirmablePlanId(o.plan?.outcome === "cannot_observe" ? o.attempt.planId : null);
   }), [state.caseData]);
   const [failedRecheck, setFailedRecheck] = useState(false);
+  useEffect(() => {
+    if (!state.caseData) { setReports([]); setReportNext(null); return; }
+    void investigationApi.listReports().then((result) => { setReports(result.items); setReportNext(result.nextCursor); }).catch(() => setReportNote("Saved reports could not be loaded."));
+  }, [state.caseData]);
 
   const { phase, response, sources, turns, caseData, progress, failure, error, question } = state;
   const working = phase === "creating" || phase === "working" || phase === "reconnecting" || phase === "waiting_device";
@@ -99,7 +110,31 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
         <Text style={s.muted}>{action.instruction}</Text>
       </View>)}
       {actionNote ? <Text style={s.muted} testID="inv-action-note">{actionNote}</Text> : null}
+      {confirmablePlanId && caseData ? <Button testID="inv-settings-user-confirm" variant="ghost" label="I checked this setting myself" onPress={() => {
+        void investigationApi.confirmSettingsPlan(caseData.id, confirmablePlanId, true).then((result) => {
+          setConfirmablePlanId(null); setActionNote(result.explanation);
+        }).catch(() => setActionNote("Apollo could not record your confirmation. Try again."));
+      }} /> : null}
       {failedRecheck ? <Button testID="inv-recheck-retry" variant="ghost" label="Retry the fresh check" onPress={() => { setFailedRecheck(false); void retryFailedAttempt(); }} /> : null}
+      {caseData ? <View style={{ gap: spacing.xs }} testID="inv-report-controls">
+        <Button testID="inv-report-save" variant="ghost" label="Save a redacted report" onPress={() => {
+          void investigationApi.saveReport(caseData.id, response.revision).then(({ reportId }) => investigationApi.listReports().then((result) => {
+            setReports(result.items); setReportNext(result.nextCursor); setReportNote(`Saved report ${reportId.slice(0, 8)}. Temporary evidence is not copied into it.`);
+          })).catch(() => setReportNote("The report could not be saved."));
+        }} />
+        <Button testID="inv-reports-toggle" variant="ghost" label={`${reportsOpen ? "Hide" : "Manage"} saved reports (${reports.length}${reportNext !== null ? "+" : ""})`} onPress={() => setReportsOpen((value) => !value)} />
+        {reportsOpen ? <View style={{ gap: spacing.sm }} testID="inv-reports-list">{reports.map((report) => <View key={report.reportId} style={s.source} testID={`inv-report-${report.reportId}`}>
+          <Text style={s.text}>{report.overview}</Text><Text style={s.muted}>Saved {new Date(report.savedAt).toLocaleDateString()} · historical snapshot</Text>
+          <Button testID={`inv-report-delete-${report.reportId}`} variant="ghost" label="Delete saved report" onPress={() => {
+            void investigationApi.deleteReport(report.reportId).then(() => { setReports((items) => items.filter((item) => item.reportId !== report.reportId)); setReportNote("Saved report deleted."); })
+              .catch(() => setReportNote("That report could not be deleted."));
+          }} />
+        </View>)}
+        {reportNext !== null ? <Button testID="inv-reports-load-more" variant="ghost" label="Load more reports" onPress={() => {
+          void investigationApi.listReports(reportNext).then((result) => { setReports((items) => [...items, ...result.items]); setReportNext(result.nextCursor); });
+        }} /> : null}</View> : null}
+        {reportNote ? <Text style={s.muted} testID="inv-report-note">{reportNote}</Text> : null}
+      </View> : null}
     </Card> : null}
     {question && phase === "waiting_user" ? <View style={s.question} testID="inv-question"><Text style={s.text}>{question.text}</Text><Text style={s.muted}>Why Higgins asks: {question.reasonNeeded}</Text>
       {question.answerType === "yes_no" ? <View style={s.row}><Button testID="inv-answer-yes" label="Yes" onPress={() => onAnswer?.("Yes")} /><Button testID="inv-answer-no" variant="ghost" label="No" onPress={() => onAnswer?.("No")} /></View> : null}

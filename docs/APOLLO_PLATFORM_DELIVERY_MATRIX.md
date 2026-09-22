@@ -1,5 +1,13 @@
 # Apollo platform delivery matrix (spec §1A / §16) — updated 2026-09-21, revision-1 package
 
+## Current correction-candidate impact
+
+- **Existing Android APK:** remains the last installable feedback artifact. It predates the current frontend/native corrections and must not be cited as evidence for strict operation ownership, report management or the AES-GCM protected Text notification inbox.
+- **Next Android candidate:** required to deliver those frontend/native changes. It is intentionally consolidated for the next candidate rather than rebuilt during this repair pass.
+- **Backend-only changes:** maintenance recovery, PDF continuation, mailbox Higgins coordination, saved-report deletion and lifecycle cleanup are server changes and do not require an APK rebuild.
+- **Desktop:** generated Windows PowerShell now avoids the reserved `$host` variable; its Rust unit passed and the Tauri crate passed `cargo check`. No Windows/macOS installer was produced.
+- **iOS:** implementation/configuration work remains unblocked; signed delivery is blocked only by the Apple team/device prerequisites already recorded below.
+
 Status vocabulary: `implemented` (code present and wired), `partial` (some operations real, rest reported `not_implemented`),
 `not_implemented` (open work, never relabelled "unsupported"), `os_restricted` (cited vendor constraint). Build status is the
 actual artifact outcome, not a claim. Owner scenario acceptance is **deferred — owner evaluation** for every row.

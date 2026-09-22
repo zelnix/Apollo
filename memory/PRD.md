@@ -1,3 +1,31 @@
+## Current continuation — 7-package mandate repair and Packages 3–5 completion
+
+### Problem statement
+Complete the remaining Apollo investigation lifecycle without reopening supported prior corrections: restore automatic durable recovery/retention, make mobile operations case-owned beyond screen lifetime, deliver recoverable PDF continuation images to Gemini, fix the generated Windows filter command, then complete investigation depth/limits, Gate background behaviour, guided actions, saved reports and cleanup. Use only the owner's `GEMINI_API_KEY`; keep live provider access disabled during bounded verification.
+
+### Architecture now implemented
+- **FastAPI/MongoDB:** supervised maintenance independently runs temporary-content cleanup, expiry/deletion retry, tombstone cleanup, job/device-inbox recovery and family-audio cleanup with component heartbeat/failure reporting. Gmail monitoring now creates durable temporary Higgins cases and only projects redacted terminal summaries to Patrol.
+- **Expo:** `transferManager.ts` owns create/upload/append execution, retry identity, terminal result retention and expiry by strict operation/case pair. Screens subscribe by explicit operation ID; they no longer attach the global latest operation.
+- **Evidence/research:** PDF continuation manifest replay repairs image delivery and parent coverage. Clue overflow has `continue_clues`; public research has an explicit entity cursor; device observations retain structured provenance; full protected Gate handoffs and Gmail link destinations are preserved.
+- **Lifecycle UX:** unobservable Settings changes may be recorded only as user-reported confirmation; saved reports are paged/deletable; voice uploads create durable orphan-cleanup ownership before object storage.
+- **Desktop/native:** Windows PowerShell generation uses `$apolloTargetHost`; Android Text notification content is protected with Android Keystore AES-GCM and removed only after exact durable submission acknowledgement.
+
+### Verification
+- Frontend: `tsc --noEmit` passed; `frontend/src` and `frontend/app` ESLint passed.
+- Backend bounded suites: recovery/PDF/ownership-adjacent lifecycle **35/35**, maintenance **3/3**, mailbox shared-engine **1/1**, Gmail **11/11**; `/api/health` returned healthy worker/component status. Provider calls were hard-disabled.
+- Desktop: generated-command assertion passed; Windows command Rust unit **1/1**; `cargo check --jobs 2` passed.
+- Not used for acceptance: live Gemini, scenario/browser automation, testing agent or managed AI keys.
+
+### Priorities
+- **P0:** No outstanding finding from the four-item repair list. Keep health datetime normalization and strict operation/case pairing covered.
+- **P1:** Produce the next Android correction candidate after this repair pass, then obtain device feedback for the protected Text queue and screen reattachment. Build iOS when Apple signing/team and device UDIDs are available. Produce Windows/macOS packages on matching signed hosts.
+- **P2:** Production-protection implementation remains backlog; production-default cutover is a separate approval/evidence decision. Continue desktop WFP/Network Extension implementation separately from manual Gate availability.
+
+### Artifact truth and external blockers
+- Existing APK remains available but does not contain this continuation's frontend/native changes.
+- Apple credentials/UDIDs block only signed iOS delivery. Windows/macOS hosts/signing block only trusted desktop installers.
+- Owner-managed family storage and separately configured email/push credentials block only those service-backed flows.
+
 ## Session 5 (2026-09-21) — builds + source-review corrections
 
 - **Android `device-test` APK BUILT**: EAS build `e32f6068-b349-4de8-ab5d-8c950a6596bf`, commit `fa9bf2f`, APK https://expo.dev/artifacts/eas/-R5J9ohNQ6k-MxXloAh_NuawortWikr6zDUyXPbaRlE.apk

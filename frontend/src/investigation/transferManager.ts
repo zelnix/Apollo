@@ -1,85 +1,197 @@
+import * as Crypto from "expo-crypto";
+
 import { disposePickerCopy } from "@/src/domain/fileCopyLifecycle";
-import type { FileUploadHandle } from "./client";
-import type { CreateCase } from "./types";
+import * as api from "./client";
+import { currentDeviceProfile } from "./deviceBroker";
+import type { CreateCase, InvestigationCase, Job, Submission } from "./types";
 
-interface TransferFile { uri: string; name: string; mediaType: string }
-export interface TransferTurn { turnId: string; key: string; message: string }
-export type TransferPhase = "reserved" | "reading" | "uploading" | "submitting" | "failed" | "expired";
+interface OperationFile { uri: string; name: string; mediaType: string }
+export interface OperationTurn { turnId: string; key: string; message: string }
+export type OperationPhase = "reserved" | "creating" | "reading" | "uploading" | "appending" | "submitting" | "submitted" | "settled" | "failed" | "expired" | "cancelled";
 
-export interface PendingTransfer {
-  operationId: string; caseId: string; files: TransferFile[]; question: string; fileIndex: number;
-  handle: FileUploadHandle; revision: number; phase: TransferPhase; error: string | null;
-  turn: TransferTurn | null; controller: AbortController; closed: boolean;
-}
-
-const transfers = new Map<string, PendingTransfer>();
-const closedOperations = new Set<string>();
-const timers = new Map<string, ReturnType<typeof setTimeout>>();
-const listeners = new Set<(record: PendingTransfer) => void>();
-
-function notify(record: PendingTransfer) { for (const listener of listeners) listener(record); }
-function release(record: PendingTransfer, phase: "expired" | "failed" = "expired") {
-  record.closed = phase === "expired"; record.phase = phase; record.controller.abort();
-  record.handle = { ...record.handle, bytes: null }; const files = [...record.files]; record.files.splice(0);
-  for (const file of files) void disposePickerCopy(file.uri, true);
-  if (record.closed) closedOperations.add(record.operationId);
-  notify(record);
-}
-function schedule(record: PendingTransfer) {
-  const prior = timers.get(record.caseId); if (prior) clearTimeout(prior);
-  const delay = Math.max(0, Date.parse(record.handle.expiresAt) - Date.now());
-  timers.set(record.caseId, setTimeout(() => {
-    const current = transfers.get(record.caseId); if (!current || current.operationId !== record.operationId) return;
-    release(current); transfers.delete(record.caseId); timers.delete(record.caseId);
-  }, delay));
-}
-
-export function retainTransfer(record: PendingTransfer): PendingTransfer | null {
-  if (closedOperations.has(record.operationId)) return null;
-  const current = transfers.get(record.caseId);
-  if (current && current.operationId === record.operationId) {
-    const controller = current.controller; Object.assign(current, record, { controller }); schedule(current); notify(current); return current;
-  }
-  transfers.set(record.caseId, record); schedule(record); notify(record); return record;
-}
-export function updateTransfer(caseId: string, operationId: string, update: Partial<PendingTransfer>): PendingTransfer | null {
-  const record = transfers.get(caseId);
-  if (!record || record.operationId !== operationId || record.closed || closedOperations.has(operationId)) return null;
-  Object.assign(record, update); schedule(record); notify(record); return record;
-}
-export function getTransfer(caseId: string): PendingTransfer | null { return transfers.get(caseId) ?? null; }
-export function latestTransfer(): PendingTransfer | null { return [...transfers.values()].at(-1) ?? null; }
-export function subscribeTransfers(listener: (record: PendingTransfer) => void) { listeners.add(listener); return () => { listeners.delete(listener); }; }
-export function failTransfer(record: PendingTransfer, error: string) { record.error = error; record.phase = "failed"; notify(record); }
-export function completeTransfer(caseId: string, operationId: string) {
-  const record = transfers.get(caseId); if (!record || record.operationId !== operationId) return;
-  closedOperations.add(operationId); record.closed = true; record.handle = { ...record.handle, bytes: null };
-  transfers.delete(caseId); const timer = timers.get(caseId); if (timer) clearTimeout(timer); timers.delete(caseId); notify(record);
-}
-export function cancelTransfer(caseId: string) {
-  const record = transfers.get(caseId); if (record) release(record);
-  transfers.delete(caseId); const timer = timers.get(caseId); if (timer) clearTimeout(timer); timers.delete(caseId);
-}
-
-export interface PendingObservation {
-  operationId: string; caseId: string; input: Omit<CreateCase, "deviceProfile">; revision: number;
-  evidenceIndex: number; evidenceIds: string[]; turn: TransferTurn; phase: "appending" | "submitting" | "failed";
+export interface ManagedOperation {
+  operationId: string;
+  caseId: string | null;
+  kind: "create" | "append";
+  input: Omit<CreateCase, "deviceProfile">;
+  files: OperationFile[];
+  fileIndex: number;
+  handle: api.FileUploadHandle | null;
+  revision: number;
+  evidenceIndex: number;
+  evidenceIds: string[];
+  turn: OperationTurn;
+  phase: OperationPhase;
   error: string | null;
+  caseData: InvestigationCase | null;
+  job: Job | null;
+  expiresAt: string | null;
   controller: AbortController;
+  running: Promise<ManagedOperation> | null;
 }
-const observations = new Map<string, PendingObservation>();
-export function beginObservation(record: PendingObservation): PendingObservation {
-  const existing = observations.get(record.operationId); if (existing) return existing;
-  observations.set(record.operationId, record); return record;
+
+const operations = new Map<string, ManagedOperation>();
+const operationPairs = new Map<string, string>();
+const listeners = new Map<string, Set<(record: ManagedOperation) => void>>();
+const timers = new Map<string, ReturnType<typeof setTimeout>>();
+
+const pairKey = (operationId: string, caseId: string) => `${operationId}:${caseId}`;
+const notify = (record: ManagedOperation) => listeners.get(record.operationId)?.forEach((listener) => listener(record));
+
+function scheduleExpiry(record: ManagedOperation) {
+  const previous = timers.get(record.operationId);
+  if (previous) clearTimeout(previous);
+  if (!record.expiresAt || ["expired", "cancelled"].includes(record.phase)) return;
+  timers.set(record.operationId, setTimeout(() => expireOperation(record.operationId, record.caseId), Math.max(0, Date.parse(record.expiresAt) - Date.now())));
 }
-export function updateObservation(operationId: string, update: Partial<PendingObservation>): PendingObservation | null {
-  const record = observations.get(operationId); if (!record) return null; Object.assign(record, update); return record;
+
+function publish(record: ManagedOperation, update: Partial<ManagedOperation>) {
+  Object.assign(record, update);
+  scheduleExpiry(record);
+  notify(record);
+  return record;
 }
-export function observationForCase(caseId: string): PendingObservation | null {
-  return [...observations.values()].find((record) => record.caseId === caseId) ?? null;
+
+function bindCase(record: ManagedOperation, caseData: InvestigationCase) {
+  if (record.caseId && record.caseId !== caseData.id) throw new Error("Operation ownership conflict: this operation belongs to another investigation.");
+  record.caseId = caseData.id;
+  operationPairs.set(pairKey(record.operationId, caseData.id), record.operationId);
+  return publish(record, { caseData, revision: caseData.revision, expiresAt: caseData.expiresAt });
 }
-export function latestObservation(): PendingObservation | null { return [...observations.values()].at(-1) ?? null; }
-export function completeObservation(operationId: string) { observations.delete(operationId); }
-export function cancelObservations(caseId: string) {
-  for (const [id, record] of observations) if (record.caseId === caseId) { record.controller.abort(); observations.delete(id); }
+
+function requireOperation(operationId: string, caseId?: string | null): ManagedOperation | null {
+  const record = operations.get(operationId) ?? null;
+  if (!record || (caseId && (record.caseId !== caseId || operationPairs.get(pairKey(operationId, caseId)) !== operationId))) return null;
+  return record;
+}
+
+function releaseFiles(record: ManagedOperation) {
+  record.controller.abort();
+  if (record.handle) record.handle = { ...record.handle, bytes: null };
+  const files = [...record.files];
+  record.files.splice(0);
+  for (const file of files) void disposePickerCopy(file.uri, true);
+}
+
+async function runCreate(record: ManagedOperation): Promise<ManagedOperation> {
+  if (!record.caseData) {
+    publish(record, { phase: "creating", error: null });
+    const opened = await api.createCase({ ...record.input, question: record.files.length ? "" : record.input.question, deviceProfile: currentDeviceProfile() }, record.operationId);
+    bindCase(record, opened.case);
+    if (!record.files.length) {
+      const replayJob = opened.job ?? (opened.case.activeJobId ? (await api.getJob(opened.case.id, opened.case.activeJobId)).job : null);
+      return publish(record, { job: replayJob, phase: replayJob ? "submitted" : opened.case.response ? "settled" : "submitted" });
+    }
+  }
+  const caseId = record.caseId!;
+  for (let index = record.fileIndex; index < record.files.length; index++) {
+    const file = record.files[index];
+    const kind = file.mediaType.startsWith("image/") ? "image" : file.mediaType.startsWith("audio/") ? "audio" : /pdf|word|text/.test(file.mediaType) ? "document" : "attachment";
+    let handle = record.handle ?? api.createFileUploadHandle(record.expiresAt!);
+    const reserve = (next: api.FileUploadHandle) => {
+      handle = next;
+      publish(record, { handle: next, fileIndex: index, phase: next.bytes ? "uploading" : "reading", error: null });
+    };
+    const result = await api.uploadFileEvidenceResumable(caseId, record.revision, file, kind, handle, reserve, record.controller.signal);
+    await disposePickerCopy(file.uri, true);
+    publish(record, { revision: result.caseRevision, fileIndex: index + 1,
+      handle: index + 1 < record.files.length ? api.createFileUploadHandle(record.expiresAt!) : handle, phase: "uploading" });
+  }
+  publish(record, { phase: "submitting" });
+  const submitted = await api.submitTurn(caseId, { expectedRevision: record.revision, turnId: record.turn.turnId,
+    message: record.turn.message, answerToQuestionId: null, evidenceIds: [] }, record.turn.key, record.controller.signal);
+  const fresh = (await api.getCase(caseId)).case;
+  bindCase(record, fresh);
+  releaseFiles(record);
+  return publish(record, { job: submitted.job, phase: "submitted", error: null });
+}
+
+async function runAppend(record: ManagedOperation): Promise<ManagedOperation> {
+  const caseId = record.caseId!;
+  let revision = record.revision || (await api.getCase(caseId)).case.revision;
+  const submissions: Submission[] = [...record.input.submissions];
+  if (record.input.initialFindings.length) submissions.push({ clientItemId: `${record.operationId}-observations`, kind: "text", value: record.input.initialFindings.join("\n"), label: "fresh Apollo observations" });
+  publish(record, { phase: "appending", error: null });
+  for (let index = record.evidenceIndex; index < submissions.length; index++) {
+    const added = await api.addSubmissionEvidence(caseId, revision, submissions[index], record.controller.signal);
+    revision = added.caseRevision;
+    publish(record, { revision, evidenceIndex: index + 1, evidenceIds: [...record.evidenceIds, added.evidence.id] });
+  }
+  publish(record, { phase: "submitting" });
+  const submitted = await api.submitTurn(caseId, { expectedRevision: revision, turnId: record.turn.turnId,
+    message: record.turn.message, answerToQuestionId: null, evidenceIds: record.evidenceIds }, record.turn.key, record.controller.signal);
+  const fresh = (await api.getCase(caseId)).case;
+  bindCase(record, fresh);
+  return publish(record, { job: submitted.job, phase: "submitted", error: null });
+}
+
+function execute(record: ManagedOperation): Promise<ManagedOperation> {
+  if (record.running) return record.running;
+  if (["submitted", "settled"].includes(record.phase)) return Promise.resolve(record);
+  record.controller = new AbortController();
+  const task = (record.kind === "create" ? runCreate(record) : runAppend(record)).catch((error: unknown) => {
+    if (record.phase !== "expired" && record.phase !== "cancelled") publish(record, { phase: "failed", error: error instanceof Error ? error.message : "The investigation operation did not finish." });
+    return record;
+  }).finally(() => { record.running = null; notify(record); });
+  record.running = task;
+  notify(record);
+  return task;
+}
+
+export function startManagedOperation(operationId: string, input: Omit<CreateCase, "deviceProfile">, files: OperationFile[] = []) {
+  const existing = requireOperation(operationId);
+  if (existing) return execute(existing);
+  const record: ManagedOperation = { operationId, caseId: null, kind: "create", input, files: [...files], fileIndex: 0, handle: null,
+    revision: 0, evidenceIndex: 0, evidenceIds: [], turn: { turnId: Crypto.randomUUID(), key: Crypto.randomUUID(), message: input.question },
+    phase: "reserved", error: null, caseData: null, job: null, expiresAt: null, controller: new AbortController(), running: null };
+  operations.set(operationId, record);
+  notify(record);
+  return execute(record);
+}
+
+export function appendManagedOperation(operationId: string, caseData: InvestigationCase, input: Omit<CreateCase, "deviceProfile">) {
+  const existing = requireOperation(operationId, caseData.id);
+  if (existing) return execute(existing);
+  if (operations.has(operationId)) return Promise.reject(new Error("Operation ownership conflict: this operation belongs to another investigation."));
+  const record: ManagedOperation = { operationId, caseId: caseData.id, kind: "append", input, files: [], fileIndex: 0, handle: null,
+    revision: 0, evidenceIndex: 0, evidenceIds: [], turn: { turnId: Crypto.randomUUID(), key: Crypto.randomUUID(), message: input.question },
+    phase: "reserved", error: null, caseData, job: null, expiresAt: caseData.expiresAt, controller: new AbortController(), running: null };
+  operations.set(operationId, record);
+  operationPairs.set(pairKey(operationId, caseData.id), operationId);
+  scheduleExpiry(record);
+  notify(record);
+  return execute(record);
+}
+
+export function retryManagedOperation(operationId: string, caseId?: string | null) {
+  const record = requireOperation(operationId, caseId);
+  return record ? execute(record) : Promise.resolve(null);
+}
+
+export function managedOperation(operationId: string, caseId?: string | null) { return requireOperation(operationId, caseId); }
+
+export function subscribeManagedOperation(operationId: string, listener: (record: ManagedOperation) => void) {
+  const scoped = listeners.get(operationId) ?? new Set<(record: ManagedOperation) => void>();
+  scoped.add(listener); listeners.set(operationId, scoped);
+  const current = operations.get(operationId); if (current) listener(current);
+  return () => { scoped.delete(listener); if (!scoped.size) listeners.delete(operationId); };
+}
+
+export function settleManagedOperation(operationId: string, caseId: string, caseData: InvestigationCase, job: Job | null) {
+  const record = requireOperation(operationId, caseId);
+  if (record) publish(record, { caseData, job, phase: "settled", error: job?.failure?.message ?? null });
+}
+
+export function expireOperation(operationId: string, caseId?: string | null) {
+  const record = requireOperation(operationId, caseId);
+  if (!record) return;
+  releaseFiles(record);
+  publish(record, { phase: "expired", error: "This temporary investigation operation expired." });
+}
+
+export function cancelManagedOperation(operationId: string, caseId?: string | null) {
+  const record = requireOperation(operationId, caseId);
+  if (!record) return;
+  releaseFiles(record);
+  publish(record, { phase: "cancelled", error: null });
 }

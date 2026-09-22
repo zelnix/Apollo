@@ -446,10 +446,22 @@ async def purge_voice_audio(query: dict, reason: str) -> int:
 
 
 async def sweep_voice_audio() -> int:
-    """Retention sweep: expired audio and pending purges."""
+    """Retention sweep: expired audio, pending purges, and upload objects not claimed by a note row."""
     expired = await purge_voice_audio({"audio_expires_at": {"$lte": now_utc()}, "audio_state": {"$in": ["stored", None]}}, "retention_expired")
     retried = await purge_voice_audio({"audio_state": "purge_pending"}, "purge_retry")
-    return expired + retried
+    orphaned = 0
+    cutoff = now_utc() - timedelta(minutes=5)
+    async for task in db.family_audio_cleanup.find({"state": {"$in": ["reserved", "stored", "delete_pending"]}, "created_at": {"$lte": cutoff}}, {"_id": 0}):
+        claimed = await db.incident_notes.find_one({"note_id": task["note_id"], "audio_path": task["audio_path"], "audio_state": {"$ne": "purged"}}, {"_id": 1})
+        if claimed:
+            await db.family_audio_cleanup.delete_one({"cleanup_id": task["cleanup_id"]})
+            continue
+        ok = await delete_object(task["audio_path"])
+        if ok:
+            await db.family_audio_cleanup.delete_one({"cleanup_id": task["cleanup_id"]}); orphaned += 1
+        else:
+            await db.family_audio_cleanup.update_one({"cleanup_id": task["cleanup_id"]}, {"$set": {"state": "delete_pending", "last_attempt_at": now_utc()}})
+    return expired + retried + orphaned
 
 
 def _voice_sig(note_id: str, exp: int) -> str:
@@ -482,17 +494,30 @@ async def add_voice_note(request: Request, scent_id: str, device_id: str = Form(
         await db.family_links.update_one({"_id": link["_id"]}, {"$set": {"guardian_label": guardian_label}})
     note_id = uuid.uuid4().hex
     path = voice_note_path(device_id, note_id, ext)
+    cleanup_id = uuid.uuid4().hex
+    await db.family_audio_cleanup.insert_one({"cleanup_id": cleanup_id, "note_id": note_id, "audio_path": path, "state": "reserved", "created_at": now_utc()})
     try:
         stored = await put_object(path, data, ctype)
     except StorageError as exc:
+        await db.family_audio_cleanup.delete_one({"cleanup_id": cleanup_id})
         raise HTTPException(status_code=exc.status, detail=exc.detail)
+    await db.family_audio_cleanup.update_one({"cleanup_id": cleanup_id}, {"$set": {"state": "stored", "audio_path": stored.get("path", path), "stored_at": now_utc()}})
     note = {"note_id": note_id, "scent_id": scent_id, "protected_device_id": inc["protected_device_id"], "guardian_device_id": device_id,
             "guardian_label": guardian_label, "kind": "voice", "text": f"{guardian_label} left you a voice note.", "phone": link.get("guardian_phone", ""),
             "duration_s": round(float(duration_s), 1), "content_type": ctype, "size": stored.get("size", len(data)), "created_at": now_utc(),
             "transcript": "", "transcript_language": None, "transcript_status": "pending"}  # caption arrives asynchronously (services/transcribe.py)
     # Storage lifecycle (§10A): every stored voice note carries its retention deadline; audio is purged at expiry, on unlink of the
     # guardian relationship, or on incident removal. `audio_state` is the truthful availability the client and reports rely on.
-    await db.incident_notes.insert_one({**note, "audio_path": stored.get("path", path), "audio_state": "stored", "audio_expires_at": now_utc() + timedelta(days=VOICE_RETENTION_DAYS)})
+    try:
+        await db.incident_notes.insert_one({**note, "audio_path": stored.get("path", path), "audio_state": "stored", "audio_expires_at": now_utc() + timedelta(days=VOICE_RETENTION_DAYS)})
+    except Exception:
+        deleted = await delete_object(stored.get("path", path))
+        if deleted:
+            await db.family_audio_cleanup.delete_one({"cleanup_id": cleanup_id})
+        else:
+            await db.family_audio_cleanup.update_one({"cleanup_id": cleanup_id}, {"$set": {"state": "delete_pending", "last_attempt_at": now_utc()}})
+        raise HTTPException(status_code=503, detail="The voice note could not be attached. Apollo queued the uploaded audio for deletion.")
+    await db.family_audio_cleanup.delete_one({"cleanup_id": cleanup_id})
     task = asyncio.create_task(caption_voice_note(note_id, data, ext))
     _background.add(task)
     task.add_done_callback(_background.discard)

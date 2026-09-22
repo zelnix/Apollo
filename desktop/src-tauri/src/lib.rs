@@ -192,19 +192,24 @@ fn base64_utf16le(value: &str) -> String {
     out
 }
 
-#[cfg(target_os = "windows")]
-fn privileged_filter_update(action: &str, host: Option<&str>) -> Result<(), String> {
+#[cfg(any(target_os = "windows", test))]
+fn windows_filter_script(action: &str, host: Option<&str>) -> String {
     let host = host.unwrap_or("");
-    let script = format!(r#"$ErrorActionPreference='Stop'
-$path="$env:SystemRoot\System32\drivers\etc\hosts"; $start='{start}'; $end='{end}'; $action='{action}'; $host='{host}'
+    format!(r#"$ErrorActionPreference='Stop'
+$path="$env:SystemRoot\System32\drivers\etc\hosts"; $start='{start}'; $end='{end}'; $action='{action}'; $apolloTargetHost='{host}'
 $lines=[IO.File]::ReadAllLines($path); $base=New-Object 'System.Collections.Generic.List[string]'; $set=New-Object 'System.Collections.Generic.HashSet[string]'; $inside=$false
 foreach($line in $lines){{ if($line.Trim() -eq $start){{$inside=$true;continue}}; if($line.Trim() -eq $end){{$inside=$false;continue}}; if($inside){{$p=$line -split '\s+';if($p.Length -gt 1){{$null=$set.Add($p[1].ToLowerInvariant())}}}}else{{$base.Add($line)}} }}
-if($action -eq 'block'){{$null=$set.Add($host)}} elseif($action -eq 'unblock'){{$null=$set.Remove($host)}}
+if($action -eq 'block'){{$null=$set.Add($apolloTargetHost)}} elseif($action -eq 'unblock'){{$null=$set.Remove($apolloTargetHost)}}
 $output=New-Object 'System.Collections.Generic.List[string]';$output.AddRange($base);if($action -ne 'disable'){{$output.Add($start);foreach($d in ($set|Sort-Object)){{$output.Add("0.0.0.0 $d")}};$output.Add($end)}}
 $tmp=Join-Path (Split-Path $path) ('.apollo-hosts-'+[guid]::NewGuid().ToString('N'));[IO.File]::WriteAllLines($tmp,$output,(New-Object Text.UTF8Encoding($false)));Move-Item -LiteralPath $tmp -Destination $path -Force
-ipconfig /flushdns | Out-Null;$verify=[IO.File]::ReadAllLines($path);$managed=$false;$found=$false;foreach($line in $verify){{if($line.Trim() -eq $start){{$managed=$true;continue}};if($line.Trim() -eq $end){{$managed=$false;continue}};if($managed -and (($line -split '\s+')[1] -eq $host)){{$found=$true}}}}
+ipconfig /flushdns | Out-Null;$verify=[IO.File]::ReadAllLines($path);$managed=$false;$found=$false;foreach($line in $verify){{if($line.Trim() -eq $start){{$managed=$true;continue}};if($line.Trim() -eq $end){{$managed=$false;continue}};if($managed -and (($line -split '\s+')[1] -eq $apolloTargetHost)){{$found=$true}}}}
 if(($action -eq 'block' -and -not $found) -or ($action -eq 'unblock' -and $found)){{throw 'filter verification failed'}}"#,
-        start=FILTER_START,end=FILTER_END,action=action,host=host);
+        start=FILTER_START,end=FILTER_END,action=action,host=host)
+}
+
+#[cfg(target_os = "windows")]
+fn privileged_filter_update(action: &str, host: Option<&str>) -> Result<(), String> {
+    let script = windows_filter_script(action, host);
     let encoded = base64_utf16le(&script);
     let elevate = format!("$p=Start-Process powershell -Verb RunAs -Wait -PassThru -ArgumentList '-NoProfile','-EncodedCommand','{}';exit $p.ExitCode", encoded);
     let status = Command::new("powershell").args(["-NoProfile", "-Command", &elevate]).status().map_err(|e| e.to_string())?;
@@ -406,5 +411,16 @@ mod tests {
         let (domains, enabled) = parse_filter(&content);
         assert!(enabled);
         assert_eq!(domains, BTreeSet::from(["example.test".to_string(), "www.example.test".to_string()]));
+    }
+
+    #[test]
+    fn windows_filter_script_does_not_overwrite_powershell_host_variable() {
+        let script = windows_filter_script("block", Some("blocked.example"));
+        assert!(script.contains("$apolloTargetHost='blocked.example'"));
+        assert!(script.contains("$set.Add($apolloTargetHost)"));
+        assert!(script.contains("-eq $apolloTargetHost"));
+        assert!(!script.contains("$host="));
+        assert!(!script.contains("$set.Add($host)"));
+        assert!(!script.contains("-eq $host"));
     }
 }

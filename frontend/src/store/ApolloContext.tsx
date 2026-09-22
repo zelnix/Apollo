@@ -42,6 +42,8 @@ import { storage } from "@/src/utils/storage";
 import { shouldBypassSetup } from "@/src/testing/setupBypass";
 import { isInvestigationResult, patrolSafeSummary, type InvestigationResult } from "@/src/domain/investigation";
 import { RECOVERY_STEPS, type RecoveryKind } from "@/src/domain/recovery";
+import { startManagedOperation } from "@/src/investigation/transferManager";
+import { rememberCaseForEvent } from "@/src/investigation/caseIndex";
 
 const deviceMeta = () => ({ platform: Platform.OS, adapter_mode: securityAdapter.kind, app_version: "1.0.0", tz_offset_minutes: -new Date().getTimezoneOffset() });
 
@@ -555,13 +557,27 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         const items = await MessagingSdk.getRecentMessageSecurityEvents();
         for (const raw of items) {
           if (cancelled) return;
-          const item = raw as { sender?: unknown; text?: unknown };
+          const item = raw as { id?: unknown; status?: unknown; droppedCount?: unknown; sender?: unknown; text?: unknown };
+          const id = typeof item?.id === "string" ? item.id : "";
+          if (item.status === "overflow") {
+            const dropped = typeof item.droppedCount === "number" ? item.droppedCount : 0;
+            showToast(`${dropped} older message notification${dropped === 1 ? " was" : "s were"} not assessed because the protected queue was full.`, "growling");
+            if (id) await MessagingSdk.acknowledgeMessageSecurityEvents([id]);
+            continue;
+          }
           const text = typeof item?.text === "string" ? item.text : "";
-          if (!text.trim()) continue;
+          if (!id || !text.trim()) continue;
           const sender = typeof item?.sender === "string" ? item.sender : "";
-          // Notification access is explicit opt-in. Each captured item gets the same disclosed,
-          // purpose-limited investigation as a manual submission; raw content is then discarded.
+          // The native encrypted inbox is acknowledged only after this exact operation has a durable backend case.
           const outcome = await checkMessage(sender, text);
+          const operation = await startManagedOperation(`sms-notification-${id}`, {
+            gate: "text", question: "Investigate this new text-message notification, verify its claims and links, and tell me the safest next action.",
+            submissions: [{ clientItemId: `sms-${id}`, kind: "text", value: `From: ${sender}\n${text}`, label: "opt-in text notification" }],
+            initialFindingRefs: [], initialFindings: outcome.analysis.signalLabels,
+          });
+          if (!operation.caseData || !["submitted", "settled"].includes(operation.phase)) continue;
+          if (outcome.event) await rememberCaseForEvent(outcome.event.event_id, operation.caseData.id);
+          await MessagingSdk.acknowledgeMessageSecurityEvents([id]);
           if (outcome.event) showToast(`Apollo assessed a text message: ${outcome.event.headline}`, outcome.event.state);
         }
       } catch { /* native module unavailable or listener not granted — nothing to drain */ }

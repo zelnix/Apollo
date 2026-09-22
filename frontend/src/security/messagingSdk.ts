@@ -40,6 +40,7 @@ export const MessagingSdk = {
   checkSenderReputation: (sender: string) => { const m = getNativeModule(); return call<{ status: "unknown" | "trusted" | "reported" } | null>(m ? () => m.checkSenderReputation(sender) : undefined, null); },
   registerShareHandler: () => { const m = getNativeModule(); return call<{ registered: boolean }>(m ? () => m.registerShareHandler() : undefined, { registered: false }); },
   getRecentMessageSecurityEvents: () => { const m = getNativeModule(); return call<unknown[]>(m ? () => m.getRecentMessageSecurityEvents() : undefined, []); },
+  acknowledgeMessageSecurityEvents: (ids: string[]) => { const m = getNativeModule(); return call<{ acknowledged: number }>(m ? () => m.acknowledgeMessageSecurityEvents(JSON.stringify(ids)) : undefined, { acknowledged: 0 }); },
   /** Text Guard: opens the Android "Notification access" settings screen. No-op ({opened:false}) on iOS/web. */
   openSmsListenerSettings: () => { const m = getNativeModule(); return call<{ opened: boolean }>(m ? () => m.openSmsListenerSettings() : undefined, { opened: false }); },
 };

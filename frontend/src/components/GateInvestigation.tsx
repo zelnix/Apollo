@@ -25,8 +25,9 @@ function submissionIdFor(submission: object): string {
 
 export function GateInvestigation({ submission, context, question, label, testID, autoStart = true, eventId, continuityKey, onResolved }: { submission: object; context: HigginsIssueContext; question: string; label: string; testID: string; autoStart?: boolean; eventId?: string | null; continuityKey?: string; onResolved?: (resolved: boolean) => void }) {
   const router = useRouter();
-  const { state, start, ask, continueWith, retry, cancel, remove } = useInvestigation();
   const submissionId = submissionIdFor(submission);
+  const operationId = continuityKey ? `${continuityKey}:${submissionId}` : submissionId;
+  const { state, start, ask, continueWith, retry, cancel, remove } = useInvestigation(operationId);
   const started = useRef<string | null>(null);
   const busy = state.phase === "creating" || state.phase === "working" || state.phase === "reconnecting" || state.phase === "waiting_device";
   useEffect(() => { onResolved?.(!!state.response); }, [state.response, onResolved]);
@@ -41,11 +42,12 @@ export function GateInvestigation({ submission, context, question, label, testID
     if (continuityKey && state.caseData) {
       if (busy) return;
       started.current = submissionId;
-      void continueWith(input, `${continuityKey}:${submissionId}`);
+      void continueWith(input, operationId);
       return;
     }
     started.current = submissionId;
-    void (state.caseData ? remove().then(() => start(input, files)) : start(input, files)).then((c) => { if (c && boundEventId) void rememberCaseForEvent(boundEventId, c.id); });
+    const begin = state.caseData && state.operationId !== operationId ? remove().then(() => start(input, files, operationId)) : start(input, files, operationId);
+    void begin.then((c) => { if (c && boundEventId) void rememberCaseForEvent(boundEventId, c.id); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submissionId, state.caseData?.id, state.phase]);
   return <View style={{ gap: spacing.sm }} testID={testID}>

@@ -19,7 +19,7 @@ async function postWithKey<T>(path: string, body: Record<string, unknown>, key: 
   return (await res.json()) as T;
 }
 
-export function createCase(body: CreateCase, key = Crypto.randomUUID()) { return postWithKey<{ case: InvestigationCase; job: Job }>("/investigations", body as unknown as Record<string, unknown>, key); }
+export function createCase(body: CreateCase, key = Crypto.randomUUID()) { return postWithKey<{ case: InvestigationCase; job?: Job }>("/investigations", body as unknown as Record<string, unknown>, key); }
 export function getCase(caseId: string) { return apiGet<{ case: InvestigationCase }>(`/investigations/${caseId}`); }
 export function getJob(caseId: string, jobId: string) { return apiGet<{ job: Job; caseRevision: number; responseRevision: number | null }>(`/investigations/${caseId}/jobs/${jobId}`); }
 export function listTurns(caseId: string) { return apiGet<{ items: TurnCommit[]; total: number }>(`/investigations/${caseId}/turns`); }
@@ -36,12 +36,19 @@ export function addObservationEvidence(expectedRevision: number, caseId: string,
   return apiPost<{ evidence: EvidenceItem; caseRevision: number }>(`/investigations/${caseId}/evidence`, "investigation", { expectedRevision, clientItemId: Crypto.randomUUID(), parentId: null, kind: "observation", deviceResult: deviceResult as unknown as Record<string, unknown> });
 }
 export interface SettingsPlan { id: string; caseId: string; target: string; match: "exact" | "platform_only" | "unresolved"; mode: "permission_request" | "settings_link" | "instructions"; instructions: string[]; sourceIds: string[]; executionDescriptorId: string | null; expectedObservation: { capabilityId: string; field: string; expectedValue: boolean | string | null } | null }
+export interface SavedReport { reportId: string; caseId: string; gates: string[]; savedAt: string; overview: string; explanationMarkdown: string; assessment: string; attention: string; findings: string[]; uncertainties: string[]; historical: true }
 export function createSettingsPlan(caseId: string, body: { expectedRevision: number; target: string; device: DeviceProfile; capabilityId: string | null; expectedField: string; expectedValue: boolean | string | null }) {
   return apiPost<{ plan: SettingsPlan; researchNote: string | null }>(`/investigations/${caseId}/settings-plan`, "investigation", body as unknown as Record<string, unknown>);
 }
 export function recheckPlan(caseId: string, planId: string, deviceResultIds: string[]) {
   return apiPost<{ planId: string; checkedAt: string; outcome: "correct" | "not_yet_correct" | "cannot_observe" | "failed"; evidenceIds: string[]; explanation: string }>(`/investigations/${caseId}/settings-plan/${planId}/recheck`, "investigation", { deviceResultIds });
 }
+export function confirmSettingsPlan(caseId: string, planId: string, confirmed: boolean) {
+  return apiPost<{ planId: string; confirmed: boolean; checkedAt: string; evidenceId: string; verification: "user_reported"; explanation: string }>(`/investigations/${caseId}/settings-plan/${planId}/confirm`, "investigation", { confirmed });
+}
+export function saveReport(caseId: string, responseRevision: number) { return apiPost<{ reportId: string }>(`/investigations/${caseId}/reports`, "investigation", { responseRevision }); }
+export function listReports(cursor = 0, limit = 25) { return apiGet<{ items: SavedReport[]; total: number; nextCursor: number | null }>(`/investigations/reports/list?cursor=${cursor}&limit=${limit}`); }
+export function deleteReport(reportId: string) { return apiDelete<void>(`/investigations/reports/${reportId}`); }
 export function addTextEvidence(caseId: string, expectedRevision: number, text: string, label: string) {
   return apiPost<{ evidence: EvidenceItem; caseRevision: number }>(`/investigations/${caseId}/evidence`, "investigation", { expectedRevision, clientItemId: Crypto.randomUUID(), parentId: null, kind: "text", text, label });
 }

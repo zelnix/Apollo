@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, File, Form, Header, Request, Response, UploadFile
+from fastapi import APIRouter, Body, File, Form, Header, Query, Request, Response, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import TypeAdapter, ValidationError
 from pymongo import ReturnDocument
@@ -27,7 +27,7 @@ from services.higgins import jobs
 from services.higgins import provider
 from services.higgins import repository as repo
 from services.higgins import tools as toolbox
-from services.higgins.capacity import SPEECH_SEGMENT_CHARACTERS, policy
+from services.higgins.capacity import ITEMS, SPEECH_SEGMENT_CHARACTERS, TEXT, policy
 from services.higgins.contracts import (CreateCase, CreateUpload, DeviceProfile, DeviceResult, EvidenceSubmission, ExpectedObservation, ExpectedRevision,
                                         RecheckRequest, RecheckResult, ReportRequest, SettingsPlan, SettingsPlanRequest, SpeechRequest, SubmitTurn, UploadMetadata)
 from services.higgins.encryption import cipher, decrypt, encrypt
@@ -89,6 +89,11 @@ async def create_case(body: CreateCase, request: Request, idempotency_key: Optio
     owner = owner_of(request)
     cipher()
     key = _key(idempotency_key)
+    if len(body.submissions) + len(body.initial_findings) > ITEMS.value:
+        raise http(413, "budget_exhausted", f"This request contains more than {ITEMS.value} evidence items. Submit a bounded batch, then append the continuation to the same case.")
+    supplied_characters = len(body.question) + sum(len(item.value) for item in body.submissions) + sum(len(item) for item in body.initial_findings)
+    if supplied_characters > TEXT.value:
+        raise http(413, "budget_exhausted", f"This request contains more than {TEXT.value} text characters. Submit a bounded batch, then append the continuation to the same case.")
     existing, payload_digest = await repo.idempotent(owner, "create", key, body.model_dump_json())
     if existing:
         case = await repo.get_case(owner, existing["result"]["caseId"])
@@ -99,7 +104,7 @@ async def create_case(body: CreateCase, request: Request, idempotency_key: Optio
             await ev.ingest_url(owner, case, item.client_item_id, item.value, label=item.label)
         else:
             await ev.ingest_text(owner, case, item.client_item_id, item.value, label=item.label or "submitted text")
-    for index, finding in enumerate(body.initial_findings[:64]):
+    for index, finding in enumerate(body.initial_findings):
         await ev.ingest_text(owner, case, f"apollo-finding-{index}", finding, origin="apollo_inference", label="Apollo initial finding",
                              coverage=ev.Coverage(status="examined", unit="items", total=1, examined=1))
     question = redact_investigation_secrets(body.question)
@@ -781,7 +786,7 @@ async def settings_plan(case_id: str, body: SettingsPlanRequest, request: Reques
     settings_capability = _settings_descriptor_for(body.target, body.device.capability_ids)
     mode = "permission_request" if capability and capability.startswith("permission.") else ("settings_link" if settings_capability else "instructions")
     steps = [line.strip("-• ").strip() for line in research["answer"].splitlines() if line.strip() and not line.lower().startswith("limitations")]
-    plan = SettingsPlan(id=str(uuid.uuid4()), case_id=case_id, target=body.target, device=body.device, match=research["match"], mode=mode, instructions=steps[:20],
+    plan = SettingsPlan(id=str(uuid.uuid4()), case_id=case_id, target=body.target, device=body.device, match=research["match"], mode=mode, instructions=steps,
                         source_ids=[s["sourceId"] for s in research.get("sources", [])], execution_descriptor_id=capability or settings_capability,
                         expected_observation=ExpectedObservation(capability_id=capability, field=body.expected_field, expected_value=body.expected_value) if capability and body.expected_value is not None else None)
     await db.investigation_settings_plans.insert_one({"owner_id": owner, "case_id": case_id, "plan_id": plan.id, "plan_ciphertext": repo.enc_json(plan.wire()), "created_at": now_utc(),
@@ -819,6 +824,25 @@ async def recheck(case_id: str, plan_id: str, body: RecheckRequest, request: Req
         else:
             outcome, explanation = "not_yet_correct", "A fresh observation shows the setting is still not at the expected value. Reopen Settings and check the exact item named in the instructions."
     return JSONResponse(RecheckResult(plan_id=plan_id, checked_at=now_utc(), outcome=outcome, evidence_ids=used, explanation=explanation).wire(), headers=NO_STORE)
+
+
+@router.post("/investigations/{case_id}/settings-plan/{plan_id}/confirm")
+async def confirm_settings_plan(case_id: str, plan_id: str, request: Request, confirmed: bool = Body(embed=True)):
+    owner = owner_of(request)
+    case = await repo.get_case(owner, case_id)
+    row = await db.investigation_settings_plans.find_one({"owner_id": owner, "case_id": case_id, "plan_id": plan_id}, {"_id": 0})
+    if not row:
+        raise http(404, "not_found", "Unknown settings plan.")
+    plan = SettingsPlan.model_validate(repo.dec_json(row["plan_ciphertext"]))
+    item = await ev.ingest_text(owner, case, f"settings-confirmation-{plan_id}",
+                                f"The user reported that they {'completed and checked' if confirmed else 'could not complete'} the guided setting: {plan.target}.",
+                                origin="user_submission", label="user-reported settings confirmation",
+                                coverage=ev.Coverage(status="examined", unit="items", total=1, examined=1))
+    checked_at = now_utc()
+    await db.investigation_settings_plans.update_one({"owner_id": owner, "case_id": case_id, "plan_id": plan_id},
+                                                       {"$set": {"user_confirmed": confirmed, "user_confirmed_at": checked_at, "user_confirmation_evidence_id": item.id}})
+    return JSONResponse({"planId": plan_id, "confirmed": confirmed, "checkedAt": checked_at.isoformat(), "evidenceId": item.id,
+                         "verification": "user_reported", "explanation": "Recorded as your report; Apollo did not independently observe this setting."}, headers=NO_STORE)
 
 
 # ------------------------------------------------------------------ speech
@@ -908,10 +932,12 @@ async def save_report(case_id: str, body: ReportRequest, request: Request):
 
 
 @router.get("/investigations/reports/list")
-async def list_reports(request: Request):
+async def list_reports(request: Request, cursor: int = Query(default=0, ge=0), limit: int = Query(default=25, ge=1, le=50)):
     owner = owner_of(request)
-    rows = await db.investigation_reports.find({"owner_id": owner}, {"_id": 0}).sort("saved_at", -1).to_list(50)
-    return JSONResponse({"items": [repo.dec_json(r["report_ciphertext"]) for r in rows]}, headers=NO_STORE)
+    total = await db.investigation_reports.count_documents({"owner_id": owner})
+    rows = await db.investigation_reports.find({"owner_id": owner}, {"_id": 0}).sort("saved_at", -1).skip(cursor).limit(limit).to_list(limit)
+    next_cursor = cursor + len(rows) if cursor + len(rows) < total else None
+    return JSONResponse({"items": [repo.dec_json(r["report_ciphertext"]) for r in rows], "total": total, "nextCursor": next_cursor}, headers=NO_STORE)
 
 
 @router.get("/investigations/reports/{report_id}")
@@ -921,3 +947,12 @@ async def get_report(report_id: str, request: Request):
     if not row:
         raise http(404, "not_found", "Unknown report.")
     return JSONResponse(repo.dec_json(row["report_ciphertext"]), headers=NO_STORE)
+
+
+@router.delete("/investigations/reports/{report_id}", status_code=204)
+async def delete_report(report_id: str, request: Request):
+    owner = owner_of(request)
+    result = await db.investigation_reports.delete_one({"owner_id": owner, "report_id": report_id})
+    if not result.deleted_count:
+        raise http(404, "not_found", "Unknown report.")
+    return Response(status_code=204, headers=NO_STORE)

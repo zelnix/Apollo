@@ -6,6 +6,7 @@ import io
 import json
 import uuid
 from datetime import timedelta
+from starlette.requests import Request
 
 import pytest
 
@@ -129,6 +130,30 @@ def test_document_continuation_removes_only_the_extracted_page_gap():
 
 def test_document_continuation_publishes_a_later_pdf_slice():
     _run(lambda inv: _document_continuation_publishes_slice())
+
+
+def test_clue_cap_has_replayable_continuation_instead_of_silent_omission():
+    _run(lambda inv: _clue_continuation_is_replayable())
+
+
+def test_structured_device_observation_preserves_provenance_fields():
+    _run(lambda inv: _structured_observation_preserves_provenance())
+
+
+def test_saved_reports_page_and_delete_without_leaking_other_owners():
+    _run(lambda inv: _saved_reports_page_and_delete(inv))
+
+
+def test_settings_confirmation_is_user_reported_evidence():
+    _run(lambda inv: _settings_confirmation_is_user_reported(inv))
+
+
+def test_family_audio_orphan_cleanup_retries_and_removes_task():
+    _run(lambda inv: _family_audio_orphan_cleanup())
+
+
+def test_document_continuation_replay_repairs_manifest_and_delivers_images():
+    _run(lambda inv: _document_continuation_replay_delivers_images())
 
 
 def test_publication_manifest_excludes_late_or_wrong_attempt_children():
@@ -744,6 +769,124 @@ async def _document_continuation_publishes_slice():
     parent = await repo.get_evidence(owner, case["case_id"], root_id)
     assert result["evidenceId"] in parent["related_evidence_ids"]
     assert parent["coverage"]["permanentGap"] is False
+
+
+async def _clue_continuation_is_replayable():
+    from services.higgins import evidence as ev
+    owner = f"clues-{uuid.uuid4().hex[:8]}"
+    await repo.ensure_indexes()
+    case = await repo.create_case(owner, "text", None)
+    text = " ".join(f"https://clue-{index}.example.test/path" for index in range(ev.MAX_CLUES + 9))
+    parent = await ev.ingest_text(owner, case, "many-clues", text)
+    before = await repo.get_evidence(owner, case["case_id"], parent.id)
+    assert before["clue_inventory"]["remaining"] == 9
+    assert before["clue_inventory"]["nextCursor"] == 0
+    first = await ev.continue_clues(owner, case, parent.id, 0)
+    assert len(first["registered"]) == 9 and first["remaining"] == 0 and first["nextCursor"] is None
+    replay = await ev.continue_clues(owner, case, parent.id, 0)
+    assert replay["replayed"] is True
+    assert await db.investigation_evidence.count_documents({"owner_id": owner, "case_id": case["case_id"]}) == 1 + ev.MAX_CLUES + 9
+
+
+async def _structured_observation_preserves_provenance():
+    from services.higgins import evidence as ev
+    owner = f"observation-{uuid.uuid4().hex[:8]}"
+    await repo.ensure_indexes()
+    case = await repo.create_case(owner, "device", None)
+    result = {"requestId": "request-1", "caseId": case["case_id"], "caseRevision": 4, "capabilityId": "app.identity",
+              "status": "unavailable", "unavailableReason": "os_restricted", "observedAt": now_utc().isoformat(),
+              "values": {"packageName": "app.example.safe", "publisher": "Example"}, "simulation": None}
+    item = await ev.ingest_observation(owner, case, "observation-1", result)
+    stored = json.loads((await repo.read_bytes(owner, case["case_id"], item.id)).decode())
+    assert stored == result
+
+
+async def _saved_reports_page_and_delete(inv):
+    owner = f"reports-{uuid.uuid4().hex[:8]}"; other = f"other-{uuid.uuid4().hex[:8]}"
+    request = Request({"type": "http", "method": "GET", "path": "/", "headers": []}); request.state.device = {"device_id": owner}
+    for index in range(3):
+        report = {"reportId": f"report-{index}", "caseId": "case", "gates": ["text"], "savedAt": now_utc().isoformat(), "overview": str(index),
+                  "explanationMarkdown": "", "assessment": "uncertain", "attention": "review", "findings": [], "uncertainties": [], "sources": [], "historical": True}
+        await db.investigation_reports.insert_one({"owner_id": owner, "report_id": report["reportId"], "report_ciphertext": repo.enc_json(report), "saved_at": now_utc() + timedelta(seconds=index)})
+    await db.investigation_reports.insert_one({"owner_id": other, "report_id": "report-foreign", "report_ciphertext": repo.enc_json({"reportId": "report-foreign"}), "saved_at": now_utc()})
+    page = json.loads((await inv.list_reports(request, 0, 2)).body)
+    assert page["total"] == 3 and len(page["items"]) == 2 and page["nextCursor"] == 2
+    await inv.delete_report(page["items"][0]["reportId"], request)
+    assert await db.investigation_reports.count_documents({"owner_id": owner}) == 2
+    assert await db.investigation_reports.count_documents({"owner_id": other}) == 1
+
+
+async def _settings_confirmation_is_user_reported(inv):
+    from services.higgins.contracts import DeviceProfile, SettingsPlan
+    owner = f"settings-{uuid.uuid4().hex[:8]}"; case = await repo.create_case(owner, "device", None)
+    plan = SettingsPlan(id="plan-user-confirm", case_id=case["case_id"], target="Disable unknown app installation",
+                        device=DeviceProfile(platform="android", manufacturer="Example", model="Phone", os_version="1", form_factor="phone", locale="en", evidence_origin="native", capability_ids=[]),
+                        match="platform_only", mode="instructions", instructions=["Open Settings"], source_ids=[], execution_descriptor_id=None, expected_observation=None)
+    await db.investigation_settings_plans.insert_one({"owner_id": owner, "case_id": case["case_id"], "plan_id": plan.id,
+                                                       "plan_ciphertext": repo.enc_json(plan.wire()), "created_at": now_utc(), "expires_at": case["expires_at"]})
+    request = Request({"type": "http", "method": "POST", "path": "/", "headers": []}); request.state.device = {"device_id": owner}
+    response = json.loads((await inv.confirm_settings_plan(case["case_id"], plan.id, request, True)).body)
+    assert response["verification"] == "user_reported"
+    stored = await db.investigation_evidence.find_one({"owner_id": owner, "case_id": case["case_id"], "evidence_id": response["evidenceId"]}, {"_id": 0})
+    assert stored["origin"] == "user_submission" and stored["label"] == "user-reported settings confirmation"
+
+
+async def _family_audio_orphan_cleanup():
+    from routers import family
+    cleanup_id = uuid.uuid4().hex; path = f"orphan/{cleanup_id}.m4a"
+    await db.family_audio_cleanup.insert_one({"cleanup_id": cleanup_id, "note_id": uuid.uuid4().hex, "audio_path": path,
+                                              "state": "stored", "created_at": now_utc() - timedelta(minutes=10)})
+    original = family.delete_object
+    async def confirmed_delete(candidate: str) -> bool:
+        return candidate == path
+    family.delete_object = confirmed_delete
+    try:
+        assert await family.sweep_voice_audio() == 1
+    finally:
+        family.delete_object = original
+    assert await db.family_audio_cleanup.find_one({"cleanup_id": cleanup_id}) is None
+
+
+async def _document_continuation_replay_delivers_images():
+    from pypdf import PdfWriter
+    from services.higgins import coordinator
+    from services.higgins import evidence as ev
+    from services.higgins.contracts import Coverage, EvidenceItem
+
+    buffer = io.BytesIO(); writer = PdfWriter(); writer.add_blank_page(width=100, height=100); writer.write(buffer)
+    data = buffer.getvalue(); owner = f"persist-{uuid.uuid4().hex[:8]}"; await repo.ensure_indexes()
+    case = await repo.create_case(owner, "file", None); root_id = str(uuid.uuid4())
+    item = EvidenceItem(id=root_id, case_id=case["case_id"], client_item_id="visual-pdf", origin="user_submission", kind="document",
+                        parent_id=None, collected_at=now_utc(), expires_at=repo.utc(case["expires_at"]), media_type="application/pdf", byte_length=len(data),
+                        coverage=Coverage(status="partial", unit="pages", total=1, omitted_ranges=[{"start": 0, "end": 1, "reason": "not extracted"}], material_gap=True),
+                        transformations=[], label="PDF")
+    await repo.insert_evidence(owner, item, {}); await repo.store_bytes(owner, case["case_id"], root_id, data, item.expires_at)
+    first = await ev.continue_document(owner, case, root_id, 1, 1)
+    assert first["visualEvidenceIds"] and first["delivery"] == "committed_manifest"
+    await repo.update_evidence(owner, case["case_id"], root_id, {"$set": {"related_evidence_ids": [], "coverage.omittedRanges": [{"start": 0, "end": 1, "reason": "not extracted"}]}})
+    replay = await ev.continue_document(owner, case, root_id, 1, 1)
+    repaired = await repo.get_evidence(owner, case["case_id"], root_id)
+    assert replay["replayed"] is True and set(replay["visualEvidenceIds"]).issubset(set(repaired["related_evidence_ids"]))
+
+    captured = {}
+    original_generate = coordinator.provider.generate
+    async def capture(_system, contents, **_kwargs):
+        captured["contents"] = contents
+        raise RuntimeError("stop after payload capture")
+    coordinator.provider.generate = capture
+    job = await repo.create_job(owner, case, str(uuid.uuid4()), repo.digest("visual-ledger"), repo.digest("payload"), "turn", {"message": "q"})
+    checkpoint = {"contents": [], "rounds": 1, "toolLedger": {"visual-call": {"output": replay, "researchCalls": 0}},
+                  "pendingBatch": [{"key": "visual-call", "name": "continue_document", "args": {"evidenceId": root_id, "startPage": 1}}],
+                  "pendingMarks": [], "deviceResults": []}
+    await db.investigation_jobs.update_one({"owner_id": owner, "job_id": job["job_id"]}, {"$set": {"checkpoint_ciphertext": repo.enc_json(checkpoint)}})
+    async def progress(*_args): return None
+    try:
+        with pytest.raises(RuntimeError, match="payload capture"):
+            await coordinator.run_turn(owner, await repo.get_case(owner, case["case_id"]), await repo.get_job(owner, case["case_id"], job["job_id"]), progress)
+    finally:
+        coordinator.provider.generate = original_generate
+    delivered = [part for content in captured["contents"] for part in (content.parts or []) if part.inline_data]
+    assert delivered and delivered[0].inline_data.data
 
 
 async def _publication_manifest_is_attempt_isolated():

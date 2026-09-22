@@ -41,30 +41,30 @@ export interface HigginsIssueContext {
 
 const recent = new Map<string, number>();
 
-function bounded(values: string[] | undefined, limit: number, chars: number): string[] {
-  return (values ?? []).map((value) => redactUserSecrets(value).trim().slice(0, chars)).filter(Boolean).slice(0, limit);
+function protectedValues(values: string[] | undefined): string[] {
+  return (values ?? []).map((value) => redactUserSecrets(value).trim()).filter(Boolean);
 }
 
 export function issueContext(input: HigginsIssueContext): HigginsIssueContext {
   return {
     gate: input.gate,
-    issue_summary: redactUserSecrets(input.issue_summary).trim().slice(0, 240),
+    issue_summary: redactUserSecrets(input.issue_summary).trim(),
     assessment_state: input.assessment_state,
-    findings: input.findings.slice(0, 8).map((finding) => ({
-      summary: redactUserSecrets(finding.summary).trim().slice(0, 180),
+    findings: input.findings.map((finding) => ({
+      summary: redactUserSecrets(finding.summary).trim(),
       provenance: finding.provenance,
       status: finding.status,
     })).filter((finding) => finding.summary),
-    uncertainty: bounded(input.uncertainty, 6, 180),
-    confirmed_protective_actions: bounded(input.confirmed_protective_actions, 4, 180),
-    user_reported_actions: bounded(input.user_reported_actions, 6, 180),
+    uncertainty: protectedValues(input.uncertainty),
+    confirmed_protective_actions: protectedValues(input.confirmed_protective_actions),
+    user_reported_actions: protectedValues(input.user_reported_actions),
     available_actions: (input.available_actions ?? []).map((action) => ({
-      label: redactUserSecrets(action.label).trim().slice(0, 80),
-      instruction: redactUserSecrets(action.instruction).trim().slice(0, 240),
-    })).filter((action) => action.label && action.instruction).slice(0, 4),
+      label: redactUserSecrets(action.label).trim(),
+      instruction: redactUserSecrets(action.instruction).trim(),
+    })).filter((action) => action.label && action.instruction),
     case_id: typeof input.case_id === "string" && input.case_id ? input.case_id : undefined,
     event_id: typeof input.event_id === "string" && input.event_id ? input.event_id : undefined,
-    original_evidence: (input.original_evidence ?? []).map((item) => item.kind === "file" ? item : ({ kind: item.kind, value: redactUserSecrets(item.value).trim(), label: item.label?.slice(0, 80) })).filter((item) => item.kind === "file" ? !!item.uri : !!item.value),
+    original_evidence: (input.original_evidence ?? []).map((item) => item.kind === "file" ? item : ({ kind: item.kind, value: redactUserSecrets(item.value).trim(), label: item.label })).filter((item) => item.kind === "file" ? !!item.uri : !!item.value),
   };
 }
 
@@ -90,7 +90,7 @@ export function contextFromEvent(event: PatrolEvent, gate: HigginsGate, summary 
     assessment_state: event.state,
     findings: [
       { summary: event.what_happened, provenance: event.verified_block ? "observed" : "inferred", status: event.verified_block ? "confirmed" : event.state === "barking" ? "warning" : "uncertain" },
-      ...event.why.slice(0, 5).map((reason) => ({ summary: reason, provenance: "inferred" as const, status: "uncertain" as const })),
+      ...event.why.map((reason) => ({ summary: reason, provenance: "inferred" as const, status: "uncertain" as const })),
     ],
     uncertainty: event.verified_block ? [] : ["No protective block was confirmed for this issue."],
     confirmed_protective_actions: event.verified_block ? ["Apollo confirmed an on-device protective block."] : [],

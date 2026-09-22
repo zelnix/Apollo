@@ -137,9 +137,7 @@ def _extract_anchors(chunks: list[tuple[str, bytes]]) -> list[dict[str, str]]:
             text = a.get_text(" ", strip=True)
             if not text or not href.lower().startswith(("http://", "https://")):
                 continue
-            anchors.append({"text": text[:120], "href": href[:500]})
-            if len(anchors) >= 20:
-                return anchors
+            anchors.append({"text": text, "href": href})
     return anchors
 
 
@@ -157,7 +155,7 @@ def _extract_content(message: dict) -> tuple[str, list[dict[str, str]]]:
     if "<" in text and ">" in text:
         text = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", text, flags=re.IGNORECASE | re.DOTALL)
         text = re.sub(r"<[^>]+>", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()[:4000]
+    text = re.sub(r"\s+", " ", text).strip()
     return text, _extract_anchors(chunks)
 
 
@@ -186,5 +184,5 @@ async def scan_inbox(device_id: str, limit: int = 15) -> list[dict[str, Any]]:
             msg = got.json()
             h = _headers_of(msg)
             text, anchors = _extract_content(msg)
-            out.append({"id": msg.get("id", ""), "from": h.get("from", "")[:200], "subject": h.get("subject", "")[:300], "date": h.get("date", ""), "body": text, "links": anchors})
+            out.append({"id": msg.get("id", ""), "from": h.get("from", ""), "subject": h.get("subject", ""), "date": h.get("date", ""), "body": text, "links": anchors})
     return out

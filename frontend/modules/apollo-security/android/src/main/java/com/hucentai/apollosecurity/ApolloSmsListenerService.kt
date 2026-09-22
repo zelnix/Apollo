@@ -11,9 +11,17 @@ import android.provider.Settings
 import android.provider.Telephony
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
+import java.security.KeyStore
 import java.util.UUID
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 
 /**
  * Text Guard — Android NotificationListenerService.
@@ -33,19 +41,58 @@ class ApolloSmsListenerService : NotificationListenerService() {
   companion object {
     private const val PREFS = "apollo_textguard"
     private const val KEY_QUEUE = "captured_queue"
+    private const val KEY_DROPPED = "captured_queue_dropped"
+    private const val KEY_ALIAS = "apollo_textguard_notification_queue"
     private const val KEY_SEEN_KEYS = "seen_notification_keys"
     private const val MAX_QUEUE = 20
     private const val MAX_SEEN = 200
     private const val CHANNEL_ID = "apollo_text_guard"
     private const val NOTIFY_ID = 20260601
 
-    /** Read-and-clear in one shot ("mailbox" semantics) so the JS side never re-processes an item —
-     * see ApolloSecurityModule.getRecentMessageSecurityEvents / ApolloContext's poll loop. */
-    fun drainQueue(ctx: Context): JSONArray {
+    /** Protected durable inbox. Reading never acknowledges; JS removes exact IDs only after shared-case submission. */
+    fun readQueue(ctx: Context): JSONArray {
       val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-      val raw = prefs.getString(KEY_QUEUE, null) ?: return JSONArray()
-      prefs.edit().remove(KEY_QUEUE).apply()
-      return try { JSONArray(raw) } catch (_: Exception) { JSONArray() }
+      val encrypted = prefs.getString(KEY_QUEUE, null)
+      val dropped = prefs.getInt(KEY_DROPPED, 0)
+      val queue = try { encrypted?.let { JSONArray(decrypt(it)) } ?: JSONArray() } catch (_: Exception) { JSONArray() }
+      if (dropped > 0) queue.put(JSONObject().put("id", "__overflow__").put("status", "overflow").put("droppedCount", dropped))
+      return queue
+    }
+
+    fun acknowledge(ctx: Context, ids: Set<String>): Int {
+      val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+      val queue = try { prefs.getString(KEY_QUEUE, null)?.let { JSONArray(decrypt(it)) } ?: JSONArray() } catch (_: Exception) { JSONArray() }
+      val retained = JSONArray(); var removed = 0
+      for (index in 0 until queue.length()) {
+        val item = queue.optJSONObject(index) ?: continue
+        if (item.optString("id") in ids) removed++ else retained.put(item)
+      }
+      val edit = prefs.edit()
+      if (retained.length() == 0) edit.remove(KEY_QUEUE) else edit.putString(KEY_QUEUE, encrypt(retained.toString()))
+      if ("__overflow__" in ids) edit.remove(KEY_DROPPED)
+      edit.commit()
+      return removed
+    }
+
+    private fun key(): SecretKey {
+      val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+      (store.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
+      return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").apply {
+        init(KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+          .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build())
+      }.generateKey()
+    }
+
+    private fun encrypt(value: String): String {
+      val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
+      return Base64.encodeToString(cipher.iv, Base64.NO_WRAP) + "." + Base64.encodeToString(cipher.doFinal(value.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
+    }
+
+    private fun decrypt(value: String): String {
+      val parts = value.split('.', limit = 2); require(parts.size == 2)
+      val iv = Base64.decode(parts[0], Base64.NO_WRAP); val payload = Base64.decode(parts[1], Base64.NO_WRAP)
+      val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv)) }
+      return String(cipher.doFinal(payload), Charsets.UTF_8)
     }
 
     /** True only when Apollo itself is listed as an enabled notification-listener component —
@@ -90,14 +137,15 @@ class ApolloSmsListenerService : NotificationListenerService() {
         .put("text", text.take(1500))
         .put("packageName", sbn.packageName)
         .put("postedAtMs", sbn.postTime)
-      val queue = try { JSONArray(prefs.getString(KEY_QUEUE, null) ?: "[]") } catch (_: Exception) { JSONArray() }
+      val queue = try { prefs.getString(KEY_QUEUE, null)?.let { JSONArray(decrypt(it)) } ?: JSONArray() } catch (_: Exception) { JSONArray() }
       queue.put(item)
       val trimmedQueue = if (queue.length() > MAX_QUEUE) {
         val arr = JSONArray()
         for (i in (queue.length() - MAX_QUEUE) until queue.length()) arr.put(queue.get(i))
+        prefs.edit().putInt(KEY_DROPPED, prefs.getInt(KEY_DROPPED, 0) + queue.length() - MAX_QUEUE).apply()
         arr
       } else queue
-      prefs.edit().putString(KEY_QUEUE, trimmedQueue.toString()).apply()
+      prefs.edit().putString(KEY_QUEUE, encrypt(trimmedQueue.toString())).apply()
 
       maybeNudge(title, text)
     } catch (_: Exception) {

@@ -1,3 +1,14 @@
+## Current package continuation result
+
+- Supported earlier source corrections remain closed. The four outstanding findings are repaired: supervised recovery/retention, strict operation/case ownership, replayable PDF image delivery, and Windows `$apolloTargetHost` generation.
+- Package 3 is implemented with replayable clue/PDF/text depth, explicit research continuation and complete structured Gate observations rather than silent primary-evidence clipping.
+- Package 4 is implemented with a Keystore-encrypted, acknowledge-after-submit Android Text inbox and durable shared-Higgins Gmail monitoring.
+- Package 5 is implemented with user-reported Settings confirmation, paged/deletable saved reports and durable orphan-family-audio cleanup.
+- Package 6 preparation continued: Rust Windows unit and `cargo check` pass. Existing Android APK remains unchanged; the next correction candidate must include the frontend/native changes. iOS and signed desktop artifacts retain only their documented external signing/host blockers.
+- Package 7 remains correctly separated: acceptance configuration is non-production-only; production protection implementation is backlog and production-default cutover is a later evidence decision.
+
+Bounded verification only: provider-disabled pytest, TypeScript, ESLint and Rust checks. No live Gemini call, browser/scenario automation, testing agent or managed AI key was used.
+
 # Apollo — Continuation Record
 
 Baseline reconciled from GitHub commit `ceb8108f815a408e450d6890d28dc4b6bfb55b22` (this session's HEAD at start was

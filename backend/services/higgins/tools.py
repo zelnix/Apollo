@@ -37,9 +37,11 @@ DECLARATIONS = [
     types.FunctionDeclaration(name="continue_document", description="Extract a bounded later PDF page slice when inventory reports pages beyond the initial extraction budget. Extraction creates addressable evidence but does not claim semantic examination.",
         parameters=types.Schema(type="OBJECT", properties={"evidenceId": types.Schema(type="STRING"), "startPage": types.Schema(type="INTEGER"),
             "pageCount": types.Schema(type="INTEGER", nullable=True)}, required=["evidenceId", "startPage"])),
+    types.FunctionDeclaration(name="continue_clues", description="Register the next addressable page of links/phone clues when an evidence inventory reports deferred clues and a nextCursor.",
+        parameters=types.Schema(type="OBJECT", properties={"evidenceId": types.Schema(type="STRING"), "cursor": types.Schema(type="INTEGER", nullable=True)}, required=["evidenceId"])),
     types.FunctionDeclaration(name="research_public_sources", description="Grounded web research about public organisations, numbers, domains, claims or scams. Give only minimal public identifiers, never private text.",
         parameters=types.Schema(type="OBJECT", properties={"question": types.Schema(type="STRING"), "entities": types.Schema(type="ARRAY", items=types.Schema(type="STRING")),
-            "preferredDomains": types.Schema(type="ARRAY", items=types.Schema(type="STRING"))}, required=["question", "entities", "preferredDomains"])),
+            "preferredDomains": types.Schema(type="ARRAY", items=types.Schema(type="STRING")), "cursor": types.Schema(type="INTEGER", nullable=True)}, required=["question", "entities", "preferredDomains"])),
     types.FunctionDeclaration(name="inspect_url", description="Safely fetch a registered URL evidence item (including 'link clue' child items registered from messages/documents, and links discovered during research once registered via register_clue): redirect chain, final URL, title, visible text (paged), forms and links.",
         parameters=types.Schema(type="OBJECT", properties={"urlEvidenceId": types.Schema(type="STRING"), "purpose": types.Schema(type="STRING"),
             "cursor": types.Schema(type="STRING", nullable=True)}, required=["urlEvidenceId", "purpose"])),
@@ -49,7 +51,7 @@ DECLARATIONS = [
     types.FunctionDeclaration(name="lookup_breach", description="Known-breach exposure check for an email identifier evidence item the person explicitly submitted for that purpose.",
         parameters=types.Schema(type="OBJECT", properties={"identifierEvidenceId": types.Schema(type="STRING")}, required=["identifierEvidenceId"])),
     types.FunctionDeclaration(name="research_application", description="Research an app's real identity: package/bundle, publisher, store listing, known abuse.",
-        parameters=types.Schema(type="OBJECT", properties={"appEvidenceId": types.Schema(type="STRING"), "question": types.Schema(type="STRING")}, required=["appEvidenceId", "question"])),
+        parameters=types.Schema(type="OBJECT", properties={"appEvidenceId": types.Schema(type="STRING"), "question": types.Schema(type="STRING"), "cursor": types.Schema(type="INTEGER", nullable=True)}, required=["appEvidenceId", "question"])),
     types.FunctionDeclaration(name="request_device_observation", description="Ask the app for a fresh supported device observation (only advertised capabilityIds).",
         parameters=types.Schema(type="OBJECT", properties={"capabilityId": types.Schema(type="STRING"), "fields": types.Schema(type="ARRAY", items=types.Schema(type="STRING")),
             "reason": types.Schema(type="STRING")}, required=["capabilityId", "fields", "reason"])),
@@ -82,12 +84,13 @@ def _snippet(text: str) -> str:
     return re.sub(r"[^\x20-\x7E\n]", "", text)[:600]
 
 
-async def _grounded(ctx: ToolContext, question: str, entities: list[str], preferred: list[str]) -> dict:
+async def _grounded(ctx: ToolContext, question: str, entities: list[str], preferred: list[str], cursor: int = 0) -> dict:
     if ctx.research_calls >= 6:
         return {"status": "budget_exhausted", "note": "research call budget for this turn reached"}
     ctx.research_calls += 1
     provider.require_capability(provider.TEXT_MODEL, "search")
-    prompt = json.dumps({"question": question, "entities": entities[:32], "preferredDomains": preferred[:12]})
+    cursor = max(0, int(cursor)); entity_page = entities[cursor:cursor + 32]; domain_page = preferred
+    prompt = json.dumps({"question": question, "entities": entity_page, "preferredDomains": domain_page})
     try:
         result = await provider.generate(RESEARCH_SYSTEM, prompt, tools=[types.Tool(google_search=types.GoogleSearch())], capability="search")
     except provider.ProviderFailure as exc:
@@ -111,8 +114,11 @@ async def _grounded(ctx: ToolContext, question: str, entities: list[str], prefer
     snapshot = await ev.ingest_text(ctx.owner, ctx.case, f"research-{uuid.uuid4().hex[:12]}", result.text, kind="source_snapshot", origin="external_source",
                                     label=f"research: {question[:60]}", coverage=ev.Coverage(status="examined", unit="characters", total=len(result.text), examined=len(result.text)),
                                     meta={"sourceIds": [e["sourceId"] for e in registered]})
+    next_cursor = cursor + len(entity_page) if len(entities) > cursor + len(entity_page) else None
     return {"status": "ok", "answer": result.text[:8000], "answerEvidenceId": snapshot.id, "answerCharacters": len(result.text),
             "truncatedInline": len(result.text) > 8000, "sources": registered, "providerComplete": result.finish_reason == "STOP",
+            "inputCoverage": {"entitiesTotal": len(entities), "entitiesExamined": len(entity_page), "entityCursor": cursor,
+                              "nextCursor": next_cursor, "preferredDomainsTotal": len(preferred), "preferredDomainsUsed": len(domain_page)},
             "note": ("Full answer stored as evidence; use read_evidence for the rest. " if len(result.text) > 8000 else "") +
                     ("Search results are leads; a source's own claims are not verification. Authority labels are hints from the publisher domain, not conclusions." if registered else "No grounded sources were returned; treat the answer as model recollection only.")}
 
@@ -212,7 +218,8 @@ async def lookup_breach(ctx: ToolContext, args: dict) -> dict:
         return {"status": "clear", "note": "No known breach lists this identifier; unreported breaches and recent phishing will not appear."}
     if r.status_code != 200:
         return {"status": "unavailable", "httpStatus": r.status_code}
-    return {"status": "listed", "breaches": [b.get("Name") for b in r.json()][:50], "note": "Historical exposure within scope; not proof of current account takeover."}
+    breaches = [b.get("Name") for b in r.json()]
+    return {"status": "listed", "breaches": breaches, "total": len(breaches), "note": "Historical exposure within scope; not proof of current account takeover."}
 
 
 async def request_device_observation(ctx: ToolContext, args: dict) -> dict:
@@ -233,9 +240,13 @@ async def request_device_observation(ctx: ToolContext, args: dict) -> dict:
     if existing:
         ctx.pending_request = existing["request"]
         return {"status": "pending", "requestId": existing["request_id"], "note": "The existing durable observation request is still pending; the investigation remains paused."}
+    fields = [str(f) for f in args.get("fields", [])]
+    reason = str(args.get("reason", ""))
+    if len(fields) > 32 or len(reason) > 300:
+        return {"status": "invalid", "note": "Request at most 32 fields and keep the reason within 300 characters; no fields were silently omitted."}
     request_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"apollo:{ctx.owner}:{ctx.case_id}:{ctx.job['job_id']}:{call_key}"))
     request = {"id": request_id, "caseId": ctx.case_id, "caseRevision": ctx.case["revision"], "capabilityId": args["capabilityId"],
-               "fields": [str(f) for f in args.get("fields", [])][:32], "reason": str(args.get("reason", ""))[:300],
+               "fields": fields, "reason": reason,
                "expiresAt": min(repo.utc(ctx.case["expires_at"]), now_utc() + timedelta(seconds=120)).isoformat()}
     try:
         await db.investigation_device_requests.insert_one({"owner_id": ctx.owner, "case_id": ctx.case_id, "request_id": request["id"], "job_id": ctx.job["job_id"],
@@ -272,7 +283,10 @@ async def research_settings(ctx: ToolContext, args: dict) -> dict:
 
 
 async def ask_user(ctx: ToolContext, args: dict) -> dict:
-    ctx.question = {"id": str(uuid.uuid4()), "text": str(args["text"])[:600], "reasonNeeded": str(args["reasonNeeded"])[:300], "answerType": "text", "choices": []}
+    text, reason = str(args["text"]), str(args["reasonNeeded"])
+    if len(text) > 600 or len(reason) > 300:
+        return {"status": "invalid", "note": "Keep the question within 600 characters and its reason within 300; no content was silently truncated."}
+    ctx.question = {"id": str(uuid.uuid4()), "text": text, "reasonNeeded": reason, "answerType": "text", "choices": []}
     return {"status": "recorded", "questionId": ctx.question["id"], "note": "Now return your final JSON response with completion 'waiting_user' and this question."}
 
 
@@ -283,8 +297,10 @@ async def execute(ctx: ToolContext, name: str, args: dict) -> dict:
             return await ev.read_text(ctx.owner, ctx.case_id, str(args["evidenceId"]), rng.get("start"), rng.get("end"), args.get("pages"))
         if name == "continue_document":
             return await ev.continue_document(ctx.owner, ctx.case, str(args["evidenceId"]), int(args["startPage"]), int(args.get("pageCount") or ev.MAX_PAGES))
+        if name == "continue_clues":
+            return await ev.continue_clues(ctx.owner, ctx.case, str(args["evidenceId"]), int(args.get("cursor") or 0))
         if name == "research_public_sources":
-            return await _grounded(ctx, str(args["question"]), [str(e) for e in args.get("entities", [])], [str(d) for d in args.get("preferredDomains", [])])
+            return await _grounded(ctx, str(args["question"]), [str(e) for e in args.get("entities", [])], [str(d) for d in args.get("preferredDomains", [])], int(args.get("cursor") or 0))
         if name == "inspect_url":
             return await inspect_url(ctx, args)
         if name == "lookup_reputation":
@@ -294,8 +310,16 @@ async def execute(ctx: ToolContext, name: str, args: dict) -> dict:
         if name == "research_application":
             label = (await repo.get_evidence(ctx.owner, ctx.case_id, str(args["appEvidenceId"]))).get("label", "")
             text = (await repo.read_bytes(ctx.owner, ctx.case_id, str(args["appEvidenceId"]))).decode("utf-8", errors="replace")
-            identifiers = re.findall(r"\b[a-z][a-z0-9_]*(?:\.[a-z0-9_]+){2,}\b", text)[:3]
-            return await _grounded(ctx, f"{args['question']} Identify the real publisher, official store listing and any known abuse.", [*identifiers, label][:5], ["play.google.com", "apps.apple.com"])
+            identifiers = list(dict.fromkeys(re.findall(r"\b[a-z][a-z0-9_]*(?:\.[a-z0-9_]+){2,}\b", text)))
+            try:
+                observation = json.loads(text)
+                values = observation.get("values", {}) if isinstance(observation, dict) else {}
+                for key in ("packageName", "bundleIdentifier", "appName", "publisher", "installerPackage", "versionName", "signingCertificateSha256"):
+                    if values.get(key) is not None: identifiers.append(f"{key}:{values[key]}")
+            except ValueError:
+                pass
+            identifiers = list(dict.fromkeys([*identifiers, label]))
+            return await _grounded(ctx, f"{args['question']} Identify the real publisher, official store listing and any known abuse.", identifiers, ["play.google.com", "apps.apple.com"], int(args.get("cursor") or 0))
         if name == "request_device_observation":
             return await request_device_observation(ctx, args)
         if name == "research_settings":

@@ -269,9 +269,13 @@ class ApolloSecurityModule : Module() {
         .put("notificationIntegration", if (enabled) "supported" else "permission_required")
         .toString()
     }
-    // Mailbox semantics: draining clears the queue so the JS-side poll loop never double-processes
-    // a captured notification (see ApolloSmsListenerService.drainQueue).
-    AsyncFunction("getRecentMessageSecurityEvents") { ApolloSmsListenerService.drainQueue(ctx).toString() }
+    // Protected inbox semantics: reading is non-destructive; acknowledge only exact IDs after durable submission.
+    AsyncFunction("getRecentMessageSecurityEvents") { ApolloSmsListenerService.readQueue(ctx).toString() }
+    AsyncFunction("acknowledgeMessageSecurityEvents") { idsJson: String ->
+      val ids = JSONArray(idsJson); val values = mutableSetOf<String>()
+      for (index in 0 until ids.length()) values.add(ids.optString(index))
+      JSONObject().put("acknowledged", ApolloSmsListenerService.acknowledge(ctx, values)).toString()
+    }
     AsyncFunction("openSmsListenerSettings") {
       val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
       appContext.currentActivity?.startActivity(intent) ?: ctx.startActivity(intent)

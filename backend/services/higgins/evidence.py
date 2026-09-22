@@ -96,7 +96,7 @@ async def ingest_text(owner: str, case: dict, client_item_id: str, text: str, *,
                         transformations=[*(transformations or []), *redactions], label=label or ("link" if kind == "url" else "text"))
     root_id = publication_root_id or item.id
     attempt_id = ingestion_attempt_id or root_id
-    await repo.insert_evidence(owner, item, {**(meta or {}), "inputDigest": text_input_digest(kind, clean), "urls": URL_RE.findall(clean)[:512] if kind == "text" else []},
+    await repo.insert_evidence(owner, item, {**(meta or {}), "inputDigest": text_input_digest(kind, clean), "urls": URL_RE.findall(clean) if kind == "text" else []},
                                publication_root_id=root_id, ingestion_attempt_id=attempt_id, publication_owner=publication_owner)
     await repo.store_bytes(owner, case["case_id"], item.id, clean.encode("utf-8"), item.expires_at, publish_root=False)
     if kind == "text" and ((origin == "user_submission" and not meta) or (meta or {}).get("registerClues")):
@@ -146,9 +146,15 @@ async def register_clues(owner: str, case: dict, parent: EvidenceItem, text: str
     if clues:
         updates["$addToSet"] = {"related_evidence_ids": {"$each": [c.id for c in clues]}}
     if omitted:
-        updates["$set"] = {"clue_inventory": {"found": len(found), "registered": len(clues), "omitted": len(omitted),
-                                              "omittedOffsets": [[f[2], f[3], f[0]] for f in omitted[:256]],
-                                              "note": f"{len(omitted)} further {'clue' if len(omitted) == 1 else 'clues'} were found but not registered (per-item budget {MAX_CLUES}); read the parent ranges above to examine them."}}
+        parent_row = await repo.db.investigation_evidence.find_one(
+            {"owner_id": owner, "case_id": case["case_id"], "evidence_id": parent.id}, {"_id": 0, "meta_ciphertext": 1}
+        )
+        parent_meta = repo.dec_json(parent_row["meta_ciphertext"]) if parent_row and parent_row.get("meta_ciphertext") else {}
+        parent_meta["clueContinuation"] = [{"kind": f[0], "value": f[1], "start": f[2], "end": f[3]} for f in omitted]
+        updates["$set"] = {"meta_ciphertext": repo.enc_json(parent_meta),
+                           "clue_inventory": {"found": len(found), "registered": len(clues), "remaining": len(omitted),
+                                              "nextCursor": 0, "pageSize": MAX_CLUES,
+                                              "note": f"{len(omitted)} further {'clue is' if len(omitted) == 1 else 'clues are'} addressable with continue_clues; none were silently discarded."}}
     if updates:
         await repo.update_evidence(owner, case["case_id"], parent.id, updates, attempt_id=ingestion_attempt_id)
     return clues
@@ -165,7 +171,8 @@ async def ingest_url(owner: str, case: dict, client_item_id: str, url: str, *, p
 
 async def ingest_observation(owner: str, case: dict, client_item_id: str, result: dict, *, parent_id: Optional[str] = None) -> EvidenceItem:
     import json
-    text = json.dumps({"capabilityId": result["capabilityId"], "status": result["status"], "values": result.get("values", {})}, ensure_ascii=False)
+    structured = {key: result.get(key) for key in ("requestId", "caseId", "caseRevision", "capabilityId", "status", "unavailableReason", "observedAt", "values", "simulation") if key in result}
+    text = json.dumps(structured, ensure_ascii=False, sort_keys=True)
     observed = datetime.fromisoformat(result["observedAt"].replace("Z", "+00:00")) if result.get("observedAt") else None
     return await ingest_text(owner, case, client_item_id, text, kind="observation", origin="device_observation", parent_id=parent_id,
                              label=f"observation: {result['capabilityId']}"[:80], simulation=result.get("simulation"), observed_at=observed,
@@ -341,7 +348,7 @@ async def _image_secret_preflight(data: bytes, media_type: str) -> dict:
     contains = result.get("containsSecret") if isinstance(result, dict) else None
     if not isinstance(contains, bool):  # a missing/ambiguous verdict is NOT "no secret"; it is an unavailable check
         return {"status": "unavailable:invalid_response", "containsSecret": None, "secretKinds": [], "redactedText": "", "visualDescription": "", "transcriptionComplete": None}
-    kinds = [str(k)[:40] for k in (result.get("secretKinds") or []) if isinstance(k, (str, int))][:8]
+    kinds = [str(k) for k in (result.get("secretKinds") or []) if isinstance(k, (str, int))]
     redacted_text_raw = str(result.get("redactedText") or "")
     truncated = len(redacted_text_raw) > 60_000  # our own processing budget — independent of the model's own completeness claim below
     redacted_text = redacted_text_raw[:60_000]
@@ -373,7 +380,7 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
                 raise ValueError("expanded")
             link_text = "\n".join(links)
             derived = await ingest_text(owner, case, f"{item.client_item_id}.text", text + ("\n\n[links]\n" + link_text if link_text else ""), parent_id=item.id,
-                                        label=f"extracted text ({len(pages)} pages)", meta={"pages": offsets, "links": links[:512], "registerClues": True},
+                                        label=f"extracted text ({len(pages)} pages)", meta={"pages": offsets, "links": links, "registerClues": True},
                                         transformations=[Transformation(kind="decode", description=f"Parser text layer of {len(pages)} page(s) with page markers; {len(links)} link target(s) collected. Scanned/unreadable pages: {unreadable or 'none'}.")],
                                         publication_root_id=item.id, ingestion_attempt_id=attempt_id, publication_owner=publication_owner, publish=False)
             # Scanned/image-only pages: rasterise each (within budget) as a derived image so Gemini can read it visually. A rendered page
@@ -458,9 +465,7 @@ async def continue_document(owner: str, case: dict, evidence_id: str, start_page
     )
     if existing:
         try:
-            await repo.get_evidence(owner, case["case_id"], existing["evidence_id"])
-            await repo.update_evidence(owner, case["case_id"], evidence_id, {"$addToSet": {"related_evidence_ids": existing["evidence_id"]}})
-            return {"evidenceId": existing["evidence_id"], "startPage": start, "endPage": end, "totalPages": total, "replayed": True}
+            return await _repair_continuation_from_manifest(owner, case, evidence_id, existing["evidence_id"], replayed=True)
         except Exception:  # unpublished interrupted slice: abandon only its exact attempt, then rebuild
             await repo.discard_incomplete_ingestion(owner, case["case_id"], existing["publication_root_id"], attempt_id=existing.get("ingestion_attempt_id"))
     text, offsets, cursor = "", [], 0
@@ -472,7 +477,7 @@ async def continue_document(owner: str, case: dict, evidence_id: str, start_page
         text += "\n\n[hyperlink targets]\n" + "\n".join(links)
     attempt_id = uuid.uuid4().hex
     derived = await ingest_text(owner, case, client_item_id, text, parent_id=evidence_id, label=f"continued PDF extraction (pages {start}-{end})",
-                                meta={"pages": offsets, "links": links[:512], "registerClues": True}, ingestion_attempt_id=attempt_id, publish=False,
+                                meta={"pages": offsets, "links": links, "registerClues": True}, ingestion_attempt_id=attempt_id, publish=False,
                                 transformations=[Transformation(kind="decode", description=f"Bounded component extraction for PDF pages {start}-{end}; {len(links)} hyperlink target(s); unreadable pages: {unreadable or 'none'}. ")])
     rendered_ids, rendered_pages = [], []
     for page_number, png in _render_pdf_pages(data, unreadable[:MAX_SCANNED_PAGES]):
@@ -484,24 +489,112 @@ async def continue_document(owner: str, case: dict, evidence_id: str, start_page
         await repo.insert_evidence(owner, visual, {"page": page_number, "derivedFrom": evidence_id}, publication_root_id=derived.id, ingestion_attempt_id=attempt_id)
         await repo.store_bytes(owner, case["case_id"], visual.id, png, visual.expires_at, publish_root=False)
         rendered_ids.append(visual.id); rendered_pages.append(page_number)
+    derived_row = await repo.db.investigation_evidence.find_one(
+        {"owner_id": owner, "case_id": case["case_id"], "evidence_id": derived.id, "ingestion_attempt_id": attempt_id}, {"_id": 0}
+    )
+    derived_meta = repo.dec_json(derived_row["meta_ciphertext"]) if derived_row and derived_row.get("meta_ciphertext") else {}
+    derived_meta["continuation"] = {"parentEvidenceId": evidence_id, "startPage": start, "endPage": end, "totalPages": total,
+                                    "links": links, "unreadablePages": unreadable, "annotationGapPages": annotation_errors,
+                                    "renderedPages": rendered_pages}
+    await repo.update_evidence(owner, case["case_id"], derived.id, {"$set": {"meta_ciphertext": repo.enc_json(derived_meta)}}, attempt_id=attempt_id)
     if not await repo.publish_evidence_root(owner, case["case_id"], derived.id, attempt_id):
         await repo.discard_incomplete_ingestion(owner, case["case_id"], derived.id, attempt_id=attempt_id)
         raise http(409, "conflict", "The document slice lost publication ownership; retry the continuation.")
-    coverage = row.get("coverage", {})
-    omitted = list(coverage.get("omittedRanges", []))
-    available_pages = {page for page in range(start, end + 1) if page not in unreadable or page in rendered_pages}
-    available_pages -= set(annotation_errors)
+    return await _repair_continuation_from_manifest(owner, case, evidence_id, derived.id, replayed=False)
+
+
+async def continue_clues(owner: str, case: dict, evidence_id: str, cursor: int = 0) -> dict:
+    """Publishes the next deterministic clue page retained in the parent's encrypted continuation inventory."""
+    parent = await repo.get_evidence(owner, case["case_id"], evidence_id)
+    meta = await repo.evidence_meta(parent)
+    queued = meta.get("clueContinuation") or []
+    cursor = max(0, int(cursor))
+    if cursor > len(queued):
+        raise http(400, "invalid_request", f"cursor exceeds the {len(queued)} deferred clues.")
+    page = queued[cursor:cursor + MAX_CLUES]
+    registered = []
+    replayed = bool(page)
+    for offset, clue in enumerate(page, start=cursor):
+        client_item_id = f"{parent['client_item_id']}.clue.cont.{offset}"
+        existing = await repo.db.investigation_evidence.find_one(
+            {"owner_id": owner, "case_id": case["case_id"], "client_item_id": client_item_id}, {"_id": 0, "evidence_id": 1}
+        )
+        if existing:
+            item = await repo.get_evidence(owner, case["case_id"], existing["evidence_id"])
+            item_id, kind = item["evidence_id"], item["kind"]
+        elif clue["kind"] == "url":
+            replayed = False
+            item = await ingest_url(owner, case, client_item_id, clue["value"], parent_id=evidence_id, label="continued link clue")
+            item_id, kind = item.id, item.kind
+        else:
+            replayed = False
+            item = await ingest_text(owner, case, client_item_id, clue["value"], parent_id=evidence_id, origin="apollo_inference", label="continued phone clue")
+            item_id, kind = item.id, item.kind
+        registered.append({"evidenceId": item_id, "kind": kind, "offset": [clue["start"], clue["end"]]})
+    next_cursor = cursor + len(page)
+    remaining = max(0, len(queued) - next_cursor)
+    if registered:
+        found = int((parent.get("clue_inventory") or {}).get("found", len(registered) + remaining))
+        await repo.update_evidence(owner, case["case_id"], evidence_id, {"$addToSet": {"related_evidence_ids": {"$each": [item["evidenceId"] for item in registered]}},
+            "$set": {"clue_inventory.registered": found - remaining,
+                     "clue_inventory.remaining": remaining, "clue_inventory.nextCursor": next_cursor if remaining else None}})
+    return {"parentEvidenceId": evidence_id, "registered": registered, "nextCursor": next_cursor if remaining else None,
+            "remaining": remaining, "totalDeferred": len(queued), "replayed": replayed}
+
+
+async def _repair_continuation_from_manifest(owner: str, case: dict, parent_id: str, slice_root_id: str, *, replayed: bool) -> dict:
+    """Reconstruct delivery and parent coverage solely from the committed slice manifest.
+
+    This is the recovery boundary for a crash after slice publication but before the parent projection or model
+    checkpoint was updated. Uncommitted/wrong-attempt children never enter the result because ``get_evidence``
+    verifies every manifest member against the winning publication attempt.
+    """
+    root = await repo.get_evidence(owner, case["case_id"], slice_root_id)
+    manifest = root.get("publication_manifest") or [slice_root_id]
+    members = []
+    for member_id in manifest:
+        try:
+            members.append(await repo.get_evidence(owner, case["case_id"], member_id))
+        except Exception:  # an incomplete manifest is not deliverable; caller rebuilds the slice
+            raise http(409, "conflict", "The committed document slice manifest is incomplete; retry the continuation.")
+    meta = await repo.evidence_meta(root)
+    continuation = meta.get("continuation") or {}
+    start = int(continuation.get("startPage") or 1)
+    end = int(continuation.get("endPage") or start)
+    total = int(continuation.get("totalPages") or end)
+    links = [str(link) for link in continuation.get("links", meta.get("links", []))]
+    unreadable = [int(page) for page in continuation.get("unreadablePages", [])]
+    annotation_errors = [int(page) for page in continuation.get("annotationGapPages", [])]
+    rendered_pages = {int(page) for page in continuation.get("renderedPages", [])}
+    visual_ids = []
+    for member in members:
+        if member.get("kind") == "image":
+            visual_ids.append(member["evidence_id"])
+            visual_meta = await repo.evidence_meta(member)
+            if visual_meta.get("page"):
+                rendered_pages.add(int(visual_meta["page"]))
+    parent = await repo.get_evidence(owner, case["case_id"], parent_id)
+    omitted = list(parent.get("coverage", {}).get("omittedRanges", []))
+    available_pages = {page for page in range(start, end + 1) if page not in unreadable or page in rendered_pages} - set(annotation_errors)
     for page in sorted(available_pages):
         omitted = _subtract_page_range(omitted, page - 1, page)
-    omitted.extend({"start": page - 1, "end": page, "reason": "no text layer and continuation visual rendering failed"} for page in unreadable if page not in rendered_pages)
-    omitted.extend({"start": page - 1, "end": page, "reason": "hyperlink annotation component could not be extracted"} for page in annotation_errors)
-    await repo.update_evidence(owner, case["case_id"], evidence_id, {
-        "$addToSet": {"related_evidence_ids": {"$each": [derived.id, *rendered_ids]}, "extraction_ranges": {"start": start - 1, "end": end}},
+    additions = [
+        *({"start": page - 1, "end": page, "reason": "no text layer and continuation visual rendering failed"} for page in unreadable if page not in rendered_pages),
+        *({"start": page - 1, "end": page, "reason": "hyperlink annotation component could not be extracted"} for page in annotation_errors),
+    ]
+    for gap in additions:
+        if gap not in omitted:
+            omitted.append(gap)
+    await repo.update_evidence(owner, case["case_id"], parent_id, {
+        "$addToSet": {"related_evidence_ids": {"$each": [member["evidence_id"] for member in members]},
+                      "extraction_ranges": {"start": start - 1, "end": end}},
         "$set": {"coverage.omittedRanges": omitted, "coverage.materialGap": bool(omitted), "coverage.permanentGap": False,
-                 "coverage.status": "partial" if omitted else "not_started", "coverage.reason": "bounded parser extraction available; semantic reading progress remains separate"},
+                 "coverage.status": "partial" if omitted else "not_started",
+                 "coverage.reason": "bounded parser extraction available; semantic reading progress remains separate"},
     })
-    return {"evidenceId": derived.id, "visualEvidenceIds": rendered_ids, "startPage": start, "endPage": end, "totalPages": total,
-            "links": links, "unreadablePages": unreadable, "annotationGapPages": annotation_errors, "replayed": False}
+    return {"evidenceId": slice_root_id, "visualEvidenceIds": visual_ids, "startPage": start, "endPage": end, "totalPages": total,
+            "links": links, "unreadablePages": unreadable, "annotationGapPages": annotation_errors, "replayed": replayed,
+            "delivery": "committed_manifest"}
 
 
 def _union(ranges: list[dict], start: int, end: int) -> list[dict]:
@@ -587,6 +680,8 @@ async def read_text(owner: str, case_id: str, evidence_id: str, start: Optional[
     end = min(len(text), end if end is not None else start + READ_CHARS, start + READ_CHARS)
     return {"evidenceId": evidence_id, "totalCharacters": len(text), "start": start, "end": end, "content": text[start:end],
             "hasMore": end < len(text), "pages": meta.get("pages", [])[:MAX_PAGES] if pages is None and meta.get("pages") else None,
+            "pageInventory": {"total": len(meta.get("pages", [])), "returned": min(MAX_PAGES, len(meta.get("pages", []))),
+                              "hasMore": len(meta.get("pages", [])) > MAX_PAGES} if pages is None and meta.get("pages") else None,
             "_pendingMark": [evidence_id, start, end, len(text)]}  # applied by the coordinator after the model has actually received this range
 
 
