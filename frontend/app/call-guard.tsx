@@ -15,6 +15,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { PatrolItem } from "@/src/components/PatrolItem";
+import { projectPatrolOutcomes } from "@/src/domain/patrolOutcomes";
 import { MessageAssessmentResult } from "@/src/components/MessageAssessmentResult";
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { STATE_LABEL, STATE_MEANING } from "@/src/domain/types";
@@ -146,7 +147,7 @@ export default function CallGuard() {
           <View>
             <SectionTitle>Recently flagged calls</SectionTitle>
             <View testID="callguard-recent">
-              {recentCalls.map((e, i) => <PatrolItem key={e.event_id} event={e} isLast={i === recentCalls.length - 1} />)}
+              {projectPatrolOutcomes(recentCalls).map((outcome, i, list) => <PatrolItem key={outcome.id} outcome={outcome} isLast={i === list.length - 1} />)}
             </View>
           </View>
         ) : null}

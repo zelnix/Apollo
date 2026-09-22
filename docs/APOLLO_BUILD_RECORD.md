@@ -1,3 +1,20 @@
+# Phase 2 baseline record — 2026-09-22
+
+- Controlling Phase 2 source baseline was recorded before source edits as `d1ab4ff22f7476fefd3999e6c292c3ac92f2e30b` on local `main`.
+- No Git remote/upstream is configured in this workspace; the exact current saved repository HEAD above is the available GitHub-derived baseline and is not reset to the older review anchor.
+- M1–M4 remain accepted and closed. Phase 2 executes only P2.1–P2.6 and C19–C25/V27–V36.
+- Full execution ledger: `docs/APOLLO_PHASE2_EXECUTION_RECORD.md`.
+
+## Phase 2 RC1 source record — 2026-09-22
+
+- Release identity: Apollo `1.1.0`; Android `versionCode 2`; iOS `buildNumber 2`; desktop `1.1.0`.
+- Android package/application ID remains `app.apollo.hwg`.
+- Bounded verification passed: TypeScript, ESLint, Python lint, 53 provider-disabled pytest checks, device-test security preflight, Cargo and all three Apollo-owned Android release Kotlin modules.
+- The native compile closed missing `kotlinx-serialization-json` visibility in `apollo-security` and removed a stale `ApolloVpnGuardReceiver` reference after its work had already been replaced by the durable WorkManager schedule.
+- No signed Android artifact is recorded: the build host is Linux ARM64 and React Native's bundled Hermes compiler has no matching host binary. A fake compiler and misleading installable artifact were explicitly rejected.
+- GuardDog production-default cutover remains inactive and separate.
+- Runtime closure: MongoDB/backend/Expo are RUNNING, backend health is 200 and the protected preview proxy is HTTP 200. The deployment scanner's sole remaining complaint is a missing `--tunnel` flag in an explicitly read-only Supervisor file that already supplies the protected proxy URL; source/env/security checks otherwise pass.
+
 # GuardDog production authority track — source record (2026-09-22)
 
 - Added an explicit, non-default `guarddog-production` engine/profile. Existing production `app-bundle` remains `legacy`.
@@ -34,7 +51,7 @@
 | EAS fingerprint | `565f42d9b04dd39c836360eeccd12c4e442b800f` (`01a0c708-0e1b-7824-8b82-319c7b2396c8`) |
 | App | `Apollo` 1.0.0 (versionCode 1), package `app.apollo.hwg`, Expo SDK 57 |
 | Profile | `device-test`: internal APK, staging backend, legacy enforcement, preview harness explicitly `off` |
-| Compatible backend | `https://device-file-gate.preview.emergentagent.com` |
+| Compatible backend | `https://apollo-platform.preview.emergentagent.com` |
 | Size | 147,567,093 bytes |
 | SHA-256 | `c15804e04597e09628575cc58734bd97fc10c2cbe1f89dd4c1ddae239e102e97` |
 | Local verification copy | `/app/Apollo-Android-047bc183.apk` |
@@ -56,7 +73,7 @@ Deployment Agent returned PASS before the successful retry.
 | EAS informational git field | `58fb1a066eaabe06a96c143da8d4ce171e254d6c`; working-source identity is the EAS fingerprint above |
 | App | `Apollo` 1.0.0 (versionCode 1), package `app.apollo.hwg`, Expo SDK 57 |
 | Profile | `device-test`: internal APK, staging backend, legacy enforcement selection; GuardDog/Apollo native modules still compiled successfully |
-| Compatible backend | `https://device-file-gate.preview.emergentagent.com` (`/api/health` HTTP 200) |
+| Compatible backend | `https://apollo-platform.preview.emergentagent.com` (`/api/health` HTTP 200) |
 | Size | 147,531,093 bytes |
 | SHA-256 | `50e51aff03ee69ed859386b734365a205fe9040fc240c5af896e7a3342503e91` |
 | Local verification copy | `/app/Apollo-Android-18706c6e.apk` |

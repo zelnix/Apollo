@@ -15,6 +15,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 const ANDROID_PACKAGE = "app.apollo.hwg";
 const IOS_BUNDLE_IDENTIFIER = "app.apollo.hwg";
+const RETIRED_SECURITY_NAME = ["Secure", "Core"].join("");
 const PRODUCTION_KEYS = ["APOLLO_GUARDDOG_TRUST_DOMAIN", "APOLLO_GUARDDOG_TRUST_PROFILE", "APOLLO_GUARDDOG_PRIMARY_ROOT_ID",
   "APOLLO_GUARDDOG_PRIMARY_ROOT_PUBLIC_KEY_B64", "APOLLO_GUARDDOG_RECOVERY_ROOT_ID", "APOLLO_GUARDDOG_RECOVERY_ROOT_PUBLIC_KEY_B64",
   "EXPO_PUBLIC_GUARDDOG_TRUST_MANIFEST_URL", "EXPO_PUBLIC_GUARDDOG_RULE_BUNDLE_URL", "EXPO_PUBLIC_GUARDDOG_CONTROLLED_HOST",
@@ -81,7 +82,8 @@ if (engine === "guarddog_production") {
   if (cfg.APOLLO_GUARDDOG_PRIMARY_ROOT_ID === "m1-acceptance" || cfg.APOLLO_GUARDDOG_RECOVERY_ROOT_ID === "m1-acceptance") errors.push("Acceptance test root IDs are forbidden in production.");
   if (primary === "xWUz5JD/mRHiCg7axpaEQV+dJ6cllJV4UHWOA9YPh1A=" || recovery === "xWUz5JD/mRHiCg7axpaEQV+dJ6cllJV4UHWOA9YPh1A=") errors.push("Acceptance test public keys are forbidden in production.");
 }
-const autolinking = resolvedAppConfig.expo?.autolinking ?? {};
+const packageConfig = require(path.join(root, "package.json"));
+const autolinking = resolvedAppConfig.autolinking ?? packageConfig.expo?.autolinking ?? {};
 if (!(autolinking.android?.exclude ?? []).includes("guarddog-expo-module") || !(autolinking.ios?.exclude ?? []).includes("guarddog-expo-module")) {
   errors.push("The frozen GuardDog Expo bridge must remain excluded on Android and iOS; Apollo owns the only production bridge.");
 }
@@ -92,7 +94,7 @@ for (const file of appSources) {
   const text = fs.readFileSync(file, "utf8");
   const rel = path.relative(root, file);
   if (/tools\/preview-device-harness/.test(text) && rel !== "src/security/hostAdapter.web.ts") errors.push(`${rel} references the preview harness; only src/security/hostAdapter.web.ts may.`);
-  if (/EXPO_PUBLIC_SECURITY_MODE|EXPO_PUBLIC_SECURECORE_MODE|MockSecurityAdapter|MockSecureCore/.test(text)) errors.push(`${rel} references a removed runtime mock selector.`);
+  if (/EXPO_PUBLIC_SECURITY_MODE|MockSecurityAdapter/.test(text) || text.toLowerCase().includes(RETIRED_SECURITY_NAME.toLowerCase())) errors.push(`${rel} references a retired security boundary.`);
 }
 
 console.log(`[security-preflight] profile=${profile ?? "local"} env=${cfg.EXPO_PUBLIC_APP_ENV} engine=${engine} preview-harness=${harness || "off"} app-sources-scanned=${appSources.length}`);

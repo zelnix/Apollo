@@ -24,6 +24,7 @@ import { STATE_RANK } from "@/src/domain/stateMachine";
 import { patrolSafeSummary, type InvestigationResult } from "@/src/domain/investigation";
 import { redactUserSecrets } from "@/src/domain/privacy";
 import { issueContext } from "@/src/domain/higginsHandoff";
+import { runProtectionHealthCheck } from "@/src/protection/healthCoordinator";
 import { dispatchInvestigationAction } from "@/src/domain/investigationActions";
 import { type MessageExplanation, type MessageUrlResult, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -105,7 +106,7 @@ export default function CheckEmail() {
       const redirect = Linking.createURL("/email");
       const { authorization_url } = await apiGet<{ authorization_url: string }>(`/gmail/connect?device_id=${deviceId}&app_redirect=${encodeURIComponent(redirect)}`);
       const res = await WebBrowser.openAuthSessionAsync(authorization_url, redirect);
-      if (res.type === "success" && res.url.includes("gmail=connected")) { setGmailConnected(true); setGmailMonitoring(false); showToast("Gmail OAuth connected — monitoring stays off until you enable it.", "resting"); }
+      if (res.type === "success" && res.url.includes("gmail=connected")) { setGmailConnected(true); setGmailMonitoring(false); void runProtectionHealthCheck("protection_change"); showToast("Gmail OAuth connected — monitoring stays off until you enable it.", "resting"); }
       else if (res.type === "success" && res.url.includes("gmail=denied")) showToast("Gmail connection was cancelled.", "neutral");
       else if (res.type !== "cancel" && res.type !== "dismiss") showToast("Couldn't connect Gmail right now.", "growling");
     } catch (e) { showToast(e instanceof Error ? e.message : "Couldn't connect Gmail right now.", "growling"); } finally { setGmailBusy(false); }
@@ -114,14 +115,14 @@ export default function CheckEmail() {
   const disconnectGmail = async () => {
     if (!deviceId) return;
     try { await apiDelete(`/gmail/connection?device_id=${deviceId}`); } catch { /* already gone */ }
-    setGmailConnected(false); setGmailMonitoring(false); setScanSummary(null);
+    setGmailConnected(false); setGmailMonitoring(false); setScanSummary(null); void runProtectionHealthCheck("protection_change");
     showToast("Gmail disconnected.", "neutral");
   };
   const toggleGmailMonitoring = async () => {
     if (!deviceId) return;
     const enabled = !gmailMonitoring;
     await apiPost("/gmail/monitoring", "gmail_monitor", { device_id: deviceId, enabled });
-    setGmailMonitoring(enabled); showToast(enabled ? "Ongoing Gmail assessment enabled." : "Ongoing Gmail assessment stopped.", enabled ? "resting" : "neutral");
+    setGmailMonitoring(enabled); await runProtectionHealthCheck("protection_change"); showToast(enabled ? "Ongoing Gmail assessment enabled. Gates will show On after the first successful monitor check." : "Ongoing Gmail assessment stopped.", enabled ? "resting" : "neutral");
   };
 
   const scanInbox = async () => {
@@ -129,7 +130,7 @@ export default function CheckEmail() {
     try {
       const { checked, accepted } = await scanGmailInbox();
       const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
-      setScanSummary({ text: `Checked ${plural(checked, "email")} and accepted ${plural(accepted, "new investigation")}. Results will appear in Patrol when Higgins finishes.`, flagged: accepted });
+      setScanSummary({ text: `Checked ${plural(checked, "email")} and accepted ${plural(accepted, "new investigation")}. Results will appear in Patrol when Higgins finishes.`, flagged: accepted }); void runProtectionHealthCheck("protection_change");
       showToast(accepted ? `${plural(accepted, "email")} accepted for investigation` : "No new Gmail messages needed another investigation", "neutral");
     } catch (e) { showToast(e instanceof Error ? e.message : "Couldn't scan your inbox right now.", "growling"); } finally { setScanBusy(false); }
   };

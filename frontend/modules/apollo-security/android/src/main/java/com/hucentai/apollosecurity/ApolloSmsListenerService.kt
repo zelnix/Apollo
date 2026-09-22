@@ -3,7 +3,6 @@ package com.hucentai.apollosecurity
 import android.app.Notification
 import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
@@ -130,8 +129,6 @@ class ApolloSmsListenerService : NotificationListenerService() {
       if (dropped > 0) editor.putInt(OVERFLOW, prefs(ctx).getInt(OVERFLOW, 0) + dropped)
       if (save(ctx, queue) && editor.commit()) {
         schedule(ctx)
-        val intent = Intent(ctx, ApolloVpnGuardReceiver::class.java).setAction("com.hucentai.apollosecurity.SECURITY_NUDGE")
-        try { ctx.sendBroadcast(intent) } catch (_: Exception) { }
       } else recordQueueError(ctx)
     }
 

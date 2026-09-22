@@ -87,7 +87,7 @@ export interface IntelResult {
   domain_info?: DomainInfo | null;
 }
 
-export type EventCategory = "link" | "website" | "connection" | "known_threat" | "protection" | "system" | "message" | "call" | "app" | "device" | "account" | "email";
+export type EventCategory = "link" | "website" | "connection" | "known_threat" | "protection" | "system" | "message" | "call" | "app" | "device" | "account" | "email" | "file" | "family";
 export type EventStatus = "active" | "trusted" | "blocked" | "resolved";
 
 export interface PatrolEvent {

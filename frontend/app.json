@@ -2,13 +2,14 @@
   "expo": {
     "name": "Apollo",
     "slug": "threat-patrol-1",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "apollo",
     "userInterfaceStyle": "light",
     "backgroundColor": "#F5F7FA",
     "ios": {
+      "buildNumber": "2",
       "supportsTablet": true,
       "bundleIdentifier": "app.apollo.hwg",
       "infoPlist": {
@@ -21,6 +22,7 @@
       }
     },
     "android": {
+      "versionCode": 2,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#F5F7FA"

@@ -18,8 +18,12 @@ def test_password_reset_phrase_is_not_mistaken_for_a_secret_value():
 
 
 def test_higgins_prompt_forbids_requesting_or_repeating_secrets():
-    # The single Higgins prompt lives in the shared coordinator; Ask is a transport over it.
+    # Investigations and ordinary chat have separate prompts and power boundaries.
     from services.higgins.coordinator import SYSTEM
     assert "Never ask for passwords, codes or tokens" in SYSTEM
     ask_source = (Path(__file__).resolve().parents[1] / "routers" / "ask.py").read_text()
-    assert "redact_investigation_secrets(body.message)" in ask_source
+    chat_source = (Path(__file__).resolve().parents[1] / "services" / "higgins" / "chat.py").read_text()
+    assert "redact_investigation_secrets(message)" in chat_source
+    assert "cannot browse, search, fetch a link, read a file, inspect evidence" in chat_source
+    assert "chat.reply" in ask_source
+    assert "from services.higgins import coordinator" not in ask_source

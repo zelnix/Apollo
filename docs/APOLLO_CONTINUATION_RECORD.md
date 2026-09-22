@@ -1,3 +1,10 @@
+## 2026-09-22 Phase 2 authorised continuation
+
+- Exact pre-change source HEAD: `d1ab4ff22f7476fefd3999e6c292c3ac92f2e30b` (`main`). This workspace exposes no configured remote/upstream, so no older review anchor was substituted.
+- The Phase 2 execution cover in `Apollo_Consolidated_Architecture_and_Execution_Mandate-3.md` controls.
+- M1–M4 remain accepted. Execute P2.1 through P2.6 in order without reopening the completed baseline.
+- Active findings/checks are C19–C25 and V27–V36. See `APOLLO_PHASE2_EXECUTION_RECORD.md`.
+
 ## 2026-09-22 C15 production GuardDog track (“M4” continuation)
 
 - Clarification: the source mandate's milestone table ends at M3. “M4” here means the remaining C15 production GuardDog implementation track.
@@ -224,7 +231,7 @@ Package 2 is now functionally complete per the mandate's own listed items (2.1�
 - Independent non-secret source-tree digest after implementation: SHA-256
   `7e0f0ff6f77706449d3452891cfcd9b0b98be814253c8319e058e61ca7818c23` (backend/frontend/desktop source;
   excludes environment files, generated dependencies, caches, desktop target and export output).
-- Compatible backend: `https://device-file-gate.preview.emergentagent.com`, `/api/health` = HTTP 200 `apollo-v1`.
+- Compatible backend: `https://apollo-platform.preview.emergentagent.com`, `/api/health` = HTTP 200 `apollo-v1`.
 - Provider boundary: static source/config audit confirms Higgins uses `GEMINI_API_KEY`; no Emergent-managed LLM key
   was introduced or used. No live Gemini probe, scenario campaign, Playwright run or testing-agent run occurred.
 

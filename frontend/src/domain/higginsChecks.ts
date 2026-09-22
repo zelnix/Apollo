@@ -6,14 +6,14 @@ import type { Capability, EventCategory } from "./types.ts";
 
 export type CheckId = "link" | "message" | "file" | "app" | "device" | "account" | "network";
 
-export const CHECKS: Record<CheckId, { label: string; route: string }> = {
-  link: { label: "Check a link", route: "/check" },
-  message: { label: "Check a message", route: "/message" },
-  file: { label: "Open File Gate", route: "/file" },
-  app: { label: "Check an app", route: "/app-check" },
-  device: { label: "Open Device Gate", route: "/device" },
-  account: { label: "Open Account Gate", route: "/account" },
-  network: { label: "Open Network Gate", route: "/network" },
+export const CHECKS: Record<CheckId, { label: string; actionLabel: string; purpose: string; route: string }> = {
+  link: { label: "Check a link", actionLabel: "Check a link", purpose: "See where the link leads before opening it.", route: "/check" },
+  message: { label: "Check a message", actionLabel: "Check a message", purpose: "Paste, share or add a screenshot of the message.", route: "/message" },
+  file: { label: "File Gate", actionLabel: "Open File Gate", purpose: "Choose or share the file you want Apollo to examine.", route: "/file" },
+  app: { label: "Check an app", actionLabel: "Check an app", purpose: "Review the app's source, access and available device facts.", route: "/app-check" },
+  device: { label: "Device Gate", actionLabel: "Open Device Gate", purpose: "Check important protection, permission and device changes.", route: "/device" },
+  account: { label: "Account Gate", actionLabel: "Open Account Gate", purpose: "Review the account warning without sharing a password or code.", route: "/account" },
+  network: { label: "Network Gate", actionLabel: "Open Network Gate", purpose: "Review the connection facts this device can see.", route: "/network" },
 };
 
 const IDS = Object.keys(CHECKS) as CheckId[];
@@ -60,10 +60,10 @@ export function recommendedChecks(r: { recovering: boolean; visibilityLost: bool
 
 const ORDINAL = ["first", "second", "third", "fourth", "fifth", "sixth"];
 
-/** Spoken form for Higgins, in the first person: names each check and where to find it, in order. */
+/** Spoken form for Higgins: Apollo opens each named check directly. */
 export function checksSpoken(checks: CheckId[]): string {
   if (!checks.length) return "";
-  const parts = checks.map((c, i) => `${checks.length > 1 ? `${ORDINAL[i] ?? `number ${i + 1}`}, ` : ""}${CHECKS[c].label}`);
+  const parts = checks.map((c, i) => `${checks.length > 1 ? `${ORDINAL[i] ?? `number ${i + 1}`}, ` : ""}${CHECKS[c].actionLabel}`);
   return `${checks.length === 1 ? "The check I need you to run is" : `The ${checks.length} checks I need you to run, most important first:`} ${parts.join(". ")}.`;
 }
 
@@ -72,9 +72,8 @@ export function checksSpoken(checks: CheckId[]): string {
 export function higginsPermissionNote(capabilities: Capability[]): string | null {
   const gaps = capabilities.filter((c) => c.status === "permission_required");
   if (!gaps.length) return null;
-  const names = gaps.map((c) => c.title.replace(/ Guard$/i, " Gate"));
-  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-  return `I don't have permission for ${list} yet. Choose Restore protection on the Protection screen, and Apollo will check the result when you return.`;
+  const first = gaps[0].title.replace(/ Guard$/i, " Gate");
+  return `Apollo needs your permission for ${first}. Open that Gate and choose its setup action. Apollo will check the result when you return.${gaps.length > 1 ? " Other items will remain listed in Gates." : ""}`;
 }
 // --- Follow-up: a day later, Higgins gently notices what is still waiting ------------------------------------------
 export interface Suggestion { messageId: string; askedAt: string; checks: CheckId[]; snoozedUntil?: string }

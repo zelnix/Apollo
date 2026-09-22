@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.hucentai.apollosecurity" >
+
+    <uses-sdk android:minSdkVersion="26" />
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!--
+       Package visibility (Android 11+): Apollo deliberately does NOT use QUERY_ALL_PACKAGES. It can only see the
+       remote-access risk catalog plus the stores/browsers/messengers needed to name an install source.
+       Keep this list identical to AppDeviceCatalog.VISIBLE_PACKAGES.
+    -->
+    <queries>
+        <package android:name="com.anydesk.anydeskandroid" />
+        <package android:name="com.teamviewer.teamviewer.market.mobile" />
+        <package android:name="com.teamviewer.quicksupport.market" />
+        <package android:name="com.teamviewer.host.market" />
+        <package android:name="com.rsupport.rs.activity.rsupport.aas2" />
+        <package android:name="com.splashtop.remote.pad.v2" />
+        <package android:name="com.splashtop.streamer.csrs" />
+        <package android:name="com.sand.airdroid" />
+        <package android:name="com.sand.airmirror" />
+        <package android:name="com.microsoft.rdc.androidx" />
+        <package android:name="com.realvnc.viewer.android" />
+        <package android:name="com.logmein.rescuemobile" />
+        <package android:name="com.zoho.assist.agent" />
+        <package android:name="com.aeroadmin.android" />
+        <package android:name="com.ultraviewer.android" />
+        <package android:name="com.rustdesk.rustdesk" />
+        <package android:name="net.grandcentrix.tv.remotedesktop" />
+        <package android:name="com.android.vending" />
+        <package android:name="com.sec.android.app.samsungapps" />
+        <package android:name="com.amazon.venezia" />
+        <package android:name="com.huawei.appmarket" />
+        <package android:name="com.xiaomi.mipicks" />
+        <package android:name="com.android.chrome" />
+        <package android:name="org.mozilla.firefox" />
+        <package android:name="com.microsoft.emmx" />
+        <package android:name="com.opera.browser" />
+        <package android:name="com.brave.browser" />
+        <package android:name="com.sec.android.app.sbrowser" />
+        <package android:name="com.duckduckgo.mobile.android" />
+        <package android:name="com.android.browser" />
+        <package android:name="com.whatsapp" />
+        <package android:name="org.telegram.messenger" />
+        <package android:name="com.facebook.orca" />
+        <package android:name="com.google.android.apps.messaging" />
+        <package android:name="com.samsung.android.messaging" />
+        <package android:name="com.google.android.packageinstaller" />
+        <package android:name="com.android.packageinstaller" />
+    </queries>
+
+    <application>
+        <service
+            android:name="com.hucentai.apollosecurity.ApolloDnsVpnService"
+            android:exported="false"
+            android:permission="android.permission.BIND_VPN_SERVICE" >
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.net.VpnService.SUPPORTS_ALWAYS_ON"
+                android:value="false" />
+        </service>
+        <!--
+         Text Guard: opt-in NotificationListenerService (Settings > Notification access). No READ_SMS,
+         ever — see ApolloSmsListenerService.kt header for the full truth-of-state contract.
+        -->
+        <service
+            android:name="com.hucentai.apollosecurity.ApolloSmsListenerService"
+            android:exported="false"
+            android:label="Apollo Text Guard"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" >
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+        <!--
+         Call Guard: CallScreeningService, held only if the person selects Apollo via the
+         RoleManager.ROLE_CALL_SCREENING request flow (Settings > Default apps > Caller ID & spam
+         blocking). exported=true is required for the system Telecom process to bind across
+         processes; BIND_SCREENING_SERVICE restricts that binding to the system only.
+        -->
+        <service
+            android:name="com.hucentai.apollosecurity.ApolloCallScreeningService"
+            android:exported="true"
+            android:permission="android.permission.BIND_SCREENING_SERVICE" >
+            <intent-filter>
+                <action android:name="android.telecom.CallScreeningService" />
+            </intent-filter>
+        </service>
+    </application>
+
+</manifest>

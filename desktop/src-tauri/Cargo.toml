@@ -1,6 +1,6 @@
 [package]
 name = "apollo-desktop"
-version = "1.0.0"
+version = "1.1.0"
 description = "Apollo desktop host (Windows/macOS)"
 edition = "2021"
 

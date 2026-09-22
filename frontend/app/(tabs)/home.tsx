@@ -1,29 +1,20 @@
 import { useRouter } from "expo-router";
 import BatteryCharging from "lucide-react-native/icons/battery-charging";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
-import ChevronUp from "lucide-react-native/icons/chevron-up";
-import FileSearch from "lucide-react-native/icons/file-search";
-import KeyRound from "lucide-react-native/icons/key-round";
-import Link2 from "lucide-react-native/icons/link-2";
-import Mail from "lucide-react-native/icons/mail";
-import MessageSquareWarning from "lucide-react-native/icons/message-square-warning";
-import PhoneIncoming from "lucide-react-native/icons/phone-incoming";
-import ScanLine from "lucide-react-native/icons/scan-line";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
-import Smartphone from "lucide-react-native/icons/smartphone";
 import Sparkles from "lucide-react-native/icons/sparkles";
-import Wifi from "lucide-react-native/icons/wifi";
-import React, { useState } from "react";
+import React from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApolloHero } from "@/src/components/ApolloHero";
+import { RootScreenHeader } from "@/src/components/RootScreenHeader";
 import { HigginsFollowUp } from "@/src/components/HigginsFollowUp";
 import { HigginsGreeting } from "@/src/components/HigginsGreeting";
 import { ClipboardLinkBanner } from "@/src/components/ClipboardLinkBanner";
 import { PatrolItem } from "@/src/components/PatrolItem";
 import { ServiceBanner } from "@/src/components/ServiceBanner";
-import { Body, Button, Card, DevTag, Pill, ScreenHeader, SectionTitle, toneColor } from "@/src/components/ui";
+import { Body, Button, Card, DevTag, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { buildScents } from "@/src/domain/threatScent";
 import { STATE_NAME } from "@/src/domain/types";
 import { buildWeeklyDigest } from "@/src/domain/digest";
@@ -31,6 +22,7 @@ import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { minimiseApp } from "@/src/utils/minimise";
 import { useProtectionHealth } from "@/src/protection/healthStore";
+import { projectPatrolOutcomes } from "@/src/domain/patrolOutcomes";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -42,83 +34,27 @@ const useStyles = makeStyles((c) => ({
   cardIconWell: { width: 30, height: 30, borderRadius: 15, backgroundColor: c.navyTint, alignItems: "center", justifyContent: "center" },
   cardTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.brand },
   cardLinkRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2, minHeight: 32 },
-  // Quick Checks is one understated white strip, not four separate cards — dividers between actions
-  // instead of individual borders, gold icons (unboxed) for the primary four, a light gold wash on
-  // press instead of a dark outline. Secondary ("All checks") rows reuse the same strip but keep the
-  // icon in navy, so the four primary actions still read as the fastest path.
-  checksPanel: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border },
-  checksRow: { flexDirection: "row", alignItems: "stretch" },
-  checksRowDivider: { height: 1, backgroundColor: c.divider, marginHorizontal: spacing.md },
-  checkDivider: { width: 1, backgroundColor: c.divider, marginVertical: spacing.md },
-  checkItem: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.xs, paddingVertical: spacing.md, borderRadius: radius.md },
-  checkItemPressed: { backgroundColor: c.goldTint },
-  checkLabel: { fontFamily: fonts.textMedium, fontSize: 12, color: c.onSurface },
-  quickChecksHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  allChecksLink: { flexDirection: "row", alignItems: "center", gap: 2, minHeight: 32, paddingVertical: spacing.xs, paddingHorizontal: spacing.xs },
-  allChecksLinkText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.brand },
 }));
-
-type QuickCheck = { testID: string; label: string; icon: React.ReactNode; route: string };
-
-/** One row of the Quick Checks strip: N equal actions separated by thin vertical dividers, sharing a
- *  single panel surface — never individually boxed. */
-function ChecksRow({ items, onPress }: { items: QuickCheck[]; onPress: (route: string) => void }) {
-  const s = useStyles();
-  return (
-    <View style={s.checksRow}>
-      {items.map((chk, i) => (
-        <React.Fragment key={chk.testID}>
-          {i > 0 ? <View style={s.checkDivider} /> : null}
-          <Pressable
-            testID={chk.testID}
-            accessibilityRole="button"
-            onPress={() => onPress(chk.route)}
-            style={({ pressed }) => [s.checkItem, pressed && s.checkItemPressed]}
-          >
-            {chk.icon}
-            <Text style={s.checkLabel} numberOfLines={1}>{chk.label}</Text>
-          </Pressable>
-        </React.Fragment>
-      ))}
-    </View>
-  );
-}
 
 export default function Home() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [allChecksOpen, setAllChecksOpen] = useState(false);
   const { resolution, capabilities, protection, adapterLabel, isMock, refreshing, events, lowPower, quietNow, showToast, identityReset, reRegisterDevice } = useApollo();
   const health = useProtectionHealth();
   // Recent Patrol on Home is a glance, not the archive — at most 2-3 items; the full history lives on Patrol.
-  const recent = events.slice(0, 3);
+  const recent = projectPatrolOutcomes(events).slice(0, 3);
   const digest = buildWeeklyDigest(events);
   const scents = buildScents(events);
-  const automatic = health.gates.filter((gate) => gate.id === "site" || gate.id === "text" || gate.id === "call");
-  const activeCount = automatic.filter((gate) => gate.state === "running").length;
-  const attentionCount = automatic.filter((gate) => gate.state === "needs_user" || gate.state === "degraded").length;
-
-  const primaryChecks: QuickCheck[] = [
-    { testID: "home-check-link-button", label: "Link Gate", icon: <Link2 size={20} color={colors.gold} />, route: "/check" },
-    { testID: "home-check-message-button", label: "Text Gate", icon: <MessageSquareWarning size={20} color={colors.gold} />, route: "/message" },
-    { testID: "home-check-call-button", label: "Call Gate", icon: <PhoneIncoming size={20} color={colors.gold} />, route: "/call" },
-    { testID: "home-scan-button", label: "Scan code", icon: <ScanLine size={20} color={colors.gold} />, route: "/scan" },
-  ];
-  const moreChecks: QuickCheck[] = [
-    { testID: "home-check-file-button", label: "File Gate", icon: <FileSearch size={20} color={colors.brand} />, route: "/file" },
-    { testID: "home-check-app-button", label: "App Gate", icon: <Smartphone size={20} color={colors.brand} />, route: "/app-check" },
-    { testID: "home-check-device-button", label: "Device Gate", icon: <ShieldCheck size={20} color={colors.brand} />, route: "/device" },
-    { testID: "home-check-network-button", label: "Network Gate", icon: <Wifi size={20} color={colors.brand} />, route: "/network" },
-    { testID: "home-check-account-button", label: "Account Gate", icon: <KeyRound size={20} color={colors.brand} />, route: "/account" },
-    { testID: "home-check-email-button", label: "Email Gate", icon: <Mail size={20} color={colors.brand} />, route: "/email" },
-  ];
+  const activeCount = health.gates.filter((gate) => gate.automaticStatus === "On").length;
+  const attentionCount = health.gates.filter((gate) => gate.automaticStatus === "Needs attention").length;
+  const setupCount = health.gates.filter((gate) => gate.automaticStatus === "Needs setup").length;
 
   return (
     <View style={s.root}>
       <View style={{ paddingTop: insets.top + spacing.md }}>
-        <ScreenHeader title="Apollo" testID="home-header" right={isMock ? <DevTag label="Mock" testID="home-mock-pill" /> : null} />
+        <RootScreenHeader title="Home" testID="home-header" rightAccessory={isMock ? <DevTag label="Preview" testID="home-mock-pill" /> : null} />
       </View>
       <ScrollView contentContainerStyle={s.content} testID="home-scroll">
         <ApolloHero resolution={resolution} adapterLabel={adapterLabel} isMock={isMock} capabilities={capabilities} animate={!lowPower} quietNow={quietNow} sniffing={refreshing} />
@@ -143,35 +79,14 @@ export default function Home() {
         ) : null}
 
         <View style={{ gap: spacing.md }}>
-          <View style={s.quickChecksHeaderRow}>
-            <SectionTitle>Quick checks</SectionTitle>
-            <Pressable testID="home-all-checks-toggle" accessibilityRole="button" onPress={() => setAllChecksOpen((v) => !v)} style={s.allChecksLink}>
-              <Text style={s.allChecksLinkText}>{allChecksOpen ? "Fewer checks" : "All checks"}</Text>
-              {allChecksOpen ? <ChevronUp size={14} color={colors.brand} /> : <ChevronRight size={14} color={colors.brand} />}
-            </Pressable>
-          </View>
-          <View style={s.checksPanel}>
-            <ChecksRow items={primaryChecks} onPress={(route) => router.push(route as never)} />
-            {allChecksOpen ? (
-              <View testID="home-all-checks">
-                <View style={s.checksRowDivider} />
-                <ChecksRow items={moreChecks.slice(0, 3)} onPress={(route) => router.push(route as never)} />
-                <View style={s.checksRowDivider} />
-                <ChecksRow items={moreChecks.slice(3)} onPress={(route) => router.push(route as never)} />
-              </View>
-            ) : null}
-          </View>
-        </View>
-
-        <View style={{ gap: spacing.md }}>
           <Card style={{ gap: 4 }} testID="home-protection-summary">
             <View style={s.cardTitleRow}>
               <View style={s.cardIconWell}><ShieldCheck size={16} color={colors.brand} /></View>
               <Text style={s.cardTitle}>Protection</Text>
             </View>
-            <Body testID="home-protection-status">{health.checking ? "Checking current device status…" : `${activeCount} automatic ${activeCount === 1 ? "protection is" : "protections are"} running${attentionCount ? ` · ${attentionCount} ${attentionCount === 1 ? "needs" : "need"} you` : ""}`}</Body>
+            <Body testID="home-protection-status">{health.checking ? "Checking current device status…" : `${activeCount} automatic ${activeCount === 1 ? "protection is" : "protections are"} on${attentionCount ? ` · ${attentionCount} ${attentionCount === 1 ? "needs" : "need"} attention` : setupCount ? ` · ${setupCount} ${setupCount === 1 ? "needs" : "need"} setup` : ""}`}</Body>
             <Pressable testID="home-open-guard" accessibilityRole="button" onPress={() => router.push("/(tabs)/guard")} style={s.cardLinkRow}>
-              <Text style={s.link}>{attentionCount ? "Restore protection" : "View protection"}</Text>
+              <Text style={s.link}>{attentionCount ? "Restore protection" : setupCount ? "Set up protection" : "View protection"}</Text>
               <ChevronRight size={14} color={colors.restingText} />
             </Pressable>
           </Card>
@@ -201,7 +116,7 @@ export default function Home() {
             </Card>
           ) : (
             <View>
-              {recent.map((e, i) => <PatrolItem key={e.event_id} event={e} isLast={i === recent.length - 1} />)}
+              {recent.map((outcome, i) => <PatrolItem key={outcome.id} outcome={outcome} isLast={i === recent.length - 1} />)}
               <Text style={s.link} onPress={() => router.push("/(tabs)/patrol")} testID="home-open-patrol">See all</Text>
             </View>
           )}

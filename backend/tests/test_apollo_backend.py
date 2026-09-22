@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 import pytest
 import requests
 
-BASE_URL = "https://device-file-gate.preview.emergentagent.com"
+BASE_URL = "https://apollo-platform.preview.emergentagent.com"
 API = f"{BASE_URL}/api"
 
 DEVICE_ID = f"testdev-{uuid.uuid4().hex[:12]}"

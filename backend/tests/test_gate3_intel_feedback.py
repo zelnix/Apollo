@@ -11,7 +11,7 @@ import uuid
 import pytest
 import requests
 
-BASE_URL = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/") if os.environ.get("EXPO_PUBLIC_BACKEND_URL") else os.environ.get("EXPO_BACKEND_URL", "https://device-file-gate.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/") if os.environ.get("EXPO_PUBLIC_BACKEND_URL") else os.environ.get("EXPO_BACKEND_URL", "https://apollo-platform.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
 
 

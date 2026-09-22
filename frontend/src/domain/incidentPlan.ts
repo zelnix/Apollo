@@ -5,8 +5,8 @@
 import { RECOVERY_STEPS, type RecoveryKind } from "./recovery.ts";
 import { type ApolloState, type EventCategory, type PatrolEvent, STATE_RANK_ORDER } from "./types.ts";
 
-export const CATEGORY_LABEL: Record<EventCategory, string> = { link: "Link checked", website: "Website", connection: "Network", known_threat: "Known threat", protection: "Protection", system: "System", message: "Message", call: "Phone call", app: "App", device: "Device", account: "Account alert", email: "Email" };
-export const CATEGORY_GLYPH: Record<EventCategory, string> = { link: "🔗", website: "🌐", connection: "📡", known_threat: "⛔", protection: "🛡️", system: "⚙️", message: "💬", call: "📞", app: "📱", device: "🛡️", account: "🔐", email: "✉️" };
+export const CATEGORY_LABEL: Record<EventCategory, string> = { link: "Link checked", website: "Website", connection: "Network", known_threat: "Known threat", protection: "Protection", system: "System", message: "Message", call: "Phone call", app: "App", device: "Device", account: "Account alert", email: "Email", file: "File", family: "Family update" };
+export const CATEGORY_GLYPH: Record<EventCategory, string> = { link: "L", website: "W", connection: "N", known_threat: "!", protection: "P", system: "S", message: "M", call: "C", app: "A", device: "D", account: "AC", email: "E", file: "F", family: "FM" };
 
 export interface IncidentStep { id: string; text: string; source: RecoveryKind | "generic" }
 export interface IncidentPlan { headline: string; state: ApolloState; timeline: PatrolEvent[]; kinds: RecoveryKind[]; steps: IncidentStep[]; exposure: string[]; allResolved: boolean }

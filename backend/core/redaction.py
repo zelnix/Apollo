@@ -2,7 +2,7 @@
 import re
 
 _SECRET = re.compile(
-    r"(?i)\b(password|passcode|p\.?i\.?n\.?|otp|one[- ]time(?: security)? code|verification code|security code|recovery code|username|login id)\b"
+    r"(?i)\b(password|passcode|p\.?i\.?n\.?|otp|one[- ]time(?: security)? code|verification code|security code|recovery code|code|username|login id)\b"
     r"(\s*(?:is|was|:|=)\s*|\s+)([A-Za-z0-9!@#$%^&*_.+\-/]{3,96})"
 )
 _NON_SECRET_WORDS = {"reset", "change", "changed", "request", "requested", "prompt", "field", "link", "page", "screen", "required",

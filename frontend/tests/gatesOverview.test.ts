@@ -14,43 +14,43 @@ const base = { platform: "android", checking: false, protection: protection(), p
 
 test("mixed protection condition uses exact summary, Higgins copy and restoration action", () => {
   const result = buildGatesOverview(base);
-  assert.equal(result.summary, "Some protection needs attention");
-  assert.equal(result.higgins, "Your link checks are available, but Site Gate is off. Restore Apollo’s protection permission to enable its automatic filtering.");
-  assert.equal(result.primary?.actionLabel, "Restore protection");
-  assert.equal(result.gates.find((gate) => gate.id === "link")?.status, "Ready to check");
-  assert.equal(result.gates.find((gate) => gate.id === "site")?.status, "Needs attention");
+  assert.equal(result.summary, "1 automatic protection needs attention");
+  assert.match(result.higgins, /Site Gate needs attention/);
+  assert.equal(result.primary?.automaticAction?.label, "Restore Site Gate");
+  assert.equal(result.gates.find((gate) => gate.id === "link")?.onDemandStatus, "Available");
+  assert.equal(result.gates.find((gate) => gate.id === "site")?.automaticStatus, "Needs attention");
 });
 
 test("requested on is not active without fresh operational evidence", () => {
   const result = buildGatesOverview({ ...base, permissions: [permission("granted")], protection: protection({ requested: true, running: true, operational: false, lastVerified: null }) });
-  assert.equal(result.gates.find((gate) => gate.id === "site")?.status, "Needs attention");
+  assert.equal(result.gates.find((gate) => gate.id === "site")?.automaticStatus, "Needs attention");
 });
 
 test("stale verification never produces an Active Gate", () => {
   const stale = new Date(Date.now() - 11 * 60 * 1000).toISOString();
   const result = buildGatesOverview({ ...base, permissions: [permission("granted")], protection: protection({ running: true, operational: true, lastVerified: stale, visibility: "full" }),
     capabilities: [...base.capabilities.filter((cap) => cap.id !== "site_guard"), { id: "site_guard" as const, title: "Site Gate", status: "active" as const, detail: "Stale" }] });
-  assert.equal(result.gates.find((gate) => gate.id === "site")?.status, "Needs attention");
+  assert.equal(result.gates.find((gate) => gate.id === "site")?.automaticStatus, "Needs attention");
 });
 
 test("all available protection summary requires confirmed automatic evidence", () => {
   const result = buildGatesOverview({ ...base, permissions: [permission("granted")], protection: protection({ running: true, operational: true, lastVerified: new Date().toISOString(), visibility: "full" }),
     capabilities: [...base.capabilities.filter((cap) => cap.id !== "site_guard"), { id: "site_guard" as const, title: "Site Gate", status: "active" as const, detail: "Running" }] });
-  assert.equal(result.gates.find((gate) => gate.id === "site")?.status, "Active");
-  assert.equal(result.summary, "All available protection is active");
-  assert.match(result.higgins, /Ready to check still require you to submit/);
+  assert.equal(result.gates.find((gate) => gate.id === "site")?.automaticStatus, "On");
+  assert.match(result.summary, /automatic protections are on/);
+  assert.match(result.higgins, /shown separately/);
 });
 
 test("preview cannot claim automatic filtering", () => {
   const result = buildGatesOverview({ ...base, platform: "web", protection: protection({ enforcementMethod: "simulated" }), permissions: [] });
-  assert.equal(result.gates.find((gate) => gate.id === "site")?.status, "Unavailable on this device");
+  assert.equal(result.gates.find((gate) => gate.id === "site")?.automaticStatus, "Not supported");
 });
 
 test("Email Gate requires a fresh monitor heartbeat, not only an enabled toggle", () => {
   const requested = buildGatesOverview({ ...base, email: { checking: false, configured: true, connected: true, monitoringRequested: true, lastCheckedAt: null, lastErrorAt: null } });
-  assert.equal(requested.gates.find((gate) => gate.id === "email")?.status, "Needs attention");
+  assert.equal(requested.gates.find((gate) => gate.id === "email")?.automaticStatus, "Needs attention");
   const active = buildGatesOverview({ ...base, email: { checking: false, configured: true, connected: true, monitoringRequested: true, lastCheckedAt: new Date().toISOString(), lastErrorAt: null } });
-  assert.equal(active.gates.find((gate) => gate.id === "email")?.status, "Active");
+  assert.equal(active.gates.find((gate) => gate.id === "email")?.automaticStatus, "On");
 });
 
 test("overview contains exactly ten first-class Gates including manual File and Device Gates", () => {
@@ -59,9 +59,19 @@ test("overview contains exactly ten first-class Gates including manual File and 
   assert.deepEqual(result.gates.map((gate) => gate.id), ["site", "link", "text", "call", "network", "account", "email", "file", "app", "device"]);
   for (const id of ["file", "app", "device"] as const) {
     const gate = result.gates.find((item) => item.id === id);
-    assert.equal(gate?.status, "Ready to check");
-    assert.equal(gate?.mode, "Manual submission");
+    assert.equal(gate?.onDemandStatus, "Available");
+    assert.equal(gate?.automaticStatus, "Not supported");
   }
-  assert.match(result.gates.find((gate) => gate.id === "file")?.scope ?? "", /Cloud hosting is not a safety signal/);
-  assert.match(result.gates.find((gate) => gate.id === "device")?.scope ?? "", /does not continuously scan every app/);
+  assert.match(result.gates.find((gate) => gate.id === "file")?.onDemandDetail ?? "", /Choose or share/);
+  assert.match(result.gates.find((gate) => gate.id === "device")?.onDemandDetail ?? "", /device, permission and protection changes/);
+});
+
+test("automatic and on-demand capabilities never share one status field", () => {
+  const result = buildGatesOverview(base);
+  for (const gate of result.gates) {
+    assert.ok(gate.automaticStatus);
+    assert.ok(gate.onDemandStatus);
+    assert.equal("status" in gate, false);
+    assert.equal("mode" in gate, false);
+  }
 });

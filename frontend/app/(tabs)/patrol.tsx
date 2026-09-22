@@ -6,16 +6,16 @@ import { FlatList, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { PatrolItem } from "@/src/components/PatrolItem";
-import { PatrolDeliveryBanner } from '@/src/components/PatrolDeliveryBanner';
-import { Body, Card, Pill, ScreenHeader, toneColor, toneTint } from "@/src/components/ui";
-import type { ApolloState, PatrolEvent } from "@/src/domain/types";
+import { RootScreenHeader } from "@/src/components/RootScreenHeader";
+import { Body, Card, Pill } from "@/src/components/ui";
+import { projectPatrolOutcomes, type PatrolOutcome } from "@/src/domain/patrolOutcomes";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { exportPatrolPdf } from "@/src/utils/exportPatrol";
 
-type Filter = "all" | Exclude<ApolloState, "ears_up" | "growling"> | "growling_all" | "active";
+type Filter = "all" | "needs_you" | "handled";
 const FILTERS: { key: Filter; label: string }[] = [
-  { key: "all", label: "All" }, { key: "active", label: "Needs attention" }, { key: "biting", label: "Biting" }, { key: "barking", label: "Barking" }, { key: "growling_all", label: "Growling" }, { key: "resting", label: "Resting" },
+  { key: "all", label: "All" }, { key: "needs_you", label: "Needs you" }, { key: "handled", label: "Handled" },
 ];
 
 const useStyles = makeStyles((c) => ({
@@ -45,31 +45,31 @@ export default function Patrol() {
   const router = useRouter();
   const [filter, setFilter] = useState<Filter>("all");
   const onExport = async () => {
-    if (events.length === 0) { showToast("Nothing to export yet.", "neutral"); return; }
-    try { const r = await exportPatrolPdf(events, deviceId); showToast(r === "shared" ? "Patrol PDF ready to share" : "Print dialog opened", "resting"); }
+    if (outcomes.length === 0) { showToast("Nothing to export yet.", "neutral"); return; }
+    try { const r = await exportPatrolPdf(outcomes.map((outcome) => outcome.event), deviceId); showToast(r === "shared" ? "Patrol PDF ready to share" : "Print dialog opened", "resting"); }
     catch { showToast("Could not create the PDF on this device.", "growling"); }
   };
 
+  const outcomes = useMemo(() => projectPatrolOutcomes(events), [events]);
   const rows = useMemo(() => {
-    const filtered = events.filter((e) => filter === "all" ? true : filter === "active" ? e.status === "active" || (e.status === "blocked" && !e.resolved_at)
-      : filter === "growling_all" ? e.state === "ears_up" || e.state === "growling" : e.state === filter);
-    const out: ({ type: "day"; label: string; key: string } | { type: "event"; event: PatrolEvent; isLast: boolean; key: string })[] = [];
+    const filtered = outcomes.filter((outcome) => filter === "all" || outcome.status === filter);
+    const out: ({ type: "day"; label: string; key: string } | { type: "outcome"; outcome: PatrolOutcome; isLast: boolean; key: string })[] = [];
     let lastDay = "";
     filtered.forEach((e, i) => {
-      const day = dayLabel(e.occurred_at);
+      const day = dayLabel(e.latestOccurredAt);
       if (day !== lastDay) { out.push({ type: "day", label: day, key: `day-${day}` }); lastDay = day; }
       const next = filtered[i + 1];
-      out.push({ type: "event", event: e, isLast: !next || dayLabel(next.occurred_at) !== day, key: e.event_id });
+      out.push({ type: "outcome", outcome: e, isLast: !next || dayLabel(next.latestOccurredAt) !== day, key: e.id });
     });
     return out;
-  }, [events, filter]);
+  }, [outcomes, filter]);
 
   return (
     <View style={s.root}>
       <View style={{ paddingTop: insets.top + spacing.md }}>
-        <ScreenHeader title="Patrol" testID="patrol-header" right={
+        <RootScreenHeader title="Apollo's Patrol" testID="patrol-header" rightAccessory={
           <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}>
-            <Pill tone="neutral" label={`${events.length} events`} testID="patrol-count" />
+            <Pill tone="neutral" label={`${outcomes.length} outcomes`} testID="patrol-count" />
             <Pressable testID="patrol-saved-reports-button" accessibilityRole="button" accessibilityLabel="Open saved reports" onPress={() => router.push("/saved-reports")} style={s.iconBtn}><Library size={20} color={colors.onSurface} /></Pressable>
             <Pressable testID="patrol-export-button" accessibilityRole="button" accessibilityLabel="Export Patrol as PDF" onPress={onExport} style={s.iconBtn}><FileDown size={20} color={colors.onSurface} /></Pressable>
           </View>
@@ -77,15 +77,8 @@ export default function Patrol() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipRow} testID="patrol-filter-row">
           {FILTERS.map((f) => {
             const active = filter === f.key;
-            // Selecting a state filter (Barking, Growling…) borrows that state's own colour — meaningful, not
-            // decorative, since it tells you which colour you're now looking at. "All" / "Needs attention" aren't
-            // states, so they get the restrained gold accent instead of a borrowed status colour.
-            const isStateFilter = f.key !== "all" && f.key !== "active";
-            const tone = f.key === "growling_all" ? "growling" : f.key as ApolloState;
-            const activeBorder = isStateFilter ? toneColor(colors, tone) : colors.gold;
-            const activeTint = isStateFilter ? toneTint(colors, tone) : colors.goldTint;
             return (
-              <Pressable key={f.key} testID={`patrol-filter-${f.key}`} onPress={() => setFilter(f.key)} style={[s.chip, active && { borderColor: activeBorder, backgroundColor: activeTint }]}>
+              <Pressable key={f.key} testID={`patrol-filter-${f.key}`} accessibilityRole="button" accessibilityState={{ selected: active }} onPress={() => setFilter(f.key)} style={[s.chip, active && { borderColor: colors.gold, backgroundColor: colors.goldTint }]}> 
                 <Text style={[s.chipText, active && { color: colors.onSurface, fontFamily: fonts.textSemibold }]}>{f.label}</Text>
               </Pressable>
             );
@@ -93,16 +86,15 @@ export default function Patrol() {
         </ScrollView>
       </View>
       <FlatList
-        ListHeaderComponent={<PatrolDeliveryBanner />}
         data={rows}
         keyExtractor={(r) => r.key}
         contentContainerStyle={s.list}
         testID="patrol-list"
-        renderItem={({ item }) => item.type === "day" ? <Text style={s.day}>{item.label}</Text> : <PatrolItem event={item.event} isLast={item.isLast} />}
+        renderItem={({ item }) => item.type === "day" ? <Text style={s.day}>{item.label}</Text> : <PatrolItem outcome={item.outcome} isLast={item.isLast} />}
         ListEmptyComponent={
           <Card testID="patrol-empty" style={{ gap: spacing.sm }}>
-            <Text style={s.emptyTitle}>No security events{filter !== "all" ? " for this filter" : ""}</Text>
-            <Body>There are no recorded security events for this view. This does not establish that every Gate is active; check Gates for current protection availability.</Body>
+            <Text style={s.emptyTitle}>No Patrol outcomes{filter !== "all" ? " for this filter" : ""}</Text>
+            <Body>There are no meaningful outcomes for this view. Commands and technical service messages are kept out of Patrol; check Gates for current protection.</Body>
           </Card>
         }
       />

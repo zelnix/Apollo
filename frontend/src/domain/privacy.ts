@@ -4,7 +4,7 @@ import { domainOnly, packetFields, evidenceToken } from './packetEvidence.ts';
 // User-submitted content may leave the device only for the disclosed, one-off assessment the user
 // requested. It must not be copied into Patrol payloads, logs, analytics, or background monitoring.
 
-export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "device_register" | "family" | "push_register" | "push_test" | "device_settings" | "message_check" | "message_extract" | "link_investigation" | "feedback" | "page_extract" | "page_crawl" | "gmail_scan" | "gmail_monitor" | "app_check" | "account_check" | "breach_check" | "voice" | "call_risk_check" | "investigation";
+export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "higgins_chat" | "higgins_context" | "device_register" | "family" | "push_register" | "push_test" | "device_settings" | "message_check" | "message_extract" | "link_investigation" | "feedback" | "page_extract" | "page_crawl" | "gmail_scan" | "gmail_monitor" | "app_check" | "account_check" | "breach_check" | "voice" | "call_risk_check" | "investigation";
 
 const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   family: new Set(["device_id", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id", "scent_id", "headline", "state", "events", "steps", "done", "note", "resolved", "kind", "text", "from_name", "enabled", "preview_only", "guardian_name", "duration_s", "submission_id"]),
@@ -20,6 +20,8 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   ]),
   trust_sync: new Set(["device_id", "indicator_type", "indicator_digest", "indicator_host", "event_id", "trust_id"]),
   ask_apollo: new Set(["device_id", "message", "context", "handoff_id", "conversation_id", "turn_id"]),
+  higgins_chat: new Set(["message", "conversationId"]),
+  higgins_context: new Set(["category", "summary", "provenance", "observedAt"]),
   device_register: new Set(["platform", "adapter_mode", "app_version", "tz_offset_minutes"]),
   // Alert notifications: the push token is an opaque delivery address (FCM/APNs), relayed and not stored by us.
   push_register: new Set(["platform", "provider", "projectId", "device_token"]),

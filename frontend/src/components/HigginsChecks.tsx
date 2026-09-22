@@ -24,6 +24,7 @@ export function HigginsChecks({ checks, askedAt, messageId, record = true, title
   const s = useStyles();
   const { colors } = useTheme();
   const router = useRouter();
+  const navigating = React.useRef(false);
   const completed = useCheckCompletion();
   useEffect(() => { if (record && checks.length) void recordSuggestion(messageId, askedAt, checks); }, [record, messageId, askedAt, checks]);
   if (!checks.length) return null;
@@ -34,9 +35,9 @@ export function HigginsChecks({ checks, askedAt, messageId, record = true, title
       {checks.map((c) => {
         const d = isDone(completed[c], askedAt);
         return (
-          <Pressable key={c} testID={`higgins-check-${c}`} accessibilityRole="link" accessibilityState={{ checked: d }} onPress={() => { onNavigate?.(); requestAnimationFrame(() => router.push(CHECKS[c].route as never)); }} style={[s.chip, d && s.chipDone]}>
+          <Pressable key={c} testID={`higgins-check-${c}`} accessibilityRole="button" accessibilityLabel={CHECKS[c].actionLabel} accessibilityHint={CHECKS[c].purpose} accessibilityState={{ checked: d }} onPress={() => { if (navigating.current) return; navigating.current = true; onNavigate?.(); requestAnimationFrame(() => router.push(CHECKS[c].route as never)); }} style={[s.chip, d && s.chipDone]}>
             {d ? <Check size={18} color={colors.resting} /> : <ChevronRight size={18} color={colors.brand} />}
-            <View style={{ flex: 1 }}><Text style={s.chipText}>{CHECKS[c].label}</Text></View>
+            <View style={{ flex: 1 }}><Text style={s.chipText}>{CHECKS[c].actionLabel}</Text><Text style={s.progress}>{CHECKS[c].purpose}</Text></View>
             {d ? <Text style={s.doneText} testID={`higgins-check-${c}-done`}>Done</Text> : null}
           </Pressable>
         );

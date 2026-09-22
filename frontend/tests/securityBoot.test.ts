@@ -19,14 +19,14 @@ const realAdapter: Adapter = {
 
 // The release-build defect class that surfaced on the first physical device: a native host whose binary lacks the
 // required Apollo native module. There is no mock substitute; boot must fail closed without an OS crash.
-const PROD_MISSING_SECURECORE = { appEnvironment: "production", hostPlatform: "android", nativeSecurityAdapterAvailable: false } as const;
+const PROD_MISSING_NATIVE_MODULE = { appEnvironment: "production", hostPlatform: "android", nativeSecurityAdapterAvailable: false } as const;
 const PROD_VALID = { appEnvironment: "production", hostPlatform: "android", nativeSecurityAdapterAvailable: true } as const;
 
 beforeEach(() => resetSecurityBootErrorForTests());
 
 test("invalid production config → boot error recorded, selector returns a fail-closed stand-in (no crash at load)", () => {
   let chosen = 0;
-  const adapter = selectFailClosed<Adapter>(() => validateSecurityConfig(PROD_MISSING_SECURECORE), () => { chosen++; return realAdapter; });
+  const adapter = selectFailClosed<Adapter>(() => validateSecurityConfig(PROD_MISSING_NATIVE_MODULE), () => { chosen++; return realAdapter; });
   const err = getSecurityBootError();
   assert.ok(err instanceof SecurityConfigurationError, "SecurityConfigurationError is recorded, not thrown");
   assert.match(err.message, /Apollo native security module is required but unavailable/);
@@ -52,10 +52,10 @@ test("first error wins; later errors do not overwrite the root cause shown to th
 });
 
 test("blocking screen copy names the cause and never claims protection", () => {
-  const err = new SecurityConfigurationError("HuCentAI SecureCore native SDK is required but unavailable. Use an EAS build that includes the native module.");
+  const err = new SecurityConfigurationError("Apollo's native security module is unavailable. Install an Apollo build that includes device protection.");
   const copy = safeStartCopy(err);
   assert.equal(copy.title, "Apollo can't start safely.");
-  assert.equal(copy.reason, "HuCentAI SecureCore native SDK is required but unavailable. Use an EAS build that includes the native module.");
+  assert.equal(copy.reason, "Apollo's native security module is unavailable. Install an Apollo build that includes device protection.");
   for (const line of Object.values(copy)) {
     assert.doesNotMatch(line, /guarding|protecting you|is protecting|patrolling/i, `no false protection claim in: ${line}`);
   }

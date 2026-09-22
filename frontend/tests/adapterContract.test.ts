@@ -103,11 +103,13 @@ test("real browser adapter and the development-only preview harness both impleme
 });
 
 test("no runtime mock exists in application source; the preview harness is reachable only from the web host selector", () => {
+  const retiredName = ["Secure", "Core"].join("");
   const walk = (dir: string): string[] => readdirSync(join(root, dir), { withFileTypes: true }).flatMap((e) =>
     e.isDirectory() ? walk(join(dir, e.name)) : /\.(ts|tsx)$/.test(e.name) ? [join(dir, e.name)] : []);
   for (const file of [...walk("src"), ...walk("app")]) {
     const src = read(file);
-    assert.doesNotMatch(src, /MockSecurityAdapter|MockSecureCore|EXPO_PUBLIC_SECURITY_MODE|EXPO_PUBLIC_SECURECORE_MODE/, `${file} references a removed runtime mock`);
+    assert.doesNotMatch(src, /MockSecurityAdapter|EXPO_PUBLIC_SECURITY_MODE/, `${file} references a removed runtime mock`);
+    assert.equal(src.toLowerCase().includes(retiredName.toLowerCase()), false, `${file} references the retired security boundary`);
     if (file !== "src/security/hostAdapter.web.ts") assert.doesNotMatch(src, /tools\/preview-device-harness/, `${file} must not import the preview harness`);
   }
   // Native bundles resolve hostAdapter.ts, which must not know about the web adapter or the harness at all.

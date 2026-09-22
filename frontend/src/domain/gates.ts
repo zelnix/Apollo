@@ -5,98 +5,91 @@ import type { CallProtectionCapabilities } from "@/src/security/callSdk";
 import { VERIFICATION_FRESHNESS_MS } from "./stateMachine.ts";
 
 export type GateId = "site" | "link" | "text" | "call" | "network" | "account" | "email" | "file" | "app" | "device";
-export type GateStatus = "Active" | "Ready to check" | "Needs attention" | "Off" | "Unavailable on this device" | "Checking status";
-export type GateMode = "Automatic" | "Manual submission" | "Automatic + manual";
-export type GateAction = "restore_site" | "restore_text" | "restore_call" | "open";
-export interface GateItem { id: GateId; title: string; status: GateStatus; mode: GateMode; scope: string; setup: string | null; actionLabel: string; action: GateAction; route?: string }
+export type AutomaticProtectionStatus = "On" | "Needs setup" | "Needs attention" | "Not supported" | "Checking";
+export type OnDemandCheckStatus = "Available" | "Unavailable";
+export type GateAction = "restore_site" | "open_gate" | "open_support";
+
+export interface GateCapabilityAction { kind: GateAction; label: string; route?: string }
+export interface GateItem {
+  id: GateId; title: string; automaticStatus: AutomaticProtectionStatus; onDemandStatus: OnDemandCheckStatus;
+  automaticDetail: string; onDemandDetail: string; checkedAt: string | null; source: "os" | "native" | "manual" | "backend";
+  automaticAction: GateCapabilityAction | null; onDemandAction: GateCapabilityAction | null;
+}
 export interface GatesOverview { summary: string; higgins: string; primary: GateItem | null; gates: GateItem[] }
+export interface EmailMonitorCapability {
+  checking: boolean; configured: boolean; connected: boolean; monitoringRequested: boolean;
+  lastCheckedAt: string | null; lastSuccessAt?: string | null; lastErrorAt: string | null;
+}
 export interface GatesInput {
   platform: string; checking: boolean; protection: ProtectionStatus | null; permissions: ProtectionPermission[]; capabilities: Capability[];
-  messaging: MessagingCapabilities | null; calls: CallProtectionCapabilities | null;
-  email?: { checking: boolean; configured: boolean; connected: boolean; monitoringRequested: boolean; lastCheckedAt: string | null; lastErrorAt: string | null };
-  online?: boolean;
-  accountBreachConfigured?: boolean;
+  messaging: MessagingCapabilities | null; calls: CallProtectionCapabilities | null; email?: EmailMonitorCapability; online?: boolean; accountBreachConfigured?: boolean; now?: number;
 }
 
-const manual = (id: GateId, title: string, scope: string, route: string): GateItem => ({
-  id, title, status: "Ready to check", mode: "Manual submission", scope, setup: null, actionLabel: `Open ${title}`, action: "open", route,
-});
 const cap = (caps: Capability[], id: string) => caps.find((item) => item.id === id);
+const manual = (id: GateId, title: string, route: string, detail: string): GateItem => ({
+  id, title, automaticStatus: "Not supported", onDemandStatus: "Available", automaticDetail: `${title} does not claim to run automatically on this device.`, onDemandDetail: detail,
+  checkedAt: new Date().toISOString(), source: "manual", automaticAction: null, onDemandAction: { kind: "open_gate", label: `Open ${title}`, route },
+});
+const nativeAutomatic = (status: "supported" | "permission_required" | "unsupported" | undefined): AutomaticProtectionStatus => status === undefined ? "Checking" : status === "supported" ? "On" : status === "permission_required" ? "Needs setup" : "Not supported";
 
 export function buildGatesOverview(input: GatesInput): GatesOverview {
+  const now = input.now ?? Date.now();
   const siteCap = cap(input.capabilities, "site_guard");
-  const siteUnavailable = siteCap?.status === "unsupported" || (input.platform === "web" && input.protection?.enforcementMethod === "simulated");
   const verifiedAt = input.protection?.lastVerified ? Date.parse(input.protection.lastVerified) : 0;
-  const freshVerification = verifiedAt > 0 && verifiedAt <= Date.now() && Date.now() - verifiedAt <= VERIFICATION_FRESHNESS_MS;
-  const siteActive = !!input.protection?.operational && freshVerification && siteCap?.status === "active";
-  const siteNeedsPermission = input.permissions.some((p) => (p.id === "network_filter" || p.id === "vpn_config") && p.status !== "granted" && p.status !== "not_applicable");
-  const siteStatus: GateStatus = input.checking || !input.protection ? "Checking status" : siteUnavailable ? "Unavailable on this device" : siteActive ? "Active"
-    : !input.protection.requested ? "Off" : "Needs attention";
-  const site: GateItem = { id: "site", title: "Site Gate", status: siteStatus, mode: "Automatic",
-    scope: siteActive ? "Automatically filters supported website traffic. A block is reported only after the device confirms it." : "Automatic filtering for supported website traffic; this is separate from manual link checks.",
-    setup: siteStatus === "Needs attention" ? (siteNeedsPermission ? "Protection permission must be restored and verified." : input.protection?.degradedReason ?? "Apollo has not confirmed that filtering is running.")
-      : siteStatus === "Off" ? "Automatic website filtering is turned off." : siteStatus === "Unavailable on this device" ? "This device or build cannot run Apollo's automatic website filter." : null,
-    actionLabel: siteStatus === "Active" || siteStatus === "Unavailable on this device" ? "Open Link Gate" : siteStatus === "Checking status" ? "Check status" : "Restore protection",
-    action: siteStatus === "Active" || siteStatus === "Unavailable on this device" ? "open" : "restore_site", route: "/check" };
+  const siteFresh = verifiedAt > 0 && verifiedAt <= now && now - verifiedAt <= VERIFICATION_FRESHNESS_MS;
+  const siteUnsupported = siteCap?.status === "unsupported" || (input.platform === "web" && input.protection?.enforcementMethod === "simulated");
+  const siteOn = !!input.protection?.operational && siteFresh && siteCap?.status === "active";
+  const sitePermissionGap = input.permissions.some((permission) => (permission.id === "network_filter" || permission.id === "vpn_config") && !["granted", "not_applicable"].includes(permission.status));
+  const siteAutomatic: AutomaticProtectionStatus = input.checking || !input.protection ? "Checking" : siteUnsupported ? "Not supported" : siteOn ? "On" : !input.protection.requested ? "Needs setup" : "Needs attention";
+  const site: GateItem = {
+    id: "site", title: "Site Gate", automaticStatus: siteAutomatic, onDemandStatus: "Unavailable", checkedAt: input.protection?.checkedAt ?? null, source: "os",
+    automaticDetail: siteAutomatic === "On" ? input.protection?.coverage ?? "Supported website traffic is filtered." : siteAutomatic === "Needs setup" ? "Turn on website protection and approve the device request." : siteAutomatic === "Needs attention" ? (sitePermissionGap ? "Device approval is missing or no longer active." : input.protection?.degradedReason ?? "Apollo cannot confirm that website protection is running.") : siteAutomatic === "Not supported" ? "This device or build cannot run automatic website protection." : "Apollo is checking the current device state.",
+    onDemandDetail: "Use Link Gate when you want to check one link yourself.",
+    automaticAction: siteAutomatic === "Needs setup" || siteAutomatic === "Needs attention" ? { kind: "restore_site", label: "Restore Site Gate" } : null,
+    onDemandAction: null,
+  };
 
-  const textCapability = input.messaging?.smsFiltering;
-  const text: GateItem = { id: "text", title: "Text Gate", status: !input.messaging ? "Checking status" : textCapability === "supported" ? "Active"
-    : textCapability === "permission_required" ? "Needs attention" : "Ready to check", mode: textCapability === "unsupported" ? "Manual submission" : "Automatic + manual",
-    scope: textCapability === "supported" ? "Automatically checks supported new-message notifications; pasted text and screenshots can also be submitted."
-      : "Checks text or a screenshot when you submit it. Automatic message access is not assumed.",
-    setup: textCapability === "permission_required" ? "Notification access must be restored, then Apollo must confirm it is running." : null,
-    actionLabel: textCapability === "permission_required" ? "Restore Text Gate" : "Open Text Gate", action: textCapability === "permission_required" ? "restore_text" : "open", route: "/text-guard" };
+  const textAutomatic = nativeAutomatic(input.messaging?.smsFiltering);
+  const text: GateItem = { id: "text", title: "Text Gate", automaticStatus: textAutomatic, onDemandStatus: "Available", checkedAt: input.checking ? null : new Date(now).toISOString(), source: "native",
+    automaticDetail: textAutomatic === "On" ? "Supported new-message notifications can be assessed on this device." : textAutomatic === "Needs setup" ? "Approve notification access so supported messages can be assessed." : textAutomatic === "Not supported" ? "This device cannot give Apollo supported automatic message access." : "Apollo is checking message access.",
+    onDemandDetail: "Paste, share or add a screenshot of a message.", automaticAction: textAutomatic === "Needs setup" ? { kind: "open_gate", label: "Set up Text Gate", route: "/text-guard" } : null, onDemandAction: { kind: "open_gate", label: "Check a message", route: "/message" } };
 
-  const callCapability = input.calls?.callScreening;
-  const call: GateItem = { id: "call", title: "Call Gate", status: !input.calls ? "Checking status" : callCapability === "supported" ? "Active"
-    : callCapability === "permission_required" ? "Needs attention" : "Ready to check", mode: callCapability === "unsupported" ? "Manual submission" : "Automatic + manual",
-    scope: callCapability === "supported" ? "Automatically screens calls using the local block list and supported high-risk signals; other calls still ring."
-      : "Checks a number or call context when you submit it. Monitoring is not presented as blocking.",
-    setup: callCapability === "permission_required" ? "Call-screening permission or role must be restored and verified." : null,
-    actionLabel: callCapability === "permission_required" ? "Restore Call Gate" : "Open Call Gate", action: callCapability === "permission_required" ? "restore_call" : "open", route: "/call-guard" };
+  const callAutomatic = nativeAutomatic(input.calls?.callScreening);
+  const call: GateItem = { id: "call", title: "Call Gate", automaticStatus: callAutomatic, onDemandStatus: "Available", checkedAt: input.checking ? null : new Date(now).toISOString(), source: "native",
+    automaticDetail: callAutomatic === "On" ? "The device call-screening role is active for supported calls." : callAutomatic === "Needs setup" ? "Choose Apollo for the device call-screening role." : callAutomatic === "Not supported" ? "This device cannot give Apollo supported automatic call screening." : "Apollo is checking call-screening access.",
+    onDemandDetail: "Check a number or describe what was said during a call.", automaticAction: callAutomatic === "Needs setup" ? { kind: "open_gate", label: "Set up Call Gate", route: "/call-guard" } : null, onDemandAction: { kind: "open_gate", label: "Check a call or number", route: "/call" } };
 
   const networkCap = cap(input.capabilities, "connection_guard");
-  const networkActive = networkCap?.status === "active" && siteActive;
-  const network: GateItem = { id: "network", title: "Network Gate", status: input.checking ? "Checking status" : networkActive ? "Active" : "Ready to check",
-    mode: networkActive ? "Automatic + manual" : "Manual submission", scope: networkActive ? "Automatically warns about supported open or captive Wi‑Fi conditions; it does not claim to block the network."
-      : "Checks the current network facts the device exposes, or details you submit.", setup: null, actionLabel: "Open Network Gate", action: "open", route: "/network" };
+  const networkAutomatic: AutomaticProtectionStatus = input.checking ? "Checking" : networkCap?.status === "active" && siteOn ? "On" : networkCap?.status === "permission_required" ? "Needs setup" : "Not supported";
+  const network: GateItem = { ...manual("network", "Network Gate", "/network", "Review the connection facts this device can see and add your context."), source: "native", automaticStatus: networkAutomatic,
+    automaticDetail: networkAutomatic === "On" ? "Apollo can warn about supported open or sign-in Wi‑Fi conditions while protection is active." : networkAutomatic === "Needs setup" ? "A device permission is needed before supported network warnings can run." : networkAutomatic === "Checking" ? "Apollo is checking network access." : "This device does not provide supported automatic network warnings.",
+    automaticAction: networkAutomatic === "Needs setup" ? { kind: "open_gate", label: "Set up Network Gate", route: "/network" } : null };
 
-  const emailHeartbeat = input.email?.lastCheckedAt ? Date.parse(input.email.lastCheckedAt) : 0;
-  const emailError = input.email?.lastErrorAt ? Date.parse(input.email.lastErrorAt) : 0;
-  const emailFresh = emailHeartbeat > 0 && emailHeartbeat <= Date.now() && Date.now() - emailHeartbeat <= 20 * 60 * 1000 && emailHeartbeat >= emailError;
-  const emailStatus: GateStatus = input.email?.checking ? "Checking status" : input.email?.connected && input.email.monitoringRequested && emailFresh ? "Active"
-    : input.email?.connected && input.email.monitoringRequested ? "Needs attention" : input.email?.connected ? "Off" : "Ready to check";
-  const email: GateItem = { id: "email", title: "Email Gate", status: emailStatus,
-    mode: input.email?.connected ? "Automatic + manual" : "Manual submission",
-    scope: emailStatus === "Active" ? "Automatically checks the connected read-only mailbox on the monitor schedule; pasted email can also be submitted."
-      : "Checks pasted email or a connected read-only mailbox when you start a scan.",
-    setup: emailStatus === "Needs attention" ? "Mailbox monitoring is requested but has no fresh successful heartbeat. Open Email Gate to restore it."
-      : emailStatus === "Off" ? "Mailbox monitoring is off; manual email checks remain available."
-      : input.email && !input.email.configured ? "Mailbox connections are unavailable; manual email checks remain available." : null,
-    actionLabel: "Open Email Gate", action: "open", route: "/email" };
-  const link = manual("link", "Link Gate", "Checks a link when you paste or share it; this is not automatic browsing protection.", "/check");
-  if (input.online === false) link.setup = "Online reputation and page investigation are unavailable; on-device link checks remain available.";
-  const account = manual("account", "Account Gate", "Checks an account alert or identifier when you submit it.", "/account");
-  if (input.accountBreachConfigured === false) account.setup = "Live breach lookup is unavailable; submitted account-alert investigation remains available.";
-  const file = manual("file", "File Gate", "Checks a selected or shared download or attachment within supported local limits. Cloud hosting is not a safety signal; links and installed-app concerns are handed to the relevant Gate.", "/file");
-  const app = manual("app", "App Gate", "Checks an installed or proposed app from its source, capabilities, permissions and available behaviour evidence. No recent activity is not proof of safety.", "/app-check");
-  const device = manual("device", "Device Gate", "Runs an on-demand check of visible installed-app risks, sensitive permissions, security settings and Apollo protection health. It does not continuously scan every app.", "/device");
-  const gates: GateItem[] = [site, link, text, call, network,
-    account,
-    email,
-    file,
-    app,
-    device];
-  const gaps = gates.filter((gate) => gate.status === "Needs attention" || gate.status === "Off");
-  const checking = gates.some((gate) => gate.status === "Checking status");
-  const activeAutomatic = gates.filter((gate) => gate.status === "Active" && gate.mode !== "Manual submission");
-  if (site.status === "Needs attention") return { summary: "Some protection needs attention",
-    higgins: "Your link checks are available, but Site Gate is off. Restore Apollo’s protection permission to enable its automatic filtering.", primary: site, gates };
-  if (gaps.length) return { summary: "Some protection needs attention", higgins: `${gaps[0].title} ${gaps[0].status === "Off" ? "is off" : "needs attention"}. ${gaps[0].setup ?? "Restore it, then wait for Apollo to confirm it is running."}`, primary: gaps[0], gates };
-  if (checking) return { summary: "Checking protection status", higgins: "I’m checking which automatic protections are actually running. Manual Gates remain available when their cards say Ready to check.", primary: null, gates };
-  if (activeAutomatic.length) return { summary: "All available protection is active", higgins: "Apollo’s supported automatic protection is confirmed running. Gates marked Ready to check still require you to submit an item or start that check yourself.", primary: null, gates };
-  return { summary: "Manual checks are ready", higgins: "This device has no confirmed automatic protection. Gates marked Ready to check can assess only the items you submit.", primary: null, gates };
+  const email = input.email;
+  const emailSuccess = email?.lastSuccessAt ? Date.parse(email.lastSuccessAt) : email?.lastCheckedAt ? Date.parse(email.lastCheckedAt) : 0;
+  const emailError = email?.lastErrorAt ? Date.parse(email.lastErrorAt) : 0;
+  const emailFresh = emailSuccess > 0 && emailSuccess <= now && now - emailSuccess <= 20 * 60 * 1000 && emailSuccess >= emailError;
+  const emailAutomatic: AutomaticProtectionStatus = email?.checking ? "Checking" : email && !email.configured ? "Not supported" : !email?.connected || !email.monitoringRequested ? "Needs setup" : emailFresh ? "On" : "Needs attention";
+  const emailGate: GateItem = { ...manual("email", "Email Gate", "/email", "Paste or share an email and start a check yourself."), source: "backend", automaticStatus: emailAutomatic,
+    automaticDetail: emailAutomatic === "On" ? "The connected read-only mailbox has a fresh successful monitor check." : emailAutomatic === "Needs attention" ? "Monitoring is requested, but Apollo has no fresh successful check." : emailAutomatic === "Needs setup" ? "Connect a read-only Gmail inbox and choose ongoing monitoring." : emailAutomatic === "Not supported" ? "This service is not configured for ongoing mailbox monitoring." : "Apollo is checking the mailbox monitor.",
+    automaticAction: emailAutomatic === "Needs setup" || emailAutomatic === "Needs attention" ? { kind: "open_gate", label: emailAutomatic === "Needs attention" ? "Restore Email Gate" : "Set up Email Gate", route: "/email" } : null };
+
+  const link = manual("link", "Link Gate", "/check", "Paste or share a link before opening it.");
+  if (input.online === false) link.onDemandDetail = "On-device checks remain available. Online reputation and research may be unavailable.";
+  const account = manual("account", "Account Gate", "/account", "Review an account alert without sharing a password or verification code.");
+  if (input.accountBreachConfigured === false) account.onDemandDetail = "Account-alert checks remain available. Live breach lookup is unavailable.";
+  const file = manual("file", "File Gate", "/file", "Choose or share a file for a supported local inspection.");
+  const app = manual("app", "App Gate", "/app-check", "Review an installed app or one you are considering.");
+  const device = manual("device", "Device Gate", "/device", "Run a check of visible device, permission and protection changes.");
+  const gates = [site, link, text, call, network, account, emailGate, file, app, device];
+  const primary = gates.find((gate) => gate.automaticStatus === "Needs attention") ?? gates.find((gate) => gate.automaticStatus === "Needs setup") ?? null;
+  const on = gates.filter((gate) => gate.automaticStatus === "On").length;
+  const attention = gates.filter((gate) => gate.automaticStatus === "Needs attention").length;
+  const setup = gates.filter((gate) => gate.automaticStatus === "Needs setup").length;
+  const summary = input.checking ? "Checking automatic protection" : attention ? `${attention} automatic ${attention === 1 ? "protection needs" : "protections need"} attention` : setup ? `${setup} automatic ${setup === 1 ? "protection needs" : "protections need"} setup` : `${on} automatic ${on === 1 ? "protection is" : "protections are"} on`;
+  const higgins = primary ? `${primary.title} ${primary.automaticStatus === "Needs attention" ? "needs attention" : "needs setup"}. ${primary.automaticDetail}` : "Automatic protection and checks you start yourself are shown separately below.";
+  return { summary, higgins, primary, gates };
 }
 
-export const gateStatusTone = (status: GateStatus) => status === "Active" ? "resting" : status === "Needs attention" ? "barking"
-  : status === "Off" ? "growling" : status === "Checking status" ? "neutral" : "unknown";
+export const automaticStatusTone = (status: AutomaticProtectionStatus) => status === "On" ? "resting" : status === "Needs attention" ? "barking" : status === "Needs setup" ? "growling" : "unknown";
+export const onDemandStatusTone = (status: OnDemandCheckStatus) => status === "Available" ? "neutral" : "unknown";

@@ -32,6 +32,8 @@ from services.mailbox_monitor import ensure_indexes as ensure_mailbox_monitor_in
 from services.maintenance import ensure_indexes as ensure_maintenance_indexes, supervise_maintenance
 from services.higgins.retention import migrate_and_index
 from services.higgins import repository as investigation_repository
+from services.higgins import context as higgins_context
+from services import government_alerts
 from routers import admin, analysis, ask, call, devices, family, family_weekly, gmail, health, intel, investigations, patrol, push, voice
 from routers.family_weekly import weekly_checkin_loop
 
@@ -47,6 +49,8 @@ SEED_BLOCKLIST = [
 async def lifespan(_: FastAPI):
     await migrate_and_index()
     await investigation_repository.ensure_indexes()
+    await higgins_context.ensure_indexes()
+    await government_alerts.ensure_indexes()
     await investigation_repository.backfill_work_epochs()
     await ensure_maintenance_indexes()
     await ensure_mailbox_monitor_indexes()
@@ -85,6 +89,16 @@ async def lifespan(_: FastAPI):
         await db.blocklist.update_one({"host": host}, {"$setOnInsert": entry.to_mongo()}, upsert=True)
     loop_task = asyncio.create_task(weekly_checkin_loop())
     mailbox_task = asyncio.create_task(supervise_mailbox_monitor(), name="apollo-mailbox-supervisor")
+    async def government_alert_loop():
+        while True:
+            try:
+                await government_alerts.refresh_all()
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001
+                logger.warning("government alert refresh failed")
+            await asyncio.sleep(3600)
+    government_alert_task = asyncio.create_task(government_alert_loop(), name="apollo-government-alerts")
     async def push_receipt_loop():
         while True:
             try:
@@ -102,7 +116,8 @@ async def lifespan(_: FastAPI):
     receipts_task.cancel()
     loop_task.cancel()
     mailbox_task.cancel()
-    await asyncio.gather(maintenance_task, receipts_task, loop_task, mailbox_task, return_exceptions=True)
+    government_alert_task.cancel()
+    await asyncio.gather(maintenance_task, receipts_task, loop_task, mailbox_task, government_alert_task, return_exceptions=True)
     client.close()
 
 

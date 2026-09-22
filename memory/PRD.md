@@ -1,3 +1,34 @@
+## Phase 2 execution — authorised baseline (2026-09-22)
+
+### Controlling scope
+- `Apollo_Consolidated_Architecture_and_Execution_Mandate-3.md` Phase 2 execution cover controls current work.
+- Exact pre-change source HEAD: `d1ab4ff22f7476fefd3999e6c292c3ac92f2e30b` on local `main`; no remote/upstream is configured in this workspace.
+- M1–M4 remain complete. Execute only P2.1–P2.6, using C19–C25 and V27–V36 as the active register.
+
+### Architecture and delivery order
+- **P2.1:** remove SecureCore completely; ship Home, Higgins, Gates, Check It, Patrol navigation with shared top-right Settings.
+- **P2.2:** replace manual/automatic Gate labels with independent truthful automatic and on-demand capabilities.
+- **P2.3:** separate ordinary Higgins chat from investigations and add typed owner-scoped context access.
+- **P2.4:** project meaningful deduplicated Patrol outcomes rather than commands and diagnostics.
+- **P2.5:** build the Higgins hub, redacted history, saved reports, learning and recognised-government New scams.
+- **P2.6:** integrate one compatible release, complete traceability and produce a fresh Android candidate while isolating genuine signing/toolchain blockers.
+
+### Verification boundary
+- TypeScript, ESLint, provider-disabled pytest and Cargo/native source checks only.
+- No testing agent, Playwright, scenario suite or live Gemini probe.
+- Owner `GEMINI_API_KEY` only; no Emergent-managed LLM key.
+- Android package remains `app.apollo.hwg`.
+
+### Implemented Phase 2 release
+- P2.1–P2.5 are complete in source: exact root navigation, Check It, truthful Gate capabilities, ordinary Higgins chat, typed owner context, consumer Patrol outcomes and the Higgins hub/history/learning/government-alert surfaces.
+- P2.6 integrated source candidate is Apollo `1.1.0`, Android `2`, iOS `2`, desktop `1.1.0`.
+- TypeScript, ESLint, Python lint, 53 provider-disabled pytest checks, security/native preflight, Cargo and Apollo-owned Android release Kotlin modules pass.
+
+### Backlog
+- **P0:** Produce the signed Android installable on a supported Hermes build host. The current Linux ARM64 host cannot run React Native's bundled Hermes compiler; no substitute artifact is claimed.
+- **P1:** Run physical-device Phase 2 acceptance only when the fresh signed candidate exists; do not reopen the completed development baseline.
+- **P2:** GuardDog production-default cutover remains a separate, explicitly authorised operation.
+
 ## C15 production GuardDog track (“M4” continuation) — source implemented (2026-09-22)
 
 ### Problem statement

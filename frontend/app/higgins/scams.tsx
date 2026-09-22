@@ -1,0 +1,19 @@
+import * as Linking from "expo-linking";
+import ExternalLink from "lucide-react-native/icons/external-link";
+import React, { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, FlatList, Pressable, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { ChildScreenHeader } from "@/src/components/ChildScreenHeader";
+import { Body, Button, Card, Pill } from "@/src/components/ui";
+import { governmentScams, type GovernmentAlert, type GovernmentFeedState } from "@/src/higgins/hubClient";
+import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
+
+const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surface }, list: { paddingHorizontal: spacing.xl, gap: spacing.md }, title: { fontFamily: fonts.displayBold, fontSize: 17, lineHeight: 23, color: c.onSurface }, row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md }, link: { fontFamily: fonts.textSemibold, fontSize: 15, color: c.brand } }));
+export default function GovernmentScamsScreen() {
+  const s = useStyles(); const { colors } = useTheme(); const insets = useSafeAreaInsets(); const [items, setItems] = useState<GovernmentAlert[]>([]); const [feeds, setFeeds] = useState<Record<string, GovernmentFeedState>>({}); const [coverage, setCoverage] = useState(""); const [loading, setLoading] = useState(true); const [error, setError] = useState(false);
+  const load = () => { setLoading(true); setError(false); void governmentScams().then((result) => { setItems(result.items); setFeeds(result.feeds); setCoverage(result.coverage); }).catch(() => setError(true)).finally(() => setLoading(false)); };
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const overall = useMemo(() => { const states = Object.values(feeds).map((feed) => feed.status); return states.includes("fresh") ? "fresh" : states.includes("stale") ? "stale" : "unavailable"; }, [feeds]);
+  return <View style={s.root} testID="higgins-scams-screen"><ChildScreenHeader title="New scams" testID="higgins-scams-header" /><FlatList testID="higgins-scams-list" data={items} keyExtractor={(item) => item.url} contentContainerStyle={[s.list, { paddingBottom: insets.bottom + spacing.xl }]} ListHeaderComponent={<Card testID="higgins-scams-coverage" style={{ gap: spacing.md }}><View style={s.row}><Text style={s.title}>Australian government alerts</Text><Pill testID="higgins-scams-feed-state" tone={overall === "fresh" ? "resting" : overall === "stale" ? "growling" : "unknown"} label={overall === "fresh" ? "Current feed" : overall === "stale" ? "Feed is old" : "Feed unavailable"} /></View><Body>{coverage || "Configured official government feeds only — this list is not comprehensive."}</Body></Card>} renderItem={({ item, index }) => <Pressable testID={`higgins-scam-${index}`} accessibilityRole="link" accessibilityLabel={item.title} onPress={() => void Linking.openURL(item.url)}><Card style={{ gap: spacing.sm }}><Text style={s.title}>{item.title}</Text><Body>{item.summary || "Open the official government source for details."}</Body><Body>{item.source}{item.publishedAt ? ` · ${new Date(item.publishedAt).toLocaleDateString()}` : " · Date not supplied"}</Body><View style={s.row}><Text style={s.link}>Open official source</Text><ExternalLink size={18} color={colors.brand} /></View></Card></Pressable>} ListEmptyComponent={loading ? <ActivityIndicator testID="higgins-scams-loading" color={colors.brand} /> : error ? <Card testID="higgins-scams-error"><Body>Government alerts could not be loaded.</Body><Button testID="higgins-scams-retry" label="Try again" onPress={load} /></Card> : <Card testID="higgins-scams-empty"><Body>No current items are available from the configured official feeds. This does not mean there are no new scams.</Body></Card>} /></View>;
+}

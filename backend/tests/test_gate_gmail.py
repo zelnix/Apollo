@@ -16,7 +16,7 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 BASE_URL = (
     os.environ.get("EXPO_BACKEND_URL")
     or os.environ.get("EXPO_PUBLIC_BACKEND_URL")
-    or "https://device-file-gate.preview.emergentagent.com"
+    or "https://apollo-platform.preview.emergentagent.com"
 ).rstrip("/")
 
 

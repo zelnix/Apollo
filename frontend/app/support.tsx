@@ -64,7 +64,6 @@ export default function SupportScreen() {
         <View style={s.row}><Text style={s.label}>Build</Text><Text style={s.value} testID="support-build">{buildLabel()}</Text></View>
         <View style={s.row}><Text style={s.label}>Environment</Text><Text style={s.value} testID="support-environment">{APP_ENV}</Text></View>
         <View style={s.row}><Text style={s.label}>Security adapter</Text><Text style={s.value} testID="support-adapter">{adapterLabel}</Text></View>
-        <View style={s.row}><Text style={s.label}>SecureCore</Text><Text style={s.value} testID="support-securecore">Not included</Text></View>
         {isMock ? <Body testID="support-preview-adapter">This preview uses development device observations. Native builds read current operating-system signals.</Body> : null}
       </Card></View>
       <View><SectionTitle>Engine benchmark</SectionTitle><Card style={s.card} testID="support-benchmark-card">

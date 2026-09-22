@@ -44,8 +44,9 @@ import { RECOVERY_STEPS, type RecoveryKind } from "@/src/domain/recovery";
 import { getNativeModule } from "@/src/security/nativeBridge";
 import { runProtectionHealthCheck } from "@/src/protection/healthCoordinator";
 import type { HealthTrigger } from "@/src/protection/healthTypes";
+import { APP_VERSION } from "@/src/config/buildInfo";
 
-const deviceMeta = () => ({ platform: Platform.OS, adapter_mode: securityAdapter.kind, app_version: "1.0.0", tz_offset_minutes: -new Date().getTimezoneOffset() });
+const deviceMeta = () => ({ platform: Platform.OS, adapter_mode: securityAdapter.kind, app_version: APP_VERSION, tz_offset_minutes: -new Date().getTimezoneOffset() });
 
 const K = { setup: "apollo.setup.done", events: "apollo.patrol.events", trust: "apollo.trust.entries", verified: "apollo.lastVerifiedAt", protection: "apollo.protection.on", wifi: "apollo.wifi.trusted", quiet: "apollo.quiet.hours", lowPower: "apollo.lowPower", seenEvidence: "apollo.evidence.seen" };
 

@@ -1,4 +1,15 @@
-# Apollo platform delivery matrix (spec §1A / §16) — updated 2026-09-22, C15 production source track
+# Apollo platform delivery matrix (spec §1A / §16) — updated 2026-09-22, Phase 2 RC1
+
+## Phase 2 RC1
+
+| Target | Current evidence | External boundary |
+|---|---|---|
+| Android | 1.1.0 / versionCode 2; application ID `app.apollo.hwg`; native dependency preflight pass; `guarddog-core`, `guarddog-vpn`, `apollo-security` release Kotlin pass on SDK 36 | Signed APK/AAB not emitted because this build host is Linux ARM64 and has no compatible bundled Hermes compiler |
+| iOS | Shared Expo/TypeScript 1.1.0 source and buildNumber 2 compile cleanly | Native Apple compilation remains outside this Linux host |
+| Windows/macOS desktop | Tauri/Rust 1.1.0 `cargo check` pass | Platform installers are not emitted by this Linux ARM64 source-check environment |
+| Backend | Python lint pass; 53 provider-disabled Phase 2/baseline regression checks pass | Live Gemini and scenario campaigns intentionally not run |
+
+No platform result above is inferred from another platform, and no unavailable artifact is claimed.
 
 ## C15 Android production-authority source status
 

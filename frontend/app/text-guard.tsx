@@ -13,6 +13,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { PatrolItem } from "@/src/components/PatrolItem";
+import { projectPatrolOutcomes } from "@/src/domain/patrolOutcomes";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { MessageAssessmentResult } from "@/src/components/MessageAssessmentResult";
 import { Sheet } from "@/src/components/Sheet";
@@ -123,7 +124,7 @@ export default function TextGuard() {
           <View>
             <SectionTitle>Recently flagged from your messages</SectionTitle>
             <View testID="textguard-recent">
-              {recent.map((e, i) => <PatrolItem key={e.event_id} event={e} isLast={i === recent.length - 1} />)}
+              {projectPatrolOutcomes(recent).map((outcome, i, list) => <PatrolItem key={outcome.id} outcome={outcome} isLast={i === list.length - 1} />)}
             </View>
           </View>
         ) : null}

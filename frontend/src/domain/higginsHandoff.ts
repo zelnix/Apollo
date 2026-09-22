@@ -105,6 +105,7 @@ export function gateForCategory(category: EventCategory): HigginsGate {
   if (category === "connection") return "network";
   if (category === "known_threat" || category === "website") return "link";
   if (category === "protection" || category === "system") return "device";
+  if (category === "family") return "account";
   return category;
 }
 

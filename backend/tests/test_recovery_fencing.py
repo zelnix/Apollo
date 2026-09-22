@@ -29,10 +29,15 @@ def _run(coro_fn):
         import routers.patrol as patrol
         import services.transcribe as transcribe_module
         import services.higgins.tools as tools_module
+        import services.higgins.context as higgins_context
+        import services.higgins.chat as higgins_chat
+        import services.government_alerts as government_alerts
         import services.investigation_projector as projector
-        importlib.reload(repo); importlib.reload(jobs); importlib.reload(retention); importlib.reload(transcribe_module); importlib.reload(family); importlib.reload(patrol); importlib.reload(tools_module); importlib.reload(projector)
+        importlib.reload(repo); importlib.reload(jobs); importlib.reload(retention); importlib.reload(transcribe_module); importlib.reload(family); importlib.reload(patrol); importlib.reload(tools_module); importlib.reload(higgins_context); importlib.reload(higgins_chat); importlib.reload(government_alerts); importlib.reload(projector)
         import routers.investigations as inv
+        import routers.ask as ask_router
         importlib.reload(inv)
+        importlib.reload(ask_router)
         global db
         db = core_db.db
         fresh_client = core_db.client
@@ -42,7 +47,7 @@ def _run(coro_fn):
             fresh_client.close()
             core_db.client, core_db.db = original_client, original_db
             db = original_db
-            importlib.reload(repo); importlib.reload(jobs); importlib.reload(retention); importlib.reload(transcribe_module); importlib.reload(family); importlib.reload(patrol); importlib.reload(tools_module); importlib.reload(projector); importlib.reload(inv)
+            importlib.reload(repo); importlib.reload(jobs); importlib.reload(retention); importlib.reload(transcribe_module); importlib.reload(family); importlib.reload(patrol); importlib.reload(tools_module); importlib.reload(higgins_context); importlib.reload(higgins_chat); importlib.reload(government_alerts); importlib.reload(projector); importlib.reload(inv); importlib.reload(ask_router)
     asyncio.run(wrapped())
 
 
@@ -224,6 +229,34 @@ def test_upload_control_document_fences_publication_takeover():
 
 def test_bounded_tests_prohibit_provider_calls():
     _run(lambda inv: _provider_call_guard())
+
+
+def test_ordinary_higgins_chat_creates_no_investigation_records():
+    _run(lambda inv: _ordinary_chat_has_no_case_side_effect(inv))
+
+
+def test_explicit_investigation_endpoint_is_the_separate_transition():
+    _run(lambda inv: _explicit_investigation_transition(inv))
+
+
+def test_higgins_context_is_owner_scoped_redacted_and_fresh_only():
+    _run(lambda inv: _higgins_context_boundaries())
+
+
+def test_higgins_history_is_owner_scoped_and_redacted():
+    _run(lambda inv: _higgins_history_boundaries())
+
+
+def test_government_alert_parser_accepts_only_allowlisted_official_links():
+    from services import government_alerts
+    raw = b'''<?xml version="1.0"?><rss><channel>
+    <item><title>Official warning</title><link>https://www.cyber.gov.au/warning</link><guid>one</guid><pubDate>Mon, 21 Sep 2026 01:00:00 GMT</pubDate></item>
+    <item><title>Not government</title><link>https://news.example/warning</link><guid>two</guid></item>
+    </channel></rss>'''
+    items = government_alerts.parse_feed(raw, "acsc_alerts", government_alerts.FEEDS["acsc_alerts"], now_utc())
+    assert len(items) == 1
+    assert items[0]["source"] == "Australian Cyber Security Centre"
+    assert items[0]["url"] == "https://www.cyber.gov.au/warning"
 
 
 @pytest.mark.asyncio
@@ -1202,6 +1235,72 @@ async def _provider_call_guard():
     from services.higgins import provider
     with pytest.raises(AssertionError, match="prohibited"):
         await provider.generate("system", "prompt")
+
+
+async def _ordinary_chat_has_no_case_side_effect(_inv):
+    from types import SimpleNamespace
+    from routers import ask as ask_router
+    from services.higgins import chat, context
+
+    owner = f"chat-{uuid.uuid4().hex}"
+    await context.ensure_indexes()
+    before = {name: await db[name].count_documents({"owner_id": owner}) for name in ("investigation_cases", "investigation_jobs", "investigation_events", "investigation_evidence")}
+    original = chat.provider.generate
+    async def fake_generate(*_args, **_kwargs):
+        return SimpleNamespace(text=json.dumps({"answer": "A general explanation.", "intent": "answer", "clarification": None, "action": None}))
+    chat.provider.generate = fake_generate
+    try:
+        response = await ask_router.higgins_chat(ask_router.ChatRequest(message="What does growling mean?", conversationId="conversation-1234"), _request(owner))
+    finally:
+        chat.provider.generate = original
+    payload = json.loads(response.body)
+    assert payload["investigativeWorkStarted"] is False
+    assert {name: await db[name].count_documents({"owner_id": owner}) for name in before} == before
+    assert await db.higgins_chat_messages.count_documents({"owner_id": owner}) == 2
+    await db.higgins_chat_messages.delete_many({"owner_id": owner})
+
+
+async def _explicit_investigation_transition(inv):
+    from services.higgins.contracts import CreateCase
+    owner = f"explicit-{uuid.uuid4().hex}"
+    response = await inv.create_case(CreateCase(question=""), _request(owner), idempotency_key="explicit-transition-1")
+    payload = json.loads(response.body)
+    assert payload["case"]["id"]
+    assert await db.investigation_cases.count_documents({"owner_id": owner}) == 1
+    await repo.revoke(owner, payload["case"]["id"], "deleted")
+    await repo.run_cleanup(owner, payload["case"]["id"])
+    await db.investigation_cases.delete_many({"owner_id": owner})
+    await db.investigation_idempotency.delete_many({"owner_id": owner})
+
+
+async def _higgins_context_boundaries():
+    from services.higgins import context
+    owner, other = f"context-{uuid.uuid4().hex}", f"other-{uuid.uuid4().hex}"
+    await context.ensure_indexes()
+    await context.put(owner, context.ContextWrite(category="goal", provenance="user_report", summary="My password is secret123 and I want safer banking"))
+    foreign = await context.put(other, context.ContextWrite(category="preference", provenance="user_preference", summary="Use a different tone"))
+    stale = await context.put(owner, context.ContextWrite(category="permission", provenance="device_observation", summary="Notification permission was granted"))
+    await db.higgins_context.update_one({"owner_id": owner, "context_id": stale.id}, {"$set": {"expires_at": now_utc() - timedelta(seconds=1)}})
+    items = await context.current(owner)
+    assert len(items) == 1
+    assert "secret123" not in items[0].summary and "[redacted]" in items[0].summary
+    assert all(item.id != foreign.id and item.id != stale.id for item in items)
+    await db.higgins_context.delete_many({"owner_id": {"$in": [owner, other]}})
+
+
+async def _higgins_history_boundaries():
+    from routers import ask as ask_router
+    from services.higgins import context
+    owner, other = f"history-{uuid.uuid4().hex}", f"other-{uuid.uuid4().hex}"
+    await context.ensure_indexes()
+    await context.add_chat_message(owner, "conversation-a", "higgins", "Use code 123456 and password secret123")
+    await context.add_chat_message(other, "conversation-b", "higgins", "Other owner's private answer")
+    response = await ask_router.higgins_history(_request(owner), limit=20)
+    payload = json.loads(response.body)
+    assert len(payload["items"]) == 1
+    assert "123456" not in payload["items"][0]["summary"] and "secret123" not in payload["items"][0]["summary"]
+    assert "Other owner" not in response.body.decode()
+    await db.higgins_chat_messages.delete_many({"owner_id": {"$in": [owner, other]}})
 
 
 if __name__ == "__main__":

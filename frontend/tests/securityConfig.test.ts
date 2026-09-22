@@ -23,7 +23,7 @@ test("2. native host without the Apollo module → rejected in every environment
   }
 });
 test("3. the removed mode switches are not accepted as inputs any more", () => {
-  const legacy = { appEnvironment: "development", secureCoreMode: "mock", securityAdapterMode: "mock" } as unknown as Parameters<typeof validateSecurityConfig>[0];
+  const legacy = { appEnvironment: "development", retiredMode: "mock", securityAdapterMode: "mock" } as unknown as Parameters<typeof validateSecurityConfig>[0];
   const result = validateSecurityConfig(legacy);
   assert.deepEqual(Object.keys(result).sort(), ["androidEnforcementEngine", "appEnvironment", "devicePreviewHarness"]);
   assert.equal(result.devicePreviewHarness, "off");

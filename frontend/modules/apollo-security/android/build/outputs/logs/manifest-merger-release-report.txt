@@ -1,0 +1,230 @@
+-- Merging decision tree log ---
+manifest
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:1:1-81:12
+INJECTED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:1:1-81:12
+	package
+		INJECTED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml
+	xmlns:android
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:1:11-69
+uses-permission#android.permission.INTERNET
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:2:3-65
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:2:20-62
+uses-permission#android.permission.ACCESS_NETWORK_STATE
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:3:3-77
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:3:20-74
+uses-permission#android.permission.FOREGROUND_SERVICE
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:4:3-75
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:4:20-72
+queries
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:8:3-46:13
+package#com.anydesk.anydeskandroid
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:9:5-58
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:9:14-55
+package#com.teamviewer.teamviewer.market.mobile
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:10:5-71
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:10:14-68
+package#com.teamviewer.quicksupport.market
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:11:5-66
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:11:14-63
+package#com.teamviewer.host.market
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:12:5-58
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:12:14-55
+package#com.rsupport.rs.activity.rsupport.aas2
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:13:5-70
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:13:14-67
+package#com.splashtop.remote.pad.v2
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:14:5-59
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:14:14-56
+package#com.splashtop.streamer.csrs
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:15:5-59
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:15:14-56
+package#com.sand.airdroid
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:16:5-49
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:16:14-46
+package#com.sand.airmirror
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:17:5-50
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:17:14-47
+package#com.microsoft.rdc.androidx
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:18:5-58
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:18:14-55
+package#com.realvnc.viewer.android
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:19:5-58
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:19:14-55
+package#com.logmein.rescuemobile
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:20:5-56
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:20:14-53
+package#com.zoho.assist.agent
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:21:5-53
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:21:14-50
+package#com.aeroadmin.android
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:22:5-53
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:22:14-50
+package#com.ultraviewer.android
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:23:5-55
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:23:14-52
+package#com.rustdesk.rustdesk
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:24:5-53
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:24:14-50
+package#net.grandcentrix.tv.remotedesktop
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:25:5-65
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:25:14-62
+package#com.android.vending
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:26:5-51
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:26:14-48
+package#com.sec.android.app.samsungapps
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:27:5-63
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:27:14-60
+package#com.amazon.venezia
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:28:5-50
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:28:14-47
+package#com.huawei.appmarket
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:29:5-52
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:29:14-49
+package#com.xiaomi.mipicks
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:30:5-50
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:30:14-47
+package#com.android.chrome
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:31:5-50
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:31:14-47
+package#org.mozilla.firefox
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:32:5-51
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:32:14-48
+package#com.microsoft.emmx
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:33:5-50
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:33:14-47
+package#com.opera.browser
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:34:5-49
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:34:14-46
+package#com.brave.browser
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:35:5-49
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:35:14-46
+package#com.sec.android.app.sbrowser
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:36:5-60
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:36:14-57
+package#com.duckduckgo.mobile.android
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:37:5-61
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:37:14-58
+package#com.android.browser
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:38:5-51
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:38:14-48
+package#com.whatsapp
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:39:5-44
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:39:14-41
+package#org.telegram.messenger
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:40:5-54
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:40:14-51
+package#com.facebook.orca
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:41:5-49
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:41:14-46
+package#com.google.android.apps.messaging
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:42:5-65
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:42:14-62
+package#com.samsung.android.messaging
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:43:5-61
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:43:14-58
+package#com.google.android.packageinstaller
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:44:5-67
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:44:14-64
+package#com.android.packageinstaller
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:45:5-60
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:45:14-57
+application
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:47:3-80:17
+service#com.hucentai.apollosecurity.ApolloDnsVpnService
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:48:5-56:15
+	android:exported
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:50:7-31
+	android:permission
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:51:7-63
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:49:7-69
+intent-filter#action:name:android.net.VpnService
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:52:7-54:23
+action#android.net.VpnService
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:53:9-57
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:53:17-54
+meta-data#android.net.VpnService.SUPPORTS_ALWAYS_ON
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:55:7-99
+	android:value
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:55:75-96
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:55:18-74
+service#com.hucentai.apollosecurity.ApolloSmsListenerService
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:59:5-67:15
+	android:label
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:62:7-40
+	android:exported
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:61:7-31
+	android:permission
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:63:7-81
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:60:7-74
+intent-filter#action:name:android.service.notification.NotificationListenerService
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:64:7-66:23
+action#android.service.notification.NotificationListenerService
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:65:9-91
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:65:17-88
+service#com.hucentai.apollosecurity.ApolloCallScreeningService
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:72:5-79:15
+	android:exported
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:74:7-30
+	android:permission
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:75:7-69
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:73:7-76
+intent-filter#action:name:android.telecom.CallScreeningService
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:76:7-78:23
+action#android.telecom.CallScreeningService
+ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:77:9-71
+	android:name
+		ADDED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml:77:17-68
+uses-sdk
+INJECTED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml reason: use-sdk injection requested
+INJECTED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml
+INJECTED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml
+	android:targetSdkVersion
+		INJECTED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml
+	android:minSdkVersion
+		INJECTED from /app/frontend/modules/apollo-security/android/src/main/AndroidManifest.xml

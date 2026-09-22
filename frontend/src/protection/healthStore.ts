@@ -7,7 +7,7 @@ const TITLES: Record<(typeof IDS)[number], string> = { site: "Site protection", 
 
 let snapshot: ProtectionHealthSnapshot = {
   revision: 0, checkedAt: null, trigger: null, checking: false, capabilities: [], protection: null, permissions: [], network: null,
-  gates: IDS.map((id) => ({ id, title: TITLES[id], state: "checking", checkedAt: null, source: "manual", scope: "Status is being prepared.", userAction: null })),
+  gates: IDS.map((id) => ({ id, title: TITLES[id], automaticStatus: "Checking", onDemandStatus: id === "site" ? "Unavailable" : "Available", automaticDetail: "Status is being prepared.", onDemandDetail: id === "site" ? "Use Link Gate for one link." : "This check is available when you start it.", checkedAt: null, source: "manual", automaticAction: null, onDemandAction: null })),
 };
 const listeners = new Set<() => void>();
 

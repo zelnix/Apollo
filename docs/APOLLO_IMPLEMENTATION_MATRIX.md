@@ -1,3 +1,16 @@
+## Phase 2 execution cover — current status
+
+| Package | Status | Implementation |
+|---|---|---|
+| P2.1 | Complete | Retired source removal; five-tab navigation; shared Settings action; ten-item Check It catalogue; direct typed destinations |
+| P2.2 | Complete | Independent automatic/on-demand Gate capability and truthful Email heartbeat state |
+| P2.3 | Complete | Ordinary no-case Higgins chat; explicit investigation transition; encrypted owner context |
+| P2.4 | Complete | Consumer Patrol outcome projection, command suppression, incident deduplication and three filters |
+| P2.5 | Complete | Higgins hub, redacted history, reports, learning and official-government New scams feed |
+| P2.6 | Source complete; artifact blocked externally | Compatible 1.1.0/2 source candidate and traceability complete; signed Android artifact blocked only by unavailable ARM64 Hermes host compiler |
+
+Detailed C19–C25 and V27–V36 closure evidence is in `APOLLO_PHASE2_EXECUTION_RECORD.md`.
+
 ## C15 production GuardDog track (“M4” continuation) — source completion (2026-09-22)
 
 The consolidated mandate formally numbers only M1–M3; this continuation calls the remaining C15 production track “M4”. Source implementation is complete, while production-default cutover remains intentionally separate and blocked on owner artifacts/native evidence.

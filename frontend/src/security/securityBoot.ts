@@ -1,6 +1,6 @@
 // Security boot boundary — dependency-free so it is unit-testable with node:test.
 //
-// Every security selector (appEnvironment.ts, SecureCore.ts, securityAdapter.ts) used to THROW at JS module
+// Security selectors used to THROW at JS module
 // load. In a release Hermes bundle that is an uncaught exception during start-up → the OS "Apollo keeps
 // stopping" dialog. Fail-closed is right; an OS crash is the wrong way to express it.
 //

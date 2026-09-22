@@ -1,0 +1,51 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.guarddog.vpn" >
+4
+5    <uses-sdk android:minSdkVersion="26" />
+6
+7    <uses-permission android:name="android.permission.INTERNET" />
+7-->/app/frontend/packages/guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml:4:5-67
+7-->/app/frontend/packages/guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml:4:22-64
+8    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+8-->/app/frontend/packages/guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml:5:5-79
+8-->/app/frontend/packages/guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml:5:22-76
+9    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+9-->/app/frontend/packages/guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml:6:5-77
+9-->/app/frontend/packages/guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml:6:22-74
+10    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED" />
+10-->/app/frontend/packages/guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml:7:5-93
+10-->/app/frontend/packages/guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml:7:22-90
+11    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+11-->/app/frontend/packages/guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml:8:5-77
+11-->/app/frontend/packages/guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml:8:22-74
+12
+13    <application>
+13-->/app/frontend/packages/guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml:10:5-23:19
+14        <service
+14-->/app/frontend/packages/guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml:11:9-22:19
+15            android:name="com.guarddog.vpn.GuardDogVpnService"
+15-->/app/frontend/packages/guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml:12:13-63
+16            android:exported="false"
+16-->/app/frontend/packages/guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml:13:13-37
+17            android:foregroundServiceType="systemExempted"
+17-->/app/frontend/packages/guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml:14:13-59
+18            android:permission="android.permission.BIND_VPN_SERVICE" >
+18-->/app/frontend/packages/guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml:15:13-69
+19            <intent-filter>
+19-->/app/frontend/packages/guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml:16:13-18:29
+20                <action android:name="android.net.VpnService" />
+20-->/app/frontend/packages/guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml:17:17-65
+20-->/app/frontend/packages/guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml:17:25-62
+21            </intent-filter>
+22
+23            <meta-data
+23-->/app/frontend/packages/guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml:19:13-21:41
+24                android:name="android.net.VpnService.SUPPORTS_ALWAYS_ON"
+24-->/app/frontend/packages/guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml:20:17-73
+25                android:value="false" />
+25-->/app/frontend/packages/guarddog-android-sdk/guarddog-vpn/src/main/AndroidManifest.xml:21:17-38
+26        </service>
+27    </application>
+28
+29</manifest>
