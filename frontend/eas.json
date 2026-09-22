@@ -15,7 +15,8 @@
       },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "staging",
-        "EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE": "legacy"
+        "EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE": "legacy",
+        "EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS": "off"
       }
     },
     "guarddog-acceptance": {
@@ -26,14 +27,16 @@
       },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "staging",
-        "EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE": "guarddog_acceptance"
+        "EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE": "guarddog_acceptance",
+        "EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS": "off"
       }
     },
     "production": {
       "channel": "production",
       "env": {
         "EXPO_PUBLIC_APP_ENV": "production",
-        "EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE": "legacy"
+        "EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE": "legacy",
+        "EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS": "off"
       }
     }
   }
