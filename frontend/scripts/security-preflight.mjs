@@ -7,10 +7,14 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import nativeGuard from "./native-dependency-guard.cjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const require = createRequire(import.meta.url);
+const ANDROID_PACKAGE = "app.apollo.hwg";
+const IOS_BUNDLE_IDENTIFIER = "app.apollo.hwg";
 const KEYS = ["EXPO_PUBLIC_APP_ENV", "EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS", "EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE"];
 
 function walk(dir) {
@@ -47,6 +51,13 @@ const cfg = Object.fromEntries(KEYS.map((k) => [k, process.env[k] ?? environment
 if (!cfg.EXPO_PUBLIC_APP_ENV && profile) cfg.EXPO_PUBLIC_APP_ENV = guessedEnv;
 
 const errors = [];
+const resolvedAppConfig = require(path.join(root, "app.config.js"))();
+if (resolvedAppConfig.android?.package !== ANDROID_PACKAGE) errors.push(`Android package must be ${ANDROID_PACKAGE}.`);
+if (resolvedAppConfig.ios?.bundleIdentifier !== IOS_BUNDLE_IDENTIFIER) errors.push(`iOS bundle identifier must be ${IOS_BUNDLE_IDENTIFIER}.`);
+const nativeGradle = fs.readFileSync(path.join(root, "android/app/build.gradle"), "utf8");
+if (!nativeGradle.includes(`namespace '${ANDROID_PACKAGE}'`) || !nativeGradle.includes(`applicationId '${ANDROID_PACKAGE}'`)) {
+  errors.push(`Native Android namespace and applicationId must both be ${ANDROID_PACKAGE}.`);
+}
 if (!["development", "staging", "production"].includes(cfg.EXPO_PUBLIC_APP_ENV)) errors.push(`EXPO_PUBLIC_APP_ENV is missing or invalid (got "${cfg.EXPO_PUBLIC_APP_ENV}").`);
 const harness = cfg.EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS;
 if (harness !== undefined && harness !== "" && harness !== "off" && harness !== "enabled") errors.push(`EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS="${harness}" is invalid.`);

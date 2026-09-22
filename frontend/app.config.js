@@ -1,11 +1,21 @@
 const base = require("./app.json");
 const acceptance = require("./guarddog-acceptance.config.json");
+const ANDROID_PACKAGE = "app.apollo.hwg";
+const IOS_BUNDLE_IDENTIFIER = "app.apollo.hwg";
 
 module.exports = () => {
   const engine = process.env.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE || "legacy";
   const candidate = engine === "guarddog_acceptance" ? acceptance : {};
   return ({
   ...base.expo,
+  android: {
+    ...(base.expo.android || {}),
+    package: ANDROID_PACKAGE,
+  },
+  ios: {
+    ...(base.expo.ios || {}),
+    bundleIdentifier: IOS_BUNDLE_IDENTIFIER,
+  },
   extra: {
     ...(base.expo.extra || {}),
     guardDogCandidate: {
