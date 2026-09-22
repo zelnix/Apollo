@@ -479,3 +479,10 @@ Current position: waiting on step 1 input (Step 7 stderr for build aa24dd73-eab7
 - **Verification policy:** no testing agent, Playwright, scenarios or live Gemini probes. Current bounded checks:
   backend 42 focused Higgins tests + 2 Call Guard tests, frontend TypeScript/ESLint, Share suite 13/13, Rust
   `cargo check`, Linux Tauri release compile, backend health HTTP 200.
+
+## 2026-09-22 deployment readiness
+- Deployment-agent final health check: **PASS**.
+- Startup is non-destructive: no collection drop and no automatic bulk legacy-content migration. Explicit migration
+  tooling is fenced, operator-only and regression-tested (18/18 focused recovery/migration tests).
+- Expo managed preview now starts with `--tunnel`; `@expo/ngrok` 4.1.3 is installed and Metro reports the tunnel ready.
+- Backend `/health` and `/api/health` return HTTP 200; Python lint, TypeScript and ESLint are clean.

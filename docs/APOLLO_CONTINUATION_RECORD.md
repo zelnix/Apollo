@@ -270,3 +270,18 @@ campaign was run, per owner instruction.
   extension completion on their host toolchains.
 - **P2 / Package 7:** GuardDog production adapter/configuration closure and credential-gated integrations. Each missing
   credential blocks only its named integration.
+
+## 2026-09-22 deployment readiness health check — PASS
+- Final deployment-agent result: **PASS / ready for deployment**, with no source/config blockers.
+- Removed the unconditional startup drop of `imap_connections` from `backend/server.py`; legacy records now require an
+  explicit audited migration rather than being destroyed during process startup.
+- Removed all automatic legacy-content bulk deletion from `migrate_and_index()` in
+  `backend/services/higgins/retention.py`. The fenced helper remains operator-only and is never called by app startup.
+- Added a bounded regression in `backend/tests/test_recovery_fencing.py` proving startup/index initialization preserves
+  pre-v1 rows while a uniquely identified explicit migration runs only once.
+- Updated the managed preview supervisor command to `expo start --tunnel --port 3000`; installed compatible
+  `@expo/ngrok` through Expo (`frontend/package.json`, `frontend/yarn.lock`). Supervisor is RUNNING and logs confirm
+  `Tunnel connected` / `Tunnel ready`.
+- Verification: backend Python lint clean; 18/18 recovery/migration tests pass; `/health` and `/api/health` HTTP 200;
+  frontend TypeScript and ESLint clean. Environment variables, URLs, ports, CORS, MongoDB and secret handling passed
+  the final deployment scan.

@@ -15,6 +15,7 @@ from core.db import db, now_utc
 from services.higgins.capacity import LIFETIME_SECONDS
 
 CONTENT_COLLECTIONS = ("ask_messages", "ask_handoffs", "voice_cache")
+LEGACY_CONTENT_MIGRATION = "higgins-discard-pre-v1-temporary-content"
 
 
 def utc(value):
@@ -68,13 +69,46 @@ async def delete_owner_content(owner: str) -> int:
     return count
 
 
+async def _discard_legacy_content_once(migration_id: str = LEGACY_CONTENT_MIGRATION) -> bool:
+    """Runs the approved pre-v1 temporary-content discard once, with a recoverable lease."""
+    now = now_utc()
+    token = uuid.uuid4().hex
+    await db.apollo_migrations.create_index("migration_id", unique=True)
+    await db.apollo_migrations.update_one(
+        {"migration_id": migration_id},
+        {"$setOnInsert": {"migration_id": migration_id, "status": "pending", "created_at": now}},
+        upsert=True,
+    )
+    claimed = await db.apollo_migrations.find_one_and_update(
+        {"migration_id": migration_id, "completed_at": {"$exists": False},
+         "$or": [{"lease_until": {"$exists": False}}, {"lease_until": {"$lte": now}}]},
+        {"$set": {"status": "running", "lease_token": token, "lease_until": now + timedelta(minutes=5), "started_at": now}},
+    )
+    if not claimed:
+        return False
+    try:
+        for name in CONTENT_COLLECTIONS:
+            await db[name].delete_many({"content_version": {"$ne": 1}})
+    except Exception:
+        await db.apollo_migrations.update_one(
+            {"migration_id": migration_id, "lease_token": token},
+            {"$set": {"status": "pending", "failed_at": now_utc()}, "$unset": {"lease_until": "", "lease_token": ""}},
+        )
+        raise
+    await db.apollo_migrations.update_one(
+        {"migration_id": migration_id, "lease_token": token},
+        {"$set": {"status": "completed", "completed_at": now_utc()}, "$unset": {"lease_until": "", "lease_token": ""}},
+    )
+    return True
+
+
 async def migrate_and_index() -> None:
     await db.investigation_owners.create_index("owner_id", unique=True)
     await db.investigation_scopes.create_index([("owner_id", 1), ("scope_id", 1)], unique=True)
     await db.investigation_scopes.create_index("expires_at")  # preserve content-free deletion tombstones
+    # Legacy-content cleanup is intentionally NOT invoked during startup. `_discard_legacy_content_once` is an
+    # operator-only, audited migration helper; deployment initialization must preserve every existing record.
     for name in CONTENT_COLLECTIONS:
-        # Approved discard migration: only temporary chat/handoff/audio, never Patrol reports.
-        await db[name].delete_many({"content_version": {"$ne": 1}})
         await db[name].create_index("expires_at", expireAfterSeconds=0)
         await db[name].create_index([("device_id", 1), ("scope_id", 1)])
     await db.voice_cache.create_index([("device_id", 1), ("audio_id", 1)], unique=True)

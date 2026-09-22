@@ -94,6 +94,10 @@ def test_device_tool_request_replay_uses_one_durable_request_identity():
     _run(lambda inv: _device_request_identity_is_durable())
 
 
+def test_legacy_content_discard_migration_runs_only_once():
+    _run(lambda inv: _legacy_content_discard_is_one_time())
+
+
 @pytest.mark.asyncio
 async def test_image_secret_preflight_flags_60k_truncation(monkeypatch):
     """The internal 60,000-character cap on a screenshot's transcription must mark itself as truncated —
@@ -540,6 +544,22 @@ async def _device_request_identity_is_durable():
     result_two = await tools.request_device_observation(replay, {"capabilityId": "cap.x", "fields": ["state"], "reason": "test"})
     assert result_one["requestId"] == result_two["requestId"]
     assert await db.investigation_device_requests.count_documents({"owner_id": owner, "job_id": job["job_id"]}) == 1
+
+
+async def _legacy_content_discard_is_one_time():
+    from services.higgins.retention import _discard_legacy_content_once, migrate_and_index
+
+    migration_id = f"test-retention-{uuid.uuid4().hex}"
+    owner = f"retention-{uuid.uuid4().hex}"
+    await db.ask_messages.insert_one({"device_id": owner, "scope_id": "before", "content_version": 0})
+    await migrate_and_index()
+    assert await db.ask_messages.count_documents({"device_id": owner}) == 1
+    assert await _discard_legacy_content_once(migration_id) is True
+    assert await db.ask_messages.count_documents({"device_id": owner}) == 0
+    await db.ask_messages.insert_one({"device_id": owner, "scope_id": "after", "content_version": 0})
+    assert await _discard_legacy_content_once(migration_id) is False
+    assert await db.ask_messages.count_documents({"device_id": owner, "scope_id": "after"}) == 1
+    await db.ask_messages.delete_many({"device_id": owner})
 
 
 if __name__ == "__main__":

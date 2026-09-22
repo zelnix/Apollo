@@ -58,8 +58,8 @@ async def lifespan(_: FastAPI):
     await db.gmail_connections.create_index("device_id", unique=True)
     await db.gmail_oauth_states.create_index("state", unique=True)
     await db.gmail_oauth_states.create_index("expires_at", expireAfterSeconds=0)  # real TTL cleanup — these are short-lived CSRF tokens, not a security "truth" cache
-    # Generic IMAP credentials are no longer accepted or stored. Remove any legacy encrypted rows.
-    await db.drop_collection("imap_connections")
+    # Generic IMAP credentials are no longer accepted or written. Legacy rows are retained for an explicit,
+    # audited migration rather than destructively dropping user data on every process start.
     await db.mailbox_assessment_receipts.create_index([("provider", 1), ("device_id", 1), ("message_digest", 1)], unique=True)
     await db.phone_risk_cache.create_index("phone_e164", unique=True)
     await db.patrol_events.create_index([("device_id", 1), ("event_id", 1)], unique=True)
