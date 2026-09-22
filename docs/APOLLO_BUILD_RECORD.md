@@ -1,3 +1,14 @@
+# GuardDog production authority track — source record (2026-09-22)
+
+- Added an explicit, non-default `guarddog-production` engine/profile. Existing production `app-bundle` remains `legacy`.
+- Apollo owns one native process runtime; the frozen Expo bridge remains excluded. Trust-generation transitions stop/recover/drain/clear/rebuild before resuming.
+- Added pinned primary/recovery public-root configuration, strict signed trust manifests, ordinary-key validity/revocation, HMAC-bound rollback state, generation-scoped bundle stores, routine signed refresh and exact-expiry stop work.
+- Acceptance test IDs/keys are rejected by production plugin, runtime and preflight.
+- Added offline-only manifest/rule signing tools that refuse private key files inside the application repository.
+- **External inputs still required for production selection:** owner public roots, signed trust/rule artifacts and HTTPS update URLs. Private keys remain offline and are never requested by the app/CI.
+- **Cutover state:** not selected, not production-default, and not represented as native-build verified. Android package remains `app.apollo.hwg`.
+- Verification boundary remains owner-mandated: TypeScript, ESLint, backend pytest and Cargo only; no Gradle/Kotlin compile or live-device GuardDog campaign was run.
+
 ## Production app-bundle pre-install failure — fixed in source
 
 - Failed EAS build: `4dee4d9b-99ba-48db-825d-1f63c22414db` (Android app bundle, versionCode 110).

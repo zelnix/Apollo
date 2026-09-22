@@ -6,6 +6,10 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.provider.Settings
+import com.guarddog.core.protection.ProtectionState
+import com.guarddog.vpn.GuardDogVpnService
+import com.guarddog.vpn.RecoveryInspector
+import com.guarddog.vpn.VpnStateRepository
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import org.json.JSONArray
@@ -32,6 +36,7 @@ class ApolloSecurityModule : Module() {
     get() = prefs.getString(KEY_SINCE, null)
     set(v) { prefs.edit().putString(KEY_SINCE, v).apply() }
   private fun guardDogCandidate(): ApolloGuardDogCandidateRuntime = ApolloGuardDogProcessOwner.get(ctx)
+  private fun guardDogProduction(): ApolloGuardDogProductionRuntime = ApolloGuardDogProductionOwner.get(ctx)
 
   companion object {
     private const val PREFS = "apollo_siteguard"
@@ -60,6 +65,18 @@ class ApolloSecurityModule : Module() {
     AsyncFunction("probeGuardDogCandidateFresh") { timeoutMs: Int -> guardDogCandidate().freshProbe(timeoutMs) }
     AsyncFunction("getGuardDogCandidateProvenance") { guardDogCandidate().provenance() }
     AsyncFunction("runGuardDogCandidateAcceptance") { timeoutMs: Int -> guardDogCandidate().runConsolidatedAcceptance(timeoutMs) }
+    Function("getGuardDogProductionCapabilities") { guardDogProduction().capabilities() }
+    Function("getGuardDogProductionStatus") { guardDogProduction().status() }
+    Function("configureGuardDogProduction") { json: String -> guardDogProduction().configure(json) }
+    Function("installGuardDogProductionTrustManifest") { json: String -> guardDogProduction().installTrustManifest(json) }
+    Function("acceptGuardDogProductionRuleBundle") { json: String -> guardDogProduction().acceptBundle(json) }
+    AsyncFunction("refreshGuardDogProductionAuthority") { guardDogProduction().refreshAuthority() }
+    AsyncFunction("startGuardDogProduction") { guardDogProduction().start() }
+    AsyncFunction("stopGuardDogProduction") { guardDogProduction().stop() }
+    Function("analyzeGuardDogProductionUrl") { url: String -> guardDogProduction().analyzeUrl(url) }
+    Function("getGuardDogProductionEvidence") { guardDogProduction().evidence() }
+    Function("acknowledgeGuardDogProductionEvidence") { ids: String -> guardDogProduction().acknowledgeEvidence(ids) }
+    Function("getGuardDogProductionRecovery") { guardDogProduction().recovery() }
 
     AsyncFunction("getCapabilities") {
       val vpnGranted = VpnService.prepare(ctx) == null
@@ -157,7 +174,12 @@ class ApolloSecurityModule : Module() {
 
     AsyncFunction("startProtection") {
       ApolloEnforcementTransitions.coordinator.serialized {
-        check(ApolloGuardDogProcessOwner.current()?.ownsEnforcement() != true) { "GuardDog owns the enforcement transition" }
+        check(ApolloGuardDogEngineOwnership.current() == null) { "GuardDog owns the enforcement transition" }
+        val oldGuardDog = RecoveryInspector.inspect(ctx, VpnStateRepository.shared)
+        if (!oldGuardDog.recovered) {
+          ctx.startService(Intent(ctx, GuardDogVpnService::class.java).setAction(GuardDogVpnService.ACTION_STOP))
+          check(ApolloEnforcementTransitions.coordinator.await(8_000) { RecoveryInspector.inspect(ctx, VpnStateRepository.shared).recovered }) { "GuardDog did not release its selective route" }
+        }
         requested = true
         if (protectionSince == null) protectionSince = now()
         if (VpnService.prepare(ctx) == null) {

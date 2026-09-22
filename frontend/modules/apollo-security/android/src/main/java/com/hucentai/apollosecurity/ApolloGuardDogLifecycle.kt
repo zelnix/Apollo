@@ -31,6 +31,12 @@ internal object ApolloEnforcementTransitions {
   val coordinator = TransitionCoordinator()
 }
 
+internal object ApolloGuardDogEngineOwnership {
+  @Volatile private var owner: String? = null
+  fun claim(candidate: String) = synchronized(this) { check(owner == null || owner == candidate) { "A different GuardDog engine already owns this process" }; owner = candidate }
+  fun current(): String? = owner
+}
+
 internal object ApolloGuardDogProcessOwner {
   private val cell = ProcessOwnerCell<ApolloGuardDogCandidateRuntime>()
 
@@ -41,8 +47,23 @@ internal object ApolloGuardDogProcessOwner {
 
   fun get(context: Context): ApolloGuardDogCandidateRuntime {
     check(isEligible(context)) { "GuardDog acceptance trust is disabled in this build" }
+    ApolloGuardDogEngineOwnership.claim("acceptance")
     return cell.getOrCreate { ApolloGuardDogCandidateRuntime(context.applicationContext) }
   }
 
   fun current(): ApolloGuardDogCandidateRuntime? = cell.current()
+}
+
+internal object ApolloGuardDogProductionOwner {
+  private val cell = ProcessOwnerCell<ApolloGuardDogProductionRuntime>()
+  fun isEligible(context: Context): Boolean {
+    val info = context.packageManager.getApplicationInfo(context.packageName, PackageManager.GET_META_DATA)
+    return info.metaData?.getBoolean(ApolloGuardDogProductionTrust.ENABLED, false) == true
+  }
+  fun get(context: Context): ApolloGuardDogProductionRuntime {
+    check(isEligible(context)) { "Production GuardDog trust is disabled in this build" }
+    ApolloGuardDogEngineOwnership.claim("production")
+    return cell.getOrCreate { ApolloGuardDogProductionRuntime(context.applicationContext) }
+  }
+  fun current(): ApolloGuardDogProductionRuntime? = cell.current()
 }

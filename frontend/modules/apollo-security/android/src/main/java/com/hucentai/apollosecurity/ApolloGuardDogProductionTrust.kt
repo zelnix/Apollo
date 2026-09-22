@@ -87,7 +87,7 @@ private class GuardDogIntegrityStore(private val context: Context) {
     val disabled = body.getJSONArray("disabledPrimaryRoots")
     return GuardDogTrustState(body.getLong("generation"), body.getLong("version"), body.getString("authority"), body.getString("rootKeyId"),
       Instant.parse(body.getString("expiresAt")), body.getString("envelopeHash"), decoded, (0 until disabled.length()).map { disabled.getString(it) }.toSet(),
-      body.getLong("recoveryFloor"), body.getString("signedManifest"), body.optString("signedRuleBundle").takeIf { it.isNotBlank() })
+      body.getLong("recoveryFloor"), body.getString("signedManifest"), if (body.isNull("signedRuleBundle")) null else body.getString("signedRuleBundle"))
   }
   companion object { private const val KEY_ALIAS = "apollo_guarddog_production_state_hmac_v1" }
 }
@@ -115,7 +115,7 @@ internal class ApolloGuardDogProductionTrust(private val context: Context) {
     val requestedDisabled = stringSet(root.getJSONArray("disabledPrimaryRootIds"))
     if (authority == "primary") check(requestedDisabled.isEmpty() && rootId !in disabled && generation > (current?.recoveryFloor ?: 0)) { "primary authority is disabled or below recovery floor" }
     else disabled.addAll(requestedDisabled.also { check(it.all { id -> id == roots.primaryId }) { "recovery may disable only pinned primary roots" } })
-    val envelopeHash = RuleBundleVerifier.sha256Hex(RuleBundleVerifier.canonical(root.toString()))
+    val envelopeHash = MessageDigest.getInstance("SHA-256").digest(RuleBundleVerifier.canonical(root.toString())).joinToString("") { "%02x".format(it) }
     if (current != null) {
       check(generation >= current.generation) { "trust generation rollback" }
       if (generation == current.generation) {
@@ -138,8 +138,8 @@ internal class ApolloGuardDogProductionTrust(private val context: Context) {
     val ids = mutableSetOf<String>()
     return (0 until array.length()).map { array.getJSONObject(it) }.map { item ->
       exactKeys(item, setOf("keyId", "publicKeyB64", "validFrom", "validUntil", "status"))
-      val id = item.getString("keyId"); check(id.matches(Regex("^[a-z0-9-]+$")) && ids.add(id) && id !in setOf(roots.primaryId, roots.recoveryId))
-      val publicKey = item.getString("publicKeyB64"); check(Base64.getDecoder().decode(publicKey).size == 32)
+      val id = item.getString("keyId"); check(id.matches(Regex("^[a-z0-9-]+$")) && ids.add(id) && id !in setOf(roots.primaryId, roots.recoveryId, TrustedKeyRegistry.M1_TEST_KEY_ID))
+      val publicKey = item.getString("publicKeyB64"); check(Base64.getDecoder().decode(publicKey).size == 32 && publicKey != TrustedKeyRegistry.M1_TEST_PUBLIC_KEY_B64)
       val from = Instant.parse(item.getString("validFrom")); val until = Instant.parse(item.getString("validUntil")); val status = item.getString("status")
       check(!from.isBefore(issued) && !until.isAfter(manifestExpiry) && until.isAfter(from) && status in setOf("active", "revoked"))
       GuardDogOrdinaryKey(id, publicKey, from, until, status)

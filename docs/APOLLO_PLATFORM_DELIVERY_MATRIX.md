@@ -1,4 +1,12 @@
-# Apollo platform delivery matrix (spec §1A / §16) — updated 2026-09-21, revision-1 package
+# Apollo platform delivery matrix (spec §1A / §16) — updated 2026-09-22, C15 production source track
+
+## C15 Android production-authority source status
+
+- An explicit `guarddog-production` source/profile now exists with primary/recovery signed trust, rollback state, ordinary-key revocation/expiry, update/expiry workers and one Apollo-owned bridge/runtime.
+- Existing `device-test`, `production` and `app-bundle` profiles remain `legacy`; no production-default cutover occurred.
+- No C15 native artifact was produced. Existing APKs remain historical legacy/acceptance evidence and cannot validate this source track.
+- Production selection is blocked only on owner public roots, signed trust/rule artifacts, HTTPS update locations and the separately permitted native build/device authority/rollback observations.
+- The implemented GuardDog enforcement scope is explicitly selective (`ip:controlled-/32`); it is not represented as broad internet filtering.
 
 ## Current correction-candidate impact
 

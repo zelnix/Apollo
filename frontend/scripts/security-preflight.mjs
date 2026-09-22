@@ -15,7 +15,11 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 const ANDROID_PACKAGE = "app.apollo.hwg";
 const IOS_BUNDLE_IDENTIFIER = "app.apollo.hwg";
-const KEYS = ["EXPO_PUBLIC_APP_ENV", "EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS", "EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE"];
+const PRODUCTION_KEYS = ["APOLLO_GUARDDOG_TRUST_DOMAIN", "APOLLO_GUARDDOG_TRUST_PROFILE", "APOLLO_GUARDDOG_PRIMARY_ROOT_ID",
+  "APOLLO_GUARDDOG_PRIMARY_ROOT_PUBLIC_KEY_B64", "APOLLO_GUARDDOG_RECOVERY_ROOT_ID", "APOLLO_GUARDDOG_RECOVERY_ROOT_PUBLIC_KEY_B64",
+  "EXPO_PUBLIC_GUARDDOG_TRUST_MANIFEST_URL", "EXPO_PUBLIC_GUARDDOG_RULE_BUNDLE_URL", "EXPO_PUBLIC_GUARDDOG_CONTROLLED_HOST",
+  "EXPO_PUBLIC_GUARDDOG_CONTROLLED_IPV4", "EXPO_PUBLIC_GUARDDOG_CONTROLLED_URL", "EXPO_PUBLIC_GUARDDOG_RULESET_ID"];
+const KEYS = ["EXPO_PUBLIC_APP_ENV", "EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS", "EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE", ...PRODUCTION_KEYS];
 
 function walk(dir) {
   if (!fs.existsSync(dir)) return [];
@@ -40,7 +44,7 @@ const profile = process.env.EAS_BUILD_PROFILE;
 const profileDefaults = profile ? {
   EXPO_PUBLIC_APP_ENV: ["device-test", "guarddog-acceptance", "staging"].includes(profile) ? "staging" : "production",
   EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS: "off",
-  EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE: profile === "guarddog-acceptance" ? "guarddog_acceptance" : "legacy",
+  EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE: profile === "guarddog-acceptance" ? "guarddog_acceptance" : profile === "guarddog-production" ? "guarddog_production" : "legacy",
 } : {};
 const guessedEnv = process.env.EXPO_PUBLIC_APP_ENV || profileDefaults.EXPO_PUBLIC_APP_ENV || (process.env.NODE_ENV === "production" ? "production" : "development");
 const baseFile = readDotenv(path.join(root, ".env"));
@@ -64,8 +68,23 @@ if (harness !== undefined && harness !== "" && harness !== "off" && harness !== 
 if (harness === "enabled" && cfg.EXPO_PUBLIC_APP_ENV !== "development") errors.push("The device-preview harness (simulated device inputs) is only permitted in development builds.");
 if (harness === "enabled" && profile) errors.push("The device-preview harness is web-only and can never be part of an EAS native build profile.");
 const engine = cfg.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE ?? "legacy";
-if (!["legacy", "guarddog_acceptance"].includes(engine)) errors.push(`EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE="${engine}" is invalid.`);
-if (cfg.EXPO_PUBLIC_APP_ENV === "production" && engine !== "legacy") errors.push("The GuardDog Stage 1D candidate is test-only and cannot be selected in production.");
+if (!["legacy", "guarddog_acceptance", "guarddog_production"].includes(engine)) errors.push(`EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE="${engine}" is invalid.`);
+if (cfg.EXPO_PUBLIC_APP_ENV === "production" && engine === "guarddog_acceptance") errors.push("The GuardDog acceptance candidate is test-only and cannot be selected in production.");
+if (engine === "guarddog_production" && cfg.EXPO_PUBLIC_APP_ENV !== "production") errors.push("GuardDog production authority requires a production app environment.");
+if (engine === "guarddog_production") {
+  for (const key of PRODUCTION_KEYS) if (!cfg[key]) errors.push(`${key} is required for GuardDog production authority.`);
+  const primary = cfg.APOLLO_GUARDDOG_PRIMARY_ROOT_PUBLIC_KEY_B64; const recovery = cfg.APOLLO_GUARDDOG_RECOVERY_ROOT_PUBLIC_KEY_B64;
+  for (const [name, value] of [["primary", primary], ["recovery", recovery]]) {
+    if (value) { try { if (Buffer.from(value, "base64").length !== 32 || Buffer.from(value, "base64").toString("base64") !== value) errors.push(`${name} root public key must be canonical 32-byte base64.`); } catch { errors.push(`${name} root public key is invalid base64.`); } }
+  }
+  if (cfg.APOLLO_GUARDDOG_PRIMARY_ROOT_ID === cfg.APOLLO_GUARDDOG_RECOVERY_ROOT_ID) errors.push("Primary and recovery root IDs must be distinct.");
+  if (cfg.APOLLO_GUARDDOG_PRIMARY_ROOT_ID === "m1-acceptance" || cfg.APOLLO_GUARDDOG_RECOVERY_ROOT_ID === "m1-acceptance") errors.push("Acceptance test root IDs are forbidden in production.");
+  if (primary === "xWUz5JD/mRHiCg7axpaEQV+dJ6cllJV4UHWOA9YPh1A=" || recovery === "xWUz5JD/mRHiCg7axpaEQV+dJ6cllJV4UHWOA9YPh1A=") errors.push("Acceptance test public keys are forbidden in production.");
+}
+const autolinking = resolvedAppConfig.expo?.autolinking ?? {};
+if (!(autolinking.android?.exclude ?? []).includes("guarddog-expo-module") || !(autolinking.ios?.exclude ?? []).includes("guarddog-expo-module")) {
+  errors.push("The frozen GuardDog Expo bridge must remain excluded on Android and iOS; Apollo owns the only production bridge.");
+}
 // Runtime-mock exclusion: no mock adapter/selector may exist in application source, and the preview harness may only be
 // referenced from the web-only host selector (never from a native or shared module).
 const appSources = ["src", "app", "modules/apollo-security/src"].flatMap((dir) => walk(path.join(root, dir)));

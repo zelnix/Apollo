@@ -1,3 +1,28 @@
+## C15 production GuardDog track (“M4” continuation) — source implemented (2026-09-22)
+
+### Problem statement
+Create a production-distinct GuardDog authority without promoting the frozen M1 acceptance profile: one process/runtime owner, pinned production roots, signed update trust, rollback/recovery authority, validity/revocation, offline key custody, explicit build selection and truthful cutover evidence.
+
+### Architecture implemented
+- **Selection:** `guarddog_production` exists only as an explicit production profile; default `app-bundle` stays `legacy`, and `guarddog_acceptance` remains forbidden in production.
+- **Trust:** pinned primary/recovery public roots sign strict domain/profile manifests. Manifests introduce ordinary rule keys only; recovery can permanently disable primary authority. Generations, versions and envelopes are rollback/conflict checked.
+- **Persistence:** accepted trust/rules are HMAC-bound to Android Keystore state with backup disabled. Missing/replaced integrity state fails closed.
+- **Runtime:** one Apollo-owned engine/verifier/registry/version-store/listener/VPN route. Authority transitions verify first, stop and observe recovery, drain evidence, clear old bindings/authorization, rebuild, accept new rules and resume only after success.
+- **Updates/expiry:** HTTPS signed refresh every six hours plus exact expiry stop; persisted valid authority can bridge temporary network loss but never its deadline.
+- **Key custody:** offline Ed25519 signing tools reject private key paths inside `/app`. App/plugin/preflight reject M1 acceptance key material and accept only public roots/signed artifacts.
+
+### Verification and boundaries
+- TypeScript compilation and ESLint pass.
+- 5 C15 production source/configuration pytest checks plus 58 existing lifecycle pytest tests pass with providers disabled.
+- Cargo check passes.
+- No Playwright, scenario agent, live Gemini call or Emergent-managed key was used.
+- Android Gradle/Kotlin and physical-device trust/rollback enforcement were intentionally not run; source completion is not native-build/cutover evidence.
+
+### Priorities
+- **P0:** C15 production source track complete.
+- **P1:** Owner supplies public roots and signed update artifacts, then an approved native build/device observation can produce cutover evidence. This blocks only production selection, not continued legacy delivery.
+- **P2:** Production-default cutover remains separate and reversible; `app-bundle` stays legacy until explicitly approved.
+
 ## Consolidated architecture mandate — M3 implemented (2026-09-22)
 
 ### Problem statement
@@ -18,7 +43,7 @@ Close the remaining lifecycle semantics: cancellation must report the actual rac
 
 ### Priorities
 - **P0:** M3 source implementation complete.
-- **P1:** Continue M4 finding `C15` (iOS capability/delivery truth), then M5 package/configuration work.
+- **P1:** Continue the C15 production GuardDog source track, then preserve explicit legacy/production cutover separation.
 - **P2:** Production-default cutover remains separate.
 
 ## Consolidated architecture mandate — M2 implemented (2026-09-22)

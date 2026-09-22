@@ -1,3 +1,13 @@
+## 2026-09-22 C15 production GuardDog track (“M4” continuation)
+
+- Clarification: the source mandate's milestone table ends at M3. “M4” here means the remaining C15 production GuardDog implementation track.
+- Added separate `guarddog_production` runtime/build selection without changing the default `app-bundle` legacy engine.
+- Production trust uses pinned primary/recovery public roots, strict signed manifests, ordinary signer validity/revocation, permanent recovery disablement of primary authority, rollback/version conflict checks and Android-Keystore HMAC state.
+- One Apollo-owned process runtime stages signed updates, observes stop/recovery, drains evidence, clears old runtime bindings/authorization and rebuilds verifier/registry/version state before resume. The frozen Expo bridge remains excluded.
+- Background workers refresh signed authority every six hours and stop enforcement at exact authority/rule expiry. Invalid unchanged-trust rule updates preserve the previous valid policy; a changed trust generation with an invalid replacement remains fail-closed.
+- Added offline signing tools and a production failure matrix. Private signing keys are forbidden in the app repository, binary and CI; only public roots and signed artifacts enter builds/update hosting.
+- Verification within the owner boundary: TypeScript/ESLint pass; production source/configuration pytest checks pass; existing 58 lifecycle pytest tests pass; Cargo check passes. Native Gradle/device verification remains unperformed and therefore blocks cutover evidence only.
+
 ## 2026-09-22 consolidated mandate M3 implementation
 
 - Implemented M3 findings `C13` and `C14`.

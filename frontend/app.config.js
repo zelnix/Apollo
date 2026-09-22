@@ -27,6 +27,15 @@ module.exports = () => {
       rulesetId: process.env.EXPO_PUBLIC_GUARDDOG_RULESET_ID || candidate.rulesetId || "",
       signedBundleB64: process.env.EXPO_PUBLIC_GUARDDOG_SIGNED_BUNDLE_B64 || candidate.signedBundleB64 || "",
     },
+    guardDogProduction: {
+      manifestUrl: process.env.EXPO_PUBLIC_GUARDDOG_TRUST_MANIFEST_URL || "",
+      ruleBundleUrl: process.env.EXPO_PUBLIC_GUARDDOG_RULE_BUNDLE_URL || "",
+      controlledHost: process.env.EXPO_PUBLIC_GUARDDOG_CONTROLLED_HOST || "",
+      controlledIpv4: process.env.EXPO_PUBLIC_GUARDDOG_CONTROLLED_IPV4 || "",
+      controlledUrl: process.env.EXPO_PUBLIC_GUARDDOG_CONTROLLED_URL || "",
+      rulesetId: process.env.EXPO_PUBLIC_GUARDDOG_RULESET_ID || "",
+      dedupeWindowMs: Number(process.env.EXPO_PUBLIC_GUARDDOG_DEDUPE_WINDOW_MS || "2000"),
+    },
   },
   });
 };

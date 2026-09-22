@@ -6,7 +6,7 @@
 //   - It does not touch consumer UI, Higgins, SecurityPlatformAdapter.ts, Patrol, or threat-event
 //     semantics.
 //   - It does not start/activate the VPN from the consumer app — that is production adapter/
-//     native-runtime wiring (Stage 1D), a separate, later, separately-approved stage.
+//     native-runtime wiring unless the explicit GuardDog production engine is selected.
 //   - It does not modify a single byte of the certified GuardDog source under packages/.
 //
 // What it DOES wire, and why:
@@ -14,15 +14,13 @@
 //      modules — no expo-module.config.json, so Expo's autolinking correctly does not discover
 //      them). They must be `include()`-d into the generated android/settings.gradle by hand, with
 //      their projectDir pointed at the staged, untouched source in packages/guarddog-android-sdk.
-//   2. `guarddog-expo-module` (the Expo bridge) IS an Expo module (has expo-module.config.json) and
-//      is auto-discovered by expo-modules-autolinking because packages/ is registered as an extra
-//      autolinking search path in frontend/package.json's "expo.autolinking.searchPaths" — no
-//      action needed here for it specifically, but withSourceCheck below still verifies it exists.
+//   2. The frozen `guarddog-expo-module` bridge is intentionally excluded in package.json. Apollo's
+//      `apollo-security` module is the one process/runtime owner and depends directly on core/vpn.
 //   3. guarddog-vpn's own AndroidManifest.xml already declares the VpnService + its required
 //      permissions (INTERNET, ACCESS_NETWORK_STATE, FOREGROUND_SERVICE,
 //      FOREGROUND_SERVICE_SYSTEM_EXEMPTED, POST_NOTIFICATIONS) — Android's own Gradle manifest
 //      merger picks these up automatically once :guarddog-vpn is a real dependency (via
-//      guarddog-expo-module's `implementation project(':guarddog-vpn')`). No manual manifest edit
+//      apollo-security's `implementation project(':guarddog-vpn')`). No manual manifest edit
 //      needed here for that reason.
 //   4. guarddog-core/guarddog-vpn apply `org.jetbrains.kotlin.plugin.serialization` with no pinned
 //      version (expected to resolve from a version already registered on the including build).
@@ -54,7 +52,6 @@ const PACKAGES_DIR_FROM_ANDROID = "../packages";
 const REQUIRED_PATHS = [
   "packages/guarddog-android-sdk/guarddog-core",
   "packages/guarddog-android-sdk/guarddog-vpn",
-  "packages/guarddog-expo-module",
 ];
 
 /** Fail fast at prebuild time if the Stage 1B staged source is ever missing, instead of silently

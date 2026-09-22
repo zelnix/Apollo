@@ -11,7 +11,7 @@
 //  - The GuardDog Stage 1D candidate engine stays test-only (never production).
 
 export type AppEnvironment = "development" | "staging" | "production";
-export type AndroidEnforcementEngine = "legacy" | "guarddog_acceptance";
+export type AndroidEnforcementEngine = "legacy" | "guarddog_acceptance" | "guarddog_production";
 export type DevicePreviewHarness = "off" | "enabled";
 
 export const APP_ENVIRONMENTS: readonly AppEnvironment[] = ["development", "staging", "production"];
@@ -55,11 +55,14 @@ function parseHarness(value: string | undefined): DevicePreviewHarness {
 export function validateSecurityConfig(input: SecurityConfigInput): ValidatedSecurityConfig {
   const appEnvironment = parseEnv(input.appEnvironment);
   const androidEnforcementEngine = input.androidEnforcementEngine ?? "legacy";
-  if (androidEnforcementEngine !== "legacy" && androidEnforcementEngine !== "guarddog_acceptance") {
+  if (androidEnforcementEngine !== "legacy" && androidEnforcementEngine !== "guarddog_acceptance" && androidEnforcementEngine !== "guarddog_production") {
     throw new SecurityConfigurationError(`EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE="${androidEnforcementEngine}" is invalid.`);
   }
-  if (appEnvironment === "production" && androidEnforcementEngine !== "legacy") {
+  if (appEnvironment === "production" && androidEnforcementEngine === "guarddog_acceptance") {
     throw new SecurityConfigurationError("The GuardDog Stage 1D candidate is test-only and cannot be selected in production.");
+  }
+  if (androidEnforcementEngine === "guarddog_production" && appEnvironment !== "production") {
+    throw new SecurityConfigurationError("GuardDog production authority can be selected only in a production build.");
   }
   const devicePreviewHarness = parseHarness(input.devicePreviewHarness);
   if (devicePreviewHarness === "enabled") {

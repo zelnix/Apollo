@@ -49,6 +49,12 @@
         "EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE": "legacy",
         "EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS": "off"
       }
+    },
+    "guarddog-production": {
+      "extends": "app-bundle",
+      "env": {
+        "EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE": "guarddog_production"
+      }
     }
   }
 }

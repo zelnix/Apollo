@@ -1,3 +1,18 @@
+## C15 production GuardDog track (“M4” continuation) — source completion (2026-09-22)
+
+The consolidated mandate formally numbers only M1–M3; this continuation calls the remaining C15 production track “M4”. Source implementation is complete, while production-default cutover remains intentionally separate and blocked on owner artifacts/native evidence.
+
+- Added an explicit `guarddog_production` engine/profile; `app-bundle` remains reversible `legacy` and acceptance trust remains staging-only.
+- Apollo owns the sole production process runtime/bridge; the frozen Expo bridge remains excluded and frozen SDK source is unmodified.
+- Added strict primary/recovery-root trust manifests, domain/profile binding, ordinary rule-key validity/revocation, permanent primary disablement with recovery floor, generation/version rollback checks and same-version envelope conflict rejection.
+- Trust state and retained signed rules are HMAC-bound to Android Keystore state with backup disabled. Integrity/key loss fails closed.
+- Trust/rule updates verify before mutation, stop/recover/drain/clear/rebuild on authority changes, safely stage rule changes, and resume only after successful acceptance when protection was intended on.
+- Added six-hour background signed refresh and exact manifest/key/bundle expiry stop workers. Update network loss uses persisted authority only until its fixed deadline.
+- Added offline-only Ed25519 manifest/rule signing tools that refuse private key files inside `/app`; production runtime/plugin/preflight reject the frozen M1 acceptance key.
+- Added production source/configuration checks, failure/recovery matrix and explicit cutover record in `APOLLO_GUARDDOG_PRODUCTION_TRUST.md` and `APOLLO_BUILD_RECORD.md`.
+
+Permitted verification: TypeScript/ESLint pass; 5 production-boundary source pytest checks and the existing 58 provider-disabled lifecycle tests pass; Cargo check passes. Android Gradle/Kotlin compilation and physical-device authority/rollback campaigns were not run under the owner's approved test boundary, so this is not represented as native-build or production-cutover evidence.
+
 ## Consolidated architecture mandate — Milestone 3 closure (2026-09-22)
 
 Both M3 findings (`C13`, `C14`) are implemented in source.
