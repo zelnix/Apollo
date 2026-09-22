@@ -1,5 +1,28 @@
 # Apollo build record
 
+## Android — 2026-09-22 seven-defect correction candidate
+
+| Field | Value |
+|---|---|
+| Build id | `047bc183-37e9-447b-b0f8-48012f591550` |
+| Result | **FINISHED** at `2026-09-22T03:08:19.721Z` |
+| Build page | https://expo.dev/accounts/emergent-em-user-fb71a8d3-adc2-4275-b1ec-2692228557b8/projects/threat-patrol-1/builds/047bc183-37e9-447b-b0f8-48012f591550 |
+| **APK download** | https://expo.dev/artifacts/eas/HNq2PiQUZ46vTsP-q2f8OTQ4O0CU4L_uNJY2RyCTRB8.apk |
+| Exact saved Git source | `7fd6f9a61d292bdab17700152f7e47e457afc411` |
+| Correction implementation commit | `4bb068292ad92118969dcc7802c2fb529502847f` |
+| EAS fingerprint | `565f42d9b04dd39c836360eeccd12c4e442b800f` (`01a0c708-0e1b-7824-8b82-319c7b2396c8`) |
+| App | `Apollo` 1.0.0 (versionCode 1), package `app.apollo.hwg`, Expo SDK 57 |
+| Profile | `device-test`: internal APK, staging backend, legacy enforcement, preview harness explicitly `off` |
+| Compatible backend | `https://device-file-gate.preview.emergentagent.com` |
+| Size | 147,567,093 bytes |
+| SHA-256 | `c15804e04597e09628575cc58734bd97fc10c2cbe1f89dd4c1ddae239e102e97` |
+| Local verification copy | `/app/Apollo-Android-047bc183.apk` |
+
+Build `c46c1d78-d662-4cd6-a45d-292ffe175247` is **not a candidate**: it failed in EAS Pre-install because
+the uploaded development `.env` enabled the browser preview harness. Commit `7fd6f9a...` explicitly sets
+`EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS=off` in all native EAS profiles; all three local profile preflights passed and
+Deployment Agent returned PASS before the successful retry.
+
 ## Android — 2026-09-21 Package 1/2 closure candidate
 
 | Field | Value |

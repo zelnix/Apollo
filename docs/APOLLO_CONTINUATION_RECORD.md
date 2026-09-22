@@ -420,3 +420,18 @@ Changed core files:
   TypeScript/ESLint clean; desktop Rust 3/3. No scenario, Playwright, testing-agent or live provider run.
 - Build next: save this exact correction package, then create a `device-test` Android APK and map saved SHA ↔ EAS
   fingerprint ↔ artifact URL/hash. Do not reuse build `18706c6e...` identifiers.
+
+### Fresh Android candidate delivered
+- Correction commit: `4bb068292ad92118969dcc7802c2fb529502847f`.
+- Native-profile boundary commit: `7fd6f9a61d292bdab17700152f7e47e457afc411`.
+- First attempt `c46c1d78-d662-4cd6-a45d-292ffe175247` failed Pre-install because development `.env` enabled
+  the browser-only preview harness. It produced no APK and is retained only as a failure record.
+- Final EAS build: `047bc183-37e9-447b-b0f8-48012f591550`, **FINISHED**.
+- EAS fingerprint: `565f42d9b04dd39c836360eeccd12c4e442b800f`; fingerprint ID
+  `01a0c708-0e1b-7824-8b82-319c7b2396c8`.
+- APK: `https://expo.dev/artifacts/eas/HNq2PiQUZ46vTsP-q2f8OTQ4O0CU4L_uNJY2RyCTRB8.apk`.
+- APK SHA-256: `c15804e04597e09628575cc58734bd97fc10c2cbe1f89dd4c1ddae239e102e97`;
+  size 147,567,093 bytes; local verification copy `/app/Apollo-Android-047bc183.apk`.
+- The EAS log loaded `EXPO_PUBLIC_BACKEND_URL` from the uploaded environment and compiled against the compatible
+  `device-file-gate` backend. Preview fixtures were explicitly disabled before native security preflight.
+- Physical-device behavior remains owner acceptance work; successful compilation is not represented as device proof.

@@ -525,3 +525,7 @@ Current position: waiting on step 1 input (Step 7 stderr for build aa24dd73-eab7
 - Bounded tests prohibit provider calls at both pytest fixture and Higgins provider entry-point boundaries.
 - Pre-build source digest: `fe41defb4f0fd0bc6fa85cd0dfb9d9db5412a75445c6be88c4f7d65d694770da`.
 - Verification: 56 focused backend tests, TypeScript/ESLint, and 3 Rust native tests pass.
+- **Fresh Android candidate:** EAS `047bc183-37e9-447b-b0f8-48012f591550`, source
+  `7fd6f9a61d292bdab17700152f7e47e457afc411`, fingerprint
+  `565f42d9b04dd39c836360eeccd12c4e442b800f`, APK SHA-256
+  `c15804e04597e09628575cc58734bd97fc10c2cbe1f89dd4c1ddae239e102e97`.
