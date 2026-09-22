@@ -34,6 +34,9 @@ DECLARATIONS = [
         parameters=types.Schema(type="OBJECT", properties={"evidenceId": types.Schema(type="STRING"),
             "range": types.Schema(type="OBJECT", nullable=True, properties={"start": types.Schema(type="INTEGER"), "end": types.Schema(type="INTEGER")}),
             "pages": types.Schema(type="ARRAY", nullable=True, items=types.Schema(type="INTEGER"))}, required=["evidenceId"])),
+    types.FunctionDeclaration(name="continue_document", description="Extract a bounded later PDF page slice when inventory reports pages beyond the initial extraction budget. Extraction creates addressable evidence but does not claim semantic examination.",
+        parameters=types.Schema(type="OBJECT", properties={"evidenceId": types.Schema(type="STRING"), "startPage": types.Schema(type="INTEGER"),
+            "pageCount": types.Schema(type="INTEGER", nullable=True)}, required=["evidenceId", "startPage"])),
     types.FunctionDeclaration(name="research_public_sources", description="Grounded web research about public organisations, numbers, domains, claims or scams. Give only minimal public identifiers, never private text.",
         parameters=types.Schema(type="OBJECT", properties={"question": types.Schema(type="STRING"), "entities": types.Schema(type="ARRAY", items=types.Schema(type="STRING")),
             "preferredDomains": types.Schema(type="ARRAY", items=types.Schema(type="STRING"))}, required=["question", "entities", "preferredDomains"])),
@@ -278,6 +281,8 @@ async def execute(ctx: ToolContext, name: str, args: dict) -> dict:
         if name == "read_evidence":
             rng = args.get("range") or {}
             return await ev.read_text(ctx.owner, ctx.case_id, str(args["evidenceId"]), rng.get("start"), rng.get("end"), args.get("pages"))
+        if name == "continue_document":
+            return await ev.continue_document(ctx.owner, ctx.case, str(args["evidenceId"]), int(args["startPage"]), int(args.get("pageCount") or ev.MAX_PAGES))
         if name == "research_public_sources":
             return await _grounded(ctx, str(args["question"]), [str(e) for e in args.get("entities", [])], [str(d) for d in args.get("preferredDomains", [])])
         if name == "inspect_url":

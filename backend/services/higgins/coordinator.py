@@ -116,6 +116,15 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
     ctx = toolbox.ToolContext(owner, case, job, device)
     # Reload the latest checkpoint after lease acquisition (R04): completed tool rounds are reused, never repeated.
     fresh_job = await repo.get_job(owner, case["case_id"], job["job_id"])
+    consumed_request_ids = set(fresh_job.get("consumed_device_request_ids", []))
+    if consumed_request_ids:
+        # Repair the inbox projection after a crash between checkpoint consumption and inbox acknowledgement. The
+        # checkpoint/job record is authoritative: a consumed request must never be rediscovered as a fresh wait.
+        await repo.db.investigation_device_requests.update_many(
+            {"owner_id": owner, "case_id": case["case_id"], "job_id": job["job_id"],
+             "request_id": {"$in": list(consumed_request_ids)}, "fulfilled": False},
+            {"$set": {"fulfilled": True, "submission.state": "resumed", "consumed_at": now_utc()}},
+        )
     checkpoint = repo.dec_json(fresh_job["checkpoint_ciphertext"]) if fresh_job.get("checkpoint_ciphertext") else None
     pending_marks: list[tuple[str, int, int, int]] = []
     ledger: dict[str, dict] = {}  # per-call durable ledger (S08): completed paid tool outputs are reused, never re-run after a later call fails
@@ -152,6 +161,15 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
             if key in ledger:  # completed in an earlier attempt: reuse, never pay again
                 output = ledger[key]["output"]
                 ctx.research_calls = max(ctx.research_calls, ledger[key].get("researchCalls", ctx.research_calls))
+                if entry["name"] == "request_device_observation" and isinstance(output, dict):
+                    request_id = output.get("requestId")
+                    if request_id and request_id not in consumed_request_ids:
+                        request_row = await repo.db.investigation_device_requests.find_one(
+                            {"owner_id": owner, "case_id": case["case_id"], "job_id": job["job_id"],
+                             "request_id": request_id, "fulfilled": False}, {"_id": 0, "request": 1}
+                        )
+                        if request_row:
+                            ctx.pending_request = request_row["request"]
             else:
                 await progress("research" if entry["name"] != "request_device_observation" else "observe", f"Running {entry['name'].replace('_', ' ')}.")
                 ctx.tool_call_key = key
@@ -173,7 +191,8 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
         # the tool inserted its request but before the checkpoint captured `requestId`; Gemini is never called again
         # while an unresolved request from this job still exists.
         outstanding = await repo.db.investigation_device_requests.find_one(
-            {"owner_id": owner, "case_id": case["case_id"], "job_id": job["job_id"], "fulfilled": False},
+            {"owner_id": owner, "case_id": case["case_id"], "job_id": job["job_id"], "fulfilled": False,
+             "request_id": {"$nin": list(consumed_request_ids)}},
             {"_id": 0, "request": 1},
         )
         if outstanding:

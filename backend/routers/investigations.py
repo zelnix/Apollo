@@ -181,13 +181,38 @@ async def list_sources(case_id: str, request: Request, cursor: Optional[str] = N
 async def create_upload(case_id: str, body: CreateUpload, request: Request):
     owner = owner_of(request)
     case = await repo.get_case(owner, case_id, for_mutation=True)
-    _revision_check(case, body.expected_revision)
     if body.declared_bytes > ev.MAX_FILE_BYTES:
         raise http(413, "budget_exhausted", f"Files above {ev.MAX_FILE_BYTES // (1024 * 1024)} MiB are not accepted.")
-    upload_id = str(uuid.uuid4())
-    expires = min(repo.utc(case["expires_at"]), now_utc() + timedelta(minutes=10))
-    await db.investigation_uploads.insert_one({"owner_id": owner, "case_id": case_id, "upload_id": upload_id, "metadata": body.wire(), "chunks": {}, "finalisation": None, "expires_at": expires})
-    return JSONResponse({"uploadId": upload_id, "chunkBytes": repo.CHUNK_BYTES, "expiresAt": expires.isoformat()}, status_code=201, headers=NO_STORE)
+    immutable = body.wire(); immutable.pop("expectedRevision", None)
+    request_digest = repo.digest(json.dumps(immutable, sort_keys=True))
+    existing = await db.investigation_uploads.find_one(
+        {"owner_id": owner, "case_id": case_id, "metadata.clientItemId": body.client_item_id}, {"_id": 0}
+    )
+    if existing:
+        if existing.get("request_digest") != request_digest:
+            raise http(409, "conflict", "This file identity was already reserved for different immutable input.")
+        return JSONResponse({"uploadId": existing["upload_id"], "chunkBytes": repo.CHUNK_BYTES,
+                             "expiresAt": repo.utc(existing["expires_at"]).isoformat(),
+                             "evidenceRootId": existing["evidence_root_id"], "replayed": True}, status_code=201, headers=NO_STORE)
+    _revision_check(case, body.expected_revision)
+    upload_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"apollo-upload:{owner}:{case_id}:{body.client_item_id}"))
+    evidence_root_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"apollo-evidence:{owner}:{case_id}:{body.client_item_id}"))
+    expires = repo.utc(case["expires_at"])
+    document = {"owner_id": owner, "case_id": case_id, "upload_id": upload_id, "evidence_root_id": evidence_root_id,
+                "request_digest": request_digest, "metadata": body.wire(), "chunks": {}, "finalisation": None,
+                "created_at": now_utc(), "expires_at": expires}
+    try:
+        await db.investigation_uploads.insert_one(document)
+        replayed = False
+    except DuplicateKeyError:
+        existing = await db.investigation_uploads.find_one(
+            {"owner_id": owner, "case_id": case_id, "metadata.clientItemId": body.client_item_id}, {"_id": 0}
+        )
+        if not existing or existing.get("request_digest") != request_digest:
+            raise http(409, "conflict", "This file identity was concurrently reserved for different input.")
+        upload_id, evidence_root_id, expires, replayed = existing["upload_id"], existing["evidence_root_id"], repo.utc(existing["expires_at"]), True
+    return JSONResponse({"uploadId": upload_id, "chunkBytes": repo.CHUNK_BYTES, "expiresAt": expires.isoformat(),
+                         "evidenceRootId": evidence_root_id, "replayed": replayed}, status_code=201, headers=NO_STORE)
 
 
 @router.put("/investigations/{case_id}/uploads/{upload_id}/chunks/{index}", status_code=204)
@@ -302,51 +327,68 @@ async def complete_upload(case_id: str, upload_id: str, body: ExpectedRevision, 
                 row = await repo.get_evidence(owner, case_id, current["evidence_id"])
                 return JSONResponse({"evidence": repo.evidence_view(row).wire(), "caseRevision": case["revision"], "replayed": True}, status_code=201, headers=NO_STORE)
             raise http(409, "conflict", "This upload is being finalised by another attempt; retry shortly.")
-    # Resume/redo incomplete ingestion exclusively: a metadata row from an interrupted attempt is NOT completed ingestion. Its partial
-    # children/bytes are removed and the original is ingested again from the retained chunks, which are deleted only after commit.
-    partial = await db.investigation_evidence.find_one({"owner_id": owner, "case_id": case_id, "client_item_id": meta["clientItemId"]}, {"_id": 0, "evidence_id": 1})
+    # One immutable client item owns one deterministic evidence root. A committed root is authoritative even if the
+    # upload projection was interrupted before it recorded evidence_id.
+    root_id = upload.get("evidence_root_id") or str(uuid.uuid5(uuid.NAMESPACE_URL, f"apollo-evidence:{owner}:{case_id}:{meta['clientItemId']}"))
+    partial = await db.investigation_evidence.find_one(
+        {"owner_id": owner, "case_id": case_id, "evidence_id": root_id},
+        {"_id": 0, "evidence_id": 1, "publication_state": 1, "ingestion_attempt_id": 1, "publication_owner": 1, "meta_ciphertext": 1},
+    )
     if partial:
-        owning_upload = await db.investigation_uploads.find_one(
-            {"owner_id": owner, "case_id": case_id, "finalisation.state": "committed", "finalisation.evidence_id": partial["evidence_id"]}, {"_id": 0, "upload_id": 1, "finalisation": 1})
-        if owning_upload and owning_upload["finalisation"]["digest"] != content_digest:
-            # A DIFFERENT, already-committed upload owns this client item ID with DIFFERENT content: a genuine
-            # identity collision, not a resubmission of the same file. Never substitute someone else's evidence for
-            # different bytes — the winning worker's content stays untouched and this attempt is rejected outright.
-            raise http(409, "conflict", "A different file was already submitted under this item; a changed file cannot reuse that result.")
-        if owning_upload:
-            # Identical content, already committed by a different upload attempt (e.g. a client retry that opened a
-            # fresh upload_id): bind THIS attempt to that exact, already-published result instead of re-ingesting.
+        if partial.get("publication_state") == "committed":
+            published_meta = repo.dec_json(partial["meta_ciphertext"])
+            if published_meta.get("contentDigest") != content_digest:
+                raise http(409, "conflict", "A different file was already published under this immutable item identity.")
             committed = await db.investigation_uploads.find_one_and_update(
                 {"owner_id": owner, "upload_id": upload_id, "finalisation.fence": fence},
-                {"$set": {"finalisation.state": "committed", "finalisation.evidence_id": partial["evidence_id"], "evidence_id": partial["evidence_id"]}})
+                {"$set": {"finalisation.state": "committed", "finalisation.evidence_id": root_id, "evidence_id": root_id}})
             if committed is not None:
                 await db.investigation_upload_chunks.delete_many({"owner_id": owner, "upload_id": upload_id})
-            row = await repo.get_evidence(owner, case_id, partial["evidence_id"])
+            row = await repo.get_evidence(owner, case_id, root_id)
             return JSONResponse({"evidence": repo.evidence_view(row).wire(), "caseRevision": case["revision"], "replayed": True}, status_code=201, headers=NO_STORE)
-        # No committed owner at all: nobody ever published this row — safe to discard as an abandoned attempt and re-ingest fresh.
-        await repo.discard_incomplete_ingestion(owner, case_id, partial["evidence_id"])
+        # A stale staging root is abandoned only by matching its exact attempt/owner. If it wins publication first,
+        # abandonment matches nothing and the now-committed root is replayed on the next request—never deleted.
+        abandoned = await repo.discard_incomplete_ingestion(
+            owner, case_id, root_id, attempt_id=partial.get("ingestion_attempt_id"), publication_owner=partial.get("publication_owner")
+        )
+        if not abandoned:
+            winner = await db.investigation_evidence.find_one(
+                {"owner_id": owner, "case_id": case_id, "evidence_id": root_id}, {"_id": 0, "publication_state": 1, "meta_ciphertext": 1}
+            )
+            if winner and winner.get("publication_state") == "committed" and repo.dec_json(winner["meta_ciphertext"]).get("contentDigest") == content_digest:
+                bound = await db.investigation_uploads.find_one_and_update(
+                    {"owner_id": owner, "upload_id": upload_id, "finalisation.fence": fence},
+                    {"$set": {"finalisation.state": "committed", "finalisation.evidence_id": root_id, "evidence_id": root_id}},
+                )
+                if bound is not None:
+                    await db.investigation_upload_chunks.delete_many({"owner_id": owner, "upload_id": upload_id})
+                row = await repo.get_evidence(owner, case_id, root_id)
+                return JSONResponse({"evidence": repo.evidence_view(row).wire(), "caseRevision": case["revision"], "replayed": True}, status_code=201, headers=NO_STORE)
+            raise http(409, "conflict", "The reserved evidence root is owned by another active ingestion attempt.")
+    publication_owner = {"upload_id": upload_id, "fence": fence}
     try:
         item = await _with_lease_renewal(db.investigation_uploads, {"owner_id": owner, "upload_id": upload_id}, "finalisation.fence", fence, "finalisation.started_at",
-                                         ev.ingest_file(owner, case, meta, data))
+                                         ev.ingest_file(owner, case, meta, data, evidence_root_id=root_id, ingestion_attempt_id=fence,
+                                                        publication_owner=publication_owner, content_digest=content_digest))
     except LeaseLost:
         current = await db.investigation_uploads.find_one({"owner_id": owner, "upload_id": upload_id}, {"_id": 0})
         if current and current.get("evidence_id"):
             row = await repo.get_evidence(owner, case_id, current["evidence_id"])
             return JSONResponse({"evidence": repo.evidence_view(row).wire(), "caseRevision": case["revision"], "replayed": True}, status_code=201, headers=NO_STORE)
         raise http(409, "conflict", "This upload is being finalised by another attempt; retry to obtain the result.")
-    # Commit is itself fenced: if this attempt was superseded while `ingest_file` was running, the write below matches
-    # nothing and this attempt's own evidence is discarded rather than published as if it were authoritative.
+    # The root publication is authoritative. This upload projection is fenced, but a lost projection write must never
+    # delete the already-published root; the next replay binds it by immutable digest.
     committed = await db.investigation_uploads.find_one_and_update(
         {"owner_id": owner, "upload_id": upload_id, "finalisation.fence": fence},
         {"$set": {"finalisation.state": "committed", "finalisation.evidence_id": item.id, "evidence_id": item.id}},
         return_document=ReturnDocument.AFTER)
     if committed is None:
-        await repo.discard_incomplete_ingestion(owner, case_id, item.id)
         current = await db.investigation_uploads.find_one({"owner_id": owner, "upload_id": upload_id}, {"_id": 0})
         if current and current.get("evidence_id"):
             row = await repo.get_evidence(owner, case_id, current["evidence_id"])
             return JSONResponse({"evidence": repo.evidence_view(row).wire(), "caseRevision": case["revision"], "replayed": True}, status_code=201, headers=NO_STORE)
-        raise http(409, "conflict", "This upload is being finalised by another attempt; retry to obtain the result.")
+        row = await repo.get_evidence(owner, case_id, item.id)
+        return JSONResponse({"evidence": repo.evidence_view(row).wire(), "caseRevision": case["revision"], "replayed": True}, status_code=201, headers=NO_STORE)
     # Upload state is released only after evidence is committed.
     await db.investigation_upload_chunks.delete_many({"owner_id": owner, "upload_id": upload_id})
     updated = await repo.cas(owner, case_id, {"revision": case["revision"]}, {"$set": {}})
@@ -461,16 +503,31 @@ async def cancel_job(case_id: str, job_id: str, body: ExpectedRevision, request:
     owner = owner_of(request)
     case = await repo.get_case(owner, case_id)
     job = await repo.get_job(owner, case_id, job_id)
-    if job["status"] in ACTIVE or job["status"] == "waiting_user":
-        # Cancel this turn only: a new WORK epoch fences the worker. The content epoch is untouched, so submitted evidence,
-        # accepted turns and sources remain available for follow-up until the case is actually deleted or expires.
-        await db.investigation_cases.update_one({"owner_id": owner, "case_id": case_id}, {"$set": {"work_epoch": uuid.uuid4().hex, "active_job_id": None, "active_turn_id": None, "lease_fence": None,
-                                                                                                  "status": "partial" if case.get("response_ciphertext") else "queued", "updated_at": now_utc()}, "$inc": {"revision": 1}})
-        await db.investigation_jobs.update_one({"owner_id": owner, "job_id": job_id}, {"$set": {"status": "cancelled", "lease_until": None, "checkpoint_ciphertext": None}})
-        pass  # unaccepted bundles of this attempt are reclaimed by the sweeper; accepted history is never touched here
-        await db.voice_cache.delete_many({"device_id": owner, "scope_id": case_id, "job_id": job_id})
-        await repo.emit(owner, case_id, job_id, "cancelled", {"cleanupStatus": "complete"}, case["revision"] + 1, repo.utc(case["expires_at"]))
-    return JSONResponse({"status": "cancelled", "cleanupStatus": "complete"}, status_code=202, headers=NO_STORE)
+    if job["status"] not in ACTIVE:
+        return JSONResponse({"status": job["status"], "cleanupStatus": "not_required", "cancelled": False}, status_code=200, headers=NO_STORE)
+    _revision_check(case, body.expected_revision)
+    # The case control record is authoritative. Match the exact job and work epoch observed above so a completed job
+    # followed by a newer turn can never have that newer turn cleared by this stale cancellation request.
+    updated = await repo.cas(owner, case_id, {
+        "revision": case["revision"], "active_job_id": job_id,
+        "work_epoch": job.get("work_epoch", job["epoch"]),
+    }, {"$set": {"work_epoch": uuid.uuid4().hex, "active_job_id": None, "active_turn_id": None, "lease_fence": None,
+                  "status": "partial" if case.get("response_ciphertext") else "queued"}})
+    if not updated:
+        current_job = await repo.get_job(owner, case_id, job_id)
+        if current_job["status"] not in ACTIVE:
+            return JSONResponse({"status": current_job["status"], "cleanupStatus": "not_required", "cancelled": False}, status_code=200, headers=NO_STORE)
+        raise http(409, "conflict", "This turn is no longer the active work for the case; it was not cancelled.")
+    cancelled = await db.investigation_jobs.find_one_and_update(
+        {"owner_id": owner, "job_id": job_id, "work_epoch": job.get("work_epoch", job["epoch"]), "status": {"$in": list(ACTIVE)}},
+        {"$set": {"status": "cancelled", "lease_until": None, "checkpoint_ciphertext": None}},
+    )
+    if not cancelled:
+        current_job = await repo.get_job(owner, case_id, job_id)
+        return JSONResponse({"status": current_job["status"], "cleanupStatus": "not_required", "cancelled": False}, status_code=200, headers=NO_STORE)
+    await db.voice_cache.delete_many({"device_id": owner, "scope_id": case_id, "job_id": job_id})
+    await repo.emit(owner, case_id, job_id, "cancelled", {"cleanupStatus": "complete"}, updated["revision"], repo.utc(case["expires_at"]))
+    return JSONResponse({"status": "cancelled", "cleanupStatus": "complete", "cancelled": True}, status_code=202, headers=NO_STORE)
 
 
 def _canonical_result(body: DeviceResult, requested: list[str]) -> DeviceResult:
@@ -630,7 +687,6 @@ async def _finish_device_submission(owner: str, case: dict, pending: dict) -> Op
                 "work_epoch": job.get("work_epoch", job["epoch"]), "active_job_id": job["job_id"],
                 "status": {"$in": ["waiting_device", "queued"]}, "pending_device_request_ids": request_id,
             }, {"$set": {"status": "queued"}, "$pull": {"pending_device_request_ids": request_id}})
-            jobs.launch(owner, case_id, job["job_id"])
             return True
         # No multi-document transactions here (standalone MongoDB): the job/case writes above are protected instead by
         # holding the SAME renewed fence for their whole duration — no other attempt can also be in "resuming" while
@@ -646,6 +702,10 @@ async def _finish_device_submission(owner: str, case: dict, pending: dict) -> Op
             {**selector, "submission.fence": fence},
             {"$set": ({"submission.state": "resumed", "fulfilled": True, "result_digest": sub["digest"], "consumed_at": now_utc()}
                       if consumed else {"submission.state": "stored", "submission.deferred_at": now_utc()})})
+        if committed and consumed:
+            # Wake only after the inbox projection says fulfilled. If the process dies here, the queued job is found
+            # by recovery; if it dies before here, inbox recovery finishes the acknowledgement and then wakes it.
+            jobs.launch(owner, case_id, pending["job_id"])
         if not committed:  # fenced out: another attempt owns the outcome; do not claim credit for the resume ourselves
             refreshed = (await db.investigation_device_requests.find_one({"owner_id": owner, "case_id": case_id, "request_id": request_id}, {"_id": 0, "submission": 1}) or {}).get("submission") or {}
             sub = refreshed or sub

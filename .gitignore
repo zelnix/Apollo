@@ -95,4 +95,5 @@ credentials.json
 .env.*
 *.env
 desktop/src-tauri/target/release/deps/libapollo_desktop_lib.a
+desktop/src-tauri/target/
 Apollo-Android-18706c6e.apk

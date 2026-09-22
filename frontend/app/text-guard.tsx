@@ -23,6 +23,8 @@ import { type MessageOutcome, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { dispatchInvestigationAction } from "@/src/domain/investigationActions";
+import { GateInvestigation } from "@/src/components/GateInvestigation";
+import { issueContext } from "@/src/domain/higginsHandoff";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -76,10 +78,11 @@ export default function TextGuard() {
   const [result, setResult] = useState<MessageOutcome | null>(null);
   const [verify, setVerify] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [higginsResolved, setHigginsResolved] = useState(false);
 
   const run = async () => {
     if (!text.trim()) return;
-    setBusy(true); setError(null); setResult(null);
+    setBusy(true); setError(null); setResult(null); setHigginsResolved(false);
     try { setResult(await checkMessage(sender, text)); } catch (e) { setError(e instanceof Error ? e.message : "Could not check this message."); } finally { setBusy(false); }
   };
 
@@ -145,13 +148,13 @@ export default function TextGuard() {
 
         {result && a ? (
           <>
-            {result.assessment ? <MessageAssessmentResult assessment={result.assessment} state={a.state}
+            {!higginsResolved && result.assessment ? <MessageAssessmentResult assessment={result.assessment} state={a.state}
               submittedLabel="Text investigated" submittedTitle={sender || "Sender not supplied"} submittedText={text}
               onPrimaryAction={() => dispatchInvestigationAction(result.assessment!.higgins.action_kind, {
                 showVerification: () => setVerify(true), openAccount: () => router.push({ pathname: "/account", params: { text, scent: result.event?.scent_id ?? result.event?.event_id ?? "" } }),
                 clearSubmittedCopy: () => { setText(""); setSender(""); showToast("The copy submitted to Apollo was cleared from this screen. The original message was not deleted.", "neutral"); },
                 showReview: () => setVerify(true),
-              })} /> : <Card testID="textguard-result" style={{ borderColor: toneColor(colors, tone), gap: spacing.sm }}>
+              })} /> : !higginsResolved ? <Card testID="textguard-result" style={{ borderColor: toneColor(colors, tone), gap: spacing.sm }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" }}>
                 <Pill tone={tone} label={STATE_NAME[a.state]} testID="textguard-state" />
                 <Pill tone="neutral" label={a.scenarioTitle} />
@@ -163,7 +166,7 @@ export default function TextGuard() {
               <SectionTitle>Recommendation</SectionTitle>
               <Text style={s.why} testID="textguard-recommendation">{result.explanation?.recommendation ?? a.recommendation}</Text>
               {a.signalLabels.length ? <View style={s.chips}>{a.signalLabels.map((l) => <Pill key={l} tone="unknown" label={l} />)}</View> : null}
-            </Card>}
+            </Card> : null}
 
             {a.signals.urls.length ? (
               <View>
@@ -180,6 +183,13 @@ export default function TextGuard() {
             ) : null}
 
             <Card style={{ gap: spacing.sm }}>
+              <GateInvestigation submission={result} eventId={result.event?.event_id} onResolved={setHigginsResolved} testID="textguard-higgins" label="Continue this investigation" context={issueContext({
+                gate: "text", issue_summary: a.scenarioTitle, assessment_state: a.state,
+                findings: a.signalLabels.map((summary) => ({ summary, provenance: "observed", status: "uncertain" })),
+                uncertainty: ["The sender was not independently authenticated."], confirmed_protective_actions: [], user_reported_actions: [],
+                event_id: result.event?.event_id,
+                original_evidence: [{ kind: "text", value: `From: ${sender}\n${text}`, label: "submitted text message" }],
+              })} question="Investigate this text message and tell me what to do." />
               <Button testID="textguard-verify-sender" variant="secondary" label="Show me how to check the sender" onPress={() => setVerify(true)} />
               {result.event ? <RecoveryFlow event={result.event} kinds={["clicked", "password", "code", "money", "info", "app"]} linkToCheck={a.signals.urls[0] ?? null} testID="textguard-recovery" /> : null}
               {result.event ? <Button testID="textguard-mark-safe" variant="ghost" label="Mark as handled" onPress={() => { void (async () => { await resolveEvent(result.event!); showToast("Marked as handled. This does not verify the sender or suppress future alerts.", "neutral"); })(); }} /> : null}

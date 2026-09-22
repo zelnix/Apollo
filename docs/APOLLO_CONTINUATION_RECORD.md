@@ -285,3 +285,89 @@ campaign was run, per owner instruction.
 - Verification: backend Python lint clean; 18/18 recovery/migration tests pass; `/health` and `/api/health` HTTP 200;
   frontend TypeScript and ESLint clean. Environment variables, URLs, ports, CORS, MongoDB and secret handling passed
   the final deployment scan.
+
+## 2026-09-22 correction pass from saved-source review `4c03315`
+
+### Source/build identity — do not collapse these identifiers
+- Human-reviewed saved commit: `4c03315e5a4706812e67c4ed122822748993211a`.
+- Last saved commit before this correction working tree: `41dab4304ecf67a4332a1d781db130dbc8f8c9b6`.
+- Exact non-secret corrected working-source digest: SHA-256
+  `01e4723d48cd34c3129701adebd2947249cb174f94d2ae21a699d30567ea0110` (18,626 backend/frontend/desktop
+  source files; excludes environment files, dependencies, caches, exports and all Tauri `target/` output).
+- Existing Android build `18706c6e-cf91-418e-9536-94b1cf592f93` remains mapped only to EAS fingerprint
+  `31a0394db69ca674b79ef91a3d0cf3c2b0e2e083` and informational git SHA `58fb1a0...`. It **does not contain this
+  correction pass** and must not be relabelled as if it did. The next native build must record its new saved commit,
+  EAS fingerprint and artifact hash together.
+
+### Ranked Package 1/2 corrections
+1. **Text Gate shared case — COMPLETE.** `app/text-guard.tsx` now starts the same `GateInvestigation` flow as Message
+   and Email. Legacy `/message/analyse` remains `second_opinion:false`; local findings are supplied as evidence. Text
+   and Email hide their preliminary assessment once an accepted Higgins response exists, leaving one current
+   assessment rather than two competing result cards.
+2. **File retry from operation start — COMPLETE.** A stable `FileUploadHandle` and app-level transfer record are
+   created before file reads or session creation. The manager owns bytes, immutable item/session keys, next chunk,
+   server/case deadline, cleanup and retry state across navigation. Case expiry is armed immediately after case
+   creation. Server session creation replays by immutable `clientItemId`, returns the same deterministic upload/root
+   identities and rejects identity/content changes.
+3. **Device continuity — COMPLETE.** Each real recheck appends a timestamped observation to the existing case via
+   `continueWith`; explicit user-report submission has its own button and provenance. Accepted history is retained.
+   A Patrol event created after case creation is bound by the event-ID effect, so Patrol resumes the same case.
+4. **Evidence publication ownership — COMPLETE.** One immutable client item reserves one deterministic root. Root
+   publication checks the current upload fence. Cleanup first CAS-marks one exact staging attempt `abandoned` and
+   deletes only that attempt; a committed root cannot be discarded. A root published before the upload projection
+   update is replayed by content digest and repairs that projection.
+5. **Device-observation recovery — COMPLETE.** Coordinator start repairs inbox rows from authoritative consumed IDs
+   before any wait decision. Pending-batch ledger replay restores `ctx.pending_request`. Wakeup now occurs only after
+   the inbox is marked fulfilled; queued-job recovery remains the crash fallback.
+6. **Cancellation race — COMPLETE.** Cancellation matches expected revision, active job and work epoch at the case
+   control record. A stale target cannot clear a newer turn. Terminal jobs return their actual status with
+   `cancelled:false` instead of claiming cancellation.
+
+Changed core files:
+- Backend: `backend/routers/investigations.py`, `backend/services/higgins/{repository,evidence,tools,coordinator}.py`,
+  `backend/tests/test_recovery_fencing.py`.
+- Mobile: `frontend/app/{text-guard,email,device}.tsx`, `frontend/src/components/GateInvestigation.tsx`,
+  `frontend/src/investigation/{client,caseStore,transferManager}.ts`.
+
+### Package 3 continuation progress
+- Added bounded `continue_document` PDF extraction. Pages beyond the first 64 are now recoverable slices, not a
+  permanent extraction gap. Each slice is new addressable evidence; parser extraction still does not count as
+  semantic examination. Remaining omitted pages stay explicit. A generated-PDF regression verifies publication.
+- Still outstanding: audit every other inline/content/clue cap and expose structured continuation for each cap that
+  can omit material; complete the structured original-observation inventory audit.
+
+### Package 6 desktop progress
+- `desktop/src-tauri/src/lib.rs` now reports Windows manufacturer/model/chassis form factor via WMI and macOS model via
+  `sysctl`; unknown values remain null rather than inferred.
+- Notification permission uses the real Tauri notification plugin. Network-filter permission now performs a real
+  administrator-approved OS hosts/DNS filter activation rather than recording request history only.
+- Exact-domain block/unblock and filter-status commands are implemented with strict domain validation, unrelated hosts
+  preservation, DNS cache flush and explicit scope: this is **hosts/DNS enforcement only**, not falsely claimed WFP,
+  Network Extension packet inspection or app attribution.
+- Native desktop selection now wins before fixture eligibility; fixtures remain browser-only. Windows/macOS adapter
+  implementation flags are enabled for this bounded native host.
+- Tracked build output removed without history rewrite: `git ls-files 'desktop/src-tauri/target/**'` = `0`;
+  `/desktop/src-tauri/target/` is ignored. Local generated artifacts remain outside source tracking.
+- Changed: `.gitignore`, `desktop/src-tauri/src/lib.rs`, `frontend/src/security/{DesktopSecurityAdapter,hostAdapter.web,desktopHost,PlatformCapabilityProfile}.ts`,
+  `frontend/tests/desktopHost.test.ts`, `frontend/package.json`, `frontend/yarn.lock`.
+
+### Bounded verification
+- Backend: 51/51 focused Higgins persistence/evidence/recovery/cancellation tests passed, followed by 25/25 recovery
+  tests after PDF continuation; Python lint clean.
+- Frontend: TypeScript and ESLint clean; Text Gate deterministic suite 23/23; Email Gate 13/13; desktop-host priority
+  1/1.
+- Desktop: Rust hosts-filter unit tests 2/2 and native library compilation passed. Windows/macOS privileged flows need
+  target-host acceptance; Linux cannot prove those OS prompts.
+- No scenario campaign, Playwright or testing agent was used. **One unintended Gemini request occurred during the first
+  ledger-replay regression because the checkpoint fixture used `ledger` instead of `toolLedger`; it returned HTTP 400
+  and produced no accepted scenario result.** The fixture was corrected; all subsequent runs completed without live
+  provider calls. This exception is recorded rather than concealed.
+
+### Genuinely outstanding — continue without routine approval
+- Save this corrected working tree to a new commit, then make the next Android build record map saved commit ↔ EAS
+  fingerprint ↔ artifact SHA-256 exactly. Existing APK use may continue as the prior candidate only.
+- Packages 3–5 remain active beyond the completed boundaries above: finish all cap continuations; protected/background
+  Text/SMS and App Gate visibility; Settings confirmation, saved-report/temporary-case lifecycle and family voice
+  orphan audit.
+- Package 6: target-host Windows/macOS permission/filter acceptance; signed iOS work remains credential-blocked only.
+  WFP/Network Extension packet-level services remain outstanding and are not implied by hosts/DNS filtering.

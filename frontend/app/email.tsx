@@ -67,6 +67,7 @@ export default function CheckEmail() {
   const [scanBusy, setScanBusy] = useState(false);
   const [gmailStatusError, setGmailStatusError] = useState<string | null>(null);
   const [scanSummary, setScanSummary] = useState<{ text: string; flagged: number } | null>(null);
+  const [higginsResolved, setHigginsResolved] = useState(false);
 
   const refreshGmailStatus = useCallback(async () => {
     if (!deviceId) return;
@@ -133,7 +134,7 @@ export default function CheckEmail() {
   };
 
   const run = async () => {
-    setBusy(true);
+    setBusy(true); setHigginsResolved(false);
     try {
       const safeRaw = redactUserSecrets(raw); const safeSubject = redactUserSecrets(subject);
       if (safeRaw !== raw) setRaw(safeRaw); if (safeSubject !== subject) setSubject(safeSubject);
@@ -217,12 +218,12 @@ export default function CheckEmail() {
           </>
         ) : a ? (
           <>
-            {result.assessment ? <MessageAssessmentResult assessment={result.assessment} state={a.state} testIDPrefix="email"
+            {!higginsResolved && result.assessment ? <MessageAssessmentResult assessment={result.assessment} state={a.state} testIDPrefix="email"
               submittedLabel="Email investigated" submittedTitle={a.parsed.fromAddress || from || "Sender not supplied"} submittedText={`${a.parsed.subject ?? subject}\n${a.parsed.body || raw}`.trim()}
               onPrimaryAction={() => dispatchInvestigationAction(result.assessment!.higgins.action_kind, {
                 showVerification: () => setVerify(true), showCallingGuidance: () => setVerify(true), openAccount: () => router.push({ pathname: "/account", params: { text: `${a.parsed.subject ?? ""}\n${a.parsed.body}`.trim().slice(0, 3000), scent } }),
                 clearSubmittedCopy: () => { setRaw(""); setFrom(""); setSubject(""); showToast("The copy submitted to Apollo was cleared from this screen. The original email was not deleted.", "neutral"); }, showReview: () => setTech(true),
-              })} /> : <Card testID="email-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
+              })} /> : !higginsResolved ? <Card testID="email-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
               <View style={s.chips}><Pill tone={a.state} label={STATE_NAME[a.state]} testID="email-state" /><Pill tone="neutral" label={a.scenario} testID="email-scenario" />{a.claimedBrand ? <Pill tone="neutral" label={`Claims: ${a.claimedBrand}`} testID="email-brand" /> : null}</View>
               <Text style={s.why}>{STATE_LABEL[a.state]}</Text>
               <Text style={s.label} testID="email-title">{a.title}</Text>
@@ -232,7 +233,7 @@ export default function CheckEmail() {
               <SectionTitle>What to do</SectionTitle>
               <Text style={s.why} testID="email-recommendation">{a.recommendation}</Text>
               {a.signalLabels.length ? <View style={s.chips}>{a.signalLabels.map((l) => <Pill key={l} tone="neutral" label={l} />)}</View> : null}
-            </Card>}
+            </Card> : null}
             <Card style={{ gap: spacing.xs }} testID="email-sender">
               <SectionTitle>Who sent it</SectionTitle>
               <Body testID="email-sender-line">{a.parsed.fromName ? `${a.parsed.fromName} ` : ""}{a.parsed.fromAddress ? `<${a.parsed.fromAddress}>` : "(no address given)"}</Body>
@@ -257,11 +258,10 @@ export default function CheckEmail() {
             <Card style={{ gap: spacing.sm }} testID="email-actions">
               {a.handoff.account ? <Button testID="email-check-account" variant={a.state === "barking" ? "warning" : "secondary"} label="It's about my account — Account Gate" onPress={() => router.push({ pathname: "/account", params: { text: `${a.parsed.subject ?? ""}\n${a.parsed.body}`.trim().slice(0, 3000), scent } })} /> : null}
               <Button testID="email-verify-sender" variant="secondary" label="Show me how to check the sender" onPress={() => setVerify(true)} />
-              {result.explanation ? <><Text style={s.label}>Higgins&apos;s plain-language assessment</Text><Body testID="email-second-opinion">{result.explanation.summary}</Body></> : null}
               {result.event ? <RecoveryFlow event={result.event} kinds={["clicked", "password", "code", "money", "card", "info", "download"]} linkToCheck={a.urls[0] ?? null} testID="email-recovery" /> : null}
-              <GateInvestigation submission={result} eventId={result.event?.event_id} testID="email-ask" label="Ask Higgins about this email" context={issueContext({ gate: "email", issue_summary: a.title, assessment_state: a.state, findings: a.why.slice(0, 6).map((summary) => ({ summary, provenance: "inferred", status: "uncertain" })), uncertainty: ["The sender was not independently authenticated."], confirmed_protective_actions: [], user_reported_actions: [], event_id: result.event?.event_id, original_evidence: [{ kind: "text", value: `From: ${from}\nSubject: ${subject}\n\n${raw}`, label: "submitted email" }, ...(shared?.files?.map((file, index) => ({ kind: "file" as const, uri: file.path, name: file.fileName || `shared-attachment-${index + 1}`, mediaType: file.mimeType || "application/octet-stream", size: file.size ?? undefined })) ?? [])] })} question="What should I do about this email?" />
+              <GateInvestigation submission={result} eventId={result.event?.event_id} onResolved={setHigginsResolved} testID="email-ask" label="Continue this investigation" context={issueContext({ gate: "email", issue_summary: a.title, assessment_state: a.state, findings: a.why.slice(0, 6).map((summary) => ({ summary, provenance: "inferred", status: "uncertain" })), uncertainty: ["The sender was not independently authenticated."], confirmed_protective_actions: [], user_reported_actions: [], event_id: result.event?.event_id, original_evidence: [{ kind: "text", value: `From: ${from}\nSubject: ${subject}\n\n${raw}`, label: "submitted email" }, ...(shared?.files?.map((file, index) => ({ kind: "file" as const, uri: file.path, name: file.fileName || `shared-attachment-${index + 1}`, mediaType: file.mimeType || "application/octet-stream", size: file.size ?? undefined })) ?? [])] })} question="What should I do about this email?" />
               <Button testID="email-tech" variant="ghost" label="View technical details" onPress={() => setTech(true)} />
-              <Button testID="email-again" variant="ghost" label="Check another email" onPress={() => { setResult(null); setRaw(""); setFrom(""); setSubject(""); }} />
+              <Button testID="email-again" variant="ghost" label="Check another email" onPress={() => { setResult(null); setHigginsResolved(false); setRaw(""); setFrom(""); setSubject(""); }} />
             </Card>
           </>
         ) : null}

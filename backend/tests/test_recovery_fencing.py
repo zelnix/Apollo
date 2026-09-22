@@ -3,6 +3,7 @@ submission stage claims, and the work_epoch backfill migration. No Gemini calls 
 ingestion here are purely local (regex/text), never routed through the provider."""
 import asyncio
 import io
+import json
 import uuid
 from datetime import timedelta
 
@@ -63,11 +64,11 @@ def test_ordinary_partial_read_still_reaches_examined_once_complete():
 
 
 def test_upload_replay_rejects_a_different_file_under_the_same_client_item():
-    _run(lambda inv: _upload_replay_digest_mismatch_is_rejected())
+    _run(lambda inv: _upload_replay_digest_mismatch_is_rejected(inv))
 
 
 def test_upload_replay_binds_to_identical_content_from_a_different_upload():
-    _run(lambda inv: _upload_replay_digest_match_binds())
+    _run(lambda inv: _upload_replay_digest_match_binds(inv))
 
 
 def test_device_observation_metadata_without_content_is_reingested():
@@ -96,6 +97,38 @@ def test_device_tool_request_replay_uses_one_durable_request_identity():
 
 def test_legacy_content_discard_migration_runs_only_once():
     _run(lambda inv: _legacy_content_discard_is_one_time())
+
+
+def test_published_evidence_root_cannot_be_discarded_as_incomplete():
+    _run(lambda inv: _published_root_survives_discard())
+
+
+def test_published_root_replays_when_upload_projection_was_interrupted():
+    _run(lambda inv: _published_root_repairs_upload_projection(inv))
+
+
+def test_stale_cancellation_cannot_clear_a_newer_active_turn():
+    _run(lambda inv: _stale_cancel_preserves_new_turn(inv))
+
+
+def test_observation_ledger_replay_restores_pending_request():
+    _run(lambda inv: _ledger_replay_restores_observation())
+
+
+def test_consumed_observation_repairs_inbox_before_coordinator_wait_check():
+    _run(lambda inv: _consumed_observation_repairs_inbox())
+
+
+def test_document_continuation_removes_only_the_extracted_page_gap():
+    from services.higgins.evidence import _subtract_page_range
+    ranges = [{"start": 64, "end": 200, "reason": "later pages"}, {"start": 4, "end": 5, "reason": "scanned"}]
+    assert _subtract_page_range(ranges, 64, 128) == [
+        {"start": 128, "end": 200, "reason": "later pages"}, {"start": 4, "end": 5, "reason": "scanned"}
+    ]
+
+
+def test_document_continuation_publishes_a_later_pdf_slice():
+    _run(lambda inv: _document_continuation_publishes_slice())
 
 
 @pytest.mark.asyncio
@@ -369,51 +402,41 @@ async def _partial_then_complete_read_reaches_examined():
     assert row["coverage"]["status"] == "examined" and row["coverage"]["materialGap"] is False
 
 
-async def _upload_replay_digest_mismatch_is_rejected():
-    owner = f"persist-{uuid.uuid4().hex[:8]}"
-    await repo.ensure_indexes()
-    case = await repo.create_case(owner, "text", None)
-    # Simulate a DIFFERENT, already-committed upload owning this exact client item ID with DIFFERENT content.
-    other_evidence_id = str(uuid.uuid4())
-    from services.higgins.contracts import EvidenceItem, Coverage
-    other_item = EvidenceItem(id=other_evidence_id, case_id=case["case_id"], client_item_id="shared-item", origin="user_submission", kind="text",
-                              parent_id=None, collected_at=now_utc(), expires_at=repo.utc(case["expires_at"]), media_type="text/plain", byte_length=3,
-                              coverage=Coverage(status="not_started", unit="characters", total=3, examined=0), transformations=[], label="file A")
-    await repo.insert_evidence(owner, other_item, {})
-    await db.investigation_uploads.insert_one({"owner_id": owner, "case_id": case["case_id"], "upload_id": str(uuid.uuid4()),
-        "metadata": {"declaredBytes": 3, "clientItemId": "shared-item"}, "chunks": {}, "expires_at": now_utc() + timedelta(minutes=10),
-        "finalisation": {"state": "committed", "digest": "digest-of-file-A", "started_at": now_utc(), "fence": "f1", "evidence_id": other_evidence_id},
-        "evidence_id": other_evidence_id})
-    # Our own, separate upload attempt for a DIFFERENT file that happens to share the same client item ID.
-    fresh_upload_id = str(uuid.uuid4())
-    await db.investigation_uploads.insert_one({"owner_id": owner, "case_id": case["case_id"], "upload_id": fresh_upload_id,
-        "metadata": {"declaredBytes": 3, "clientItemId": "shared-item"}, "chunks": {}, "expires_at": now_utc() + timedelta(minutes=10), "finalisation": None})
-    partial = await db.investigation_evidence.find_one({"owner_id": owner, "case_id": case["case_id"], "client_item_id": "shared-item"}, {"_id": 0, "evidence_id": 1})
-    owning_upload = await db.investigation_uploads.find_one(
-        {"owner_id": owner, "case_id": case["case_id"], "finalisation.state": "committed", "finalisation.evidence_id": partial["evidence_id"]}, {"_id": 0, "upload_id": 1, "finalisation": 1})
-    assert owning_upload is not None
-    assert owning_upload["finalisation"]["digest"] != "digest-of-file-B"  # our (different) file's digest — this is the exact condition `complete_upload` checks
+def _request(owner: str):
+    from starlette.requests import Request
+    request = Request({"type": "http", "method": "POST", "path": "/", "headers": []})
+    request.state.device = {"device_id": owner}
+    return request
 
 
-async def _upload_replay_digest_match_binds():
+async def _upload_replay_digest_mismatch_is_rejected(inv):
+    from fastapi import HTTPException
+    from services.higgins.contracts import CreateUpload
+
     owner = f"persist-{uuid.uuid4().hex[:8]}"
     await repo.ensure_indexes()
-    case = await repo.create_case(owner, "text", None)
-    other_evidence_id = str(uuid.uuid4())
-    from services.higgins.contracts import EvidenceItem, Coverage
-    other_item = EvidenceItem(id=other_evidence_id, case_id=case["case_id"], client_item_id="shared-item-2", origin="user_submission", kind="text",
-                              parent_id=None, collected_at=now_utc(), expires_at=repo.utc(case["expires_at"]), media_type="text/plain", byte_length=3,
-                              coverage=Coverage(status="not_started", unit="characters", total=3, examined=0), transformations=[], label="file A")
-    await repo.insert_evidence(owner, other_item, {})
-    same_digest = "same-content-digest"
-    await db.investigation_uploads.insert_one({"owner_id": owner, "case_id": case["case_id"], "upload_id": str(uuid.uuid4()),
-        "metadata": {"declaredBytes": 3, "clientItemId": "shared-item-2"}, "chunks": {}, "expires_at": now_utc() + timedelta(minutes=10),
-        "finalisation": {"state": "committed", "digest": same_digest, "started_at": now_utc(), "fence": "f1", "evidence_id": other_evidence_id},
-        "evidence_id": other_evidence_id})
-    partial = await db.investigation_evidence.find_one({"owner_id": owner, "case_id": case["case_id"], "client_item_id": "shared-item-2"}, {"_id": 0, "evidence_id": 1})
-    owning_upload = await db.investigation_uploads.find_one(
-        {"owner_id": owner, "case_id": case["case_id"], "finalisation.state": "committed", "finalisation.evidence_id": partial["evidence_id"]}, {"_id": 0, "upload_id": 1, "finalisation": 1})
-    assert owning_upload["finalisation"]["digest"] == same_digest  # an IDENTICAL resubmission — safe to bind and replay, per `complete_upload`
+    case = await repo.create_case(owner, "file", None)
+    first = CreateUpload(expected_revision=0, client_item_id="shared-item", parent_id=None, kind="document", filename="a.txt", media_type="text/plain", declared_bytes=3)
+    await inv.create_upload(case["case_id"], first, _request(owner))
+    changed = CreateUpload(expected_revision=0, client_item_id="shared-item", parent_id=None, kind="document", filename="b.txt", media_type="text/plain", declared_bytes=4)
+    with pytest.raises(HTTPException) as exc:
+        await inv.create_upload(case["case_id"], changed, _request(owner))
+    assert exc.value.status_code == 409
+    assert await db.investigation_uploads.count_documents({"owner_id": owner, "case_id": case["case_id"], "metadata.clientItemId": "shared-item"}) == 1
+
+
+async def _upload_replay_digest_match_binds(inv):
+    from services.higgins.contracts import CreateUpload
+
+    owner = f"persist-{uuid.uuid4().hex[:8]}"
+    await repo.ensure_indexes()
+    case = await repo.create_case(owner, "file", None)
+    first = CreateUpload(expected_revision=0, client_item_id="shared-item-2", parent_id=None, kind="document", filename="a.txt", media_type="text/plain", declared_bytes=3)
+    one = json.loads((await inv.create_upload(case["case_id"], first, _request(owner))).body)
+    replay = first.model_copy(update={"expected_revision": 999})
+    two = json.loads((await inv.create_upload(case["case_id"], replay, _request(owner))).body)
+    assert two["replayed"] is True
+    assert two["uploadId"] == one["uploadId"] and two["evidenceRootId"] == one["evidenceRootId"]
 
 
 async def _device_observation_missing_content_is_reingested(inv):
@@ -560,6 +583,142 @@ async def _legacy_content_discard_is_one_time():
     assert await _discard_legacy_content_once(migration_id) is False
     assert await db.ask_messages.count_documents({"device_id": owner, "scope_id": "after"}) == 1
     await db.ask_messages.delete_many({"device_id": owner})
+
+
+async def _published_root_survives_discard():
+    from services.higgins.contracts import Coverage, EvidenceItem
+
+    owner = f"persist-{uuid.uuid4().hex[:8]}"
+    await repo.ensure_indexes()
+    case = await repo.create_case(owner, "file", None)
+    root_id, attempt_id = str(uuid.uuid4()), uuid.uuid4().hex
+    item = EvidenceItem(id=root_id, case_id=case["case_id"], client_item_id="immutable-file", origin="user_submission", kind="document",
+                        parent_id=None, collected_at=now_utc(), expires_at=repo.utc(case["expires_at"]), media_type="text/plain", byte_length=4,
+                        coverage=Coverage(status="not_started", unit="bytes", total=4), transformations=[], label="document")
+    await repo.insert_evidence(owner, item, {"contentDigest": "same"}, publication_root_id=root_id, ingestion_attempt_id=attempt_id)
+    await repo.store_bytes(owner, case["case_id"], root_id, b"data", item.expires_at, publish_root=False)
+    assert await repo.publish_evidence_root(owner, case["case_id"], root_id, attempt_id)
+    assert await repo.discard_incomplete_ingestion(owner, case["case_id"], root_id, attempt_id=attempt_id) is False
+    assert (await repo.get_evidence(owner, case["case_id"], root_id))["publication_state"] == "committed"
+
+
+async def _published_root_repairs_upload_projection(inv):
+    from services.higgins import evidence as ev
+    from services.higgins.contracts import CreateUpload, ExpectedRevision
+    from services.higgins.encryption import encrypt
+
+    owner = f"persist-{uuid.uuid4().hex[:8]}"
+    await repo.ensure_indexes()
+    case = await repo.create_case(owner, "file", None)
+    body = CreateUpload(expected_revision=0, client_item_id="projection-replay", parent_id=None, kind="document",
+                        filename="proof.txt", media_type="text/plain", declared_bytes=3)
+    created = json.loads((await inv.create_upload(case["case_id"], body, _request(owner))).body)
+    root_id, upload_id = created["evidenceRootId"], created["uploadId"]
+    data = b"abc"; digest = __import__("hashlib").sha256(data).hexdigest()
+    await ev.ingest_file(owner, case, body.wire(), data, evidence_root_id=root_id, ingestion_attempt_id="published-before-projection", content_digest=digest)
+    await db.investigation_upload_chunks.insert_one({"owner_id": owner, "case_id": case["case_id"], "upload_id": upload_id,
+        "chunk_index": 0, "digest": repo.digest(data.hex()), "ciphertext": encrypt(data), "length": len(data), "expires_at": repo.utc(case["expires_at"])})
+    response = await inv.complete_upload(case["case_id"], upload_id, ExpectedRevision(expected_revision=0), _request(owner))
+    payload = json.loads(response.body)
+    assert payload["replayed"] is True and payload["evidence"]["id"] == root_id
+    upload = await db.investigation_uploads.find_one({"owner_id": owner, "upload_id": upload_id}, {"_id": 0})
+    assert upload["evidence_id"] == root_id and upload["finalisation"]["state"] == "committed"
+
+
+async def _stale_cancel_preserves_new_turn(inv):
+    from fastapi import HTTPException
+    from services.higgins.contracts import ExpectedRevision
+
+    owner = f"persist-{uuid.uuid4().hex[:8]}"
+    await repo.ensure_indexes()
+    case = await repo.create_case(owner, "text", None)
+    first = await repo.create_job(owner, case, str(uuid.uuid4()), repo.digest("cancel-1"), repo.digest("p1"), "turn", {"message": "first"})
+    second = await repo.create_job(owner, case, str(uuid.uuid4()), repo.digest("cancel-2"), repo.digest("p2"), "turn", {"message": "second"})
+    active = await repo.cas(owner, case["case_id"], {"revision": 0}, {"$set": {"active_job_id": second["job_id"], "active_turn_id": second["turn_id"], "status": "queued"}})
+    with pytest.raises(HTTPException) as exc:
+        await inv.cancel_job(case["case_id"], first["job_id"], ExpectedRevision(expected_revision=active["revision"]), _request(owner))
+    assert exc.value.status_code == 409
+    fresh_case = await repo.get_case(owner, case["case_id"])
+    assert fresh_case["active_job_id"] == second["job_id"]
+    await db.investigation_jobs.update_one({"owner_id": owner, "job_id": first["job_id"]}, {"$set": {"status": "completed"}})
+    response = await inv.cancel_job(case["case_id"], first["job_id"], ExpectedRevision(expected_revision=fresh_case["revision"]), _request(owner))
+    assert json.loads(response.body) == {"status": "completed", "cleanupStatus": "not_required", "cancelled": False}
+
+
+async def _ledger_replay_restores_observation():
+    from services.higgins import coordinator
+
+    owner = f"persist-{uuid.uuid4().hex[:8]}"
+    await repo.ensure_indexes()
+    case = await repo.create_case(owner, "device", {"platform": "android", "capabilityIds": ["cap.x"]})
+    job = await repo.create_job(owner, case, str(uuid.uuid4()), repo.digest("ledger"), repo.digest("payload"), "turn", {"message": "q"})
+    request_id = str(uuid.uuid4())
+    checkpoint = {"contents": [], "rounds": 1, "toolLedger": {"tool-key": {"output": {"status": "pending", "requestId": request_id}, "researchCalls": 0}},
+                  "pendingBatch": [{"key": "tool-key", "name": "request_device_observation", "args": {"capabilityId": "cap.x"}}],
+                  "pendingNextIndex": 0, "pendingOutputs": [], "pendingMarks": [], "deviceResults": []}
+    await db.investigation_jobs.update_one({"owner_id": owner, "job_id": job["job_id"]}, {"$set": {"checkpoint_ciphertext": repo.enc_json(checkpoint)}})
+    request = {"id": request_id, "caseId": case["case_id"], "caseRevision": 0, "capabilityId": "cap.x", "fields": [], "reason": "test",
+               "expiresAt": repo.utc(case["expires_at"]).isoformat()}
+    await db.investigation_device_requests.insert_one({"owner_id": owner, "case_id": case["case_id"], "request_id": request_id, "job_id": job["job_id"],
+                                                        "request": request, "fulfilled": False, "submission": None, "created_at": now_utc()})
+    async def progress(*_args):
+        return None
+    outcome = await coordinator.run_turn(owner, await repo.get_case(owner, case["case_id"]), await repo.get_job(owner, case["case_id"], job["job_id"]), progress)
+    assert outcome.kind == "waiting_device" and outcome.request["id"] == request_id
+
+
+async def _consumed_observation_repairs_inbox():
+    from services.higgins import coordinator
+
+    class ProviderReached(Exception):
+        pass
+
+    owner = f"persist-{uuid.uuid4().hex[:8]}"
+    await repo.ensure_indexes()
+    case = await repo.create_case(owner, "device", {"platform": "android", "capabilityIds": ["cap.x"]})
+    job = await repo.create_job(owner, case, str(uuid.uuid4()), repo.digest("consumed"), repo.digest("payload"), "turn", {"message": "q"})
+    request_id = str(uuid.uuid4())
+    await db.investigation_jobs.update_one({"owner_id": owner, "job_id": job["job_id"]}, {"$set": {"consumed_device_request_ids": [request_id]}})
+    await db.investigation_device_requests.insert_one({"owner_id": owner, "case_id": case["case_id"], "request_id": request_id, "job_id": job["job_id"],
+        "request": {"id": request_id}, "fulfilled": False, "submission": {"state": "stored"}, "created_at": now_utc()})
+    original = coordinator.provider.generate
+    async def reached(*_args, **_kwargs):
+        raise ProviderReached()
+    coordinator.provider.generate = reached
+    async def progress(*_args):
+        return None
+    try:
+        with pytest.raises(ProviderReached):
+            await coordinator.run_turn(owner, await repo.get_case(owner, case["case_id"]), await repo.get_job(owner, case["case_id"], job["job_id"]), progress)
+    finally:
+        coordinator.provider.generate = original
+    repaired = await db.investigation_device_requests.find_one({"owner_id": owner, "request_id": request_id}, {"_id": 0})
+    assert repaired["fulfilled"] is True and repaired["submission"]["state"] == "resumed"
+
+
+async def _document_continuation_publishes_slice():
+    from pypdf import PdfWriter
+    from services.higgins import evidence as ev
+    from services.higgins.contracts import Coverage, EvidenceItem
+
+    buffer = io.BytesIO(); writer = PdfWriter()
+    for _ in range(3): writer.add_blank_page(width=100, height=100)
+    writer.write(buffer); data = buffer.getvalue()
+    owner = f"persist-{uuid.uuid4().hex[:8]}"
+    await repo.ensure_indexes()
+    case = await repo.create_case(owner, "file", None)
+    root_id = str(uuid.uuid4())
+    item = EvidenceItem(id=root_id, case_id=case["case_id"], client_item_id="long-pdf", origin="user_submission", kind="document",
+                        parent_id=None, collected_at=now_utc(), expires_at=repo.utc(case["expires_at"]), media_type="application/pdf", byte_length=len(data),
+                        coverage=Coverage(status="partial", unit="pages", total=3, omitted_ranges=[{"start": 0, "end": 3, "reason": "not extracted"}], material_gap=True),
+                        transformations=[], label="PDF")
+    await repo.insert_evidence(owner, item, {})
+    await repo.store_bytes(owner, case["case_id"], root_id, data, item.expires_at)
+    result = await ev.continue_document(owner, case, root_id, 2, 2)
+    assert result["startPage"] == 2 and result["endPage"] == 3 and result["replayed"] is False
+    parent = await repo.get_evidence(owner, case["case_id"], root_id)
+    assert result["evidenceId"] in parent["related_evidence_ids"]
+    assert parent["coverage"]["permanentGap"] is False
 
 
 if __name__ == "__main__":

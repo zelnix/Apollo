@@ -84,6 +84,10 @@ async def ensure_indexes() -> None:
     )
     await db.investigation_settings_plans.create_index([("owner_id", 1), ("case_id", 1), ("plan_id", 1)], unique=True)
     await db.investigation_uploads.create_index([("owner_id", 1), ("case_id", 1), ("upload_id", 1)], unique=True)
+    await db.investigation_uploads.create_index(
+        [("owner_id", 1), ("case_id", 1), ("metadata.clientItemId", 1)], unique=True,
+        partialFilterExpression={"metadata.clientItemId": {"$type": "string"}},
+    )
     await _ttl(db.investigation_uploads, 0)
     await db.investigation_upload_chunks.create_index([("owner_id", 1), ("upload_id", 1), ("chunk_index", 1)], unique=True)
     await _ttl(db.investigation_upload_chunks, 0)
@@ -238,6 +242,7 @@ async def insert_evidence(
     *,
     publication_root_id: Optional[str] = None,
     ingestion_attempt_id: Optional[str] = None,
+    publication_owner: Optional[dict] = None,
 ) -> None:
     epoch = await assert_live(owner, item.case_id)
     root_id = publication_root_id or item.id
@@ -246,7 +251,8 @@ async def insert_evidence(
            "observed_at": item.observed_at, "expires_at": item.expires_at, "availability": item.availability, "media_type": item.media_type,
            "byte_length": item.byte_length, "coverage": item.coverage.wire(), "simulation": item.simulation.wire() if item.simulation else None,
            "transformations": [t.wire() for t in item.transformations], "label": item.label, "meta_ciphertext": enc_json(meta),
-           "publication_root_id": root_id, "publication_state": "staging", "ingestion_attempt_id": ingestion_attempt_id or root_id}
+           "publication_root_id": root_id, "publication_state": "staging", "ingestion_attempt_id": ingestion_attempt_id or root_id,
+           **({"publication_owner": publication_owner} if publication_owner and root_id == item.id else {})}
     try:
         await db.investigation_evidence.insert_one(doc)
     except DuplicateKeyError as exc:
@@ -254,23 +260,35 @@ async def insert_evidence(
     await settle_write(owner, item.case_id, epoch, db.investigation_evidence, {"owner_id": owner, "case_id": item.case_id, "evidence_id": item.id})
 
 
-async def discard_incomplete_ingestion(owner: str, case_id: str, evidence_id: str) -> None:
-    """Removes an evidence item whose ingestion never committed (upload finalisation interrupted), including derived children and bytes."""
+async def discard_incomplete_ingestion(owner: str, case_id: str, evidence_id: str, *, attempt_id: Optional[str] = None,
+                                       publication_owner: Optional[dict] = None) -> bool:
+    """Marks one exact staging attempt abandoned, then removes only that attempt. Published/competing roots survive."""
     root = await db.investigation_evidence.find_one(
         {"owner_id": owner, "case_id": case_id, "evidence_id": evidence_id},
-        {"_id": 0, "publication_root_id": 1},
+        {"_id": 0, "publication_root_id": 1, "ingestion_attempt_id": 1, "publication_owner": 1},
     )
+    if not root:
+        return False
     root_id = (root or {}).get("publication_root_id", evidence_id)
+    exact_attempt = attempt_id or root.get("ingestion_attempt_id", root_id)
+    selector = {"owner_id": owner, "case_id": case_id, "evidence_id": root_id,
+                "publication_state": "staging", "ingestion_attempt_id": exact_attempt}
+    if publication_owner:
+        selector["publication_owner"] = publication_owner
+    abandoned = await db.investigation_evidence.find_one_and_update(selector, {"$set": {"publication_state": "abandoned", "abandoned_at": now_utc()}})
+    if not abandoned:
+        return False
     ids = [r["evidence_id"] async for r in db.investigation_evidence.find(
-        {"owner_id": owner, "case_id": case_id, "$or": [{"publication_root_id": root_id}, {"evidence_id": evidence_id}, {"parent_id": evidence_id}]},
+        {"owner_id": owner, "case_id": case_id, "publication_root_id": root_id, "ingestion_attempt_id": exact_attempt},
         {"_id": 0, "evidence_id": 1},
     )]
     await db.investigation_content_chunks.delete_many({"owner_id": owner, "case_id": case_id, "evidence_id": {"$in": ids}})
     await db.investigation_evidence.delete_many({"owner_id": owner, "case_id": case_id, "evidence_id": {"$in": ids}})
     await db.investigation_cases.update_one({"owner_id": owner, "case_id": case_id}, {"$pull": {"evidence_ids": {"$in": ids}}})
+    return True
 
 
-async def publish_evidence_root(owner: str, case_id: str, root_id: str, attempt_id: str) -> bool:
+async def publish_evidence_root(owner: str, case_id: str, root_id: str, attempt_id: str, *, publication_owner: Optional[dict] = None) -> bool:
     """Atomically publishes one completed ingestion manifest.
 
     Every row created by an ingestion attempt points at its root. Readers treat the entire tree as invisible until
@@ -282,8 +300,19 @@ async def publish_evidence_root(owner: str, case_id: str, root_id: str, attempt_
         {"_id": 0, "evidence_id": 1},
     ).to_list(None)
     manifest = [row["evidence_id"] for row in rows]
+    if publication_owner:
+        current = await db.investigation_uploads.find_one(
+            {"owner_id": owner, "case_id": case_id, "upload_id": publication_owner["upload_id"],
+             "finalisation.state": "ingesting", "finalisation.fence": publication_owner["fence"]},
+            {"_id": 0, "upload_id": 1},
+        )
+        if not current:
+            return False
+    selector = {"owner_id": owner, "case_id": case_id, "evidence_id": root_id, "publication_state": "staging", "ingestion_attempt_id": attempt_id}
+    if publication_owner:
+        selector["publication_owner"] = publication_owner
     result = await db.investigation_evidence.update_one(
-        {"owner_id": owner, "case_id": case_id, "evidence_id": root_id, "publication_state": "staging", "ingestion_attempt_id": attempt_id},
+        selector,
         {"$set": {"publication_state": "committed", "publication_manifest": manifest, "published_at": now_utc()}},
     )
     return result.matched_count == 1
@@ -391,6 +420,12 @@ async def read_bytes(owner: str, case_id: str, evidence_id: str) -> bytes:
     if not rows:
         raise http(410, "evidence_expired", "The temporary content copy is no longer available.", missing=[evidence_id])
     return b"".join(decrypt(row["ciphertext"]) for row in rows)
+
+
+async def load_bytes(owner: str, case_id: str, evidence_id: str) -> bytes:
+    """Parser-facing alias: loading retained bytes does not claim semantic examination."""
+    await get_evidence(owner, case_id, evidence_id)
+    return await read_bytes(owner, case_id, evidence_id)
 
 
 async def purge_evidence_content(owner: str, case_id: str, evidence_id: str) -> None:

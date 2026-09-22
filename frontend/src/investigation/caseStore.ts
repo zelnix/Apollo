@@ -9,6 +9,7 @@ import { forgetCase } from "./caseIndex";
 import { storage } from "@/src/utils/storage";
 import { stopHiggins } from "@/src/voice/higgins";
 import { disposePickerCopy } from "@/src/domain/fileCopyLifecycle";
+import { cancelTransfer, clearTransfer, getTransfer, latestTransfer, retainTransfer, type PendingTransfer } from "./transferManager";
 import type { CreateCase, Failure, HigginsResponse, InvestigationCase, InvestigationEvent, Job, Question, SourceReference, TurnCommit } from "./types";
 
 export type Phase = "idle" | "creating" | "working" | "reconnecting" | "waiting_device" | "waiting_user" | "answered" | "failed" | "expired";
@@ -21,8 +22,6 @@ export interface CaseState {
 
 // A file-upload (or the turn submission right after it) that failed keeps enough state here to RESUME on the exact
 // same case, from the exact chunk reached, on retry — never by recreating the case or re-reading the original file.
-interface PendingUpload { caseId: string; files: { uri: string; name: string; mediaType: string }[]; question: string; fileIndex: number; handle: api.FileUploadHandle | null; revision: number }
-
 const EMPTY: CaseState = { phase: "idle", caseData: null, job: null, progress: [], response: null, sources: [], turns: [], failure: null, question: null, error: null };
 
 // Deletions that could not be confirmed survive navigation and app restarts until the server confirms them (S07).
@@ -43,7 +42,7 @@ export function useInvestigation() {
   const expiryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const caseRef = useRef<InvestigationCase | null>(null);
   const generation = useRef(0); // bumped on start/attach/remove: stale callbacks from an older case are ignored
-  const pendingUpload = useRef<PendingUpload | null>(null);
+  const pendingUpload = useRef<PendingTransfer | null>(latestTransfer());
   const update = (patch: Partial<CaseState> | ((prev: CaseState) => Partial<CaseState>)) => setState((prev) => ({ ...prev, ...(typeof patch === "function" ? patch(prev) : patch) }));
 
   /** Publishes only if the captured generation is still current and the case is still the one being viewed (S07). */
@@ -119,14 +118,20 @@ export function useInvestigation() {
       const file = files[i];
       update((prev) => ({ progress: [...prev.progress, `Uploading ${file.name} for inspection.`] }));
       const kind = file.mediaType.startsWith("image/") ? "image" : file.mediaType.startsWith("audio/") ? "audio" : /pdf|word|text/.test(file.mediaType) ? "document" : "attachment";
+      let handle = i === startIndex && startHandle ? startHandle : api.createFileUploadHandle(caseRef.current?.expiresAt ?? new Date(Date.now() + 15 * 60 * 1000).toISOString());
+      const reserve = (next: api.FileUploadHandle) => {
+        handle = next;
+        const record: PendingTransfer = { caseId, files, question, fileIndex: i, handle: next, revision };
+        pendingUpload.current = record; retainTransfer(record);
+      };
+      reserve(handle); // retry state exists before file I/O and before server session creation
       try {
-        const result = await api.uploadFileEvidenceResumable(caseId, revision, file, kind, i === startIndex ? startHandle : null,
-          (handle) => { pendingUpload.current = { caseId, files, question, fileIndex: i, handle, revision }; });
+        const result = await api.uploadFileEvidenceResumable(caseId, revision, file, kind, handle, reserve);
         revision = result.caseRevision;
         // Publication is the acknowledgement boundary. The helper deletes only Apollo cache copies; original
         // document-provider/shared URIs remain untouched even though this call is deliberately best-effort.
         await disposePickerCopy(file.uri, true);
-        pendingUpload.current = null;
+        pendingUpload.current = null; clearTransfer(caseId);
       } catch (e: unknown) {
         if (!live()) return null;
         update({ phase: "failed", error: e instanceof Error ? e.message : "Apollo could not finish uploading this file. Retry to continue from where it stopped — the original file is kept." });
@@ -134,7 +139,7 @@ export function useInvestigation() {
       }
       if (!live()) return null;
     }
-    pendingUpload.current = null;
+    pendingUpload.current = null; clearTransfer(caseId);
     const turn = { turnId: Crypto.randomUUID(), key: Crypto.randomUUID(), message: question, answerTo: null };
     pending.current = turn;
     update((prev) => ({ progress: [...prev.progress, "Sending your question to Higgins."] }));
@@ -164,7 +169,7 @@ export function useInvestigation() {
       const opened = await api.createCase({ ...input, question: files.length ? "" : input.question, deviceProfile: currentDeviceProfile() });
       created = opened.case;
       if (!live()) { await abandon(created.id); return null; } // navigated away while the case was being created: never orphan it until expiry
-      caseRef.current = created;
+      caseRef.current = created; armExpiry(created);
       if (files.length) {
         // The case already exists and is visible in state from here on, so a failure anywhere below still leaves
         // `state.caseData` set — the retry affordance depends on it, and this case is exactly what retry resumes.
@@ -172,7 +177,7 @@ export function useInvestigation() {
         const outcome = await runFileUploads(created.id, files, input.question, 0, created.revision, gen, null);
         return outcome === "failed" ? null : outcome;
       }
-      caseRef.current = created; update({ caseData: created }); armExpiry(created); if (opened.job) follow(created.id, opened.job);
+      caseRef.current = created; update({ caseData: created }); if (opened.job) follow(created.id, opened.job);
       return created;
     } catch (e: unknown) {
       if (!live()) { if (created) await abandon(created.id); return null; }
@@ -197,11 +202,45 @@ export function useInvestigation() {
     } catch (e: unknown) { if (live()) update({ phase: "failed", error: e instanceof Error ? e.message : "Higgins could not take this follow-up." }); return false; }
   }, [state.caseData, state.question, follow]);
 
+  /** Append a fresh Gate observation to the current case, then open a new turn without replacing accepted history. */
+  const continueWith = useCallback(async (input: Omit<CreateCase, "deviceProfile">) => {
+    const caseData = caseRef.current ?? state.caseData;
+    if (!caseData || caseData.activeJobId) return false;
+    const gen = generation.current;
+    const live = () => gen === generation.current && caseRef.current?.id === caseData.id;
+    update({ phase: "working", error: null, failure: null, progress: ["Adding the fresh observation to this investigation."] });
+    try {
+      let revision = (await api.getCase(caseData.id)).case.revision;
+      const evidenceIds: string[] = [];
+      for (const submission of input.submissions) {
+        const added = await api.addSubmissionEvidence(caseData.id, revision, submission);
+        revision = added.caseRevision; evidenceIds.push(added.evidence.id);
+      }
+      if (input.initialFindings.length) {
+        const added = await api.addTextEvidence(caseData.id, revision, input.initialFindings.join("\n"), "fresh Apollo observations");
+        revision = added.caseRevision; evidenceIds.push(added.evidence.id);
+      }
+      if (!live()) return false;
+      const turn = { turnId: Crypto.randomUUID(), key: Crypto.randomUUID(), message: input.question, answerTo: null as string | null };
+      pending.current = turn;
+      const { job } = await api.submitTurn(caseData.id, { expectedRevision: revision, turnId: turn.turnId, message: turn.message, answerToQuestionId: null, evidenceIds }, turn.key);
+      if (!live()) return false;
+      const fresh = (await api.getCase(caseData.id)).case;
+      caseRef.current = fresh; update({ caseData: fresh }); follow(caseData.id, job);
+      return true;
+    } catch (e: unknown) {
+      if (live()) update({ phase: "failed", error: e instanceof Error ? e.message : "Apollo could not append the fresh observation to this investigation." });
+      return false;
+    }
+  }, [state.caseData, follow]);
+
   const retry = useCallback(async () => {
-    if (pendingUpload.current && caseRef.current?.id === pendingUpload.current.caseId) {
-      const { caseId, files, question, fileIndex, handle, revision } = pendingUpload.current;
+    const transfer = pendingUpload.current ?? (caseRef.current ? getTransfer(caseRef.current.id) : null);
+    if (transfer && caseRef.current?.id === transfer.caseId) {
+      const { caseId, files, question, fileIndex, handle, revision } = transfer;
       update({ phase: "working", error: null, progress: ["Resuming the file upload — the original file was kept."] });
       const gen = generation.current;
+      pendingUpload.current = transfer;
       await runFileUploads(caseId, files, question, fileIndex, revision, gen, handle);
       return;
     }
@@ -217,7 +256,7 @@ export function useInvestigation() {
 
   const cancel = useCallback(async () => {
     const { caseData, job } = state; if (!caseData || !job) return;
-    stream.current?.abort(); pending.current = null; pendingUpload.current = null;
+    stream.current?.abort(); pending.current = null; pendingUpload.current = null; cancelTransfer(caseData.id);
     const gen = generation.current;
     const live = () => gen === generation.current && caseRef.current?.id === caseData.id;
     try { await api.cancelJob(caseData.id, job.id, caseData.revision); } catch { /* cancellation is idempotent */ }
@@ -242,6 +281,7 @@ export function useInvestigation() {
 
   const remove = useCallback(async () => {
     const caseData = state.caseData; stream.current?.abort(); pending.current = null; pendingUpload.current = null;
+    if (caseData) cancelTransfer(caseData.id);
     if (expiryTimer.current) clearTimeout(expiryTimer.current);
     generation.current++; caseRef.current = null; stopHiggins(); setState((prev) => ({ ...EMPTY, undeleted: prev.undeleted }));
     if (caseData) { await forgetCase(caseData.id); try { await api.deleteCase(caseData.id); } catch { await rememberDeletion(caseData.id); update({ error: "Local view cleared; server deletion could not be confirmed.", undeleted: caseData.id }); } }
@@ -252,5 +292,5 @@ export function useInvestigation() {
     try { await api.deleteCase(id); await forgetDeletion(id); update({ undeleted: null, error: null }); } catch (e: unknown) { if (e instanceof ApiError && (e.status === 404 || e.status === 410)) { await forgetDeletion(id); update({ undeleted: null, error: null }); } }
   }, [state.undeleted]);
   useEffect(() => () => { stream.current?.abort(); if (expiryTimer.current) clearTimeout(expiryTimer.current); }, []);
-  return { state, start, ask, retry, cancel, remove, attach, retryDelete };
+  return { state, start, ask, continueWith, retry, cancel, remove, attach, retryDelete };
 }

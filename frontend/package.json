@@ -56,6 +56,7 @@
     "@nandorojo/heroicons": "0.3.0",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@tanstack/react-query": "5.102.8",
+    "@tauri-apps/plugin-notification": "^2.3.3",
     "date-fns": "4.1.0",
     "dayjs": "1.11.13",
     "expo": "57.0.19",

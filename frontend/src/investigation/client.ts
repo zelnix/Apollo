@@ -45,6 +45,12 @@ export function recheckPlan(caseId: string, planId: string, deviceResultIds: str
 export function addTextEvidence(caseId: string, expectedRevision: number, text: string, label: string) {
   return apiPost<{ evidence: EvidenceItem; caseRevision: number }>(`/investigations/${caseId}/evidence`, "investigation", { expectedRevision, clientItemId: Crypto.randomUUID(), parentId: null, kind: "text", text, label });
 }
+export function addSubmissionEvidence(caseId: string, expectedRevision: number, item: { clientItemId: string; kind: "text" | "url"; value: string; label?: string }) {
+  return apiPost<{ evidence: EvidenceItem; caseRevision: number }>(`/investigations/${caseId}/evidence`, "investigation", {
+    expectedRevision, clientItemId: item.clientItemId, parentId: null, kind: item.kind,
+    ...(item.kind === "url" ? { url: item.value } : { text: item.value }), label: item.label ?? "",
+  });
+}
 
 /** Multipart file evidence (single shot, no resume): kept only for callers that accept an all-or-nothing upload. */
 export async function uploadFileEvidence(caseId: string, expectedRevision: number, file: { uri: string; name: string; mediaType: string }, kind: "image" | "document" | "audio" | "attachment") {
@@ -67,10 +73,18 @@ export async function uploadFileEvidence(caseId: string, expectedRevision: numbe
 // no duplicate upload, no re-reading the original file, and no risk of the original being deleted mid-transfer.
 const UPLOAD_CHUNK_BYTES = 1024 * 1024; // must match services.higgins.repository.CHUNK_BYTES
 
-export interface FileUploadHandle { uploadId: string; declaredBytes: number; bytes: Uint8Array; nextChunk: number }
+export interface FileUploadHandle {
+  transferId: string; createRequestKey: string; uploadId: string | null; evidenceRootId: string | null;
+  clientItemId: string; declaredBytes: number | null; bytes: Uint8Array | null; nextChunk: number; expiresAt: string;
+}
 
-export function createUpload(caseId: string, body: { expectedRevision: number; clientItemId: string; parentId: string | null; kind: "image" | "document" | "audio" | "attachment"; filename: string; mediaType: string; declaredBytes: number }) {
-  return postWithKey<{ uploadId: string; chunkBytes: number; expiresAt: string }>(`/investigations/${caseId}/uploads`, body as unknown as Record<string, unknown>, Crypto.randomUUID());
+export function createFileUploadHandle(caseExpiresAt: string): FileUploadHandle {
+  return { transferId: Crypto.randomUUID(), createRequestKey: Crypto.randomUUID(), uploadId: null, evidenceRootId: null,
+    clientItemId: Crypto.randomUUID(), declaredBytes: null, bytes: null, nextChunk: 0, expiresAt: caseExpiresAt };
+}
+
+export function createUpload(caseId: string, body: { expectedRevision: number; clientItemId: string; parentId: string | null; kind: "image" | "document" | "audio" | "attachment"; filename: string; mediaType: string; declaredBytes: number }, key: string) {
+  return postWithKey<{ uploadId: string; chunkBytes: number; expiresAt: string; evidenceRootId: string; replayed: boolean }>(`/investigations/${caseId}/uploads`, body as unknown as Record<string, unknown>, key);
 }
 
 async function putChunk(caseId: string, uploadId: string, index: number, chunk: Uint8Array): Promise<void> {
@@ -91,31 +105,39 @@ export function completeUpload(caseId: string, uploadId: string, expectedRevisio
   return postWithKey<{ evidence: EvidenceItem; caseRevision: number; replayed?: boolean }>(`/investigations/${caseId}/uploads/${uploadId}/complete`, { expectedRevision }, Crypto.randomUUID());
 }
 
-/** Reads the file once (or reuses an in-flight `resume` handle's already-read bytes), uploads it chunk by chunk
- * through the resumable endpoints, and finalises. `onHandle` is invoked after the session is created and after
+/** Reads the file once (or reuses the reserved handle's already-read bytes), uploads it chunk by chunk
+ * through the resumable endpoints, and finalises. `onHandle` is invoked before I/O, after session replay and after
  * every chunk so the caller can retain the handle for a retry; nothing here ever touches the source file's URI
  * after the initial read, and finalisation is the ONLY point at which the evidence becomes durably published. */
 export async function uploadFileEvidenceResumable(
   caseId: string, expectedRevision: number, file: { uri: string; name: string; mediaType: string }, kind: "image" | "document" | "audio" | "attachment",
-  resume: FileUploadHandle | null, onHandle: (handle: FileUploadHandle) => void,
+  reserved: FileUploadHandle, onHandle: (handle: FileUploadHandle) => void,
 ): Promise<{ evidence: EvidenceItem; caseRevision: number }> {
-  let handle = resume;
-  if (!handle) {
+  let handle = reserved;
+  onHandle(handle);
+  if (!handle.bytes) {
     const response = await fetch(file.uri);
+    if (!response.ok) throw new Error("Apollo could not read the selected file copy.");
     const bytes = new Uint8Array(await response.arrayBuffer());
-    const created = await createUpload(caseId, { expectedRevision, clientItemId: Crypto.randomUUID(), parentId: null, kind, filename: file.name, mediaType: file.mediaType, declaredBytes: bytes.length });
-    handle = { uploadId: created.uploadId, declaredBytes: bytes.length, bytes, nextChunk: 0 };
+    handle = { ...handle, declaredBytes: bytes.length, bytes };
     onHandle(handle);
   }
-  const totalChunks = Math.max(1, Math.ceil(handle.declaredBytes / UPLOAD_CHUNK_BYTES));
+  if (!handle.uploadId) {
+    const created = await createUpload(caseId, { expectedRevision, clientItemId: handle.clientItemId, parentId: null, kind,
+      filename: file.name, mediaType: file.mediaType, declaredBytes: handle.declaredBytes! }, handle.createRequestKey);
+    handle = { ...handle, uploadId: created.uploadId, evidenceRootId: created.evidenceRootId, expiresAt: created.expiresAt };
+    onHandle(handle);
+  }
+  const totalChunks = Math.max(1, Math.ceil(handle.declaredBytes! / UPLOAD_CHUNK_BYTES));
   for (let index = handle.nextChunk; index < totalChunks; index++) {
+    if (Date.parse(handle.expiresAt) <= Date.now()) throw new Error("The secure upload window expired. Select the file again.");
     const start = index * UPLOAD_CHUNK_BYTES;
-    const chunk = handle.bytes.subarray(start, Math.min(start + UPLOAD_CHUNK_BYTES, handle.declaredBytes));
-    await putChunk(caseId, handle.uploadId, index, chunk);
+    const chunk = handle.bytes!.subarray(start, Math.min(start + UPLOAD_CHUNK_BYTES, handle.declaredBytes!));
+    await putChunk(caseId, handle.uploadId!, index, chunk);
     handle = { ...handle, nextChunk: index + 1 };
     onHandle(handle);
   }
-  return await completeUpload(caseId, handle.uploadId, expectedRevision);
+  return await completeUpload(caseId, handle.uploadId!, expectedRevision);
 }
 
 /** SSE over XHR with sequence-based reconnect. `onTerminal` fires only on an explicit terminal event; EOF alone is an interruption. */

@@ -8,6 +8,7 @@ import { SECURITY_CONFIG } from "@/src/config/appEnvironment";
 import { validateSecurityConfig } from "./securityConfig";
 import type { SecurityPlatformAdapter } from "./SecurityPlatformAdapter";
 import { DesktopSecurityAdapter, desktopHostPresent } from "./DesktopSecurityAdapter";
+import { chooseWebHostKind, desktopHostKind } from "./desktopHost";
 import { WebSecurityAdapter } from "./WebSecurityAdapter";
 
 export function validateHost(): void {
@@ -15,17 +16,18 @@ export function validateHost(): void {
     appEnvironment: SECURITY_CONFIG.appEnvironment,
     androidEnforcementEngine: SECURITY_CONFIG.androidEnforcementEngine,
     devicePreviewHarness: SECURITY_CONFIG.devicePreviewHarness,
-    hostPlatform: "web",
+    hostPlatform: desktopHostPresent() ? "desktop" : "web",
   });
 }
 
 export function chooseHostAdapter(): SecurityPlatformAdapter {
-  if (process.env.EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS === "enabled" && SECURITY_CONFIG.devicePreviewHarness === "enabled") {
+  const fixtureEnabled = process.env.EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS === "enabled" && SECURITY_CONFIG.devicePreviewHarness === "enabled";
+  const selected = chooseWebHostKind(desktopHostKind(), fixtureEnabled);
+  if (selected === "desktop") return DesktopSecurityAdapter;
+  if (selected === "fixture") {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const harness = require("../../tools/preview-device-harness/PreviewDeviceAdapter") as typeof import("../../tools/preview-device-harness/PreviewDeviceAdapter");
     return harness.PreviewDeviceAdapter;
   }
-  // Inside the Windows/macOS desktop shell (/desktop, Tauri) the web bundle talks to the real host through typed commands.
-  if (desktopHostPresent()) return DesktopSecurityAdapter;
   return WebSecurityAdapter;
 }

@@ -1,1 +1,0 @@
-{"default":{"identifier":"default","description":"Allowlisted typed operations for the Apollo web bundle. No shell, no arbitrary fs, no eval of page content.","local":true,"windows":["main"],"permissions":["core:default","notification:default","dialog:allow-open","opener:allow-open-url"]}}

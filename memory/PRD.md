@@ -486,3 +486,20 @@ Current position: waiting on step 1 input (Step 7 stderr for build aa24dd73-eab7
   tooling is fenced, operator-only and regression-tested (18/18 focused recovery/migration tests).
 - Expo managed preview now starts with `--tunnel`; `@expo/ngrok` 4.1.3 is installed and Metro reports the tunnel ready.
 - Backend `/health` and `/api/health` return HTTP 200; Python lint, TypeScript and ESLint are clean.
+
+## 2026-09-22 correction status from reviewed commit `4c03315`
+- **Package 1 P0:** immutable upload/session replay, fenced root publication, abandoned-attempt-only cleanup,
+  consumed-observation reconciliation, pending-ledger observation restoration and active-job/work-epoch cancellation
+  are implemented and bounded-tested.
+- **Package 2 P0:** main Text Gate now starts shared Higgins; Text/Email project one accepted current assessment; File
+  transfer ownership begins before I/O and survives navigation; Device appends timestamped rechecks/user reports to
+  one case and binds later Patrol events.
+- **Package 3 P1:** bounded later-page PDF extraction is implemented as addressable evidence without conflating parser
+  extraction with semantic reading. Remaining limit/observation audits stay active.
+- **Package 6 P1:** desktop manufacturer/model/form factor, real notification permission, administrator-approved exact
+  domain hosts/DNS filtering, block/unblock/status and native-before-fixture host selection are implemented. Packet
+  inspection/app attribution remain explicitly unsupported; target-host acceptance remains.
+- **Repository hygiene:** 8,240 tracked files under `desktop/src-tauri/target/` were removed from the index and the
+  directory is ignored; generated artifacts remain local/outside source tracking.
+- **Corrected source identity:** digest `01e4723d48cd34c3129701adebd2947249cb174f94d2ae21a699d30567ea0110`;
+  existing Android build `18706c6e...` predates these corrections and is not relabelled.

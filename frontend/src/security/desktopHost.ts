@@ -10,3 +10,8 @@ export function desktopHostKind(): DesktopHostKind | null {
   if (/Macintosh|Mac OS|MacIntel/i.test(ua)) return "macos";
   return null; // an unknown desktop OS is not a supported host; the web adapter's honest "unavailable" answers apply
 }
+
+export function chooseWebHostKind(desktop: DesktopHostKind | null, fixtureEnabled: boolean): "desktop" | "fixture" | "web" {
+  if (desktop) return "desktop";
+  return fixtureEnabled ? "fixture" : "web";
+}

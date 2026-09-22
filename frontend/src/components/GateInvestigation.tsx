@@ -23,23 +23,31 @@ function submissionIdFor(submission: object): string {
   return id;
 }
 
-export function GateInvestigation({ submission, context, question, label, testID, autoStart = true, eventId }: { submission: object; context: HigginsIssueContext; question: string; label: string; testID: string; autoStart?: boolean; eventId?: string | null }) {
+export function GateInvestigation({ submission, context, question, label, testID, autoStart = true, eventId, continuityKey, onResolved }: { submission: object; context: HigginsIssueContext; question: string; label: string; testID: string; autoStart?: boolean; eventId?: string | null; continuityKey?: string; onResolved?: (resolved: boolean) => void }) {
   const router = useRouter();
-  const { state, start, ask, retry, cancel, remove } = useInvestigation();
+  const { state, start, ask, continueWith, retry, cancel, remove } = useInvestigation();
   const submissionId = submissionIdFor(submission);
   const started = useRef<string | null>(null);
+  const busy = state.phase === "creating" || state.phase === "working" || state.phase === "reconnecting" || state.phase === "waiting_device";
+  useEffect(() => { onResolved?.(!!state.response); }, [state.response, onResolved]);
+  useEffect(() => { if (eventId && state.caseData?.id) void rememberCaseForEvent(eventId, state.caseData.id); }, [eventId, state.caseData?.id]);
   useEffect(() => {
     if (started.current === submissionId) return;
-    started.current = submissionId;
     // `autoStart=false` is reserved for explicitly local-only checks (notably File Gate): the shared case starts
     // only when the person asks Higgins and authorises publication of the original bytes.
     if (!autoStart) return;
     const { input, files } = createCaseInput(context, question); // context snapshot taken once per submission
     const boundEventId = eventId ?? (submission as { event?: { event_id?: string } | null }).event?.event_id ?? null;
+    if (continuityKey && state.caseData) {
+      if (busy) return;
+      started.current = submissionId;
+      void continueWith(input);
+      return;
+    }
+    started.current = submissionId;
     void (state.caseData ? remove().then(() => start(input, files)) : start(input, files)).then((c) => { if (c && boundEventId) void rememberCaseForEvent(boundEventId, c.id); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [submissionId]);
-  const busy = state.phase === "creating" || state.phase === "working" || state.phase === "reconnecting" || state.phase === "waiting_device";
+  }, [submissionId, state.caseData?.id, state.phase]);
   return <View style={{ gap: spacing.sm }} testID={testID}>
     <InvestigationView state={state} onAnswer={(a) => void ask(a)} onRetry={() => void retry()} onCancel={() => void cancel()} testID={`${testID}-view`}
       onAction={(action, outcome) => { if (outcome.kind === "observed") void ask(`I did "${action.label}". Please re-check using the fresh observation Apollo just recorded.`); }} />

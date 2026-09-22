@@ -228,7 +228,7 @@ export const PLATFORM_CAPABILITY_BASELINES: Record<SdkPlatform, PlatformCapabili
 export const PLATFORM_ADAPTER_IMPLEMENTED: Record<SdkPlatform, boolean> = {
   android: true,
   ios: true,
-  windows: false,
-  macos: false,
+  windows: true,
+  macos: true,
   web: true, // real browser adapter: genuine browser capabilities, native capabilities unavailable
 };

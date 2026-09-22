@@ -97,7 +97,7 @@ async def ingest_text(owner: str, case: dict, client_item_id: str, text: str, *,
     if kind == "text" and ((origin == "user_submission" and not meta) or (meta or {}).get("registerClues")):
         await register_clues(owner, case, item, clean, publication_root_id=root_id, ingestion_attempt_id=attempt_id)
     if publish and not await repo.publish_evidence_root(owner, case["case_id"], root_id, attempt_id):
-        await repo.discard_incomplete_ingestion(owner, case["case_id"], root_id)
+        await repo.discard_incomplete_ingestion(owner, case["case_id"], root_id, attempt_id=attempt_id)
         raise http(409, "conflict", "Evidence publication was superseded before it committed. Retry the submission.")
     return item
 
@@ -203,7 +203,7 @@ def _render_pdf_pages(data: bytes, page_numbers: list[int]) -> list[tuple[int, b
     return out
 
 
-def _pdf_pages(data: bytes) -> tuple[list[str], list[str], list[int]]:
+def _pdf_pages(data: bytes) -> tuple[list[str], list[str], list[int], int]:
     from pypdf import PdfReader
     reader = PdfReader(io.BytesIO(data))
     if reader.is_encrypted:
@@ -243,7 +243,9 @@ def _docx_text(data: bytes) -> tuple[list[str], list[str]]:
     return paragraphs, links
 
 
-async def ingest_file(owner: str, case: dict, meta_in: dict, data: bytes) -> EvidenceItem:
+async def ingest_file(owner: str, case: dict, meta_in: dict, data: bytes, *, evidence_root_id: Optional[str] = None,
+                      ingestion_attempt_id: Optional[str] = None, publication_owner: Optional[dict] = None,
+                      content_digest: Optional[str] = None) -> EvidenceItem:
     if len(data) > MAX_FILE_BYTES:
         raise http(413, "budget_exhausted", f"Files above {MAX_FILE_BYTES // (1024 * 1024)} MiB are not accepted. The item stays listed as not received.")
     await _case_budget(owner, case["case_id"], len(data))
@@ -255,8 +257,9 @@ async def ingest_file(owner: str, case: dict, meta_in: dict, data: bytes) -> Evi
     if kind == "text":
         kind = "document"  # a TXT original is a document container; only its redacted derivative is model input
     expires = repo.utc(case["expires_at"])
-    attempt_id = uuid.uuid4().hex
-    item = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=meta_in["clientItemId"], origin="user_submission", kind=kind,
+    attempt_id = ingestion_attempt_id or uuid.uuid4().hex
+    root_id = evidence_root_id or str(uuid.uuid4())
+    item = EvidenceItem(id=root_id, case_id=case["case_id"], client_item_id=meta_in["clientItemId"], origin="user_submission", kind=kind,
                         parent_id=meta_in.get("parentId"), collected_at=now_utc(), expires_at=expires, media_type=detected, byte_length=len(data),
                         coverage=Coverage(status="not_started", unit="bytes", total=len(data), examined=0), transformations=transformations,
                         label=f"{kind}: {re.sub(r'[^A-Za-z0-9._ -]', '_', meta_in['filename'])[:60]}")
@@ -274,8 +277,9 @@ async def ingest_file(owner: str, case: dict, meta_in: dict, data: bytes) -> Evi
                        if detected_secret else f"The image could not be checked for secrets before storage ({admission['status']}), so it was not kept. Submit it again; if it keeps failing, describe what it shows.")
         item = item.model_copy(update={"availability": "purged", "coverage": Coverage(status="unavailable", unit="bytes", total=len(data), examined=0, reason=reason),
                                        "transformations": [*transformations, Transformation(kind="secret_redaction", description=description)]})
-        await repo.insert_evidence(owner, item, {"filename": meta_in["filename"], "declaredMediaType": meta_in["mediaType"], "detectedMediaType": detected, "secretPreflight": admission},
-                                   publication_root_id=item.id, ingestion_attempt_id=attempt_id)
+        await repo.insert_evidence(owner, item, {"filename": meta_in["filename"], "declaredMediaType": meta_in["mediaType"], "detectedMediaType": detected,
+                                                 "secretPreflight": admission, "contentDigest": content_digest},
+                                   publication_root_id=item.id, ingestion_attempt_id=attempt_id, publication_owner=publication_owner)
         if detected_secret:
             text = redact_investigation_secrets(
                 f"VISIBLE TEXT (verbatim, secrets replaced by [REDACTED]):\n{admission['redactedText']}\n\nVISUAL DESCRIPTION:\n{admission['visualDescription']}\n\n"
@@ -294,17 +298,17 @@ async def ingest_file(owner: str, case: dict, meta_in: dict, data: bytes) -> Evi
             await repo.store_bytes(owner, case["case_id"], derived.id, text.encode("utf-8"), expires, publish_root=False)
             await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"related_evidence_ids": [derived.id]}})
             await register_clues(owner, case, derived, text, publication_root_id=item.id, ingestion_attempt_id=attempt_id)
-        if not await repo.publish_evidence_root(owner, case["case_id"], item.id, attempt_id):
-            await repo.discard_incomplete_ingestion(owner, case["case_id"], item.id)
+        if not await repo.publish_evidence_root(owner, case["case_id"], item.id, attempt_id, publication_owner=publication_owner):
+            await repo.discard_incomplete_ingestion(owner, case["case_id"], item.id, attempt_id=attempt_id, publication_owner=publication_owner)
             raise http(409, "conflict", "Evidence publication was superseded before it committed. Retry the upload.")
         return item
     await repo.insert_evidence(owner, item, {"filename": meta_in["filename"], "declaredMediaType": meta_in["mediaType"], "detectedMediaType": detected,
-                                             **({"secretPreflight": admission} if admission else {})},
-                               publication_root_id=item.id, ingestion_attempt_id=attempt_id)
+                                             "contentDigest": content_digest, **({"secretPreflight": admission} if admission else {})},
+                               publication_root_id=item.id, ingestion_attempt_id=attempt_id, publication_owner=publication_owner)
     await repo.store_bytes(owner, case["case_id"], item.id, data, expires, publish_root=False)
     await _derive(owner, case, item, data, detected, attempt_id)
-    if not await repo.publish_evidence_root(owner, case["case_id"], item.id, attempt_id):
-        await repo.discard_incomplete_ingestion(owner, case["case_id"], item.id)
+    if not await repo.publish_evidence_root(owner, case["case_id"], item.id, attempt_id, publication_owner=publication_owner):
+        await repo.discard_incomplete_ingestion(owner, case["case_id"], item.id, attempt_id=attempt_id, publication_owner=publication_owner)
         raise http(409, "conflict", "Evidence publication was superseded before it committed. Retry the upload.")
     return item
 
@@ -385,7 +389,7 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
             if total_pages > len(pages):
                 omitted.append({"start": len(pages), "end": total_pages, "reason": f"beyond the {MAX_PAGES}-page processing budget; not extracted"})
             coverage_update = {"status": "partial" if omitted else "not_started", "unit": "pages", "total": total_pages, "examined": 0, "omittedRanges": omitted,
-                               "materialGap": bool(omitted), "permanentGap": bool(omitted),
+                               "materialGap": bool(omitted), "permanentGap": False,
                                "reason": "parser extraction complete; model examination pending" + (f"; {len(rendered_pages)} scanned page(s) rendered for visual reading" if rendered_pages else "")}
             await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"coverage": coverage_update, "related_evidence_ids": [derived.id, *rendered_ids]}})
             await _purge_original_if_secret(owner, case, item, text)
@@ -414,6 +418,61 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
                                                                                 "omittedRanges": [{"start": 0, "end": len(data), "reason": reason}], "reason": reason, "materialGap": True, "permanentGap": True}}})
     except Exception:  # noqa: BLE001 — parser failure is an explicit gap, never a clean result
         await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"coverage.status": "unavailable", "coverage.reason": "parser failed; content not examined", "coverage.materialGap": True, "coverage.permanentGap": True}})
+
+
+def _subtract_page_range(ranges: list[dict], start: int, end: int) -> list[dict]:
+    remaining: list[dict] = []
+    for entry in ranges:
+        left, right = int(entry.get("start", 0)), int(entry.get("end", 0))
+        if right <= start or left >= end:
+            remaining.append(entry); continue
+        if left < start:
+            remaining.append({**entry, "end": start})
+        if right > end:
+            remaining.append({**entry, "start": end})
+    return remaining
+
+
+async def continue_document(owner: str, case: dict, evidence_id: str, start_page: int, page_count: int = MAX_PAGES) -> dict:
+    """Extracts a bounded later PDF slice as new evidence while keeping extraction and reading progress distinct."""
+    row = await repo.get_evidence(owner, case["case_id"], evidence_id)
+    if row.get("media_type") != "application/pdf" or row.get("parent_id"):
+        raise http(400, "invalid_request", "Document continuation requires an original PDF evidence item.")
+    data = await repo.load_bytes(owner, case["case_id"], evidence_id)
+    from pypdf import PdfReader
+    reader = PdfReader(io.BytesIO(data))
+    total = len(reader.pages)
+    start = max(1, start_page); end = min(total, start + max(1, min(page_count, MAX_PAGES)) - 1)
+    if start > total:
+        raise http(400, "invalid_request", f"startPage exceeds the document's {total} pages.")
+    client_item_id = f"{row['client_item_id']}.pages.{start}-{end}"
+    existing = await repo.db.investigation_evidence.find_one(
+        {"owner_id": owner, "case_id": case["case_id"], "client_item_id": client_item_id}, {"_id": 0}
+    )
+    if existing:
+        return {"evidenceId": existing["evidence_id"], "startPage": start, "endPage": end, "totalPages": total, "replayed": True}
+    text, offsets, unreadable, cursor = "", [], [], 0
+    for page_number in range(start, end + 1):
+        try:
+            page_text = reader.pages[page_number - 1].extract_text() or ""
+        except Exception:  # noqa: BLE001
+            page_text = ""
+        if not page_text.strip(): unreadable.append(page_number)
+        block = f"\n\n[page {page_number}]\n{page_text or '[No extractable text layer on this page.]'}"
+        offsets.append({"page": page_number, "start": cursor, "end": cursor + len(block), "readable": page_number not in unreadable})
+        text += block; cursor += len(block)
+    derived = await ingest_text(owner, case, client_item_id, text, parent_id=evidence_id, label=f"continued PDF extraction (pages {start}-{end})",
+                                meta={"pages": offsets, "registerClues": True},
+                                transformations=[Transformation(kind="decode", description=f"Bounded continuation extraction for PDF pages {start}-{end}; unreadable pages: {unreadable or 'none'}. ")])
+    coverage = row.get("coverage", {})
+    omitted = _subtract_page_range(list(coverage.get("omittedRanges", [])), start - 1, end)
+    omitted.extend({"start": page - 1, "end": page, "reason": "no extractable text layer in continuation slice; not yet visually examined"} for page in unreadable)
+    await repo.update_evidence(owner, case["case_id"], evidence_id, {
+        "$addToSet": {"related_evidence_ids": derived.id, "extraction_ranges": {"start": start - 1, "end": end}},
+        "$set": {"coverage.omittedRanges": omitted, "coverage.materialGap": bool(omitted), "coverage.permanentGap": False,
+                 "coverage.status": "partial" if omitted else "not_started", "coverage.reason": "bounded parser extraction available; semantic reading progress remains separate"},
+    })
+    return {"evidenceId": derived.id, "startPage": start, "endPage": end, "totalPages": total, "unreadablePages": unreadable, "replayed": False}
 
 
 def _union(ranges: list[dict], start: int, end: int) -> list[dict]:

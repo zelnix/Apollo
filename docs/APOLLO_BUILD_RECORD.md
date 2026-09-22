@@ -20,6 +20,12 @@
 Native build log reached and completed release Kotlin/CMake/Gradle tasks for Apollo Security, GuardDog dependencies,
 `expo-share-intent` multi-item support and the application. This is compilation proof, not physical-device behavior proof.
 
+> Saved-source mapping note (2026-09-22): human review was against commit
+> `4c03315e5a4706812e67c4ed122822748993211a`. The subsequent Package 1/2 correction tree has source digest
+> `01e4723d48cd34c3129701adebd2947249cb174f94d2ae21a699d30567ea0110` and is **not** part of build
+> `18706c6e-cf91-418e-9536-94b1cf592f93`. The next build must record its newly saved Git SHA, EAS fingerprint and APK
+> hash; do not substitute the older informational Git SHA or this working-tree digest for one another.
+
 ## Android — `device-test` profile (installable candidate)
 
 | Field | Value |
