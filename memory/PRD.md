@@ -1,3 +1,28 @@
+## Consolidated architecture mandate — M2 implemented (2026-09-22)
+
+### Problem statement
+Close the six case/job coordinator findings in M2: durable automatic Text intake, one Gmail pipeline, mixed-document evidence fidelity, restart-safe source/model continuity, honest app/device provenance and first-class Saved Reports.
+
+### Architecture implemented
+- **Automatic Text:** encrypted revision-aware Android queue with fixed expiry, serialised read/modify/write, explicit overflow/key failures and WorkManager delivery. Foreground and background consumers use one owner-authenticated idempotent case intake.
+- **Gmail:** a single leased manual/monitored intake with durable page cursor and receipt deduplication. Raw email remains request-scoped until encrypted temporary evidence; final Patrol projection is model-free.
+- **Evidence:** mixed PDF visual pages are rendered beside text; DOCX expansion is pre-bounded, images are extracted under secret admission, and undecodable drawings remain explicit gaps. Complete provider transcripts are not silently clipped.
+- **Coordinator continuity:** immutable fetched-source snapshots back every URL cursor; jobs persist their original Gemini model; a replay-safe non-model projector translates accepted case state into Patrol.
+- **App/device facts:** exact package visibility without vendor-prefix trust; requested, granted, special-access and user-reported permission origins remain distinct.
+- **Reports:** independent Patrol list/detail UX, historical labeling, stable keyset paging, reopen/speech and owner-scoped report/speech deletion.
+
+### Verification and boundaries
+- `tsc --noEmit` and ESLint pass.
+- 53 M2-focused backend pytest tests pass with `GEMINI_API_KEY` explicitly disabled.
+- `cargo check` passes.
+- No Playwright, scenario/testing agent, live Gemini call or Emergent-managed key was used.
+- Android Gradle/Kotlin compilation was not run because the owner permitted only TypeScript, ESLint, pytest and Cargo checks. Native changes remain source-verified rather than Android-compiler-verified in this milestone.
+
+### Priorities
+- **P0:** M2 source implementation complete; owner/native build verification remains separate.
+- **P1:** Continue M3 (`C13`, `C14`) and then subsequent consolidated-mandate milestones without weakening the M1/M2 ownership boundaries.
+- **P2:** Production-default cutover remains separate.
+
 ## Consolidated architecture mandate — M1 implemented (2026-09-22)
 
 ### Problem statement

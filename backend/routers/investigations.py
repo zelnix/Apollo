@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import hashlib
 import json
@@ -12,7 +13,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Body, File, Form, Header, Query, Request, Response, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import TypeAdapter, ValidationError
+from pydantic import Field, TypeAdapter, ValidationError
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
@@ -29,7 +30,8 @@ from services.higgins import repository as repo
 from services.higgins import tools as toolbox
 from services.higgins.capacity import ITEMS, SPEECH_SEGMENT_CHARACTERS, TEMPORARY_RETENTION, TEXT, policy
 from services.higgins.contracts import (CreateCase, CreateUpload, DeviceProfile, DeviceResult, EvidenceSubmission, ExpectedObservation, ExpectedRevision,
-                                        RecheckRequest, RecheckResult, ReportRequest, SettingsPlan, SettingsPlanRequest, SpeechRequest, SubmitTurn, UploadMetadata)
+                                        RecheckRequest, RecheckResult, ReportRequest, SettingsPlan, SettingsPlanRequest, SpeechRequest, Submission, SubmitTurn,
+                                        UUID_PATTERN, UploadMetadata, Wire)
 from services.higgins.encryption import cipher, decrypt, encrypt
 from services.higgins.repository import http
 
@@ -113,6 +115,33 @@ async def create_case(body: CreateCase, request: Request, idempotency_key: Optio
     job = await _submit_turn(owner, case, SubmitTurn(expected_revision=0, turn_id=str(uuid.uuid4()), message=question), key + ":turn0") if question.strip() else None
     case = await repo.get_case(owner, case["case_id"])
     return JSONResponse({**await _case_json(case), "job": repo.job_view(job).wire() if job else None}, status_code=201, headers=NO_STORE)
+
+
+class BackgroundTextIn(Wire):
+    submission_id: str = Field(pattern=UUID_PATTERN)
+    source_key: str = Field(min_length=1, max_length=500)
+    revision_digest: str = Field(min_length=16, max_length=128)
+    sender: str = Field(default="", max_length=2048)
+    text: str = Field(min_length=1, max_length=250_000)
+    captured_at: datetime
+    expires_at: datetime
+    content_complete: bool = True
+    original_characters: int = Field(ge=1, le=10_000_000)
+
+
+@router.post("/investigations/background/text", status_code=202)
+async def background_text_intake(body: BackgroundTextIn, request: Request):
+    """One durable intake path shared by the OS worker and foreground drain."""
+    if repo.utc(body.expires_at) <= now_utc():
+        raise http(410, "evidence_expired", "This captured notification reached its fixed retention deadline.")
+    limitation = "" if body.content_complete else f"\n\nCapture limitation: Android exposed {body.original_characters} characters; Apollo retained the first {len(body.text)} under its admission policy."
+    submission = Submission(client_item_id=f"sms-{body.submission_id[:70]}", kind="text",
+                            value=f"From: {body.sender}\n{body.text}{limitation}", label="opt-in text notification")
+    payload = CreateCase(gate="text", question="Investigate this captured text-message notification, verify its claims and links, and identify the safest next action.", submissions=[submission])
+    response = await create_case(payload, request, idempotency_key=f"sms-notification-{body.submission_id}")
+    data = json.loads(response.body)
+    return JSONResponse({"caseId": data["case"]["id"], "jobId": data.get("job", {}).get("id") if data.get("job") else None,
+                         "acceptedAt": now_utc().isoformat()}, status_code=202, headers=NO_STORE)
 
 
 @router.get("/investigations/{case_id}")
@@ -933,12 +962,25 @@ async def save_report(case_id: str, body: ReportRequest, request: Request):
 
 
 @router.get("/investigations/reports/list")
-async def list_reports(request: Request, cursor: int = Query(default=0, ge=0), limit: int = Query(default=25, ge=1, le=50)):
+async def list_reports(request: Request, cursor: Optional[str] = Query(default=None), limit: int = Query(default=25, ge=1, le=50)):
     owner = owner_of(request)
     total = await db.investigation_reports.count_documents({"owner_id": owner})
-    rows = await db.investigation_reports.find({"owner_id": owner}, {"_id": 0}).sort("saved_at", -1).skip(cursor).limit(limit).to_list(limit)
-    next_cursor = cursor + len(rows) if cursor + len(rows) < total else None
-    return JSONResponse({"items": [repo.dec_json(r["report_ciphertext"]) for r in rows], "total": total, "nextCursor": next_cursor}, headers=NO_STORE)
+    query: dict = {"owner_id": owner}
+    if cursor:
+        try:
+            decoded = base64.urlsafe_b64decode(cursor.encode() + b"=" * (-len(cursor) % 4)).decode()
+            saved_raw, report_id = decoded.split("|", 1)
+            saved_at = datetime.fromisoformat(saved_raw.replace("Z", "+00:00"))
+        except (ValueError, UnicodeDecodeError) as exc:
+            raise http(400, "invalid_input", "Saved-report cursor is invalid.") from exc
+        query["$or"] = [{"saved_at": {"$lt": saved_at}}, {"saved_at": saved_at, "report_id": {"$lt": report_id}}]
+    rows = await db.investigation_reports.find(query, {"_id": 0}).sort([("saved_at", -1), ("report_id", -1)]).limit(limit + 1).to_list(limit + 1)
+    page, more = rows[:limit], len(rows) > limit
+    next_cursor = None
+    if more and page:
+        marker = f"{repo.utc(page[-1]['saved_at']).isoformat()}|{page[-1]['report_id']}".encode()
+        next_cursor = base64.urlsafe_b64encode(marker).decode().rstrip("=")
+    return JSONResponse({"items": [repo.dec_json(r["report_ciphertext"]) for r in page], "total": total, "nextCursor": next_cursor}, headers=NO_STORE)
 
 
 @router.get("/investigations/reports/{report_id}")
@@ -947,7 +989,7 @@ async def get_report(report_id: str, request: Request):
     row = await db.investigation_reports.find_one({"owner_id": owner, "report_id": report_id}, {"_id": 0})
     if not row:
         raise http(404, "not_found", "Unknown report.")
-    return JSONResponse(repo.dec_json(row["report_ciphertext"]), headers=NO_STORE)
+    return JSONResponse({"report": repo.dec_json(row["report_ciphertext"])}, headers=NO_STORE)
 
 
 @router.delete("/investigations/reports/{report_id}", status_code=204)
@@ -956,4 +998,6 @@ async def delete_report(report_id: str, request: Request):
     result = await db.investigation_reports.delete_one({"owner_id": owner, "report_id": report_id})
     if not result.deleted_count:
         raise http(404, "not_found", "Unknown report.")
+    await db.voice_cache.delete_many({"device_id": owner, "scope_id": report_id})
+    await db.investigation_scopes.delete_many({"owner_id": owner, "scope_id": report_id})
     return Response(status_code=204, headers=NO_STORE)

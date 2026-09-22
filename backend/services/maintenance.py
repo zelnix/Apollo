@@ -16,6 +16,7 @@ from datetime import timedelta
 from core.config import logger
 from core.db import db, now_utc
 from routers.family import sweep_voice_audio
+from services.investigation_projector import project_committed_cases
 from services.higgins import jobs, repository
 from services.higgins.retention import sweep as sweep_temporary_content
 
@@ -35,6 +36,7 @@ def maintenance_steps() -> tuple[MaintenanceStep, ...]:
         ("case_expiry_and_deletion", repository.sweep),
         ("tombstones", repository.sweep_tombstones),
         ("job_and_device_inbox_recovery", jobs.recover),
+        ("investigation_patrol_projection", project_committed_cases),
         ("family_audio", sweep_voice_audio),
     )
 

@@ -127,10 +127,10 @@ export default function CheckEmail() {
   const scanInbox = async () => {
     setScanBusy(true); setScanSummary(null);
     try {
-      const { checked, flagged } = await scanGmailInbox();
+      const { checked, accepted } = await scanGmailInbox();
       const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
-      setScanSummary({ text: flagged.length ? `Checked ${plural(checked, "email")} — ${plural(flagged.length, "email")} need${flagged.length === 1 ? "s" : ""} a look.` : `Checked ${plural(checked, "email")} — no concerns were identified within those checks.`, flagged: flagged.length });
-      showToast(flagged.length ? `Found ${plural(flagged.length, "email")} needing a look` : "No concerns identified in the checked Gmail messages", flagged.length ? "growling" : "resting");
+      setScanSummary({ text: `Checked ${plural(checked, "email")} and accepted ${plural(accepted, "new investigation")}. Results will appear in Patrol when Higgins finishes.`, flagged: accepted });
+      showToast(accepted ? `${plural(accepted, "email")} accepted for investigation` : "No new Gmail messages needed another investigation", "neutral");
     } catch (e) { showToast(e instanceof Error ? e.message : "Couldn't scan your inbox right now.", "growling"); } finally { setScanBusy(false); }
   };
 

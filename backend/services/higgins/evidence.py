@@ -216,12 +216,12 @@ def _render_pdf_pages(data: bytes, page_numbers: list[int]) -> list[tuple[int, b
     return out
 
 
-def _pdf_pages(data: bytes, start_page: int = 1, page_count: int = MAX_PAGES) -> tuple[list[str], list[str], list[int], int, list[int]]:
+def _pdf_pages(data: bytes, start_page: int = 1, page_count: int = MAX_PAGES) -> tuple[list[str], list[str], list[int], int, list[int], list[int]]:
     from pypdf import PdfReader
     reader = PdfReader(io.BytesIO(data))
     if reader.is_encrypted:
         raise ValueError("encrypted")
-    pages, links, unreadable, annotation_errors = [], [], [], []
+    pages, links, unreadable, annotation_errors, visual_pages = [], [], [], [], []
     total_pages = len(reader.pages)
     start_index = max(0, start_page - 1); end_index = min(total_pages, start_index + max(1, min(page_count, MAX_PAGES)))
     for index in range(start_index, end_index):
@@ -232,6 +232,13 @@ def _pdf_pages(data: bytes, start_page: int = 1, page_count: int = MAX_PAGES) ->
             text, unreadable = "", [*unreadable, index + 1]
         if not text.strip():
             unreadable.append(index + 1)
+        try:
+            resources = page.get("/Resources") or {}
+            xobjects = resources.get("/XObject") or {}
+            if any((obj.get_object().get("/Subtype") == "/Image") for obj in xobjects.values()):
+                visual_pages.append(index + 1)
+        except Exception:  # noqa: BLE001 — visual inventory failure is a page-level gap
+            annotation_errors.append(index + 1)
         pages.append(text)
         for annotation in page.get("/Annots") or []:
             try:
@@ -241,11 +248,15 @@ def _pdf_pages(data: bytes, start_page: int = 1, page_count: int = MAX_PAGES) ->
                     links.append(f"page {index + 1}: {uri}")
             except Exception:  # noqa: BLE001
                 annotation_errors.append(index + 1)
-    return pages, links, sorted(set(unreadable)), total_pages, sorted(set(annotation_errors))
+    return pages, links, sorted(set(unreadable)), total_pages, sorted(set(annotation_errors)), sorted(set(visual_pages))
 
 
-def _docx_text(data: bytes) -> tuple[list[str], list[str]]:
+def _docx_text(data: bytes) -> tuple[list[str], list[str], list[tuple[str, str, bytes]], int]:
     import docx
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        expanded = sum(entry.file_size for entry in archive.infolist())
+        if expanded > MAX_EXPANDED:
+            raise ValueError("expanded")
     document = docx.Document(io.BytesIO(data))
     paragraphs = [p.text for p in document.paragraphs]
     for table in document.tables:  # tables are part of the document, not an omission
@@ -255,7 +266,16 @@ def _docx_text(data: bytes) -> tuple[list[str], list[str]]:
         paragraphs.extend(p.text for p in section.header.paragraphs if p.text.strip())
         paragraphs.extend(p.text for p in section.footer.paragraphs if p.text.strip())
     links = [rel.target_ref for rel in document.part.rels.values() if "hyperlink" in rel.reltype and rel.is_external]
-    return paragraphs, links
+    images = []
+    for rel in document.part.rels.values():
+        if "image" not in rel.reltype:
+            continue
+        blob = rel.target_part.blob
+        if len(blob) + sum(len(item[2]) for item in images) > MAX_EXPANDED:
+            raise ValueError("expanded")
+        images.append((str(rel.target_ref), str(rel.target_part.content_type), blob))
+    drawing_count = len(document.element.xpath(".//w:drawing"))
+    return paragraphs, links, images, max(0, drawing_count - len(images))
 
 
 async def ingest_file(owner: str, case: dict, meta_in: dict, data: bytes, *, evidence_root_id: Optional[str] = None,
@@ -299,10 +319,8 @@ async def ingest_file(owner: str, case: dict, meta_in: dict, data: bytes, *, evi
             text = redact_investigation_secrets(
                 f"VISIBLE TEXT (verbatim, secrets replaced by [REDACTED]):\n{admission['redactedText']}\n\nVISUAL DESCRIPTION:\n{admission['visualDescription']}\n\n"
                 f"REDACTED ITEMS: {', '.join(admission['secretKinds']) or 'unspecified'}.")
-            truncated = bool(admission.get("transcriptionTruncated"))
-            incomplete = truncated or not admission["transcriptionComplete"]
-            transcription_gap_reason = ("the transcription exceeded the 60,000-character processing budget and was truncated; continuation is required to examine the remainder" if truncated
-                                        else None if admission["transcriptionComplete"] else "the preflight reported its transcription as incomplete")
+            incomplete = not admission["transcriptionComplete"]
+            transcription_gap_reason = None if admission["transcriptionComplete"] else "the provider reported its full transcription as incomplete"
             derived = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=f"{item.client_item_id}.redacted", origin="apollo_inference", kind="text",
                                    parent_id=item.id, collected_at=now_utc(), expires_at=expires, media_type="text/plain", byte_length=len(text.encode("utf-8")),
                                    coverage=Coverage(status="not_started", unit="characters", total=len(text), examined=0,
@@ -350,14 +368,13 @@ async def _image_secret_preflight(data: bytes, media_type: str) -> dict:
         return {"status": "unavailable:invalid_response", "containsSecret": None, "secretKinds": [], "redactedText": "", "visualDescription": "", "transcriptionComplete": None}
     kinds = [str(k) for k in (result.get("secretKinds") or []) if isinstance(k, (str, int))]
     redacted_text_raw = str(result.get("redactedText") or "")
-    truncated = len(redacted_text_raw) > 60_000  # our own processing budget — independent of the model's own completeness claim below
-    redacted_text = redacted_text_raw[:60_000]
-    visual = str(result.get("visualDescription") or "")[:8_000]
+    redacted_text = redacted_text_raw
+    visual = str(result.get("visualDescription") or "")
     complete = result.get("transcriptionComplete") if isinstance(result.get("transcriptionComplete"), bool) else None
     if contains and not redacted_text.strip() and not visual.strip():  # detected a secret but produced no usable redacted content: cannot admit anything
         return {"status": "unavailable:no_redacted_content", "containsSecret": True, "secretKinds": kinds, "redactedText": "", "visualDescription": "", "transcriptionComplete": None, "transcriptionTruncated": False}
     return {"status": "secret_detected" if contains else "clear", "containsSecret": contains, "secretKinds": kinds, "redactedText": redacted_text,
-            "visualDescription": visual, "transcriptionComplete": complete, "transcriptionTruncated": truncated}
+            "visualDescription": visual, "transcriptionComplete": complete, "transcriptionTruncated": False}
 
 
 async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detected: str, attempt_id: str, publication_owner: Optional[dict] = None) -> None:
@@ -366,10 +383,11 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
     try:
         if detected == "application/pdf" or detected.endswith("wordprocessingml.document"):
             if detected == "application/pdf":
-                pages, links, unreadable, total_pages, annotation_errors = _pdf_pages(data)
+                pages, links, unreadable, total_pages, annotation_errors, visual_pages = _pdf_pages(data)
+                embedded_images, unresolved_drawings = [], 0
             else:
-                paragraphs, links = _docx_text(data)
-                pages, unreadable, total_pages, annotation_errors = ["\n".join(paragraphs)], [], 1, []
+                paragraphs, links, embedded_images, unresolved_drawings = _docx_text(data)
+                pages, unreadable, total_pages, annotation_errors, visual_pages = ["\n".join(paragraphs)], [], 1, [], []
             offsets, text, cursor = [], "", 0
             for number, page in enumerate(pages, start=1):
                 block = f"\n\n[page {number}]\n{page}"
@@ -380,20 +398,21 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
                 raise ValueError("expanded")
             link_text = "\n".join(links)
             derived = await ingest_text(owner, case, f"{item.client_item_id}.text", text + ("\n\n[links]\n" + link_text if link_text else ""), parent_id=item.id,
-                                        label=f"extracted text ({len(pages)} pages)", meta={"pages": offsets, "links": links, "registerClues": True},
+                                        label=f"extracted text ({len(pages)} pages)", meta={"pages": offsets, "links": links, "registerClues": True,
+                                                                                         **({"itemIndex": 0} if embedded_images else {})},
                                         transformations=[Transformation(kind="decode", description=f"Parser text layer of {len(pages)} page(s) with page markers; {len(links)} link target(s) collected. Scanned/unreadable pages: {unreadable or 'none'}.")],
                                         publication_root_id=item.id, ingestion_attempt_id=attempt_id, publication_owner=publication_owner, publish=False)
             # Scanned/image-only pages: rasterise each (within budget) as a derived image so Gemini can read it visually. A rendered page
             # is addressable evidence with its own coverage; only pages beyond the render budget remain explicit omitted ranges.
             rendered_ids, rendered_pages = [], []
-            to_render = unreadable[:MAX_SCANNED_PAGES] if detected == "application/pdf" else []
+            to_render = sorted(set(unreadable + visual_pages))[:MAX_SCANNED_PAGES] if detected == "application/pdf" else []
             if to_render:
                 for number, png in _render_pdf_pages(data, to_render):
                     page_item = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=f"{item.client_item_id}.page{number}", origin=item.origin, kind="image",
                                              parent_id=item.id, collected_at=now_utc(), expires_at=item.expires_at, media_type="image/png", byte_length=len(png),
                                              coverage=Coverage(status="not_started", unit="items", total=1, examined=0, reason="rendered scanned page available to Gemini vision; not yet examined"),
-                                             transformations=[Transformation(kind="decode", description=f"Page {number} has no text layer; rasterised at {SCAN_DPI} DPI for visual reading. Layout and images preserved; no OCR text layer was invented.")],
-                                             label=f"scanned page {number} (rendered image)")
+                                             transformations=[Transformation(kind="decode", description=f"Page {number} contains visual material or lacks a text layer; rasterised at {SCAN_DPI} DPI for visual reading.")],
+                                             label=f"visual page {number} (rendered image)")
                     await repo.insert_evidence(owner, page_item, {"page": number, "derivedFrom": item.id}, publication_root_id=item.id, ingestion_attempt_id=attempt_id, publication_owner=publication_owner)
                     await repo.store_bytes(owner, case["case_id"], page_item.id, png, item.expires_at, publish_root=False)
                     rendered_ids.append(page_item.id)
@@ -401,13 +420,35 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
             omitted = [{"start": p - 1, "end": p, "reason": "no extractable text layer (scanned or image-only page); rendering it also failed" if p in to_render
                        else f"scanned page beyond this turn's {MAX_SCANNED_PAGES}-page visual-rendering budget; not yet examined — continue to process the remainder"}
                       for p in unreadable if p not in rendered_pages]
+            omitted.extend({"start": p - 1, "end": p, "reason": "page contains material visual content beyond the bounded visual-rendering budget"}
+                           for p in visual_pages if p not in rendered_pages and p not in unreadable)
             if total_pages > len(pages):
                 omitted.append({"start": len(pages), "end": total_pages, "reason": f"beyond the {MAX_PAGES}-page processing budget; bounded continuation available"})
             omitted.extend({"start": page - 1, "end": page, "reason": "hyperlink annotation component could not be extracted"} for page in annotation_errors)
             coverage_update = {"status": "partial" if omitted else "not_started", "unit": "pages", "total": total_pages, "examined": 0, "omittedRanges": omitted,
                                "materialGap": bool(omitted), "permanentGap": False,
                                "reason": "parser extraction complete; model examination pending" + (f"; {len(rendered_pages)} scanned page(s) rendered for visual reading" if rendered_pages else "")}
-            await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"coverage": coverage_update, "related_evidence_ids": [derived.id, *rendered_ids]}}, attempt_id=attempt_id)
+            for image_index, (image_name, image_type, image_data) in enumerate(embedded_images):
+                admission = await _image_secret_preflight(image_data, image_type) if image_type in ("image/png", "image/jpeg") else {"status": "unavailable:unsupported_image"}
+                if admission.get("status") == "clear":
+                    image_item = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=f"{item.client_item_id}.image{image_index}", origin=item.origin, kind="image",
+                                              parent_id=item.id, collected_at=now_utc(), expires_at=item.expires_at, media_type=image_type, byte_length=len(image_data),
+                                              coverage=Coverage(status="not_started", unit="items", total=1, examined=0, reason="embedded document image available; not yet examined"),
+                                              transformations=[Transformation(kind="decode", description="Embedded DOCX image extracted without recompression.")], label=f"embedded image: {image_name}"[:80])
+                    await repo.insert_evidence(owner, image_item, {"derivedFrom": item.id, "embeddedName": image_name, "itemIndex": image_index + 1}, publication_root_id=item.id, ingestion_attempt_id=attempt_id, publication_owner=publication_owner)
+                    await repo.store_bytes(owner, case["case_id"], image_item.id, image_data, item.expires_at, publish_root=False)
+                    rendered_ids.append(image_item.id)
+                else:
+                    omitted.append({"start": image_index + 1, "end": image_index + 2, "reason": "embedded image withheld because secret-safe visual admission was not available"})
+                    await repo.db.investigation_content_chunks.delete_many({"owner_id": owner, "case_id": case["case_id"], "evidence_id": item.id})
+            omitted.extend({"start": 1 + len(embedded_images) + index, "end": 2 + len(embedded_images) + index,
+                            "reason": "embedded drawing object could not be decoded as text or image"} for index in range(unresolved_drawings))
+            document_items = len(embedded_images) + unresolved_drawings
+            coverage_update.update({"unit": "items" if document_items else coverage_update.get("unit", "pages"),
+                                    "total": 1 + document_items if document_items else coverage_update.get("total"),
+                                    "status": "partial" if omitted else "not_started", "omittedRanges": omitted, "materialGap": bool(omitted)})
+            await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"coverage": coverage_update, "related_evidence_ids": [derived.id, *rendered_ids],
+                                                                                   **({"availability": "purged"} if embedded_images and any(gap["reason"].startswith("embedded image withheld") for gap in omitted) else {})}}, attempt_id=attempt_id)
             await _purge_original_if_secret(owner, case, item, text, attempt_id)
         elif detected in ("image/png", "image/jpeg"):
             from PIL import Image
@@ -455,7 +496,7 @@ async def continue_document(owner: str, case: dict, evidence_id: str, start_page
     if row.get("media_type") != "application/pdf" or row.get("parent_id"):
         raise http(400, "invalid_request", "Document continuation requires an original PDF evidence item.")
     data = await repo.load_bytes(owner, case["case_id"], evidence_id)
-    pages, links, unreadable, total, annotation_errors = _pdf_pages(data, start_page, page_count)
+    pages, links, unreadable, total, annotation_errors, visual_pages = _pdf_pages(data, start_page, page_count)
     start = max(1, start_page); end = min(total, start + max(1, min(page_count, MAX_PAGES)) - 1)
     if start > total:
         raise http(400, "invalid_request", f"startPage exceeds the document's {total} pages.")
@@ -480,7 +521,7 @@ async def continue_document(owner: str, case: dict, evidence_id: str, start_page
                                 meta={"pages": offsets, "links": links, "registerClues": True}, ingestion_attempt_id=attempt_id, publish=False,
                                 transformations=[Transformation(kind="decode", description=f"Bounded component extraction for PDF pages {start}-{end}; {len(links)} hyperlink target(s); unreadable pages: {unreadable or 'none'}. ")])
     rendered_ids, rendered_pages = [], []
-    for page_number, png in _render_pdf_pages(data, unreadable[:MAX_SCANNED_PAGES]):
+    for page_number, png in _render_pdf_pages(data, sorted(set(unreadable + visual_pages))[:MAX_SCANNED_PAGES]):
         visual = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=f"{client_item_id}.visual.{page_number}", origin=row["origin"], kind="image",
                               parent_id=evidence_id, collected_at=now_utc(), expires_at=repo.utc(row["expires_at"]), media_type="image/png", byte_length=len(png),
                               coverage=Coverage(status="not_started", unit="items", total=1, examined=0, reason="continued scanned-page visual available; not yet examined"),
@@ -494,7 +535,7 @@ async def continue_document(owner: str, case: dict, evidence_id: str, start_page
     )
     derived_meta = repo.dec_json(derived_row["meta_ciphertext"]) if derived_row and derived_row.get("meta_ciphertext") else {}
     derived_meta["continuation"] = {"parentEvidenceId": evidence_id, "startPage": start, "endPage": end, "totalPages": total,
-                                    "links": links, "unreadablePages": unreadable, "annotationGapPages": annotation_errors,
+                                    "links": links, "unreadablePages": unreadable, "visualPages": visual_pages, "annotationGapPages": annotation_errors,
                                     "renderedPages": rendered_pages}
     await repo.update_evidence(owner, case["case_id"], derived.id, {"$set": {"meta_ciphertext": repo.enc_json(derived_meta)}}, attempt_id=attempt_id)
     if not await repo.publish_evidence_root(owner, case["case_id"], derived.id, attempt_id):
@@ -564,6 +605,7 @@ async def _repair_continuation_from_manifest(owner: str, case: dict, parent_id: 
     total = int(continuation.get("totalPages") or end)
     links = [str(link) for link in continuation.get("links", meta.get("links", []))]
     unreadable = [int(page) for page in continuation.get("unreadablePages", [])]
+    visual_pages = [int(page) for page in continuation.get("visualPages", [])]
     annotation_errors = [int(page) for page in continuation.get("annotationGapPages", [])]
     rendered_pages = {int(page) for page in continuation.get("renderedPages", [])}
     visual_ids = []
@@ -575,11 +617,12 @@ async def _repair_continuation_from_manifest(owner: str, case: dict, parent_id: 
                 rendered_pages.add(int(visual_meta["page"]))
     parent = await repo.get_evidence(owner, case["case_id"], parent_id)
     omitted = list(parent.get("coverage", {}).get("omittedRanges", []))
-    available_pages = {page for page in range(start, end + 1) if page not in unreadable or page in rendered_pages} - set(annotation_errors)
+    available_pages = {page for page in range(start, end + 1) if (page not in unreadable and page not in visual_pages) or page in rendered_pages} - set(annotation_errors)
     for page in sorted(available_pages):
         omitted = _subtract_page_range(omitted, page - 1, page)
     additions = [
         *({"start": page - 1, "end": page, "reason": "no text layer and continuation visual rendering failed"} for page in unreadable if page not in rendered_pages),
+        *({"start": page - 1, "end": page, "reason": "material visual content was not rendered in this bounded continuation"} for page in visual_pages if page not in rendered_pages and page not in unreadable),
         *({"start": page - 1, "end": page, "reason": "hyperlink annotation component could not be extracted"} for page in annotation_errors),
     ]
     for gap in additions:
@@ -593,7 +636,7 @@ async def _repair_continuation_from_manifest(owner: str, case: dict, parent_id: 
                  "coverage.reason": "bounded parser extraction available; semantic reading progress remains separate"},
     })
     return {"evidenceId": slice_root_id, "visualEvidenceIds": visual_ids, "startPage": start, "endPage": end, "totalPages": total,
-            "links": links, "unreadablePages": unreadable, "annotationGapPages": annotation_errors, "replayed": replayed,
+            "links": links, "unreadablePages": unreadable, "visualPages": visual_pages, "annotationGapPages": annotation_errors, "replayed": replayed,
             "delivery": "committed_manifest"}
 
 
@@ -631,6 +674,19 @@ async def mark_examined(owner: str, case_id: str, evidence_id: str, start: int, 
     if not row.get("parent_id") or row.get("origin") == "apollo_inference":
         return
     parent = await repo.get_evidence(owner, case_id, row["parent_id"])
+    meta = await repo.evidence_meta(row)
+    if parent["coverage"].get("unit") == "items" and isinstance(meta.get("itemIndex"), int):
+        if not complete:
+            return
+        parent_ranges = _union(parent["coverage"].get("examinedRanges", []), meta["itemIndex"], meta["itemIndex"] + 1)
+        parent_examined = sum(item["end"] - item["start"] for item in parent_ranges)
+        parent_total = parent["coverage"].get("total")
+        parent_gap = bool(parent["coverage"].get("omittedRanges"))
+        parent_complete = parent_total is not None and parent_examined >= parent_total and not parent_gap
+        await repo.update_evidence(owner, case_id, row["parent_id"], {"$set": {"coverage.examinedRanges": parent_ranges,
+            "coverage.examined": min(parent_examined, parent_total or parent_examined), "coverage.status": "examined" if parent_complete else "partial",
+            "coverage.materialGap": parent_gap or not parent_complete}})
+        return
     if parent["coverage"].get("unit") != "pages":
         # Single-child parent (no page-level structure of its own): mirror this child's own outcome directly.
         await repo.update_evidence(owner, case_id, row["parent_id"], {"$set": {"coverage.status": "examined" if complete else "partial"}})
@@ -638,7 +694,6 @@ async def mark_examined(owner: str, case_id: str, evidence_id: str, start: int, 
     # Multi-page parent (a scanned/mixed PDF): its own pages are covered by TWO kinds of children — the extracted-text
     # child (page ranges in CHARACTER units, readable pages only) and each rendered scanned-page image (exactly one
     # page each). Neither can singlehandedly complete the parent; their page coverage is combined here incrementally.
-    meta = await repo.evidence_meta(row)
     covered_pages: set[int] = set()
     if meta.get("pages"):  # the extracted-text child: a page counts only once fully covered AND it actually had a text layer
         covered_pages = {p["page"] for p in meta["pages"] if p.get("readable", True) and any(r["start"] <= p["start"] and r["end"] >= p["end"] for r in ranges)}
@@ -697,7 +752,7 @@ async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[ty
         if row["availability"] != "available":
             inventory.append(entry)
             continue
-        if row["kind"] in ("text", "url", "observation"):
+        if row["kind"] in ("text", "url", "observation", "source_snapshot"):
             text = (await repo.read_bytes(owner, case["case_id"], row["evidence_id"])).decode("utf-8", errors="replace")
             if len(text) <= INLINE_TEXT_CHARS:
                 entry["content"] = text

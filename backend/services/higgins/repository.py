@@ -106,10 +106,14 @@ async def backfill_work_epochs() -> None:
     treats a missing `work_epoch` as equal to `epoch`. This sets the DB field itself to the case's/job's own current
     `epoch`, which changes no behaviour (a case/job whose `work_epoch` already equals its `epoch` is exactly the
     pre-migration invariant) and revives nothing: status, leases and history are left untouched."""
-    async for case in db.investigation_cases.find({"work_epoch": {"$exists": False}, "epoch": {"$type": "number"}}, {"_id": 1, "epoch": 1}):
+    async for case in db.investigation_cases.find({"work_epoch": {"$exists": False}, "epoch": {"$exists": True}}, {"_id": 1, "epoch": 1}):
+        if not isinstance(case.get("epoch"), str):
+            continue
         await db.investigation_cases.update_one({"_id": case["_id"], "work_epoch": {"$exists": False}},
                                                 {"$set": {"work_epoch": case["epoch"]}})
-    async for job in db.investigation_jobs.find({"work_epoch": {"$exists": False}, "epoch": {"$type": "number"}}, {"_id": 1, "epoch": 1}):
+    async for job in db.investigation_jobs.find({"work_epoch": {"$exists": False}, "epoch": {"$exists": True}}, {"_id": 1, "epoch": 1}):
+        if not isinstance(job.get("epoch"), str):
+            continue
         await db.investigation_jobs.update_one({"_id": job["_id"], "work_epoch": {"$exists": False}},
                                                {"$set": {"work_epoch": job["epoch"]}})
 
@@ -375,7 +379,7 @@ async def settle_write(owner: str, case_id: str, epoch: str, collection, selecto
 async def sweep_tombstones() -> int:
     """Removes content rows whose case epoch no longer matches a live case (late writers that never compensated)."""
     removed = 0
-    complete = {"owner_id": {"$type": "string"}, "case_id": {"$type": "string"}, "epoch": {"$type": "number"}, "expires_at": {"$exists": True}}
+    complete = {"owner_id": {"$type": "string"}, "case_id": {"$type": "string"}, "epoch": {"$type": "string"}, "expires_at": {"$exists": True}}
     async for case in db.investigation_cases.find(complete, {"_id": 0, "owner_id": 1, "case_id": 1, "epoch": 1, "deleted": 1, "expires_at": 1}):
         live = not case.get("deleted") and utc(case["expires_at"]) > now_utc()
         selector = {"owner_id": case["owner_id"], "case_id": case["case_id"], **({"epoch": {"$exists": True, "$ne": case["epoch"]}} if live else {})}
@@ -488,12 +492,14 @@ async def purge_evidence_content(owner: str, case_id: str, evidence_id: str) -> 
 
 # ------------------------------------------------------------------ jobs / events
 async def create_job(owner: str, case: dict, turn_id: str, key_digest: str, payload_digest: str, kind: str, payload: dict) -> dict:
+    from services.higgins import provider
     now = now_utc()
     deadline = min(utc(case["expires_at"]), now + timedelta(seconds=WORK_SECONDS))
     doc = {"owner_id": owner, "case_id": case["case_id"], "job_id": str(uuid.uuid4()), "turn_id": turn_id, "idempotency_key_digest": key_digest,
            "payload_digest": payload_digest, "kind": kind, "status": "queued", "attempt": 0, "created_at": now, "started_at": None, "deadline_at": deadline,
            "retry_at": None, "lease_until": None, "fence": None, "epoch": case["epoch"], "work_epoch": case.get("work_epoch", case["epoch"]), "input_revision": case["revision"], "last_sequence": 0,
            "failure": None, "payload_ciphertext": enc_json(payload), "checkpoint_ciphertext": None, "checkpoint_revision": 0,
+           "provider_model": provider.TEXT_MODEL,
            "consumed_device_request_ids": [],
            "expires_at": utc(case["expires_at"])}
     await db.investigation_jobs.insert_one(dict(doc))

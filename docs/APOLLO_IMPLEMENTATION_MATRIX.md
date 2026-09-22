@@ -1,3 +1,18 @@
+## Consolidated architecture mandate — Milestone 2 closure (2026-09-22)
+
+All six M2 register items (`C05`, `C06`, `C08–C11`) are implemented in source.
+
+| ID | Outcome | Primary evidence |
+|---|---|---|
+| C05 | ✅ Durable Text intake | Android captures the fullest notification representation under a 250k admission bound, uses source+revision identity, serialised encrypted queue mutation, explicit expiry/overflow/key-failure records and WorkManager delivery. Native and foreground delivery share one idempotent backend intake; acknowledgement follows durable case/job acceptance. |
+| C06 | ✅ One Gmail pipeline | Manual and monitored checks use the same leased mailbox intake, message receipt identity and page cursor. Cursor advances only after page acceptance; one lease owns OAuth refresh/scan work, and status reports attempt/success/error/cursor state. |
+| C08 | ✅ Evidence fidelity | Mixed PDF pages with material images are rendered even when text exists; DOCX embedded images are extracted under expanded-size/secret admission and undecodable drawings become explicit gaps. Complete screenshot transcription is no longer clipped after provider output. |
+| C09 | ✅ Restart-safe coordinator | URL reads retain an immutable source snapshot for all cursors, source IDs remain attached, jobs persist and reuse their original Gemini model, and one model-free idempotent projector maps accepted responses into Patrol after foreground or background completion. |
+| C10 | ✅ Honest app/device provenance | Android no longer trusts vendor package prefixes, supports exact visible package identifiers, and separates requested, granted, special-access and user-reported permission facts with observation basis. |
+| C11 | ✅ First-class Saved Reports | Patrol links to independent list/detail screens with historical labeling, stable keyset pagination, persistent reopen/speech, and owner-scoped deletion of report plus speech scope/cache. |
+
+Permitted verification: `tsc --noEmit`, ESLint, 53 provider-disabled M2 pytest tests and `cargo check` pass. No Playwright/scenario agent/live Gemini/managed AI key was used. Per the owner's test boundary, Android Gradle/Kotlin compilation was not invoked; native source verification is therefore limited to repository review plus TypeScript bridge contracts.
+
 ## Consolidated architecture mandate — Milestone 1 closure (2026-09-22)
 
 The M1 register contains nine IDs (`C01–C04`, `C07`, `C12`, `C16–C18`); all nine are implemented in source. The earlier handoff's “eight findings” count was incomplete, so no listed M1 item was omitted.

@@ -59,7 +59,8 @@ class AppDeviceSignals(private val ctx: Context) {
 
   /** SdkAppAssessment for a catalog package (or catalog display name). Null when Apollo cannot see that app. */
   fun appAssessmentJson(nameOrPackage: String): String {
-    val pkg = AppDeviceCatalog.resolveCatalogPackage(nameOrPackage) ?: return "null"
+    val entered = nameOrPackage.trim().lowercase()
+    val pkg = AppDeviceCatalog.resolveCatalogPackage(entered) ?: entered.takeIf { it.matches(Regex("[a-zA-Z0-9_]+(?:\\.[a-zA-Z0-9_]+)+")) } ?: return "null"
     val info = try { pm.getPackageInfo(pkg, PackageManager.GET_PERMISSIONS) } catch (_: Exception) { return "null" }
     val installing: String? = try {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) pm.getInstallSourceInfo(pkg).installingPackageName else @Suppress("DEPRECATION") pm.getInstallerPackageName(pkg)
@@ -72,6 +73,10 @@ class AppDeviceSignals(private val ctx: Context) {
       .put("installSource", AppDeviceCatalog.installSource(installing))
       .put("installedAt", Instant.ofEpochMilli(info.firstInstallTime).toString())
       .put("permissions", JSONArray(AppDeviceCatalog.plainPermissions(info.requestedPermissions)))
+      .put("requestedPermissions", JSONArray(AppDeviceCatalog.plainPermissions(info.requestedPermissions)))
+      .put("grantedPermissions", JSONArray(AppDeviceCatalog.permissionStates(info.requestedPermissions, info.requestedPermissionsFlags).filter { it.optBoolean("granted", false) }.map { it.getString("permission") }))
+      .put("permissionStates", JSONArray(AppDeviceCatalog.permissionStates(info.requestedPermissions, info.requestedPermissionsFlags)))
+      .put("specialAccessStates", JSONArray(AppDeviceCatalog.specialAccessStates(ctx, pkg, info.applicationInfo?.uid ?: -1)))
       .put("remoteAccessCapability", AppDeviceCatalog.isRemoteAccessTool(pkg))
       .put("network", JSONObject.NULL)
       .toString()

@@ -1,4 +1,6 @@
 import FileDown from "lucide-react-native/icons/file-down";
+import Library from "lucide-react-native/icons/library";
+import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
 import { FlatList, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -40,6 +42,7 @@ export default function Patrol() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { events, deviceId, showToast } = useApollo();
+  const router = useRouter();
   const [filter, setFilter] = useState<Filter>("all");
   const onExport = async () => {
     if (events.length === 0) { showToast("Nothing to export yet.", "neutral"); return; }
@@ -67,6 +70,7 @@ export default function Patrol() {
         <ScreenHeader title="Patrol" testID="patrol-header" right={
           <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}>
             <Pill tone="neutral" label={`${events.length} events`} testID="patrol-count" />
+            <Pressable testID="patrol-saved-reports-button" accessibilityRole="button" accessibilityLabel="Open saved reports" onPress={() => router.push("/saved-reports")} style={s.iconBtn}><Library size={20} color={colors.onSurface} /></Pressable>
             <Pressable testID="patrol-export-button" accessibilityRole="button" accessibilityLabel="Export Patrol as PDF" onPress={onExport} style={s.iconBtn}><FileDown size={20} color={colors.onSurface} /></Pressable>
           </View>
         } />

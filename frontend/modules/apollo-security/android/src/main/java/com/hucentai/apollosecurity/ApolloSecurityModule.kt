@@ -288,6 +288,10 @@ class ApolloSecurityModule : Module() {
       for (index in 0 until ids.length()) values.add(ids.optString(index))
       JSONObject().put("acknowledged", ApolloSmsListenerService.acknowledge(ctx, values)).toString()
     }
+    AsyncFunction("configureTextBackgroundHandoff") { configJson: String ->
+      val config = JSONObject(configJson)
+      JSONObject().put("configured", ApolloSmsListenerService.configureHandoff(ctx, config.getString("backendUrl"), config.getString("deviceToken"))).toString()
+    }
     AsyncFunction("openSmsListenerSettings") {
       val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
       appContext.currentActivity?.startActivity(intent) ?: ctx.startActivity(intent)

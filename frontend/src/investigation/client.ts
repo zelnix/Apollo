@@ -47,7 +47,8 @@ export function confirmSettingsPlan(caseId: string, planId: string, confirmed: b
   return apiPost<{ planId: string; confirmed: boolean; checkedAt: string; evidenceId: string; verification: "user_reported"; explanation: string }>(`/investigations/${caseId}/settings-plan/${planId}/confirm`, "investigation", { confirmed });
 }
 export function saveReport(caseId: string, responseRevision: number) { return apiPost<{ reportId: string }>(`/investigations/${caseId}/reports`, "investigation", { responseRevision }); }
-export function listReports(cursor = 0, limit = 25) { return apiGet<{ items: SavedReport[]; total: number; nextCursor: number | null }>(`/investigations/reports/list?cursor=${cursor}&limit=${limit}`); }
+export function listReports(cursor?: string | null, limit = 25) { return apiGet<{ items: SavedReport[]; total: number; nextCursor: string | null }>(`/investigations/reports/list?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`); }
+export function getReport(reportId: string) { return apiGet<{ report: SavedReport }>(`/investigations/reports/${encodeURIComponent(reportId)}`); }
 export function deleteReport(reportId: string) { return apiDelete<void>(`/investigations/reports/${reportId}`); }
 export function addTextEvidence(caseId: string, expectedRevision: number, text: string, label: string) {
   return apiPost<{ evidence: EvidenceItem; caseRevision: number }>(`/investigations/${caseId}/evidence`, "investigation", { expectedRevision, clientItemId: Crypto.randomUUID(), parentId: null, kind: "text", text, label });

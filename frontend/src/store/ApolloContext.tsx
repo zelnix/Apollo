@@ -9,7 +9,7 @@ import { AppState, Platform } from "react-native";
 
 import { API_BASE, apiDelete, apiGet, apiPost, apiPut } from "@/src/api/client";
 import { getBackendHealth, onBackendHealth, probeBackend } from "@/src/api/backendHealth";
-import { getDeviceIdentity, getIdentityResetReason, onIdentityReset, registerDeviceIdentity } from "@/src/auth/deviceIdentity";
+import { getDeviceIdentity, getDeviceToken, getIdentityResetReason, onIdentityReset, registerDeviceIdentity } from "@/src/auth/deviceIdentity";
 import { visibilityFrom } from "@/src/domain/capability";
 import { assessConnection } from "@/src/domain/connection";
 import { decide } from "@/src/domain/decision";
@@ -17,8 +17,7 @@ import { parseIntelResult } from "@/src/domain/intelContract";
 import { minimalIndicator } from "@/src/domain/privacy";
 import { FAILURE_MESSAGE } from "@/src/domain/serviceHealth";
 import { markCheckDone } from "@/src/store/checkCompletion";
-import { analyseEmail } from "@/src/domain/emailAnalysis";
-import { evaluateLinkGuardFindings, extractAnchorsFromPlainText, type LinkAnchor } from "@/src/domain/linkGuard";
+import { evaluateLinkGuardFindings, extractAnchorsFromPlainText } from "@/src/domain/linkGuard";
 import { analyseMessage, type MessageAnalysis } from "@/src/domain/messageAnalysis";
 import type { PageAnalysis } from "@/src/domain/pageAnalysis";
 import { analyseCall, type CallAnalysis, type CallInput } from "@/src/domain/callAnalysis";
@@ -42,8 +41,7 @@ import { storage } from "@/src/utils/storage";
 import { shouldBypassSetup } from "@/src/testing/setupBypass";
 import { isInvestigationResult, patrolSafeSummary, type InvestigationResult } from "@/src/domain/investigation";
 import { RECOVERY_STEPS, type RecoveryKind } from "@/src/domain/recovery";
-import { startManagedOperation } from "@/src/investigation/transferManager";
-import { rememberCaseForEvent } from "@/src/investigation/caseIndex";
+import { getNativeModule } from "@/src/security/nativeBridge";
 import { runProtectionHealthCheck } from "@/src/protection/healthCoordinator";
 import type { HealthTrigger } from "@/src/protection/healthTypes";
 
@@ -97,7 +95,7 @@ interface ApolloContextValue {
   /** Gmail read-only connection (Gate 1 add-on): fetches recent inbox messages via the backend
    * (never stored server-side), runs each through the same on-device email engine as the paste
    * flow, files Patrol events for anything non-resting, then discards the raw content. */
-  scanGmailInbox(): Promise<{ checked: number; flagged: PatrolEvent[] }>;
+  scanGmailInbox(): Promise<{ checked: number; accepted: number }>;
   recordRecovery(event: PatrolEvent, kind: RecoveryKind): Promise<void>;
   /** Gate 3 Phase B: merge a page-screenshot analysis into an existing link event, or create a new website event. */
   recordPageAnalysis(pa: PageAnalysis, existing: PatrolEvent | null): Promise<PatrolEvent | null>;
@@ -560,7 +558,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         const items = await MessagingSdk.getRecentMessageSecurityEvents();
         for (const raw of items) {
           if (cancelled) return;
-          const item = raw as { id?: unknown; status?: unknown; droppedCount?: unknown; sender?: unknown; text?: unknown };
+          const item = raw as { id?: unknown; status?: unknown; droppedCount?: unknown; sender?: unknown; text?: unknown; sourceKey?: unknown; revisionDigest?: unknown; capturedAt?: unknown; expiresAt?: unknown; contentComplete?: unknown; originalCharacters?: unknown };
           const id = typeof item?.id === "string" ? item.id : "";
           if (item.status === "overflow") {
             const dropped = typeof item.droppedCount === "number" ? item.droppedCount : 0;
@@ -568,20 +566,23 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
             if (id) await MessagingSdk.acknowledgeMessageSecurityEvents([id]);
             continue;
           }
+          if (item.status === "queue_error") {
+            showToast("Apollo could not read its protected message queue. Open Support before relying on automatic text checks.", "growling");
+            continue;
+          }
           const text = typeof item?.text === "string" ? item.text : "";
           if (!id || !text.trim()) continue;
-          const sender = typeof item?.sender === "string" ? item.sender : "";
-          // The native encrypted inbox is acknowledged only after this exact operation has a durable backend case.
-          const outcome = await checkMessage(sender, text);
-          const operation = await startManagedOperation(`sms-notification-${id}`, {
-            gate: "text", question: "Investigate this new text-message notification, verify its claims and links, and tell me the safest next action.",
-            submissions: [{ clientItemId: `sms-${id}`, kind: "text", value: `From: ${sender}\n${text}`, label: "opt-in text notification" }],
-            initialFindingRefs: [], initialFindings: outcome.analysis.signalLabels,
+          const sender = typeof item.sender === "string" ? item.sender : "";
+          await apiPost("/investigations/background/text", "investigation", {
+            submissionId: id, sourceKey: typeof item.sourceKey === "string" ? item.sourceKey : id,
+            revisionDigest: typeof item.revisionDigest === "string" ? item.revisionDigest : id,
+            sender, text, capturedAt: typeof item.capturedAt === "string" ? item.capturedAt : new Date().toISOString(),
+            expiresAt: typeof item.expiresAt === "string" ? item.expiresAt : new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+            contentComplete: item.contentComplete !== false,
+            originalCharacters: typeof item.originalCharacters === "number" ? item.originalCharacters : text.length,
           });
-          if (!operation.caseData || !["submitted", "settled"].includes(operation.phase)) continue;
-          if (outcome.event) await rememberCaseForEvent(outcome.event.event_id, operation.caseData.id);
           await MessagingSdk.acknowledgeMessageSecurityEvents([id]);
-          if (outcome.event) showToast(`Apollo assessed a text message: ${outcome.event.headline}`, outcome.event.state);
+          showToast("Apollo is investigating a captured text. The result will appear in Patrol.", "neutral");
         }
       } catch { /* native module unavailable or listener not granted — nothing to drain */ }
     };
@@ -589,55 +590,23 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const timer = setInterval(() => void poll(), lowPower ? 120000 : 45000);
     const sub = AppState.addEventListener("change", (st) => { if (st === "active") void poll(); });
     return () => { cancelled = true; clearInterval(timer); sub.remove(); };
-  }, [checkMessage, showToast, lowPower]);
+  }, [showToast, lowPower]);
 
-  // Runs each OAuth-fetched Gmail message through the on-device email
-  // engine + Email Gate's automatic pre-click link assessment, filing a Patrol event for anything
-  // non-resting. `messages` is only ever a local, request-scoped array — nothing here is persisted
-  // beyond the Patrol event summary (matches the "checked and discarded" backend contract).
-  const _scanInboxMessages = useCallback(async (messages: { id: string; from: string; subject: string; date: string; body: string; links: LinkAnchor[] }[], sourceLabel: string): Promise<{ checked: number; flagged: PatrolEvent[] }> => {
-    if (!deviceId) return { checked: 0, flagged: [] };
-    const flagged: PatrolEvent[] = [];
-    for (const m of messages) {
-      let a = analyseEmail(m.body, { from: m.from, subject: m.subject });
-      let urls: MessageUrlResult[] = [];
-      let assessment: InvestigationResult | null = null;
-      try {
-        const r = await apiPost<{ urls?: unknown; assessment?: unknown }>("/message/analyse", "message_check", {
-          device_id: deviceId, sender: m.from || "", text: `${m.subject}\n${m.body}`, urls: a.urls,
-          local_state: a.state, scenario: a.scenario, signals: a.signalLabels.slice(0, 20), claimed_brand: a.claimedBrand, second_opinion: false,
-        });
-        urls = Array.isArray(r.urls) ? (r.urls as MessageUrlResult[]) : [];
-        assessment = isInvestigationResult(r.assessment) ? r.assessment : null;
-      } catch { /* on-device findings remain available if the purpose-limited service is offline */ }
-      // Email Gate: automatic pre-click assessment — redirect chain + RDAP domain-info (already
-      // inside `urls`) plus real HTML anchor mismatch detection from the Gmail API
-      // actual <a> pairs, unlike pasted plain text). Can only raise state to growling/barking, never biting.
-      const guard = evaluateLinkGuardFindings(urls, m.links ?? []);
-      if (STATE_RANK[guard.state] > STATE_RANK[a.state]) a = { ...a, state: guard.state };
-      if (guard.why.length) a = { ...a, why: [...a.why, ...guard.why] };
-      if (a.state === "resting") continue;
-      const event = await upsertEvent({
-        event_id: Crypto.randomUUID(), device_id: deviceId, category: "email", state: a.state, status: "active",
-        headline: `${sourceLabel}: ${assessment?.higgins.headline ?? a.title}`,
-        what_happened: patrolSafeSummary(assessment?.higgins.what_was_found[0] ?? a.verdict),
-        why: assessment?.findings.map((finding) => finding.title).slice(0, 6) ?? a.why,
-        what_to_do: assessment?.higgins.next_action ?? a.recommendation,
-        indicator_host: a.lookalikeUrls[0] ? a.lookalikeUrls[0].replace(/^https?:\/\//i, "").split("/")[0] : a.senderDomain,
-        indicator_digest: null, local_indicator: a.parsed.subject, verified_block: false, adapter_label: securityAdapter.label,
-        occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: a.claimedBrand, scenario: a.scenario,
-        supporting_references: assessment?.sources.filter((source) => source.url).map((source) => ({ label: source.label, url: source.url! })).slice(0, 6),
-      });
-      flagged.push(event);
-    }
-    return { checked: messages.length, flagged };
-  }, [deviceId, upsertEvent]);
+  useEffect(() => {
+    if (Platform.OS !== "android" || !deviceId) return;
+    void getDeviceToken().then((deviceToken) => {
+      const module = getNativeModule();
+      if (!deviceToken || !module?.configureTextBackgroundHandoff) return;
+      return module.configureTextBackgroundHandoff(JSON.stringify({ backendUrl: API_BASE, deviceToken }));
+    }).catch(() => undefined);
+  }, [deviceId]);
 
-  const scanGmailInbox = useCallback(async (): Promise<{ checked: number; flagged: PatrolEvent[] }> => {
-    if (!deviceId) return { checked: 0, flagged: [] };
-    const messages = await apiPost<{ id: string; from: string; subject: string; date: string; body: string; links: LinkAnchor[] }[]>("/gmail/scan", "gmail_scan", { device_id: deviceId });
-    return _scanInboxMessages(messages, "Gmail");
-  }, [deviceId, _scanInboxMessages]);
+  const scanGmailInbox = useCallback(async (): Promise<{ checked: number; accepted: number }> => {
+    if (!deviceId) return { checked: 0, accepted: 0 };
+    const result = await apiPost<{ status: string; checked: number; accepted: number; nextCursor: string | null }>("/gmail/scan", "gmail_scan", { device_id: deviceId });
+    if (result.status === "busy") throw new Error("A Gmail assessment is already in progress.");
+    return { checked: result.checked, accepted: result.accepted };
+  }, [deviceId]);
 
   const recordPageAnalysis = useCallback(async (pa: PageAnalysis, existing: PatrolEvent | null): Promise<PatrolEvent | null> => {
     if (existing) {

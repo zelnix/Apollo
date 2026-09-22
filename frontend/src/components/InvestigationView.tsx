@@ -44,7 +44,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
   const [confirmablePlanId, setConfirmablePlanId] = useState<string | null>(null);
   const [reports, setReports] = useState<investigationApi.SavedReport[]>([]);
   const [reportsOpen, setReportsOpen] = useState(false);
-  const [reportNext, setReportNext] = useState<number | null>(null);
+  const [reportNext, setReportNext] = useState<string | null>(null);
   const [reportNote, setReportNote] = useState<string | null>(null);
   // Fresh recheck after returning from a Settings destination opened for THIS case (recheck.ts completes the pending attempt).
   useEffect(() => onRecheck((o) => {

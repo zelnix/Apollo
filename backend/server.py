@@ -28,7 +28,7 @@ from core.db import client, db, now_utc
 from core.models import BlocklistEntry
 from core.privacy_boundary import PrivacyBoundary
 from services.patrol_policy import ensure_evidence_receipt_indexes
-from services.mailbox_monitor import ensure_indexes as ensure_mailbox_monitor_indexes, mailbox_monitor_loop
+from services.mailbox_monitor import ensure_indexes as ensure_mailbox_monitor_indexes, supervise_mailbox_monitor
 from services.maintenance import ensure_indexes as ensure_maintenance_indexes, supervise_maintenance
 from services.higgins.retention import migrate_and_index
 from services.higgins import repository as investigation_repository
@@ -81,7 +81,7 @@ async def lifespan(_: FastAPI):
         entry = BlocklistEntry(host=host, threat_type=threat, reason=reason, added_at=now_utc())
         await db.blocklist.update_one({"host": host}, {"$setOnInsert": entry.to_mongo()}, upsert=True)
     loop_task = asyncio.create_task(weekly_checkin_loop())
-    mailbox_task = asyncio.create_task(mailbox_monitor_loop())
+    mailbox_task = asyncio.create_task(supervise_mailbox_monitor(), name="apollo-mailbox-supervisor")
     async def push_receipt_loop():
         while True:
             try:

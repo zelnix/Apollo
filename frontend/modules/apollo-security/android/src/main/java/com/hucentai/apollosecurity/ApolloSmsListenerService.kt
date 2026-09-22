@@ -1,194 +1,174 @@
 package com.hucentai.apollosecurity
 
 import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.provider.Settings
-import android.provider.Telephony
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
 import android.util.Base64
+import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import org.json.JSONArray
 import org.json.JSONObject
+import java.nio.charset.StandardCharsets
 import java.security.KeyStore
-import java.util.UUID
+import java.security.MessageDigest
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-/**
- * Text Guard — Android NotificationListenerService.
- *
- * Truth model: Apollo NEVER reads the SMS content provider (no READ_SMS permission is requested or
- * used anywhere in this app). Instead, with the person's explicit, revocable consent — granted one
- * screen away in Settings, exactly like Accessibility or any other "special access" — Apollo observes
- * the TEXT of a notification the instant your default messaging app posts it (the same content a lock
- * screen preview would show) and queues it for the SAME on-device Text & Message engine + Email/Text
- * Guard link assessment already used for a pasted message (see ApolloContext.checkMessage). Nothing in
- * THIS file ever decides a verdict — it only captures metadata and, for a narrow set of obvious markers,
- * fires an immediate local heuristic nudge (never a verdict) so the person isn't left waiting for the
- * app to be reopened before hearing anything at all.
- */
+/** Opt-in notification intake with encrypted, non-destructive mailbox semantics. */
 class ApolloSmsListenerService : NotificationListenerService() {
+  override fun onNotificationPosted(sbn: StatusBarNotification?) {
+    if (sbn == null || !isMessageNotification(sbn)) return
+    val extras = sbn.notification.extras
+    val candidates = mutableListOf<String>()
+    extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.let(candidates::add)
+    extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()?.let(candidates::add)
+    extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)?.joinToString("\n")?.let(candidates::add)
+    @Suppress("DEPRECATION")
+    (extras.get(Notification.EXTRA_MESSAGES) as? Array<*>)?.mapNotNull { (it as? android.os.Bundle)?.getCharSequence("text")?.toString() }
+      ?.joinToString("\n")?.let(candidates::add)
+    val exposed = candidates.maxByOrNull { it.length }?.trim().orEmpty()
+    if (exposed.isBlank()) return
+    val sender = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim().orEmpty()
+    enqueue(this, sbn.key ?: "${sbn.packageName}:${sbn.id}", sbn.packageName, sender, exposed)
+  }
+
+  private fun isMessageNotification(sbn: StatusBarNotification): Boolean {
+    val category = sbn.notification.category
+    if (category == Notification.CATEGORY_MESSAGE) return true
+    return sbn.packageName in setOf("com.google.android.apps.messaging", "com.samsung.android.messaging")
+  }
 
   companion object {
-    private const val PREFS = "apollo_textguard"
-    private const val KEY_QUEUE = "captured_queue"
-    private const val KEY_DROPPED = "captured_queue_dropped"
-    private const val KEY_ALIAS = "apollo_textguard_notification_queue"
-    private const val KEY_SEEN_KEYS = "seen_notification_keys"
-    private const val MAX_QUEUE = 20
-    private const val MAX_SEEN = 200
-    private const val CHANNEL_ID = "apollo_text_guard"
-    private const val NOTIFY_ID = 20260601
+    private const val PREFS = "apollo_sms_guard"
+    private const val QUEUE = "queue_v2"
+    private const val OVERFLOW = "overflow_count"
+    private const val QUEUE_ERRORS = "queue_error_count"
+    private const val KEY_ALIAS = "apollo_sms_guard_aes_v1"
+    private const val MAX_ITEMS = 64
+    private const val MAX_TEXT = 250_000
+    private val lock = Any()
 
-    /** Protected durable inbox. Reading never acknowledges; JS removes exact IDs only after shared-case submission. */
-    fun readQueue(ctx: Context): JSONArray {
-      val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-      val encrypted = prefs.getString(KEY_QUEUE, null)
-      val dropped = prefs.getInt(KEY_DROPPED, 0)
-      val queue = try { encrypted?.let { JSONArray(decrypt(it)) } ?: JSONArray() } catch (_: Exception) { JSONArray() }
-      if (dropped > 0) queue.put(JSONObject().put("id", "__overflow__").put("status", "overflow").put("droppedCount", dropped))
-      return queue
+    fun isEnabled(ctx: Context): Boolean {
+      val flat = Settings.Secure.getString(ctx.contentResolver, "enabled_notification_listeners") ?: return false
+      val own = ComponentName(ctx, ApolloSmsListenerService::class.java)
+      return flat.split(':').any { ComponentName.unflattenFromString(it) == own }
     }
 
-    fun acknowledge(ctx: Context, ids: Set<String>): Int {
-      val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-      val queue = try { prefs.getString(KEY_QUEUE, null)?.let { JSONArray(decrypt(it)) } ?: JSONArray() } catch (_: Exception) { JSONArray() }
-      val retained = JSONArray(); var removed = 0
+    fun readQueue(ctx: Context): JSONArray = synchronized(lock) {
+      try {
+        val queue = load(ctx)
+        if (purgeExpired(queue)) save(ctx, queue)
+        val overflow = prefs(ctx).getInt(OVERFLOW, 0)
+        if (overflow > 0 && (0 until queue.length()).none { queue.optJSONObject(it)?.optString("status") == "overflow" }) {
+          queue.put(JSONObject().put("id", "overflow-${Instant.now().toEpochMilli()}").put("status", "overflow").put("droppedCount", overflow))
+          prefs(ctx).edit().putInt(OVERFLOW, 0).commit()
+          save(ctx, queue)
+        }
+        queue
+      } catch (exc: Exception) {
+        recordQueueError(ctx)
+        JSONArray().put(JSONObject().put("id", "queue-error").put("status", "queue_error")
+          .put("reason", if (exc is java.security.KeyStoreException) "key_unavailable" else "decrypt_failed")
+          .put("failureCount", prefs(ctx).getInt(QUEUE_ERRORS, 0)))
+      }
+    }
+
+    fun acknowledge(ctx: Context, ids: Set<String>): Int = synchronized(lock) {
+      if (ids.isEmpty()) return@synchronized 0
+      val queue = try { load(ctx) } catch (_: Exception) { recordQueueError(ctx); return@synchronized 0 }
+      val kept = JSONArray(); var removed = 0
       for (index in 0 until queue.length()) {
         val item = queue.optJSONObject(index) ?: continue
-        if (item.optString("id") in ids) removed++ else retained.put(item)
+        if (item.optString("id") in ids) removed++ else kept.put(item)
       }
-      val edit = prefs.edit()
-      if (retained.length() == 0) edit.remove(KEY_QUEUE) else edit.putString(KEY_QUEUE, encrypt(retained.toString()))
-      if ("__overflow__" in ids) edit.remove(KEY_DROPPED)
-      edit.commit()
-      return removed
+      if (removed > 0 && !save(ctx, kept)) return@synchronized 0
+      removed
     }
 
+    fun configureHandoff(ctx: Context, backendUrl: String, token: String): Boolean = synchronized(lock) {
+      val ok = prefs(ctx).edit().putString("backend_url", backendUrl.trimEnd('/')).putString("device_token", encrypt(ctx, token)).commit()
+      if (ok) schedule(ctx)
+      ok
+    }
+
+    fun schedule(ctx: Context) {
+      val request = OneTimeWorkRequestBuilder<ApolloTextHandoffWorker>()
+        .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()).build()
+      WorkManager.getInstance(ctx).enqueueUniqueWork("apollo-text-handoff", ExistingWorkPolicy.KEEP, request)
+    }
+
+    internal fun backendUrl(ctx: Context): String? = prefs(ctx).getString("backend_url", null)
+    internal fun deviceToken(ctx: Context): String? = prefs(ctx).getString("device_token", null)?.let { decrypt(ctx, it) }
+
+    private fun enqueue(ctx: Context, sourceKey: String, sourcePackage: String, senderRaw: String, textRaw: String) = synchronized(lock) {
+      val capturedAt = Instant.now(); val expiresAt = capturedAt.plus(15, ChronoUnit.MINUTES)
+      val complete = textRaw.length <= MAX_TEXT
+      val text = if (complete) textRaw else textRaw.substring(0, MAX_TEXT)
+      val sender = senderRaw.take(2_048)
+      val revision = sha256("$sender\n$textRaw")
+      val id = sha256("$sourceKey:$revision")
+      val queue = try { load(ctx) } catch (_: Exception) { recordQueueError(ctx); return@synchronized }
+      purgeExpired(queue)
+      if ((0 until queue.length()).any { queue.optJSONObject(it)?.optString("id") == id }) { schedule(ctx); return@synchronized }
+      queue.put(JSONObject().put("id", id).put("status", "pending").put("sourceKey", sourceKey).put("sourcePackage", sourcePackage)
+        .put("revisionDigest", revision).put("sender", sender).put("text", text).put("capturedAt", capturedAt.toString())
+        .put("expiresAt", expiresAt.toString()).put("contentComplete", complete).put("originalCharacters", textRaw.length))
+      var dropped = 0
+      while (queue.length() > MAX_ITEMS) { queue.remove(0); dropped++ }
+      val editor = prefs(ctx).edit()
+      if (dropped > 0) editor.putInt(OVERFLOW, prefs(ctx).getInt(OVERFLOW, 0) + dropped)
+      if (save(ctx, queue) && editor.commit()) {
+        schedule(ctx)
+        val intent = Intent(ctx, ApolloVpnGuardReceiver::class.java).setAction("com.hucentai.apollosecurity.SECURITY_NUDGE")
+        try { ctx.sendBroadcast(intent) } catch (_: Exception) { }
+      } else recordQueueError(ctx)
+    }
+
+    private fun purgeExpired(queue: JSONArray): Boolean {
+      val now = Instant.now(); val kept = JSONArray(); var changed = false
+      for (index in 0 until queue.length()) {
+        val item = queue.optJSONObject(index) ?: continue
+        val expired = try { item.has("expiresAt") && Instant.parse(item.getString("expiresAt")).isBefore(now) } catch (_: Exception) { true }
+        if (expired) changed = true else kept.put(item)
+      }
+      if (changed) { while (queue.length() > 0) queue.remove(0); for (index in 0 until kept.length()) queue.put(kept.get(index)) }
+      return changed
+    }
+
+    private fun prefs(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private fun load(ctx: Context): JSONArray = prefs(ctx).getString(QUEUE, null)?.let { JSONArray(decrypt(ctx, it)) } ?: JSONArray()
+    private fun save(ctx: Context, value: JSONArray): Boolean = prefs(ctx).edit().putString(QUEUE, encrypt(ctx, value.toString())).commit()
+    private fun recordQueueError(ctx: Context) { prefs(ctx).edit().putInt(QUEUE_ERRORS, prefs(ctx).getInt(QUEUE_ERRORS, 0) + 1).commit() }
+    private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256").digest(value.toByteArray()).joinToString("") { "%02x".format(it) }
+
+    internal fun encrypt(ctx: Context, plain: String): String {
+      val cipher = Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.ENCRYPT_MODE, key())
+      return Base64.encodeToString(cipher.iv + cipher.doFinal(plain.toByteArray(StandardCharsets.UTF_8)), Base64.NO_WRAP)
+    }
+    internal fun decrypt(ctx: Context, encoded: String): String {
+      val all = Base64.decode(encoded, Base64.NO_WRAP); val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+      cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, all.copyOfRange(0, 12)))
+      return String(cipher.doFinal(all.copyOfRange(12, all.size)), StandardCharsets.UTF_8)
+    }
     private fun key(): SecretKey {
       val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
       (store.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
-      return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").apply {
-        init(KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
-          .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build())
+      return KeyGenerator.getInstance("AES", "AndroidKeyStore").apply {
+        init(android.security.keystore.KeyGenParameterSpec.Builder(KEY_ALIAS,
+          android.security.keystore.KeyProperties.PURPOSE_ENCRYPT or android.security.keystore.KeyProperties.PURPOSE_DECRYPT)
+          .setBlockModes(android.security.keystore.KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(android.security.keystore.KeyProperties.ENCRYPTION_PADDING_NONE).build())
       }.generateKey()
-    }
-
-    private fun encrypt(value: String): String {
-      val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
-      return Base64.encodeToString(cipher.iv, Base64.NO_WRAP) + "." + Base64.encodeToString(cipher.doFinal(value.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
-    }
-
-    private fun decrypt(value: String): String {
-      val parts = value.split('.', limit = 2); require(parts.size == 2)
-      val iv = Base64.decode(parts[0], Base64.NO_WRAP); val payload = Base64.decode(parts[1], Base64.NO_WRAP)
-      val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv)) }
-      return String(cipher.doFinal(payload), Charsets.UTF_8)
-    }
-
-    /** True only when Apollo itself is listed as an enabled notification-listener component —
-     * mirrors the same Settings.Secure parsing AppDeviceCatalog.thirdPartyServices() uses to report
-     * OTHER apps' listener access, applied here to Apollo's own. Never cached; read live. */
-    fun isEnabled(ctx: Context): Boolean {
-      val flat = Settings.Secure.getString(ctx.contentResolver, "enabled_notification_listeners") ?: return false
-      return flat.split(':').any { it.substringBefore('/').trim() == ctx.packageName }
-    }
-  }
-
-  /** Restricted to the device's default SMS app plus the two catalogued messaging apps
-   * (AppDeviceCatalog.MESSENGERS) — deliberately excludes WhatsApp/Telegram/Messenger: the user asked
-   * Apollo to scan SMS, not every chat app it happens to have notification access to. */
-  private fun allowedPackages(): Set<String> {
-    val default = try { Telephony.Sms.getDefaultSmsPackage(this) } catch (_: Exception) { null }
-    val known = setOf("com.google.android.apps.messaging", "com.samsung.android.messaging")
-    return known + setOfNotNull(default)
-  }
-
-  override fun onNotificationPosted(sbn: StatusBarNotification) {
-    try {
-      if (sbn.packageName !in allowedPackages()) return
-      // Group/summary notifications ("3 new messages") carry no useful body — the real per-message
-      // notification for the same thread is posted separately and captured on its own.
-      if (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY != 0) return
-      val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-      val seen = (prefs.getStringSet(KEY_SEEN_KEYS, emptySet()) ?: emptySet()).toMutableSet()
-      if (seen.contains(sbn.key)) return
-      val extras = sbn.notification.extras
-      val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim().orEmpty()
-      val text = (extras.getCharSequence(Notification.EXTRA_TEXT) ?: extras.getCharSequence(Notification.EXTRA_BIG_TEXT))?.toString()?.trim().orEmpty()
-      if (text.isBlank()) return
-
-      seen.add(sbn.key)
-      val trimmedSeen = if (seen.size > MAX_SEEN) seen.toList().takeLast(MAX_SEEN).toSet() else seen
-      prefs.edit().putStringSet(KEY_SEEN_KEYS, trimmedSeen).apply()
-
-      val item = JSONObject()
-        .put("id", UUID.randomUUID().toString())
-        .put("sender", title.take(80))
-        .put("text", text.take(1500))
-        .put("packageName", sbn.packageName)
-        .put("postedAtMs", sbn.postTime)
-      val queue = try { prefs.getString(KEY_QUEUE, null)?.let { JSONArray(decrypt(it)) } ?: JSONArray() } catch (_: Exception) { JSONArray() }
-      queue.put(item)
-      val trimmedQueue = if (queue.length() > MAX_QUEUE) {
-        val arr = JSONArray()
-        for (i in (queue.length() - MAX_QUEUE) until queue.length()) arr.put(queue.get(i))
-        prefs.edit().putInt(KEY_DROPPED, prefs.getInt(KEY_DROPPED, 0) + queue.length() - MAX_QUEUE).apply()
-        arr
-      } else queue
-      prefs.edit().putString(KEY_QUEUE, encrypt(trimmedQueue.toString())).apply()
-
-      maybeNudge(title, text)
-    } catch (_: Exception) {
-      // Never let a capture failure crash the system notification pipeline.
-    }
-  }
-
-  /** Best-effort, entirely LOCAL heuristic — never a verdict, never sent anywhere. Only fires for a
-   * narrow set of obvious markers so the person hears something before reopening Apollo; the real,
-   * authoritative check (on-device engine + backend link/RDAP assessment) runs when the app is next
-   * opened and drains the queue above via ApolloContext's poll loop. */
-  private fun maybeNudge(sender: String, text: String) {
-    val t = text.lowercase()
-    val hasUrl = Regex("https?://|www\\.[a-z0-9-]+\\.[a-z]{2,}").containsMatchIn(t)
-    val worrying = Regex(
-      "verification code|security code|one[- ]time (code|password)|otp|gift ?cards?|urgent|suspended|" +
-        "locked|anydesk|teamviewer|remote access|overdue|refund|customs|toll|final notice"
-    ).containsMatchIn(t)
-    if (!hasUrl && !worrying) return
-    try {
-      val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm.getNotificationChannel(CHANNEL_ID) == null) {
-        nm.createNotificationChannel(
-          NotificationChannel(CHANNEL_ID, "Text Guard", NotificationManager.IMPORTANCE_DEFAULT).apply {
-            description = "Apollo flags a text message worth checking"
-          }
-        )
-      }
-      val openIntent = packageManager.getLaunchIntentForPackage(packageName)
-        ?.apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP) } ?: Intent()
-      val pending = PendingIntent.getActivity(this, 0, openIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-      val iconRes = resources.getIdentifier("ic_launcher", "mipmap", packageName).let { if (it != 0) it else android.R.drawable.ic_dialog_info }
-      val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Notification.Builder(this, CHANNEL_ID) else Notification.Builder(this)
-      val notif = builder
-        .setContentTitle("Apollo noticed a message worth checking")
-        .setContentText(if (sender.isNotBlank()) "From $sender — open Text Guard to check it." else "Open Apollo's Text Guard to check it.")
-        .setSmallIcon(iconRes)
-        .setAutoCancel(true)
-        .setContentIntent(pending)
-        .build()
-      nm.notify(NOTIFY_ID, notif)
-    } catch (_: Exception) {
-      // The queued item above is still there for the next poll even if the nudge itself fails.
     }
   }
 }

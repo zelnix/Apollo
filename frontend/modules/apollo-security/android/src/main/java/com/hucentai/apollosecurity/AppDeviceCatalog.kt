@@ -1,11 +1,15 @@
 package com.hucentai.apollosecurity
 
+import android.app.AppOpsManager
+import android.content.Context
+import android.provider.Settings
+
 /**
  * Phase A — Apps & Device: the pure, JVM-testable half of the Android signals.
  *
  * Package visibility rule (Android 11+): Apollo does NOT request QUERY_ALL_PACKAGES and is NOT an AccessibilityService.
- * It can only see the packages declared in AndroidManifest `<queries>` — exactly the RISK_CATALOG below plus the stores
- * and browsers needed to name an install source. Anything outside that list is reported as "not visible", never guessed.
+ * It can see declared packages plus an exact user-supplied package identifier when Android grants package visibility.
+ * Anything Android does not expose is reported as unavailable, never inferred from a vendor prefix.
  */
 object AppDeviceCatalog {
   /** Remote-access / screen-sharing tools commonly abused in "tech support" and bank-impersonation scams. */
@@ -67,8 +71,6 @@ object AppDeviceCatalog {
     return RISK_CATALOG.entries.firstOrNull { it.value.lowercase() == q || q.replace(" ", "") == it.value.lowercase().replace(" ", "") }?.key
   }
 
-  private val SYSTEM_PREFIXES = listOf("com.google.", "com.android.", "com.samsung.", "com.sec.", "android.", "com.motorola.", "com.oneplus.", "com.oppo.", "com.miui.", "com.huawei.")
-
   /**
    * Parses Settings.Secure ENABLED_ACCESSIBILITY_SERVICES ("pkg/cls:pkg/cls") and keeps third-party packages only.
    * Package names are reported (labels need visibility we don't have). Never includes Apollo itself.
@@ -76,7 +78,7 @@ object AppDeviceCatalog {
   fun thirdPartyServices(setting: String?, ownPackage: String): List<String> {
     if (setting.isNullOrBlank()) return emptyList()
     return setting.split(':').mapNotNull { it.substringBefore('/').trim().ifEmpty { null } }
-      .filter { pkg -> pkg != ownPackage && SYSTEM_PREFIXES.none { pkg.startsWith(it) } }
+      .filter { pkg -> pkg != ownPackage }
       .distinct()
   }
 
@@ -93,4 +95,22 @@ object AppDeviceCatalog {
   )
 
   fun plainPermissions(requested: Array<String>?): List<String> = (requested ?: emptyArray()).mapNotNull { PERMISSION_LABELS[it] }.distinct()
+
+  fun permissionStates(requested: Array<String>?, flags: IntArray?): List<org.json.JSONObject> = (requested ?: emptyArray()).mapIndexedNotNull { index, permission ->
+    val label = PERMISSION_LABELS[permission] ?: return@mapIndexedNotNull null
+    val granted = flags?.getOrNull(index)?.let { it and android.content.pm.PackageInfo.REQUESTED_PERMISSION_GRANTED != 0 }
+    org.json.JSONObject().put("permission", label).put("requested", true).put("granted", granted ?: org.json.JSONObject.NULL).put("basis", "package_manager")
+  }
+
+  fun specialAccessStates(ctx: Context, packageId: String, uid: Int): List<org.json.JSONObject> {
+    val appOps = ctx.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+    val overlay = try { appOps.checkOpNoThrow(AppOpsManager.OPSTR_SYSTEM_ALERT_WINDOW, uid, packageId) == AppOpsManager.MODE_ALLOWED } catch (_: Exception) { null }
+    val accessibility = try { (Settings.Secure.getString(ctx.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: "").split(':').any { it.startsWith("$packageId/") } } catch (_: Exception) { null }
+    val notification = try { (Settings.Secure.getString(ctx.contentResolver, "enabled_notification_listeners") ?: "").split(':').any { it.startsWith("$packageId/") } } catch (_: Exception) { null }
+    return listOf(
+      org.json.JSONObject().put("access", "display_over_other_apps").put("granted", overlay ?: org.json.JSONObject.NULL).put("basis", "app_ops"),
+      org.json.JSONObject().put("access", "accessibility_service").put("granted", accessibility ?: org.json.JSONObject.NULL).put("basis", "settings_secure"),
+      org.json.JSONObject().put("access", "notification_listener").put("granted", notification ?: org.json.JSONObject.NULL).put("basis", "settings_secure")
+    )
+  }
 }

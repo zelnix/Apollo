@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from core.config import GOOGLE_GMAIL_REDIRECT_URI, logger
 from core.db import db, now_utc
 from services import gmail as gmail_service
+from services.mailbox_monitor import scan_gmail_through_shared_pipeline
 
 router = APIRouter()
 
@@ -87,11 +88,16 @@ async def gmail_callback(code: Optional[str] = None, state: Optional[str] = None
 @router.get("/gmail/status")
 async def gmail_status(device_id: str = Query(min_length=8, max_length=64)):
     row = await gmail_service.get_connection(device_id)
+    lease_active = bool(row and row.get("monitor_lease_until") and row["monitor_lease_until"].replace(tzinfo=timezone.utc) > now_utc())
+    monitor_state = "disconnected" if not row else "off" if not row.get("monitoring_enabled") else "checking" if lease_active else "needs_attention" if row.get("monitor_last_error_at") and not row.get("monitor_last_success_at") else "ready"
     return {"connected": row is not None, "configured": gmail_service.configured(),
             "oauth_redirect_uri": GOOGLE_GMAIL_REDIRECT_URI if gmail_service.configured() else None,
             "monitoring_enabled": bool(row and row.get("monitoring_enabled")),
             "monitor_last_checked_at": row.get("monitor_last_checked_at") if row else None,
-            "monitor_last_error_at": row.get("monitor_last_error_at") if row else None}
+            "monitor_last_error_at": row.get("monitor_last_error_at") if row else None,
+            "monitor_last_success_at": row.get("monitor_last_success_at") if row else None,
+            "monitor_last_attempt_at": row.get("monitor_last_attempt_at") if row else None,
+            "monitor_state": monitor_state, "cursor_pending": bool(row and row.get("monitor_next_page_token"))}
 
 
 class GmailMonitoringIn(BaseModel):
@@ -113,28 +119,10 @@ async def gmail_disconnect(device_id: str = Query(min_length=8, max_length=64)):
     await gmail_service.disconnect(device_id)
 
 
-class LinkAnchorOut(BaseModel):
-    text: str
-    href: str
-
-
-class ScanMessage(BaseModel):
-    id: str
-    from_: str = Field(alias="from")
-    subject: str
-    date: str
-    body: str
-    links: list[LinkAnchorOut] = Field(default_factory=list)
-
-    class Config:
-        populate_by_name = True
-
-
 class GmailScanIn(BaseModel):
     device_id: str = Field(min_length=8, max_length=64)
 
 
-@router.post("/gmail/scan", response_model=list[ScanMessage])
+@router.post("/gmail/scan")
 async def gmail_scan(body: GmailScanIn):
-    messages = await gmail_service.scan_inbox(body.device_id)
-    return [ScanMessage(**m) for m in messages]
+    return await scan_gmail_through_shared_pipeline(body.device_id, "manual")

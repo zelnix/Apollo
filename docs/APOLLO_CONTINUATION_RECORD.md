@@ -1,3 +1,14 @@
+## 2026-09-22 consolidated mandate M2 implementation
+
+- Implemented all six M2 findings: `C05`, `C06`, `C08–C11`.
+- Text Guard now has a serialised encrypted Android queue, revision-aware message identity, bounded expiry/overflow/decryption reporting and a WorkManager handoff configured with encrypted device credentials. Foreground and background deliveries call the same idempotent case intake and only acknowledge after durable acceptance.
+- Gmail manual and monitored work now share one cursor/receipt/lease pipeline. A cursor page commits only after each message reaches durable Higgins intake; retries are deduplicated and status exposes meaningful attempt/success/error/cursor state.
+- PDF visual pages are retained even when they also contain text. DOCX embedded images are extracted under expanded-byte and secret admission; unresolved drawings are explicit coverage gaps. Complete image transcript output is retained without the old 60k/8k clipping.
+- URL continuation reads immutable retained snapshots rather than refetching changed pages. Jobs pin their original model across recovery. A model-free idempotent projector makes completed background/foreground cases visible in Patrol and does not derive new conclusions.
+- Android app/device observations no longer exclude or trust vendor prefixes and distinguish requested/granted/special-access/user-reported permission provenance.
+- Saved Reports are an independent Patrol destination with stable keyset paging, historical detail/speech and owner-scoped deletion including speech cache/scope.
+- Verification: TypeScript and ESLint pass; 53 provider-disabled M2 pytest tests pass; Cargo check passes. Android Gradle compilation was intentionally not run because the owner restricted verification to TypeScript, ESLint, pytest and Cargo.
+
 ## 2026-09-22 consolidated mandate M1 implementation
 
 - Implemented every M1 register item (`C01–C04`, `C07`, `C12`, `C16–C18`; nine IDs in the source mandate).

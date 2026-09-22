@@ -27,7 +27,9 @@ def _run(coro_fn):
         import services.higgins.retention as retention
         import routers.family as family
         import routers.patrol as patrol
-        importlib.reload(repo); importlib.reload(jobs); importlib.reload(retention); importlib.reload(family); importlib.reload(patrol)
+        import services.higgins.tools as tools_module
+        import services.investigation_projector as projector
+        importlib.reload(repo); importlib.reload(jobs); importlib.reload(retention); importlib.reload(family); importlib.reload(patrol); importlib.reload(tools_module); importlib.reload(projector)
         import routers.investigations as inv
         importlib.reload(inv)
         global db
@@ -39,7 +41,7 @@ def _run(coro_fn):
             fresh_client.close()
             core_db.client, core_db.db = original_client, original_db
             db = original_db
-            importlib.reload(repo); importlib.reload(jobs); importlib.reload(retention); importlib.reload(family); importlib.reload(patrol); importlib.reload(inv)
+            importlib.reload(repo); importlib.reload(jobs); importlib.reload(retention); importlib.reload(family); importlib.reload(patrol); importlib.reload(tools_module); importlib.reload(projector); importlib.reload(inv)
     asyncio.run(wrapped())
 
 
@@ -167,6 +169,22 @@ def test_patrol_investigation_binding_is_owner_scoped_and_idempotent():
     _run(lambda inv: _patrol_investigation_binding())
 
 
+def test_background_text_intake_is_idempotent_without_live_provider():
+    _run(lambda inv: _background_text_intake(inv))
+
+
+def test_gmail_manual_and_monitored_scans_share_one_cursor_lease():
+    _run(lambda inv: _gmail_shared_cursor())
+
+
+def test_url_continuation_reads_retained_snapshot_without_refetch():
+    _run(lambda inv: _url_snapshot_continuation())
+
+
+def test_committed_case_projects_once_into_patrol_without_model_call():
+    _run(lambda inv: _committed_case_projector())
+
+
 def test_document_continuation_replay_repairs_manifest_and_delivers_images():
     _run(lambda inv: _document_continuation_replay_delivers_images())
 
@@ -188,10 +206,8 @@ def test_bounded_tests_prohibit_provider_calls():
 
 
 @pytest.mark.asyncio
-async def test_image_secret_preflight_flags_60k_truncation(monkeypatch):
-    """The internal 60,000-character cap on a screenshot's transcription must mark itself as truncated —
-    independent of whatever completeness the model itself claims — so the resulting evidence's coverage
-    records a material gap instead of silently appearing fully transcribed."""
+async def test_image_secret_preflight_preserves_complete_provider_transcription(monkeypatch):
+    """Provider output is admitted whole; there is no silent post-provider 60k clipping boundary."""
     from services.higgins import evidence as ev
     from services.higgins import provider
 
@@ -204,9 +220,9 @@ async def test_image_secret_preflight_flags_60k_truncation(monkeypatch):
     monkeypatch.setattr(provider, "generate_json", fake_generate_json)
     admission = await ev._image_secret_preflight(b"fake-image-bytes", "image/png")
     assert admission["status"] == "secret_detected"
-    assert admission["transcriptionComplete"] is True  # the model itself claims completeness...
-    assert admission["transcriptionTruncated"] is True  # ...but OUR budget still flags the gap
-    assert len(admission["redactedText"]) == 60_000
+    assert admission["transcriptionComplete"] is True
+    assert admission["transcriptionTruncated"] is False
+    assert len(admission["redactedText"]) == 70_000
 
 
 async def _upload_takeover_race():
@@ -824,10 +840,14 @@ async def _saved_reports_page_and_delete(inv):
                   "explanationMarkdown": "", "assessment": "uncertain", "attention": "review", "findings": [], "uncertainties": [], "sources": [], "historical": True}
         await db.investigation_reports.insert_one({"owner_id": owner, "report_id": report["reportId"], "report_ciphertext": repo.enc_json(report), "saved_at": now_utc() + timedelta(seconds=index)})
     await db.investigation_reports.insert_one({"owner_id": other, "report_id": "report-foreign", "report_ciphertext": repo.enc_json({"reportId": "report-foreign"}), "saved_at": now_utc()})
-    page = json.loads((await inv.list_reports(request, 0, 2)).body)
-    assert page["total"] == 3 and len(page["items"]) == 2 and page["nextCursor"] == 2
+    page = json.loads((await inv.list_reports(request, None, 2)).body)
+    assert page["total"] == 3 and len(page["items"]) == 2 and isinstance(page["nextCursor"], str)
+    following = json.loads((await inv.list_reports(request, page["nextCursor"], 2)).body)
+    assert len(following["items"]) == 1 and following["items"][0]["reportId"] not in {item["reportId"] for item in page["items"]}
+    await db.voice_cache.insert_one({"device_id": owner, "scope_id": page["items"][0]["reportId"], "audio_ciphertext": "x"})
     await inv.delete_report(page["items"][0]["reportId"], request)
     assert await db.investigation_reports.count_documents({"owner_id": owner}) == 2
+    assert await db.voice_cache.count_documents({"device_id": owner, "scope_id": page["items"][0]["reportId"]}) == 0
     assert await db.investigation_reports.count_documents({"owner_id": other}) == 1
 
 
@@ -868,7 +888,8 @@ async def _patrol_investigation_binding():
     owner, stranger = f"owner-{uuid.uuid4().hex}", f"stranger-{uuid.uuid4().hex}"
     event_id, case_id = uuid.uuid4().hex, uuid.uuid4().hex
     await db.patrol_events.insert_one({"event_id": event_id, "device_id": owner, "deleted_at": None})
-    await db.investigation_cases.insert_one({"case_id": case_id, "owner_id": owner, "deleted": False, "epoch": 0, "work_epoch": 0})
+    epoch = uuid.uuid4().hex
+    await db.investigation_cases.insert_one({"case_id": case_id, "owner_id": owner, "deleted": False, "epoch": epoch, "work_epoch": epoch})
     request = Request({"type": "http", "method": "POST", "path": "/", "headers": []}); request.state.device = {"device_id": owner}
     body = patrol.InvestigationBindingIn(case_id=case_id)
     first = await patrol.bind_event_investigation(event_id, body, request)
@@ -878,6 +899,85 @@ async def _patrol_investigation_binding():
     with pytest.raises(HTTPException) as denied:
         await patrol.bind_event_investigation(event_id, body, request)
     assert denied.value.status_code == 404
+
+
+async def _background_text_intake(inv):
+    owner = f"text-bg-{uuid.uuid4().hex[:8]}"
+    request = Request({"type": "http", "method": "POST", "path": "/", "headers": []}); request.state.device = {"device_id": owner}
+    submission_id = uuid.uuid4().hex
+    body = inv.BackgroundTextIn(submissionId=submission_id, sourceKey="notification:key", revisionDigest=uuid.uuid4().hex,
+                                sender="Sender", text="Please review this link", capturedAt=now_utc(), expiresAt=now_utc() + timedelta(minutes=15),
+                                contentComplete=True, originalCharacters=23)
+    launched = inv.jobs.launch; inv.jobs.launch = lambda *args, **kwargs: None
+    try:
+        first = json.loads((await inv.background_text_intake(body, request)).body)
+        second = json.loads((await inv.background_text_intake(body, request)).body)
+    finally:
+        inv.jobs.launch = launched
+    assert first["caseId"] == second["caseId"]
+    assert await db.investigation_cases.count_documents({"owner_id": owner}) == 1
+    assert await db.investigation_jobs.count_documents({"owner_id": owner}) == 1
+
+
+async def _gmail_shared_cursor():
+    from services import mailbox_monitor
+    owner = f"gmail-{uuid.uuid4().hex[:8]}"
+    await db.gmail_connections.insert_one({"device_id": owner, "monitoring_enabled": True})
+    cursors, modes = [], []
+    original_scan, original_submit = mailbox_monitor.gmail.scan_inbox_page, mailbox_monitor._submit_shared_case
+    async def fake_scan(device_id, cursor=None, limit=15):
+        cursors.append(cursor)
+        return ([{"id": f"message-{len(cursors)}", "from": "sender", "subject": "subject", "body": "body", "links": []}], "next-token" if cursor is None else None)
+    async def fake_submit(provider, device_id, message, mode):
+        modes.append(mode); return True
+    mailbox_monitor.gmail.scan_inbox_page, mailbox_monitor._submit_shared_case = fake_scan, fake_submit
+    try:
+        first = await mailbox_monitor.scan_gmail_through_shared_pipeline(owner, "manual")
+        second = await mailbox_monitor.scan_gmail_through_shared_pipeline(owner, "monitored")
+    finally:
+        mailbox_monitor.gmail.scan_inbox_page, mailbox_monitor._submit_shared_case = original_scan, original_submit
+        await db.gmail_connections.delete_one({"device_id": owner})
+    assert first["accepted"] == second["accepted"] == 1
+    assert cursors == [None, "next-token"] and modes == ["manual", "monitored"]
+
+
+async def _url_snapshot_continuation():
+    from services import webcrawl
+    from services.higgins import evidence as evidence_service, tools
+    owner = f"snapshot-{uuid.uuid4().hex[:8]}"; case = await repo.create_case(owner, "link", None)
+    url_item = await evidence_service.ingest_url(owner, case, "url-item", "https://example.com/page")
+    ctx = tools.ToolContext(owner, case, {"job_id": "job"}, None)
+    calls = {"fetch": 0}
+    original_expand, original_fetch = tools.intel.expand_redirects, tools.webcrawl.fetch_page
+    async def fake_expand(url): return [url]
+    async def fake_fetch(url):
+        calls["fetch"] += 1
+        return webcrawl.CrawledPage(final_url=url, title="Stable", text="A" * 7000, coverage={"complete": True})
+    tools.intel.expand_redirects, tools.webcrawl.fetch_page = fake_expand, fake_fetch
+    try:
+        first = await tools.inspect_url(ctx, {"urlEvidenceId": url_item.id})
+        second = await tools.inspect_url(ctx, {"urlEvidenceId": url_item.id, "cursor": first["nextCursor"]})
+    finally:
+        tools.intel.expand_redirects, tools.webcrawl.fetch_page = original_expand, original_fetch
+    assert calls["fetch"] == 1 and first["sourceSnapshotId"] == second["sourceSnapshotId"]
+    assert len(first["text"]) == 6000 and len(second["text"]) == 1000
+
+
+async def _committed_case_projector():
+    from services import investigation_projector
+    from services.higgins.contracts import HigginsResponse, ProviderResult, TurnCommit
+    owner = f"project-{uuid.uuid4().hex[:8]}"; case = await repo.create_case(owner, "text", None)
+    turn_id = str(uuid.uuid4()); job = await repo.create_job(owner, case, turn_id, repo.digest("key"), repo.digest("payload"), "turn", {"message": "q", "turnId": turn_id})
+    await repo.cas(owner, case["case_id"], {"revision": 0}, {"$set": {"active_job_id": job["job_id"], "active_turn_id": turn_id}})
+    job = await repo.acquire_lease(owner, job["job_id"]); case = await repo.cas(owner, case["case_id"], {"active_job_id": job["job_id"]}, {"$set": {"lease_fence": job["fence"]}}, bump=False)
+    response = HigginsResponse(revision=1, overview="Background message needs review", explanationMarkdown="Explanation", assessment="uncertain", attention="review",
+                               findings=[], uncertainties=[], scope="submitted message", sourceIds=[], remainingEvidenceIds=[], actions=[], completion="complete")
+    commit = TurnCommit(turnId=turn_id, caseId=case["case_id"], inputRevision=1, committedRevision=1, question="q", response=response,
+                        provider=ProviderResult(model="pinned-test-model", finishReason="STOP", providerComplete=True), committedAt=now_utc())
+    commit_id = await repo.stage_turn(owner, commit, job, repo.utc(case["expires_at"])); assert await repo.accept_turn(owner, case, job, commit, commit_id, "complete", "none", None)
+    first = await investigation_projector.project_committed_cases(); second = await investigation_projector.project_committed_cases()
+    event = await db.patrol_events.find_one({"device_id": owner, "investigation_case_id": case["case_id"]}, {"_id": 0})
+    assert first >= 1 and second == 0 and event and event["state"] == "growling"
 
 
 async def _document_continuation_replay_delivers_images():

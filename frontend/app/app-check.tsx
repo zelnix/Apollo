@@ -88,7 +88,8 @@ export default function CheckApp() {
       // Phase A: observed facts from the native SDK override guesses — install source when the person wasn't sure,
       // and the app's actual permissions (plus remote-access capability) are added to what they ticked.
       const observedSource: AppSource = sdk && source === "not_sure" ? sdk.installSource : source;
-      const observedPerms: AppPermission[] = sdk ? Array.from(new Set([...perms, ...sdkPermissionsToApp(sdk.permissions), ...(sdk.remoteAccessCapability ? ["screen_share" as const] : [])])) : perms;
+      const nativeRequested = sdkPermissionsToApp(sdk?.requestedPermissions ?? sdk?.permissions ?? []);
+      const observedPerms: AppPermission[] = sdk ? Array.from(new Set([...perms, ...nativeRequested, ...(sdk.remoteAccessCapability ? ["screen_share" as const] : [])])) : perms;
       if (sdk) { setSource(observedSource); setPerms(observedPerms); }
       const context = { ...ctx, recentScentCategories: recentLinked.map((e) => e.category) };
       let a = analyseApp({ name: name.trim(), developer: developer.trim() || undefined, source: observedSource, purpose, permissions: observedPerms, context, network });

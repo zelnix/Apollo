@@ -7,20 +7,20 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import random
 import re
 import uuid
+from datetime import timedelta
 from typing import Any
 
+from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from core.config import logger
 from core.db import db, now_utc
-from core.models import PatrolEvent
 from core.redaction import redact_investigation_secrets
-from routers.push import push_owner_alert
 from services import gmail
 from services.higgins import evidence, jobs, repository as repo
-from services.higgins.contracts import HigginsResponse
 
 URL_RE = re.compile(r"(?i)\bhttps?://[^\s<>\]\[\"']+")
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
@@ -41,18 +41,19 @@ def _message_digest(provider: str, message_id: str) -> str:
 async def ensure_indexes() -> None:
     await db.mailbox_assessment_receipts.create_index([("provider", 1), ("device_id", 1), ("message_digest", 1)], unique=True)
     await db.mailbox_assessment_receipts.create_index([("state", 1), ("updated_at", 1)])
+    await db.gmail_connections.create_index([("monitoring_enabled", 1), ("monitor_lease_until", 1)])
 
 
-async def _submit_shared_case(provider: str, device_id: str, message: dict[str, Any]) -> None:
+async def _submit_shared_case(provider: str, device_id: str, message: dict[str, Any], intake_mode: str) -> bool:
     digest = _message_digest(provider, str(message.get("id", "")))
     key = {"provider": provider, "device_id": device_id, "message_digest": digest}
     try:
-        await db.mailbox_assessment_receipts.insert_one({**key, "state": "claimed", "created_at": now_utc(), "updated_at": now_utc()})
+        await db.mailbox_assessment_receipts.insert_one({**key, "state": "claimed", "intake_mode": intake_mode, "created_at": now_utc(), "updated_at": now_utc()})
     except DuplicateKeyError:
         pass
     receipt = await db.mailbox_assessment_receipts.find_one(key, {"_id": 0})
     if not receipt or receipt.get("state") in ("submitted", "complete", "failed"):
-        return
+        return False
     sender = str(message.get("from", ""))
     subject = str(message.get("subject", ""))
     body = str(message.get("body", ""))
@@ -80,6 +81,7 @@ async def _submit_shared_case(provider: str, device_id: str, message: dict[str, 
         raise RuntimeError("mailbox case ownership conflict")
     await db.mailbox_assessment_receipts.update_one(key, {"$set": {"state": "submitted", "case_id": case["case_id"], "job_id": job["job_id"], "updated_at": now_utc()}})
     jobs.launch(device_id, case["case_id"], job["job_id"])
+    return True
 
 
 async def _finalise_receipt(receipt: dict) -> None:
@@ -98,21 +100,6 @@ async def _finalise_receipt(receipt: dict) -> None:
         if job["status"] in ("failed", "cancelled", "expired"):
             await db.mailbox_assessment_receipts.update_one(selector, {"$set": {"state": "failed", "failure": job["status"], "updated_at": now_utc()}})
         return
-    response = HigginsResponse.model_validate(repo.dec_json(case["response_ciphertext"]))
-    if response.attention != "none" or response.assessment != "no_concern_found_within_scope":
-        event_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"apollo-mailbox:{receipt['provider']}:{owner}:{receipt['message_digest']}"))
-        state = "barking" if response.attention in ("urgent", "action_needed") else "growling"
-        recommended = next((action for action in response.actions if action.id == response.recommended_action_id), response.actions[0] if response.actions else None)
-        doc = {"event_id": event_id, "device_id": owner, "category": "email", "state": state, "status": "active",
-               "headline": f"{receipt['provider'].title()}: {_safe_summary(response.overview)}", "what_happened": _safe_summary(response.overview),
-               "why": [_safe_summary(finding.text) for finding in response.findings[:6]],
-               "what_to_do": _safe_summary(recommended.instruction) if recommended else "Open Email Gate and verify the sender through an independent channel.",
-               "indicator_host": None, "indicator_digest": None, "verified_block": False, "adapter_label": "Apollo shared Higgins mailbox monitor",
-               "occurred_at": now_utc(), "resolved_at": None, "enforcement_evidence": None, "investigation_case_id": case_id,
-               "supporting_references": [], "created_at": now_utc(), "updated_at": now_utc(), "deleted_at": None}
-        inserted = await db.patrol_events.update_one({"device_id": owner, "event_id": event_id}, {"$setOnInsert": doc}, upsert=True)
-        if inserted.upserted_id:
-            await push_owner_alert(PatrolEvent.from_mongo(doc))
     await db.mailbox_assessment_receipts.update_one(selector, {"$set": {"state": "complete", "processed_at": now_utc(), "updated_at": now_utc()}})
 
 
@@ -121,16 +108,39 @@ async def finalise_pending_assessments() -> None:
         await _finalise_receipt(receipt)
 
 
+async def scan_gmail_through_shared_pipeline(device_id: str, intake_mode: str) -> dict:
+    lease = str(uuid.uuid4()); now = now_utc()
+    row = await db.gmail_connections.find_one_and_update(
+        {"device_id": device_id, "$or": [{"monitor_lease_until": {"$lte": now}}, {"monitor_lease_until": {"$exists": False}}, {"monitor_lease_until": None}]},
+        {"$set": {"monitor_lease": lease, "monitor_lease_until": now + timedelta(seconds=90), "monitor_last_attempt_at": now}},
+        projection={"_id": 0, "monitor_next_page_token": 1},
+        return_document=ReturnDocument.AFTER,
+    )
+    if row is None:
+        return {"status": "busy", "checked": 0, "accepted": 0, "nextCursor": None}
+    try:
+        messages, next_cursor = await gmail.scan_inbox_page(device_id, row.get("monitor_next_page_token"))
+        accepted = 0
+        for message in messages:
+            accepted += int(await _submit_shared_case("gmail", device_id, message, intake_mode))
+        await db.gmail_connections.update_one({"device_id": device_id, "monitor_lease": lease}, {"$set": {
+            "monitor_next_page_token": next_cursor, "monitor_last_checked_at": now_utc(), "monitor_last_success_at": now_utc(),
+            "monitor_last_error_at": None, "monitor_last_error": None, "monitor_lease": None, "monitor_lease_until": None,
+        }})
+        return {"status": "accepted", "checked": len(messages), "accepted": accepted, "nextCursor": next_cursor}
+    except Exception as exc:
+        await db.gmail_connections.update_one({"device_id": device_id, "monitor_lease": lease}, {"$set": {
+            "monitor_last_error_at": now_utc(), "monitor_last_error": type(exc).__name__, "monitor_lease": None, "monitor_lease_until": None,
+        }})
+        raise
+
+
 async def monitor_enabled_mailboxes_once() -> None:
-    for provider, collection, scanner in (("gmail", db.gmail_connections, gmail.scan_inbox),):
-        async for row in collection.find({"monitoring_enabled": True}, {"_id": 0, "device_id": 1}):
-            try:
-                for message in await scanner(row["device_id"]):
-                    await _submit_shared_case(provider, row["device_id"], message)
-                await collection.update_one({"device_id": row["device_id"]}, {"$set": {"monitor_last_checked_at": now_utc(), "monitor_last_error_at": None, "monitor_last_error": None}})
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("%s mailbox monitoring failed for one device: %s", provider, type(exc).__name__)
-                await collection.update_one({"device_id": row["device_id"]}, {"$set": {"monitor_last_error_at": now_utc(), "monitor_last_error": type(exc).__name__}})
+    async for row in db.gmail_connections.find({"monitoring_enabled": True, "refresh_token_enc": {"$exists": True}}, {"_id": 0, "device_id": 1}):
+        try:
+            await scan_gmail_through_shared_pipeline(row["device_id"], "monitored")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("gmail mailbox monitoring failed for one device: %s", type(exc).__name__)
 
 
 async def mailbox_monitor_loop() -> None:
@@ -145,3 +155,18 @@ async def mailbox_monitor_loop() -> None:
         except Exception as exc:  # noqa: BLE001
             logger.warning("mailbox monitor pass failed: %s", type(exc).__name__)
         await asyncio.sleep(PENDING_SECONDS)
+
+
+async def supervise_mailbox_monitor() -> None:
+    failures = 0
+    while True:
+        try:
+            await mailbox_monitor_loop()
+            failures = 0
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # pragma: no cover - final ownership boundary
+            failures += 1
+            delay = min(60, 2 ** min(failures, 5)) + random.random()
+            logger.error("mailbox monitor exited: %s; retrying in %.2fs", type(exc).__name__, delay)
+            await asyncio.sleep(delay)

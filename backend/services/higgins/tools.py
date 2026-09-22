@@ -131,12 +131,29 @@ async def _url_text(ctx: ToolContext, evidence_id: str) -> str:
 
 
 async def inspect_url(ctx: ToolContext, args: dict) -> dict:
+    url_row = await repo.get_evidence(ctx.owner, ctx.case_id, args["urlEvidenceId"])
     try:
         url = await _url_text(ctx, args["urlEvidenceId"])
     except ValueError:
         return {"status": "invalid", "note": "That evidence item is not a URL."}
     if re.search(r"(?i)[?&](token|code|otp|session|sig|signature|auth|key)=", url):
         return {"status": "blocked", "note": "This link carries a credential-like parameter; Apollo does not follow links whose retrieval may itself perform a sensitive action.", "url": url}
+    url_meta = await repo.evidence_meta(url_row)
+    offset = int(args.get("cursor") or 0)
+    snapshot_id = url_meta.get("sourceSnapshotId")
+    if snapshot_id:
+        try:
+            snapshot = await repo.get_evidence(ctx.owner, ctx.case_id, snapshot_id)
+            snapshot_meta = await repo.evidence_meta(snapshot)
+            text = (await repo.read_bytes(ctx.owner, ctx.case_id, snapshot_id)).decode("utf-8", errors="replace")
+            end = min(len(text), offset + 6000)
+            return {"status": "fetched", "sourceId": snapshot_meta.get("sourceId"), "sourceSnapshotId": snapshot_id,
+                    "originalUrl": url, "redirectChain": snapshot_meta.get("redirectChain", [url]), "finalUrl": snapshot_meta.get("finalUrl", url),
+                    "title": snapshot_meta.get("title"), "forms": snapshot_meta.get("forms", []), "buttons": snapshot_meta.get("buttons", []),
+                    "linkHosts": snapshot_meta.get("linkHosts", []), "text": text[offset:end], "nextCursor": str(end) if end < len(text) else None,
+                    "coverage": snapshot_meta.get("fetchCoverage"), "_pendingMark": [snapshot_id, offset, end, len(text)]}
+        except Exception:  # a missing committed snapshot is an explicit failure; never silently refetch changed content
+            return {"status": "unavailable", "originalUrl": url, "note": "The retained source snapshot is unavailable; this continuation was not refetched from a potentially changed page."}
     try:
         chain = await intel.expand_redirects(url)
     except Exception:  # noqa: BLE001
@@ -144,16 +161,27 @@ async def inspect_url(ctx: ToolContext, args: dict) -> dict:
     final = chain[-1] if chain else url
     try:
         page = await webcrawl.fetch_page(final)
+        text = page.text or ""
+        snapshot = await ev.ingest_text(ctx.owner, ctx.case, f"{url_row['client_item_id']}.source", text, kind="source_snapshot", origin="external_source",
+                                        parent_id=args["urlEvidenceId"], label=f"source snapshot: {(page.title or final)[:55]}",
+                                        meta={"redirectChain": chain, "finalUrl": page.final_url, "title": page.title, "forms": page.forms,
+                                              "buttons": page.buttons, "linkHosts": page.links_sample, "fetchCoverage": page.coverage})
         source = SourceReference(id=str(uuid.uuid4()), url=page.final_url, title=(page.title or final)[:200], retrieved_at=now_utc(), retrieval="fetched",
-                                 authority="self_claimed", authority_basis="Content fetched from the destination itself", evidence_ids=[args["urlEvidenceId"]])
+                                 authority="self_claimed", authority_basis="Content fetched from the destination itself", evidence_ids=[args["urlEvidenceId"], snapshot.id])
         ctx.sources.append(source)
         source.id = (await repo.add_sources(ctx.owner, ctx.case_id, [source])).get(source.id, source.id)
-        offset = int(args.get("cursor") or 0)
-        text = page.text or ""
+        snapshot_row = await repo.get_evidence(ctx.owner, ctx.case_id, snapshot.id)
+        snapshot_meta = await repo.evidence_meta(snapshot_row)
+        snapshot_meta["sourceId"] = source.id
+        await repo.update_evidence(ctx.owner, ctx.case_id, snapshot.id, {"$set": {"meta_ciphertext": repo.enc_json(snapshot_meta)}})
+        url_meta.update({"sourceSnapshotId": snapshot.id, "sourceId": source.id})
+        await repo.update_evidence(ctx.owner, ctx.case_id, args["urlEvidenceId"], {"$set": {"meta_ciphertext": repo.enc_json(url_meta)}})
+        end = min(len(text), offset + 6000)
         await ev.mark_examined(ctx.owner, ctx.case_id, args["urlEvidenceId"], 0, 1, 1)
-        return {"status": "fetched", "sourceId": source.id, "originalUrl": url, "redirectChain": chain, "finalUrl": page.final_url, "title": page.title,
-                "forms": page.forms, "buttons": page.buttons, "linkHosts": page.links_sample, "text": text[offset:offset + 6000],
-                "nextCursor": str(offset + 6000) if len(text) > offset + 6000 else None, "coverage": page.coverage}
+        return {"status": "fetched", "sourceId": source.id, "sourceSnapshotId": snapshot.id, "originalUrl": url, "redirectChain": chain,
+                "finalUrl": page.final_url, "title": page.title, "forms": page.forms, "buttons": page.buttons, "linkHosts": page.links_sample,
+                "text": text[offset:end], "nextCursor": str(end) if end < len(text) else None, "coverage": page.coverage,
+                "_pendingMark": [snapshot.id, offset, end, len(text)]}
     except webcrawl.CrawlBlocked as exc:
         await repo.update_evidence(ctx.owner, ctx.case_id, args["urlEvidenceId"], {"$set": {"coverage.status": "unavailable", "coverage.reason": "fetch blocked by safety policy"}})
         return {"status": "blocked", "originalUrl": url, "redirectChain": chain, "note": f"Fetch refused by Apollo's safe-fetch policy ({exc}). This is a limitation, not proof of fraud or safety."}

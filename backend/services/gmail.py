@@ -97,6 +97,8 @@ async def _access_token_for(device_id: str) -> str:
     row = await get_connection(device_id)
     if not row or not _fernet:
         raise HTTPException(404, "Gmail is not connected")
+    if not row.get("refresh_token_enc"):
+        raise HTTPException(409, "Gmail connection is incomplete; reconnect before scanning")
     refresh = _fernet.decrypt(row["refresh_token_enc"].encode()).decode()
     try:
         return await _refresh_access_token(refresh)
@@ -163,19 +165,22 @@ def _headers_of(message: dict) -> dict[str, str]:
     return {h["name"].lower(): h.get("value", "") for h in message.get("payload", {}).get("headers", [])}
 
 
-async def scan_inbox(device_id: str, limit: int = 15) -> list[dict[str, Any]]:
-    """Fetch the most recent messages (last 30 days) and return minimal fields for the caller's
-    on-device analysis. NOTHING here is persisted — the caller must discard after processing."""
+async def scan_inbox_page(device_id: str, page_token: str | None = None, limit: int = 15) -> tuple[list[dict[str, Any]], str | None]:
+    """Fetch one durable cursor page; raw content remains request-scoped until encrypted case intake."""
     limit = max(1, min(limit, 25))
     token = await _access_token_for(device_id)
     auth = {"Authorization": f"Bearer {token}"}
     async with httpx.AsyncClient(timeout=20) as http:
-        listed = await http.get(f"{GMAIL_API}/messages", params={"maxResults": limit, "q": "newer_than:30d"}, headers=auth)
+        params = {"maxResults": limit, "q": "newer_than:30d"}
+        if page_token:
+            params["pageToken"] = page_token
+        listed = await http.get(f"{GMAIL_API}/messages", params=params, headers=auth)
         if listed.status_code == 401:
             await disconnect(device_id)
             raise HTTPException(401, "Gmail access was rejected; reconnect")
         listed.raise_for_status()
-        ids = listed.json().get("messages", [])
+        listing = listed.json()
+        ids = listing.get("messages", [])
         out: list[dict[str, Any]] = []
         for item in ids:
             got = await http.get(f"{GMAIL_API}/messages/{item['id']}", params={"format": "full"}, headers=auth)
@@ -185,4 +190,10 @@ async def scan_inbox(device_id: str, limit: int = 15) -> list[dict[str, Any]]:
             h = _headers_of(msg)
             text, anchors = _extract_content(msg)
             out.append({"id": msg.get("id", ""), "from": h.get("from", ""), "subject": h.get("subject", ""), "date": h.get("date", ""), "body": text, "links": anchors})
-    return out
+    return out, listing.get("nextPageToken")
+
+
+async def scan_inbox(device_id: str, limit: int = 15) -> list[dict[str, Any]]:
+    """Compatibility wrapper for tests and callers that deliberately request only the first page."""
+    items, _next = await scan_inbox_page(device_id, None, limit)
+    return items

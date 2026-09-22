@@ -116,6 +116,10 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
     ctx = toolbox.ToolContext(owner, case, job, device)
     # Reload the latest checkpoint after lease acquisition (R04): completed tool rounds are reused, never repeated.
     fresh_job = await repo.get_job(owner, case["case_id"], job["job_id"])
+    checkpoint_seed = repo.dec_json(fresh_job["checkpoint_ciphertext"]) if fresh_job.get("checkpoint_ciphertext") else None
+    job_model = fresh_job.get("provider_model") or (checkpoint_seed or {}).get("providerModel") or provider.TEXT_MODEL
+    if not fresh_job.get("provider_model"):
+        await repo.set_job(owner, job["job_id"], job["fence"], {"$set": {"provider_model": job_model}})
     consumed_request_ids = set(fresh_job.get("consumed_device_request_ids", []))
     if consumed_request_ids:
         # Repair the inbox projection after a crash between checkpoint consumption and inbox acknowledgement. The
@@ -125,7 +129,7 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
              "request_id": {"$in": list(consumed_request_ids)}, "fulfilled": False},
             {"$set": {"fulfilled": True, "submission.state": "resumed", "consumed_at": now_utc()}},
         )
-    checkpoint = repo.dec_json(fresh_job["checkpoint_ciphertext"]) if fresh_job.get("checkpoint_ciphertext") else None
+    checkpoint = checkpoint_seed
     pending_marks: list[tuple[str, int, int, int]] = []
     ledger: dict[str, dict] = {}  # per-call durable ledger (S08): completed paid tool outputs are reused, never re-run after a later call fails
     pending_batch: list[dict] = []  # the tool-call batch Gemini asked for that has not yet been fully answered
@@ -147,7 +151,7 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
         rounds = 0
 
     async def save(extra: dict) -> None:
-        await repo.set_job(owner, job["job_id"], job["fence"], {"$set": {"checkpoint_ciphertext": repo.enc_json({"contents": _serialise(contents), "rounds": rounds, "question": ctx.question,
+        await repo.set_job(owner, job["job_id"], job["fence"], {"$set": {"checkpoint_ciphertext": repo.enc_json({"contents": _serialise(contents), "rounds": rounds, "question": ctx.question, "providerModel": job_model,
                                                                                                              "researchCalls": ctx.research_calls, "pendingMarks": pending_marks, "toolLedger": ledger,
                                                                                                              "pendingBatch": pending_batch, **extra})},
                                                                          "$inc": {"checkpoint_revision": 1}})
@@ -216,7 +220,7 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
             return Outcome("waiting_device", request=ctx.pending_request)
     while True:
         await progress("assess", "Higgins is examining the evidence." if rounds == 0 else f"Research step {rounds}.")
-        result = await provider.generate(SYSTEM, contents, tools=[tool], capability="functions")
+        result = await provider.generate(SYSTEM, contents, model=job_model, tools=[tool], capability="functions")
         if pending_marks:  # inline evidence counts as examined only once Gemini has actually received it (R05)
             for evidence_id, start, end, total in pending_marks:
                 await ev.mark_examined(owner, case["case_id"], evidence_id, start, end, total)
@@ -235,12 +239,12 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
             return Outcome("waiting_device", request=ctx.pending_request)
         if rounds >= MAX_TOOL_ROUNDS:
             contents.append(types.Content(role="user", parts=[types.Part(text="Tool budget for this turn is exhausted. Return the final JSON now; mark completion 'partial' if material evidence remains.")]))
-            result = await provider.generate(SYSTEM, contents, capability="text")
+            result = await provider.generate(SYSTEM, contents, model=job_model, capability="text")
             break
     rows = await repo.list_evidence(owner, case["case_id"])
     evidence_ids = {row["evidence_id"] for row in rows}
     gaps = {row["evidence_id"] for row in rows if row["availability"] == "available" and row["origin"] != "apollo_inference"
-            and (row["coverage"].get("materialGap") or row["coverage"].get("status") in ("not_started", "partial")) and row["kind"] in ("text", "document", "url", "image")}
+            and (row["coverage"].get("materialGap") or row["coverage"].get("status") in ("not_started", "partial")) and row["kind"] in ("text", "document", "url", "image", "source_snapshot")}
     source_ids = {s["id"] for s in await repo.sources(owner, case["case_id"])}
     capability_ids = set((device or {}).get("capabilityIds", []))
     revision = (case.get("response_revision") or 0) + 1
@@ -254,7 +258,7 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
         contents.append(result.content)
         contents.append(types.Content(role="user", parts=[types.Part(text="Your response did not pass interface validation:\n- " + "\n- ".join(errors) +
                                                                           "\nReturn the corrected full JSON object only. Keep your assessment and explanation; fix only the listed problems.")]))
-        result = await provider.generate(SYSTEM, contents, json_output=True, capability="json")
+        result = await provider.generate(SYSTEM, contents, model=job_model, json_output=True, capability="json")
         data = _json_object(result.text)
         response, errors = (None, ["no JSON object"]) if data is None else validate(data, revision=revision, evidence_ids=evidence_ids, source_ids=source_ids,
                                                                                     capability_ids=capability_ids, pending_question=ctx.question, provider_complete=result.finish_reason == "STOP", material_gaps=gaps)
