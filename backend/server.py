@@ -29,8 +29,7 @@ from core.models import BlocklistEntry
 from core.privacy_boundary import PrivacyBoundary
 from services.patrol_policy import ensure_evidence_receipt_indexes
 from services.mailbox_monitor import mailbox_monitor_loop
-from services.higgins.retention import migrate_and_index, sweep_loop
-from services.higgins import jobs as investigation_jobs
+from services.higgins.retention import migrate_and_index
 from services.higgins import repository as investigation_repository
 from routers import admin, analysis, ask, call, devices, family, family_weekly, gmail, health, intel, investigations, patrol, push, voice
 from routers.family_weekly import weekly_checkin_loop
@@ -75,14 +74,10 @@ async def lifespan(_: FastAPI):
         await db.blocklist.update_one({"host": host}, {"$setOnInsert": entry.to_mongo()}, upsert=True)
     loop_task = asyncio.create_task(weekly_checkin_loop())
     mailbox_task = asyncio.create_task(mailbox_monitor_loop())
-    cleanup_task = asyncio.create_task(sweep_loop())
-    investigation_task = asyncio.create_task(investigation_jobs.sweep_loop())
-
     async def push_receipt_loop():
         while True:
             try:
                 await push.reconcile_receipts()
-                await family.sweep_voice_audio()
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001
@@ -94,8 +89,6 @@ async def lifespan(_: FastAPI):
     receipts_task.cancel()
     loop_task.cancel()
     mailbox_task.cancel()
-    cleanup_task.cancel()
-    investigation_task.cancel()
     client.close()
 
 

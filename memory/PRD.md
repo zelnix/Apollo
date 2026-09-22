@@ -503,3 +503,16 @@ Current position: waiting on step 1 input (Step 7 stderr for build aa24dd73-eab7
   directory is ignored; generated artifacts remain local/outside source tracking.
 - **Corrected source identity:** digest `01e4723d48cd34c3129701adebd2947249cb174f94d2ae21a699d30567ea0110`;
   existing Android build `18706c6e...` predates these corrections and is not relabelled.
+
+## 2026-09-22 final deployment health
+- Deployment Agent status: **PASS**, zero blockers.
+- Readiness-remediated working source SHA-256:
+  `b70cdffb4ca7441313c928ec9acc4a946ab7c1b310de55707c6353bc9bdabb10`; preceding saved commit
+  `63d60d861104902cfaed0970f9010899ded1f2b3`.
+- API process startup performs idempotent initialization only; no retention/investigation/family-audio deletion loop is
+  tied to startup or restart.
+- Explicit maintenance entry point: `python -m scripts.run_retention_sweep`, reserved for an operator-controlled
+  maintenance schedule.
+- Repository-wide `.env` ignores were removed for deployment automation; injected local values remain excluded through
+  workspace-local Git configuration and were not exposed.
+- Verified: backend lint/compile, 25 focused tests, startup cleanup static check, and both health endpoints.

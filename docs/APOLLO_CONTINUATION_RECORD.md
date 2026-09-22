@@ -371,3 +371,22 @@ Changed core files:
   orphan audit.
 - Package 6: target-host Windows/macOS permission/filter acceptance; signed iOS work remains credential-blocked only.
   WFP/Network Extension packet-level services remain outstanding and are not implied by hosts/DNS filtering.
+
+## 2026-09-22 final deployment health check — PASS
+- Deployment Agent final result: **PASS; no blockers detected**.
+- Last saved source before readiness remediation: `63d60d861104902cfaed0970f9010899ded1f2b3`; exact post-remediation
+  working-source SHA-256: `b70cdffb4ca7441313c928ec9acc4a946ab7c1b310de55707c6353bc9bdabb10` (18,639 files,
+  using the same non-secret exclusions documented above).
+- Removed repository-wide `.env` ignore patterns required by deployment automation. Injected runtime values remain
+  protected in this workspace through local `.git/info/exclude`; no values were committed or printed.
+- FastAPI startup is initialization-only. It no longer launches retention, investigation, or family-audio deletion
+  loops. This prevents deployment/process restart from being the trigger for destructive maintenance.
+- Retention cleanup remains available as an explicit operator command:
+  `cd /app/backend && python -m scripts.run_retention_sweep`. The command is not invoked by API startup.
+- Changed: `.gitignore`, local `.git/info/exclude`, `backend/server.py`,
+  `backend/scripts/{__init__,run_retention_sweep}.py`.
+- Verification: Python lint clean, `py_compile` clean, 25/25 focused recovery/retention regressions pass, static startup
+  cleanup check passes, and `/health` plus `/api/health` return HTTP 200.
+- Final scan also passed Expo environment/supervisor configuration, MongoDB indexes and query limits, CORS, dynamic
+  OAuth redirects, source secret scanning, URL/port configuration, Tauri configuration, and ignored/untracked desktop
+  build output.
