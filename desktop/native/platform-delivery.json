@@ -1,0 +1,19 @@
+{
+  "contractVersion": 1,
+  "windows": {
+    "serviceName": "ApolloProtectionService",
+    "serviceBinary": "apollo-wfp-service.exe",
+    "mechanism": "wfp_ale_authorization",
+    "layers": ["FWPM_LAYER_ALE_AUTH_CONNECT_V4", "FWPM_LAYER_ALE_AUTH_CONNECT_V6"],
+    "rulesPath": "%ProgramData%\\Apollo\\rules.txt",
+    "statusPath": "%ProgramData%\\Apollo\\filter-status.json",
+    "requires": ["administrator_approval", "windows_filtering_platform"]
+  },
+  "macos": {
+    "extensionIdentifier": "app.apollo.hwg.desktop.networkextension",
+    "mechanism": "network_extension_content_filter",
+    "bundleDestination": "Contents/Library/SystemExtensions/ApolloNetworkExtension.systemextension",
+    "appGroup": "group.app.apollo.hwg.apollo",
+    "requires": ["developer_id_network_extension_entitlement", "system_extension_user_approval"]
+  }
+}

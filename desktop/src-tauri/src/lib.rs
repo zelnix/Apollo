@@ -2,8 +2,8 @@
 //!
 //! Every command returns REAL operating-system facts or an explicit `not_implemented` reason. Nothing here simulates
 //! protection, and web content can never reach a shell or arbitrary IPC: only the commands registered in `generate_handler!`
-//! exist, each with a fixed argument shape. Filtering (Windows Filtering Platform / macOS Network Extension) is a separate
-//! privileged service that is NOT implemented yet; the host reports that honestly instead of claiming Site Gate coverage.
+//! exist, each with a fixed argument shape. Privileged Windows Filtering Platform and macOS Network Extension components
+//! are packaged separately; this host observes their real installed/active state and never infers it from source presence.
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap};
@@ -60,6 +60,22 @@ struct FilterStatus {
     blocked_domains: Vec<String>,
     method: &'static str,
 }
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct NativeFilterStatus {
+    mechanism: &'static str,
+    state: &'static str,
+    installed: bool,
+    active: bool,
+    detail: String,
+    unavailable_reason: Option<&'static str>,
+    checked_at: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EvidenceAckArgs { ids: Vec<String> }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -124,6 +140,38 @@ fn machine_identity() -> (Option<String>, Option<String>, &'static str) {
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 fn machine_identity() -> (Option<String>, Option<String>, &'static str) { (None, None, "unknown") }
 
+#[cfg(target_os = "windows")]
+fn observe_native_filter() -> NativeFilterStatus {
+    let value = output("sc.exe", &["query", "ApolloProtectionService"]);
+    let installed = value.is_some();
+    let active = value.as_deref().map(|text| text.contains("RUNNING") || text.contains("STATE              : 4")).unwrap_or(false);
+    NativeFilterStatus {
+        mechanism: "wfp_ale_authorization", state: if active { "active" } else if installed { "permission_needed" } else { "configuration_missing" },
+        installed, active,
+        detail: if active { "The Apollo Windows Filtering Platform service is running." } else if installed { "The Apollo protection service is installed but stopped." } else { "The Apollo Windows Filtering Platform service is not installed in this package." }.into(),
+        unavailable_reason: if installed { None } else { Some("configuration_missing") }, checked_at: now_iso(),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn observe_native_filter() -> NativeFilterStatus {
+    let value = output("systemextensionsctl", &["list"]);
+    let row = value.as_deref().and_then(|text| text.lines().find(|line| line.contains("app.apollo.hwg.desktop.networkextension")));
+    let installed = row.is_some();
+    let active = row.map(|line| line.contains("activated enabled") || line.contains("[activated enabled]")).unwrap_or(false);
+    NativeFilterStatus {
+        mechanism: "network_extension", state: if active { "active" } else if installed { "permission_needed" } else { "configuration_missing" },
+        installed, active,
+        detail: if active { "The Apollo macOS Network Extension is active." } else if installed { "The Apollo Network Extension is installed and waiting for approval." } else { "The Apollo Network Extension is not embedded in this package." }.into(),
+        unavailable_reason: if installed { None } else { Some("configuration_missing") }, checked_at: now_iso(),
+    }
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn observe_native_filter() -> NativeFilterStatus {
+    NativeFilterStatus { mechanism: "none", state: "not_implemented", installed: false, active: false, detail: "Native desktop filtering is available only in Windows and macOS packages.".into(), unavailable_reason: Some("not_implemented"), checked_at: now_iso() }
+}
+
 const FILTER_START: &str = "# APOLLO SITE FILTER START";
 const FILTER_END: &str = "# APOLLO SITE FILTER END";
 
@@ -149,6 +197,83 @@ fn current_filter() -> Result<(String, BTreeSet<String>, bool), String> {
     let (domains, enabled) = parse_filter(&content);
     Ok((content, domains, enabled))
 }
+
+#[cfg(target_os = "windows")]
+fn program_data() -> PathBuf { std::env::var_os("ProgramData").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\ProgramData")) }
+
+#[cfg(target_os = "windows")]
+fn native_rules_path() -> PathBuf { program_data().join("Apollo/rules.txt") }
+
+#[cfg(target_os = "macos")]
+fn native_rules_path() -> PathBuf {
+    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+    home.join("Library/Group Containers/group.app.apollo.hwg.apollo/blockedDomains.json")
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn native_rules_path() -> PathBuf { PathBuf::from("apollo-native-rules.unavailable") }
+
+fn sync_native_rules(domains: &BTreeSet<String>) -> Result<(), String> {
+    let path = native_rules_path();
+    if let Some(parent) = path.parent() { fs::create_dir_all(parent).map_err(|e| format!("cannot create native rule directory: {e}"))?; }
+    #[cfg(target_os = "windows")]
+    let bytes = domains.iter().cloned().collect::<Vec<_>>().join("\n") + "\n";
+    #[cfg(target_os = "macos")]
+    let bytes = serde_json::to_string(&domains.iter().cloned().collect::<Vec<_>>()).map_err(|e| e.to_string())?;
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    let bytes = { let _ = domains; String::new() };
+    fs::write(path, bytes).map_err(|e| format!("cannot update native rules: {e}"))
+}
+
+#[cfg(target_os = "windows")]
+fn native_evidence_path() -> PathBuf { program_data().join("Apollo/evidence") }
+#[cfg(target_os = "macos")]
+fn native_evidence_path() -> PathBuf {
+    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+    home.join("Library/Group Containers/group.app.apollo.hwg.apollo/enforcementEvidence.json")
+}
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn native_evidence_path() -> PathBuf { PathBuf::from("apollo-native-evidence.unavailable") }
+
+fn read_native_evidence() -> Result<Vec<serde_json::Value>, String> {
+    let path = native_evidence_path();
+    if !path.exists() { return Ok(vec![]); }
+    #[cfg(target_os = "windows")]
+    {
+        let mut rows = vec![];
+        for entry in fs::read_dir(path).map_err(|e| format!("cannot read native evidence directory: {e}"))? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            if entry.path().extension().and_then(|value| value.to_str()) != Some("json") { continue; }
+            if let Ok(value) = serde_json::from_slice(&fs::read(entry.path()).map_err(|e| e.to_string())?) { rows.push(value); }
+        }
+        return Ok(rows);
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+    let bytes = fs::read(path).map_err(|e| format!("cannot read native evidence: {e}"))?;
+    serde_json::from_slice(&bytes).map_err(|e| format!("invalid native evidence: {e}"))
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn activate_native_filter(active: bool) -> Result<(), String> {
+    let verb = if active { "start" } else { "stop" };
+    let script = format!("$p=Start-Process sc.exe -Verb RunAs -Wait -PassThru -ArgumentList '{verb}','ApolloProtectionService';exit $p.ExitCode");
+    let status = Command::new("powershell").args(["-NoProfile", "-Command", &script]).status().map_err(|e| e.to_string())?;
+    if status.success() { Ok(()) } else { Err("Windows protection service approval was declined or the service is missing".into()) }
+}
+
+#[cfg(target_os = "macos")]
+fn activate_native_filter(active: bool) -> Result<(), String> {
+    let executable = std::env::current_exe().map_err(|e| e.to_string())?;
+    let helper = executable.parent().ok_or("cannot locate Apollo extension manager")?.join("ApolloExtensionManager");
+    if !helper.exists() { return Err("ApolloExtensionManager is not embedded in this package".into()); }
+    let status = Command::new(helper).arg(if active { "activate" } else { "deactivate" }).status().map_err(|e| e.to_string())?;
+    if status.success() { Ok(()) } else { Err("macOS did not complete the Network Extension request".into()) }
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn activate_native_filter(_active: bool) -> Result<(), String> { Err("native filtering is unavailable on this host".into()) }
 
 fn valid_domain(value: &str) -> Result<String, String> {
     let host = value.trim().trim_end_matches('.').to_lowercase();
@@ -291,11 +416,13 @@ fn permissions(history: State<RequestHistory>) -> Result<Vec<HostPermission>, St
     let hist = |id: &str| (Some(h.contains_key(id)), h.get(id).cloned());
     let (nr, nt) = hist("notifications");
     let (fr, ft) = hist("network_filter");
-    let (_, _, filter_enabled) = current_filter()?;
+    let (_, _, hosts_filter_enabled) = current_filter()?;
+    let native = observe_native_filter();
+    let filter_enabled = native.active || hosts_filter_enabled;
     Ok(vec![
         // Notification permission state is exposed by tauri-plugin-notification on the web side; here we record request history only.
         HostPermission { id: "notifications", state: "undetermined", enabled: None, requested: nr, last_requested_at: nt, unavailable_reason: None },
-        HostPermission { id: "network_filter", state: if filter_enabled { "granted" } else { "undetermined" }, enabled: Some(filter_enabled), requested: fr, last_requested_at: ft, unavailable_reason: None },
+        HostPermission { id: "network_filter", state: if filter_enabled { "granted" } else if native.installed { "denied" } else { "not_applicable" }, enabled: Some(filter_enabled), requested: fr, last_requested_at: ft, unavailable_reason: if filter_enabled || native.installed { None } else { Some("configuration_missing") } },
         HostPermission { id: "vpn_config", state: "not_applicable", enabled: None, requested: None, last_requested_at: None, unavailable_reason: Some("not_implemented") },
         HostPermission { id: "accessibility", state: "not_applicable", enabled: None, requested: None, last_requested_at: None, unavailable_reason: Some("os_restricted") },
     ])
@@ -309,7 +436,9 @@ fn request_permission(args: RequestPermissionArgs, history: State<RequestHistory
     }
     if args.id == "network_filter" {
         let _guard = filter_lock.0.lock().map_err(|_| "filter lock poisoned")?;
-        privileged_filter_update("enable", None)?;
+        let native = observe_native_filter();
+        if !native.installed { return Err(native.detail); }
+        activate_native_filter(true)?;
     } else if args.id != "notifications" {
         return Err("this permission must be completed in the operating-system Settings page".into());
     }
@@ -324,11 +453,51 @@ fn filter_status() -> Result<FilterStatus, String> {
 }
 
 #[tauri::command]
+fn native_filter_status() -> NativeFilterStatus { observe_native_filter() }
+
+#[tauri::command]
+fn deactivate_native_filter(filter_lock: State<FilterLock>) -> Result<NativeFilterStatus, String> {
+    let _guard = filter_lock.0.lock().map_err(|_| "filter lock poisoned")?;
+    activate_native_filter(false)?;
+    Ok(observe_native_filter())
+}
+
+#[tauri::command]
+fn native_enforcement_evidence() -> Result<Vec<serde_json::Value>, String> { read_native_evidence() }
+
+#[tauri::command]
+fn acknowledge_native_evidence(args: EvidenceAckArgs, filter_lock: State<FilterLock>) -> Result<usize, String> {
+    let _guard = filter_lock.0.lock().map_err(|_| "filter lock poisoned")?;
+    let path = native_evidence_path();
+    let rows = read_native_evidence()?;
+    #[cfg(target_os = "windows")]
+    {
+        let mut removed = 0;
+        for entry in fs::read_dir(&path).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let value: serde_json::Value = match serde_json::from_slice(&fs::read(entry.path()).map_err(|e| e.to_string())?) { Ok(value) => value, Err(_) => continue };
+            if value.get("evidenceId").and_then(|v| v.as_str()).map(|id| args.ids.iter().any(|candidate| candidate == id)).unwrap_or(false) { fs::remove_file(entry.path()).map_err(|e| e.to_string())?; removed += 1; }
+        }
+        return Ok(removed);
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+    let original_len = rows.len();
+    let remaining: Vec<_> = rows.into_iter().filter(|row| row.get("evidenceId").and_then(|v| v.as_str()).map(|id| !args.ids.iter().any(|candidate| candidate == id)).unwrap_or(true)).collect();
+    let removed = original_len.saturating_sub(remaining.len());
+    if let Some(parent) = path.parent() { fs::create_dir_all(parent).map_err(|e| e.to_string())?; }
+    fs::write(path, serde_json::to_vec(&remaining).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    Ok(removed)
+    }
+}
+
+#[tauri::command]
 fn block_destination(host: String, filter_lock: State<FilterLock>) -> Result<FilterChange, String> {
     let host = valid_domain(&host)?; let _guard = filter_lock.0.lock().map_err(|_| "filter lock poisoned")?;
     privileged_filter_update("block", Some(&host))?;
     let (_, domains, enabled) = current_filter()?;
     if !enabled || !domains.contains(&host) { return Err("installed hosts rule could not be verified".into()); }
+    sync_native_rules(&domains)?;
     Ok(FilterChange { verified: true, host, enabled, changed_at: now_iso() })
 }
 
@@ -338,6 +507,7 @@ fn unblock_destination(host: String, filter_lock: State<FilterLock>) -> Result<F
     privileged_filter_update("unblock", Some(&host))?;
     let (_, domains, enabled) = current_filter()?;
     if domains.contains(&host) { return Err("removed hosts rule is still present".into()); }
+    sync_native_rules(&domains)?;
     Ok(FilterChange { verified: true, host, enabled, changed_at: now_iso() })
 }
 
@@ -346,6 +516,7 @@ fn disable_filter(filter_lock: State<FilterLock>) -> Result<(), String> {
     let _guard = filter_lock.0.lock().map_err(|_| "filter lock poisoned")?;
     privileged_filter_update("disable", None)?;
     let (_, _, enabled) = current_filter()?;
+    sync_native_rules(&BTreeSet::new())?;
     if enabled { Err("hosts filter disable could not be verified".into()) } else { Ok(()) }
 }
 
@@ -378,7 +549,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![host_info, network_status, permissions, request_permission, filter_status, block_destination, unblock_destination, disable_filter, open_settings_target])
+        .invoke_handler(tauri::generate_handler![host_info, network_status, permissions, request_permission, filter_status, native_filter_status, deactivate_native_filter, native_enforcement_evidence, acknowledge_native_evidence, block_destination, unblock_destination, disable_filter, open_settings_target])
         .run(tauri::generate_context!())
         .expect("error while running Apollo desktop host");
 }
@@ -422,5 +593,15 @@ mod tests {
         assert!(!script.contains("$host="));
         assert!(!script.contains("$set.Add($host)"));
         assert!(!script.contains("-eq $host"));
+    }
+
+    #[test]
+    fn unsupported_host_observation_is_fail_closed() {
+        if cfg!(not(any(target_os = "windows", target_os = "macos"))) {
+            let status = observe_native_filter();
+            assert!(!status.installed);
+            assert!(!status.active);
+            assert_eq!(status.unavailable_reason, Some("not_implemented"));
+        }
     }
 }

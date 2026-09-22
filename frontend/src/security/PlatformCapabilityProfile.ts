@@ -2,7 +2,7 @@
 // contract for the Apollo Security SDK (Android, iOS, Windows, macOS).
 //
 // This file exists so the UI, backend and tests never assume Android-only execution, even
-// while only the mock and Android adapters are actually wired up (see securityAdapter.ts).
+// while each host reports only the mechanism actually present at runtime.
 // It answers two separate questions, and the two must never be confused:
 //
 //   1. PlatformCapabilityProfile — "what CAN this class of device technically do?"
@@ -158,7 +158,9 @@ export function anyVerifiedBlock(evidence: readonly EnforcementEvidence[] | null
  * capability" — only a native adapter backed by a real SDK probe may claim them for its own
  * platform. They exist so (a) the types/UI/tests can represent all four platforms before any
  * native code for Windows/macOS exists, and (b) capability decisions are grounded in the
- * actual OS mechanism, not guessed per feature.
+ * actual OS mechanism, not guessed per feature. A live adapter must still narrow these ceilings
+ * to the mechanism it actually observes; the Package 6 Windows service uses ALE flow metadata,
+ * not a packet-inspection callout, and the macOS extension uses NEFilterDataProvider flow metadata.
  */
 export const PLATFORM_CAPABILITY_BASELINES: Record<SdkPlatform, PlatformCapabilityProfile> = {
   android: {

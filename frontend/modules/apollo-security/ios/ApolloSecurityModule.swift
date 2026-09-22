@@ -14,7 +14,7 @@ import UserNotifications
 public class ApolloSecurityModule: Module {
   private let label = "iOS security module"
   /// Bumped whenever this module's observable behaviour changes. Mirrors ApolloDnsVpnService.MODULE_VERSION on Android.
-  private let moduleVersion = "1.0.0"
+  private let moduleVersion = "1.1.0"
   /// Last observed extension state + when it was observed. Never assumed; refreshed from SFContentBlockerManager.
   private var blockerEnabled: Bool? = nil
   private var blockerVerifiedAt: String? = nil
@@ -44,6 +44,13 @@ public class ApolloSecurityModule: Module {
     FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup)?.appendingPathComponent("blockerList.json")
   }
   private var blockedKey: String { "apollo.siteguard.blocked" }
+  private var messageEventsKey: String { "apollo.textguard.events.v1" }
+  private var messageActivityKey: String { "apollo.textguard.lastObservedAt" }
+  private var messageFilterObservedAt: String? { UserDefaults(suiteName: appGroup)?.string(forKey: messageActivityKey) }
+  private var messageFilterRecentlyObserved: Bool {
+    guard let value = messageFilterObservedAt, let date = ISO8601DateFormatter().date(from: value) else { return false }
+    return Date().timeIntervalSince(date) <= 30 * 24 * 60 * 60
+  }
 
   // Call Guard — CXCallDirectoryExtension (ApolloCallDirectory), same App Group as Site Guard.
   // The extension only ever gets a STATIC list at reload time (Apple gives it no per-call callback,
@@ -156,18 +163,29 @@ public class ApolloSecurityModule: Module {
 
     AsyncFunction("getSecuritySignals") { () -> String in "[]" }
 
-    // Gate 2 — Text Guard (MessagingSdk contract). Honest today: unlike Android, iOS gives
-    // third-party apps NO mechanism to observe Messages notifications at all (there is no
-    // NotificationListenerService equivalent on this platform). A real Message Filter Extension
-    // (ILMessageFilterExtension) needs its own Xcode extension target + the
-    // com.apple.developer.message-filter entitlement — see TextGuardFilterExtension.swift, which is
-    // scaffolding for that future native build and is explicitly NOT wired into an active target here.
+    // Gate 2 — Text Guard. The Message Filter extension sees only SMS/MMS from unknown senders;
+    // iMessage, known contacts and other messaging apps remain outside Apple's extension scope.
+    // A recent extension observation is positive evidence that it is active. Absence is not proof
+    // that it is disabled, so Apollo reports permission_required until the extension runs.
     AsyncFunction("getMessagingCapabilities") { () -> String in
-      self.json(["smsFiltering": "unsupported", "linkInterception": "supported", "senderReputation": "unsupported", "shareExtension": "supported", "notificationIntegration": "unsupported"])
+      self.json(["smsFiltering": self.messageFilterRecentlyObserved ? "supported" : "permission_required", "linkInterception": "supported", "senderReputation": "unsupported", "shareExtension": "supported", "notificationIntegration": "unsupported"])
     }
-    AsyncFunction("getRecentMessageSecurityEvents") { () -> String in "[]" }
-    AsyncFunction("acknowledgeMessageSecurityEvents") { (_ ids: String) -> String in self.json(["acknowledged": 0]) }
-    AsyncFunction("openSmsListenerSettings") { () -> String in self.json(["opened": false]) }
+    AsyncFunction("getRecentMessageSecurityEvents") { () -> String in
+      let rows = UserDefaults(suiteName: self.appGroup)?.array(forKey: self.messageEventsKey) ?? []
+      return self.json(rows)
+    }
+    AsyncFunction("acknowledgeMessageSecurityEvents") { (ids: String) -> String in
+      let requested = (try? JSONSerialization.jsonObject(with: Data(ids.utf8)) as? [String]) ?? []
+      let defaults = UserDefaults(suiteName: self.appGroup)
+      let rows = defaults?.array(forKey: self.messageEventsKey) as? [[String: Any]] ?? []
+      let remaining = rows.filter { row in guard let id = row["id"] as? String else { return true }; return !requested.contains(id) }
+      defaults?.set(remaining, forKey: self.messageEventsKey)
+      return self.json(["acknowledged": rows.count - remaining.count])
+    }
+    AsyncFunction("openSmsListenerSettings") { () -> String in
+      if let url = URL(string: UIApplication.openSettingsURLString) { DispatchQueue.main.async { UIApplication.shared.open(url) }; return self.json(["opened": true]) }
+      return self.json(["opened": false])
+    }
 
     // Call Guard (CallSdk contract). `callScreening` reflects CXCallDirectoryManager's OWN reported
     // enabled status for ApolloCallDirectory — never assumed. `numberReputation` is always

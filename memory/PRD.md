@@ -25,9 +25,8 @@
 - TypeScript, ESLint, Python lint, 53 provider-disabled pytest checks, security/native preflight, Cargo and Apollo-owned Android release Kotlin modules pass.
 
 ### Backlog
-- **P0:** Produce the signed Android installable on a supported Hermes build host. The current Linux ARM64 host cannot run React Native's bundled Hermes compiler; no substitute artifact is claimed.
-- **P1:** Run physical-device Phase 2 acceptance only when the fresh signed candidate exists; do not reopen the completed development baseline.
-- **P2:** Superseded by the authorised source-remediation P2.0 default; signed build creation and device acceptance remain separate build-owner operations.
+- No remaining application-source item from Phase 1, Phase 2 or Package 6.
+- Signed builds, installer production, notarisation, store work and physical-device acceptance are build-owner responsibilities and are not development backlog items here.
 
 ## Phase 2 source remediation — completed locally (2026-09-22)
 
@@ -38,6 +37,15 @@
 - Backend owns 35 curated learning articles and official-source feed/admin lifecycle; consumer learning is no-store and ships no article bodies.
 - Validation: TypeScript, ESLint, Python lint, 373 Node tests, 61 provider-disabled pytest tests, staging/production preflight and Cargo pass.
 - Final GitHub save remains required before build-owner handoff. No artifact/deployment/device/signing work was performed in this source package.
+
+## Package 6 native source delivery — complete locally (2026-09-22)
+
+- iOS/iPadOS: real Content Blocker, Call Directory, unknown-sender Message Filter and Share Extension targets; App Group queue stores no raw message content.
+- Windows: WFP ALE service, dynamic exact-destination filters, WFP drop evidence with app/process attribution, service lifecycle and NSIS packaging source.
+- macOS: Network Extension system extension, source-app attribution, bounded enforcement evidence, activation helper, required entitlements and unsigned embedding source.
+- Desktop host reports actual installed/active state and canonical missing/permission states; no native source is represented as live protection.
+- Validation: TypeScript, ESLint, Python lint, 379 Node tests, 61 provider-disabled pytest tests, Cargo, 5 Rust tests, Windows x64 cross-link, Expo extension resolution and both security preflights pass.
+- No signed/native artifact or device result is claimed. Final Package 6 GitHub save is the only source-handoff action remaining.
 
 ## C15 production GuardDog track (“M4” continuation) — source implemented (2026-09-22)
 

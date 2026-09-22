@@ -93,6 +93,7 @@
       ],
       "./plugins/withApolloSiteGuard",
       "./plugins/withApolloCallGuard",
+      "./plugins/withApolloTextGuard",
       "./plugins/withGuardDogEngine",
       "./plugins/withGuardDogCandidateProfile",
       "./plugins/withGuardDogProductionTrust",
@@ -140,6 +141,24 @@
                 {
                   "targetName": "ApolloContentBlocker",
                   "bundleIdentifier": "app.apollo.hwg.contentblocker",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.app.apollo.hwg.apollo"
+                    ]
+                  }
+                },
+                {
+                  "targetName": "ApolloCallDirectory",
+                  "bundleIdentifier": "app.apollo.hwg.calldirectory",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.app.apollo.hwg.apollo"
+                    ]
+                  }
+                },
+                {
+                  "targetName": "ApolloMessageFilter",
+                  "bundleIdentifier": "app.apollo.hwg.messagefilter",
                   "entitlements": {
                     "com.apple.security.application-groups": [
                       "group.app.apollo.hwg.apollo"

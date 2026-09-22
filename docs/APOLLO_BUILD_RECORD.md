@@ -1,3 +1,13 @@
+# Package 6 native source delivery — 2026-09-22
+
+- iOS source resolves four app extensions under `app.apollo.hwg`: Content Blocker, Call Directory, Message Filter and Share Extension.
+- Windows source includes an Apollo WFP ALE service, actual drop-event app/process attribution, bounded evidence, NSIS service hooks and Tauri bridge. MinGW x64 compile/link passed; temporary PE output was deleted.
+- macOS source includes an `NEFilterDataProvider` system extension, source-app attribution/evidence, activation helper, entitlements, XcodeGen manifest and unsigned embedding recipe.
+- Bounded validation: TypeScript, ESLint, Python lint, 379 Node tests, 61 provider-disabled pytest tests, Cargo check, 5 Rust tests, Package 6 preflight and staging/production preflights pass.
+- Frozen GuardDog package roots remain unchanged. No signed build, installer, notarisation, deployment or physical-device acceptance was performed.
+- Source manifest: 625 files, SHA-256 `facb85bf40e186fcb6bc61ef668a2b81b72e9250d21962914c38b66a25bff6f6`.
+- Detailed record: `APOLLO_PACKAGE6_SOURCE_DELIVERY_RECORD.md`.
+
 # Phase 2 source remediation — 2026-09-22
 
 - Reviewed/starting SHA: `6fbd5b3bd5711a2ef0530da7c24a162ca2b57e79`.

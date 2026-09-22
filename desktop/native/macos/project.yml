@@ -1,0 +1,36 @@
+name: ApolloNativeExtensions
+options:
+  bundleIdPrefix: app.apollo.hwg.desktop
+  deploymentTarget:
+    macOS: "12.0"
+settings:
+  base:
+    MARKETING_VERSION: 1.1.0
+    CURRENT_PROJECT_VERSION: 2
+    SWIFT_VERSION: 5.0
+targets:
+  ApolloNetworkExtension:
+    type: system-extension
+    platform: macOS
+    sources:
+      - ApolloNetworkExtension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.apollo.hwg.desktop.networkextension
+        INFOPLIST_FILE: ApolloNetworkExtension/Info.plist
+        CODE_SIGN_ENTITLEMENTS: ApolloNetworkExtension/ApolloNetworkExtension.entitlements
+        CODE_SIGN_STYLE: Automatic
+    dependencies:
+      - sdk: NetworkExtension.framework
+      - sdk: Network.framework
+  ApolloExtensionManager:
+    type: tool
+    platform: macOS
+    sources:
+      - ApolloExtensionManager
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.apollo.hwg.desktop.extension-manager
+        CODE_SIGN_STYLE: Automatic
+    dependencies:
+      - sdk: SystemExtensions.framework

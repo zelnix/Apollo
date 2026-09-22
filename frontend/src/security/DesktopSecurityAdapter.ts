@@ -1,6 +1,6 @@
 // DesktopSecurityAdapter — Windows/macOS host (Tauri shell around the shared Expo web bundle, see /desktop).
 // Real OS facts arrive through typed, allowlisted Tauri commands (desktop/src-tauri/src/main.rs). Anything the desktop
-// host has not implemented yet is reported as unavailable with reason `not_implemented` — never simulated, never "safe".
+// host has not observed is reported as unavailable with a canonical reason — never synthetic, never "safe".
 import type { Capability } from "@/src/domain/types";
 import { desktopHostKind } from "./desktopHost";
 import { PLATFORM_CAPABILITY_BASELINES, type EnforcementEvidence, type PlatformCapabilityProfile } from "./PlatformCapabilityProfile";
@@ -31,6 +31,7 @@ interface HostNetwork { connected: boolean; type: NetworkStatus["type"]; vpnActi
 interface HostPermission { id: ProtectionPermission["id"]; state: ProtectionPermission["status"]; enabled: boolean | null; requested: boolean | null; lastRequestedAt: string | null; unavailableReason: ProtectionPermission["unavailableReason"] }
 interface HostFilterStatus { enabled: boolean; blockedDomains: string[]; method: "hosts_dns_filter" }
 interface HostFilterChange { verified: boolean; host: string; enabled: boolean; changedAt: string }
+interface HostNativeFilterStatus { mechanism: "wfp_ale_authorization" | "network_extension" | "none"; state: "active" | "permission_needed" | "configuration_missing" | "not_implemented" | "adapter_failed"; installed: boolean; active: boolean; detail: string; unavailableReason: ProtectionPermission["unavailableReason"]; checkedAt: string }
 
 class DesktopSecurityAdapterImpl implements SecurityPlatformAdapter {
   // Explicit host identity: Higgins receives platform "windows"/"macos" with native-origin facts, not a browser profile.
@@ -41,10 +42,11 @@ class DesktopSecurityAdapterImpl implements SecurityPlatformAdapter {
   private async host(): Promise<HostInfo> { return this.info ?? (this.info = await invoke<HostInfo>("host_info")); }
 
   async getCapabilities(): Promise<Capability[]> {
+    const native = await invoke<HostNativeFilterStatus>("native_filter_status");
     return [
       { id: "link_guard", title: "Link Gate", status: "available", detail: "Checks links you paste into Apollo; it is a manual check." },
       { id: "known_threats", title: "Known Threat Lookup", status: "available", detail: "Privacy-preserving reputation checks using the link only." },
-      { id: "site_guard", title: "Site Gate", status: "available", detail: "Applies an administrator-approved, OS hosts/DNS block rule to exact domains. It does not inspect packets or attribute traffic to apps." },
+      { id: "site_guard", title: "Site Gate", status: native.active ? "active" : native.installed ? "permission_required" : "available", detail: native.active ? native.detail : `${native.detail} Exact-domain hosts filtering remains available as a narrower fallback and is labelled separately.` },
       { id: "connection_guard", title: "Network Gate", status: "available", detail: "Reads the active network interface and VPN state from the OS." },
       { id: "share_intake", title: "Open with Apollo", status: "available", detail: "Open or drop files into Apollo for File Gate." },
       { id: "message_guard", title: "Text Gate", status: "available", detail: "Checks texts and chats you paste or screenshot into Apollo." },
@@ -53,12 +55,13 @@ class DesktopSecurityAdapterImpl implements SecurityPlatformAdapter {
   }
 
   async getProtectionStatus(): Promise<ProtectionStatus> {
-    const status = await invoke<HostFilterStatus>("filter_status");
-    return { running: status.enabled, requested: status.enabled, operational: status.enabled, enforcementMethod: status.enabled ? "dns_filter" : "none",
-      coverage: status.enabled ? `Exact-domain hosts filtering is active for ${status.blockedDomains.length} destination${status.blockedDomains.length === 1 ? "" : "s"}. It does not inspect packets or identify the originating app.` : "Desktop exact-domain filtering is available but not enabled.",
-      coverageScope: status.enabled ? ["hosts:exact-domain"] : [], lastVerified: status.enabled ? new Date().toISOString() : null,
-      degradedReason: status.enabled ? "Hosts/DNS scope only; WFP and Network Extension packet filtering are not claimed." : "administrator approval required",
-      visibility: status.enabled ? "limited" : "none", since: null, adapterLabel: this.label, checkedAt: new Date().toISOString() };
+    const [status, native] = await Promise.all([invoke<HostFilterStatus>("filter_status"), invoke<HostNativeFilterStatus>("native_filter_status")]);
+    const operational = native.active || status.enabled;
+    return { running: operational, requested: operational || native.installed, operational, enforcementMethod: native.active ? "packet_filter" : status.enabled ? "dns_filter" : "none",
+      coverage: native.active ? native.detail : status.enabled ? `Exact-domain hosts filtering is active for ${status.blockedDomains.length} destination${status.blockedDomains.length === 1 ? "" : "s"}. It does not inspect packets or identify the originating app.` : "Desktop protection is not active. Manual Link Gate checks remain available.",
+      coverageScope: native.active ? [this.kind === "windows" ? "wfp:ale-connect" : "network-extension:flow"] : status.enabled ? ["hosts:exact-domain"] : [], lastVerified: operational ? (native.active ? native.checkedAt : new Date().toISOString()) : null,
+      degradedReason: native.active ? null : native.installed ? native.detail : status.enabled ? "The privileged filter is missing; only exact-domain hosts filtering is active." : native.detail,
+      visibility: native.active ? "full" : status.enabled ? "limited" : "none", since: null, adapterLabel: this.label, checkedAt: new Date().toISOString() };
   }
   async analyseURL(): Promise<NativeUrlAnalysis> { return { supported: false, verdict: "unknown", reasons: ["No native URL analyser on the desktop host; server-side checks are used."] }; }
   async analyseDomain(): Promise<NativeUrlAnalysis> { return { supported: false, verdict: "unknown", reasons: ["No native domain analyser on the desktop host."] }; }
@@ -78,7 +81,7 @@ class DesktopSecurityAdapterImpl implements SecurityPlatformAdapter {
   }
   async getSecuritySignals(): Promise<SecuritySignal[]> { return []; }
   async startProtection(): Promise<ProtectionStatus> { await invoke("request_permission", { args: { id: "network_filter" } }); return this.getProtectionStatus(); }
-  async stopProtection(): Promise<ProtectionStatus> { await invoke("disable_filter"); return this.getProtectionStatus(); }
+  async stopProtection(): Promise<ProtectionStatus> { await Promise.all([invoke("deactivate_native_filter"), invoke("disable_filter")]); return this.getProtectionStatus(); }
 
   async getProtectionPermissions(): Promise<ProtectionPermission[]> {
     const observedAt = new Date().toISOString();
@@ -105,13 +108,19 @@ class DesktopSecurityAdapterImpl implements SecurityPlatformAdapter {
   }
   async getPlatformCapabilityProfile(): Promise<PlatformCapabilityProfile> {
     const h = await this.host();
+    const native = await invoke<HostNativeFilterStatus>("native_filter_status");
     const base = PLATFORM_CAPABILITY_BASELINES[h.platform];
+    if (native.active) return { ...base, platformVersion: h.osVersion, sdkVersion: h.hostVersion,
+      packetVisibility: "partial", dnsVisibility: "partial", processAttribution: h.platform === "windows" ? "full" : "none",
+      appAttribution: h.platform === "macos" ? "partial" : "full", domainVisibility: "partial", realTimeEvents: "full",
+      scope: [h.platform === "windows" ? "wfp:ale-connect:remote-address" : "network-extension:flow-metadata"] };
     return { ...base, platformVersion: h.osVersion, sdkVersion: h.hostVersion,
       networkFiltering: "partial", packetVisibility: "none", dnsVisibility: "partial", processAttribution: "none", appAttribution: "none",
       domainVisibility: "partial", localBlocking: "partial", backgroundProtection: "partial", offlineProtection: "full",
       realTimeEvents: "none", scope: ["hosts:exact-domain"] };
   }
-  async getEnforcementEvidence(): Promise<EnforcementEvidence[]> { return []; }
+  async getEnforcementEvidence(): Promise<EnforcementEvidence[]> { return invoke<EnforcementEvidence[]>("native_enforcement_evidence"); }
+  async acknowledgeEnforcementEvidence(evidenceIds: string[]): Promise<void> { await invoke("acknowledge_native_evidence", { args: { ids: evidenceIds } }); }
   async getDeviceProfileFacts(): Promise<DeviceProfileFacts> {
     const h = await this.host();
     return { manufacturer: h.manufacturer, model: h.model, osVersion: h.osVersion, formFactor: h.formFactor, locale: h.locale };

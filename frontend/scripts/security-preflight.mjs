@@ -34,7 +34,7 @@ function walk(dir) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
     const p = path.join(dir, e.name);
     if (e.isDirectory()) return e.name === "node_modules" ? [] : walk(p);
-    return /\.(ts|tsx|js|mjs|cjs|py|json|md)$/.test(e.name) && !/\.d\.ts$/.test(e.name) ? [p] : [];
+    return /\.(ts|tsx|js|mjs|cjs|py|json|md|rs|swift|cpp|h|plist|ps1|nsh|yml|sh)$/.test(e.name) && !/\.d\.ts$/.test(e.name) ? [p] : [];
   });
 }
 
@@ -99,8 +99,9 @@ if (!(autolinking.android?.exclude ?? []).includes("guarddog-expo-module") || !(
 // referenced from the web-only host selector (never from a native or shared module).
 const workspace = path.resolve(root, "..");
 const appSources = [
-  ...["src", "app", "modules", "tests", "scripts"].flatMap((dir) => walk(path.join(root, dir))),
+  ...["src", "app", "modules", "plugins", "tests", "scripts"].flatMap((dir) => walk(path.join(root, dir))),
   ...walk(path.join(workspace, "tests")),
+  ...walk(path.join(workspace, "desktop")),
   ...[path.join(workspace, "design_guidelines.json")].filter((file) => fs.existsSync(file)),
 ];
 for (const file of appSources) {
