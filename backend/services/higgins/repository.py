@@ -17,7 +17,7 @@ from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError, OperationFailure
 
 from core.db import db, now_utc
-from services.higgins.capacity import LIFETIME_SECONDS, WORK_SECONDS
+from services.higgins.capacity import LIFETIME_SECONDS, TEMPORARY_RETENTION, WORK_SECONDS
 from services.higgins.contracts import (Coverage, EvidenceItem, Failure, HigginsResponse, Inventory, InvestigationCase, Job,
                                         SourceReference, TurnCommit, failure_body)
 from services.higgins.encryption import decrypt, encrypt
@@ -151,7 +151,8 @@ async def assert_live(owner: str, case_id: str, epoch: Optional[str] = None) -> 
 async def create_case(owner: str, gate: Optional[str], device_profile: Optional[dict]) -> dict:
     now = now_utc()
     doc = {"owner_id": owner, "case_id": str(uuid.uuid4()), "revision": 0, "epoch": uuid.uuid4().hex, "work_epoch": uuid.uuid4().hex, "gates": [gate] if gate else [], "status": "queued",
-           "created_at": now, "updated_at": now, "expires_at": now + timedelta(seconds=LIFETIME_SECONDS), "active_job_id": None,
+           "created_at": now, "updated_at": now, "expires_at": now + timedelta(seconds=LIFETIME_SECONDS),
+           "retention_class": TEMPORARY_RETENTION, "active_job_id": None,
            "active_turn_id": None, "lease_fence": None, "response_ciphertext": None, "response_revision": None,
            "sources_ciphertext": enc_json([]), "device_profile_ciphertext": enc_json(device_profile) if device_profile else None,
            "pending_device_request_ids": [], "accepted_commits": [], "open_question_ciphertext": None,
@@ -640,7 +641,8 @@ async def expire_case(owner: str, case_id: str) -> None:
 
 async def sweep() -> None:
     now = now_utc()
-    async for doc in db.investigation_cases.find({"expires_at": {"$lte": now}, "cleanup_status": {"$in": ["not_due"]}}, {"_id": 0, "owner_id": 1, "case_id": 1}):
+    # Automatic expiry is restricted to cases explicitly created under the fixed temporary-evidence policy.
+    async for doc in db.investigation_cases.find({"retention_class": TEMPORARY_RETENTION, "expires_at": {"$lte": now}, "cleanup_status": {"$in": ["not_due"]}}, {"_id": 0, "owner_id": 1, "case_id": 1}):
         await expire_case(doc["owner_id"], doc["case_id"])
     async for task in db.investigation_cleanup.find({"state": "pending", "next_attempt_at": {"$lte": now}}, {"_id": 0}):
         await run_cleanup(task["owner_id"], task["case_id"])
@@ -650,7 +652,7 @@ async def sweep() -> None:
         if not case:
             await db.investigation_turn_commits.delete_one({"owner_id": stale["owner_id"], "case_id": stale["case_id"], "commit_id": stale["commit_id"]})
     # Revisit completed cleanups: any late writer content for deleted/expired cases is removed again.
-    async for gone in db.investigation_cases.find({"deleted": True, "cleanup_status": "complete", "updated_at": {"$gte": now - timedelta(hours=1)}}, {"_id": 0, "owner_id": 1, "case_id": 1}):
+    async for gone in db.investigation_cases.find({"retention_class": TEMPORARY_RETENTION, "deleted": True, "cleanup_status": "complete", "updated_at": {"$gte": now - timedelta(hours=1)}}, {"_id": 0, "owner_id": 1, "case_id": 1}):
         for name in CONTENT:
             field = "device_id" if name == "voice_cache" else "owner_id"
             scope = {"scope_id": gone["case_id"]} if name == "voice_cache" else {"case_id": gone["case_id"]}

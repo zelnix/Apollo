@@ -27,7 +27,7 @@ from services.higgins import jobs
 from services.higgins import provider
 from services.higgins import repository as repo
 from services.higgins import tools as toolbox
-from services.higgins.capacity import ITEMS, SPEECH_SEGMENT_CHARACTERS, TEXT, policy
+from services.higgins.capacity import ITEMS, SPEECH_SEGMENT_CHARACTERS, TEMPORARY_RETENTION, TEXT, policy
 from services.higgins.contracts import (CreateCase, CreateUpload, DeviceProfile, DeviceResult, EvidenceSubmission, ExpectedObservation, ExpectedRevision,
                                         RecheckRequest, RecheckResult, ReportRequest, SettingsPlan, SettingsPlanRequest, SpeechRequest, SubmitTurn, UploadMetadata)
 from services.higgins.encryption import cipher, decrypt, encrypt
@@ -876,6 +876,7 @@ async def _speech_job(owner: str, case: dict, job: dict, text: str) -> None:
                 return
             audio_id = str(uuid.uuid4())
             await db.voice_cache.insert_one({"device_id": owner, "scope_id": case["case_id"], "job_id": job["job_id"], "audio_id": audio_id, "segment": index,
+                                             "retention_class": TEMPORARY_RETENTION,
                                              "audio_ciphertext": encrypt(audio), "created_at": now_utc(), "expires_at": repo.utc(case["expires_at"]), "content_version": 1})
             audio_ids.append(audio_id)
             await db.investigation_jobs.update_one({"owner_id": owner, "job_id": job["job_id"]}, {"$set": {"audio_ids": audio_ids}})

@@ -12,7 +12,7 @@ import uuid
 from fastapi import HTTPException
 
 from core.db import db, now_utc
-from services.higgins.capacity import LIFETIME_SECONDS
+from services.higgins.capacity import LIFETIME_SECONDS, TEMPORARY_RETENTION
 
 CONTENT_COLLECTIONS = ("ask_messages", "ask_handoffs", "voice_cache")
 LEGACY_CONTENT_MIGRATION = "higgins-discard-pre-v1-temporary-content"
@@ -34,7 +34,7 @@ async def open_scope(owner: str, scope_id: str) -> dict:
     now = now_utc()
     await db.investigation_scopes.update_one({"owner_id": owner, "scope_id": scope_id}, {"$setOnInsert": {
         "owner_id": owner, "scope_id": scope_id, "generation": current, "created_at": now,
-        "expires_at": now + timedelta(seconds=LIFETIME_SECONDS), "deleted": False}}, upsert=True)
+        "expires_at": now + timedelta(seconds=LIFETIME_SECONDS), "retention_class": TEMPORARY_RETENTION, "deleted": False}}, upsert=True)
     return await require_scope(owner, scope_id)
 
 
@@ -109,17 +109,25 @@ async def migrate_and_index() -> None:
     # Legacy-content cleanup is intentionally NOT invoked during startup. `_discard_legacy_content_once` is an
     # operator-only, audited migration helper; deployment initialization must preserve every existing record.
     for name in CONTENT_COLLECTIONS:
-        await db[name].create_index("expires_at", expireAfterSeconds=0)
+        indexes = await db[name].index_information()
+        for index_name, definition in indexes.items():
+            if definition.get("key") == [("expires_at", 1)] and definition.get("partialFilterExpression") != {"retention_class": TEMPORARY_RETENTION}:
+                await db[name].drop_index(index_name)
+        await db[name].create_index("expires_at", name="temporary_evidence_expiry_ttl", expireAfterSeconds=0,
+                                    partialFilterExpression={"retention_class": TEMPORARY_RETENTION})
         await db[name].create_index([("device_id", 1), ("scope_id", 1)])
     await db.voice_cache.create_index([("device_id", 1), ("audio_id", 1)], unique=True)
 
 
 async def sweep() -> None:
-    await db.investigation_scopes.update_many({'$or': [{'expires_at': {'$lte': now_utc()}}, {'deleted': True}]},
+    # Deployment-safe invariant: automatic cleanup can only select records explicitly created under Apollo's
+    # fixed 15-minute temporary-evidence contract. Persistent/user-owned records are never selected by age alone.
+    await db.investigation_scopes.update_many({'retention_class': TEMPORARY_RETENTION,
+                                               '$or': [{'expires_at': {'$lte': now_utc()}}, {'deleted': True}]},
                                               {'$unset': {'context_ciphertext': ''}})
     for name in CONTENT_COLLECTIONS:
-        await db[name].delete_many({"expires_at": {"$lte": now_utc()}})
-    async for scope in db.investigation_scopes.find({"deleted": True}, {"_id": 0, "owner_id": 1, "scope_id": 1}):
+        await db[name].delete_many({"retention_class": TEMPORARY_RETENTION, "expires_at": {"$lte": now_utc()}})
+    async for scope in db.investigation_scopes.find({"retention_class": TEMPORARY_RETENTION, "deleted": True}, {"_id": 0, "owner_id": 1, "scope_id": 1}):
         await delete_scope(scope["owner_id"], scope["scope_id"])
 
 

@@ -14,7 +14,7 @@ from core.redaction import redact_user_secrets
 from services.higgins.encryption import decrypt, encrypt
 from services.higgins.provider import ProviderFailure, speech_bytes
 from services.higgins.retention import delete_scope, open_scope, require_scope, utc
-from services.higgins.capacity import SPEECH_SEGMENT_CHARACTERS
+from services.higgins.capacity import SPEECH_SEGMENT_CHARACTERS, TEMPORARY_RETENTION
 
 router = APIRouter()
 
@@ -56,6 +56,7 @@ async def voice_speak(body: SpeakIn, request: Request):
         if len(audio) > 8_000_000:
             raise HTTPException(413, "The speech segment exceeded its storage budget. Use a shorter segment.")
         await db.voice_cache.insert_one({"device_id": owner, "scope_id": body.scope_id, "audio_id": audio_id,
+            "retention_class": TEMPORARY_RETENTION,
             "audio_ciphertext": encrypt(audio), "created_at": now_utc(), "expires_at": scope["expires_at"],
             "content_version": 1, "generation": scope["generation"], "provider": metadata["provider"]})
         await db.investigation_scopes.update_one({'owner_id': owner, 'scope_id': body.scope_id}, {'$addToSet': {'audio_ids': audio_id}})

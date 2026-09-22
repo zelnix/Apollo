@@ -59,7 +59,12 @@ async def lifespan(_: FastAPI):
     await db.domain_info_cache.create_index("expires_at")  # plain index; expiry is checked at read time, never auto-deleted
     await db.gmail_connections.create_index("device_id", unique=True)
     await db.gmail_oauth_states.create_index("state", unique=True)
-    await db.gmail_oauth_states.create_index("expires_at", expireAfterSeconds=0)  # real TTL cleanup — these are short-lived CSRF tokens, not a security "truth" cache
+    oauth_indexes = await db.gmail_oauth_states.index_information()
+    for index_name, definition in oauth_indexes.items():
+        if definition.get("key") == [("expires_at", 1)] and definition.get("partialFilterExpression") != {"retention_class": "oauth_csrf_temporary"}:
+            await db.gmail_oauth_states.drop_index(index_name)
+    await db.gmail_oauth_states.create_index("expires_at", name="oauth_csrf_expiry_ttl", expireAfterSeconds=0,
+                                              partialFilterExpression={"retention_class": "oauth_csrf_temporary"})
     # Generic IMAP credentials are no longer accepted or written. Legacy rows are retained for an explicit,
     # audited migration rather than destructively dropping user data on every process start.
     await db.mailbox_assessment_receipts.create_index([("provider", 1), ("device_id", 1), ("message_digest", 1)], unique=True)

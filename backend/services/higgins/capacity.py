@@ -28,6 +28,7 @@ OUTPUT = Bound(int(os.getenv("HIGGINS_OUTPUT_TOKENS", "8192")), "tokens",
                "Reserve response and reasoning within the provider's output limit", "non-STOP output is incomplete")
 SCHEMA_RESERVE = Bound(1024, "tokens", "Conservative role/tool-wrapper overhead not exposed by Developer API token counting", "reject; do not trim context")
 LIFETIME_SECONDS = 15 * 60  # hard ceiling; never extended by retries
+TEMPORARY_RETENTION = "apollo_15_minute_temporary"
 WORK_SECONDS = 120
 CALL_SECONDS = 50
 SPEECH_SEGMENT_CHARACTERS = 1200  # segments are queued in full, never discarded

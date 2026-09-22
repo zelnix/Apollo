@@ -46,7 +46,9 @@ async def gmail_connect(device_id: str = Query(min_length=8, max_length=64), app
     if not _valid_app_redirect(app_redirect):
         raise HTTPException(400, "Invalid redirect target")
     state = secrets.token_urlsafe(24)
-    await db.gmail_oauth_states.insert_one({"state": state, "device_id": device_id, "app_redirect": app_redirect, "created_at": now_utc(), "expires_at": now_utc() + timedelta(minutes=10)})
+    await db.gmail_oauth_states.insert_one({"state": state, "device_id": device_id, "app_redirect": app_redirect,
+                                            "retention_class": "oauth_csrf_temporary", "created_at": now_utc(),
+                                            "expires_at": now_utc() + timedelta(minutes=10)})
     logger.info("gmail oauth start redirect_uri=%s", GOOGLE_GMAIL_REDIRECT_URI)
     return GmailConnectOut(authorization_url=gmail_service.build_authorization_url(state))
 
