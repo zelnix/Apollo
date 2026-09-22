@@ -2,21 +2,19 @@ import { useRouter } from "expo-router";
 import BatteryCharging from "lucide-react-native/icons/battery-charging";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import ChevronUp from "lucide-react-native/icons/chevron-up";
-import Clock from "lucide-react-native/icons/clock";
 import FileSearch from "lucide-react-native/icons/file-search";
 import KeyRound from "lucide-react-native/icons/key-round";
 import Link2 from "lucide-react-native/icons/link-2";
 import Mail from "lucide-react-native/icons/mail";
 import MessageSquareWarning from "lucide-react-native/icons/message-square-warning";
 import PhoneIncoming from "lucide-react-native/icons/phone-incoming";
-import RefreshCw from "lucide-react-native/icons/refresh-cw";
 import ScanLine from "lucide-react-native/icons/scan-line";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
 import Smartphone from "lucide-react-native/icons/smartphone";
 import Sparkles from "lucide-react-native/icons/sparkles";
 import Wifi from "lucide-react-native/icons/wifi";
 import React, { useState } from "react";
-import { Pressable, RefreshControl, ScrollView, Text, useWindowDimensions, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApolloHero } from "@/src/components/ApolloHero";
@@ -28,14 +26,11 @@ import { ServiceBanner } from "@/src/components/ServiceBanner";
 import { Body, Button, Card, DevTag, Pill, ScreenHeader, SectionTitle, toneColor } from "@/src/components/ui";
 import { buildScents } from "@/src/domain/threatScent";
 import { STATE_NAME } from "@/src/domain/types";
-import { visibilityFrom } from "@/src/domain/capability";
 import { buildWeeklyDigest } from "@/src/domain/digest";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { minimiseApp } from "@/src/utils/minimise";
-
-/** Below this window width, Protection and Verification sit side by side instead of stacked. */
-const WIDE_BREAKPOINT = 700;
+import { useProtectionHealth } from "@/src/protection/healthStore";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -94,17 +89,16 @@ export default function Home() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { width } = useWindowDimensions();
-  const isWide = width >= WIDE_BREAKPOINT;
   const [allChecksOpen, setAllChecksOpen] = useState(false);
-  const { resolution, capabilities, protection, adapterLabel, isMock, refreshing, verifyNow, events, lastVerifiedAt, lowPower, quietNow, showToast, identityReset, reRegisterDevice } = useApollo();
-  const visibility = visibilityFrom(capabilities, !!(protection?.requested ?? protection?.running));
+  const { resolution, capabilities, protection, adapterLabel, isMock, refreshing, events, lowPower, quietNow, showToast, identityReset, reRegisterDevice } = useApollo();
+  const health = useProtectionHealth();
   // Recent Patrol on Home is a glance, not the archive — at most 2-3 items; the full history lives on Patrol.
   const recent = events.slice(0, 3);
   const digest = buildWeeklyDigest(events);
   const scents = buildScents(events);
-  const activeCount = capabilities.filter((c) => c.status === "active").length;
-  const attentionCount = capabilities.filter((c) => c.status === "permission_required").length;
+  const automatic = health.gates.filter((gate) => gate.id === "site" || gate.id === "text" || gate.id === "call");
+  const activeCount = automatic.filter((gate) => gate.state === "running").length;
+  const attentionCount = automatic.filter((gate) => gate.state === "needs_user" || gate.state === "degraded").length;
 
   const primaryChecks: QuickCheck[] = [
     { testID: "home-check-link-button", label: "Link Gate", icon: <Link2 size={20} color={colors.gold} />, route: "/check" },
@@ -126,8 +120,8 @@ export default function Home() {
       <View style={{ paddingTop: insets.top + spacing.md }}>
         <ScreenHeader title="Apollo" testID="home-header" right={isMock ? <DevTag label="Mock" testID="home-mock-pill" /> : null} />
       </View>
-      <ScrollView contentContainerStyle={s.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={verifyNow} tintColor={colors.resting} />} testID="home-scroll">
-        <ApolloHero resolution={resolution} visibility={visibility} adapterLabel={adapterLabel} isMock={isMock} capabilities={capabilities} animate={!lowPower} quietNow={quietNow} sniffing={refreshing} />
+      <ScrollView contentContainerStyle={s.content} testID="home-scroll">
+        <ApolloHero resolution={resolution} adapterLabel={adapterLabel} isMock={isMock} capabilities={capabilities} animate={!lowPower} quietNow={quietNow} sniffing={refreshing} />
         {identityReset ? (
           <Card style={{ gap: spacing.sm, borderColor: colors.barking }} testID="identity-reset-card">
             <Text style={s.cardTitle}>Apollo needs to re-register this phone</Text>
@@ -137,7 +131,7 @@ export default function Home() {
           </Card>
         ) : null}
         <ServiceBanner />
-        <HigginsGreeting state={resolution.visibilityLost ? "lost" : resolution.state} />
+        <HigginsGreeting state={resolution.state} />
         <HigginsFollowUp />
         <ClipboardLinkBanner />
         {protection?.operational ? (
@@ -169,25 +163,17 @@ export default function Home() {
           </View>
         </View>
 
-        <View style={{ flexDirection: isWide ? "row" : "column", gap: spacing.md }}>
-          <Card style={[{ gap: 4 }, isWide ? { flex: 1 } : undefined]} testID="home-protection-summary">
+        <View style={{ gap: spacing.md }}>
+          <Card style={{ gap: 4 }} testID="home-protection-summary">
             <View style={s.cardTitleRow}>
               <View style={s.cardIconWell}><ShieldCheck size={16} color={colors.brand} /></View>
               <Text style={s.cardTitle}>Protection</Text>
             </View>
-            <Body>{activeCount} active{attentionCount ? ` · ${attentionCount} need${attentionCount > 1 ? "" : "s"} attention` : ""}</Body>
+            <Body testID="home-protection-status">{health.checking ? "Checking current device status…" : `${activeCount} automatic ${activeCount === 1 ? "protection is" : "protections are"} running${attentionCount ? ` · ${attentionCount} ${attentionCount === 1 ? "needs" : "need"} you` : ""}`}</Body>
             <Pressable testID="home-open-guard" accessibilityRole="button" onPress={() => router.push("/(tabs)/guard")} style={s.cardLinkRow}>
-              <Text style={s.link}>Manage in Gates</Text>
+              <Text style={s.link}>{attentionCount ? "Restore protection" : "View protection"}</Text>
               <ChevronRight size={14} color={colors.restingText} />
             </Pressable>
-          </Card>
-          <Card style={[{ gap: 4 }, isWide ? { flex: 1 } : undefined]} testID="home-verification-card">
-            <View style={s.cardTitleRow}>
-              <View style={s.cardIconWell}><Clock size={16} color={colors.brand} /></View>
-              <Text style={s.cardTitle}>Verification</Text>
-            </View>
-            <Body>{lastVerifiedAt ? `Last verified ${new Date(lastVerifiedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Not yet verified"}</Body>
-            <Button testID="home-verify-button" label="Verify now" variant="secondary" onPress={verifyNow} icon={<RefreshCw size={16} color={colors.brand} />} style={{ marginTop: spacing.xs }} />
           </Card>
         </View>
 

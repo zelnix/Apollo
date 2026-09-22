@@ -64,7 +64,8 @@ export function useInvestigation(boundOperationId?: string | null) {
     const gen = generation.current;
     expiryTimer.current = setTimeout(() => {
       if (gen !== generation.current || caseRef.current?.id !== caseData.id) return;
-      stream.current?.abort(); stopHiggins();
+      stream.current?.abort(); stopHiggins(); pending.current = null; followed.current = null;
+      generation.current += 1; caseRef.current = null; expiryTimer.current = null;
       if (operationRef.current) expireOperation(operationRef.current, caseData.id);
       setState({ ...EMPTY, phase: "expired", operationId: operationRef.current,
         error: "This temporary investigation reached its 15-minute limit and was cleared. Submit the evidence again for a new check." });

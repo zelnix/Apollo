@@ -14,18 +14,10 @@ import { useInvestigation } from "@/src/investigation/caseStore";
 import { createCaseInput } from "@/src/investigation/fromContext";
 import { spacing } from "@/src/theme";
 
-const submissionIds = new WeakMap<object, string>();
-let counter = 0;
-/** Stable id per submission object identity (a new Gate result = a new submission). */
-function submissionIdFor(submission: object): string {
-  let id = submissionIds.get(submission);
-  if (!id) { id = `submission-${++counter}-${Date.now()}`; submissionIds.set(submission, id); }
-  return id;
-}
-
-export function GateInvestigation({ submission, context, question, label, testID, autoStart = true, eventId, continuityKey, onResolved }: { submission: object; context: HigginsIssueContext; question: string; label: string; testID: string; autoStart?: boolean; eventId?: string | null; continuityKey?: string; onResolved?: (resolved: boolean) => void }) {
+export function GateInvestigation({ submission, submissionId: explicitSubmissionId, context, question, label, testID, autoStart = true, eventId, continuityKey, onResolved }: { submission: object & { submissionId?: string }; submissionId?: string; context: HigginsIssueContext; question: string; label: string; testID: string; autoStart?: boolean; eventId?: string | null; continuityKey?: string; onResolved?: (resolved: boolean) => void }) {
   const router = useRouter();
-  const submissionId = submissionIdFor(submission);
+  const submissionId = explicitSubmissionId ?? submission.submissionId;
+  if (!submissionId) throw new Error("Gate submissions require an explicit business submission ID.");
   const operationId = continuityKey ? `${continuityKey}:${submissionId}` : submissionId;
   const { state, start, ask, continueWith, retry, cancel, remove } = useInvestigation(operationId);
   const started = useRef<string | null>(null);

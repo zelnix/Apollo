@@ -44,6 +44,8 @@ import { isInvestigationResult, patrolSafeSummary, type InvestigationResult } fr
 import { RECOVERY_STEPS, type RecoveryKind } from "@/src/domain/recovery";
 import { startManagedOperation } from "@/src/investigation/transferManager";
 import { rememberCaseForEvent } from "@/src/investigation/caseIndex";
+import { runProtectionHealthCheck } from "@/src/protection/healthCoordinator";
+import type { HealthTrigger } from "@/src/protection/healthTypes";
 
 const deviceMeta = () => ({ platform: Platform.OS, adapter_mode: securityAdapter.kind, app_version: "1.0.0", tz_offset_minutes: -new Date().getTimezoneOffset() });
 
@@ -51,10 +53,10 @@ const K = { setup: "apollo.setup.done", events: "apollo.patrol.events", trust: "
 
 export interface TrustEntry { trust_id: string; device_id: string; indicator_type: "url" | "domain"; indicator_digest: string; indicator_host: string; event_id: string | null; created_at: string; local_indicator?: string }
 
-export interface CheckOutcome { local: LocalAnalysis; intel: IntelResult | null; intelError: string | null; decision: Decision; assessment: InvestigationResult | null; investigationError: string | null; event: PatrolEvent | null }
+export interface CheckOutcome { submissionId: string; local: LocalAnalysis; intel: IntelResult | null; intelError: string | null; decision: Decision; assessment: InvestigationResult | null; investigationError: string | null; event: PatrolEvent | null }
 export interface MessageUrlResult { url: string; host: string; verdict: "clean" | "malicious" | "unknown"; threat_types: string[]; coverage: string; redirect_chain?: string[]; final_url?: string | null; domain_info?: DomainInfo | null }
 export interface MessageExplanation { summary: string; why: string[]; recommendation: string }
-export interface MessageOutcome { analysis: MessageAnalysis; urls: MessageUrlResult[]; explanation: MessageExplanation | null; assessment: InvestigationResult | null; remoteError: string | null; event: PatrolEvent | null }
+export interface MessageOutcome { submissionId: string; analysis: MessageAnalysis; urls: MessageUrlResult[]; explanation: MessageExplanation | null; assessment: InvestigationResult | null; remoteError: string | null; event: PatrolEvent | null }
 /** Call Guard add-on: mirrors backend CallRiskResponse (routers/call.py). `decision` is heuristic/
  * probabilistic (IPQualityScore) — see services/phonerisk.py's Truth-of-State comment; it alone may
  * only reach "growling"/"barking" in the app, never a verified "biting" block. */
@@ -100,7 +102,7 @@ interface ApolloContextValue {
   /** Gate 3 Phase B: merge a page-screenshot analysis into an existing link event, or create a new website event. */
   recordPageAnalysis(pa: PageAnalysis, existing: PatrolEvent | null): Promise<PatrolEvent | null>;
   /** Gate 4: Check This Call — user-selected context (+ optional transcript) → Call Risk Engine → Patrol event + Threat Scent. */
-  checkCall(input: CallInput): Promise<{ analysis: CallAnalysis; event: PatrolEvent | null }>;
+  checkCall(input: CallInput): Promise<{ submissionId: string; analysis: CallAnalysis; event: PatrolEvent | null }>;
   /** Call Guard add-on: on-demand caller-number risk check (backend-proxied IPQualityScore). */
   checkNumberRisk(number: string, country?: string): Promise<CallRiskResult>;
   upsertEvent(event: PatrolEvent): Promise<PatrolEvent>;
@@ -195,15 +197,16 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   }, []);
   const persistTrust = useCallback(async (next: TrustEntry[]) => { setTrust(next); await storage.setItem(K.trust, JSON.stringify(next)); }, []);
 
-  const refresh = useCallback(async (minVisibleMs = 0) => {
+  const refresh = useCallback(async (minVisibleMs = 0, trigger: HealthTrigger = "periodic") => {
     const generation = ++probeGeneration.current;
     setRefreshing(true);
     const hold = new Promise((r) => setTimeout(r, minVisibleMs));
     try {
-      const [caps, status, perms, net, evidence] = await boundedObservation(Promise.all([
-        securityAdapter.getCapabilities(), securityAdapter.getProtectionStatus(), securityAdapter.getProtectionPermissions(), securityAdapter.getNetworkStatus(),
-        securityAdapter.getEnforcementEvidence().catch(() => []),
+      const [health, evidence] = await boundedObservation(Promise.all([
+        runProtectionHealthCheck(trigger), securityAdapter.getEnforcementEvidence().catch(() => []),
       ]));
+      const { capabilities: caps, protection: status, permissions: perms, network: net } = health;
+      if (!status || !net) throw new Error("Protection health is unavailable.");
       if (generation !== probeGeneration.current) return null;
       const observed = freshObservation(status) ? status : unavailableObservation(status);
       setCapabilities(caps); setProtection(observed); setPermissions(perms); setNetwork(net);
@@ -347,9 +350,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
             setDeviceId(identity.deviceId);
             void apiPost("/devices/heartbeat", "device_register", deviceMeta()).catch(() => undefined); // never blocks boot; offline is fine
           }
-          if (protOn) { try { await boundedObservation(securityAdapter.startProtection()); } catch { /* observe below; never infer success */ } }
+          if (protOn) await storage.setItem(K.protection, true);
         }
-        await refresh();
+        await refresh(0, "boot");
       } finally { setReady(true); }
     })();
   }, [refresh]);
@@ -391,7 +394,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       wasReachable = h.reachable;
     });
     const sub = AppState.addEventListener("change", (st) => {
-      if (st === 'active') { setProtection(p => unavailableObservation(p)); setLastVerifiedAt(null); void refresh(); }
+      if (st === 'active') { setProtection(p => unavailableObservation(p)); setLastVerifiedAt(null); void refresh(0, "foreground"); }
       else { ++probeGeneration.current; setProtection(p => unavailableObservation(p)); setLastVerifiedAt(null); }
       if (st === "active" && getBackendHealth().reachable === false) void probeBackend();
     });
@@ -403,7 +406,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     setTick(n => n + 1);
     setProtection(p => freshObservation(p) ? p : unavailableObservation(p));
   }, 1000); return () => clearInterval(t); }, []);
-  useEffect(() => { const t = setInterval(() => { if (AppState.currentState !== 'background') void refresh(); }, lowPower ? 60000 : 30000); return () => clearInterval(t); }, [lowPower, refresh]);
+  useEffect(() => { const t = setInterval(() => { if (AppState.currentState !== 'background') void refresh(0, "periodic"); }, lowPower ? 60000 : 30000); return () => clearInterval(t); }, [lowPower, refresh]);
 
   // Alert notifications: re-register on every launch once the device identity exists (tokens rotate).
   // Only ask for permission once setup completes (completeSetup → enablePush); silent re-register otherwise.
@@ -539,7 +542,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       if (event.state !== state) { state = event.state; }
     }
     void markCheckDone("message");
-    return { analysis: { ...analysis, state, why }, urls, explanation, assessment, remoteError, event };
+    return { submissionId: event?.event_id ?? Crypto.randomUUID(), analysis: { ...analysis, state, why }, urls, explanation, assessment, remoteError, event };
   }, [deviceId, upsertEvent]);
 
   // Text Guard (Android only): drains notifications ApolloSmsListenerService captured from the
@@ -661,9 +664,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         indicator_host: null, indicator_digest: null, local_indicator: input.number?.trim() || null, verified_block: false, adapter_label: securityAdapter.label,
         occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: analysis.claimedBrand, scenario: analysis.scenario,
       });
-      if (event.state !== analysis.state) return { analysis: { ...analysis, state: event.state, why: event.why, verdict: "This call may be connected to the suspicious activity detected earlier." }, event };
+      if (event.state !== analysis.state) return { submissionId: event.event_id, analysis: { ...analysis, state: event.state, why: event.why, verdict: "This call may be connected to the suspicious activity detected earlier." }, event };
     }
-    return { analysis, event };
+    return { submissionId: event?.event_id ?? Crypto.randomUUID(), analysis, event };
   }, [deviceId, upsertEvent]);
 
   // Call Guard add-on: on-demand caller-number risk check (backend-proxied IPQualityScore — see
@@ -756,7 +759,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const local = analyseUrlLocally(input);
     if (!local.valid || !local.normalizedUrl || !local.host) {
       const decision: Decision = { state: "growling", headline: "That doesn't look like a web link", what_happened: "Apollo could not read this as a web address.", why: ["Only http and https links can be checked."], what_to_do: "Paste the full link, including the website name.", action_required: false, trust_allowed: false, block_offered: false, confidence: "low" };
-      return { local, intel: null, intelError: null, decision, assessment: null, investigationError: null, event: null };
+      return { submissionId: Crypto.randomUUID(), local, intel: null, intelError: null, decision, assessment: null, investigationError: null, event: null };
     }
     const indicator = minimalIndicator(local.normalizedUrl);
     let intel: IntelResult | null = null; let intelError: string | null = null;
@@ -798,7 +801,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     };
     if (isEvent || decision.state === "resting") await upsertEvent(ev); // resting checks are still traceable in Patrol
     void markCheckDone("link");
-    return { local, intel, intelError, decision, assessment, investigationError, event: ev };
+    return { submissionId: ev?.event_id ?? Crypto.randomUUID(), local, intel, intelError, decision, assessment, investigationError, event: ev };
   }, [deviceId, trust, upsertEvent]);
 
   const blockEvent = useCallback(async (event: PatrolEvent) => {

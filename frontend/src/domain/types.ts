@@ -124,6 +124,8 @@ export interface PatrolEvent {
   enforcement_evidence?: PatrolEnforcementEvidence | null;
   /** Structured user-reported recovery actions. New records use this instead of parsing display text. */
   recovery_kinds?: string[];
+  /** Owner-validated server association for continuing this event after remount or device refresh. */
+  investigation_case_id?: string | null;
 }
 
 /**

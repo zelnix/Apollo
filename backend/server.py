@@ -29,7 +29,7 @@ from core.models import BlocklistEntry
 from core.privacy_boundary import PrivacyBoundary
 from services.patrol_policy import ensure_evidence_receipt_indexes
 from services.mailbox_monitor import ensure_indexes as ensure_mailbox_monitor_indexes, mailbox_monitor_loop
-from services.maintenance import ensure_indexes as ensure_maintenance_indexes, maintenance_loop
+from services.maintenance import ensure_indexes as ensure_maintenance_indexes, supervise_maintenance
 from services.higgins.retention import migrate_and_index
 from services.higgins import repository as investigation_repository
 from routers import admin, analysis, ask, call, devices, family, family_weekly, gmail, health, intel, investigations, patrol, push, voice
@@ -93,7 +93,7 @@ async def lifespan(_: FastAPI):
             await asyncio.sleep(300)
 
     receipts_task = asyncio.create_task(push_receipt_loop())
-    maintenance_task = asyncio.create_task(maintenance_loop())
+    maintenance_task = asyncio.create_task(supervise_maintenance(), name="apollo-maintenance-supervisor")
     yield
     maintenance_task.cancel()
     receipts_task.cancel()

@@ -2,6 +2,7 @@
 // reports. Produces a device security status (Protected / Review / Action / Recovery) — never a "full scan".
 import { GateInvestigation } from "@/src/components/GateInvestigation";
 import { Redirect, useRouter } from "expo-router";
+import * as Crypto from "expo-crypto";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
 import RefreshCw from "lucide-react-native/icons/refresh-cw";
 import X from "lucide-react-native/icons/x";
@@ -25,7 +26,7 @@ import { issueContext } from "@/src/domain/higginsHandoff";
 const TARGET: Record<string, SettingsTarget> = { D01: "apps", D01b: "apps", D02: "security", D03: "security", D04: "vpn", D05: "accessibility", D06: "apps", D07: "apps", D08: "unknown_sources", D09: "overlay", D10: "notification_access", D11: "developer" };
 const DEVICE_SNAPSHOT_KEY = "apollo.device.signals.v1";
 const SEVERITY_RANK: Record<DeviceFinding["severity"], number> = { high: 2, review: 1, info: 0 };
-interface DeviceSubmission { result: ReturnType<typeof assessDevice>; observedAt: string; source: "device_check" | "user_report" }
+interface DeviceSubmission { submissionId: string; result: ReturnType<typeof assessDevice>; observedAt: string; source: "device_check" | "user_report" }
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -83,7 +84,7 @@ export default function CheckDevice() {
   // Each completed device check is a fresh timestamped observation. GateInvestigation uses a continuity key, so a
   // new submission appends to the SAME case rather than replacing its accepted history.
   const [submission, setSubmission] = useState<DeviceSubmission | null>(null);
-  useEffect(() => { if (checkSequence) setSubmission({ result, observedAt: new Date().toISOString(), source: "device_check" }); }, [checkSequence]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (checkSequence) setSubmission({ submissionId: Crypto.randomUUID(), result, observedAt: new Date().toISOString(), source: "device_check" }); }, [checkSequence]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = async () => {
     setSaving(true);
@@ -168,7 +169,7 @@ export default function CheckDevice() {
             <View key={o.id} style={s.row}><Text style={[s.why, { flex: 1 }]}>{o.label}</Text><Switch testID={`device-self-${o.id}`} value={!!self[o.id]} onValueChange={(v) => setSelf((c) => ({ ...c, [o.id]: v }))} trackColor={{ true: o.id === "managementExpected" ? colors.resting : colors.growling, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View>
           ))}
           <Button testID="device-submit-self-report" variant="secondary" label="Add my report to Higgins" disabled={!anySelf}
-            onPress={() => setSubmission({ result, observedAt: new Date().toISOString(), source: "user_report" })} />
+            onPress={() => setSubmission({ submissionId: Crypto.randomUUID(), result, observedAt: new Date().toISOString(), source: "user_report" })} />
         </Card>
 
         <Card style={{ gap: spacing.xs }} testID="device-cannot-see">

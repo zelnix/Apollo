@@ -106,11 +106,11 @@ async def backfill_work_epochs() -> None:
     treats a missing `work_epoch` as equal to `epoch`. This sets the DB field itself to the case's/job's own current
     `epoch`, which changes no behaviour (a case/job whose `work_epoch` already equals its `epoch` is exactly the
     pre-migration invariant) and revives nothing: status, leases and history are left untouched."""
-    async for case in db.investigation_cases.find({"work_epoch": {"$exists": False}}, {"_id": 0, "owner_id": 1, "case_id": 1, "epoch": 1}):
-        await db.investigation_cases.update_one({"owner_id": case["owner_id"], "case_id": case["case_id"], "work_epoch": {"$exists": False}},
+    async for case in db.investigation_cases.find({"work_epoch": {"$exists": False}, "epoch": {"$type": "number"}}, {"_id": 1, "epoch": 1}):
+        await db.investigation_cases.update_one({"_id": case["_id"], "work_epoch": {"$exists": False}},
                                                 {"$set": {"work_epoch": case["epoch"]}})
-    async for job in db.investigation_jobs.find({"work_epoch": {"$exists": False}}, {"_id": 0, "owner_id": 1, "job_id": 1, "epoch": 1}):
-        await db.investigation_jobs.update_one({"owner_id": job["owner_id"], "job_id": job["job_id"], "work_epoch": {"$exists": False}},
+    async for job in db.investigation_jobs.find({"work_epoch": {"$exists": False}, "epoch": {"$type": "number"}}, {"_id": 1, "epoch": 1}):
+        await db.investigation_jobs.update_one({"_id": job["_id"], "work_epoch": {"$exists": False}},
                                                {"$set": {"work_epoch": job["epoch"]}})
 
 
@@ -375,7 +375,8 @@ async def settle_write(owner: str, case_id: str, epoch: str, collection, selecto
 async def sweep_tombstones() -> int:
     """Removes content rows whose case epoch no longer matches a live case (late writers that never compensated)."""
     removed = 0
-    async for case in db.investigation_cases.find({}, {"_id": 0, "owner_id": 1, "case_id": 1, "epoch": 1, "deleted": 1, "expires_at": 1}):
+    complete = {"owner_id": {"$type": "string"}, "case_id": {"$type": "string"}, "epoch": {"$type": "number"}, "expires_at": {"$exists": True}}
+    async for case in db.investigation_cases.find(complete, {"_id": 0, "owner_id": 1, "case_id": 1, "epoch": 1, "deleted": 1, "expires_at": 1}):
         live = not case.get("deleted") and utc(case["expires_at"]) > now_utc()
         selector = {"owner_id": case["owner_id"], "case_id": case["case_id"], **({"epoch": {"$exists": True, "$ne": case["epoch"]}} if live else {})}
         for name in ("investigation_evidence", "investigation_content_chunks"):

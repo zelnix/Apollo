@@ -2,6 +2,7 @@
 // what was happening around the install) plus any Security-SDK findings. Never pretends to read other apps.
 import { GateInvestigation } from "@/src/components/GateInvestigation";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
+import * as Crypto from "expo-crypto";
 import X from "lucide-react-native/icons/x";
 import React, { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, Switch, Text, TextInput, View } from "react-native";
@@ -11,7 +12,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { markCheckDone } from "@/src/store/checkCompletion";
 import { apiPost } from "@/src/api/client";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
-import { MessageAssessmentResult } from "@/src/components/MessageAssessmentResult";
 import type { InvestigationResult } from "@/src/domain/investigation";
 import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
@@ -24,7 +24,6 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { openDeviceSettings } from "@/src/utils/deviceSettings";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { issueContext } from "@/src/domain/higginsHandoff";
-import { dispatchInvestigationAction } from "@/src/domain/investigationActions";
 
 type Reputation = { remote_access_tool: string | null; known_security_vendor: string | null; impersonates_brand: string | null; official_store: boolean; note: string };
 type Remote = { reputation: Reputation; hosts: { host: string; verdict: "clean" | "malicious" | "unknown" }[]; explanation: { summary: string; why: string[]; recommendation: string } | null; assessment: InvestigationResult | null };
@@ -63,7 +62,7 @@ export default function CheckApp() {
   const [perms, setPerms] = useState<AppPermission[]>([]);
   const [ctx, setCtx] = useState({ promptedByCaller: false, promptedByMessageOrSite: false, intentional: false, accessGrantedNow: false });
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ a: AppAnalysis; event: PatrolEvent | null; remote: Remote | null; linked: PatrolEvent | null; sdk: Awaited<ReturnType<typeof AppDeviceSdk.getInstalledAppAssessment>> | null } | null>(null);
+  const [result, setResult] = useState<{ submissionId: string; a: AppAnalysis; event: PatrolEvent | null; remote: Remote | null; linked: PatrolEvent | null; sdk: Awaited<ReturnType<typeof AppDeviceSdk.getInstalledAppAssessment>> | null } | null>(null);
   const [tech, setTech] = useState(false);
   const [permSheet, setPermSheet] = useState<AppPermission | null>(null);
   const [sdkVisible, setSdkVisible] = useState(false);
@@ -95,11 +94,9 @@ export default function CheckApp() {
       let a = analyseApp({ name: name.trim(), developer: developer.trim() || undefined, source: observedSource, purpose, permissions: observedPerms, context, network });
       let remote: Remote | null = null;
       try {
-        remote = await apiPost<Remote>("/app/analyse", "app_check", { device_id: deviceId ?? "local-device", name: name.trim(), developer: developer.trim() || null, source: observedSource, purpose, permissions: observedPerms, hosts: network?.hosts ?? [], local_state: a.state, scenario: a.scenario, second_opinion: true });
+        remote = await apiPost<Remote>("/app/analyse", "app_check", { device_id: deviceId ?? "local-device", name: name.trim(), developer: developer.trim() || null, source: observedSource, purpose, permissions: observedPerms, hosts: network?.hosts ?? [], local_state: a.state, scenario: a.scenario, second_opinion: false });
         const bad = remote.hosts.filter((h) => h.verdict === "malicious").length;
         if (bad && a.state !== "barking") a = { ...a, state: "barking", title: "Dangerous destination observed", verdict: `${bad} destination${bad > 1 ? "s have" : " has"} a malicious reputation. This does not prove the app is malicious or that Apollo blocked its traffic.`, why: [...a.why, "Threat intelligence identified a destination associated with this app as malicious."], handoff: "network" };
-        if (remote.assessment?.risk === "warning" && a.state === "resting") a = { ...a, state: "growling", title: remote.assessment.higgins.headline,
-          verdict: remote.assessment.higgins.what_was_found[0] ?? a.verdict, why: remote.assessment.findings.map((finding) => finding.title), recommendation: remote.assessment.higgins.next_action };
       } catch { /* offline: on-device engine is authoritative */ }
       let event: PatrolEvent | null = null;
       const linked = recentLinked.find((e) => (ctx.promptedByCaller && e.category === "call") || (ctx.promptedByMessageOrSite && e.category !== "call")) ?? (a.remoteCapable || a.scenario === "A16" ? recentLinked[0] : null) ?? null;
@@ -107,7 +104,7 @@ export default function CheckApp() {
         event = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "app", state: a.state, status: "active", headline: `App: ${a.title}`, what_happened: a.verdict, why: a.why, what_to_do: a.recommendation, indicator_host: null, indicator_digest: null, local_indicator: a.technical[0], verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: a.claimedBrand, scenario: a.scenario, scent_id: params.scent || linked?.scent_id || linked?.event_id || null });
         if (event.state !== a.state) a = { ...a, state: event.state, why: event.why };
       }
-      setResult({ a, event, remote, linked, sdk: sdk ?? null });
+      setResult({ submissionId: event?.event_id ?? Crypto.randomUUID(), a, event, remote, linked, sdk: sdk ?? null });
     } finally { setBusy(false); }
   };
   const settingsFor = (a: AppAnalysis) => (a.permissionNotes.some((n) => n.id === "accessibility" && !n.expected) ? (["accessibility", "Settings → Accessibility"] as const) : (["apps", "Settings → Apps → the app"] as const));
@@ -147,15 +144,7 @@ export default function CheckApp() {
           </>
         ) : a ? (
           <>
-            {result.remote?.assessment ? <MessageAssessmentResult assessment={result.remote.assessment} state={a.state} testIDPrefix="app"
-              submittedLabel="App investigated" submittedTitle={developer || "Developer not supplied"} submittedText={name}
-              onPrimaryAction={() => dispatchInvestigationAction(result.remote!.assessment!.higgins.action_kind, {
-                showVerification: () => setActionGuidance(result.remote!.assessment!.higgins.next_action),
-                showCallingGuidance: () => setActionGuidance(result.remote!.assessment!.higgins.next_action),
-                openAccount: () => router.push("/account"),
-                clearSubmittedCopy: () => { setName(""); setDeveloper(""); setActionGuidance("The submitted app name was cleared from this screen. The app was not uninstalled."); },
-                showReview: () => a.state !== "resting" ? showSettings(a) : setActionGuidance(result.remote!.assessment!.higgins.next_action),
-              })} /> : <Card testID="app-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
+            <Card testID="app-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
               <View style={s.chips}><Pill tone={a.state} label={STATE_NAME[a.state]} testID="app-state" /><Pill tone="neutral" label={a.scenario} testID="app-scenario" />{a.remoteCapable ? <Pill tone="barking" label="Remote access capable" testID="app-remote-pill" /> : null}</View>
               <Text style={s.why}>{STATE_LABEL[a.state]}</Text>
               <Text style={s.label} testID="app-title">{a.title}</Text>
@@ -165,7 +154,7 @@ export default function CheckApp() {
               {result.linked ? <Text style={s.why} testID="app-linked">• Connected to: {result.linked.headline} (Threat Scent).</Text> : null}
               <SectionTitle>Recommendation</SectionTitle>
               <Text style={s.why} testID="app-recommendation">{a.recommendation}</Text>
-            </Card>}
+            </Card>
             <Card style={{ gap: spacing.xs }} testID="app-access">
               <SectionTitle>Access</SectionTitle>
               <Body testID="app-capability-evidence-note">Permissions show what this installed app could do; they are not proof that it behaved maliciously. An inactive or dormant app keeps those capabilities until you revoke them or remove it.</Body>
@@ -185,7 +174,6 @@ export default function CheckApp() {
               <Card style={{ gap: spacing.xs }} testID="app-reputation">
                 <SectionTitle>Reputation</SectionTitle>
                 <Body testID="app-reputation-note">{result.remote.reputation.note}</Body>
-                {result.remote.explanation && !result.remote.assessment ? <><Text style={s.label}>Higgins&apos;s plain-language assessment</Text><Body testID="app-second-opinion">{result.remote.explanation.summary}</Body>{result.remote.explanation.why.map((w, i) => <Body key={i}>• {w}</Body>)}</> : null}
               </Card>
             ) : null}
             <Card style={{ gap: spacing.sm }} testID="app-actions">

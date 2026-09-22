@@ -1,12 +1,11 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFonts } from "expo-font";
 import * as Linking from "expo-linking";
 import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
-import { Alert, LogBox, Platform, View } from "react-native";
+import { LogBox, Platform, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -74,18 +73,6 @@ export default function RootLayout() {
     void Notifications.getLastNotificationResponseAsync().then((response) => {
       if (response) openFromNotification(router, response.notification.request.content.data as Record<string, unknown>);
     });
-    // Weekly nudge when notifications are blocked at the OS level.
-    (async () => {
-      const { status, canAskAgain } = await Notifications.getPermissionsAsync();
-      if (status !== "denied" || canAskAgain) return;
-      const last = await AsyncStorage.getItem("pushNudgeAt");
-      if (last && Date.now() - Number(last) <= 7 * 24 * 60 * 60 * 1000) return;
-      const stamp = () => AsyncStorage.setItem("pushNudgeAt", String(Date.now()));
-      Alert.alert("Apollo can't bark when the app is closed", "Notifications are off. Turn them on so you hear about threats the moment they happen.", [
-        { text: "Later", style: "cancel", onPress: () => void stamp() },
-        { text: "Open Settings", onPress: () => { void stamp(); void Linking.openSettings(); } },
-      ]);
-    })();
     return () => { tapSub.remove(); };
   }, [router]);
 
@@ -122,6 +109,7 @@ export default function RootLayout() {
                   <Stack.Screen name="patrol/[id]" options={{ presentation: "modal" }} />
                   <Stack.Screen name="benchmark" options={{ presentation: "modal" }} />
                   <Stack.Screen name="privacy-disclosure" options={{ presentation: "modal" }} />
+                  <Stack.Screen name="support" options={{ presentation: "modal" }} />
                   <Stack.Screen name="digest" options={{ presentation: "modal" }} />
                   <Stack.Screen name="family" options={{ presentation: "modal" }} />
                   <Stack.Screen name="family/alert/[id]" options={{ presentation: "modal" }} />

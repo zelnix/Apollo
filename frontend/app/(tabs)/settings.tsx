@@ -1,17 +1,15 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { Platform, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { apiGet, apiPost } from "@/src/api/client";
+import { apiPost } from "@/src/api/client";
 import { AlertPreviewSheet } from "@/src/components/AlertPreviewSheet";
 import { Sheet } from "@/src/components/Sheet";
 import { TimeStepper } from "@/src/components/TimeStepper";
 import { Body, Button, Card, Pill, ScreenHeader, SectionTitle } from "@/src/components/ui";
-import { APP_ENV } from "@/src/config/appEnvironment";
-import { APP_VERSION, buildLabel } from "@/src/config/buildInfo";
 import { PRIVACY_POLICY_SUMMARY } from "@/src/domain/privacy";
 import type { PushStatus } from "@/src/push/notifications";
 import { useApollo } from "@/src/store/ApolloContext";
@@ -19,7 +17,6 @@ import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 import { minimiseApp } from "@/src/utils/minimise";
 import { getHigginsAuto, setHigginsAuto, useHiggins } from "@/src/voice/higgins";
 
-interface IntelStatus { safe_browsing: { status: string; detail: string }; blocklist: { status: string; entries: number } }
 const PUSH_LABEL: Record<PushStatus, string> = { granted: "On", denied: "Off", undetermined: "Not set", blocked: "Blocked in Settings", unsupported: "Native build only" };
 
 const useStyles = makeStyles((c) => ({
@@ -36,21 +33,18 @@ export default function SettingsScreen() {
   const s = useStyles();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { deviceId, trust, revokeTrust, clearPatrol, adapterLabel, isMock, pushStatus, pushRegistration, pushDetail, enablePush, quietHours, quietNow, setQuietHours, lowPower, setLowPower, showToast } = useApollo();
+  const { deviceId, trust, revokeTrust, clearPatrol, pushStatus, pushRegistration, pushDetail, enablePush, quietHours, quietNow, setQuietHours, lowPower, setLowPower, showToast } = useApollo();
   const [higginsAuto, setHigginsAutoState] = useState(false);
   useEffect(() => { void getHigginsAuto().then(setHigginsAutoState); }, []);
   const higgins = useHiggins(deviceId);
   const { colors } = useTheme();
   const [confirmClear, setConfirmClear] = useState(false);
   const [preview, setPreview] = useState(false);
-  const intel = useQuery({ queryKey: ["intel-status"], queryFn: () => apiGet<IntelStatus>("/intel/status"), staleTime: 60_000 });
   const testPush = useMutation({
     mutationFn: () => apiPost<{ deliveryId: string; state: string; failureCode: string | null }>("/push/test", "push_test", { device_id: deviceId }),
     onSuccess: (d) => showToast(d.state === "provider_accepted" ? "Test bark accepted by the push service — check your notifications." : d.state === "outcome_unknown" ? "The push service did not confirm in time; the outcome is unknown until reconciled." : d.state === "failed" ? `The push service rejected the test (${d.failureCode ?? "error"}).` : `Test bark ${d.state}.`, d.state === "failed" ? "barking" : "resting"),
     onError: (e) => showToast(e instanceof Error ? e.message : "Could not send the test alert.", "barking"),
   });
-  const sb = intel.data?.safe_browsing;
-  const sbTone = sb?.status === "ok" ? "resting" : sb?.status === "not_configured" ? "unknown" : "growling";
 
   return (
     <View style={s.root}>
@@ -142,29 +136,6 @@ export default function SettingsScreen() {
         </View>
 
         <View>
-          <SectionTitle>Engine benchmark</SectionTitle>
-          <Card style={{ gap: spacing.sm }}>
-            <Body>Run the labelled threat corpus and clean set against Apollo&apos;s engine to check its detection and false-positive thresholds.</Body>
-            <Button testID="settings-benchmark" variant="secondary" label="Run threat benchmark" onPress={() => router.push("/benchmark")} />
-          </Card>
-        </View>
-
-        <View>
-          <SectionTitle>Intelligence sources</SectionTitle>
-          <Card testID="settings-intel">
-            <View style={s.row}>
-              <Text style={s.label}>Google Safe Browsing</Text>
-              <Pill tone={intel.isLoading ? "neutral" : sbTone} label={intel.isLoading ? "Checking…" : sb?.status === "ok" ? "Connected" : sb?.status === "not_configured" ? "Not configured" : "Unavailable"} testID="settings-sb-status" />
-            </View>
-            <Body>{sb?.detail ?? "Checks the link itself against Google's threat lists."}</Body>
-            <View style={[s.row, { marginTop: spacing.sm }]}>
-              <Text style={s.label}>Apollo managed threat list</Text>
-              <Pill tone="resting" label={`${intel.data?.blocklist.entries ?? "—"} entries`} testID="settings-blocklist-status" />
-            </View>
-          </Card>
-        </View>
-
-        <View>
           <SectionTitle>Trusted items ({trust.length})</SectionTitle>
           <Card testID="settings-trust">
             {trust.length === 0 ? <Body>Nothing trusted. Trust only ever applies to one exact link and never overrides a confirmed threat.</Body> : trust.map((t) => (
@@ -208,15 +179,10 @@ export default function SettingsScreen() {
         </View>
 
         <View>
-          <SectionTitle>About this build</SectionTitle>
-          <Card style={{ gap: spacing.sm }} testID="settings-build">
-            <View style={s.row}><Text style={s.label}>Version</Text><Text style={s.mono} testID="settings-app-version">{APP_VERSION}</Text></View>
-            <View style={s.row}><Text style={s.label}>Build</Text><Text style={s.mono} testID="settings-app-build">{buildLabel()}</Text></View>
-            <View style={s.row}><Text style={s.label}>Environment</Text><Pill tone={APP_ENV === "production" ? "resting" : "growling"} label={APP_ENV} testID="settings-app-env" /></View>
-            <View style={s.row}><Text style={s.label}>Security adapter</Text><Pill tone={isMock ? "unknown" : "resting"} label={adapterLabel} /></View>
-            <View style={s.row}><Text style={s.label}>SecureCore</Text><Pill tone="unknown" label="Not included" testID="settings-securecore" /></View>
-            <Body testID="settings-securecore-status">HuCentAI SecureCore is not part of this build: no shipped feature depends on it and device identity uses server-issued tokens. Its optional capability is reported unavailable (not implemented).</Body>
-            {isMock ? <Body testID="settings-preview-harness">MOCKED DEVICE INPUT — PREVIEW ONLY: this development web preview substitutes simulated device observations. Higgins and research are real.</Body> : null}
+          <SectionTitle>Support</SectionTitle>
+          <Card style={{ gap: spacing.sm }} testID="settings-support">
+            <Body>Open Support for build details, service availability and a manual protection check.</Body>
+            <Button testID="settings-open-support" variant="secondary" label="Open Support" onPress={() => router.push("/support")} />
           </Card>
         </View>
         <Text style={s.footer}>Apollo V1 · a brand of Harmony Wellness Group · No account, no tracking</Text>

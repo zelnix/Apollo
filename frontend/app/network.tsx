@@ -2,6 +2,7 @@
 // the verdict; the user adds context (home/work/public, expected network name, whether they turned the VPN on).
 import { GateInvestigation } from "@/src/components/GateInvestigation";
 import { Redirect, useRouter } from "expo-router";
+import * as Crypto from "expo-crypto";
 import Wifi from "lucide-react-native/icons/wifi";
 import X from "lucide-react-native/icons/x";
 import React, { useEffect, useMemo, useState } from "react";
@@ -51,7 +52,7 @@ export default function CheckNetwork() {
   const [captiveUrl, setCaptiveUrl] = useState("");
   const [sdk, setSdk] = useState<NetworkSdkSummary | null>(null);
   const [sdkLive, setSdkLive] = useState(false);
-  const [result, setResult] = useState<{ a: NetworkAnalysis; event: PatrolEvent | null } | null>(null);
+  const [result, setResult] = useState<{ submissionId: string; a: NetworkAnalysis; event: PatrolEvent | null } | null>(null);
   const [tech, setTech] = useState(false);
   useEffect(() => {
     void NetworkAccountSdk.getNetworkProtectionCapabilities().then((c) => setSdkLive(c.domainFiltering === "supported"));
@@ -84,7 +85,7 @@ export default function CheckNetwork() {
       const syncedState = a.state === "biting" ? "barking" : a.state;
       event = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "connection", state: syncedState, status: "active", headline: `Network: ${a.title}`, what_happened: a.verdict, why: a.why, what_to_do: a.recommendation, indicator_host: captiveUrl.trim() ? captiveUrl.trim().replace(/^https?:\/\//i, "").split("/")[0] : null, indicator_digest: null, local_indicator: a.ssid, verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: syncedState === "ears_up" || syncedState === "growling", claimed_brand: null, scenario: a.scenario });
     }
-    setResult({ a, event });
+    setResult({ submissionId: event?.event_id ?? Crypto.randomUUID(), a, event });
   };
 
   if (ready && !setupDone) return <Redirect href="/" />;

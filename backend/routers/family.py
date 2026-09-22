@@ -451,7 +451,7 @@ async def sweep_voice_audio() -> int:
     retried = await purge_voice_audio({"audio_state": "purge_pending"}, "purge_retry")
     orphaned = 0
     cutoff = now_utc() - timedelta(minutes=5)
-    async for task in db.family_audio_cleanup.find({"state": {"$in": ["reserved", "stored", "delete_pending"]}, "created_at": {"$lte": cutoff}}, {"_id": 0}):
+    async for task in db.family_audio_cleanup.find({"state": {"$in": ["reserved", "stored", "outcome_unknown", "delete_pending"]}, "created_at": {"$lte": cutoff}}, {"_id": 0}):
         claimed = await db.incident_notes.find_one({"note_id": task["note_id"], "audio_path": task["audio_path"], "audio_state": {"$ne": "purged"}}, {"_id": 1})
         if claimed:
             await db.family_audio_cleanup.delete_one({"cleanup_id": task["cleanup_id"]})
@@ -499,7 +499,12 @@ async def add_voice_note(request: Request, scent_id: str, device_id: str = Form(
     try:
         stored = await put_object(path, data, ctype)
     except StorageError as exc:
-        await db.family_audio_cleanup.delete_one({"cleanup_id": cleanup_id})
+        if exc.outcome == "not_stored":
+            await db.family_audio_cleanup.delete_one({"cleanup_id": cleanup_id})
+        else:
+            await db.family_audio_cleanup.update_one({"cleanup_id": cleanup_id}, {"$set": {
+                "state": "outcome_unknown", "last_attempt_at": now_utc(), "last_error": type(exc).__name__,
+            }})
         raise HTTPException(status_code=exc.status, detail=exc.detail)
     await db.family_audio_cleanup.update_one({"cleanup_id": cleanup_id}, {"$set": {"state": "stored", "audio_path": stored.get("path", path), "stored_at": now_utc()}})
     note = {"note_id": note_id, "scent_id": scent_id, "protected_device_id": inc["protected_device_id"], "guardian_device_id": device_id,

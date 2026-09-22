@@ -21,14 +21,25 @@ def _run(coro_fn):
     import importlib
     import core.db as core_db
     async def wrapped():
+        original_client, original_db = core_db.client, core_db.db
         core_db.client = core_db.AsyncIOMotorClient(core_db.os.environ["MONGO_URL"])
         core_db.db = core_db.client[core_db.os.environ["DB_NAME"]]
-        importlib.reload(repo); importlib.reload(jobs)
+        import services.higgins.retention as retention
+        import routers.family as family
+        import routers.patrol as patrol
+        importlib.reload(repo); importlib.reload(jobs); importlib.reload(retention); importlib.reload(family); importlib.reload(patrol)
         import routers.investigations as inv
         importlib.reload(inv)
         global db
         db = core_db.db
-        await coro_fn(inv)
+        fresh_client = core_db.client
+        try:
+            await coro_fn(inv)
+        finally:
+            fresh_client.close()
+            core_db.client, core_db.db = original_client, original_db
+            db = original_db
+            importlib.reload(repo); importlib.reload(jobs); importlib.reload(retention); importlib.reload(family); importlib.reload(patrol); importlib.reload(inv)
     asyncio.run(wrapped())
 
 
@@ -150,6 +161,10 @@ def test_settings_confirmation_is_user_reported_evidence():
 
 def test_family_audio_orphan_cleanup_retries_and_removes_task():
     _run(lambda inv: _family_audio_orphan_cleanup())
+
+
+def test_patrol_investigation_binding_is_owner_scoped_and_idempotent():
+    _run(lambda inv: _patrol_investigation_binding())
 
 
 def test_document_continuation_replay_repairs_manifest_and_delivers_images():
@@ -835,7 +850,7 @@ async def _family_audio_orphan_cleanup():
     from routers import family
     cleanup_id = uuid.uuid4().hex; path = f"orphan/{cleanup_id}.m4a"
     await db.family_audio_cleanup.insert_one({"cleanup_id": cleanup_id, "note_id": uuid.uuid4().hex, "audio_path": path,
-                                              "state": "stored", "created_at": now_utc() - timedelta(minutes=10)})
+                                              "state": "outcome_unknown", "created_at": now_utc() - timedelta(minutes=10)})
     original = family.delete_object
     async def confirmed_delete(candidate: str) -> bool:
         return candidate == path
@@ -845,6 +860,24 @@ async def _family_audio_orphan_cleanup():
     finally:
         family.delete_object = original
     assert await db.family_audio_cleanup.find_one({"cleanup_id": cleanup_id}) is None
+
+
+async def _patrol_investigation_binding():
+    from fastapi import HTTPException
+    from routers import patrol
+    owner, stranger = f"owner-{uuid.uuid4().hex}", f"stranger-{uuid.uuid4().hex}"
+    event_id, case_id = uuid.uuid4().hex, uuid.uuid4().hex
+    await db.patrol_events.insert_one({"event_id": event_id, "device_id": owner, "deleted_at": None})
+    await db.investigation_cases.insert_one({"case_id": case_id, "owner_id": owner, "deleted": False, "epoch": 0, "work_epoch": 0})
+    request = Request({"type": "http", "method": "POST", "path": "/", "headers": []}); request.state.device = {"device_id": owner}
+    body = patrol.InvestigationBindingIn(case_id=case_id)
+    first = await patrol.bind_event_investigation(event_id, body, request)
+    second = await patrol.bind_event_investigation(event_id, body, request)
+    assert first == second == {"eventId": event_id, "caseId": case_id}
+    request.state.device = {"device_id": stranger}
+    with pytest.raises(HTTPException) as denied:
+        await patrol.bind_event_investigation(event_id, body, request)
+    assert denied.value.status_code == 404
 
 
 async def _document_continuation_replay_delivers_images():

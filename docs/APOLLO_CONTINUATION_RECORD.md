@@ -1,3 +1,14 @@
+## 2026-09-22 consolidated mandate M1 implementation
+
+- Implemented every M1 register item (`C01–C04`, `C07`, `C12`, `C16–C18`; nine IDs in the source mandate).
+- Mobile investigation operations now have pre-I/O fixed deadlines, generation fences, explicit business submission IDs, late-callback rejection and terminal disposal. Patrol-to-case continuity is persisted server-side with owner validation.
+- Maintenance now has a lifespan-owned restart supervisor, per-component timeouts/telemetry and backlog health. Family-audio unknown upload outcomes retain durable cleanup ownership.
+- App/Account compatibility routes are lookup-only and cannot run a second investigator. Settings plan/recheck egress is schema-complete and failed binding is visible.
+- A shared protection health coordinator owns boot/foreground/periodic/manual/post-action checks. Android permission launch state and durable settings-return recovery safely restore intended Site protection without repeated dialogs.
+- Home and Protection use component-scoped, direct actions. Build IDs, adapter/provider availability, SecureCore status and manual diagnostics now live under Support; recurring top-level visibility alarms and routine Verify controls are removed.
+- Verification respected the owner boundary: `tsc --noEmit`, ESLint, provider-disabled focused pytest and `cargo check` only. No live Gemini, scenario/Playwright run, testing agent or managed AI key.
+- Full legacy pytest was also attempted once: M1-relevant failures were corrected; remaining failures require absent email/object-storage/voice provider configuration or belong to older unrelated contract baselines. They are not represented as M1 passes.
+
 ## Current package continuation result
 
 - Supported earlier source corrections remain closed. The four outstanding findings are repaired: supervised recovery/retention, strict operation/case ownership, replayable PDF image delivery, and Windows `$apolloTargetHost` generation.

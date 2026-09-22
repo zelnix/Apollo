@@ -51,35 +51,27 @@ async function openDescriptor(d: SettingsDescriptor): Promise<string | null> {
  *  `instruction` wording. When Higgins left it null (no single observable target, or genuinely ambiguous), the plan is bound
  *  with `expectedValue: null`, which the backend leaves unobservable — the recheck then reports "cannot_observe" rather than
  *  guessing a direction. */
-async function bindPlan(action: ActionProposal, caseData: InvestigationCase, descriptor: SettingsDescriptor): Promise<string | null> {
+async function bindPlan(action: ActionProposal, caseData: InvestigationCase, descriptor: SettingsDescriptor): Promise<string> {
   const capabilityId = observationCapabilityFor(descriptor.id);
-  try {
-    const fresh = await api.getCase(caseData.id);
-    const { plan } = await api.createSettingsPlan(caseData.id, {
-      expectedRevision: fresh.case.revision, target: `${action.label}. ${action.instruction}`.slice(0, 300), device: currentDeviceProfile(),
-      capabilityId, expectedField: action.desiredField ?? (capabilityId?.startsWith("permission.") ? "granted" : capabilityId === CAPABILITIES.protection ? "running" : "state"),
-      expectedValue: action.desiredValue ?? null,
-    });
-    return plan.id;
-  } catch {
-    return null; // the destination still opens; the recheck then reports "cannot compare" instead of pretending to
-  }
+  const fresh = await api.getCase(caseData.id);
+  const { plan } = await api.createSettingsPlan(caseData.id, {
+    expectedRevision: fresh.case.revision, target: `${action.label}. ${action.instruction}`.slice(0, 200), device: currentDeviceProfile(),
+    capabilityId, expectedField: action.desiredField ?? (capabilityId?.startsWith("permission.") ? "granted" : capabilityId === CAPABILITIES.protection ? "running" : "state"),
+    expectedValue: action.desiredValue ?? null,
+  });
+  return plan.id;
 }
 
 /** Same binding for a `request_permission` action, which has no Settings descriptor of its own — only the capability the
  *  permission observes. Intent still comes exclusively from `action.desiredField`/`desiredValue`. */
-async function bindPermissionPlan(action: ActionProposal, caseData: InvestigationCase): Promise<string | null> {
-  if (!action.capabilityId) return null;
-  try {
-    const fresh = await api.getCase(caseData.id);
-    const { plan } = await api.createSettingsPlan(caseData.id, {
-      expectedRevision: fresh.case.revision, target: `${action.label}. ${action.instruction}`.slice(0, 300), device: currentDeviceProfile(),
-      capabilityId: action.capabilityId, expectedField: action.desiredField ?? "granted", expectedValue: action.desiredValue ?? null,
-    });
-    return plan.id;
-  } catch {
-    return null;
-  }
+async function bindPermissionPlan(action: ActionProposal, caseData: InvestigationCase): Promise<string> {
+  if (!action.capabilityId) throw new Error("This action has no observable permission target.");
+  const fresh = await api.getCase(caseData.id);
+  const { plan } = await api.createSettingsPlan(caseData.id, {
+    expectedRevision: fresh.case.revision, target: `${action.label}. ${action.instruction}`.slice(0, 200), device: currentDeviceProfile(),
+    capabilityId: action.capabilityId, expectedField: action.desiredField ?? "granted", expectedValue: action.desiredValue ?? null,
+  });
+  return plan.id;
 }
 
 /** Runs a supported action after a user gesture. Attempts are recorded BEFORE launching anything the person must return from. */
@@ -89,7 +81,7 @@ export async function runAction(action: ActionProposal, caseData: InvestigationC
       const descriptor = boundDescriptor(action);
       if (!descriptor) return { kind: "unsupported", reason: "Apollo cannot open that Settings destination on this device; follow the written steps instead." };
       const boundPlanId = planId ?? await bindPlan(action, caseData, descriptor);
-      const attempt: ActionAttempt = { id: `${caseData.id}:${action.id}:${Date.now()}`, caseId: caseData.id, planId: boundPlanId, descriptorId: descriptor.id, startedAt: new Date().toISOString(), returnedAt: null, status: "requested" };
+      const attempt: ActionAttempt = { id: `${caseData.id}:${action.id}:${Date.now()}`, kind: "settings_recheck", caseId: caseData.id, planId: boundPlanId, descriptorId: descriptor.id, startedAt: new Date().toISOString(), expiresAt: caseData.expiresAt, returnedAt: null, status: "requested" };
       await recordAttempt(attempt); // recorded before the launch: a crash or kill while in Settings still leaves a resumable attempt
       const iosPath = await openDescriptor(descriptor);
       await recordAttempt({ ...attempt, status: "opened" });
@@ -100,7 +92,7 @@ export async function runAction(action: ActionProposal, caseData: InvestigationC
     if (action.kind === "request_permission" && action.capabilityId.startsWith("permission.")) {
       const id = action.capabilityId.slice("permission.".length) as ProtectionPermission["id"];
       const boundPlanId = planId ?? await bindPermissionPlan(action, caseData);
-      const attempt: ActionAttempt = { id: `${caseData.id}:${action.id}:${Date.now()}`, caseId: caseData.id, planId: boundPlanId, descriptorId: action.capabilityId, startedAt: new Date().toISOString(), returnedAt: null, status: "requested" };
+      const attempt: ActionAttempt = { id: `${caseData.id}:${action.id}:${Date.now()}`, kind: "settings_recheck", caseId: caseData.id, planId: boundPlanId, descriptorId: action.capabilityId, startedAt: new Date().toISOString(), expiresAt: caseData.expiresAt, returnedAt: null, status: "requested" };
       await recordAttempt(attempt);
       await securityAdapter.requestProtectionPermission(id); // requested ≠ granted
       if (Platform.OS === "android" || Platform.OS === "ios") {

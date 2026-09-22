@@ -21,7 +21,7 @@ export function EventActions({ event, originalEvidence, hideAsk = false }: { eve
   const active = event.status === "active" || (event.status === "blocked" && !event.resolved_at);
   const wrap = (key: string, fn: () => Promise<unknown>) => async () => { setBusy(key); try { await fn(); } finally { setBusy(null); } };
   // Continue the case the Gate check already opened for this event when one exists; otherwise open a new case from the event.
-  const askHiggins = () => void caseForEvent(event.event_id).then((caseId) =>
+  const askHiggins = () => void caseForEvent(event.event_id, event.investigation_case_id).then((caseId) =>
     openHigginsHandoff(router, { ...contextFromEvent(event, gateForCategory(event.category)), original_evidence: originalEvidence, ...(caseId ? { case_id: caseId } : {}) }, caseId ? "" : "Explain this issue and what I should do next."));
 
   if (!active) {

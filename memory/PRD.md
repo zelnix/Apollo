@@ -1,3 +1,27 @@
+## Consolidated architecture mandate — M1 implemented (2026-09-22)
+
+### Problem statement
+Apply the consolidated Apollo architecture starting with every M1 finding while preserving the Gemini-only owner-key boundary and avoiding scenario/browser automation. Repair lifecycle ownership, background supervision, Settings contracts, single-investigator behavior, durable Patrol continuity, ambiguous audio cleanup, consumer status language, settings-return recovery and shared protection health.
+
+### Architecture implemented
+- **Investigation lifecycle:** fixed 15-minute client deadline reserved before I/O, explicit UUID/event submission identity, generation guards after async boundaries, owner-bound server event→case association, and terminal disposal of transient references/indexes.
+- **Backend workers/storage:** lifespan-owned maintenance supervisor with bounded per-component work, independent failure containment, component telemetry/backlog health, and durable `outcome_unknown` family-audio cleanup.
+- **One investigator/actions:** App and Account compatibility APIs perform lookup-only non-AI work; the shared case engine is the only Higgins presenter. Settings plan/recheck egress matches Pydantic exactly and binding failures are visible.
+- **Protection recovery:** one shared health coordinator/store owns startup, foreground, periodic, Support and post-action checks. Android reports whether system UI opened, was already granted, failed or is unsupported; a durable typed attempt resumes on return/cold boot and deduplicates prompts.
+- **Consumer UI:** Home and Protection show component-scoped status and direct actions. Technical build/provider diagnostics are separated under Support. Recurring visibility alarms and routine verification controls were removed.
+
+### Verification and boundaries
+- Frontend TypeScript compilation and ESLint pass.
+- Focused M1 backend pytest passes with `GEMINI_API_KEY` disabled; no live provider call was used.
+- Desktop `cargo check` passes after installing the container's standard Rust/Tauri build prerequisites.
+- No Playwright, automated scenario/testing agent or Emergent-managed LLM key was used.
+- The full legacy pytest attempt still contains unrelated environment-dependent failures where email, family object storage or voice delivery credentials are absent; no application fallback or mock was added.
+
+### Priorities
+- **P0:** M1 source implementation complete; owner verification remains separate.
+- **P1:** Continue subsequent consolidated-mandate milestones and unblocked Package 6/7 source work. Keep `app.apollo.hwg` and native EAS profiles free of browser preview harnesses.
+- **P2:** Production-default protection cutover remains a separate evidence decision.
+
 ## Production deployment build correction — EAS app-bundle pre-install
 
 - Diagnosed failed Android app-bundle build `4dee4d9b-99ba-48db-825d-1f63c22414db`: the generated `app-bundle` profile inherited development-web preview-harness values, and the native security preflight correctly stopped the build before compilation.

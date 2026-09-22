@@ -6,7 +6,8 @@ import hashlib
 import json
 import uuid
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
@@ -17,6 +18,10 @@ from routers.push import push_owner_alert
 from services.patrol_policy import packet_verified, minimal_patrol, revalidate_stored_patrol
 
 router = APIRouter()
+
+
+class InvestigationBindingIn(BaseModel):
+    case_id: str = Field(min_length=4, max_length=80)
 
 # Mechanisms that can NEVER back a verified block, no matter what result/enforcedAction they claim.
 # "simulated" is the mock adapter's label (Expo Go/dev preview); "none" means nothing was enforced.
@@ -141,6 +146,30 @@ async def upsert_event(body: PatrolEventIn):
 async def list_events(device_id: str = Query(min_length=8, max_length=64), limit: int = Query(default=200, le=500)):
     docs = await db.patrol_events.find({"device_id": device_id, "deleted_at": None}).sort("occurred_at", -1).to_list(limit)
     return [PatrolEvent.from_mongo(await revalidate_stored_patrol(d)) for d in docs]
+
+
+@router.post("/patrol/events/{event_id}/investigation")
+async def bind_event_investigation(event_id: str, body: InvestigationBindingIn, request: Request):
+    """Bind one owned Patrol event to one owned live investigation; replay is idempotent."""
+    owner = request.state.device["device_id"]
+    event = await db.patrol_events.find_one({"event_id": event_id, "device_id": owner, "deleted_at": None}, {"_id": 1, "investigation_case_id": 1})
+    case = await db.investigation_cases.find_one({"case_id": body.case_id, "owner_id": owner, "deleted": False}, {"_id": 1})
+    if not event or not case:
+        raise HTTPException(status_code=404, detail="Event or investigation not found")
+    existing = event.get("investigation_case_id")
+    if existing and existing != body.case_id:
+        raise HTTPException(status_code=409, detail="Event is already bound to a different investigation")
+    await db.patrol_events.update_one({"_id": event["_id"]}, {"$set": {"investigation_case_id": body.case_id, "updated_at": now_utc()}})
+    return {"eventId": event_id, "caseId": body.case_id}
+
+
+@router.get("/patrol/events/{event_id}/investigation")
+async def get_event_investigation(event_id: str, request: Request):
+    owner = request.state.device["device_id"]
+    event = await db.patrol_events.find_one({"event_id": event_id, "device_id": owner, "deleted_at": None}, {"_id": 0, "investigation_case_id": 1})
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return {"caseId": event.get("investigation_case_id")}
 
 
 @router.patch("/patrol/events/{event_id}", response_model=PatrolEvent)

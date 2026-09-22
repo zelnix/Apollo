@@ -3,25 +3,20 @@
 // Apollo (the shield) is animated per state: patrolling = slow breath + look-around sweep,
 // growling = low rumble, barking = sharp bounces, biting = lunge and snap.
 
-import { useAudioPlayer } from "expo-audio";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
-import BellRing from "lucide-react-native/icons/bell-ring";
 import React, { useEffect, useMemo, useState } from "react";
-import { AppState, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming } from "react-native-reanimated";
 
 import type { StateResolution } from "@/src/domain/stateMachine";
-import { STATE_LABEL, STATE_MEANING, type ApolloState, type Capability, type Visibility } from "@/src/domain/types";
+import { STATE_LABEL, STATE_MEANING, type ApolloState, type Capability } from "@/src/domain/types";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { HigginsChecks } from "@/src/components/HigginsChecks";
 import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
 import { checksSpoken, higginsPermissionNote, recommendedChecks } from "@/src/domain/higginsChecks";
 import { Sheet } from "./Sheet";
 import { Body, Button, DevTag, Pill, toneColor, toneWash } from "./ui";
-
-/** How often Higgins chimes to remind you a check is waiting, until you tap Hear Higgins. */
-const REMINDER_INTERVAL_MS = 60 * 1000;
 
 /** Apollo is an animated character, not a static shield — this is core brand identity.
  *  One state → one asset, in one place, so dropping in apollo-ears-up.gif later is a one-line change. */
@@ -54,8 +49,8 @@ const useStyles = makeStyles((c) => ({
 
 const ease = Easing.inOut(Easing.ease);
 
-export function ApolloHero({ resolution, visibility, adapterLabel, isMock, capabilities = [], animate = true, quietNow = false, sniffing = false }: {
-  resolution: StateResolution; visibility: Visibility; adapterLabel: string; isMock: boolean; animate?: boolean; quietNow?: boolean;
+export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = [], animate = true, quietNow = false, sniffing = false }: {
+  resolution: StateResolution; adapterLabel: string; isMock: boolean; animate?: boolean; quietNow?: boolean;
   /** Used only to have Higgins name a real permission gap by name — never a generic "this is mock" disclaimer. */
   capabilities?: Capability[];
   /** True while Apollo is actively re-checking (Verify now / pull-to-refresh) — shows the transient Sniffing state. */
@@ -63,13 +58,11 @@ export function ApolloHero({ resolution, visibility, adapterLabel, isMock, capab
 }) {
   const s = useStyles();
   const { colors } = useTheme();
-  const tone = resolution.visibilityLost ? "unknown" : resolution.state;
+  const tone = resolution.state;
   const color = toneColor(colors, tone);
-  const state: ApolloState | "lost" = resolution.visibilityLost ? "lost" : sniffing ? "sniffing" : resolution.state;
-  const gif = animate && state !== "lost" ? STATE_GIF[state] : undefined;
+  const state: ApolloState = sniffing ? "sniffing" : resolution.state;
+  const gif = animate ? STATE_GIF[state] : undefined;
   const [checklistOpen, setChecklistOpen] = useState(false);
-  const [ackKey, setAckKey] = useState<string | null>(null);
-  const chime = useAudioPlayer(require("../../assets/sounds/apollo_chime.wav"));
 
   const ring = useSharedValue(1);
   const scale = useSharedValue(1);
@@ -117,42 +110,17 @@ export function ApolloHero({ resolution, visibility, adapterLabel, isMock, capab
   const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value }));
   const dogStyle = useAnimatedStyle(() => ({ transform: [{ translateY: ty.value }, { scale: scale.value }] }));
 
-  const title = resolution.visibilityLost ? "Apollo can't see right now" : STATE_LABEL[resolution.state];
-  const meaning = resolution.visibilityLost ? "Some protection is unavailable or unverified. This is a protection gap, not evidence of an attack." : STATE_MEANING[resolution.state];
+  const title = STATE_LABEL[resolution.state];
+  const meaning = STATE_MEANING[resolution.state];
+  const reason = resolution.visibilityLost ? "One automatic protection could not be confirmed. Open Protection to see the affected component." : resolution.reason;
   // "Run a check" is never said bare: the exact checks are listed (tappable, in a popup) and read aloud. Completion
   // counts from the start of today, so a check already done this morning shows as done.
   const checks = sniffing ? [] : recommendedChecks(resolution);
   const askedAt = useMemo(() => new Date(new Date().setHours(0, 0, 0, 0)).toISOString(), []);
   const permissionNote = higginsPermissionNote(capabilities);
-  const spokenText = `${title}. ${meaning} ${resolution.reason} ${checksSpoken(checks)} ${permissionNote ?? ""}`.trim();
-
-  // Higgins keeps asking, gently: while checks are waiting and haven't been acknowledged, the button pulses and
-  // chimes once a minute. Tapping Hear Higgins (to start speech) silences the reminder and opens the checklist.
-  const pendingKey = checks.length ? `${state}:${checks.join(",")}` : null;
-  const reminderActive = !!pendingKey && ackKey !== pendingKey;
-  const bellPulse = useSharedValue(1);
-
-  useEffect(() => {
-    cancelAnimation(bellPulse);
-    if (reminderActive && animate) {
-      bellPulse.value = withRepeat(withSequence(withTiming(1.05, { duration: 500, easing: ease }), withTiming(1, { duration: 500, easing: ease })), -1, false);
-    } else {
-      bellPulse.value = withTiming(1, { duration: 200 });
-    }
-  }, [reminderActive, animate, bellPulse]);
-  const bellPulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: bellPulse.value }] }));
-
-  useEffect(() => {
-    if (!reminderActive) return;
-    const ring = () => { if (AppState.currentState === "active") { try { chime.seekTo(0); chime.play(); } catch { /* not ready */ } } };
-    ring();
-    const id = setInterval(ring, REMINDER_INTERVAL_MS);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reminderActive, pendingKey]);
+  const spokenText = `${title}. ${meaning} ${reason} ${checksSpoken(checks)} ${permissionNote ?? ""}`.trim();
 
   const onHearHiggins = () => {
-    if (pendingKey) setAckKey(pendingKey);
     if (checks.length) setChecklistOpen(true);
   };
 
@@ -177,16 +145,9 @@ export function ApolloHero({ resolution, visibility, adapterLabel, isMock, capab
         <Text style={s.label} testID="apollo-state-label">{title}</Text>
         <Text style={s.note} testID="apollo-higgins-label">HIGGINS</Text>
         <Text style={s.meaning} testID="apollo-state-meaning">{meaning}</Text>
-        <Text style={s.reason} testID="apollo-state-reason">{resolution.reason}</Text>
-        <Animated.View style={bellPulseStyle}>
-          <View style={[s.row, { alignItems: "center" }]}>
-            <HigginsSpeakButton text={spokenText} testID="hero-hear-higgins" onPress={onHearHiggins} />
-            {reminderActive ? <BellRing testID="hero-reminder-bell" size={18} color={colors.growling} /> : null}
-          </View>
-        </Animated.View>
-        {reminderActive ? <Text style={s.note} testID="hero-reminder-note">Chiming every minute until you tap Hear Higgins.</Text> : null}
+        <Text style={s.reason} testID="apollo-state-reason">{reason}</Text>
+        <View style={[s.row, { alignItems: "center" }]}><HigginsSpeakButton text={spokenText} testID="hero-hear-higgins" onPress={onHearHiggins} /></View>
         <View style={s.row}>
-          <Pill testID="visibility-pill" tone={visibility === "full" ? "resting" : visibility === "limited" ? "growling" : "unknown"} label={visibility === "full" ? "Full visibility" : visibility === "limited" ? "Limited visibility" : "No visibility"} />
           {resolution.recovering ? <Pill tone="growling" label="Awaiting fresh check" testID="recovering-pill" /> : null}
           {resolution.recovering && resolution.drivingEvent?.state === "biting" && resolution.drivingEvent.verified_block ? <Pill tone="resting" label="Threat contained" testID="contained-pill" /> : null}
           {quietNow ? <Pill tone="unknown" label="Quiet hours" testID="quiet-pill" /> : null}

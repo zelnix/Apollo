@@ -355,7 +355,7 @@ class AppAnalyseIn(BaseModel):
     hosts: list[str] = Field(default_factory=list, max_length=10)
     local_state: ApolloState
     scenario: str = Field(default="", max_length=40)
-    second_opinion: bool = True
+    second_opinion: bool = False
 
 
 class AppHostResult(BaseModel):
@@ -414,20 +414,8 @@ async def app_analyse(body: AppAnalyseIn):
             hosts.append(AppHostResult(host=host, verdict=r.verdict, threat_types=r.threat_types, coverage=r.coverage))
         except HTTPException:
             continue
-    urls = [f"https://{host.host}" for host in hosts]
-    url_context = [{"url": url, "host": host.host, "verdict": host.verdict, "coverage": host.coverage,
-                    "threat_types": host.threat_types, "redirect_chain": [], "final_url": url}
-                   for url, host in zip(urls, hosts)]
-    app_text = (f"App submitted for investigation: {body.name}. Developer: {body.developer or 'not supplied'}. "
-                f"Claimed purpose: {body.purpose}. Install source: {body.source}. "
-                f"Permissions: {', '.join(body.permissions) or 'none supplied'}.")
-    assessment = await investigate_message(sender=body.developer or "", text=app_text, urls=urls,
-        claimed_brand=rep.impersonates_brand, local_state=body.local_state, url_context=url_context,
-        local_findings=[rep.note, *[f"Permission submitted: {permission}" for permission in body.permissions[:8]]], use_model=body.second_opinion)
-    explanation = {"summary": assessment.higgins.headline, "why": assessment.higgins.why_it_matters,
-                   "recommendation": assessment.higgins.next_action}
-    return AppAnalyseOut(reputation=rep, hosts=hosts, explanation=explanation,
-        gemini_used=bool(assessment.processing.get("model_used")), assessment=assessment)
+    # Compatibility route: reputation and host lookups only. The shared case engine owns all Higgins reasoning.
+    return AppAnalyseOut(reputation=rep, hosts=hosts, explanation=None, gemini_used=False, assessment=None)
 
 
 # ---------------------------------------------------------------------------
@@ -456,7 +444,7 @@ class AccountAnalyseIn(BaseModel):
     urls: list[str] = Field(default_factory=list, max_length=ITEMS.value)
     local_state: ApolloState
     scenario: str = Field(default="", max_length=40)
-    second_opinion: bool = True
+    second_opinion: bool = False
 
     @field_validator("urls")
     @classmethod
@@ -486,7 +474,7 @@ class AccountAnalyseOut(BaseModel):
     urls: list[AccountUrlResult]
     explanation: Optional[dict[str, Any]] = None
     gemini_used: bool = False
-    assessment: InvestigationResult
+    assessment: Optional[InvestigationResult] = None
 
 
 @router.post("/account/analyse", response_model=AccountAnalyseOut)
@@ -502,14 +490,8 @@ async def account_analyse(body: AccountAnalyseIn):
             results.append(AccountUrlResult(url=normalized, host=host, verdict=r.verdict, threat_types=r.threat_types, coverage=r.coverage, official=is_official))
         except HTTPException:
             continue
-    url_context = [{"url": row.url, "host": row.host, "verdict": row.verdict, "coverage": row.coverage,
-                    "official": row.official} for row in results]
-    assessment = await investigate_message(sender=body.sender, text=body.text, urls=[row.url for row in results],
-        claimed_brand=None if body.provider == "other" else body.provider, local_state=body.local_state, url_context=url_context)
-    explanation = {"summary": assessment.higgins.headline, "why": assessment.higgins.why_it_matters,
-                   "recommendation": assessment.higgins.next_action}
-    return AccountAnalyseOut(urls=results, explanation=explanation,
-        gemini_used=bool(assessment.processing.get("model_used")), assessment=assessment)
+    # Compatibility route: official-domain and reputation lookups only. Higgins runs once through the case engine.
+    return AccountAnalyseOut(urls=results, explanation=None, gemini_used=False, assessment=None)
 
 
 class BreachCheckIn(BaseModel):

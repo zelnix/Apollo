@@ -180,6 +180,9 @@ class PatrolEventIn(BaseModel):
     supporting_references: list[dict[str, str]] = Field(default_factory=list, max_length=6)
     # Structured recovery actions reported by the person. Legacy display-text records remain readable.
     recovery_kinds: list[Literal["clicked", "password", "code", "money", "info", "app", "card", "download", "called", "remote", "accessibility", "profile", "banking_during_access", "mfa_approved", "locked_out"]] = Field(default_factory=list, max_length=15)
+    # Authoritative owner-validated association. Clients bind this through the dedicated Patrol route;
+    # it is never accepted from an ordinary event upsert.
+    investigation_case_id: Optional[str] = Field(default=None, max_length=80)
 
 
 class PatrolEvent(PatrolEventIn, BaseDocument):

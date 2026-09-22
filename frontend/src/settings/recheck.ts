@@ -12,10 +12,12 @@ import { descriptorById } from "./guidance";
 
 export interface ActionAttempt {
   id: string;
-  caseId: string;
+  kind?: "settings_recheck" | "restore_site";
+  caseId: string | null;
   planId: string | null;
   descriptorId: string;
   startedAt: string;
+  expiresAt?: string;
   returnedAt: string | null;
   status: "requested" | "opened" | "returned" | "failed";
 }
@@ -59,9 +61,16 @@ export function observationCapabilityFor(descriptorId: string): string | null {
  *  is retained (status "failed") so it can be retried explicitly with `retryFailedAttempt()` instead of being lost. */
 export async function completeAttempt(attempt: ActionAttempt): Promise<RecheckOutcome> {
   const returned: ActionAttempt = { ...attempt, returnedAt: attempt.returnedAt ?? new Date().toISOString(), status: "returned" };
+  if (attempt.kind === "restore_site") {
+    const { completeSiteProtectionAttempt } = await import("@/src/protection/healthCoordinator");
+    const restored = await completeSiteProtectionAttempt(attempt);
+    return { attempt: restored ? returned : { ...returned, status: "failed" }, observation: null, evidenceId: null,
+      plan: { outcome: restored ? "correct" : "not_yet_correct", explanation: restored ? "Site protection is running." : "Site protection still needs your approval." } };
+  }
   const capabilityId = observationCapabilityFor(attempt.descriptorId);
   if (!capabilityId) { await clearAttempt(); return { attempt: returned, observation: null, evidenceId: null, plan: attempt.planId ? { outcome: "cannot_observe", explanation: "Apollo cannot read this setting on this device; only you can confirm what you changed." } : null }; }
   try {
+    if (!attempt.caseId) throw new Error("This Settings check is not bound to a live investigation.");
     const fresh = await api.getCase(attempt.caseId);
     if (["cancelled", "expired", "failed"].includes(fresh.case.status)) { await clearAttempt(); return { attempt: { ...returned, status: "failed" }, observation: null, evidenceId: null, plan: null }; }
     const observation = await observe({ id: `recheck-${attempt.id}`, caseId: attempt.caseId, caseRevision: fresh.case.revision, capabilityId, fields: [], reason: `Fresh check after returning from ${attempt.descriptorId}`, expiresAt: new Date(Date.now() + 60_000).toISOString() });

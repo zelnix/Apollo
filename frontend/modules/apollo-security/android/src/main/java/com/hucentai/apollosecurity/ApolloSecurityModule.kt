@@ -205,26 +205,38 @@ class ApolloSecurityModule : Module() {
       when (id) {
         "vpn_config" -> {
           val intent = VpnService.prepare(ctx)
-          if (intent == null) perm("vpn_config", "Local VPN (DNS filter)", "granted", true, "Granted.", observedAt, enabled = true).toString()
+          if (intent == null) perm("vpn_config", "Local VPN (DNS filter)", "granted", true, "Granted.", observedAt, enabled = true).put("requestState", "already_granted").toString()
           else {
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            appContext.currentActivity?.startActivity(intent) ?: ctx.startActivity(intent)
-            perm("vpn_config", "Local VPN (DNS filter)", "undetermined", true, "System VPN consent shown. Re-check after you respond.", observedAt, enabled = false).toString()
+            try {
+              intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+              appContext.currentActivity?.startActivity(intent) ?: ctx.startActivity(intent)
+              perm("vpn_config", "Local VPN (DNS filter)", "undetermined", true, "System VPN consent opened. Apollo will check the result when you return.", observedAt, enabled = false).put("requestState", "system_ui_opened").toString()
+            } catch (_: Exception) {
+              perm("vpn_config", "Local VPN (DNS filter)", "undetermined", true, "Android could not open VPN consent.", observedAt, enabled = false).put("requestState", "launch_failed").toString()
+            }
           }
         }
         "notifications" -> {
           // Notification consent is granted in the system UI. Apollo opens its own notification settings page so the person
           // decides there; the fresh state is read on return (getProtectionPermissions), never assumed.
           val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-          appContext.currentActivity?.startActivity(intent) ?: ctx.startActivity(intent)
-          perm("notifications", "Notifications", "undetermined", true, "Notification settings opened. Re-check after you return.", observedAt, enabled = null).toString()
+          try {
+            appContext.currentActivity?.startActivity(intent) ?: ctx.startActivity(intent)
+            perm("notifications", "Notifications", "undetermined", true, "Notification settings opened. Apollo will check when you return.", observedAt, enabled = null).put("requestState", "system_ui_opened").toString()
+          } catch (_: Exception) {
+            perm("notifications", "Notifications", "undetermined", true, "Android could not open notification settings.", observedAt, enabled = null).put("requestState", "launch_failed").toString()
+          }
         }
         "network_filter" -> {
           val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-          appContext.currentActivity?.startActivity(intent) ?: ctx.startActivity(intent)
-          perm("network_filter", "Notification access (Text Gate)", "undetermined", true, "Notification access settings opened. Re-check after you return.", observedAt, enabled = null).toString()
+          try {
+            appContext.currentActivity?.startActivity(intent) ?: ctx.startActivity(intent)
+            perm("network_filter", "Notification access (Text Gate)", "undetermined", true, "Notification access settings opened. Apollo will check when you return.", observedAt, enabled = null).put("requestState", "system_ui_opened").toString()
+          } catch (_: Exception) {
+            perm("network_filter", "Notification access (Text Gate)", "undetermined", true, "Android could not open notification access settings.", observedAt, enabled = null).put("requestState", "launch_failed").toString()
+          }
         }
-        else -> perm(id, id, "not_applicable", false, "Apollo does not request this permission on Android.", observedAt, enabled = null, unavailableReason = "not_implemented").toString()
+        else -> perm(id, id, "not_applicable", false, "Apollo does not request this permission on Android.", observedAt, enabled = null, unavailableReason = "not_implemented").put("requestState", "unsupported").toString()
       }
     }
 

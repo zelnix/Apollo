@@ -6,15 +6,14 @@ import type { Capability, EventCategory } from "./types.ts";
 
 export type CheckId = "link" | "message" | "file" | "app" | "device" | "account" | "network";
 
-/** `where` is the path a person takes with their thumb — Higgins says it, the chip shows it, and the chip also jumps there. */
-export const CHECKS: Record<CheckId, { label: string; route: string; where: string }> = {
-  link: { label: "Check a link", route: "/check", where: "Home → Check a link" },
-  message: { label: "Check a message", route: "/message", where: "Home → Check a message" },
-  file: { label: "File Gate", route: "/file", where: "Gates → File Gate (or Home → All checks → File Gate)" },
-  app: { label: "Check an app", route: "/app-check", where: "Home → Check an app" },
-  device: { label: "Device Gate", route: "/device", where: "Gates → Device Gate (or Home → All checks → Device Gate)" },
-  account: { label: "Account Gate", route: "/account", where: "Home → Account Gate (or Gates tab → Open Account Gate)" },
-  network: { label: "Network Gate", route: "/network", where: "Home → Network Gate (or Gates tab → Open Network Gate)" },
+export const CHECKS: Record<CheckId, { label: string; route: string }> = {
+  link: { label: "Check a link", route: "/check" },
+  message: { label: "Check a message", route: "/message" },
+  file: { label: "Open File Gate", route: "/file" },
+  app: { label: "Check an app", route: "/app-check" },
+  device: { label: "Open Device Gate", route: "/device" },
+  account: { label: "Open Account Gate", route: "/account" },
+  network: { label: "Open Network Gate", route: "/network" },
 };
 
 const IDS = Object.keys(CHECKS) as CheckId[];
@@ -64,7 +63,7 @@ const ORDINAL = ["first", "second", "third", "fourth", "fifth", "sixth"];
 /** Spoken form for Higgins, in the first person: names each check and where to find it, in order. */
 export function checksSpoken(checks: CheckId[]): string {
   if (!checks.length) return "";
-  const parts = checks.map((c, i) => `${checks.length > 1 ? `${ORDINAL[i] ?? `number ${i + 1}`}, ` : ""}${CHECKS[c].label} — under ${CHECKS[c].where.replace(/ \(.*\)$/, "")}`);
+  const parts = checks.map((c, i) => `${checks.length > 1 ? `${ORDINAL[i] ?? `number ${i + 1}`}, ` : ""}${CHECKS[c].label}`);
   return `${checks.length === 1 ? "The check I need you to run is" : `The ${checks.length} checks I need you to run, most important first:`} ${parts.join(". ")}.`;
 }
 
@@ -75,7 +74,7 @@ export function higginsPermissionNote(capabilities: Capability[]): string | null
   if (!gaps.length) return null;
   const names = gaps.map((c) => c.title.replace(/ Guard$/i, " Gate"));
   const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-  return `I don't have permission for ${list} yet, so I can't verify ${names.length === 1 ? "it" : "them"}. Open Gates to restore ${names.length === 1 ? "that permission" : "those permissions"}, then wait for Apollo to confirm the protection is running.`;
+  return `I don't have permission for ${list} yet. Choose Restore protection on the Protection screen, and Apollo will check the result when you return.`;
 }
 // --- Follow-up: a day later, Higgins gently notices what is still waiting ------------------------------------------
 export interface Suggestion { messageId: string; askedAt: string; checks: CheckId[]; snoozedUntil?: string }

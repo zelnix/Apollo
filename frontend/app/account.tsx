@@ -3,6 +3,7 @@
 import { GateInvestigation } from "@/src/components/GateInvestigation";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
+import * as Crypto from "expo-crypto";
 import { Image as ExpoImage } from "expo-image";
 import ImageIcon from "lucide-react-native/icons/image";
 import KeyRound from "lucide-react-native/icons/key-round";
@@ -15,24 +16,22 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { markCheckDone } from "@/src/store/checkCompletion";
 import { apiPost, apiUpload } from "@/src/api/client";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
-import { MessageAssessmentResult } from "@/src/components/MessageAssessmentResult";
 import { ScreenshotPermissionSheet } from "@/src/components/ScreenshotPermissionSheet";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { ACCOUNT_PROVIDERS, ALERT_KINDS, analyseAccountAlert, inspectAccountEvidence, type AccountAnalysis, type AccountEvidence, type AccountProvider, type AlertKind } from "@/src/domain/accountAnalysis";
 import { SCENT_WINDOW_MS } from "@/src/domain/threatScent";
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
-import { patrolSafeSummary, type InvestigationResult } from "@/src/domain/investigation";
+import { patrolSafeSummary } from "@/src/domain/investigation";
 import { redactUserSecrets } from "@/src/domain/privacy";
 import { NetworkAccountSdk } from "@/src/security/networkAccountSdk";
 import { type RecoveryKind, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { issueContext } from "@/src/domain/higginsHandoff";
-import { dispatchInvestigationAction } from "@/src/domain/investigationActions";
 import { useScreenshotAccess } from "@/src/hooks/useScreenshotAccess";
 import { getShareIntake } from "@/src/share/shareIntake";
 
-type Remote = { urls: { url: string; host: string; verdict: "clean" | "malicious" | "unknown"; official: boolean }[]; explanation: { summary: string; why: string[]; recommendation: string } | null; assessment: InvestigationResult };
+type Remote = { urls: { url: string; host: string; verdict: "clean" | "malicious" | "unknown"; official: boolean }[] };
 type Breach = { status: "not_configured" | "clear" | "found" | "unavailable"; breaches: { name: string; date: string; data: string[] }[]; password_exposed: boolean; detail: string; higgins: { headline: string; exact_response: string; next_action: string } };
 const RISK_LABEL = { low: "Low takeover risk", elevated: "Elevated takeover risk", high: "High takeover risk", very_high: "Very high takeover risk" } as const;
 const BANK_RE = /commbank|westpac|anz|nab|bank/i;
@@ -80,7 +79,7 @@ export default function CheckAccount() {
   const [screenshotUri, setScreenshotUri] = useState<string | null>(null);
   const [actionGuidance, setActionGuidance] = useState<string | null>(null);
   const [reportState, setReportState] = useState<"idle" | "sending" | "failed" | "sent">("idle");
-  const [result, setResult] = useState<{ a: AccountAnalysis; event: PatrolEvent | null; remote: Remote | null; linked: PatrolEvent | null } | null>(null);
+  const [result, setResult] = useState<{ submissionId: string; a: AccountAnalysis; event: PatrolEvent | null; remote: Remote | null; linked: PatrolEvent | null } | null>(null);
   const [identifier, setIdentifier] = useState("");
   const [breach, setBreach] = useState<Breach | null>(null);
   const [tech, setTech] = useState(false);
@@ -125,18 +124,17 @@ export default function CheckAccount() {
       let a = analyseAccountAlert(input);
       let remote: Remote | null = null;
       try {
-        remote = await apiPost<Remote>("/account/analyse", "account_check", { device_id: deviceId ?? "local-device", kind: selectedKind, provider, sender: sender.trim(), text: safeText.trim(), urls: a.urls, local_state: a.state, scenario: a.scenario, second_opinion: true });
-        if (remote.assessment.risk === "warning" && a.state === "resting") a = { ...a, state: "growling", why: [...a.why, "The contextual investigation found unresolved or suspicious details that need verification."] };
+        remote = await apiPost<Remote>("/account/analyse", "account_check", { device_id: deviceId ?? "local-device", kind: selectedKind, provider, sender: sender.trim(), text: safeText.trim(), urls: a.urls, local_state: a.state, scenario: a.scenario, second_opinion: false });
         const bad = remote.urls.find((u) => u.verdict === "malicious");
         if (bad && a.state !== "barking") a = { ...a, state: "barking", why: [...a.why, `The link (${bad.host}) is confirmed dangerous by Apollo's threat intelligence.`], handoff: "web" };
       } catch { /* offline: on-device engine is authoritative */ }
       let event: PatrolEvent | null = null;
       if (a.state !== "resting") {
-        event = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "account", state: a.state, status: "active", headline: `Account: ${remote?.assessment.higgins.headline ?? a.title}${a.providerLabel !== "Other / not sure" ? ` — ${a.providerLabel}` : ""}`, what_happened: patrolSafeSummary(remote?.assessment.higgins.what_was_found[0] ?? a.verdict), why: remote?.assessment.findings.map((finding) => finding.title).slice(0, 6) ?? a.why, what_to_do: remote?.assessment.higgins.next_action ?? a.recommendation, indicator_host: a.suspiciousUrls[0] ? a.suspiciousUrls[0].replace(/^https?:\/\//i, "").split("/")[0] : null, indicator_digest: null, local_indicator: null, verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: a.claimedBrand, scenario: a.scenario, scent_id: params.scent || linked?.scent_id || linked?.event_id || null, supporting_references: remote?.assessment.sources.filter((source) => source.url).map((source) => ({ label: source.label, url: source.url! })).slice(0, 6) });
+        event = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "account", state: a.state, status: "active", headline: `Account: ${a.title}${a.providerLabel !== "Other / not sure" ? ` — ${a.providerLabel}` : ""}`, what_happened: patrolSafeSummary(a.verdict), why: a.why, what_to_do: a.recommendation, indicator_host: a.suspiciousUrls[0] ? a.suspiciousUrls[0].replace(/^https?:\/\//i, "").split("/")[0] : null, indicator_digest: null, local_indicator: null, verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: a.claimedBrand, scenario: a.scenario, scent_id: params.scent || linked?.scent_id || linked?.event_id || null });
         if (event.state !== a.state) a = { ...a, state: event.state, why: event.why };
         void NetworkAccountSdk.submitAccountSecurityEvent({ kind: selectedKind, provider, state: a.state });
       }
-      setResult({ a, event, remote, linked });
+      setResult({ submissionId: event?.event_id ?? Crypto.randomUUID(), a, event, remote, linked });
     } finally { setBusy(false); }
   };
   const checkBreach = async () => {
@@ -186,15 +184,7 @@ export default function CheckAccount() {
           </>
         ) : a ? (
           <>
-            {result.remote?.assessment ? <MessageAssessmentResult assessment={result.remote.assessment} state={a.state} testIDPrefix="account"
-              submittedLabel="Account alert investigated" submittedTitle={a.providerLabel} submittedText={text || "No alert content was available; assessment used only the corrected description choices."}
-              onPrimaryAction={() => dispatchInvestigationAction(result.remote!.assessment.higgins.action_kind, {
-                showVerification: () => setActionGuidance(result.remote!.assessment.higgins.next_action),
-                showCallingGuidance: () => setActionGuidance(result.remote!.assessment.higgins.next_action),
-                openAccount: () => setActionGuidance(result.remote!.assessment.higgins.next_action),
-                clearSubmittedCopy: () => { setText(""); setSender(""); setActionGuidance("The submitted copy was cleared from this screen. The original alert or message was not deleted."); },
-                showReview: () => setActionGuidance(result.remote!.assessment.higgins.next_action),
-              })} /> : <Card testID="account-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
+            <Card testID="account-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
               <View style={s.chips}><Pill tone={a.state} label={STATE_NAME[a.state]} testID="account-state" /><Pill tone="neutral" label={a.scenario} testID="account-scenario" /><Pill tone={a.takeoverRisk === "low" ? "resting" : a.takeoverRisk === "elevated" ? "growling" : "barking"} label={RISK_LABEL[a.takeoverRisk]} testID="account-risk" /></View>
               <Text style={s.why}>{STATE_LABEL[a.state]}</Text>
               <Text style={s.label} testID="account-title">{a.title}</Text>
@@ -204,7 +194,7 @@ export default function CheckAccount() {
               {result.linked ? <Text style={s.why} testID="account-linked">• Connected to: {result.linked.headline} (Threat Scent). These events may be connected — do not approve the login request.</Text> : null}
               <SectionTitle>What to do</SectionTitle>
               <Text style={s.why} testID="account-recommendation">{a.recommendation}</Text>
-            </Card>}
+            </Card>
             {a.urls.length ? (
               <Card style={{ gap: spacing.sm }} testID="account-links">
                 <SectionTitle>Links in the alert</SectionTitle>
@@ -217,7 +207,6 @@ export default function CheckAccount() {
               <Text style={s.label}>Go in through the front door</Text>
               <Body testID="account-open-official">{a.openOfficial}</Body>
               {result.event ? <RecoveryFlow event={result.event} kinds={recovery} testID="account-recovery" /> : null}
-              {result.remote?.explanation && !result.remote.assessment ? <><Text style={s.label}>Higgins&apos;s plain-language assessment</Text><Body testID="account-second-opinion">{result.remote.explanation.summary}</Body></> : null}
               <GateInvestigation submission={result} testID="account-ask" label="Ask Higgins about this alert" context={issueContext({ gate: "account", issue_summary: a.title, assessment_state: a.state, findings: a.why.slice(0, 6).map((summary) => ({ summary, provenance: "inferred", status: a.state === "barking" ? "warning" : "uncertain" })), uncertainty: ["The alert's sender and claims were not independently authenticated."], confirmed_protective_actions: [], user_reported_actions: initiated === null ? [] : [initiated ? "Requested the change" : "Did not request the change"], original_evidence: [{ kind: "text", value: `Sender: ${sender}\n${text}`, label: "submitted alert" }] })} question="What should I do about this account alert?" />
               <Button testID="account-tech" variant="ghost" label="View technical details" onPress={() => setTech((t) => !t)} />
               {tech ? a.technical.map((t, i) => <Body key={i} testID={`account-tech-${i}`}>{t}</Body>) : null}

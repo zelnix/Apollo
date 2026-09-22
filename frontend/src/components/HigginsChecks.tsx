@@ -16,7 +16,6 @@ const useStyles = makeStyles((c) => ({
   chip: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 52, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: c.brand, backgroundColor: c.surfaceSecondary },
   chipDone: { borderColor: c.resting, backgroundColor: c.restingTint },
   chipText: { fontFamily: fonts.textMedium, fontSize: 15, color: c.onSurface },
-  where: { fontFamily: fonts.text, fontSize: 12, color: c.onSurfaceSecondary },
   doneText: { fontFamily: fonts.textMedium, fontSize: 13, color: c.restingText },
   progress: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary },
 }));
@@ -37,7 +36,7 @@ export function HigginsChecks({ checks, askedAt, messageId, record = true, title
         return (
           <Pressable key={c} testID={`higgins-check-${c}`} accessibilityRole="link" accessibilityState={{ checked: d }} onPress={() => { onNavigate?.(); requestAnimationFrame(() => router.push(CHECKS[c].route as never)); }} style={[s.chip, d && s.chipDone]}>
             {d ? <Check size={18} color={colors.resting} /> : <ChevronRight size={18} color={colors.brand} />}
-            <View style={{ flex: 1 }}><Text style={s.chipText}>{CHECKS[c].label}</Text><Text style={s.where}>{CHECKS[c].where}</Text></View>
+            <View style={{ flex: 1 }}><Text style={s.chipText}>{CHECKS[c].label}</Text></View>
             {d ? <Text style={s.doneText} testID={`higgins-check-${c}-done`}>Done</Text> : null}
           </Pressable>
         );

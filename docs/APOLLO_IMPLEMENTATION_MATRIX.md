@@ -1,3 +1,21 @@
+## Consolidated architecture mandate — Milestone 1 closure (2026-09-22)
+
+The M1 register contains nine IDs (`C01–C04`, `C07`, `C12`, `C16–C18`); all nine are implemented in source. The earlier handoff's “eight findings” count was incomplete, so no listed M1 item was omitted.
+
+| ID | Outcome | Primary evidence |
+|---|---|---|
+| C01 | ✅ Fixed-deadline, generation-fenced mobile operations | `transferManager.ts` reserves a 15-minute deadline before I/O, rejects late callbacks and disposes operation/input/file/case/job references plus indexes on expiry/cancel. |
+| C02 | ✅ Supervised independent maintenance | Lifespan owns a restarting supervisor; each component has a timeout, independent failure containment, heartbeat, attempt/success/failure counters and pending-backlog health. |
+| C03 | ✅ Settings action contract repaired | Egress admits the exact plan/recheck fields, targets share the server's 200-character bound, and binding failures surface instead of opening an untracked destination. |
+| C04 | ✅ One investigator | App/Account compatibility routes are explicitly non-AI lookup-only; Gate presentation no longer shows a second canned/model assessment beside the shared case engine. |
+| C07 | ✅ Stable business identity and server continuity | Gate runs carry explicit UUID/event submission IDs. Patrol stores an owner-validated `investigation_case_id`; retry/remount continuation no longer depends on `WeakMap` object identity. |
+| C12 | ✅ Unknown upload outcomes retained | Family-audio provider ambiguity persists `outcome_unknown` cleanup ownership and the sweeper verifies/deletes it; only a definitely unattempted upload drops its reservation. |
+| C16 | ✅ Direct consumer UI and Support boundary | Home/Protection use component-scoped status and direct actions; recurring visibility alarms/routine verification cards were removed; build/provider details moved to Support. |
+| C17 | ✅ Settings-return recovery | Android returns explicit launch state; one durable typed recovery attempt is written before system UI and resumed on foreground/cold boot without duplicate prompts. |
+| C18 | ✅ Shared protection health coordinator | One coordinator/store owns boot, foreground, periodic, Support and post-action checks; dashboards consume the same typed Gate snapshot. |
+
+Bounded verification only: TypeScript compilation and ESLint pass; provider-disabled M1 pytest passes; Cargo check passes. No Playwright, scenario/testing agent, live Gemini call or managed AI key was used.
+
 ## Current 7-package continuation outcome (supersedes older open-item wording below)
 
 Verification for this pass is intentionally bounded: TypeScript compilation, ESLint, provider-disabled pytest fixtures, Rust unit/source checks and `cargo check`. No live Gemini probe, browser automation, scenario campaign, testing agent or managed AI key was used as acceptance evidence.

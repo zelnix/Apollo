@@ -1,6 +1,7 @@
 // Gate 6 — Check This File. Reads only the file's first bytes (signature) and a text sample locally;
 // nothing is uploaded. URLs found inside are handed to Gate 3.
 import * as DocumentPicker from "expo-document-picker";
+import * as Crypto from "expo-crypto";
 import { GateInvestigation } from "@/src/components/GateInvestigation";
 import { File } from "expo-file-system";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
@@ -53,7 +54,7 @@ export default function CheckFile() {
   const [source, setSource] = useState<FileSource>("unknown");
   const [pw, setPw] = useState<boolean | null>(null);
   const [nameOnly, setNameOnly] = useState("");
-  const [result, setResult] = useState<{ a: FileAnalysis; event: PatrolEvent | null } | null>(null);
+  const [result, setResult] = useState<{ submissionId: string; a: FileAnalysis; event: PatrolEvent | null } | null>(null);
   const [tech, setTech] = useState(false);
   const [busy, setBusy] = useState(false);
   const [pickerError, setPickerError] = useState<string | null>(null);
@@ -78,7 +79,7 @@ export default function CheckFile() {
     if (a.state !== "resting") {
       event = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "known_threat", state: a.state, status: "active", headline: `File: ${a.title}`, what_happened: a.verdict, why: a.why, what_to_do: a.recommendation, indicator_host: a.urls[0] ? a.urls[0].replace(/^https?:\/\//i, "").split("/")[0] : null, indicator_digest: null, local_indicator: a.technical[0], verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: null, scenario: a.scenario });
     }
-    setResult({ a, event });
+    setResult({ submissionId: event?.event_id ?? Crypto.randomUUID(), a, event });
     void markCheckDone("file");
   };
   const params = useLocalSearchParams<{ uri?: string; name?: string; mime?: string; size?: string; source?: string; sharedIntakeId?: string }>();

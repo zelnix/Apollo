@@ -3,6 +3,7 @@
 import { GateInvestigation } from "@/src/components/GateInvestigation";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import * as Linking from "expo-linking";
+import * as Crypto from "expo-crypto";
 import * as WebBrowser from "expo-web-browser";
 import Mail from "lucide-react-native/icons/mail";
 import X from "lucide-react-native/icons/x";
@@ -57,7 +58,7 @@ export default function CheckEmail() {
   const [subject, setSubject] = useState("");
   const [raw, setRaw] = useState(shared?.text || shared?.webUrl || params.text || "");
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ a: EmailAnalysis; event: PatrolEvent | null; urls: MessageUrlResult[]; explanation: MessageExplanation | null; assessment: InvestigationResult | null } | null>(null);
+  const [result, setResult] = useState<{ submissionId: string; a: EmailAnalysis; event: PatrolEvent | null; urls: MessageUrlResult[]; explanation: MessageExplanation | null; assessment: InvestigationResult | null } | null>(null);
   const [verify, setVerify] = useState(false);
   const [tech, setTech] = useState(false);
   const [gmailConnected, setGmailConnected] = useState<boolean | null>(null);
@@ -159,7 +160,7 @@ export default function CheckEmail() {
         event = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "email", state: a.state, status: "active", headline: `Email: ${assessment?.higgins.headline ?? a.title}`, what_happened: patrolSafeSummary(assessment?.higgins.what_was_found[0] ?? a.verdict), why: assessment?.findings.map((finding) => finding.title).slice(0, 6) ?? a.why, what_to_do: assessment?.higgins.next_action ?? a.recommendation, indicator_host: a.lookalikeUrls[0] ? a.lookalikeUrls[0].replace(/^https?:\/\//i, "").split("/")[0] : a.senderDomain, indicator_digest: null, local_indicator: null, verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: a.claimedBrand, scenario: a.scenario, supporting_references: assessment?.sources.filter((source) => source.url).map((source) => ({ label: source.label, url: source.url! })).slice(0, 6) });
         if (event.state !== a.state) a = { ...a, state: event.state, why: event.why };
       }
-      setResult({ a, event, urls, explanation, assessment });
+      setResult({ submissionId: event?.event_id ?? Crypto.randomUUID(), a, event, urls, explanation, assessment });
     } catch (e) { showToast(e instanceof Error ? e.message : "Couldn't read that email.", "barking"); } finally { setBusy(false); }
   };
 
