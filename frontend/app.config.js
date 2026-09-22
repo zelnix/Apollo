@@ -4,7 +4,8 @@ const ANDROID_PACKAGE = "app.apollo.hwg";
 const IOS_BUNDLE_IDENTIFIER = "app.apollo.hwg";
 
 module.exports = () => {
-  const engine = process.env.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE || "legacy";
+  const appEnvironment = process.env.EXPO_PUBLIC_APP_ENV || "development";
+  const engine = process.env.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE || (appEnvironment === "production" ? "guarddog_production" : "legacy");
   const candidate = engine === "guarddog_acceptance" ? acceptance : {};
   return ({
   ...base.expo,

@@ -33,8 +33,8 @@ from services.maintenance import ensure_indexes as ensure_maintenance_indexes, s
 from services.higgins.retention import migrate_and_index
 from services.higgins import repository as investigation_repository
 from services.higgins import context as higgins_context
-from services import government_alerts
-from routers import admin, analysis, ask, call, devices, family, family_weekly, gmail, health, intel, investigations, patrol, push, voice
+from services import government_alerts, learning
+from routers import admin, analysis, ask, call, devices, family, family_weekly, gmail, health, intel, investigations, learning as learning_router, patrol, push, voice
 from routers.family_weekly import weekly_checkin_loop
 
 SEED_BLOCKLIST = [
@@ -51,6 +51,7 @@ async def lifespan(_: FastAPI):
     await investigation_repository.ensure_indexes()
     await higgins_context.ensure_indexes()
     await government_alerts.ensure_indexes()
+    await learning.ensure_indexes()
     await investigation_repository.backfill_work_epochs()
     await ensure_maintenance_indexes()
     await ensure_mailbox_monitor_indexes()
@@ -139,7 +140,7 @@ async def deployment_health():
 
 
 # Every device-facing router is mounted under /api behind the device bearer gate (public paths are listed in core.auth).
-for r in (health, devices, intel, patrol, investigations, ask, family, family_weekly, voice, push, analysis, gmail, call):
+for r in (health, devices, intel, patrol, investigations, ask, learning_router, family, family_weekly, voice, push, analysis, gmail, call):
     app.include_router(r.router, prefix="/api", dependencies=[Depends(enforce_device_auth)])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_admin_key)])
 

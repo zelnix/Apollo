@@ -33,8 +33,10 @@ export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapte
     catch (error) { const status = await this.json<ProductionStatus>(this.mod().getGuardDogProductionStatus()); const now = Date.now();
       if (!status.trustExpiresAt || !status.ruleExpiresAt || Date.parse(status.trustExpiresAt) <= now || Date.parse(status.ruleExpiresAt) <= now) throw error; }
   }
-  async getCapabilities() { await this.refreshIfDue(); return this.json<Capability[]>(this.mod().getGuardDogProductionCapabilities()); }
-  async getProtectionStatus() { await this.refreshIfDue(); return this.json<ProtectionStatus>(this.mod().getGuardDogProductionStatus()); }
+  async getCapabilities(): Promise<Capability[]> { try { await this.refreshIfDue(); return this.json<Capability[]>(this.mod().getGuardDogProductionCapabilities()); }
+    catch { return [{ id: "site_guard", title: "Site Gate", status: "permission_required", detail: "Production protection is inactive because its signed authority is missing, invalid or expired." }]; } }
+  async getProtectionStatus(): Promise<ProtectionStatus> { try { await this.refreshIfDue(); return this.json<ProtectionStatus>(this.mod().getGuardDogProductionStatus()); }
+    catch (error) { const checkedAt = new Date().toISOString(); return { running: false, requested: true, operational: false, enforcementMethod: "none", coverage: "Production protection is inactive. Apollo did not fall back to a legacy or test engine.", coverageScope: [], lastVerified: null, degradedReason: error instanceof Error ? error.message : "Signed production authority is unavailable.", visibility: "none", since: null, adapterLabel: this.label, checkedAt }; } }
   async analyseURL(url: string) { await this.ensureConfigured(); return this.json<NativeUrlAnalysis>(this.mod().analyzeGuardDogProductionUrl(url)); }
   analyseDomain(domain: string) { return this.analyseURL(`https://${domain}/`); }
   blockDestination(): Promise<BlockResult> { return Promise.resolve({ verified: false, method: "none", detail: "Production rules are signed; manual blocking is unavailable.", adapterLabel: this.label, blockedAt: null, evidence: null }); }

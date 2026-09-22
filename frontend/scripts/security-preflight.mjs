@@ -16,6 +16,13 @@ const require = createRequire(import.meta.url);
 const ANDROID_PACKAGE = "app.apollo.hwg";
 const IOS_BUNDLE_IDENTIFIER = "app.apollo.hwg";
 const RETIRED_SECURITY_NAME = ["Secure", "Core"].join("");
+const RETIRED_SELECTORS = [
+  ["EXPO", "PUBLIC", RETIRED_SECURITY_NAME.toUpperCase(), "MODE"].join("_"),
+  ["Mock", RETIRED_SECURITY_NAME].join(""),
+  ["HuCentAI", RETIRED_SECURITY_NAME].join(""),
+];
+const RETIRED_RUNTIME_MOCK = ["Mock", "Security", "Adapter"].join("");
+const RETIRED_SECURITY_MODE = ["EXPO", "PUBLIC", "SECURITY", "MODE"].join("_");
 const PRODUCTION_KEYS = ["APOLLO_GUARDDOG_TRUST_DOMAIN", "APOLLO_GUARDDOG_TRUST_PROFILE", "APOLLO_GUARDDOG_PRIMARY_ROOT_ID",
   "APOLLO_GUARDDOG_PRIMARY_ROOT_PUBLIC_KEY_B64", "APOLLO_GUARDDOG_RECOVERY_ROOT_ID", "APOLLO_GUARDDOG_RECOVERY_ROOT_PUBLIC_KEY_B64",
   "EXPO_PUBLIC_GUARDDOG_TRUST_MANIFEST_URL", "EXPO_PUBLIC_GUARDDOG_RULE_BUNDLE_URL", "EXPO_PUBLIC_GUARDDOG_CONTROLLED_HOST",
@@ -27,7 +34,7 @@ function walk(dir) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
     const p = path.join(dir, e.name);
     if (e.isDirectory()) return e.name === "node_modules" ? [] : walk(p);
-    return /\.(ts|tsx|js|mjs|cjs)$/.test(e.name) && !/\.d\.ts$/.test(e.name) ? [p] : [];
+    return /\.(ts|tsx|js|mjs|cjs|py|json|md)$/.test(e.name) && !/\.d\.ts$/.test(e.name) ? [p] : [];
   });
 }
 
@@ -45,7 +52,7 @@ const profile = process.env.EAS_BUILD_PROFILE;
 const profileDefaults = profile ? {
   EXPO_PUBLIC_APP_ENV: ["device-test", "guarddog-acceptance", "staging"].includes(profile) ? "staging" : "production",
   EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS: "off",
-  EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE: profile === "guarddog-acceptance" ? "guarddog_acceptance" : profile === "guarddog-production" ? "guarddog_production" : "legacy",
+  EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE: profile === "guarddog-acceptance" ? "guarddog_acceptance" : ["production", "app-bundle", "guarddog-production"].includes(profile) ? "guarddog_production" : "legacy",
 } : {};
 const guessedEnv = process.env.EXPO_PUBLIC_APP_ENV || profileDefaults.EXPO_PUBLIC_APP_ENV || (process.env.NODE_ENV === "production" ? "production" : "development");
 const baseFile = readDotenv(path.join(root, ".env"));
@@ -68,9 +75,10 @@ const harness = cfg.EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS;
 if (harness !== undefined && harness !== "" && harness !== "off" && harness !== "enabled") errors.push(`EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS="${harness}" is invalid.`);
 if (harness === "enabled" && cfg.EXPO_PUBLIC_APP_ENV !== "development") errors.push("The device-preview harness (simulated device inputs) is only permitted in development builds.");
 if (harness === "enabled" && profile) errors.push("The device-preview harness is web-only and can never be part of an EAS native build profile.");
-const engine = cfg.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE ?? "legacy";
+const engine = cfg.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE ?? (cfg.EXPO_PUBLIC_APP_ENV === "production" ? "guarddog_production" : "legacy");
 if (!["legacy", "guarddog_acceptance", "guarddog_production"].includes(engine)) errors.push(`EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE="${engine}" is invalid.`);
 if (cfg.EXPO_PUBLIC_APP_ENV === "production" && engine === "guarddog_acceptance") errors.push("The GuardDog acceptance candidate is test-only and cannot be selected in production.");
+if (cfg.EXPO_PUBLIC_APP_ENV === "production" && engine !== "guarddog_production") errors.push("Production must select exactly one Apollo-owned GuardDog production runtime; legacy and test engines are prohibited.");
 if (engine === "guarddog_production" && cfg.EXPO_PUBLIC_APP_ENV !== "production") errors.push("GuardDog production authority requires a production app environment.");
 if (engine === "guarddog_production") {
   for (const key of PRODUCTION_KEYS) if (!cfg[key]) errors.push(`${key} is required for GuardDog production authority.`);
@@ -89,12 +97,18 @@ if (!(autolinking.android?.exclude ?? []).includes("guarddog-expo-module") || !(
 }
 // Runtime-mock exclusion: no mock adapter/selector may exist in application source, and the preview harness may only be
 // referenced from the web-only host selector (never from a native or shared module).
-const appSources = ["src", "app", "modules/apollo-security/src"].flatMap((dir) => walk(path.join(root, dir)));
+const workspace = path.resolve(root, "..");
+const appSources = [
+  ...["src", "app", "modules", "tests", "scripts"].flatMap((dir) => walk(path.join(root, dir))),
+  ...walk(path.join(workspace, "tests")),
+  ...[path.join(workspace, "design_guidelines.json")].filter((file) => fs.existsSync(file)),
+];
 for (const file of appSources) {
   const text = fs.readFileSync(file, "utf8");
   const rel = path.relative(root, file);
-  if (/tools\/preview-device-harness/.test(text) && rel !== "src/security/hostAdapter.web.ts") errors.push(`${rel} references the preview harness; only src/security/hostAdapter.web.ts may.`);
-  if (/EXPO_PUBLIC_SECURITY_MODE|MockSecurityAdapter/.test(text) || text.toLowerCase().includes(RETIRED_SECURITY_NAME.toLowerCase())) errors.push(`${rel} references a retired security boundary.`);
+  const assertionOnly = rel.startsWith("tests/") || rel.startsWith("scripts/") || rel.startsWith("../tests/");
+  if (!assertionOnly && /tools\/preview-device-harness/.test(text) && rel !== "src/security/hostAdapter.web.ts") errors.push(`${rel} references the preview harness; only src/security/hostAdapter.web.ts may.`);
+  if (text.includes(RETIRED_SECURITY_MODE) || text.includes(RETIRED_RUNTIME_MOCK) || RETIRED_SELECTORS.some((selector) => text.includes(selector)) || text.toLowerCase().includes(RETIRED_SECURITY_NAME.toLowerCase())) errors.push(`${rel} references a retired security boundary.`);
 }
 
 console.log(`[security-preflight] profile=${profile ?? "local"} env=${cfg.EXPO_PUBLIC_APP_ENV} engine=${engine} preview-harness=${harness || "off"} app-sources-scanned=${appSources.length}`);

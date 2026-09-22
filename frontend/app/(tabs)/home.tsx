@@ -47,9 +47,8 @@ export default function Home() {
   const recent = projectPatrolOutcomes(events).slice(0, 3);
   const digest = buildWeeklyDigest(events);
   const scents = buildScents(events);
-  const activeCount = health.gates.filter((gate) => gate.automaticStatus === "On").length;
-  const attentionCount = health.gates.filter((gate) => gate.automaticStatus === "Needs attention").length;
-  const setupCount = health.gates.filter((gate) => gate.automaticStatus === "Needs setup").length;
+  const activeCount = health.gates.filter((gate) => gate.capability.automatic?.state === "running").length;
+  const attentionCount = health.gates.filter((gate) => gate.tone === "attention").length;
 
   return (
     <View style={s.root}>
@@ -84,9 +83,9 @@ export default function Home() {
               <View style={s.cardIconWell}><ShieldCheck size={16} color={colors.brand} /></View>
               <Text style={s.cardTitle}>Protection</Text>
             </View>
-            <Body testID="home-protection-status">{health.checking ? "Checking current device status…" : `${activeCount} automatic ${activeCount === 1 ? "protection is" : "protections are"} on${attentionCount ? ` · ${attentionCount} ${attentionCount === 1 ? "needs" : "need"} attention` : setupCount ? ` · ${setupCount} ${setupCount === 1 ? "needs" : "need"} setup` : ""}`}</Body>
+            <Body testID="home-protection-status">{health.checking ? "Checking current device status…" : `${activeCount} ${activeCount === 1 ? "Gate is" : "Gates are"} helping automatically${attentionCount ? ` · ${attentionCount} ${attentionCount === 1 ? "needs" : "need"} your attention` : ""}`}</Body>
             <Pressable testID="home-open-guard" accessibilityRole="button" onPress={() => router.push("/(tabs)/guard")} style={s.cardLinkRow}>
-              <Text style={s.link}>{attentionCount ? "Restore protection" : setupCount ? "Set up protection" : "View protection"}</Text>
+              <Text style={s.link}>{attentionCount ? "Review what needs attention" : "View protection"}</Text>
               <ChevronRight size={14} color={colors.restingText} />
             </Pressable>
           </Card>
@@ -116,7 +115,7 @@ export default function Home() {
             </Card>
           ) : (
             <View>
-              {recent.map((outcome, i) => <PatrolItem key={outcome.id} outcome={outcome} isLast={i === recent.length - 1} />)}
+              {recent.map((outcome, i) => <PatrolItem key={outcome.outcomeId} outcome={outcome} isLast={i === recent.length - 1} />)}
               <Text style={s.link} onPress={() => router.push("/(tabs)/patrol")} testID="home-open-patrol">See all</Text>
             </View>
           )}

@@ -13,11 +13,11 @@ const useStyles = makeStyles((c) => ({
 }));
 
 export function PatrolItem({ outcome, isLast }: { outcome: PatrolOutcome; isLast?: boolean }) {
-  const s = useStyles(); const { colors } = useTheme(); const router = useRouter(); const time = new Date(outcome.latestOccurredAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const s = useStyles(); const { colors } = useTheme(); const router = useRouter(); const time = new Date(outcome.occurredAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   return <View style={s.row}><View style={s.rail}><View style={[s.dot, { backgroundColor: toneColor(colors, outcome.state) }]} />{!isLast ? <View style={s.line} /> : null}</View>
-    <Pressable testID={`patrol-outcome-${outcome.event.event_id}`} accessibilityRole="button" accessibilityLabel={outcome.headline} accessibilityHint="Opens the full Patrol outcome" onPress={() => router.push({ pathname: "/patrol/[id]", params: { id: outcome.event.event_id } })} style={({ pressed }) => [s.card, { opacity: pressed ? 0.82 : 1 }]}>
-      <View style={s.top}><Pill tone={outcome.status === "handled" ? "resting" : outcome.state} label={outcome.status === "handled" ? "Handled" : "Needs you"} testID={`patrol-outcome-${outcome.event.event_id}-status`} /><Text style={s.meta}>{time}</Text></View>
-      <Text style={s.headline} testID={`patrol-outcome-${outcome.event.event_id}-headline`}>{outcome.headline}</Text><Text style={s.summary} numberOfLines={3}>{outcome.summary}</Text>
-      <View style={s.top}>{outcome.repeatCount > 1 ? <Text style={s.meta} testID={`patrol-outcome-${outcome.event.event_id}-repeat`}>Seen {outcome.repeatCount} times in this incident</Text> : <Text style={s.meta}>Recorded outcome</Text>}<ChevronRight size={18} color={colors.brand} /></View>
+    <Pressable testID={`patrol-outcome-${outcome.event.event_id}`} accessibilityRole="button" accessibilityLabel={outcome.title} accessibilityHint="Opens the full Patrol outcome" onPress={() => router.push({ pathname: "/patrol/[id]", params: { id: outcome.event.event_id } })} style={({ pressed }) => [s.card, { opacity: pressed ? 0.82 : 1 }]}>
+      <View style={s.top}><Pill tone={outcome.state} label={outcome.result} testID={`patrol-outcome-${outcome.event.event_id}-status`} /><Text style={s.meta}>{time}</Text></View>
+      <Text style={s.headline} testID={`patrol-outcome-${outcome.event.event_id}-headline`}>{outcome.title}</Text><Text style={s.summary} numberOfLines={3}>{outcome.summary}</Text>
+      <View style={s.top}>{outcome.repeatCount > 1 ? <Text style={s.meta} testID={`patrol-outcome-${outcome.event.event_id}-repeat`}>Seen {outcome.repeatCount} times in this incident</Text> : <Text style={s.meta}>{outcome.source.replace("_", " ")}</Text>}<ChevronRight size={18} color={colors.brand} /></View>
     </Pressable></View>;
 }

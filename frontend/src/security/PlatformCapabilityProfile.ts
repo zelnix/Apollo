@@ -217,13 +217,10 @@ export const PLATFORM_CAPABILITY_BASELINES: Record<SdkPlatform, PlatformCapabili
 
 /**
  * Machine-checkable companion to PLATFORM_CAPABILITY_BASELINES: which platforms have a REAL
- * adapter wired up in this codebase right now (see securityAdapter.ts::selectAdapter and
- * NativeSecurityAdapters.ts), vs. which are only represented in the type system for a future
- * adapter. Windows/macOS have baselines above so the architecture never needs a redesign when
- * those adapters land — but until then this record, and the absence of any
- * WindowsSecurityAdapter/MacosSecurityAdapter export, are what make "not implemented" an
- * explicit, testable fact rather than an assumption. Do not flip these to true without also
- * shipping the corresponding native module.
+ * adapter wired up in this codebase right now. Android/iOS use Expo native modules, Windows/macOS
+ * use the explicit Tauri DesktopSecurityAdapter, and web uses the real browser boundary. A true
+ * value means a concrete adapter exists; it does not imply that every theoretical capability is
+ * available on that platform.
  */
 export const PLATFORM_ADAPTER_IMPLEMENTED: Record<SdkPlatform, boolean> = {
   android: true,

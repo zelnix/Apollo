@@ -47,5 +47,7 @@ test("6. GuardDog acceptance candidate is prohibited in production", () => {
   ok({ appEnvironment: "development", androidEnforcementEngine: "guarddog_acceptance", hostPlatform: "android", nativeSecurityAdapterAvailable: true });
   ok({ appEnvironment: "staging", androidEnforcementEngine: "guarddog_acceptance", hostPlatform: "android", nativeSecurityAdapterAvailable: true });
   rejected({ appEnvironment: "production", androidEnforcementEngine: "guarddog_acceptance", hostPlatform: "android", nativeSecurityAdapterAvailable: true }, "test-only");
+  rejected({ appEnvironment: "production", androidEnforcementEngine: "legacy", hostPlatform: "android", nativeSecurityAdapterAvailable: true }, "Legacy and test-only acceptance engines are prohibited");
+  ok({ appEnvironment: "production", androidEnforcementEngine: "guarddog_production", hostPlatform: "android", nativeSecurityAdapterAvailable: true });
   rejected({ appEnvironment: "development", androidEnforcementEngine: "other" }, "is invalid");
 });

@@ -52,7 +52,7 @@ async function collect(trigger: HealthTrigger): Promise<ProtectionHealthSnapshot
     if (decision === "healthy") await clearAttempt(); else if (trigger === "foreground") await clearAttempt();
   }
   const base = { revision: current.revision + 1, checkedAt: new Date().toISOString(), trigger, checking: false, capabilities, protection, permissions, network };
-  const overview = buildGatesOverview({ platform: securityAdapter.kind, checking: false, protection, permissions, capabilities, messaging, calls, email });
+  const overview = buildGatesOverview({ platform: securityAdapter.kind, checking: false, protection, permissions, capabilities, messaging, calls, network, email, online: network.isInternetReachable !== false });
   const next: ProtectionHealthSnapshot = { ...base, gates: overview.gates };
   publishProtectionHealth(next);
   return next;

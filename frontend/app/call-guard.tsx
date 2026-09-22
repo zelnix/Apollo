@@ -147,7 +147,7 @@ export default function CallGuard() {
           <View>
             <SectionTitle>Recently flagged calls</SectionTitle>
             <View testID="callguard-recent">
-              {projectPatrolOutcomes(recentCalls).map((outcome, i, list) => <PatrolItem key={outcome.id} outcome={outcome} isLast={i === list.length - 1} />)}
+              {projectPatrolOutcomes(recentCalls).map((outcome, i, list) => <PatrolItem key={outcome.outcomeId} outcome={outcome} isLast={i === list.length - 1} />)}
             </View>
           </View>
         ) : null}

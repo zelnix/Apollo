@@ -20,8 +20,8 @@ def _dog_state(response) -> str:
 
 async def project_committed_cases(limit: int = 100) -> int:
     query = {"deleted": False, "response_revision": {"$gt": 0}, "$expr": {"$gt": ["$response_revision", {"$ifNull": ["$patrol_projected_revision", 0]}]}}
-    rows = await db.investigation_cases.find(query, {"_id": 0, "owner_id": 1, "case_id": 1, "gates": 1,
-                                                       "response_revision": 1, "accepted_commits": 1, "created_at": 1}).limit(limit).to_list(limit)
+    rows = await db.investigation_cases.find(query, {"_id": 0, "owner_id": 1, "case_id": 1, "gates": 1, "status": 1,
+                                                       "response_revision": 1, "accepted_commits": 1, "created_at": 1, "updated_at": 1}).limit(limit).to_list(limit)
     projected = 0
     for case in rows:
         turns = await repo.accepted_turns(case["owner_id"], case)
@@ -37,6 +37,14 @@ async def project_committed_cases(limit: int = 100) -> int:
         findings = [redact_investigation_secrets(finding.text)[:400] for finding in response.findings[:6]]
         action = response.actions[0].instruction if response.actions else "Review the investigation details in Patrol."
         overview = redact_investigation_secrets(response.overview)
+        history_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"apollo-history:{case['owner_id']}:{case['case_id']}"))
+        await db.higgins_investigation_history.update_one(
+            {"owner_id": case["owner_id"], "history_id": history_id},
+            {"$set": {"owner_id": case["owner_id"], "history_id": history_id, "case_id": case["case_id"], "case_start": case["created_at"],
+                      "last_update": latest.committed_at, "status": "completed" if case.get("status") == "complete" else case.get("status", "active"),
+                      "gates": case.get("gates", []), "attention": response.attention, "conclusion": overview[:600], "deleted": False,
+                      "updated_at": now_utc()}, "$setOnInsert": {"created_at": now_utc()}}, upsert=True,
+        )
         document = {
             "event_id": event_id, "device_id": case["owner_id"], "category": category, "state": state,
             "status": "resolved" if state == "resting" else "active", "headline": overview[:160],

@@ -19,7 +19,7 @@ function resolve(): ValidatedSecurityConfig {
     });
   } catch (error) {
     recordSecurityBootError(error);
-    return { appEnvironment: "production", androidEnforcementEngine: "legacy", devicePreviewHarness: "off" };
+    return { appEnvironment: "production", androidEnforcementEngine: "guarddog_production", devicePreviewHarness: "off" };
   }
 }
 

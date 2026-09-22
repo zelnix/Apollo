@@ -9,6 +9,7 @@ import { HigginsReadAloud } from "@/src/components/HigginsReadAloud";
 import { narrateEvent } from "@/src/domain/higginsNarration";
 import { Body, Button, Card, Pill, toneColor } from "@/src/components/ui";
 import { STATE_LABEL, STATE_MEANING } from "@/src/domain/types";
+import { projectPatrolOutcomes } from "@/src/domain/patrolOutcomes";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -34,12 +35,13 @@ export default function EventDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { events, isMock, ready, setupDone } = useApollo();
   const event = events.find((e) => e.event_id === id);
+  const outcome = event ? projectPatrolOutcomes([event])[0] : null;
   if (ready && !setupDone) return <Redirect href="/onboarding" />;
 
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title} numberOfLines={2} testID="event-title">{event?.headline ?? "Event"}</Text>
+        <Text style={s.title} numberOfLines={2} testID="event-title">{outcome?.title ?? "Patrol outcome"}</Text>
         <Pressable testID="event-close" accessibilityRole="button" accessibilityLabel="Close" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       {!event ? (
@@ -47,11 +49,11 @@ export default function EventDetail() {
       ) : (
         <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="event-scroll">
           <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}>
-            <Pill tone={event.state} label={STATE_LABEL[event.state]} testID="event-state-pill" />
+            <Pill tone={outcome?.state ?? event.state} label={outcome?.result ?? STATE_LABEL[event.state]} testID="event-state-pill" />
             {event.verified_block ? <Pill tone={event.resolved_at ? "resting" : "biting"} label={event.resolved_at ? "Threat contained" : "Block verified"} testID="event-verified-pill" /> : null}
             {isMock ? <Pill tone="unknown" label={event.adapter_label} /> : null}
           </View>
-          <Body>{STATE_MEANING[event.state]}</Body>
+          <Body>{outcome?.resultBasis ?? STATE_MEANING[event.state]}</Body>
 
           <Card style={{ gap: spacing.sm }}>
             <Text style={s.sub}>What happened</Text>
@@ -60,8 +62,8 @@ export default function EventDetail() {
           </Card>
 
           <Card style={{ gap: spacing.sm }}>
-            <Text style={s.sub}>Why Apollo reacted</Text>
-            {event.why.length === 0 ? <Body>No specific warning signs.</Body> : event.why.map((w, i) => (
+            <Text style={s.sub}>Why this rating</Text>
+            {(outcome?.whyThisRating ?? event.why).length === 0 ? <Body>No specific warning signs were recorded.</Body> : (outcome?.whyThisRating ?? event.why).map((w, i) => (
               <View key={i} style={s.bullet}><View style={[s.dot, { backgroundColor: toneColor(colors, event.state) }]} /><Body style={{ flex: 1 }}>{w}</Body></View>
             ))}
           </Card>
@@ -75,7 +77,7 @@ export default function EventDetail() {
           <EventActions event={event} />
           {event.scent_id && events.filter((e) => e.scent_id === event.scent_id).length > 1 ? <Card style={{ gap: spacing.sm }} testID="event-incident-card"><Body>This event is part of a connected incident ({events.filter((e) => e.scent_id === event.scent_id).length} events).</Body><Button testID="event-incident-open" variant="secondary" label="View incident timeline" onPress={() => router.push({ pathname: "/patrol/scent/[id]", params: { id: event.scent_id! } })} /></Card> : null}
 
-          <Text style={s.meta}>Occurred {new Date(event.occurred_at).toLocaleString()}{event.resolved_at ? ` · Resolved ${new Date(event.resolved_at).toLocaleString()}` : ""}</Text>
+          <Text style={s.meta}>Source: {outcome?.source.replace("_", " ") ?? "Apollo"} · Occurred {new Date(event.occurred_at).toLocaleString()}{event.resolved_at ? ` · Resolved ${new Date(event.resolved_at).toLocaleString()}` : ""}</Text>
         </ScrollView>
       )}
     </View>

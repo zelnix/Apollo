@@ -54,12 +54,12 @@ function parseHarness(value: string | undefined): DevicePreviewHarness {
 
 export function validateSecurityConfig(input: SecurityConfigInput): ValidatedSecurityConfig {
   const appEnvironment = parseEnv(input.appEnvironment);
-  const androidEnforcementEngine = input.androidEnforcementEngine ?? "legacy";
+  const androidEnforcementEngine = input.androidEnforcementEngine ?? (appEnvironment === "production" ? "guarddog_production" : "legacy");
   if (androidEnforcementEngine !== "legacy" && androidEnforcementEngine !== "guarddog_acceptance" && androidEnforcementEngine !== "guarddog_production") {
     throw new SecurityConfigurationError(`EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE="${androidEnforcementEngine}" is invalid.`);
   }
-  if (appEnvironment === "production" && androidEnforcementEngine === "guarddog_acceptance") {
-    throw new SecurityConfigurationError("The GuardDog Stage 1D candidate is test-only and cannot be selected in production.");
+  if (appEnvironment === "production" && androidEnforcementEngine !== "guarddog_production") {
+    throw new SecurityConfigurationError("Production Android builds require Apollo's GuardDog production authority. Legacy and test-only acceptance engines are prohibited.");
   }
   if (androidEnforcementEngine === "guarddog_production" && appEnvironment !== "production") {
     throw new SecurityConfigurationError("GuardDog production authority can be selected only in a production build.");

@@ -1,8 +1,13 @@
-import { apiGet } from "@/src/api/client";
+import { apiDelete, apiGet } from "@/src/api/client";
 
-export interface HigginsHistoryItem { id: string; kind: "ordinary_chat" | "investigation" | "saved_report"; title: string; summary: string; status: "active" | "handled"; occurredAt: string; caseId: string | null; reportId: string | null }
-export interface GovernmentFeedState { status: "fresh" | "stale" | "unavailable"; source: string; sourceUrl: string; lastSuccessAt: string | null }
-export interface GovernmentAlert { title: string; url: string; summary: string; source: string; sourceUrl: string; publishedAt: string | null }
+export interface HigginsHistoryItem { id: string; kind: "investigation" | "saved_report"; title: string; summary: string; status: "active" | "completed" | "cancelled" | "failed" | "saved"; occurredAt: string; caseStart: string; lastUpdate: string; gates: string[]; attention: string; conclusion: string; caseId: string | null; reportId: string | null; reopenable: boolean }
+export interface GovernmentFeedState { status: "fresh" | "stale" | "unavailable"; source: string; sourceUrl: string; sourceType: "live_alert" | "official_advice"; lastSuccessAt: string | null; lastCheckedAt: string | null }
+export interface GovernmentAlert { title: string; url: string; summary: string; source: string; sourceUrl: string; sourceType: "live_alert" | "official_advice"; sourceTrust: "recognised_government"; publishedAt: string | null; updatedAt: string | null; lastCheckedAt: string; ageLabel: string }
+export interface LearningArticleSummary { slug: string; title: string; summary: string; group: string; tags: string[]; riskContext: string; sourceNames: string[]; sourceType: string; updatedAt: string; reviewAfter: string; evidenceQuality: string }
+export interface LearningArticle extends LearningArticleSummary { body: string; sourceUrls: string[] }
 
-export function higginsHubHistory(limit = 50) { return apiGet<{ items: HigginsHistoryItem[]; redaction: string }>(`/higgins/history?limit=${limit}`); }
+export function higginsHubHistory(limit = 50, options: { cursor?: string; status?: string; gate?: string; search?: string } = {}) { const query = new URLSearchParams({ limit: String(limit) }); Object.entries(options).forEach(([key, value]) => { if (value) query.set(key, value); }); return apiGet<{ items: HigginsHistoryItem[]; nextCursor: string | null; redaction: string }>(`/higgins/history?${query.toString()}`); }
+export function deleteHigginsHistory(id: string) { return apiDelete<void>(`/higgins/history/${encodeURIComponent(id)}`); }
 export function governmentScams(limit = 50) { return apiGet<{ coverage: string; generatedAt: string; feeds: Record<string, GovernmentFeedState>; items: GovernmentAlert[] }>(`/higgins/scams?limit=${limit}`); }
+export function learningArticles(group?: string, search?: string) { const query = new URLSearchParams(); if (group) query.set("group", group); if (search) query.set("search", search); query.set("limit", "50"); return apiGet<{ items: LearningArticleSummary[]; nextCursor: string | null; groups: string[] }>(`/learning/articles?${query.toString()}`); }
+export function learningArticle(slug: string) { return apiGet<LearningArticle>(`/learning/articles/${encodeURIComponent(slug)}`); }

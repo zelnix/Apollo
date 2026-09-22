@@ -1,3 +1,17 @@
+## Phase 2 source remediation — current status
+
+| Requirement | Status | Current implementation |
+|---|---|---|
+| P2.0 / V37 | Source complete | Production defaults to one Apollo-owned GuardDog authority and fails closed without signed trust |
+| C19–C20 / V27–V28 | Complete | Retired graph removed; exact navigation retained; Settings re-entry fixed |
+| C21 / V29–V30 | Complete | One truthful ten-Gate presentation model and card per Gate |
+| C22 / V31 | Complete | Ordinary chat uses only registered read-only context tools |
+| C23 / V32–V33 | Complete | Canonical unavailable reasons and privacy-prohibited handling |
+| C24 / V34 | Complete | Five-state Patrol output, filters, repeat folding and verified-only Biting |
+| C25 / V35–V36 | Complete | Stable Higgins hub, durable redacted history, 35-article backend library and recognised-government New scams |
+| Source validation | Pass | TypeScript, ESLint, Python lint, 373 Node, 61 pytest, two preflights and Cargo |
+| GitHub handoff | Pending external save | Local source complete; final GitHub SHA not available until Save to GitHub |
+
 ## Phase 2 execution cover — current status
 
 | Package | Status | Implementation |

@@ -27,7 +27,17 @@
 ### Backlog
 - **P0:** Produce the signed Android installable on a supported Hermes build host. The current Linux ARM64 host cannot run React Native's bundled Hermes compiler; no substitute artifact is claimed.
 - **P1:** Run physical-device Phase 2 acceptance only when the fresh signed candidate exists; do not reopen the completed development baseline.
-- **P2:** GuardDog production-default cutover remains a separate, explicitly authorised operation.
+- **P2:** Superseded by the authorised source-remediation P2.0 default; signed build creation and device acceptance remain separate build-owner operations.
+
+## Phase 2 source remediation — completed locally (2026-09-22)
+
+- Production and app-bundle profiles now default to Apollo-owned GuardDog production authority and fail closed when signed trust is unavailable.
+- Retired references are absent from active source/test/config/support/design inputs; navigation and reusable Settings behaviour are stable.
+- Gates use one consumer model/card each; ordinary chat has registered read-only context tools; unavailable reasons are canonical; Patrol uses five meaningful states.
+- Higgins provides stable current/recent/history/report/learning/New scams entry points. History survives case evidence cleanup as redacted summaries.
+- Backend owns 35 curated learning articles and official-source feed/admin lifecycle; consumer learning is no-store and ships no article bodies.
+- Validation: TypeScript, ESLint, Python lint, 373 Node tests, 61 provider-disabled pytest tests, staging/production preflight and Cargo pass.
+- Final GitHub save remains required before build-owner handoff. No artifact/deployment/device/signing work was performed in this source package.
 
 ## C15 production GuardDog track (“M4” continuation) — source implemented (2026-09-22)
 

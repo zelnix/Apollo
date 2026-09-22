@@ -1,151 +1,111 @@
 {
   "theme": "Light Sentinel",
-  "audience": "50-plus with no IT background",
   "typography": {
-    "description": "System default sans-serif, optimized for readability for older demographics.",
-    "headings": {
-      "fontFamily": "System (SF Pro / Roboto)",
-      "sizes": {
-        "h1": 32,
-        "h2": 28,
-        "h3": 24,
-        "h4": 20
-      },
-      "weights": {
-        "bold": "700",
-        "semiBold": "600"
-      },
-      "color": "#111827"
+    "font_family": {
+      "heading": "System, sans-serif",
+      "body": "System, sans-serif"
     },
-    "body": {
-      "fontFamily": "System (SF Pro / Roboto)",
-      "sizes": {
-        "base": 18,
-        "small": 16
-      },
-      "color": "#374151"
+    "sizes": {
+      "h1": "text-3xl font-bold",
+      "h2": "text-2xl font-bold",
+      "h3": "text-xl font-semibold",
+      "body": "text-lg",
+      "small": "text-base"
     },
     "rules": [
-      "Use minimum 18px for body text.",
-      "Never truncate important labels to a single line; allow wrapping.",
-      "Support dynamic scaling (large text accessibility)."
+      "Use large typography for plain-language accessibility.",
+      "Never center-align paragraphs; left-align for readability.",
+      "Headings must use tight letter spacing.",
+      "Do not use generic fonts if custom fonts are requested, but default to readable System fonts for mobile security apps."
     ]
   },
   "colors": {
-    "primary": "#0369a1",
-    "primary_contrast": "#ffffff",
-    "background": "#f8fafc",
-    "surface": "#ffffff",
-    "text": {
-      "primary": "#0f172a",
-      "secondary": "#475569"
-    },
-    "status": {
-      "working_safe": "#15803d",
-      "attention_warning": "#ca8a04",
-      "critical_danger": "#b91c1c",
-      "checking_unknown": "#6b7280"
-    },
-    "border": "#e2e8f0"
+    "primary": "#0F172A",
+    "background": "#F8FAFC",
+    "card": "#FFFFFF",
+    "text_primary": "#0F172A",
+    "text_secondary": "#475569",
+    "accent": "#3B82F6",
+    "success": "#16A34A",
+    "warning": "#F59E0B",
+    "danger": "#EF4444",
+    "rules": [
+      "Adhere to 'Light Sentinel' visual system: clean, light-themed, high contrast, secure feel.",
+      "Minimum 4.5:1 contrast ratio for normal text.",
+      "DO NOT use complete transparent background in header, overlays, or any surface that has content under it."
+    ]
   },
   "visual enhancers": {
-    "shadows": {
-      "card": "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)"
-    },
-    "borderRadius": {
-      "card": 12,
-      "button": 8
-    },
-    "rules": [
-      "DO NOT use complete transparent background in header, overlays, or any surface that has content under it.",
-      "Use crisp edges and solid surfaces. Avoid complex glassmorphism that reduces readability."
-    ]
+    "shadows": "Subtle, ambient shadows for cards to indicate elevation without clutter.",
+    "borders": "1px solid #E2E8F0 for clear boundary definition.",
+    "radius": "rounded-xl for cards, rounded-full for buttons."
   },
-  "grids": {
-    "spacing": {
-      "small": 8,
-      "medium": 16,
-      "large": 24,
-      "xlarge": 32,
-      "xxlarge": 48
-    },
-    "rules": [
-      "Generous spacing: use 2x-3x standard padding.",
-      "Ensure logical groupings are visually separated."
-    ]
+  "component name": {
+    "Navigation": "RootNavigator, Header",
+    "Gates": "GateCard",
+    "Patrol": "PatrolSummary, PatrolFilter, PatrolCard",
+    "Higgins": "HigginsHub, HigginsSection, HigginsChatTranscript",
+    "Learning": "LearningReader, ScamReader",
+    "History": "InvestigationHistoryList, HistoryFilter"
   },
-  "layouts": {
-    "root_navigation": ["Home", "Higgins", "Gates", "Check It", "Patrol"],
-    "header": {
-      "right_action": "Settings",
-      "background": "Solid white or gray, never transparent."
-    },
-    "screens": {
-      "Home": "Compact status card with 1 actionable primary action, ongoing Higgins concern, recent activity list.",
-      "Higgins": "Hub with Chat, live/recent investigations, redacted history, saved reports, Learn (New scams).",
-      "Gates": "Overview of 10 gate capability/status cards in plain English.",
-      "Check It": "Catalogue of 10 user-started checks.",
-      "Patrol": "Deduplicated safety outcome history and filters.",
-      "Settings": "Ordinary preferences. Technical diagnostics under Settings -> Support."
-    }
-  },
-  "component name": [
-    "StatusCard",
-    "ActionRow",
-    "PrimaryButton",
-    "GateCard",
-    "RecentActivityItem",
-    "HigginsHubLayout"
+  "grids": [
+    "Mobile-first column layout.",
+    "Bento grid for Hub sections if applicable, but mostly vertical stack for standard mobile views."
   ],
+  "layouts": {
+    "RootNavigation": "Bottom tab bar: Home | Higgins | Gates | Check It | Patrol",
+    "Header": "Shared top-right Settings action. Fix Settings double tap/back state.",
+    "GateCard": "One card per Gate. Vertical layout: Purpose, Current Status, Attention Item, Action.",
+    "PatrolScreen": "Five-state summary at top. Horizontal filter bar: 'All activity, Needs you, Warnings, Threats stopped, Resolved'. Vertical list of PatrolCards.",
+    "HigginsHub": "Independent vertical sections: Ask Higgins, Continue live work, Recent investigations, New scams, Learn with Higgins, Saved reports/explanations.",
+    "HigginsChat": "Child screen for ordinary-chat transcript that preserves hub state when navigated back.",
+    "LearningReader": "Backend-driven list/detail reader with explicit offline/error states.",
+    "InvestigationHistory": "Vertical list with search bar, filters, and pagination controls."
+  },
   "motion": {
-    "transitions": "Subtle opacity and translation for screen changes.",
-    "interactions": "Clear highlight/underlay on button press. Avoid heavy animations.",
-    "accessibility": "Respect prefers-reduced-motion."
+    "transitions": "Native screen transitions.",
+    "interactions": "Clear opacity/scale feedback on touchable elements."
   },
-  "accessibility": {
-    "tap_targets": "Minimum 48x48 points for all interactive elements.",
-    "contrast": "Minimum 4.5:1 ratio for all text against background.",
-    "screen_reader": "All images, buttons, and state indicators must have accessible labels.",
-    "data_testid": "All interactive and key informational elements MUST include a data-testid attribute."
-  },
+  "accessibility": [
+    "Large/plain-language text sizes.",
+    "All interactive and key informational elements MUST include a data-testid attribute.",
+    "High contrast (APCA/WCAG AA).",
+    "Clear distinction of states (Needs action vs Information)."
+  ],
   "media": {
-    "icons": "Use universally recognized vector icons (Lucide/Feather equivalent). Do not use emojis.",
-    "illustrations": "Use small brand illustrations rather than full-height decorative heroes."
+    "images": "Minimal. Focus on clear typography and state indicators.",
+    "icons": "Lucide React Native for explicit, simple metaphors."
   },
-  "3d libraries": "None. 2D React Native Mobile App architecture.",
-  "image urls": [],
-  "component_path": "frontend/src/components",
+  "3d libraries": {
+    "usage": "None. Keep the UI flat, fast, and accessible."
+  },
+  "image_urls": {},
+  "component_path": "/app/src/components",
   "instructions_to_main_agent": [
-    "Write all React Native components in .js files as instructed.",
-    "Record the current GitHub HEAD, then execute P2.1 through P2.6 without reopening completed baseline work (M1-M4 are complete).",
-    "Root tabs navigation order MUST be: Home, Higgins, Gates, Check It, Patrol.",
-    "All screens must have a top-right Settings action.",
-    "Translate all tech diagnostics ('DNS/VPN visibility') into plain-language actionable UI suitable for a 50+ user with no IT background.",
-    "Move raw technical diagnostics and SecureCore logic to Settings -> Support.",
-    "Ensure no 'transparent' backgrounds under content headers or modals.",
-    "Buttons must directly execute the action (no prose breadcrumbs like 'Go to Settings -> Gates').",
-    "Home screen must prioritize one actionable threat or a compact 'Apollo is checking' state.",
-    "Higgins screen must be a hub containing Chat, history, reports, and New scams, not just ordinary chat.",
-    "Check It screen contains exactly 10 explicit manual check buttons.",
-    "Include data-testid on all buttons, links, form inputs, menus, and state indicators.",
-    "Never ask for user secrets or show raw technical errors."
+    "Preserve the exact root navigation order: Home | Higgins | Gates | Check It | Patrol.",
+    "Settings remains the shared top-right action. Fix navigation guard so double taps resolve properly and Back preserves tab state.",
+    "Gate cards: Render exactly one card per Gate containing purpose, what Apollo is doing now, genuine attention item, and one action.",
+    "Patrol filters: Implement exactly 'All activity, Needs you, Warnings, Threats stopped, Resolved'.",
+    "Higgins hub: Create independently loading sections for Ask Higgins, continue live work, recent investigations, New scams, Learn with Higgins, and saved reports/explanations.",
+    "Learning client: Build a no-store reader. Article bodies MUST NOT ship in the consumer bundle. Implement offline and error states.",
+    "New Scams reader: Incorporate ACSC and Scamwatch advice.",
+    "Investigation history: Implement search, filters, pagination, and delete actions.",
+    "Do not invent new product requirements, web-only UI, admin UI inside the consumer app, or technical diagnostics on consumer cards.",
+    "Use .js files instead of .tsx for React Native components.",
+    "Do not use Playwright, browser journeys, scenarios, testing agents, live Gemini, or runtime mocks."
   ],
   "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
-    "Do not use generic centered layouts. Maintain natural left-aligned reading flow.",
-    "Use layered design elements with z-index hierarchy but keep surfaces solid.",
-    "Never apply universal transitions in styling. Use specific interactive feedback animations.",
-    "Use modern pill-shaped or rounded-rect buttons with interaction states.",
-    "NEVER use emojis as icons; use proper vector icon libraries.",
-    "Use 2-3x more spacing to ensure breathing room and avoid cramped UI.",
-    "Prioritize optical alignment.",
-    "All interactive elements MUST have data-testid attributes."
+    "You tend to converge toward generic outputs; avoid this by creating crisp, highly accessible mobile interfaces.",
+    "Create depth through layered design elements with z-index hierarchy and subtle shadows.",
+    "Never apply universal transitions (e.g., transition: all).",
+    "All interactive and key informational elements MUST include a data-testid attribute.",
+    "Use modern button styles relevant to the app style.",
+    "Avoid using Emoji characters for icons."
   ],
   "GENERAL UI UX DESIGN GUIDELINES": [
-    "Information Hierarchy: Most critical security status always at the top.",
-    "Actionability: If something is wrong, provide exactly one clear button to fix it.",
-    "Clarity over density: Use white space, avoid jargon, spell out acronyms.",
-    "No hidden menus: Keep navigation visible. 5 bottom tabs and 1 explicit top-right Settings button.",
-    "Feedback: Acknowledge user actions instantly (e.g., 'Checking Site protection...').",
-    "Plain English: Every screen and message must be understandable to a 50+ user with no IT background."
+    "Focus on Emotion First: The app should feel protective, clear, and reassuring.",
+    "Use generous spacing (2-3x more than typical) to prevent accidental taps and improve legibility.",
+    "Ensure contrast checks pass for all text on colored backgrounds.",
+    "Buttons should explicitly describe the action (e.g., 'View official advice', 'Ask Higgins about this')."
   ]
 }

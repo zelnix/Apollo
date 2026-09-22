@@ -1,3 +1,15 @@
+# Phase 2 source remediation — 2026-09-22
+
+- Reviewed/starting SHA: `6fbd5b3bd5711a2ef0530da7c24a162ca2b57e79`.
+- Production and app-bundle source now default to fail-closed `guarddog_production`; signed authority remains mandatory.
+- Android package remains `app.apollo.hwg`; no frozen GuardDog package file changed.
+- Bounded checks: TypeScript, ESLint, Python lint, 373 Node tests, 61 provider-disabled pytest tests, staging/production preflight and Cargo all pass.
+- Backend health is 200 and the learning catalogue initialises exactly 35 published articles.
+- No build, signing, deployment, scenario, Playwright, testing-agent or live-Gemini run was performed.
+- Final source manifest SHA-256: `ed31a214ebccdaf80a9fae4e5dd4b9700e50d5ef58d8fc6f23eedd98a9749e67` across 606 source files.
+- Final GitHub SHA remains pending Save to GitHub; this is a source-handoff requirement, not a source-test failure.
+- Detailed closure: `APOLLO_PHASE2_SOURCE_REMEDIATION_RECORD.md`.
+
 # Phase 2 baseline record — 2026-09-22
 
 - Controlling Phase 2 source baseline was recorded before source edits as `d1ab4ff22f7476fefd3999e6c292c3ac92f2e30b` on local `main`.

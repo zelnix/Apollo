@@ -58,6 +58,7 @@ const NON_SECRET_WORDS = new Set(["reset", "change", "changed", "request", "requ
 
 export function redactUserSecrets(value: string): string {
   return redactInvestigationSecrets(value)
+    .replace(/\+?\d[\d ()-]{7,}\d/g, '[phone number]')
     .replace(/\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/g, '[ip address]')
     .replace(/\b(?:[A-F0-9]{1,4}:){2,7}[A-F0-9]{1,4}\b/gi, '[ip address]');
 }
@@ -155,7 +156,7 @@ function validateAskContext(value: unknown): Record<string, unknown> {
   if (Object.keys(raw).some((key) => !ASK_CONTEXT_KEYS.has(key)) || !ASK_GATES.has(String(raw.gate)) || !ASK_STATES.has(String(raw.assessment_state))) throw new EgressViolation('ask_apollo', 'context');
   const cleanLine = (line: unknown, max = 180) => {
     if (typeof line !== 'string' || !line.trim() || line.length > max) throw new EgressViolation('ask_apollo', 'context');
-    return redactInvestigationSecrets(line.trim());
+    return redactUserSecrets(line.trim());
   };
   const lines = (key: string, limit: number) => {
     const items = raw[key] ?? [];

@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
 
 Gate = Literal["site", "link", "text", "call", "network", "account", "email", "app", "file", "device"]
@@ -227,7 +227,31 @@ class DeviceRequest(Wire):
 DeviceValue = Union[str, int, float, bool, list[str], None]
 
 
-UnavailableReason = Literal["not_implemented", "os_restricted", "hardware_absent", "configuration_missing", "entitlement_missing", "adapter_failed"]
+UnavailableReason = Literal["not_implemented", "os_restricted", "hardware_absent", "configuration_missing", "entitlement_missing", "privacy_prohibited", "source_refused", "adapter_failed"]
+
+
+class UserActionContract(Wire):
+    action_id: str
+    label: str
+    context: dict[str, str] = Field(default_factory=dict)
+
+
+class PatrolSummaryContract(Wire):
+    state: Literal["resting", "ears_up", "growling", "barking", "biting"]
+    title: str
+    summary: str
+    occurred_at: datetime
+    source: Literal["background", "user_started", "higgins", "family"]
+
+
+class PatrolOutputContract(Wire):
+    summary: PatrolSummaryContract
+    repeat_count: int = Field(ge=1)
+    result: str
+    result_basis: str
+    primary_action: Optional[UserActionContract] = None
+    secondary_actions: list[UserActionContract] = Field(default_factory=list)
+    why_this_rating: list[str] = Field(default_factory=list)
 
 
 class DeviceResult(Wire):
@@ -240,6 +264,14 @@ class DeviceResult(Wire):
     simulation: Optional[Simulation] = None
     # An observed result has no unavailable reason; an unavailable/failed result states its actual reason.
     unavailable_reason: Optional[UnavailableReason] = None
+
+    @model_validator(mode="after")
+    def unavailable_has_reason(self):
+        if self.status in {"unavailable", "failed"} and not self.unavailable_reason:
+            raise ValueError("unavailable and failed device results require unavailableReason")
+        if self.status in {"observed", "permission_required", "denied"} and self.unavailable_reason is not None:
+            raise ValueError("available and permission results must not carry unavailableReason")
+        return self
 
 
 class ExpectedObservation(Wire):

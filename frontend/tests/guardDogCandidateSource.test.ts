@@ -30,12 +30,13 @@ test("native correlation uses the original reporter evidence and never substitut
   assert.match(native, /historicalIds/);
 });
 
-test("production defaults stay legacy while the candidate profile is test-only", () => {
+test("production defaults to the single Apollo-owned GuardDog runtime while acceptance stays test-only", () => {
   const eas = JSON.parse(read("../eas.json"));
-  assert.equal(eas.build.production.env.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE, "legacy");
+  assert.equal(eas.build.production.env.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE, "guarddog_production");
+  assert.equal(eas.build["app-bundle"].env.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE, "guarddog_production");
   assert.equal(eas.build["guarddog-acceptance"].env.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE, "guarddog_acceptance");
   const config = read("../src/security/securityConfig.ts");
-  assert.match(config, /appEnvironment === "production" && androidEnforcementEngine !== "legacy"/);
+  assert.match(config, /appEnvironment === "production" && androidEnforcementEngine !== "guarddog_production"/);
   const runtime = read("../modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/ApolloGuardDogCandidateRuntime.kt");
   assert.match(runtime, /requireAcceptanceEnabled\(\)/);
   assert.match(runtime, /app\.apollo\.guarddog\.acceptanceEnabled/);

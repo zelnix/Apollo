@@ -11,6 +11,7 @@ import { Platform } from "react-native";
 import { IS_NATIVE_HOST, IS_PREVIEW_HARNESS, securityAdapter } from "@/src/security/securityAdapter";
 import type { DeviceProfileFacts, ProtectionPermission } from "@/src/security/SecurityPlatformAdapter";
 import { supportedSettingsDescriptors } from "@/src/settings/guidance";
+import { EgressViolation } from "@/src/domain/privacy";
 import type { DeviceProfile, DeviceRequest, DeviceResult, UnavailableReason } from "./types";
 
 export const PERMISSION_IDS: ProtectionPermission["id"][] = ["network_filter", "vpn_config", "accessibility", "notifications"];
@@ -108,6 +109,7 @@ export async function observe(request: DeviceRequest): Promise<DeviceResult> {
     }
     return unavailable(base, "not_implemented");
   } catch (e: unknown) {
+    if (e instanceof EgressViolation) return { ...base, status: "failed", observedAt: null, values: { error: "Apollo's privacy boundary prohibited this observation." }, unavailableReason: "privacy_prohibited" };
     return { ...base, status: "failed", observedAt: null, values: { error: e instanceof Error ? e.message : "adapter failure" }, unavailableReason: "adapter_failed" };
   }
 }

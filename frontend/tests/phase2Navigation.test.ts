@@ -32,6 +32,10 @@ test("P2.1 Settings is a stack route and every root screen uses the shared Setti
   assert.ok(existsSync(join(root, "app/settings/index.tsx")));
   assert.equal(existsSync(join(root, "app/(tabs)/settings.tsx")), false);
   for (const file of ["home.tsx", "ask.tsx", "guard.tsx", "check-it.tsx", "patrol.tsx"]) assert.match(read(`app/(tabs)/${file}`), /RootScreenHeader/);
+  const header = read("src/components/RootScreenHeader.tsx");
+  assert.match(header, /useFocusEffect/);
+  assert.match(header, /opening\.current = false/);
+  assert.doesNotMatch(header, /setTimeout|setInterval/);
 });
 
 test("V27 retired security boundary is absent from current app, source, tests and build scripts", () => {

@@ -18,9 +18,15 @@ MAX_ITEMS = 100
 STALE_AFTER = timedelta(hours=6)
 RETAIN_FOR = timedelta(days=90)
 FEEDS = {
-    "acsc_alerts": {"url": "https://www.cyber.gov.au/rss/alerts", "source": "Australian Cyber Security Centre", "source_url": "https://www.cyber.gov.au/about-us/view-all-content/alerts-and-advisories"},
-    "acsc_advisories": {"url": "https://www.cyber.gov.au/rss/advisories", "source": "Australian Cyber Security Centre", "source_url": "https://www.cyber.gov.au/about-us/view-all-content/alerts-and-advisories"},
+    "acsc_alerts": {"url": "https://www.cyber.gov.au/rss/alerts", "source": "Australian Cyber Security Centre", "source_url": "https://www.cyber.gov.au/about-us/view-all-content/alerts-and-advisories", "article_hosts": ["www.cyber.gov.au", "cyber.gov.au"], "source_type": "live_alert"},
+    "acsc_advisories": {"url": "https://www.cyber.gov.au/rss/advisories", "source": "Australian Cyber Security Centre", "source_url": "https://www.cyber.gov.au/about-us/view-all-content/alerts-and-advisories", "article_hosts": ["www.cyber.gov.au", "cyber.gov.au"], "source_type": "live_alert"},
+    "scamwatch_news": {"url": "https://www.scamwatch.gov.au/rss/news-and-alerts", "source": "Scamwatch", "source_url": "https://www.scamwatch.gov.au/news-alerts", "article_hosts": ["www.scamwatch.gov.au", "scamwatch.gov.au"], "source_type": "live_alert"},
+    "scamwatch_advice": {"url": "https://www.scamwatch.gov.au/rss/types-of-scams", "source": "Scamwatch", "source_url": "https://www.scamwatch.gov.au/types-of-scams", "article_hosts": ["www.scamwatch.gov.au", "scamwatch.gov.au"], "source_type": "official_advice"},
 }
+FALLBACK = [
+    {"title": "Recognise and avoid scams", "url": "https://www.scamwatch.gov.au/stop-check-protect", "summary": "Stop, check and protect before sending money or information.", "source": "Scamwatch", "source_url": "https://www.scamwatch.gov.au/", "source_type": "official_advice"},
+    {"title": "Protect yourself online", "url": "https://www.cyber.gov.au/protect-yourself", "summary": "Official Australian guidance for safer accounts, devices and online activity.", "source": "Australian Cyber Security Centre", "source_url": "https://www.cyber.gov.au/", "source_type": "official_advice"},
+]
 
 
 async def ensure_indexes() -> None:
@@ -59,11 +65,11 @@ def parse_feed(raw: bytes, feed_id: str, cfg: dict[str, str], now: datetime) -> 
         link = _text(node.find("link"))[:1000]
         guid = (_text(node.find("guid")) or link or title)[:1000]
         parsed = urlparse(link)
-        if not title or not guid or parsed.scheme != "https" or parsed.hostname not in {"www.cyber.gov.au", "cyber.gov.au"}:
+        if not title or not guid or parsed.scheme != "https" or parsed.hostname not in set(cfg["article_hosts"]):
             continue
         items.append({"feed_id": feed_id, "guid": hashlib.sha256(guid.encode()).hexdigest(), "title": title, "url": link,
-                      "summary": _text(node.find("description"))[:1000], "source": cfg["source"], "source_url": cfg["source_url"],
-                      "published_at": _date(_text(node.find("pubDate")) or _text(node.find("published"))), "stored_at": now, "expires_at": now + RETAIN_FOR})
+                      "summary": _text(node.find("description"))[:1000], "source": cfg["source"], "source_url": cfg["source_url"], "source_type": cfg["source_type"], "source_trust": "recognised_government",
+                      "published_at": _date(_text(node.find("pubDate")) or _text(node.find("published"))), "updated_at": _date(_text(node.find("updated"))), "last_checked_at": now, "stored_at": now, "expires_at": now + RETAIN_FOR})
     return items
 
 
@@ -78,7 +84,7 @@ async def _read_limited(response: httpx.Response) -> bytes:
 
 async def refresh_one(feed_id: str, cfg: dict[str, str]) -> None:
     now = now_utc(); parsed = urlparse(cfg["url"])
-    if parsed.scheme != "https" or parsed.hostname != "www.cyber.gov.au":
+    if parsed.scheme != "https" or parsed.hostname not in {"www.cyber.gov.au", "www.scamwatch.gov.au"}:
         raise RuntimeError("government feed URL failed allowlist")
     try:
         timeout = httpx.Timeout(5.0, connect=3.0)
@@ -109,6 +115,11 @@ async def snapshot(limit: int = 50) -> dict:
     for feed_id, cfg in FEEDS.items():
         row = by_id.get(feed_id); success = row.get("last_success_at") if row else None
         status = "unavailable" if not success else "stale" if now - success > STALE_AFTER else "fresh"
-        feed_states[feed_id] = {"status": status, "source": cfg["source"], "source_url": cfg["source_url"], "last_success_at": success}
+        feed_states[feed_id] = {"status": status, "source": cfg["source"], "source_url": cfg["source_url"], "source_type": cfg["source_type"], "last_success_at": success, "last_checked_at": row.get("checked_at") if row else None}
     rows = await db.government_alerts.find({}, {"_id": 0, "feed_id": 0, "guid": 0, "stored_at": 0, "expires_at": 0}).sort("published_at", -1).limit(min(limit, MAX_ITEMS)).to_list(min(limit, MAX_ITEMS))
-    return {"coverage": "Configured official government feeds only — this list is not comprehensive.", "generated_at": now, "feeds": feed_states, "items": rows}
+    if not rows:
+        rows = [{**item, "published_at": None, "updated_at": None, "last_checked_at": now, "source_trust": "recognised_government"} for item in FALLBACK]
+    for row in rows:
+        published = row.get("published_at")
+        row["age_label"] = "Official advice" if row.get("source_type") == "official_advice" or not published else "Today" if now.date() == published.date() else f"{max(1, (now.date() - published.date()).days)} days ago"
+    return {"coverage": "Recognised Australian government sources only. Live alerts and official advice are labelled separately; this list is not comprehensive.", "generated_at": now, "feeds": feed_states, "items": rows}

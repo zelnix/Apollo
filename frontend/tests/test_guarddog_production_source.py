@@ -10,9 +10,10 @@ def text(relative: str) -> str:
     return (ROOT / relative).read_text(encoding="utf-8")
 
 
-def test_production_engine_is_explicit_and_not_default():
+def test_production_engine_is_the_only_production_default():
     eas = json.loads(text("eas.json"))
-    assert eas["build"]["app-bundle"]["env"]["EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE"] == "legacy"
+    assert eas["build"]["production"]["env"]["EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE"] == "guarddog_production"
+    assert eas["build"]["app-bundle"]["env"]["EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE"] == "guarddog_production"
     assert eas["build"]["guarddog-production"]["env"]["EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE"] == "guarddog_production"
 
 

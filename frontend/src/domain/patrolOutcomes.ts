@@ -1,11 +1,14 @@
-import { STATE_RANK } from "./stateMachine";
-import type { ApolloState, PatrolEvent } from "./types";
+import { STATE_RANK } from "./stateMachine.ts";
+import type { UserAction } from "./userActions.ts";
+import type { ApolloState, PatrolEvent } from "./types.ts";
 
-export type PatrolOutcomeKind = "website_protected" | "suspicious_message" | "risky_file_checked" | "unsafe_app_setting" | "network_danger" | "account_recovery" | "family_update" | "investigation_outcome" | "check_outcome";
-export type PatrolOutcomeStatus = "needs_you" | "handled";
+export type PatrolCategory = "site" | "link" | "text" | "call" | "file" | "app" | "network" | "account" | "email" | "device" | "investigation" | "family";
+export type PatrolSource = "background" | "user_started" | "higgins" | "family";
+export type PatrolFilter = "all_activity" | "needs_you" | "warnings" | "threats_stopped" | "resolved";
+export type PatrolState = Exclude<ApolloState, "sniffing">;
 export interface PatrolOutcome {
-  id: string; kind: PatrolOutcomeKind; status: PatrolOutcomeStatus; state: ApolloState; headline: string; summary: string; nextAction: string;
-  repeatCount: number; firstOccurredAt: string; latestOccurredAt: string; event: PatrolEvent;
+  outcomeId: string; category: PatrolCategory; state: PatrolState; title: string; summary: string; occurredAt: string; source: PatrolSource;
+  repeatCount: number; result: string; resultBasis: string; whyThisRating: string[]; primaryAction?: UserAction; secondaryActions: UserAction[]; event: PatrolEvent;
 }
 
 const WINDOW_MS = 4 * 60 * 60 * 1000;
@@ -18,55 +21,36 @@ export function isConsumerPatrolEvent(event: PatrolEvent): boolean {
   if (COMMAND_TEXT.test(event.headline) && !event.verified_block) return false;
   return !!event.headline.trim() && !!event.what_happened.trim();
 }
-
-function kindFor(event: PatrolEvent): PatrolOutcomeKind {
-  if (event.scenario === "shared_investigation" || event.investigation_case_id) return "investigation_outcome";
-  if ((event.category === "website" || event.category === "known_threat") && event.verified_block) return "website_protected";
-  if (event.category === "message" || event.category === "email" || event.category === "call") return "suspicious_message";
-  if (event.category === "connection") return "network_danger";
-  if (event.category === "account") return "account_recovery";
-  if (event.category === "app" || event.category === "device") return "unsafe_app_setting";
-  if (event.category === "family") return "family_update";
-  if (event.category === "file") return "risky_file_checked";
-  return "check_outcome";
-}
-
-function headlineFor(kind: PatrolOutcomeKind, event: PatrolEvent): string {
-  if (kind === "website_protected") return "A website threat was blocked";
-  if (kind === "suspicious_message") return event.category === "call" ? "A suspicious call was noticed" : event.category === "email" ? "A suspicious email was noticed" : "A suspicious message was noticed";
-  if (kind === "risky_file_checked") return "A risky file was checked";
-  if (kind === "unsafe_app_setting") return event.category === "app" ? "An unsafe app setting was found" : "A device setting needs a look";
-  if (kind === "network_danger") return "A network danger was noticed";
-  if (kind === "account_recovery") return "An account recovery step was recommended";
-  if (kind === "family_update") return "A family safety update arrived";
-  if (kind === "investigation_outcome") return "Higgins completed an investigation update";
-  return event.state === "resting" ? "A check found no known concern" : event.headline;
-}
-
-function statusFor(event: PatrolEvent): PatrolOutcomeStatus {
-  if (event.status === "resolved" || event.status === "trusted" || (event.status === "blocked" && !!event.resolved_at)) return "handled";
-  return event.state === "resting" ? "handled" : "needs_you";
-}
-
-function incidentKey(event: PatrolEvent, kind: PatrolOutcomeKind): string {
-  const identity = event.scent_id || event.investigation_case_id || event.indicator_digest || event.indicator_host || event.claimed_brand || event.scenario;
-  return identity ? `${kind}:${safeKey(identity)}:${statusFor(event)}` : `${kind}:event:${event.event_id}`;
-}
+const category = (event: PatrolEvent): PatrolCategory => event.investigation_case_id ? "investigation" : event.category === "website" || event.category === "known_threat" || event.category === "protection" ? "site" : event.category === "message" ? "text" : event.category === "connection" ? "network" : event.category === "system" ? "device" : event.category;
+const source = (event: PatrolEvent): PatrolSource => event.category === "family" ? "family" : event.investigation_case_id ? "higgins" : event.background ? "background" : "user_started";
+const result = (state: PatrolState): string => ({ resting: "Resolved or no concern found", ears_up: "Something changed", growling: "Worth checking", barking: "Action recommended", biting: "Threat stopped" }[state]);
+const title = (event: PatrolEvent, state: PatrolState) => state === "biting" ? "Apollo stopped a threat" : event.investigation_case_id ? "Higgins completed an investigation update" : event.headline;
+const incidentKey = (event: PatrolEvent, state: PatrolState) => `${category(event)}:${safeKey(event.scent_id || event.investigation_case_id || event.indicator_digest || event.indicator_host || event.claimed_brand || event.scenario || event.event_id)}:${state}`;
+const actionFor = (event: PatrolEvent, state: PatrolState): UserAction | undefined => event.investigation_case_id ? { id: "continue_case", label: "Open investigation" } : state === "growling" || state === "barking" ? { id: "start_investigation", label: "Ask Higgins to investigate" } : state === "biting" ? { id: "open_check_it", label: "Review what was stopped" } : undefined;
 
 export function projectPatrolOutcomes(events: PatrolEvent[]): PatrolOutcome[] {
   const sorted = events.filter(isConsumerPatrolEvent).sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at));
   const outcomes: PatrolOutcome[] = [];
   for (const event of sorted) {
-    const kind = kindFor(event); const key = incidentKey(event, kind); const time = Date.parse(event.occurred_at);
-    const existing = outcomes.find((outcome) => outcome.id === key && Math.abs(Date.parse(outcome.latestOccurredAt) - time) <= WINDOW_MS);
+    const state: PatrolState = event.state === "sniffing" ? "ears_up" : event.state === "biting" && !event.verified_block ? "barking" : event.state;
+    const key = incidentKey(event, state); const time = Date.parse(event.occurred_at);
+    const existing = outcomes.find((outcome) => outcome.outcomeId === key && Math.abs(Date.parse(outcome.occurredAt) - time) <= WINDOW_MS);
     if (!existing) {
-      outcomes.push({ id: key, kind, status: statusFor(event), state: event.state, headline: headlineFor(kind, event), summary: event.what_happened, nextAction: event.what_to_do,
-        repeatCount: 1, firstOccurredAt: event.occurred_at, latestOccurredAt: event.occurred_at, event });
+      outcomes.push({ outcomeId: key, category: category(event), state, title: title(event, state), summary: event.what_happened, occurredAt: event.occurred_at, source: source(event), repeatCount: 1,
+        result: result(state), resultBasis: state === "biting" ? "A verified enforcement record confirms that supported traffic was blocked." : state === "resting" ? "The recorded check was resolved or found no known concern within its scope." : "Apollo recorded a meaningful outcome that may help you decide what to do next.",
+        whyThisRating: event.why.slice(0, 4), primaryAction: actionFor(event, state), secondaryActions: [], event });
       continue;
     }
     existing.repeatCount += 1;
-    if (time < Date.parse(existing.firstOccurredAt)) existing.firstOccurredAt = event.occurred_at;
-    if (STATE_RANK[event.state] > STATE_RANK[existing.state]) existing.state = event.state;
+    if (STATE_RANK[state] > STATE_RANK[existing.state]) existing.state = state;
   }
-  return outcomes.sort((a, b) => Date.parse(b.latestOccurredAt) - Date.parse(a.latestOccurredAt));
+  return outcomes;
+}
+
+export function matchesPatrolFilter(outcome: PatrolOutcome, filter: PatrolFilter): boolean {
+  if (filter === "all_activity") return true;
+  if (filter === "needs_you") return !!outcome.primaryAction && (outcome.state === "growling" || outcome.state === "barking");
+  if (filter === "warnings") return ["ears_up", "growling", "barking"].includes(outcome.state);
+  if (filter === "threats_stopped") return outcome.state === "biting" && outcome.event.verified_block;
+  return outcome.state === "resting" || outcome.event.status === "resolved" || outcome.event.status === "trusted";
 }

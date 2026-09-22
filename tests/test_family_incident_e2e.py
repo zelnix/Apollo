@@ -27,7 +27,7 @@ async def onboard(page):
 async def get_device_id(page):
     return await page.evaluate(
         """() => {
-            const raw = localStorage.getItem('apollo.securecore.mock.identity');
+            const raw = localStorage.getItem('apollo.device.identity.v2');
             if (!raw) return null;
             try {
               const obj = JSON.parse(raw);

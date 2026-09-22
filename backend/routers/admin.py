@@ -14,6 +14,7 @@ from core.db import db, now_utc
 from core.models import BlocklistEntry
 from routers.intel import intel_status
 from services.patrol_policy import revalidate_stored_patrol
+from services import learning
 
 
 # Admin Audit Trail — every state-changing console action is written to `admin_audit` before it returns: who (the
@@ -45,6 +46,14 @@ class BlocklistIn(BaseModel):
             raise ValueError("host must be a bare domain name")
         return h
 
+
+class LearningArticleUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=3, max_length=160)
+    summary: str | None = Field(default=None, min_length=10, max_length=600)
+    body: str | None = Field(default=None, min_length=50, max_length=20000)
+    group: str | None = Field(default=None, min_length=3, max_length=80)
+    tags: list[str] | None = None
+    published: bool | None = None
 
 def _admin_device(d: dict[str, Any]) -> dict[str, Any]:
     return {k: d.get(k) for k in ("device_id", "platform", "adapter_mode", "app_version", "created_at", "last_seen_at", "token_issued_at", "token_expires_at", "revoked_at")}
@@ -140,6 +149,45 @@ async def admin_get_device(device_id: str):
     events = await db.patrol_events.count_documents({"device_id": device_id, "deleted_at": None})
     links = await db.family_links.count_documents({"$or": [{"protected_device_id": device_id}, {"guardian_device_id": device_id}]})
     return {**_admin_device(d), "patrol_events": events, "family_links": links}
+
+
+@router.get("/learning/articles")
+async def admin_learning_articles(limit: int = Query(default=100, ge=1, le=500)):
+    return await db.learning_articles.find({}, {"_id": 0}).sort("updated_at", -1).to_list(limit)
+
+
+@router.patch("/learning/articles/{slug}")
+async def admin_update_learning(slug: str, body: LearningArticleUpdate, request: Request, actor: Optional[str] = Header(default=None, alias="X-Admin-Actor")):
+    changes = {key: value for key, value in body.model_dump().items() if value is not None}
+    changes["updated_at"] = now_utc()
+    result = await db.learning_articles.update_one({"slug": slug}, {"$set": changes})
+    if not result.matched_count:
+        raise HTTPException(status_code=404, detail="Learning article not found.")
+    await audit(request, "learning.article.update", slug, {"fields": sorted(changes)}, actor)
+    return await db.learning_articles.find_one({"slug": slug}, {"_id": 0})
+
+
+@router.post("/learning/feeds/refresh")
+async def admin_refresh_learning_feeds(request: Request, feed_id: str | None = None, actor: Optional[str] = Header(default=None, alias="X-Admin-Actor")):
+    result = await learning.refresh_feeds(feed_id)
+    await audit(request, "learning.feed.refresh", feed_id or "all", result, actor)
+    return result
+
+
+@router.get("/learning/feeds")
+async def admin_learning_feeds():
+    states = await db.government_feed_state.find({}, {"_id": 0}).to_list(100)
+    runs = await db.learning_feed_runs.find({}, {"_id": 0}).sort("checked_at", -1).limit(100).to_list(100)
+    return {"registry": [{"feed_id": feed_id, **config} for feed_id, config in learning.government_alerts.FEEDS.items()], "states": states, "recent_runs": runs}
+
+
+@router.delete("/learning/articles/{slug}", status_code=204)
+async def admin_archive_learning(slug: str, request: Request, actor: Optional[str] = Header(default=None, alias="X-Admin-Actor")):
+    result = await db.learning_articles.update_one({"slug": slug, "deleted_at": None}, {"$set": {"deleted_at": now_utc(), "published": False, "updated_at": now_utc()}})
+    if not result.matched_count:
+        raise HTTPException(status_code=404, detail="Learning article not found.")
+    await audit(request, "learning.article.archive", slug, {}, actor)
+    return None
 
 
 @router.post("/devices/{device_id}/revoke", status_code=204)

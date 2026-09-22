@@ -1290,17 +1290,18 @@ async def _higgins_context_boundaries():
 
 async def _higgins_history_boundaries():
     from routers import ask as ask_router
-    from services.higgins import context
     owner, other = f"history-{uuid.uuid4().hex}", f"other-{uuid.uuid4().hex}"
-    await context.ensure_indexes()
-    await context.add_chat_message(owner, "conversation-a", "higgins", "Use code 123456 and password secret123")
-    await context.add_chat_message(other, "conversation-b", "higgins", "Other owner's private answer")
+    now = now_utc()
+    await db.higgins_investigation_history.insert_many([
+        {"owner_id": owner, "history_id": "history-owner", "case_id": "case-owner", "case_start": now, "last_update": now, "status": "completed", "gates": ["text"], "attention": "none", "conclusion": "Use code 123456 and password secret123", "deleted": False},
+        {"owner_id": other, "history_id": "history-other", "case_id": "case-other", "case_start": now, "last_update": now, "status": "completed", "gates": ["email"], "attention": "none", "conclusion": "Other owner's private answer", "deleted": False},
+    ])
     response = await ask_router.higgins_history(_request(owner), limit=20)
     payload = json.loads(response.body)
     assert len(payload["items"]) == 1
     assert "123456" not in payload["items"][0]["summary"] and "secret123" not in payload["items"][0]["summary"]
     assert "Other owner" not in response.body.decode()
-    await db.higgins_chat_messages.delete_many({"owner_id": {"$in": [owner, other]}})
+    await db.higgins_investigation_history.delete_many({"owner_id": {"$in": [owner, other]}})
 
 
 if __name__ == "__main__":

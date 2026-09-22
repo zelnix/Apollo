@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import Settings from "lucide-react-native/icons/settings";
 import React, { useRef } from "react";
 import { Pressable, View } from "react-native";
@@ -16,6 +16,10 @@ export function RootScreenHeader({ title, testID, rightAccessory }: { title: str
   const { colors } = useTheme();
   const router = useRouter();
   const opening = useRef(false);
+  useFocusEffect(React.useCallback(() => {
+    opening.current = false;
+    return () => undefined;
+  }, []));
   const openSettings = () => {
     if (opening.current) return;
     opening.current = true;

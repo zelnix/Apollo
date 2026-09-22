@@ -21,7 +21,7 @@ const CAPABILITY_FIELDS = [
   "domainVisibility", "localBlocking", "backgroundProtection", "offlineProtection", "realTimeEvents",
 ] as const;
 
-const ALL_PLATFORMS: SdkPlatform[] = ["android", "ios", "windows", "macos", "mock"];
+const ALL_PLATFORMS: SdkPlatform[] = ["android", "ios", "windows", "macos", "web"];
 
 const evidence = (o: Partial<EnforcementEvidence> = {}): EnforcementEvidence => ({
   evidenceId: "ev-1", eventId: null, deviceId: "dev-1", platform: "android", osVersion: "15", sdkVersion: "1.0",
@@ -33,7 +33,7 @@ const evidence = (o: Partial<EnforcementEvidence> = {}): EnforcementEvidence => 
   ...o,
 });
 
-test("1. all four real platforms + mock are representable with a valid, versioned capability shape", () => {
+test("1. all native targets plus the real browser boundary have a valid, versioned capability shape", () => {
   for (const p of ALL_PLATFORMS) {
     const profile = PLATFORM_CAPABILITY_BASELINES[p];
     assert.equal(profile.platform, p, `baseline key ${p} must self-report platform=${p}`);
@@ -44,9 +44,9 @@ test("1. all four real platforms + mock are representable with a valid, versione
   }
 });
 
-test("2. mock baseline overclaims nothing — every capability is 'none', even though Expo Go runs on a real OS", () => {
-  const mock = PLATFORM_CAPABILITY_BASELINES.mock;
-  for (const field of CAPABILITY_FIELDS) assert.equal(mock[field], "none", `mock.${field} must be none`);
+test("2. browser baseline overclaims nothing — every native capability is none", () => {
+  const web = PLATFORM_CAPABILITY_BASELINES.web;
+  for (const field of CAPABILITY_FIELDS) assert.equal(web[field], "none", `web.${field} must be none`);
 });
 
 test("3. iOS never claims process/app attribution (Apple does not expose it to third-party extensions)", () => {

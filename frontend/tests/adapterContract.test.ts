@@ -14,7 +14,7 @@
 // just a comment someone could forget to update.
 //
 // Why static text checks, not `import` + runtime introspection: NativeSecurityAdapters.ts (and
-// MockSecurityAdapter.ts) import real Expo/React Native runtime code (expo-modules-core,
+// The former runtime-mock adapter imported real Expo/React Native runtime code (expo-modules-core,
 // expo-network, react-native) which this repo's plain `node --test` runner cannot load (Node's
 // type-stripping refuses files under node_modules — see MODULE_TYPELESS_PACKAGE_JSON /
 // ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING if you try). Only PlatformCapabilityProfile.ts and
@@ -104,11 +104,14 @@ test("real browser adapter and the development-only preview harness both impleme
 
 test("no runtime mock exists in application source; the preview harness is reachable only from the web host selector", () => {
   const retiredName = ["Secure", "Core"].join("");
+  const retiredMock = ["Mock", "Security", "Adapter"].join("");
+  const retiredMode = ["EXPO", "PUBLIC", "SECURITY", "MODE"].join("_");
   const walk = (dir: string): string[] => readdirSync(join(root, dir), { withFileTypes: true }).flatMap((e) =>
     e.isDirectory() ? walk(join(dir, e.name)) : /\.(ts|tsx)$/.test(e.name) ? [join(dir, e.name)] : []);
   for (const file of [...walk("src"), ...walk("app")]) {
     const src = read(file);
-    assert.doesNotMatch(src, /MockSecurityAdapter|EXPO_PUBLIC_SECURITY_MODE/, `${file} references a removed runtime mock`);
+    assert.equal(src.includes(retiredMode), false, `${file} references a removed runtime mode`);
+    assert.equal(src.includes(retiredMock), false, `${file} references a removed runtime mock`);
     assert.equal(src.toLowerCase().includes(retiredName.toLowerCase()), false, `${file} references the retired security boundary`);
     if (file !== "src/security/hostAdapter.web.ts") assert.doesNotMatch(src, /tools\/preview-device-harness/, `${file} must not import the preview harness`);
   }
@@ -117,18 +120,14 @@ test("no runtime mock exists in application source; the preview harness is reach
   assert.ok(existsSync(join(root, "src/security/hostAdapter.web.ts")));
 });
 
-test("Windows and macOS have no adapter export — not implemented, not implicitly supported", () => {
+test("Windows and macOS use the explicit Tauri desktop adapter", () => {
   assert.equal(PLATFORM_ADAPTER_IMPLEMENTED.android, true);
   assert.equal(PLATFORM_ADAPTER_IMPLEMENTED.ios, true);
-  assert.equal(PLATFORM_ADAPTER_IMPLEMENTED.windows, false);
-  assert.equal(PLATFORM_ADAPTER_IMPLEMENTED.macos, false);
-  // No WindowsSecurityAdapter / MacosSecurityAdapter export exists anywhere in src/security.
-  for (const path of [NATIVE_ADAPTERS_TS, WEB_ADAPTER_TS, "src/security/securityAdapter.ts", "src/security/hostAdapter.ts", "src/security/hostAdapter.web.ts"]) {
-    const src = read(path);
-    assert.doesNotMatch(src, /WindowsSecurityAdapter|MacosSecurityAdapter|MacOSSecurityAdapter/i, `${path} must not implicitly claim a Windows/macOS adapter`);
-  }
-  // The type baselines still exist as architecture documentation for a future adapter — that's
-  // deliberate (see PLATFORM_CAPABILITY_BASELINES doc comment), not a contradiction of the above.
+  assert.equal(PLATFORM_ADAPTER_IMPLEMENTED.windows, true);
+  assert.equal(PLATFORM_ADAPTER_IMPLEMENTED.macos, true);
+  const desktop = read("src/security/DesktopSecurityAdapter.ts");
+  for (const method of REQUIRED_METHODS) assert.match(desktop, new RegExp(`\\b${method}\\s*\\(`), `DesktopSecurityAdapter must implement ${method}()`);
+  assert.match(read("src/security/hostAdapter.web.ts"), /DesktopSecurityAdapter/);
   assert.ok(PLATFORM_CAPABILITY_BASELINES.windows);
   assert.ok(PLATFORM_CAPABILITY_BASELINES.macos);
 });

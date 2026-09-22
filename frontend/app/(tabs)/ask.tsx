@@ -41,18 +41,24 @@ export default function Ask() {
   const { state, start, ask, retry, cancel, remove, attach, retryDelete } = useInvestigation(params.operationId ? String(params.operationId) : null);
   const [text, setText] = useState(""); const [activeContext, setActiveContext] = useState<HigginsIssueContext | null>(null); const [investigationMode, setInvestigationMode] = useState(false);
   const [chatMessages, setChatMessages] = useState<HigginsChatMessage[]>([]); const [chatBusy, setChatBusy] = useState(false); const [chatError, setChatError] = useState<string | null>(null); const [lastAction, setLastAction] = useState<HigginsChatAction | null>(null);
-  const [hubItems, setHubItems] = useState<HigginsHistoryItem[]>([]); const [hubLoading, setHubLoading] = useState(false);
+  const [hubItems, setHubItems] = useState<HigginsHistoryItem[]>([]); const [hubLoading, setHubLoading] = useState(false); const [hubError, setHubError] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null); const conversationId = useRef(Crypto.randomUUID()); const seenRoute = useRef<string | null>(null); const scrollRef = useRef<ScrollView>(null); const inputRef = useRef<TextInput>(null); const contextRecorded = useRef<string | null>(null);
   const caseBusy = state.phase === "creating" || state.phase === "working" || state.phase === "reconnecting" || state.phase === "waiting_device";
   const busy = caseBusy || chatBusy;
   const latestUserMessage = useMemo(() => [...chatMessages].reverse().find((message) => message.role === "user")?.content ?? "", [chatMessages]);
 
-  useEffect(() => { if (!deviceId) return; setHubLoading(true); void Promise.all([higginsHistory(deviceId), higginsHubHistory(12)]).then(([chat, hub]) => { setChatMessages(chat.items); setHubItems(hub.items); }).catch(() => undefined).finally(() => setHubLoading(false)); }, [deviceId]);
+  useEffect(() => {
+    if (!deviceId) return;
+    void higginsHistory(deviceId).then((chat) => setChatMessages(chat.items)).catch(() => undefined);
+    setHubLoading(true); setHubError(false);
+    void higginsHubHistory(12).then((hub) => setHubItems(hub.items)).catch(() => setHubError(true)).finally(() => setHubLoading(false));
+  }, [deviceId]);
   useEffect(() => { const caseId = params.resumeCaseId ? String(params.resumeCaseId) : ""; if (!caseId || caseId === seenRoute.current) return; seenRoute.current = caseId; setInvestigationMode(true); router.setParams({ resumeCaseId: "" }); void attach(caseId); }, [params.resumeCaseId, attach, router]);
+  useEffect(() => { if (!params.handoffId && params.prompt && !investigationMode) { setText(redactUserSecrets(String(params.prompt))); router.setParams({ prompt: "" }); } }, [params.prompt, params.handoffId, investigationMode, router]);
   useEffect(() => {
     if (!deviceId || health.checking || !health.checkedAt || contextRecorded.current === health.checkedAt) return;
     contextRecorded.current = health.checkedAt;
-    const on = health.gates.filter((gate) => gate.automaticStatus === "On").length; const attention = health.gates.filter((gate) => gate.automaticStatus === "Needs attention").map((gate) => gate.title);
+    const on = health.gates.filter((gate) => gate.capability.automatic?.state === "running").length; const attention = health.gates.filter((gate) => gate.tone === "attention").map((gate) => gate.title);
     void rememberHigginsContext({ category: "protection_state", provenance: "device_observation", observedAt: health.checkedAt, summary: `${on} automatic protections are on.${attention.length ? ` Needs attention: ${attention.join(", ")}.` : ""}` }).catch(() => undefined);
   }, [deviceId, health]);
 
@@ -88,20 +94,20 @@ export default function Ask() {
   const newQuestion = () => { if (busy) return; stopHiggins(); setActiveContext(null); setInvestigationMode(false); void remove(); };
   const openCase = (caseId: string) => { if (busy) return; setInvestigationMode(true); setActiveContext(null); void attach(caseId); };
   const activeHub = hubItems.filter((item) => item.kind === "investigation" && item.status === "active");
-  const recentHub = hubItems.filter((item) => item.status === "handled").slice(0, 2);
+  const recentHub = hubItems.filter((item) => item.status !== "active").slice(0, 2);
   const caseStatus = state.phase === "answered" ? "Investigation answer complete within its stated scope" : state.phase === "waiting_user" ? "Higgins needs one answer from you" : state.phase === "failed" ? "Investigation incomplete — Retry available" : state.phase === "expired" ? "Temporary investigation content expired" : caseBusy ? "Higgins is investigating…" : "Investigation content expires within 15 minutes";
 
   return <View style={s.root} testID="higgins-screen"><View style={{ paddingTop: insets.top + spacing.md }}><RootScreenHeader title="Higgins" testID="ask-header" rightAccessory={<Pill tone={investigationMode ? "growling" : "neutral"} label={investigationMode ? "Investigation" : "Ordinary chat"} testID="ask-scope-pill" />} /></View>
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={0}>
       {activeContext ? <Card style={s.context} testID="ask-active-issue"><Pill tone={activeContext.assessment_state} label={`${activeContext.gate.toUpperCase()} GATE`} testID="ask-active-gate" /><Body testID="ask-active-summary">{activeContext.issue_summary}</Body>{state.caseData ? <Body testID="ask-handoff-reference">Case reference: {state.caseData.id.slice(0, 8)}</Body> : null}<Button testID="ask-new-conversation" variant="ghost" label="Return to ordinary chat" onPress={newQuestion} disabled={busy} /></Card> : null}
       <ScrollView ref={scrollRef} contentContainerStyle={s.list} testID="ask-messages" onContentSizeChange={() => { if (chatMessages.length || investigationMode) scrollRef.current?.scrollToEnd({ animated: true }); }}>
-        {!investigationMode && chatMessages.length === 0 ? <View testID="higgins-hub" style={{ gap: spacing.lg }}><Text style={s.hubTitle} testID="higgins-hub-title">How Higgins can help</Text><View style={s.hubGrid}>
+        {!investigationMode ? <View testID="higgins-hub" style={{ gap: spacing.lg }}><Text style={s.hubTitle} testID="higgins-hub-title">How Higgins can help</Text><View style={s.hubGrid}>
           <Card style={s.hubCard} testID="higgins-hub-chat"><Text style={s.historyTitle}>Ordinary chat</Text><Body>Get a plain-language explanation without starting investigative work.</Body><Button testID="higgins-hub-chat-button" label="Chat with Higgins" onPress={() => inputRef.current?.focus()} /></Card>
           <Card style={s.hubCard} testID="higgins-hub-learning"><Text style={s.historyTitle}>Learning</Text><Body>Build simple habits for spotting and recovering from scams.</Body><Button testID="higgins-hub-learning-button" variant="secondary" label="Learn with Higgins" onPress={() => router.push("/higgins/learning")} /></Card>
           <Card style={s.hubCard} testID="higgins-hub-scams"><Text style={s.historyTitle}>New scams</Text><Body>Read alerts from configured Australian government feeds.</Body><Button testID="higgins-hub-scams-button" variant="secondary" label="View government alerts" onPress={() => router.push("/higgins/scams")} /></Card>
           <Card style={s.hubCard} testID="higgins-hub-reports"><Text style={s.historyTitle}>Saved reports</Text><Body>Return to investigation reports you deliberately kept.</Body><Button testID="higgins-hub-reports-button" variant="secondary" label="Open saved reports" onPress={() => router.push("/saved-reports")} /></Card>
         </View>
-        <Card testID="higgins-hub-current" style={{ gap: spacing.md }}><View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}><Text style={s.historyTitle}>Current investigations</Text><Pill testID="higgins-hub-current-count" tone={activeHub.length ? "growling" : "neutral"} label={hubLoading ? "Checking" : `${activeHub.length} current`} /></View>{activeHub.length ? activeHub.slice(0, 2).map((item) => <View key={item.id} style={{ gap: spacing.sm }}><Body>{item.summary}</Body><Button testID={`higgins-hub-resume-${item.id}`} variant="secondary" label="Continue investigation" onPress={() => openCase(item.caseId!)} /></View>) : <Body>No investigation is currently running.</Body>}</Card>
+        <Card testID="higgins-hub-current" style={{ gap: spacing.md }}><View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}><Text style={s.historyTitle}>Current investigations</Text><Pill testID="higgins-hub-current-count" tone={activeHub.length ? "growling" : "neutral"} label={hubLoading ? "Checking" : hubError ? "Unavailable" : `${activeHub.length} current`} /></View>{hubError ? <><Body>Current work could not be loaded. Other Higgins sections are still available.</Body><Button testID="higgins-hub-retry" variant="secondary" label="Try current work again" onPress={() => { setHubLoading(true); setHubError(false); void higginsHubHistory(12).then((hub) => setHubItems(hub.items)).catch(() => setHubError(true)).finally(() => setHubLoading(false)); }} /></> : activeHub.length ? activeHub.slice(0, 2).map((item) => <View key={item.id} style={{ gap: spacing.sm }}><Body>{item.summary}</Body><Button testID={`higgins-hub-resume-${item.id}`} variant="secondary" label="Continue investigation" onPress={() => openCase(item.caseId!)} /></View>) : <Body>No investigation is currently running.</Body>}</Card>
         {recentHub.length ? <Card testID="higgins-hub-recent" style={{ gap: spacing.md }}><Text style={s.historyTitle}>Recent Higgins activity</Text>{recentHub.map((item) => <View key={item.id}><Text style={s.historyTitle}>{item.title}</Text><Body>{item.summary}</Body></View>)}</Card> : null}
         <Button testID="higgins-hub-history-button" variant="ghost" label="View Higgins history" onPress={() => router.push("/higgins/history")} />
         </View> : null}

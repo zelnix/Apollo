@@ -124,7 +124,7 @@ export default function TextGuard() {
           <View>
             <SectionTitle>Recently flagged from your messages</SectionTitle>
             <View testID="textguard-recent">
-              {projectPatrolOutcomes(recent).map((outcome, i, list) => <PatrolItem key={outcome.id} outcome={outcome} isLast={i === list.length - 1} />)}
+              {projectPatrolOutcomes(recent).map((outcome, i, list) => <PatrolItem key={outcome.outcomeId} outcome={outcome} isLast={i === list.length - 1} />)}
             </View>
           </View>
         ) : null}

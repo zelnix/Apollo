@@ -1,0 +1,14 @@
+{
+  "unavailableReasons": [
+    "not_implemented",
+    "os_restricted",
+    "hardware_absent",
+    "configuration_missing",
+    "entitlement_missing",
+    "privacy_prohibited",
+    "source_refused",
+    "adapter_failed"
+  ],
+  "patrolStates": ["resting", "ears_up", "growling", "barking", "biting"],
+  "patrolFilters": ["all_activity", "needs_you", "warnings", "threats_stopped", "resolved"]
+}

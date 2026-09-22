@@ -6,6 +6,7 @@ separate `/investigations` API after an explicit user action in the client.
 from __future__ import annotations
 
 import json
+import re
 from fastapi import APIRouter, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -72,13 +73,30 @@ async def clear_higgins_context(request: Request):
 
 
 @router.get("/higgins/history")
-async def higgins_history(request: Request, limit: int = Query(default=50, ge=1, le=100)):
+async def higgins_history(request: Request, limit: int = Query(default=25, ge=1, le=100), cursor: str | None = None,
+                          status: str | None = None, gate: str | None = None, search: str | None = None):
     owner = request.state.device["device_id"]
     items: list[dict] = []
-    chats = await memory.chat_history(owner, limit=limit)
-    for item in chats:
-        if item.role == "higgins":
-            items.append({"id": item.id, "kind": "ordinary_chat", "title": "Chat with Higgins", "summary": redact_investigation_secrets(item.content)[:300], "status": "handled", "occurredAt": item.created_at, "caseId": None, "reportId": None})
+    history_query: dict = {"owner_id": owner, "deleted": False}
+    if cursor:
+        try:
+            from datetime import datetime
+            history_query["last_update"] = {"$lt": datetime.fromisoformat(cursor.replace("Z", "+00:00"))}
+        except ValueError:
+            pass
+    if status:
+        history_query["status"] = status
+    if gate:
+        history_query["gates"] = gate
+    if search:
+        history_query["conclusion"] = {"$regex": re.escape(search[:80]), "$options": "i"}
+    history_rows = await db.higgins_investigation_history.find(history_query, {"_id": 0}).sort("last_update", -1).limit(limit + 1).to_list(limit + 1)
+    for row in history_rows[:limit]:
+        items.append({"id": row["history_id"], "kind": "investigation", "title": f"{(row.get('gates') or ['Apollo'])[0].title()} Gate investigation",
+                      "summary": redact_investigation_secrets(row.get("conclusion", ""))[:300], "status": row.get("status", "completed"),
+                      "occurredAt": row["last_update"], "caseStart": row["case_start"], "lastUpdate": row["last_update"], "gates": row.get("gates", []),
+                      "attention": row.get("attention", "unknown"), "conclusion": redact_investigation_secrets(row.get("conclusion", ""))[:600],
+                      "caseId": row.get("case_id"), "reportId": None, "reopenable": False})
     cases = await db.investigation_cases.find({"owner_id": owner, "deleted": False}, {"_id": 0, "case_id": 1, "status": 1, "gates": 1, "created_at": 1, "updated_at": 1, "response_revision": 1, "accepted_commits": 1}).sort("updated_at", -1).limit(limit).to_list(limit)
     for case in cases:
         turns = await investigation_repository.accepted_turns(owner, case)
@@ -86,7 +104,9 @@ async def higgins_history(request: Request, limit: int = Query(default=50, ge=1,
         summary = redact_investigation_secrets(latest.response.overview)[:300] if latest else "Investigation is still being prepared."
         active = case.get("status") not in {"complete", "expired", "cancelled", "failed"}
         items.append({"id": case["case_id"], "kind": "investigation", "title": f"{(case.get('gates') or ['Apollo'])[0].title()} Gate investigation", "summary": summary,
-                      "status": "active" if active else "handled", "occurredAt": case.get("updated_at") or case["created_at"], "caseId": case["case_id"], "reportId": None})
+                      "status": "active" if active else "completed", "occurredAt": case.get("updated_at") or case["created_at"], "caseStart": case["created_at"],
+                      "lastUpdate": case.get("updated_at") or case["created_at"], "gates": case.get("gates", []), "attention": latest.response.attention if latest else "unknown",
+                      "conclusion": summary, "caseId": case["case_id"], "reportId": None, "reopenable": active})
     reports = await db.investigation_reports.find({"owner_id": owner}, {"_id": 0, "report_id": 1, "saved_at": 1, "report_ciphertext": 1}).sort("saved_at", -1).limit(limit).to_list(limit)
     for row in reports:
         try:
@@ -95,9 +115,21 @@ async def higgins_history(request: Request, limit: int = Query(default=50, ge=1,
             summary = redact_investigation_secrets(str(report.get("overview") or "Saved for later review."))[:300]
         except (ValueError, TypeError):
             title, summary = "Saved investigation report", "Saved for later review."
-        items.append({"id": row["report_id"], "kind": "saved_report", "title": title, "summary": summary, "status": "handled", "occurredAt": row["saved_at"], "caseId": None, "reportId": row["report_id"]})
-    items.sort(key=lambda item: item["occurredAt"], reverse=True)
-    return JSONResponse(jsonable_encoder({"items": items[:limit], "redaction": "Secrets and raw evidence are excluded."}), headers=NO_STORE)
+        items.append({"id": row["report_id"], "kind": "saved_report", "title": title, "summary": summary, "status": "saved", "occurredAt": row["saved_at"], "caseStart": row["saved_at"], "lastUpdate": row["saved_at"], "gates": [], "attention": "none", "conclusion": summary, "caseId": None, "reportId": row["report_id"], "reopenable": True})
+    deduped = list({f"{item['kind']}:{item.get('caseId') or item['id']}": item for item in items}.values())
+    deduped.sort(key=lambda item: item["occurredAt"], reverse=True)
+    next_cursor = history_rows[limit - 1]["last_update"].isoformat() if len(history_rows) > limit else None
+    return JSONResponse(jsonable_encoder({"items": deduped[:limit], "nextCursor": next_cursor, "redaction": "Secrets and raw evidence are excluded."}), headers=NO_STORE)
+
+
+@router.delete("/higgins/history/{history_id}", status_code=204)
+async def delete_higgins_history(history_id: str, request: Request):
+    owner = request.state.device["device_id"]
+    changed = await db.higgins_investigation_history.update_one({"owner_id": owner, "history_id": history_id, "deleted": False}, {"$set": {"deleted": True}})
+    if not changed.matched_count:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="History item not found.")
+    return None
 
 
 @router.get("/higgins/scams")

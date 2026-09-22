@@ -8,14 +8,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PatrolItem } from "@/src/components/PatrolItem";
 import { RootScreenHeader } from "@/src/components/RootScreenHeader";
 import { Body, Card, Pill } from "@/src/components/ui";
-import { projectPatrolOutcomes, type PatrolOutcome } from "@/src/domain/patrolOutcomes";
+import { matchesPatrolFilter, projectPatrolOutcomes, type PatrolFilter, type PatrolOutcome } from "@/src/domain/patrolOutcomes";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { exportPatrolPdf } from "@/src/utils/exportPatrol";
 
-type Filter = "all" | "needs_you" | "handled";
-const FILTERS: { key: Filter; label: string }[] = [
-  { key: "all", label: "All" }, { key: "needs_you", label: "Needs you" }, { key: "handled", label: "Handled" },
+const FILTERS: { key: PatrolFilter; label: string }[] = [
+  { key: "all_activity", label: "All activity" }, { key: "needs_you", label: "Needs you" }, { key: "warnings", label: "Warnings" }, { key: "threats_stopped", label: "Threats stopped" }, { key: "resolved", label: "Resolved" },
 ];
 
 const useStyles = makeStyles((c) => ({
@@ -43,7 +42,7 @@ export default function Patrol() {
   const insets = useSafeAreaInsets();
   const { events, deviceId, showToast } = useApollo();
   const router = useRouter();
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<PatrolFilter>("all_activity");
   const onExport = async () => {
     if (outcomes.length === 0) { showToast("Nothing to export yet.", "neutral"); return; }
     try { const r = await exportPatrolPdf(outcomes.map((outcome) => outcome.event), deviceId); showToast(r === "shared" ? "Patrol PDF ready to share" : "Print dialog opened", "resting"); }
@@ -52,14 +51,14 @@ export default function Patrol() {
 
   const outcomes = useMemo(() => projectPatrolOutcomes(events), [events]);
   const rows = useMemo(() => {
-    const filtered = outcomes.filter((outcome) => filter === "all" || outcome.status === filter);
+    const filtered = outcomes.filter((outcome) => matchesPatrolFilter(outcome, filter));
     const out: ({ type: "day"; label: string; key: string } | { type: "outcome"; outcome: PatrolOutcome; isLast: boolean; key: string })[] = [];
     let lastDay = "";
     filtered.forEach((e, i) => {
-      const day = dayLabel(e.latestOccurredAt);
+      const day = dayLabel(e.occurredAt);
       if (day !== lastDay) { out.push({ type: "day", label: day, key: `day-${day}` }); lastDay = day; }
       const next = filtered[i + 1];
-      out.push({ type: "outcome", outcome: e, isLast: !next || dayLabel(next.latestOccurredAt) !== day, key: e.id });
+      out.push({ type: "outcome", outcome: e, isLast: !next || dayLabel(next.occurredAt) !== day, key: e.outcomeId });
     });
     return out;
   }, [outcomes, filter]);
@@ -93,7 +92,7 @@ export default function Patrol() {
         renderItem={({ item }) => item.type === "day" ? <Text style={s.day}>{item.label}</Text> : <PatrolItem outcome={item.outcome} isLast={item.isLast} />}
         ListEmptyComponent={
           <Card testID="patrol-empty" style={{ gap: spacing.sm }}>
-            <Text style={s.emptyTitle}>No Patrol outcomes{filter !== "all" ? " for this filter" : ""}</Text>
+            <Text style={s.emptyTitle}>No Patrol outcomes{filter !== "all_activity" ? " for this filter" : ""}</Text>
             <Body>There are no meaningful outcomes for this view. Commands and technical service messages are kept out of Patrol; check Gates for current protection.</Body>
           </Card>
         }

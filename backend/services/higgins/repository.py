@@ -97,6 +97,8 @@ async def ensure_indexes() -> None:
         pass
     await db.investigation_turn_commits.create_index([("owner_id", 1), ("case_id", 1), ("commit_id", 1)], unique=True)
     await db.investigation_reports.create_index([("owner_id", 1), ("report_id", 1)], unique=True)
+    await db.higgins_investigation_history.create_index([("owner_id", 1), ("last_update", -1)])
+    await db.higgins_investigation_history.create_index([("owner_id", 1), ("history_id", 1)], unique=True)
 
 
 async def backfill_work_epochs() -> None:
