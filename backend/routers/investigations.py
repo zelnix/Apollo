@@ -549,8 +549,13 @@ async def cancel_job(case_id: str, job_id: str, body: ExpectedRevision, request:
     owner = owner_of(request)
     case = await repo.get_case(owner, case_id)
     job = await repo.get_job(owner, case_id, job_id)
+    async def turn_was_accepted(current_case: dict) -> bool:
+        return any(turn.turn_id == job["turn_id"] for turn in await repo.accepted_turns(owner, current_case))
     if job["status"] not in ACTIVE:
-        return JSONResponse({"status": job["status"], "cleanupStatus": "not_required", "cancelled": False}, status_code=200, headers=NO_STORE)
+        already_cancelled = job["status"] == "cancelled"
+        outcome = "cancelled" if already_cancelled else "completed" if job["status"] in ("complete", "completed") else "failed" if job["status"] == "failed" else "superseded"
+        return JSONResponse({"status": job["status"], "outcome": outcome, "cleanupStatus": "complete" if already_cancelled else "not_required",
+                             "cancelled": already_cancelled, "caseRevision": case["revision"], "responseRevision": case.get("response_revision")}, status_code=200, headers=NO_STORE)
     _revision_check(case, body.expected_revision)
     # The case control record is authoritative. Match the exact job and work epoch observed above so a completed job
     # followed by a newer turn can never have that newer turn cleared by this stale cancellation request.
@@ -561,19 +566,29 @@ async def cancel_job(case_id: str, job_id: str, body: ExpectedRevision, request:
                   "status": "partial" if case.get("response_ciphertext") else "queued"}})
     if not updated:
         current_job = await repo.get_job(owner, case_id, job_id)
+        current_case = await repo.get_case(owner, case_id)
         if current_job["status"] not in ACTIVE:
-            return JSONResponse({"status": current_job["status"], "cleanupStatus": "not_required", "cancelled": False}, status_code=200, headers=NO_STORE)
-        raise http(409, "conflict", "This turn is no longer the active work for the case; it was not cancelled.")
+            outcome = "completed" if current_job["status"] in ("complete", "completed") else "failed" if current_job["status"] == "failed" else "cancelled" if current_job["status"] == "cancelled" else "superseded"
+            return JSONResponse({"status": current_job["status"], "outcome": outcome, "cleanupStatus": "not_required", "cancelled": outcome == "cancelled",
+                                 "caseRevision": current_case["revision"], "responseRevision": current_case.get("response_revision")}, status_code=200, headers=NO_STORE)
+        accepted = await turn_was_accepted(current_case)
+        outcome = "completed" if accepted else "superseded"
+        return JSONResponse({"status": "complete" if accepted else current_job["status"], "outcome": outcome, "cleanupStatus": "not_required", "cancelled": False,
+                             "caseRevision": current_case["revision"], "responseRevision": current_case.get("response_revision")}, status_code=200, headers=NO_STORE)
     cancelled = await db.investigation_jobs.find_one_and_update(
         {"owner_id": owner, "job_id": job_id, "work_epoch": job.get("work_epoch", job["epoch"]), "status": {"$in": list(ACTIVE)}},
         {"$set": {"status": "cancelled", "lease_until": None, "checkpoint_ciphertext": None}},
     )
     if not cancelled:
         current_job = await repo.get_job(owner, case_id, job_id)
-        return JSONResponse({"status": current_job["status"], "cleanupStatus": "not_required", "cancelled": False}, status_code=200, headers=NO_STORE)
+        current_case = await repo.get_case(owner, case_id)
+        outcome = "completed" if current_job["status"] in ("complete", "completed") else "failed" if current_job["status"] == "failed" else "superseded"
+        return JSONResponse({"status": current_job["status"], "outcome": outcome, "cleanupStatus": "not_required", "cancelled": False,
+                             "caseRevision": current_case["revision"], "responseRevision": current_case.get("response_revision")}, status_code=200, headers=NO_STORE)
     await db.voice_cache.delete_many({"device_id": owner, "scope_id": case_id, "job_id": job_id})
     await repo.emit(owner, case_id, job_id, "cancelled", {"cleanupStatus": "complete"}, updated["revision"], repo.utc(case["expires_at"]))
-    return JSONResponse({"status": "cancelled", "cleanupStatus": "complete", "cancelled": True}, status_code=202, headers=NO_STORE)
+    return JSONResponse({"status": "cancelled", "outcome": "cancelled", "cleanupStatus": "complete", "cancelled": True,
+                         "caseRevision": updated["revision"], "responseRevision": updated.get("response_revision")}, status_code=202, headers=NO_STORE)
 
 
 def _canonical_result(body: DeviceResult, requested: list[str]) -> DeviceResult:
@@ -892,15 +907,21 @@ def _segments(text: str) -> list[str]:
 
 async def _speech_job(owner: str, case: dict, job: dict, text: str) -> None:
     audio_ids = []
+    async def purge_partial() -> None:
+        await db.voice_cache.delete_many({"device_id": owner, "scope_id": case["case_id"], "job_id": job["job_id"]})
     try:
+        await repo.set_job(owner, job["job_id"], None, {"$set": {"status": "investigating", "audio_ids": [], "started_at": now_utc()}})
         for index, segment in enumerate(_segments(text)):
             fresh = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case["case_id"]}, {"_id": 0, "epoch": 1, "work_epoch": 1, "deleted": 1, "expires_at": 1})
             if not fresh or fresh["deleted"] or fresh["epoch"] != job["epoch"] or fresh.get("work_epoch", fresh["epoch"]) != job.get("work_epoch", job["epoch"]) or repo.utc(fresh["expires_at"]) <= now_utc():
+                await purge_partial()
                 await repo.set_job(owner, job["job_id"], None, {"$set": {"status": "cancelled"}})
                 return
             await repo.emit(owner, case["case_id"], job["job_id"], "progress", {"phase": "respond", "message": f"Preparing narration segment {index + 1}."}, case["revision"], repo.utc(case["expires_at"]))
             audio, _meta = await provider.speech_bytes(segment)
-            if await repo.live_epoch(owner, case["case_id"]) != job["epoch"]:  # late provider result after deletion/cancel/expiry is discarded
+            after_provider = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case["case_id"]}, {"_id": 0, "epoch": 1, "work_epoch": 1, "deleted": 1, "expires_at": 1})
+            if not after_provider or after_provider["deleted"] or after_provider["epoch"] != job["epoch"] or after_provider.get("work_epoch", after_provider["epoch"]) != job.get("work_epoch", job["epoch"]) or repo.utc(after_provider["expires_at"]) <= now_utc():
+                await purge_partial()
                 await repo.set_job(owner, job["job_id"], None, {"$set": {"status": "cancelled"}})
                 return
             audio_id = str(uuid.uuid4())
@@ -909,12 +930,22 @@ async def _speech_job(owner: str, case: dict, job: dict, text: str) -> None:
                                              "audio_ciphertext": encrypt(audio), "created_at": now_utc(), "expires_at": repo.utc(case["expires_at"]), "content_version": 1})
             audio_ids.append(audio_id)
             await db.investigation_jobs.update_one({"owner_id": owner, "job_id": job["job_id"]}, {"$set": {"audio_ids": audio_ids}})
+        final_case = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case["case_id"]}, {"_id": 0, "epoch": 1, "work_epoch": 1, "deleted": 1})
+        if not final_case or final_case["deleted"] or final_case["epoch"] != job["epoch"] or final_case.get("work_epoch", final_case["epoch"]) != job.get("work_epoch", job["epoch"]):
+            await purge_partial(); await repo.set_job(owner, job["job_id"], None, {"$set": {"status": "cancelled", "audio_ids": []}}); return
         await repo.set_job(owner, job["job_id"], None, {"$set": {"status": "complete"}})
         await repo.emit(owner, case["case_id"], job["job_id"], "completed", {"turnId": job["turn_id"], "responseRevision": case.get("response_revision"), "providerComplete": True,
                                                                              "completion": "complete", "caseStatus": case["status"], "cleanupStatus": "not_due", "audioIds": audio_ids}, case["revision"], repo.utc(case["expires_at"]))
     except provider.ProviderFailure as exc:
-        failure = {"code": exc.code, "message": f"Narration stopped at segment {len(audio_ids) + 1}. The text remains available; retry to continue.", "retryable": exc.retryable, "retryAfterSeconds": None, "missingEvidenceIds": []}
-        await repo.set_job(owner, job["job_id"], None, {"$set": {"status": "failed", "failure": failure}})
+        await purge_partial()
+        failure = {"code": exc.code, "message": f"Narration stopped at segment {len(audio_ids) + 1}. Partial audio was removed; retry starts the narration again.", "retryable": exc.retryable, "retryAfterSeconds": None, "missingEvidenceIds": []}
+        await repo.set_job(owner, job["job_id"], None, {"$set": {"status": "failed", "failure": failure, "audio_ids": []}})
+        await repo.emit(owner, case["case_id"], job["job_id"], "failed", failure, case["revision"], repo.utc(case["expires_at"]))
+    except Exception as exc:  # noqa: BLE001 - lifecycle cleanup owns unexpected narration failures too
+        await purge_partial()
+        failure = {"code": "narration_failed", "message": "Narration stopped unexpectedly. Partial audio was removed; retry starts again.",
+                   "retryable": True, "retryAfterSeconds": None, "missingEvidenceIds": [], "failureType": type(exc).__name__}
+        await repo.set_job(owner, job["job_id"], None, {"$set": {"status": "failed", "failure": failure, "audio_ids": []}})
         await repo.emit(owner, case["case_id"], job["job_id"], "failed", failure, case["revision"], repo.utc(case["expires_at"]))
 
 
@@ -955,8 +986,13 @@ async def save_report(case_id: str, body: ReportRequest, request: Request):
     report_id = str(uuid.uuid4())
     report = {"reportId": report_id, "caseId": case_id, "gates": case["gates"], "savedAt": now_utc().isoformat(), "overview": redact_investigation_secrets(response["overview"]),
               "explanationMarkdown": redact_investigation_secrets(response["explanationMarkdown"]), "assessment": response["assessment"], "attention": response["attention"],
-              "findings": [redact_investigation_secrets(f["text"]) for f in response["findings"]], "uncertainties": response["uncertainties"],
-              "sources": [{"url": s["url"], "title": s["title"], "authority": s["authority"]} for s in sources if s["id"] in set(response["sourceIds"])], "historical": True}
+              "scope": redact_investigation_secrets(response["scope"]), "responseRevision": body.response_revision,
+              "findings": [redact_investigation_secrets(f["text"]) for f in response["findings"]],
+              "uncertainties": [redact_investigation_secrets(item) for item in response["uncertainties"]],
+              "actions": [{"id": action["id"], "label": redact_investigation_secrets(action["label"]),
+                           "instruction": redact_investigation_secrets(action["instruction"]), "kind": action["kind"]} for action in response["actions"]],
+              "sources": [{"url": s["url"], "title": s["title"], "authority": s["authority"]} for s in sources if s["id"] in set(response["sourceIds"])],
+              "historical": True, "retentionNotice": "This saved snapshot remains until you delete it. It does not update with live protection status."}
     await db.investigation_reports.insert_one({"owner_id": owner, "report_id": report_id, "report_ciphertext": repo.enc_json(report), "saved_at": now_utc()})
     return JSONResponse({"reportId": report_id}, status_code=201, headers=NO_STORE)
 

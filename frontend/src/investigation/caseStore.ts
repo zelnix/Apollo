@@ -16,11 +16,11 @@ export type Phase = "idle" | "creating" | "working" | "reconnecting" | "waiting_
 export interface CaseState {
   phase: Phase; operationId: string | null; caseData: InvestigationCase | null; job: Job | null; progress: string[];
   response: HigginsResponse | null; sources: SourceReference[]; turns: TurnCommit[]; failure: Failure | null;
-  question: Question | null; error: string | null; undeleted?: string | null;
+  question: Question | null; error: string | null; notice: string | null; undeleted?: string | null;
 }
 
 const EMPTY: CaseState = { phase: "idle", operationId: null, caseData: null, job: null, progress: [], response: null,
-  sources: [], turns: [], failure: null, question: null, error: null };
+  sources: [], turns: [], failure: null, question: null, error: null, notice: null };
 const UNDELETED_KEY = "apollo.investigation.undeleted";
 
 async function pendingDeletions(): Promise<string[]> {
@@ -167,7 +167,7 @@ export function useInvestigation(boundOperationId?: string | null) {
     const turn = pending.current?.message === message ? pending.current : { turnId: Crypto.randomUUID(), key: Crypto.randomUUID(), message,
       answerTo: (caseRef.current?.response?.question ?? state.question)?.id ?? null };
     pending.current = turn;
-    update({ phase: "working", error: null, failure: null, progress: ["Sending your follow-up to Higgins."] });
+    update({ phase: "working", error: null, notice: null, failure: null, progress: ["Sending your follow-up to Higgins."] });
     const gen = generation.current; const live = () => gen === generation.current && caseRef.current?.id === caseData.id;
     try {
       const fresh = await api.getCase(caseData.id); if (!live()) return false;
@@ -191,7 +191,7 @@ export function useInvestigation(boundOperationId?: string | null) {
     const caseData = caseRef.current ?? state.caseData;
     if (operationRef.current) {
       const record = managedOperation(operationRef.current, caseData?.id);
-      if (record?.phase === "failed") { update({ phase: "working", error: null, progress: ["Resuming this exact operation."] }); adoptManaged((await retryManagedOperation(record.operationId, record.caseId))!); return; }
+      if (record?.phase === "failed") { update({ phase: "working", error: null, notice: null, progress: ["Resuming this exact operation."] }); adoptManaged((await retryManagedOperation(record.operationId, record.caseId))!); return; }
     }
     if (pendingCancellation.current) { await cancelAction.current(); return; }
     if (pending.current && (!state.job || state.job.status !== "failed")) { await ask(pending.current.message); return; }
@@ -204,17 +204,29 @@ export function useInvestigation(boundOperationId?: string | null) {
   const cancel = useCallback(async () => {
     const { caseData, job } = state; if (!caseData || !job) return;
     pendingCancellation.current = { caseId: caseData.id, jobId: job.id };
-    update({ phase: "working", error: null, progress: ["Requesting cancellation. Work remains connected until Apollo confirms it stopped."] });
+    update({ phase: "working", error: null, notice: null, progress: ["Requesting cancellation. Work remains connected until Apollo confirms it stopped."] });
     const gen = generation.current; const live = () => gen === generation.current && caseRef.current?.id === caseData.id;
     try {
       const result = await api.cancelJob(caseData.id, job.id, caseData.revision); const fresh = await refresh(caseData.id, gen); if (!live()) return;
       pendingCancellation.current = null;
       if (result.cancelled) { stream.current?.abort(); pending.current = null; if (operationRef.current) cancelManagedOperation(operationRef.current, caseData.id);
-        update({ phase: fresh.response ? "answered" : "idle", progress: [], error: fresh.response ? null : "Investigation cancelled." }); return; }
-      if (!["completed", "failed", "cancelled", "expired", "waiting_user"].includes(result.status) && fresh.activeJobId) follow(caseData.id, (await api.getJob(caseData.id, fresh.activeJobId)).job);
-      else stream.current?.abort();
+        update({ phase: fresh.response ? "answered" : "idle", progress: [], error: null,
+          notice: "The active turn was cancelled. Existing case evidence remains available until its deadline." }); return; }
+      if (result.outcome === "completed" || fresh.response) {
+        stream.current?.abort(); pending.current = null;
+        if (operationRef.current) settleManagedOperation(operationRef.current, caseData.id, fresh, null);
+        update({ phase: fresh.response?.question ? "waiting_user" : "answered", response: fresh.response, question: fresh.response?.question ?? null,
+          progress: [], error: null, notice: "Higgins finished before cancellation took effect, so the completed answer is shown." });
+        return;
+      }
+      if (result.outcome === "failed") { stream.current?.abort(); update({ phase: "failed", progress: [], notice: null,
+        error: "This turn finished with an error before cancellation took effect." }); return; }
+      if (!["complete", "failed", "cancelled", "expired", "waiting_user"].includes(result.status) && fresh.activeJobId) {
+        const active = (await api.getJob(caseData.id, fresh.activeJobId)).job;
+        update({ notice: "This turn was no longer active; Apollo stayed connected to the current work." }); follow(caseData.id, active);
+      } else { stream.current?.abort(); update({ notice: "This turn was no longer active, so no cancellation was applied." }); }
     } catch (error: unknown) {
-      if (live()) update({ phase: "failed", error: error instanceof ApiError && error.status === 409
+      if (live()) update({ phase: "failed", notice: null, error: error instanceof ApiError && error.status === 409
         ? "Cancellation was not confirmed because this is no longer the same active turn. Retry against current work."
         : "Cancellation was not confirmed. Apollo kept the investigation connected; Retry to try again." });
     }

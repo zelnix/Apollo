@@ -2,6 +2,7 @@
 // sides). Audio never carries a bearer token in a URL: playback uses a short-lived ticket minted by the backend.
 // Microphone permission follows the contract: ask only on intent, explain first, respect canAskAgain, offer Settings.
 import { createAudioPlayer, RecordingPresets, requestRecordingPermissionsAsync, getRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder, useAudioRecorderState, type AudioPlayer } from "expo-audio";
+import * as Crypto from "expo-crypto";
 import Mic from "lucide-react-native/icons/mic";
 import Pause from "lucide-react-native/icons/pause";
 import Play from "lucide-react-native/icons/play";
@@ -43,6 +44,7 @@ export function VoiceNoteRecorder({ scentId, deviceId, fromName, onSent }: { sce
   const [err, setErr] = useState<string | null>(null);
   const [durationMs, setDurationMs] = useState(0);
   const stopping = useRef(false);
+  const submissionId = useRef(Crypto.randomUUID());
 
   const stop = async () => {
     if (stopping.current) return; stopping.current = true;
@@ -55,6 +57,7 @@ export function VoiceNoteRecorder({ scentId, deviceId, fromName, onSent }: { sce
 
   const begin = async () => {
     setErr(null);
+    submissionId.current = Crypto.randomUUID();
     try {
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
       await recorder.prepareToRecordAsync();
@@ -84,7 +87,7 @@ export function VoiceNoteRecorder({ scentId, deviceId, fromName, onSent }: { sce
     const isWeb = Platform.OS === "web";
     const type = isWeb ? "audio/webm" : "audio/m4a";
     try {
-      await apiUpload(`/family/incidents/${scentId}/voice`, "family", { device_id: deviceId, from_name: fromName, duration_s: String(Math.min(VOICE_MAX_SECONDS, Math.round(durationMs / 100) / 10)) }, { uri, name: isWeb ? "note.webm" : "note.m4a", type });
+      await apiUpload(`/family/incidents/${scentId}/voice`, "family", { device_id: deviceId, submission_id: submissionId.current, from_name: fromName, duration_s: String(Math.min(VOICE_MAX_SECONDS, Math.round(durationMs / 100) / 10)) }, { uri, name: isWeb ? "note.webm" : "note.m4a", type });
       showToast("Voice note sent. They'll hear it on the incident.", "resting");
       setPhase("idle"); onSent();
     } catch (e) { setErr(e instanceof Error ? e.message : "Couldn't send the voice note."); setPhase("review"); }

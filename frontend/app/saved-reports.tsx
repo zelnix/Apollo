@@ -14,8 +14,8 @@ const useStyles = makeStyles((c) => ({ root: { flex: 1, backgroundColor: c.surfa
 export default function SavedReportsScreen() {
   const s = useStyles(); const { colors } = useTheme(); const insets = useSafeAreaInsets(); const router = useRouter();
   const [items, setItems] = useState<reportsApi.SavedReport[]>([]); const [cursor, setCursor] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null);
-  const load = async (next?: string | null) => { setLoading(true); setError(null); try { const result = await reportsApi.listReports(next); setItems((old) => next ? [...old, ...result.items] : result.items); setCursor(result.nextCursor); } catch { setError("Saved reports could not be loaded."); } finally { setLoading(false); } };
+  const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null); const [retryCursor, setRetryCursor] = useState<string | null>(null);
+  const load = async (next?: string | null) => { setLoading(true); setError(null); try { const result = await reportsApi.listReports(next); setItems((old) => next ? [...old, ...result.items] : result.items); setCursor(result.nextCursor); setRetryCursor(null); } catch { setError("Saved reports could not be loaded."); setRetryCursor(next ?? null); } finally { setLoading(false); } };
   useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return <View style={s.root} testID="saved-reports-screen">
     <View style={[s.header, { paddingTop: insets.top + spacing.md }]}><Text style={s.title} testID="saved-reports-title">Saved reports</Text><Pressable testID="saved-reports-close" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable></View>
@@ -24,7 +24,7 @@ export default function SavedReportsScreen() {
         <View style={s.row}><Text testID={`saved-report-title-${item.reportId}`} style={s.reportTitle}>{item.overview}</Text><Pill testID={`saved-report-historical-${item.reportId}`} tone="neutral" label="Historical" /></View>
         <Body>{new Date(item.savedAt).toLocaleString()} · {item.gates.join(", ")}</Body>
       </Card></Pressable>}
-      ListEmptyComponent={loading ? <ActivityIndicator testID="saved-reports-loading" color={colors.brand} /> : <Card testID="saved-reports-empty"><Body>{error ?? "No reports have been saved yet."}</Body></Card>}
-      ListFooterComponent={cursor ? <Button testID="saved-reports-load-more" variant="secondary" label={loading ? "Loading…" : "Load more"} disabled={loading} onPress={() => void load(cursor)} /> : null} />
+      ListEmptyComponent={loading ? <ActivityIndicator testID="saved-reports-loading" color={colors.brand} /> : !error ? <Card testID="saved-reports-empty"><Body>No reports have been saved yet.</Body></Card> : null}
+      ListFooterComponent={<View style={{ gap: spacing.md }}>{error ? <Card testID="saved-reports-error"><Body>{error}</Body><Button testID="saved-reports-retry" label="Retry" onPress={() => void load(retryCursor)} /></Card> : null}{cursor && !error ? <Button testID="saved-reports-load-more" variant="secondary" label={loading ? "Loading…" : "Load more"} disabled={loading} onPress={() => void load(cursor)} /> : null}</View>} />
   </View>;
 }

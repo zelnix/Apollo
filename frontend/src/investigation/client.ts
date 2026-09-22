@@ -30,13 +30,13 @@ export function submitTurn(caseId: string, body: { expectedRevision: number; tur
   return postWithKey<{ job: Job; caseRevision: number }>(`/investigations/${caseId}/turns`, body, key, signal);
 }
 export function resumeJob(caseId: string, jobId: string, expectedRevision: number) { return postWithKey<{ job: Job }>(`/investigations/${caseId}/jobs/${jobId}/resume`, { expectedRevision }, Crypto.randomUUID()); }
-export function cancelJob(caseId: string, jobId: string, expectedRevision: number) { return apiPost<{ status: string; cancelled: boolean; cleanupStatus: string }>(`/investigations/${caseId}/jobs/${jobId}/cancel`, "investigation", { expectedRevision }); }
+export function cancelJob(caseId: string, jobId: string, expectedRevision: number) { return apiPost<{ status: string; outcome: "cancelled" | "completed" | "failed" | "superseded"; cancelled: boolean; cleanupStatus: string; caseRevision: number; responseRevision: number | null }>(`/investigations/${caseId}/jobs/${jobId}/cancel`, "investigation", { expectedRevision }); }
 export function submitDeviceResult(caseId: string, result: DeviceResult) { return apiPost<{ accepted: boolean; jobId: string }>(`/investigations/${caseId}/device-results`, "investigation", result as unknown as Record<string, unknown>); }
 export function addObservationEvidence(expectedRevision: number, caseId: string, deviceResult: DeviceResult) {
   return apiPost<{ evidence: EvidenceItem; caseRevision: number }>(`/investigations/${caseId}/evidence`, "investigation", { expectedRevision, clientItemId: Crypto.randomUUID(), parentId: null, kind: "observation", deviceResult: deviceResult as unknown as Record<string, unknown> });
 }
 export interface SettingsPlan { id: string; caseId: string; target: string; match: "exact" | "platform_only" | "unresolved"; mode: "permission_request" | "settings_link" | "instructions"; instructions: string[]; sourceIds: string[]; executionDescriptorId: string | null; expectedObservation: { capabilityId: string; field: string; expectedValue: boolean | string | null } | null }
-export interface SavedReport { reportId: string; caseId: string; gates: string[]; savedAt: string; overview: string; explanationMarkdown: string; assessment: string; attention: string; findings: string[]; uncertainties: string[]; historical: true }
+export interface SavedReport { reportId: string; caseId: string; gates: string[]; savedAt: string; responseRevision: number; overview: string; explanationMarkdown: string; assessment: string; attention: string; scope: string; findings: string[]; uncertainties: string[]; sources: { url: string; title: string; authority: string }[]; actions: { id: string; label: string; instruction: string; kind: string }[]; historical: true; retentionNotice: string }
 export function createSettingsPlan(caseId: string, body: { expectedRevision: number; target: string; device: DeviceProfile; capabilityId: string | null; expectedField: string; expectedValue: boolean | string | null }) {
   return apiPost<{ plan: SettingsPlan; researchNote: string | null }>(`/investigations/${caseId}/settings-plan`, "investigation", body as unknown as Record<string, unknown>);
 }

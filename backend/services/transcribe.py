@@ -23,7 +23,15 @@ async def transcribe_bytes(data: bytes, ext: str) -> tuple[str, str] | None:
 
 
 async def caption_voice_note(note_id: str, data: bytes, ext: str) -> None:
+    note = await db.incident_notes.find_one({"note_id": note_id, "kind": "voice", "audio_state": "stored", "lifecycle_revoked_at": {"$exists": False}}, {"_id": 0})
+    if not note:
+        return
+    linked = await db.family_links.find_one({"guardian_device_id": note["guardian_device_id"], "protected_device_id": note["protected_device_id"], "deleted_at": None,
+                                             "$or": [{"lifecycle_generation": note.get("link_generation")}, {"lifecycle_generation": {"$exists": False}}]}, {"_id": 1})
+    if not linked:
+        return
     result = await transcribe_bytes(data, ext)
     update = {"transcript": result[0], "transcript_language": result[1], "transcript_status": "ready"} if result else {
         "transcript": "", "transcript_language": None, "transcript_status": "unavailable"}
-    await db.incident_notes.update_one({"note_id": note_id}, {"$set": {**update, "transcript_at": now_utc()}})
+    await db.incident_notes.update_one({"note_id": note_id, "audio_state": "stored", "lifecycle_revoked_at": {"$exists": False},
+                                        "link_generation": note.get("link_generation")}, {"$set": {**update, "transcript_at": now_utc()}})

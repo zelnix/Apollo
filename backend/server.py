@@ -77,6 +77,9 @@ async def lifespan(_: FastAPI):
     await db.blocklist.create_index("host", unique=True)
     await db.admin_audit.create_index([("at", -1)])
     await db.incident_notes.create_index("note_id")
+    await db.family_audio_cleanup.create_index("cleanup_id", unique=True)
+    await db.incident_notes.create_index([("guardian_device_id", 1), ("protected_device_id", 1), ("submission_id", 1)], unique=True,
+                                         partialFilterExpression={"submission_id": {"$type": "string"}})
     for host, threat, reason in SEED_BLOCKLIST:
         entry = BlocklistEntry(host=host, threat_type=threat, reason=reason, added_at=now_utc())
         await db.blocklist.update_one({"host": host}, {"$setOnInsert": entry.to_mongo()}, upsert=True)

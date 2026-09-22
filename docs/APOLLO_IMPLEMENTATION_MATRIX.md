@@ -1,3 +1,14 @@
+## Consolidated architecture mandate — Milestone 3 closure (2026-09-22)
+
+Both M3 findings (`C13`, `C14`) are implemented in source.
+
+| ID | Outcome | Primary evidence |
+|---|---|---|
+| C13 | ✅ Truthful, fenced cancellation | Cancel returns an explicit `cancelled`, `completed`, `failed`, or `superseded` outcome. Accepted completion wins the race and the client refreshes/displays that answer; duplicate cancellation is idempotent, stale cancellation cannot clear newer work, and cancelled narration removes partial chunks. |
+| C14 | ✅ Complete report/media lifecycle | Saved reports include scope, sources, historical actions, response revision and retention notice; list/detail failures retain Retry controls; owner deletion removes report, speech scope and cache. Family voice uses deliberate submission identity, relationship generation fences, post-upload revalidation, unlink transcript fencing, and late captions cannot republish revoked content. |
+
+Permitted verification: TypeScript compilation and ESLint pass; 58 provider-disabled investigation/lifecycle pytest tests pass; Cargo check passes. No Playwright/scenario agent/live Gemini/managed AI key was used. Android native source remains outside compiler verification because the owner restricted checks to TypeScript, ESLint, pytest and Cargo.
+
 ## Consolidated architecture mandate — Milestone 2 closure (2026-09-22)
 
 All six M2 register items (`C05`, `C06`, `C08–C11`) are implemented in source.

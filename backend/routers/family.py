@@ -173,6 +173,7 @@ async def link_device(body: LinkRequest):
     await db.pair_codes.update_one({"_id": pc["_id"]}, {"$set": {"used": True}})
     await db.family_links.update_one({"protected_device_id": pc["protected_device_id"], "guardian_device_id": body.device_id},
                                      {"$set": {"protected_device_id": pc["protected_device_id"], "guardian_device_id": body.device_id, "owner_name": pc.get("owner_name", ""), "owner_phone": pc.get("owner_phone", ""), "created_at": now_utc(), "deleted_at": None,
+                                               "lifecycle_generation": uuid.uuid4().hex,
                                                **({"guardian_label": body.guardian_name.strip()} if body.guardian_name.strip() else {})}}, upsert=True)
     return {"linked": True, "owner_name": pc.get("owner_name", "")}
 
@@ -244,6 +245,8 @@ async def unlink_device(link_id: str, device_id: str = Query(min_length=8, max_l
         raise HTTPException(status_code=404, detail="Unknown pairing.")
     link = await db.family_links.find_one({"_id": oid}, {"protected_device_id": 1, "guardian_device_id": 1})
     if link:  # the relationship ended: voice audio exchanged within it is purged (confirmed or retried by the sweeper)
+        await db.incident_notes.update_many({"protected_device_id": link["protected_device_id"], "guardian_device_id": link["guardian_device_id"]},
+                                            {"$set": {"lifecycle_revoked_at": now_utc(), "transcript": "", "transcript_status": "revoked"}})
         await purge_voice_audio({"protected_device_id": link["protected_device_id"], "guardian_device_id": link["guardian_device_id"]}, "unlinked")
     return Response(status_code=204)
 
@@ -469,7 +472,9 @@ def _voice_sig(note_id: str, exp: int) -> str:
 
 
 @router.post("/family/incidents/{scent_id}/voice", status_code=201)
-async def add_voice_note(request: Request, scent_id: str, device_id: str = Form(min_length=8, max_length=64), from_name: str = Form(default="", max_length=40),
+async def add_voice_note(request: Request, scent_id: str, device_id: str = Form(min_length=8, max_length=64),
+                         submission_id: str = Form(min_length=8, max_length=80, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{7,79}$"),
+                         from_name: str = Form(default="", max_length=40),
                          duration_s: float = Form(default=0, ge=0, le=VOICE_MAX_SECONDS), file: UploadFile = File(...)):
     # Multipart bodies are not inspected by the router-wide gate → bind the form's device_id to the bearer here.
     if request.state.device["device_id"] != device_id:
@@ -477,6 +482,14 @@ async def add_voice_note(request: Request, scent_id: str, device_id: str = Form(
     inc = await db.shared_incidents.find_one({"scent_id": scent_id, "guardian_device_id": device_id})
     if not inc:
         raise HTTPException(status_code=404, detail="Incident not found")
+    link = await db.family_links.find_one({"guardian_device_id": device_id, "protected_device_id": inc["protected_device_id"], "deleted_at": None})
+    if not link:
+        raise HTTPException(status_code=403, detail="You're no longer paired with this person.")
+    link_generation = link.get("lifecycle_generation") or str(link["_id"])
+    note_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"apollo-family-voice:{device_id}:{scent_id}:{link_generation}:{submission_id}"))
+    existing = await db.incident_notes.find_one({"note_id": note_id, "guardian_device_id": device_id, "lifecycle_revoked_at": {"$exists": False}}, {"_id": 0, "audio_path": 0})
+    if existing:
+        return existing
     ctype = (file.content_type or "").split(";")[0].strip().lower()
     ext = VOICE_TYPES.get(ctype)
     if not ext:
@@ -486,35 +499,44 @@ async def add_voice_note(request: Request, scent_id: str, device_id: str = Form(
         raise HTTPException(status_code=413, detail="Keep voice notes under 30 seconds.")
     if len(data) < 200:
         raise HTTPException(status_code=422, detail="The recording was empty. Try again.")
-    link = await db.family_links.find_one({"guardian_device_id": device_id, "protected_device_id": inc["protected_device_id"], "deleted_at": None})
-    if not link:
-        raise HTTPException(status_code=403, detail="You're no longer paired with this person.")
     guardian_label = from_name.strip() or link.get("guardian_label") or "A family member"
     if from_name.strip():
         await db.family_links.update_one({"_id": link["_id"]}, {"$set": {"guardian_label": guardian_label}})
-    note_id = uuid.uuid4().hex
     path = voice_note_path(device_id, note_id, ext)
-    cleanup_id = uuid.uuid4().hex
-    await db.family_audio_cleanup.insert_one({"cleanup_id": cleanup_id, "note_id": note_id, "audio_path": path, "state": "reserved", "created_at": now_utc()})
-    try:
-        stored = await put_object(path, data, ctype)
-    except StorageError as exc:
-        if exc.outcome == "not_stored":
+    cleanup_id = f"voice:{note_id}"
+    await db.family_audio_cleanup.update_one({"cleanup_id": cleanup_id}, {"$setOnInsert": {"cleanup_id": cleanup_id, "note_id": note_id,
+        "submission_id": submission_id, "audio_path": path, "state": "reserved", "created_at": now_utc()}}, upsert=True)
+    cleanup = await db.family_audio_cleanup.find_one({"cleanup_id": cleanup_id}, {"_id": 0})
+    stored = {"path": cleanup.get("audio_path", path), "size": len(data)} if cleanup and cleanup.get("state") == "stored" else None
+    if not stored:
+        try:
+            stored = await put_object(path, data, ctype)
+        except StorageError as exc:
+            if exc.outcome == "not_stored":
+                await db.family_audio_cleanup.delete_one({"cleanup_id": cleanup_id})
+            else:
+                await db.family_audio_cleanup.update_one({"cleanup_id": cleanup_id}, {"$set": {
+                    "state": "outcome_unknown", "last_attempt_at": now_utc(), "last_error": type(exc).__name__,
+                }})
+            raise HTTPException(status_code=exc.status, detail=exc.detail)
+    await db.family_audio_cleanup.update_one({"cleanup_id": cleanup_id}, {"$set": {"state": "stored", "audio_path": stored.get("path", path), "stored_at": now_utc()}})
+    still_linked = await db.family_links.find_one({"_id": link["_id"], "deleted_at": None,
+                                                   "$or": [{"lifecycle_generation": link_generation}, {"lifecycle_generation": {"$exists": False}}]}, {"_id": 1})
+    if not still_linked:
+        deleted = await delete_object(stored.get("path", path))
+        if deleted:
             await db.family_audio_cleanup.delete_one({"cleanup_id": cleanup_id})
         else:
-            await db.family_audio_cleanup.update_one({"cleanup_id": cleanup_id}, {"$set": {
-                "state": "outcome_unknown", "last_attempt_at": now_utc(), "last_error": type(exc).__name__,
-            }})
-        raise HTTPException(status_code=exc.status, detail=exc.detail)
-    await db.family_audio_cleanup.update_one({"cleanup_id": cleanup_id}, {"$set": {"state": "stored", "audio_path": stored.get("path", path), "stored_at": now_utc()}})
-    note = {"note_id": note_id, "scent_id": scent_id, "protected_device_id": inc["protected_device_id"], "guardian_device_id": device_id,
+            await db.family_audio_cleanup.update_one({"cleanup_id": cleanup_id}, {"$set": {"state": "delete_pending"}})
+        raise HTTPException(status_code=409, detail="This family link ended before the voice note finished uploading.")
+    note = {"note_id": note_id, "submission_id": submission_id, "scent_id": scent_id, "protected_device_id": inc["protected_device_id"], "guardian_device_id": device_id,
             "guardian_label": guardian_label, "kind": "voice", "text": f"{guardian_label} left you a voice note.", "phone": link.get("guardian_phone", ""),
             "duration_s": round(float(duration_s), 1), "content_type": ctype, "size": stored.get("size", len(data)), "created_at": now_utc(),
-            "transcript": "", "transcript_language": None, "transcript_status": "pending"}  # caption arrives asynchronously (services/transcribe.py)
+            "transcript": "", "transcript_language": None, "transcript_status": "pending", "link_generation": link_generation}  # caption arrives asynchronously (services/transcribe.py)
     # Storage lifecycle (§10A): every stored voice note carries its retention deadline; audio is purged at expiry, on unlink of the
     # guardian relationship, or on incident removal. `audio_state` is the truthful availability the client and reports rely on.
     try:
-        await db.incident_notes.insert_one({**note, "audio_path": stored.get("path", path), "audio_state": "stored", "audio_expires_at": now_utc() + timedelta(days=VOICE_RETENTION_DAYS)})
+        await db.incident_notes.update_one({"note_id": note_id}, {"$setOnInsert": {**note, "audio_path": stored.get("path", path), "audio_state": "stored", "audio_expires_at": now_utc() + timedelta(days=VOICE_RETENTION_DAYS)}}, upsert=True)
     except Exception:
         deleted = await delete_object(stored.get("path", path))
         if deleted:
@@ -522,6 +544,16 @@ async def add_voice_note(request: Request, scent_id: str, device_id: str = Form(
         else:
             await db.family_audio_cleanup.update_one({"cleanup_id": cleanup_id}, {"$set": {"state": "delete_pending", "last_attempt_at": now_utc()}})
         raise HTTPException(status_code=503, detail="The voice note could not be attached. Apollo queued the uploaded audio for deletion.")
+    current_link = await db.family_links.find_one({"_id": link["_id"], "deleted_at": None,
+                                                   "$or": [{"lifecycle_generation": link_generation}, {"lifecycle_generation": {"$exists": False}}]}, {"_id": 1})
+    if not current_link:
+        await db.incident_notes.update_one({"note_id": note_id}, {"$set": {"lifecycle_revoked_at": now_utc(), "transcript": "", "transcript_status": "revoked"}})
+        deleted = await delete_object(stored.get("path", path))
+        if deleted:
+            await db.family_audio_cleanup.delete_one({"cleanup_id": cleanup_id})
+        else:
+            await db.family_audio_cleanup.update_one({"cleanup_id": cleanup_id}, {"$set": {"state": "delete_pending", "last_attempt_at": now_utc()}})
+        raise HTTPException(status_code=409, detail="This family link ended before the voice note was attached.")
     await db.family_audio_cleanup.delete_one({"cleanup_id": cleanup_id})
     task = asyncio.create_task(caption_voice_note(note_id, data, ext))
     _background.add(task)

@@ -140,6 +140,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
       {question.answerType === "yes_no" ? <View style={s.row}><Button testID="inv-answer-yes" label="Yes" onPress={() => onAnswer?.("Yes")} /><Button testID="inv-answer-no" variant="ghost" label="No" onPress={() => onAnswer?.("No")} /></View> : null}
       {question.answerType === "choice" ? <View style={s.row}>{question.choices.map((c) => <Button key={c} testID={`inv-answer-${c}`} variant="ghost" label={c} onPress={() => onAnswer?.(c)} />)}</View> : null}</View> : null}
     {failure && phase !== "failed" ? <Text style={s.muted} testID="inv-partial-reason">Incomplete: {failure.message}</Text> : null}
+    {state.notice ? <Card style={s.card} testID="inv-lifecycle-notice"><Body>{state.notice}</Body></Card> : null}
     {error && (phase === "failed" || phase === "expired") ? <Card style={s.card} testID="inv-error"><Text style={[s.text, { color: colors.barkingText }]}>{error}</Text>
       {phase === "failed" && caseData ? <Button testID="inv-retry" label="Retry this turn" onPress={onRetry} /> : null}</Card> : null}
   </View>;

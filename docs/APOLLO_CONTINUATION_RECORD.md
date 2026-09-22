@@ -1,3 +1,12 @@
+## 2026-09-22 consolidated mandate M3 implementation
+
+- Implemented M3 findings `C13` and `C14`.
+- Cancellation now has explicit actual outcomes. Duplicate cancel is idempotent; stale requests cannot clear newer work; accepted completion wins the race and the mobile client shows the winning answer instead of claiming cancellation.
+- Case narration is fenced by both epoch and work epoch before/after provider calls. Cancellation, deletion, expiry and unexpected failures remove partial narration cache before retry.
+- Saved reports now retain historical scope, sources, actions, response revision and a clear saved-until-deleted notice. Independent list/detail errors keep persistent Retry controls; report deletion removes linked speech scope/cache.
+- Family voice notes now use one stable identity per recording, relationship-generation fencing and idempotent attachment. Uploads revalidate the relationship before and after note publication; unlink immediately fences/clears transcripts, and late caption workers cannot republish revoked content.
+- Verification: TypeScript and ESLint pass, 58 provider-disabled lifecycle pytest tests pass, and Cargo check passes. No live Gemini or prohibited scenario/browser testing was used.
+
 ## 2026-09-22 consolidated mandate M2 implementation
 
 - Implemented all six M2 findings: `C05`, `C06`, `C08–C11`.

@@ -1,3 +1,26 @@
+## Consolidated architecture mandate — M3 implemented (2026-09-22)
+
+### Problem statement
+Close the remaining lifecycle semantics: cancellation must report the actual race winner and fence downstream effects; saved reports, speech, family voice, captions and retry UX must have explicit identity, ownership and cleanup.
+
+### Architecture implemented
+- **Cancellation:** server outcomes are typed as cancelled/completed/failed/superseded. Accepted turns are detected from the encrypted accepted-commit ledger; the mobile case store refreshes and displays completion if it won. Duplicate cancel is idempotent and stale cancel preserves newer work.
+- **Narration:** speech jobs enter an observable active state, verify epoch/work epoch before and after provider calls, and purge partial chunks on cancellation, deletion, expiry or provider/unexpected failure.
+- **Saved reports:** persistent historical scope/sources/actions/revision/retention notice, stable list/detail retry controls, and owner-scoped deletion of report plus speech scope/cache.
+- **Family voice:** stable recording submission ID, relationship generation, idempotent attachment, pre/post publication link validation, unlink transcript fencing and caption updates conditional on an unrevoked matching generation.
+
+### Verification and boundaries
+- TypeScript compilation and ESLint pass.
+- 58 investigation/lifecycle pytest tests pass with `GEMINI_API_KEY` explicitly disabled.
+- Cargo check passes.
+- No Playwright, scenario/testing agent, live Gemini call or Emergent-managed key was used.
+- Android Gradle/Kotlin compilation remains intentionally outside the owner-approved verification commands.
+
+### Priorities
+- **P0:** M3 source implementation complete.
+- **P1:** Continue M4 finding `C15` (iOS capability/delivery truth), then M5 package/configuration work.
+- **P2:** Production-default cutover remains separate.
+
 ## Consolidated architecture mandate — M2 implemented (2026-09-22)
 
 ### Problem statement

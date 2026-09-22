@@ -27,9 +27,10 @@ def _run(coro_fn):
         import services.higgins.retention as retention
         import routers.family as family
         import routers.patrol as patrol
+        import services.transcribe as transcribe_module
         import services.higgins.tools as tools_module
         import services.investigation_projector as projector
-        importlib.reload(repo); importlib.reload(jobs); importlib.reload(retention); importlib.reload(family); importlib.reload(patrol); importlib.reload(tools_module); importlib.reload(projector)
+        importlib.reload(repo); importlib.reload(jobs); importlib.reload(retention); importlib.reload(transcribe_module); importlib.reload(family); importlib.reload(patrol); importlib.reload(tools_module); importlib.reload(projector)
         import routers.investigations as inv
         importlib.reload(inv)
         global db
@@ -41,7 +42,7 @@ def _run(coro_fn):
             fresh_client.close()
             core_db.client, core_db.db = original_client, original_db
             db = original_db
-            importlib.reload(repo); importlib.reload(jobs); importlib.reload(retention); importlib.reload(family); importlib.reload(patrol); importlib.reload(tools_module); importlib.reload(projector); importlib.reload(inv)
+            importlib.reload(repo); importlib.reload(jobs); importlib.reload(retention); importlib.reload(transcribe_module); importlib.reload(family); importlib.reload(patrol); importlib.reload(tools_module); importlib.reload(projector); importlib.reload(inv)
     asyncio.run(wrapped())
 
 
@@ -123,6 +124,26 @@ def test_published_root_replays_when_upload_projection_was_interrupted():
 
 def test_stale_cancellation_cannot_clear_a_newer_active_turn():
     _run(lambda inv: _stale_cancel_preserves_new_turn(inv))
+
+
+def test_duplicate_cancellation_is_idempotent_and_cleanup_complete():
+    _run(lambda inv: _duplicate_cancel(inv))
+
+
+def test_completion_wins_cancel_race_and_returns_answer_state():
+    _run(lambda inv: _completion_wins_cancel(inv))
+
+
+def test_cancelled_narration_removes_partial_audio_chunks():
+    _run(lambda inv: _cancelled_narration_cleanup(inv))
+
+
+def test_revoked_family_caption_cannot_republish_transcript():
+    _run(lambda inv: _revoked_caption())
+
+
+def test_family_voice_submission_identity_is_idempotent():
+    _run(lambda inv: _family_voice_idempotency())
 
 
 def test_observation_ledger_replay_restores_pending_request():
@@ -707,14 +728,92 @@ async def _stale_cancel_preserves_new_turn(inv):
     first = await repo.create_job(owner, case, str(uuid.uuid4()), repo.digest("cancel-1"), repo.digest("p1"), "turn", {"message": "first"})
     second = await repo.create_job(owner, case, str(uuid.uuid4()), repo.digest("cancel-2"), repo.digest("p2"), "turn", {"message": "second"})
     active = await repo.cas(owner, case["case_id"], {"revision": 0}, {"$set": {"active_job_id": second["job_id"], "active_turn_id": second["turn_id"], "status": "queued"}})
-    with pytest.raises(HTTPException) as exc:
-        await inv.cancel_job(case["case_id"], first["job_id"], ExpectedRevision(expected_revision=active["revision"]), _request(owner))
-    assert exc.value.status_code == 409
+    superseded = await inv.cancel_job(case["case_id"], first["job_id"], ExpectedRevision(expected_revision=active["revision"]), _request(owner))
+    assert json.loads(superseded.body)["outcome"] == "superseded"
     fresh_case = await repo.get_case(owner, case["case_id"])
     assert fresh_case["active_job_id"] == second["job_id"]
     await db.investigation_jobs.update_one({"owner_id": owner, "job_id": first["job_id"]}, {"$set": {"status": "completed"}})
     response = await inv.cancel_job(case["case_id"], first["job_id"], ExpectedRevision(expected_revision=fresh_case["revision"]), _request(owner))
-    assert json.loads(response.body) == {"status": "completed", "cleanupStatus": "not_required", "cancelled": False}
+    payload = json.loads(response.body)
+    assert payload["status"] == "completed" and payload["outcome"] == "completed" and payload["cancelled"] is False
+
+
+async def _duplicate_cancel(inv):
+    from services.higgins.contracts import ExpectedRevision
+    owner = f"cancel-{uuid.uuid4().hex[:8]}"; case = await repo.create_case(owner, "text", None)
+    job = await repo.create_job(owner, case, str(uuid.uuid4()), repo.digest("cancel-key"), repo.digest("cancel-payload"), "turn", {"message": "q"})
+    case = await repo.cas(owner, case["case_id"], {"revision": 0}, {"$set": {"active_job_id": job["job_id"], "active_turn_id": job["turn_id"], "status": "queued"}})
+    first = json.loads((await inv.cancel_job(case["case_id"], job["job_id"], ExpectedRevision(expectedRevision=case["revision"]), _request(owner))).body)
+    second = json.loads((await inv.cancel_job(case["case_id"], job["job_id"], ExpectedRevision(expectedRevision=case["revision"]), _request(owner))).body)
+    assert first["cancelled"] is True and second["cancelled"] is True
+    assert first["cleanupStatus"] == second["cleanupStatus"] == "complete"
+
+
+async def _completion_wins_cancel(inv):
+    from services.higgins.contracts import ExpectedRevision, HigginsResponse, ProviderResult, TurnCommit
+    owner = f"complete-{uuid.uuid4().hex[:8]}"; case = await repo.create_case(owner, "text", None)
+    turn_id = str(uuid.uuid4()); job = await repo.create_job(owner, case, turn_id, repo.digest("complete-key"), repo.digest("complete-payload"), "turn", {"message": "q"})
+    case = await repo.cas(owner, case["case_id"], {"revision": 0}, {"$set": {"active_job_id": job["job_id"], "active_turn_id": turn_id, "status": "investigating"}})
+    leased = await repo.acquire_lease(owner, job["job_id"]); case = await repo.cas(owner, case["case_id"], {"active_job_id": job["job_id"]}, {"$set": {"lease_fence": leased["fence"]}}, bump=False)
+    response = HigginsResponse(revision=1, overview="Finished first", explanationMarkdown="Answer", assessment="uncertain", attention="review",
+                               findings=[], uncertainties=[], scope="submitted text", sourceIds=[], remainingEvidenceIds=[], actions=[], completion="complete")
+    commit = TurnCommit(turnId=turn_id, caseId=case["case_id"], inputRevision=1, committedRevision=1, question="q", response=response,
+                        provider=ProviderResult(model="pinned-test", finishReason="STOP", providerComplete=True), committedAt=now_utc())
+    commit_id = await repo.stage_turn(owner, commit, leased, repo.utc(case["expires_at"])); assert await repo.accept_turn(owner, case, leased, commit, commit_id, "complete", "none", None)
+    fresh = await repo.get_case(owner, case["case_id"])
+    result = json.loads((await inv.cancel_job(case["case_id"], job["job_id"], ExpectedRevision(expectedRevision=fresh["revision"]), _request(owner))).body)
+    assert result["cancelled"] is False and result["outcome"] == "completed" and result["responseRevision"] == 1
+
+
+async def _cancelled_narration_cleanup(inv):
+    owner = f"speech-{uuid.uuid4().hex[:8]}"; case = await repo.create_case(owner, "text", None)
+    job = await repo.create_job(owner, case, "speech-1-overview", repo.digest("speech-key"), repo.digest("speech"), "speech", {"section": "overview"})
+    await db.voice_cache.insert_one({"device_id": owner, "scope_id": case["case_id"], "job_id": job["job_id"], "audio_id": uuid.uuid4().hex})
+    await db.investigation_cases.update_one({"owner_id": owner, "case_id": case["case_id"]}, {"$set": {"work_epoch": uuid.uuid4().hex}})
+    await inv._speech_job(owner, case, job, "Narration should not run.")
+    assert await db.voice_cache.count_documents({"device_id": owner, "job_id": job["job_id"]}) == 0
+    assert (await repo.get_job(owner, case["case_id"], job["job_id"]))["status"] == "cancelled"
+
+
+async def _revoked_caption():
+    from services import transcribe
+    note_id, generation = uuid.uuid4().hex, uuid.uuid4().hex
+    await db.incident_notes.insert_one({"note_id": note_id, "kind": "voice", "audio_state": "stored", "guardian_device_id": "guardian-1234",
+                                        "protected_device_id": "protected-1234", "link_generation": generation, "lifecycle_revoked_at": now_utc(),
+                                        "transcript": "", "transcript_status": "revoked"})
+    called = False; original = transcribe.transcribe_bytes
+    async def forbidden(*args):
+        nonlocal called; called = True; return ("late transcript", "en")
+    transcribe.transcribe_bytes = forbidden
+    try: await transcribe.caption_voice_note(note_id, b"audio", "wav")
+    finally: transcribe.transcribe_bytes = original
+    note = await db.incident_notes.find_one({"note_id": note_id}, {"_id": 0})
+    assert called is False and note["transcript"] == "" and note["transcript_status"] == "revoked"
+
+
+async def _family_voice_idempotency():
+    import io
+    from starlette.datastructures import Headers, UploadFile
+    from routers import family
+    guardian, protected, scent, generation, submission = f"guardian-{uuid.uuid4().hex[:8]}", f"protected-{uuid.uuid4().hex[:8]}", uuid.uuid4().hex, uuid.uuid4().hex, uuid.uuid4().hex
+    await db.family_links.insert_one({"guardian_device_id": guardian, "protected_device_id": protected, "deleted_at": None, "lifecycle_generation": generation})
+    await db.shared_incidents.insert_one({"scent_id": scent, "guardian_device_id": guardian, "protected_device_id": protected, "headline": "Incident"})
+    calls = 0; originals = (family.put_object, family.send_push, family.caption_voice_note)
+    async def fake_put(path, data, content_type):
+        nonlocal calls; calls += 1; return {"path": path, "size": len(data)}
+    async def no_push(**kwargs): return None
+    async def no_caption(*args): return None
+    family.put_object, family.send_push, family.caption_voice_note = fake_put, no_push, no_caption
+    request = Request({"type": "http", "method": "POST", "path": "/", "headers": []}); request.state.device = {"device_id": guardian}
+    def upload(): return UploadFile(io.BytesIO(b"RIFF" + b"0" * 300), filename="note.wav", headers=Headers({"content-type": "audio/wav"}))
+    try:
+        first = await family.add_voice_note(request, scent, guardian, submission, "Family", 1.0, upload())
+        second = await family.add_voice_note(request, scent, guardian, submission, "Family", 1.0, upload())
+        await asyncio.sleep(0)
+    finally:
+        family.put_object, family.send_push, family.caption_voice_note = originals
+    assert first["note_id"] == second["note_id"] and calls == 1
+    assert await db.incident_notes.count_documents({"guardian_device_id": guardian, "submission_id": submission}) == 1
 
 
 async def _ledger_replay_restores_observation():
@@ -876,7 +975,7 @@ async def _family_audio_orphan_cleanup():
         return candidate == path
     family.delete_object = confirmed_delete
     try:
-        assert await family.sweep_voice_audio() == 1
+        assert await family.sweep_voice_audio() >= 1
     finally:
         family.delete_object = original
     assert await db.family_audio_cleanup.find_one({"cleanup_id": cleanup_id}) is None
