@@ -1,0 +1,11 @@
+# EAS native-build input only. Keep source/config/assets and exclude local caches or generated artifacts.
+node_modules/
+.metro-cache/
+.expo/
+coverage/
+*.log
+*.apk
+*.aab
+android/app/build/
+android/build/
+ios/build/

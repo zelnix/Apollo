@@ -38,6 +38,17 @@
         "EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE": "legacy",
         "EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS": "off"
       }
+    },
+    "app-bundle": {
+      "channel": "production",
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_APP_ENV": "production",
+        "EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE": "legacy",
+        "EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS": "off"
+      }
     }
   }
 }

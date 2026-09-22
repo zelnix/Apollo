@@ -1,3 +1,13 @@
+## Production app-bundle pre-install failure — fixed in source
+
+- Failed EAS build: `4dee4d9b-99ba-48db-825d-1f63c22414db` (Android app bundle, versionCode 110).
+- Fatal phase: `PRE_INSTALL_HOOK`, before native compilation. The deployment-created `app-bundle` profile inherited development-web values from `.env`: `EXPO_PUBLIC_APP_ENV=development` and `EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS=enabled`. Apollo's security preflight correctly rejected shipping simulated preview-device input in a native build.
+- Fix: `eas.json` now defines an explicit production-safe `app-bundle` profile; `.env.production` explicitly selects production/legacy/harness-off; `security-preflight.mjs` prevents every EAS native profile from inheriting base development-web defaults while preserving the fail-closed rejection of an explicitly unsafe profile.
+- Source hygiene: `.easignore` excludes generated native/build caches. Local ignored Rust, Metro, desktop-dist and Ruff artifacts (about 3.6 GB) were removed before the next deployment archive.
+- Verification: app-bundle, production, device-test and GuardDog acceptance pre-install matrices pass with their intended values; an explicit app-bundle + enabled preview harness still fails; security configuration tests 6/6; TypeScript and script lint clean; production Expo config resolves the expected native package and EAS project.
+- The preparer log `expo: command not found` was non-fatal in this run: project linking and EAS submission continued successfully. The EAS worker's only fatal error was the intentional security-preflight rejection above.
+- **Artifact status:** build `4dee4d9b-99ba-48db-825d-1f63c22414db` remains failed and contains no artifact. A new app-bundle build is required to validate the corrected source; no successful replacement build is claimed here.
+
 # Apollo build record
 
 ## Android — 2026-09-22 seven-defect correction candidate

@@ -76,6 +76,8 @@ agenthub/agents/youtube/db
 
 # Build caches
 .cache/
+.ruff_cache/
+**/.metro-cache/
 
 memory/test_credentials.md
 

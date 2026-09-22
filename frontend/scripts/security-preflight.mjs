@@ -33,9 +33,17 @@ function readDotenv(file) {
 }
 
 const profile = process.env.EAS_BUILD_PROFILE;
-const guessedEnv = process.env.EXPO_PUBLIC_APP_ENV || (profile === "production" ? "production" : profile === "staging" ? "staging" : process.env.NODE_ENV === "production" ? "production" : "development");
-const fromFiles = { ...readDotenv(path.join(root, ".env")), ...readDotenv(path.join(root, `.env.${guessedEnv}`)) };
-const cfg = Object.fromEntries(KEYS.map((k) => [k, process.env[k] ?? fromFiles[k]]));
+const profileDefaults = profile ? {
+  EXPO_PUBLIC_APP_ENV: ["device-test", "guarddog-acceptance", "staging"].includes(profile) ? "staging" : "production",
+  EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS: "off",
+  EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE: profile === "guarddog-acceptance" ? "guarddog_acceptance" : "legacy",
+} : {};
+const guessedEnv = process.env.EXPO_PUBLIC_APP_ENV || profileDefaults.EXPO_PUBLIC_APP_ENV || (process.env.NODE_ENV === "production" ? "production" : "development");
+const baseFile = readDotenv(path.join(root, ".env"));
+const environmentFile = readDotenv(path.join(root, `.env.${guessedEnv}`));
+// Native EAS profiles never inherit development-web defaults from `.env`. Explicit profile env wins, then the
+// matching environment file, then fail-safe native defaults. Local web development still reads `.env` normally.
+const cfg = Object.fromEntries(KEYS.map((k) => [k, process.env[k] ?? environmentFile[k] ?? (profile ? profileDefaults[k] : baseFile[k])]));
 if (!cfg.EXPO_PUBLIC_APP_ENV && profile) cfg.EXPO_PUBLIC_APP_ENV = guessedEnv;
 
 const errors = [];

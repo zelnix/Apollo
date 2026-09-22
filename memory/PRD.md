@@ -1,3 +1,11 @@
+## Production deployment build correction — EAS app-bundle pre-install
+
+- Diagnosed failed Android app-bundle build `4dee4d9b-99ba-48db-825d-1f63c22414db`: the generated `app-bundle` profile inherited development-web preview-harness values, and the native security preflight correctly stopped the build before compilation.
+- Added a production-safe `app-bundle` EAS profile, explicit production environment fail-closed values, and profile-aware preflight resolution that never inherits `.env` development-web defaults for a native EAS build.
+- Added `.easignore` and removed 3.6 GB of ignored generated caches from deployment input. No Docker changes were made.
+- Verification: four native profile preflights pass; deliberately unsafe app-bundle preview input remains rejected; security tests 6/6, TypeScript and lint pass; deployment health agent reports PASS.
+- The failed build has no artifact. The corrected source requires a fresh Android app-bundle build; success is not claimed until that build finishes.
+
 ## Current continuation — 7-package mandate repair and Packages 3–5 completion
 
 ### Problem statement
