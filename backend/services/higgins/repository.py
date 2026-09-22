@@ -252,7 +252,7 @@ async def insert_evidence(
            "byte_length": item.byte_length, "coverage": item.coverage.wire(), "simulation": item.simulation.wire() if item.simulation else None,
            "transformations": [t.wire() for t in item.transformations], "label": item.label, "meta_ciphertext": enc_json(meta),
            "publication_root_id": root_id, "publication_state": "staging", "ingestion_attempt_id": ingestion_attempt_id or root_id,
-           **({"publication_owner": publication_owner} if publication_owner and root_id == item.id else {})}
+           **({"publication_owner": publication_owner} if publication_owner else {})}
     try:
         await db.investigation_evidence.insert_one(doc)
     except DuplicateKeyError as exc:
@@ -271,6 +271,15 @@ async def discard_incomplete_ingestion(owner: str, case_id: str, evidence_id: st
         return False
     root_id = (root or {}).get("publication_root_id", evidence_id)
     exact_attempt = attempt_id or root.get("ingestion_attempt_id", root_id)
+    owner_ref = publication_owner or root.get("publication_owner")
+    if owner_ref:
+        published = await db.investigation_uploads.find_one(
+            {"owner_id": owner, "case_id": case_id, "upload_id": owner_ref["upload_id"],
+             "finalisation.state": "committed", "finalisation.published_attempt_id": exact_attempt},
+            {"_id": 0, "upload_id": 1},
+        )
+        if published:
+            return False
     selector = {"owner_id": owner, "case_id": case_id, "evidence_id": root_id,
                 "publication_state": "staging", "ingestion_attempt_id": exact_attempt}
     if publication_owner:
@@ -300,33 +309,57 @@ async def publish_evidence_root(owner: str, case_id: str, root_id: str, attempt_
         {"_id": 0, "evidence_id": 1},
     ).to_list(None)
     manifest = [row["evidence_id"] for row in rows]
+    authority = None
     if publication_owner:
-        current = await db.investigation_uploads.find_one(
+        # The upload control document is the single publication authority. Takeover changes this same fence, so an
+        # old attempt cannot pass a preliminary check and publish after ownership moved.
+        authority = await db.investigation_uploads.find_one_and_update(
             {"owner_id": owner, "case_id": case_id, "upload_id": publication_owner["upload_id"],
              "finalisation.state": "ingesting", "finalisation.fence": publication_owner["fence"]},
-            {"_id": 0, "upload_id": 1},
+            {"$set": {"finalisation.state": "committed", "finalisation.evidence_id": root_id,
+                      "finalisation.published_attempt_id": attempt_id, "finalisation.publication_manifest": manifest,
+                      "finalisation.published_at": now_utc(), "evidence_id": root_id}},
+            return_document=ReturnDocument.AFTER,
         )
-        if not current:
+        if not authority:
             return False
     selector = {"owner_id": owner, "case_id": case_id, "evidence_id": root_id, "publication_state": "staging", "ingestion_attempt_id": attempt_id}
     if publication_owner:
         selector["publication_owner"] = publication_owner
     result = await db.investigation_evidence.update_one(
         selector,
-        {"$set": {"publication_state": "committed", "publication_manifest": manifest, "published_at": now_utc()}},
+        {"$set": {"publication_state": "committed", "published_attempt_id": attempt_id,
+                  "publication_manifest": manifest, "published_at": now_utc()}},
     )
-    return result.matched_count == 1
+    # For upload-owned evidence, authority already committed atomically above. Root fields are a repairable projection.
+    return authority is not None if publication_owner else result.matched_count == 1
 
 
 async def _published_rows(owner: str, case_id: str) -> list[dict]:
     rows = await db.investigation_evidence.find({"owner_id": owner, "case_id": case_id}, {"_id": 0}).sort("collected_at", 1).to_list(None)
-    # Rows from before publication manifests existed are already-authoritative historical evidence.
-    committed_roots = {
-        row["evidence_id"] for row in rows
-        if row.get("publication_root_id", row["evidence_id"]) == row["evidence_id"]
-        and row.get("publication_state", "committed") == "committed"
-    }
-    return [row for row in rows if row.get("publication_root_id", row["evidence_id"]) in committed_roots]
+    upload_ids = {row["publication_owner"]["upload_id"] for row in rows if row.get("publication_owner")}
+    uploads = await db.investigation_uploads.find(
+        {"owner_id": owner, "case_id": case_id, "upload_id": {"$in": list(upload_ids)}, "finalisation.state": "committed"},
+        {"_id": 0, "upload_id": 1, "finalisation.published_attempt_id": 1, "finalisation.publication_manifest": 1},
+    ).to_list(None) if upload_ids else []
+    authorities = {u["upload_id"]: u["finalisation"] for u in uploads}
+    roots = {row["evidence_id"]: row for row in rows if row.get("publication_root_id", row["evidence_id"]) == row["evidence_id"]}
+    visible: list[dict] = []
+    for row in rows:
+        owner_ref = row.get("publication_owner")
+        if owner_ref:
+            authority = authorities.get(owner_ref["upload_id"])
+            if authority and row.get("ingestion_attempt_id") == authority.get("published_attempt_id") and row["evidence_id"] in authority.get("publication_manifest", []):
+                visible.append(row)
+            continue
+        root = roots.get(row.get("publication_root_id", row["evidence_id"]))
+        if not root or root.get("publication_state", "committed") != "committed":
+            continue
+        manifest = root.get("publication_manifest")
+        winning_attempt = root.get("published_attempt_id", root.get("ingestion_attempt_id"))
+        if manifest is None or (row["evidence_id"] in manifest and row.get("ingestion_attempt_id") == winning_attempt):
+            visible.append(row)
+    return visible
 
 
 async def settle_write(owner: str, case_id: str, epoch: str, collection, selector: dict) -> None:
@@ -366,12 +399,25 @@ async def get_evidence(owner: str, case_id: str, evidence_id: str) -> dict:
         raise http(404, "not_found", "Unknown evidence reference for this investigation.")
     if row["availability"] == "purged" or utc(row["expires_at"]) <= now_utc():
         raise http(410, "evidence_expired", "The temporary copy of that item has been deleted. Select it again to continue checking its contents.", missing=[evidence_id])
-    root_id = row.get("publication_root_id", row["evidence_id"])
-    root = row if root_id == row["evidence_id"] else await db.investigation_evidence.find_one(
-        {"owner_id": owner, "case_id": case_id, "evidence_id": root_id}, {"_id": 0, "publication_state": 1}
-    )
-    if not root or root.get("publication_state", "committed") != "committed":
-        raise http(409, "conflict", "This evidence ingestion has not been durably published yet. Retry the upload or wait for recovery.")
+    owner_ref = row.get("publication_owner")
+    if owner_ref:
+        authority = await db.investigation_uploads.find_one(
+            {"owner_id": owner, "case_id": case_id, "upload_id": owner_ref["upload_id"], "finalisation.state": "committed",
+             "finalisation.published_attempt_id": row.get("ingestion_attempt_id"), "finalisation.publication_manifest": evidence_id},
+            {"_id": 0, "upload_id": 1},
+        )
+        if not authority:
+            raise http(409, "conflict", "This upload attempt is not the published evidence authority.")
+    else:
+        root_id = row.get("publication_root_id", row["evidence_id"])
+        root = row if root_id == row["evidence_id"] else await db.investigation_evidence.find_one(
+            {"owner_id": owner, "case_id": case_id, "evidence_id": root_id},
+            {"_id": 0, "publication_state": 1, "published_attempt_id": 1, "ingestion_attempt_id": 1, "publication_manifest": 1},
+        )
+        manifest = root.get("publication_manifest") if root else None
+        winning_attempt = root.get("published_attempt_id", root.get("ingestion_attempt_id")) if root else None
+        if not root or root.get("publication_state", "committed") != "committed" or (manifest is not None and (evidence_id not in manifest or row.get("ingestion_attempt_id") != winning_attempt)):
+            raise http(409, "conflict", "This evidence attempt is not in the published manifest.")
     return row
 
 
@@ -383,8 +429,13 @@ async def evidence_meta(row: dict) -> dict:
     return dec_json(row["meta_ciphertext"]) if row.get("meta_ciphertext") else {}
 
 
-async def update_evidence(owner: str, case_id: str, evidence_id: str, update: dict) -> None:
-    await db.investigation_evidence.update_one({"owner_id": owner, "case_id": case_id, "evidence_id": evidence_id}, update)
+async def update_evidence(owner: str, case_id: str, evidence_id: str, update: dict, *, attempt_id: Optional[str] = None) -> None:
+    selector = {"owner_id": owner, "case_id": case_id, "evidence_id": evidence_id}
+    if attempt_id is not None:
+        selector["ingestion_attempt_id"] = attempt_id
+    result = await db.investigation_evidence.update_one(selector, update)
+    if attempt_id is not None and result.matched_count != 1:
+        raise http(409, "conflict", "This evidence ingestion attempt no longer owns the item.")
 
 
 async def store_bytes(owner: str, case_id: str, evidence_id: str, data: bytes, expires_at: datetime, *, publish_root: bool = True) -> int:
@@ -440,7 +491,8 @@ async def create_job(owner: str, case: dict, turn_id: str, key_digest: str, payl
     doc = {"owner_id": owner, "case_id": case["case_id"], "job_id": str(uuid.uuid4()), "turn_id": turn_id, "idempotency_key_digest": key_digest,
            "payload_digest": payload_digest, "kind": kind, "status": "queued", "attempt": 0, "created_at": now, "started_at": None, "deadline_at": deadline,
            "retry_at": None, "lease_until": None, "fence": None, "epoch": case["epoch"], "work_epoch": case.get("work_epoch", case["epoch"]), "input_revision": case["revision"], "last_sequence": 0,
-           "failure": None, "payload_ciphertext": enc_json(payload), "checkpoint_ciphertext": None, "consumed_device_request_ids": [],
+           "failure": None, "payload_ciphertext": enc_json(payload), "checkpoint_ciphertext": None, "checkpoint_revision": 0,
+           "consumed_device_request_ids": [],
            "expires_at": utc(case["expires_at"])}
     await db.investigation_jobs.insert_one(dict(doc))
     return doc

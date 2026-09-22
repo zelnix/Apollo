@@ -73,6 +73,8 @@ struct FilterChange {
 /// Apollo's own request history (separate from the OS state), kept for the process lifetime and persisted by the web layer.
 #[derive(Default)]
 struct RequestHistory(Mutex<HashMap<String, String>>);
+#[derive(Default)]
+struct FilterLock(Mutex<()>);
 
 fn now_iso() -> String {
     let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
@@ -129,18 +131,23 @@ fn hosts_path() -> PathBuf {
     if cfg!(target_os = "windows") { PathBuf::from(r"C:\Windows\System32\drivers\etc\hosts") } else { PathBuf::from("/etc/hosts") }
 }
 
-fn current_filter() -> (String, BTreeSet<String>, bool) {
-    let content = fs::read_to_string(hosts_path()).unwrap_or_default();
+fn parse_filter(content: &str) -> (BTreeSet<String>, bool) {
     let mut domains = BTreeSet::new();
     let mut inside = false; let mut enabled = false;
     for line in content.lines() {
         if line.trim() == FILTER_START { inside = true; enabled = true; continue; }
         if line.trim() == FILTER_END { inside = false; continue; }
         if inside {
-            if let Some(domain) = line.split_whitespace().nth(1) { domains.insert(domain.trim_start_matches("www.").to_lowercase()); }
+            if let Some(domain) = line.split_whitespace().nth(1) { domains.insert(domain.to_lowercase()); }
         }
     }
-    (content, domains, enabled)
+    (domains, enabled)
+}
+
+fn current_filter() -> Result<(String, BTreeSet<String>, bool), String> {
+    let content = fs::read_to_string(hosts_path()).map_err(|e| format!("cannot read system hosts file: {e}"))?;
+    let (domains, enabled) = parse_filter(&content);
+    Ok((content, domains, enabled))
 }
 
 fn valid_domain(value: &str) -> Result<String, String> {
@@ -151,6 +158,7 @@ fn valid_domain(value: &str) -> Result<String, String> {
     Ok(host)
 }
 
+#[cfg(test)]
 fn without_managed_filter(existing: &str) -> String {
     let mut output_lines = Vec::new(); let mut inside = false;
     for line in existing.lines() {
@@ -161,45 +169,80 @@ fn without_managed_filter(existing: &str) -> String {
     output_lines.join("\n") + "\n"
 }
 
+#[cfg(test)]
 fn render_hosts(existing: &str, domains: &BTreeSet<String>) -> String {
     let mut output_lines: Vec<String> = without_managed_filter(existing).lines().map(str::to_string).collect();
     output_lines.push(FILTER_START.to_string());
-    for host in domains { output_lines.push(format!("0.0.0.0 {}", host)); output_lines.push(format!("0.0.0.0 www.{}", host)); }
+    for host in domains { output_lines.push(format!("0.0.0.0 {}", host)); }
     output_lines.push(FILTER_END.to_string());
     output_lines.join("\n") + "\n"
 }
 
 #[cfg(target_os = "windows")]
-fn privileged_hosts_write(content: &str) -> Result<(), String> {
-    let temp = std::env::temp_dir().join(format!("apollo-hosts-{}.txt", std::process::id()));
-    fs::write(&temp, content).map_err(|e| e.to_string())?;
-    let source = temp.to_string_lossy().replace('\'', "''");
-    let script = format!("Copy-Item -LiteralPath '{}' -Destination 'C:\\Windows\\System32\\drivers\\etc\\hosts' -Force; ipconfig /flushdns | Out-Null", source);
-    let args = format!("-NoProfile -Command \"{}\"", script.replace('"', "\\\""));
-    let status = Command::new("powershell").args(["-NoProfile", "-Command", &format!("$p=Start-Process powershell -Verb RunAs -Wait -PassThru -ArgumentList '{}'; exit $p.ExitCode", args.replace('\'', "''"))]).status().map_err(|e| e.to_string())?;
-    let _ = fs::remove_file(temp);
-    if status.success() { Ok(()) } else { Err("Windows administrator approval was not completed".into()) }
+fn base64_utf16le(value: &str) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let bytes: Vec<u8> = value.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    let mut out = String::new();
+    for chunk in bytes.chunks(3) {
+        let n = ((chunk[0] as u32) << 16) | ((chunk.get(1).copied().unwrap_or(0) as u32) << 8) | chunk.get(2).copied().unwrap_or(0) as u32;
+        out.push(TABLE[((n >> 18) & 63) as usize] as char); out.push(TABLE[((n >> 12) & 63) as usize] as char);
+        out.push(if chunk.len() > 1 { TABLE[((n >> 6) & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 2 { TABLE[(n & 63) as usize] as char } else { '=' });
+    }
+    out
+}
+
+#[cfg(target_os = "windows")]
+fn privileged_filter_update(action: &str, host: Option<&str>) -> Result<(), String> {
+    let host = host.unwrap_or("");
+    let script = format!(r#"$ErrorActionPreference='Stop'
+$path="$env:SystemRoot\System32\drivers\etc\hosts"; $start='{start}'; $end='{end}'; $action='{action}'; $host='{host}'
+$lines=[IO.File]::ReadAllLines($path); $base=New-Object 'System.Collections.Generic.List[string]'; $set=New-Object 'System.Collections.Generic.HashSet[string]'; $inside=$false
+foreach($line in $lines){{ if($line.Trim() -eq $start){{$inside=$true;continue}}; if($line.Trim() -eq $end){{$inside=$false;continue}}; if($inside){{$p=$line -split '\s+';if($p.Length -gt 1){{$null=$set.Add($p[1].ToLowerInvariant())}}}}else{{$base.Add($line)}} }}
+if($action -eq 'block'){{$null=$set.Add($host)}} elseif($action -eq 'unblock'){{$null=$set.Remove($host)}}
+$output=New-Object 'System.Collections.Generic.List[string]';$output.AddRange($base);if($action -ne 'disable'){{$output.Add($start);foreach($d in ($set|Sort-Object)){{$output.Add("0.0.0.0 $d")}};$output.Add($end)}}
+$tmp=Join-Path (Split-Path $path) ('.apollo-hosts-'+[guid]::NewGuid().ToString('N'));[IO.File]::WriteAllLines($tmp,$output,(New-Object Text.UTF8Encoding($false)));Move-Item -LiteralPath $tmp -Destination $path -Force
+ipconfig /flushdns | Out-Null;$verify=[IO.File]::ReadAllLines($path);$managed=$false;$found=$false;foreach($line in $verify){{if($line.Trim() -eq $start){{$managed=$true;continue}};if($line.Trim() -eq $end){{$managed=$false;continue}};if($managed -and (($line -split '\s+')[1] -eq $host)){{$found=$true}}}}
+if(($action -eq 'block' -and -not $found) -or ($action -eq 'unblock' -and $found)){{throw 'filter verification failed'}}"#,
+        start=FILTER_START,end=FILTER_END,action=action,host=host);
+    let encoded = base64_utf16le(&script);
+    let elevate = format!("$p=Start-Process powershell -Verb RunAs -Wait -PassThru -ArgumentList '-NoProfile','-EncodedCommand','{}';exit $p.ExitCode", encoded);
+    let status = Command::new("powershell").args(["-NoProfile", "-Command", &elevate]).status().map_err(|e| e.to_string())?;
+    if status.success() { Ok(()) } else { Err("Windows hosts update failed or administrator approval was declined".into()) }
 }
 
 #[cfg(target_os = "macos")]
-fn privileged_hosts_write(content: &str) -> Result<(), String> {
-    let temp = std::env::temp_dir().join(format!("apollo-hosts-{}.txt", std::process::id()));
-    fs::write(&temp, content).map_err(|e| e.to_string())?;
-    let source = temp.to_string_lossy().replace('\'', "'\\''");
-    let shell = format!("cp '{}' /etc/hosts; dscacheutil -flushcache; killall -HUP mDNSResponder >/dev/null 2>&1 || true", source);
-    let apple = format!("do shell script \"{}\" with administrator privileges", shell.replace('\\', "\\\\").replace('"', "\\\""));
+fn privileged_filter_update(action: &str, host: Option<&str>) -> Result<(), String> {
+    use std::fs::OpenOptions;
+    use std::os::unix::fs::OpenOptionsExt;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let host = host.unwrap_or("");
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e| e.to_string())?.as_nanos();
+    let path = std::env::temp_dir().join(format!("apollo-filter-{}-{nonce}.sh", std::process::id()));
+    let script = format!(r#"#!/bin/sh
+set -eu
+PATH=/usr/bin:/bin:/usr/sbin:/sbin; hosts=/etc/hosts; start='{start}'; end='{end}'; action='{action}'; host='{host}'
+[ -r "$hosts" ]; umask 077; base=/etc/.apollo-hosts-base.$$; domains=/etc/.apollo-hosts-domains.$$; next=/etc/.apollo-hosts-next.$$
+trap 'rm -f "$base" "$domains" "$next"' EXIT HUP INT TERM
+awk -v s="$start" -v e="$end" '$0==s{{inside=1;next}} $0==e{{inside=0;next}} !inside{{print}}' "$hosts" > "$base"
+awk -v s="$start" -v e="$end" '$0==s{{inside=1;next}} $0==e{{inside=0;next}} inside&&NF>1{{print $2}}' "$hosts" | sort -u > "$domains"
+case "$action" in block) printf '%s\n' "$host" >> "$domains";; unblock) grep -Fvx "$host" "$domains" > "$domains.new" || true; mv "$domains.new" "$domains";; esac
+cat "$base" > "$next"; if [ "$action" != disable ]; then printf '%s\n' "$start" >> "$next"; sort -u "$domains" | while IFS= read -r d; do [ -n "$d" ] && printf '0.0.0.0 %s\n' "$d"; done >> "$next"; printf '%s\n' "$end" >> "$next"; fi
+chmod 644 "$next"; chown root:wheel "$next"; mv -f "$next" "$hosts"; dscacheutil -flushcache; killall -HUP mDNSResponder >/dev/null 2>&1 || true
+found=$(awk -v s="$start" -v e="$end" -v h="$host" '$0==s{{inside=1;next}} $0==e{{inside=0;next}} inside&&$2==h{{n++}} END{{print n+0}}' "$hosts")
+[ "$action" != block ] || [ "$found" -gt 0 ]; [ "$action" != unblock ] || [ "$found" -eq 0 ]
+"#,start=FILTER_START,end=FILTER_END,action=action,host=host);
+    let mut file = OpenOptions::new().write(true).create_new(true).mode(0o700).open(&path).map_err(|e| e.to_string())?;
+    use std::io::Write; file.write_all(script.as_bytes()).map_err(|e| e.to_string())?; drop(file);
+    let command = format!("'{}'", path.to_string_lossy().replace('\'', "'\\''"));
+    let apple = format!("do shell script \"{}\" with administrator privileges", command.replace('\\', "\\\\").replace('"', "\\\""));
     let status = Command::new("osascript").args(["-e", &apple]).status().map_err(|e| e.to_string())?;
-    let _ = fs::remove_file(temp);
-    if status.success() { Ok(()) } else { Err("macOS administrator approval was not completed".into()) }
+    let _ = fs::remove_file(path);
+    if status.success() { Ok(()) } else { Err("macOS hosts update failed or administrator approval was declined".into()) }
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-fn privileged_hosts_write(_content: &str) -> Result<(), String> { Err("desktop filter is supported on Windows and macOS only".into()) }
-
-fn write_filter(domains: &BTreeSet<String>) -> Result<(), String> {
-    let (existing, _, _) = current_filter();
-    privileged_hosts_write(&render_hosts(&existing, domains))
-}
+fn privileged_filter_update(_action: &str, _host: Option<&str>) -> Result<(), String> { Err("desktop filter is supported on Windows and macOS only".into()) }
 
 #[tauri::command]
 fn host_info() -> HostInfo {
@@ -238,30 +281,30 @@ fn network_status() -> HostNetwork {
 }
 
 #[tauri::command]
-fn permissions(history: State<RequestHistory>) -> Vec<HostPermission> {
+fn permissions(history: State<RequestHistory>) -> Result<Vec<HostPermission>, String> {
     let h = history.0.lock().unwrap();
     let hist = |id: &str| (Some(h.contains_key(id)), h.get(id).cloned());
     let (nr, nt) = hist("notifications");
     let (fr, ft) = hist("network_filter");
-    let (_, _, filter_enabled) = current_filter();
-    vec![
+    let (_, _, filter_enabled) = current_filter()?;
+    Ok(vec![
         // Notification permission state is exposed by tauri-plugin-notification on the web side; here we record request history only.
         HostPermission { id: "notifications", state: "undetermined", enabled: None, requested: nr, last_requested_at: nt, unavailable_reason: None },
         HostPermission { id: "network_filter", state: if filter_enabled { "granted" } else { "undetermined" }, enabled: Some(filter_enabled), requested: fr, last_requested_at: ft, unavailable_reason: None },
         HostPermission { id: "vpn_config", state: "not_applicable", enabled: None, requested: None, last_requested_at: None, unavailable_reason: Some("not_implemented") },
         HostPermission { id: "accessibility", state: "not_applicable", enabled: None, requested: None, last_requested_at: None, unavailable_reason: Some("os_restricted") },
-    ]
+    ])
 }
 
 #[tauri::command]
-fn request_permission(args: RequestPermissionArgs, history: State<RequestHistory>) -> Result<(), String> {
+fn request_permission(args: RequestPermissionArgs, history: State<RequestHistory>, filter_lock: State<FilterLock>) -> Result<(), String> {
     let allowed = ["notifications", "network_filter", "vpn_config", "accessibility"];
     if !allowed.contains(&args.id.as_str()) {
         return Err("unknown permission id".into());
     }
     if args.id == "network_filter" {
-        let (_, domains, _) = current_filter();
-        write_filter(&domains)?; // real administrator prompt and durable OS hosts filter marker
+        let _guard = filter_lock.0.lock().map_err(|_| "filter lock poisoned")?;
+        privileged_filter_update("enable", None)?;
     } else if args.id != "notifications" {
         return Err("this permission must be completed in the operating-system Settings page".into());
     }
@@ -270,27 +313,35 @@ fn request_permission(args: RequestPermissionArgs, history: State<RequestHistory
 }
 
 #[tauri::command]
-fn filter_status() -> FilterStatus {
-    let (_, domains, enabled) = current_filter();
-    FilterStatus { enabled, blocked_domains: domains.into_iter().collect(), method: "hosts_dns_filter" }
+fn filter_status() -> Result<FilterStatus, String> {
+    let (_, domains, enabled) = current_filter()?;
+    Ok(FilterStatus { enabled, blocked_domains: domains.into_iter().collect(), method: "hosts_dns_filter" })
 }
 
 #[tauri::command]
-fn block_destination(host: String) -> Result<FilterChange, String> {
-    let host = valid_domain(&host)?; let (_, mut domains, _) = current_filter(); domains.insert(host.clone()); write_filter(&domains)?;
-    Ok(FilterChange { verified: true, host, enabled: true, changed_at: now_iso() })
+fn block_destination(host: String, filter_lock: State<FilterLock>) -> Result<FilterChange, String> {
+    let host = valid_domain(&host)?; let _guard = filter_lock.0.lock().map_err(|_| "filter lock poisoned")?;
+    privileged_filter_update("block", Some(&host))?;
+    let (_, domains, enabled) = current_filter()?;
+    if !enabled || !domains.contains(&host) { return Err("installed hosts rule could not be verified".into()); }
+    Ok(FilterChange { verified: true, host, enabled, changed_at: now_iso() })
 }
 
 #[tauri::command]
-fn unblock_destination(host: String) -> Result<FilterChange, String> {
-    let host = valid_domain(&host)?; let (_, mut domains, _) = current_filter(); domains.remove(&host); write_filter(&domains)?;
-    Ok(FilterChange { verified: true, host, enabled: true, changed_at: now_iso() })
+fn unblock_destination(host: String, filter_lock: State<FilterLock>) -> Result<FilterChange, String> {
+    let host = valid_domain(&host)?; let _guard = filter_lock.0.lock().map_err(|_| "filter lock poisoned")?;
+    privileged_filter_update("unblock", Some(&host))?;
+    let (_, domains, enabled) = current_filter()?;
+    if domains.contains(&host) { return Err("removed hosts rule is still present".into()); }
+    Ok(FilterChange { verified: true, host, enabled, changed_at: now_iso() })
 }
 
 #[tauri::command]
-fn disable_filter() -> Result<(), String> {
-    let (existing, _, _) = current_filter();
-    privileged_hosts_write(&without_managed_filter(&existing))
+fn disable_filter(filter_lock: State<FilterLock>) -> Result<(), String> {
+    let _guard = filter_lock.0.lock().map_err(|_| "filter lock poisoned")?;
+    privileged_filter_update("disable", None)?;
+    let (_, _, enabled) = current_filter()?;
+    if enabled { Err("hosts filter disable could not be verified".into()) } else { Ok(()) }
 }
 
 /// Opens a fixed OS Settings destination. Only the listed targets exist; the page cannot supply arbitrary URIs.
@@ -318,6 +369,7 @@ fn open_settings_target(target: String) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .manage(RequestHistory::default())
+        .manage(FilterLock::default())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -344,6 +396,15 @@ mod tests {
         let rendered = render_hosts(existing, &domains);
         assert!(rendered.contains("10.0.0.2 intranet"));
         assert!(rendered.contains("0.0.0.0 bad.example"));
+        assert!(!rendered.contains("www.bad.example"));
         assert_eq!(without_managed_filter(&rendered), existing);
+    }
+
+    #[test]
+    fn aliases_remain_separate_explicit_rules() {
+        let content = format!("{FILTER_START}\n0.0.0.0 example.test\n0.0.0.0 www.example.test\n{FILTER_END}\n");
+        let (domains, enabled) = parse_filter(&content);
+        assert!(enabled);
+        assert_eq!(domains, BTreeSet::from(["example.test".to_string(), "www.example.test".to_string()]));
     }
 }

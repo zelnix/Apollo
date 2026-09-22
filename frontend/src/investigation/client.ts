@@ -7,10 +7,10 @@ import { getDeviceToken } from "@/src/auth/deviceIdentity";
 import { enforceEgress } from "@/src/domain/privacy";
 import type { CreateCase, DeviceProfile, DeviceResult, EvidenceItem, InvestigationCase, InvestigationEvent, Job, SourceReference, TurnCommit } from "./types";
 
-async function postWithKey<T>(path: string, body: Record<string, unknown>, key: string): Promise<T> {
+async function postWithKey<T>(path: string, body: Record<string, unknown>, key: string, signal?: AbortSignal): Promise<T> {
   const token = await getDeviceToken();
   if (!token) throw new ApiError(401, "Apollo hasn't registered this device yet.");
-  const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, "Idempotency-Key": key }, body: JSON.stringify(enforceEgress("investigation", body)) });
+  const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, "Idempotency-Key": key }, body: JSON.stringify(enforceEgress("investigation", body)), signal });
   if (!res.ok) {
     let message = res.statusText;
     try { const data = await res.json(); message = data?.error?.message ?? data?.detail ?? message; } catch { /* keep */ }
@@ -26,11 +26,11 @@ export function listTurns(caseId: string) { return apiGet<{ items: TurnCommit[];
 export function listSources(caseId: string) { return apiGet<{ items: SourceReference[]; total: number }>(`/investigations/${caseId}/sources`); }
 export function listEvidence(caseId: string) { return apiGet<{ items: EvidenceItem[]; total: number }>(`/investigations/${caseId}/evidence`); }
 export function deleteCase(caseId: string) { return apiDelete<void>(`/investigations/${caseId}`); }
-export function submitTurn(caseId: string, body: { expectedRevision: number; turnId: string; message: string; answerToQuestionId: string | null; evidenceIds: string[] }, key: string) {
-  return postWithKey<{ job: Job; caseRevision: number }>(`/investigations/${caseId}/turns`, body, key);
+export function submitTurn(caseId: string, body: { expectedRevision: number; turnId: string; message: string; answerToQuestionId: string | null; evidenceIds: string[] }, key: string, signal?: AbortSignal) {
+  return postWithKey<{ job: Job; caseRevision: number }>(`/investigations/${caseId}/turns`, body, key, signal);
 }
 export function resumeJob(caseId: string, jobId: string, expectedRevision: number) { return postWithKey<{ job: Job }>(`/investigations/${caseId}/jobs/${jobId}/resume`, { expectedRevision }, Crypto.randomUUID()); }
-export function cancelJob(caseId: string, jobId: string, expectedRevision: number) { return apiPost<{ status: string }>(`/investigations/${caseId}/jobs/${jobId}/cancel`, "investigation", { expectedRevision }); }
+export function cancelJob(caseId: string, jobId: string, expectedRevision: number) { return apiPost<{ status: string; cancelled: boolean; cleanupStatus: string }>(`/investigations/${caseId}/jobs/${jobId}/cancel`, "investigation", { expectedRevision }); }
 export function submitDeviceResult(caseId: string, result: DeviceResult) { return apiPost<{ accepted: boolean; jobId: string }>(`/investigations/${caseId}/device-results`, "investigation", result as unknown as Record<string, unknown>); }
 export function addObservationEvidence(expectedRevision: number, caseId: string, deviceResult: DeviceResult) {
   return apiPost<{ evidence: EvidenceItem; caseRevision: number }>(`/investigations/${caseId}/evidence`, "investigation", { expectedRevision, clientItemId: Crypto.randomUUID(), parentId: null, kind: "observation", deviceResult: deviceResult as unknown as Record<string, unknown> });
@@ -45,11 +45,11 @@ export function recheckPlan(caseId: string, planId: string, deviceResultIds: str
 export function addTextEvidence(caseId: string, expectedRevision: number, text: string, label: string) {
   return apiPost<{ evidence: EvidenceItem; caseRevision: number }>(`/investigations/${caseId}/evidence`, "investigation", { expectedRevision, clientItemId: Crypto.randomUUID(), parentId: null, kind: "text", text, label });
 }
-export function addSubmissionEvidence(caseId: string, expectedRevision: number, item: { clientItemId: string; kind: "text" | "url"; value: string; label?: string }) {
-  return apiPost<{ evidence: EvidenceItem; caseRevision: number }>(`/investigations/${caseId}/evidence`, "investigation", {
+export function addSubmissionEvidence(caseId: string, expectedRevision: number, item: { clientItemId: string; kind: "text" | "url"; value: string; label?: string }, signal?: AbortSignal) {
+  return postWithKey<{ evidence: EvidenceItem; caseRevision: number }>(`/investigations/${caseId}/evidence`, {
     expectedRevision, clientItemId: item.clientItemId, parentId: null, kind: item.kind,
     ...(item.kind === "url" ? { url: item.value } : { text: item.value }), label: item.label ?? "",
-  });
+  }, item.clientItemId, signal);
 }
 
 /** Multipart file evidence (single shot, no resume): kept only for callers that accept an all-or-nothing upload. */
@@ -83,17 +83,17 @@ export function createFileUploadHandle(caseExpiresAt: string): FileUploadHandle 
     clientItemId: Crypto.randomUUID(), declaredBytes: null, bytes: null, nextChunk: 0, expiresAt: caseExpiresAt };
 }
 
-export function createUpload(caseId: string, body: { expectedRevision: number; clientItemId: string; parentId: string | null; kind: "image" | "document" | "audio" | "attachment"; filename: string; mediaType: string; declaredBytes: number }, key: string) {
-  return postWithKey<{ uploadId: string; chunkBytes: number; expiresAt: string; evidenceRootId: string; replayed: boolean }>(`/investigations/${caseId}/uploads`, body as unknown as Record<string, unknown>, key);
+export function createUpload(caseId: string, body: { expectedRevision: number; clientItemId: string; parentId: string | null; kind: "image" | "document" | "audio" | "attachment"; filename: string; mediaType: string; declaredBytes: number }, key: string, signal?: AbortSignal) {
+  return postWithKey<{ uploadId: string; chunkBytes: number; expiresAt: string; evidenceRootId: string; replayed: boolean }>(`/investigations/${caseId}/uploads`, body as unknown as Record<string, unknown>, key, signal);
 }
 
-async function putChunk(caseId: string, uploadId: string, index: number, chunk: Uint8Array): Promise<void> {
+async function putChunk(caseId: string, uploadId: string, index: number, chunk: Uint8Array, signal?: AbortSignal): Promise<void> {
   const token = await getDeviceToken();
   if (!token) throw new ApiError(401, "Apollo hasn't registered this device yet.");
   let lastError: unknown = null;
   for (let attempt = 0; attempt <= 1; attempt++) {
     try {
-      const res = await fetch(`${API_BASE}/investigations/${caseId}/uploads/${uploadId}/chunks/${index}`, { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/octet-stream" }, body: chunk as unknown as BodyInit });
+      const res = await fetch(`${API_BASE}/investigations/${caseId}/uploads/${uploadId}/chunks/${index}`, { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/octet-stream" }, body: chunk as unknown as BodyInit, signal });
       if (!res.ok) { let message = res.statusText; try { const data = await res.json(); message = data?.error?.message ?? message; } catch { /* keep */ } throw new ApiError(res.status, message); }
       return;
     } catch (e) { lastError = e; if (attempt === 0) await new Promise((r) => setTimeout(r, 500)); }
@@ -101,8 +101,8 @@ async function putChunk(caseId: string, uploadId: string, index: number, chunk: 
   throw lastError instanceof Error ? lastError : new ApiError(0, "Chunk upload failed.");
 }
 
-export function completeUpload(caseId: string, uploadId: string, expectedRevision: number) {
-  return postWithKey<{ evidence: EvidenceItem; caseRevision: number; replayed?: boolean }>(`/investigations/${caseId}/uploads/${uploadId}/complete`, { expectedRevision }, Crypto.randomUUID());
+export function completeUpload(caseId: string, uploadId: string, expectedRevision: number, key = Crypto.randomUUID(), signal?: AbortSignal) {
+  return postWithKey<{ evidence: EvidenceItem; caseRevision: number; replayed?: boolean }>(`/investigations/${caseId}/uploads/${uploadId}/complete`, { expectedRevision }, key, signal);
 }
 
 /** Reads the file once (or reuses the reserved handle's already-read bytes), uploads it chunk by chunk
@@ -112,11 +112,12 @@ export function completeUpload(caseId: string, uploadId: string, expectedRevisio
 export async function uploadFileEvidenceResumable(
   caseId: string, expectedRevision: number, file: { uri: string; name: string; mediaType: string }, kind: "image" | "document" | "audio" | "attachment",
   reserved: FileUploadHandle, onHandle: (handle: FileUploadHandle) => void,
+  signal?: AbortSignal,
 ): Promise<{ evidence: EvidenceItem; caseRevision: number }> {
   let handle = reserved;
   onHandle(handle);
   if (!handle.bytes) {
-    const response = await fetch(file.uri);
+    const response = await fetch(file.uri, { signal });
     if (!response.ok) throw new Error("Apollo could not read the selected file copy.");
     const bytes = new Uint8Array(await response.arrayBuffer());
     handle = { ...handle, declaredBytes: bytes.length, bytes };
@@ -124,7 +125,7 @@ export async function uploadFileEvidenceResumable(
   }
   if (!handle.uploadId) {
     const created = await createUpload(caseId, { expectedRevision, clientItemId: handle.clientItemId, parentId: null, kind,
-      filename: file.name, mediaType: file.mediaType, declaredBytes: handle.declaredBytes! }, handle.createRequestKey);
+      filename: file.name, mediaType: file.mediaType, declaredBytes: handle.declaredBytes! }, handle.createRequestKey, signal);
     handle = { ...handle, uploadId: created.uploadId, evidenceRootId: created.evidenceRootId, expiresAt: created.expiresAt };
     onHandle(handle);
   }
@@ -133,11 +134,11 @@ export async function uploadFileEvidenceResumable(
     if (Date.parse(handle.expiresAt) <= Date.now()) throw new Error("The secure upload window expired. Select the file again.");
     const start = index * UPLOAD_CHUNK_BYTES;
     const chunk = handle.bytes!.subarray(start, Math.min(start + UPLOAD_CHUNK_BYTES, handle.declaredBytes!));
-    await putChunk(caseId, handle.uploadId!, index, chunk);
+    await putChunk(caseId, handle.uploadId!, index, chunk, signal);
     handle = { ...handle, nextChunk: index + 1 };
     onHandle(handle);
   }
-  return await completeUpload(caseId, handle.uploadId!, expectedRevision);
+  return await completeUpload(caseId, handle.uploadId!, expectedRevision, handle.transferId, signal);
 }
 
 /** SSE over XHR with sequence-based reconnect. `onTerminal` fires only on an explicit terminal event; EOF alone is an interruption. */

@@ -149,7 +149,8 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
     async def save(extra: dict) -> None:
         await repo.set_job(owner, job["job_id"], job["fence"], {"$set": {"checkpoint_ciphertext": repo.enc_json({"contents": _serialise(contents), "rounds": rounds, "question": ctx.question,
                                                                                                              "researchCalls": ctx.research_calls, "pendingMarks": pending_marks, "toolLedger": ledger,
-                                                                                                             "pendingBatch": pending_batch, **extra})}})
+                                                                                                             "pendingBatch": pending_batch, **extra})},
+                                                                         "$inc": {"checkpoint_revision": 1}})
 
     async def answer_batch() -> None:
         """Executes (or reuses from the ledger) every call of the pending batch, then appends the function responses. Persisted before

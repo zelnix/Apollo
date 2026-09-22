@@ -131,6 +131,22 @@ def test_document_continuation_publishes_a_later_pdf_slice():
     _run(lambda inv: _document_continuation_publishes_slice())
 
 
+def test_publication_manifest_excludes_late_or_wrong_attempt_children():
+    _run(lambda inv: _publication_manifest_is_attempt_isolated())
+
+
+def test_concurrent_device_results_merge_under_checkpoint_revision():
+    _run(lambda inv: _concurrent_device_results_merge(inv))
+
+
+def test_upload_control_document_fences_publication_takeover():
+    _run(lambda inv: _upload_control_fences_publication())
+
+
+def test_bounded_tests_prohibit_provider_calls():
+    _run(lambda inv: _provider_call_guard())
+
+
 @pytest.mark.asyncio
 async def test_image_secret_preflight_flags_60k_truncation(monkeypatch):
     """The internal 60,000-character cap on a screenshot's transcription must mark itself as truncated —
@@ -703,6 +719,7 @@ async def _document_continuation_publishes_slice():
 
     buffer = io.BytesIO(); writer = PdfWriter()
     for _ in range(3): writer.add_blank_page(width=100, height=100)
+    writer.add_uri(1, "https://later.example/path", [0, 0, 80, 20])
     writer.write(buffer); data = buffer.getvalue()
     owner = f"persist-{uuid.uuid4().hex[:8]}"
     await repo.ensure_indexes()
@@ -714,11 +731,102 @@ async def _document_continuation_publishes_slice():
                         transformations=[], label="PDF")
     await repo.insert_evidence(owner, item, {})
     await repo.store_bytes(owner, case["case_id"], root_id, data, item.expires_at)
+    stale_id, stale_attempt = str(uuid.uuid4()), uuid.uuid4().hex
+    stale = EvidenceItem(id=stale_id, case_id=case["case_id"], client_item_id="long-pdf.pages.2-3", origin="apollo_inference", kind="text", parent_id=root_id,
+                         collected_at=now_utc(), expires_at=item.expires_at, media_type="text/plain", byte_length=5,
+                         coverage=Coverage(status="not_started", unit="characters", total=5), transformations=[], label="interrupted slice")
+    await repo.insert_evidence(owner, stale, {}, publication_root_id=stale_id, ingestion_attempt_id=stale_attempt)
+    await repo.store_bytes(owner, case["case_id"], stale_id, b"stale", stale.expires_at, publish_root=False)
     result = await ev.continue_document(owner, case, root_id, 2, 2)
     assert result["startPage"] == 2 and result["endPage"] == 3 and result["replayed"] is False
+    assert any("https://later.example/path" in link for link in result["links"])
+    assert result["evidenceId"] != stale_id
     parent = await repo.get_evidence(owner, case["case_id"], root_id)
     assert result["evidenceId"] in parent["related_evidence_ids"]
     assert parent["coverage"]["permanentGap"] is False
+
+
+async def _publication_manifest_is_attempt_isolated():
+    from fastapi import HTTPException
+    from services.higgins.contracts import Coverage, EvidenceItem
+
+    owner = f"persist-{uuid.uuid4().hex[:8]}"; await repo.ensure_indexes(); case = await repo.create_case(owner, "file", None)
+    root_id, winning = str(uuid.uuid4()), uuid.uuid4().hex
+    root = EvidenceItem(id=root_id, case_id=case["case_id"], client_item_id="manifest-root", origin="user_submission", kind="document", parent_id=None,
+                        collected_at=now_utc(), expires_at=repo.utc(case["expires_at"]), media_type="text/plain", byte_length=4,
+                        coverage=Coverage(status="not_started", unit="bytes", total=4), transformations=[], label="root")
+    await repo.insert_evidence(owner, root, {}, publication_root_id=root_id, ingestion_attempt_id=winning)
+    await repo.store_bytes(owner, case["case_id"], root_id, b"root", root.expires_at, publish_root=False)
+    assert await repo.publish_evidence_root(owner, case["case_id"], root_id, winning)
+    late_id = str(uuid.uuid4())
+    late = root.model_copy(update={"id": late_id, "client_item_id": "late-child", "parent_id": root_id, "label": "late"})
+    await repo.insert_evidence(owner, late, {}, publication_root_id=root_id, ingestion_attempt_id="abandoned-attempt")
+    await repo.store_bytes(owner, case["case_id"], late_id, b"late", late.expires_at, publish_root=False)
+    assert late_id not in [row["evidence_id"] for row in await repo.list_evidence(owner, case["case_id"])]
+    with pytest.raises(HTTPException) as exc:
+        await repo.get_evidence(owner, case["case_id"], late_id)
+    assert exc.value.status_code == 409
+    with pytest.raises(HTTPException):
+        await repo.update_evidence(owner, case["case_id"], root_id, {"$set": {"label": "wrong"}}, attempt_id="abandoned-attempt")
+
+
+async def _concurrent_device_results_merge(inv):
+    owner = f"persist-{uuid.uuid4().hex[:8]}"; await repo.ensure_indexes(); case = await repo.create_case(owner, "device", None)
+    turn_id = str(uuid.uuid4()); job = await repo.create_job(owner, case, turn_id, repo.digest("multi-device"), repo.digest("payload"), "turn", {"message": "q"})
+    request_ids = [str(uuid.uuid4()), str(uuid.uuid4())]
+    await db.investigation_jobs.update_one({"owner_id": owner, "job_id": job["job_id"]}, {"$set": {"status": "waiting_device", "lease_until": None}})
+    await repo.cas(owner, case["case_id"], {"revision": 0}, {"$set": {"active_job_id": job["job_id"], "active_turn_id": turn_id,
+        "status": "waiting_device", "pending_device_request_ids": request_ids}})
+    pending_rows = []
+    for index, request_id in enumerate(request_ids):
+        result = DeviceResult(request_id=request_id, case_revision=1, capability_id=f"cap.{index}", status="observed", values={"index": index})
+        await db.investigation_device_requests.insert_one({"owner_id": owner, "case_id": case["case_id"], "request_id": request_id, "job_id": job["job_id"],
+            "request": {"id": request_id}, "fulfilled": False, "submission": {"state": "claimed", "digest": f"d{index}",
+            "result_ciphertext": repo.enc_json(result.wire()), "evidence_id": None, "claimed_at": now_utc(), "fence": str(uuid.uuid4())}, "created_at": now_utc()})
+        pending_rows.append(await db.investigation_device_requests.find_one({"owner_id": owner, "request_id": request_id}, {"_id": 0}))
+    original_launch = inv.jobs.launch; inv.jobs.launch = lambda *_args: None
+    try:
+        current_case = await repo.get_case(owner, case["case_id"])
+        await asyncio.gather(*[inv._finish_device_submission(owner, current_case, row) for row in pending_rows])
+    finally:
+        inv.jobs.launch = original_launch
+    merged = await repo.get_job(owner, case["case_id"], job["job_id"])
+    checkpoint = repo.dec_json(merged["checkpoint_ciphertext"])
+    assert set(merged["consumed_device_request_ids"]) == set(request_ids)
+    assert {result["requestId"] for result in checkpoint["deviceResults"]} == set(request_ids)
+
+
+async def _upload_control_fences_publication():
+    from services.higgins.contracts import Coverage, EvidenceItem
+
+    owner = f"persist-{uuid.uuid4().hex[:8]}"; await repo.ensure_indexes(); case = await repo.create_case(owner, "file", None)
+    upload_id, root_id, old_fence, new_fence = str(uuid.uuid4()), str(uuid.uuid4()), "old-fence", "new-fence"
+    await db.investigation_uploads.insert_one({"owner_id": owner, "case_id": case["case_id"], "upload_id": upload_id,
+        "evidence_root_id": root_id, "metadata": {"clientItemId": "controlled-root"}, "chunks": {}, "expires_at": repo.utc(case["expires_at"]),
+        "finalisation": {"state": "ingesting", "fence": old_fence}})
+    old = EvidenceItem(id=root_id, case_id=case["case_id"], client_item_id="controlled-root", origin="user_submission", kind="document", parent_id=None,
+                       collected_at=now_utc(), expires_at=repo.utc(case["expires_at"]), media_type="text/plain", byte_length=3,
+                       coverage=Coverage(status="not_started", unit="bytes", total=3), transformations=[], label="old")
+    old_owner = {"upload_id": upload_id, "fence": old_fence}
+    await repo.insert_evidence(owner, old, {}, publication_root_id=root_id, ingestion_attempt_id=old_fence, publication_owner=old_owner)
+    await repo.store_bytes(owner, case["case_id"], root_id, b"old", old.expires_at, publish_root=False)
+    await db.investigation_uploads.update_one({"owner_id": owner, "upload_id": upload_id, "finalisation.fence": old_fence},
+                                               {"$set": {"finalisation.fence": new_fence}})
+    assert await repo.publish_evidence_root(owner, case["case_id"], root_id, old_fence, publication_owner=old_owner) is False
+    assert await repo.discard_incomplete_ingestion(owner, case["case_id"], root_id, attempt_id=old_fence, publication_owner=old_owner)
+    current = old.model_copy(update={"label": "new"}); new_owner = {"upload_id": upload_id, "fence": new_fence}
+    await repo.insert_evidence(owner, current, {}, publication_root_id=root_id, ingestion_attempt_id=new_fence, publication_owner=new_owner)
+    await repo.store_bytes(owner, case["case_id"], root_id, b"new", current.expires_at, publish_root=False)
+    assert await repo.publish_evidence_root(owner, case["case_id"], root_id, new_fence, publication_owner=new_owner)
+    authority = await db.investigation_uploads.find_one({"owner_id": owner, "upload_id": upload_id}, {"_id": 0})
+    assert authority["finalisation"]["published_attempt_id"] == new_fence
+    assert authority["finalisation"]["publication_manifest"] == [root_id]
+
+
+async def _provider_call_guard():
+    from services.higgins import provider
+    with pytest.raises(AssertionError, match="prohibited"):
+        await provider.generate("system", "prompt")
 
 
 if __name__ == "__main__":

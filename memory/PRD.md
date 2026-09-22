@@ -516,3 +516,12 @@ Current position: waiting on step 1 input (Step 7 stderr for build aa24dd73-eab7
 - Repository-wide `.env` ignores were removed for deployment automation; injected local values remain excluded through
   workspace-local Git configuration and were not exposed.
 - Verified: backend lint/compile, 25 focused tests, startup cleanup static check, and both health endpoints.
+
+## 2026-09-22 seven-defect correction package
+- Package 1/2 P0 now includes control-document evidence publication manifests, checkpoint-revision device-result merge,
+  complete application-owned transfer/observation retries, authoritative client cancellation, all Text presenters, and
+  bounded exact-host desktop filtering with privileged readback verification.
+- Package 3 PDF continuation now preserves later-page links and scanned-page visuals and replays only committed slices.
+- Bounded tests prohibit provider calls at both pytest fixture and Higgins provider entry-point boundaries.
+- Pre-build source digest: `fe41defb4f0fd0bc6fa85cd0dfb9d9db5412a75445c6be88c4f7d65d694770da`.
+- Verification: 56 focused backend tests, TypeScript/ESLint, and 3 Rust native tests pass.

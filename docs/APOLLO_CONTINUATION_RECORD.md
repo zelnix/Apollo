@@ -390,3 +390,33 @@ Changed core files:
 - Final scan also passed Expo environment/supervisor configuration, MongoDB indexes and query limits, CORS, dynamic
   OAuth redirects, source secret scanning, URL/port configuration, Tauri configuration, and ignored/untracked desktop
   build output.
+
+## 2026-09-22 seven-defect correction package (reviewed baseline `63d60d8`)
+- **Desktop bounded filter completed:** privileged Windows/macOS updater now owns read→modify→safe-replace→flush→readback;
+  changes serialize through one native lock; read/write/verification failures propagate; aliases remain explicit exact
+  hostnames. No WFP/Network Extension or app-attribution claim was added.
+- **Evidence attempts isolated:** upload control document is the publication authority. One CAS matching the current
+  finalisation fence records the winning attempt and immutable manifest. Readers accept only manifest members from
+  that attempt; ingestion-time updates are attempt-matched; cleanup cannot delete an authoritative published attempt.
+- **Concurrent device results serialized:** every encrypted checkpoint has `checkpoint_revision`; result consumption
+  merges and retries against the exact revision while atomically adding the consumed request ID.
+- **Application-owned operations:** file transfers retain case/operation/item/session/deadline/chunk/turn state,
+  abort controllers and bytes outside screens; recreated screens attach to active operations. Expiry/deletion aborts,
+  releases bytes/copies and rejects late callbacks. Same-case device appends retain stable evidence/turn identities and
+  Retry resumes the failed append.
+- **PDF continuation completed for bounded components:** initial and continuation extraction share text/link parsing;
+  continuation publishes text, exact hyperlink destinations and scanned-page visuals as one slice manifest. Only
+  successfully available components clear coverage gaps; staged slices are abandoned/rebuilt and committed slices
+  replay/repair parent references.
+- **Client cancellation corrected:** UI waits for authoritative `cancelled/status`, refreshes after conflicts, reconnects
+  continuing work and displays `Cancellation not confirmed` with Retry on conflict/transport failure.
+- **Single current assessment completed:** Message/screenshot now follows Text/Email—local signals remain supporting
+  evidence while the last accepted Higgins answer stays current during pending/failed follow-up.
+- **Provider-call prohibition:** bounded pytest sets `APOLLO_FORBID_PROVIDER_CALLS=1`; Higgins provider functions fail
+  locally before SDK/network access. A dedicated regression verifies the prohibition.
+- Corrected non-secret source digest before save/build:
+  `fe41defb4f0fd0bc6fa85cd0dfb9d9db5412a75445c6be88c4f7d65d694770da` (18,639 files; documented exclusions).
+- Verification: backend focused suite 56/56, including 29/29 recovery/control tests; Python lint clean; frontend
+  TypeScript/ESLint clean; desktop Rust 3/3. No scenario, Playwright, testing-agent or live provider run.
+- Build next: save this exact correction package, then create a `device-test` Android APK and map saved SHA ↔ EAS
+  fingerprint ↔ artifact URL/hash. Do not reuse build `18706c6e...` identifiers.

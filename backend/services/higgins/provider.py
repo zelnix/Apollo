@@ -92,6 +92,8 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
                    capability: str = "text", json_output: bool = False,
                    tools: list[types.Tool] | None = None, timeout: float = CALL_SECONDS,
                    speech: bool = False) -> GeminiResult:
+    if os.getenv("APOLLO_FORBID_PROVIDER_CALLS") == "1":
+        raise AssertionError("Live Gemini/provider calls are prohibited in bounded tests")
     require_capability(model, capability)
     config = types.GenerateContentConfig(
         system_instruction=system or None, max_output_tokens=OUTPUT.value,

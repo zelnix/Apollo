@@ -63,6 +63,7 @@ export default function CheckMessage() {
   const [result, setResult] = useState<MessageOutcome | null>(null);
   const [verify, setVerify] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [higginsResolved, setHigginsResolved] = useState(false);
   const [screenshotUri, setScreenshotUri] = useState<string | null>(sharedImage ? String(sharedImage) : null);
   const autoRan = useRef(false);
   const autoImage = useRef(false);
@@ -72,14 +73,14 @@ export default function CheckMessage() {
     const safeText = redactUserSecrets(t);
     if (!safeText.trim()) return;
     if (safeText !== t) setText(safeText);
-    setBusy("checking"); setError(null); setResult(null);
+    setBusy("checking"); setError(null); setResult(null); setHigginsResolved(false);
     try { setResult(await checkMessage(snd, safeText)); } catch (e) { setError(e instanceof Error ? e.message : "Could not check this message."); } finally { setBusy("idle"); }
   };
   useEffect(() => { if (sharedText && ready && setupDone && !autoRan.current) { autoRan.current = true; void run(String(sharedText), params.sender ? String(params.sender) : ""); } }, [sharedText, params.sender, ready, setupDone]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const readScreenshot = async (uri: string, name: string, type: string) => {
     if (!deviceId) throw new Error("Apollo is still preparing this device.");
-    setBusy("reading"); setError(null); setResult(null); setScreenshotUri(uri);
+    setBusy("reading"); setError(null); setResult(null); setHigginsResolved(false); setScreenshotUri(uri);
     try {
       const extracted = await apiUpload<{ sender: string; text: string; urls: string[] }>("/message/extract", "message_extract",
         { device_id: deviceId }, { uri, name, type });
@@ -144,13 +145,13 @@ export default function CheckMessage() {
 
         {result && a ? (
           <>
-            {result.assessment ? <MessageAssessmentResult assessment={result.assessment} state={a.state}
+            {!higginsResolved && result.assessment ? <MessageAssessmentResult assessment={result.assessment} state={a.state}
               submittedLabel={screenshotUri ? (params.source === "email" ? "Email screenshot investigated" : "Screenshot text investigated") : "Message investigated"}
               submittedTitle={sender || "Sender not supplied"} submittedText={text} onPrimaryAction={() => dispatchInvestigationAction(result.assessment!.higgins.action_kind, {
                 showVerification: () => setVerify(true), openAccount: () => router.push({ pathname: "/account", params: { text, scent: result.event?.scent_id ?? result.event?.event_id ?? "" } }),
                 clearSubmittedCopy: () => { setText(""); setSender(""); setScreenshotUri(null); showToast("The copy submitted to Apollo was cleared from this screen. The original message was not deleted.", "neutral"); },
                 showReview: () => setVerify(true),
-              })} /> : <Card testID="message-result" style={{ borderColor: toneColor(colors, tone), gap: spacing.sm }}>
+              })} /> : !higginsResolved ? <Card testID="message-result" style={{ borderColor: toneColor(colors, tone), gap: spacing.sm }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" }}>
                 <Pill tone={tone} label={STATE_NAME[a.state]} testID="message-state" />
                 <Pill tone="neutral" label={a.scenarioTitle} testID="message-scenario" />
@@ -164,7 +165,7 @@ export default function CheckMessage() {
               <Text style={s.why} testID="message-recommendation">{result.explanation?.recommendation ?? a.recommendation}</Text>
               {a.signalLabels.length ? <View style={s.chips}>{a.signalLabels.map((l) => <Pill key={l} tone="unknown" label={l} />)}</View> : null}
               {result.remoteError ? <Text style={s.small}>Second opinion unavailable — showing results from Apollo&apos;s device checks.</Text> : null}
-            </Card>}
+            </Card> : null}
 
             {a.signals.urls.length ? (
               <View>
@@ -189,7 +190,7 @@ export default function CheckMessage() {
               <Card style={{ gap: spacing.sm }}>
                 <Button testID="message-verify-sender" variant="secondary" label="Show me how to check the sender" onPress={() => setVerify(true)} />
                 {a.signals.loginRequest || a.signals.codeRequest || /password|sign[- ]?in|login|account/i.test(text) ? <Button testID="message-check-account" variant="secondary" label="It's about my account — open Account Gate" onPress={() => router.push({ pathname: "/account", params: { text, scent: result.event?.scent_id ?? result.event?.event_id ?? "" } })} /> : null}
-                <GateInvestigation submission={result} eventId={result.event?.event_id} testID="message-tell-more" label="Ask Higgins about this message" context={issueContext({ gate: "text", issue_summary: a.scenarioTitle, assessment_state: a.state, findings: a.signalLabels.map((summary) => ({ summary, provenance: "observed", status: "uncertain" })), uncertainty: ["The sender was not independently authenticated."], confirmed_protective_actions: [], user_reported_actions: [], event_id: result.event?.event_id, original_evidence: [{ kind: "text", value: `From: ${sender}\n${text}`, label: screenshotUri ? "text extracted from the screenshot" : "submitted message" }, ...(shared?.files?.map((file, index) => ({ kind: "file" as const, uri: file.path, name: file.fileName || `shared-attachment-${index + 1}`, mediaType: file.mimeType || "application/octet-stream", size: file.size ?? undefined })) ?? (screenshotUri ? [{ kind: "file" as const, uri: screenshotUri, name: "screenshot.jpg", mediaType: "image/jpeg" }] : []))] })} question="Explain this message check in plain language and what I should do." />
+                <GateInvestigation submission={result} eventId={result.event?.event_id} onResolved={setHigginsResolved} testID="message-tell-more" label="Continue this investigation" context={issueContext({ gate: "text", issue_summary: a.scenarioTitle, assessment_state: a.state, findings: a.signalLabels.map((summary) => ({ summary, provenance: "observed", status: "uncertain" })), uncertainty: ["The sender was not independently authenticated."], confirmed_protective_actions: [], user_reported_actions: [], event_id: result.event?.event_id, original_evidence: [{ kind: "text", value: `From: ${sender}\n${text}`, label: screenshotUri ? "text extracted from the screenshot" : "submitted message" }, ...(shared?.files?.map((file, index) => ({ kind: "file" as const, uri: file.path, name: file.fileName || `shared-attachment-${index + 1}`, mediaType: file.mimeType || "application/octet-stream", size: file.size ?? undefined })) ?? (screenshotUri ? [{ kind: "file" as const, uri: screenshotUri, name: "screenshot.jpg", mediaType: "image/jpeg" }] : []))] })} question="Explain this message check in plain language and what I should do." />
                 {result.event ? <RecoveryFlow event={result.event} kinds={["called", "clicked", "password", "code", "money", "info", "app"]} linkToCheck={a.signals.urls[0] ?? null} testID="message-recovery" /> : null}
                 {result.event ? <Button testID="message-mark-safe" variant="ghost" label="Mark as handled" onPress={() => { void resolveEvent(result.event!); showToast("Marked as handled. This does not verify the sender or suppress future alerts.", "neutral"); goBackOrHome(router); }} /> : null}
               </Card>

@@ -41,7 +41,7 @@ export function GateInvestigation({ submission, context, question, label, testID
     if (continuityKey && state.caseData) {
       if (busy) return;
       started.current = submissionId;
-      void continueWith(input);
+      void continueWith(input, `${continuityKey}:${submissionId}`);
       return;
     }
     started.current = submissionId;

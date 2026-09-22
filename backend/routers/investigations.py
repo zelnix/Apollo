@@ -146,6 +146,18 @@ async def add_evidence(case_id: str, request: Request, file: Optional[UploadFile
             body = TypeAdapter(EvidenceSubmission).validate_python(await request.json())
         except (ValidationError, ValueError) as exc:
             raise http(422, "invalid_input", "Evidence submission did not match the schema.") from exc
+        existing = await db.investigation_evidence.find_one(
+            {"owner_id": owner, "case_id": case_id, "client_item_id": body.client_item_id}, {"_id": 0}
+        )
+        if existing:
+            value = body.text if body.kind == "text" else (body.url if re.match(r"(?i)^https?://", body.url) else "https://" + body.url) if body.kind == "url" else json.dumps({
+                "capabilityId": body.device_result.capability_id, "status": body.device_result.status, "values": body.device_result.values,
+            }, ensure_ascii=False)
+            meta_existing = repo.dec_json(existing["meta_ciphertext"])
+            if meta_existing.get("inputDigest") != ev.text_input_digest(body.kind if body.kind != "observation" else "observation", value):
+                raise http(409, "conflict", "This evidence identity was already used for different input.")
+            published = await repo.get_evidence(owner, case_id, existing["evidence_id"])
+            return JSONResponse({"evidence": repo.evidence_view(published).wire(), "caseRevision": case["revision"], "replayed": True}, status_code=201, headers=NO_STORE)
         _revision_check(case, body.expected_revision)
         if body.kind == "text":
             item = await ev.ingest_text(owner, case, body.client_item_id, body.text, parent_id=body.parent_id, label=body.label)
@@ -666,28 +678,37 @@ async def _finish_device_submission(owner: str, case: dict, pending: dict) -> Op
         selector = {"owner_id": owner, "case_id": case_id, "request_id": request_id}
 
         async def _resume() -> bool:
-            job = await repo.get_job(owner, case_id, pending["job_id"])
-            if job.get("status") not in ("waiting_device", "queued", "investigating", "retry_wait"):
-                return request_id in job.get("consumed_device_request_ids", [])
-            checkpoint = repo.dec_json(job["checkpoint_ciphertext"]) if job.get("checkpoint_ciphertext") else {"contents": [], "rounds": 0}
-            if not any(r.get("evidenceId") == sub["evidence_id"] for r in checkpoint.get("deviceResults", [])):
-                checkpoint.setdefault("deviceResults", []).append({**result, "evidenceId": sub["evidence_id"]})
-            # Atomic condition on the job's OWN state and lease — never overwrite a job that a live coordinator turn
-            # currently holds under an unexpired lease, or one that already moved to a terminal state elsewhere.
-            resumed_job = await db.investigation_jobs.find_one_and_update(
-                {"owner_id": owner, "job_id": job["job_id"], "status": {"$in": ["waiting_device", "queued", "retry_wait"]},
-                 "consumed_device_request_ids": {"$ne": request_id},
-                 "$or": [{"lease_until": None}, {"lease_until": {"$lte": now_utc()}}]},
-                {"$set": {"checkpoint_ciphertext": repo.enc_json(checkpoint), "status": "queued", "lease_until": None},
-                 "$addToSet": {"consumed_device_request_ids": request_id}})
-            if resumed_job is None:
-                current_job = await repo.get_job(owner, case_id, job["job_id"])
-                return request_id in current_job.get("consumed_device_request_ids", [])
-            await repo.cas(owner, case_id, {
-                "work_epoch": job.get("work_epoch", job["epoch"]), "active_job_id": job["job_id"],
-                "status": {"$in": ["waiting_device", "queued"]}, "pending_device_request_ids": request_id,
-            }, {"$set": {"status": "queued"}, "$pull": {"pending_device_request_ids": request_id}})
-            return True
+            for _ in range(12):
+                job = await repo.get_job(owner, case_id, pending["job_id"])
+                if request_id in job.get("consumed_device_request_ids", []):
+                    return True
+                if job.get("status") not in ("waiting_device", "queued", "investigating", "retry_wait"):
+                    return False
+                checkpoint = repo.dec_json(job["checkpoint_ciphertext"]) if job.get("checkpoint_ciphertext") else {"contents": [], "rounds": 0}
+                if not any(r.get("evidenceId") == sub["evidence_id"] for r in checkpoint.get("deviceResults", [])):
+                    checkpoint.setdefault("deviceResults", []).append({**result, "evidenceId": sub["evidence_id"]})
+                revision = int(job.get("checkpoint_revision", 0))
+                revision_condition = ({"$or": [{"checkpoint_revision": 0}, {"checkpoint_revision": {"$exists": False}}]}
+                                      if revision == 0 else {"checkpoint_revision": revision})
+                # Different requests serialize through checkpoint_revision. A loser reloads and merges its still-
+                # unconsumed result, so consumed IDs and encrypted checkpoint content can never diverge.
+                resumed_job = await db.investigation_jobs.find_one_and_update(
+                    {"owner_id": owner, "job_id": job["job_id"],
+                     "status": {"$in": ["waiting_device", "queued", "retry_wait"]},
+                     "consumed_device_request_ids": {"$ne": request_id},
+                     "$and": [revision_condition, {"$or": [{"lease_until": None}, {"lease_until": {"$lte": now_utc()}}]}]},
+                    {"$set": {"checkpoint_ciphertext": repo.enc_json(checkpoint), "status": "queued", "lease_until": None},
+                     "$addToSet": {"consumed_device_request_ids": request_id}, "$inc": {"checkpoint_revision": 1}},
+                    return_document=ReturnDocument.AFTER,
+                )
+                if resumed_job is None:
+                    continue
+                await repo.cas(owner, case_id, {
+                    "work_epoch": job.get("work_epoch", job["epoch"]), "active_job_id": job["job_id"],
+                    "status": {"$in": ["waiting_device", "queued"]}, "pending_device_request_ids": request_id,
+                }, {"$set": {"status": "queued"}, "$pull": {"pending_device_request_ids": request_id}})
+                return True
+            return request_id in (await repo.get_job(owner, case_id, pending["job_id"])).get("consumed_device_request_ids", [])
         # No multi-document transactions here (standalone MongoDB): the job/case writes above are protected instead by
         # holding the SAME renewed fence for their whole duration — no other attempt can also be in "resuming" while
         # this one is alive and heartbeating — AND each write is itself conditioned on the job's/case's own state, so

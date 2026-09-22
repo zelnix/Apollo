@@ -13,6 +13,7 @@ import pytest, requests
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parents[2] / "frontend" / ".env")
+os.environ["APOLLO_FORBID_PROVIDER_CALLS"] = "1"
 BASE_URL = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/")
 # One map per pytest run (all xdist workers of a run share PYTEST_XDIST_TESTRUNUID).
 _SHARED_MAP = os.path.join(tempfile.gettempdir(), f"apollo_shim_ids_{os.environ.get('PYTEST_XDIST_TESTRUNUID') or os.getppid()}.json")
@@ -98,3 +99,15 @@ def _install_auth_shim():
     requests.Session.request = _shimmed_request
     yield
     requests.Session.request = _orig_request
+
+
+@pytest.fixture(autouse=True)
+def _forbid_live_gemini(monkeypatch):
+    """Fail inside the test process before a broken fixture can call Gemini."""
+    from services.higgins import provider
+
+    async def blocked(*_args, **_kwargs):
+        raise AssertionError("Live Gemini/provider calls are prohibited in bounded tests")
+
+    monkeypatch.setattr(provider, "generate", blocked)
+    monkeypatch.setattr(provider, "generate_json", blocked)
