@@ -1,3 +1,10 @@
+## 2026-09-23 Apollo supplied logo and app icon
+
+- Preserved the user-supplied shield-and-guard-dog artwork as `frontend/assets/images/logo-source.png`.
+- Generated and applied: opaque 1024×1024 iOS/legacy Android `icon.png`, transparent 1024×1024 Android adaptive foreground, transparent 512×512 in-app `logo.png`, and transparent 64×64 favicon.
+- Android package remains `app.apollo.hwg`; launch splash artwork was not changed.
+- Verification: image dimensions/modes/transparency passed; visual review passed; Expo config resolves all icon paths; clean iOS/Android prebuild generated 16 native icon files including an opaque iOS 1024 icon; 433 frontend tests, TypeScript, ESLint, Python lint, security/native/package preflights and 91/91 frozen GuardDog hashes passed.
+
 ## 2026-09-23 FF10 Cloudflare TURN credential broker
 
 - Replaced the generic coturn shared-secret generator with Cloudflare's server-side temporary credential API. Provider mode is `cloudflare`; Key ID is stored only in ignored backend configuration and the API token is intentionally absent from source/chat.

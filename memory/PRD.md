@@ -1,3 +1,10 @@
+## Apollo brand logo and app icon (2026-09-23)
+
+- User-supplied shield-and-guard-dog artwork now drives the in-app Apollo logo, iOS/legacy Android icon, Android adaptive foreground and web favicon.
+- Native variants use platform-safe padding; the iOS icon is opaque and Android adaptive foreground is transparent over Apollo's configured `#F5F7FA` background.
+- Original artwork is preserved and variants are reproducible with `frontend/scripts/prepare-apollo-logo.py`.
+- Launch splash remains unchanged because the confirmed scope was the in-app logo plus app icon.
+
 ## Apollo downloadable media kit (2026-09-23)
 
 - Public gallery and ZIP now expose 28 faithful screen exports plus 12 state GIFs.
