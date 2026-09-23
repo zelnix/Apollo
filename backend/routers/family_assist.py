@@ -1,12 +1,12 @@
 """FF10 Family Help HTTP and single-use-ticket WSS API."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Query, Request, WebSocket
+from fastapi import APIRouter, Query, Request, Response, WebSocket
 
 from models.family_assist import CreateFamilyAssistSession, FamilyAssistCapabilities, NativeStateCommand, RespondFamilyAssistSession, RevisionCommand
 from services.family_assist import sessions
 from services.family_assist.config import capability_record
-from services.family_assist.relay_credentials import issue_relay_credentials
+from services.family_assist.relay_credentials import RelayCredentialError, issue_relay_credentials, unavailable_http
 from services.family_assist.signaling import hub, serve
 
 router = APIRouter(prefix="/family/assist", tags=["family-assist"])
@@ -38,9 +38,13 @@ async def ticket(session_id: str, request: Request): return await sessions.issue
 
 
 @router.post("/sessions/{session_id}/relay-credentials")
-async def relay(session_id: str, request: Request):
+async def relay(session_id: str, request: Request, response: Response):
     caller = request.state.device["device_id"]; row = await sessions.get_session(session_id, caller)
-    return issue_relay_credentials(row, caller, sessions.role_for_device(row, caller))
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        return await issue_relay_credentials(row, caller, sessions.role_for_device(row, caller))
+    except RelayCredentialError:
+        raise unavailable_http()
 
 
 @router.post("/sessions/{session_id}/pause")

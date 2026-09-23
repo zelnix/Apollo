@@ -63,6 +63,8 @@ async def ensure_indexes() -> None:
     await db.family_assist_events.create_index("session_id", unique=True)
     await db.family_assist_outbox.create_index("effect_key", unique=True)
     await db.family_assist_outbox.create_index([("state", 1), ("updated_at", 1)])
+    await db.family_assist_turn_issuances.create_index([("session_id", 1), ("generation", 1), ("device_id", 1), ("issued_at", -1)])
+    await db.family_assist_turn_issuances.create_index("expires_at", expireAfterSeconds=0)
 
 
 async def create_session(caller: str, body) -> dict:

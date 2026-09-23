@@ -1,38 +1,27 @@
 #!/usr/bin/env python3
-"""Fail-closed FF10 TURN configuration/network preflight. Never prints credentials."""
+"""Fail-closed Cloudflare TURN preflight. Provider secrets and credentials are never printed."""
 from __future__ import annotations
 
-import socket
-import ssl
-import sys
+import asyncio
 
-from services.family_assist.config import load_config, parse_turn_url
+from services.family_assist.config import load_config
+from services.family_assist.relay_credentials import RelayCredentialError, fetch_cloudflare_ice_servers
 
 
-def main() -> int:
+async def run() -> int:
     config = load_config()
     if not config.turn_valid:
-        print("FF10_TURN_PREFLIGHT=configuration_missing")
+        print("FF10_TURN_PREFLIGHT=configuration_missing provider=cloudflare")
         return 2
-    failures: list[str] = []
-    checked: list[str] = []
-    for raw in config.turn_urls:
-        parsed = parse_turn_url(raw); host = parsed.hostname or ""; port = parsed.port or (5349 if parsed.scheme == "turns" else 3478)
-        try:
-            socket.getaddrinfo(host, port, type=socket.SOCK_STREAM if parsed.scheme == "turns" else socket.SOCK_DGRAM)
-            checked.append(f"dns:{parsed.scheme}:{host}:{port}")
-            if parsed.scheme == "turns":
-                context = ssl.create_default_context()
-                with socket.create_connection((host, port), timeout=5) as tcp, context.wrap_socket(tcp, server_hostname=host):
-                    checked.append(f"tls:{host}:{port}")
-        except (OSError, ssl.SSLError) as error:
-            failures.append(f"{parsed.scheme}:{host}:{port}:{type(error).__name__}")
-    if failures:
-        print("FF10_TURN_PREFLIGHT=network_failed " + ",".join(failures))
+    try:
+        servers = await fetch_cloudflare_ice_servers(config, config.relay_ttl_seconds)
+    except RelayCredentialError as error:
+        print(f"FF10_TURN_PREFLIGHT=provider_failed code={error} credentials=redacted")
         return 3
-    print(f"FF10_TURN_PREFLIGHT=pass routes={len(config.turn_urls)} checks={len(checked)} credentials=redacted")
+    turn_routes = sum(len(row["urls"]) for row in servers if "username" in row)
+    print(f"FF10_TURN_PREFLIGHT=pass provider=cloudflare ice_servers={len(servers)} turn_routes={turn_routes} ttl={config.relay_ttl_seconds} credentials=redacted")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(asyncio.run(run()))

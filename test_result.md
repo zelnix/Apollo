@@ -1,3 +1,12 @@
+## 2026-09-23 FF10 Cloudflare TURN credential broker
+
+- Replaced the generic coturn shared-secret generator with Cloudflare's server-side temporary credential API. Provider mode is `cloudflare`; Key ID is stored only in ignored backend configuration and the API token is intentionally absent from source/chat.
+- Credential request: Cloudflare endpoint receives server-only Bearer token plus `ttl: 3600`. Apollo whitelists only Cloudflare STUN/TURN hosts, allowed schemes and `urls`/temporary `username`/`credential` fields; unexpected response data fails closed.
+- Issuance remains authenticated, paired-device, session, role and generation bound. Durable data contains only issuance metadata and a username digest; temporary credentials, ICE servers, API token and Key ID are not persisted.
+- Added native refresh before expiry: helper updates ICE configuration first; sharer refreshes next, calls `restartIce`, and sends restart SDP/ICE only through native WSS. Refresh is server rate-limited.
+- Verification: 13/13 Cloudflare/FF10 backend tests, 7/7 frontend native source contracts, TypeScript, Python/JS lint and Android Kotlin compilation passed. Frontend and tracked-source scans found zero token/Key ID references.
+- Runtime status: `configuration_missing` with exact Family Help unavailable copy. Cloudflare preflight exits 2 until `CLOUDFLARE_TURN_API_TOKEN` is entered directly in server secrets. No real Cloudflare call or real-device relay claim was made.
+
 ## 2026-09-23 Apollo downloadable media kit
 
 - Generated 28 static UI exports covering seven requested screens, two device dimensions and light/dark preferences without Playwright or scenario automation.
@@ -28,7 +37,7 @@
 ## 2026-09-23 FF10 Family Help configuration-gated implementation
 
 - Outcome: `configuration_gated_source_complete`; runtime capability is intentionally `configuration_missing` until external TURN is valid. Exact user copy: “Family Help is not available yet. Your other Apollo features still work.”
-- Backend: authoritative paired-device session lifecycle, revision/generation fences, durable invitation outbox, revocation hooks, closed bounded WSS signaling, single-use tickets, short-lived coturn REST credentials and minimal terminal projection.
+- Backend: authoritative paired-device session lifecycle, revision/generation fences, durable invitation outbox, revocation hooks, closed bounded WSS signaling, single-use tickets, Cloudflare temporary TURN credentials and minimal terminal projection.
 - Native/mobile: Android MediaProjection foreground service and Kotlin compile pass; iOS ReplayKit Broadcast Upload target plus native WebRTC viewer generate idempotently; all first-release paths are video-only/view-only.
 - Checks: FF10 pytest 9 passed; frontend Node suite, TypeScript, ESLint, Python lint, security/native/package preflights passed; Android module compile passed; iOS repeated prebuild produced Apollo plus five extension products and five host dependencies; GuardDog frozen hashes 91/91 passed.
 - Full repository backend pytest attempt: 364 passed and 23 unrelated pre-existing/environment-dependent tests failed (email/voice/provider fixtures and older investigation contracts). No FF10 test failed. Apple compilation and real-device TURN connectivity were not run or claimed.

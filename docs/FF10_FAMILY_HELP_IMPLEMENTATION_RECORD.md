@@ -4,9 +4,9 @@ Generated: 2026-09-23
 
 ## Outcome
 
-**`configuration_gated_source_complete`**
+**`cloudflare_configuration_gated_source_complete`**
 
-Apollo now contains the full owner/helper session coordinator, closed signaling relay, short-lived TURN REST credentials, view-only native Android/iOS capture paths, helper renderer, user flows, kill switch, invitation outbox, revocation hooks and privacy-preserving terminal projection. Family Help currently reports **`configuration_missing`** and cannot create sessions because no external TURN service is configured. All existing Family functions remain enabled.
+Apollo now contains the full owner/helper session coordinator, closed signaling relay, Cloudflare temporary TURN credential broker, proactive native credential refresh/ICE restart, view-only native Android/iOS capture paths, helper renderer, user flows, kill switch, invitation outbox, revocation hooks and privacy-preserving terminal projection. Family Help currently reports **`configuration_missing`** because the associated Cloudflare API token is not present in this environment. All existing Family functions remain enabled.
 
 The sole FF10 activation dependency is the operator-managed TURN service defined in [`FF10_TURN_DEPLOYMENT_SPECIFICATION.md`](./FF10_TURN_DEPLOYMENT_SPECIFICATION.md).
 
@@ -17,7 +17,7 @@ The sole FF10 activation dependency is the operator-managed TURN service defined
 | Contracts/state | `backend/models/family_assist.py`, `services/family_assist/sessions.py` | Authoritative revision/generation-fenced state machine, one live sharer session, idempotent create/respond/end, bounded invitations/consent/active duration/extensions |
 | Authority | `authorization.py`, device-auth middleware | Device identity comes from authenticated context; every operation rechecks active pairing generation and role |
 | Signaling | `signaling.py`, `/api/family/assist/.../signal` | Single-use hashed tickets; max two role-bound sockets; closed message schema; size/rate/sequence/candidate bounds; no persistence/logging |
-| Relay | `config.py`, `relay_credentials.py` | Server-only strict TURN configuration; session+generation+device+role-bound HMAC credentials, max 10-minute TTL |
+| Relay | `config.py`, `relay_credentials.py` | Server-only Cloudflare credential API; strict response host/field validation; temporary `iceServers`, one-hour maximum TTL, bounded retry and no generic shared-secret fallback |
 | Side effects | `outbox.py`, server maintenance | Durable idempotent invitation effect; provider submission never means helper acceptance |
 | Revocation | `routers/family.py`, `routers/devices.py` | Pair unlink and device revocation terminate matching live sessions immediately |
 | Android native | `modules/apollo-family-assist/android` | MediaProjection consent, foreground media-projection service, native WebRTC track, persistent notification controls, native renderer, no audio/data channel |
@@ -44,7 +44,9 @@ The sole FF10 activation dependency is the operator-managed TURN service defined
 - View-only: microphone, system audio, recording and remote control are not implemented or requested.
 - Raw frames remain in ReplayKit/MediaProjection/WebRTC native pipelines; no media crosses the React Native bridge.
 - SDP/ICE remain bounded WSS memory only and are never persisted or logged.
-- Static TURN credentials never enter source, mobile config or responses.
+- Cloudflare TURN API token and Key ID never enter tracked source, mobile config, logs, analytics, MongoDB or API responses.
+- Only Cloudflare temporary `iceServers` reach authenticated native WSS/HTTP session responses; React Native JavaScript never receives them.
+- Native peers refresh before expiry; helper applies new configuration first, then sharer applies it and performs ICE restart.
 - Backend returns only ephemeral role/device/session-bound credentials after authentication and pairing checks.
 - Android foreground notification and iOS system broadcast affordance expose sharing state; local Stop precedes server reconciliation.
 - Pause disables the owner video track and helper UI replaces video with a neutral paused surface.
@@ -53,7 +55,7 @@ The sole FF10 activation dependency is the operator-managed TURN service defined
 
 | Gate | Result |
 |---|---|
-| FF10 backend unit/contract tests | 9 passed |
+| FF10 backend unit/contract tests | 13 passed |
 | Frontend Node contract regression | passed |
 | TypeScript | passed |
 | JavaScript/Python lint | passed |
@@ -67,6 +69,7 @@ The sole FF10 activation dependency is the operator-managed TURN service defined
 | Missing-config operator preflight | expected fail-closed exit 2 |
 | Full backend repository pytest | 364 passed, 23 unrelated legacy/environment-dependent failures (email transport, voice/provider fixtures and older investigation contract expectations); no FF10 test failed |
 | Apple Xcode/Swift compile | `not_run_external_toolchain` |
+| Cloudflare live preflight | `configuration_missing` until API token is placed directly in server secrets |
 | Real-device TURN relay | `not_run_external_dependency` |
 
 No Playwright, scenario automation, testing agent, live Gemini call or Emergent-managed LLM key was used.

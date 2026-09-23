@@ -13,6 +13,7 @@ final class SampleHandler: RPBroadcastSampleHandler, RTCPeerConnectionDelegate, 
   private var sequence = 0
   private var lastFrameNs: Int64 = 0
   private var paused = false
+  private var refreshWork: DispatchWorkItem?
 
   override func broadcastStarted(withSetupInfo setupInfo: [String : NSObject]?) {
     guard let root = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) else { return fail("Protected storage is unavailable.") }
@@ -44,22 +45,41 @@ final class SampleHandler: RPBroadcastSampleHandler, RTCPeerConnectionDelegate, 
   private func handle(_ text: String) {
     guard let data = text.data(using: .utf8), let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let type = body["type"] as? String else { return }
     if type == "ready", let relay = body["relay"] as? [String: Any] { createPeer(relay) }
+    if type == "relay_credentials", let relay = body["relay"] as? [String: Any] { applyRelay(relay) }
     if type == "answer", let sdp = body["sdp"] as? String { peer?.setRemoteDescription(RTCSessionDescription(type: .answer, sdp: sdp)) { _ in } }
     if type == "ice_candidate", let candidate = body["candidate"] as? String { peer?.add(RTCIceCandidate(sdp: candidate, sdpMLineIndex: 0, sdpMid: "0")) }
     if type == "terminate" { finishBroadcastWithError(BroadcastError.stopped) }
   }
   private func createPeer(_ relay: [String: Any]) {
-    let config = RTCConfiguration(); config.sdpSemantics = .unifiedPlan
-    config.iceServers = [RTCIceServer(urlStrings: relay["uris"] as? [String] ?? [], username: relay["username"] as? String, credential: relay["credential"] as? String)]
+    guard let config = configuration(relay) else { return fail("The relay configuration was rejected.") }
     peer = factory.peerConnection(with: config, constraints: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil), delegate: self)
     source = factory.videoSource(); source?.adaptOutputFormat(toWidth: 1280, height: 720, fps: 15)
     if let source { track = factory.videoTrack(with: source, trackId: "apollo-screen"); peer?.add(track!, streamIds: ["apollo-family-assist"]) }
-    peer?.offer(for: RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)) { [weak self] sdp, error in guard let self, let sdp, error == nil else { return }; self.peer?.setLocalDescription(sdp) { error in if error == nil { self.send(["type": "offer", "sdp": sdp.sdp]) } } }
+    scheduleRelayRefresh(relay); createOffer(iceRestart: false)
+  }
+  private func configuration(_ relay: [String: Any]) -> RTCConfiguration? {
+    guard relay["provider"] as? String == "cloudflare", let rows = relay["iceServers"] as? [[String: Any]] else { return nil }
+    let config = RTCConfiguration(); config.sdpSemantics = .unifiedPlan
+    config.iceServers = rows.compactMap { row in guard let urls = row["urls"] as? [String], !urls.isEmpty else { return nil }; return RTCIceServer(urlStrings: urls, username: row["username"] as? String, credential: row["credential"] as? String) }
+    return config.iceServers.count == rows.count ? config : nil
+  }
+  private func applyRelay(_ relay: [String: Any]) {
+    guard let config = configuration(relay), peer?.setConfiguration(config) == true else { return fail("The refreshed relay configuration was rejected.") }
+    scheduleRelayRefresh(relay); peer?.restartIce(); createOffer(iceRestart: true)
+  }
+  private func createOffer(iceRestart: Bool) {
+    let mandatory = iceRestart ? ["IceRestart": "true"] : nil
+    peer?.offer(for: RTCMediaConstraints(mandatoryConstraints: mandatory, optionalConstraints: nil)) { [weak self] sdp, error in guard let self, let sdp, error == nil else { return }; self.peer?.setLocalDescription(sdp) { error in if error == nil { self.send(["type": "offer", "sdp": sdp.sdp]) } } }
+  }
+  private func scheduleRelayRefresh(_ relay: [String: Any]) {
+    refreshWork?.cancel(); guard let raw = relay["expiresAt"] as? String, let expiry = ISO8601DateFormatter().date(from: raw) else { return }
+    let work = DispatchWorkItem { [weak self] in self?.send(["type": "relay_refresh"]) }; refreshWork = work
+    DispatchQueue.global().asyncAfter(deadline: .now() + max(30, expiry.timeIntervalSinceNow - 300), execute: work)
   }
   private func send(_ body: [String: Any]) { guard let handoff else { return }; var value = body; value["sequence"] = sequence; value["generation"] = handoff.generation; sequence += 1; guard let data = try? JSONSerialization.data(withJSONObject: value), let text = String(data: data, encoding: .utf8) else { return }; socket?.send(.string(text)) { _ in } }
   private func command(for handoff: Handoff) -> String? { guard let body = UserDefaults(suiteName: appGroup)?.dictionary(forKey: "family-assist-command"), body["sessionId"] as? String == handoff.sessionId, body["generation"] as? String == handoff.generation else { return nil }; return body["command"] as? String }
   private func fail(_ detail: String) { close(); finishBroadcastWithError(NSError(domain: "ApolloFamilyAssist", code: 1, userInfo: [NSLocalizedDescriptionKey: detail])) }
-  private func close() { track?.isEnabled = false; peer?.close(); peer = nil; source = nil; track = nil; socket?.cancel(with: .normalClosure, reason: nil); socket = nil; handoff = nil }
+  private func close() { refreshWork?.cancel(); refreshWork = nil; track?.isEnabled = false; peer?.close(); peer = nil; source = nil; track = nil; socket?.cancel(with: .normalClosure, reason: nil); socket = nil; handoff = nil }
   func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) { send(["type": "ice_candidate", "candidate": candidate.sdp]) }
   func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCPeerConnectionState) { if newState == .failed { fail("The private screen connection failed.") } }
   func peerConnection(_ peerConnection: RTCPeerConnection, didChange stateChanged: RTCSignalingState) {}
