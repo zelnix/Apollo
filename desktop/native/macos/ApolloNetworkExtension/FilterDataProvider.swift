@@ -11,9 +11,10 @@ final class FilterDataProvider: NEFilterDataProvider {
 
   override func handleNewFlow(_ flow: NEFilterFlow) -> NEFilterNewFlowVerdict {
     guard let socket = flow as? NEFilterSocketFlow else { return .allow() }
-    let hostname = socket.remoteHostname ?? (socket.remoteEndpoint as? NWHostEndpoint)?.hostname
+    let endpoint = socket.remoteEndpoint as? NWHostEndpoint
+    let hostname = socket.remoteHostname ?? endpoint?.hostname
     guard let host = hostname?.lowercased(), blocked(host) else { return .allow() }
-    record(host: host, appId: flow.sourceAppIdentifier)
+    record(host: host, port: endpoint.flatMap { UInt16($0.port) }.map(Int.init), appId: flow.sourceAppIdentifier)
     return .drop()
   }
 
@@ -26,7 +27,7 @@ final class FilterDataProvider: NEFilterDataProvider {
     return values.contains { rule in host == rule || host.hasSuffix(".\(rule)") }
   }
 
-  private func record(host: String, appId: String?) {
+  private func record(host: String, port: Int?, appId: String?) {
     guard let root = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: suite) else { return }
     let file = root.appendingPathComponent(evidenceFile)
     var values = ((try? Data(contentsOf: file)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [[String: Any]] }) ?? []
@@ -34,7 +35,7 @@ final class FilterDataProvider: NEFilterDataProvider {
       "evidenceId": UUID().uuidString, "eventId": NSNull(), "deviceId": NSNull(), "platform": "macos",
       "osVersion": ProcessInfo.processInfo.operatingSystemVersionString, "sdkVersion": "1.1.0",
       "observedAt": ISO8601DateFormatter().string(from: Date()), "mechanism": "network_extension",
-      "direction": "outbound", "protocol": "unknown", "destination": ["ip": NSNull(), "domain": host, "port": NSNull()],
+      "direction": "outbound", "protocol": "unknown", "destination": ["ip": NSNull(), "domain": host, "port": port ?? NSNull()],
       "attribution": ["appId": appId ?? NSNull(), "processName": NSNull(), "confidence": appId == nil ? "unavailable" : "medium"],
       "matchedRuleId": host, "threatId": NSNull(), "requestedAction": "block", "enforcedAction": "blocked",
       "result": "verified", "ruleSource": "local_blocklist", "confidence": "high",

@@ -5,12 +5,14 @@
 #include <windows.h>
 #include <fwpmu.h>
 #include <ws2tcpip.h>
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
 #include <set>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #pragma comment(lib, "fwpuclnt.lib")
@@ -36,6 +38,7 @@ SERVICE_STATUS serviceStatus{};
 HANDLE stopEvent{};
 std::mutex evidenceMutex;
 std::set<UINT64> filterIds;
+std::unordered_map<UINT64, std::wstring> filterDomains;
 
 std::filesystem::path programData() {
   wchar_t value[MAX_PATH]{};
@@ -82,17 +85,35 @@ std::string nowIso() {
   return value;
 }
 
+void pruneEvidence(const std::filesystem::path& directory) {
+  std::vector<std::filesystem::path> files;
+  std::error_code ignored;
+  for (const auto& entry : std::filesystem::directory_iterator(directory, ignored)) {
+    if (entry.is_regular_file() && entry.path().extension() == L".json") files.push_back(entry.path());
+  }
+  std::sort(files.begin(), files.end(), [](const auto& a, const auto& b) {
+    std::error_code leftError, rightError;
+    return std::filesystem::last_write_time(a, leftError) < std::filesystem::last_write_time(b, rightError);
+  });
+  while (files.size() >= 256) { std::filesystem::remove(files.front(), ignored); files.erase(files.begin()); }
+}
+
 void CALLBACK onNetEvent(void*, const FWPM_NET_EVENT1* event) {
   if (!event || event->type != FWPM_NET_EVENT_TYPE_CLASSIFY_DROP || !event->classifyDrop) return;
+  std::wstring matchedDomain;
   {
     std::lock_guard lock(evidenceMutex);
     if (!filterIds.contains(event->classifyDrop->filterId)) return;
+    const auto found = filterDomains.find(event->classifyDrop->filterId);
+    if (found == filterDomains.end()) return;
+    matchedDomain = found->second;
   }
   std::wstring app;
   if (event->header.appId.data && event->header.appId.size) {
     app.assign(reinterpret_cast<const wchar_t*>(event->header.appId.data), event->header.appId.size / sizeof(wchar_t));
     while (!app.empty() && app.back() == L'\0') app.pop_back();
   }
+  if (app.size() > 128) app.resize(128);
   wchar_t remote[INET6_ADDRSTRLEN]{};
   if (event->header.ipVersion == FWP_IP_VERSION_V4) {
     IN_ADDR address{}; address.S_un.S_addr = htonl(event->header.remoteAddrV4); InetNtopW(AF_INET, &address, remote, INET6_ADDRSTRLEN);
@@ -102,18 +123,23 @@ void CALLBACK onNetEvent(void*, const FWPM_NET_EVENT1* event) {
   GUID id{}; CoCreateGuid(&id);
   wchar_t idText[40]{}; StringFromGUID2(id, idText, 40);
   std::wstring process = app.empty() ? L"" : std::filesystem::path(app).filename().wstring();
+  if (process.size() > 128) process.resize(128);
+  std::wstring evidenceId(idText);
+  if (evidenceId.size() > 1 && evidenceId.front() == L'{' && evidenceId.back() == L'}') evidenceId = evidenceId.substr(1, evidenceId.size() - 2);
+  const char* protocol = event->header.ipProtocol == IPPROTO_TCP ? "tcp" : event->header.ipProtocol == IPPROTO_UDP ? "udp" : "unknown";
   std::error_code ignored; auto directory = programData() / L"evidence"; std::filesystem::create_directories(directory, ignored);
-  std::ofstream out(directory / (std::wstring(idText) + L".json"), std::ios::trunc);
-  out << "{\"evidenceId\":\"" << escaped(utf8(idText)) << "\",\"eventId\":null,\"deviceId\":null,\"platform\":\"windows\","
+  pruneEvidence(directory);
+  std::ofstream out(directory / (evidenceId + L".json"), std::ios::trunc);
+  out << "{\"evidenceId\":\"" << escaped(utf8(evidenceId)) << "\",\"eventId\":null,\"deviceId\":null,\"platform\":\"windows\","
       << "\"osVersion\":\"observed-by-wfp\",\"sdkVersion\":\"1.1.0\",\"observedAt\":\"" << nowIso() << "\","
-      << "\"mechanism\":\"wfp_ale_authorization\",\"direction\":\"outbound\",\"protocol\":\"" << static_cast<unsigned>(event->header.ipProtocol) << "\","
-      << "\"destination\":{\"ip\":\"" << escaped(utf8(remote)) << "\",\"domain\":null,\"port\":" << event->header.remotePort << "},"
+      << "\"mechanism\":\"wfp_ale_authorization\",\"direction\":\"outbound\",\"protocol\":\"" << protocol << "\","
+      << "\"destination\":{\"ip\":\"" << escaped(utf8(remote)) << "\",\"domain\":\"" << escaped(utf8(matchedDomain)) << "\",\"port\":" << event->header.remotePort << "},"
       << "\"attribution\":{\"appId\":\"" << escaped(utf8(app)) << "\",\"processName\":\"" << escaped(utf8(process)) << "\",\"confidence\":\"high\"},"
       << "\"matchedRuleId\":\"wfp-filter-" << event->classifyDrop->filterId << "\",\"threatId\":null,\"requestedAction\":\"block\",\"enforcedAction\":\"blocked\","
       << "\"result\":\"verified\",\"ruleSource\":\"local_blocklist\",\"confidence\":\"high\",\"sourceMetadata\":{\"provider\":\"Windows Filtering Platform\"},\"correlationId\":null}";
 }
 
-DWORD addRemoteAddressFilter(HANDLE engine, const GUID& layer, const SOCKADDR* address, UINT32 index) {
+DWORD addRemoteAddressFilter(HANDLE engine, const GUID& layer, const SOCKADDR* address, UINT32 index, const std::wstring& rule) {
   FWPM_FILTER_CONDITION0 condition{};
   condition.fieldKey = FWPM_CONDITION_IP_REMOTE_ADDRESS;
   condition.matchType = FWP_MATCH_EQUAL;
@@ -137,7 +163,7 @@ DWORD addRemoteAddressFilter(HANDLE engine, const GUID& layer, const SOCKADDR* a
   filter.filterCondition = &condition;
   UINT64 id{};
   DWORD code = FwpmFilterAdd0(engine, &filter, nullptr, &id);
-  if (code == ERROR_SUCCESS) { std::lock_guard lock(evidenceMutex); filterIds.insert(id); }
+  if (code == ERROR_SUCCESS) { std::lock_guard lock(evidenceMutex); filterIds.insert(id); filterDomains[id] = rule; }
   return code;
 }
 
@@ -157,7 +183,7 @@ DWORD installRules(HANDLE engine) {
     if (GetAddrInfoW(rule.c_str(), nullptr, &hints, &result) != 0) continue;
     for (ADDRINFOW* item = result; item; item = item->ai_next) {
       const GUID& layer = item->ai_family == AF_INET ? FWPM_LAYER_ALE_AUTH_CONNECT_V4 : FWPM_LAYER_ALE_AUTH_CONNECT_V6;
-      code = addRemoteAddressFilter(engine, layer, item->ai_addr, index++);
+      code = addRemoteAddressFilter(engine, layer, item->ai_addr, index++, rule);
       if (code != ERROR_SUCCESS) break;
     }
     FreeAddrInfoW(result);
@@ -195,19 +221,20 @@ void WINAPI serviceMain(DWORD, wchar_t**) {
   HANDLE subscription{};
   FWPM_NET_EVENT_SUBSCRIPTION0 subscriptionOptions{};
   FwpmNetEventSubscribe0(engine, &subscriptionOptions, onNetEvent, nullptr, &subscription);
+  bool refreshFailed = false;
   while (WaitForSingleObject(stopEvent, 5000) == WAIT_TIMEOUT) {
     if (subscription) { FwpmNetEventUnsubscribe0(engine, subscription); subscription = nullptr; }
     FwpmEngineClose0(engine); engine = nullptr;
-    { std::lock_guard lock(evidenceMutex); filterIds.clear(); }
+    { std::lock_guard lock(evidenceMutex); filterIds.clear(); filterDomains.clear(); }
     code = FwpmEngineOpen0(nullptr, RPC_C_AUTHN_WINNT, nullptr, &session, &engine);
-    if (code != ERROR_SUCCESS || installRules(engine) != ERROR_SUCCESS) { writeStatus(L"adapter_failed", L"Windows Filtering Platform rules could not be refreshed"); break; }
+    if (code != ERROR_SUCCESS || installRules(engine) != ERROR_SUCCESS) { refreshFailed = true; writeStatus(L"adapter_failed", L"Windows Filtering Platform rules could not be refreshed"); break; }
     FWP_VALUE0 collect{}; collect.type = FWP_UINT32; collect.uint32 = 1; FwpmEngineSetOption0(engine, FWPM_ENGINE_COLLECT_NET_EVENTS, &collect);
     FwpmNetEventSubscribe0(engine, &subscriptionOptions, onNetEvent, nullptr, &subscription);
   }
   if (subscription && engine) FwpmNetEventUnsubscribe0(engine, subscription);
   if (engine) FwpmEngineClose0(engine);
-  writeStatus(L"stopped", L"The Windows filtering service is stopped");
-  serviceStatus.dwCurrentState = SERVICE_STOPPED; serviceStatus.dwControlsAccepted = 0; SetServiceStatus(statusHandle, &serviceStatus);
+  if (!refreshFailed) writeStatus(L"stopped", L"The Windows filtering service is stopped");
+  serviceStatus.dwCurrentState = SERVICE_STOPPED; serviceStatus.dwControlsAccepted = 0; serviceStatus.dwWin32ExitCode = refreshFailed ? ERROR_SERVICE_SPECIFIC_ERROR : NO_ERROR; SetServiceStatus(statusHandle, &serviceStatus);
 }
 } // namespace
 

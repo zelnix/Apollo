@@ -45,6 +45,7 @@ import { getNativeModule } from "@/src/security/nativeBridge";
 import { runProtectionHealthCheck } from "@/src/protection/healthCoordinator";
 import type { HealthTrigger } from "@/src/protection/healthTypes";
 import { APP_VERSION } from "@/src/config/buildInfo";
+import { isVerifiedDesktopFlowDrop } from "@/src/security/desktopEvidence";
 
 const deviceMeta = () => ({ platform: Platform.OS, adapter_mode: securityAdapter.kind, app_version: APP_VERSION, tz_offset_minutes: -new Date().getTimezoneOffset() });
 
@@ -284,6 +285,25 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       await syncEventRef.current?.(ev);
       seen.add(e.evidenceId); // local dedupe ONLY; delivery receipts live in the durable outbox.
       showToast(isCall ? `Apollo blocked a call from ${domain}.` : `Apollo blocked ${domain}.`, "biting");
+    }
+    // WFP ALE and NEFilterDataProvider report genuine OS flow/authorization drops, not packet-drop
+    // evidence. Surface them locally and acknowledge them, but preserve the stricter P0 rule that
+    // only correlated packet drops may produce Biting or upload enforcement evidence.
+    for (const e of evidence.filter(x => isVerifiedDesktopFlowDrop(x) && !seen.has(x.evidenceId))) {
+      const domain = e.destination.domain!;
+      const source = e.attribution.processName ?? e.attribution.appId;
+      const mechanism = e.mechanism === "wfp_ale_authorization" ? "Windows Filtering Platform" : "the macOS Network Extension";
+      const ev: PatrolEvent = {
+        event_id: e.eventId ?? e.evidenceId, device_id: deviceIdRef.current ?? "local", category: "connection", state: "barking", status: "active",
+        headline: `Apollo's desktop filter stopped ${domain}`,
+        what_happened: `${mechanism} reported a blocked outbound connection${source ? ` from ${source}` : ""}. This is flow-level evidence, so Apollo does not label it Biting.`,
+        why: ["The operating system reported an enforced flow or connection-authorization drop.", "Apollo reserves Biting for correlated packet-drop evidence."],
+        what_to_do: "Review the application that attempted the connection and keep the destination blocked.", indicator_host: domain, indicator_digest: null,
+        verified_block: false, adapter_label: securityAdapter.label, occurred_at: e.observedAt, resolved_at: null, trust_allowed: false, background: true,
+      };
+      await persistEvents([ev, ...eventsRef.current.filter(x => x.event_id !== ev.event_id)]);
+      await syncEventRef.current?.(ev); seen.add(e.evidenceId);
+      showToast(`Apollo's desktop filter stopped ${domain}.`, "barking");
     }
     for (const e of evidence.filter(x => x.mechanism === 'call_screening' && x.requestedAction === 'block' && !seen.has(x.evidenceId))) {
       const ev: PatrolEvent = {

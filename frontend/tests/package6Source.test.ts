@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import { isVerifiedDesktopFlowDrop, parseDesktopEnforcementEvidence } from "../src/security/desktopEvidence.ts";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 
@@ -29,6 +30,9 @@ test("iOS Message Filter is a real local extension with bounded, redacted event 
 test("Windows source uses WFP ALE authorization and a service installer hook", () => {
   const source = read("../../desktop/native/windows-wfp/ApolloWfpService.cpp");
   for (const api of ["FwpmEngineOpen0", "FwpmSubLayerAdd0", "FwpmFilterAdd0", "FwpmNetEventSubscribe0", "FWPM_LAYER_ALE_AUTH_CONNECT_V4", "FWPM_LAYER_ALE_AUTH_CONNECT_V6", "appId"]) assert.match(source, new RegExp(api));
+  assert.match(source, /filterDomains/);
+  assert.match(source, /evidenceId\.substr/);
+  assert.match(source, /pruneEvidence/);
   assert.match(read("../../desktop/src-tauri/tauri.windows.conf.json"), /apollo-wfp-service/);
   const hooks = read("../../desktop/src-tauri/windows/installer-hooks.nsh");
   assert.match(hooks, /ApolloProtectionService/);
@@ -45,6 +49,11 @@ test("macOS source uses a Network Extension system extension with required entit
   assert.match(extensionEntitlements, /content-filter-provider-systemextension/);
   assert.match(extensionEntitlements, /group\.app\.apollo\.hwg\.apollo/);
   assert.match(read("../../desktop/src-tauri/entitlements.macos.plist"), /com\.apple\.developer\.system-extension\.install/);
+  assert.match(read("../../desktop/src-tauri/entitlements.macos.plist"), /content-filter-provider-systemextension/);
+  const manager = read("../../desktop/native/macos/ApolloExtensionManager/main.swift");
+  assert.match(manager, /NEFilterManager\.shared/);
+  assert.match(manager, /filterDataProviderBundleIdentifier/);
+  assert.match(manager, /saveToPreferences/);
 });
 
 test("desktop adapter observes real native status and preserves evidence-only Biting", () => {
@@ -65,4 +74,26 @@ test("platform delivery manifest keeps identities and mechanism names stable", (
   assert.equal(manifest.windows.mechanism, "wfp_ale_authorization");
   assert.equal(manifest.macos.extensionIdentifier, "app.apollo.hwg.desktop.networkextension");
   assert.equal(manifest.macos.appGroup, "group.app.apollo.hwg.apollo");
+});
+
+test("desktop evidence parser admits bounded native flow drops and rejects malformed records", () => {
+  const windows = {
+    evidenceId: "19b6d578-9097-4adf-bef0-c301f22403bb", eventId: null, deviceId: null, platform: "windows",
+    osVersion: "Windows 11", sdkVersion: "1.1.0", observedAt: "2026-09-22T10:00:00Z",
+    mechanism: "wfp_ale_authorization", direction: "outbound", protocol: "tcp",
+    destination: { ip: "203.0.113.7", domain: "blocked.example", port: 443 },
+    attribution: { appId: "C:\\Program Files\\Browser\\browser.exe", processName: "browser.exe", confidence: "high" },
+    matchedRuleId: "wfp-filter-12", threatId: null, requestedAction: "block", enforcedAction: "blocked",
+    result: "verified", ruleSource: "local_blocklist", confidence: "high", sourceMetadata: {}, correlationId: null,
+  };
+  const parsed = parseDesktopEnforcementEvidence([windows, { ...windows, evidenceId: "{invalid-braces}" }]);
+  assert.equal(parsed.length, 1);
+  assert.equal(isVerifiedDesktopFlowDrop(parsed[0]), true);
+});
+
+test("desktop flow evidence remains distinct from packet-filter evidence", () => {
+  const source = read("../src/security/desktopEvidence.ts");
+  assert.match(source, /wfp_ale_authorization/);
+  assert.match(source, /network_extension/);
+  assert.doesNotMatch(source, /mechanism\s*=\s*["']packet_filter/);
 });

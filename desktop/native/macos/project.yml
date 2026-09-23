@@ -31,6 +31,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.apollo.hwg.desktop.extension-manager
+        CODE_SIGN_ENTITLEMENTS: ApolloExtensionManager/ApolloExtensionManager.entitlements
         CODE_SIGN_STYLE: Automatic
     dependencies:
       - sdk: SystemExtensions.framework

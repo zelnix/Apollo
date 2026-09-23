@@ -2,7 +2,7 @@
 
 ## Status
 
-The production implementation is source-complete but **not the default engine**. `app-bundle` remains `legacy`. The explicit `guarddog-production` profile fails closed until owner-controlled public roots, signed artifacts and HTTPS update locations are supplied. No private signing key belongs in this repository, application binary, EAS environment or CI.
+GuardDog is the Android production default in `production`, `app-bundle`, and `guarddog-production`. Source selection and native Website Gate wiring are complete; runtime remains fail-closed until owner-controlled public roots, signed artifacts, HTTPS update locations, and device approval are supplied. No private signing key belongs in this repository, application binary, EAS environment or CI.
 
 ## Authority model
 
@@ -19,8 +19,8 @@ The production implementation is source-complete but **not the default engine**.
 1. Fetch candidate manifest and rule bundle over HTTPS without redirects.
 2. Verify strict schema, duplicate-member rejection, domain/profile, root signature, validity, revocation and rollback before changing enforcement.
 3. If trust or rules change, stop and observe route/TUN recovery; drain evidence reporting; clear runtime bindings/listeners/authorization; rebuild one engine/verifier/registry/version store for the new trust generation.
-4. Accept and persist the signed rule bundle, re-authorize the controlled endpoint, then resume only if protection was already intended on.
-5. A WorkManager refresh checks for updates every six hours. A separate exact-expiry worker stops enforcement when the manifest, ordinary key or rule bundle expires.
+4. Accept the same signed rule bundle into the frozen M1 and Website Gate M2 verifier slots, persist it, re-authorize the controlled endpoint, wire the physical network's IPv4 DNS resolver plus fixed DNS/sinkhole /32 routes, then resume only if protection was already intended on.
+5. A WorkManager refresh checks for updates every six hours. A separate expiry worker stops enforcement when the manifest, ordinary key or rule bundle expires. Boot, user-unlock, package-replace, and physical-network DNS changes reconcile persisted intent without changing engine ownership.
 
 The frozen GuardDog Expo bridge remains excluded. Apollo's `apollo-security` module owns the sole process runtime and native bridge.
 
@@ -69,4 +69,4 @@ The application/update service receives only signed JSON and public keys. The sc
 
 ## Cutover boundary
 
-Source completion is not production-default approval. Selection requires the explicit `guarddog-production` profile, owner-provided public roots and signed update artifacts, native build verification, real-device enforcement/evidence/rollback observations, and an updated signed build record. `app-bundle` remains reversible legacy until that evidence exists.
+Source completion is not physical-device acceptance. Production selection is already fail-closed to GuardDog and never falls back to legacy. Runtime activation requires owner-provided public roots and signed update artifacts, native build verification, real-device enforcement/evidence/rollback observations, and an updated signed build record.

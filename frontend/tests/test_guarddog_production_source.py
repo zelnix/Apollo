@@ -15,6 +15,8 @@ def test_production_engine_is_the_only_production_default():
     assert eas["build"]["production"]["env"]["EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE"] == "guarddog_production"
     assert eas["build"]["app-bundle"]["env"]["EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE"] == "guarddog_production"
     assert eas["build"]["guarddog-production"]["env"]["EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE"] == "guarddog_production"
+    module = text("modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/ApolloSecurityModule.kt")
+    assert "Legacy Site Guard is unavailable in a GuardDog production build" in module
 
 
 def test_apollo_is_single_bridge_owner():
@@ -30,6 +32,7 @@ def test_primary_recovery_and_test_key_boundaries_exist():
     assert "disabledPrimaryRoots" in trust and "recoveryFloor" in trust
     assert "M1_TEST_KEY_ID" in trust and "M1_TEST_PUBLIC_KEY_B64" in trust
     assert "primary authority is disabled or below recovery floor" in trust
+    assert "production roots must be independent" in trust
 
 
 def test_runtime_stages_updates_and_enforces_expiry():
@@ -37,6 +40,24 @@ def test_runtime_stages_updates_and_enforces_expiry():
     for required in ["rollbackProtected = false", "stopLocked()", "pending.isEmpty()", "clearAuthorization()", "rebuild(staged.state)",
                      "ApolloGuardDogExpiryWorker", "ApolloGuardDogRefreshWorker", "authorityCurrent()"]:
         assert required in runtime
+
+
+def test_production_runtime_wires_the_existing_m2_website_gate():
+    runtime = text("modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/ApolloGuardDogProductionRuntime.kt")
+    for required in ["GuardDogVpnRuntime.websiteGateEngine = activeEngine", "WebsiteGateAddressing.defaultRouteConfig()",
+                     "GuardDogVpnRuntime.upstreamDnsResolverIpv4 = upstream", "acceptWebsiteGateRuleBundle(raw)",
+                     "GuardDogVpnRuntime.websiteGateActive", "clearWebsiteGateBindings()"]:
+        assert required in runtime
+    assert "websiteGateEngine = null; GuardDogVpnRuntime.websiteGateRouteConfig = null" not in runtime
+
+
+def test_boot_and_network_change_reconciliation_are_source_wired():
+    manifest = text("modules/apollo-security/android/src/main/AndroidManifest.xml")
+    observer = text("modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/ApolloGuardDogNetworkObserver.kt")
+    receiver = text("modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/ApolloGuardDogRestartReceiver.kt")
+    assert "RECEIVE_BOOT_COMPLETED" in manifest and "ApolloGuardDogRestartReceiver" in manifest
+    assert "NET_CAPABILITY_NOT_VPN" in observer and "dnsServers" in observer
+    assert "ACTION_MY_PACKAGE_REPLACED" in receiver and "ACTION_USER_UNLOCKED" in receiver
 
 
 def test_repository_contains_no_private_key_material():

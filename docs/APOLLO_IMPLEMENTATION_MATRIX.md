@@ -9,7 +9,7 @@
 | C23 / V32–V33 | Complete | Canonical unavailable reasons and privacy-prohibited handling |
 | C24 / V34 | Complete | Five-state Patrol output, filters, repeat folding and verified-only Biting |
 | C25 / V35–V36 | Complete | Stable Higgins hub, durable redacted history, 35-article backend library and recognised-government New scams |
-| Source validation | Pass | TypeScript, ESLint, Python lint, 373 Node, 61 pytest, two preflights and Cargo |
+| Source validation | Pass | TypeScript, ESLint, Python lint, 381 Node, 58 provider-disabled backend pytest, 9 GuardDog source pytest, two preflights, Cargo/Rust and Windows x64 cross-link |
 | GitHub handoff | Pending external save | Local source complete; final GitHub SHA not available until Save to GitHub |
 
 ## Phase 2 execution cover — current status
@@ -27,18 +27,19 @@ Detailed C19–C25 and V27–V36 closure evidence is in `APOLLO_PHASE2_EXECUTION
 
 ## C15 production GuardDog track (“M4” continuation) — source completion (2026-09-22)
 
-The consolidated mandate formally numbers only M1–M3; this continuation calls the remaining C15 production track “M4”. Source implementation is complete, while production-default cutover remains intentionally separate and blocked on owner artifacts/native evidence.
+The consolidated mandate formally numbers only M1–M3; this continuation calls the remaining C15 production track “M4”. The owner's 23 September GuardDog activation instructions supersede the earlier selector-only source claim. Production-default source wiring is complete; signed artifacts and physical acceptance remain separate.
 
-- Added an explicit `guarddog_production` engine/profile; `app-bundle` remains reversible `legacy` and acceptance trust remains staging-only.
+- `production`, `app-bundle`, and `guarddog-production` select `guarddog_production` only; acceptance remains staging-only and production native activation rejects legacy fallback.
 - Apollo owns the sole production process runtime/bridge; the frozen Expo bridge remains excluded and frozen SDK source is unmodified.
 - Added strict primary/recovery-root trust manifests, domain/profile binding, ordinary rule-key validity/revocation, permanent primary disablement with recovery floor, generation/version rollback checks and same-version envelope conflict rejection.
 - Trust state and retained signed rules are HMAC-bound to Android Keystore state with backup disabled. Integrity/key loss fails closed.
 - Trust/rule updates verify before mutation, stop/recover/drain/clear/rebuild on authority changes, safely stage rule changes, and resume only after successful acceptance when protection was intended on.
-- Added six-hour background signed refresh and exact manifest/key/bundle expiry stop workers. Update network loss uses persisted authority only until its fixed deadline.
+- Added six-hour background signed refresh, expiry stop workers, boot/unlock/package-replace reconciliation and physical-network DNS-change restart handling. Update network loss uses persisted authority only until its fixed deadline.
+- Wired the accepted production engine into the frozen M2 Website Gate route: DNS gateway, signed exact-host decisions, sinkhole /32 pool, actual physical-network IPv4 DNS forwarding, allow-only override cache and packet-drop reporter.
 - Added offline-only Ed25519 manifest/rule signing tools that refuse private key files inside `/app`; production runtime/plugin/preflight reject the frozen M1 acceptance key.
 - Added production source/configuration checks, failure/recovery matrix and explicit cutover record in `APOLLO_GUARDDOG_PRODUCTION_TRUST.md` and `APOLLO_BUILD_RECORD.md`.
 
-Permitted verification: TypeScript/ESLint pass; 5 production-boundary source pytest checks and the existing 58 provider-disabled lifecycle tests pass; Cargo check passes. Android Gradle/Kotlin compilation and physical-device authority/rollback campaigns were not run under the owner's approved test boundary, so this is not represented as native-build or production-cutover evidence.
+Permitted verification: TypeScript/ESLint pass; 9 production-boundary source pytest checks and 58 provider-disabled lifecycle tests pass; frozen GuardDog 91/91 hashes pass; Cargo check and 5 Rust tests pass. Android Gradle/Kotlin source compilation is recorded separately from physical-device authority/rollback acceptance.
 
 ## Consolidated architecture mandate — Milestone 3 closure (2026-09-22)
 
@@ -98,8 +99,8 @@ Verification for this pass is intentionally bounded: TypeScript compilation, ESL
 | Package 3 — depth and limits | ✅ implementation complete | Replayable `continue_clues`, bounded PDF/text continuation, explicit research entity cursor, complete handoff findings/actions, complete Gmail link destinations, structured device-observation provenance, explicit request rejection instead of silent primary-evidence clipping | provider-disabled recovery suite 35/35; Python lint/compile; TypeScript/ESLint | Backend and client changes; client portion needs refreshed candidate |
 | Package 4 — Gate/background behaviour | ✅ implementation complete | Android Text queue is AES-GCM/Keystore protected and acknowledge-after-durable-submit; automatic Text work uses the shared case manager; Gmail monitoring submits durable Higgins cases and finalises redacted Patrol summaries; Gate intake carries complete protected originals | mailbox pytest 1/1; Gmail 11/11; maintenance 3/3; TypeScript/ESLint | **Yes** for protected native Text queue; backend email worker does not |
 | Package 5 — actions/reports/lifecycle | ✅ implementation complete | Unobservable Settings changes have explicit user-reported confirmation evidence; saved reports page and delete; family audio upload has durable orphan-cleanup records plus retry sweeps | recovery suite includes settings/report/audio lifecycle; TypeScript/ESLint | UI changes need refreshed client; backend cleanup does not |
-| Package 6 — native delivery | 🟡 unblocked preparation continued | Windows source/check fixed; current Android correction set is consolidated in source; iOS targets/config remain prepared | Rust unit + `cargo check`; current APK deliberately not rebuilt during this repair pass | Next Android candidate required; iOS requires Apple signing/UDIDs; Windows/macOS artifacts require matching build hosts/signing |
-| Package 7 — production protection | 🟡 staged, production cutover separate | Existing GuardDog acceptance selector remains non-production-only and configuration rejects candidate selection in production | source/config inspection plus TypeScript/ESLint | Production protection implementation remains backlog; no production-default cutover claimed |
+| Package 6 — native delivery | ✅ source complete; artifacts external | iOS Content Blocker, Call Directory, Message Filter and Share targets; Windows WFP ALE service/NSIS lifecycle; macOS Network Extension, filter configuration helper and Tauri native adapters | TypeScript/ESLint, provider-disabled pytest, Cargo/Rust, Expo extension resolution, Package 6 preflight and Windows x64 source cross-link | Signed mobile/desktop artifacts, notarisation and physical-device acceptance are build-owner responsibilities |
+| Package 7 / GuardDog production-default | ✅ source/configuration complete; artifacts external | Production-only GuardDog selector, one owner, signed authority, M2 DNS/sinkhole path, lifecycle reconciliation, truthful coverage and verified-only Biting | TypeScript/ESLint, 381 Node, 9 source pytest, 58 provider-disabled backend pytest, frozen 91/91, production preflight and Android Kotlin compile | Owner public roots/signed feeds plus build-owner signed candidate and physical-device acceptance remain external |
 
 ### Current external blockers and artifact truth
 

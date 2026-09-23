@@ -158,11 +158,14 @@ fn observe_native_filter() -> NativeFilterStatus {
     let value = output("systemextensionsctl", &["list"]);
     let row = value.as_deref().and_then(|text| text.lines().find(|line| line.contains("app.apollo.hwg.desktop.networkextension")));
     let installed = row.is_some();
-    let active = row.map(|line| line.contains("activated enabled") || line.contains("[activated enabled]")).unwrap_or(false);
+    let system_active = row.map(|line| line.contains("activated enabled") || line.contains("[activated enabled]")).unwrap_or(false);
+    let filter_active = extension_manager_path().and_then(|helper| Command::new(helper).arg("status").output().ok())
+        .map(|result| result.status.success() && String::from_utf8_lossy(&result.stdout).trim() == "active").unwrap_or(false);
+    let active = system_active && filter_active;
     NativeFilterStatus {
         mechanism: "network_extension", state: if active { "active" } else if installed { "permission_needed" } else { "configuration_missing" },
         installed, active,
-        detail: if active { "The Apollo macOS Network Extension is active." } else if installed { "The Apollo Network Extension is installed and waiting for approval." } else { "The Apollo Network Extension is not embedded in this package." }.into(),
+        detail: if active { "The Apollo macOS Network Extension and content filter are active." } else if system_active { "The Apollo system extension is active, but its content filter is not enabled." } else if installed { "The Apollo Network Extension is installed and waiting for approval." } else { "The Apollo Network Extension is not embedded in this package." }.into(),
         unavailable_reason: if installed { None } else { Some("configuration_missing") }, checked_at: now_iso(),
     }
 }
@@ -264,10 +267,13 @@ fn activate_native_filter(active: bool) -> Result<(), String> {
 }
 
 #[cfg(target_os = "macos")]
+fn extension_manager_path() -> Option<PathBuf> {
+    std::env::current_exe().ok()?.parent().map(|parent| parent.join("ApolloExtensionManager")).filter(|path| path.exists())
+}
+
+#[cfg(target_os = "macos")]
 fn activate_native_filter(active: bool) -> Result<(), String> {
-    let executable = std::env::current_exe().map_err(|e| e.to_string())?;
-    let helper = executable.parent().ok_or("cannot locate Apollo extension manager")?.join("ApolloExtensionManager");
-    if !helper.exists() { return Err("ApolloExtensionManager is not embedded in this package".into()); }
+    let helper = extension_manager_path().ok_or("ApolloExtensionManager is not embedded in this package")?;
     let status = Command::new(helper).arg(if active { "activate" } else { "deactivate" }).status().map_err(|e| e.to_string())?;
     if status.success() { Ok(()) } else { Err("macOS did not complete the Network Extension request".into()) }
 }

@@ -1,3 +1,14 @@
+## 2026-09-23 Package 6 verification and GuardDog production-default source activation
+
+- Owner authority: `memory/APOLLO_GUARDDOG_PRODUCTION_AUTHORITY.md`; its FIRST / CRITICAL boundaries were applied without changing frozen GuardDog source.
+- Package 6 corrections: macOS now enables/disables and observes `NEFilterManager`; Windows WFP evidence uses contract-safe IDs/domain/protocol, bounded files and preserves adapter failures; desktop flow evidence remains Barking rather than packet-backed Biting; stale delivery matrices corrected.
+- GuardDog: production/app-bundle fail closed to `guarddog_production`; native legacy activation is rejected; the accepted production engine is wired into frozen M2 DNS gateway/sinkhole/upstream DNS/allow-only override/drop-reporting paths; boot/unlock/package update and physical-network DNS changes reconcile persisted intent.
+- Trust: primary/recovery public roots must be independent; private keys remain prohibited; strict signed-manifest/rule expiry, rollback, revocation and HMAC-bound state remain in force.
+- Validation PASS: TypeScript; ESLint; 381/381 Node; 9/9 GuardDog source pytest; 91/91 frozen hashes; 58/58 provider-disabled backend pytest; Android Apollo Kotlin compile; production security/native-dependency preflight; Package 6 preflight; Cargo check; 5/5 Rust; Windows x64 WFP cross-link; Expo package/extensions resolution (`app.apollo.hwg`, four iOS extensions).
+- Not run/claimed: testing agent, Playwright, scenario automation, live Gemini, signed artifacts, notarisation, installer production, or physical-device acceptance.
+
+---
+
 ## 2026-09-21 continuation — Gemini-only migration (PARTIAL overall package)
 
 See `docs/GEMINI_ONLY_MIGRATION_STATUS.md` for evidence and the AR01–AR16 acceptance matrix.

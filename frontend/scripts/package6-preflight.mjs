@@ -14,6 +14,7 @@ const required = [
   "desktop/native/macos/ApolloNetworkExtension/Info.plist",
   "desktop/native/macos/ApolloNetworkExtension/ApolloNetworkExtension.entitlements",
   "desktop/native/macos/ApolloExtensionManager/main.swift",
+  "desktop/native/macos/ApolloExtensionManager/ApolloExtensionManager.entitlements",
   "desktop/native/macos/project.yml",
   "desktop/src-tauri/entitlements.macos.plist",
   "desktop/src-tauri/tauri.windows.conf.json",
@@ -28,5 +29,7 @@ const desktop = fs.readFileSync(path.join(root, "desktop/src-tauri/src/lib.rs"),
 for (const command of ["native_filter_status", "native_enforcement_evidence", "acknowledge_native_evidence", "deactivate_native_filter"]) if (!desktop.includes(command)) errors.push(`Missing desktop host command ${command}`);
 const adapter = fs.readFileSync(path.join(frontend, "src/security/DesktopSecurityAdapter.ts"), "utf8");
 if (/simulated/i.test(adapter)) errors.push("Desktop production adapter references simulation.");
+const macManager = fs.readFileSync(path.join(root, "desktop/native/macos/ApolloExtensionManager/main.swift"), "utf8");
+for (const token of ["NEFilterManager.shared()", "filterDataProviderBundleIdentifier", "saveToPreferences"]) if (!macManager.includes(token)) errors.push(`Missing macOS filter activation step: ${token}`);
 if (errors.length) { for (const error of errors) console.error(`[package6-preflight] ${error}`); process.exit(1); }
 console.log(`[package6-preflight] OK ios-extensions=${extensions.length} desktop-contract=1 package=${app.expo.android.package}`);

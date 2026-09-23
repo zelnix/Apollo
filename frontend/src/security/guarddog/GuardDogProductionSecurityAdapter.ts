@@ -10,7 +10,7 @@ type ProductionStatus = ProtectionStatus & { trustExpiresAt?: string | null; rul
 
 export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapter {
   readonly kind = "android" as const;
-  readonly label = "GuardDog production authority (selective)";
+  readonly label = "GuardDog production Website Gate";
   private configured: Promise<void> | null = null;
   private refreshedAt = 0;
   private mod() { const module = getNativeModule(); if (!module) throw new NativeModuleUnavailable("Android GuardDog production authority"); return module; }
@@ -48,9 +48,9 @@ export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapte
   getProtectionPermissions() { return AndroidSecurityAdapter.getProtectionPermissions(); }
   requestProtectionPermission(id: Parameters<SecurityPlatformAdapter["requestProtectionPermission"]>[0]) { return AndroidSecurityAdapter.requestProtectionPermission(id); }
   getPlatformCapabilityProfile(): Promise<PlatformCapabilityProfile> { return Promise.resolve({ platform: "android", platformVersion: null,
-    sdkVersion: "guarddog-production-authority", capabilityVersion: "1", networkFiltering: "partial", packetVisibility: "partial", dnsVisibility: "none",
+    sdkVersion: "guarddog-production-authority", capabilityVersion: "1", networkFiltering: "partial", packetVisibility: "partial", dnsVisibility: "partial",
     processAttribution: "none", appAttribution: "none", domainVisibility: "partial", localBlocking: "partial", backgroundProtection: "full",
-    offlineProtection: "partial", realTimeEvents: "partial", scope: ["ip:controlled-/32"] }); }
+    offlineProtection: "partial", realTimeEvents: "partial", scope: ["dns:ipv4-udp-53", "ip:controlled-/32", "ip:website-gate-sinkhole-/32"] }); }
   async getEnforcementEvidence(): Promise<EnforcementEvidence[]> { await this.ensureConfigured(); return parseGuardDogCandidateEvidence(this.mod().getGuardDogProductionEvidence()); }
   async acknowledgeEnforcementEvidence(evidenceIds: string[]) {
     const result = await this.json<{ persistenceError?: string | null }>(this.mod().acknowledgeGuardDogProductionEvidence(JSON.stringify(evidenceIds)));

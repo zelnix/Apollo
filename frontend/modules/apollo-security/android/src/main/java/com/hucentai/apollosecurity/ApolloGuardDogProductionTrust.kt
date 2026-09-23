@@ -149,9 +149,11 @@ internal class ApolloGuardDogProductionTrust(private val context: Context) {
   private fun stringSet(array: JSONArray): Set<String> = (0 until array.length()).map { array.getString(it) }.toSet()
   private fun rootsFromManifest(): GuardDogRootConfig {
     val info = context.packageManager.getApplicationInfo(context.packageName, PackageManager.GET_META_DATA); val meta = checkNotNull(info.metaData)
-    return GuardDogRootConfig(meta.getString(PRIMARY_DOMAIN) ?: error("production trust domain missing"), meta.getString(PRIMARY_PROFILE) ?: error("production trust profile missing"),
+    val roots = GuardDogRootConfig(meta.getString(PRIMARY_DOMAIN) ?: error("production trust domain missing"), meta.getString(PRIMARY_PROFILE) ?: error("production trust profile missing"),
       meta.getString(PRIMARY_ID) ?: error("primary root id missing"), meta.getString(PRIMARY_KEY) ?: error("primary root key missing"),
       meta.getString(RECOVERY_ID) ?: error("recovery root id missing"), meta.getString(RECOVERY_KEY) ?: error("recovery root key missing"))
+    check(roots.primaryId != roots.recoveryId && roots.primaryKey != roots.recoveryKey) { "production roots must be independent" }
+    return roots
   }
   companion object {
     const val ENABLED = "app.apollo.guarddog.productionEnabled"; const val PRIMARY_DOMAIN = "app.apollo.guarddog.trustDomain"; const val PRIMARY_PROFILE = "app.apollo.guarddog.trustProfile"

@@ -111,7 +111,7 @@ export interface EnforcementEvidence {
   /** ISO-8601 timestamp of when the OS observed/enforced this, not when the app read it. */
   observedAt: string;
   /** How this was actually enforced. "simulated"/"none" can never carry result:"verified". */
-  mechanism: EnforcementMethod | "network_extension" | "vpn_service" | "packet_filter" | "call_screening";
+  mechanism: EnforcementMethod | "network_extension" | "wfp_ale_authorization" | "vpn_service" | "packet_filter" | "call_screening";
   direction: EnforcementDirection;
   protocol: EnforcementProtocol;
   destination: EnforcementDestination;

@@ -81,7 +81,7 @@ export default function PrivacyDisclosure() {
         <View>
           <SectionTitle>Where data goes and how long it stays</SectionTitle>
           <Card style={{ gap: spacing.sm }}>
-            <Body testID="disclosure-retention">Assessment request copies close immediately after success, failure, timeout or cancellation and never later than 15 minutes. Provider-side retention follows each configured API policy. Google, OpenAI, managed storage and messaging services may process data outside Australia. Expiry of a cached reputation result is not deletion. Soft-deleted Patrol data and prior family deliveries may remain stored.</Body>
+            <Body testID="disclosure-retention">Assessment request copies close immediately after success, failure, timeout or cancellation and never later than 15 minutes. Provider-side retention follows each configured API policy. Google, owner-managed storage and messaging services may process data outside Australia. Expiry of a cached reputation result is not deletion. Soft-deleted Patrol data and prior family deliveries may remain stored.</Body>
           </Card>
         </View>
 

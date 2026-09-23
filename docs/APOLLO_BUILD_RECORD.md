@@ -37,16 +37,17 @@
 - GuardDog production-default cutover remains inactive and separate.
 - Runtime closure: MongoDB/backend/Expo are RUNNING, backend health is 200 and the protected preview proxy is HTTP 200. The deployment scanner's sole remaining complaint is a missing `--tunnel` flag in an explicitly read-only Supervisor file that already supplies the protected proxy URL; source/env/security checks otherwise pass.
 
-# GuardDog production authority track — source record (2026-09-22)
+# GuardDog production-default authority track — source record (updated 2026-09-23)
 
-- Added an explicit, non-default `guarddog-production` engine/profile. Existing production `app-bundle` remains `legacy`.
+- Production, app-bundle and guarddog-production now select only `guarddog_production`; staging acceptance remains isolated and production legacy activation is rejected natively.
 - Apollo owns one native process runtime; the frozen Expo bridge remains excluded. Trust-generation transitions stop/recover/drain/clear/rebuild before resuming.
-- Added pinned primary/recovery public-root configuration, strict signed trust manifests, ordinary-key validity/revocation, HMAC-bound rollback state, generation-scoped bundle stores, routine signed refresh and exact-expiry stop work.
+- Added pinned independent primary/recovery public-root configuration, strict signed trust manifests, ordinary-key validity/revocation, HMAC-bound rollback state, generation-scoped bundle stores, routine signed refresh and expiry stop work.
+- Production now wires the accepted engine into the frozen Website Gate DNS gateway, sinkhole routes, physical-network IPv4 DNS forwarder, allow-only override store and genuine packet-drop reporter; boot/unlock/package-update/network-change reconciliation is source-wired.
 - Acceptance test IDs/keys are rejected by production plugin, runtime and preflight.
 - Added offline-only manifest/rule signing tools that refuse private key files inside the application repository.
-- **External inputs still required for production selection:** owner public roots, signed trust/rule artifacts and HTTPS update URLs. Private keys remain offline and are never requested by the app/CI.
-- **Cutover state:** not selected, not production-default, and not represented as native-build verified. Android package remains `app.apollo.hwg`.
-- Verification boundary remains owner-mandated: TypeScript, ESLint, backend pytest and Cargo only; no Gradle/Kotlin compile or live-device GuardDog campaign was run.
+- **External inputs still required for runtime activation:** owner public roots, signed trust/rule artifacts and HTTPS update URLs. Private keys remain offline and are never requested by the app/build/CI.
+- **Source selection state:** production-default and fail-closed to GuardDog. Android package remains `app.apollo.hwg`. No signed artifact or physical-device cutover evidence is claimed.
+- Verification remains bounded to source/static/compiler checks. A successful Android Kotlin compile is not a signed candidate and does not replace live-device authority, traffic, expiry, recovery or rollback evidence.
 
 ## Production app-bundle pre-install failure — fixed in source
 

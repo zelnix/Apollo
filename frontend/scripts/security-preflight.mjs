@@ -87,6 +87,7 @@ if (engine === "guarddog_production") {
     if (value) { try { if (Buffer.from(value, "base64").length !== 32 || Buffer.from(value, "base64").toString("base64") !== value) errors.push(`${name} root public key must be canonical 32-byte base64.`); } catch { errors.push(`${name} root public key is invalid base64.`); } }
   }
   if (cfg.APOLLO_GUARDDOG_PRIMARY_ROOT_ID === cfg.APOLLO_GUARDDOG_RECOVERY_ROOT_ID) errors.push("Primary and recovery root IDs must be distinct.");
+  if (primary && recovery && primary === recovery) errors.push("Primary and recovery public roots must be independent.");
   if (cfg.APOLLO_GUARDDOG_PRIMARY_ROOT_ID === "m1-acceptance" || cfg.APOLLO_GUARDDOG_RECOVERY_ROOT_ID === "m1-acceptance") errors.push("Acceptance test root IDs are forbidden in production.");
   if (primary === "xWUz5JD/mRHiCg7axpaEQV+dJ6cllJV4UHWOA9YPh1A=" || recovery === "xWUz5JD/mRHiCg7axpaEQV+dJ6cllJV4UHWOA9YPh1A=") errors.push("Acceptance test public keys are forbidden in production.");
 }

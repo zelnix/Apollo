@@ -2,6 +2,7 @@
   <uses-permission android:name="android.permission.INTERNET" />
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
   <!-- Package visibility (Android 11+): Apollo deliberately does NOT use QUERY_ALL_PACKAGES. It can only see the
        remote-access risk catalog plus the stores/browsers/messengers needed to name an install source.
        Keep this list identical to AppDeviceCatalog.VISIBLE_PACKAGES. -->
@@ -45,6 +46,13 @@
     <package android:name="com.android.packageinstaller" />
   </queries>
   <application>
+    <receiver android:name="com.hucentai.apollosecurity.ApolloGuardDogRestartReceiver" android:enabled="true" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+        <action android:name="android.intent.action.USER_UNLOCKED" />
+        <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+      </intent-filter>
+    </receiver>
     <service
       android:name="com.hucentai.apollosecurity.ApolloDnsVpnService"
       android:exported="false"

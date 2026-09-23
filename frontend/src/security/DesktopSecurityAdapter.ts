@@ -7,6 +7,7 @@ import { PLATFORM_CAPABILITY_BASELINES, type EnforcementEvidence, type PlatformC
 import type {
   BlockResult, DeviceProfileFacts, NativeUrlAnalysis, NetworkStatus, ProtectionPermission, ProtectionStatus, SecurityPlatformAdapter, SecuritySignal,
 } from "./SecurityPlatformAdapter";
+import { parseDesktopEnforcementEvidence } from "./desktopEvidence";
 
 type Invoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 type TauriGlobal = { __TAURI_INTERNALS__?: { invoke: Invoke }; __TAURI__?: { core?: { invoke: Invoke } } };
@@ -119,7 +120,7 @@ class DesktopSecurityAdapterImpl implements SecurityPlatformAdapter {
       domainVisibility: "partial", localBlocking: "partial", backgroundProtection: "partial", offlineProtection: "full",
       realTimeEvents: "none", scope: ["hosts:exact-domain"] };
   }
-  async getEnforcementEvidence(): Promise<EnforcementEvidence[]> { return invoke<EnforcementEvidence[]>("native_enforcement_evidence"); }
+  async getEnforcementEvidence(): Promise<EnforcementEvidence[]> { return parseDesktopEnforcementEvidence(await invoke<unknown>("native_enforcement_evidence")); }
   async acknowledgeEnforcementEvidence(evidenceIds: string[]): Promise<void> { await invoke("acknowledge_native_evidence", { args: { ids: evidenceIds } }); }
   async getDeviceProfileFacts(): Promise<DeviceProfileFacts> {
     const h = await this.host();

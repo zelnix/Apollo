@@ -174,6 +174,7 @@ class ApolloSecurityModule : Module() {
 
     AsyncFunction("startProtection") {
       ApolloEnforcementTransitions.coordinator.serialized {
+        check(!ApolloGuardDogProductionOwner.isEligible(ctx)) { "Legacy Site Guard is unavailable in a GuardDog production build" }
         check(ApolloGuardDogEngineOwnership.current() == null) { "GuardDog owns the enforcement transition" }
         val oldGuardDog = RecoveryInspector.inspect(ctx, VpnStateRepository.shared)
         if (!oldGuardDog.recovered) {

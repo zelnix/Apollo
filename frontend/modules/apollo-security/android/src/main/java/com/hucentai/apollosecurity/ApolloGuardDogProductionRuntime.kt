@@ -26,9 +26,11 @@ import com.guarddog.vpn.BindingResult
 import com.guarddog.vpn.ControlledEndpointResolver
 import com.guarddog.vpn.GuardDogVpnRuntime
 import com.guarddog.vpn.GuardDogVpnService
+import com.guarddog.vpn.MutableWebsiteGateOverrideStore
 import com.guarddog.vpn.RecoveryInspector
 import com.guarddog.vpn.VpnConfig
 import com.guarddog.vpn.VpnStateRepository
+import com.guarddog.vpn.WebsiteGateAddressing
 import kotlinx.serialization.decodeFromString
 import org.json.JSONArray
 import org.json.JSONObject
@@ -77,6 +79,9 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
   private var engine: GuardDogSDKEngine? = null
   private var acceptedBundleExpiresAt: Instant? = null
   private var acceptedBundleKeyId: String? = null
+  private val websiteGateOverrides = MutableWebsiteGateOverrideStore()
+  @Volatile private var observedUpstreamDns: String? = null
+  private val networkObserver = ApolloGuardDogNetworkObserver(context) { upstream -> onNetworkDnsChanged(upstream) }
   private val reporter = ProtectionEnforcementReporter { evidence ->
     if (!authorityCurrent()) { inbox.reportFailure("Production authority expired; evidence was withheld"); scheduleExpiry(Instant.now()); return@ProtectionEnforcementReporter }
     pending[evidence.enforcementEvidenceId] = ProductionPendingEvidence(evidence)
@@ -88,6 +93,7 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
   init {
     state.osConsentCheck = { VpnService.prepare(context) == null }
     runCatching { trust.current()?.let { rebuild(it) } }.onFailure { inbox.reportFailure("Production trust state could not be restored") }
+    networkObserver.start()
   }
 
   fun configure(raw: String): String = transitions.serialized {
@@ -136,9 +142,10 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
     val changed = authority.signedRuleBundle == null || !RuleBundleVerifier.canonical(authority.signedRuleBundle).contentEquals(RuleBundleVerifier.canonical(raw))
     val resume = changed && ownsEnforcement()
     if (resume) { stopLocked(); check(transitions.await(2_000) { pending.isEmpty() }) { "GuardDog evidence reporting did not drain before rule transition" } }
-    if (changed) activeEngine.clearAuthorization()
+    if (changed) { activeEngine.clearAuthorization(); activeEngine.clearWebsiteGateBindings() }
     return when (val result = activeEngine.acceptRuleBundle(raw)) {
       is VerificationResult.Accepted -> {
+        check(activeEngine.acceptWebsiteGateRuleBundle(raw) is VerificationResult.Accepted) { "Website Gate rejected the accepted production rule bundle" }
         try { trust.persistRuleBundle(raw) } catch (exc: Throwable) { engine = null; error("Rule accepted in memory but durable trust persistence failed: ${exc::class.simpleName}") }
         acceptedBundleExpiresAt = bundleExpiry; acceptedBundleKeyId = parsed.keyId; scheduleExpiry(minOf(bundleExpiry, authority.expiresAt, key.validUntil))
         if (resume) startLocked()
@@ -152,7 +159,7 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
   private fun installStaged(staged: StagedTrustManifest) {
     if (ownsEnforcement()) stopLocked()
     check(transitions.await(2_000) { pending.isEmpty() }) { "GuardDog evidence reporting did not drain before trust transition" }
-    GuardDogVpnRuntime.reporter = null; GuardDogVpnRuntime.config = null; engine?.clearAuthorization(); engine = null
+    detachRuntime(); engine?.clearAuthorization(); engine?.clearWebsiteGateBindings(); engine = null
     trust.commit(staged); acceptedBundleExpiresAt = null; acceptedBundleKeyId = null; rebuild(staged.state)
   }
 
@@ -171,7 +178,8 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
       runCatching {
         val parsed = StrictJson.decodeFromString<SignedRuleBundle>(raw); val key = authority.activeKeys().first { it.id == parsed.keyId }
         val expires = Instant.parse(parsed.expiresAt); check(expires.isAfter(Instant.now()) && !expires.isAfter(authority.expiresAt) && !expires.isAfter(key.validUntil))
-        check(rebuilt.acceptRuleBundle(raw) is VerificationResult.Accepted); acceptedBundleExpiresAt = expires; acceptedBundleKeyId = parsed.keyId
+        check(rebuilt.acceptRuleBundle(raw) is VerificationResult.Accepted); check(rebuilt.acceptWebsiteGateRuleBundle(raw) is VerificationResult.Accepted)
+        acceptedBundleExpiresAt = expires; acceptedBundleKeyId = parsed.keyId
         scheduleExpiry(minOf(expires, authority.expiresAt, key.validUntil))
       }.onFailure { engine = null; inbox.reportFailure("Persisted production rule bundle could not be restored") }
     }
@@ -185,18 +193,24 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
       is BindingResult.Match -> binding.ipv4; is BindingResult.Mismatch -> error("DNS/IP binding mismatch"); is BindingResult.ResolutionFailed -> error("Controlled host did not resolve")
     }
     check(activeEngine.authorizeControlledTarget(activeConfig.controlledHost, resolved) is BlockAuthorization.Authorized) { "Signed rules did not authorize the controlled target" }
-    GuardDogVpnRuntime.config = activeConfig.vpn(); GuardDogVpnRuntime.reporter = reporter; GuardDogVpnRuntime.websiteGateEngine = null; GuardDogVpnRuntime.websiteGateRouteConfig = null
-    check(prefs.edit().putBoolean("requested", true).putString("since", Instant.now().toString()).commit())
+    val upstream = checkNotNull(networkObserver.currentIpv4Dns()) { "No physical-network IPv4 DNS resolver is currently available" }
+    observedUpstreamDns = upstream
+    GuardDogVpnRuntime.config = activeConfig.vpn(); GuardDogVpnRuntime.reporter = reporter
+    GuardDogVpnRuntime.websiteGateEngine = activeEngine; GuardDogVpnRuntime.websiteGateRouteConfig = WebsiteGateAddressing.defaultRouteConfig()
+    GuardDogVpnRuntime.upstreamDnsResolverIpv4 = upstream; GuardDogVpnRuntime.websiteGateBindingLifetimeMillis = 30_000L
+    GuardDogVpnRuntime.websiteGateOverrideStore = websiteGateOverrides
+    check(prefs.edit().putBoolean("requested", true).putString("since", prefs.getString("since", null) ?: Instant.now().toString()).commit())
     context.startForegroundService(Intent(context, GuardDogVpnService::class.java).setAction(GuardDogVpnService.ACTION_START))
     if (!transitions.await(8_000) { actualOperational() }) { context.startService(Intent(context, GuardDogVpnService::class.java).setAction(GuardDogVpnService.ACTION_STOP)); error("Production GuardDog start timed out") }
     return statusLocked()
   }
 
   fun stop(): String = transitions.serialized { stopLocked() }
-  private fun stopLocked(): String {
-    context.startService(Intent(context, GuardDogVpnService::class.java).setAction(GuardDogVpnService.ACTION_STOP)); prefs.edit().putBoolean("requested", false).remove("since").commit()
+  private fun stopLocked(clearIntent: Boolean = true): String {
+    context.startService(Intent(context, GuardDogVpnService::class.java).setAction(GuardDogVpnService.ACTION_STOP))
+    if (clearIntent) prefs.edit().putBoolean("requested", false).remove("since").commit()
     if (!transitions.await(8_000) { RecoveryInspector.inspect(context, state).recovered }) error("Production GuardDog stop timed out")
-    engine?.clearAuthorization(); GuardDogVpnRuntime.reporter = null; return statusLocked(false)
+    engine?.clearAuthorization(); engine?.clearWebsiteGateBindings(); detachRuntime(); return statusLocked(false)
   }
 
   fun enforceExpiry(): String = transitions.serialized {
@@ -208,15 +222,16 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
     val keyId = acceptedBundleKeyId ?: return false; val bundleExpiry = acceptedBundleExpiresAt ?: return false
     return authority.current(now) && now.isBefore(bundleExpiry) && authority.activeKeys(now).any { it.id == keyId }
   }
-  private fun actualOperational(): Boolean { val runtime = RecoveryInspector.inspect(context, state); return authorityCurrent() && state.current().state == ProtectionState.ACTIVE && runtime.tunOpen && runtime.selectiveRouteActive && runtime.dropReporterAttached }
+  private fun actualOperational(): Boolean { val runtime = RecoveryInspector.inspect(context, state); return authorityCurrent() && state.current().state == ProtectionState.ACTIVE && runtime.tunOpen && runtime.selectiveRouteActive && runtime.dropReporterAttached && GuardDogVpnRuntime.websiteGateActive }
 
   fun status(): String = transitions.serialized { if (!authorityCurrent() && ownsEnforcement()) stopLocked() else statusLocked() }
   private fun statusLocked(recheckAuthority: Boolean = true): String {
     val authority = runCatching { trust.current() }.getOrNull(); val runtime = RecoveryInspector.inspect(context, state); val operational = actualOperational(); val requested = prefs.getBoolean("requested", false); val inboxState = inbox.status()
     val reason = when { authority == null -> "No verified production trust manifest"; !authority.current() -> "Production trust manifest expired or has no active rule keys"
-      acceptedBundleExpiresAt == null -> "No accepted production rule bundle"; recheckAuthority && !authorityCurrent() -> "Production rule authority expired"; requested && !operational -> "TUN/route/reporter observations are incomplete"; else -> null }
+      acceptedBundleExpiresAt == null -> "No accepted production rule bundle"; recheckAuthority && !authorityCurrent() -> "Production rule authority expired"; requested && !GuardDogVpnRuntime.websiteGateActive -> "Website Gate DNS/sinkhole runtime is inactive"; requested && !operational -> "TUN/route/reporter observations are incomplete"; else -> null }
     return JSONObject().put("running", operational).put("requested", requested).put("operational", operational).put("enforcementMethod", "packet_filter")
-      .put("coverage", "Production-authority selective /32 packet filtering for the configured controlled endpoint.").put("coverageScope", JSONArray().put("ip:controlled-/32"))
+      .put("coverage", "GuardDog production Website Gate: plaintext IPv4 DNS is inspected; signed exact-host blocks use short-lived sinkhole /32 routes. Private DNS, DoH, DoT, QUIC and IPv6 are outside this source claim.")
+      .put("coverageScope", JSONArray().put("dns:ipv4-udp-53").put("ip:controlled-/32").put("ip:website-gate-sinkhole-/32"))
       .put("lastVerified", if (operational) Instant.now().toString() else JSONObject.NULL).put("degradedReason", reason ?: JSONObject.NULL)
       .put("visibility", if (operational) "full" else "none").put("since", prefs.getString("since", null) ?: JSONObject.NULL)
       .put("adapterLabel", LABEL).put("checkedAt", Instant.now().toString()).put("productionAuthority", true)
@@ -224,13 +239,15 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
       .put("trustAuthority", authority?.authority ?: JSONObject.NULL).put("trustExpiresAt", authority?.expiresAt?.toString() ?: JSONObject.NULL)
       .put("ruleExpiresAt", acceptedBundleExpiresAt?.toString() ?: JSONObject.NULL).put("nativeLifecycle", runtime.lifecycle)
       .put("tunOpen", runtime.tunOpen).put("selectiveRouteActive", runtime.selectiveRouteActive).put("dropReporterAttached", runtime.dropReporterAttached)
+      .put("websiteGateConfigured", GuardDogVpnRuntime.websiteGateRouteConfig != null).put("dnsGatewayActive", GuardDogVpnRuntime.websiteGateActive)
+      .put("upstreamDnsResolverIpv4", GuardDogVpnRuntime.upstreamDnsResolverIpv4 ?: JSONObject.NULL)
       .put("evidencePending", inboxState.pending).put("evidenceCapacity", inboxState.capacity).put("evidenceOverflow", inboxState.overflow)
       .put("evidencePersistenceError", inboxState.error ?: JSONObject.NULL).toString()
   }
 
-  fun capabilities(): String = JSONArray().put(JSONObject().put("id", "site_guard").put("title", "GuardDog production authority")
+  fun capabilities(): String = JSONArray().put(JSONObject().put("id", "site_guard").put("title", "GuardDog production Website Gate")
     .put("status", if (actualOperational()) "active" else if (VpnService.prepare(context) == null) "inactive" else "permission_required")
-    .put("detail", "Signed, rollback-protected selective packet enforcement for the configured controlled endpoint.")).toString()
+    .put("detail", "Signed, rollback-protected exact-host decisions with DNS sinkhole routing and packet-drop evidence.")).toString()
   fun analyzeUrl(url: String): String = transitions.serialized { val result = engine?.analyzeUrl(url)
     if (result == null) JSONObject().put("supported", false).put("verdict", "unknown").put("reasons", JSONArray().put("Production signed rules are unavailable for this URL.")).toString()
     else JSONObject().put("supported", true).put("verdict", result.verdict).put("reasons", JSONArray()).put("sanitizedUrl", result.sanitizedUrl).put("host", result.host).put("ruleId", result.ruleId ?: JSONObject.NULL).toString() }
@@ -240,15 +257,29 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
 
   private fun ensureLegacyStopped() { if (ApolloDnsVpnService.isRunning) { context.startService(Intent(context, ApolloDnsVpnService::class.java).setAction(ApolloDnsVpnService.ACTION_STOP)); check(transitions.await(8_000) { !ApolloDnsVpnService.isRunning }) { "Legacy Site Guard did not stop" } } }
   private fun fetch(rawUrl: String): String { val connection = URL(rawUrl).openConnection() as HttpURLConnection; connection.connectTimeout = 15_000; connection.readTimeout = 20_000; connection.instanceFollowRedirects = false
-    try { check(connection.responseCode == 200) { "signed update service returned ${connection.responseCode}" }; check((connection.contentLengthLong.takeIf { it >= 0 } ?: 0) <= 2_000_000); return connection.inputStream.bufferedReader().use { it.readText().also { body -> check(body.length <= 2_000_000) } } } finally { connection.disconnect() } }
+    try { check(connection.responseCode == 200) { "signed update service returned ${connection.responseCode}" }; check((connection.contentLengthLong.takeIf { it >= 0 } ?: 0) <= 2_000_000)
+      val bytes = connection.inputStream.use { input -> val output = java.io.ByteArrayOutputStream(); val buffer = ByteArray(8192)
+        while (true) { val count = input.read(buffer); if (count < 0) break; check(output.size() + count <= 2_000_000) { "signed update exceeded size limit" }; output.write(buffer, 0, count) }; output.toByteArray() }
+      return bytes.toString(Charsets.UTF_8)
+    } finally { connection.disconnect() } }
   private fun scheduleExpiry(at: Instant) { val delay = Duration.between(Instant.now(), at).toMillis().coerceAtLeast(0); val work = OneTimeWorkRequestBuilder<ApolloGuardDogExpiryWorker>().setInitialDelay(delay, TimeUnit.MILLISECONDS).build(); WorkManager.getInstance(context).enqueueUniqueWork("apollo-guarddog-production-expiry", ExistingWorkPolicy.REPLACE, work) }
   private fun scheduleRefresh() { val work = PeriodicWorkRequestBuilder<ApolloGuardDogRefreshWorker>(6, TimeUnit.HOURS)
       .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()).build()
     WorkManager.getInstance(context).enqueueUniquePeriodicWork("apollo-guarddog-production-refresh", ExistingPeriodicWorkPolicy.UPDATE, work) }
   private fun requireProductionEnabled() { check(ApolloGuardDogProductionOwner.isEligible(context)) { "Production GuardDog authority is disabled in this build" } }
+  private fun detachRuntime() { GuardDogVpnRuntime.reporter = null; GuardDogVpnRuntime.config = null; GuardDogVpnRuntime.websiteGateEngine = null
+    GuardDogVpnRuntime.websiteGateRouteConfig = null; GuardDogVpnRuntime.upstreamDnsResolverIpv4 = null }
+  private fun onNetworkDnsChanged(upstream: String?) {
+    if (upstream == observedUpstreamDns) return
+    observedUpstreamDns = upstream
+    if (!ownsEnforcement()) return
+    runCatching { transitions.serialized { stopLocked(clearIntent = false); if (upstream != null && authorityCurrent()) startLocked() } }
+      .onFailure { inbox.reportFailure("Production Website Gate stopped after a physical-network DNS change") }
+  }
+  fun resumeRequested(): String = transitions.serialized { if (prefs.getBoolean("requested", false)) startLocked() else statusLocked() }
   private fun jsonObject(body: JSONObject): Map<String, Any?> = body.keys().asSequence().associateWith { key -> jsonValue(body.get(key)) }
   private fun jsonValue(value: Any?): Any? = when (value) { is JSONObject -> jsonObject(value); is JSONArray -> (0 until value.length()).map { jsonValue(value.get(it)) }; JSONObject.NULL -> null; else -> value }
-  companion object { const val LABEL = "GuardDog production authority (selective)" }
+  companion object { const val LABEL = "GuardDog production Website Gate" }
 }
 
 class ApolloGuardDogExpiryWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
