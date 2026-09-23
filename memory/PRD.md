@@ -1,3 +1,9 @@
+## Apollo downloadable media kit (2026-09-23)
+
+- Public gallery and ZIP now expose 28 faithful screen exports plus 12 state GIFs.
+- Media is reproducible with `frontend/scripts/generate-apollo-media-kit.py` and served from `frontend/public/apollo-media-kit`.
+- The existing dark preference currently uses the Light Sentinel palette, so light/dark export pairs intentionally match source rather than inventing an unsupported theme.
+
 ## Gmail production OAuth readiness (2026-09-23)
 
 - Production callback: `https://threat-patrol-1.emergent.host/api/gmail/oauth/callback`; Gmail API scope remains exactly `gmail.readonly`.

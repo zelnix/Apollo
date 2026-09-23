@@ -1,0 +1,262 @@
+{
+  "generatedFrom": "Apollo current source",
+  "darkThemeNote": "Current dark preference uses the Light Sentinel palette.",
+  "assets": [
+    {
+      "group": "Screen captures",
+      "label": "Home \u00b7 Iphone \u00b7 Light",
+      "path": "screens/home-iphone-light.png",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "group": "Screen captures",
+      "label": "Home \u00b7 Iphone \u00b7 Dark",
+      "path": "screens/home-iphone-dark.png",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "group": "Screen captures",
+      "label": "Home \u00b7 Android \u00b7 Light",
+      "path": "screens/home-android-light.png",
+      "width": 412,
+      "height": 915
+    },
+    {
+      "group": "Screen captures",
+      "label": "Home \u00b7 Android \u00b7 Dark",
+      "path": "screens/home-android-dark.png",
+      "width": 412,
+      "height": 915
+    },
+    {
+      "group": "Screen captures",
+      "label": "Higgins \u00b7 Iphone \u00b7 Light",
+      "path": "screens/higgins-iphone-light.png",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "group": "Screen captures",
+      "label": "Higgins \u00b7 Iphone \u00b7 Dark",
+      "path": "screens/higgins-iphone-dark.png",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "group": "Screen captures",
+      "label": "Higgins \u00b7 Android \u00b7 Light",
+      "path": "screens/higgins-android-light.png",
+      "width": 412,
+      "height": 915
+    },
+    {
+      "group": "Screen captures",
+      "label": "Higgins \u00b7 Android \u00b7 Dark",
+      "path": "screens/higgins-android-dark.png",
+      "width": 412,
+      "height": 915
+    },
+    {
+      "group": "Screen captures",
+      "label": "Gates \u00b7 Iphone \u00b7 Light",
+      "path": "screens/gates-iphone-light.png",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "group": "Screen captures",
+      "label": "Gates \u00b7 Iphone \u00b7 Dark",
+      "path": "screens/gates-iphone-dark.png",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "group": "Screen captures",
+      "label": "Gates \u00b7 Android \u00b7 Light",
+      "path": "screens/gates-android-light.png",
+      "width": 412,
+      "height": 915
+    },
+    {
+      "group": "Screen captures",
+      "label": "Gates \u00b7 Android \u00b7 Dark",
+      "path": "screens/gates-android-dark.png",
+      "width": 412,
+      "height": 915
+    },
+    {
+      "group": "Screen captures",
+      "label": "Patrol \u00b7 Iphone \u00b7 Light",
+      "path": "screens/patrol-iphone-light.png",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "group": "Screen captures",
+      "label": "Patrol \u00b7 Iphone \u00b7 Dark",
+      "path": "screens/patrol-iphone-dark.png",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "group": "Screen captures",
+      "label": "Patrol \u00b7 Android \u00b7 Light",
+      "path": "screens/patrol-android-light.png",
+      "width": 412,
+      "height": 915
+    },
+    {
+      "group": "Screen captures",
+      "label": "Patrol \u00b7 Android \u00b7 Dark",
+      "path": "screens/patrol-android-dark.png",
+      "width": 412,
+      "height": 915
+    },
+    {
+      "group": "Screen captures",
+      "label": "Family \u00b7 Iphone \u00b7 Light",
+      "path": "screens/family-iphone-light.png",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "group": "Screen captures",
+      "label": "Family \u00b7 Iphone \u00b7 Dark",
+      "path": "screens/family-iphone-dark.png",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "group": "Screen captures",
+      "label": "Family \u00b7 Android \u00b7 Light",
+      "path": "screens/family-android-light.png",
+      "width": 412,
+      "height": 915
+    },
+    {
+      "group": "Screen captures",
+      "label": "Family \u00b7 Android \u00b7 Dark",
+      "path": "screens/family-android-dark.png",
+      "width": 412,
+      "height": 915
+    },
+    {
+      "group": "Screen captures",
+      "label": "Family Help \u00b7 Iphone \u00b7 Light",
+      "path": "screens/family-help-iphone-light.png",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "group": "Screen captures",
+      "label": "Family Help \u00b7 Iphone \u00b7 Dark",
+      "path": "screens/family-help-iphone-dark.png",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "group": "Screen captures",
+      "label": "Family Help \u00b7 Android \u00b7 Light",
+      "path": "screens/family-help-android-light.png",
+      "width": 412,
+      "height": 915
+    },
+    {
+      "group": "Screen captures",
+      "label": "Family Help \u00b7 Android \u00b7 Dark",
+      "path": "screens/family-help-android-dark.png",
+      "width": 412,
+      "height": 915
+    },
+    {
+      "group": "Screen captures",
+      "label": "Gmail Connected \u00b7 Iphone \u00b7 Light",
+      "path": "screens/gmail-connected-iphone-light.png",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "group": "Screen captures",
+      "label": "Gmail Connected \u00b7 Iphone \u00b7 Dark",
+      "path": "screens/gmail-connected-iphone-dark.png",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "group": "Screen captures",
+      "label": "Gmail Connected \u00b7 Android \u00b7 Light",
+      "path": "screens/gmail-connected-android-light.png",
+      "width": 412,
+      "height": 915
+    },
+    {
+      "group": "Screen captures",
+      "label": "Gmail Connected \u00b7 Android \u00b7 Dark",
+      "path": "screens/gmail-connected-android-dark.png",
+      "width": 412,
+      "height": 915
+    },
+    {
+      "group": "Transparent Apollo loops",
+      "label": "Resting",
+      "path": "gifs/transparent/apollo-resting.gif"
+    },
+    {
+      "group": "Transparent Apollo loops",
+      "label": "Sniffing Loading",
+      "path": "gifs/transparent/apollo-sniffing-loading.gif"
+    },
+    {
+      "group": "Transparent Apollo loops",
+      "label": "Growling Warning",
+      "path": "gifs/transparent/apollo-growling-warning.gif"
+    },
+    {
+      "group": "Transparent Apollo loops",
+      "label": "Barking Danger",
+      "path": "gifs/transparent/apollo-barking-danger.gif"
+    },
+    {
+      "group": "Transparent Apollo loops",
+      "label": "Biting Blocked",
+      "path": "gifs/transparent/apollo-biting-blocked.gif"
+    },
+    {
+      "group": "Transparent Apollo loops",
+      "label": "Success",
+      "path": "gifs/transparent/apollo-success.gif"
+    },
+    {
+      "group": "Full-screen state demonstrations",
+      "label": "Resting",
+      "path": "gifs/full-screen/apollo-resting-ui-demo.gif"
+    },
+    {
+      "group": "Full-screen state demonstrations",
+      "label": "Sniffing Loading",
+      "path": "gifs/full-screen/apollo-sniffing-loading-ui-demo.gif"
+    },
+    {
+      "group": "Full-screen state demonstrations",
+      "label": "Growling Warning",
+      "path": "gifs/full-screen/apollo-growling-warning-ui-demo.gif"
+    },
+    {
+      "group": "Full-screen state demonstrations",
+      "label": "Barking Danger",
+      "path": "gifs/full-screen/apollo-barking-danger-ui-demo.gif"
+    },
+    {
+      "group": "Full-screen state demonstrations",
+      "label": "Biting Blocked",
+      "path": "gifs/full-screen/apollo-biting-blocked-ui-demo.gif"
+    },
+    {
+      "group": "Full-screen state demonstrations",
+      "label": "Success",
+      "path": "gifs/full-screen/apollo-success-ui-demo.gif"
+    }
+  ]
+}

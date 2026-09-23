@@ -1,3 +1,11 @@
+## 2026-09-23 Apollo downloadable media kit
+
+- Generated 28 static UI exports covering seven requested screens, two device dimensions and light/dark preferences without Playwright or scenario automation.
+- Published six transparent Apollo mascot loops and six full-screen state demonstration GIFs for resting, sniffing/loading, growling/warning, barking/danger, biting/blocked and success.
+- Validation: all 28 PNGs decode; all 12 GIFs animate; transparent loops contain transparency; UI demos preserve a 1,320 ms loop; manifest has 40 unique paths; ZIP integrity passes.
+- Public HTTP checks passed for gallery, ZIP, representative PNG and representative GIF.
+- Gallery: `https://apollo-platform.preview.emergentagent.com/apollo-media-kit/`
+
 ## 2026-09-23 Gmail production OAuth readiness
 
 - Configured server callback base as `https://threat-patrol-1.emergent.host`; exact redirect URI is `https://threat-patrol-1.emergent.host/api/gmail/oauth/callback`.
