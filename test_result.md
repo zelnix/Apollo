@@ -1,3 +1,17 @@
+## 2026-09-23 Phase 2 remediation and Learn with Higgins enhancement
+
+- Implemented C22 → C23 → C21 → C24 → C25 in the mandated order without replacing the investigation coordinator.
+- Added the capability/Gate registry, canonical absence-safe device-result retry, five-minute server/one-hour encrypted-device ordinary chat, immutable server Patrol records/timelines, and the governed learning/content/feed backend.
+- Imported and published 43 structured Australian articles through the explicit backend import path; 43/43 currently pass source/citation/completeness checks across five content types.
+- Added least-privilege learning permissions, editorial version/review/approve/publish/archive/rollback, JSON/CSV imports, source/feed health, candidate review, manual refresh/pause/resume and immutable mutation audits.
+- The registry now enables only explicitly approved source-owned Scamwatch and ACSC listing pages. Latest local state: Scamwatch fresh; ACSC unavailable after a read timeout; failure isolation and truthful per-source state passed.
+- Validation PASS: TypeScript, ESLint, 385/385 Node, Python lint/compile, 77/77 bounded provider-disabled pytest, and local no-provider learning/admin/capability/Patrol APIs.
+- Development feed observation: Scamwatch fresh with 55 review candidates; ACSC unavailable after a read timeout; zero feed candidates auto-published. No production feed acceptance is claimed.
+- No live Gemini, Playwright, testing agent, signed artifact or physical-device result is claimed.
+- A broader legacy backend-suite probe reached 354 passes and 24 failures before the command timeout. Those failures are outside these mandates and are dominated by tests requiring disabled live providers/services (Gemini, Resend, object storage/voice) plus stale pre-remediation contracts. The bounded Phase 2/Learning set is the acceptance result for this pass.
+
+---
+
 ## 2026-09-23 Package 6 verification and GuardDog production-default source activation
 
 - Owner authority: `memory/APOLLO_GUARDDOG_PRODUCTION_AUTHORITY.md`; its FIRST / CRITICAL boundaries were applied without changing frozen GuardDog source.

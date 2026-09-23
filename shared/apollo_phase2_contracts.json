@@ -10,5 +10,10 @@
     "adapter_failed"
   ],
   "patrolStates": ["resting", "ears_up", "growling", "barking", "biting"],
-  "patrolFilters": ["all_activity", "needs_you", "warnings", "threats_stopped", "resolved"]
+  "patrolDisplayStates": ["safe", "monitoring", "warning", "danger", "blocked", "resolved", "unknown"],
+  "patrolFilters": ["all_activity", "needs_you", "warnings", "threats_stopped", "resolved"],
+  "gates": ["site", "text", "call", "email", "link", "file", "app", "device", "account", "network"],
+  "higginsContextTools": ["get_product_capabilities", "get_gate_states", "get_protection_summary", "get_recent_cases", "get_last_relevant_outcome", "get_saved_reports", "get_recent_patrol_outcomes", "get_user_learning_preferences", "get_new_scams_digest"],
+  "ordinaryChatServerContentSeconds": 300,
+  "ordinaryChatDeviceContentSeconds": 3600
 }

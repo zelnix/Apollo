@@ -11,7 +11,7 @@ from typing import Any, Optional
 from fastapi import Depends, HTTPException, Request, Security
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 
-from core.config import ADMIN_HEADER, ADMIN_KEY, TOKEN_TTL_DAYS
+from core.config import ADMIN_HEADER, ADMIN_KEY, ADMIN_KEY_RECORDS, TOKEN_TTL_DAYS
 from core.db import db, now_utc
 
 # --------------------------------------------------------------------------- Device authentication (Hardening Gate step 2)
@@ -100,8 +100,30 @@ async def enforce_device_auth(request: Request, credentials: Optional[HTTPAuthor
 admin_key_header = APIKeyHeader(name=ADMIN_HEADER, scheme_name="AdminKey", description="External admin console key", auto_error=False)
 
 
-async def require_admin_key(presented: Optional[str] = Security(admin_key_header)) -> None:
-    if not ADMIN_KEY:
+LEARNING_ADMIN_PERMISSIONS = frozenset({"learning_content_view", "learning_content_edit", "learning_content_review", "learning_content_publish", "learning_source_manage", "learning_feed_manage"})
+
+
+async def require_admin_key(request: Request, presented: Optional[str] = Security(admin_key_header)) -> None:
+    if not ADMIN_KEY and not ADMIN_KEY_RECORDS:
         raise HTTPException(status_code=503, detail="Admin access is not configured on this server.")
-    if presented is None or not hmac.compare_digest(presented.strip().encode("utf-8"), ADMIN_KEY.encode("utf-8")):
-        raise HTTPException(status_code=401, detail="Invalid admin credentials.", headers={"WWW-Authenticate": "ApiKey"})
+    supplied = (presented or "").strip().encode("utf-8")
+    if ADMIN_KEY and hmac.compare_digest(supplied, ADMIN_KEY.encode("utf-8")):
+        request.state.admin = {"actor": "legacy-master", "permissions": set(LEARNING_ADMIN_PERMISSIONS) | {"admin_all"}}
+        return
+    for key_id, record in ADMIN_KEY_RECORDS.items() if isinstance(ADMIN_KEY_RECORDS, dict) else []:
+        if not isinstance(record, dict) or not isinstance(record.get("key"), str):
+            continue
+        if hmac.compare_digest(supplied, record["key"].encode("utf-8")):
+            request.state.admin = {"actor": str(record.get("actor") or key_id)[:80],
+                                   "permissions": set(str(value) for value in record.get("permissions", []))}
+            return
+    raise HTTPException(status_code=401, detail="Invalid admin credentials.", headers={"WWW-Authenticate": "ApiKey"})
+
+
+def require_admin_permission(permission: str):
+    async def dependency(request: Request) -> None:
+        admin = getattr(request.state, "admin", None) or {}
+        permissions = set(admin.get("permissions", []))
+        if permission not in permissions and "admin_all" not in permissions:
+            raise HTTPException(status_code=403, detail="Admin permission denied.")
+    return dependency

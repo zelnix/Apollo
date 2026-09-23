@@ -8,6 +8,7 @@ import uuid
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
+from pydantic import ValidationError
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
@@ -16,6 +17,7 @@ from core.models import EnforcementEvidenceIn, PatrolEvent, PatrolEventIn, Patro
 from routers.family import notify_guardians
 from routers.push import push_owner_alert
 from services.patrol_policy import packet_verified, minimal_patrol, revalidate_stored_patrol
+from services import patrol_records
 
 router = APIRouter()
 
@@ -54,6 +56,17 @@ def _binding_matches(receipt: dict, body: PatrolEventIn, fingerprint: str) -> bo
     evidence = body.enforcement_evidence
     return bool(evidence and receipt.get('device_id') == body.device_id and receipt.get('event_id') == body.event_id
                 and receipt.get('evidence_id') == evidence.evidence_id and receipt.get('fingerprint') == fingerprint)
+
+
+async def _append_authoritative_record(document: dict | None) -> None:
+    """Project complete consumer events; tolerate pre-remediation minimal legacy fixtures."""
+    if not document:
+        return
+    try:
+        parsed = PatrolEventIn.model_validate(document)
+    except ValidationError:
+        return
+    await patrol_records.append(parsed, bool(document.get("verified_block")))
 
 
 async def _claim_evidence_binding(body: PatrolEventIn, fingerprint: str) -> tuple[dict, bool]:
@@ -119,6 +132,7 @@ async def upsert_event(body: PatrolEventIn):
     if existing:
         await db.patrol_events.update_one({"_id": existing["_id"]}, {"$set": {**payload, "updated_at": ts}})
         doc = await db.patrol_events.find_one({"_id": existing["_id"]})
+        await _append_authoritative_record(doc)
         return PatrolEvent.from_mongo(doc)
     event = PatrolEvent(**payload, created_at=ts, updated_at=ts)
     try:
@@ -131,8 +145,10 @@ async def upsert_event(body: PatrolEventIn):
             return PatrolEvent.from_mongo(await revalidate_stored_patrol(doc))
         await db.patrol_events.update_one({"event_id": body.event_id, "device_id": body.device_id}, {"$set": {**payload, "updated_at": ts}})
         doc = await db.patrol_events.find_one({"event_id": body.event_id, "device_id": body.device_id})
+        await _append_authoritative_record(doc)
         return PatrolEvent.from_mongo(doc)
     event.id = str(result.inserted_id)
+    await _append_authoritative_record(await db.patrol_events.find_one({"_id": result.inserted_id}))
     if event.state in ("barking", "biting"):
         asyncio.create_task(notify_guardians(event))
         if event.background:
@@ -148,11 +164,24 @@ async def list_events(device_id: str = Query(min_length=8, max_length=64), limit
     return [PatrolEvent.from_mongo(await revalidate_stored_patrol(d)) for d in docs]
 
 
+@router.get("/patrol/records")
+async def list_patrol_records(request: Request, limit: int = Query(default=200, ge=1, le=500)):
+    return await patrol_records.current(request.state.device["device_id"], limit)
+
+
+@router.get("/patrol/records/{record_id}/timeline")
+async def patrol_record_timeline(record_id: str, request: Request):
+    items = await patrol_records.timeline(request.state.device["device_id"], record_id)
+    if not items:
+        raise HTTPException(status_code=404, detail="Patrol record not found")
+    return {"items": items}
+
+
 @router.post("/patrol/events/{event_id}/investigation")
 async def bind_event_investigation(event_id: str, body: InvestigationBindingIn, request: Request):
     """Bind one owned Patrol event to one owned live investigation; replay is idempotent."""
     owner = request.state.device["device_id"]
-    event = await db.patrol_events.find_one({"event_id": event_id, "device_id": owner, "deleted_at": None}, {"_id": 1, "investigation_case_id": 1})
+    event = await db.patrol_events.find_one({"event_id": event_id, "device_id": owner, "deleted_at": None})
     case = await db.investigation_cases.find_one({"case_id": body.case_id, "owner_id": owner, "deleted": False}, {"_id": 1})
     if not event or not case:
         raise HTTPException(status_code=404, detail="Event or investigation not found")
@@ -160,6 +189,9 @@ async def bind_event_investigation(event_id: str, body: InvestigationBindingIn, 
     if existing and existing != body.case_id:
         raise HTTPException(status_code=409, detail="Event is already bound to a different investigation")
     await db.patrol_events.update_one({"_id": event["_id"]}, {"$set": {"investigation_case_id": body.case_id, "updated_at": now_utc()}})
+    updated = await db.patrol_events.find_one({"_id": event["_id"]})
+    if updated:
+        await _append_authoritative_record(updated)
     return {"eventId": event_id, "caseId": body.case_id}
 
 
@@ -193,12 +225,14 @@ async def patch_event(event_id: str, body: PatrolEventPatch, device_id: str = Qu
             raise HTTPException(status_code=422, detail="state='biting' cannot be set via PATCH unless verified_block is already true on this event.")
         raise HTTPException(status_code=404, detail="Event not found")
     doc = await db.patrol_events.find_one({"event_id": event_id, "device_id": device_id})
+    await _append_authoritative_record(doc)
     return PatrolEvent.from_mongo(await revalidate_stored_patrol(doc))
 
 
 @router.delete("/patrol/events")
 async def clear_events(device_id: str = Query(min_length=8, max_length=64)):
     result = await db.patrol_events.update_many({"device_id": device_id, "deleted_at": None}, {"$set": {"deleted_at": now_utc()}})
+    await db.patrol_records.delete_many({"owner_id": device_id})
     return {"soft_deleted": result.modified_count}
 
 

@@ -1,6 +1,7 @@
 """Environment, logging and constants shared by every module (loaded once)."""
 import logging
 import os
+import json
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -29,6 +30,10 @@ PUBLIC_BASE = os.environ.get("PUBLIC_API_BASE", "").rstrip("/")  # canonical pub
 
 ADMIN_KEY = os.environ.get("APOLLO_ADMIN_KEY", "")
 ADMIN_HEADER = "X-Admin-Key"
+try:
+    ADMIN_KEY_RECORDS = json.loads(os.environ.get("APOLLO_ADMIN_KEYS_JSON", "{}"))
+except json.JSONDecodeError:
+    ADMIN_KEY_RECORDS = {}
 
 # Gmail read-only connection (Gate 1 add-on) — Web-application OAuth client; the redirect URI is
 # derived from PUBLIC_BASE so it always matches whatever origin this backend is actually served on.

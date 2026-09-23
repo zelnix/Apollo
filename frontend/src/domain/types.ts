@@ -89,6 +89,17 @@ export interface IntelResult {
 
 export type EventCategory = "link" | "website" | "connection" | "known_threat" | "protection" | "system" | "message" | "call" | "app" | "device" | "account" | "email" | "file" | "family";
 export type EventStatus = "active" | "trusted" | "blocked" | "resolved";
+export type PatrolDisplayState = "safe" | "monitoring" | "warning" | "danger" | "blocked" | "resolved" | "unknown";
+
+export interface PatrolRecord {
+  recordId: string; logicalIssueKey: string; revision: number; supersedes: string | null; sourceEventId: string; sourceType: string;
+  category: string; headline: string; summary: string; rawState: string; effectiveState: PatrolDisplayState; effectiveReason: string;
+  observedBlockReference: string | null; assessmentReference: string | null; investigationCaseId: string | null;
+  scenarioContext: { scenario?: string | null; claimedBrand?: string | null; indicatorHost?: string | null } | null;
+  freshness: { observedAt: string; projectedAt: string; status: string }; outageContext: Record<string, unknown> | null;
+  resolution: { status: string; resolvedAt: string | null } | null; duplicateOf: string | null; duplicateReason: string | null;
+  occurredAt: string; updatedAt: string; event: PatrolEvent;
+}
 
 export interface PatrolEvent {
   event_id: string;
@@ -126,6 +137,8 @@ export interface PatrolEvent {
   recovery_kinds?: string[];
   /** Owner-validated server association for continuing this event after remount or device refresh. */
   investigation_case_id?: string | null;
+  /** Server-owned immutable Patrol projection. Consumer history must prefer this when present. */
+  patrol_record?: PatrolRecord;
 }
 
 /**

@@ -8,7 +8,8 @@ from google.genai import types
 
 from core.db import db, now_utc
 from core.redaction import redact_investigation_secrets
-from services import government_alerts
+from services import capability_registry, government_alerts
+from services import patrol_records
 from services.higgins import context as memory
 from services.higgins import repository as repo
 
@@ -25,6 +26,8 @@ DECLARATIONS = [
     _declaration("get_recent_patrol_outcomes", "Read the owner's latest meaningful Patrol outcomes."),
     _declaration("get_user_learning_preferences", "Read the owner's current learning preferences when recorded."),
     _declaration("get_new_scams_digest", "Read a bounded digest from configured recognised-government feeds."),
+    _declaration("get_product_capabilities", "Read the authoritative product capability registry, configuration truth and latest device observation."),
+    _declaration("get_gate_states", "Read current Gate states from the latest fresh device observation; missing observations remain unavailable."),
 ]
 TOOLS = [types.Tool(function_declarations=DECLARATIONS)]
 
@@ -53,13 +56,15 @@ async def recent_cases(owner: str) -> dict:
 
 
 async def patrol(owner: str, *, one: bool = False) -> dict:
-    query = {"device_id": owner, "deleted_at": None, "category": {"$nin": ["system"]}}
     limit = 1 if one else 5
-    rows = await db.patrol_events.find(query, {"_id": 0, "event_id": 1, "category": 1, "state": 1, "status": 1, "headline": 1, "what_happened": 1, "occurred_at": 1, "verified_block": 1}).sort("occurred_at", -1).limit(limit).to_list(limit)
-    items = [{"eventId": row["event_id"], "category": row["category"], "state": row["state"], "status": row["status"],
-              "headline": redact_investigation_secrets(row["headline"])[:200], "summary": redact_investigation_secrets(row["what_happened"])[:400],
-              "occurredAt": row["occurred_at"].isoformat(), "verifiedBlock": bool(row.get("verified_block"))} for row in rows]
-    return _result(items, ["patrol_outcome_store"], observed_at=rows[0]["occurred_at"] if rows else None)
+    rows = [row for row in await patrol_records.current(owner, limit + 5) if row["category"] != "system"][:limit]
+    items = [{"recordId": row["recordId"], "logicalIssueKey": row["logicalIssueKey"], "category": row["category"],
+              "effectiveState": row["effectiveState"], "effectiveReason": row["effectiveReason"],
+              "headline": redact_investigation_secrets(row["headline"])[:200], "summary": redact_investigation_secrets(row["summary"])[:400],
+              "occurredAt": row["occurredAt"].isoformat() if hasattr(row["occurredAt"], "isoformat") else str(row["occurredAt"]),
+              "observedBlockReference": row.get("observedBlockReference")} for row in rows]
+    observed = rows[0]["occurredAt"] if rows else None
+    return _result(items, ["authoritative_patrol_record_store"], observed_at=observed)
 
 
 async def saved_reports(owner: str) -> dict:
@@ -76,7 +81,10 @@ async def saved_reports(owner: str) -> dict:
 
 async def preferences(owner: str) -> dict:
     items = [item for item in await memory.current(owner) if item.category == "preference"][:10]
-    return _result([{"summary": item.summary, "observedAt": item.observed_at.isoformat()} for item in items], ["owner_preference_store"], observed_at=items[0].observed_at if items else None)
+    learning_preferences = await db.learning_preferences.find_one({"owner_id": owner}, {"_id": 0, "owner_id": 0})
+    values = [{"summary": item.summary, "observedAt": item.observed_at.isoformat()} for item in items]
+    if learning_preferences: values.append({"learning": learning_preferences})
+    return _result(values, ["owner_preference_store", "learning_preference_store"], observed_at=items[0].observed_at if items else learning_preferences.get("updatedAt") if learning_preferences else None)
 
 
 async def scams(_owner: str) -> dict:
@@ -85,10 +93,21 @@ async def scams(_owner: str) -> dict:
     return _result(items, ["recognised_government_feed_cache"], confidence="high" if "fresh" in statuses else "medium")
 
 
+async def product_capabilities(owner: str) -> dict:
+    value = await capability_registry.product_capabilities(owner)
+    return _result([value], ["authoritative_capability_registry"], observed_at=value["generatedAt"])
+
+
+async def gate_states(owner: str) -> dict:
+    value = await capability_registry.gate_states(owner)
+    return _result(value["items"], ["authoritative_gate_registry", "fresh_device_observation"], observed_at=value["generatedAt"])
+
+
 READERS: dict[str, Callable[[str], Awaitable[dict]]] = {
     "get_protection_summary": protection, "get_recent_cases": recent_cases,
     "get_last_relevant_outcome": lambda owner: patrol(owner, one=True), "get_saved_reports": saved_reports,
     "get_recent_patrol_outcomes": patrol, "get_user_learning_preferences": preferences, "get_new_scams_digest": scams,
+    "get_product_capabilities": product_capabilities, "get_gate_states": gate_states,
 }
 
 

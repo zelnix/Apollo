@@ -57,6 +57,17 @@
 - GD-PROD-01 through GD-PROD-08 developer source scope is complete: production-only selection, single owner, independent-root signed trust, frozen M2 Website Gate wiring, lifecycle reconciliation, truthful coverage/evidence, bounded checks and handoff manifest.
 - External completion remains: owner public trust/feed inputs, release-host signed candidate production, and physical-device enforcement/expiry/revocation/rollback evidence. Detailed handoff: `docs/APOLLO_GUARDDOG_PRODUCTION_HANDOFF.md`.
 
+## Phase 2 remediation and Learn with Higgins — implemented (2026-09-23)
+
+- Authority: `memory/APOLLO_PHASE2_LEARNING_AUTHORITIES.md`.
+- C22: canonical device-result absence values now pass the pre-provider serializer; safe retry preserves request/result identity.
+- C23/C21: ordinary chat has bounded retention and read-only access to the authoritative capability/Gate registry, existing investigation/report history, Patrol outcomes, learning preferences and recognised-government alerts. It cannot start investigative work.
+- C24: immutable server Patrol records own revisions, deduplication and effective display state. Consumer history uses server projections and timelines; Biting still requires fresh validated enforcement evidence.
+- C25/Learning: governed backend catalogue, source/feed registries, editorial workflow, permissions, audit, candidate review queue, safe feed transport, filters/preferences and structured mobile reader are implemented. The explicit import path published 43 Australian starter articles in this environment.
+- Verification: TypeScript/ESLint, 385 Node checks, Python lint/compile, 77 bounded provider-disabled pytest checks, and local no-provider APIs pass. Scamwatch was fresh in development; ACSC truthfully reported unavailable after a read timeout; no feed candidate auto-published.
+- Developer verification and exact boundaries: `docs/APOLLO_PHASE2_LEARNING_IMPLEMENTATION_RECORD.md`.
+- P1 external operation: configure least-privilege admin keys, verify each registered government feed from production egress, and conduct editorial acceptance. Live Gemini and physical-device acceptance remain separate.
+
 ## C15 / GuardDog production-default activation — source implemented (updated 2026-09-23)
 
 ### Problem statement

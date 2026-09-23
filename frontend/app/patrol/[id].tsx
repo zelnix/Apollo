@@ -1,6 +1,6 @@
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import X from "lucide-react-native/icons/x";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -9,6 +9,8 @@ import { HigginsReadAloud } from "@/src/components/HigginsReadAloud";
 import { narrateEvent } from "@/src/domain/higginsNarration";
 import { Body, Button, Card, Pill, toneColor } from "@/src/components/ui";
 import { STATE_LABEL, STATE_MEANING } from "@/src/domain/types";
+import type { PatrolRecord } from "@/src/domain/types";
+import { apiGet } from "@/src/api/client";
 import { projectPatrolOutcomes } from "@/src/domain/patrolOutcomes";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { useApollo } from "@/src/store/ApolloContext";
@@ -35,6 +37,8 @@ export default function EventDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { events, isMock, ready, setupDone } = useApollo();
   const event = events.find((e) => e.event_id === id);
+  const [timeline, setTimeline] = useState<PatrolRecord[]>([]);
+  useEffect(() => { const recordId = event?.patrol_record?.recordId; if (!recordId) { setTimeline([]); return; } void apiGet<{ items: PatrolRecord[] }>(`/patrol/records/${encodeURIComponent(recordId)}/timeline`).then((value) => setTimeline(value.items)).catch(() => setTimeline([])); }, [event?.patrol_record?.recordId]);
   const outcome = event ? projectPatrolOutcomes([event])[0] : null;
   if (ready && !setupDone) return <Redirect href="/onboarding" />;
 
@@ -74,6 +78,7 @@ export default function EventDetail() {
           </Card>
 
           <Card style={{ gap: spacing.sm }} testID="event-read-card"><HigginsReadAloud chunks={narrateEvent(event)} testID="event-read" /></Card>
+          {timeline.length > 1 ? <Card style={{ gap: spacing.sm }} testID="event-server-timeline"><Text style={s.sub}>Issue timeline</Text>{timeline.map((record) => <View key={record.recordId} testID={`event-timeline-${record.revision}`}><Body>Revision {record.revision}: {record.effectiveState.replace("_", " ")} — {record.summary}</Body><Text style={s.meta}>{new Date(record.occurredAt).toLocaleString()}</Text></View>)}</Card> : null}
           <EventActions event={event} />
           {event.scent_id && events.filter((e) => e.scent_id === event.scent_id).length > 1 ? <Card style={{ gap: spacing.sm }} testID="event-incident-card"><Body>This event is part of a connected incident ({events.filter((e) => e.scent_id === event.scent_id).length} events).</Body><Button testID="event-incident-open" variant="secondary" label="View incident timeline" onPress={() => router.push({ pathname: "/patrol/scent/[id]", params: { id: event.scent_id! } })} /></Card> : null}
 

@@ -10,7 +10,7 @@ import * as api from "./client";
 import { observe } from "./deviceBroker";
 import { appendManagedOperation, cancelManagedOperation, expireOperation, managedOperation, retryManagedOperation,
   settleManagedOperation, startManagedOperation, subscribeManagedOperation, type ManagedOperation } from "./transferManager";
-import type { CreateCase, Failure, HigginsResponse, InvestigationCase, InvestigationEvent, Job, Question, SourceReference, TurnCommit } from "./types";
+import type { CreateCase, DeviceResult, Failure, HigginsResponse, InvestigationCase, InvestigationEvent, Job, Question, SourceReference, TurnCommit } from "./types";
 
 export type Phase = "idle" | "creating" | "working" | "reconnecting" | "waiting_device" | "waiting_user" | "answered" | "failed" | "expired";
 export interface CaseState {
@@ -40,6 +40,7 @@ export function useInvestigation(boundOperationId?: string | null) {
   const followed = useRef<string | null>(null);
   const generation = useRef(0);
   const pendingCancellation = useRef<{ caseId: string; jobId: string } | null>(null);
+  const pendingDeviceResult = useRef<{ caseId: string; result: DeviceResult; job: Job; after: number } | null>(null);
   const cancelAction = useRef<() => Promise<void>>(async () => undefined);
   const update = (patch: Partial<CaseState> | ((previous: CaseState) => Partial<CaseState>)) => setState((previous) => ({ ...previous, ...(typeof patch === "function" ? patch(previous) : patch) }));
 
@@ -86,9 +87,9 @@ export function useInvestigation(boundOperationId?: string | null) {
       else if (event.type === "device_request") {
         update({ phase: "waiting_device" });
         const consumed = event.sequence;
-        void observe(event.payload).then((result) => api.submitDeviceResult(caseId, result)).then(({ jobId }) => {
-          if (live()) follow(caseId, { ...job, id: jobId ?? job.id }, consumed);
-        }).catch((error: unknown) => { if (live()) update({ phase: "failed", error: error instanceof Error ? error.message : "Device observation could not be delivered." }); });
+        void observe(event.payload).then((result) => { pendingDeviceResult.current = { caseId, result, job, after: consumed }; return api.submitDeviceResult(caseId, result); }).then(({ jobId }) => {
+          pendingDeviceResult.current = null; if (live()) follow(caseId, { ...job, id: jobId ?? job.id }, consumed);
+        }).catch(() => { if (live()) update({ phase: "failed", error: "Apollo couldn't safely deliver this device observation. Retry sends the same observation without starting a new check." }); });
       } else if (event.type === "completed") {
         pending.current = null;
         void refresh(caseId, gen).then((caseData) => {
@@ -189,6 +190,12 @@ export function useInvestigation(boundOperationId?: string | null) {
 
   const retry = useCallback(async () => {
     const caseData = caseRef.current ?? state.caseData;
+    if (pendingDeviceResult.current) {
+      const pendingResult = pendingDeviceResult.current; update({ phase: "working", error: null, progress: ["Retrying the same device observation."] });
+      try { const { jobId } = await api.submitDeviceResult(pendingResult.caseId, pendingResult.result); pendingDeviceResult.current = null; follow(pendingResult.caseId, { ...pendingResult.job, id: jobId ?? pendingResult.job.id }, pendingResult.after); }
+      catch { update({ phase: "failed", error: "Apollo still couldn't safely deliver this device observation. Retry remains available." }); }
+      return;
+    }
     if (operationRef.current) {
       const record = managedOperation(operationRef.current, caseData?.id);
       if (record?.phase === "failed") { update({ phase: "working", error: null, notice: null, progress: ["Resuming this exact operation."] }); adoptManaged((await retryManagedOperation(record.operationId, record.caseId))!); return; }

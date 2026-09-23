@@ -4,13 +4,13 @@ import { domainOnly, packetFields, evidenceToken } from './packetEvidence.ts';
 // User-submitted content may leave the device only for the disclosed, one-off assessment the user
 // requested. It must not be copied into Patrol payloads, logs, analytics, or background monitoring.
 
-export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "higgins_chat" | "higgins_context" | "device_register" | "family" | "push_register" | "push_test" | "device_settings" | "message_check" | "message_extract" | "link_investigation" | "feedback" | "page_extract" | "page_crawl" | "gmail_scan" | "gmail_monitor" | "app_check" | "account_check" | "breach_check" | "voice" | "call_risk_check" | "investigation";
+export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "higgins_chat" | "higgins_context" | "capability_snapshot" | "device_register" | "family" | "push_register" | "push_test" | "device_settings" | "message_check" | "message_extract" | "link_investigation" | "feedback" | "page_extract" | "page_crawl" | "gmail_scan" | "gmail_monitor" | "app_check" | "account_check" | "breach_check" | "voice" | "call_risk_check" | "investigation";
 
 const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   family: new Set(["device_id", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id", "scent_id", "headline", "state", "events", "steps", "done", "note", "resolved", "kind", "text", "from_name", "enabled", "preview_only", "guardian_name", "duration_s", "submission_id"]),
   intel_check: new Set(["indicator_type", "value", "values", "device_id", "expand"]),
   // Shared investigation case (spec §8): opaque IDs, the person's question/message, explicitly submitted items and a device profile — never credentials.
-  investigation: new Set(["gate", "question", "submissions", "initialFindingRefs", "initialFindings", "deviceProfile", "expectedRevision", "turnId", "message", "answerToQuestionId", "evidenceIds", "clientItemId", "parentId", "kind", "text", "url", "label", "deviceResult", "requestId", "caseRevision", "capabilityId", "status", "observedAt", "values", "simulation", "target", "device", "deviceResultIds", "responseRevision", "section", "filename", "mediaType", "declaredBytes", "expectedField", "expectedValue", "confirmed", "submissionId", "sourceKey", "revisionDigest", "sender", "capturedAt", "expiresAt", "contentComplete", "originalCharacters"]),
+  investigation: new Set(["gate", "question", "submissions", "initialFindingRefs", "initialFindings", "deviceProfile", "expectedRevision", "turnId", "message", "answerToQuestionId", "evidenceIds", "clientItemId", "parentId", "kind", "text", "url", "label", "deviceResult", "requestId", "caseRevision", "capabilityId", "status", "observedAt", "values", "simulation", "unavailableReason", "target", "device", "deviceResultIds", "responseRevision", "section", "filename", "mediaType", "declaredBytes", "expectedField", "expectedValue", "confirmed", "submissionId", "sourceKey", "revisionDigest", "sender", "capturedAt", "expiresAt", "contentComplete", "originalCharacters"]),
   // Higgins' voice: only the sentence already shown on screen, so it can be read aloud.
   voice: new Set(["device_id", "text", "scope_id"]),
   feedback: new Set(["device_id", "event_id", "kind", "state", "host", "sources", "note"]),
@@ -20,8 +20,9 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   ]),
   trust_sync: new Set(["device_id", "indicator_type", "indicator_digest", "indicator_host", "event_id", "trust_id"]),
   ask_apollo: new Set(["device_id", "message", "context", "handoff_id", "conversation_id", "turn_id"]),
-  higgins_chat: new Set(["message", "conversationId"]),
+  higgins_chat: new Set(["turnId", "message", "conversationId", "previousTurnIds", "selectedPatrolRecordId", "selectedReportId"]),
   higgins_context: new Set(["category", "summary", "provenance", "observedAt"]),
+  capability_snapshot: new Set(["platform", "adapter", "online", "gates", "capabilities", "protection", "id", "state", "reason", "requested", "operational", "enforcementMethod", "degradedReason"]),
   device_register: new Set(["platform", "adapter_mode", "app_version", "tz_offset_minutes"]),
   // Alert notifications: the push token is an opaque delivery address (FCM/APNs), relayed and not stored by us.
   push_register: new Set(["platform", "provider", "projectId", "device_token"]),
@@ -73,9 +74,11 @@ export function redactInvestigationSecrets(value: string): string {
 }
 
 export class EgressViolation extends Error {
+  readonly code = "EGRESS_SCHEMA_REJECTED";
   constructor(endpoint: EgressEndpoint, key: string) {
-    super(`Privacy policy blocked field "${key}" from leaving the device (${endpoint}).`);
+    super("Apollo couldn't safely prepare this request. Retry this step.");
     this.name = "EgressViolation";
+    Object.defineProperties(this, { endpoint: { value: endpoint, enumerable: false }, field: { value: key, enumerable: false } });
   }
 }
 

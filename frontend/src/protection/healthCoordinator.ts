@@ -11,6 +11,7 @@ import { storage } from "@/src/utils/storage";
 import { protectionHealthSnapshot, publishProtectionHealth } from "./healthStore";
 import { decideSiteRecovery } from "./recoveryPolicy";
 import type { HealthTrigger, ProtectionHealthSnapshot } from "./healthTypes";
+import { publishCapabilitySnapshot } from "./capabilityClient";
 
 const DESIRED_KEY = "apollo.protection.on";
 let inFlight: Promise<ProtectionHealthSnapshot> | null = null;
@@ -55,6 +56,7 @@ async function collect(trigger: HealthTrigger): Promise<ProtectionHealthSnapshot
   const overview = buildGatesOverview({ platform: securityAdapter.kind, checking: false, protection, permissions, capabilities, messaging, calls, network, email, online: network.isInternetReachable !== false });
   const next: ProtectionHealthSnapshot = { ...base, gates: overview.gates };
   publishProtectionHealth(next);
+  void publishCapabilitySnapshot({ platform: securityAdapter.kind, adapter: securityAdapter.label, online: network.isInternetReachable, gates: overview.gates, capabilities, protection }).catch(() => undefined);
   return next;
 }
 

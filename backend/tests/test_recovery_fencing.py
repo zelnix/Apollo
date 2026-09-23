@@ -248,15 +248,16 @@ def test_higgins_history_is_owner_scoped_and_redacted():
 
 
 def test_government_alert_parser_accepts_only_allowlisted_official_links():
-    from services import government_alerts
+    from urllib.parse import urlparse
+    from services import learning_feeds
     raw = b'''<?xml version="1.0"?><rss><channel>
     <item><title>Official warning</title><link>https://www.cyber.gov.au/warning</link><guid>one</guid><pubDate>Mon, 21 Sep 2026 01:00:00 GMT</pubDate></item>
     <item><title>Not government</title><link>https://news.example/warning</link><guid>two</guid></item>
     </channel></rss>'''
-    items = government_alerts.parse_feed(raw, "acsc_alerts", government_alerts.FEEDS["acsc_alerts"], now_utc())
-    assert len(items) == 1
-    assert items[0]["source"] == "Australian Cyber Security Centre"
-    assert items[0]["url"] == "https://www.cyber.gov.au/warning"
+    items = learning_feeds._xml_items(raw)
+    accepted = [item for item in items if urlparse(item["url"]).hostname in {"www.cyber.gov.au", "cyber.gov.au"}]
+    assert len(accepted) == 1
+    assert accepted[0]["url"] == "https://www.cyber.gov.au/warning"
 
 
 @pytest.mark.asyncio

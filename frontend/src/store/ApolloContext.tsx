@@ -25,7 +25,8 @@ import { analyseUrlLocally } from "@/src/domain/risk";
 import { STATE_RANK } from "@/src/domain/stateMachine";
 import { findScentFor } from "@/src/domain/threatScent";
 import { canTransition, resolveApolloState, type StateResolution } from "@/src/domain/stateMachine";
-import type { ApolloState, Capability, Decision, DomainInfo, IntelResult, LocalAnalysis, PatrolEvent } from "@/src/domain/types";
+import type { ApolloState, Capability, Decision, DomainInfo, IntelResult, LocalAnalysis, PatrolEvent, PatrolRecord } from "@/src/domain/types";
+import { patrolRecordToEvent } from "@/src/domain/patrolRecords";
 import { IS_PREVIEW_HARNESS, securityAdapter } from "@/src/security/securityAdapter";
 import { primeDeviceFacts } from "@/src/investigation/deviceBroker";
 import type { BlockResult, NetworkStatus, ProtectionPermission, ProtectionStatus } from "@/src/security/SecurityPlatformAdapter";
@@ -458,13 +459,14 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   }, [verifyNow]);
 
   // Remote Patrol + trust merge (device may have reinstalled). Local wins.
-  const remoteEvents = useQuery({ queryKey: ["patrol", deviceId], enabled: !!deviceId, queryFn: () => apiGet<PatrolEvent[]>(`/patrol/events?device_id=${deviceId}`) });
+  const remoteEvents = useQuery({ queryKey: ["patrol", deviceId], enabled: !!deviceId, queryFn: () => apiGet<PatrolRecord[]>(`/patrol/records?limit=200`) });
   const remoteTrust = useQuery({ queryKey: ["trust", deviceId], enabled: !!deviceId, queryFn: () => apiGet<TrustEntry[]>(`/trust?device_id=${deviceId}`) });
   useEffect(() => {
     if (!remoteEvents.data) return;
-    const known = new Set(events.map((e) => e.event_id));
-    const missing = remoteEvents.data.filter((e) => !known.has(e.event_id)).map(normalizeHistoricalEvent);
-    if (missing.length) void persistEvents([...events, ...missing].sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at)));
+    const authoritative = remoteEvents.data.map((record) => normalizeHistoricalEvent(patrolRecordToEvent(record)));
+    const remoteIds = new Set(authoritative.map((event) => event.event_id));
+    const localOnly = events.filter((event) => !remoteIds.has(event.event_id));
+    void persistEvents([...authoritative, ...localOnly].sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at)));
   }, [remoteEvents.data]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!remoteTrust.data) return;

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from fastapi import APIRouter, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -25,22 +26,33 @@ NO_STORE = {"Cache-Control": "private, no-store", "Pragma": "no-cache"}
 
 
 class ChatRequest(Wire):
+    turn_id: str = Field(default_factory=lambda: str(uuid.uuid4()), min_length=8, max_length=80, pattern=r"^[A-Za-z0-9._:-]+$")
     message: str = Field(min_length=1, max_length=4000)
-    conversation_id: str = Field(min_length=4, max_length=80)
+    conversation_id: str = Field(default_factory=lambda: str(uuid.uuid4()), min_length=4, max_length=80)
+    previous_turn_ids: list[str] = Field(default_factory=list, max_length=8)
+    selected_patrol_record_id: str | None = Field(default=None, max_length=100)
+    selected_report_id: str | None = Field(default=None, max_length=100)
 
 
 @router.post("/higgins/chat", response_model=chat.ChatReply)
 async def higgins_chat(body: ChatRequest, request: Request):
     owner = request.state.device["device_id"]
-    return JSONResponse((await chat.reply(owner, body.conversation_id, body.message)).wire(), headers=NO_STORE)
+    try:
+        result = await chat.reply(owner, body.conversation_id, body.turn_id, body.message, body.previous_turn_ids,
+                                  body.selected_patrol_record_id, body.selected_report_id)
+    except chat.provider.ProviderFailure as exc:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=503, detail="Higgins is temporarily unavailable. No investigation was started.") from exc
+    return JSONResponse(result.wire(), headers=NO_STORE)
 
 
 @router.post("/ask/stream")
 async def ask_stream(body: ChatRequest, request: Request):
     """Compatibility SSE transport with ordinary-chat semantics and no case side effect."""
-    result = await chat.reply(request.state.device["device_id"], body.conversation_id, body.message)
+    result = await chat.reply(request.state.device["device_id"], body.conversation_id, body.turn_id, body.message, body.previous_turn_ids,
+                              body.selected_patrol_record_id, body.selected_report_id)
     async def events():
-        yield f"data: {json.dumps({'delta': result.answer, 'clarification': result.clarification, 'action': result.action.wire() if result.action else None, 'investigative_work_started': False})}\n\n"
+        yield f"data: {json.dumps({'delta': result.answer, 'clarification': result.clarification, 'suggested_actions': [a.wire() for a in result.suggested_actions], 'investigative_work_started': False})}\n\n"
         yield f"data: {json.dumps({'done': True, 'provider_complete': True, 'finish_reason': 'STOP', 'investigative_work_started': False})}\n\n"
     return StreamingResponse(events(), media_type="text/event-stream", headers={**NO_STORE, "X-Accel-Buffering": "no"})
 
@@ -48,7 +60,15 @@ async def ask_stream(body: ChatRequest, request: Request):
 @router.get("/ask/history")
 async def ask_history(request: Request, device_id: str = Query(min_length=8, max_length=64)):
     del device_id
-    return JSONResponse({"items": [item.wire() for item in await memory.chat_history(request.state.device["device_id"])], "kind": "ordinary_chat"}, headers=NO_STORE)
+    owner = request.state.device["device_id"]
+    return JSONResponse([item.wire() for item in await memory.chat_history(owner)], headers=NO_STORE)
+
+
+@router.get("/higgins/chat/history")
+async def higgins_chat_history(request: Request, device_id: str = Query(min_length=8, max_length=64)):
+    del device_id
+    owner = request.state.device["device_id"]
+    return JSONResponse({"items": [item.wire() for item in await memory.chat_history(owner)], "receipts": await memory.chat_receipts(owner), "kind": "ordinary_chat"}, headers=NO_STORE)
 
 
 @router.delete("/ask/history")

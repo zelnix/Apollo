@@ -13,6 +13,7 @@ import { clearHandoffTransfers, takeHandoff } from "@/src/domain/handoffTransfer
 import { parseHigginsIssueContext, type HigginsIssueContext } from "@/src/domain/higginsHandoff";
 import { redactInvestigationSecrets as redactUserSecrets } from "@/src/domain/privacy";
 import { askHiggins, clearHigginsHistory, higginsHistory, rememberHigginsContext, type HigginsChatAction, type HigginsChatMessage } from "@/src/higgins/chatClient";
+import { clearLocalChat, loadLocalChat, saveLocalChat } from "@/src/higgins/chatMemory";
 import { higginsHubHistory, type HigginsHistoryItem } from "@/src/higgins/hubClient";
 import { useInvestigation } from "@/src/investigation/caseStore";
 import { createCaseInput } from "@/src/investigation/fromContext";
@@ -49,7 +50,8 @@ export default function Ask() {
 
   useEffect(() => {
     if (!deviceId) return;
-    void higginsHistory(deviceId).then((chat) => setChatMessages(chat.items)).catch(() => undefined);
+    void loadLocalChat().then(setChatMessages).catch(() => undefined);
+    void higginsHistory(deviceId).catch(() => undefined); // server keeps only five-minute content and non-content receipts
     setHubLoading(true); setHubError(false);
     void higginsHubHistory(12).then((hub) => setHubItems(hub.items)).catch(() => setHubError(true)).finally(() => setHubLoading(false));
   }, [deviceId]);
@@ -72,11 +74,13 @@ export default function Ask() {
     const clean = redactUserSecrets(message).trim(); if (!clean || busy || !deviceId) return;
     if (investigationMode || activeContext || state.caseData) { setText(""); if (state.caseData) void ask(clean); else startInvestigation(clean, activeContext); return; }
     setText(""); setChatBusy(true); setChatError(null); setLastAction(null);
-    const optimistic: HigginsChatMessage = { id: Crypto.randomUUID(), role: "user", content: clean, createdAt: new Date().toISOString(), conversationId: conversationId.current };
-    setChatMessages((current) => [...current, optimistic]);
-    void askHiggins(clean, conversationId.current).then((reply) => {
-      setChatMessages((current) => [...current, { id: Crypto.randomUUID(), role: "higgins", content: `${reply.answer}${reply.clarification ? `\n\n${reply.clarification}` : ""}`, createdAt: new Date().toISOString(), conversationId: reply.conversationId }]);
-      setLastAction(reply.action);
+    const turnId = Crypto.randomUUID();
+    const optimistic: HigginsChatMessage = { id: Crypto.randomUUID(), turnId, role: "user", content: clean, createdAt: new Date().toISOString(), conversationId: conversationId.current };
+    const previousTurnIds = [...new Set(chatMessages.map((item) => item.turnId))].slice(-8);
+    setChatMessages((current) => { const next = [...current, optimistic]; void saveLocalChat(next); return next; });
+    void askHiggins(clean, conversationId.current, turnId, previousTurnIds).then((reply) => {
+      setChatMessages((current) => { const next = [...current, { id: Crypto.randomUUID(), turnId: reply.turnId, role: "higgins" as const, content: `${reply.answer}${reply.clarification ? `\n\n${reply.clarification}` : ""}`, createdAt: new Date().toISOString(), conversationId: reply.conversationId }]; void saveLocalChat(next); return next; });
+      setLastAction(reply.suggestedActions[0] ?? null);
     }).catch(() => setChatError("Higgins could not answer ordinary chat right now. No investigation was started.")).finally(() => setChatBusy(false));
   };
 
@@ -90,7 +94,7 @@ export default function Ask() {
   }, [params.handoffId, params.context, params.prompt, deviceId, router, attach, ask]);
 
   const deleteInvestigation = async () => { stopHiggins(); clearHandoffTransfers(); setActiveContext(null); setRouteError(null); setInvestigationMode(false); await remove(); };
-  const clearChat = async () => { if (!deviceId || chatBusy) return; await clearHigginsHistory(deviceId); setChatMessages([]); setLastAction(null); setChatError(null); conversationId.current = Crypto.randomUUID(); };
+  const clearChat = async () => { if (!deviceId || chatBusy) return; await Promise.all([clearHigginsHistory(deviceId), clearLocalChat()]); setChatMessages([]); setLastAction(null); setChatError(null); conversationId.current = Crypto.randomUUID(); };
   const newQuestion = () => { if (busy) return; stopHiggins(); setActiveContext(null); setInvestigationMode(false); void remove(); };
   const openCase = (caseId: string) => { if (busy) return; setInvestigationMode(true); setActiveContext(null); void attach(caseId); };
   const activeHub = hubItems.filter((item) => item.kind === "investigation" && item.status === "active");

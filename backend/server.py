@@ -28,13 +28,14 @@ from core.db import client, db, now_utc
 from core.models import BlocklistEntry
 from core.privacy_boundary import PrivacyBoundary
 from services.patrol_policy import ensure_evidence_receipt_indexes
+from services import patrol_records
 from services.mailbox_monitor import ensure_indexes as ensure_mailbox_monitor_indexes, supervise_mailbox_monitor
 from services.maintenance import ensure_indexes as ensure_maintenance_indexes, supervise_maintenance
 from services.higgins.retention import migrate_and_index
 from services.higgins import repository as investigation_repository
 from services.higgins import context as higgins_context
-from services import government_alerts, learning
-from routers import admin, analysis, ask, call, devices, family, family_weekly, gmail, health, intel, investigations, learning as learning_router, patrol, push, voice
+from services import capability_registry, government_alerts, learning
+from routers import admin, analysis, ask, call, devices, family, family_weekly, gmail, health, intel, investigations, learning as learning_router, learning_admin, patrol, product, push, voice
 from routers.family_weekly import weekly_checkin_loop
 
 SEED_BLOCKLIST = [
@@ -52,6 +53,7 @@ async def lifespan(_: FastAPI):
     await higgins_context.ensure_indexes()
     await government_alerts.ensure_indexes()
     await learning.ensure_indexes()
+    await capability_registry.ensure_indexes()
     await investigation_repository.backfill_work_epochs()
     await ensure_maintenance_indexes()
     await ensure_mailbox_monitor_indexes()
@@ -76,6 +78,7 @@ async def lifespan(_: FastAPI):
     await db.phone_risk_cache.create_index("phone_e164", unique=True)
     await db.patrol_events.create_index([("device_id", 1), ("event_id", 1)], unique=True)
     await ensure_evidence_receipt_indexes()
+    await patrol_records.ensure_indexes()
     await db.trust_entries.create_index("trust_id", unique=True)
     await db.ask_messages.create_index([("device_id", 1), ("created_at", 1)])
     await db.ask_handoffs.create_index([("device_id", 1), ("handoff_id", 1)], unique=True)
@@ -140,9 +143,10 @@ async def deployment_health():
 
 
 # Every device-facing router is mounted under /api behind the device bearer gate (public paths are listed in core.auth).
-for r in (health, devices, intel, patrol, investigations, ask, learning_router, family, family_weekly, voice, push, analysis, gmail, call):
+for r in (health, devices, intel, patrol, investigations, ask, learning_router, product, family, family_weekly, voice, push, analysis, gmail, call):
     app.include_router(r.router, prefix="/api", dependencies=[Depends(enforce_device_auth)])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_admin_key)])
+app.include_router(learning_admin.router, prefix="/api/admin", tags=["learning-admin"], dependencies=[Depends(require_admin_key)])
 
 # CORS is not authentication (bearer tokens do that). The web preview is same-origin (/api on the same host), and native
 # apps don't use CORS, so only explicitly configured browser origins are allowed (add the admin console's origin here).

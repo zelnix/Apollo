@@ -1,125 +1,48 @@
-"""Cached, read-only recognised-government alert feeds with explicit freshness truth."""
+"""Consumer snapshot for reviewed-source government alerts with explicit freshness."""
 from __future__ import annotations
 
-import hashlib
-import html
-import re
 from datetime import datetime, timedelta, timezone
-from email.utils import parsedate_to_datetime
-from urllib.parse import urlparse
-
-import httpx
-from defusedxml import ElementTree as ET
 
 from core.db import db, now_utc
+from services import learning_feeds
 
-MAX_BYTES = 1_048_576
-MAX_ITEMS = 100
 STALE_AFTER = timedelta(hours=6)
-RETAIN_FOR = timedelta(days=90)
-FEEDS = {
-    "acsc_alerts": {"url": "https://www.cyber.gov.au/rss/alerts", "source": "Australian Cyber Security Centre", "source_url": "https://www.cyber.gov.au/about-us/view-all-content/alerts-and-advisories", "article_hosts": ["www.cyber.gov.au", "cyber.gov.au"], "source_type": "live_alert"},
-    "acsc_advisories": {"url": "https://www.cyber.gov.au/rss/advisories", "source": "Australian Cyber Security Centre", "source_url": "https://www.cyber.gov.au/about-us/view-all-content/alerts-and-advisories", "article_hosts": ["www.cyber.gov.au", "cyber.gov.au"], "source_type": "live_alert"},
-    "scamwatch_news": {"url": "https://www.scamwatch.gov.au/rss/news-and-alerts", "source": "Scamwatch", "source_url": "https://www.scamwatch.gov.au/news-alerts", "article_hosts": ["www.scamwatch.gov.au", "scamwatch.gov.au"], "source_type": "live_alert"},
-    "scamwatch_advice": {"url": "https://www.scamwatch.gov.au/rss/types-of-scams", "source": "Scamwatch", "source_url": "https://www.scamwatch.gov.au/types-of-scams", "article_hosts": ["www.scamwatch.gov.au", "scamwatch.gov.au"], "source_type": "official_advice"},
-}
-FALLBACK = [
-    {"title": "Recognise and avoid scams", "url": "https://www.scamwatch.gov.au/stop-check-protect", "summary": "Stop, check and protect before sending money or information.", "source": "Scamwatch", "source_url": "https://www.scamwatch.gov.au/", "source_type": "official_advice"},
-    {"title": "Protect yourself online", "url": "https://www.cyber.gov.au/protect-yourself", "summary": "Official Australian guidance for safer accounts, devices and online activity.", "source": "Australian Cyber Security Centre", "source_url": "https://www.cyber.gov.au/", "source_type": "official_advice"},
-]
+
+
+def _aware(value: datetime | None) -> datetime | None:
+    return value.replace(tzinfo=timezone.utc) if value and value.tzinfo is None else value
 
 
 async def ensure_indexes() -> None:
-    await db.government_alerts.create_index([("feed_id", 1), ("guid", 1)], unique=True)
-    await db.government_alerts.create_index("published_at")
-    await db.government_alerts.create_index("expires_at", expireAfterSeconds=0)
-    await db.government_feed_state.create_index("feed_id", unique=True)
-
-
-def _date(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    try:
-        parsed = parsedate_to_datetime(value)
-        return parsed.astimezone(timezone.utc) if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-    except (TypeError, ValueError, OverflowError):
-        try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
-        except ValueError:
-            return None
-
-
-def _text(node) -> str:
-    if node is None:
-        return ""
-    raw = "".join(node.itertext()).strip()
-    plain = re.sub(r"<[^>]+>", " ", html.unescape(raw))
-    return re.sub(r"\s+", " ", plain).strip()
-
-
-def parse_feed(raw: bytes, feed_id: str, cfg: dict[str, str], now: datetime) -> list[dict]:
-    root = ET.fromstring(raw)
-    items: list[dict] = []
-    for node in root.findall(".//item")[:MAX_ITEMS]:
-        title = _text(node.find("title"))[:300]
-        link = _text(node.find("link"))[:1000]
-        guid = (_text(node.find("guid")) or link or title)[:1000]
-        parsed = urlparse(link)
-        if not title or not guid or parsed.scheme != "https" or parsed.hostname not in set(cfg["article_hosts"]):
-            continue
-        items.append({"feed_id": feed_id, "guid": hashlib.sha256(guid.encode()).hexdigest(), "title": title, "url": link,
-                      "summary": _text(node.find("description"))[:1000], "source": cfg["source"], "source_url": cfg["source_url"], "source_type": cfg["source_type"], "source_trust": "recognised_government",
-                      "published_at": _date(_text(node.find("pubDate")) or _text(node.find("published"))), "updated_at": _date(_text(node.find("updated"))), "last_checked_at": now, "stored_at": now, "expires_at": now + RETAIN_FOR})
-    return items
-
-
-async def _read_limited(response: httpx.Response) -> bytes:
-    data = bytearray()
-    async for chunk in response.aiter_bytes():
-        data.extend(chunk)
-        if len(data) > MAX_BYTES:
-            raise ValueError("feed exceeds maximum size")
-    return bytes(data)
-
-
-async def refresh_one(feed_id: str, cfg: dict[str, str]) -> None:
-    now = now_utc(); parsed = urlparse(cfg["url"])
-    if parsed.scheme != "https" or parsed.hostname not in {"www.cyber.gov.au", "www.scamwatch.gov.au"}:
-        raise RuntimeError("government feed URL failed allowlist")
-    try:
-        timeout = httpx.Timeout(5.0, connect=3.0)
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, headers={"Accept": "application/rss+xml, application/xml"}) as client:
-            async with client.stream("GET", cfg["url"]) as response:
-                response.raise_for_status()
-                if 300 <= response.status_code < 400:
-                    raise ValueError("redirect not permitted")
-                raw = await _read_limited(response)
-        items = parse_feed(raw, feed_id, cfg, now)
-        if not items:
-            raise ValueError("official feed contained no usable items")
-        for item in items:
-            await db.government_alerts.update_one({"feed_id": feed_id, "guid": item["guid"]}, {"$set": item}, upsert=True)
-        await db.government_feed_state.update_one({"feed_id": feed_id}, {"$set": {"feed_id": feed_id, "checked_at": now, "last_success_at": now, "error": None, "item_count": len(items)}}, upsert=True)
-    except (httpx.HTTPError, ValueError, ET.ParseError) as error:
-        await db.government_feed_state.update_one({"feed_id": feed_id}, {"$set": {"feed_id": feed_id, "checked_at": now, "error": type(error).__name__}}, upsert=True)
+    await db.learning_feed_items.create_index("fingerprint", unique=True)
+    await db.learning_feed_items.create_index("expires_at", expireAfterSeconds=0)
+    await db.learning_feed_state.create_index("feed_id", unique=True)
 
 
 async def refresh_all() -> None:
-    for feed_id, cfg in FEEDS.items():
-        await refresh_one(feed_id, cfg)
+    await learning_feeds.refresh_due()
 
 
 async def snapshot(limit: int = 50) -> dict:
-    now = now_utc(); states = await db.government_feed_state.find({}, {"_id": 0}).to_list(len(FEEDS)); by_id = {row["feed_id"]: row for row in states}
+    now = now_utc(); feeds = await db.learning_feeds.find({"enabled": True}, {"_id": 0}).to_list(100)
+    source_ids = {row["source_id"] for row in feeds}; sources = {row["source_id"]: row for row in await db.learning_sources.find({"source_id": {"$in": list(source_ids)}}, {"_id": 0}).to_list(100)}
+    states = {row["feed_id"]: row for row in await db.learning_feed_state.find({}, {"_id": 0}).to_list(100)}
     feed_states = {}
-    for feed_id, cfg in FEEDS.items():
-        row = by_id.get(feed_id); success = row.get("last_success_at") if row else None
-        status = "unavailable" if not success else "stale" if now - success > STALE_AFTER else "fresh"
-        feed_states[feed_id] = {"status": status, "source": cfg["source"], "source_url": cfg["source_url"], "source_type": cfg["source_type"], "last_success_at": success, "last_checked_at": row.get("checked_at") if row else None}
-    rows = await db.government_alerts.find({}, {"_id": 0, "feed_id": 0, "guid": 0, "stored_at": 0, "expires_at": 0}).sort("published_at", -1).limit(min(limit, MAX_ITEMS)).to_list(min(limit, MAX_ITEMS))
-    if not rows:
-        rows = [{**item, "published_at": None, "updated_at": None, "last_checked_at": now, "source_trust": "recognised_government"} for item in FALLBACK]
+    for feed in feeds:
+        row = states.get(feed["feed_id"]); success = _aware(row.get("last_success_at")) if row else None
+        latest_failed = bool(row and row.get("status") == "unavailable")
+        status = "unavailable" if not success else "stale" if latest_failed or now - success > STALE_AFTER else "fresh"
+        source = sources.get(feed["source_id"], {})
+        feed_states[feed["feed_id"]] = {"status": status, "source": source.get("name"), "sourceUrl": (source.get("canonical_base_urls") or [None])[0],
+            "sourceType": feed["content_type"], "lastSuccessAt": success, "lastCheckedAt": _aware(row.get("last_checked_at")) if row else None,
+            "errorType": row.get("error") if latest_failed else None}
+    rows = await db.learning_feed_items.find({}, {"_id": 0, "fingerprint": 0, "candidate_id": 0, "expires_at": 0}).sort("published_at", -1).limit(min(limit, 100)).to_list(min(limit, 100))
+    items = []
     for row in rows:
-        published = row.get("published_at")
-        row["age_label"] = "Official advice" if row.get("source_type") == "official_advice" or not published else "Today" if now.date() == published.date() else f"{max(1, (now.date() - published.date()).days)} days ago"
-    return {"coverage": "Recognised Australian government sources only. Live alerts and official advice are labelled separately; this list is not comprehensive.", "generated_at": now, "feeds": feed_states, "items": rows}
+        source = sources.get(row["source_id"], {}); published = _aware(row.get("published_at"))
+        items.append({"title": row["title"], "url": row["url"], "summary": row["summary"], "source": source.get("name"),
+            "sourceUrl": (source.get("canonical_base_urls") or [None])[0], "sourceType": row["content_type"], "sourceTrust": row["trust_status"],
+            "publishedAt": published, "updatedAt": _aware(row.get("updated_at")), "lastCheckedAt": _aware(row["last_checked_at"]),
+            "ageLabel": "Official advice" if row["content_type"] == "official_advice" or not published else "Today" if now.date() == published.date() else f"{max(1, (now.date() - published.date()).days)} days ago"})
+    return {"coverage": "Configured recognised Australian government sources only. Feed candidates never publish learning articles without human review.",
+            "generatedAt": now, "feeds": feed_states, "items": items}

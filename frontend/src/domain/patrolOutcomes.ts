@@ -25,7 +25,7 @@ const category = (event: PatrolEvent): PatrolCategory => event.investigation_cas
 const source = (event: PatrolEvent): PatrolSource => event.category === "family" ? "family" : event.investigation_case_id ? "higgins" : event.background ? "background" : "user_started";
 const result = (state: PatrolState): string => ({ resting: "Resolved or no concern found", ears_up: "Something changed", growling: "Worth checking", barking: "Action recommended", biting: "Threat stopped" }[state]);
 const title = (event: PatrolEvent, state: PatrolState) => state === "biting" ? "Apollo stopped a threat" : event.investigation_case_id ? "Higgins completed an investigation update" : event.headline;
-const incidentKey = (event: PatrolEvent, state: PatrolState) => `${category(event)}:${safeKey(event.scent_id || event.investigation_case_id || event.indicator_digest || event.indicator_host || event.claimed_brand || event.scenario || event.event_id)}:${state}`;
+const incidentKey = (event: PatrolEvent, state: PatrolState) => event.patrol_record?.logicalIssueKey ?? `${category(event)}:${safeKey(event.scent_id || event.investigation_case_id || event.indicator_digest || event.indicator_host || event.claimed_brand || event.scenario || event.event_id)}:${state}`;
 const actionFor = (event: PatrolEvent, state: PatrolState): UserAction | undefined => event.investigation_case_id ? { id: "continue_case", label: "Open investigation" } : state === "growling" || state === "barking" ? { id: "start_investigation", label: "Ask Higgins to investigate" } : state === "biting" ? { id: "open_check_it", label: "Review what was stopped" } : undefined;
 
 export function projectPatrolOutcomes(events: PatrolEvent[]): PatrolOutcome[] {
@@ -37,7 +37,7 @@ export function projectPatrolOutcomes(events: PatrolEvent[]): PatrolOutcome[] {
     const existing = outcomes.find((outcome) => outcome.outcomeId === key && Math.abs(Date.parse(outcome.occurredAt) - time) <= WINDOW_MS);
     if (!existing) {
       outcomes.push({ outcomeId: key, category: category(event), state, title: title(event, state), summary: event.what_happened, occurredAt: event.occurred_at, source: source(event), repeatCount: 1,
-        result: result(state), resultBasis: state === "biting" ? "A verified enforcement record confirms that supported traffic was blocked." : state === "resting" ? "The recorded check was resolved or found no known concern within its scope." : "Apollo recorded a meaningful outcome that may help you decide what to do next.",
+        result: result(state), resultBasis: event.patrol_record?.effectiveReason ?? (state === "biting" ? "A verified enforcement record confirms that supported traffic was blocked." : state === "resting" ? "The recorded check was resolved or found no known concern within its scope." : "Apollo recorded a meaningful outcome that may help you decide what to do next."),
         whyThisRating: event.why.slice(0, 4), primaryAction: actionFor(event, state), secondaryActions: [], event });
       continue;
     }
