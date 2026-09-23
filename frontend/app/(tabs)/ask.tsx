@@ -1,7 +1,7 @@
 import * as Crypto from "expo-crypto";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import SendHorizontal from "lucide-react-native/icons/send-horizontal";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -64,12 +64,12 @@ export default function Ask() {
     void rememberHigginsContext({ category: "protection_state", provenance: "device_observation", observedAt: health.checkedAt, summary: `${on} automatic protections are on.${attention.length ? ` Needs attention: ${attention.join(", ")}.` : ""}` }).catch(() => undefined);
   }, [deviceId, health]);
 
-  const startInvestigation = (message: string, context?: HigginsIssueContext | null) => {
+  const startInvestigation = useCallback((message: string, context?: HigginsIssueContext | null) => {
     const clean = redactUserSecrets(message).trim(); if (!clean || busy || !deviceId) return;
     setInvestigationMode(true); setText(""); setRouteError(null); setChatError(null); setLastAction(null);
     const { input, files } = createCaseInput(context ?? activeContext, clean); const operationId = Crypto.randomUUID(); router.setParams({ operationId });
     void start(input, files, operationId).then((created) => { if (created && (context ?? activeContext)?.event_id) void rememberCaseForEvent((context ?? activeContext)!.event_id!, created.id); });
-  };
+  }, [activeContext, busy, deviceId, router, start]);
   const submit = (message: string) => {
     const clean = redactUserSecrets(message).trim(); if (!clean || busy || !deviceId) return;
     if (investigationMode || activeContext || state.caseData) { setText(""); if (state.caseData) void ask(clean); else startInvestigation(clean, activeContext); return; }
@@ -91,7 +91,7 @@ export default function Ask() {
     const question = transfer?.question ?? redactUserSecrets(String(params.prompt ?? "")).trim(); setActiveContext(context); setInvestigationMode(true); stopHiggins();
     if (context.case_id) { void attach(context.case_id).then((opened) => { if (opened && question) void ask(question); }); return; }
     startInvestigation(question, context);
-  }, [params.handoffId, params.context, params.prompt, deviceId, router, attach, ask]);
+  }, [params.handoffId, params.context, params.prompt, deviceId, router, attach, ask, startInvestigation]);
 
   const deleteInvestigation = async () => { stopHiggins(); clearHandoffTransfers(); setActiveContext(null); setRouteError(null); setInvestigationMode(false); await remove(); };
   const clearChat = async () => { if (!deviceId || chatBusy) return; await Promise.all([clearHigginsHistory(deviceId), clearLocalChat()]); setChatMessages([]); setLastAction(null); setChatError(null); conversationId.current = Crypto.randomUUID(); };

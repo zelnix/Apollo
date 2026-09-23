@@ -1,3 +1,4 @@
+/* global __dirname */
 // Expo config plugin: adds the "ApolloCallDirectory" CXCallDirectoryExtension target (iOS) — Call
 // Guard's caller blocking/identification mechanism — reusing the SAME shared App Group Site Guard's
 // content-blocker extension already uses (see withApolloSiteGuard.js) to hand the block/allow/

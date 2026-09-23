@@ -139,6 +139,7 @@ class TestTokenLifecycle:
         assert d.get("/family/links", params={"device_id": d.id}).status_code == 401
         assert other.get("/family/links", params={"device_id": d.id}).status_code == 403  # nor can anyone else read it
 
+    @pytest.mark.credentialed_integration
     def test_email_confirm_link_is_single_use_and_expires(self):
         d = Dev()
         r = d.post("/family/guardians", json={"device_id": d.id, "name": "Aunt", "email": "delivered@resend.dev", "owner_name": "Mum"})

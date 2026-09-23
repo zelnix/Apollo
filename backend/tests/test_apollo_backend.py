@@ -23,6 +23,21 @@ def api_client():
     return s
 
 
+@pytest.fixture(scope="module")
+def credentialed_ask_client():
+    registration = requests.post(
+        f"{API}/devices/register",
+        json={"platform": "web", "adapter_mode": "mock", "app_version": "1.0.0", "locale": "en-AU"},
+        headers={"User-Agent": "apollo-tests"},
+        timeout=30,
+    )
+    registration.raise_for_status()
+    body = registration.json()
+    session = requests.Session()
+    session.headers.update({"Content-Type": "application/json", "Authorization": f"Bearer {body['device_token']}"})
+    return session, body["device_id"]
+
+
 # --- health ---
 def test_health(api_client):
     r = api_client.get(f"{API}/health")
@@ -172,11 +187,13 @@ def test_trust_add_list_revoke(api_client):
 
 
 # --- ask stream (SSE) ---
-def test_ask_stream_sse(api_client):
+@pytest.mark.credentialed_integration
+def test_ask_stream_sse(credentialed_ask_client):
+    ask_client, ask_device_id = credentialed_ask_client
     # clear history first
-    api_client.delete(f"{API}/ask/history", params={"device_id": DEVICE_ID})
-    body = {"device_id": DEVICE_ID, "message": "What is phishing in one sentence?"}
-    r = requests.post(f"{API}/ask/stream", json=body, stream=True, timeout=45)
+    ask_client.delete(f"{API}/ask/history", params={"device_id": ask_device_id})
+    body = {"message": "What is phishing in one sentence?"}
+    r = ask_client.post(f"{API}/ask/stream", json=body, stream=True, timeout=45)
     assert r.status_code == 200, r.text[:400]
     got_delta = False
     got_done = False
@@ -203,8 +220,10 @@ def test_ask_stream_sse(api_client):
     assert got_done, "No done event received from SSE"
 
 
-def test_ask_history(api_client):
-    r = api_client.get(f"{API}/ask/history", params={"device_id": DEVICE_ID})
+@pytest.mark.credentialed_integration
+def test_ask_history(credentialed_ask_client):
+    ask_client, ask_device_id = credentialed_ask_client
+    r = ask_client.get(f"{API}/ask/history", params={"device_id": ask_device_id})
     assert r.status_code == 200
     hist = r.json()
     roles = {m["role"] for m in hist}

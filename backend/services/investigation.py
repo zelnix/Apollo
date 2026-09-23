@@ -27,6 +27,10 @@ from services.webcrawl import CrawlBlocked, fetch_page
 
 AssessmentStatus = Literal["corroborated", "suspicious", "unresolved"]
 EvidenceKind = Literal["submitted_content", "external_verification", "inference"]
+TEMPORARY_COPY_POLICY = (
+    "Temporary request copies are discarded after success, failure, timeout or cancellation, "
+    "and never retained beyond 15 minutes."
+)
 
 
 def checked_now() -> str:
@@ -98,15 +102,31 @@ def purpose_limited_url(raw: str) -> str:
     return urlunsplit((parsed.scheme.lower(), netloc, parsed.path or "/", query, ""))
 
 
-def deterministic_entities(sender: str, text: str, urls: list[str], claimed_brand: Optional[str]) -> InvestigationEntities:
+def country_from_locale(locale: Optional[str], country: Optional[str] = None) -> Optional[str]:
+    explicit = (country or "").strip().upper()
+    if re.fullmatch(r"[A-Z]{2}", explicit):
+        return explicit
+    parts = re.split(r"[-_]", (locale or "").strip())
+    inferred = parts[-1].upper() if len(parts) > 1 else ""
+    return inferred if re.fullmatch(r"[A-Z]{2}", inferred) else None
+
+
+def deterministic_entities(sender: str, text: str, urls: list[str], claimed_brand: Optional[str],
+                           locale: Optional[str] = None, country: Optional[str] = None) -> InvestigationEntities:
+    region = country_from_locale(locale, country)
     numbers = []
-    # No universal country assumption. Local-format numbers without context remain an evidence gap.
-    for match in phonenumbers.PhoneNumberMatcher(text, None):
-        numbers.append(phonenumbers.format_number(match.number, phonenumbers.PhoneNumberFormat.E164))
+    # Local-format numbers are parsed only when the device supplies a country-bearing locale or explicit country.
+    for match in phonenumbers.PhoneNumberMatcher(text, region):
+        numbers.append(match.raw_string.strip())
     sender_numbers = [sender] if re.fullmatch(r"\+[\d ()-]{7,22}", sender.strip()) else []
+    transaction_claims = re.findall(r"(?i)(?:AUD\s*|A?\$)\s?\d[\d,]*(?:\.\d{1,2})?", text)
+    requested_actions = []
+    if re.search(r"(?i)\b(?:share|send|tell|give|read(?:\s+out)?)\b.{0,40}\b(?:verification|security|one[- ]time|login)?\s*code\b", text):
+        requested_actions.append("share a verification code")
     return InvestigationEntities(claimed_organisations=[claimed_brand] if claimed_brand else [],
         sender_details=[sender] if sender else [], sender_phone_numbers=sender_numbers,
-        callback_details=list(dict.fromkeys(numbers)), links=list(dict.fromkeys(urls)))
+        callback_details=list(dict.fromkeys(numbers)), links=list(dict.fromkeys(urls)),
+        requested_actions=requested_actions, transaction_claims=list(dict.fromkeys(transaction_claims)))
 
 
 async def _page_context(url: str) -> dict:
@@ -121,7 +141,7 @@ async def _page_context(url: str) -> dict:
         return {"url": url, "error": getattr(exc, "reason", "timeout")}
 
 
-async def _lookups(urls: list[str], numbers: list[str]) -> tuple[list[dict], list[dict]]:
+async def _lookups(urls: list[str], numbers: list[str], country: Optional[str]) -> tuple[list[dict], list[dict]]:
     sem = asyncio.Semaphore(3)
     async def page(url):
         async with sem:
@@ -129,7 +149,7 @@ async def _lookups(urls: list[str], numbers: list[str]) -> tuple[list[dict], lis
     async def phone(number):
         async with sem:
             try:
-                result = await check_phone_risk(number, None, persist_cache=False)
+                result = await check_phone_risk(number, country, persist_cache=False)
                 return {"number": number, "decision": result.decision, "fraud_score": result.fraud_score,
                         "recent_abuse": result.recent_abuse, "source": result.source}
             except Exception:
@@ -169,18 +189,20 @@ def incomplete_status() -> HigginsAssessment:
 
 async def investigate_message(*, sender: str, text: str, urls: list[str], claimed_brand: Optional[str],
                               local_state: str, url_context: list[dict[str, Any]],
-                              local_findings: Optional[list[str]] = None, use_model: bool = True) -> InvestigationResult:
+                              local_findings: Optional[list[str]] = None, use_model: bool = True,
+                              locale: Optional[str] = None, country: Optional[str] = None) -> InvestigationResult:
     if len(text) > TEXT.value or len(urls) > ITEMS.value:
         raise ValueError("Input exceeds the published transport capacity; submit additional batches.")
     deadline = time.monotonic() + WORK_SECONDS
     text = redact_investigation_secrets(text)
     sender = redact_investigation_secrets(sender)
     urls = list(dict.fromkeys(purpose_limited_url(url) for url in urls))
-    entities = deterministic_entities(sender, text, urls, claimed_brand)
+    lookup_country = country_from_locale(locale, country)
+    entities = deterministic_entities(sender, text, urls, claimed_brand, locale, lookup_country)
     sources = [InvestigationSource(source_id="submission", label="User submission and initial Apollo observations",
         status="inconclusive", detail="Original submission is evidence, not proof of legitimacy. Initial Apollo findings are revisable.",
         evidence_kind="submitted_content")]
-    pages, phones = await _lookups(urls, list(dict.fromkeys(entities.sender_phone_numbers + entities.callback_details)))
+    pages, phones = await _lookups(urls, list(dict.fromkeys(entities.sender_phone_numbers + entities.callback_details)), lookup_country)
     for index, item in enumerate(url_context):
         sources.append(InvestigationSource(source_id=f"intel-{index}", label="URL reputation and redirects", status="inconclusive",
             detail=json.dumps(item, ensure_ascii=False), url=item.get("url")))
@@ -233,6 +255,7 @@ async def investigate_message(*, sender: str, text: str, urls: list[str], claime
     partial_pages = [index for index, page in enumerate(pages) if page.get("coverage", {}).get("status") == "partial"]
     processing = {"raw_retained_by_apollo": False, "temporary_expiry_minutes": 0,
         "maximum_processing_retention_minutes": 15, "provider": "Gemini", "model_used": complete,
+        "temporary_copy_policy": TEMPORARY_COPY_POLICY,
         "higgins_source": "gemini" if complete else "unavailable", "fallback_used": False,
         "model_failures": failures, "model_attempts": attempts,
         "completion": "partial" if not complete or gaps or partial_pages else "complete_within_supplied_evidence",
@@ -255,6 +278,7 @@ async def extract_message_screenshot(image_bytes: bytes) -> dict:
     return {"sender": str(data.get("sender", "")), "text": redact_investigation_secrets(str(data.get("text", ""))),
             "urls": [purpose_limited_url(str(url)) for url in data.get("urls", [])], "source": str(data.get("source", "other")),
             "processing": {"raw_retained_by_apollo": False, **metadata,
+                "temporary_copy_policy": TEMPORARY_COPY_POLICY,
                 "provider_note": "The screenshot is processed by Gemini and not retained by Apollo. Provider policy is account-controlled."}}
 
 
@@ -272,5 +296,6 @@ def phone_risk_investigation(result: Any) -> InvestigationResult:
     return InvestigationResult(assessment_id=str(uuid.uuid4()), risk="uncertain",
         entities=InvestigationEntities(sender_phone_numbers=[result.number]), findings=[finding], sources=[source], higgins=incomplete_status(),
         processing={"raw_retained_by_apollo": False, "temporary_expiry_minutes": 0, "provider": result.source,
+            "temporary_copy_policy": TEMPORARY_COPY_POLICY,
             "model_used": False, "higgins_source": "unavailable", "fallback_used": False,
             "provider_note": "This is a number reputation observation, not a completed Higgins investigation."})

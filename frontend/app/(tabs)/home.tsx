@@ -19,7 +19,7 @@ import { buildScents } from "@/src/domain/threatScent";
 import { STATE_NAME } from "@/src/domain/types";
 import { buildWeeklyDigest } from "@/src/domain/digest";
 import { useApollo } from "@/src/store/ApolloContext";
-import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 import { minimiseApp } from "@/src/utils/minimise";
 import { useProtectionHealth } from "@/src/protection/healthStore";
 import { projectPatrolOutcomes } from "@/src/domain/patrolOutcomes";

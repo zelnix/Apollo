@@ -16,7 +16,7 @@ export default function SavedReportsScreen() {
   const [items, setItems] = useState<reportsApi.SavedReport[]>([]); const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null); const [retryCursor, setRetryCursor] = useState<string | null>(null);
   const load = async (next?: string | null) => { setLoading(true); setError(null); try { const result = await reportsApi.listReports(next); setItems((old) => next ? [...old, ...result.items] : result.items); setCursor(result.nextCursor); setRetryCursor(null); } catch { setError("Saved reports could not be loaded."); setRetryCursor(next ?? null); } finally { setLoading(false); } };
-  useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load(); }, []);
   return <View style={s.root} testID="saved-reports-screen">
     <View style={[s.header, { paddingTop: insets.top + spacing.md }]}><Text style={s.title} testID="saved-reports-title">Saved reports</Text><Pressable testID="saved-reports-close" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable></View>
     <FlatList testID="saved-reports-list" data={items} keyExtractor={(item) => item.reportId} contentContainerStyle={[s.list, { paddingBottom: insets.bottom + spacing.xl }]}

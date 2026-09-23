@@ -4,6 +4,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Crypto from "expo-crypto";
+import * as Localization from "expo-localization";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
 
@@ -48,7 +49,13 @@ import type { HealthTrigger } from "@/src/protection/healthTypes";
 import { APP_VERSION } from "@/src/config/buildInfo";
 import { isVerifiedDesktopFlowDrop } from "@/src/security/desktopEvidence";
 
-const deviceMeta = () => ({ platform: Platform.OS, adapter_mode: securityAdapter.kind, app_version: APP_VERSION, tz_offset_minutes: -new Date().getTimezoneOffset() });
+const deviceMeta = () => ({
+  platform: Platform.OS,
+  adapter_mode: securityAdapter.kind,
+  app_version: APP_VERSION,
+  tz_offset_minutes: -new Date().getTimezoneOffset(),
+  locale: Localization.getLocales()[0]?.languageTag ?? "en-AU",
+});
 
 const K = { setup: "apollo.setup.done", events: "apollo.patrol.events", trust: "apollo.trust.entries", verified: "apollo.lastVerifiedAt", protection: "apollo.protection.on", wifi: "apollo.wifi.trusted", quiet: "apollo.quiet.hours", lowPower: "apollo.lowPower", seenEvidence: "apollo.evidence.seen" };
 

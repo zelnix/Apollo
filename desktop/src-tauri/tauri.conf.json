@@ -16,7 +16,7 @@
   "bundle": {
     "active": true,
     "targets": ["msi", "nsis", "dmg", "app"],
-    "icon": ["../../frontend/assets/images/icon.png"],
+    "icon": ["../../frontend/assets/images/logo.png"],
     "windows": { "certificateThumbprint": null, "digestAlgorithm": "sha256", "timestampUrl": "http://timestamp.digicert.com", "webviewInstallMode": { "type": "downloadBootstrapper" } },
     "macOS": { "minimumSystemVersion": "12.0", "signingIdentity": null, "hardenedRuntime": true, "entitlements": "entitlements.macos.plist" }
   },

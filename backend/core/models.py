@@ -18,6 +18,7 @@ class DeviceRegister(BaseModel):
     adapter_mode: str = Field(max_length=16)
     app_version: str = Field(default="1.0.0", max_length=16)
     tz_offset_minutes: int = Field(default=0, ge=-840, le=840)  # coarse UTC offset; times the Sunday family check-in
+    locale: str = Field(default="en-AU", min_length=2, max_length=35)
 
 
 class Device(BaseDocument):
@@ -26,6 +27,7 @@ class Device(BaseDocument):
     adapter_mode: str
     app_version: str
     tz_offset_minutes: int = 0
+    locale: str = "en-AU"
     created_at: datetime
     last_seen_at: datetime
 

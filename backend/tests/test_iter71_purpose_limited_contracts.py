@@ -21,6 +21,7 @@ def test_link_investigation_contract_redaction_and_truth_state():
         "local_state": "growling",
         "local_findings": ["Sender identity was not independently verified."],
         "claimed_brand": "microsoft",
+        "second_opinion": False,
     }
     response = requests.post(f"{_base_url()}/api/link/investigate", json=body, timeout=120)
     assert response.status_code == 200, response.text
@@ -35,7 +36,8 @@ def test_link_investigation_contract_redaction_and_truth_state():
     assert "apollo is biting" not in rendered
     assert "packet blocked" not in rendered
     assert data["higgins"]["next_action"]
-    assert data["higgins"]["exact_response"]
+    assert data["processing"]["model_used"] is False
+    assert data["processing"]["higgins_source"] == "unavailable"
 
 
 # Link Guard SSRF-safe handling: private targets stay unresolved/unavailable, never overclaimed.
@@ -46,6 +48,7 @@ def test_link_investigation_private_target_ssrf_unavailable():
         "local_state": "growling",
         "local_findings": ["Private and internal addresses are never fetched."],
         "claimed_brand": None,
+        "second_opinion": False,
     }
     response = requests.post(f"{_base_url()}/api/link/investigate", json=body, timeout=120)
     assert response.status_code == 200, response.text
@@ -66,13 +69,14 @@ def test_link_investigation_uncertainty_and_action_are_present():
         "local_state": "barking",
         "local_findings": ["Lookalike host differs from official organisation domain."],
         "claimed_brand": "commbank",
+        "second_opinion": False,
     }
     response = requests.post(f"{_base_url()}/api/link/investigate", json=body, timeout=120)
     assert response.status_code == 200, response.text
     data = response.json()
 
-    assert isinstance(data["higgins"]["could_not_establish"], list)
-    assert len(data["higgins"]["could_not_establish"]) >= 1
+    assert data["risk"] == "uncertain"
+    assert data["processing"]["completion"] == "partial"
     assert isinstance(data["higgins"]["next_action"], str) and data["higgins"]["next_action"].strip()
     assert isinstance(data["higgins"]["action_label"], str) and data["higgins"]["action_label"].strip()
 
@@ -88,20 +92,19 @@ def test_account_analyse_contract_redaction_and_processing_fields():
         "urls": ["https://example.com/reset?otp=123456&code=abcd&safe=1#keep"],
         "local_state": "ears_up",
         "scenario": "A1",
-        "second_opinion": True,
+        "second_opinion": False,
     }
     response = requests.post(f"{_base_url()}/api/account/analyse", json=body, timeout=120)
     assert response.status_code == 200, response.text
     data = response.json()
     rendered = json.dumps(data).lower()
 
-    assert data["assessment"]["processing"]["raw_retained_by_apollo"] is False
-    assert data["assessment"]["processing"]["maximum_processing_retention_minutes"] == 15
-    assert "success, failure, timeout or cancellation" in data["assessment"]["processing"]["temporary_copy_policy"].lower()
+    assert data["assessment"] is None
+    assert data["gemini_used"] is False
+    assert data["explanation"] is None
     assert "otp=123456" not in rendered
     assert "code=abcd" not in rendered
     assert "#keep" not in rendered
-    assert data["assessment"]["higgins"]["exact_response"]
 
 
 # Account Guard breach contract regression: stable status payload with Higgins guidance and truthful wording.

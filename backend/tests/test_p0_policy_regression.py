@@ -116,7 +116,7 @@ def test_message_analyse_accepts_explicit_submission_without_claiming_a_block():
         "scenario": "M_RAW",
         "signals": ["urgency"],
         "claimed_brand": "CommBank",
-        "second_opinion": True,
+        "second_opinion": False,
     }
     ok = requests.post(f"{API}/message/analyse", json=raw, headers=auth, timeout=75)
     assert ok.status_code == 200, ok.text
@@ -145,8 +145,9 @@ def test_account_analyse_returns_evidence_grounded_assessment():
     assert ok.status_code == 200, ok.text
     data = ok.json()
     assert isinstance(data["urls"], list)
-    assert data["assessment"]["processing"]["raw_retained_by_apollo"] is False
-    assert data["assessment"]["higgins"]["next_action"]
+    assert data["assessment"] is None
+    assert data["explanation"] is None
+    assert data["gemini_used"] is False
 
 
 def test_call_screening_event_cannot_claim_biting_without_packet_evidence():

@@ -1,3 +1,4 @@
+/* global __dirname */
 // Expo config plugin: adds the "ApolloContentBlocker" Safari Content Blocker
 // extension target (iOS) and the shared App Group used to hand the rule list
 // from the app to the extension. Android needs nothing here: the DNS filter

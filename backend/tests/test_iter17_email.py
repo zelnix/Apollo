@@ -85,7 +85,7 @@ class TestEmailPatrol:
             "scenario": "E01",
             "signals": ["Claims to be CommBank", "Sender domain isn't the brand's"],
             "claimed_brand": "CommBank",
-            "second_opinion": True,
+            "second_opinion": False,
         }
         r = api.post(f"{BASE_URL}/api/message/analyse", json=payload, timeout=45)
         assert r.status_code == 200, f"{r.status_code}: {r.text}"

@@ -21,6 +21,7 @@ def api():
     return _owner()
 
 
+@pytest.mark.credentialed_integration
 def test_speak_returns_owner_scoped_wav(api):
     s, device_id = api
     text = "Apollo is growling at this one. Something looks suspicious, though it is not yet confirmed."

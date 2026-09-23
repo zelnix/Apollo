@@ -22,13 +22,13 @@ def _base_url() -> str:
 def test_link_investigation_redacts_secrets_and_returns_higgins():
     body = {"device_id": "linkinvest0001", "url": "https://example.com/reset?token=secret&invoice=42#fragment",
             "local_state": "ears_up", "local_findings": ["The destination needs independent verification."],
-            "claimed_brand": None}
+            "claimed_brand": None, "second_opinion": False}
     response = requests.post(f"{_base_url()}/api/link/investigate", json=body, timeout=90)
     assert response.status_code == 200, response.text
     data = response.json()
     rendered = json.dumps(data).lower()
-    assert data["higgins"]["exact_response"]
     assert data["higgins"]["next_action"]
+    assert data["processing"]["model_used"] is False
     assert data["processing"]["raw_retained_by_apollo"] is False
     assert data["processing"]["maximum_processing_retention_minutes"] == 15
     assert "token=secret" not in rendered and "fragment" not in rendered
@@ -38,7 +38,7 @@ def test_link_investigation_redacts_secrets_and_returns_higgins():
 def test_link_investigation_keeps_private_target_unresolved():
     body = {"device_id": "linkinvest0002", "url": "http://127.0.0.1:8001/api/health",
             "local_state": "growling", "local_findings": ["Private and internal addresses are never fetched."],
-            "claimed_brand": None}
+            "claimed_brand": None, "second_opinion": False}
     response = requests.post(f"{_base_url()}/api/link/investigate", json=body, timeout=90)
     assert response.status_code == 200, response.text
     data = response.json()

@@ -775,3 +775,16 @@ Current position: waiting on step 1 input (Step 7 stderr for build aa24dd73-eab7
   `7fd6f9a61d292bdab17700152f7e47e457afc411`, fingerprint
   `565f42d9b04dd39c836360eeccd12c4e442b800f`, APK SHA-256
   `c15804e04597e09628575cc58734bd97fc10c2cbe1f89dd4c1ddae239e102e97`.
+
+## 2026-09-23 review closure
+- Closed Gmail disconnected-state, locale-aware Australian callback extraction and `temporary_copy_policy` metadata defects.
+- Reconciled the preserved historical 24-failure JUnit artifact; the missing 24th node was
+  `TestPatrolEventsGate2::test_upsert_and_list_message_event` (`claimed_brand` contract drift).
+- Current provider-disabled backend JUnit is clean: **386 passed, 19 credentialed integrations skipped, 0 failed**.
+- Credentialed Gemini/voice/screenshot/public-page/email coverage is explicitly separated behind
+  `APOLLO_RUN_CREDENTIALED_INTEGRATION=1`; no managed LLM key or live owner key was used.
+- Verification passes: TypeScript, repository ESLint, GuardDog production source **9/9**, frozen manifest **91/91**,
+  Android GuardDog/Family Assist Kotlin compilation and desktop `cargo check`.
+- Identity: base commit `dac83b072bba9a541dde431b78b8668659625e27`; closure source digest
+  `e7ca068ff6a902d4d347760fb7b8dab259f3ea1d081875930590b66961d87c3e`; package remains `app.apollo.hwg`.
+- Detailed evidence: `docs/APOLLO_REVIEW_CLOSURE_RECORD.md`.

@@ -24,6 +24,23 @@ _orig_request = requests.Session.request
 _ID_RE = re.compile(r"^[0-9a-f]{32}$")
 
 
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "credentialed_integration: requires an explicitly enabled owner-key/provider integration run",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    del config
+    if os.getenv("APOLLO_RUN_CREDENTIALED_INTEGRATION") == "1":
+        return
+    skip = pytest.mark.skip(reason="credentialed integration; run with APOLLO_RUN_CREDENTIALED_INTEGRATION=1")
+    for item in items:
+        if "credentialed_integration" in item.keywords:
+            item.add_marker(skip)
+
+
 def _real(legacy: str) -> tuple[str, str]:
     if legacy in _real_by_legacy:
         return _real_by_legacy[legacy]

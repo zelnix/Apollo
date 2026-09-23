@@ -1,3 +1,11 @@
+## 2026-09-23 Review closure
+
+- Backend JUnit `test_reports/backend-closure-final.xml`: **386 passed, 19 credentialed integrations skipped, 0 failed**.
+- Product regressions closed: Gmail disconnected 404, `en-AU` local callback extraction, and restored temporary-copy policy metadata.
+- Historical JUnit reconciliation found all 24 prior failures; the missing 24th was `TestPatrolEventsGate2::test_upsert_and_list_message_event` (`claimed_brand` mismatch).
+- TypeScript and comprehensive ESLint pass; GuardDog checks pass **9/9**; frozen manifest passes **91/91**; Android Kotlin and desktop Cargo checks pass.
+- Full evidence and source/build identity binding: `docs/APOLLO_REVIEW_CLOSURE_RECORD.md`.
+
 ## 2026-09-23 Apollo supplied logo and app icon
 
 - Preserved the user-supplied shield-and-guard-dog artwork as `frontend/assets/images/logo-source.png`.

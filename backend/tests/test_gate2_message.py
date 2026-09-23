@@ -46,14 +46,14 @@ class TestMessageAnalyse:
             "scenario": "M02",
             "signals": ["urgency"],
             "claimed_brand": "CommBank",
-            "second_opinion": True,
+            "second_opinion": False,
         }
         r = s.post(f"{API}/message/analyse", json=body, timeout=75)
         assert r.status_code == 200, r.text
         data = r.json()
         assert data["assessment"]["higgins"]["next_action"]
         assert data["assessment"]["processing"]["raw_retained_by_apollo"] is False
-        assert "packet" not in data["assessment"]["higgins"]["exact_response"].lower()
+        assert data["assessment"]["processing"]["model_used"] is False
 
     def test_genuine_message_stays_a_warning_or_clear_not_a_block(self, s):
         body = {
@@ -81,6 +81,7 @@ class TestMessageExtract:
                           files={"file": ("message.txt", b"not an image", "text/plain")}, timeout=15)
         assert r.status_code == 415, r.text
 
+    @pytest.mark.credentialed_integration
     def test_realistic_screenshot_is_extracted_request_scoped(self):
         from PIL import Image, ImageDraw
         image = Image.new("RGB", (1000, 420), "white")

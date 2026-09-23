@@ -60,6 +60,19 @@ def test_boot_and_network_change_reconciliation_are_source_wired():
     assert "ACTION_MY_PACKAGE_REPLACED" in receiver and "ACTION_USER_UNLOCKED" in receiver
 
 
+def test_production_configuration_is_https_and_redirect_closed():
+    runtime = text("modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/ApolloGuardDogProductionRuntime.kt")
+    assert 'manifest.scheme == "https" && rules.scheme == "https" && controlled.scheme == "https"' in runtime
+    assert "connection.instanceFollowRedirects = false" in runtime
+
+
+def test_preflight_rejects_acceptance_trust_and_competing_bridges():
+    preflight = text("scripts/security-preflight.mjs")
+    assert "Acceptance test root IDs are forbidden in production." in preflight
+    assert "Acceptance test public keys are forbidden in production." in preflight
+    assert "The frozen GuardDog Expo bridge must remain excluded on Android and iOS" in preflight
+
+
 def test_repository_contains_no_private_key_material():
     forbidden = ("BEGIN" + " PRIVATE KEY", "BEGIN" + " ED25519 PRIVATE KEY", "BEGIN" + " OPENSSH PRIVATE KEY")
     for path in ROOT.parent.rglob("*"):

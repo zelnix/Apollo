@@ -24,6 +24,7 @@ def test_higgins_prompt_forbids_requesting_or_repeating_secrets():
     ask_source = (Path(__file__).resolve().parents[1] / "routers" / "ask.py").read_text()
     chat_source = (Path(__file__).resolve().parents[1] / "services" / "higgins" / "chat.py").read_text()
     assert "redact_investigation_secrets(message)" in chat_source
-    assert "cannot browse, search, fetch a link, read a file, inspect evidence" in chat_source
+    assert "You cannot browse, fetch a URL, inspect evidence" in chat_source
+    assert "Never ask for passwords, verification codes, recovery phrases or tokens" in chat_source
     assert "chat.reply" in ask_source
     assert "from services.higgins import coordinator" not in ask_source

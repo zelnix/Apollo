@@ -1,3 +1,4 @@
+/* global Buffer */
 const { withAndroidManifest } = require("expo/config-plugins");
 
 const TEST_KEY_ID = "m1-acceptance";

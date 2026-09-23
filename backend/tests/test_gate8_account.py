@@ -58,10 +58,10 @@ class TestAccountAnalyse:
         )
         assert r.status_code == 200, r.text
         data = r.json()
-        assert data["assessment"]["higgins"]["next_action"]
-        assert data["assessment"]["processing"]["raw_retained_by_apollo"] is False
-        assert data["assessment"]["processing"]["maximum_processing_retention_minutes"] == 15
-        assert "packet" not in data["assessment"]["higgins"]["exact_response"].lower()
+        assert data["assessment"] is None
+        assert data["explanation"] is None
+        assert data["gemini_used"] is False
+        assert data["urls"] and data["urls"][0]["verdict"] in ("clean", "malicious", "unknown")
 
     def test_secret_url_parameters_are_redacted_before_processing(self, api_client, device_id):
         r = _analyse(

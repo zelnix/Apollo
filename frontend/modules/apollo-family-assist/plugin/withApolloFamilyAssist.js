@@ -1,3 +1,4 @@
+/* global __dirname */
 const { withEntitlementsPlist, withInfoPlist, withPodfile, withXcodeProject } = require("@expo/config-plugins");
 const fs = require("fs");
 const path = require("path");

@@ -1,3 +1,4 @@
+/* global __dirname */
 // Replaces expo-share-intent's generated iOS controller with Apollo's bounded,
 // protected, atomic multi-item handoff while retaining the package's Android path.
 const { withXcodeProject } = require("@expo/config-plugins");

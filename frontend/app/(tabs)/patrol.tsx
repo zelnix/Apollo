@@ -1,7 +1,7 @@
 import FileDown from "lucide-react-native/icons/file-down";
 import Library from "lucide-react-native/icons/library";
 import { useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { FlatList, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -36,6 +36,21 @@ function dayLabel(iso: string) {
   return d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
 }
 
+type PatrolRow = { type: "day"; label: string; key: string } | { type: "outcome"; outcome: PatrolOutcome; isLast: boolean; key: string };
+
+function buildRows(outcomes: PatrolOutcome[], filter: PatrolFilter): PatrolRow[] {
+  const filtered = outcomes.filter((outcome) => matchesPatrolFilter(outcome, filter));
+  const rows: PatrolRow[] = [];
+  let lastDay = "";
+  filtered.forEach((outcome, index) => {
+    const day = dayLabel(outcome.occurredAt);
+    if (day !== lastDay) { rows.push({ type: "day", label: day, key: `day-${day}` }); lastDay = day; }
+    const next = filtered[index + 1];
+    rows.push({ type: "outcome", outcome, isLast: !next || dayLabel(next.occurredAt) !== day, key: outcome.outcomeId });
+  });
+  return rows;
+}
+
 export default function Patrol() {
   const s = useStyles();
   const { colors } = useTheme();
@@ -49,19 +64,8 @@ export default function Patrol() {
     catch { showToast("Could not create the PDF on this device.", "growling"); }
   };
 
-  const outcomes = useMemo(() => projectPatrolOutcomes(events), [events]);
-  const rows = useMemo(() => {
-    const filtered = outcomes.filter((outcome) => matchesPatrolFilter(outcome, filter));
-    const out: ({ type: "day"; label: string; key: string } | { type: "outcome"; outcome: PatrolOutcome; isLast: boolean; key: string })[] = [];
-    let lastDay = "";
-    filtered.forEach((e, i) => {
-      const day = dayLabel(e.occurredAt);
-      if (day !== lastDay) { out.push({ type: "day", label: day, key: `day-${day}` }); lastDay = day; }
-      const next = filtered[i + 1];
-      out.push({ type: "outcome", outcome: e, isLast: !next || dayLabel(next.occurredAt) !== day, key: e.outcomeId });
-    });
-    return out;
-  }, [outcomes, filter]);
+  const outcomes = projectPatrolOutcomes(events);
+  const rows = buildRows(outcomes, filter);
 
   return (
     <View style={s.root}>

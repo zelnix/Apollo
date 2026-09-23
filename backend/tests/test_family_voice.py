@@ -3,10 +3,16 @@ import os, time, uuid
 from datetime import datetime, timezone
 
 import requests
+import pytest
 
 BASE_URL = (os.environ.get("EXPO_BACKEND_URL") or os.environ.get("EXPO_PUBLIC_BACKEND_URL") or "https://apollo-platform.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
 H = {"User-Agent": "apollo-tests", "X-Apollo-Raw": "1"}
+pytestmark = pytest.mark.credentialed_integration
+
+
+def submission_id():
+    return uuid.uuid4().hex
 
 
 class Dev:
@@ -37,7 +43,7 @@ def wav_bytes(seconds=1.0):
 class TestVoiceNote:
     def test_guardian_records_and_mum_can_play_with_a_ticket(self):
         p, g, scent = paired_incident()
-        r = g.post(f"/family/incidents/{scent}/voice", data={"device_id": g.id, "from_name": "Sarah", "duration_s": "1.0"}, files={"file": ("note.wav", wav_bytes(), "audio/wav")})
+        r = g.post(f"/family/incidents/{scent}/voice", data={"device_id": g.id, "submission_id": submission_id(), "from_name": "Sarah", "duration_s": "1.0"}, files={"file": ("note.wav", wav_bytes(), "audio/wav")})
         assert r.status_code == 201, r.text
         note = r.json()
         assert note["kind"] == "voice" and note["guardian_label"] == "Sarah" and note["duration_s"] == 1.0 and "audio_path" not in note
@@ -54,7 +60,7 @@ class TestVoiceNote:
 
     def test_tickets_are_note_bound_and_expire_and_strangers_get_nothing(self):
         p, g, scent = paired_incident()
-        note = g.post(f"/family/incidents/{scent}/voice", data={"device_id": g.id, "duration_s": "1"}, files={"file": ("n.wav", wav_bytes(), "audio/wav")}).json()
+        note = g.post(f"/family/incidents/{scent}/voice", data={"device_id": g.id, "submission_id": submission_id(), "duration_s": "1"}, files={"file": ("n.wav", wav_bytes(), "audio/wav")}).json()
         url = p.get(f"/family/voice/{note['note_id']}/ticket", params={"device_id": p.id}).json()["url"]
         base, qs = url.split("?")
         sig = dict(kv.split("=") for kv in qs.split("&"))["sig"]; exp = dict(kv.split("=") for kv in qs.split("&"))["exp"]
@@ -69,19 +75,19 @@ class TestVoiceNote:
     def test_upload_guardrails(self):
         p, g, scent = paired_incident()
         big = wav_bytes(70)  # > 1 MB
-        assert g.post(f"/family/incidents/{scent}/voice", data={"device_id": g.id, "duration_s": "70"}, files={"file": ("n.wav", big, "audio/wav")}).status_code == 422  # duration > 30
-        assert g.post(f"/family/incidents/{scent}/voice", data={"device_id": g.id, "duration_s": "20"}, files={"file": ("n.wav", big, "audio/wav")}).status_code == 413
-        assert g.post(f"/family/incidents/{scent}/voice", data={"device_id": g.id, "duration_s": "1"}, files={"file": ("n.txt", b"hello", "text/plain")}).status_code == 415
-        assert g.post(f"/family/incidents/{scent}/voice", data={"device_id": g.id, "duration_s": "1"}, files={"file": ("n.wav", b"RIFF", "audio/wav")}).status_code == 422
+        assert g.post(f"/family/incidents/{scent}/voice", data={"device_id": g.id, "submission_id": submission_id(), "duration_s": "70"}, files={"file": ("n.wav", big, "audio/wav")}).status_code == 422  # duration > 30
+        assert g.post(f"/family/incidents/{scent}/voice", data={"device_id": g.id, "submission_id": submission_id(), "duration_s": "20"}, files={"file": ("n.wav", big, "audio/wav")}).status_code == 413
+        assert g.post(f"/family/incidents/{scent}/voice", data={"device_id": g.id, "submission_id": submission_id(), "duration_s": "1"}, files={"file": ("n.txt", b"hello", "text/plain")}).status_code == 415
+        assert g.post(f"/family/incidents/{scent}/voice", data={"device_id": g.id, "submission_id": submission_id(), "duration_s": "1"}, files={"file": ("n.wav", b"RIFF", "audio/wav")}).status_code == 422
         # the form's device_id must be the bearer's own device
         other = Dev()
-        assert g.post(f"/family/incidents/{scent}/voice", data={"device_id": other.id, "duration_s": "1"}, files={"file": ("n.wav", wav_bytes(), "audio/wav")}).status_code == 403
+        assert g.post(f"/family/incidents/{scent}/voice", data={"device_id": other.id, "submission_id": submission_id(), "duration_s": "1"}, files={"file": ("n.wav", wav_bytes(), "audio/wav")}).status_code == 403
         # the protected person cannot post a voice note onto their own incident as if they were a guardian
-        assert p.post(f"/family/incidents/{scent}/voice", data={"device_id": p.id, "duration_s": "1"}, files={"file": ("n.wav", wav_bytes(), "audio/wav")}).status_code == 404
+        assert p.post(f"/family/incidents/{scent}/voice", data={"device_id": p.id, "submission_id": submission_id(), "duration_s": "1"}, files={"file": ("n.wav", wav_bytes(), "audio/wav")}).status_code == 404
         # unpaired guardian is refused
         link_id = g.get("/family/links", params={"device_id": g.id}).json()["i_watch"][0]["link_id"]
         assert requests.delete(f"{API}/family/links/{link_id}", params={"device_id": g.id}, headers=g.h).status_code == 204
-        assert g.post(f"/family/incidents/{scent}/voice", data={"device_id": g.id, "duration_s": "1"}, files={"file": ("n.wav", wav_bytes(), "audio/wav")}).status_code == 403
+        assert g.post(f"/family/incidents/{scent}/voice", data={"device_id": g.id, "submission_id": submission_id(), "duration_s": "1"}, files={"file": ("n.wav", wav_bytes(), "audio/wav")}).status_code == 403
 
 
 class TestVoiceCaption:
@@ -90,9 +96,9 @@ class TestVoiceCaption:
         # Real speech: Higgins' TTS renders the line, then it is uploaded as Sarah's voice note.
         spoken = g.post("/voice/speak", json={"device_id": g.id, "text": "Hello Mum, it's Sarah. Everything is fine, I'm coming over after work."})
         assert spoken.status_code == 200, spoken.text
-        mp3 = requests.get(BASE_URL + spoken.json()["url"], headers=H).content
-        assert len(mp3) > 1000
-        r = g.post(f"/family/incidents/{scent}/voice", data={"device_id": g.id, "from_name": "Sarah", "duration_s": "5"}, files={"file": ("note.mp3", mp3, "audio/mpeg")})
+        audio = requests.get(BASE_URL + spoken.json()["url"], headers=g.h).content
+        assert len(audio) > 1000
+        r = g.post(f"/family/incidents/{scent}/voice", data={"device_id": g.id, "submission_id": submission_id(), "from_name": "Sarah", "duration_s": "5"}, files={"file": ("note.wav", audio, "audio/wav")})
         assert r.status_code == 201, r.text
         note = r.json()
         assert note["transcript_status"] == "pending" and note["transcript"] == ""  # send never waits for the caption
@@ -109,7 +115,7 @@ class TestVoiceCaption:
 
     def test_unreadable_audio_ends_as_unavailable_not_stuck(self):
         p, g, scent = paired_incident()
-        note = g.post(f"/family/incidents/{scent}/voice", data={"device_id": g.id, "duration_s": "1"}, files={"file": ("n.wav", wav_bytes(0.3), "audio/wav")}).json()
+        note = g.post(f"/family/incidents/{scent}/voice", data={"device_id": g.id, "submission_id": submission_id(), "duration_s": "1"}, files={"file": ("n.wav", wav_bytes(0.3), "audio/wav")}).json()
         deadline = time.time() + 60
         status = "pending"
         while time.time() < deadline:

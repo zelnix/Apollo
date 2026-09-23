@@ -7,7 +7,7 @@ import re
 from typing import Any, Literal, Optional
 
 import httpx
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field, field_validator
 from google.genai import types
 
@@ -76,6 +76,7 @@ class LinkInvestigateIn(BaseModel):
     local_state: ApolloState
     local_findings: list[str] = Field(default_factory=list, max_length=12)
     claimed_brand: Optional[str] = Field(default=None, max_length=60)
+    second_opinion: bool = True
 
     @field_validator("url")
     @classmethod
@@ -88,7 +89,7 @@ class LinkInvestigateIn(BaseModel):
 
 @router.post("/message/analyse", response_model=MessageAnalyseOut)
 @bounded_analysis
-async def message_analyse(body: MessageAnalyseIn):
+async def message_analyse(body: MessageAnalyseIn, request: Request):
     # Email/Text Guard: every link gets the SAME full assessment as a manual Check-a-Link — redirect
     # chain expansion + Safe Browsing/blocklist + RDAP domain-info — automatically, run concurrently
     # so checking several links costs no more latency than the slowest one.
@@ -111,7 +112,8 @@ async def message_analyse(body: MessageAnalyseIn):
                     "coverage": result.coverage, "threat_types": result.threat_types,
                     "redirect_chain": result.redirect_chain, "final_url": result.final_url} for result in results]
     assessment = await investigate_message(sender=body.sender, text=body.text, urls=body.urls,
-        claimed_brand=body.claimed_brand, local_state=body.local_state, url_context=url_context, use_model=body.second_opinion)
+        claimed_brand=body.claimed_brand, local_state=body.local_state, url_context=url_context,
+        use_model=body.second_opinion, locale=request.state.device.get("locale"))
     explanation = {"summary": assessment.higgins.headline, "why": assessment.higgins.why_it_matters,
                    "recommendation": assessment.higgins.next_action}
     model_used = bool(assessment.processing.get("model_used"))
@@ -120,7 +122,7 @@ async def message_analyse(body: MessageAnalyseIn):
 
 @router.post("/link/investigate", response_model=InvestigationResult)
 @bounded_analysis
-async def link_investigate(body: LinkInvestigateIn):
+async def link_investigate(body: LinkInvestigateIn, request: Request):
     """One disclosed, request-scoped link investigation. Raw URL context is never persisted here."""
     del body.device_id
     normalized, host = sanitize_url(body.url)
@@ -130,7 +132,8 @@ async def link_investigate(body: LinkInvestigateIn):
                     "redirect_chain": intel.redirect_chain, "final_url": intel.final_url}]
     return await investigate_message(sender="", text=f"Submitted link: {body.url}", urls=[body.url],
         claimed_brand=body.claimed_brand, local_state=body.local_state, url_context=url_context,
-        local_findings=body.local_findings)
+        local_findings=body.local_findings, use_model=body.second_opinion,
+        locale=request.state.device.get("locale"))
 
 
 @router.post("/message/extract")

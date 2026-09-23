@@ -43,6 +43,7 @@ def s():
 
 
 # --- Guardians ---
+@pytest.mark.credentialed_integration
 class TestGuardians:
     guardian_ids = []
 
@@ -95,6 +96,7 @@ class TestGuardians:
 
 
 # --- Confirm token (fetch from Mongo) ---
+@pytest.mark.credentialed_integration
 class TestConfirmToken:
     def test_confirm_valid_token(self, s):
         # create a fresh guardian on a fresh device to fetch token

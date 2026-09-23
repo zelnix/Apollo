@@ -31,7 +31,7 @@ async def register_device(body: DeviceRegister):
 async def device_heartbeat(body: DeviceRegister, request: Request):
     """Authenticated 'still here' — updates platform/app/tz and last_seen for the token's device."""
     me = request.state.device["device_id"]
-    await db.devices.update_one({"device_id": me}, {"$set": {"last_seen_at": now_utc(), "platform": body.platform, "adapter_mode": body.adapter_mode, "app_version": body.app_version, "tz_offset_minutes": body.tz_offset_minutes}})
+    await db.devices.update_one({"device_id": me}, {"$set": {"last_seen_at": now_utc(), "platform": body.platform, "adapter_mode": body.adapter_mode, "app_version": body.app_version, "tz_offset_minutes": body.tz_offset_minutes, "locale": body.locale}})
     return {"device_id": me}
 
 

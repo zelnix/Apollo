@@ -24,7 +24,7 @@ def test_server_redacts_secret_url_values_but_keeps_assessment_context():
 
 
 def test_deterministic_extraction_finds_actual_concern():
-    entities = deterministic_entities("Bank Alerts", "Pay $600 today, call 02 8000 1234 and share the code.", [], "CommBank")
+    entities = deterministic_entities("Bank Alerts", "Pay $600 today, call 02 8000 1234 and share the code.", [], "CommBank", locale="en-AU")
     assert entities.claimed_organisations == ["CommBank"]
     assert entities.callback_details == ["02 8000 1234"]
     assert "$600" in entities.transaction_claims
@@ -35,21 +35,22 @@ def test_deterministic_extraction_finds_actual_concern():
 async def test_valid_gemini_exact_response_is_preserved_verbatim(monkeypatch):
     exact = "The submitted request uses an unverified sender. The sender identity remains unknown. Open the official app independently and review recent activity there."
     model = {
-        "claimed_organisations": [], "sender_details": [], "sender_phone_numbers": [], "callback_details": [],
-        "requested_actions": ["open a supplied link"], "transaction_claims": [], "mentioned_names": [], "suspected_deception": [],
+        "entities": {"claimed_organisations": [], "sender_details": [], "sender_phone_numbers": [], "callback_details": [],
+        "links": [], "requested_actions": ["open a supplied link"], "transaction_claims": [], "mentioned_names": [], "suspected_deception": []},
         "findings": [{"status": "unresolved", "evidence_kind": "submitted_content", "title": "Unverified request",
-                      "detail": "The submitted request does not authenticate its sender.", "source_ids": ["local-1"]}],
-        "headline": "Verify the request independently", "next_action": "Open the official app independently.",
+                      "detail": "The submitted request does not authenticate its sender.", "source_ids": ["submission"]}],
+        "risk": "uncertain",
+        "higgins": {"headline": "Verify the request independently", "next_action": "Open the official app independently.",
         "exact_response": exact, "what_was_found": ["An unverified request was submitted."],
         "why_it_matters": ["Impersonated requests can redirect account access."],
         "could_not_establish": ["The sender identity remains unknown."],
-        "action_label": "Open official app", "action_kind": "verify_officially",
+        "action_label": "Open official app", "action_kind": "verify_officially"},
     }
 
-    async def fake_stream(_system: str, _prompt: str):
-        return model, []
+    async def fake_generate_json(_system: str, _prompt: str, **_kwargs):
+        return model, {}
 
-    monkeypatch.setattr(investigation, "_stream_json", fake_stream)
+    monkeypatch.setattr(investigation, "generate_json", fake_generate_json)
     result = await investigate_message(sender="Account alert", text="Open the link to review activity", urls=[], claimed_brand=None,
                                        local_state="ears_up", url_context=[])
     assert result.higgins.exact_response == exact

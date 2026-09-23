@@ -1,3 +1,4 @@
+/* global __dirname */
 // Adds ApolloMessageFilter as a real iOS Message Filter extension target. Classification is local;
 // the extension stores only a digest, score and reasons in Apollo's shared App Group.
 const { withDangerousMod, withEntitlementsPlist, withXcodeProject } = require("@expo/config-plugins");
