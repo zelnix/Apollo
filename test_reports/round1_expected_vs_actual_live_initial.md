@@ -1,7 +1,7 @@
 # Apollo Round 1 — expected versus actual
 
 Generated: 2026-09-20T14:56:27.120876+00:00
-Browser target: `https://apollo-platform.preview.emergentagent.com`
+Browser target: `https://apollo-patrol.preview.emergentagent.com`
 Execution mode: **live**
 
 Expected outcomes are source-controlled in `frontend/scripts/round1-scenario-engine.ts` before execution. Automated engine evidence, browser evidence and device-only work are deliberately separate.

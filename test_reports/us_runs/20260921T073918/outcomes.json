@@ -1,6 +1,6 @@
 {
   "run": "20260921T073918",
-  "base": "https://apollo-platform.preview.emergentagent.com",
+  "base": "https://apollo-patrol.preview.emergentagent.com",
   "provider": "gemini (owner key)",
   "mocked": false,
   "scenarios": [

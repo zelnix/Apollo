@@ -9,7 +9,7 @@ import aiohttp
 import pytest
 import requests
 
-BASE_URL = "https://apollo-platform.preview.emergentagent.com"
+BASE_URL = "https://apollo-patrol.preview.emergentagent.com"
 API = f"{BASE_URL}/api"
 
 DEVICE_ID = f"race-{uuid.uuid4().hex[:12]}"
