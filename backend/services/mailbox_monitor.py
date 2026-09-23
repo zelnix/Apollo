@@ -15,6 +15,7 @@ from typing import Any
 
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
+from fastapi import HTTPException
 
 from core.config import logger
 from core.db import db, now_utc
@@ -117,6 +118,9 @@ async def scan_gmail_through_shared_pipeline(device_id: str, intake_mode: str) -
         return_document=ReturnDocument.AFTER,
     )
     if row is None:
+        exists = await db.gmail_connections.find_one({"device_id": device_id}, {"_id": 1})
+        if exists is None:
+            raise HTTPException(404, "Gmail is not connected")
         return {"status": "busy", "checked": 0, "accepted": 0, "nextCursor": None}
     try:
         messages, next_cursor = await gmail.scan_inbox_page(device_id, row.get("monitor_next_page_token"))

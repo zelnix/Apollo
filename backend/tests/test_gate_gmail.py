@@ -18,6 +18,7 @@ BASE_URL = (
     or os.environ.get("EXPO_PUBLIC_BACKEND_URL")
     or "https://apollo-platform.preview.emergentagent.com"
 ).rstrip("/")
+GMAIL_REDIRECT_BASE = os.environ["PUBLIC_API_BASE"].rstrip("/")
 
 
 @pytest.fixture(scope="module")
@@ -39,7 +40,7 @@ class TestGmailStatus:
         data = r.json()
         assert data["connected"] is False
         assert data["configured"] is True
-        assert data["oauth_redirect_uri"] == f"{BASE_URL}/api/gmail/oauth/callback"
+        assert data["oauth_redirect_uri"] == f"{GMAIL_REDIRECT_BASE}/api/gmail/oauth/callback"
 
 
 class TestGmailConnect:
@@ -56,7 +57,7 @@ class TestGmailConnect:
         parsed = urlparse(url)
         qs = parse_qs(parsed.query)
         assert qs.get("client_id"), "client_id missing"
-        assert qs["redirect_uri"][0] == f"{BASE_URL}/api/gmail/oauth/callback"
+        assert qs["redirect_uri"][0] == f"{GMAIL_REDIRECT_BASE}/api/gmail/oauth/callback"
         assert qs["scope"][0] == "https://www.googleapis.com/auth/gmail.readonly"
         assert qs["access_type"][0] == "offline"
         assert "state" in qs and len(qs["state"][0]) > 10

@@ -15,7 +15,7 @@ from typing import Any, Optional
 from urllib.parse import urlencode
 
 import httpx
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 from fastapi import HTTPException
 
 from core.config import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_GMAIL_REDIRECT_URI, GMAIL_TOKEN_ENCRYPTION_KEY, logger
@@ -34,10 +34,24 @@ def configured() -> bool:
     return bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET and GOOGLE_GMAIL_REDIRECT_URI and _fernet)
 
 
+async def cleanup_unreadable_connections() -> int:
+    """Remove only grants encrypted under an unavailable/retired key; never contact Google."""
+    if not _fernet:
+        return 0
+    removed = 0
+    async for row in db.gmail_connections.find({"refresh_token_enc": {"$type": "string"}}, {"_id": 0, "device_id": 1, "refresh_token_enc": 1}):
+        try:
+            _fernet.decrypt(row["refresh_token_enc"].encode())
+        except (InvalidToken, KeyError):
+            result = await db.gmail_connections.delete_one({"device_id": row["device_id"], "refresh_token_enc": row["refresh_token_enc"]})
+            removed += result.deleted_count
+    return removed
+
+
 def build_authorization_url(state: str) -> str:
     params = {
         "client_id": GOOGLE_CLIENT_ID, "redirect_uri": GOOGLE_GMAIL_REDIRECT_URI, "response_type": "code",
-        "scope": SCOPE, "access_type": "offline", "prompt": "consent", "include_granted_scopes": "true", "state": state,
+        "scope": SCOPE, "access_type": "offline", "prompt": "consent", "include_granted_scopes": "false", "state": state,
     }
     return f"{AUTH_URI}?{urlencode(params)}"
 
@@ -51,7 +65,11 @@ async def exchange_code(code: str) -> dict:
     if resp.status_code != 200:
         logger.info("gmail code exchange failed: %s", resp.status_code)
         raise HTTPException(400, "Google authorization failed")
-    return resp.json()
+    payload = resp.json()
+    granted = set(str(payload.get("scope", "")).split())
+    if granted != {SCOPE}:
+        raise HTTPException(400, "Google did not grant the exact read-only Gmail permission")
+    return payload
 
 
 async def _refresh_access_token(refresh_token: str) -> str:
@@ -99,7 +117,11 @@ async def _access_token_for(device_id: str) -> str:
         raise HTTPException(404, "Gmail is not connected")
     if not row.get("refresh_token_enc"):
         raise HTTPException(409, "Gmail connection is incomplete; reconnect before scanning")
-    refresh = _fernet.decrypt(row["refresh_token_enc"].encode()).decode()
+    try:
+        refresh = _fernet.decrypt(row["refresh_token_enc"].encode()).decode()
+    except (InvalidToken, KeyError, UnicodeDecodeError):
+        await db.gmail_connections.delete_one({"device_id": device_id})
+        raise HTTPException(401, "Gmail grant could not be decrypted; reconnect")
     try:
         return await _refresh_access_token(refresh)
     except HTTPException:

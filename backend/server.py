@@ -35,6 +35,7 @@ from services.higgins.retention import migrate_and_index
 from services.higgins import repository as investigation_repository
 from services.higgins import context as higgins_context
 from services import capability_registry, government_alerts, learning
+from services import gmail as gmail_service
 from services import family_assist
 from routers import admin, analysis, ask, call, devices, family, family_assist as family_assist_router, family_weekly, gmail, health, intel, investigations, learning as learning_router, learning_admin, patrol, product, push, voice
 from routers.family_weekly import weekly_checkin_loop
@@ -67,11 +68,18 @@ async def lifespan(_: FastAPI):
     await db.domain_info_cache.create_index("domain", unique=True)
     await db.domain_info_cache.create_index("expires_at")  # plain index; expiry is checked at read time, never auto-deleted
     await db.gmail_connections.create_index("device_id", unique=True)
-    await db.gmail_oauth_states.create_index("state", unique=True)
+    removed_gmail_grants = await gmail_service.cleanup_unreadable_connections()
+    if removed_gmail_grants:
+        logger.warning("removed %s unreadable legacy Gmail grant(s); affected users must reconnect", removed_gmail_grants)
     oauth_indexes = await db.gmail_oauth_states.index_information()
     for index_name, definition in oauth_indexes.items():
+        if definition.get("key") == [("state", 1)]:
+            await db.gmail_oauth_states.drop_index(index_name)
+            continue
         if definition.get("key") == [("expires_at", 1)] and definition.get("partialFilterExpression") != {"retention_class": "oauth_csrf_temporary"}:
             await db.gmail_oauth_states.drop_index(index_name)
+    await db.gmail_oauth_states.delete_many({"state_digest": {"$exists": False}})  # discard only obsolete, short-lived CSRF records
+    await db.gmail_oauth_states.create_index("state_digest", unique=True)
     await db.gmail_oauth_states.create_index("expires_at", name="oauth_csrf_expiry_ttl", expireAfterSeconds=0,
                                               partialFilterExpression={"retention_class": "oauth_csrf_temporary"})
     # Generic IMAP credentials are no longer accepted or written. Legacy rows are retained for an explicit,

@@ -1,3 +1,13 @@
+## 2026-09-23 Gmail production OAuth readiness
+
+- Configured server callback base as `https://threat-patrol-1.emergent.host`; exact redirect URI is `https://threat-patrol-1.emergent.host/api/gmail/oauth/callback`.
+- Hardened OAuth: CSRF state is SHA-256 hashed at rest, consumed atomically once, TTL-indexed, and migrated from the obsolete plaintext-state index. Post-callback redirects are allow-listed, and Google token responses must contain exactly `gmail.readonly` rather than an expanded scope set.
+- Fixed mailbox scan without a connection to return 404 instead of a stale shared-lease `busy` response. Added self-cleanup for refresh grants that cannot be decrypted under the active server key.
+- Verification: 20/20 targeted Gmail tests passed; Python lint passed; production `/api/health` and public callback are reachable; local generated authorization URL uses the exact production callback, offline access, opaque state, and exact read-only scope.
+- Hosted-version observation: the live host currently returns the correct callback and read-only scope but still emits `include_granted_scopes=true`, proving it is serving an earlier backend revision. Latest source sets this to `false`; the hosted backend must be refreshed before claiming the hardening is live.
+- Human boundary: a real user must still tap **Email → Connect Gmail read-only**, complete Google consent, then optionally enable ongoing monitoring. No password, MFA code, authorization code, or refresh token should be provided to Emergent.
+- Readiness scan note: a generic static checker incorrectly requested committing `.env` secrets and adding Expo `--tunnel`; both conflict with repository secret hygiene and this platform's protected proxy configuration. Production backend health/callback reachability are independently verified.
+
 ## 2026-09-23 Higgins Apollo managed transactional email migration
 
 - Replaced the legacy owner-supplied Resend path (`RESEND_API_KEY` / `RESEND_FROM_EMAIL`) with the platform-managed verified sender in `backend/services/email.py`.

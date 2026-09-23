@@ -1,3 +1,10 @@
+## Gmail production OAuth readiness (2026-09-23)
+
+- Production callback: `https://threat-patrol-1.emergent.host/api/gmail/oauth/callback`; Gmail API scope remains exactly `gmail.readonly`.
+- OAuth state is now opaque, hashed, single-use and TTL-limited; redirect destinations are allow-listed and expanded Google scope sets are rejected.
+- Unreadable legacy refresh grants are deleted safely and require explicit reconnect; mailbox scans with no connection return a truthful 404.
+- P0 external/user action: refresh the hosted backend to the latest source, then have an allow-listed Google test user complete **Connect Gmail read-only**. Restricted-scope verification/custom-domain ownership remains necessary before unrestricted public OAuth access.
+
 ## Higgins Apollo transactional email (2026-09-23)
 
 - Migrated guardian invitations/alerts from owner-managed Resend credentials to the platform-managed verified transactional sender.

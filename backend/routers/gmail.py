@@ -6,15 +6,17 @@ user disconnects (DELETE /gmail/connection)."""
 from __future__ import annotations
 
 import secrets
+import hashlib
 from datetime import timedelta, timezone
 from typing import Optional
 from urllib.parse import urlencode
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
-from core.config import GOOGLE_GMAIL_REDIRECT_URI, logger
+from core.config import GOOGLE_GMAIL_REDIRECT_URI, PUBLIC_BASE, logger
 from core.db import db, now_utc
 from services import gmail as gmail_service
 from services.mailbox_monitor import scan_gmail_through_shared_pipeline
@@ -24,11 +26,23 @@ router = APIRouter()
 # Where the OAuth callback is allowed to bounce the browser back to — the app supplies this itself
 # (Linking.createURL) so it always matches the current dev/Expo-Go/production redirect target; we
 # just refuse anything that isn't one of Apollo's own schemes to prevent this becoming an open redirect.
-_ALLOWED_REDIRECT_SCHEMES = ("apollo", "exp", "exps", "https", "http")
-
-
 def _valid_app_redirect(url: str) -> bool:
-    return any(url.startswith(f"{scheme}://") or url.startswith(f"{scheme}:/") for scheme in _ALLOWED_REDIRECT_SCHEMES)
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    if parsed.username or parsed.password or parsed.fragment:
+        return False
+    if parsed.scheme == "apollo":
+        return bool(parsed.netloc or parsed.path)
+    if parsed.scheme in {"exp", "exps"}:
+        return bool(parsed.hostname)  # development-only Expo return; carries no Google token
+    public_host = urlparse(PUBLIC_BASE).hostname
+    if parsed.scheme == "https":
+        return bool(public_host and parsed.hostname == public_host)
+    if parsed.scheme == "http":
+        return parsed.hostname in {"127.0.0.1", "localhost"}
+    return False
 
 
 def _bounce(base: str, **params) -> str:
@@ -47,7 +61,8 @@ async def gmail_connect(device_id: str = Query(min_length=8, max_length=64), app
     if not _valid_app_redirect(app_redirect):
         raise HTTPException(400, "Invalid redirect target")
     state = secrets.token_urlsafe(24)
-    await db.gmail_oauth_states.insert_one({"state": state, "device_id": device_id, "app_redirect": app_redirect,
+    state_digest = hashlib.sha256(state.encode()).hexdigest()
+    await db.gmail_oauth_states.insert_one({"state_digest": state_digest, "device_id": device_id, "app_redirect": app_redirect,
                                             "retention_class": "oauth_csrf_temporary", "created_at": now_utc(),
                                             "expires_at": now_utc() + timedelta(minutes=10)})
     logger.info("gmail oauth start redirect_uri=%s", GOOGLE_GMAIL_REDIRECT_URI)
@@ -56,9 +71,8 @@ async def gmail_connect(device_id: str = Query(min_length=8, max_length=64), app
 
 @router.get("/gmail/oauth/callback")
 async def gmail_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
-    row = await db.gmail_oauth_states.find_one({"state": state}) if state else None
-    if state:
-        await db.gmail_oauth_states.delete_one({"state": state})  # single-use, always consumed
+    state_digest = hashlib.sha256(state.encode()).hexdigest() if state else None
+    row = await db.gmail_oauth_states.find_one_and_delete({"state_digest": state_digest}) if state_digest else None
     if not row:
         # No trusted app_redirect to bounce to at all — the only safe response is a plain page.
         raise HTTPException(400, "This Gmail connection link is invalid or expired. Please try connecting again in the app.")
