@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import Phone from "lucide-react-native/icons/phone";
+import MonitorUp from "lucide-react-native/icons/monitor-up";
 import X from "lucide-react-native/icons/x";
 import React, { useEffect, useState } from "react";
 import { Alert, Linking, Platform, Pressable, Switch, Text, TextInput, View } from "react-native";
@@ -129,6 +130,12 @@ export default function Family() {
         {err ? <Text style={s.err} testID="family-error">{err}</Text> : null}
         <ServiceBanner />
         <StaleNote queries={[guardians, links, shared, incidents, acks, weekly, checkins]} testID="family-stale-note" />
+
+        <Card style={{ gap: spacing.md }} testID="family-help-entry-card">
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}><MonitorUp size={24} color={colors.brandPrimary} /><SectionTitle>Family Help</SectionTitle></View>
+          <Body>Ask someone you trust to watch your screen while you solve a problem. They cannot control your device.</Body>
+          <Pressable testID="family-help-open" accessibilityRole="button" onPress={() => router.push("/family/help")} style={s.row}><Text style={s.name}>Open Family Help</Text><ChevronRight size={20} color={colors.muted} /></Pressable>
+        </Card>
 
         <View>
           <SectionTitle>Your name (shown to them)</SectionTitle>

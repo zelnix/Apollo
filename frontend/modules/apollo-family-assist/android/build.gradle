@@ -1,0 +1,20 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'app.apollo.familyassist'
+version = '1.0.0'
+expoModule { canBePublished false }
+
+android {
+  namespace 'app.apollo.familyassist'
+  defaultConfig { versionCode 1; versionName '1.0.0' }
+  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+
+dependencies {
+  implementation project(':react-native-webrtc')
+  implementation 'androidx.core:core-ktx:1.13.1'
+  implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+}

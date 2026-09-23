@@ -101,6 +101,10 @@ export interface ApolloSecurityNativeModule {
   getRecentNetworkEvents(): Promise<string>;
   getRecentAccountSecurityEvents(): Promise<string>;
   submitAccountSecurityEvent(eventJson: string): Promise<string>;
+  /** iOS Share Extension protected App Group handoff. Native-only and opaque-id based. */
+  getShareHandoff(handoffId: string): Promise<string>;
+  acknowledgeShareHandoff(handoffId: string): Promise<string>;
+  discardShareHandoff(handoffId: string): Promise<string>;
 }
 
 let cached: ApolloSecurityNativeModule | null | undefined;

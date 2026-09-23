@@ -1,0 +1,1 @@
+"""Pydantic domain models owned by Apollo backend features."""

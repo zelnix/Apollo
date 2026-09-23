@@ -1,3 +1,12 @@
+## 2026-09-23 FF10 Family Help configuration-gated implementation
+
+- Outcome: `configuration_gated_source_complete`; runtime capability is intentionally `configuration_missing` until external TURN is valid. Exact user copy: “Family Help is not available yet. Your other Apollo features still work.”
+- Backend: authoritative paired-device session lifecycle, revision/generation fences, durable invitation outbox, revocation hooks, closed bounded WSS signaling, single-use tickets, short-lived coturn REST credentials and minimal terminal projection.
+- Native/mobile: Android MediaProjection foreground service and Kotlin compile pass; iOS ReplayKit Broadcast Upload target plus native WebRTC viewer generate idempotently; all first-release paths are video-only/view-only.
+- Checks: FF10 pytest 9 passed; frontend Node suite, TypeScript, ESLint, Python lint, security/native/package preflights passed; Android module compile passed; iOS repeated prebuild produced Apollo plus five extension products and five host dependencies; GuardDog frozen hashes 91/91 passed.
+- Full repository backend pytest attempt: 364 passed and 23 unrelated pre-existing/environment-dependent tests failed (email/voice/provider fixtures and older investigation contracts). No FF10 test failed. Apple compilation and real-device TURN connectivity were not run or claimed.
+- External activation: TURN is the sole requirement; exact operator specification and preflight are in `docs/FF10_TURN_DEPLOYMENT_SPECIFICATION.md`.
+
 ## 2026-09-23 Phase 2 remediation and Learn with Higgins enhancement
 
 - Implemented C22 → C23 → C21 → C24 → C25 in the mandated order without replacing the investigation coordinator.

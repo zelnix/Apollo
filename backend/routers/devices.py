@@ -55,7 +55,10 @@ async def rotate_token(request: Request):
 @router.post("/devices/revoke", status_code=204)
 async def revoke_device(request: Request):
     """Revokes this device's credential. The device must register again (new identity) to use Apollo's API."""
-    await db.devices.update_one({"device_id": request.state.device["device_id"], "revoked_at": None}, {"$set": {"revoked_at": now_utc()}})
+    device_id = request.state.device["device_id"]
+    from services.family_assist.sessions import revoke_for_device
+    await revoke_for_device(device_id, "owner_signed_out")
+    await db.devices.update_one({"device_id": device_id, "revoked_at": None}, {"$set": {"revoked_at": now_utc()}})
     return None
 
 

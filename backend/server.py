@@ -35,7 +35,8 @@ from services.higgins.retention import migrate_and_index
 from services.higgins import repository as investigation_repository
 from services.higgins import context as higgins_context
 from services import capability_registry, government_alerts, learning
-from routers import admin, analysis, ask, call, devices, family, family_weekly, gmail, health, intel, investigations, learning as learning_router, learning_admin, patrol, product, push, voice
+from services import family_assist
+from routers import admin, analysis, ask, call, devices, family, family_assist as family_assist_router, family_weekly, gmail, health, intel, investigations, learning as learning_router, learning_admin, patrol, product, push, voice
 from routers.family_weekly import weekly_checkin_loop
 
 SEED_BLOCKLIST = [
@@ -58,6 +59,7 @@ async def lifespan(_: FastAPI):
     await ensure_maintenance_indexes()
     await ensure_mailbox_monitor_indexes()
     await push.ensure_indexes()
+    await family_assist.ensure_indexes()
     await db.devices.create_index("device_id", unique=True)
     await db.devices.create_index("token_hash", unique=True, partialFilterExpression={"token_hash": {"$type": "string"}})
     await db.reputation_cache.create_index("indicator_digest", unique=True)
@@ -103,6 +105,16 @@ async def lifespan(_: FastAPI):
                 logger.warning("government alert refresh failed")
             await asyncio.sleep(3600)
     government_alert_task = asyncio.create_task(government_alert_loop(), name="apollo-government-alerts")
+    async def family_assist_loop():
+        while True:
+            try:
+                await family_assist.maintenance_once()
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # no session/media payload logging
+                logger.warning("family assist maintenance failed")
+            await asyncio.sleep(15)
+    family_assist_task = asyncio.create_task(family_assist_loop(), name="apollo-family-assist")
     async def push_receipt_loop():
         while True:
             try:
@@ -121,7 +133,8 @@ async def lifespan(_: FastAPI):
     loop_task.cancel()
     mailbox_task.cancel()
     government_alert_task.cancel()
-    await asyncio.gather(maintenance_task, receipts_task, loop_task, mailbox_task, government_alert_task, return_exceptions=True)
+    family_assist_task.cancel()
+    await asyncio.gather(maintenance_task, receipts_task, loop_task, mailbox_task, government_alert_task, family_assist_task, return_exceptions=True)
     client.close()
 
 
@@ -143,8 +156,9 @@ async def deployment_health():
 
 
 # Every device-facing router is mounted under /api behind the device bearer gate (public paths are listed in core.auth).
-for r in (health, devices, intel, patrol, investigations, ask, learning_router, product, family, family_weekly, voice, push, analysis, gmail, call):
+for r in (health, devices, intel, patrol, investigations, ask, learning_router, product, family, family_assist_router, family_weekly, voice, push, analysis, gmail, call):
     app.include_router(r.router, prefix="/api", dependencies=[Depends(enforce_device_auth)])
+app.include_router(family_assist_router.ws_router, prefix="/api")
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_admin_key)])
 app.include_router(learning_admin.router, prefix="/api/admin", tags=["learning-admin"], dependencies=[Depends(require_admin_key)])
 

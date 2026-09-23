@@ -74,7 +74,7 @@ const withCallDirectoryTarget = (config) =>
       bs.CODE_SIGN_STYLE = "Automatic";
       bs.PRODUCT_BUNDLE_IDENTIFIER = `"${extBundleId}"`;
       bs.SWIFT_VERSION = "5.0";
-      bs.IPHONEOS_DEPLOYMENT_TARGET = "15.1";
+      bs.IPHONEOS_DEPLOYMENT_TARGET = "16.4";
       bs.TARGETED_DEVICE_FAMILY = `"1,2"`;
       bs.MARKETING_VERSION = config.version || "1.0.0";
       bs.CURRENT_PROJECT_VERSION = (config.ios && config.ios.buildNumber) || "1";

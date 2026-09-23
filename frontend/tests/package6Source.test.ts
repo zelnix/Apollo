@@ -9,9 +9,10 @@ test("Package 6 iOS configuration registers all native extension targets under a
   const app = JSON.parse(read("../app.json"));
   assert.equal(app.expo.ios.bundleIdentifier, "app.apollo.hwg");
   const extensions = app.expo.extra.eas.build.experimental.ios.appExtensions;
-  assert.deepEqual(extensions.map((item: { targetName: string }) => item.targetName), ["ApolloContentBlocker", "ApolloCallDirectory", "ApolloMessageFilter"]);
+  assert.deepEqual(extensions.map((item: { targetName: string }) => item.targetName), ["ApolloFamilyAssistBroadcast", "ApolloShareExtension", "ApolloContentBlocker", "ApolloCallDirectory", "ApolloMessageFilter"]);
   for (const item of extensions) assert.ok(item.bundleIdentifier.startsWith("app.apollo.hwg."));
   assert.ok(app.expo.plugins.includes("./plugins/withApolloTextGuard"));
+  assert.ok(app.expo.plugins.includes("./plugins/withApolloShareIntake"));
 });
 
 test("iOS Message Filter is a real local extension with bounded, redacted event handoff", () => {

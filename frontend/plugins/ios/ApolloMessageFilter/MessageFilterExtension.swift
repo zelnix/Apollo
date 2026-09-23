@@ -6,7 +6,11 @@ import IdentityLookup
 /// outside Apple's Message Filter scope. Raw message text and sender values never leave the extension.
 @available(iOSApplicationExtension 14.0, *)
 final class MessageFilterExtension: ILMessageFilterExtension, ILMessageFilterQueryHandling {
-  private let suite = "group.app.apollo.hwg.apollo"
+  private var suite: String {
+    let extensionId = Bundle.main.bundleIdentifier ?? ""
+    let appId = extensionId.replacingOccurrences(of: ".messagefilter", with: "")
+    return "group.\(appId).apollo"
+  }
   private let eventsKey = "apollo.textguard.events.v1"
   private let activityKey = "apollo.textguard.lastObservedAt"
   private let maxEvents = 50
@@ -46,7 +50,7 @@ final class MessageFilterExtension: ILMessageFilterExtension, ILMessageFilterQue
     let observedAt = ISO8601DateFormatter().string(from: Date())
     let digest = SHA256.hash(data: Data("\(sender)|\(body)".utf8)).map { String(format: "%02x", $0) }.joined()
     let event: [String: Any] = [
-      "id": UUID().uuidString,
+      "id": digest,
       "observedAt": observedAt,
       "digest": digest,
       "score": assessment.score,
@@ -55,6 +59,7 @@ final class MessageFilterExtension: ILMessageFilterExtension, ILMessageFilterQue
       "source": "ios_message_filter"
     ]
     var events = defaults.array(forKey: eventsKey) as? [[String: Any]] ?? []
+    events.removeAll { ($0["id"] as? String) == digest }
     events.insert(event, at: 0)
     defaults.set(Array(events.prefix(maxEvents)), forKey: eventsKey)
     defaults.set(observedAt, forKey: activityKey)

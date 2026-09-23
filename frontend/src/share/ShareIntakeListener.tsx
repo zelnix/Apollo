@@ -6,6 +6,7 @@
 import { useRouter } from "expo-router";
 import { useShareIntent } from "expo-share-intent";
 import { useEffect } from "react";
+import { Platform } from "react-native";
 
 import { useApollo } from "@/src/store/ApolloContext";
 import { putShareIntake } from "./shareIntake";
@@ -15,7 +16,7 @@ export { extractUrl } from "./classifyShare";
 export function ShareIntakeListener() {
   const router = useRouter();
   const { ready, setupDone } = useApollo();
-  const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntent({ debug: false, resetOnBackground: true });
+  const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntent({ debug: false, resetOnBackground: true, disabled: Platform.OS === "ios" });
 
   useEffect(() => {
     if (!ready || !setupDone || !hasShareIntent) return;

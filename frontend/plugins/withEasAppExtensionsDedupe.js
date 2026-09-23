@@ -8,9 +8,18 @@
 // counts 2 "ShareExtension" entries and throws, exiting 1 — the exact Step 7 failure.
 //
 // This plugin MUST run before "expo-share-intent" in app.json's plugins list. It keeps the first
-// occurrence of each targetName and touches nothing else.
+// occurrence of each targetName and, because Expo mods execute in reverse registration order,
+// performs the final host App Group entitlement de-duplication after all extension plugins.
+
+const { withEntitlementsPlist } = require("@expo/config-plugins");
 
 module.exports = function withEasAppExtensionsDedupe(config) {
+  config = withEntitlementsPlist(config, (value) => {
+    const key = "com.apple.security.application-groups";
+    const groups = Array.isArray(value.modResults[key]) ? value.modResults[key] : [];
+    value.modResults[key] = [...new Set(groups)];
+    return value;
+  });
   const appExtensions = config.extra?.eas?.build?.experimental?.ios?.appExtensions;
   if (!Array.isArray(appExtensions)) return config;
   const seen = new Set();

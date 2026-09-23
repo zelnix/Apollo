@@ -18,6 +18,8 @@ public class ApolloSecurityModule: Module {
   /// Last observed extension state + when it was observed. Never assumed; refreshed from SFContentBlockerManager.
   private var blockerEnabled: Bool? = nil
   private var blockerVerifiedAt: String? = nil
+  private let transitionLock = NSLock()
+  private var activeTransition: UUID? = nil
 
   /// Exactly what the Safari content blocker covers. Everything else is NOT covered and the UI says so.
   private let coverage = "Covers websites opened in Safari (and Safari View Controller inside other apps). Not covered: Chrome, Firefox and other browsers, in-app browsers that don't use Safari, and non-browser apps."
@@ -70,15 +72,24 @@ public class ApolloSecurityModule: Module {
     return ["block": obj["block"] ?? [], "allow": obj["allow"] ?? [], "autoRisky": obj["autoRisky"] ?? []]
   }
   private func saveCallLists(_ lists: [String: [String]]) -> Bool {
-    guard let url = callListURL, let data = try? JSONSerialization.data(withJSONObject: lists) else { return false }
-    return (try? data.write(to: url, options: .atomic)) != nil
+    let canonical = lists.mapValues { Array(Set($0.compactMap(canonicalPhoneNumber))).sorted() }
+    guard let url = callListURL, let data = try? JSONSerialization.data(withJSONObject: canonical, options: [.sortedKeys]) else { return false }
+    guard (try? data.write(to: url, options: .atomic)) != nil else { return false }
+    let defaults = UserDefaults(suiteName: appGroup)
+    defaults?.set((defaults?.integer(forKey: "apollo.callguard.listVersion") ?? 0) + 1, forKey: "apollo.callguard.listVersion")
+    defaults?.set(now(), forKey: "apollo.callguard.preparedAt")
+    return true
   }
-  private func reloadCallDirectory(_ done: @escaping () -> Void) {
-    CXCallDirectoryManager.sharedInstance().reloadExtension(withIdentifier: callDirectoryId) { _ in done() }
+  private func reloadCallDirectory(_ done: @escaping (Error?) -> Void) {
+    let lock = NSLock(); var finished = false
+    let finish: (Error?) -> Void = { error in lock.lock(); defer { lock.unlock() }; guard !finished else { return }; finished = true; done(error) }
+    CXCallDirectoryManager.sharedInstance().reloadExtension(withIdentifier: callDirectoryId, completionHandler: finish)
+    DispatchQueue.global().asyncAfter(deadline: .now() + 8) { finish(NSError(domain: "ApolloCallDirectory", code: 408, userInfo: [NSLocalizedDescriptionKey: "Call Directory reload timed out."])) }
   }
 
   public func definition() -> ModuleDefinition {
     Name("ApolloSecurity")
+    Events("onProtectionStateChanged")
 
     AsyncFunction("getCapabilities") { (promise: Promise) in
       self.refreshBlockerState { enabled in
@@ -108,21 +119,27 @@ public class ApolloSecurityModule: Module {
     }
 
     AsyncFunction("blockDestination") { (host: String, promise: Promise) in
-      var hosts = self.blockedHosts(); hosts.insert(host.lowercased())
+      guard let canonicalHost = self.canonicalHost(host) else {
+        promise.resolve(self.json(["verified": false, "method": "none", "detail": "That destination is not a valid host.", "adapterLabel": self.label, "blockedAt": NSNull(), "rulesState": "invalid", "reloadState": "not_requested", "activeState": "unobservable"]))
+        return
+      }
+      var hosts = self.blockedHosts(); hosts.insert(canonicalHost)
       self.saveBlockedHosts(hosts)
       guard self.writeRules(hosts) else {
-        promise.resolve(self.json(["verified": false, "method": "none", "detail": "Could not write the Safari rule list (App Group unavailable).", "adapterLabel": self.label, "blockedAt": NSNull()]))
+        promise.resolve(self.json(["verified": false, "method": "none", "detail": "Could not prepare the Safari rule list (App Group unavailable).", "adapterLabel": self.label, "blockedAt": NSNull(), "rulesState": "unavailable", "reloadState": "not_requested", "activeState": "unobservable"]))
         return
       }
       SFContentBlockerManager.reloadContentBlocker(withIdentifier: self.blockerId) { error in
         self.refreshBlockerState { enabled in
-          let verified = error == nil && enabled == true
           promise.resolve(self.json([
-            "verified": verified,
-            "method": verified ? "content_blocker" : "none",
-            "detail": verified ? "Safari reloaded Apollo's rules; this domain is now blocked in Safari." : (enabled == true ? "Safari could not reload the rule list." : "Apollo's Safari extension is not enabled, so the block is not verified."),
+            "verified": false,
+            "method": "content_blocker",
+            "detail": error == nil ? (enabled == true ? "Safari accepted Apollo's updated rule list. Safari does not report whether this destination is later matched." : "The rule list is prepared, but Apollo's Safari extension is not enabled.") : "The rule list is prepared, but Safari could not reload it.",
             "adapterLabel": self.label,
-            "blockedAt": verified ? self.now() : NSNull(),
+            "blockedAt": NSNull(),
+            "rulesState": "prepared",
+            "reloadState": error == nil ? "reload_requested" : "reload_failed",
+            "activeState": enabled == true ? "enabled_match_unobservable" : "not_enabled",
           ]))
         }
       }
@@ -132,21 +149,21 @@ public class ApolloSecurityModule: Module {
       var hosts = self.blockedHosts(); hosts.remove(host.lowercased())
       self.saveBlockedHosts(hosts); _ = self.writeRules(hosts)
       SFContentBlockerManager.reloadContentBlocker(withIdentifier: self.blockerId) { error in
-        promise.resolve(self.json(["verified": error == nil, "method": "content_blocker", "detail": "Rule removed.", "adapterLabel": self.label, "blockedAt": NSNull()]))
+        promise.resolve(self.json(["verified": false, "method": "content_blocker", "detail": error == nil ? "The Safari rule list was updated. Safari does not report individual matches." : "The rule was removed locally, but Safari could not reload the list.", "adapterLabel": self.label, "blockedAt": NSNull(), "rulesState": "prepared", "reloadState": error == nil ? "reload_requested" : "reload_failed", "activeState": "unobservable"]))
       }
     }
 
     AsyncFunction("getNetworkStatus") { (promise: Promise) in
       // iOS exposes very little: NEHotspotNetwork (needs the Access Wi‑Fi Information entitlement + location
       // permission) reports whether the current Wi‑Fi is secure. Anything Apple hides is reported as "unknown".
-      let monitor = NWPathMonitor(); let queue = DispatchQueue(label: "apollo.path")
+      let monitor = NWPathMonitor(); let queue = DispatchQueue(label: "apollo.path"); let lock = NSLock(); var completed = false
+      let resolveOnce: ([String: Any]) -> Void = { value in lock.lock(); defer { lock.unlock() }; guard !completed else { return }; completed = true; monitor.cancel(); promise.resolve(self.json(value)) }
       monitor.pathUpdateHandler = { path in
-        monitor.cancel()
         let type: String = path.status != .satisfied ? "none" : path.usesInterfaceType(.wifi) ? "wifi" : path.usesInterfaceType(.cellular) ? "cellular" : path.usesInterfaceType(.wiredEthernet) ? "ethernet" : "other"
         let vpn = path.availableInterfaces.contains { $0.type == .other && $0.name.hasPrefix("utun") }
         let finish: (String, String?) -> Void = { sec, ssid in
-          promise.resolve(self.json(["connected": path.status == .satisfied, "type": type, "isInternetReachable": path.status == .satisfied,
-                                     "inspectable": self.requested, "wifiSecurity": sec, "captivePortal": NSNull(), "vpnActive": vpn, "ssid": ssid ?? NSNull(), "checkedAt": self.now()]))
+          resolveOnce(["connected": path.status == .satisfied, "type": type, "isInternetReachable": path.status == .satisfied,
+                       "inspectable": self.requested, "wifiSecurity": sec, "captivePortal": NSNull(), "vpnActive": vpn, "ssid": ssid ?? NSNull(), "checkedAt": self.now()])
         }
         guard type == "wifi" else { finish("n/a", nil); return }
         if #available(iOS 14.0, *) {
@@ -159,6 +176,7 @@ public class ApolloSecurityModule: Module {
         } else { finish("unknown", nil) }
       }
       monitor.start(queue: queue)
+      queue.asyncAfter(deadline: .now() + 5) { resolveOnce(["connected": false, "type": "unknown", "isInternetReachable": false, "inspectable": false, "wifiSecurity": "unknown", "captivePortal": NSNull(), "vpnActive": NSNull(), "ssid": NSNull(), "checkedAt": self.now(), "unavailableReason": "observation_timeout"]) }
     }
 
     AsyncFunction("getSecuritySignals") { () -> String in "[]" }
@@ -217,29 +235,29 @@ public class ApolloSecurityModule: Module {
     AsyncFunction("getCallBlockAllowList") { () -> String in self.json(self.loadCallLists()) }
     AsyncFunction("addCallListEntry") { (json: String, promise: Promise) in
       guard let body = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: String],
-            let number = body["number"], !number.isEmpty else { promise.resolve(self.json(["ok": false])); return }
+            let supplied = body["number"], let number = self.canonicalPhoneNumber(supplied) else { promise.resolve(self.json(["ok": false, "listState": "invalid_number", "reloadState": "not_requested"])); return }
       let key = body["kind"] == "allow" ? "allow" : "block"
       var lists = self.loadCallLists()
-      lists[key] = Array(Set((lists[key] ?? []) + [number]))
-      _ = self.saveCallLists(lists)
-      self.reloadCallDirectory { promise.resolve(self.json(["ok": true])) }
+      lists[key] = Array(Set((lists[key] ?? []) + [number])).sorted()
+      guard self.saveCallLists(lists) else { promise.resolve(self.json(["ok": false, "listState": "write_failed", "reloadState": "not_requested"])); return }
+      self.reloadCallDirectory { error in promise.resolve(self.json(["ok": error == nil, "listState": "prepared", "reloadState": error == nil ? "reload_requested" : "reload_failed"])) }
     }
     AsyncFunction("removeCallListEntry") { (json: String, promise: Promise) in
       guard let body = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: String],
-            let number = body["number"] else { promise.resolve(self.json(["ok": false])); return }
+            let supplied = body["number"], let number = self.canonicalPhoneNumber(supplied) else { promise.resolve(self.json(["ok": false, "listState": "invalid_number", "reloadState": "not_requested"])); return }
       let key = body["kind"] == "allow" ? "allow" : "block"
       var lists = self.loadCallLists()
       lists[key] = (lists[key] ?? []).filter { $0 != number }
-      _ = self.saveCallLists(lists)
-      self.reloadCallDirectory { promise.resolve(self.json(["ok": true])) }
+      guard self.saveCallLists(lists) else { promise.resolve(self.json(["ok": false, "listState": "write_failed", "reloadState": "not_requested"])); return }
+      self.reloadCallDirectory { error in promise.resolve(self.json(["ok": error == nil, "listState": "prepared", "reloadState": error == nil ? "reload_requested" : "reload_failed"])) }
     }
     AsyncFunction("markNumberRisky") { (json: String, promise: Promise) in
       guard let body = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: String],
-            let number = body["number"], !number.isEmpty else { promise.resolve(self.json(["ok": false])); return }
+            let supplied = body["number"], let number = self.canonicalPhoneNumber(supplied) else { promise.resolve(self.json(["ok": false, "listState": "invalid_number", "reloadState": "not_requested"])); return }
       var lists = self.loadCallLists()
-      lists["autoRisky"] = Array(Set((lists["autoRisky"] ?? []) + [number]))
-      _ = self.saveCallLists(lists)
-      self.reloadCallDirectory { promise.resolve(self.json(["ok": true])) }
+      lists["autoRisky"] = Array(Set((lists["autoRisky"] ?? []) + [number])).sorted()
+      guard self.saveCallLists(lists) else { promise.resolve(self.json(["ok": false, "listState": "write_failed", "reloadState": "not_requested"])); return }
+      self.reloadCallDirectory { error in promise.resolve(self.json(["ok": error == nil, "listState": "prepared", "reloadState": error == nil ? "reload_requested" : "reload_failed"])) }
     }
 
     // Phase A — Apps & Device (AppDeviceSdk contract). iPhone exposes exactly two facts; the rest is honestly null.
@@ -261,21 +279,33 @@ public class ApolloSecurityModule: Module {
     }
 
     AsyncFunction("startProtection") { (promise: Promise) in
+      guard let transition = self.beginTransition() else { promise.resolve(self.statusJSON(transitionFailure: "transition_in_progress")); return }
       self.requested = true
       if self.protectionSince == nil { self.protectionSince = self.now() }
       _ = self.writeRules(self.blockedHosts())
       // Report only after Safari has answered: reload result + real extension state.
+      let timeout = DispatchWorkItem { if self.completeTransition(transition) { promise.resolve(self.statusJSON(transitionFailure: "transition_timeout")) } }
+      DispatchQueue.global().asyncAfter(deadline: .now() + 10, execute: timeout)
       SFContentBlockerManager.reloadContentBlocker(withIdentifier: self.blockerId) { _ in
-        self.refreshBlockerState { _ in promise.resolve(self.statusJSON()) }
+        self.refreshBlockerState { _ in
+          guard self.completeTransition(transition) else { return }
+          timeout.cancel(); let status = self.statusJSON(); self.sendEvent("onProtectionStateChanged", ["value": status]); promise.resolve(status)
+        }
       }
     }
     AsyncFunction("stopProtection") { (promise: Promise) in
+      guard let transition = self.beginTransition() else { promise.resolve(self.statusJSON(transitionFailure: "transition_in_progress")); return }
       self.requested = false
       self.protectionSince = nil
       // Turning protection off must also stop enforcing: write an empty rule list and reload.
       _ = self.writeRules([])
+      let timeout = DispatchWorkItem { if self.completeTransition(transition) { promise.resolve(self.statusJSON(transitionFailure: "transition_timeout")) } }
+      DispatchQueue.global().asyncAfter(deadline: .now() + 10, execute: timeout)
       SFContentBlockerManager.reloadContentBlocker(withIdentifier: self.blockerId) { _ in
-        self.refreshBlockerState { _ in promise.resolve(self.statusJSON()) }
+        self.refreshBlockerState { _ in
+          guard self.completeTransition(transition) else { return }
+          timeout.cancel(); let status = self.statusJSON(); self.sendEvent("onProtectionStateChanged", ["value": status]); promise.resolve(status)
+        }
       }
     }
 
@@ -371,6 +401,10 @@ public class ApolloSecurityModule: Module {
     // verified actions. A manual "Block" tap must never appear here either — see blockDestination()
     // above, whose `verified` flag already reflects the same "no observed drop" truth for the app's own UI.
     AsyncFunction("getEnforcementEvidence") { () -> String in "[]" }
+
+    AsyncFunction("getShareHandoff") { (handoffId: String) -> String in self.shareHandoff(handoffId) }
+    AsyncFunction("acknowledgeShareHandoff") { (handoffId: String) -> String in self.acknowledgeShareHandoff(handoffId) }
+    AsyncFunction("discardShareHandoff") { (handoffId: String) -> String in self.discardShareHandoff(handoffId) }
   }
 
   // MARK: - Helpers
@@ -394,12 +428,16 @@ public class ApolloSecurityModule: Module {
   /// Writes the Safari rule list built by SiteGuardTruth.rules (pure, unit-tested).
   private func writeRules(_ hosts: Set<String>) -> Bool {
     guard let url = listURL, let data = try? JSONSerialization.data(withJSONObject: SiteGuardTruth.rules(for: hosts)) else { return false }
-    return (try? data.write(to: url, options: .atomic)) != nil
+    guard (try? data.write(to: url, options: .atomic)) != nil else { return false }
+    let defaults = UserDefaults(suiteName: appGroup)
+    defaults?.set((defaults?.integer(forKey: "apollo.siteguard.ruleVersion") ?? 0) + 1, forKey: "apollo.siteguard.ruleVersion")
+    defaults?.set(now(), forKey: "apollo.siteguard.rulesPreparedAt")
+    return true
   }
 
   /// requested = intent · operational = extension enabled (observed) AND rules written · degradedReason = the gap.
   /// Derivation lives in SiteGuardTruth so it is unit-tested; this only reads observed inputs and formats.
-  private func statusJSON() -> String {
+  private func statusJSON(transitionFailure: String? = nil) -> String {
     let wants = requested
     let d = SiteGuardTruth.derive(requested: wants, blockerEnabled: blockerEnabled, rulesWritten: rulesWritten)
     return json([
@@ -415,10 +453,78 @@ public class ApolloSecurityModule: Module {
       "since": wants ? (protectionSince ?? NSNull()) : NSNull(),
       "adapterLabel": label,
       "checkedAt": now(),
+      "transitionFailure": transitionFailure ?? NSNull(),
+      "ruleVersion": UserDefaults(suiteName: appGroup)?.integer(forKey: "apollo.siteguard.ruleVersion") ?? 0,
+      "rulesPreparedAt": UserDefaults(suiteName: appGroup)?.string(forKey: "apollo.siteguard.rulesPreparedAt") ?? NSNull(),
     ])
   }
 
   private func now() -> String { ISO8601DateFormatter().string(from: Date()) }
+  private func beginTransition() -> UUID? {
+    transitionLock.lock(); defer { transitionLock.unlock() }
+    guard activeTransition == nil else { return nil }
+    let value = UUID(); activeTransition = value; return value
+  }
+  private func completeTransition(_ value: UUID) -> Bool {
+    transitionLock.lock(); defer { transitionLock.unlock() }
+    guard activeTransition == value else { return false }
+    activeTransition = nil; return true
+  }
+  private func canonicalHost(_ value: String) -> String? {
+    let host = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+    guard !host.isEmpty, host.count <= 253, host.range(of: #"^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])$"#, options: .regularExpression) != nil else { return nil }
+    return host
+  }
+  private func canonicalPhoneNumber(_ value: String) -> String? {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard trimmed.range(of: #"^\+[1-9][0-9]{7,14}$"#, options: .regularExpression) != nil else { return nil }
+    return trimmed
+  }
+
+  private var shareHandoffRoot: URL? {
+    FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup)?.appendingPathComponent("ApolloShareHandoffs", isDirectory: true)
+  }
+  private func shareHandoffDirectory(_ id: String) -> URL? {
+    guard let uuid = UUID(uuidString: id), uuid.uuidString.lowercased() == id.lowercased(), !id.contains("/") else { return nil }
+    return shareHandoffRoot?.appendingPathComponent(uuid.uuidString.lowercased(), isDirectory: true)
+  }
+  private func shareHandoff(_ id: String) -> String {
+    cleanupShareHandoffs()
+    guard let directory = shareHandoffDirectory(id) else { return json(["status": "invalid", "handoffId": id, "detail": "The share reference is invalid."]) }
+    let manifest = directory.appendingPathComponent("manifest.complete.json")
+    guard let data = try? Data(contentsOf: manifest), let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any], object["state"] as? String == "committed" else {
+      return json(["status": "missing", "handoffId": id, "detail": "The protected shared items are not complete or are no longer available."])
+    }
+    if let value = object["expiresAt"] as? String, let expiry = ISO8601DateFormatter().date(from: value), expiry <= Date() {
+      try? FileManager.default.removeItem(at: directory)
+      return json(["status": "expired", "handoffId": id, "detail": "The protected shared items expired. Share them with Apollo again."])
+    }
+    guard let payload = object["payload"] as? [String: Any] else { return json(["status": "invalid", "handoffId": id, "detail": "The share manifest is invalid."]) }
+    return json(["status": "ready", "handoffId": id, "payload": payload])
+  }
+  private func acknowledgeShareHandoff(_ id: String) -> String {
+    guard let directory = shareHandoffDirectory(id), FileManager.default.fileExists(atPath: directory.appendingPathComponent("manifest.complete.json").path) else { return json(["acknowledged": false]) }
+    let marker = directory.appendingPathComponent("imported")
+    let stored = (try? Data(now().utf8).write(to: marker, options: .atomic)) != nil
+    return json(["acknowledged": stored])
+  }
+  private func discardShareHandoff(_ id: String) -> String {
+    guard let directory = shareHandoffDirectory(id) else { return json(["discarded": false]) }
+    let existed = FileManager.default.fileExists(atPath: directory.path)
+    if existed { try? FileManager.default.removeItem(at: directory) }
+    return json(["discarded": existed])
+  }
+  private func cleanupShareHandoffs() {
+    guard let root = shareHandoffRoot else { return }
+    let directories = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+    for directory in directories {
+      let data = try? Data(contentsOf: directory.appendingPathComponent("manifest.complete.json"))
+      let object = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+      let expiry = (object?["expiresAt"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) }
+      let modified = try? directory.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+      if (expiry ?? modified ?? .distantPast) <= Date() { try? FileManager.default.removeItem(at: directory) }
+    }
+  }
   private func platformVersion() -> String { "iOS \(UIDevice.current.systemVersion)" }
   /// `requested`/`lastRequestedAt` = Apollo's recorded request history; `status`/`enabled` = fresh OS observation.
   private func perm(_ id: String, _ title: String, _ status: String, _ canAskAgain: Bool, _ why: String, _ observedAt: String, enabled: Bool?, unavailableReason: String? = nil) -> [String: Any] {

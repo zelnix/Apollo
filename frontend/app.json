@@ -3,7 +3,7 @@
     "name": "Apollo",
     "slug": "threat-patrol-1",
     "version": "1.1.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "apollo",
     "userInterfaceStyle": "light",
@@ -13,12 +13,26 @@
       "supportsTablet": true,
       "bundleIdentifier": "app.apollo.hwg",
       "infoPlist": {
-        "NSUserNotificationsUsageDescription": "Tell you when Apollo barks about a threat",
-        "NSLocationWhenInUseUsageDescription": "Check whether your current Wi‑Fi is open or secured",
-        "NSMicrophoneUsageDescription": "Record a short voice note to reassure family"
+        "NSUserNotificationsUsageDescription": "Receive important threat and family alerts",
+        "NSLocationWhenInUseUsageDescription": "Check whether your Wi-Fi connection is secured",
+        "NSMicrophoneUsageDescription": "Record reassurance notes for trusted family"
       },
       "entitlements": {
         "com.apple.developer.networking.wifi-info": true
+      },
+      "privacyManifests": {
+        "NSPrivacyAccessedAPITypes": [
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+            "NSPrivacyAccessedAPITypeReasons": ["CA92.1"]
+          },
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryFileTimestamp",
+            "NSPrivacyAccessedAPITypeReasons": ["C617.1"]
+          }
+        ],
+        "NSPrivacyCollectedDataTypes": [],
+        "NSPrivacyTracking": false
       }
     },
     "android": {
@@ -30,6 +44,7 @@
       "package": "app.apollo.hwg",
       "googleServicesFile": "./google-services.json",
       "permissions": [
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.INTERNET",
         "android.permission.RECORD_AUDIO",
@@ -48,6 +63,7 @@
     "plugins": [
       "./plugins/withEasAppExtensionsDedupe",
       "./plugins/withNativeDependencyGuard",
+      "./modules/apollo-family-assist/plugin/withApolloFamilyAssist",
       "expo-router",
       [
         "expo-notifications",
@@ -70,13 +86,18 @@
         }
       ],
       "expo-font",
+      "expo-asset",
       "expo-image",
       "expo-secure-store",
       "expo-web-browser",
       "expo-status-bar",
+      "./plugins/withApolloShareIntake",
       [
         "expo-share-intent",
         {
+          "iosAppGroupIdentifier": "group.app.apollo.hwg.apollo",
+          "iosShareExtensionBundleIdentifier": "app.apollo.hwg.shareextension",
+          "iosShareExtensionName": "Apollo Share Extension",
           "iosActivationRules": {
             "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
             "NSExtensionActivationSupportsText": true,
@@ -125,6 +146,9 @@
         {
           "android": {
             "minSdkVersion": 26
+          },
+          "ios": {
+            "deploymentTarget": "16.4"
           }
         }
       ]
@@ -138,6 +162,24 @@
           "experimental": {
             "ios": {
               "appExtensions": [
+                {
+                  "targetName": "ApolloFamilyAssistBroadcast",
+                  "bundleIdentifier": "app.apollo.hwg.familyassistbroadcast",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.app.apollo.hwg.apollo"
+                    ]
+                  }
+                },
+                {
+                  "targetName": "ApolloShareExtension",
+                  "bundleIdentifier": "app.apollo.hwg.shareextension",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.app.apollo.hwg.apollo"
+                    ]
+                  }
+                },
                 {
                   "targetName": "ApolloContentBlocker",
                   "bundleIdentifier": "app.apollo.hwg.contentblocker",

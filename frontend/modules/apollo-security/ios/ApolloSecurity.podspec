@@ -5,7 +5,7 @@ Pod::Spec.new do |s|
   s.description    = 'Native security adapter shell for Apollo V1.'
   s.author         = 'HuCentAI'
   s.homepage       = 'https://example.com/apollo'
-  s.platforms      = { :ios => '15.1' }
+  s.platforms      = { :ios => '16.4' }
   s.source         = { git: '' }
   s.static_framework = true
   s.dependency 'ExpoModulesCore'

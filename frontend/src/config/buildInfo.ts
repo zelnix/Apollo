@@ -4,13 +4,14 @@
 // There is no such number in Expo Go / the web preview (no native build exists yet), so we show
 // when this preview bundle started running instead — the closest honest proxy, client-side, for
 // "when this was last published".
+import * as Application from "expo-application";
 import Constants from "expo-constants";
 
-export const APP_VERSION: string = Constants.expoConfig?.version ?? "1.0.0";
+export const APP_VERSION: string = Application.nativeApplicationVersion ?? Constants.expoConfig?.version ?? "Unknown";
 
-const iosBuildNumber = Constants.expoConfig?.ios?.buildNumber ?? null;
-const androidVersionCode = Constants.expoConfig?.android?.versionCode ?? null;
-export const NATIVE_BUILD_NUMBER: string | null = iosBuildNumber ?? (androidVersionCode != null ? String(androidVersionCode) : null);
+const configuredIosBuild = Constants.expoConfig?.ios?.buildNumber ?? null;
+const configuredAndroidBuild = Constants.expoConfig?.android?.versionCode ?? null;
+export const NATIVE_BUILD_NUMBER: string | null = Application.nativeBuildVersion ?? configuredIosBuild ?? (configuredAndroidBuild != null ? String(configuredAndroidBuild) : null);
 
 // Captured once per loaded bundle (module scope) — not per render.
 const PREVIEW_LOADED_AT = new Date();

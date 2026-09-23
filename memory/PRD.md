@@ -1,3 +1,19 @@
+## FF10 Family Help — configuration-gated source complete (2026-09-23)
+
+### Problem statement
+Let one paired family helper watch an owner-consented mobile screen session without control, audio or recording, while the backend owns authorization, lifecycle and time limits and no media/SDP/ICE enters durable product storage.
+
+### Architecture implemented
+- FastAPI/MongoDB owns relationship/device authorization, revisions/generations, invitation/consent/active deadlines, stale callback rejection, one-session concurrency, single-use WSS tickets, closed bounded signaling and minimal terminal events.
+- A server-only coturn REST broker issues session+generation+device+role-bound credentials for at most ten minutes. Missing/invalid TURN configuration fails closed with `configuration_missing` and disables only Family Help.
+- Apollo-owned Expo module uses Android MediaProjection + foreground service and iOS ReplayKit Broadcast Upload; WebRTC frames and helper rendering remain native. First release has no microphone, system audio, recording, remote control or data channel.
+- Mobile routes cover overview, helper/scope selection, invitation wait, accept/decline, native consent, owner pause/resume/extend/stop, helper view and neutral pause state.
+
+### Backlog
+- **P0 application source:** none identified for configuration-gated FF10.
+- **P1 sole activation dependency:** an authorised infrastructure operator deploys/configures TURN per `docs/FF10_TURN_DEPLOYMENT_SPECIFICATION.md`, then performs real-device relay acceptance. Until then Family Help stays unavailable.
+- **P2 external evidence:** Apple Xcode compile/signing, physical-device lifecycle, NAT/relay matrix and production capacity/incident drills.
+
 ## Phase 2 execution — authorised baseline (2026-09-22)
 
 ### Controlling scope

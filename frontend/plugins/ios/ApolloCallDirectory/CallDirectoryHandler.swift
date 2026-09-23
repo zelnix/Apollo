@@ -25,7 +25,7 @@ class CallDirectoryHandler: CXCallDirectoryProvider {
     let lists = Self.loadLists()
     let allow = Set(lists["allow"] ?? [])
     let blocked = Set(lists["block"] ?? []).union(Set(lists["autoRisky"] ?? [])).subtracting(allow)
-    let numbers = blocked.compactMap { Self.toPhoneNumber($0) }.sorted()
+    let numbers = Array(Set(blocked.compactMap { Self.toPhoneNumber($0) })).sorted()
     for number in numbers {
       context.addBlockingEntry(withNextSequentialPhoneNumber: number)
     }
@@ -46,10 +46,11 @@ class CallDirectoryHandler: CXCallDirectoryProvider {
     return obj
   }
 
-  /// CXCallDirectoryPhoneNumber is digits-only Int64 (no leading '+'). Non-numeric / empty input is skipped.
+  /// Input must already be canonical E.164. Invalid/ambiguous values are rejected rather than guessed.
   private static func toPhoneNumber(_ e164: String) -> CXCallDirectoryPhoneNumber? {
-    let digits = e164.filter { $0.isNumber }
-    guard !digits.isEmpty, let value = CXCallDirectoryPhoneNumber(digits) else { return nil }
+    guard e164.range(of: #"^\+[1-9][0-9]{7,14}$"#, options: .regularExpression) != nil else { return nil }
+    let digits = String(e164.dropFirst())
+    guard let value = CXCallDirectoryPhoneNumber(digits) else { return nil }
     return value
   }
 }

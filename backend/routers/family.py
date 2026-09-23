@@ -245,6 +245,8 @@ async def unlink_device(link_id: str, device_id: str = Query(min_length=8, max_l
         raise HTTPException(status_code=404, detail="Unknown pairing.")
     link = await db.family_links.find_one({"_id": oid}, {"protected_device_id": 1, "guardian_device_id": 1})
     if link:  # the relationship ended: voice audio exchanged within it is purged (confirmed or retried by the sweeper)
+        from services.family_assist.sessions import revoke_for_relationship
+        await revoke_for_relationship(link_id)
         await db.incident_notes.update_many({"protected_device_id": link["protected_device_id"], "guardian_device_id": link["guardian_device_id"]},
                                             {"$set": {"lifecycle_revoked_at": now_utc(), "transcript": "", "transcript_status": "revoked"}})
         await purge_voice_audio({"protected_device_id": link["protected_device_id"], "guardian_device_id": link["guardian_device_id"]}, "unlinked")

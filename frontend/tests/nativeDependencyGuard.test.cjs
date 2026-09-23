@@ -15,7 +15,10 @@ function writeJson(filename, data) {
 function fixture(t, dependencies = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apollo-native-guard-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  writeJson(path.join(root, 'package.json'), { name: 'fixture', version: '1.0.0', dependencies });
+  writeJson(path.join(root, 'package.json'), {
+    name: 'fixture', version: '1.0.0', dependencies,
+    expo: { autolinking: { android: { exclude: ['guarddog-expo-module'] }, ios: { exclude: ['guarddog-expo-module'] } } },
+  });
   return root;
 }
 function install(root, name, version, parent = root, marker) {
@@ -196,6 +199,11 @@ test('Android AND iOS prebuild callbacks reject duplicates after installation', 
 test('combined preflight is strict except for the actual EAS pre-install lifecycle', t => {
   const root = fixture(t);
   fs.cpSync(path.resolve(__dirname, '../scripts'), path.join(root, 'scripts'), { recursive: true });
+  for (const filename of ['app.config.js', 'app.json', 'guarddog-acceptance.config.json']) {
+    fs.copyFileSync(path.resolve(__dirname, '..', filename), path.join(root, filename));
+  }
+  fs.mkdirSync(path.join(root, 'android/app'), { recursive: true });
+  fs.copyFileSync(path.resolve(__dirname, '../android/app/build.gradle'), path.join(root, 'android/app/build.gradle'));
   fs.mkdirSync(path.join(root, 'src/security'), { recursive: true });
   fs.copyFileSync(path.resolve(__dirname, '../src/security/securityConfig.ts'), path.join(root, 'src/security/securityConfig.ts'));
   const run = lifecycle => spawnSync(process.execPath, [path.join(root, 'scripts/security-preflight.mjs')], {
