@@ -101,7 +101,7 @@ def screen_home(size):
     im, d, y, bottom = base_screen(size, "Home", "Home"); w, _ = size
     card(d, (24, y, w-24, y+210), "#FFFFFF", "#C7CEDA", 22)
     dog = mascot_frame("patrolling", 0, 126); im.paste(dog, ((w-126)//2, y+8), dog)
-    d.text((44, y+143), "Apollo is resting", font=font(22, "bold"), fill=PALETTE["text"])
+    d.text((44, y+143), "Apollo is Patrolling", font=font(22, "bold"), fill=PALETTE["text"])
     paragraph(d, (44, y+175), "Protected within the checks Apollo can currently see.", w-88, 13)
     y += 228; card(d, (24, y, w-24, y+104)); pill(d, (40, y+16), "10 Gates active", "resting")
     d.text((40, y+56), "Protection", font=font(17, "bold"), fill=PALETTE["navy"]); paragraph(d, (40, y+78), "No Gate needs your attention.", w-80, 13)
@@ -222,12 +222,13 @@ def main():
             for theme in ("light","dark"):
                 filename=f"{name}-{device}-{theme}.png"; builder(size).save(SCREENS/filename,optimize=True)
                 entries.append({"group":"Screen captures","label":f"{name.replace('-',' ').title()} · {device.title()} · {theme.title()}","path":f"screens/{filename}","width":size[0],"height":size[1]})
+    labels={"resting":"Patrolling","sniffing-loading":"Sniffing Loading","growling-warning":"Growling Warning","barking-danger":"Barking Danger","biting-blocked":"Biting Blocked","success":"Success"}
     specs=[("resting","patrolling",None),("sniffing-loading","sniffing",None),("growling-warning","growling",None),("barking-danger","barking",None),("biting-blocked","barking","blocked"),("success","patrolling","success")]
     for state,source,overlay in specs:
-        save_transparent_gif(state,source,overlay); entries.append({"group":"Transparent Apollo loops","label":state.replace('-',' ').title(),"path":f"gifs/transparent/apollo-{state}.gif"})
-    demos=[("resting","patrolling",PALETTE["green"],"Protected","Apollo is resting within the checks he can currently see.",None),("sniffing-loading","sniffing",PALETTE["unknown"],"Apollo is checking","The result is not ready yet.",None),("growling-warning","growling",PALETTE["amber"],"Needs your attention","Apollo found something that needs a careful check.",None),("barking-danger","barking",PALETTE["red"],"Threat warning","Stop and review the evidence before continuing.",None),("biting-blocked","barking",PALETTE["red"],"Threat stopped","Apollo confirmed and stopped this threat within the shown scope.","blocked"),("success","patrolling",PALETTE["green"],"All clear","The check completed with no known threat found.","success")]
+        save_transparent_gif(state,source,overlay); entries.append({"group":"Transparent Apollo loops","label":labels[state],"path":f"gifs/transparent/apollo-{state}.gif"})
+    demos=[("resting","patrolling",PALETTE["green"],"Protected","Apollo is Patrolling within the checks he can currently see.",None),("sniffing-loading","sniffing",PALETTE["unknown"],"Apollo is checking","The result is not ready yet.",None),("growling-warning","growling",PALETTE["amber"],"Needs your attention","Apollo found something that needs a careful check.",None),("barking-danger","barking",PALETTE["red"],"Threat warning","Stop and review the evidence before continuing.",None),("biting-blocked","barking",PALETTE["red"],"Threat stopped","Apollo confirmed and stopped this threat within the shown scope.","blocked"),("success","patrolling",PALETTE["green"],"All clear","The check completed with no known threat found.","success")]
     for args in demos:
-        state_demo(*args); entries.append({"group":"Full-screen state demonstrations","label":args[0].replace('-',' ').title(),"path":f"gifs/full-screen/apollo-{args[0]}-ui-demo.gif"})
+        state_demo(*args); entries.append({"group":"Full-screen state demonstrations","label":labels[args[0]],"path":f"gifs/full-screen/apollo-{args[0]}-ui-demo.gif"})
     (OUT/"manifest.json").write_text(json.dumps({"generatedFrom":"Apollo current source","darkThemeNote":"Current dark preference uses the Light Sentinel palette.","assets":entries},indent=2),encoding="utf-8")
     (OUT/"index.html").write_text(gallery(entries),encoding="utf-8")
     print(json.dumps({"screens":28,"transparentGifs":6,"fullScreenGifs":6,"output":str(OUT)}))

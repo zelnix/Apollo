@@ -18,6 +18,12 @@ export interface FamilyAssistNativeState {
   sessionId: string | null; generation: string | null; captureState: CaptureState;
   helperConnected: boolean; captureScope: CaptureScope | null; microphoneEnabled: false;
   startedAt: string | null; lastTransitionAt: string; failureCode: string | null;
+  endReason?: string | null;
+}
+
+export interface FamilyAssistNativeEventPayload extends FamilyAssistNativeState {
+  type: FamilyAssistNativeEvent | "capture_starting";
+  observedAt: string;
 }
 
 export interface StartFamilyAssistCaptureInput {

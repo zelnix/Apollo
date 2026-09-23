@@ -12,4 +12,5 @@ export const issueSignalingTicket = (id: string) => apiPost<SignalingTicket>(`/f
 export const commandFamilyHelp = (session: AssistSession, action: "pause" | "resume" | "extend") => apiPost<AssistSession>(`/family/assist/sessions/${session.sessionId}/${action}`, "family", { expectedRevision: session.revision });
 export const publishNativeState = (session: AssistSession, nativeState: "connecting" | "active" | "failed", failureCode?: string) => apiPost<AssistSession>(`/family/assist/sessions/${session.sessionId}/native-state`, "family", { expectedRevision: session.revision, generation: session.generation, nativeState, failureCode });
 export const endFamilyHelp = (session: AssistSession) => apiDelete<AssistSession>(`/family/assist/sessions/${session.sessionId}?expectedRevision=${session.revision}`);
+export const endFamilyHelpById = (sessionId: string) => apiDelete<AssistSession>(`/family/assist/sessions/${sessionId}`);
 export const signalingBaseUrl = API_BASE;

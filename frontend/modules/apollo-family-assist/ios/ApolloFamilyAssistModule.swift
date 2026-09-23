@@ -12,15 +12,23 @@ final class FamilyAssistCoordinator {
   var eventSink: ((String) -> Void)?
   var viewer: FamilyAssistViewerPeer?
   private(set) var state: [String: Any] = ["sessionId": NSNull(), "generation": NSNull(), "captureState": "idle", "helperConnected": false,
-    "captureScope": NSNull(), "microphoneEnabled": false, "startedAt": NSNull(), "lastTransitionAt": ISO8601DateFormatter().string(from: Date()), "failureCode": NSNull()]
-  func transition(_ value: String, event: String? = nil, failure: String? = nil) {
-    lock.lock(); state["captureState"] = value; state["lastTransitionAt"] = ISO8601DateFormatter().string(from: Date()); state["failureCode"] = failure == nil ? NSNull() : failure!; lock.unlock()
+    "captureScope": NSNull(), "microphoneEnabled": false, "startedAt": NSNull(), "lastTransitionAt": ISO8601DateFormatter().string(from: Date()), "failureCode": NSNull(), "endReason": NSNull()]
+  func transition(_ value: String, event: String? = nil, failure: String? = nil, reason: String? = nil) {
+    lock.lock(); state["captureState"] = value; state["lastTransitionAt"] = ISO8601DateFormatter().string(from: Date()); state["failureCode"] = failure == nil ? NSNull() : failure!; state["endReason"] = reason == nil ? NSNull() : reason!; lock.unlock()
     if let event { eventSink?(event) }
   }
   func setSession(_ input: [String: Any]) {
     lock.lock(); state["sessionId"] = input["sessionId"]; state["generation"] = input["generation"]; state["captureScope"] = input["captureScope"]; lock.unlock()
   }
-  func snapshot() -> [String: Any] { lock.lock(); defer { lock.unlock() }; return state }
+  func snapshot() -> [String: Any] {
+    lock.lock(); var current = state; lock.unlock()
+    if let extensionState = UserDefaults(suiteName: familyGroup)?.dictionary(forKey: "family-assist-extension-state"),
+       extensionState["sessionId"] as? String == current["sessionId"] as? String,
+       extensionState["generation"] as? String == current["generation"] as? String {
+      for (key, value) in extensionState { current[key] = value }
+    }
+    return current
+  }
   func requireCurrent(_ session: String, _ generation: String) throws {
     let current = snapshot(); guard current["sessionId"] as? String == session, current["generation"] as? String == generation else { throw FamilyAssistError.staleGeneration }
   }
@@ -30,7 +38,7 @@ public final class ApolloFamilyAssistModule: Module {
   public func definition() -> ModuleDefinition {
     Name("ApolloFamilyAssist")
     Events("onFamilyAssistEvent")
-    OnCreate { FamilyAssistCoordinator.shared.eventSink = { [weak self] type in self?.sendEvent("onFamilyAssistEvent", ["type": type, "observedAt": ISO8601DateFormatter().string(from: Date())]) } }
+    OnCreate { FamilyAssistCoordinator.shared.eventSink = { [weak self] type in var body = FamilyAssistCoordinator.shared.snapshot(); body["type"] = type; body["observedAt"] = ISO8601DateFormatter().string(from: Date()); self?.sendEvent("onFamilyAssistEvent", body) } }
     OnDestroy { FamilyAssistCoordinator.shared.eventSink = nil; FamilyAssistCoordinator.shared.viewer?.close(); FamilyAssistCoordinator.shared.viewer = nil }
     AsyncFunction("getCapabilities") { () -> [String: Any] in [
       "platform": "ios", "screenShare": "permission_required", "supportedScopes": ["full_display"], "helperViewing": "available",
@@ -41,12 +49,13 @@ public final class ApolloFamilyAssistModule: Module {
     AsyncFunction("startCapture") { (input: [String: Any]) in
       guard input["microphoneEnabled"] as? Bool == false else { throw FamilyAssistError.microphoneUnavailable }
       guard let handoff = FamilyAssistHandoff(input), handoff.expiresAt > Date() else { throw FamilyAssistError.invalidInput }
+      UserDefaults(suiteName: familyGroup)?.removeObject(forKey: "family-assist-extension-state")
       try self.writeHandoff(handoff); FamilyAssistCoordinator.shared.setSession(input); FamilyAssistCoordinator.shared.transition("requesting_consent", event: "consent_shown")
       await MainActor.run { self.openBroadcastPicker() }
     }
     AsyncFunction("pauseCapture") { (session: String, generation: String) in try FamilyAssistCoordinator.shared.requireCurrent(session, generation); self.writeCommand("pause", session, generation); FamilyAssistCoordinator.shared.transition("paused", event: "capture_paused") }
     AsyncFunction("resumeCapture") { (session: String, generation: String) in try FamilyAssistCoordinator.shared.requireCurrent(session, generation); self.writeCommand("resume", session, generation); FamilyAssistCoordinator.shared.transition("active", event: "capture_started") }
-    AsyncFunction("stopCapture") { (session: String, generation: String) in try FamilyAssistCoordinator.shared.requireCurrent(session, generation); self.writeCommand("stop", session, generation); FamilyAssistCoordinator.shared.transition("stopping") }
+    AsyncFunction("stopCapture") { (session: String, generation: String) in try FamilyAssistCoordinator.shared.requireCurrent(session, generation); self.writeCommand("stop", session, generation); FamilyAssistCoordinator.shared.transition("stopped", event: "capture_stopped", reason: "owner_stopped") }
     AsyncFunction("startViewer") { (input: [String: Any]) in
       guard let handoff = FamilyAssistViewerInput(input) else { throw FamilyAssistError.invalidInput }
       FamilyAssistCoordinator.shared.viewer?.close(); FamilyAssistCoordinator.shared.setSession(input)

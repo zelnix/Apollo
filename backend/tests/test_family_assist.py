@@ -3,11 +3,13 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from fastapi import HTTPException
 
 from core.db import now_utc
 from services.family_assist.config import UNAVAILABLE_COPY, capability_record, load_config
 from services.family_assist import relay_credentials
 from services.family_assist.signaling import validate_message
+from services.family_assist.sessions import signaling_transition
 
 
 CONFIG_KEYS = (
@@ -134,3 +136,13 @@ def test_no_media_or_turn_secret_fields_in_durable_session_source():
     source = open("services/family_assist/sessions.py", encoding="utf-8").read()
     for forbidden in ("recording_url", "frame_data", "audio_data", "turn_secret", "FAMILY_ASSIST_TURN_SHARED_SECRET", "CLOUDFLARE_TURN_API_TOKEN"):
         assert forbidden not in source
+
+
+def test_native_signaling_pause_resume_stop_failure_and_helper_leave_are_state_fenced():
+    assert signaling_transition("active", "sharer", {"type": "pause_state", "paused": True}) == ("paused", None)
+    assert signaling_transition("paused", "sharer", {"type": "pause_state", "paused": False}) == ("active", None)
+    assert signaling_transition("active", "sharer", {"type": "terminate", "reason": "owner_stopped"}) == ("ended", "owner_stopped")
+    assert signaling_transition("connecting", "sharer", {"type": "terminate", "reason": "transport_failed"}) == ("ended", "transport_failed")
+    assert signaling_transition("active", "helper", {"type": "terminate", "reason": "helper_left"}) == ("ended", "helper_left")
+    with pytest.raises(HTTPException): signaling_transition("connecting", "sharer", {"type": "pause_state", "paused": True})
+    with pytest.raises(HTTPException): signaling_transition("active", "helper", {"type": "pause_state", "paused": True})

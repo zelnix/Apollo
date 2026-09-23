@@ -5,6 +5,7 @@ import hashlib
 import secrets
 import uuid
 from datetime import timedelta
+from typing import Optional
 
 from fastapi import HTTPException
 from pymongo import ReturnDocument
@@ -185,6 +186,47 @@ async def publish_native_state(session_id: str, caller: str, body, helper_connec
         {"$set": updates, "$inc": {"revision": 1}}, projection={"_id": 0}, return_document=ReturnDocument.AFTER)
     if not updated: raise _conflict("stale_generation", "That capture callback belongs to an older session state.")
     if updated["state"] == "failed": await project_terminal(updated)
+    return view(updated, caller)
+
+
+def signaling_transition(state: str, role: str, message: dict) -> tuple[str, Optional[str]]:
+    kind = message["type"]
+    if kind == "terminate":
+        allowed = {"owner_stopped", "capture_revoked", "transport_failed", "os_terminated", "app_terminated"} if role == "sharer" else {"helper_left", "transport_failed", "app_terminated"}
+        if message.get("reason") not in allowed:
+            raise HTTPException(403, "That device cannot publish this termination reason.")
+        return "ended", message["reason"]
+    if kind != "pause_state" or role != "sharer":
+        raise HTTPException(403, "Only the screen owner can publish capture controls.")
+    desired = "paused" if message["paused"] else "active"
+    expected = "active" if message["paused"] else "paused"
+    if state not in {desired, expected}:
+        raise _conflict("native_state_rejected", "That native capture control is not valid in the current session.")
+    return desired, None
+
+
+async def apply_signaling_state(session_id: str, caller: str, generation: str, message: dict) -> dict:
+    """Apply native signaling controls without trusting a stale client-side revision."""
+    row = await get_session(session_id, caller)
+    if row["generation"] != generation:
+        raise _conflict("stale_generation", "That native signal belongs to an older Family Help session.")
+    role = role_for_device(row, caller)
+    desired, reason = signaling_transition(row["state"], role, message)
+    if desired == "ended":
+        return await end_session(session_id, caller, reason=reason or "transport_failed")
+    paused = desired == "paused"
+    expected = "active" if paused else "paused"
+    if row["state"] == desired:
+        return view(row, caller)
+    updates = {"state": desired, "paused_at": now_utc() if paused else None}
+    if paused:
+        updates["ever_paused"] = True
+    updated = await db.family_assist_sessions.find_one_and_update(
+        {"session_id": session_id, "generation": generation, "state": expected},
+        {"$set": updates, "$inc": {"revision": 1}}, projection={"_id": 0}, return_document=ReturnDocument.AFTER,
+    )
+    if not updated:
+        raise _conflict("native_state_rejected", "The Family Help session changed before the native control arrived.")
     return view(updated, caller)
 
 

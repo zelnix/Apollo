@@ -60,7 +60,7 @@
     "date-fns": "4.1.0",
     "dayjs": "1.11.13",
     "expo": "57.0.19",
-    "expo-application": "~57.0.3",
+    "expo-application": "~57.0.2",
     "expo-asset": "57.0.16",
     "expo-audio": "~57.0.4",
     "expo-blur": "57.0.2",

@@ -43,10 +43,10 @@ def s():
 
 
 # --- Guardians ---
-@pytest.mark.credentialed_integration
 class TestGuardians:
     guardian_ids = []
 
+    @pytest.mark.credentialed_integration
     def test_add_guardian(self, s):
         r = s.post(f"{API}/family/guardians", json={
             "device_id": DEVICE_A, "email": "delivered@resend.dev", "name": "Test", "owner_name": "Alex"
@@ -57,6 +57,7 @@ class TestGuardians:
         assert body["confirmed"] is False
         TestGuardians.guardian_ids.append(body["guardian_id"])
 
+    @pytest.mark.credentialed_integration
     def test_list_guardians(self, s):
         r = s.get(f"{API}/family/guardians", params={"device_id": DEVICE_A})
         assert r.status_code == 200
@@ -64,6 +65,7 @@ class TestGuardians:
         assert any(g["guardian_id"] == TestGuardians.guardian_ids[0] for g in docs)
         assert docs[0]["email"] == "delivered@resend.dev"
 
+    @pytest.mark.credentialed_integration
     def test_add_second_and_third(self, s):
         for i in range(2):
             r = s.post(f"{API}/family/guardians", json={
@@ -72,6 +74,7 @@ class TestGuardians:
             assert r.status_code == 200, r.text
             TestGuardians.guardian_ids.append(r.json()["guardian_id"])
 
+    @pytest.mark.credentialed_integration
     def test_fourth_guardian_400(self, s):
         r = s.post(f"{API}/family/guardians", json={
             "device_id": DEVICE_A, "email": "delivered@resend.dev", "name": "T4", "owner_name": "Alex"
@@ -85,6 +88,7 @@ class TestGuardians:
         })
         assert r.status_code == 422, r.text
 
+    @pytest.mark.credentialed_integration
     def test_delete_guardian(self, s):
         gid = TestGuardians.guardian_ids[0]
         r = s.delete(f"{API}/family/guardians/{gid}", params={"device_id": DEVICE_A})
@@ -96,8 +100,8 @@ class TestGuardians:
 
 
 # --- Confirm token (fetch from Mongo) ---
-@pytest.mark.credentialed_integration
 class TestConfirmToken:
+    @pytest.mark.credentialed_integration
     def test_confirm_valid_token(self, s):
         # create a fresh guardian on a fresh device to fetch token
         dev = f"dev-conf-{uuid.uuid4().hex[:8]}"

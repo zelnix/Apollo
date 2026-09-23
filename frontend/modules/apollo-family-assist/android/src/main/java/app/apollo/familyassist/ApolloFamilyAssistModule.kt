@@ -12,12 +12,12 @@ import java.util.concurrent.ConcurrentHashMap
 internal object FamilyAssistRuntime {
   val state = ConcurrentHashMap<String, Any?>().apply {
     put("sessionId", null); put("generation", null); put("captureState", "idle"); put("helperConnected", false)
-    put("captureScope", null); put("microphoneEnabled", false); put("startedAt", null); put("lastTransitionAt", isoNow()); put("failureCode", null)
+    put("captureScope", null); put("microphoneEnabled", false); put("startedAt", null); put("lastTransitionAt", isoNow()); put("failureCode", null); put("endReason", null)
   }
   var viewer: FamilyAssistRtcPeer? = null
   var event: ((String) -> Unit)? = null
-  fun update(captureState: String, eventName: String? = null, failure: String? = null) {
-    state["captureState"] = captureState; state["lastTransitionAt"] = isoNow(); state["failureCode"] = failure
+  fun update(captureState: String, eventName: String? = null, failure: String? = null, reason: String? = null) {
+    state["captureState"] = captureState; state["lastTransitionAt"] = isoNow(); state["failureCode"] = failure; state["endReason"] = reason
     if (eventName != null) event?.invoke(eventName)
   }
   fun isoNow() = java.time.Instant.now().toString()
@@ -32,7 +32,7 @@ class ApolloFamilyAssistModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("ApolloFamilyAssist")
     Events("onFamilyAssistEvent")
-    OnCreate { FamilyAssistRuntime.event = { type -> sendEvent("onFamilyAssistEvent", mapOf("type" to type, "observedAt" to isoNow())) } }
+    OnCreate { FamilyAssistRuntime.event = { type -> sendEvent("onFamilyAssistEvent", HashMap(FamilyAssistRuntime.state).apply { put("type", type); put("observedAt", isoNow()) }) } }
     OnDestroy { FamilyAssistRuntime.event = null; FamilyAssistRuntime.viewer?.close(); FamilyAssistRuntime.viewer = null }
 
     AsyncFunction("getCapabilities") {
@@ -67,15 +67,17 @@ class ApolloFamilyAssistModule : Module() {
         values.forEach { (key, value) -> putExtra(key, value) }
       }
       androidx.core.content.ContextCompat.startForegroundService(context, intent)
-      FamilyAssistRuntime.update("starting")
+      FamilyAssistRuntime.update("starting", "capture_starting")
     }
     AsyncFunction("pauseCapture") { sessionId: String, generation: String -> command(sessionId, generation, FamilyAssistProjectionService.ACTION_PAUSE) }
     AsyncFunction("resumeCapture") { sessionId: String, generation: String -> command(sessionId, generation, FamilyAssistProjectionService.ACTION_RESUME) }
     AsyncFunction("stopCapture") { sessionId: String, generation: String -> command(sessionId, generation, FamilyAssistProjectionService.ACTION_STOP) }
     AsyncFunction("startViewer") { input: Map<String, Any?> ->
       val values = requiredViewerInput(input)
+      val context = appContext.reactContext?.applicationContext ?: error("context_unavailable")
       FamilyAssistRuntime.viewer?.close()
-      FamilyAssistRuntime.viewer = FamilyAssistRtcPeer(values, false, null).also { it.connect() }
+      FamilyAssistRuntime.state.putAll(mapOf("sessionId" to values["sessionId"], "generation" to values["generation"], "captureState" to "starting"))
+      FamilyAssistRuntime.viewer = FamilyAssistRtcPeer(context, values, false, null).also { it.connect() }
     }
     AsyncFunction("stopViewer") { sessionId: String, generation: String ->
       requireCurrent(sessionId, generation); FamilyAssistRuntime.viewer?.close(); FamilyAssistRuntime.viewer = null

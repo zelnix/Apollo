@@ -2,7 +2,7 @@ import { requireOptionalNativeModule, requireNativeViewManager } from "expo-modu
 import { createElement } from "react";
 import { View, type ViewProps } from "react-native";
 
-import type { FamilyAssistCapabilities, FamilyAssistNativeState, StartFamilyAssistCaptureInput, StartFamilyAssistViewerInput } from "./src/ApolloFamilyAssist.types";
+import type { FamilyAssistCapabilities, FamilyAssistNativeEventPayload, FamilyAssistNativeState, StartFamilyAssistCaptureInput, StartFamilyAssistViewerInput } from "./src/ApolloFamilyAssist.types";
 
 interface NativeModule {
   getCapabilities(): Promise<FamilyAssistCapabilities>;
@@ -13,6 +13,7 @@ interface NativeModule {
   stopCapture(sessionId: string, generation: string): Promise<void>;
   startViewer(input: StartFamilyAssistViewerInput): Promise<void>;
   stopViewer(sessionId: string, generation: string): Promise<void>;
+  addListener(event: "onFamilyAssistEvent", listener: (payload: FamilyAssistNativeEventPayload) => void): { remove(): void };
 }
 
 const unavailable = async () => { throw new Error("Family Help requires an installed Apollo mobile build."); };
@@ -21,6 +22,7 @@ const fallback: NativeModule = {
   getState: async () => ({ sessionId: null, generation: null, captureState: "idle", helperConnected: false, captureScope: null, microphoneEnabled: false, startedAt: null, lastTransitionAt: new Date().toISOString(), failureCode: null }),
   startCapture: unavailable, pauseCapture: unavailable, resumeCapture: unavailable, stopCapture: unavailable,
   startViewer: unavailable, stopViewer: unavailable,
+  addListener: () => ({ remove() {} }),
 };
 const nativeModule = requireOptionalNativeModule<NativeModule>("ApolloFamilyAssist");
 export const ApolloFamilyAssist = nativeModule ?? fallback;

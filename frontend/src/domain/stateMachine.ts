@@ -1,5 +1,5 @@
 // Apollo six-state machine (sniffing is transient and never persisted as an event state).
-// Escalation is immediate on evidence. Recovery to Resting is slow and strict:
+// Escalation is immediate on evidence. Recovery to Patrolling is slow and strict:
 // it requires (a) no active events, (b) a fresh verification after the most
 // recent escalation was resolved, and (c) visibility not lost.
 
@@ -8,7 +8,7 @@ import { eventHasPacketProof } from './packetEvidence.ts';
 
 export const STATE_RANK: Record<ApolloState, number> = { sniffing: 0, resting: 0, ears_up: 1, growling: 2, barking: 3, biting: 4 };
 
-/** How recent a verification must be to permit returning to Resting. */
+/** How recent a verification must be to permit returning to Patrolling. */
 export const VERIFICATION_FRESHNESS_MS = 10 * 60 * 1000;
 /** After an event resolves, Apollo stays alert until a fresh verification lands. */
 export const RECOVERY_COOLDOWN_MS = 2 * 60 * 1000;
@@ -26,7 +26,7 @@ export interface StateResolution {
   reason: string;
   /** True when Apollo has no active event but is waiting on fresh verification. */
   recovering: boolean;
-  /** True when Resting cannot be shown truthfully because visibility is lost. */
+  /** True when Patrolling cannot be shown truthfully because visibility is lost. */
   visibilityLost: boolean;
   drivingEvent: PatrolEvent | null;
 }

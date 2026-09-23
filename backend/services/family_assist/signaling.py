@@ -112,6 +112,11 @@ async def serve(websocket: WebSocket, session_id: str, ticket_value: str) -> Non
                 await websocket.send_json({"type": "relay_credentials", "generation": session["generation"], "relay": refreshed})
                 continue
             await hub.forward(session_id, role, raw)
+            if message["type"] in {"pause_state", "terminate"}:
+                from services.family_assist import sessions as session_service
+                await session_service.apply_signaling_state(session_id, ticket["device_id"], session["generation"], message)
+                if message["type"] == "terminate":
+                    break
     except RelayCredentialError:
         try: await websocket.close(code=1013, reason="relay_unavailable")
         except RuntimeError: pass

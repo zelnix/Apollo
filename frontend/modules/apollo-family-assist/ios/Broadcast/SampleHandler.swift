@@ -19,7 +19,7 @@ final class SampleHandler: RPBroadcastSampleHandler, RTCPeerConnectionDelegate, 
     guard let root = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) else { return fail("Protected storage is unavailable.") }
     let url = root.appendingPathComponent("family-assist-handoff.json")
     guard let data = try? Data(contentsOf: url), let value = try? JSONDecoder().decode(Handoff.self, from: data), value.expiresAt > Date() else { return fail("This help request expired. Return to Apollo and try again.") }
-    try? FileManager.default.removeItem(at: url); handoff = value; connect(value)
+    try? FileManager.default.removeItem(at: url); handoff = value; publishState("starting", event: "capture_starting"); connect(value)
   }
   override func processSampleBuffer(_ sampleBuffer: CMSampleBuffer, with sampleBufferType: RPSampleBufferType) {
     guard sampleBufferType == .video, let handoff, command(for: handoff) != "stop" else { if self.handoff != nil && command(for: handoff) == "stop" { finishBroadcastWithError(BroadcastError.stopped) }; return }
@@ -29,9 +29,9 @@ final class SampleHandler: RPBroadcastSampleHandler, RTCPeerConnectionDelegate, 
     guard time - lastFrameNs >= 66_000_000 else { return }; lastFrameNs = time
     source?.capturer(RTCVideoCapturer(delegate: source!), didCapture: RTCVideoFrame(buffer: RTCCVPixelBuffer(pixelBuffer: pixel), rotation: ._0, timeStampNs: time))
   }
-  override func broadcastPaused() { paused = true; track?.isEnabled = false; send(["type": "pause_state", "paused": true]) }
-  override func broadcastResumed() { paused = false; track?.isEnabled = true; send(["type": "pause_state", "paused": false]) }
-  override func broadcastFinished() { send(["type": "terminate", "reason": "os_terminated"]); close() }
+  override func broadcastPaused() { paused = true; track?.isEnabled = false; publishState("paused", event: "capture_paused"); send(["type": "pause_state", "paused": true]) }
+  override func broadcastResumed() { paused = false; track?.isEnabled = true; publishState("active", event: "capture_started"); send(["type": "pause_state", "paused": false]) }
+  override func broadcastFinished() { publishState("stopped", event: "capture_stopped", reason: "os_terminated"); terminate("os_terminated") }
 
   private func connect(_ value: Handoff) {
     var base = value.signalingBaseUrl.replacingOccurrences(of: "https://", with: "wss://").replacingOccurrences(of: "http://", with: "ws://").trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -78,10 +78,22 @@ final class SampleHandler: RPBroadcastSampleHandler, RTCPeerConnectionDelegate, 
   }
   private func send(_ body: [String: Any]) { guard let handoff else { return }; var value = body; value["sequence"] = sequence; value["generation"] = handoff.generation; sequence += 1; guard let data = try? JSONSerialization.data(withJSONObject: value), let text = String(data: data, encoding: .utf8) else { return }; socket?.send(.string(text)) { _ in } }
   private func command(for handoff: Handoff) -> String? { guard let body = UserDefaults(suiteName: appGroup)?.dictionary(forKey: "family-assist-command"), body["sessionId"] as? String == handoff.sessionId, body["generation"] as? String == handoff.generation else { return nil }; return body["command"] as? String }
-  private func fail(_ detail: String) { close(); finishBroadcastWithError(NSError(domain: "ApolloFamilyAssist", code: 1, userInfo: [NSLocalizedDescriptionKey: detail])) }
+  private func publishState(_ state: String, event: String, failure: String? = nil, reason: String? = nil) {
+    guard let handoff else { return }
+    UserDefaults(suiteName: appGroup)?.set(["sessionId": handoff.sessionId, "generation": handoff.generation, "captureState": state,
+      "lastTransitionAt": ISO8601DateFormatter().string(from: Date()), "failureCode": failure ?? NSNull(), "endReason": reason ?? NSNull(), "type": event], forKey: "family-assist-extension-state")
+  }
+  private func terminate(_ reason: String) {
+    guard let handoff else { return close() }
+    var body: [String: Any] = ["type": "terminate", "reason": reason, "sequence": sequence, "generation": handoff.generation]; sequence += 1
+    guard let data = try? JSONSerialization.data(withJSONObject: body), let text = String(data: data, encoding: .utf8) else { return close() }
+    socket?.send(.string(text)) { [weak self] _ in self?.close() }
+    DispatchQueue.global().asyncAfter(deadline: .now() + 1) { [weak self] in self?.close() }
+  }
+  private func fail(_ detail: String) { publishState("failed", event: "capture_failed", failure: "transport_failed"); terminate("transport_failed"); finishBroadcastWithError(NSError(domain: "ApolloFamilyAssist", code: 1, userInfo: [NSLocalizedDescriptionKey: detail])) }
   private func close() { refreshWork?.cancel(); refreshWork = nil; track?.isEnabled = false; peer?.close(); peer = nil; source = nil; track = nil; socket?.cancel(with: .normalClosure, reason: nil); socket = nil; handoff = nil }
   func peerConnection(_ peerConnection: RTCPeerConnection, didGenerate candidate: RTCIceCandidate) { send(["type": "ice_candidate", "candidate": candidate.sdp]) }
-  func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCPeerConnectionState) { if newState == .failed { fail("The private screen connection failed.") } }
+  func peerConnection(_ peerConnection: RTCPeerConnection, didChange newState: RTCPeerConnectionState) { if newState == .connected { publishState("active", event: "helper_connected") }; if newState == .failed { fail("The private screen connection failed.") } }
   func peerConnection(_ peerConnection: RTCPeerConnection, didChange stateChanged: RTCSignalingState) {}
   func peerConnection(_ peerConnection: RTCPeerConnection, didAdd stream: RTCMediaStream) {}
   func peerConnection(_ peerConnection: RTCPeerConnection, didRemove stream: RTCMediaStream) {}

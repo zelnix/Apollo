@@ -10,11 +10,11 @@ export type ApolloState = "sniffing" | "resting" | "ears_up" | "growling" | "bar
 /** Ordered low → high for comparisons in UI code (mirrors stateMachine STATE_RANK). */
 export const STATE_RANK_ORDER: ApolloState[] = ["sniffing", "resting", "ears_up", "growling", "barking", "biting"];
 
-export const STATE_NAME: Record<ApolloState, string> = { sniffing: "Checking", resting: "Resting", ears_up: "Growling", growling: "Growling", barking: "Barking", biting: "Biting" };
+export const STATE_NAME: Record<ApolloState, string> = { sniffing: "Checking", resting: "Patrolling", ears_up: "Growling", growling: "Growling", barking: "Barking", biting: "Biting" };
 
 export const STATE_LABEL: Record<ApolloState, string> = {
   sniffing: "Apollo is sniffing",
-  resting: "Apollo is resting",
+  resting: "Apollo is Patrolling",
   ears_up: "Apollo is growling",
   growling: "Apollo is growling",
   barking: "Apollo is barking",

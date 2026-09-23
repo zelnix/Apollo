@@ -80,7 +80,7 @@ export function decide(local: LocalAnalysis, intel: IntelResult | null, trusted:
     };
   }
 
-  // 3. Previously trusted, and nothing confirmed malicious → Resting (scoped trust).
+  // 3. Previously trusted, and nothing confirmed malicious → Patrolling (scoped trust).
   if (trusted) {
     return {
       ...base,
@@ -127,7 +127,7 @@ export function decide(local: LocalAnalysis, intel: IntelResult | null, trusted:
     };
   }
 
-  // 5. Clean locally; intelligence clear or unavailable → Resting within supported checks.
+  // 5. Clean locally; intelligence clear or unavailable → Patrolling within supported checks.
   const why = [
     localWhy.length ? "Minor observations only, none concerning." : "No warning signs found in the address itself.",
     intel?.verdict === "clean" ? "No listing found in Apollo's reputation intelligence." : gapNote ?? "",

@@ -16,7 +16,8 @@ import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 
 class FamilyAssistRtcPeer(
-  private val values: Map<String, String>, private val sharer: Boolean, private val localTrack: VideoTrack?,
+  private val context: Context, private val values: Map<String, String>, private val sharer: Boolean, private val localTrack: VideoTrack?,
+  private val onFailure: (String) -> Unit = {},
 ) : WebSocketListener(), PeerConnection.Observer {
   private val executor = Executors.newSingleThreadScheduledExecutor()
   private val client = OkHttpClient.Builder().pingInterval(java.time.Duration.ofSeconds(20)).build()
@@ -46,7 +47,6 @@ class FamilyAssistRtcPeer(
     }
   }
   private fun createPeer(relay: JSONObject) {
-    val context = FamilyAssistApp.context ?: return
     PeerConnectionFactory.initialize(PeerConnectionFactory.InitializationOptions.builder(context).setEnableInternalTracer(false).createInitializationOptions())
     factory = PeerConnectionFactory.builder()
       .setVideoEncoderFactory(DefaultVideoEncoderFactory(FamilyAssistRenderer.egl.eglBaseContext, true, true))
@@ -84,12 +84,18 @@ class FamilyAssistRtcPeer(
   private fun setRemote(sdp: String, type: SessionDescription.Type, answer: Boolean) { peer?.setRemoteDescription(VoidSdpCallback { if (answer) createAnswer() }, SessionDescription(type, sdp)) }
   private fun sendSdp(type: String, sdp: String) = send(JSONObject().put("type", type).put("sequence", sequence++).put("generation", values.getValue("generation")).put("sdp", sdp))
   fun sendPause(paused: Boolean) = send(JSONObject().put("type", "pause_state").put("sequence", sequence++).put("generation", values.getValue("generation")).put("paused", paused))
+  fun terminate(reason: String) {
+    send(JSONObject().put("type", "terminate").put("sequence", sequence++).put("generation", values.getValue("generation")).put("reason", reason))
+    executor.schedule({ closeNow() }, 750, TimeUnit.MILLISECONDS)
+  }
   private fun send(body: JSONObject) { socket?.send(body.toString()) }
-  fun close() { executor.execute { refreshFuture?.cancel(false); refreshFuture = null; localTrack?.setEnabled(false); peer?.close(); peer = null; factory?.dispose(); factory = null; socket?.close(1000, "ended"); socket = null; client.dispatcher.executorService.shutdown(); executor.shutdown() } }
+  fun close() { executor.execute { closeNow() } }
+  private fun closeNow() { refreshFuture?.cancel(false); refreshFuture = null; localTrack?.setEnabled(false); peer?.close(); peer = null; factory?.dispose(); factory = null; socket?.close(1000, "ended"); socket = null; client.dispatcher.executorService.shutdown(); executor.shutdown() }
   override fun onIceCandidate(candidate: IceCandidate) { send(JSONObject().put("type", "ice_candidate").put("sequence", sequence++).put("generation", values.getValue("generation")).put("candidate", candidate.sdp)) }
   override fun onConnectionChange(state: PeerConnection.PeerConnectionState) {
     if (state == PeerConnection.PeerConnectionState.CONNECTED) FamilyAssistRuntime.update("active", if (sharer) "helper_connected" else "capture_started")
-    if (state == PeerConnection.PeerConnectionState.FAILED) FamilyAssistRuntime.update("failed", "capture_failed", "transport_failed")
+    if (state == PeerConnection.PeerConnectionState.DISCONNECTED) FamilyAssistRuntime.update("starting", "transport_degraded")
+    if (state == PeerConnection.PeerConnectionState.FAILED) { FamilyAssistRuntime.update("failed", "capture_failed", "transport_failed"); onFailure("transport_failed") }
   }
   override fun onTrack(transceiver: RtpTransceiver) { (transceiver.receiver.track() as? VideoTrack)?.addSink(FamilyAssistRenderer.view) }
   override fun onSignalingChange(v: PeerConnection.SignalingState) {}
@@ -117,5 +123,3 @@ class FamilyAssistRtcPeer(
 }
 
 private fun JSONArray.strings() = (0 until length()).map { getString(it) }
-
-internal object FamilyAssistApp { var context: Context? = null }

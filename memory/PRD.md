@@ -558,7 +558,7 @@ Apollo performs supported checks and protective actions; Higgins interprets boun
 - Firebase project changed: Android push-sending service-account credentials must belong to `apollo-243ad`. The uploaded client config is not a service-account credential; existing server-side push configuration was not changed or validated here.
 
 ## Original problem statement
-Privacy-first mobile security app (iOS/Android, Expo + FastAPI + MongoDB) that detects, explains and — only where verified — blocks dangerous links, suspicious websites, unsafe connections and known threats. Four exact states: Resting / Growling / Barking / Biting. Apollo's Patrol shows what happened. Capability-aware, truthful UI; on-device-first; minimal indicators to backend; native module bridge (Swift/Kotlin) from day one; HuCentAI SecureCore mock SDK contract.
+Privacy-first mobile security app (iOS/Android, Expo + FastAPI + MongoDB) that detects, explains and — only where verified — blocks dangerous links, suspicious websites, unsafe connections and known threats. Four exact user-facing states: Patrolling / Growling / Barking / Biting. Apollo's Patrol shows what happened. Capability-aware, truthful UI; on-device-first; minimal indicators to backend; native module bridge (Swift/Kotlin) from day one; HuCentAI SecureCore mock SDK contract. The legacy internal key `resting` is storage-only and must never be shown to users.
 
 ## User choices
 - Ask Apollo: Gemini 3 Flash (user's own Google key, via emergentintegrations)

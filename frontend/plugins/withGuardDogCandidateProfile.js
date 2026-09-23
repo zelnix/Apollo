@@ -11,8 +11,10 @@ module.exports = function withGuardDogCandidateProfile(config) {
     }
     const enabled = appEnv !== "production" && engine === "guarddog_acceptance";
     const application = mod.modResults.manifest.application[0];
-    const metadata = (application["meta-data"] || []).filter((item) => item.$["android:name"] !== META_NAME);
-    metadata.push({ $: { "android:name": META_NAME, "android:value": String(enabled) } });
+    const metadata = (application["meta-data"] || []).filter((item) => ![
+      META_NAME, "app.apollo.guarddog.acceptanceRootId", "app.apollo.guarddog.acceptanceRootKey",
+    ].includes(item.$["android:name"]));
+    if (enabled) metadata.push({ $: { "android:name": META_NAME, "android:value": "true" } });
     application["meta-data"] = metadata;
     return mod;
   });

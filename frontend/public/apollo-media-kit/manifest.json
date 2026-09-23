@@ -200,7 +200,7 @@
     },
     {
       "group": "Transparent Apollo loops",
-      "label": "Resting",
+      "label": "Patrolling",
       "path": "gifs/transparent/apollo-resting.gif"
     },
     {
@@ -230,7 +230,7 @@
     },
     {
       "group": "Full-screen state demonstrations",
-      "label": "Resting",
+      "label": "Patrolling",
       "path": "gifs/full-screen/apollo-resting-ui-demo.gif"
     },
     {

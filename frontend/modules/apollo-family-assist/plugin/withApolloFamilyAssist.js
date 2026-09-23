@@ -15,13 +15,31 @@ function writeTargetFiles(root) {
   for (const name of ["SampleHandler.swift", "Info.plist", `${TARGET}.entitlements`]) fs.copyFileSync(path.join(source, name), path.join(target, name));
 }
 
+function ensureHostWiring(project, targetUuid) {
+  const objects = project.hash.project.objects; const targets = objects.PBXNativeTarget || {};
+  const hostUuid = Object.keys(targets).find((key) => !key.endsWith("_comment") && targets[key].productType === '"com.apple.product-type.application"');
+  if (!hostUuid) throw new Error("apollo_ios_host_target_missing");
+  const dependencies = objects.PBXTargetDependency || {}; const host = targets[hostUuid]; const target = targets[targetUuid];
+  const dependencyTargets = new Set((host.dependencies || []).map((entry) => dependencies[entry.value]?.target).filter(Boolean));
+  if (!dependencyTargets.has(targetUuid)) project.addTargetDependency(hostUuid, [targetUuid]);
+  let phaseEntry = (host.buildPhases || []).find((entry) => objects.PBXCopyFilesBuildPhase?.[entry.value]?.dstSubfolderSpec === 13);
+  if (!phaseEntry) phaseEntry = { value: project.addBuildPhase([], "PBXCopyFilesBuildPhase", "Embed App Extensions", hostUuid, "app_extension").uuid };
+  const phase = objects.PBXCopyFilesBuildPhase[phaseEntry.value]; const buildFiles = objects.PBXBuildFile || (objects.PBXBuildFile = {});
+  if ((phase.files || []).some((entry) => buildFiles[entry.value]?.fileRef === target.productReference)) return;
+  const uuid = project.generateUuid(); const comment = `${TARGET}.appex in Embed App Extensions`;
+  buildFiles[uuid] = { isa: "PBXBuildFile", fileRef: target.productReference, fileRef_comment: `${TARGET}.appex`, settings: { ATTRIBUTES: ["RemoveHeadersOnCopy"] } };
+  buildFiles[`${uuid}_comment`] = comment; phase.files.push({ value: uuid, comment });
+}
+
 function ensureTarget(project, root) {
-  if (project.pbxTargetByName(TARGET)) return;
   writeTargetFiles(root);
-  const target = project.addTarget(TARGET, "app_extension", TARGET, BUNDLE);
-  const group = project.addPbxGroup(["SampleHandler.swift", "Info.plist", `${TARGET}.entitlements`], TARGET, TARGET);
-  project.addToPbxGroup(group.uuid, project.getFirstProject().firstProject.mainGroup);
-  project.addBuildPhase(["SampleHandler.swift"], "PBXSourcesBuildPhase", "Sources", target.uuid);
+  let targetUuid = project.findTargetKey(TARGET);
+  if (!targetUuid) {
+    const target = project.addTarget(TARGET, "app_extension", TARGET, BUNDLE); targetUuid = target.uuid;
+    const group = project.addPbxGroup(["SampleHandler.swift", "Info.plist", `${TARGET}.entitlements`], TARGET, TARGET);
+    project.addToPbxGroup(group.uuid, project.getFirstProject().firstProject.mainGroup);
+    project.addBuildPhase(["SampleHandler.swift"], "PBXSourcesBuildPhase", "Sources", targetUuid);
+  }
   const section = project.pbxXCBuildConfigurationSection();
   for (const key in section) {
     const settings = section[key].buildSettings;
@@ -34,6 +52,7 @@ function ensureTarget(project, root) {
     settings.TARGETED_DEVICE_FAMILY = '"1,2"';
     settings.SWIFT_VERSION = "5.0";
   }
+  ensureHostWiring(project, targetUuid);
 }
 
 module.exports = function withApolloFamilyAssist(config) {

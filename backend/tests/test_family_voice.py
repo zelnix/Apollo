@@ -8,7 +8,6 @@ import pytest
 BASE_URL = (os.environ.get("EXPO_BACKEND_URL") or os.environ.get("EXPO_PUBLIC_BACKEND_URL") or "https://apollo-platform.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
 H = {"User-Agent": "apollo-tests", "X-Apollo-Raw": "1"}
-pytestmark = pytest.mark.credentialed_integration
 
 
 def submission_id():
@@ -41,6 +40,7 @@ def wav_bytes(seconds=1.0):
 
 
 class TestVoiceNote:
+    @pytest.mark.credentialed_integration
     def test_guardian_records_and_mum_can_play_with_a_ticket(self):
         p, g, scent = paired_incident()
         r = g.post(f"/family/incidents/{scent}/voice", data={"device_id": g.id, "submission_id": submission_id(), "from_name": "Sarah", "duration_s": "1.0"}, files={"file": ("note.wav", wav_bytes(), "audio/wav")})
@@ -58,6 +58,7 @@ class TestVoiceNote:
         assert play.status_code == 200 and play.headers["content-type"].startswith("audio/wav") and play.content == wav_bytes()
         assert g.get(f"/family/voice/{note['note_id']}/ticket", params={"device_id": g.id}).status_code == 200  # guardian can replay their own
 
+    @pytest.mark.credentialed_integration
     def test_tickets_are_note_bound_and_expire_and_strangers_get_nothing(self):
         p, g, scent = paired_incident()
         note = g.post(f"/family/incidents/{scent}/voice", data={"device_id": g.id, "submission_id": submission_id(), "duration_s": "1"}, files={"file": ("n.wav", wav_bytes(), "audio/wav")}).json()
@@ -91,6 +92,7 @@ class TestVoiceNote:
 
 
 class TestVoiceCaption:
+    @pytest.mark.credentialed_integration
     def test_caption_is_produced_asynchronously_from_real_speech(self):
         p, g, scent = paired_incident()
         # Real speech: Higgins' TTS renders the line, then it is uploaded as Sarah's voice note.
@@ -113,6 +115,7 @@ class TestVoiceCaption:
         assert n["transcript_language"] in ("english", "en")
         assert "audio_path" not in n
 
+    @pytest.mark.credentialed_integration
     def test_unreadable_audio_ends_as_unavailable_not_stuck(self):
         p, g, scent = paired_incident()
         note = g.post(f"/family/incidents/{scent}/voice", data={"device_id": g.id, "submission_id": submission_id(), "duration_s": "1"}, files={"file": ("n.wav", wav_bytes(0.3), "audio/wav")}).json()
