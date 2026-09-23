@@ -1,3 +1,10 @@
+## Higgins Apollo transactional email (2026-09-23)
+
+- Migrated guardian invitations/alerts from owner-managed Resend credentials to the platform-managed verified transactional sender.
+- Sender identity: `Higgins Apollo`; no Reply-To inbox configured.
+- Backend retains stable event idempotency and truthful delivery receipts; caller cannot supply subject or HTML, and all templates pass a structural credential/link safety gate.
+- Provider-owned test-sink submission and the authenticated guardian invitation route both returned provider acceptance references.
+
 ## FF10 Family Help — configuration-gated source complete (2026-09-23)
 
 ### Problem statement

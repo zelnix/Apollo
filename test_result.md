@@ -1,3 +1,12 @@
+## 2026-09-23 Higgins Apollo managed transactional email migration
+
+- Replaced the legacy owner-supplied Resend path (`RESEND_API_KEY` / `RESEND_FROM_EMAIL`) with the platform-managed verified sender in `backend/services/email.py`.
+- Sender display name is `Higgins Apollo`; Reply-To is intentionally unset. The provider credential remains backend-only and the mobile client never receives it.
+- Preserved stable event idempotency, payload-digest conflict detection, queued/submitted/provider-accepted/outcome-unknown receipts, recipient digests, and honest timeout handling.
+- Added structural email safety gates for forms/inputs, credential requests, non-HTTPS links/assets, URL shorteners, numeric/punycode/credential-bearing hosts, and misleading anchor text.
+- Tests: 15 targeted backend tests passed (managed email + FF10); Python lint passed. A mocked provider contract test verified headers/payload/brand/no Reply-To, then one provider-owned `delivered@resend.dev` connection check and one full guardian invitation/cleanup flow both returned provider acceptance references.
+- Effect on the previously reported 23 backend failures: the seven Resend-unconfigured guardian/confirmation failures are now remediated at the integration and route level. The other 16 voice/provider/Ask/investigation/mailbox contract issues remain separate.
+
 ## 2026-09-23 FF10 Family Help configuration-gated implementation
 
 - Outcome: `configuration_gated_source_complete`; runtime capability is intentionally `configuration_missing` until external TURN is valid. Exact user copy: “Family Help is not available yet. Your other Apollo features still work.”
