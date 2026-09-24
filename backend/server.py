@@ -33,6 +33,8 @@ from services.mailbox_monitor import ensure_indexes as ensure_mailbox_monitor_in
 from services.maintenance import ensure_indexes as ensure_maintenance_indexes, supervise_maintenance
 from services.higgins.retention import migrate_and_index
 from services.higgins import repository as investigation_repository
+from services.higgins import report_store
+from services import system_health_jobs
 from services.higgins import context as higgins_context
 from services import capability_registry, government_alerts, learning
 from services import gmail as gmail_service
@@ -52,6 +54,8 @@ SEED_BLOCKLIST = [
 async def lifespan(_: FastAPI):
     await migrate_and_index()
     await investigation_repository.ensure_indexes()
+    await report_store.ensure_indexes()
+    await system_health_jobs.ensure_indexes()
     await higgins_context.ensure_indexes()
     await government_alerts.ensure_indexes()
     await learning.ensure_indexes()
@@ -151,10 +155,13 @@ app.add_middleware(PrivacyBoundary)
 
 
 @app.exception_handler(HTTPException)
-async def typed_failure_handler(_: Request, exc: HTTPException):
+async def typed_failure_handler(request: Request, exc: HTTPException):
     """Investigation routes raise the spec's `{"error": Failure}` body; legacy routes keep FastAPI's `{"detail": ...}`."""
     body = exc.detail if isinstance(exc.detail, dict) and "error" in exc.detail else {"detail": exc.detail}
-    return JSONResponse(body, status_code=exc.status_code, headers=dict(exc.headers or {}))
+    headers = dict(exc.headers or {})
+    if request.url.path.startswith("/api/health/"):
+        headers["Cache-Control"] = "no-store"
+    return JSONResponse(body, status_code=exc.status_code, headers=headers)
 
 
 @app.get("/health", include_in_schema=False)
@@ -173,4 +180,4 @@ app.include_router(learning_admin.router, prefix="/api/admin", tags=["learning-a
 # CORS is not authentication (bearer tokens do that). The web preview is same-origin (/api on the same host), and native
 # apps don't use CORS, so only explicitly configured browser origins are allowed (add the admin console's origin here).
 _cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
-app.add_middleware(CORSMiddleware, allow_credentials=False, allow_origins=_cors_origins, allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"], allow_headers=["Authorization", "Content-Type", "Accept", ADMIN_HEADER, "X-Admin-Actor"])
+app.add_middleware(CORSMiddleware, allow_credentials=False, allow_origins=_cors_origins, allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"], allow_headers=["Authorization", "Content-Type", "Accept", "Idempotency-Key", ADMIN_HEADER, "X-Admin-Actor"])

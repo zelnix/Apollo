@@ -19,6 +19,7 @@ from routers.family import sweep_voice_audio
 from services.investigation_projector import project_committed_cases
 from services.higgins import jobs, repository
 from services.higgins.retention import sweep as sweep_temporary_content
+from services.system_health_jobs import recover_stale as recover_health_checks
 
 WORKER_NAME = "apollo-maintenance"
 WORKER_INTERVAL_SECONDS = 20
@@ -37,6 +38,7 @@ def maintenance_steps() -> tuple[MaintenanceStep, ...]:
         ("tombstones", repository.sweep_tombstones),
         ("job_and_device_inbox_recovery", jobs.recover),
         ("investigation_patrol_projection", project_committed_cases),
+        ("health_check_recovery", recover_health_checks),
         ("family_audio", sweep_voice_audio),
     )
 

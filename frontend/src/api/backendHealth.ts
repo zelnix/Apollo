@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { INITIAL_HEALTH, observeFailure, observeOk, type FailureKind, type ServiceHealth } from "@/src/domain/serviceHealth";
+import { healthyProbe } from "@/src/health/systemHealthPolicy";
 
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL;
 export const PROBE_TIMEOUT_MS = 6000;
@@ -22,9 +23,13 @@ export async function probeBackend(): Promise<boolean> {
   const t = setTimeout(() => ctl.abort(), PROBE_TIMEOUT_MS);
   try {
     const res = await fetch(`${BASE}/api/health`, { signal: ctl.signal });
-    if (res.status >= 500) { markBackendFailure("server_error"); return false; }
-    markBackendOk();
-    return true;
+    if (res.status !== 200) { markBackendFailure("server_error"); return false; }
+    let body: unknown;
+    try { body = await res.json(); } catch { markBackendFailure("malformed"); return false; }
+    if (!healthyProbe(res.status, body)) {
+      markBackendFailure("malformed"); return false;
+    }
+    markBackendOk(); return true;
   } catch {
     markBackendFailure(ctl.signal.aborted ? "timeout" : "offline");
     return false;

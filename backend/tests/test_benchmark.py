@@ -1,6 +1,6 @@
 """Launch-gate benchmark harness (backend intelligence layer).
 
-Runs the shared labelled corpus (frontend/src/benchmark/corpus.json) through
+Runs the engineering-only labelled corpus (backend/tests/fixtures/benchmark_corpus.json) through
 /api/intel/check-batch and reports:
   - intelligence-level detection on the subset of threats covered by Apollo's
     managed blocklist / Safe Browsing,
@@ -20,7 +20,7 @@ import pytest
 import requests
 
 BASE = os.environ.get("APOLLO_API_BASE", "http://localhost:8001/api")
-CORPUS = Path(__file__).resolve().parents[2] / "frontend" / "src" / "benchmark" / "corpus.json"
+CORPUS = Path(__file__).parent / "fixtures" / "benchmark_corpus.json"
 REPORT = Path("/app/test_reports/benchmark_report.json")
 BLOCKLIST_HINTS = ("testsafebrowsing.appspot.com", "malware.testing.google.test", "apollo.test")
 

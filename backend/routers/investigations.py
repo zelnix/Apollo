@@ -27,6 +27,7 @@ from services.higgins import evidence as ev
 from services.higgins import jobs
 from services.higgins import provider
 from services.higgins import repository as repo
+from services.higgins import report_store
 from services.higgins import tools as toolbox
 from services.higgins.capacity import ITEMS, SPEECH_SEGMENT_CHARACTERS, TEMPORARY_RETENTION, TEXT, policy
 from services.higgins.contracts import (CreateCase, CreateUpload, DeviceProfile, DeviceResult, EvidenceSubmission, ExpectedObservation, ExpectedRevision,
@@ -983,18 +984,10 @@ async def save_report(case_id: str, body: ReportRequest, request: Request):
         raise http(409, "conflict", "That response revision is not the current accepted answer.")
     response = repo.dec_json(case["response_ciphertext"])
     sources = await repo.sources(owner, case_id)
-    report_id = str(uuid.uuid4())
-    report = {"reportId": report_id, "caseId": case_id, "gates": case["gates"], "savedAt": now_utc().isoformat(), "overview": redact_investigation_secrets(response["overview"]),
-              "explanationMarkdown": redact_investigation_secrets(response["explanationMarkdown"]), "assessment": response["assessment"], "attention": response["attention"],
-              "scope": redact_investigation_secrets(response["scope"]), "responseRevision": body.response_revision,
-              "findings": [redact_investigation_secrets(f["text"]) for f in response["findings"]],
-              "uncertainties": [redact_investigation_secrets(item) for item in response["uncertainties"]],
-              "actions": [{"id": action["id"], "label": redact_investigation_secrets(action["label"]),
-                           "instruction": redact_investigation_secrets(action["instruction"]), "kind": action["kind"]} for action in response["actions"]],
-              "sources": [{"url": s["url"], "title": s["title"], "authority": s["authority"]} for s in sources if s["id"] in set(response["sourceIds"])],
-              "historical": True, "retentionNotice": "This saved snapshot remains until you delete it. It does not update with live protection status."}
-    await db.investigation_reports.insert_one({"owner_id": owner, "report_id": report_id, "report_ciphertext": repo.enc_json(report), "saved_at": now_utc()})
-    return JSONResponse({"reportId": report_id}, status_code=201, headers=NO_STORE)
+    report = report_store.build_report(response, case_id=case_id, gates=case["gates"],
+                                       revision=body.response_revision, sources=sources)
+    await report_store.write(owner, report, database=db)
+    return JSONResponse({"reportId": report["reportId"]}, status_code=201, headers=NO_STORE)
 
 
 @router.get("/investigations/reports/list")
@@ -1022,17 +1015,16 @@ async def list_reports(request: Request, cursor: Optional[str] = Query(default=N
 @router.get("/investigations/reports/{report_id}")
 async def get_report(report_id: str, request: Request):
     owner = owner_of(request)
-    row = await db.investigation_reports.find_one({"owner_id": owner, "report_id": report_id}, {"_id": 0})
-    if not row:
+    report = await report_store.read(owner, report_id, database=db)
+    if not report:
         raise http(404, "not_found", "Unknown report.")
-    return JSONResponse({"report": repo.dec_json(row["report_ciphertext"])}, headers=NO_STORE)
+    return JSONResponse({"report": report}, headers=NO_STORE)
 
 
 @router.delete("/investigations/reports/{report_id}", status_code=204)
 async def delete_report(report_id: str, request: Request):
     owner = owner_of(request)
-    result = await db.investigation_reports.delete_one({"owner_id": owner, "report_id": report_id})
-    if not result.deleted_count:
+    if not await report_store.delete(owner, report_id, database=db):
         raise http(404, "not_found", "Unknown report.")
     await db.voice_cache.delete_many({"device_id": owner, "scope_id": report_id})
     await db.investigation_scopes.delete_many({"owner_id": owner, "scope_id": report_id})
