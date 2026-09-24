@@ -1,3 +1,10 @@
+# Android CNG APK build-input investigation — 2026-09-24
+
+- Reported log fragment: `Step #5 - 'eas-apk-build': script: line 199: expo: command not found`. Without the complete fatal worker log or build ID, this is not enough to establish that Expo command lookup is the fatal step: a previous build logged the identical preparer message and submitted normally (see the production app-bundle pre-install record below).
+- No project-owned EAS/pre-install script invokes the bare Expo CLI. The regular `start`, `android`, `ios`, `web` and `lint` npm scripts use `expo` under the package manager's `node_modules/.bin` PATH; substituting `npx` in those scripts cannot repair a platform-owned shell line.
+- Source input corrected: keep the existing Yarn lockfile (including the `react-native-webrtc` and exact `expo-notifications` entries), remove the untracked npm `package-lock.json`, exclude future npm locks from EAS/Git input, and check CNG and lockfile invariants in CI. `android/` and `ios/` remain excluded from EAS input; the final tracked Gradle JAR is deleted locally and awaits the saved source commit. Existing ignored local `ios/` output is untouched.
+- Verification: `yarn install --frozen-lockfile`, `device-test` EAS pre-install security preflight, `expo config` (SDK 57, package `app.apollo.hwg`), TypeScript and 24 health pytest cases passed. No fresh cloud APK build or device sign-off is claimed. Obtain the complete EAS log after a new source-backed build to distinguish a preparer warning from any later fatal failure.
+
 # Package 6 native source delivery — 2026-09-22
 
 - iOS source resolves four app extensions under `app.apollo.hwg`: Content Blocker, Call Directory, Message Filter and Share Extension.

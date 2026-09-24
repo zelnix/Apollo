@@ -26,6 +26,16 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
+      - name: Enforce clean CNG and one package manager
+        run: |
+          if test -n "$(git ls-files -- android ios)"; then
+            printf 'Generated android/ and ios/ files must not be tracked.\n' >&2
+            exit 1
+          fi
+          if test -e package-lock.json || test ! -f yarn.lock; then
+            printf 'Only the Yarn lockfile is allowed for this build.\n' >&2
+            exit 1
+          fi
       - name: Use the locked package manager
         run: corepack enable && corepack prepare yarn@1.22.22 --activate
       - name: Install without changing the lockfile

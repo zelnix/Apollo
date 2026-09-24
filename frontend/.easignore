@@ -2,6 +2,7 @@
 /android
 /ios
 node_modules/
+package-lock.json
 .metro-cache/
 .expo/
 coverage/
