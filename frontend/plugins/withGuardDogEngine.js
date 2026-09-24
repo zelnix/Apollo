@@ -93,16 +93,18 @@ project(':guarddog-vpn').projectDir = new File(rootDir, '${PACKAGES_DIR_FROM_AND
  * plugin marker needs to be added, and only to Apollo's own generated root build.gradle. */
 const withGuardDogRootBuildGradle = (config) =>
   withProjectBuildGradle(config, (config) => {
-    if (config.modResults.contents.includes(SERIALIZATION_MARKER)) return config;
+    if (config.modResults.contents.includes("classpath 'org.jetbrains.kotlin.plugin.serialization:")) return config;
     const KOTLIN_VERSION = "2.1.20"; // matches react-native/gradle/libs.versions.toml's pinned "kotlin" version exactly
     config.modResults.contents = config.modResults.contents.replace(
       /buildscript\s*{\s*repositories\s*{/,
       `buildscript {\n  repositories {\n    gradlePluginPortal() // ${SERIALIZATION_MARKER}: resolves the kotlin.plugin.serialization marker artifact below`
     );
-    config.modResults.contents = config.modResults.contents.replace(
-      /dependencies\s*{\s*\n(\s*)classpath 'com\.google\.gms:google-services:4\.4\.4'/,
-      `dependencies {\n$1classpath 'com.google.gms:google-services:4.4.4'\n$1// ${SERIALIZATION_MARKER}: required by guarddog-core/guarddog-vpn (packages/guarddog-android-sdk), which apply\n$1// org.jetbrains.kotlin.plugin.serialization without a pinned version and expect it already registered here.\n$1classpath 'org.jetbrains.kotlin.plugin.serialization:org.jetbrains.kotlin.plugin.serialization.gradle.plugin:${KOTLIN_VERSION}'`
-    );
+    const rootDependencies = /(buildscript\s*\{[\s\S]*?\bdependencies\s*\{\s*\n)/;
+    if (!rootDependencies.test(config.modResults.contents)) {
+      throw new Error('[withGuardDogEngine] Cannot register Kotlin serialization in the generated root Gradle build.');
+    }
+    config.modResults.contents = config.modResults.contents.replace(rootDependencies,
+      `$1    // ${SERIALIZATION_MARKER}: required by the frozen core/vpn modules.\n    classpath 'org.jetbrains.kotlin.plugin.serialization:org.jetbrains.kotlin.plugin.serialization.gradle.plugin:${KOTLIN_VERSION}'\n`);
     return config;
   });
 

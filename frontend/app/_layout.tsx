@@ -13,7 +13,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/src/components/error-boundary";
 import { SafeStartScreen } from "@/src/components/SafeStartScreen";
 import { ToastHost } from "@/src/components/Toast";
-import { loadNotifications } from "@/src/push/notifications";
+import { ensureNotificationChannels, loadNotifications } from "@/src/push/notifications";
 import { queryClient } from "@/src/query-client";
 import { getSecurityBootError } from "@/src/security/securityBoot";
 import { ShareIntakeListener } from "@/src/share/ShareIntakeListener";
@@ -27,20 +27,14 @@ void SplashScreen.preventAutoHideAsync().catch(() => {});
 // must not mount. Evaluated once — configuration is baked into the build.
 const SECURITY_BOOT_ERROR = getSecurityBootError();
 
-// Alert notifications — module scope so the handler/channel exist before any push arrives.
-// `loadNotifications()` is null on web and in Expo Go (remote push needs a native build).
+// Local alert handler and channels are set up before a device observation can schedule an alert.
+// Expo Go and web do not provide the native notification integration required here.
 const Notifications = loadNotifications();
 if (Notifications) {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({ shouldShowAlert: true, shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }),
   });
-  if (Platform.OS === "android") {
-    // Channels are frozen once created on-device; sound/priority live here, not in the payload.
-    void Notifications.setNotificationChannelAsync("default", { name: "Apollo alerts", importance: Notifications.AndroidImportance.MAX, sound: "default" });
-    void Notifications.setNotificationChannelAsync("threats", { name: "Threat alerts (Apollo barks)", importance: Notifications.AndroidImportance.MAX, sound: "apollo_bark.wav", vibrationPattern: [0, 250, 120, 250] });
-    void Notifications.setNotificationChannelAsync("family", { name: "Family replies", importance: Notifications.AndroidImportance.HIGH, sound: "apollo_chime.wav" });
-    void Notifications.setNotificationChannelAsync("growling", { name: "Growling nudges", importance: Notifications.AndroidImportance.DEFAULT, sound: "default" });
-  }
+  if (Platform.OS === "android") void ensureNotificationChannels().catch(() => undefined);
 }
 
 function openFromNotification(router: ReturnType<typeof useRouter>, data: Record<string, unknown> | undefined) {

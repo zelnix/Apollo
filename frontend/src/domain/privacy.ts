@@ -4,7 +4,7 @@ import { domainOnly, packetFields, evidenceToken } from './packetEvidence.ts';
 // User-submitted content may leave the device only for the disclosed, one-off assessment the user
 // requested. It must not be copied into Patrol payloads, logs, analytics, or background monitoring.
 
-export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "higgins_chat" | "higgins_context" | "capability_snapshot" | "device_register" | "family" | "push_register" | "push_test" | "device_settings" | "message_check" | "message_extract" | "link_investigation" | "feedback" | "page_extract" | "page_crawl" | "gmail_scan" | "gmail_monitor" | "app_check" | "account_check" | "breach_check" | "voice" | "call_risk_check" | "investigation";
+export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "higgins_chat" | "higgins_context" | "capability_snapshot" | "device_register" | "family" | "device_settings" | "message_check" | "message_extract" | "link_investigation" | "feedback" | "page_extract" | "page_crawl" | "gmail_scan" | "gmail_monitor" | "app_check" | "account_check" | "breach_check" | "voice" | "call_risk_check" | "investigation";
 
 const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   family: new Set(["device_id", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id", "scent_id", "headline", "state", "events", "steps", "done", "note", "resolved", "kind", "text", "from_name", "enabled", "preview_only", "guardian_name", "duration_s", "submission_id", "relationshipId", "sharerDeviceId", "captureScope", "microphoneRequested", "clientRequestId", "decision", "helperDeviceId", "expectedRevision", "generation", "nativeState", "failureCode"]),
@@ -24,9 +24,6 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   higgins_context: new Set(["category", "summary", "provenance", "observedAt"]),
   capability_snapshot: new Set(["platform", "adapter", "online", "gates", "capabilities", "protection", "id", "state", "reason", "requested", "operational", "enforcementMethod", "degradedReason"]),
   device_register: new Set(["platform", "adapter_mode", "app_version", "tz_offset_minutes"]),
-  // Alert notifications: the push token is an opaque delivery address (FCM/APNs), relayed and not stored by us.
-  push_register: new Set(["platform", "provider", "projectId", "device_token"]),
-  push_test: new Set(["device_id"]),
   // Gate 2: message text + URLs leave the device only when the user taps "Check message" (shown as "Shared with Apollo for analysis").
   message_check: new Set(["device_id", "sender", "text", "urls", "local_state", "scenario", "signals", "claimed_brand", "second_opinion"]),
   message_extract: new Set(["device_id"]),

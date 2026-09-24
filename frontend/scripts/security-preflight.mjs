@@ -66,9 +66,14 @@ const errors = [];
 const resolvedAppConfig = require(path.join(root, "app.config.js"))();
 if (resolvedAppConfig.android?.package !== ANDROID_PACKAGE) errors.push(`Android package must be ${ANDROID_PACKAGE}.`);
 if (resolvedAppConfig.ios?.bundleIdentifier !== IOS_BUNDLE_IDENTIFIER) errors.push(`iOS bundle identifier must be ${IOS_BUNDLE_IDENTIFIER}.`);
-const nativeGradle = fs.readFileSync(path.join(root, "android/app/build.gradle"), "utf8");
-if (!nativeGradle.includes(`namespace '${ANDROID_PACKAGE}'`) || !nativeGradle.includes(`applicationId '${ANDROID_PACKAGE}'`)) {
-  errors.push(`Native Android namespace and applicationId must both be ${ANDROID_PACKAGE}.`);
+// CNG has no android/ until prebuild. The authoritative package is app.config.js; if a
+// generated project is present, additionally reject any mismatch in its concrete Gradle output.
+const gradlePath = path.join(root, "android/app/build.gradle");
+if (fs.existsSync(gradlePath)) {
+  const nativeGradle = fs.readFileSync(gradlePath, "utf8");
+  if (!nativeGradle.includes(`namespace '${ANDROID_PACKAGE}'`) || !nativeGradle.includes(`applicationId '${ANDROID_PACKAGE}'`)) {
+    errors.push(`Native Android namespace and applicationId must both be ${ANDROID_PACKAGE}.`);
+  }
 }
 if (!["development", "staging", "production"].includes(cfg.EXPO_PUBLIC_APP_ENV)) errors.push(`EXPO_PUBLIC_APP_ENV is missing or invalid (got "${cfg.EXPO_PUBLIC_APP_ENV}").`);
 const harness = cfg.EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS;

@@ -73,7 +73,7 @@ export function AlertPreviewSheet({ visible, onClose }: { visible: boolean; onCl
         <Text style={s.sub}>{sample.sub}</Text>
       </View>
       <Pill tone={kind === "threat" ? "barking" : "resting"} label={sample.chip} />
-      <Body>Real alerts name the website and tell you exactly what to do — never the full link. On your phone they arrive even when Apollo is closed.</Body>
+      <Body>This preview uses sample content and sound. Local alerts need notification permission and a current device observation; Family replies on another device require separate delivery setup.</Body>
       <Button testID="alert-preview-play" label="Play sound again" icon={<Volume2 size={18} color={colors.onBrandPrimary} />} onPress={play} />
       <Button testID="alert-preview-close" variant="ghost" label="Done" onPress={onClose} />
     </Sheet>

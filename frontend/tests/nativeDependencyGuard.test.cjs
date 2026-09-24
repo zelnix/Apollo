@@ -202,8 +202,6 @@ test('combined preflight is strict except for the actual EAS pre-install lifecyc
   for (const filename of ['app.config.js', 'app.json', 'guarddog-acceptance.config.json']) {
     fs.copyFileSync(path.resolve(__dirname, '..', filename), path.join(root, filename));
   }
-  fs.mkdirSync(path.join(root, 'android/app'), { recursive: true });
-  fs.copyFileSync(path.resolve(__dirname, '../android/app/build.gradle'), path.join(root, 'android/app/build.gradle'));
   fs.mkdirSync(path.join(root, 'src/security'), { recursive: true });
   fs.copyFileSync(path.resolve(__dirname, '../src/security/securityConfig.ts'), path.join(root, 'src/security/securityConfig.ts'));
   const run = lifecycle => spawnSync(process.execPath, [path.join(root, 'scripts/security-preflight.mjs')], {
@@ -213,6 +211,11 @@ test('combined preflight is strict except for the actual EAS pre-install lifecyc
   assert.match(run('eas-build-pre-install').stdout, /DEFERRED/);
   assert.equal(run('eas-build-pre-install').status, 0);
   install(root, 'react-native-svg', '15.15.4');
+  assert.equal(run('security:preflight').status, 0, 'clean CNG source needs no checked-in Android Gradle file');
+  fs.mkdirSync(path.join(root, 'android/app'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'android/app/build.gradle'), "namespace 'wrong.package'\napplicationId 'wrong.package'\n");
+  assert.equal(run('security:preflight').status, 1, 'a generated native package mismatch must fail closed');
+  fs.writeFileSync(path.join(root, 'android/app/build.gradle'), "namespace 'app.apollo.hwg'\napplicationId 'app.apollo.hwg'\n");
   assert.equal(run('security:preflight').status, 0);
   install(root, 'react-native-svg', '13.14.1', install(root, 'wrapper', '1.0.0'));
   assert.equal(run('security:preflight').status, 1);

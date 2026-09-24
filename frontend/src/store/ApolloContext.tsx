@@ -36,7 +36,8 @@ import { freshObservation, unavailableObservation, boundedObservation } from '@/
 import { patrolPayload } from '@/src/domain/patrolPayload';
 import { patrolDelivery, deliveryFailure } from './patrolDelivery';
 import { toPatrolEnforcementEvidence } from "@/src/domain/enforcementEvidenceSync";
-import { getPushStatus, registerForPush, type PushState, type PushStatus } from "@/src/push/notifications";
+import { getNotificationStatus, requestNotificationPermission, scheduleLocalAlert, type NotificationStatus } from "@/src/push/notifications";
+import { eventLocalAlert, protectionLocalAlert } from "@/src/push/localAlerts";
 import { MessagingSdk } from "@/src/security/messagingSdk";
 import { CallSdk } from "@/src/security/callSdk";
 import { storage } from "@/src/utils/storage";
@@ -124,11 +125,8 @@ interface ApolloContextValue {
   forgetNetwork(ssid: string): Promise<void>;
   toast: { message: string; tone: ApolloState | "neutral" } | null;
   showToast(message: string, tone?: ApolloState | "neutral"): void;
-  pushStatus: PushStatus;
-  /** Backend registration state, separate from the OS permission (spec §10A). */
-  pushRegistration: PushState["registration"];
-  pushDetail: string | null;
-  enablePush(): Promise<PushStatus>;
+  notificationStatus: NotificationStatus;
+  enableNotifications(): Promise<NotificationStatus>;
   quietHours: QuietHours;
   quietNow: boolean;
   setQuietHours(next: QuietHours): Promise<void>;
@@ -198,6 +196,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   // Latest events, updated synchronously so back-to-back upserts (e.g. resolving a whole incident) never
   // operate on a stale snapshot and overwrite each other.
   const eventsRef = useRef<PatrolEvent[]>([]);
+  const alertedStates = useRef(new Map<string, ApolloState>());
   useEffect(() => { eventsRef.current = events; }, [events]);
   const persistEvents = useCallback(async (next: PatrolEvent[]) => {
     eventsRef.current = next; setEvents(next);
@@ -365,7 +364,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         const href = typeof globalThis.location?.href === "string" ? globalThis.location.href : "";
         const done = storedDone || shouldBypassSetup(Platform.OS, __DEV__, href);
         setSetupDone(!!done);
-        if (ev) { const restored = (JSON.parse(ev) as PatrolEvent[]).map(normalizeHistoricalEvent); eventsRef.current = restored; setEvents(restored); }
+        if (ev) { const restored = (JSON.parse(ev) as PatrolEvent[]).map(normalizeHistoricalEvent); eventsRef.current = restored; alertedStates.current = new Map(restored.map((event) => [event.event_id, event.state])); setEvents(restored); }
         if (tr) setTrust(JSON.parse(tr)); setLastVerifiedAt(null); // persisted observations are never live boot health
         if (done) {
           // Server-issued identity. Legacy (pre-token) installs have none and get a fresh identity — never a claimed one.
@@ -386,7 +385,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   // A 401 means the credential is dead (revoked/expired/rotated elsewhere). Fail closed and enter an EXPLICIT
   // identity-reset state: nothing is re-registered silently, because a new identity detaches this install from its
-  // Family links, shared incidents and push registration on the server. The person chooses to re-register.
+  // Family links and shared incidents on the server. The person chooses to re-register.
   useEffect(() => onIdentityReset((why) => { setDeviceId(null); setIdentityReset(why); }), []);
   const identityResetRef = useRef<string | null>(null);
   useEffect(() => { identityResetRef.current = identityReset; }, [identityReset]);
@@ -435,22 +434,47 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   }, 1000); return () => clearInterval(t); }, []);
   useEffect(() => { const t = setInterval(() => { if (AppState.currentState !== 'background') void refresh(0, "periodic"); }, lowPower ? 60000 : 30000); return () => clearInterval(t); }, [lowPower, refresh]);
 
-  // Alert notifications: re-register on every launch once the device identity exists (tokens rotate).
-  // Only ask for permission once setup completes (completeSetup → enablePush); silent re-register otherwise.
-  const [pushState, setPushState] = useState<PushState>({ permission: Platform.OS === "web" ? "unsupported" : "undetermined", registration: "not_applicable", registrationId: null, detail: null });
-  const pushStatus = pushState.permission;
+  // Local notification permission is independent of server identity; no remote token is requested.
+  const [notificationStatus, setNotificationStatus] = useState<NotificationStatus>(Platform.OS === "web" ? "unsupported" : "undetermined");
   useEffect(() => {
-    if (!deviceId) return;
-    void registerForPush(deviceId, { ask: false }).then(setPushState).catch(() => getPushStatus().then((permission) => setPushState((prev) => ({ ...prev, permission }))));
-    if (quietRef.current.enabled) void syncQuiet(quietRef.current, deviceId);
-  }, [deviceId, syncQuiet]);
-  const enablePush = useCallback(async () => {
-    const id = deviceIdRef.current;
-    const st = id ? await registerForPush(id, { ask: true }) : { ...pushState, permission: await getPushStatus() };
-    setPushState(st);
-    return st.permission;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const refreshPermission = () => { void getNotificationStatus().then(setNotificationStatus).catch(() => setNotificationStatus("unsupported")); };
+    refreshPermission();
+    const sub = AppState.addEventListener("change", (state) => { if (state === "active") refreshPermission(); });
+    return () => sub.remove();
   }, []);
+  useEffect(() => { if (deviceId && quietRef.current.enabled) void syncQuiet(quietRef.current, deviceId); }, [deviceId, syncQuiet]);
+  const enableNotifications = useCallback(async () => {
+    const status = await requestNotificationPermission();
+    setNotificationStatus(status);
+    return status;
+  }, []);
+
+  // Observe accepted Patrol updates downstream of enforcement; neither this effect nor its alerts
+  // may promote an event to Biting. Historical records are seeded above and old syncs stay silent.
+  useEffect(() => {
+    if (!ready) return;
+    for (const event of events) {
+      const previous = alertedStates.current.get(event.event_id);
+      alertedStates.current.set(event.event_id, event.state);
+      const age = Date.now() - Date.parse(event.occurred_at);
+      if (previous === event.state || !Number.isFinite(age) || age < 0 || age > 120_000) continue;
+      const alert = eventLocalAlert(event);
+      if (alert && (alert.channel !== "growling" || !isQuietNow(quietRef.current))) void scheduleLocalAlert(alert).catch(() => undefined);
+    }
+    if (alertedStates.current.size > 2048) alertedStates.current = new Map(events.slice(0, 2048).map((event) => [event.event_id, event.state]));
+  }, [ready, events]);
+
+  const lastObservedProtection = useRef<ProtectionStatus | null>(null);
+  useEffect(() => {
+    if (!ready || !protection || !Number.isFinite(Date.parse(protection.checkedAt))) return;
+    if (lastObservedProtection.current?.checkedAt === protection.checkedAt) return;
+    const previous = lastObservedProtection.current;
+    lastObservedProtection.current = protection;
+    if (previous) {
+      const alert = protectionLocalAlert(previous, protection);
+      if (alert) void scheduleLocalAlert(alert).catch(() => undefined);
+    }
+  }, [ready, protection]);
 
   const completeSetup = useCallback(async () => {
     let identity = await getDeviceIdentity();
@@ -462,8 +486,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     setSetupDone(true);
     await verifyNow();
     // Contextual ask: the user just turned protection on, so "tell me when Apollo barks" is expected here.
-    if (identity) { try { setPushState(await registerForPush(identity.deviceId, { ask: true })); } catch { /* never block setup */ } }
-  }, [verifyNow]);
+    try { await enableNotifications(); } catch { /* local alert permission never blocks setup */ }
+  }, [verifyNow, enableNotifications]);
 
   // Remote Patrol + trust merge (device may have reinstalled). Local wins.
   const remoteEvents = useQuery({ queryKey: ["patrol", deviceId], enabled: !!deviceId, queryFn: () => apiGet<PatrolRecord[]>(`/patrol/records?limit=200`) });
@@ -867,7 +891,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const value: ApolloContextValue = {
     ready, setupDone, deviceId, identityReset, reRegisterDevice, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label, isMock: IS_PREVIEW_HARNESS,
     refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, scanGmailInbox, recordRecovery, upsertEvent, recordPageAnalysis, checkCall, checkNumberRisk,
-    pushStatus, pushRegistration: pushState.registration, pushDetail: pushState.detail, enablePush, quietHours, quietNow, setQuietHours, lowPower, setLowPower,
+    notificationStatus, enableNotifications, quietHours, quietNow, setQuietHours, lowPower, setLowPower,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
