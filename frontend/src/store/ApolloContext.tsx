@@ -374,7 +374,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           else if (!identity) { try { identity = await registerDeviceIdentity(API_BASE, deviceMeta()); } catch { identity = null; } }
           if (identity) {
             setDeviceId(identity.deviceId);
-            void apiPost("/devices/heartbeat", "device_register", deviceMeta()).catch(() => undefined); // never blocks boot; offline is fine
+            // Build the request inside the Promise chain too: egress validation is synchronous, so a
+            // future client/server contract mismatch must remain contained like an offline heartbeat.
+            void Promise.resolve().then(() => apiPost("/devices/heartbeat", "device_register", deviceMeta())).catch(() => undefined);
           }
           if (protOn) await storage.setItem(K.protection, true);
         }

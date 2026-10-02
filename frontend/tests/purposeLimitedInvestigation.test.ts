@@ -5,6 +5,14 @@ import { patrolSafeSummary } from "../src/domain/investigation.ts";
 import { escalateForUrl } from "../src/domain/messageAnalysis.ts";
 import { enforceEgress, redactUserSecrets } from "../src/domain/privacy.ts";
 
+test("device heartbeat egress accepts the backend registration locale contract", () => {
+  const payload = enforceEgress("device_register", {
+    platform: "android", adapter_mode: "native", app_version: "1.1.0", tz_offset_minutes: 600, locale: "en-AU",
+  });
+  assert.equal(payload.locale, "en-AU");
+  assert.throws(() => enforceEgress("device_register", { ...payload, device_name: "Personal phone" }));
+});
+
 test("purpose-limited message egress preserves context but redacts secret URL parameters", () => {
   const payload = enforceEgress("message_check", { device_id: "device-123", sender: "Bank Alerts",
     text: "Review the claimed payment", urls: ["https://user:pass@example.com/reset?token=secret&invoice=42#frag"],

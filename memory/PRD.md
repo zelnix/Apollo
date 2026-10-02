@@ -1,3 +1,10 @@
+## Expo preview startup crash correction (2026-10-02)
+
+- **Problem:** The boot heartbeat passed `locale` from `deviceMeta()`, but the frontend `device_register` privacy allow-list omitted that backend-supported field. Egress validation throws synchronously, before the previous `.catch()` existed, so startup emitted an unhandled `EgressViolation` that could be reported as a preview crash.
+- **Correction:** The egress contract now includes the backend `DeviceRegister.locale` field, remains deny-by-default for unknown fields, and heartbeat construction runs inside its contained Promise chain so a future contract mismatch cannot escape boot.
+- **Verification:** TypeScript and ESLint pass; focused privacy/security tests pass 13/13; bounded backend health pytest passes 12/12; `/api/health` is healthy; Android Metro bundle generation succeeds; fresh external preview reaches Home without an error fallback or fresh `EgressViolation` console entry. Independent iteration 77 repeated the cold-load, console, privacy, security-boot, Android bundle and health checks with no startup-crash regression. Backend pytest discovery is now location-independent through `backend/pytest.ini`; the tester's root-directory invocation passes 6/6.
+- **Expo Go boundary:** Apollo requires its custom native security module. Expo Go cannot load that module and therefore remains intentionally fail-closed on the existing Safe Start screen; native protection must never be simulated to make Expo Go appear operational.
+
 ## Android EAS/CNG build input follow-up (2026-09-24)
 
 - **Problem:** Android APK build reported `script: line 199: expo: command not found`. The complete failed-build log/build ID is unavailable in this workspace; a previous preparer emitted this *same* message non-fatally (`docs/APOLLO_BUILD_RECORD.md`). Do not assign an unverified root cause or claim an APK was built.

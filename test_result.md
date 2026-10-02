@@ -1,5 +1,40 @@
 ## 2026-09-23 Review closure
 
+## 2026-10-02 Expo preview startup crash fix
+
+frontend:
+  - task: "Prevent boot-time device heartbeat privacy validation from surfacing as an unhandled preview crash"
+    implemented: true
+    working: true
+    file: "frontend/src/domain/privacy.ts, frontend/src/store/ApolloContext.tsx, frontend/tests/purposeLimitedInvestigation.test.ts"
+    priority: "high"
+    needs_retesting: false
+    stuck_count: 1
+    status_history:
+      - agent: "user"
+        working: false
+        comment: "Reported that the preview crashed and clarified the client was Expo Go."
+      - agent: "main"
+        working: true
+        comment: "Found deviceMeta includes locale while device_register egress omitted locale. The synchronous EgressViolation escaped the existing Promise catch. Aligned the egress contract with the backend DeviceRegister model and moved request construction inside the contained Promise chain. Fresh preview rendered Home with no error fallback and no EgressViolation in fresh console logs. Expo Go still intentionally cannot provide Apollo's custom native security module and must show the existing fail-closed Safe Start state rather than simulate protection. TypeScript, ESLint, 13 focused Node checks, 12 backend health pytest checks, backend liveness, and Android Metro bundle generation pass."
+      - agent: "testing"
+        working: true
+        comment: "Iteration 77 independently cold-loaded the public preview, observed Home without crash/fallback or EgressViolation, passed privacy and security boot contracts, compiled the Android router bundle, and confirmed /api/health. No startup-crash regression found."
+      - agent: "main"
+        working: true
+        comment: "Closed the tester's only minor infrastructure note by adding pythonpath=. to backend/pytest.ini. The same health test now passes from /app (6/6) and the backend health set passes from /app/backend (12/12); Python lint remains clean."
+test_plan:
+  current_focus:
+    - "Expo preview startup crash fix"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+agent_communication:
+  - agent: "main"
+    message: "Independently verify cold preview startup does not crash or show the error fallback, confirm no heartbeat EgressViolation appears, and preserve the Expo Go fail-closed native-module boundary."
+  - agent: "testing"
+    message: "Iteration 77 passed the requested startup-crash verification; retest is not needed."
+
 - Backend JUnit `test_reports/backend-closure-final.xml`: **386 passed, 19 credentialed integrations skipped, 0 failed**.
 - Product regressions closed: Gmail disconnected 404, `en-AU` local callback extraction, and restored temporary-copy policy metadata.
 - Historical JUnit reconciliation found all 24 prior failures; the missing 24th was `TestPatrolEventsGate2::test_upsert_and_list_message_event` (`claimed_brand` mismatch).

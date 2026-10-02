@@ -23,7 +23,7 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   higgins_chat: new Set(["turnId", "message", "conversationId", "previousTurnIds", "selectedPatrolRecordId", "selectedReportId"]),
   higgins_context: new Set(["category", "summary", "provenance", "observedAt"]),
   capability_snapshot: new Set(["platform", "adapter", "online", "gates", "capabilities", "protection", "id", "state", "reason", "requested", "operational", "enforcementMethod", "degradedReason"]),
-  device_register: new Set(["platform", "adapter_mode", "app_version", "tz_offset_minutes"]),
+  device_register: new Set(["platform", "adapter_mode", "app_version", "tz_offset_minutes", "locale"]),
   // Gate 2: message text + URLs leave the device only when the user taps "Check message" (shown as "Shared with Apollo for analysis").
   message_check: new Set(["device_id", "sender", "text", "urls", "local_state", "scenario", "signals", "claimed_brand", "second_opinion"]),
   message_extract: new Set(["device_id"]),
