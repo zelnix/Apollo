@@ -25,7 +25,8 @@ frontend:
         comment: "Closed the tester's only minor infrastructure note by adding pythonpath=. to backend/pytest.ini. The same health test now passes from /app (6/6) and the backend health set passes from /app/backend (12/12); Python lint remains clean."
 test_plan:
   current_focus:
-    - "Expo preview startup crash fix"
+    - "Backend + frontend health verification for acceptance evaluation"
+    - "Backend family/push route evaluation"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
@@ -34,6 +35,10 @@ agent_communication:
     message: "Independently verify cold preview startup does not crash or show the error fallback, confirm no heartbeat EgressViolation appears, and preserve the Expo Go fail-closed native-module boundary."
   - agent: "testing"
     message: "Iteration 77 passed the requested startup-crash verification; retest is not needed."
+  - agent: "main"
+    message: "Verify backend health (/api/health 200, backend pytest green, frontend TypeScript clean) and frontend preview loads without crash. Also verify all family/push routes respond correctly when tested via API (health endpoints, family endpoints return valid responses). Previous iteration 77 passed. This is a health verification run before producing the route evaluation report."
+  - agent: "testing"
+    message: "Iteration 78 (2026-10-03) comprehensive backend health and family/push route verification PASSED. Backend health endpoint returns correct schema (schemaVersion:1, status:ok, service:apollo-v1). Backend pytest suite: 414 passed, 16 skipped (exceeds requirement). All family/push routes tested and working correctly: device registration, push registration (configured:false as expected since EXPO_PUSH_ENABLED not set), family guardians/links/weekly/acks/incidents/checkins/shared-events all return correct responses, family assist capabilities shows enabled:false with unavailableReason:configuration_missing (TURN not configured as expected). Frontend preview loads at http://localhost:3000 with 200 status, no EgressViolation in logs. TypeScript compilation passes with exit 0. All acceptance criteria met."
 
 - Backend JUnit `test_reports/backend-closure-final.xml`: **386 passed, 19 credentialed integrations skipped, 0 failed**.
 - Product regressions closed: Gmail disconnected 404, `en-AU` local callback extraction, and restored temporary-copy policy metadata.
