@@ -36,7 +36,7 @@ import { freshObservation, unavailableObservation, boundedObservation } from '@/
 import { patrolPayload } from '@/src/domain/patrolPayload';
 import { patrolDelivery, deliveryFailure } from './patrolDelivery';
 import { toPatrolEnforcementEvidence } from "@/src/domain/enforcementEvidenceSync";
-import { getNotificationStatus, requestNotificationPermission, scheduleLocalAlert, type NotificationStatus } from "@/src/push/notifications";
+import { getNotificationStatus, requestNotificationPermission, scheduleLocalAlert, registerRemotePush, type NotificationStatus } from "@/src/push/notifications";
 import { eventLocalAlert, protectionLocalAlert } from "@/src/push/localAlerts";
 import { MessagingSdk } from "@/src/security/messagingSdk";
 import { CallSdk } from "@/src/security/callSdk";
@@ -445,6 +445,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     return () => sub.remove();
   }, []);
   useEffect(() => { if (deviceId && quietRef.current.enabled) void syncQuiet(quietRef.current, deviceId); }, [deviceId, syncQuiet]);
+  // Register for remote push when device identity becomes available (boot or recovery).
+  useEffect(() => { if (deviceId) void registerRemotePush().catch(() => undefined); }, [deviceId]);
   const enableNotifications = useCallback(async () => {
     const status = await requestNotificationPermission();
     setNotificationStatus(status);
@@ -489,6 +491,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     await verifyNow();
     // Contextual ask: the user just turned protection on, so "tell me when Apollo barks" is expected here.
     try { await enableNotifications(); } catch { /* local alert permission never blocks setup */ }
+    // Register for remote push delivery after notification permission is granted.
+    void registerRemotePush().catch(() => undefined);
   }, [verifyNow, enableNotifications]);
 
   // Remote Patrol + trust merge (device may have reinstalled). Local wins.

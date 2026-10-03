@@ -1113,3 +1113,43 @@ cancelled:
   - "Stage 1D physical-device acceptance remains cancelled and must not be restarted."
 next_focus:
   - "Evaluate Apollo and Higgins against people's real situations: questioning quality, evidence, uncertainty, remediation and follow-up across all ten Gates."
+
+## 2026-10-03 Push notification frontend restoration verification (Iteration 79)
+
+backend:
+  - task: "Push notification registration API endpoints"
+    implemented: true
+    working: true
+    file: "backend/routers/push.py"
+    priority: "high"
+    needs_retesting: false
+    stuck_count: 0
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "Iteration 79 verified push notification frontend restoration. Backend health endpoint returns correct schema (schemaVersion:1, status:ok, service:apollo-v1). Backend pytest tests/test_iter6_push.py: 14 passed. Push registration API tested: GET /api/push/registration returns configured:false and registered:false as expected (EXPO_PUSH_ENABLED not set). POST /api/register-push correctly returns 503 with detail 'Push delivery needs the owner's Expo push configuration'. No regression on family routes: GET /api/family/guardians returns empty list, GET /api/family/links returns valid response with i_watch/watching_me/watchers keys."
+
+frontend:
+  - task: "Push notification frontend restoration - egress contract and registerRemotePush"
+    implemented: true
+    working: true
+    file: "frontend/src/domain/privacy.ts, frontend/src/push/notifications.ts, frontend/src/store/ApolloContext.tsx"
+    priority: "high"
+    needs_retesting: false
+    stuck_count: 0
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "Iteration 79 verified frontend changes. TypeScript compilation passes with exit 0. Egress contract correctly defines push_register endpoint with allowed keys: platform, provider, projectId, device_token. registerRemotePush() function implemented in src/push/notifications.ts and called in ApolloContext on device identity establish (line 449) and setup completion (line 495). Frontend accessible at https://apollo-patrol.preview.emergentagent.com with 200 status. No EgressViolation errors in frontend logs. All three modified files verified: privacy.ts (egress endpoint added), notifications.ts (registerRemotePush function), ApolloContext.tsx (calls registerRemotePush on deviceId change and after setup)."
+
+test_plan:
+  current_focus:
+    - "Push notification frontend restoration verification complete"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "testing"
+    message: "Iteration 79 (2026-10-03) push notification frontend restoration verification PASSED. All requirements met: 1) Frontend health: TypeScript compilation exit 0, no EgressViolation errors, frontend accessible with 200 status. 2) Backend health: /api/health returns 200 with status ok, backend pytest 14/14 passed. 3) Push registration API: GET /api/push/registration returns configured:false/registered:false (expected), POST /api/register-push returns 503 (push not configured, expected). 4) No regression on family routes: /api/family/guardians and /api/family/links return valid responses. Push token registration correctly restored in frontend with proper egress validation. Backend not yet configured for push (EXPO_PUSH_ENABLED not set) - this is expected behavior per review request."
+
