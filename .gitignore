@@ -81,7 +81,9 @@ agenthub/agents/youtube/db
 
 memory/test_credentials.md
 
-# Mobile development
+# Mobile development — CNG: generated native folders must never be tracked
+frontend/android/
+frontend/ios/
 android-sdk/
 credentials.json
 *.key
