@@ -33,29 +33,13 @@
     },
     "production": {
       "channel": "production",
-      "env": {
-        "EXPO_PUBLIC_APP_ENV": "production",
-        "EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE": "guarddog_production",
-        "EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS": "off",
-        "APOLLO_GUARDDOG_TRUST_DOMAIN": "apollo.hwg",
-        "APOLLO_GUARDDOG_TRUST_PROFILE": "production-v1",
-        "APOLLO_GUARDDOG_PRIMARY_ROOT_ID": "apollo-primary-root-v1",
-        "APOLLO_GUARDDOG_PRIMARY_ROOT_PUBLIC_KEY_B64": "tlf0vrkjDV0BSg0j46QA/JyC1l8lvw9Jo5TCsrov0WA=",
-        "APOLLO_GUARDDOG_RECOVERY_ROOT_ID": "apollo-recovery-root-v1",
-        "APOLLO_GUARDDOG_RECOVERY_ROOT_PUBLIC_KEY_B64": "OiCzOzzRentElPzuEnn11vGi73NeyFUWa4Ofuv1Spi0=",
-        "EXPO_PUBLIC_GUARDDOG_TRUST_MANIFEST_URL": "https://threat-patrol-1.emergent.host/api/guarddog/trust-manifest",
-        "EXPO_PUBLIC_GUARDDOG_RULE_BUNDLE_URL": "https://threat-patrol-1.emergent.host/api/guarddog/rule-bundle",
-        "EXPO_PUBLIC_GUARDDOG_CONTROLLED_HOST": "threat-patrol-1.emergent.host",
-        "EXPO_PUBLIC_GUARDDOG_CONTROLLED_IPV4": "10.111.111.1",
-        "EXPO_PUBLIC_GUARDDOG_CONTROLLED_URL": "https://threat-patrol-1.emergent.host/api/guarddog/controlled-verify",
-        "EXPO_PUBLIC_GUARDDOG_RULESET_ID": "apollo-rules-v1"
-      }
-    },
-    "app-bundle": {
-      "distribution": "internal",
-      "channel": "production",
+      "environment": "production",
+      "autoIncrement": true,
       "android": {
-        "buildType": "apk",
+        "buildType": "app-bundle",
+        "image": "default"
+      },
+      "ios": {
         "image": "default"
       },
       "env": {
@@ -76,10 +60,20 @@
         "EXPO_PUBLIC_GUARDDOG_RULESET_ID": "apollo-rules-v1"
       }
     },
+    "app-bundle": {
+      "extends": "production",
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "image": "default"
+      }
+    },
     "guarddog-production": {
-      "extends": "app-bundle",
-      "env": {
-        "EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE": "guarddog_production"
+      "extends": "production",
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "image": "default"
       }
     }
   }

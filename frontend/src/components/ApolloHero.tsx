@@ -160,7 +160,6 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
           </Animated.View>
         </View>
         <Text style={s.label} testID="apollo-state-label">{title}</Text>
-        <Text style={s.note} testID="apollo-higgins-label">HIGGINS</Text>
         {/* Show the generic meaning only for benign states; for warning states the specific reason is enough. */}
         {(state === "resting" || state === "sniffing") ? (
           <Text style={s.meaning} testID="apollo-state-meaning">{meaning}</Text>
