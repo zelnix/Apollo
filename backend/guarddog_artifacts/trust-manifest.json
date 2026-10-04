@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "1.0",
+  "domain": "apollo.hwg",
+  "profile": "production-v1",
+  "authority": "primary",
+  "generation": 1,
+  "manifestVersion": 1,
+  "issuedAt": "2026-10-04T14:48:34.878Z",
+  "expiresAt": "2027-10-04T14:48:34.878Z",
+  "rootKeyId": "apollo-primary-root-v1",
+  "keys": [
+    {
+      "keyId": "apollo-signing-v1",
+      "publicKeyB64": "newl6L5W3DfAfx1idUYcToF+9ObAj69dykUxeOPj0nk=",
+      "validFrom": "2026-10-04T14:48:34.878Z",
+      "validUntil": "2027-10-04T14:48:34.878Z",
+      "status": "active"
+    }
+  ],
+  "disabledPrimaryRootIds": [],
+  "signature": "IGQWE/Uno9QCDInbwhsn8KD07qNnygIY3C0QeWqrlpBG/QMEq4JY68kCMWYT7qkEX/f7MrAd7HhMj9vRNAL9AQ=="
+}

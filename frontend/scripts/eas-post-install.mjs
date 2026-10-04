@@ -138,12 +138,6 @@ ${fallbackExec}
 // ── production .env fix for native builds ──────────────────────────────────
 
 function fixEnvForProduction() {
-  // When running inside the Emergent/EAS build container (not the local sandbox
-  // at /app/frontend), the .env still contains development values like
-  // EXPO_PUBLIC_APP_ENV=development and EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS=enabled.
-  // The pipeline replaces backend URLs (STEP 2) but not these vars. While eas.json
-  // build profiles set the correct values, the pipeline may rewrite eas.json in
-  // STEP 4 — so we fix .env directly as a safety net.
   const isLocalSandbox = root.startsWith("/app/frontend");
   if (isLocalSandbox) {
     console.log("[eas-post-install] Local sandbox detected; leaving .env unchanged.");
@@ -157,6 +151,8 @@ function fixEnvForProduction() {
   }
 
   let envContent = fs.readFileSync(envPath, "utf8");
+
+  // Fix development → production values
   const replacements = [
     { key: "EXPO_PUBLIC_APP_ENV", from: "development", to: "production" },
     { key: "EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS", from: "enabled", to: "off" },
@@ -168,6 +164,32 @@ function fixEnvForProduction() {
     if (re.test(envContent)) {
       envContent = envContent.replace(re, `${key}=${to}`);
       console.log(`[eas-post-install] .env: ${key}=${from} → ${to}`);
+      changed = true;
+    }
+  }
+
+  // Inject GuardDog production trust variables if not already present.
+  // These are required by security-preflight.mjs for guarddog_production builds.
+  const guarddogVars = {
+    APOLLO_GUARDDOG_TRUST_DOMAIN: "apollo.hwg",
+    APOLLO_GUARDDOG_TRUST_PROFILE: "production-v1",
+    APOLLO_GUARDDOG_PRIMARY_ROOT_ID: "apollo-primary-root-v1",
+    APOLLO_GUARDDOG_PRIMARY_ROOT_PUBLIC_KEY_B64: "tlf0vrkjDV0BSg0j46QA/JyC1l8lvw9Jo5TCsrov0WA=",
+    APOLLO_GUARDDOG_RECOVERY_ROOT_ID: "apollo-recovery-root-v1",
+    APOLLO_GUARDDOG_RECOVERY_ROOT_PUBLIC_KEY_B64: "OiCzOzzRentElPzuEnn11vGi73NeyFUWa4Ofuv1Spi0=",
+    EXPO_PUBLIC_GUARDDOG_TRUST_MANIFEST_URL: "https://threat-patrol-1.emergent.host/api/guarddog/trust-manifest",
+    EXPO_PUBLIC_GUARDDOG_RULE_BUNDLE_URL: "https://threat-patrol-1.emergent.host/api/guarddog/rule-bundle",
+    EXPO_PUBLIC_GUARDDOG_CONTROLLED_HOST: "threat-patrol-1.emergent.host",
+    EXPO_PUBLIC_GUARDDOG_CONTROLLED_IPV4: "10.111.111.1",
+    EXPO_PUBLIC_GUARDDOG_CONTROLLED_URL: "https://threat-patrol-1.emergent.host/api/guarddog/controlled-verify",
+    EXPO_PUBLIC_GUARDDOG_RULESET_ID: "apollo-rules-v1",
+  };
+
+  for (const [key, value] of Object.entries(guarddogVars)) {
+    const re = new RegExp(`^${key}=`, "m");
+    if (!re.test(envContent)) {
+      envContent += `\n${key}=${value}`;
+      console.log(`[eas-post-install] .env: injected ${key}`);
       changed = true;
     }
   }

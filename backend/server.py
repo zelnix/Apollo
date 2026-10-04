@@ -183,6 +183,10 @@ app.include_router(family_assist_router.ws_router, prefix="/api")
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_admin_key)])
 app.include_router(learning_admin.router, prefix="/api/admin", tags=["learning-admin"], dependencies=[Depends(require_admin_key)])
 
+# GuardDog production trust endpoints (unauthenticated — public trust artifacts and controlled verification).
+from routers import guarddog as guarddog_router
+app.include_router(guarddog_router.router)
+
 # CORS is not authentication (bearer tokens do that). The web preview is same-origin (/api on the same host), and native
 # apps don't use CORS, so only explicitly configured browser origins are allowed (add the admin console's origin here).
 _cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]

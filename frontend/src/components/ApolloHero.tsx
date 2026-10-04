@@ -126,7 +126,7 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
     if (!attentionGates.length) return resolution.reason;
     const names = attentionGates.map((g) => g.title.replace(/ Gate$/, ""));
     const list = names.length === 1 ? names[0] : names.length === 2 ? `${names[0]} and ${names[1]}` : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-    return `Higgins here, your device ${list} protection ${names.length === 1 ? "needs" : "need"} your attention.`;
+    return `Higgins here, your device ${list} protection needs your attention.`;
   }, [resolution.visibilityLost, resolution.reason, health.checking, attentionGates]);
   // Deep-link to the gates screen where attention gates appear first.
   const heroRoute = attentionGates.length ? "/(tabs)/guard" : reasonRoute;
