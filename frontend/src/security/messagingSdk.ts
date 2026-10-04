@@ -43,8 +43,8 @@ export const MessagingSdk = {
   acknowledgeMessageSecurityEvents: (ids: string[]) => { const m = getNativeModule(); return call<{ acknowledged: number }>(m ? () => m.acknowledgeMessageSecurityEvents(JSON.stringify(ids)) : undefined, { acknowledged: 0 }); },
   /** Text Guard: opens the Android "Notification access" settings screen. No-op ({opened:false}) on iOS/web. */
   openSmsListenerSettings: () => { const m = getNativeModule(); return call<{ opened: boolean }>(m ? () => m.openSmsListenerSettings() : undefined, { opened: false }); },
-  /** B1: Get pending text assessments (caseIds from background handoff). Android only; returns [] elsewhere. */
-  getPendingTextAssessments: () => { const m = getNativeModule(); return call<{ caseId: string; sender: string; textPreview: string; submittedAt: string }[]>(m ? () => m.getPendingTextAssessments() : undefined, []); },
-  /** B1: Remove a pending text assessment after its result has been consumed. */
-  removePendingTextAssessment: (caseId: string) => { const m = getNativeModule(); return call<{ removed: boolean }>(m ? () => m.removePendingTextAssessment(caseId) : undefined, { removed: false }); },
+  /** Text Guard: get local findings from ApolloLocalMessageAnalyzer (Android). Encrypted, survive content expiry. Returns [] on iOS/web. */
+  getTextGuardLocalFindings: () => { const m = getNativeModule(); return call<{ findingId: string; state: string; analyzer: string; source: string; findings: { ruleId: string; title: string; detail: string }[]; detectedAt: string }[]>(m ? () => m.getTextGuardLocalFindings() : undefined, []); },
+  /** Text Guard: acknowledge (remove) local findings by their IDs. */
+  acknowledgeTextGuardLocalFindings: (ids: string[]) => { const m = getNativeModule(); return call<{ acknowledged: number }>(m ? () => m.acknowledgeTextGuardLocalFindings(JSON.stringify(ids)) : undefined, { acknowledged: 0 }); },
 };

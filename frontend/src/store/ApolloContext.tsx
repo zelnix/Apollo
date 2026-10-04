@@ -580,29 +580,32 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     // any display-text-vs-real-destination mismatch recoverable from the plain pasted text. This can
     // only ever raise state to growling/barking — never biting (see src/domain/linkGuard.ts).
     const guard = evaluateLinkGuardFindings(urls, extractAnchorsFromPlainText(text));
-    // One current answer (never two competing verdicts): once Higgins completes a genuine assessment over the
-    // supplied evidence — never a partial, failed or unavailable pass — its risk verdict is reconciled into the
-    // state shown, so the pill/label the person sees can't contradict Higgins' own conclusion (MessageAssessmentResult
-    // renders both from this same `state`). A "clear" verdict clears an Apollo-only heuristic flag rather than leaving
-    // it displayed alongside a "no strong scam signs" explanation; a "warning" verdict still only raises, never lowers,
-    // whatever Apollo already found. A verified malicious-URL match (hard evidence, applied below via `guard`) is
-    // never hidden either way — Higgins or not.
+    // Higgins authority: Higgins may RAISE severity or add explanatory context, but must NEVER
+    // lower Apollo's deterministic state. A "clear" from Higgins is informational context only —
+    // it does not erase Apollo's own detection. Apollo's reasons are always preserved in the
+    // Patrol event. A verified malicious-URL match (hard evidence, guard) is never hidden.
     const higginsCurrent = assessment?.processing.higgins_source === "gemini" && assessment.processing.completion === "complete_within_supplied_evidence";
-    if (higginsCurrent) {
-      if (assessment!.risk === "warning" && STATE_RANK.growling > STATE_RANK[state]) state = "growling";
-      else if (assessment!.risk === "clear") state = "resting";
+    if (higginsCurrent && assessment!.risk === "warning" && STATE_RANK.growling > STATE_RANK[state]) {
+      state = "growling";
     }
+    // No demotion: Higgins "clear" does not change state. Apollo's deterministic result stands.
     if (STATE_RANK[guard.state] > STATE_RANK[state]) state = guard.state;
     why.push(...guard.why);
     const firstHost = urls[0]?.host ?? (analysis.signals.urls[0] ? analysis.signals.urls[0].replace(/^https?:\/\//i, "").split("/")[0].toLowerCase() : null);
     let event: PatrolEvent | null = null;
+    // Patrol event: Apollo's deterministic reasons are always primary. Higgins supplements but
+    // does not replace stronger Apollo evidence. Only when Apollo had no findings (resting) does
+    // Higgins provide the headline, reasons and recommendation.
+    const apolloHadFindings = analysis.state !== "resting";
     if (state !== "resting") {
+      const apolloHeadline = `${analysis.scenarioTitle}${analysis.signals.claimedBrand ? ` — claims to be ${analysis.signals.claimedBrand}` : ""}`;
+      const higginsFindings = assessment?.findings?.map((finding) => finding.title).slice(0, 4) ?? [];
       event = await upsertEvent({
         event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "message", state, status: "active",
-        headline: assessment?.higgins.headline ?? `${analysis.scenarioTitle}${analysis.signals.claimedBrand ? ` — claims to be ${analysis.signals.claimedBrand}` : ""}`,
-        what_happened: patrolSafeSummary(assessment?.higgins.what_was_found[0] ?? analysis.verdict),
-        why: assessment?.findings.map((finding) => finding.title).slice(0, 6) ?? why,
-        what_to_do: assessment?.higgins.next_action ?? analysis.recommendation,
+        headline: apolloHadFindings ? apolloHeadline : (assessment?.higgins.headline ?? apolloHeadline),
+        what_happened: patrolSafeSummary(apolloHadFindings ? analysis.verdict : (assessment?.higgins.what_was_found[0] ?? analysis.verdict)),
+        why: apolloHadFindings ? [...why, ...higginsFindings.filter((f) => !why.includes(f))] : (higginsFindings.length ? higginsFindings : why),
+        what_to_do: apolloHadFindings ? analysis.recommendation : (assessment?.higgins.next_action ?? analysis.recommendation),
         indicator_host: firstHost, indicator_digest: null, local_indicator: firstHost ? `https://${firstHost}/` : null, verified_block: false, adapter_label: securityAdapter.label,
         occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: analysis.signals.claimedBrand, scenario: analysis.scenario,
         supporting_references: assessment?.sources.filter((source) => source.url).map((source) => ({ label: source.label, url: source.url! })).slice(0, 6),
@@ -800,58 +803,6 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true; clearInterval(timer); sub.remove(); };
   }, [checkNumberRisk, lowPower, deviceId]);
 
-  // B1: Text Gate background assessment result delivery. Polls pending text assessments (submitted
-  // by ApolloTextHandoffWorker) and checks whether investigations have completed. When a result is
-  // available, creates a PatrolEvent with the assessment outcome and delivers a warning notification
-  // through the existing push/patrol path. Runs periodically and on foreground resume.
-  useEffect(() => {
-    let cancelled = false;
-    const pollTextAssessments = async () => {
-      try {
-        const pending = await MessagingSdk.getPendingTextAssessments();
-        for (const item of pending) {
-          if (cancelled) return;
-          if (!item?.caseId) continue;
-          try {
-            // Check the investigation result via the existing case endpoint
-            const caseResult = await apiGet<{ case: { status: string; findings?: { state?: string; headline?: string; explanation?: string; links?: string[] } } }>(`/investigations/${encodeURIComponent(item.caseId)}`);
-            const status = caseResult?.case?.status;
-            if (status === "complete" || status === "closed") {
-              const findings = caseResult.case.findings;
-              const threatState = findings?.state ?? "resting";
-              const isWarning = threatState === "barking" || threatState === "growling" || threatState === "ears_up";
-              if (isWarning) {
-                // Create a PatrolEvent for the warning
-                const ev: PatrolEvent = {
-                  event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "message" as const,
-                  status: "active" as const, state: (threatState as PatrolEvent["state"]),
-                  indicator_host: null, indicator_digest: null, local_indicator: null,
-                  verified_block: false, adapter_label: "Text Gate background",
-                  occurred_at: item.submittedAt, resolved_at: null, trust_allowed: false,
-                  why: findings?.explanation ? [findings.explanation] : ["Background assessment identified concerns in a captured message."],
-                  headline: findings?.headline ?? `Message from ${item.sender || "unknown sender"} needs attention`,
-                  what_happened: `Apollo automatically assessed a message${item.sender ? ` from ${item.sender}` : ""} and found potential concerns.`,
-                  what_to_do: threatState === "barking" ? "Do not respond to or act on this message. Review the details below." : "Review this message carefully before responding.",
-                };
-                setEvents((prev) => { const next = [ev, ...prev]; void storage.setItem(K.events, JSON.stringify(next)); return next; });
-                void syncEventRef.current?.(ev);
-                showToast(threatState === "barking" ? `Warning: suspicious message from ${item.sender || "unknown"}` : `Message from ${item.sender || "unknown"} worth checking`, threatState === "barking" ? "barking" : "growling");
-              }
-              // Assessment complete — remove from pending regardless of outcome
-              await MessagingSdk.removePendingTextAssessment(item.caseId);
-            }
-            // If not complete, leave it in pending for the next poll cycle
-          } catch {
-            // Investigation endpoint unavailable — leave in pending for retry
-          }
-        }
-      } catch { /* native module unavailable — nothing to poll */ }
-    };
-    void pollTextAssessments();
-    const timer = setInterval(() => void pollTextAssessments(), lowPower ? 180000 : 60000);
-    const sub = AppState.addEventListener("change", (st) => { if (st === "active") void pollTextAssessments(); });
-    return () => { cancelled = true; clearInterval(timer); sub.remove(); };
-  }, [deviceId, lowPower, showToast]);
 
   const recordRecovery = useCallback(async (event: PatrolEvent, kind: RecoveryKind) => {
     const label: Record<RecoveryKind, string> = { clicked: "Opened the link", password: "Entered a password", code: "Shared a verification code", money: "Sent money", info: "Shared personal information", app: "Installed an app", card: "Entered card or bank details", download: "Downloaded a file", called: "Called the number shown", remote: "Gave someone remote access", accessibility: "Granted accessibility access", profile: "Installed a profile or certificate", banking_during_access: "Used banking while they had access", mfa_approved: "Approved a login prompt", locked_out: "Lost access to the account" };

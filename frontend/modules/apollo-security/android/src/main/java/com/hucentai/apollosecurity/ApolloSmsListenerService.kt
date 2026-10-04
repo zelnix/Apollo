@@ -1,12 +1,19 @@
 package com.hucentai.apollosecurity
 
 import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.os.Build
 import android.provider.Settings
+import android.provider.Telephony
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Base64
+import androidx.core.app.NotificationCompat
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
@@ -24,10 +31,30 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-/** Opt-in notification intake with encrypted, non-destructive mailbox semantics. */
+/**
+ * Opt-in notification intake with encrypted, non-destructive mailbox semantics.
+ *
+ * Notification scope (Issue #1 fix):
+ *   Only accepts notifications from the device's resolved default SMS application.
+ *   When Android cannot resolve a default, falls back to KNOWN_SMS_PACKAGES (documented below).
+ *   Does NOT accept every CATEGORY_MESSAGE notification — WhatsApp, Telegram, Messenger etc. are excluded.
+ *
+ * Local analysis (Issue #2 fix):
+ *   Runs ApolloLocalMessageAnalyzer immediately on capture (no network). If suspicious, stores a
+ *   local finding and posts a local notification. Raw content is enqueued separately with bounded
+ *   expiry for backend Higgins handoff.
+ *
+ * Privacy (Issue #4 fix):
+ *   Raw message content is encrypted and expires after CONTENT_EXPIRY_MINUTES.
+ *   Local findings are stored separately and persist after content expiry.
+ *   No sender or message preview is stored in pending assessment records.
+ */
 class ApolloSmsListenerService : NotificationListenerService() {
   override fun onNotificationPosted(sbn: StatusBarNotification?) {
-    if (sbn == null || !isMessageNotification(sbn)) return
+    if (sbn == null) return
+    // Issue #1: Resolve default SMS package FIRST, then check notification origin.
+    if (!isFromDefaultSmsApp(sbn)) return
+    if (!isMessageNotification(sbn)) return
     val extras = sbn.notification.extras
     val candidates = mutableListOf<String>()
     extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.let(candidates::add)
@@ -39,24 +66,66 @@ class ApolloSmsListenerService : NotificationListenerService() {
     val exposed = candidates.maxByOrNull { it.length }?.trim().orEmpty()
     if (exposed.isBlank()) return
     val sender = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim().orEmpty()
+
+    // Issue #2: Run local deterministic analysis immediately, before any network handoff.
+    val localResult = ApolloLocalMessageAnalyzer.analyse(sender, exposed)
+    if (localResult.suspicious) {
+      storeLocalFinding(this, sbn.key ?: "${sbn.packageName}:${sbn.id}", localResult)
+      postLocalWarningNotification(this, sender, localResult)
+    }
+
+    // Enqueue raw content for backend handoff (bounded expiry, encrypted).
     enqueue(this, sbn.key ?: "${sbn.packageName}:${sbn.id}", sbn.packageName, sender, exposed)
   }
 
+  /**
+   * Issue #1: Only accept notifications from the device's default SMS application.
+   * Resolves the default via [Telephony.Sms.getDefaultSmsPackage]. Falls back to
+   * KNOWN_SMS_PACKAGES only when Android returns null (no default configured).
+   */
+  private fun isFromDefaultSmsApp(sbn: StatusBarNotification): Boolean {
+    val defaultPackage = Telephony.Sms.getDefaultSmsPackage(applicationContext)
+    if (defaultPackage != null) {
+      return sbn.packageName == defaultPackage
+    }
+    // Fallback: Android could not resolve a default SMS app. This can happen on devices with
+    // no SIM, during initial setup, or on certain custom ROMs. Accept only known SMS packages.
+    // Documented: this list is the ONLY fallback and is NOT used when a default is resolved.
+    return sbn.packageName in KNOWN_SMS_PACKAGES
+  }
+
+  /**
+   * After confirming the notification is from the SMS app, verify it's actually a message
+   * (not a service notification from the SMS app about updates, etc.).
+   */
   private fun isMessageNotification(sbn: StatusBarNotification): Boolean {
-    val category = sbn.notification.category
-    if (category == Notification.CATEGORY_MESSAGE) return true
-    return sbn.packageName in setOf("com.google.android.apps.messaging", "com.samsung.android.messaging")
+    return sbn.notification.category == Notification.CATEGORY_MESSAGE
   }
 
   companion object {
     private const val PREFS = "apollo_sms_guard"
     private const val QUEUE = "queue_v2"
+    private const val LOCAL_FINDINGS = "local_findings_v1"
     private const val OVERFLOW = "overflow_count"
     private const val QUEUE_ERRORS = "queue_error_count"
     private const val KEY_ALIAS = "apollo_sms_guard_aes_v1"
     private const val MAX_ITEMS = 64
     private const val MAX_TEXT = 250_000
+    private const val MAX_LOCAL_FINDINGS = 100
+    private const val CONTENT_EXPIRY_MINUTES = 15L
+    private const val WARNING_CHANNEL = "apollo_text_guard"
+    private const val WARNING_NOTIFICATION_BASE_ID = 9000
     private val lock = Any()
+
+    /**
+     * Fallback SMS packages used ONLY when Telephony.Sms.getDefaultSmsPackage() returns null.
+     * This list covers the two most common pre-installed Android messaging apps.
+     * It is NOT used when a default SMS app is resolved.
+     */
+    private val KNOWN_SMS_PACKAGES = setOf(
+      "com.google.android.apps.messaging",  // Google Messages
+      "com.samsung.android.messaging",       // Samsung Messages
+    )
 
     fun isEnabled(ctx: Context): Boolean {
       val flat = Settings.Secure.getString(ctx.contentResolver, "enabled_notification_listeners") ?: return false
@@ -110,8 +179,81 @@ class ApolloSmsListenerService : NotificationListenerService() {
     internal fun backendUrl(ctx: Context): String? = prefs(ctx).getString("backend_url", null)
     internal fun deviceToken(ctx: Context): String? = prefs(ctx).getString("device_token", null)?.let { decrypt(ctx, it) }
 
+    /** Read local findings (persisted separately from raw content; survive content expiry). */
+    fun readLocalFindings(ctx: Context): JSONArray = synchronized(lock) {
+      try {
+        val raw = prefs(ctx).getString(LOCAL_FINDINGS, null) ?: return JSONArray()
+        JSONArray(decrypt(ctx, raw))
+      } catch (_: Exception) { JSONArray() }
+    }
+
+    /** Acknowledge (remove) local findings by their IDs. Returns count removed. */
+    fun acknowledgeLocalFindings(ctx: Context, ids: Set<String>): Int = synchronized(lock) {
+      if (ids.isEmpty()) return@synchronized 0
+      try {
+        val arr = readLocalFindings(ctx)
+        val kept = JSONArray(); var removed = 0
+        for (i in 0 until arr.length()) {
+          val item = arr.optJSONObject(i) ?: continue
+          if (item.optString("findingId") in ids) removed++ else kept.put(item)
+        }
+        if (removed > 0) prefs(ctx).edit().putString(LOCAL_FINDINGS, encrypt(ctx, kept.toString())).commit()
+        removed
+      } catch (_: Exception) { 0 }
+    }
+
+    /** Store a local finding from ApolloLocalMessageAnalyzer. Encrypted, bounded. */
+    internal fun storeLocalFinding(ctx: Context, sourceKey: String, result: ApolloLocalMessageAnalyzer.AnalysisResult) = synchronized(lock) {
+      try {
+        val arr = readLocalFindings(ctx)
+        val findingId = sha256("local:$sourceKey:${Instant.now()}")
+        val entry = JSONObject()
+          .put("findingId", findingId)
+          .put("state", result.state)
+          .put("analyzer", result.analyzer)
+          .put("source", result.source)
+          .put("findings", result.toJson().getJSONArray("findings"))
+          .put("detectedAt", Instant.now().toString())
+        arr.put(entry)
+        // Bounded: keep only the most recent MAX_LOCAL_FINDINGS
+        while (arr.length() > MAX_LOCAL_FINDINGS) arr.remove(0)
+        prefs(ctx).edit().putString(LOCAL_FINDINGS, encrypt(ctx, arr.toString())).commit()
+      } catch (_: Exception) { /* best-effort */ }
+    }
+
+    /** Post a local notification for a suspicious message detection. */
+    internal fun postLocalWarningNotification(ctx: Context, sender: String, result: ApolloLocalMessageAnalyzer.AnalysisResult) {
+      try {
+        val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+        // Create channel if needed (Android 8+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+          val existing = nm.getNotificationChannel(WARNING_CHANNEL)
+          if (existing == null) {
+            nm.createNotificationChannel(NotificationChannel(WARNING_CHANNEL, "Text Guard Warnings", NotificationManager.IMPORTANCE_HIGH).apply {
+              description = "Warnings from Apollo's Text Guard when a suspicious message is detected."
+            })
+          }
+        }
+        // Build notification — no message content, only that a warning was generated
+        val title = if (result.state == "growling") "Apollo: suspicious message" else "Apollo: message worth checking"
+        val body = "A message${if (sender.isNotBlank()) " notification" else ""} triggered Apollo's local detection. Open Apollo to review."
+        // Intent to open the app
+        val launchIntent = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName)
+        val pendingIntent = if (launchIntent != null) PendingIntent.getActivity(ctx, 0, launchIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT) else null
+        val notification = NotificationCompat.Builder(ctx, WARNING_CHANNEL)
+          .setSmallIcon(ctx.applicationInfo.icon)
+          .setContentTitle(title)
+          .setContentText(body)
+          .setPriority(NotificationCompat.PRIORITY_HIGH)
+          .setAutoCancel(true)
+          .also { if (pendingIntent != null) it.setContentIntent(pendingIntent) }
+          .build()
+        nm.notify(WARNING_NOTIFICATION_BASE_ID + (System.currentTimeMillis() % 100).toInt(), notification)
+      } catch (_: Exception) { /* notification delivery is best-effort */ }
+    }
+
     private fun enqueue(ctx: Context, sourceKey: String, sourcePackage: String, senderRaw: String, textRaw: String) = synchronized(lock) {
-      val capturedAt = Instant.now(); val expiresAt = capturedAt.plus(15, ChronoUnit.MINUTES)
+      val capturedAt = Instant.now(); val expiresAt = capturedAt.plus(CONTENT_EXPIRY_MINUTES, ChronoUnit.MINUTES)
       val complete = textRaw.length <= MAX_TEXT
       val text = if (complete) textRaw else textRaw.substring(0, MAX_TEXT)
       val sender = senderRaw.take(2_048)
@@ -147,7 +289,7 @@ class ApolloSmsListenerService : NotificationListenerService() {
     private fun load(ctx: Context): JSONArray = prefs(ctx).getString(QUEUE, null)?.let { JSONArray(decrypt(ctx, it)) } ?: JSONArray()
     private fun save(ctx: Context, value: JSONArray): Boolean = prefs(ctx).edit().putString(QUEUE, encrypt(ctx, value.toString())).commit()
     private fun recordQueueError(ctx: Context) { prefs(ctx).edit().putInt(QUEUE_ERRORS, prefs(ctx).getInt(QUEUE_ERRORS, 0) + 1).commit() }
-    private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256").digest(value.toByteArray()).joinToString("") { "%02x".format(it) }
+    internal fun sha256(value: String): String = MessageDigest.getInstance("SHA-256").digest(value.toByteArray()).joinToString("") { "%02x".format(it) }
 
     internal fun encrypt(ctx: Context, plain: String): String {
       val cipher = Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.ENCRYPT_MODE, key())

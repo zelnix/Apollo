@@ -327,12 +327,11 @@ class ApolloSecurityModule : Module() {
       appContext.currentActivity?.startActivity(intent) ?: ctx.startActivity(intent)
       JSONObject().put("opened", true).toString()
     }
-    // B1: Expose pending text assessments (caseIds submitted by ApolloTextHandoffWorker) so the
-    // app-side poll loop can check investigation results and deliver PatrolEvents/warnings.
-    AsyncFunction("getPendingTextAssessments") { ApolloTextHandoffWorker.pendingAssessments(ctx).toString() }
-    AsyncFunction("removePendingTextAssessment") { caseId: String ->
-      ApolloTextHandoffWorker.removePendingAssessment(ctx, caseId)
-      JSONObject().put("removed", true).toString()
+    // Text Guard local findings (ApolloLocalMessageAnalyzer results, encrypted, survive content expiry).
+    AsyncFunction("getTextGuardLocalFindings") { ApolloSmsListenerService.readLocalFindings(ctx).toString() }
+    AsyncFunction("acknowledgeTextGuardLocalFindings") { idsJson: String ->
+      val ids = try { val arr = org.json.JSONArray(idsJson); (0 until arr.length()).map { arr.getString(it) }.toSet() } catch (_: Exception) { emptySet() }
+      JSONObject().put("acknowledged", ApolloSmsListenerService.acknowledgeLocalFindings(ctx, ids)).toString()
     }
 
     // Call Guard (CallSdk contract). Real Android signal: RoleManager.ROLE_CALL_SCREENING held by

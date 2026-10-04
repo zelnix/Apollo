@@ -221,9 +221,9 @@ public class ApolloSecurityModule: Module {
       if let url = URL(string: UIApplication.openSettingsURLString) { DispatchQueue.main.async { UIApplication.shared.open(url) }; return self.json(["opened": true]) }
       return self.json(["opened": false])
     }
-    // B1: iOS stubs for text assessment polling (Android-only feature; iOS uses Message Filter extension).
-    AsyncFunction("getPendingTextAssessments") { () -> String in "[]" }
-    AsyncFunction("removePendingTextAssessment") { (_: String) -> String in self.json(["removed": false]) }
+    // Text Guard local findings (Android-only; iOS uses Message Filter extension, no local analyzer).
+    AsyncFunction("getTextGuardLocalFindings") { () -> String in "[]" }
+    AsyncFunction("acknowledgeTextGuardLocalFindings") { (_: String) -> String in self.json(["acknowledged": 0]) }
 
     // Call Guard (CallSdk contract). `callScreening` reflects CXCallDirectoryManager's OWN reported
     // enabled status for ApolloCallDirectory — never assumed. `numberReputation` is always
