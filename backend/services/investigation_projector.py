@@ -21,7 +21,8 @@ def _dog_state(response) -> str:
 async def project_committed_cases(limit: int = 100) -> int:
     query = {"deleted": False, "response_revision": {"$gt": 0}, "$expr": {"$gt": ["$response_revision", {"$ifNull": ["$patrol_projected_revision", 0]}]}}
     rows = await db.investigation_cases.find(query, {"_id": 0, "owner_id": 1, "case_id": 1, "gates": 1, "status": 1,
-                                                       "response_revision": 1, "accepted_commits": 1, "created_at": 1, "updated_at": 1}).limit(limit).to_list(limit)
+                                                       "response_revision": 1, "accepted_commits": 1, "created_at": 1, "updated_at": 1,
+                                                       "client_submission_id": 1}).limit(limit).to_list(limit)
     projected = 0
     for case in rows:
         turns = await repo.accepted_turns(case["owner_id"], case)

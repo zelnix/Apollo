@@ -101,7 +101,7 @@ async def create_case(body: CreateCase, request: Request, idempotency_key: Optio
     if existing:
         case = await repo.get_case(owner, existing["result"]["caseId"])
         return JSONResponse(await _case_json(case), status_code=201, headers=NO_STORE)
-    case = await repo.create_case(owner, body.gate, body.device_profile.wire() if body.device_profile else None, client_submission_id=body.client_submission_id)
+    case = await repo.create_case(owner, body.gate, body.device_profile.wire() if body.device_profile else None)
     for item in body.submissions:
         if item.kind == "url":
             await ev.ingest_url(owner, case, item.client_item_id, item.value, label=item.label)
@@ -138,9 +138,14 @@ async def background_text_intake(body: BackgroundTextIn, request: Request):
     limitation = "" if body.content_complete else f"\n\nCapture limitation: Android exposed {body.original_characters} characters; Apollo retained the first {len(body.text)} under its admission policy."
     submission = Submission(client_item_id=f"sms-{body.submission_id[:70]}", kind="text",
                             value=f"From: {body.sender}\n{body.text}{limitation}", label="opt-in text notification")
-    payload = CreateCase(gate="text", question="Investigate this captured text-message notification, verify its claims and links, and identify the safest next action.", submissions=[submission], client_submission_id=body.submission_id)
+    payload = CreateCase(gate="text", question="Investigate this captured text-message notification, verify its claims and links, and identify the safest next action.", submissions=[submission])
     response = await create_case(payload, request, idempotency_key=f"sms-notification-{body.submission_id}")
     data = json.loads(response.body)
+    # Server-owned: set client_submission_id directly on the case document. This field is never
+    # accepted from the public /investigations API — only the internal background-text path writes it.
+    await db.investigation_cases.update_one(
+        {"owner_id": owner_of(request), "case_id": data["case"]["id"]},
+        {"$set": {"client_submission_id": body.submission_id}})
     return JSONResponse({"caseId": data["case"]["id"], "jobId": data.get("job", {}).get("id") if data.get("job") else None,
                          "acceptedAt": now_utc().isoformat()}, status_code=202, headers=NO_STORE)
 

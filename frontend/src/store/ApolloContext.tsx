@@ -824,11 +824,11 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   // Text Guard local findings consumer: converts ApolloLocalMessageAnalyzer detections into Patrol
   // events. Runs on init and foreground resume. Each finding becomes an Apollo-local Patrol event
   // containing only generic rule findings — no sender or message content. Persisted durably via
-  // upsertEvent (which awaits storage.setItem inside persistEvents) before acknowledging the native
-  // finding. findingId is used directly as event_id (64 hex characters — fits the backend
+  // persistEvents (NOT upsertEvent — local placeholders must never be synced to the backend).
+  // findingId is used directly as event_id (64 hex characters — fits the backend
   // PatrolEventIn.event_id max_length=64 contract exactly).
   //
-  // Sequential processing: the for-of loop awaits upsertEvent for each finding. upsertEvent
+  // Sequential processing: the for-of loop awaits persistEvents for each finding. persistEvents
   // synchronously updates eventsRef.current then awaits storage.setItem, so the next iteration
   // always reads the committed state. No out-of-order overwrites.
   //
@@ -873,10 +873,12 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
             what_happened: `Apollo's on-device analyzer (${finding.analyzer}) flagged a message based on pattern rules.`,
             what_to_do: finding.state === "growling" ? "Do not respond to or act on this message until you verify the sender independently." : "Review this message carefully. Verify the sender before responding to any requests.",
           };
-          // Durable persistence via upsertEvent — awaited before acknowledging.
-          // upsertEvent → persistEvents: eventsRef.current updated synchronously, then
-          // storage.setItem awaited. The next loop iteration reads the committed state from the ref.
-          await upsertEvent(ev);
+          // Local-only persistence via persistEvents — NOT upsertEvent (which also syncs to backend).
+          // Local placeholders must never leave the device; the backend creates the authoritative
+          // event when the investigation projector runs. persistEvents updates eventsRef.current
+          // synchronously then awaits storage.setItem — the next loop iteration reads committed state.
+          const next = [ev, ...eventsRef.current.filter((x) => x.event_id !== eventId)];
+          await persistEvents(next);
           acknowledged.push(finding.findingId);
         }
         // Acknowledge native findings only after all events are durably persisted
@@ -888,7 +890,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     void consumeLocalFindings();
     const sub = AppState.addEventListener("change", (st) => { if (st === "active") void consumeLocalFindings(); });
     return () => { cancelled = true; sub.remove(); };
-  }, [deviceId, upsertEvent]);
+  }, [deviceId, persistEvents]);
 
 
   const recordRecovery = useCallback(async (event: PatrolEvent, kind: RecoveryKind) => {
