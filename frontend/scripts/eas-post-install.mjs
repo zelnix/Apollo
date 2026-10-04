@@ -1,28 +1,26 @@
 #!/usr/bin/env node
-// EAS "eas-build-post-install" lifecycle hook.
+// Yarn "postinstall" + EAS "eas-build-post-install" lifecycle hook.
 //
-// Problem: EAS build workers generate an internal bash script that occasionally
-// invokes the bare `expo` command (e.g. for config resolution or prebuild) without
-// going through `npx` or the package-manager bin shim. If `node_modules/.bin` is
-// not on the system PATH, the shell emits `expo: command not found`.
+// Problem: The Emergent deployment pipeline and EAS build workers generate
+// internal bash scripts that invoke the bare `expo` command (e.g. for config
+// resolution or prebuild). After `yarn install`, `expo` lives in
+// `node_modules/.bin/expo` which is only on PATH during yarn script execution,
+// not when the pipeline's own bash script runs later.
 //
-// Fix: After dependency installation (which populates node_modules/.bin/expo),
-// create a global symlink so the platform-owned script can resolve `expo`.
-// Also symlinks `eas-cli-local-build-plugin` if present, since some EAS workers
-// also need that. This runs before the builder resolves Expo config or runs
-// prebuild.
+// Fix: After dependency installation, create a persistent global symlink so
+// `expo` is reachable outside of yarn's script PATH. This runs as a standard
+// `postinstall` hook (for the Emergent pipeline) and also as the EAS-specific
+// `eas-build-post-install` hook (for cloud builds).
 //
-// This is intentionally a no-op when the binary is already reachable, and never
-// fails the build if symlinking is not possible (|| true semantics).
+// The symlink is always created (idempotent), never fails the build.
 
 import fs from "node:fs";
 import path from "node:path";
-import { execSync } from "node:child_process";
 
 const root = path.resolve(import.meta.dirname, "..");
 const binDir = path.join(root, "node_modules", ".bin");
 
-/** Try to make a binary from node_modules/.bin globally reachable. */
+/** Ensure a binary from node_modules/.bin has a persistent global symlink. */
 function ensureGlobal(name) {
   const localBin = path.join(binDir, name);
   if (!fs.existsSync(localBin)) {
@@ -30,30 +28,24 @@ function ensureGlobal(name) {
     return;
   }
 
-  // Already reachable?
-  try {
-    execSync(`which ${name}`, { encoding: "utf8", stdio: "pipe" });
-    console.log(`[eas-post-install] ${name} is already on PATH.`);
-    return;
-  } catch {
-    // Not found — proceed to symlink.
-  }
-
-  // Try known global bin directories in order.
+  // Try known global bin directories in order. Always create/refresh the
+  // symlink — during yarn lifecycle scripts node_modules/.bin is temporarily
+  // on PATH, but that disappears once yarn exits.
   for (const dir of ["/usr/local/bin", "/usr/bin"]) {
     if (!fs.existsSync(dir)) continue;
     const target = path.join(dir, name);
     try {
+      // Remove stale symlink if present, then recreate.
+      try { fs.unlinkSync(target); } catch { /* absent or not writable — try symlink anyway */ }
       fs.symlinkSync(localBin, target);
       console.log(`[eas-post-install] Symlinked ${name} → ${target}`);
       return;
     } catch (e) {
-      // Directory not writable or name conflict; try next.
       console.log(`[eas-post-install] Could not symlink ${name} to ${dir}: ${e.message}`);
     }
   }
 
-  console.log(`[eas-post-install] WARNING: Could not make ${name} globally reachable. The EAS builder may still resolve it via npx.`);
+  console.log(`[eas-post-install] WARNING: Could not make ${name} globally reachable.`);
 }
 
 ensureGlobal("expo");

@@ -21,6 +21,7 @@
   },
   "scripts": {
     "preinstall": "./scripts/cmd-guard.js --preinstall",
+    "postinstall": "node scripts/eas-post-install.mjs",
     "start": "npx expo start",
     "security:preflight": "node scripts/security-preflight.mjs",
     "test:security": "node --test tests/securityConfig.test.ts",
