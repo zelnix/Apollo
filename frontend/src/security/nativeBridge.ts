@@ -109,6 +109,9 @@ export interface ApolloSecurityNativeModule {
   getShareHandoff(handoffId: string): Promise<string>;
   acknowledgeShareHandoff(handoffId: string): Promise<string>;
   discardShareHandoff(handoffId: string): Promise<string>;
+  /** Live Caller ID PIR — writes the PIR server URL to shared UserDefaults (iOS) for the
+   * LiveCallerIDLookup extension to read. Android stub returns {configured:false}. */
+  configurePirServerUrl(url: string): Promise<string>;
 }
 
 let cached: ApolloSecurityNativeModule | null | undefined;

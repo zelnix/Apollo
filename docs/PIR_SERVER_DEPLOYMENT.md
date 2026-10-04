@@ -123,34 +123,24 @@ The extension automatically uses this URL for PIR queries.
 
 ### Expo Config Plugin
 
-The entitlement needs to be added via an Expo config plugin since we use CNG:
+The entitlement is already configured via the Expo config plugin at `frontend/plugins/withLiveCallerID.js`.
+It is registered in `app.json` plugins and also adds the EAS extension entry.
 
-```javascript
-// frontend/plugins/withLiveCallerID.js
-module.exports = function withLiveCallerID(config) {
-  return {
-    ...config,
-    ios: {
-      ...config.ios,
-      entitlements: {
-        ...config.ios?.entitlements,
-        "com.apple.developer.live-caller-id-lookup": true,
-      },
-    },
-  };
-};
-```
-
-Add to `app.json`:
+To set the PIR server URL, update `app.json`:
 ```json
 {
   "expo": {
-    "plugins": [
-      "./plugins/withLiveCallerID"
-    ]
+    "extra": {
+      "pirServer": {
+        "url": "https://pir.your-domain.com"
+      }
+    }
   }
 }
 ```
+
+The main app writes this URL to shared UserDefaults at startup via `configurePirServerUrl()`,
+and the extension reads it with UserDefaults as priority and Info.plist as fallback.
 
 ## Step 6: Testing
 
@@ -174,7 +164,12 @@ Add to `app.json`:
 - ✅ Backend data service: `backend/services/caller_id_db.py`
 - ✅ Export endpoint: `GET /api/call/caller-id-db/export`
 - ✅ Auto-ingestion from risk checks: numbers flagged by IPQualityScore are automatically added
-- ✅ iOS extension: `LiveCallerIDLookupHandler.swift` — reads PIR server URL from shared UserDefaults
+- ✅ iOS extension: `LiveCallerIDLookupHandler.swift` — reads PIR server URL from shared UserDefaults (priority) or Info.plist (fallback)
+- ✅ Expo config plugin: `plugins/withLiveCallerID.js` — adds extension target, entitlements, and embeds PIR URL from app.json
+- ✅ Native bridge: `configurePirServerUrl()` in ApolloSecurityModule — writes URL to shared UserDefaults at app startup
+- ✅ Startup injection: `ApolloContext.tsx` reads from `Constants.expoConfig.extra.pirServer.url` and writes to iOS UserDefaults
+- ✅ Data sync script: `backend/scripts/pir_sync.py` — exports, transforms, and pushes to PIR server
+- ✅ EAS build configuration: `ApolloLiveCallerID` registered in `app.json` appExtensions
+- ✅ Apple entitlement documentation: `docs/APPLE_LIVE_CALLER_ID_ENTITLEMENT.md`
 - ⏳ PIR server deployment: requires separate Swift server infrastructure
 - ⏳ Apple entitlement: requires application through developer.apple.com
-- ⏳ Expo config plugin for entitlement: needs creation after entitlement approval

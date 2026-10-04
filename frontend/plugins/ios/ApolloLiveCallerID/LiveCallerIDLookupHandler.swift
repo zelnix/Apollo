@@ -15,9 +15,13 @@ import IdentityLookup
 /// Architecture:
 ///   Incoming call → iOS → Apple PIR relay → Apollo PIR server → encrypted response → iOS → label displayed
 ///
-/// The PIR server (configured via `serviceURL`) must implement Apple's PIR shard protocol.
-/// Apollo's FastAPI backend provides the `/api/call/caller-id-db/export` endpoint that feeds
-/// the PIR server's data ingestion pipeline.
+/// The PIR server (configured via shared UserDefaults or built-in Info.plist) must implement Apple's
+/// PIR shard protocol. Apollo's FastAPI backend provides the `/api/call/caller-id-db/export` endpoint
+/// that feeds the PIR server's data ingestion pipeline.
+///
+/// URL resolution priority:
+///   1. Shared UserDefaults key "apollo.pir.server_url" (runtime-configurable via main app)
+///   2. Info.plist key "ApolloLiveCallerIDServerURL" (embedded at build time from app.json extra)
 ///
 /// Requirements before enabling:
 ///   1. A running PIR server (Apple's `live-caller-id-lookup-example` reference, configured with
@@ -32,12 +36,32 @@ import IdentityLookup
 @available(iOS 18.0, *)
 final class LiveCallerIDLookupHandler: LiveCallerIDLookupExtension {
 
-  /// The URL of Apollo's PIR server. Configured via the app group's shared UserDefaults
-  /// so the main app can update it without rebuilding the extension.
+  /// Derive the shared App Group from the extension's own bundle ID.
+  /// Extension bundle ID is "<app>.ApolloLiveCallerID" → app bundle is "<app>"
+  /// → app group is "group.<app>.apollo"
+  private var appGroup: String {
+    let extId = Bundle.main.bundleIdentifier ?? ""
+    let appId = extId.replacingOccurrences(of: ".ApolloLiveCallerID", with: "")
+    return "group.\(appId).apollo"
+  }
+
+  /// The URL of Apollo's PIR server.
+  /// Priority: shared UserDefaults (runtime-updatable) > Info.plist (build-time embedded).
   private var serverURL: URL? {
-    let defaults = UserDefaults(suiteName: "group.com.hucentai.apollo")
-    guard let urlString = defaults?.string(forKey: "apollo.pir.server_url") else { return nil }
-    return URL(string: urlString)
+    // 1. Check shared UserDefaults (written by the main app at startup)
+    if let defaults = UserDefaults(suiteName: appGroup),
+       let urlString = defaults.string(forKey: "apollo.pir.server_url"),
+       !urlString.isEmpty,
+       let url = URL(string: urlString) {
+      return url
+    }
+    // 2. Fall back to Info.plist value (embedded at build time by withLiveCallerID.js plugin)
+    if let urlString = Bundle.main.object(forInfoDictionaryKey: "ApolloLiveCallerIDServerURL") as? String,
+       !urlString.isEmpty,
+       let url = URL(string: urlString) {
+      return url
+    }
+    return nil
   }
 
   override func configuration() -> LiveCallerIDLookupExtensionConfiguration {
@@ -46,7 +70,8 @@ final class LiveCallerIDLookupHandler: LiveCallerIDLookupExtension {
     if let url = serverURL {
       return LiveCallerIDLookupExtensionConfiguration(serverURL: url)
     }
-    // Fallback: use a placeholder that will gracefully fail (no label returned)
+    // Fallback: use a placeholder that will gracefully fail (no label returned).
+    // This is only reached when neither UserDefaults nor Info.plist has a URL configured.
     return LiveCallerIDLookupExtensionConfiguration(
       serverURL: URL(string: "https://pir.apollo.example.com")!
     )

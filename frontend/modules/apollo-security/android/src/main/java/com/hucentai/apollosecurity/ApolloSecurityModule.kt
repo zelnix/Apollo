@@ -415,6 +415,13 @@ class ApolloSecurityModule : Module() {
       ApolloCallScreeningService.recentEvidence().forEach { arr.put(evidenceJson(it)) }
       arr.toString()
     }
+
+    // Live Caller ID — PIR server URL (iOS-only feature; Android stub for cross-platform parity).
+    // On Android, caller identification uses CallScreeningService, not PIR. This is a no-op stub
+    // so the JS layer can call configurePirServerUrl on both platforms without platform checks.
+    AsyncFunction("configurePirServerUrl") { _: String ->
+      JSONObject().put("configured", false).put("reason", "android_not_applicable").toString()
+    }
   }
 
   private fun platformVersion(): String = "Android ${android.os.Build.VERSION.RELEASE}"

@@ -425,6 +425,23 @@ public class ApolloSecurityModule: Module {
     AsyncFunction("getShareHandoff") { (handoffId: String) -> String in self.shareHandoff(handoffId) }
     AsyncFunction("acknowledgeShareHandoff") { (handoffId: String) -> String in self.acknowledgeShareHandoff(handoffId) }
     AsyncFunction("discardShareHandoff") { (handoffId: String) -> String in self.discardShareHandoff(handoffId) }
+
+    // Live Caller ID — PIR server URL injection into shared UserDefaults.
+    // Called silently at app startup from ApolloContext with the URL from app.json extra config.
+    // The ApolloLiveCallerID extension reads this key to know where to send PIR queries.
+    AsyncFunction("configurePirServerUrl") { (url: String) -> String in
+      let defaults = UserDefaults(suiteName: self.appGroup)
+      if url.isEmpty {
+        defaults?.removeObject(forKey: "apollo.pir.server_url")
+        return self.json(["configured": false])
+      }
+      guard URL(string: url) != nil else {
+        return self.json(["configured": false, "error": "invalid_url"])
+      }
+      defaults?.set(url, forKey: "apollo.pir.server_url")
+      defaults?.synchronize()
+      return self.json(["configured": true, "url": url])
+    }
   }
 
   // MARK: - Helpers

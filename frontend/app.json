@@ -115,6 +115,7 @@
       "./plugins/withGuardDogEngine",
       "./plugins/withGuardDogCandidateProfile",
       "./plugins/withGuardDogProductionTrust",
+      "./plugins/withLiveCallerID",
       "expo-sharing",
       [
         "expo-camera",
@@ -154,6 +155,9 @@
       "typedRoutes": true
     },
     "extra": {
+      "pirServer": {
+        "url": ""
+      },
       "eas": {
         "build": {
           "experimental": {
@@ -199,6 +203,16 @@
                   "targetName": "ApolloMessageFilter",
                   "bundleIdentifier": "app.apollo.hwg.messagefilter",
                   "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.app.apollo.hwg.apollo"
+                    ]
+                  }
+                },
+                {
+                  "targetName": "ApolloLiveCallerID",
+                  "bundleIdentifier": "app.apollo.hwg.ApolloLiveCallerID",
+                  "entitlements": {
+                    "com.apple.developer.live-caller-id-lookup": true,
                     "com.apple.security.application-groups": [
                       "group.app.apollo.hwg.apollo"
                     ]

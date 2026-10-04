@@ -3,6 +3,7 @@
 // verification timestamps and the resolved Apollo state.
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import Constants from "expo-constants";
 import * as Crypto from "expo-crypto";
 import * as Localization from "expo-localization";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
@@ -378,6 +379,14 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
             // Build the request inside the Promise chain too: egress validation is synchronous, so a
             // future client/server contract mismatch must remain contained like an offline heartbeat.
             void Promise.resolve().then(() => apiPost("/devices/heartbeat", "device_register", deviceMeta())).catch(() => undefined);
+            // Live Caller ID PIR — silently write the PIR server URL to shared UserDefaults (iOS)
+            // so the LiveCallerIDLookup extension knows where to query. Non-blocking, best-effort.
+            if (Platform.OS === "ios") {
+              const pirUrl = Constants.expoConfig?.extra?.pirServer?.url;
+              if (pirUrl && typeof pirUrl === "string" && pirUrl.length > 0) {
+                void getNativeModule()?.configurePirServerUrl(pirUrl).catch(() => undefined);
+              }
+            }
           }
           if (protOn) await storage.setItem(K.protection, true);
         }

@@ -281,6 +281,51 @@ async def _submit_shared_case(provider: str, device_id: str, message: dict[str, 
                 "Apollo flagged the filename — attachment contents were not inspected."
             )
 
+    # #7: Link reputation coverage reporting. Check each link against Safe Browsing + blocklist.
+    # Explicitly report when checks could not be performed (unavailable) instead of defaulting to "clean".
+    link_checked_count = 0
+    link_unavailable_count = 0
+    if links:
+        from services.intel import run_intel_check, sanitize_url
+        for link in links[:10]:  # limit to 10 links per email
+            href = link.get("href", "") if isinstance(link, dict) else ""
+            if not href:
+                continue
+            try:
+                result = await run_intel_check("url", href)
+                link_checked_count += 1
+                if result.verdict == "malicious":
+                    _, host = sanitize_url(href)
+                    local_findings.append(
+                        f"Link to {host} is listed as unsafe by reputation sources ({', '.join(result.threat_types)}). "
+                        "Do not open this link."
+                    )
+                elif result.coverage in ("partial", "none"):
+                    link_unavailable_count += 1
+            except Exception:
+                link_unavailable_count += 1
+        if link_unavailable_count > 0:
+            local_findings.append(
+                f"Coverage limitation: {link_unavailable_count} of {link_checked_count + link_unavailable_count} "
+                "link reputation checks could not be completed (Safe Browsing or blocklist unavailable). "
+                "These links were not confirmed safe — they could not be checked."
+            )
+        elif link_checked_count > 0 and link_unavailable_count == 0:
+            local_findings.append(
+                f"Coverage: {link_checked_count} link{'s' if link_checked_count != 1 else ''} checked against "
+                "Safe Browsing and Apollo's managed threat list — no current listings found. "
+                "This checks known threats only; a clean result does not guarantee the destination is safe."
+            )
+
+    # #8: Authentication disclaimer. When auth_results are present (from Gmail API headers),
+    # add a clear disclaimer that authentication confirms the sending domain, not the content.
+    if auth_results and any(auth_results.get(m) == "pass" for m in ("spf", "dkim", "dmarc")):
+        local_findings.append(
+            "Sender authentication (SPF/DKIM/DMARC): passed. This confirms the email was sent from "
+            "the claimed domain's authorised mail server. It does NOT confirm the email's content, "
+            "intentions, or truthfulness. A legitimate domain can still send misleading content."
+        )
+
     for index, finding in enumerate(local_findings):
         await evidence.ingest_text(device_id, case, f"mailbox-{digest}-finding-{index}", finding, origin="apollo_inference",
                                    label="Apollo background intake observation", coverage=evidence.Coverage(status="examined", unit="items", total=1, examined=1))
