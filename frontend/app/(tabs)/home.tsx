@@ -49,6 +49,9 @@ export default function Home() {
   const scents = buildScents(events);
   const activeCount = health.gates.filter((gate) => gate.capability.automatic?.state === "running").length;
   const attentionCount = health.gates.filter((gate) => gate.tone === "attention").length;
+  // When the hero already shows a warning, keep the Protection card as a concise navigation shortcut
+  // rather than repeating "needs your attention" messaging.
+  const heroCoversWarning = resolution.state !== "resting" && resolution.state !== "sniffing";
 
   return (
     <View style={s.root}>
@@ -83,9 +86,9 @@ export default function Home() {
               <View style={s.cardIconWell}><ShieldCheck size={16} color={colors.brand} /></View>
               <Text style={s.cardTitle}>Protection</Text>
             </View>
-            <Body testID="home-protection-status">{health.checking ? "Checking current device status…" : `${activeCount} ${activeCount === 1 ? "Gate is" : "Gates are"} helping automatically${attentionCount ? ` · ${attentionCount} ${attentionCount === 1 ? "needs" : "need"} your attention` : ""}`}</Body>
+            <Body testID="home-protection-status">{health.checking ? "Checking current device status…" : heroCoversWarning ? `${activeCount} ${activeCount === 1 ? "Gate" : "Gates"} active · ${attentionCount} to review` : `${activeCount} ${activeCount === 1 ? "Gate is" : "Gates are"} helping automatically${attentionCount ? ` · ${attentionCount} ${attentionCount === 1 ? "needs" : "need"} your attention` : ""}`}</Body>
             <Pressable testID="home-open-guard" accessibilityRole="button" onPress={() => router.push("/(tabs)/guard")} style={s.cardLinkRow}>
-              <Text style={s.link}>{attentionCount ? "Review what needs attention" : "View protection"}</Text>
+              <Text style={s.link}>{heroCoversWarning ? "View Gates" : (attentionCount ? "Review what needs attention" : "View protection")}</Text>
               <ChevronRight size={14} color={colors.restingText} />
             </Pressable>
           </Card>

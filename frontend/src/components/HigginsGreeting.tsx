@@ -30,18 +30,22 @@ export function HigginsGreeting({ state }: { state: ApolloState | "lost" }) {
   const today = dayKey();
   const greeting = useMemo(() => higginsGreeting(state), [state]);
 
+  // When the hero is already showing a warning state the greeting would just duplicate it.
+  // Suppress the card entirely and let ApolloHero be the single source of truth.
+  const heroCoversWarning = state !== "resting";
+
   // First open of the day: show the card and, if the person asked Higgins to read aloud automatically, speak it once.
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || heroCoversWarning) return;
     void storage.getItem<string | null>(K_DAY, null).then((last) => {
       if (last === today) return;
       setVisible(true);
       void getHigginsAuto().then((on) => { if (on) void speakHiggins(greeting.text, deviceId).catch(() => undefined); });
     });
-  }, [ready, today]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ready, today, heroCoversWarning, greeting.text, deviceId]);
 
   const dismiss = () => { setVisible(false); void storage.setItem(K_DAY, today); };
-  if (!visible) return null;
+  if (!visible || heroCoversWarning) return null;
 
   return (
     <Card style={{ gap: spacing.sm, borderColor: toneColor(colors, greeting.tone === "lost" ? "unknown" : greeting.tone) }} testID="higgins-greeting">

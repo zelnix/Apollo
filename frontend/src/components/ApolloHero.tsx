@@ -148,7 +148,10 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
         </View>
         <Text style={s.label} testID="apollo-state-label">{title}</Text>
         <Text style={s.note} testID="apollo-higgins-label">HIGGINS</Text>
-        <Text style={s.meaning} testID="apollo-state-meaning">{meaning}</Text>
+        {/* Show the generic meaning only for benign states; for warning states the specific reason is enough. */}
+        {(state === "resting" || state === "sniffing") ? (
+          <Text style={s.meaning} testID="apollo-state-meaning">{meaning}</Text>
+        ) : null}
         {reasonRoute ? (
           <Pressable onPress={() => router.push(reasonRoute as any)} accessibilityRole="link" testID="apollo-state-reason-link" style={{ minHeight: 44, justifyContent: "center" }}>
             <Text style={s.reasonLink} testID="apollo-state-reason">{reason} →</Text>
