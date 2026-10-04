@@ -74,8 +74,10 @@ class ApolloSmsListenerService : NotificationListenerService() {
     val sourceKey = sbn.key ?: "${sbn.packageName}:${sbn.id}"
     val submissionId = sha256("$sourceKey:$revisionDigest")
     if (localResult.suspicious) {
-      storeLocalFinding(this, sourceKey, revisionDigest, submissionId, localResult)
-      postLocalWarningNotification(this, sender, localResult)
+      val stored = storeLocalFinding(this, sourceKey, revisionDigest, submissionId, localResult)
+      if (stored) {
+        postLocalWarningNotification(this, sender, localResult)
+      }
     }
 
     // Enqueue raw content for backend handoff (bounded expiry, encrypted).
@@ -208,15 +210,16 @@ class ApolloSmsListenerService : NotificationListenerService() {
 
     /** Store a local finding from ApolloLocalMessageAnalyzer. Encrypted, bounded.
      * findingId is content-stable: sha256("local:$sourceKey:$revisionDigest"). Repeated delivery
-     * of the same notification revision replaces (not duplicates) the existing finding. */
-    internal fun storeLocalFinding(ctx: Context, sourceKey: String, revisionDigest: String, submissionId: String, result: ApolloLocalMessageAnalyzer.AnalysisResult) = synchronized(lock) {
+     * of the same notification revision is idempotent (returns false).
+     * @return true when a new finding was stored; false when the revision already existed or on error. */
+    internal fun storeLocalFinding(ctx: Context, sourceKey: String, revisionDigest: String, submissionId: String, result: ApolloLocalMessageAnalyzer.AnalysisResult): Boolean = synchronized(lock) {
       try {
         val arr = readLocalFindings(ctx)
         // Content-stable: same source + same content revision → same findingId
         val findingId = sha256("local:$sourceKey:$revisionDigest")
         // Idempotent: if this findingId already exists, skip (do not duplicate)
         for (i in 0 until arr.length()) {
-          if (arr.optJSONObject(i)?.optString("findingId") == findingId) return@synchronized
+          if (arr.optJSONObject(i)?.optString("findingId") == findingId) return@synchronized false
         }
         val entry = JSONObject()
           .put("findingId", findingId)
@@ -230,7 +233,7 @@ class ApolloSmsListenerService : NotificationListenerService() {
         // Bounded: keep only the most recent MAX_LOCAL_FINDINGS
         while (arr.length() > MAX_LOCAL_FINDINGS) arr.remove(0)
         prefs(ctx).edit().putString(LOCAL_FINDINGS, encrypt(ctx, arr.toString())).commit()
-      } catch (_: Exception) { /* best-effort */ }
+      } catch (_: Exception) { false }
     }
 
     /** Post a local notification for a suspicious message detection. */

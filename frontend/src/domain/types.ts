@@ -137,6 +137,11 @@ export interface PatrolEvent {
   recovery_kinds?: string[];
   /** Owner-validated server association for continuing this event after remount or device refresh. */
   investigation_case_id?: string | null;
+  /** Server-owned correlation: links a background-intake submission to its projected Patrol event.
+   * Set by the investigation projector; the frontend sets it on local placeholder events for
+   * reconciliation. When the server supplies a value, it is authoritative and supersedes the local
+   * placeholder (see remote merge effect in ApolloContext). */
+  client_submission_id?: string | null;
   /** Server-owned immutable Patrol projection. Consumer history must prefer this when present. */
   patrol_record?: PatrolRecord;
 }

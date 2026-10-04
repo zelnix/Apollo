@@ -185,6 +185,10 @@ class PatrolEventIn(BaseModel):
     # Authoritative owner-validated association. Clients bind this through the dedicated Patrol route;
     # it is never accepted from an ordinary event upsert.
     investigation_case_id: Optional[str] = Field(default=None, max_length=80)
+    # Server-owned correlation: links a background-intake submission to its projected Patrol event.
+    # Set by the investigation projector from the case's client_submission_id; the frontend may also
+    # set it on local placeholder events for reconciliation. The server value is authoritative.
+    client_submission_id: Optional[str] = Field(default=None, max_length=64)
 
 
 class PatrolEvent(PatrolEventIn, BaseDocument):

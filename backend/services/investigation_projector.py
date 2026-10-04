@@ -53,7 +53,9 @@ async def project_committed_cases(limit: int = 100) -> int:
             "local_indicator": None, "verified_block": False, "adapter_label": "Higgins investigation",
             "occurred_at": latest.committed_at, "resolved_at": latest.committed_at if state == "resting" else None,
             "trust_allowed": False, "claimed_brand": None, "scenario": "shared_investigation", "scent_id": None,
-            "background": True, "investigation_case_id": case["case_id"], "deleted_at": None, "created_at": now_utc(), "updated_at": now_utc(),
+            "background": True, "investigation_case_id": case["case_id"],
+            "client_submission_id": case.get("client_submission_id"),
+            "deleted_at": None, "created_at": now_utc(), "updated_at": now_utc(),
         }
         created_at = document.pop("created_at")
         upsert = await db.patrol_events.update_one({"device_id": case["owner_id"], "event_id": event_id}, {"$set": document, "$setOnInsert": {"created_at": created_at}}, upsert=True)

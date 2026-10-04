@@ -346,6 +346,9 @@ class CreateCase(Wire):
     initial_finding_refs: list[str] = Field(default_factory=list)
     initial_findings: list[str] = Field(default_factory=list)  # Apollo observations (apollo_inference origin), full text
     device_profile: Optional[DeviceProfile] = None
+    # Optional correlation ID for background intake flows (e.g. SMS notification submission).
+    # Propagated to the case document and projected onto the Patrol event for client-side reconciliation.
+    client_submission_id: Optional[str] = Field(default=None, max_length=64)
 
 
 class TextSubmission(Wire):

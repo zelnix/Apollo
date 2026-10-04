@@ -512,7 +512,19 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     if (!remoteEvents.data) return;
     const authoritative = remoteEvents.data.map((record) => normalizeHistoricalEvent(patrolRecordToEvent(record)));
     const remoteIds = new Set(authoritative.map((event) => event.event_id));
-    const localOnly = events.filter((event) => !remoteIds.has(event.event_id));
+    // Supersession: when a remote (Higgins-projected) event carries a client_submission_id, any
+    // local placeholder with the same submission but a different event_id is dropped — the
+    // projected event replaces it entirely. This is the completion of the local→remote handoff.
+    const remoteBySubmission = new Map<string, string>();
+    for (const re of authoritative) {
+      if (re.client_submission_id) remoteBySubmission.set(re.client_submission_id, re.event_id);
+    }
+    const localOnly = events.filter((event) => {
+      if (remoteIds.has(event.event_id)) return false;
+      // Drop the local placeholder — the authoritative projected event replaces it.
+      if (event.client_submission_id && remoteBySubmission.has(event.client_submission_id) && event.event_id !== remoteBySubmission.get(event.client_submission_id)) return false;
+      return true;
+    });
     void persistEvents([...authoritative, ...localOnly].sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at)));
   }, [remoteEvents.data]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
@@ -811,52 +823,63 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   // Text Guard local findings consumer: converts ApolloLocalMessageAnalyzer detections into Patrol
   // events. Runs on init and foreground resume. Each finding becomes an Apollo-local Patrol event
-  // containing only generic rule findings — no sender or message content. Persisted durably before
-  // acknowledging the native finding. Idempotent: findingId-derived event_id prevents duplicates.
-  // Reconciliation: if a Higgins-projected Patrol event already exists for the same submissionId,
-  // the local finding is acknowledged without creating a duplicate.
+  // containing only generic rule findings — no sender or message content. Persisted durably via
+  // upsertEvent (which awaits storage.setItem inside persistEvents) before acknowledging the native
+  // finding. findingId is used directly as event_id (64 hex characters — fits the backend
+  // PatrolEventIn.event_id max_length=64 contract exactly).
+  //
+  // Sequential processing: the for-of loop awaits upsertEvent for each finding. upsertEvent
+  // synchronously updates eventsRef.current then awaits storage.setItem, so the next iteration
+  // always reads the committed state. No out-of-order overwrites.
+  //
+  // Reconciliation: if a Higgins-projected Patrol event already exists for the same
+  // client_submission_id (set by the investigation projector, end-to-end from the case's
+  // client_submission_id field), the local finding is acknowledged without creating a duplicate.
+  // Full supersession of an existing local placeholder happens in the remote merge effect above
+  // when the projected event arrives — the local placeholder is dropped from the merged list.
   useEffect(() => {
+    if (Platform.OS !== "android") return;
     let cancelled = false;
     const consumeLocalFindings = async () => {
-      if (Platform.OS !== "android") return;
       try {
         const findings = await MessagingSdk.getTextGuardLocalFindings();
         if (!findings.length || cancelled) return;
         const acknowledged: string[] = [];
         for (const finding of findings) {
           if (cancelled || !finding?.findingId) continue;
-          const localEventId = `local-text-${finding.findingId}`;
-          // Reconciliation: check if a Higgins-projected Patrol event already covers this submission.
-          // If so, the authoritative record exists — acknowledge without duplicating.
-          const higginsAlreadyProjected = events.some((ev) =>
-            ev.category === "message" && ev.investigation_submission_id === finding.submissionId && ev.adapter_label !== "Text Guard local detection"
+          // findingId IS the event_id — no prefix. SHA-256 hex = 64 characters.
+          const eventId = finding.findingId;
+          // Read from the ref (not the closure) so each sequential iteration sees the latest state.
+          const current = eventsRef.current;
+          // Reconciliation: if a Higgins-projected event already covers this submission,
+          // the authoritative record exists — acknowledge without duplicating.
+          const higginsAlreadyProjected = current.some((ev) =>
+            ev.category === "message" && ev.client_submission_id === finding.submissionId && ev.event_id !== eventId
           );
           if (higginsAlreadyProjected) { acknowledged.push(finding.findingId); continue; }
-          // Check if this exact local event already exists (idempotent on re-read)
-          if (events.some((ev) => ev.event_id === localEventId)) { acknowledged.push(finding.findingId); continue; }
+          // Idempotent: this exact local event already exists (re-read after foreground resume)
+          if (current.some((ev) => ev.event_id === eventId)) { acknowledged.push(finding.findingId); continue; }
           // Create the local Patrol event with generic rule findings only
-          const ruleReasons = finding.findings.map((f) => `${f.ruleId}: ${f.title}`).slice(0, 6);
+          const ruleReasons = finding.findings.map((f: { ruleId: string; title: string }) => `${f.ruleId}: ${f.title}`).slice(0, 6);
           const ev: PatrolEvent = {
-            event_id: localEventId, device_id: deviceId ?? "local", category: "message" as const,
+            event_id: eventId, device_id: deviceId ?? "local", category: "message" as const,
             status: "active" as const, state: (finding.state as PatrolEvent["state"]) ?? "ears_up",
             indicator_host: null, indicator_digest: null, local_indicator: null,
             verified_block: false, adapter_label: "Text Guard local detection",
             occurred_at: finding.detectedAt ?? new Date().toISOString(), resolved_at: null,
-            trust_allowed: false, investigation_submission_id: finding.submissionId,
+            trust_allowed: false, client_submission_id: finding.submissionId,
             why: ruleReasons.length ? ruleReasons : ["Local analysis detected suspicious patterns."],
             headline: finding.state === "growling" ? "Suspicious message detected" : "Message worth checking",
             what_happened: `Apollo's on-device analyzer (${finding.analyzer}) flagged a message based on pattern rules.`,
             what_to_do: finding.state === "growling" ? "Do not respond to or act on this message until you verify the sender independently." : "Review this message carefully. Verify the sender before responding to any requests.",
           };
-          // Persist durably BEFORE acknowledging the native finding
-          setEvents((prev) => {
-            if (prev.some((x) => x.event_id === localEventId)) return prev;
-            const next = [ev, ...prev]; void storage.setItem(K.events, JSON.stringify(next)); return next;
-          });
-          void syncEventRef.current?.(ev);
+          // Durable persistence via upsertEvent — awaited before acknowledging.
+          // upsertEvent → persistEvents: eventsRef.current updated synchronously, then
+          // storage.setItem awaited. The next loop iteration reads the committed state from the ref.
+          await upsertEvent(ev);
           acknowledged.push(finding.findingId);
         }
-        // Acknowledge only after all events are persisted
+        // Acknowledge native findings only after all events are durably persisted
         if (acknowledged.length > 0) {
           await MessagingSdk.acknowledgeTextGuardLocalFindings(acknowledged);
         }
@@ -865,7 +888,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     void consumeLocalFindings();
     const sub = AppState.addEventListener("change", (st) => { if (st === "active") void consumeLocalFindings(); });
     return () => { cancelled = true; sub.remove(); };
-  }, [deviceId, events]);
+  }, [deviceId, upsertEvent]);
 
 
   const recordRecovery = useCallback(async (event: PatrolEvent, kind: RecoveryKind) => {

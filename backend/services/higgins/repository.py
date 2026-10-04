@@ -154,7 +154,7 @@ async def assert_live(owner: str, case_id: str, epoch: Optional[str] = None) -> 
 
 
 # ------------------------------------------------------------------ cases
-async def create_case(owner: str, gate: Optional[str], device_profile: Optional[dict]) -> dict:
+async def create_case(owner: str, gate: Optional[str], device_profile: Optional[dict], client_submission_id: Optional[str] = None) -> dict:
     now = now_utc()
     doc = {"owner_id": owner, "case_id": str(uuid.uuid4()), "revision": 0, "epoch": uuid.uuid4().hex, "work_epoch": uuid.uuid4().hex, "gates": [gate] if gate else [], "status": "queued",
            "created_at": now, "updated_at": now, "expires_at": now + timedelta(seconds=LIFETIME_SECONDS),
@@ -162,7 +162,8 @@ async def create_case(owner: str, gate: Optional[str], device_profile: Optional[
            "active_turn_id": None, "lease_fence": None, "response_ciphertext": None, "response_revision": None,
            "sources_ciphertext": enc_json([]), "device_profile_ciphertext": enc_json(device_profile) if device_profile else None,
            "pending_device_request_ids": [], "accepted_commits": [], "open_question_ciphertext": None,
-           "cleanup_status": "not_due", "deleted": False, "attention": "none"}
+           "cleanup_status": "not_due", "deleted": False, "attention": "none",
+           "client_submission_id": client_submission_id}
     await db.investigation_cases.insert_one(dict(doc))
     return doc
 
