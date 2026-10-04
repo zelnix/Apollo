@@ -148,7 +148,9 @@ export function buildGatesOverview(input: GatesInput): GatesOverview {
   const rank = (gate: GatePresentation) => gate.tone === "attention" ? 0 : gate.capability.automatic?.state === "running" ? 1 : gate.capability.onDemand?.state === "ready" ? 2 : 3;
   const gates = [site, link, text, call, network, account, emailGate, file, app, device].sort((a, b) => rank(a) - rank(b));
   const primary = gates.find((gate) => gate.tone === "attention") ?? null; const working = gates.filter((gate) => gate.capability.automatic?.state === "running").length;
-  const summary = input.checking ? "Checking your protection" : primary ? `${gates.filter((gate) => gate.tone === "attention").length} ${gates.filter((gate) => gate.tone === "attention").length === 1 ? "thing needs" : "things need"} your attention` : `${working} ${working === 1 ? "Gate is" : "Gates are"} helping automatically`;
+  const attentionGates = gates.filter((gate) => gate.tone === "attention");
+  const attentionNames = attentionGates.map((g) => g.title.replace(/ Gate$/, "")).join(" and ");
+  const summary = input.checking ? "Checking your protection" : attentionGates.length ? `${attentionNames} ${attentionGates.length === 1 ? "needs" : "need"} your attention` : `${working} ${working === 1 ? "Gate is" : "Gates are"} helping automatically`;
   return { summary, higgins: primary ? `${primary.title} needs your attention. ${primary.currentHelp}` : "Apollo watches what this device allows. You can also ask it to check anything you are unsure about.", primary, gates };
 }
 

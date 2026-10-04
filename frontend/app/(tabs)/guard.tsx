@@ -58,14 +58,15 @@ export default function GuardScreen() {
   const health = useProtectionHealth();
   if (ready && !setupDone) return <Redirect href="/" />;
   const active = health.gates.filter((gate) => gate.capability.automatic?.state === "running").length;
-  const attention = health.gates.filter((gate) => gate.tone === "attention").length;
+  const attentionGates = health.gates.filter((gate) => gate.tone === "attention");
+  const attentionNames = attentionGates.map((g) => g.title.replace(/ Gate$/, "")).join(" and ");
   return <View style={s.root} testID="gates-screen">
     <View style={{ paddingTop: insets.top + spacing.md }}><RootScreenHeader title="Gates" testID="gates-header" /></View>
     <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 110 }]}>
       <Text style={s.title} testID="gates-title">Your protection</Text>
       <Card testID="gates-summary-card">
-        <View style={s.summary}><Shield size={28} color={attention ? colors.growling : colors.brandPrimary} />
-          <View style={s.summaryText}><Text style={s.name} testID="gates-summary-title">{attention ? `${attention} ${attention === 1 ? "Gate needs" : "Gates need"} your attention` : `${active} ${active === 1 ? "Gate is" : "Gates are"} helping automatically`}</Text>
+        <View style={s.summary}><Shield size={28} color={attentionGates.length ? colors.growling : colors.brandPrimary} />
+          <View style={s.summaryText}><Text style={s.name} testID="gates-summary-title">{attentionGates.length ? `${attentionNames} ${attentionGates.length === 1 ? "needs" : "need"} your attention` : `${active} ${active === 1 ? "Gate is" : "Gates are"} helping automatically`}</Text>
             <Body testID="gates-summary-time">{health.checking ? "Checking current device status…" : health.checkedAt ? "Status checked from current device signals." : "Status will appear after the first device check."}</Body></View>
         </View>
       </Card>
