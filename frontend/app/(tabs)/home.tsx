@@ -10,7 +10,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApolloHero } from "@/src/components/ApolloHero";
 import { RootScreenHeader } from "@/src/components/RootScreenHeader";
 import { HigginsFollowUp } from "@/src/components/HigginsFollowUp";
-import { HigginsGreeting } from "@/src/components/HigginsGreeting";
 import { ClipboardLinkBanner } from "@/src/components/ClipboardLinkBanner";
 import { PatrolItem } from "@/src/components/PatrolItem";
 import { ServiceBanner } from "@/src/components/ServiceBanner";
@@ -23,6 +22,7 @@ import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 import { minimiseApp } from "@/src/utils/minimise";
 import { useProtectionHealth } from "@/src/protection/healthStore";
 import { projectPatrolOutcomes } from "@/src/domain/patrolOutcomes";
+import type { GatePresentation } from "@/src/domain/gates";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -30,10 +30,15 @@ const useStyles = makeStyles((c) => ({
   empty: { alignItems: "flex-start", gap: spacing.sm },
   emptyTitle: { fontFamily: fonts.display, fontSize: 16, color: c.onSurface },
   link: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.restingText },
-  cardTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   cardIconWell: { width: 30, height: 30, borderRadius: 15, backgroundColor: c.navyTint, alignItems: "center", justifyContent: "center" },
   cardTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.brand },
-  cardLinkRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2, minHeight: 32 },
+  cardTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  cardLinkRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: spacing.xs, minHeight: 32 },
+  gateRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 6 },
+  gateName: { fontFamily: fonts.textMedium, fontSize: 13, color: c.onSurface, flex: 1 },
+  gateBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
+  gateBadgeText: { fontFamily: fonts.textSemibold, fontSize: 11, letterSpacing: 0.2 },
+  gateSep: { height: 1, backgroundColor: c.navyBorder, opacity: 0.4 },
 }));
 
 export default function Home() {
@@ -47,11 +52,6 @@ export default function Home() {
   const recent = projectPatrolOutcomes(events).slice(0, 3);
   const digest = buildWeeklyDigest(events);
   const scents = buildScents(events);
-  const activeCount = health.gates.filter((gate) => gate.capability.automatic?.state === "running").length;
-  const attentionCount = health.gates.filter((gate) => gate.tone === "attention").length;
-  // When the hero already shows a warning, keep the Protection card as a concise navigation shortcut
-  // rather than repeating "needs your attention" messaging.
-  const heroCoversWarning = resolution.state !== "resting" && resolution.state !== "sniffing";
 
   return (
     <View style={s.root}>
@@ -69,7 +69,6 @@ export default function Home() {
           </Card>
         ) : null}
         <ServiceBanner />
-        <HigginsGreeting state={resolution.state} />
         <HigginsFollowUp />
         <ClipboardLinkBanner />
         {protection?.operational ? (
@@ -80,19 +79,30 @@ export default function Home() {
           </Card>
         ) : null}
 
-        <View style={{ gap: spacing.md }}>
-          <Card style={{ gap: 4 }} testID="home-protection-summary">
+        <Pressable accessibilityRole="button" onPress={() => router.push("/(tabs)/guard")} testID="home-protection-summary">
+          <Card style={{ gap: spacing.sm }}>
             <View style={s.cardTitleRow}>
               <View style={s.cardIconWell}><ShieldCheck size={16} color={colors.brand} /></View>
               <Text style={s.cardTitle}>Protection</Text>
             </View>
-            <Body testID="home-protection-status">{health.checking ? "Checking current device status…" : heroCoversWarning ? `${activeCount} ${activeCount === 1 ? "Gate" : "Gates"} active · ${attentionCount} to review` : `${activeCount} ${activeCount === 1 ? "Gate is" : "Gates are"} helping automatically${attentionCount ? ` · ${attentionCount} ${attentionCount === 1 ? "needs" : "need"} your attention` : ""}`}</Body>
-            <Pressable testID="home-open-guard" accessibilityRole="button" onPress={() => router.push("/(tabs)/guard")} style={s.cardLinkRow}>
-              <Text style={s.link}>{heroCoversWarning ? "View Gates" : (attentionCount ? "Review what needs attention" : "View protection")}</Text>
+            {health.checking ? (
+              <Body>Checking current device status…</Body>
+            ) : (
+              <View style={{ gap: 0 }}>
+                {health.gates.map((gate, i) => (
+                  <React.Fragment key={gate.id}>
+                    {i > 0 ? <View style={s.gateSep} /> : null}
+                    <GateRow gate={gate} colors={colors} styles={s} />
+                  </React.Fragment>
+                ))}
+              </View>
+            )}
+            <View style={s.cardLinkRow}>
+              <Text style={s.link}>View Gates</Text>
               <ChevronRight size={14} color={colors.restingText} />
-            </Pressable>
+            </View>
           </Card>
-        </View>
+        </Pressable>
 
         {scents.length ? (
           <View>
@@ -138,6 +148,47 @@ export default function Home() {
           </Pressable>
         </View>
       </ScrollView>
+    </View>
+  );
+}
+
+
+/** Compact row for a single gate: name on the left, auto/manual badge on the right. */
+function GateRow({ gate, colors, styles: s }: { gate: GatePresentation; colors: Record<string, string>; styles: ReturnType<typeof useStyles> }) {
+  const autoState = gate.capability.automatic?.state;
+  const onDemandReady = gate.capability.onDemand?.state === "ready";
+  const isAuto = autoState === "running";
+  const needsAttention = gate.tone === "attention";
+  const shortName = gate.title.replace(/ Gate$/, "");
+
+  let badgeLabel: string;
+  let badgeBg: string;
+  let badgeColor: string;
+
+  if (needsAttention) {
+    badgeLabel = "Attention";
+    badgeBg = colors.barkingTint ?? colors.goldHighlight;
+    badgeColor = colors.barking ?? colors.onSurface;
+  } else if (isAuto) {
+    badgeLabel = "Auto";
+    badgeBg = colors.restingTint ?? colors.navyTint;
+    badgeColor = colors.resting ?? colors.brand;
+  } else if (onDemandReady) {
+    badgeLabel = "Manual";
+    badgeBg = colors.navyTint;
+    badgeColor = colors.onSurfaceSecondary;
+  } else {
+    badgeLabel = "Off";
+    badgeBg = colors.navyTint;
+    badgeColor = colors.muted;
+  }
+
+  return (
+    <View style={s.gateRow} testID={`home-gate-${gate.id}`}>
+      <Text style={s.gateName}>{shortName}</Text>
+      <View style={[s.gateBadge, { backgroundColor: badgeBg }]}>
+        <Text style={[s.gateBadgeText, { color: badgeColor }]}>{badgeLabel}</Text>
+      </View>
     </View>
   );
 }
