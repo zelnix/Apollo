@@ -97,13 +97,14 @@ async def _scan_attachments_vt(device_id: str, message: dict, provider: str) -> 
         from services.gmail import download_attachment, get_attachment_ids
         from services.virustotal import lookup_hash, compute_sha256
 
-        # Reconstruct attachment info — re-fetch message metadata to get attachment IDs
+        # Reconstruct attachment info — re-fetch message with full payload to get attachment IDs.
+        # format=full returns the parts tree with body.attachmentId; format=metadata omits it.
         access_token = await gmail._access_token_for(device_id)
         import httpx
         async with httpx.AsyncClient(timeout=30) as http:
             resp = await http.get(
                 f"{gmail.GMAIL_API}/messages/{message_id}",
-                params={"format": "metadata", "metadataHeaders": ""},
+                params={"format": "full"},
                 headers={"Authorization": f"Bearer {access_token}"},
             )
         if resp.status_code != 200:

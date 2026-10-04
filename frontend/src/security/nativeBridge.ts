@@ -101,12 +101,6 @@ export interface ApolloSecurityNativeModule {
   getRecentInstallEvents(): Promise<string>;
   getDeviceSecuritySignals(): Promise<string>;
   getRecentAppSecurityEvents(): Promise<string>;
-  // Gate 8 — Network & Accounts (SDK contract). JSON strings; see src/security/networkAccountSdk.ts.
-  getNetworkProtectionCapabilities(): Promise<string>;
-  getVPNState(): Promise<string>;
-  getRecentNetworkEvents(): Promise<string>;
-  getRecentAccountSecurityEvents(): Promise<string>;
-  submitAccountSecurityEvent(eventJson: string): Promise<string>;
   /** iOS Share Extension protected App Group handoff. Native-only and opaque-id based. */
   getShareHandoff(handoffId: string): Promise<string>;
   acknowledgeShareHandoff(handoffId: string): Promise<string>;

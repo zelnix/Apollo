@@ -41,6 +41,9 @@ async function collect(trigger: HealthTrigger): Promise<ProtectionHealthSnapshot
     MessagingSdk.getMessagingCapabilities(), CallSdk.getCallProtectionCapabilities(), readEmailCapability(), storage.getItem<boolean>(DESIRED_KEY, false),
   ]);
   const callAutoCheckEnabled = (await storage.getItem("apollo.call.auto_check", null)) === "true";
+  // Gate 8 (Account Breach): fetch backend configuration status. Failure → unavailable, never running.
+  let breachLookupConfigured = false;
+  try { const acctStatus = await apiGet<{ breach_lookup_configured: boolean }>("/account/status"); breachLookupConfigured = acctStatus.breach_lookup_configured === true; } catch { /* treat as unavailable */ }
   const desiredOn = desiredSetting === true;
   let decision = decideSiteRecovery(desiredOn, protection, permissions);
   if (decision === "start_now") {
@@ -54,7 +57,7 @@ async function collect(trigger: HealthTrigger): Promise<ProtectionHealthSnapshot
     if (decision === "healthy") await clearAttempt(); else if (trigger === "foreground") await clearAttempt();
   }
   const base = { revision: current.revision + 1, checkedAt: new Date().toISOString(), trigger, checking: false, capabilities, protection, permissions, network };
-  const overview = buildGatesOverview({ platform: securityAdapter.kind, checking: false, protection, permissions, capabilities, messaging, calls, network, email, online: network.isInternetReachable !== false, callAutoCheckEnabled });
+  const overview = buildGatesOverview({ platform: securityAdapter.kind, checking: false, protection, permissions, capabilities, messaging, calls, network, email, online: network.isInternetReachable !== false, callAutoCheckEnabled, accountBreachConfigured: breachLookupConfigured });
   const next: ProtectionHealthSnapshot = { ...base, gates: overview.gates };
   publishProtectionHealth(next);
   void publishCapabilitySnapshot({ platform: securityAdapter.kind, adapter: securityAdapter.label, online: network.isInternetReachable, gates: overview.gates, capabilities, protection }).catch(() => undefined);
