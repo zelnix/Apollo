@@ -72,9 +72,9 @@ async def lifespan(_: FastAPI):
     await db.domain_info_cache.create_index("domain", unique=True)
     await db.domain_info_cache.create_index("expires_at")  # plain index; expiry is checked at read time, never auto-deleted
     await db.gmail_connections.create_index("device_id", unique=True)
-    removed_gmail_grants = await gmail_service.cleanup_unreadable_connections()
-    if removed_gmail_grants:
-        logger.warning("removed %s unreadable legacy Gmail grant(s); affected users must reconnect", removed_gmail_grants)
+    # Legacy: cleanup_unreadable_connections was removed from automatic startup
+    # to avoid destroying user data in production. If cleanup is needed, run it
+    # as an explicit admin operation.
     # OAuth state index migration — tolerant of first-deploy (empty collection) and Atlas environments.
     try:
         oauth_indexes = await db.gmail_oauth_states.index_information()

@@ -135,9 +135,55 @@ ${fallbackExec}
   console.log("[eas-post-install] WARNING: Could not create eas wrapper. EAS_NO_VCS=1 may not be set during builds.");
 }
 
+// ── production .env fix for native builds ──────────────────────────────────
+
+function fixEnvForProduction() {
+  // When running inside the Emergent/EAS build container (not the local sandbox
+  // at /app/frontend), the .env still contains development values like
+  // EXPO_PUBLIC_APP_ENV=development and EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS=enabled.
+  // The pipeline replaces backend URLs (STEP 2) but not these vars. While eas.json
+  // build profiles set the correct values, the pipeline may rewrite eas.json in
+  // STEP 4 — so we fix .env directly as a safety net.
+  const isLocalSandbox = root.startsWith("/app/frontend");
+  if (isLocalSandbox) {
+    console.log("[eas-post-install] Local sandbox detected; leaving .env unchanged.");
+    return;
+  }
+
+  const envPath = path.join(root, ".env");
+  if (!fs.existsSync(envPath)) {
+    console.log("[eas-post-install] No .env file found; skipping production fix.");
+    return;
+  }
+
+  let envContent = fs.readFileSync(envPath, "utf8");
+  const replacements = [
+    { key: "EXPO_PUBLIC_APP_ENV", from: "development", to: "production" },
+    { key: "EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS", from: "enabled", to: "off" },
+  ];
+
+  let changed = false;
+  for (const { key, from, to } of replacements) {
+    const re = new RegExp(`^${key}=${from}$`, "m");
+    if (re.test(envContent)) {
+      envContent = envContent.replace(re, `${key}=${to}`);
+      console.log(`[eas-post-install] .env: ${key}=${from} → ${to}`);
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    fs.writeFileSync(envPath, envContent);
+    console.log("[eas-post-install] .env updated for production build.");
+  } else {
+    console.log("[eas-post-install] .env already has production values.");
+  }
+}
+
 // ── run ────────────────────────────────────────────────────────────────────
 
 ensureExpoSymlink();
 ensureEasWrapper();
+fixEnvForProduction();
 
 console.log("[eas-post-install] OK");
