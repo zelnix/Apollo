@@ -1,54 +1,143 @@
 #!/usr/bin/env node
 // Yarn "postinstall" + EAS "eas-build-post-install" lifecycle hook.
 //
-// Problem: The Emergent deployment pipeline and EAS build workers generate
-// internal bash scripts that invoke the bare `expo` command (e.g. for config
-// resolution or prebuild). After `yarn install`, `expo` lives in
-// `node_modules/.bin/expo` which is only on PATH during yarn script execution,
-// not when the pipeline's own bash script runs later.
+// Two problems solved here:
 //
-// Fix: After dependency installation, create a persistent global symlink so
-// `expo` is reachable outside of yarn's script PATH. This runs as a standard
-// `postinstall` hook (for the Emergent pipeline) and also as the EAS-specific
-// `eas-build-post-install` hook (for cloud builds).
+// 1. EXPO BARE COMMAND
+//    The Emergent deployment pipeline calls `expo` (for config resolution) after
+//    `yarn install` completes. At that point yarn's temporary node_modules/.bin
+//    PATH extension is gone, so `expo` must be reachable globally.
+//    Fix: symlink node_modules/.bin/expo → /usr/local/bin/expo.
 //
-// The symlink is always created (idempotent), never fails the build.
+// 2. EAS_NO_VCS=1
+//    The ZIP-extracted build environment has no .git directory. EAS CLI defaults
+//    to GitClient, emits "Failed to get Git root path", and falls back — but
+//    Expo documents EAS_NO_VCS=1 for exactly this case (disables VCS entirely,
+//    uses NoVCSClient). We inject it via a thin wrapper so it is set on the
+//    process that actually invokes `eas build`, regardless of how the pipeline
+//    manages its own environment.
+//    Fix: create /usr/local/bin/eas as a wrapper that exports EAS_NO_VCS=1 and
+//    EAS_PROJECT_ROOT, then execs the real binary from node_modules/.bin or the
+//    npm global prefix.
+//
+// Both operations are idempotent and never fail the build.
 
 import fs from "node:fs";
 import path from "node:path";
+import { execSync } from "node:child_process";
 
 const root = path.resolve(import.meta.dirname, "..");
 const binDir = path.join(root, "node_modules", ".bin");
+const GLOBAL_DIRS = ["/usr/local/bin", "/usr/bin"];
 
-/** Ensure a binary from node_modules/.bin has a persistent global symlink. */
-function ensureGlobal(name) {
-  const localBin = path.join(binDir, name);
+// ── expo: plain symlink ────────────────────────────────────────────────────
+
+function ensureExpoSymlink() {
+  const localBin = path.join(binDir, "expo");
   if (!fs.existsSync(localBin)) {
-    console.log(`[eas-post-install] ${name} not in node_modules/.bin; skipping.`);
+    console.log("[eas-post-install] expo not in node_modules/.bin; skipping.");
     return;
   }
-
-  // Try known global bin directories in order. Always create/refresh the
-  // symlink — during yarn lifecycle scripts node_modules/.bin is temporarily
-  // on PATH, but that disappears once yarn exits.
-  for (const dir of ["/usr/local/bin", "/usr/bin"]) {
+  for (const dir of GLOBAL_DIRS) {
     if (!fs.existsSync(dir)) continue;
-    const target = path.join(dir, name);
+    const target = path.join(dir, "expo");
     try {
-      // Remove stale symlink if present, then recreate.
-      try { fs.unlinkSync(target); } catch { /* absent or not writable — try symlink anyway */ }
+      try { fs.unlinkSync(target); } catch { /* absent */ }
       fs.symlinkSync(localBin, target);
-      console.log(`[eas-post-install] Symlinked ${name} → ${target}`);
+      console.log(`[eas-post-install] Symlinked expo → ${target}`);
       return;
     } catch (e) {
-      console.log(`[eas-post-install] Could not symlink ${name} to ${dir}: ${e.message}`);
+      console.log(`[eas-post-install] Could not symlink expo to ${dir}: ${e.message}`);
+    }
+  }
+  console.log("[eas-post-install] WARNING: Could not make expo globally reachable.");
+}
+
+// ── eas: wrapper script with EAS_NO_VCS=1 ──────────────────────────────────
+
+function findRealEas() {
+  // 1. Check node_modules/.bin (local project dep)
+  const localEas = path.join(binDir, "eas");
+  if (fs.existsSync(localEas)) return localEas;
+
+  // 2. Check npm global prefix (pipeline installs eas-cli globally in STEP 1)
+  try {
+    const prefix = execSync("npm config get prefix", { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+    const npmGlobal = path.join(prefix, "bin", "eas");
+    if (fs.existsSync(npmGlobal)) return npmGlobal;
+  } catch { /* npm not available or errored */ }
+
+  // 3. Search PATH, skipping any wrapper we already placed
+  try {
+    const locations = execSync("which -a eas 2>/dev/null || true", { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] })
+      .split("\n")
+      .map(l => l.trim())
+      .filter(Boolean);
+    for (const loc of locations) {
+      // Skip our own wrappers and install-guard shims
+      if (GLOBAL_DIRS.some(d => loc.startsWith(d))) continue;
+      if (loc.includes("install-guard")) continue;
+      return loc;
+    }
+  } catch { /* which not available */ }
+
+  return null;
+}
+
+function ensureEasWrapper() {
+  const realEas = findRealEas();
+
+  // Even if we can't find the real binary right now (it may be installed later
+  // by the pipeline), create a wrapper that will resolve it at runtime via npx.
+  const fallbackExec = realEas
+    ? `exec "${realEas}" "$@"`
+    : `exec npx --yes eas-cli "$@"`;
+
+  const wrapper = `#!/usr/bin/env bash
+# Auto-generated by eas-post-install.mjs — sets EAS_NO_VCS=1 for ZIP-extracted
+# build environments that have no .git directory (Expo-documented option).
+export EAS_NO_VCS=1
+export EAS_PROJECT_ROOT="\${EAS_PROJECT_ROOT:-\$(pwd)}"
+${fallbackExec}
+`;
+
+  for (const dir of GLOBAL_DIRS) {
+    if (!fs.existsSync(dir)) continue;
+    const target = path.join(dir, "eas");
+    try {
+      // If the target is the real binary (not our wrapper), back it up first
+      if (fs.existsSync(target)) {
+        const content = fs.readFileSync(target, "utf8").slice(0, 200);
+        if (!content.includes("eas-post-install.mjs")) {
+          // This is the real binary or another script — back it up
+          const backup = target + ".real";
+          try { fs.unlinkSync(backup); } catch { /* absent */ }
+          fs.renameSync(target, backup);
+          console.log(`[eas-post-install] Backed up real eas → ${backup}`);
+          // Update wrapper to use the backup
+          const updatedWrapper = wrapper.replace(fallbackExec, `exec "${backup}" "$@"`);
+          fs.writeFileSync(target, updatedWrapper, { mode: 0o755 });
+          console.log(`[eas-post-install] Created eas wrapper (EAS_NO_VCS=1) → ${target} (delegates to ${backup})`);
+          return;
+        }
+        // It's already our wrapper — refresh it
+        fs.unlinkSync(target);
+      }
+      fs.writeFileSync(target, wrapper, { mode: 0o755 });
+      console.log(`[eas-post-install] Created eas wrapper (EAS_NO_VCS=1) → ${target}` +
+        (realEas ? ` (delegates to ${realEas})` : " (will use npx fallback)"));
+      return;
+    } catch (e) {
+      console.log(`[eas-post-install] Could not create eas wrapper in ${dir}: ${e.message}`);
     }
   }
 
-  console.log(`[eas-post-install] WARNING: Could not make ${name} globally reachable.`);
+  console.log("[eas-post-install] WARNING: Could not create eas wrapper. EAS_NO_VCS=1 may not be set during builds.");
 }
 
-ensureGlobal("expo");
-ensureGlobal("expo-cli");
+// ── run ────────────────────────────────────────────────────────────────────
+
+ensureExpoSymlink();
+ensureEasWrapper();
 
 console.log("[eas-post-install] OK");
