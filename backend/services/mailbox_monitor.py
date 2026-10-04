@@ -375,48 +375,11 @@ async def _finalise_receipt(receipt: dict) -> None:
         )
     except Exception:
         pass
-    # #1: Push notification for background warning delivery. When the investigation completed
-    # with findings that require attention, send a push notification so the user is alerted even
-    # when Apollo is closed. The push payload contains only the case ID, not email content.
-    try:
-        await _send_assessment_push(owner, case_id, case, receipt)
-    except Exception as exc:
-        logger.info("Assessment push for case %s failed (non-blocking): %s", case_id, type(exc).__name__)
+    # Push notification is handled exclusively by the investigation projector:
+    # project_committed_cases() creates a Patrol event from the completed case, and
+    # push_owner_alert() fires for events with state >= growling. This eliminates the
+    # duplicate push path that previously existed here (_send_assessment_push).
 
-
-
-async def _send_assessment_push(owner: str, case_id: str, case: dict, receipt: dict) -> None:
-    """Send a push notification when a background email assessment completes.
-    Sends for all completed assessments — the investigation response is encrypted so the backend
-    cannot determine finding severity. The user reviews details in the app.
-    The push payload contains only the case ID, not email content."""
-    if not case.get("response_ciphertext"):
-        return
-    device = await db.devices.find_one({"device_id": owner}, {"push_token": 1})
-    if not device or not device.get("push_token"):
-        return
-    push_token = device["push_token"]
-    provider = receipt.get("provider", "email")
-    # Check if there are local findings (domain mismatch, auth failure, etc.) to customize the message
-    digest = receipt.get("message_digest", "")
-    local_finding_count = await db.investigation_evidence.count_documents({
-        "owner_id": owner, "client_item_id": {"$regex": f"^mailbox-{digest}-finding"}
-    }) if digest else 0
-    vt_finding_count = await db.investigation_evidence.count_documents({
-        "owner_id": owner, "client_item_id": {"$regex": f"^mailbox-{digest}-vt"}
-    }) if digest else 0
-    if local_finding_count > 0 or vt_finding_count > 0:
-        body_text = f"Apollo found concerns in a monitored {provider} message. Open Apollo to review."
-        title_text = "Apollo: email needs attention"
-    else:
-        body_text = f"Apollo completed assessment of a monitored {provider} message."
-        title_text = "Apollo: email assessed"
-    from routers.push import send_push
-    await send_push(
-        recipients=[owner],
-        data={"title": title_text, "message": body_text, "type": "email_assessment", "caseId": case_id},
-        owner_id=owner,
-    )
 
 async def finalise_pending_assessments() -> None:
     async for receipt in db.mailbox_assessment_receipts.find({"state": "submitted"}, {"_id": 0}).limit(100):

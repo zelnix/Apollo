@@ -366,6 +366,12 @@ class ApolloSecurityModule : Module() {
       ApolloCallScreeningService.acknowledgePendingLookups(ctx, numbers)
       JSONObject().put("acknowledged", numbers.size).toString()
     }
+    AsyncFunction("retryCallLookups") { json: String ->
+      val arr = JSONArray(json)
+      val numbers = (0 until arr.length()).map { arr.getString(it) }
+      ApolloCallScreeningService.retryPendingLookup(ctx, numbers)
+      JSONObject().put("retried", numbers.size).toString()
+    }
     AsyncFunction("getCallBlockAllowList") { ApolloCallScreeningService.blockAllowJson(ctx).toString() }
     AsyncFunction("addCallListEntry") { json: String ->
       val body = JSONObject(json)

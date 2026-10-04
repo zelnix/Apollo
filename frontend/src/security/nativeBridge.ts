@@ -86,6 +86,7 @@ export interface ApolloSecurityNativeModule {
    * gets no per-call callback at all, unlike Android's CallScreeningService. */
   getPendingCallLookups(): Promise<string>;
   acknowledgeCallLookups(json: string): Promise<string>;
+  retryCallLookups(json: string): Promise<string>;
   /** The device-local block/allow/auto-risky number sets Call Guard's native screening/directory
    * mechanism actually reads — {block: string[], allow: string[], autoRisky: string[]}. */
   getCallBlockAllowList(): Promise<string>;

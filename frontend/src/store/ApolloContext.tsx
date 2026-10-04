@@ -778,7 +778,10 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   // Call Guard add-on: reads numbers ApolloCallScreeningService saw ringing with no local block/
   // allow/risk signal (non-destructive read — numbers persist in the native queue until individually
   // acknowledged after successful processing). CallSdk.getPendingCallLookups() returns [] on non-Android.
-  // A1 fix: numbers are now actually assessed via checkNumberRisk instead of being discarded.
+  // Lifecycle:
+  //   Success → acknowledgeCallLookups: number removed from queue.
+  //   Failure → retryCallLookups: attempts counter incremented. After MAX_RETRY_ATTEMPTS (4),
+  //             readPendingLookups auto-purges the entry on the next read.
   // The user must have enabled automatic call checking (apollo.call.auto_check consent flag).
   useEffect(() => {
     let cancelled = false;
@@ -789,6 +792,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         if (consent !== "true") return; // User hasn't enabled automatic number checking
         const items = await CallSdk.getPendingCallLookups();
         const acknowledged: string[] = [];
+        const failed: string[] = [];
         for (const item of items) {
           if (cancelled) break;
           if (!item?.number) continue;
@@ -796,8 +800,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
             await checkNumberRisk(item.number);
             acknowledged.push(item.number);
           } catch {
-            // Provider unavailable or unconfigured — number stays in queue for retry.
-            // Dedup prevents duplicate events on subsequent polls.
+            failed.push(item.number);
+            // Dedup-safe minimal event so the user knows a call was seen but not assessed.
             const current = eventsRef.current;
             if (!current.some((x) => x.local_indicator === item.number && x.category === "call")) {
               const ev: PatrolEvent = {
@@ -814,13 +818,12 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
               const next = [ev, ...current.filter((x) => x.event_id !== ev.event_id)];
               await persistEvents(next);
             }
-            // DO NOT acknowledge — the number stays in the queue for retry on the next poll.
           }
         }
-        // Acknowledge only successfully processed numbers
-        if (acknowledged.length > 0) {
-          await CallSdk.acknowledgeCallLookups(acknowledged);
-        }
+        // Acknowledge successfully processed numbers — they leave the queue.
+        if (acknowledged.length > 0) await CallSdk.acknowledgeCallLookups(acknowledged);
+        // Bump retry counter for failed numbers — auto-purged after MAX_RETRY_ATTEMPTS.
+        if (failed.length > 0) await CallSdk.retryCallLookups(failed);
       } catch { /* native module unavailable — nothing to read */ }
     };
     void poll();

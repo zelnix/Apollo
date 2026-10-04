@@ -20,7 +20,7 @@ export interface GatePresentation {
 export type GateItem = GatePresentation;
 export interface GatesOverview { summary: string; higgins: string; primary: GatePresentation | null; gates: GatePresentation[] }
 export interface EmailMonitorCapability { checking: boolean; configured: boolean; connected: boolean; monitoringRequested: boolean; lastCheckedAt: string | null; lastSuccessAt?: string | null; lastAssessmentAt?: string | null; lastErrorAt: string | null }
-export interface GatesInput { platform: string; checking: boolean; protection: ProtectionStatus | null; permissions: ProtectionPermission[]; capabilities: Capability[]; messaging: MessagingCapabilities | null; calls: CallProtectionCapabilities | null; network?: NetworkStatus | null; email?: EmailMonitorCapability; online?: boolean; accountBreachConfigured?: boolean; now?: number }
+export interface GatesInput { platform: string; checking: boolean; protection: ProtectionStatus | null; permissions: ProtectionPermission[]; capabilities: Capability[]; messaging: MessagingCapabilities | null; calls: CallProtectionCapabilities | null; network?: NetworkStatus | null; email?: EmailMonitorCapability; online?: boolean; accountBreachConfigured?: boolean; callAutoCheckEnabled?: boolean; now?: number }
 
 const PURPOSE: Record<GateId, string> = {
   site: "Helps stop known dangerous websites before they load.",
@@ -95,7 +95,7 @@ export function buildGatesOverview(input: GatesInput): GatesOverview {
       ? "Incoming numbers are assessed automatically when you enable automatic call checking. Manual checks always work."
       : undefined;
   const call = presentation({ id: "call", title: TITLE.call, purpose: PURPOSE.call,
-    currentHelp: callState === "running" ? "Apollo screens incoming calls and assesses numbers automatically." : "You can check a number, caller name or call story before responding.",
+    currentHelp: callState === "running" ? (input.callAutoCheckEnabled ? "Apollo screens incoming calls and looks up unknown numbers automatically." : "Apollo screens incoming calls against your block and allow lists.") : "You can check a number, caller name or call story before responding.",
     capability: { automatic: { kind: "event_driven", state: callState, lastObservedAt: observedNow, limitation: callLimitation }, onDemand: onDemand("check_call", "Check a call or number") },
     primaryAction: action("setup_call", "Set up call checking") });
 
@@ -113,19 +113,18 @@ export function buildGatesOverview(input: GatesInput): GatesOverview {
         ? "Apollo cannot observe the current connection yet."
         : undefined;
   const network = presentation({ id: "network", title: TITLE.network, purpose: PURPOSE.network,
-    currentHelp: networkState === "running" ? "Apollo is watching supported connection changes and risky Wi‑Fi conditions." : "You can run a current network check now.",
+    currentHelp: networkState === "running" && vpnActive ? "Apollo is observing network traffic via Site Gate's DNS filter." : networkState === "running" ? "Apollo is observing connection type and Wi-Fi security metadata." : "You can run a current network check now.",
     capability: { automatic: { kind: "monitoring", state: networkState, lastObservedAt: networkObserved, limitation: networkLimitation }, onDemand: onDemand("check_network", "Check this network") },
     primaryAction: action("check_network", "Check this network") });
 
   const email = input.email; const successAt = email?.lastSuccessAt ? Date.parse(email.lastSuccessAt) : email?.lastCheckedAt ? Date.parse(email.lastCheckedAt) : 0; const errorAt = email?.lastErrorAt ? Date.parse(email.lastErrorAt) : 0;
   const assessmentAt = email?.lastAssessmentAt ? Date.parse(email.lastAssessmentAt) : 0;
   const retrievalFresh = successAt > 0 && successAt <= now && now - successAt <= 20 * 60 * 1000 && successAt >= errorAt;
-  // Gate is fully "running" only when BOTH retrieval AND assessment are recent. Retrieval alone is degraded.
   const assessmentFresh = assessmentAt > 0 && assessmentAt <= now && now - assessmentAt <= 60 * 60 * 1000;
-  const emailFresh = retrievalFresh;
-  const emailState: AutomaticCapabilityState = email?.checking ? "checking" : email && !email.configured ? "unsupported" : !email?.connected ? "setup_needed" : !email.monitoringRequested ? "off_by_choice" : emailFresh ? "running" : "temporarily_unavailable";
-  const emailLimitation = emailState === "setup_needed" ? "Connect a read-only mailbox to turn on automatic help." : emailState === "temporarily_unavailable" ? "Mailbox monitoring has no recent successful check." : emailState === "running" && !assessmentFresh ? "Messages are being retrieved but no assessment has completed yet." : undefined;
-  const emailGate = presentation({ id: "email", title: TITLE.email, purpose: PURPOSE.email, currentHelp: emailState === "running" && assessmentFresh ? "Apollo is watching the connected read-only mailbox for new concerns." : emailState === "running" ? "Apollo is retrieving messages. Assessment results are pending." : "You can paste, share or scan an email now.", capability: { automatic: { kind: "monitoring", state: emailState, lastObservedAt: email?.lastAssessmentAt ?? email?.lastSuccessAt ?? email?.lastCheckedAt ?? undefined, limitation: emailLimitation }, onDemand: onDemand("open_email", "Check an email") }, primaryAction: action("open_email", emailState === "setup_needed" ? "Set up Email Gate" : "Check an email") });
+  // "running" requires BOTH retrieval AND assessment to be recent. Retrieval-only is "checking" (pipeline not yet proven).
+  const emailState: AutomaticCapabilityState = email?.checking ? "checking" : email && !email.configured ? "unsupported" : !email?.connected ? "setup_needed" : !email.monitoringRequested ? "off_by_choice" : retrievalFresh && assessmentFresh ? "running" : retrievalFresh ? "checking" : "temporarily_unavailable";
+  const emailLimitation = emailState === "setup_needed" ? "Connect a read-only mailbox to turn on automatic help." : emailState === "temporarily_unavailable" ? "Mailbox monitoring has no recent successful check." : emailState === "checking" ? "Messages are being retrieved but no assessment has completed yet." : undefined;
+  const emailGate = presentation({ id: "email", title: TITLE.email, purpose: PURPOSE.email, currentHelp: emailState === "running" ? "Apollo is watching the connected mailbox and assessments are completing." : emailState === "checking" ? "Apollo is retrieving messages. Assessment results are pending." : "You can paste, share or scan an email now.", capability: { automatic: { kind: "monitoring", state: emailState, lastObservedAt: email?.lastAssessmentAt ?? email?.lastSuccessAt ?? email?.lastCheckedAt ?? undefined, limitation: emailLimitation }, onDemand: onDemand("open_email", "Check an email") }, primaryAction: action("open_email", emailState === "setup_needed" ? "Set up Email Gate" : "Check an email") });
 
   // Event-driven gates that respond to user actions (link, account) are always "ready" when online
   // but are NOT continuously monitoring — they should not claim "Watching". Only gates with a real
