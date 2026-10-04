@@ -156,10 +156,17 @@ class ApolloSecurityModule : Module() {
       // SSID needs ACCESS_FINE_LOCATION at runtime; Android returns "<unknown ssid>" otherwise.
       val rawSsid = if (type == "wifi" && android.os.Build.VERSION.SDK_INT >= 31) (caps?.transportInfo as? android.net.wifi.WifiInfo)?.ssid else null
       val ssid = rawSsid?.trim('"')?.takeIf { it.isNotBlank() && it != "<unknown ssid>" }
+      // C3: Network inspectability no longer depends on Site Gate's VPN intent. The network state
+      // (type, security, captive portal) is observable from platform APIs regardless of whether Site
+      // Gate's DNS VPN is active. `inspectable` now reflects actual observation capability:
+      // - always true when connected (Android provides network capabilities without VPN)
+      // - VPN running provides additional DNS-level observation (reported separately via vpnActive)
+      val networkObservable = caps != null
+      val vpnRunning = ApolloDnsVpnService.isRunning(ctx)
       JSONObject().put("connected", caps != null).put("type", type)
         .put("isInternetReachable", caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) ?: JSONObject.NULL)
-        .put("inspectable", requested).put("wifiSecurity", wifiSecurity)
-        .put("captivePortal", captive ?: JSONObject.NULL).put("vpnActive", type == "vpn").put("ssid", ssid ?: JSONObject.NULL).put("checkedAt", now()).toString()
+        .put("inspectable", networkObservable).put("wifiSecurity", wifiSecurity)
+        .put("captivePortal", captive ?: JSONObject.NULL).put("vpnActive", vpnRunning).put("ssid", ssid ?: JSONObject.NULL).put("checkedAt", now()).toString()
     }
 
     AsyncFunction("getSecuritySignals") {
@@ -319,6 +326,13 @@ class ApolloSecurityModule : Module() {
       val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
       appContext.currentActivity?.startActivity(intent) ?: ctx.startActivity(intent)
       JSONObject().put("opened", true).toString()
+    }
+    // B1: Expose pending text assessments (caseIds submitted by ApolloTextHandoffWorker) so the
+    // app-side poll loop can check investigation results and deliver PatrolEvents/warnings.
+    AsyncFunction("getPendingTextAssessments") { ApolloTextHandoffWorker.pendingAssessments(ctx).toString() }
+    AsyncFunction("removePendingTextAssessment") { caseId: String ->
+      ApolloTextHandoffWorker.removePendingAssessment(ctx, caseId)
+      JSONObject().put("removed", true).toString()
     }
 
     // Call Guard (CallSdk contract). Real Android signal: RoleManager.ROLE_CALL_SCREENING held by

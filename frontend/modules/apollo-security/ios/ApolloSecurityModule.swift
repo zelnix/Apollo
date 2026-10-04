@@ -51,7 +51,10 @@ public class ApolloSecurityModule: Module {
   private var messageFilterObservedAt: String? { UserDefaults(suiteName: appGroup)?.string(forKey: messageActivityKey) }
   private var messageFilterRecentlyObserved: Bool {
     guard let value = messageFilterObservedAt, let date = ISO8601DateFormatter().date(from: value) else { return false }
-    return Date().timeIntervalSince(date) <= 30 * 24 * 60 * 60
+    // B3: 30-day window is too stale to claim "currently filtering". Reduce to 72 hours: if the
+    // extension hasn't processed a message in 3 days, report permission_required so the gate status
+    // doesn't falsely claim active protection. The extension writes this timestamp on every process() call.
+    return Date().timeIntervalSince(date) <= 72 * 60 * 60
   }
 
   // Call Guard — CXCallDirectoryExtension (ApolloCallDirectory), same App Group as Site Guard.
@@ -186,7 +189,21 @@ public class ApolloSecurityModule: Module {
     // A recent extension observation is positive evidence that it is active. Absence is not proof
     // that it is disabled, so Apollo reports permission_required until the extension runs.
     AsyncFunction("getMessagingCapabilities") { () -> String in
-      self.json(["smsFiltering": self.messageFilterRecentlyObserved ? "supported" : "permission_required", "linkInterception": "supported", "senderReputation": "unsupported", "shareExtension": "supported", "notificationIntegration": "unsupported"])
+      // B3: Distinguish between confirmed current Message Filter activity (within 72h) and purely
+      // historical observation. Only claim "supported" when the extension is actively filtering.
+      let hasRecentObservation = self.messageFilterRecentlyObserved
+      let hasHistoricalObservation = self.messageFilterObservedAt != nil && !hasRecentObservation
+      let status: String = hasRecentObservation ? "supported" : "permission_required"
+      return self.json([
+        "smsFiltering": status,
+        "linkInterception": "supported",
+        "senderReputation": "unsupported",
+        "shareExtension": "supported",
+        "notificationIntegration": "unsupported",
+        // Additional metadata for gate status reporting
+        "messageFilterLastObserved": self.messageFilterObservedAt ?? NSNull(),
+        "messageFilterHistoricalOnly": hasHistoricalObservation
+      ])
     }
     AsyncFunction("getRecentMessageSecurityEvents") { () -> String in
       let rows = UserDefaults(suiteName: self.appGroup)?.array(forKey: self.messageEventsKey) ?? []
@@ -204,19 +221,22 @@ public class ApolloSecurityModule: Module {
       if let url = URL(string: UIApplication.openSettingsURLString) { DispatchQueue.main.async { UIApplication.shared.open(url) }; return self.json(["opened": true]) }
       return self.json(["opened": false])
     }
+    // B1: iOS stubs for text assessment polling (Android-only feature; iOS uses Message Filter extension).
+    AsyncFunction("getPendingTextAssessments") { () -> String in "[]" }
+    AsyncFunction("removePendingTextAssessment") { (_: String) -> String in self.json(["removed": false]) }
 
     // Call Guard (CallSdk contract). `callScreening` reflects CXCallDirectoryManager's OWN reported
     // enabled status for ApolloCallDirectory — never assumed. `numberReputation` is always
     // "supported": the lookup is backend-proxied (POST /api/call/risk-check) and works regardless of
-    // extension state. `callerIdentification` mirrors the same enabled status — the extension can add
-    // identification entries once the person has turned it on in Settings › Phone › Call Blocking &
-    // Identification (Apple gives apps no deep link straight to that screen).
+    // extension state. `callerIdentification` is reported as "unsupported" because the
+    // CXCallDirectoryExtension adds NO identification entries in this build — only blocking entries.
+    // Claiming identification capability when no labels are supplied would misrepresent the feature.
     AsyncFunction("getCallProtectionCapabilities") { (promise: Promise) in
       CXCallDirectoryManager.sharedInstance().getEnabledStatusForExtension(withIdentifier: self.callDirectoryId) { status, _ in
         let enabled = status == .enabled
         promise.resolve(self.json([
           "callScreening": enabled ? "supported" : "permission_required",
-          "callerIdentification": enabled ? "supported" : "permission_required",
+          "callerIdentification": "unsupported",
           "numberReputation": "supported",
           "voicemailTranscript": "unsupported",
           "liveTranscript": "unsupported",

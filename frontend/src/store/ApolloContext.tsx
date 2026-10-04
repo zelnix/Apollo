@@ -709,7 +709,11 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     if (country) body.country = country;
     const result = await apiPost<CallRiskResult>("/call/risk-check", "call_risk_check", body);
     if (result.decision !== "allow") {
-      try { await CallSdk.markNumberRisky(result.number); } catch { /* informational only if native module unavailable */ }
+      // A2 fix: only "avoid" (high-risk, strong fraud signals) should auto-block by adding to the
+      // autoRisky list. "review" (moderate signals, uncertain) should only warn — the person decides.
+      if (result.decision === "avoid") {
+        try { await CallSdk.markNumberRisky(result.number); } catch { /* informational only if native module unavailable */ }
+      }
       const isAvoid = result.decision === "avoid";
       const existing = eventsRef.current.find((x) => x.local_indicator === result.number && x.state !== "biting");
       const why = [result.recent_abuse ? "Reported for recent abuse." : "Elevated fraud-risk score.", result.voip ? "This is a VOIP number, commonly used to spoof caller ID." : null].filter((w): w is string => !!w);
@@ -726,6 +730,13 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           : `Apollo checked ${result.number} and found some risk signals (fraud score ${result.fraud_score ?? "unknown"}/100) — not enough to be certain.`,
         why, what_to_do: isAvoid ? "Apollo will reject future calls from this number automatically. You can also add it to your block list." : "Answer with caution, or add it to your block list if it turns out to be unwanted.",
       };
+      // Attach caller metadata from the risk check for display (country, carrier, line type).
+      (ev as unknown as Record<string, unknown>).caller_meta = {
+        country: result.country ?? null, carrier: result.carrier ?? null,
+        line_type: result.line_type ?? null, voip: result.voip ?? null,
+        fraud_score: result.fraud_score ?? null, source: result.source,
+        identity_verified: false, // IPQualityScore provides reputation, not authenticated identity
+      };
       setEvents((prev) => { const next = [ev, ...prev.filter((x) => x.event_id !== ev.event_id)]; void storage.setItem(K.events, JSON.stringify(next)); return next; });
       void syncEventRef.current?.(ev);
       showToast(isAvoid ? `Apollo flagged a high-risk caller: ${result.number}` : `Apollo flagged a caller worth checking: ${result.number}`, isAvoid ? "barking" : "growling");
@@ -736,15 +747,40 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   // Call Guard add-on: drains numbers ApolloCallScreeningService saw ringing with no local block/
   // allow/risk signal (mailbox semantics, Android only — CallSdk.getPendingCallLookups() always
   // returns [] elsewhere) and runs the SAME risk check as the manual quick action for each.
+  // A1 fix: numbers are now actually assessed via checkNumberRisk instead of being discarded.
+  // The user must have enabled automatic call checking (apollo.call.auto_check consent flag).
   useEffect(() => {
     let cancelled = false;
     const poll = async () => {
       try {
+        // Consent gate: only submit numbers automatically when the user has opted in.
+        const consent = await storage.getItem("apollo.call.auto_check", null);
+        if (consent !== "true") return; // User hasn't enabled automatic number checking
         const items = await CallSdk.getPendingCallLookups();
         for (const item of items) {
           if (cancelled) return;
           if (!item?.number) continue;
-          // Do not upload incoming caller numbers automatically. Local lists still screen calls.
+          try {
+            await checkNumberRisk(item.number);
+          } catch {
+            // Provider unavailable or unconfigured — the number was queued but could not be checked.
+            // Create a minimal event so the user knows a call was seen but not assessed.
+            const ev: PatrolEvent = {
+              event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "call" as const,
+              status: "active" as const, state: "ears_up" as const,
+              indicator_host: null, indicator_digest: null, local_indicator: item.number,
+              verified_block: false, adapter_label: securityAdapter.label,
+              occurred_at: new Date(item.seenAtMs).toISOString(), resolved_at: null,
+              trust_allowed: false, why: ["Apollo could not reach the reputation service for this number."],
+              headline: `Missed call: ${item.number}`,
+              what_happened: `A call from ${item.number} was seen but Apollo could not check it.`,
+              what_to_do: "You can check this number manually, or verify the caller independently before responding.",
+            };
+            setEvents((prev) => {
+              if (prev.some((x) => x.local_indicator === item.number && x.category === "call")) return prev;
+              const next = [ev, ...prev]; void storage.setItem(K.events, JSON.stringify(next)); return next;
+            });
+          }
         }
       } catch { /* native module unavailable — nothing to drain */ }
     };
@@ -752,7 +788,60 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const timer = setInterval(() => void poll(), lowPower ? 120000 : 45000);
     const sub = AppState.addEventListener("change", (st) => { if (st === "active") void poll(); });
     return () => { cancelled = true; clearInterval(timer); sub.remove(); };
-  }, [checkNumberRisk, lowPower]);
+  }, [checkNumberRisk, lowPower, deviceId]);
+
+  // B1: Text Gate background assessment result delivery. Polls pending text assessments (submitted
+  // by ApolloTextHandoffWorker) and checks whether investigations have completed. When a result is
+  // available, creates a PatrolEvent with the assessment outcome and delivers a warning notification
+  // through the existing push/patrol path. Runs periodically and on foreground resume.
+  useEffect(() => {
+    let cancelled = false;
+    const pollTextAssessments = async () => {
+      try {
+        const pending = await MessagingSdk.getPendingTextAssessments();
+        for (const item of pending) {
+          if (cancelled) return;
+          if (!item?.caseId) continue;
+          try {
+            // Check the investigation result via the existing case endpoint
+            const caseResult = await apiGet<{ case: { status: string; findings?: { state?: string; headline?: string; explanation?: string; links?: string[] } } }>(`/investigations/${encodeURIComponent(item.caseId)}`);
+            const status = caseResult?.case?.status;
+            if (status === "complete" || status === "closed") {
+              const findings = caseResult.case.findings;
+              const threatState = findings?.state ?? "resting";
+              const isWarning = threatState === "barking" || threatState === "growling" || threatState === "ears_up";
+              if (isWarning) {
+                // Create a PatrolEvent for the warning
+                const ev: PatrolEvent = {
+                  event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "message" as const,
+                  status: "active" as const, state: (threatState as PatrolEvent["state"]),
+                  indicator_host: null, indicator_digest: null, local_indicator: null,
+                  verified_block: false, adapter_label: "Text Gate background",
+                  occurred_at: item.submittedAt, resolved_at: null, trust_allowed: false,
+                  why: findings?.explanation ? [findings.explanation] : ["Background assessment identified concerns in a captured message."],
+                  headline: findings?.headline ?? `Message from ${item.sender || "unknown sender"} needs attention`,
+                  what_happened: `Apollo automatically assessed a message${item.sender ? ` from ${item.sender}` : ""} and found potential concerns.`,
+                  what_to_do: threatState === "barking" ? "Do not respond to or act on this message. Review the details below." : "Review this message carefully before responding.",
+                };
+                setEvents((prev) => { const next = [ev, ...prev]; void storage.setItem(K.events, JSON.stringify(next)); return next; });
+                void syncEventRef.current?.(ev);
+                showToast(threatState === "barking" ? `Warning: suspicious message from ${item.sender || "unknown"}` : `Message from ${item.sender || "unknown"} worth checking`, threatState === "barking" ? "barking" : "growling");
+              }
+              // Assessment complete — remove from pending regardless of outcome
+              await MessagingSdk.removePendingTextAssessment(item.caseId);
+            }
+            // If not complete, leave it in pending for the next poll cycle
+          } catch {
+            // Investigation endpoint unavailable — leave in pending for retry
+          }
+        }
+      } catch { /* native module unavailable — nothing to poll */ }
+    };
+    void pollTextAssessments();
+    const timer = setInterval(() => void pollTextAssessments(), lowPower ? 180000 : 60000);
+    const sub = AppState.addEventListener("change", (st) => { if (st === "active") void pollTextAssessments(); });
+    return () => { cancelled = true; clearInterval(timer); sub.remove(); };
+  }, [deviceId, lowPower, showToast]);
 
   const recordRecovery = useCallback(async (event: PatrolEvent, kind: RecoveryKind) => {
     const label: Record<RecoveryKind, string> = { clicked: "Opened the link", password: "Entered a password", code: "Shared a verification code", money: "Sent money", info: "Shared personal information", app: "Installed an app", card: "Entered card or bank details", download: "Downloaded a file", called: "Called the number shown", remote: "Gave someone remote access", accessibility: "Granted accessibility access", profile: "Installed a profile or certificate", banking_during_access: "Used banking while they had access", mfa_approved: "Approved a login prompt", locked_out: "Lost access to the account" };
@@ -842,11 +931,36 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     // (see syncEnforcementEvidence, driven by real EnforcementEvidence) may do that. isVerifiedEnforcement()
     // below is always false for tap-driven evidence today — kept as the single defensive gate so that
     // guarantee can never silently change without this line catching it.
-    if (result.verified) {
+    //
+    // iOS Safari Content Blocker: the native module returns verified=false because Safari does not
+    // confirm individual matches. However, when rulesState="prepared" and (reloadState="reload_requested"
+    // with activeState="enabled_match_unobservable"), the rules have been accepted by Safari — this is
+    // a successful rule installation even though match verification is architecturally impossible.
+    const nativeResult = result as unknown as Record<string, unknown>;
+    const rulesPrepared = nativeResult.rulesState === "prepared";
+    const reloadAccepted = nativeResult.reloadState === "reload_requested";
+    const extensionEnabled = nativeResult.activeState === "enabled_match_unobservable";
+    const iosRulesAccepted = rulesPrepared && reloadAccepted && extensionEnabled;
+    if (result.verified || iosRulesAccepted) {
+      const iosNote = iosRulesAccepted && !result.verified
+        ? " Safari accepted the rule but cannot confirm individual matches."
+        : "";
       await upsertEvent({ ...event, status: "active", verified_block: false, adapter_label: result.adapterLabel, why: [...event.why, result.detail],
-        what_to_do: "Apollo has put a block in place for this destination. This card will update the moment Apollo actually sees and stops a connection attempt to it.",
+        what_to_do: `Apollo has put a block in place for this destination.${iosNote} This card will update the moment Apollo actually sees and stops a connection attempt to it.`,
         enforcement_evidence: null });
       showToast(`Block rule active for ${host}. Apollo will confirm once it sees a connection.`, "barking");
+    } else if (rulesPrepared) {
+      // Rules are prepared but the Safari extension may not be enabled, or reload failed.
+      // This is better than "could not verify" — the rules exist, just not fully active.
+      const limitation = nativeResult.activeState === "not_enabled"
+        ? "Enable Apollo's Safari extension in Settings > Safari > Extensions."
+        : nativeResult.reloadState === "reload_failed"
+          ? "The rule list is prepared but Safari could not reload it. Try again."
+          : "The rule is prepared but Apollo cannot confirm it is active.";
+      await upsertEvent({ ...event, state: "barking", status: "active", verified_block: false,
+        adapter_label: result.adapterLabel, why: [...event.why, result.detail],
+        what_to_do: limitation, enforcement_evidence: null });
+      showToast(limitation, "barking");
     } else {
       await upsertEvent({ ...event, state: "barking", status: "active", verified_block: false, why: [...event.why, `Block not verified: ${result.detail}`],
         what_to_do: "Apollo could not verify a block on this device. Do not open the link. Avoid this destination.", enforcement_evidence: null });

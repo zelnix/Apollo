@@ -129,6 +129,9 @@ void CALLBACK onNetEvent(void*, const FWPM_NET_EVENT1* event) {
   const char* protocol = event->header.ipProtocol == IPPROTO_TCP ? "tcp" : event->header.ipProtocol == IPPROTO_UDP ? "udp" : "unknown";
   std::error_code ignored; auto directory = programData() / L"evidence"; std::filesystem::create_directories(directory, ignored);
   pruneEvidence(directory);
+  // Fix 4: Report that this is an IP-level filter; the domain attribution is the DNS-resolved label
+  // for that address, not a verified hostname match. Shared hosting/CDN addresses may affect
+  // unrelated sites sharing the same IP.
   std::ofstream out(directory / (evidenceId + L".json"), std::ios::trunc);
   out << "{\"evidenceId\":\"" << escaped(utf8(evidenceId)) << "\",\"eventId\":null,\"deviceId\":null,\"platform\":\"windows\","
       << "\"osVersion\":\"observed-by-wfp\",\"sdkVersion\":\"1.1.0\",\"observedAt\":\"" << nowIso() << "\","
@@ -136,7 +139,10 @@ void CALLBACK onNetEvent(void*, const FWPM_NET_EVENT1* event) {
       << "\"destination\":{\"ip\":\"" << escaped(utf8(remote)) << "\",\"domain\":\"" << escaped(utf8(matchedDomain)) << "\",\"port\":" << event->header.remotePort << "},"
       << "\"attribution\":{\"appId\":\"" << escaped(utf8(app)) << "\",\"processName\":\"" << escaped(utf8(process)) << "\",\"confidence\":\"high\"},"
       << "\"matchedRuleId\":\"wfp-filter-" << event->classifyDrop->filterId << "\",\"threatId\":null,\"requestedAction\":\"block\",\"enforcedAction\":\"blocked\","
-      << "\"result\":\"verified\",\"ruleSource\":\"local_blocklist\",\"confidence\":\"high\",\"sourceMetadata\":{\"provider\":\"Windows Filtering Platform\"},\"correlationId\":null}";
+      << "\"result\":\"verified\",\"ruleSource\":\"local_blocklist\","
+      << "\"confidence\":\"ip_address_level\","
+      << "\"attributionScope\":\"ip_resolved_from_domain\","
+      << "\"sourceMetadata\":{\"provider\":\"Windows Filtering Platform\",\"note\":\"Block is by resolved IP address; other domains sharing this address are also affected.\"},\"correlationId\":null}";
 }
 
 DWORD addRemoteAddressFilter(HANDLE engine, const GUID& layer, const SOCKADDR* address, UINT32 index, const std::wstring& rule) {
@@ -196,6 +202,72 @@ void WINAPI control(DWORD value) {
   if (value == SERVICE_CONTROL_STOP && stopEvent) SetEvent(stopEvent);
 }
 
+/** Incrementally update WFP filters within an open transaction: remove stale filters, add new
+ * ones, keep existing filters for unchanged rules. Never tears down the entire WFP session. */
+DWORD updateRulesTransactionally(HANDLE engine) {
+  auto currentRules = loadRules();
+
+  // Identify rules to remove (present in filterDomains but no longer in currentRules).
+  std::vector<UINT64> toRemove;
+  {
+    std::lock_guard lock(evidenceMutex);
+    for (const auto& [filterId, domain] : filterDomains) {
+      if (!currentRules.contains(domain)) {
+        toRemove.push_back(filterId);
+      }
+    }
+  }
+
+  // Identify rules to add (in currentRules but not already covered by an active filter).
+  std::set<std::wstring> activeDomains;
+  {
+    std::lock_guard lock(evidenceMutex);
+    for (const auto& [filterId, domain] : filterDomains) {
+      activeDomains.insert(domain);
+    }
+  }
+  std::set<std::wstring> toAdd;
+  for (const auto& rule : currentRules) {
+    if (!activeDomains.contains(rule)) toAdd.insert(rule);
+  }
+
+  // If nothing changed, no work needed.
+  if (toRemove.empty() && toAdd.empty()) return ERROR_SUCCESS;
+
+  // Use a WFP transaction for atomicity.
+  DWORD code = FwpmTransactionBegin0(engine, 0);
+  if (code != ERROR_SUCCESS) return code;
+
+  // Remove stale filters.
+  for (UINT64 filterId : toRemove) {
+    code = FwpmFilterDeleteById0(engine, filterId);
+    if (code != ERROR_SUCCESS && code != FWP_E_FILTER_NOT_FOUND) {
+      FwpmTransactionAbort0(engine);
+      return code;
+    }
+    std::lock_guard lock(evidenceMutex);
+    filterIds.erase(filterId);
+    filterDomains.erase(filterId);
+  }
+
+  // Add new filters.
+  UINT32 index = 0;
+  for (const auto& rule : toAdd) {
+    ADDRINFOW hints{}; hints.ai_family = AF_UNSPEC; hints.ai_socktype = SOCK_STREAM;
+    ADDRINFOW* result{};
+    if (GetAddrInfoW(rule.c_str(), nullptr, &hints, &result) != 0) continue;
+    for (ADDRINFOW* item = result; item; item = item->ai_next) {
+      const GUID& layer = item->ai_family == AF_INET ? FWPM_LAYER_ALE_AUTH_CONNECT_V4 : FWPM_LAYER_ALE_AUTH_CONNECT_V6;
+      code = addRemoteAddressFilter(engine, layer, item->ai_addr, index++, rule);
+      if (code != ERROR_SUCCESS) { FreeAddrInfoW(result); FwpmTransactionAbort0(engine); return code; }
+    }
+    FreeAddrInfoW(result);
+  }
+
+  code = FwpmTransactionCommit0(engine);
+  return code;
+}
+
 void WINAPI serviceMain(DWORD, wchar_t**) {
   statusHandle = RegisterServiceCtrlHandlerW(kServiceName, control);
   serviceStatus = {SERVICE_WIN32_OWN_PROCESS, SERVICE_START_PENDING, 0, NO_ERROR, 0, 0, 0};
@@ -222,14 +294,11 @@ void WINAPI serviceMain(DWORD, wchar_t**) {
   FWPM_NET_EVENT_SUBSCRIPTION0 subscriptionOptions{};
   FwpmNetEventSubscribe0(engine, &subscriptionOptions, onNetEvent, nullptr, &subscription);
   bool refreshFailed = false;
+  // Fix 3: Keep the WFP session and event subscription open across refreshes. Instead of tearing
+  // down and rebuilding everything every 5 seconds, only update changed filters transactionally.
   while (WaitForSingleObject(stopEvent, 5000) == WAIT_TIMEOUT) {
-    if (subscription) { FwpmNetEventUnsubscribe0(engine, subscription); subscription = nullptr; }
-    FwpmEngineClose0(engine); engine = nullptr;
-    { std::lock_guard lock(evidenceMutex); filterIds.clear(); filterDomains.clear(); }
-    code = FwpmEngineOpen0(nullptr, RPC_C_AUTHN_WINNT, nullptr, &session, &engine);
-    if (code != ERROR_SUCCESS || installRules(engine) != ERROR_SUCCESS) { refreshFailed = true; writeStatus(L"adapter_failed", L"Windows Filtering Platform rules could not be refreshed"); break; }
-    FWP_VALUE0 collect{}; collect.type = FWP_UINT32; collect.uint32 = 1; FwpmEngineSetOption0(engine, FWPM_ENGINE_COLLECT_NET_EVENTS, &collect);
-    FwpmNetEventSubscribe0(engine, &subscriptionOptions, onNetEvent, nullptr, &subscription);
+    code = updateRulesTransactionally(engine);
+    if (code != ERROR_SUCCESS) { refreshFailed = true; writeStatus(L"adapter_failed", L"Windows Filtering Platform rules could not be refreshed"); break; }
   }
   if (subscription && engine) FwpmNetEventUnsubscribe0(engine, subscription);
   if (engine) FwpmEngineClose0(engine);

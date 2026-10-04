@@ -45,7 +45,10 @@ class SinkholeBindingStore(
         val now = clock.nowEpochMillis()
         val expiresAt = now + bindingLifetimeMillis
         val sticky = hostToIp[host]?.takeIf { engine.currentWebsiteGateBinding(it)?.host == host }
-        val candidateIp = sticky ?: nextAvailableIp(now)
+        val candidateIp = sticky ?: nextAvailableIp(now, host)
+        // If no IP could be found without displacing an active binding for a different host,
+        // fail open rather than risk mis-attribution.
+        candidateIp ?: return null
         return when (val result = engine.authorizeWebsiteGateTarget(host, candidateIp, expiresAt)) {
             is WebsiteGateAuthorization.Bound -> {
                 hostToIp[host] = result.binding.sinkholeIpv4
@@ -55,13 +58,17 @@ class SinkholeBindingStore(
         }
     }
 
-    /** Prefers a slot with no live (or already-expired) binding at all; otherwise round robin. */
-    private fun nextAvailableIp(now: Long): String {
+    /** Prefers a slot with no live (or already-expired) binding at all; refuses to overwrite a live
+     * binding for a DIFFERENT host to prevent mis-attribution. Returns null on pool exhaustion. */
+    private fun nextAvailableIp(now: Long, requestingHost: String): String? {
+        // First pass: look for a free or expired slot.
         for (i in sinkholePool.indices) {
             val candidate = sinkholePool[Math.floorMod(nextIndex.getAndIncrement(), sinkholePool.size)]
             val existing = engine.currentWebsiteGateBinding(candidate)
             if (existing == null || existing.expiresAtEpochMillis <= now) return candidate
         }
-        return sinkholePool[Math.floorMod(nextIndex.getAndIncrement(), sinkholePool.size)]
+        // Pool exhausted: every slot has a live binding. Return null to fail open — never overwrite
+        // a different host's active binding, as that would cause mis-attributed blocks.
+        return null
     }
 }

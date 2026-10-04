@@ -28,13 +28,24 @@ class ProtectedUdpDnsForwarder(
         val socket = DatagramSocket()
         return try {
             if (!protector.protect(socket)) return null // fail open: never send un-protected (would loop into the TUN)
+            // Connect the socket to the resolver endpoint so receive() only accepts datagrams
+            // from the expected source — prevents forged responses from arbitrary senders.
+            socket.connect(upstreamResolver, upstreamPort)
             socket.soTimeout = timeoutMillis
             val queryBytes = rawQueryBuffer.copyOfRange(udpPayloadRange.first, udpPayloadRange.last + 1)
-            socket.send(DatagramPacket(queryBytes, queryBytes.size, upstreamResolver, upstreamPort))
+            // Extract the DNS transaction ID (first 2 bytes) from the query for response validation.
+            if (queryBytes.size < 2) return null
+            val queryTxId = ((queryBytes[0].toInt() and 0xFF) shl 8) or (queryBytes[1].toInt() and 0xFF)
+            socket.send(DatagramPacket(queryBytes, queryBytes.size))
             val responseBuffer = ByteArray(maxResponseBytes)
             val responsePacket = DatagramPacket(responseBuffer, responseBuffer.size)
             socket.receive(responsePacket)
-            responseBuffer.copyOfRange(0, responsePacket.length)
+            val responseBytes = responseBuffer.copyOfRange(0, responsePacket.length)
+            // Validate the response: must be at least 2 bytes and transaction ID must match the query.
+            if (responseBytes.size < 2) return null
+            val responseTxId = ((responseBytes[0].toInt() and 0xFF) shl 8) or (responseBytes[1].toInt() and 0xFF)
+            if (responseTxId != queryTxId) return null // transaction ID mismatch — reject forged/stale response
+            responseBytes
         } catch (e: SocketTimeoutException) {
             null
         } catch (e: IOException) {

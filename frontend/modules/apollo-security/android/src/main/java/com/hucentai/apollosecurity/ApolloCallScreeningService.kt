@@ -108,14 +108,22 @@ class ApolloCallScreeningService : CallScreeningService() {
       val risky = loadSet(ctx, KEY_AUTO_RISKY)
       if (number in block || number in risky) {
         respond(callDetails, disallow = true, reject = true, skipNotification = true)
+        // Record evidence honestly: a rejection REQUEST was issued but Android provides no completion
+        // receipt confirming the call was actually blocked. The evidence is "rejection_requested",
+        // not "verified" — the caller may still reach voicemail or the system may override the request.
         recordEvidence(EnforcementEvidence.verifiedCallBlock(
           evidenceId = UUID.randomUUID().toString(), observedAt = Instant.now().toString(), number = number,
           ruleSource = if (number in block) "user_override" else "cloud_intel",
           osVersion = "Android ${android.os.Build.VERSION.RELEASE}", sdkVersion = ApolloDnsVpnService.MODULE_VERSION,
-        ).copy(result = "unverified", enforcedAction = "none", destinationDomain = null, matchedRuleId = "call_local_rule"))
+        ).copy(result = "rejection_requested", enforcedAction = "reject_requested", destinationDomain = null, matchedRuleId = "call_local_rule"))
         return
       }
       // No local signal at all — let it ring normally, and queue for a background reputation lookup.
+      // A5: For numbers with no local signal, we still allow the call to ring (no silencing by default).
+      // Silencing unidentified callers is a device-level setting (Android: Settings → Phone → Caller ID
+      // & spam → "Filter spam calls"; iOS: Settings → Phone → Silence Unknown Callers) that the person
+      // controls independently. Apollo does not claim silencing as its own action and preserves the
+      // missed-call record (setSkipCallLog=false) so the person can review and check the number later.
       respond(callDetails, disallow = false, reject = false)
       queuePendingLookup(ctx, number)
     } catch (_: Exception) {

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import re
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from typing import Any, Optional
@@ -22,7 +23,9 @@ def digest(value: str) -> str:
 
 
 def sanitize_url(raw: str) -> tuple[str, str]:
-    """Strip credentials and fragments; return (url, host). Validation only, no canonicalisation games."""
+    """Strip credentials, fragments and secret query params; preserve path. Return (url, host).
+    Validation only, no canonicalisation games. The path is kept so that reputation sources
+    (e.g. Safe Browsing) can match page-specific threats, not just the origin."""
     candidate = raw if "://" in raw else f"https://{raw}"
     try:
         parsed = urlparse(candidate)
@@ -35,7 +38,20 @@ def sanitize_url(raw: str) -> tuple[str, str]:
     netloc = f"[{host}]" if ":" in host else host
     if port is not None:
         netloc = f"{netloc}:{port}"
-    clean = urlunparse((parsed.scheme, netloc, "/", "", "", ""))
+    # Preserve the path for page-specific reputation; strip credentials, fragments and secret
+    # query parameters. An empty path normalises to "/".
+    path = parsed.path or "/"
+    # Strip query parameters that look like they may carry secrets (tokens, session IDs, etc.)
+    secret_re = re.compile(r"token|code|otp|auth|session|password|pass|secret|key|signature|sig", re.I)
+    safe_params = []
+    if parsed.query:
+        from urllib.parse import parse_qsl, urlencode
+        for k, v in parse_qsl(parsed.query, keep_blank_values=True):
+            if secret_re.search(k):
+                continue  # drop secret-looking params entirely
+            safe_params.append((k, v))
+    clean_query = urlencode(safe_params) if safe_params else ""
+    clean = urlunparse((parsed.scheme, netloc, path, "", clean_query, ""))
     return clean, host
 
 
@@ -44,9 +60,17 @@ def host_matches(host: str, entry_host: str) -> bool:
 
 
 async def blocklist_check(host: str) -> IntelSource:
-    entries = await db.blocklist.find({"deleted_at": None}).to_list(5000)
-    for raw in entries:
-        entry = BlocklistEntry.from_mongo(raw)
+    # Targeted query: check the exact host and all parent domains instead of loading up to N entries.
+    # This removes the previous 5,000-entry cap that silently stopped checking on large lists.
+    candidates = [host]
+    parts = host.split(".")
+    for i in range(1, len(parts)):
+        parent = ".".join(parts[i:])
+        if "." in parent:  # at least a second-level domain
+            candidates.append(parent)
+    entry_raw = await db.blocklist.find_one({"deleted_at": None, "host": {"$in": candidates}})
+    if entry_raw:
+        entry = BlocklistEntry.from_mongo(entry_raw)
         if host_matches(host, entry.host):
             return IntelSource(
                 name="apollo_blocklist",

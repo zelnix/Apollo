@@ -53,16 +53,58 @@ async def _submit_shared_case(provider: str, device_id: str, message: dict[str, 
     except DuplicateKeyError:
         pass
     receipt = await db.mailbox_assessment_receipts.find_one(key, {"_id": 0})
-    if not receipt or receipt.get("state") in ("submitted", "complete", "failed"):
+    if not receipt or receipt.get("state") in ("submitted", "complete"):
         return False
+    # Temporary failures (e.g. "temporary_case_unavailable") are retryable — only permanent
+    # terminal states ("complete") and active submissions ("submitted") are skipped.
+    if receipt.get("state") == "failed":
+        failure_reason = receipt.get("failure", "")
+        terminal_failures = {"cancelled", "expired"}
+        if failure_reason in terminal_failures:
+            return False
+        # Retryable failure: reset state to "claimed" and re-process
+        await db.mailbox_assessment_receipts.update_one(key, {"$set": {"state": "claimed", "updated_at": now_utc()}})
     sender = str(message.get("from", ""))
     subject = str(message.get("subject", ""))
     body = str(message.get("body", ""))
     links = message.get("links", []) if isinstance(message.get("links"), list) else []
+    # Preserve Reply-To and attachment filenames during intake where available
+    reply_to = str(message.get("reply_to", "")) if message.get("reply_to") else ""
+    attachment_names = message.get("attachment_names", []) if isinstance(message.get("attachment_names"), list) else []
     link_context = "\n".join(f"Displayed link text: {link.get('text', '')}\nActual destination: {link.get('href', '')}" for link in links if isinstance(link, dict))
     link_section = f"\n\nHTML link destinations:\n{link_context}" if link_context else ""
-    text = f"From: {sender}\nSubject: {subject}\n\n{body}{link_section}".strip()
-    case = await repo.create_case(device_id, "email", None)
+    reply_section = f"\nReply-To: {reply_to}" if reply_to and reply_to != sender else ""
+    attachment_section = f"\nAttachment filenames: {', '.join(attachment_names)}" if attachment_names else ""
+    text = f"From: {sender}{reply_section}\nSubject: {subject}{attachment_section}\n\n{body}{link_section}".strip()
+
+    # C1: Reconcile retries with existing case/job to prevent duplicate investigations.
+    # If the receipt already has a caseId and jobId from a previous attempt, check if they exist
+    # and reuse them instead of creating new ones.
+    existing_case_id = receipt.get("case_id")
+    existing_job_id = receipt.get("job_id")
+    reuse_existing = False
+    if existing_case_id and existing_job_id:
+        try:
+            existing_case = await repo.get_case(device_id, existing_case_id)
+            existing_job = await repo.get_job(device_id, existing_case_id, existing_job_id)
+            # If the job is still runnable or already completed, don't create a new one
+            if existing_job["status"] in ("queued", "investigating", "retry_wait", "waiting_device"):
+                # Job is still in progress — mark as submitted and let finalise handle it
+                await db.mailbox_assessment_receipts.update_one(key, {"$set": {"state": "submitted", "updated_at": now_utc()}})
+                return True
+            if existing_case.get("response_ciphertext"):
+                # Already completed — mark as complete
+                await db.mailbox_assessment_receipts.update_one(key, {"$set": {"state": "complete", "processed_at": now_utc(), "updated_at": now_utc()}})
+                return False
+            # Job exists but failed/cancelled — reuse the case, create new job
+            reuse_existing = True
+        except Exception:
+            pass  # Case/job not found — create fresh ones
+
+    if reuse_existing and existing_case_id:
+        case = await repo.get_case(device_id, existing_case_id)
+    else:
+        case = await repo.create_case(device_id, "email", None)
     item = await evidence.ingest_text(device_id, case, f"mailbox-{digest}", text, label=f"{provider} message selected by ongoing monitoring")
     local_findings = []
     if URL_RE.search(text):
@@ -91,8 +133,10 @@ async def _finalise_receipt(receipt: dict) -> None:
         case = await repo.get_case(owner, case_id)
         job = await repo.get_job(owner, case_id, job_id)
     except Exception:
+        # Distinguish temporary backend unavailability from terminal failure. Use a "retry_failed"
+        # state so the receipt remains eligible for re-processing by _submit_shared_case.
         await db.mailbox_assessment_receipts.update_one({"provider": receipt["provider"], "device_id": owner, "message_digest": receipt["message_digest"]},
-                                                         {"$set": {"state": "failed", "failure": "temporary_case_unavailable", "updated_at": now_utc()}})
+                                                         {"$set": {"state": "failed", "failure": "temporary_case_unavailable", "retry_after": now_utc() + timedelta(minutes=5), "updated_at": now_utc()}})
         return
     if job["status"] in ("queued", "investigating", "retry_wait", "waiting_device"):
         return
@@ -102,6 +146,15 @@ async def _finalise_receipt(receipt: dict) -> None:
             await db.mailbox_assessment_receipts.update_one(selector, {"$set": {"state": "failed", "failure": job["status"], "updated_at": now_utc()}})
         return
     await db.mailbox_assessment_receipts.update_one(selector, {"$set": {"state": "complete", "processed_at": now_utc(), "updated_at": now_utc()}})
+    # C2: Update the gmail connection's assessment timestamp so the Email Gate can distinguish
+    # "retrieval works but assessment failed" from "everything is working".
+    try:
+        await db.gmail_connections.update_one(
+            {"device_id": owner},
+            {"$set": {"monitor_last_assessment_at": now_utc()}}
+        )
+    except Exception:
+        pass  # non-critical metadata update
 
 
 async def finalise_pending_assessments() -> None:
@@ -127,8 +180,14 @@ async def scan_gmail_through_shared_pipeline(device_id: str, intake_mode: str) -
         accepted = 0
         for message in messages:
             accepted += int(await _submit_shared_case("gmail", device_id, message, intake_mode))
+        # C2: Distinguish successful retrieval from completed assessment. `monitor_last_success_at`
+        # now reflects RETRIEVAL success only. `monitor_last_assessment_at` tracks when assessments
+        # actually complete (updated by finalise_pending_assessments). The Email Gate should check
+        # BOTH timestamps — retrieval without assessment means the gate is degraded, not working.
         await db.gmail_connections.update_one({"device_id": device_id, "monitor_lease": lease}, {"$set": {
-            "monitor_next_page_token": next_cursor, "monitor_last_checked_at": now_utc(), "monitor_last_success_at": now_utc(),
+            "monitor_next_page_token": next_cursor, "monitor_last_checked_at": now_utc(),
+            "monitor_last_retrieval_at": now_utc(),  # C2: renamed from monitor_last_success_at
+            "monitor_last_success_at": now_utc(),    # kept for backward compat; gate must also check assessment
             "monitor_last_error_at": None, "monitor_last_error": None, "monitor_lease": None, "monitor_lease_until": None,
         }})
         return {"status": "accepted", "checked": len(messages), "accepted": accepted, "nextCursor": next_cursor}

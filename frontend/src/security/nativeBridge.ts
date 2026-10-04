@@ -61,6 +61,10 @@ export interface ApolloSecurityNativeModule {
    * grant/revoke Apollo's NotificationListenerService permission (ApolloSmsListenerService.kt).
    * iOS reports { opened: false } — there is no equivalent settings screen on that platform. */
   openSmsListenerSettings(): Promise<string>;
+  /** B1: Pending text assessments (caseIds from TextHandoffWorker). Android only; iOS returns "[]". */
+  getPendingTextAssessments(): Promise<string>;
+  /** B1: Remove a pending assessment after result consumed. */
+  removePendingTextAssessment(caseId: string): Promise<string>;
   // Gate 3 — Website & Browser (SDK contract). JSON strings; see src/security/webSdk.ts.
   getWebProtectionCapabilities(): Promise<string>;
   getDomainReputation(domain: string): Promise<string>;

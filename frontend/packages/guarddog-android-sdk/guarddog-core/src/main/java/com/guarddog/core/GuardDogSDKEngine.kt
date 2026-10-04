@@ -82,11 +82,22 @@ class GuardDogSDKEngine(
     fun currentAuthorization(): BlockAuthorization.Authorized? = authorization
     fun protectionState(): ProtectionRuntimeState = runtimeState.current()
 
-    /** Independent on-device verification. Emits RULE_BUNDLE_ACCEPTED / REJECTED (never THREAT_BLOCKED). */
+    /** Independent on-device verification. Emits RULE_BUNDLE_ACCEPTED / REJECTED (never THREAT_BLOCKED).
+     *  When the incoming bundle is byte-identical to the already-accepted one, the accept is idempotent:
+     *  no authorization or state is cleared. This prevents a routine refresh of an unchanged bundle
+     *  from disrupting live enforcement. */
     fun acceptRuleBundle(rawJson: String): VerificationResult {
         val result = verifier.verify(rawJson)
         when (result) {
             is VerificationResult.Accepted -> {
+                val current = acceptedBundle
+                val unchanged = current != null
+                    && current.rulesetId == result.bundle.rulesetId
+                    && current.bundleVersion == result.bundle.bundleVersion
+                if (unchanged) {
+                    // Idempotent: bundle content is identical — preserve live authorization.
+                    return result
+                }
                 acceptedBundle = result.bundle
                 authorization = null
                 emit(
@@ -128,11 +139,21 @@ class GuardDogSDKEngine(
     fun acceptedWebsiteGateBundle(): SignedRuleBundle? = acceptedWebsiteGateBundle
 
     /** Independent verification slot, parallel to [acceptRuleBundle]. Verifies through the same
-     * [RuleBundleVerifier] (signature/expiry/rollback checks are ruleset-agnostic); stored separately. */
+     * [RuleBundleVerifier] (signature/expiry/rollback checks are ruleset-agnostic); stored separately.
+     * When the incoming bundle is identical to the already-accepted one, the accept is idempotent:
+     * existing bindings are preserved. */
     fun acceptWebsiteGateRuleBundle(rawJson: String): VerificationResult {
         val result = verifier.verify(rawJson)
         when (result) {
             is VerificationResult.Accepted -> {
+                val current = acceptedWebsiteGateBundle
+                val unchanged = current != null
+                    && current.rulesetId == result.bundle.rulesetId
+                    && current.bundleVersion == result.bundle.bundleVersion
+                if (unchanged) {
+                    // Idempotent: bundle content is identical — preserve live website-gate bindings.
+                    return result
+                }
                 acceptedWebsiteGateBundle = result.bundle
                 websiteGateBindings.clear() // a new bundle invalidates prior bindings' rule/version provenance
                 emit(

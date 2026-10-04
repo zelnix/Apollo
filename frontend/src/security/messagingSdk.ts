@@ -43,4 +43,8 @@ export const MessagingSdk = {
   acknowledgeMessageSecurityEvents: (ids: string[]) => { const m = getNativeModule(); return call<{ acknowledged: number }>(m ? () => m.acknowledgeMessageSecurityEvents(JSON.stringify(ids)) : undefined, { acknowledged: 0 }); },
   /** Text Guard: opens the Android "Notification access" settings screen. No-op ({opened:false}) on iOS/web. */
   openSmsListenerSettings: () => { const m = getNativeModule(); return call<{ opened: boolean }>(m ? () => m.openSmsListenerSettings() : undefined, { opened: false }); },
+  /** B1: Get pending text assessments (caseIds from background handoff). Android only; returns [] elsewhere. */
+  getPendingTextAssessments: () => { const m = getNativeModule(); return call<{ caseId: string; sender: string; textPreview: string; submittedAt: string }[]>(m ? () => m.getPendingTextAssessments() : undefined, []); },
+  /** B1: Remove a pending text assessment after its result has been consumed. */
+  removePendingTextAssessment: (caseId: string) => { const m = getNativeModule(); return call<{ removed: boolean }>(m ? () => m.removePendingTextAssessment(caseId) : undefined, { removed: false }); },
 };

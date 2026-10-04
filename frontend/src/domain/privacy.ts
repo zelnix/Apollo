@@ -198,15 +198,20 @@ function validateEvidence(ev: Record<string, unknown>, event: Record<string, unk
     (ev.device_id != null && ev.device_id !== event.device_id) || Date.parse(String(ev.observed_at)) !== Date.parse(String(event.occurred_at))) throw new EgressViolation('patrol_sync', 'enforcement_evidence');
 }
 
-/** Reduce a URL to the minimal indicator we are willing to send for reputation checks. */
+/** Reduce a URL to the indicator we are willing to send for reputation checks.
+ * Preserves the path so page-specific threats (e.g. phishing landing pages vs. clean homepages)
+ * get distinct reputation. Strips credentials, fragments and secret-looking query parameters. */
 export function minimalIndicator(normalizedUrl: string): string {
   const u = new URL(normalizedUrl.includes('://') ? normalizedUrl : `https://${normalizedUrl}`);
   if (!['http:', 'https:'].includes(u.protocol)) throw new EgressViolation('intel_check', 'scheme');
   u.username = "";
   u.password = "";
   u.hash = "";
-  u.search = '';
-  u.pathname = '/'; // origin-only: paths can contain private document IDs and reset tokens too
+  // Strip query parameters that may carry secrets (tokens, session IDs, etc.)
+  const secret = /token|code|otp|auth|session|password|pass|secret|key|signature|sig/i;
+  for (const key of [...u.searchParams.keys()]) if (secret.test(key)) u.searchParams.delete(key);
+  // Path is intentionally preserved: stripping it to "/" would make origin-only checks
+  // indistinguishable from exact-link checks, hiding page-specific threats.
   return u.toString();
 }
 

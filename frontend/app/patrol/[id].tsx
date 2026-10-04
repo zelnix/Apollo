@@ -65,6 +65,23 @@ export default function EventDetail() {
             {event.local_indicator ? <Text style={s.meta} selectable testID="event-indicator">{event.local_indicator}</Text> : event.indicator_host ? <Text style={s.meta}>{event.indicator_host}</Text> : null}
           </Card>
 
+          {/* A3: Caller identity and number information for call events */}
+          {event.category === "call" && (event as unknown as Record<string, unknown>).caller_meta ? (() => {
+            const meta = (event as unknown as Record<string, unknown>).caller_meta as { country?: string | null; carrier?: string | null; line_type?: string | null; voip?: boolean | null; fraud_score?: number | null; source?: string; identity_verified?: boolean };
+            return (
+              <Card style={{ gap: spacing.sm }} testID="call-caller-info">
+                <Text style={s.sub}>Number information</Text>
+                {meta.country ? <Text style={s.big} testID="call-info-country">Country: {meta.country}</Text> : null}
+                {meta.carrier ? <Text style={s.big} testID="call-info-carrier">Carrier: {meta.carrier}</Text> : null}
+                {meta.line_type ? <Text style={s.big} testID="call-info-linetype">Line type: {meta.line_type}{meta.voip ? " (VOIP)" : ""}</Text> : null}
+                {meta.fraud_score != null ? <Text style={s.big} testID="call-info-score">Fraud score: {meta.fraud_score}/100</Text> : null}
+                <Text style={s.meta} testID="call-info-identity">{meta.identity_verified ? "Caller identity verified" : "Caller identity unverified — a displayed name does not authenticate the caller."}</Text>
+                {meta.country ? <Text style={s.meta} testID="call-info-location-note">The number's country does not confirm the caller's actual location.</Text> : null}
+                {meta.source === "not_configured" ? <Text style={s.meta}>Number reputation service not configured.</Text> : meta.source ? <Text style={s.meta}>Source: {meta.source}</Text> : null}
+              </Card>
+            );
+          })() : null}
+
           <Card style={{ gap: spacing.sm }}>
             <Text style={s.sub}>Why this rating</Text>
             {(outcome?.whyThisRating ?? event.why).length === 0 ? <Body>No specific warning signs were recorded.</Body> : (outcome?.whyThisRating ?? event.why).map((w, i) => (
