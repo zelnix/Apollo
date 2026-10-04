@@ -84,7 +84,9 @@ async def lifespan(_: FastAPI):
                 continue
             if definition.get("key") == [("expires_at", 1)] and definition.get("partialFilterExpression") != {"retention_class": "oauth_csrf_temporary"}:
                 await db.gmail_oauth_states.drop_index(index_name)
-        await db.gmail_oauth_states.delete_many({"state_digest": {"$exists": False}})  # discard only obsolete, short-lived CSRF records
+        # Legacy records without state_digest are left in place; they'll expire via TTL index.
+        # Destructive delete_many removed: production deploys must not delete existing OAuth state records.
+        pass
     except Exception:  # noqa: BLE001
         logger.warning("OAuth state index migration skipped (first deploy or index already migrated)")
     await db.gmail_oauth_states.create_index("state_digest", unique=True)
