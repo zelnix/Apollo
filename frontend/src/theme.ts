@@ -66,7 +66,7 @@ const light = {
 
   success: "#4FAF83", // protected green
   onSuccess: "#0B1220",
-  warning: "#E8943A", // warning amber-orange
+  warning: "#D4780A", // warning amber-orange — rich, saturated
   onWarning: "#0B1220",
   error: "#D9534F", // threat red
   onError: "#FFFFFF",
@@ -80,8 +80,8 @@ const light = {
   // Apollo behaviour states
   sniffing: "#52606D", // checking, no verdict yet — neutral
   resting: "#4FAF83", // protected green
-  ears_up: "#F4B942", // Apollo amber
-  growling: "#E8943A", // warning amber-orange
+  ears_up: "#E5A21A", // Apollo amber — vivid
+  growling: "#D4780A", // warning amber-orange — rich, saturated
   barking: "#D9534F", // threat red
   biting: "#D9534F",
   // Capability gaps (visibility lost / unsupported) — neutral, never "safe" green
@@ -91,7 +91,7 @@ const light = {
   sniffingText: "#3E4A56",
   restingText: "#1B6B47",
   ears_upText: "#7A5200",
-  growlingText: "#9A4A0B",
+  growlingText: "#8B3D03",
   barkingText: "#B3261E",
   bitingText: "#B3261E",
   unknownText: "#54636F",
@@ -99,8 +99,8 @@ const light = {
   // Translucent tints used for state-coloured fills over light surfaces (pills, stronger glow)
   sniffingTint: "rgba(82,96,109,0.14)",
   restingTint: "rgba(79,175,131,0.20)",
-  ears_upTint: "rgba(244,185,66,0.26)",
-  growlingTint: "rgba(232,148,58,0.20)",
+  ears_upTint: "rgba(229,162,26,0.30)",
+  growlingTint: "rgba(212,120,10,0.28)",
   barkingTint: "rgba(217,83,79,0.16)",
   bitingTint: "rgba(217,83,79,0.16)",
   unknownTint: "rgba(122,135,148,0.16)",
