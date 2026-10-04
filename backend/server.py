@@ -75,14 +75,18 @@ async def lifespan(_: FastAPI):
     removed_gmail_grants = await gmail_service.cleanup_unreadable_connections()
     if removed_gmail_grants:
         logger.warning("removed %s unreadable legacy Gmail grant(s); affected users must reconnect", removed_gmail_grants)
-    oauth_indexes = await db.gmail_oauth_states.index_information()
-    for index_name, definition in oauth_indexes.items():
-        if definition.get("key") == [("state", 1)]:
-            await db.gmail_oauth_states.drop_index(index_name)
-            continue
-        if definition.get("key") == [("expires_at", 1)] and definition.get("partialFilterExpression") != {"retention_class": "oauth_csrf_temporary"}:
-            await db.gmail_oauth_states.drop_index(index_name)
-    await db.gmail_oauth_states.delete_many({"state_digest": {"$exists": False}})  # discard only obsolete, short-lived CSRF records
+    # OAuth state index migration — tolerant of first-deploy (empty collection) and Atlas environments.
+    try:
+        oauth_indexes = await db.gmail_oauth_states.index_information()
+        for index_name, definition in oauth_indexes.items():
+            if definition.get("key") == [("state", 1)]:
+                await db.gmail_oauth_states.drop_index(index_name)
+                continue
+            if definition.get("key") == [("expires_at", 1)] and definition.get("partialFilterExpression") != {"retention_class": "oauth_csrf_temporary"}:
+                await db.gmail_oauth_states.drop_index(index_name)
+        await db.gmail_oauth_states.delete_many({"state_digest": {"$exists": False}})  # discard only obsolete, short-lived CSRF records
+    except Exception:  # noqa: BLE001
+        logger.warning("OAuth state index migration skipped (first deploy or index already migrated)")
     await db.gmail_oauth_states.create_index("state_digest", unique=True)
     await db.gmail_oauth_states.create_index("expires_at", name="oauth_csrf_expiry_ttl", expireAfterSeconds=0,
                                               partialFilterExpression={"retention_class": "oauth_csrf_temporary"})

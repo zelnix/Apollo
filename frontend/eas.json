@@ -43,7 +43,8 @@
       "distribution": "internal",
       "channel": "production",
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "image": "default"
       },
       "env": {
         "EXPO_PUBLIC_APP_ENV": "production",
