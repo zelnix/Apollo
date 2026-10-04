@@ -6,8 +6,9 @@
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useMemo, useState } from "react";
-import { Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming } from "react-native-reanimated";
+import { useRouter } from "expo-router";
 
 import type { StateResolution } from "@/src/domain/stateMachine";
 import { STATE_LABEL, STATE_MEANING, type ApolloState, type Capability } from "@/src/domain/types";
@@ -43,6 +44,7 @@ const useStyles = makeStyles((c) => ({
   label: { fontFamily: fonts.displayBold, fontSize: 26, color: c.onSurface, letterSpacing: -0.3, textAlign: "center" },
   meaning: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary, textAlign: "center" },
   reason: { fontFamily: fonts.textMedium, fontSize: 14, lineHeight: 20, color: c.onSurface, textAlign: "center" },
+  reasonLink: { fontFamily: fonts.textMedium, fontSize: 14, lineHeight: 20, color: c.gold, textAlign: "center", textDecorationLine: "underline" },
   row: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap", justifyContent: "center" },
   note: { fontFamily: fonts.text, fontSize: 12, lineHeight: 17, color: c.onSurfaceSecondary },
 }));
@@ -112,7 +114,9 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
 
   const title = STATE_LABEL[resolution.state];
   const meaning = STATE_MEANING[resolution.state];
-  const reason = resolution.visibilityLost ? "One automatic protection could not be confirmed. Open Protection to see the affected component." : resolution.reason;
+  const reason = resolution.reason;
+  const reasonRoute = resolution.reasonRoute;
+  const router = useRouter();
   // "Run a check" is never said bare: the exact checks are listed (tappable, in a popup) and read aloud. Completion
   // counts from the start of today, so a check already done this morning shows as done.
   const checks = sniffing ? [] : recommendedChecks(resolution);
@@ -145,7 +149,13 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
         <Text style={s.label} testID="apollo-state-label">{title}</Text>
         <Text style={s.note} testID="apollo-higgins-label">HIGGINS</Text>
         <Text style={s.meaning} testID="apollo-state-meaning">{meaning}</Text>
-        <Text style={s.reason} testID="apollo-state-reason">{reason}</Text>
+        {reasonRoute ? (
+          <Pressable onPress={() => router.push(reasonRoute as any)} accessibilityRole="link" testID="apollo-state-reason-link" style={{ minHeight: 44, justifyContent: "center" }}>
+            <Text style={s.reasonLink} testID="apollo-state-reason">{reason} →</Text>
+          </Pressable>
+        ) : (
+          <Text style={s.reason} testID="apollo-state-reason">{reason}</Text>
+        )}
         <View style={[s.row, { alignItems: "center" }]}><HigginsSpeakButton text={spokenText} testID="hero-hear-higgins" onPress={onHearHiggins} /></View>
         <View style={s.row}>
           {resolution.recovering ? <Pill tone="growling" label="Awaiting fresh check" testID="recovering-pill" /> : null}

@@ -24,6 +24,8 @@ export interface StateResolution {
   state: ApolloState;
   /** Why Apollo is in this state, in plain language. */
   reason: string;
+  /** Deep-link route the user should open to address the reason, if any. */
+  reasonRoute?: string;
   /** True when Apollo has no active event but is waiting on fresh verification. */
   recovering: boolean;
   /** True when Patrolling cannot be shown truthfully because visibility is lost. */
@@ -45,7 +47,8 @@ export function resolveApolloState(input: StateInput): StateResolution {
   // Present health always remains visible, even alongside historical incidents.
   if (visibilityLost) return {
     state: active.some(e => e.state === 'barking') ? 'barking' : 'growling',
-    reason: input.visibility === 'none' ? 'Current protection is unavailable or unverified. Previous blocks remain in Patrol.' : 'Protection observation has expired. Open Gates to check again.',
+    reason: input.visibility === 'none' ? 'Protection is unavailable or unverified.' : 'Protection observation has expired.',
+    reasonRoute: input.visibility === 'none' ? '/(tabs)/patrol' : '/(tabs)/guard',
     recovering: false, visibilityLost: true, drivingEvent: active.sort(byNewest)[0] ?? null,
   };
 
