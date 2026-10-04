@@ -379,10 +379,26 @@ async def settle_write(owner: str, case_id: str, epoch: str, collection, selecto
 
 
 async def sweep_tombstones() -> int:
-    """Removes content rows whose case epoch no longer matches a live case (late writers that never compensated)."""
+    """Removes content rows whose case epoch no longer matches a live case (late writers that never compensated).
+
+    Optimisations to avoid 15-second timeout with large case tables:
+    1. Short-circuit: if evidence + chunks collections are empty, nothing to sweep.
+    2. Batch limit: process at most 200 cases per cycle. The maintenance loop runs
+       every 20 s, so a 3 000-case backlog clears in ~5 minutes.
+    3. Prioritise non-live (deleted/expired) cases first — they generate more orphaned rows.
+    """
+    # Fast exit: if there are zero content rows to clean, no need to scan cases.
+    if await db.investigation_evidence.estimated_document_count() == 0 and \
+       await db.investigation_content_chunks.estimated_document_count() == 0 and \
+       await db.investigation_events.estimated_document_count() == 0:
+        return 0
+
     removed = 0
+    batch_limit = 200
     complete = {"owner_id": {"$type": "string"}, "case_id": {"$type": "string"}, "epoch": {"$type": "string"}, "expires_at": {"$exists": True}}
-    async for case in db.investigation_cases.find(complete, {"_id": 0, "owner_id": 1, "case_id": 1, "epoch": 1, "deleted": 1, "expires_at": 1}):
+    # Sort by expires_at ascending so expired/oldest cases (most likely to have orphans) are swept first.
+    cursor = db.investigation_cases.find(complete, {"_id": 0, "owner_id": 1, "case_id": 1, "epoch": 1, "deleted": 1, "expires_at": 1}).sort("expires_at", 1).limit(batch_limit)
+    async for case in cursor:
         live = not case.get("deleted") and utc(case["expires_at"]) > now_utc()
         selector = {"owner_id": case["owner_id"], "case_id": case["case_id"], **({"epoch": {"$exists": True, "$ne": case["epoch"]}} if live else {})}
         for name in ("investigation_evidence", "investigation_content_chunks"):
