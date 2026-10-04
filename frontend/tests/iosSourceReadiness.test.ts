@@ -10,8 +10,8 @@ test("iOS target inventory has unique canonical identifiers and one shared App G
   assert.equal(app.expo.android.package, "app.apollo.hwg");
   assert.equal(app.expo.orientation, "default");
   const extensions = app.expo.extra.eas.build.experimental.ios.appExtensions;
-  assert.deepEqual(extensions.map((row: { targetName: string }) => row.targetName), ["ApolloFamilyAssistBroadcast", "ApolloShareExtension", "ApolloContentBlocker", "ApolloCallDirectory", "ApolloMessageFilter"]);
-  assert.equal(new Set(extensions.map((row: { bundleIdentifier: string }) => row.bundleIdentifier)).size, 5);
+  assert.deepEqual(extensions.map((row: { targetName: string }) => row.targetName), ["ApolloFamilyAssistBroadcast", "ApolloShareExtension", "ApolloContentBlocker", "ApolloCallDirectory", "ApolloMessageFilter", "ApolloLiveCallerID"]);
+  assert.equal(new Set(extensions.map((row: { bundleIdentifier: string }) => row.bundleIdentifier)).size, 6);
   for (const row of extensions) assert.deepEqual(row.entitlements["com.apple.security.application-groups"], ["group.app.apollo.hwg.apollo"]);
   const share = app.expo.plugins.find((entry: unknown) => Array.isArray(entry) && entry[0] === "expo-share-intent")[1];
   assert.equal(share.iosAppGroupIdentifier, "group.app.apollo.hwg.apollo");
