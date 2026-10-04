@@ -118,18 +118,18 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
   const reasonRoute = resolution.reasonRoute;
   const router = useRouter();
 
-  // When visibility is lost, build a specific reason naming the gates that need attention
-  // instead of the generic "Protection is unavailable or unverified."
+  // When visibility is lost, build a specific reason naming the gates that need attention.
   const health = useProtectionHealth();
+  const attentionGates = useMemo(() => health.gates.filter((g) => g.tone === "attention"), [health.gates]);
   const reason = useMemo(() => {
     if (!resolution.visibilityLost || health.checking) return resolution.reason;
-    const attentionGates = health.gates.filter((g) => g.tone === "attention");
     if (!attentionGates.length) return resolution.reason;
     const names = attentionGates.map((g) => g.title.replace(/ Gate$/, ""));
-    if (names.length === 1) return `${names[0]} protection needs your attention.`;
-    if (names.length === 2) return `${names[0]} and ${names[1]} protection need your attention.`;
-    return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]} protection need your attention.`;
-  }, [resolution.visibilityLost, resolution.reason, health.checking, health.gates]);
+    const list = names.length === 1 ? names[0] : names.length === 2 ? `${names[0]} and ${names[1]}` : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+    return `Higgins here, your device ${list} protection ${names.length === 1 ? "needs" : "need"} your attention.`;
+  }, [resolution.visibilityLost, resolution.reason, health.checking, attentionGates]);
+  // Deep-link to the gates screen where attention gates appear first.
+  const heroRoute = attentionGates.length ? "/(tabs)/guard" : reasonRoute;
   // "Run a check" is never said bare: the exact checks are listed (tappable, in a popup) and read aloud. Completion
   // counts from the start of today, so a check already done this morning shows as done.
   const checks = sniffing ? [] : recommendedChecks(resolution);
@@ -165,7 +165,11 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
         {(state === "resting" || state === "sniffing") ? (
           <Text style={s.meaning} testID="apollo-state-meaning">{meaning}</Text>
         ) : null}
-        {reasonRoute ? (
+        {heroRoute ? (
+          <Pressable onPress={() => router.push(heroRoute as any)} accessibilityRole="link" testID="apollo-state-reason-link" style={{ minHeight: 44, justifyContent: "center" }}>
+            <Text style={s.reasonLink} testID="apollo-state-reason">{reason} →</Text>
+          </Pressable>
+        ) : reasonRoute ? (
           <Pressable onPress={() => router.push(reasonRoute as any)} accessibilityRole="link" testID="apollo-state-reason-link" style={{ minHeight: 44, justifyContent: "center" }}>
             <Text style={s.reasonLink} testID="apollo-state-reason">{reason} →</Text>
           </Pressable>
