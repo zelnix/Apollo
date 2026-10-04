@@ -45,7 +45,7 @@ const useStyles = makeStyles((c) => ({
   label: { fontFamily: fonts.displayBold, fontSize: 26, color: c.onSurface, letterSpacing: -0.3, textAlign: "center" },
   meaning: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary, textAlign: "center" },
   reason: { fontFamily: fonts.textMedium, fontSize: 14, lineHeight: 20, color: c.onSurface, textAlign: "center" },
-  reasonLink: { fontFamily: fonts.textMedium, fontSize: 14, lineHeight: 20, color: c.gold, textAlign: "center", textDecorationLine: "underline" },
+  reasonLink: { fontFamily: fonts.displayBold, fontSize: 14, lineHeight: 20, color: c.onSurface, textAlign: "center" },
   row: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap", justifyContent: "center" },
   note: { fontFamily: fonts.text, fontSize: 12, lineHeight: 17, color: c.onSurfaceSecondary },
 }));

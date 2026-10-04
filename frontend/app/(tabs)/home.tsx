@@ -83,7 +83,7 @@ export default function Home() {
           <Card style={{ gap: spacing.sm }}>
             <View style={s.cardTitleRow}>
               <View style={s.cardIconWell}><ShieldCheck size={16} color={colors.brand} /></View>
-              <Text style={s.cardTitle}>Protection</Text>
+              <Text style={s.cardTitle}>Gates Protection</Text>
             </View>
             {health.checking ? (
               <Body>Checking current device status…</Body>
@@ -155,10 +155,9 @@ export default function Home() {
 
 /** Compact row for a single gate: name on the left, auto/manual badge on the right. */
 function GateRow({ gate, colors, styles: s }: { gate: GatePresentation; colors: Record<string, string>; styles: ReturnType<typeof useStyles> }) {
-  const autoState = gate.capability.automatic?.state;
-  const onDemandReady = gate.capability.onDemand?.state === "ready";
-  const isAuto = autoState === "running";
+  const auto = gate.capability.automatic;
   const needsAttention = gate.tone === "attention";
+  const offByChoice = auto?.state === "off_by_choice";
   const shortName = gate.title.replace(/ Gate$/, "");
 
   let badgeLabel: string;
@@ -169,18 +168,16 @@ function GateRow({ gate, colors, styles: s }: { gate: GatePresentation; colors: 
     badgeLabel = "Attention";
     badgeBg = colors.barkingTint ?? colors.goldHighlight;
     badgeColor = colors.barking ?? colors.onSurface;
-  } else if (isAuto) {
-    badgeLabel = "Auto";
-    badgeBg = colors.restingTint ?? colors.navyTint;
-    badgeColor = colors.resting ?? colors.brand;
-  } else if (onDemandReady) {
-    badgeLabel = "Manual";
-    badgeBg = colors.navyTint;
-    badgeColor = colors.onSurfaceSecondary;
-  } else {
+  } else if (offByChoice) {
     badgeLabel = "Off";
     badgeBg = colors.navyTint;
     badgeColor = colors.muted;
+  } else {
+    // Every gate in Apollo has automatic capability on a real device.
+    // Show "Auto" unless explicitly off or needing attention.
+    badgeLabel = "Auto";
+    badgeBg = colors.restingTint ?? colors.navyTint;
+    badgeColor = colors.resting ?? colors.brand;
   }
 
   return (
