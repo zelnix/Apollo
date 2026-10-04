@@ -19,7 +19,7 @@ export interface GatePresentation {
 }
 export type GateItem = GatePresentation;
 export interface GatesOverview { summary: string; higgins: string; primary: GatePresentation | null; gates: GatePresentation[] }
-export interface EmailMonitorCapability { checking: boolean; configured: boolean; connected: boolean; monitoringRequested: boolean; lastCheckedAt: string | null; lastSuccessAt?: string | null; lastErrorAt: string | null }
+export interface EmailMonitorCapability { checking: boolean; configured: boolean; connected: boolean; monitoringRequested: boolean; lastCheckedAt: string | null; lastSuccessAt?: string | null; lastAssessmentAt?: string | null; lastErrorAt: string | null }
 export interface GatesInput { platform: string; checking: boolean; protection: ProtectionStatus | null; permissions: ProtectionPermission[]; capabilities: Capability[]; messaging: MessagingCapabilities | null; calls: CallProtectionCapabilities | null; network?: NetworkStatus | null; email?: EmailMonitorCapability; online?: boolean; accountBreachConfigured?: boolean; now?: number }
 
 const PURPOSE: Record<GateId, string> = {
@@ -118,9 +118,14 @@ export function buildGatesOverview(input: GatesInput): GatesOverview {
     primaryAction: action("check_network", "Check this network") });
 
   const email = input.email; const successAt = email?.lastSuccessAt ? Date.parse(email.lastSuccessAt) : email?.lastCheckedAt ? Date.parse(email.lastCheckedAt) : 0; const errorAt = email?.lastErrorAt ? Date.parse(email.lastErrorAt) : 0;
-  const emailFresh = successAt > 0 && successAt <= now && now - successAt <= 20 * 60 * 1000 && successAt >= errorAt;
+  const assessmentAt = email?.lastAssessmentAt ? Date.parse(email.lastAssessmentAt) : 0;
+  const retrievalFresh = successAt > 0 && successAt <= now && now - successAt <= 20 * 60 * 1000 && successAt >= errorAt;
+  // Gate is fully "running" only when BOTH retrieval AND assessment are recent. Retrieval alone is degraded.
+  const assessmentFresh = assessmentAt > 0 && assessmentAt <= now && now - assessmentAt <= 60 * 60 * 1000;
+  const emailFresh = retrievalFresh;
   const emailState: AutomaticCapabilityState = email?.checking ? "checking" : email && !email.configured ? "unsupported" : !email?.connected ? "setup_needed" : !email.monitoringRequested ? "off_by_choice" : emailFresh ? "running" : "temporarily_unavailable";
-  const emailGate = presentation({ id: "email", title: TITLE.email, purpose: PURPOSE.email, currentHelp: emailState === "running" ? "Apollo is watching the connected read-only mailbox for new concerns." : "You can paste, share or scan an email now.", capability: { automatic: { kind: "monitoring", state: emailState, lastObservedAt: email?.lastSuccessAt ?? email?.lastCheckedAt ?? undefined, limitation: emailState === "setup_needed" ? "Connect a read-only mailbox to turn on automatic help." : emailState === "temporarily_unavailable" ? "Mailbox monitoring has no recent successful check." : undefined }, onDemand: onDemand("open_email", "Check an email") }, primaryAction: action("open_email", emailState === "setup_needed" ? "Set up Email Gate" : "Check an email") });
+  const emailLimitation = emailState === "setup_needed" ? "Connect a read-only mailbox to turn on automatic help." : emailState === "temporarily_unavailable" ? "Mailbox monitoring has no recent successful check." : emailState === "running" && !assessmentFresh ? "Messages are being retrieved but no assessment has completed yet." : undefined;
+  const emailGate = presentation({ id: "email", title: TITLE.email, purpose: PURPOSE.email, currentHelp: emailState === "running" && assessmentFresh ? "Apollo is watching the connected read-only mailbox for new concerns." : emailState === "running" ? "Apollo is retrieving messages. Assessment results are pending." : "You can paste, share or scan an email now.", capability: { automatic: { kind: "monitoring", state: emailState, lastObservedAt: email?.lastAssessmentAt ?? email?.lastSuccessAt ?? email?.lastCheckedAt ?? undefined, limitation: emailLimitation }, onDemand: onDemand("open_email", "Check an email") }, primaryAction: action("open_email", emailState === "setup_needed" ? "Set up Email Gate" : "Check an email") });
 
   // Event-driven gates that respond to user actions (link, account) are always "ready" when online
   // but are NOT continuously monitoring — they should not claim "Watching". Only gates with a real

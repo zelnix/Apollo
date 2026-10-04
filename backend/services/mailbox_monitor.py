@@ -399,11 +399,11 @@ async def _send_assessment_push(owner: str, case_id: str, case: dict, receipt: d
     provider = receipt.get("provider", "email")
     # Check if there are local findings (domain mismatch, auth failure, etc.) to customize the message
     digest = receipt.get("message_digest", "")
-    local_finding_count = await db.evidence.count_documents({
-        "device_id": owner, "source_key": {"$regex": f"^mailbox-{digest}-finding"}
+    local_finding_count = await db.investigation_evidence.count_documents({
+        "owner_id": owner, "client_item_id": {"$regex": f"^mailbox-{digest}-finding"}
     }) if digest else 0
-    vt_finding_count = await db.evidence.count_documents({
-        "device_id": owner, "source_key": {"$regex": f"^mailbox-{digest}-vt"}
+    vt_finding_count = await db.investigation_evidence.count_documents({
+        "owner_id": owner, "client_item_id": {"$regex": f"^mailbox-{digest}-vt"}
     }) if digest else 0
     if local_finding_count > 0 or vt_finding_count > 0:
         body_text = f"Apollo found concerns in a monitored {provider} message. Open Apollo to review."
@@ -413,8 +413,8 @@ async def _send_assessment_push(owner: str, case_id: str, case: dict, receipt: d
         title_text = "Apollo: email assessed"
     from routers.push import send_push
     await send_push(
-        recipients=[push_token],
-        data={"title": title_text, "body": body_text, "type": "email_assessment", "caseId": case_id},
+        recipients=[owner],
+        data={"title": title_text, "message": body_text, "type": "email_assessment", "caseId": case_id},
         owner_id=owner,
     )
 

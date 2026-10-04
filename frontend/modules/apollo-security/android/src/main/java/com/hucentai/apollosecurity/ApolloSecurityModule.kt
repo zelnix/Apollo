@@ -358,8 +358,14 @@ class ApolloSecurityModule : Module() {
       } else false
       JSONObject().put("opened", opened).toString()
     }
-    // Mailbox semantics, same pattern as Text Guard's queue — draining clears it.
-    AsyncFunction("getPendingCallLookups") { ApolloCallScreeningService.drainPendingLookups(ctx).toString() }
+    // Mailbox semantics — non-destructive read. Acknowledge individually after successful processing.
+    AsyncFunction("getPendingCallLookups") { ApolloCallScreeningService.readPendingLookups(ctx).toString() }
+    AsyncFunction("acknowledgeCallLookups") { json: String ->
+      val arr = JSONArray(json)
+      val numbers = (0 until arr.length()).map { arr.getString(it) }
+      ApolloCallScreeningService.acknowledgePendingLookups(ctx, numbers)
+      JSONObject().put("acknowledged", numbers.size).toString()
+    }
     AsyncFunction("getCallBlockAllowList") { ApolloCallScreeningService.blockAllowJson(ctx).toString() }
     AsyncFunction("addCallListEntry") { json: String ->
       val body = JSONObject(json)

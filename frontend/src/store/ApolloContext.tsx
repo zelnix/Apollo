@@ -775,9 +775,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     return result;
   }, [deviceId, showToast]);
 
-  // Call Guard add-on: drains numbers ApolloCallScreeningService saw ringing with no local block/
-  // allow/risk signal (mailbox semantics, Android only — CallSdk.getPendingCallLookups() always
-  // returns [] elsewhere) and runs the SAME risk check as the manual quick action for each.
+  // Call Guard add-on: reads numbers ApolloCallScreeningService saw ringing with no local block/
+  // allow/risk signal (non-destructive read — numbers persist in the native queue until individually
+  // acknowledged after successful processing). CallSdk.getPendingCallLookups() returns [] on non-Android.
   // A1 fix: numbers are now actually assessed via checkNumberRisk instead of being discarded.
   // The user must have enabled automatic call checking (apollo.call.auto_check consent flag).
   useEffect(() => {
@@ -788,38 +788,46 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         const consent = await storage.getItem("apollo.call.auto_check", null);
         if (consent !== "true") return; // User hasn't enabled automatic number checking
         const items = await CallSdk.getPendingCallLookups();
+        const acknowledged: string[] = [];
         for (const item of items) {
-          if (cancelled) return;
+          if (cancelled) break;
           if (!item?.number) continue;
           try {
             await checkNumberRisk(item.number);
+            acknowledged.push(item.number);
           } catch {
-            // Provider unavailable or unconfigured — the number was queued but could not be checked.
-            // Create a minimal event so the user knows a call was seen but not assessed.
-            const ev: PatrolEvent = {
-              event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "call" as const,
-              status: "active" as const, state: "ears_up" as const,
-              indicator_host: null, indicator_digest: null, local_indicator: item.number,
-              verified_block: false, adapter_label: securityAdapter.label,
-              occurred_at: new Date(item.seenAtMs).toISOString(), resolved_at: null,
-              trust_allowed: false, why: ["Apollo could not reach the reputation service for this number."],
-              headline: `Missed call: ${item.number}`,
-              what_happened: `A call from ${item.number} was seen but Apollo could not check it.`,
-              what_to_do: "You can check this number manually, or verify the caller independently before responding.",
-            };
-            setEvents((prev) => {
-              if (prev.some((x) => x.local_indicator === item.number && x.category === "call")) return prev;
-              const next = [ev, ...prev]; void storage.setItem(K.events, JSON.stringify(next)); return next;
-            });
+            // Provider unavailable or unconfigured — number stays in queue for retry.
+            // Dedup prevents duplicate events on subsequent polls.
+            const current = eventsRef.current;
+            if (!current.some((x) => x.local_indicator === item.number && x.category === "call")) {
+              const ev: PatrolEvent = {
+                event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "call" as const,
+                status: "active" as const, state: "ears_up" as const,
+                indicator_host: null, indicator_digest: null, local_indicator: item.number,
+                verified_block: false, adapter_label: securityAdapter.label,
+                occurred_at: new Date(item.seenAtMs).toISOString(), resolved_at: null,
+                trust_allowed: false, why: ["Apollo could not reach the reputation service for this number."],
+                headline: `Missed call: ${item.number}`,
+                what_happened: `A call from ${item.number} was seen but Apollo could not check it.`,
+                what_to_do: "You can check this number manually, or verify the caller independently before responding.",
+              };
+              const next = [ev, ...current.filter((x) => x.event_id !== ev.event_id)];
+              await persistEvents(next);
+            }
+            // DO NOT acknowledge — the number stays in the queue for retry on the next poll.
           }
         }
-      } catch { /* native module unavailable — nothing to drain */ }
+        // Acknowledge only successfully processed numbers
+        if (acknowledged.length > 0) {
+          await CallSdk.acknowledgeCallLookups(acknowledged);
+        }
+      } catch { /* native module unavailable — nothing to read */ }
     };
     void poll();
     const timer = setInterval(() => void poll(), lowPower ? 120000 : 45000);
     const sub = AppState.addEventListener("change", (st) => { if (st === "active") void poll(); });
     return () => { cancelled = true; clearInterval(timer); sub.remove(); };
-  }, [checkNumberRisk, lowPower, deviceId]);
+  }, [checkNumberRisk, lowPower, deviceId, persistEvents]);
 
   // Text Guard local findings consumer: converts ApolloLocalMessageAnalyzer detections into Patrol
   // events. Runs on init and foreground resume. Each finding becomes an Apollo-local Patrol event

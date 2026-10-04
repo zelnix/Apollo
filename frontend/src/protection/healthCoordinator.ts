@@ -19,17 +19,17 @@ let promptInFlight: Promise<ActionAttempt> | null = null;
 
 interface GmailStatusResponse {
   connected: boolean; configured: boolean; monitoring_enabled: boolean; monitor_last_checked_at: string | null;
-  monitor_last_success_at: string | null; monitor_last_error_at: string | null; monitor_state: string;
+  monitor_last_success_at: string | null; monitor_last_assessment_at: string | null; monitor_last_error_at: string | null; monitor_state: string;
 }
 
 async function readEmailCapability(): Promise<EmailMonitorCapability> {
   const identity = await getDeviceIdentity();
-  if (!identity) return { checking: false, configured: true, connected: false, monitoringRequested: false, lastCheckedAt: null, lastSuccessAt: null, lastErrorAt: null };
+  if (!identity) return { checking: false, configured: true, connected: false, monitoringRequested: false, lastCheckedAt: null, lastSuccessAt: null, lastAssessmentAt: null, lastErrorAt: null };
   try {
     const status = await apiGet<GmailStatusResponse>(`/gmail/status?device_id=${identity.deviceId}`);
-    return { checking: status.monitor_state === "checking", configured: status.configured, connected: status.connected, monitoringRequested: status.monitoring_enabled, lastCheckedAt: status.monitor_last_checked_at, lastSuccessAt: status.monitor_last_success_at, lastErrorAt: status.monitor_last_error_at };
+    return { checking: status.monitor_state === "checking", configured: status.configured, connected: status.connected, monitoringRequested: status.monitoring_enabled, lastCheckedAt: status.monitor_last_checked_at, lastSuccessAt: status.monitor_last_success_at, lastAssessmentAt: status.monitor_last_assessment_at, lastErrorAt: status.monitor_last_error_at };
   } catch {
-    return { checking: false, configured: true, connected: false, monitoringRequested: false, lastCheckedAt: null, lastSuccessAt: null, lastErrorAt: new Date().toISOString() };
+    return { checking: false, configured: true, connected: false, monitoringRequested: false, lastCheckedAt: null, lastSuccessAt: null, lastAssessmentAt: null, lastErrorAt: new Date().toISOString() };
   }
 }
 

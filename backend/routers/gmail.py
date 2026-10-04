@@ -110,6 +110,7 @@ async def gmail_status(device_id: str = Query(min_length=8, max_length=64)):
             "monitor_last_checked_at": row.get("monitor_last_checked_at") if row else None,
             "monitor_last_error_at": row.get("monitor_last_error_at") if row else None,
             "monitor_last_success_at": row.get("monitor_last_success_at") if row else None,
+            "monitor_last_assessment_at": row.get("monitor_last_assessment_at") if row else None,
             "monitor_last_attempt_at": row.get("monitor_last_attempt_at") if row else None,
             "monitor_state": monitor_state, "cursor_pending": bool(row and row.get("monitor_next_page_token"))}
 

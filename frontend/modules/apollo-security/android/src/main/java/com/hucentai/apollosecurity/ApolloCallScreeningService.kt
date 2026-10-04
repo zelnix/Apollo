@@ -4,6 +4,7 @@ import android.app.role.RoleManager
 import android.content.Context
 import android.telecom.Call
 import android.telecom.CallScreeningService
+import android.telephony.TelephonyManager
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
@@ -49,6 +50,44 @@ class ApolloCallScreeningService : CallScreeningService() {
     /** Digits and a leading '+' only — good enough for exact-match comparison without a full E.164 parse. */
     fun normalized(number: String?): String = (number ?: "").filter { it.isDigit() || it == '+' }
 
+    /** Best-effort E.164 canonicalization using the device's SIM/network country.
+     * - Already international (+...): cleaned and returned as-is.
+     * - Leading "00" international dial prefix: replaced with "+".
+     * - Leading "0" trunk prefix with known country: replaced with "+{countryCode}".
+     * - US/CA 10-digit local number: prepended with "+1".
+     * - Unknown country or ambiguous length: returns cleaned digits only (no silent guessing). */
+    fun toE164(raw: String?, ctx: Context): String {
+      val digits = normalized(raw)
+      if (digits.isBlank()) return ""
+      if (digits.startsWith("+")) return digits
+      if (digits.startsWith("00") && digits.length > 4) return "+${digits.substring(2)}"
+      val tm = ctx.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+      val iso = (tm?.networkCountryIso ?: tm?.simCountryIso ?: "").lowercase()
+      val cc = COUNTRY_CALLING_CODES[iso] ?: return digits
+      if (digits.startsWith("0")) return "+$cc${digits.substring(1)}"
+      // US/CA: 10-digit local → +1; 11-digit starting with '1' already national
+      if (cc == "1") {
+        if (digits.length == 10) return "+1$digits"
+        if (digits.length == 11 && digits.startsWith("1")) return "+$digits"
+      }
+      // Short numbers (≤10 digits, no leading 0) in non-US countries: prepend country code
+      if (digits.length <= 10) return "+$cc$digits"
+      return "+$digits"
+    }
+
+    private val COUNTRY_CALLING_CODES = mapOf(
+      "au" to "61", "us" to "1", "ca" to "1", "gb" to "44", "nz" to "64",
+      "de" to "49", "fr" to "33", "jp" to "81", "in" to "91", "sg" to "65",
+      "ie" to "353", "za" to "27", "br" to "55", "mx" to "52", "kr" to "82",
+      "it" to "39", "es" to "34", "nl" to "31", "se" to "46", "no" to "47",
+      "dk" to "45", "fi" to "358", "at" to "43", "ch" to "41", "be" to "32",
+      "pt" to "351", "pl" to "48", "hk" to "852", "tw" to "886", "ph" to "63",
+      "my" to "60", "th" to "66", "id" to "62", "vn" to "84", "ae" to "971",
+      "il" to "972", "eg" to "20", "ng" to "234", "ke" to "254", "ar" to "54",
+      "cl" to "56", "co" to "57", "pe" to "51", "gr" to "30", "cz" to "420",
+      "hu" to "36", "ro" to "40", "tr" to "90", "ru" to "7", "ua" to "380",
+    )
+
     fun isRoleHeld(ctx: Context): Boolean {
       val rm = ctx.getSystemService(Context.ROLE_SERVICE) as? RoleManager ?: return false
       return try { rm.isRoleHeld(RoleManager.ROLE_CALL_SCREENING) } catch (_: Exception) { false }
@@ -61,11 +100,11 @@ class ApolloCallScreeningService : CallScreeningService() {
     private fun prefs(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     fun loadSet(ctx: Context, key: String): Set<String> = prefs(ctx).getStringSet(key, emptySet()) ?: emptySet()
     fun addToSet(ctx: Context, key: String, number: String) {
-      val set = loadSet(ctx, key).toMutableSet(); set.add(normalized(number))
+      val set = loadSet(ctx, key).toMutableSet(); set.add(toE164(number, ctx))
       prefs(ctx).edit().putStringSet(key, set).apply()
     }
     fun removeFromSet(ctx: Context, key: String, number: String) {
-      val set = loadSet(ctx, key).toMutableSet(); set.remove(normalized(number))
+      val set = loadSet(ctx, key).toMutableSet(); set.remove(toE164(number, ctx))
       prefs(ctx).edit().putStringSet(key, set).apply()
     }
     fun markRisky(ctx: Context, number: String) = addToSet(ctx, KEY_AUTO_RISKY, number)
@@ -75,12 +114,28 @@ class ApolloCallScreeningService : CallScreeningService() {
       .put("allow", JSONArray(loadSet(ctx, KEY_ALLOW).toList()))
       .put("autoRisky", JSONArray(loadSet(ctx, KEY_AUTO_RISKY).toList()))
 
-    /** Numbers seen ringing with no local signal — drained (read + cleared) by the app for a background lookup. */
-    fun drainPendingLookups(ctx: Context): JSONArray {
+    /** Numbers seen ringing with no local signal — non-destructive read. Caller must acknowledge
+     * individual numbers after successful processing via [acknowledgePendingLookups]. */
+    fun readPendingLookups(ctx: Context): JSONArray {
       val p = prefs(ctx)
       val raw = p.getString(KEY_PENDING, null) ?: return JSONArray()
-      p.edit().remove(KEY_PENDING).apply()
       return try { JSONArray(raw) } catch (_: Exception) { JSONArray() }
+    }
+
+    /** Remove successfully processed numbers from the pending queue. Numbers not in the queue are ignored. */
+    fun acknowledgePendingLookups(ctx: Context, numbers: List<String>) {
+      if (numbers.isEmpty()) return
+      val p = prefs(ctx)
+      val raw = p.getString(KEY_PENDING, null) ?: return
+      val queue = try { JSONArray(raw) } catch (_: Exception) { return }
+      val ackSet = numbers.toSet()
+      val remaining = JSONArray()
+      for (i in 0 until queue.length()) {
+        val entry = queue.optJSONObject(i) ?: continue
+        if (entry.optString("number") !in ackSet) remaining.put(entry)
+      }
+      if (remaining.length() == 0) p.edit().remove(KEY_PENDING).apply()
+      else p.edit().putString(KEY_PENDING, remaining.toString()).apply()
     }
 
     private fun queuePendingLookup(ctx: Context, number: String) {
@@ -100,7 +155,7 @@ class ApolloCallScreeningService : CallScreeningService() {
   override fun onScreenCall(callDetails: Call.Details) {
     val ctx = applicationContext
     try {
-      val number = normalized(callDetails.handle?.schemeSpecificPart)
+      val number = toE164(callDetails.handle?.schemeSpecificPart, ctx)
       if (number.isBlank()) { respond(callDetails, disallow = false, reject = false); return }
       if (number in loadSet(ctx, KEY_ALLOW)) { respond(callDetails, disallow = false, reject = false); return }
 
