@@ -16,6 +16,7 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { HigginsChecks } from "@/src/components/HigginsChecks";
 import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
 import { checksSpoken, higginsPermissionNote, recommendedChecks } from "@/src/domain/higginsChecks";
+import { useProtectionHealth } from "@/src/protection/healthStore";
 import { Sheet } from "./Sheet";
 import { Body, Button, DevTag, Pill, toneColor, toneWash } from "./ui";
 
@@ -114,9 +115,21 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
 
   const title = STATE_LABEL[resolution.state];
   const meaning = STATE_MEANING[resolution.state];
-  const reason = resolution.reason;
   const reasonRoute = resolution.reasonRoute;
   const router = useRouter();
+
+  // When visibility is lost, build a specific reason naming the gates that need attention
+  // instead of the generic "Protection is unavailable or unverified."
+  const health = useProtectionHealth();
+  const reason = useMemo(() => {
+    if (!resolution.visibilityLost || health.checking) return resolution.reason;
+    const attentionGates = health.gates.filter((g) => g.tone === "attention");
+    if (!attentionGates.length) return resolution.reason;
+    const names = attentionGates.map((g) => g.title.replace(/ Gate$/, ""));
+    if (names.length === 1) return `${names[0]} protection needs your attention.`;
+    if (names.length === 2) return `${names[0]} and ${names[1]} protection need your attention.`;
+    return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]} protection need your attention.`;
+  }, [resolution.visibilityLost, resolution.reason, health.checking, health.gates]);
   // "Run a check" is never said bare: the exact checks are listed (tappable, in a popup) and read aloud. Completion
   // counts from the start of today, so a check already done this morning shows as done.
   const checks = sniffing ? [] : recommendedChecks(resolution);
