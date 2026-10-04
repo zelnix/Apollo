@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Apollo",
-    "slug": "threat-patrol-1",
+    "slug": "apollo-scam-guard",
     "version": "1.1.0",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
@@ -222,7 +222,7 @@
             }
           }
         },
-        "projectId": "47cd97c4-e5a6-41fa-9fde-257a5de031af"
+        "projectId": "b2eb337d-2687-46bf-b1cc-292d30c0b601"
       }
     }
   }
