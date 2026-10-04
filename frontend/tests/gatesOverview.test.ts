@@ -52,3 +52,24 @@ test("File Gate purpose keeps cloud-hosting limitation", () => {
   assert.match(file.purpose, /cloud download is not automatically trusted/i);
   assert.equal(file.capability.onDemand?.state, "ready");
 });
+
+test("Account Gate is Watching when accountBreachConfigured is true", () => {
+  const account = buildGatesOverview({ ...base, accountBreachConfigured: true }).gates.find((gate) => gate.id === "account")!;
+  assert.equal(account.capability.automatic?.state, "running");
+  assert.equal(account.statusLabel, "Watching");
+  assert.equal(account.capability.automatic?.kind, "event_driven");
+  assert.match(account.capability.automatic?.limitation ?? "", /responds when triggered/i);
+});
+
+test("Account Gate is temporarily_unavailable when accountBreachConfigured is false", () => {
+  const account = buildGatesOverview({ ...base, accountBreachConfigured: false }).gates.find((gate) => gate.id === "account")!;
+  assert.equal(account.capability.automatic?.state, "temporarily_unavailable");
+  assert.equal(account.statusLabel, "Status unavailable");
+});
+
+test("Account Gate is temporarily_unavailable when accountBreachConfigured is omitted (status fetch failure)", () => {
+  const account = buildGatesOverview(base).gates.find((gate) => gate.id === "account")!;
+  assert.equal(account.capability.automatic?.state, "temporarily_unavailable");
+  assert.equal(account.statusLabel, "Status unavailable");
+  assert.match(account.capability.automatic?.limitation ?? "", /breach lookup is unavailable/i);
+});

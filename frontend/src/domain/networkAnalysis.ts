@@ -1,5 +1,6 @@
-// Gate 8 — Network Guard (Check This Network, N01–N12). Public ≠ malicious; open ≠ intercepted; a VPN the user
-// chose is fine. Only SDK-reported blocks produce "Guarding"; if Apollo already handled it, the message stays calm.
+// Network Guard (Check This Network, N01–N12). Public ≠ malicious; open ≠ intercepted; a VPN the user
+// chose is fine. Analysis uses only platform-reported facts (connection type, Wi-Fi security, captive
+// portal, VPN status) and user-supplied context. The unimplemented native SDK contract has been removed.
 
 import type { NetworkStatus } from "@/src/security/SecurityPlatformAdapter";
 import type { ApolloState, EventCategory } from "./types";
@@ -8,19 +9,6 @@ export type NetworkContext = "home" | "work" | "public" | "unknown";
 export const NETWORK_CONTEXTS: { id: NetworkContext; label: string }[] = [
   { id: "home", label: "Home" }, { id: "work", label: "Work / school" }, { id: "public", label: "Café, airport, hotel, shop" }, { id: "unknown", label: "Not sure" },
 ];
-/** Summary of native network events (SDK). Never invented by the UI. */
-export interface NetworkSdkSummary { blockedMalicious: number; c2Apps: string[]; unknownHosts: number; dnsChanged: boolean; vpnChangedRecently: boolean }
-export interface SdkNetworkEvent { eventType: "blocked_destination" | "c2_traffic" | "dns_change" | "vpn_change" | "network_change" | "unknown_destinations"; domain: string | null; appName: string | null; verdict: "malicious" | "unknown" | "clean"; blocked: boolean; occurredAt: string; relatedThreatScent: string | null }
-export function summariseNetworkEvents(events: SdkNetworkEvent[], sinceMs = 24 * 60 * 60 * 1000, now = Date.now()): NetworkSdkSummary {
-  const recent = events.filter((e) => now - Date.parse(e.occurredAt) <= sinceMs);
-  return {
-    blockedMalicious: recent.filter((e) => e.eventType === "blocked_destination" && e.blocked).length,
-    c2Apps: Array.from(new Set(recent.filter((e) => e.eventType === "c2_traffic").map((e) => e.appName ?? "an app"))),
-    unknownHosts: recent.filter((e) => e.eventType === "unknown_destinations" || (e.verdict === "unknown" && !e.blocked)).length,
-    dnsChanged: recent.some((e) => e.eventType === "dns_change"),
-    vpnChangedRecently: recent.some((e) => e.eventType === "vpn_change"),
-  };
-}
 
 export interface NetworkInput {
   status: NetworkStatus | null; context: NetworkContext; trustedSsids: string[];
@@ -30,7 +18,6 @@ export interface NetworkInput {
   vpnTrusted: boolean | null;
   /** A Wi‑Fi sign-in page appeared at this address (handed to Gate 3). */
   captiveUrl?: string;
-  sdk?: NetworkSdkSummary | null;
   recentScentCategories?: EventCategory[];
 }
 export interface NetworkAnalysis { scenario: string; title: string; state: ApolloState; verdict: string; why: string[]; recommendation: string; handoff: "web" | "app" | "none"; technical: string[]; ssid: string | null }

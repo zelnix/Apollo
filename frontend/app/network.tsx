@@ -1,5 +1,7 @@
-// Gate 8 — Network Guard dashboard + Check This Network. Only platform-reported facts and SDK events drive
+// Network Guard dashboard + Check This Network. Only platform-reported facts drive
 // the verdict; the user adds context (home/work/public, expected network name, whether they turned the VPN on).
+// The unimplemented native SDK contract has been removed — all observations come from
+// the platform network snapshot (connection type, Wi-Fi security, captive portal, VPN flags).
 import { GateInvestigation } from "@/src/components/GateInvestigation";
 import { Redirect, useRouter } from "expo-router";
 import * as Crypto from "expo-crypto";
@@ -13,10 +15,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { markCheckDone } from "@/src/store/checkCompletion";
 import { Body, Button, Card, Pill, SectionTitle, capabilityTone, toneColor } from "@/src/components/ui";
 import { CAPABILITY_STATUS_LABEL } from "@/src/domain/capability";
-import { analyseNetwork, NETWORK_CONTEXTS, type NetworkAnalysis, type NetworkContext, type NetworkSdkSummary } from "@/src/domain/networkAnalysis";
+import { analyseNetwork, NETWORK_CONTEXTS, type NetworkAnalysis, type NetworkContext } from "@/src/domain/networkAnalysis";
 import { SCENT_WINDOW_MS } from "@/src/domain/threatScent";
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
-import { NetworkAccountSdk, summariseNetworkEvents } from "@/src/security/networkAccountSdk";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -50,21 +51,14 @@ export default function CheckNetwork() {
   const [expected, setExpected] = useState("");
   const [vpnTrusted, setVpnTrusted] = useState<boolean | null>(null);
   const [captiveUrl, setCaptiveUrl] = useState("");
-  const [sdk, setSdk] = useState<NetworkSdkSummary | null>(null);
-  const [sdkLive, setSdkLive] = useState(false);
   const [result, setResult] = useState<{ submissionId: string; a: NetworkAnalysis; event: PatrolEvent | null } | null>(null);
   const [tech, setTech] = useState(false);
-  useEffect(() => {
-    void NetworkAccountSdk.getNetworkProtectionCapabilities().then((c) => setSdkLive(c.domainFiltering === "supported"));
-    void NetworkAccountSdk.getRecentNetworkEvents().then((ev) => setSdk(ev.length ? summariseNetworkEvents(ev) : null));
-  }, []);
 
   const guard = capabilities.find((c) => c.id === "connection_guard");
   const site = capabilities.find((c) => c.id === "site_guard");
   const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
   const recentNet = events.filter((e) => e.category === "connection" && Date.parse(e.occurred_at) >= dayAgo);
   const blocked = recentNet.filter((e) => e.verified_block).length;
-  const deviceReported = sdk?.blockedMalicious ?? 0;
   const unresolved = recentNet.filter((e) => e.status === "active" && e.state !== "resting").length;
   const scentCats = useMemo(() => { const now = Date.now(); return events.filter((e) => e.state !== "resting" && (e.category === "app" || e.category === "device") && now - Date.parse(e.occurred_at) <= SCENT_WINDOW_MS).map((e) => e.category); }, [events]);
   const vpnOn = network?.vpnActive === true || network?.type === "vpn";
@@ -73,10 +67,10 @@ export default function CheckNetwork() {
 
   const run = async () => {
 
-    void markCheckDone("network");    const a = analyseNetwork({ status: network, context, trustedSsids, expectedName: expected, vpnTrusted, captiveUrl, sdk, recentScentCategories: scentCats });
+    void markCheckDone("network");    const a = analyseNetwork({ status: network, context, trustedSsids, expectedName: expected, vpnTrusted, captiveUrl, recentScentCategories: scentCats });
     let event: PatrolEvent | null = null;
     if (a.state !== "resting") {
-      // Network Guard has no EnforcementEvidence to attach here (NetworkAccountSdk reports only a
+      // Network Guard creates a Patrol event from platform-observed network facts only.
       // summarised block COUNT, not a per-connection evidence record) — so the PERSISTED Patrol
       // entry must never claim state="biting"/verified_block regardless of what analyseNetwork's
       // on-screen verdict text says the SDK reported. Cap the synced state at "barking" (still
@@ -100,11 +94,11 @@ export default function CheckNetwork() {
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="network-scroll">
         <Card testID="network-dashboard" style={{ gap: spacing.sm, borderColor: toneColor(colors, protectionTone) }}>
           <View style={s.row}><View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><Wifi size={20} color={toneColor(colors, protectionTone)} /><Text style={s.statTitle} testID="network-protection-title">{protectionTitle}</Text></View><Pill tone={guard ? capabilityTone(guard.status) : "unknown"} label={guard ? CAPABILITY_STATUS_LABEL[guard.status] : "Unknown"} testID="network-protection-pill" /></View>
-          <Body testID="network-protection-detail">{!(protection?.requested ?? protection?.running) ? "Open Gates to review the current protection status." : guard?.status === "active" ? (sdkLive ? "Apollo monitors supported destination signals. A block is shown only after device evidence confirms it." : "Apollo assesses the connection facts the platform reports. Destination blocking is unavailable in this build.") : guard?.detail ?? ""}</Body>
+          <Body testID="network-protection-detail">{!(protection?.requested ?? protection?.running) ? "Open Gates to review the current protection status." : guard?.status === "active" ? "Apollo assesses the connection type, Wi-Fi security and captive portal status the platform reports." : guard?.detail ?? ""}</Body>
           <Text style={s.label}>Current network</Text>
           <Body testID="network-current">{!network?.connected ? "Not connected" : network.type === "wifi" ? `Wi‑Fi${network.ssid ? ` “${network.ssid}”` : " (name not revealed)"} · security ${network.wifiSecurity === "unknown" ? "not revealed" : network.wifiSecurity.toUpperCase()}${trustedSsids.includes(network.ssid ?? "") ? " · trusted" : ""}` : network.type === "cellular" ? "Mobile data" : `Connected via ${network.type}`}{vpnOn ? " · VPN on" : ""}</Body>
           <Text style={s.label}>Recent activity (24h)</Text>
-          <Body testID="network-recent">{blocked ? `${blocked} confirmed protective block${blocked > 1 ? "s" : ""} · ` : "No confirmed protective blocks · "}{deviceReported ? `${deviceReported} additional connection${deviceReported > 1 ? "s" : ""} reported by available device signals · ` : ""}{unresolved ? `${unresolved} unresolved network item${unresolved > 1 ? "s" : ""}` : "No unresolved network issues"}</Body>
+          <Body testID="network-recent">{blocked ? `${blocked} confirmed protective block${blocked > 1 ? "s" : ""} · ` : "No confirmed protective blocks · "}{unresolved ? `${unresolved} unresolved network item${unresolved > 1 ? "s" : ""}` : "No unresolved network issues"}</Body>
           {site?.status === "permission_required" ? <Body>Site Gate needs its protection permission. Open Gates and use Restore protection.</Body> : null}
           <Button testID="network-refresh" variant="ghost" label={refreshing ? "Checking…" : "Refresh"} onPress={verifyNow} disabled={refreshing} />
         </Card>

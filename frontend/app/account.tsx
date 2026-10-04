@@ -23,7 +23,6 @@ import { SCENT_WINDOW_MS } from "@/src/domain/threatScent";
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { patrolSafeSummary } from "@/src/domain/investigation";
 import { redactUserSecrets } from "@/src/domain/privacy";
-import { NetworkAccountSdk } from "@/src/security/networkAccountSdk";
 import { type RecoveryKind, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -132,7 +131,6 @@ export default function CheckAccount() {
       if (a.state !== "resting") {
         event = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "account", state: a.state, status: "active", headline: `Account: ${a.title}${a.providerLabel !== "Other / not sure" ? ` — ${a.providerLabel}` : ""}`, what_happened: patrolSafeSummary(a.verdict), why: a.why, what_to_do: a.recommendation, indicator_host: a.suspiciousUrls[0] ? a.suspiciousUrls[0].replace(/^https?:\/\//i, "").split("/")[0] : null, indicator_digest: null, local_indicator: null, verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: a.claimedBrand, scenario: a.scenario, scent_id: params.scent || linked?.scent_id || linked?.event_id || null });
         if (event.state !== a.state) a = { ...a, state: event.state, why: event.why };
-        void NetworkAccountSdk.submitAccountSecurityEvent({ kind: selectedKind, provider, state: a.state });
       }
       setResult({ submissionId: event?.event_id ?? Crypto.randomUUID(), a, event, remote, linked });
     } finally { setBusy(false); }
