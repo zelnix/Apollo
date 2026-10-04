@@ -99,21 +99,22 @@ export function buildGatesOverview(input: GatesInput): GatesOverview {
     capability: { automatic: { kind: "event_driven", state: callState, lastObservedAt: observedNow, limitation: callLimitation }, onDemand: onDemand("check_call", "Check a call or number") },
     primaryAction: action("setup_call", "Set up call checking") });
 
-  // C3/C4: Network Gate now reflects actual observation capability, not Site Gate's VPN intent.
-  // "inspectable" is true whenever the device is connected (platform APIs provide network info).
-  // "vpnActive" separately reports whether Site Gate's DNS VPN adds DNS-level observation.
+  // C3/C4: Network Gate reflects actual background observation capability.
+  // "running" requires Site Gate's DNS VPN to be actively filtering — that is the only genuine
+  // background network observer. Without it, the gate has no continuous listener; network info
+  // comes from a point-in-time health-check snapshot, which is on-demand, not "Watching."
   const networkObserved = input.network?.checkedAt;
-  const networkState: AutomaticCapabilityState = input.checking ? "checking" : !input.network ? "temporarily_unavailable" : input.network.inspectable ? "running" : input.network.connected ? "permission_needed" : "temporarily_unavailable";
   const vpnActive = (input.network as Record<string, unknown> | undefined)?.vpnActive === true;
+  const networkState: AutomaticCapabilityState = input.checking ? "checking" : !input.network ? "temporarily_unavailable" : vpnActive ? "running" : input.network.inspectable ? "not_activated" : input.network.connected ? "permission_needed" : "temporarily_unavailable";
   const networkLimitation = networkState === "permission_needed"
     ? "Allow network information to receive automatic warnings."
-    : networkState === "running" && !vpnActive
-      ? "Network status is observable. Enable Site Gate for DNS-level traffic observation."
+    : networkState === "not_activated"
+      ? "Enable Site Gate's DNS filter for continuous network observation."
       : networkState === "temporarily_unavailable"
         ? "Apollo cannot observe the current connection yet."
         : undefined;
   const network = presentation({ id: "network", title: TITLE.network, purpose: PURPOSE.network,
-    currentHelp: networkState === "running" && vpnActive ? "Apollo is observing network traffic via Site Gate's DNS filter." : networkState === "running" ? "Apollo is observing connection type and Wi-Fi security metadata." : "You can run a current network check now.",
+    currentHelp: networkState === "running" ? "Apollo is filtering DNS traffic through Site Gate." : networkState === "not_activated" ? `Last checked: ${networkObserved ?? "never"}. Run a check to see the current connection status.` : "You can run a current network check now.",
     capability: { automatic: { kind: "monitoring", state: networkState, lastObservedAt: networkObserved, limitation: networkLimitation }, onDemand: onDemand("check_network", "Check this network") },
     primaryAction: action("check_network", "Check this network") });
 

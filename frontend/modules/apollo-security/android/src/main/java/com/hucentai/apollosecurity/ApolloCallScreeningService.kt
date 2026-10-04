@@ -52,15 +52,26 @@ class ApolloCallScreeningService : CallScreeningService() {
     fun normalized(number: String?): String = (number ?: "").filter { it.isDigit() || it == '+' }
 
     /** E.164 canonicalization via Android's bundled PhoneNumberUtils + TelephonyManager country.
-     * Returns cleaned digits if the platform cannot resolve a country or the number is unparseable. */
+     * Returns empty string on failure — callers must guard against blank before storing, comparing, or queuing.
+     * - Already-international numbers are structurally validated via formatNumberToE164.
+     * - Local numbers require a resolvable device country; returns empty if country is unavailable.
+     * - Uses networkCountryIso (preferred, nonblank) then simCountryIso (fallback, nonblank). */
     fun toE164(raw: String?, ctx: Context): String {
       val stripped = normalized(raw)
-      if (stripped.isBlank()) return ""
-      if (stripped.startsWith("+") && stripped.length > 4) return stripped  // already international
+      if (stripped.length < 3) return ""  // too short for any valid phone number
       val tm = ctx.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
-      val iso = (tm?.networkCountryIso ?: tm?.simCountryIso ?: "").uppercase()
-      if (iso.isBlank()) return stripped
-      return PhoneNumberUtils.formatNumberToE164(stripped, iso) ?: stripped
+      // Resolve country: prefer network ISO when nonblank, fall back to SIM ISO when nonblank.
+      val iso = tm?.networkCountryIso?.takeIf { it.isNotBlank() }
+        ?: tm?.simCountryIso?.takeIf { it.isNotBlank() }
+      if (stripped.startsWith("+")) {
+        // Already international — still validate structurally via the platform.
+        // formatNumberToE164 parses + numbers correctly regardless of the country hint.
+        val hint = iso?.uppercase() ?: "US"
+        return PhoneNumberUtils.formatNumberToE164(stripped, hint) ?: ""
+      }
+      // Local number: country context is required for canonicalization.
+      if (iso.isNullOrBlank()) return ""
+      return PhoneNumberUtils.formatNumberToE164(stripped, iso.uppercase()) ?: ""
     }
 
     fun isRoleHeld(ctx: Context): Boolean {
@@ -75,11 +86,13 @@ class ApolloCallScreeningService : CallScreeningService() {
     private fun prefs(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     fun loadSet(ctx: Context, key: String): Set<String> = prefs(ctx).getStringSet(key, emptySet()) ?: emptySet()
     fun addToSet(ctx: Context, key: String, number: String) {
-      val set = loadSet(ctx, key).toMutableSet(); set.add(toE164(number, ctx))
+      val e164 = toE164(number, ctx); if (e164.isBlank()) return
+      val set = loadSet(ctx, key).toMutableSet(); set.add(e164)
       prefs(ctx).edit().putStringSet(key, set).apply()
     }
     fun removeFromSet(ctx: Context, key: String, number: String) {
-      val set = loadSet(ctx, key).toMutableSet(); set.remove(toE164(number, ctx))
+      val e164 = toE164(number, ctx); if (e164.isBlank()) return
+      val set = loadSet(ctx, key).toMutableSet(); set.remove(e164)
       prefs(ctx).edit().putStringSet(key, set).apply()
     }
     fun markRisky(ctx: Context, number: String) = addToSet(ctx, KEY_AUTO_RISKY, number)
@@ -113,7 +126,9 @@ class ApolloCallScreeningService : CallScreeningService() {
       return live
     }
 
-    /** Remove successfully processed numbers from the pending queue. Numbers not in the queue are ignored. */
+    /** Remove successfully processed numbers from the pending queue.
+     * Acknowledged numbers are added to [KEY_SEEN_PENDING] so future calls from the same number
+     * are not re-queued (until the seen set is trimmed by [MAX_SEEN_PENDING]). */
     fun acknowledgePendingLookups(ctx: Context, numbers: List<String>) {
       if (numbers.isEmpty()) return
       val p = prefs(ctx)
@@ -125,8 +140,13 @@ class ApolloCallScreeningService : CallScreeningService() {
         val entry = queue.optJSONObject(i) ?: continue
         if (entry.optString("number") !in ackSet) remaining.put(entry)
       }
-      if (remaining.length() == 0) p.edit().remove(KEY_PENDING).apply()
-      else p.edit().putString(KEY_PENDING, remaining.toString()).apply()
+      // Mark acknowledged numbers as "seen" — prevents re-queuing on future calls from the same number.
+      val seen = (p.getStringSet(KEY_SEEN_PENDING, emptySet()) ?: emptySet()).toMutableSet()
+      seen.addAll(ackSet)
+      val trimmedSeen = if (seen.size > MAX_SEEN_PENDING) seen.toList().takeLast(MAX_SEEN_PENDING).toSet() else seen
+      val editor = p.edit()
+      if (remaining.length() == 0) editor.remove(KEY_PENDING) else editor.putString(KEY_PENDING, remaining.toString())
+      editor.putStringSet(KEY_SEEN_PENDING, trimmedSeen).apply()
     }
 
     /** Increment the retry counter for numbers that failed processing. Entries exceeding
@@ -149,16 +169,22 @@ class ApolloCallScreeningService : CallScreeningService() {
     }
 
     private fun queuePendingLookup(ctx: Context, number: String) {
+      if (number.isBlank()) return
       val p = prefs(ctx)
+      // Dedup: check the pending queue itself, not KEY_SEEN_PENDING (which is written only on ack).
+      val queue = try { JSONArray(p.getString(KEY_PENDING, null) ?: "[]") } catch (_: Exception) { JSONArray() }
+      for (i in 0 until queue.length()) {
+        if (queue.optJSONObject(i)?.optString("number") == number) return
+      }
+      // Also skip if this number was successfully processed recently.
       val seen = p.getStringSet(KEY_SEEN_PENDING, emptySet()) ?: emptySet()
       if (number in seen) return
-      val queue = try { JSONArray(p.getString(KEY_PENDING, null) ?: "[]") } catch (_: Exception) { JSONArray() }
       queue.put(JSONObject().put("number", number).put("seenAtMs", System.currentTimeMillis()).put("attempts", 0))
       val trimmed = if (queue.length() > MAX_PENDING) {
         val arr = JSONArray(); for (i in (queue.length() - MAX_PENDING) until queue.length()) arr.put(queue.get(i)); arr
       } else queue
-      val trimmedSeen = if (seen.size > MAX_SEEN_PENDING) seen.toList().takeLast(MAX_SEEN_PENDING).toSet() + number else seen + number
-      p.edit().putString(KEY_PENDING, trimmed.toString()).putStringSet(KEY_SEEN_PENDING, trimmedSeen).apply()
+      // Do NOT add to KEY_SEEN_PENDING here — that happens only on successful acknowledgement.
+      p.edit().putString(KEY_PENDING, trimmed.toString()).apply()
     }
   }
 
