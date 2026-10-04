@@ -35,6 +35,7 @@
       "channel": "production",
       "environment": "production",
       "autoIncrement": true,
+      "node": "24.19.0",
       "android": {
         "buildType": "app-bundle",
         "image": "default"
