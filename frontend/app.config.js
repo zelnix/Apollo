@@ -14,7 +14,7 @@ const IOS_BUNDLE_IDENTIFIER = "app.apollo.hwg";
 //   EAS_PROJECT_SLUG    – project slug registered under that account
 //   EAS_PROJECT_ID      – the project's UUID (extra.eas.projectId)
 const CANONICAL_OWNER      = "zelnixs-team";
-const CANONICAL_SLUG       = "apollo-scam-guard";
+const CANONICAL_SLUG       = "apollo-cyber-guard-dog";
 const CANONICAL_PROJECT_ID = "b2eb337d-2687-46bf-b1cc-292d30c0b601";
 
 const EAS_OWNER      = process.env.EAS_PROJECT_OWNER || CANONICAL_OWNER;
