@@ -68,6 +68,8 @@ class TestNudgeScheduler:
                 assert await server.send_missed_checkin_nudge(g, local) == {"sent": False, "reason": "opted_out"}
                 await server.db.devices.update_one({"device_id": g}, {"$set": {"weekly_checkin_enabled": True}})
                 # everyone checked in since Sunday → nothing to nudge
+                # Clear any dedupe record from the earlier nudge attempt so this tests all_checked_in, not already_sent
+                await server.db.weekly_nudge_sends.delete_many({"guardian_device_id": g})
                 await server.db.weekly_checkins.insert_one({"guardian_device_id": g, "protected_device_id": p2, "week_key": "2026-W25", "guardian_label": "Sam", "reply": "spoke", "label": "All good, spoke to them", "created_at": datetime(2026, 6, 15, 9, 0, tzinfo=timezone.utc)})
                 assert await server.send_missed_checkin_nudge(g, local) == {"sent": False, "reason": "all_checked_in"}
                 # dedupe record honoured

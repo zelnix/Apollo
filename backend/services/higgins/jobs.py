@@ -34,6 +34,36 @@ def launch(owner: str, case_id: str, job_id: str) -> None:
 async def _emit(owner: str, case: dict, job: dict, kind: str, payload: dict) -> None:
     fresh = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case["case_id"]}, {"_id": 0, "revision": 1})
     await repo.emit(owner, case["case_id"], job["job_id"], kind, payload, (fresh or case)["revision"], repo.utc(case["expires_at"]))
+    # Push notification for background assessment completion (Text Gate + Email Gate).
+    # Only fires for "completed" events on cases created by background intake (gate: text/email).
+    if kind == "completed":
+        try:
+            await _push_background_completion(owner, case)
+        except Exception:
+            pass  # Non-blocking
+
+
+async def _push_background_completion(owner: str, case: dict) -> None:
+    """Send a push notification when a background investigation completes.
+    Only fires for background-originated cases (text gate auto-assessment, email monitoring).
+    The email path also has its own push via _finalise_receipt, so we only push for text here."""
+    gate = case.get("gate", "")
+    if gate not in ("text",):
+        return  # Email gate push is handled by mailbox_monitor._send_assessment_push
+    device = await db.devices.find_one({"device_id": owner}, {"push_token": 1})
+    if not device or not device.get("push_token"):
+        return
+    from routers.push import send_push
+    await send_push(
+        recipients=[device["push_token"]],
+        data={
+            "title": "Apollo: message assessed",
+            "body": "Apollo completed a background assessment of a captured message. Open Apollo to review.",
+            "type": "text_assessment",
+            "caseId": case.get("case_id"),
+        },
+        owner_id=owner,
+    )
 
 
 async def _fail(owner: str, case: dict, job: dict, failure: Failure, *, partial: bool = False) -> None:
