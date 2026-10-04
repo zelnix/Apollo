@@ -69,13 +69,17 @@ class ApolloSmsListenerService : NotificationListenerService() {
 
     // Issue #2: Run local deterministic analysis immediately, before any network handoff.
     val localResult = ApolloLocalMessageAnalyzer.analyse(sender, exposed)
+    // Compute content-stable identifiers BEFORE any storage — shared across local finding and handoff queue.
+    val revisionDigest = sha256("$sender\n$exposed")
+    val sourceKey = sbn.key ?: "${sbn.packageName}:${sbn.id}"
+    val submissionId = sha256("$sourceKey:$revisionDigest")
     if (localResult.suspicious) {
-      storeLocalFinding(this, sbn.key ?: "${sbn.packageName}:${sbn.id}", localResult)
+      storeLocalFinding(this, sourceKey, revisionDigest, submissionId, localResult)
       postLocalWarningNotification(this, sender, localResult)
     }
 
     // Enqueue raw content for backend handoff (bounded expiry, encrypted).
-    enqueue(this, sbn.key ?: "${sbn.packageName}:${sbn.id}", sbn.packageName, sender, exposed)
+    enqueue(this, sourceKey, sbn.packageName, sender, exposed)
   }
 
   /**
@@ -202,13 +206,21 @@ class ApolloSmsListenerService : NotificationListenerService() {
       } catch (_: Exception) { 0 }
     }
 
-    /** Store a local finding from ApolloLocalMessageAnalyzer. Encrypted, bounded. */
-    internal fun storeLocalFinding(ctx: Context, sourceKey: String, result: ApolloLocalMessageAnalyzer.AnalysisResult) = synchronized(lock) {
+    /** Store a local finding from ApolloLocalMessageAnalyzer. Encrypted, bounded.
+     * findingId is content-stable: sha256("local:$sourceKey:$revisionDigest"). Repeated delivery
+     * of the same notification revision replaces (not duplicates) the existing finding. */
+    internal fun storeLocalFinding(ctx: Context, sourceKey: String, revisionDigest: String, submissionId: String, result: ApolloLocalMessageAnalyzer.AnalysisResult) = synchronized(lock) {
       try {
         val arr = readLocalFindings(ctx)
-        val findingId = sha256("local:$sourceKey:${Instant.now()}")
+        // Content-stable: same source + same content revision → same findingId
+        val findingId = sha256("local:$sourceKey:$revisionDigest")
+        // Idempotent: if this findingId already exists, skip (do not duplicate)
+        for (i in 0 until arr.length()) {
+          if (arr.optJSONObject(i)?.optString("findingId") == findingId) return@synchronized
+        }
         val entry = JSONObject()
           .put("findingId", findingId)
+          .put("submissionId", submissionId)
           .put("state", result.state)
           .put("analyzer", result.analyzer)
           .put("source", result.source)

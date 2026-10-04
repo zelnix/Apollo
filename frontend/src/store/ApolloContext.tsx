@@ -593,19 +593,25 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     why.push(...guard.why);
     const firstHost = urls[0]?.host ?? (analysis.signals.urls[0] ? analysis.signals.urls[0].replace(/^https?:\/\//i, "").split("/")[0].toLowerCase() : null);
     let event: PatrolEvent | null = null;
-    // Patrol event: Apollo's deterministic reasons are always primary. Higgins supplements but
-    // does not replace stronger Apollo evidence. Only when Apollo had no findings (resting) does
-    // Higgins provide the headline, reasons and recommendation.
-    const apolloHadFindings = analysis.state !== "resting";
+    // Patrol event: Apollo's deterministic reasons are always primary. Both analysis AND guard
+    // are deterministic Apollo evidence. Higgins content may only become primary when NEITHER
+    // deterministic source raised the state AND the Higgins response is current, complete and
+    // warning. A Higgins clear, partial or stale response must not provide the headline/reasons/
+    // action for a deterministic-raised event.
+    const apolloHadFindings = analysis.state !== "resting" || guard.state !== "resting";
+    const higginsCanProvideContent = !apolloHadFindings && higginsCurrent && assessment!.risk === "warning";
     if (state !== "resting") {
-      const apolloHeadline = `${analysis.scenarioTitle}${analysis.signals.claimedBrand ? ` — claims to be ${analysis.signals.claimedBrand}` : ""}`;
+      const guardHeadline = guard.why.length ? `Suspicious link detected${firstHost ? `: ${firstHost}` : ""}` : "";
+      const apolloHeadline = analysis.state !== "resting"
+        ? `${analysis.scenarioTitle}${analysis.signals.claimedBrand ? ` — claims to be ${analysis.signals.claimedBrand}` : ""}`
+        : guardHeadline;
       const higginsFindings = assessment?.findings?.map((finding) => finding.title).slice(0, 4) ?? [];
       event = await upsertEvent({
         event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "message", state, status: "active",
-        headline: apolloHadFindings ? apolloHeadline : (assessment?.higgins.headline ?? apolloHeadline),
-        what_happened: patrolSafeSummary(apolloHadFindings ? analysis.verdict : (assessment?.higgins.what_was_found[0] ?? analysis.verdict)),
-        why: apolloHadFindings ? [...why, ...higginsFindings.filter((f) => !why.includes(f))] : (higginsFindings.length ? higginsFindings : why),
-        what_to_do: apolloHadFindings ? analysis.recommendation : (assessment?.higgins.next_action ?? analysis.recommendation),
+        headline: higginsCanProvideContent ? (assessment?.higgins.headline ?? apolloHeadline) : apolloHeadline,
+        what_happened: patrolSafeSummary(higginsCanProvideContent ? (assessment?.higgins.what_was_found[0] ?? analysis.verdict) : (apolloHadFindings ? (analysis.state !== "resting" ? analysis.verdict : guard.why[0] ?? analysis.verdict) : analysis.verdict)),
+        why: apolloHadFindings ? [...why, ...higginsFindings.filter((f) => !why.includes(f))] : (higginsCanProvideContent && higginsFindings.length ? higginsFindings : why),
+        what_to_do: higginsCanProvideContent ? (assessment?.higgins.next_action ?? analysis.recommendation) : analysis.recommendation,
         indicator_host: firstHost, indicator_digest: null, local_indicator: firstHost ? `https://${firstHost}/` : null, verified_block: false, adapter_label: securityAdapter.label,
         occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false, claimed_brand: analysis.signals.claimedBrand, scenario: analysis.scenario,
         supporting_references: assessment?.sources.filter((source) => source.url).map((source) => ({ label: source.label, url: source.url! })).slice(0, 6),
@@ -802,6 +808,64 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const sub = AppState.addEventListener("change", (st) => { if (st === "active") void poll(); });
     return () => { cancelled = true; clearInterval(timer); sub.remove(); };
   }, [checkNumberRisk, lowPower, deviceId]);
+
+  // Text Guard local findings consumer: converts ApolloLocalMessageAnalyzer detections into Patrol
+  // events. Runs on init and foreground resume. Each finding becomes an Apollo-local Patrol event
+  // containing only generic rule findings — no sender or message content. Persisted durably before
+  // acknowledging the native finding. Idempotent: findingId-derived event_id prevents duplicates.
+  // Reconciliation: if a Higgins-projected Patrol event already exists for the same submissionId,
+  // the local finding is acknowledged without creating a duplicate.
+  useEffect(() => {
+    let cancelled = false;
+    const consumeLocalFindings = async () => {
+      if (Platform.OS !== "android") return;
+      try {
+        const findings = await MessagingSdk.getTextGuardLocalFindings();
+        if (!findings.length || cancelled) return;
+        const acknowledged: string[] = [];
+        for (const finding of findings) {
+          if (cancelled || !finding?.findingId) continue;
+          const localEventId = `local-text-${finding.findingId}`;
+          // Reconciliation: check if a Higgins-projected Patrol event already covers this submission.
+          // If so, the authoritative record exists — acknowledge without duplicating.
+          const higginsAlreadyProjected = events.some((ev) =>
+            ev.category === "message" && ev.investigation_submission_id === finding.submissionId && ev.adapter_label !== "Text Guard local detection"
+          );
+          if (higginsAlreadyProjected) { acknowledged.push(finding.findingId); continue; }
+          // Check if this exact local event already exists (idempotent on re-read)
+          if (events.some((ev) => ev.event_id === localEventId)) { acknowledged.push(finding.findingId); continue; }
+          // Create the local Patrol event with generic rule findings only
+          const ruleReasons = finding.findings.map((f) => `${f.ruleId}: ${f.title}`).slice(0, 6);
+          const ev: PatrolEvent = {
+            event_id: localEventId, device_id: deviceId ?? "local", category: "message" as const,
+            status: "active" as const, state: (finding.state as PatrolEvent["state"]) ?? "ears_up",
+            indicator_host: null, indicator_digest: null, local_indicator: null,
+            verified_block: false, adapter_label: "Text Guard local detection",
+            occurred_at: finding.detectedAt ?? new Date().toISOString(), resolved_at: null,
+            trust_allowed: false, investigation_submission_id: finding.submissionId,
+            why: ruleReasons.length ? ruleReasons : ["Local analysis detected suspicious patterns."],
+            headline: finding.state === "growling" ? "Suspicious message detected" : "Message worth checking",
+            what_happened: `Apollo's on-device analyzer (${finding.analyzer}) flagged a message based on pattern rules.`,
+            what_to_do: finding.state === "growling" ? "Do not respond to or act on this message until you verify the sender independently." : "Review this message carefully. Verify the sender before responding to any requests.",
+          };
+          // Persist durably BEFORE acknowledging the native finding
+          setEvents((prev) => {
+            if (prev.some((x) => x.event_id === localEventId)) return prev;
+            const next = [ev, ...prev]; void storage.setItem(K.events, JSON.stringify(next)); return next;
+          });
+          void syncEventRef.current?.(ev);
+          acknowledged.push(finding.findingId);
+        }
+        // Acknowledge only after all events are persisted
+        if (acknowledged.length > 0) {
+          await MessagingSdk.acknowledgeTextGuardLocalFindings(acknowledged);
+        }
+      } catch { /* native module unavailable */ }
+    };
+    void consumeLocalFindings();
+    const sub = AppState.addEventListener("change", (st) => { if (st === "active") void consumeLocalFindings(); });
+    return () => { cancelled = true; sub.remove(); };
+  }, [deviceId, events]);
 
 
   const recordRecovery = useCallback(async (event: PatrolEvent, kind: RecoveryKind) => {

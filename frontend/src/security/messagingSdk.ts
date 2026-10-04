@@ -44,7 +44,7 @@ export const MessagingSdk = {
   /** Text Guard: opens the Android "Notification access" settings screen. No-op ({opened:false}) on iOS/web. */
   openSmsListenerSettings: () => { const m = getNativeModule(); return call<{ opened: boolean }>(m ? () => m.openSmsListenerSettings() : undefined, { opened: false }); },
   /** Text Guard: get local findings from ApolloLocalMessageAnalyzer (Android). Encrypted, survive content expiry. Returns [] on iOS/web. */
-  getTextGuardLocalFindings: () => { const m = getNativeModule(); return call<{ findingId: string; state: string; analyzer: string; source: string; findings: { ruleId: string; title: string; detail: string }[]; detectedAt: string }[]>(m ? () => m.getTextGuardLocalFindings() : undefined, []); },
+  getTextGuardLocalFindings: () => { const m = getNativeModule(); return call<{ findingId: string; submissionId: string; state: string; analyzer: string; source: string; findings: { ruleId: string; title: string; detail: string }[]; detectedAt: string }[]>(m ? () => m.getTextGuardLocalFindings() : undefined, []); },
   /** Text Guard: acknowledge (remove) local findings by their IDs. */
   acknowledgeTextGuardLocalFindings: (ids: string[]) => { const m = getNativeModule(); return call<{ acknowledged: number }>(m ? () => m.acknowledgeTextGuardLocalFindings(JSON.stringify(ids)) : undefined, { acknowledged: 0 }); },
 };
