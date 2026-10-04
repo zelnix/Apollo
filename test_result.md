@@ -1331,3 +1331,159 @@ test_plan:
 agent_communication:
   - agent: "testing"
     message: "Iteration 81 (2026-10-04) PHASE A-D COMPREHENSIVE SECURITY FIXES VERIFICATION COMPLETED. All requested tests executed successfully: (1) Backend health: GET /api/health returns 200 with correct schema. (2) Intel check URL path preserved: POST /api/intel/check with URL path works correctly, paths preserved, credentials stripped. (3) Intel check domain: POST /api/intel/check with domain works correctly. (4) Call risk check: POST /api/call/risk-check returns valid response with decision field and caller metadata (country, carrier, line_type, fraud_score). (5) TypeScript compilation: exit 0, no errors. (6) Backend pytest: 411 passed, 16 skipped, 3 failed (failures are pre-existing push config test expectations, NOT related to Phase A-D fixes). All Phase A-D security objectives verified and working correctly. No critical issues found."
+
+## Iteration 82 — Call Guard & VirusTotal Integration Testing (2026-10-04)
+
+user_problem_statement: "Comprehensive testing of new features implemented across two sessions. Test: Backend health, device registration, caller ID database endpoints, IPQS risk check, VirusTotal integration, TypeScript compilation, frontend Settings page with Call Guard section, and backend pytest suite."
+
+backend:
+  - task: "Backend health endpoint verification"
+    implemented: true
+    working: true
+    file: "backend/routers/health.py"
+    priority: "high"
+    needs_retesting: false
+    stuck_count: 0
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "Iteration 82 - Backend health endpoint returns 200 with correct schema: {schemaVersion: 1, status: 'ok', service: 'apollo-v1', checkedAt: timestamp}. Verified via GET /api/health."
+  
+  - task: "Device registration endpoint"
+    implemented: true
+    working: true
+    file: "backend/routers/devices.py"
+    priority: "high"
+    needs_retesting: false
+    stuck_count: 0
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "Iteration 82 - Device registration working correctly. POST /api/devices/register with {platform: 'test', adapter_mode: 'preview', app_version: '1.0.0'} returns device_id and device_token. Verified via API test."
+  
+  - task: "Caller ID database count endpoint"
+    implemented: true
+    working: true
+    file: "backend/routers/call.py, backend/services/caller_id_db.py"
+    priority: "high"
+    needs_retesting: false
+    stuck_count: 0
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "Iteration 82 - Caller ID database count endpoint working correctly. GET /api/call/caller-id-db/count returns {count: N}. Initial count was 0. Requires device authentication (Bearer token). Verified via API test."
+  
+  - task: "Caller ID database export endpoint"
+    implemented: true
+    working: true
+    file: "backend/routers/call.py, backend/services/caller_id_db.py"
+    priority: "high"
+    needs_retesting: false
+    stuck_count: 0
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "Iteration 82 - Caller ID database export endpoint working correctly. GET /api/call/caller-id-db/export returns {entries: [], count: 0} initially. Exports in Apple PIR server format. Requires device authentication. Verified via API test."
+  
+  - task: "Call risk check with IPQS integration"
+    implemented: true
+    working: true
+    file: "backend/routers/call.py, backend/services/phonerisk.py"
+    priority: "high"
+    needs_retesting: false
+    stuck_count: 0
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "Iteration 82 - Call risk check working correctly with IPQS integration. POST /api/call/risk-check with test number +18007132618 returns: decision='avoid', fraud_score=100, recent_abuse=true, country='US', carrier='SomosGov', line_type='Toll Free'. All required caller metadata fields present. Requires device authentication. Verified via API test with IPQS's documented test number."
+  
+  - task: "Caller ID database auto-ingestion from risk checks"
+    implemented: true
+    working: true
+    file: "backend/routers/call.py, backend/services/caller_id_db.py"
+    priority: "high"
+    needs_retesting: false
+    stuck_count: 0
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "Iteration 82 - Auto-ingestion working correctly. After calling /api/call/risk-check with high-risk number, the caller ID database count increased from 0 to 1. Flagged numbers are automatically ingested into the Live Caller ID reputation database. Verified via API test."
+  
+  - task: "VirusTotal hash-based malware scanning integration"
+    implemented: true
+    working: true
+    file: "backend/services/virustotal.py"
+    priority: "high"
+    needs_retesting: false
+    stuck_count: 0
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "Iteration 82 - VirusTotal integration working correctly. Direct Python test passed: (1) EICAR test file hash (275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f) returns status='malicious', detection_count=66/68 engines. (2) Unknown hash (all zeros) returns status='unknown'. API key configured in backend/.env. Rate limiting implemented (4 requests/minute). Verified via direct Python test."
+  
+  - task: "Backend pytest suite execution"
+    implemented: true
+    working: true
+    file: "backend/tests/"
+    priority: "high"
+    needs_retesting: false
+    stuck_count: 0
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "Iteration 82 - Backend pytest suite: 411 passed, 16 skipped, 3 failed. The 3 failures are pre-existing push configuration test expectations (tests expect push unconfigured but EXPO_PUSH_ENABLED=true is set): test_push_test_placeholder_returns_error_with_detail, test_barking_bg_true_in_quiet_hours_not_suppressed, test_only_tuesday_window_and_only_missed. These failures are NOT related to Call Guard or VirusTotal features. All new feature tests passed."
+
+frontend:
+  - task: "TypeScript compilation verification"
+    implemented: true
+    working: true
+    file: "frontend/src/"
+    priority: "high"
+    needs_retesting: false
+    stuck_count: 0
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "Iteration 82 - TypeScript compilation passed with exit code 0. Command: cd /app/frontend && npx tsc --noEmit. No compilation errors detected."
+  
+  - task: "Frontend preview loads successfully"
+    implemented: true
+    working: true
+    file: "frontend/"
+    priority: "high"
+    needs_retesting: false
+    stuck_count: 0
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "Iteration 82 - Frontend preview loads successfully at https://apollo-patrol.preview.emergentagent.com/ with HTTP 200 status. Verified via curl."
+  
+  - task: "Settings page Call Guard section"
+    implemented: true
+    working: true
+    file: "frontend/app/settings/index.tsx"
+    priority: "high"
+    needs_retesting: false
+    stuck_count: 0
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "Iteration 82 - Settings page Call Guard section verified via code review. Located at lines 46-51 in /app/frontend/app/settings/index.tsx. Section includes: (1) 'Automatically check incoming numbers' toggle (testID: settings-call-auto-switch), (2) Description: 'When enabled, Apollo automatically submits incoming caller numbers to its reputation service after each call', (3) Disclosure text: 'enabling this sends phone numbers that call you to Apollo's backend for a reputation check (via IPQualityScore). Numbers are cached temporarily for repeat-call detection and are not shared with other users', (4) Manual check availability note. All required UI elements present."
+
+metadata:
+  created_by: "testing_agent"
+  version: "1.0"
+  test_sequence: 82
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "Call Guard & VirusTotal integration verification complete"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "testing"
+    message: "Iteration 82 (2026-10-04) CALL GUARD & VIRUSTOTAL INTEGRATION TESTING COMPLETED. All requested tests executed successfully: (1) Backend health: GET /api/health returns 200 with correct schema. (2) Device registration: POST /api/devices/register works correctly. (3) Caller ID database count: GET /api/call/caller-id-db/count returns {count: 0} initially. (4) Caller ID database export: GET /api/call/caller-id-db/export returns {entries: [], count: 0}. (5) Call risk check: POST /api/call/risk-check with IPQS test number +18007132618 returns decision='avoid', fraud_score=100, recent_abuse=true, with all required caller metadata. (6) Auto-ingestion: Caller ID database count increased from 0 to 1 after risk check. (7) VirusTotal: Direct Python test passed - EICAR hash detected as malicious (66/68 engines), unknown hash returns 'unknown' status. (8) TypeScript compilation: exit 0, no errors. (9) Frontend preview: loads successfully (HTTP 200). (10) Settings page: Call Guard section verified via code review - toggle, description, and disclosure text all present. (11) Backend pytest: 411 passed, 16 skipped, 3 failed (failures are pre-existing push config test expectations, NOT related to new features). All Call Guard and VirusTotal integration objectives verified and working correctly. No critical issues found."
+

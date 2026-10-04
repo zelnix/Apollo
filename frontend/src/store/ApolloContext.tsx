@@ -132,6 +132,7 @@ interface ApolloContextValue {
   setQuietHours(next: QuietHours): Promise<void>;
   lowPower: boolean;
   setLowPower(on: boolean): Promise<void>;
+  storage: { getItem(key: string, fallback: string | null): Promise<string | null>; setItem(key: string, value: string): Promise<boolean> };
 }
 
 export interface QuietHours { enabled: boolean; start_minutes: number; end_minutes: number }
@@ -1011,7 +1012,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const value: ApolloContextValue = {
     ready, setupDone, deviceId, identityReset, reRegisterDevice, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label, isMock: IS_PREVIEW_HARNESS,
     refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, scanGmailInbox, recordRecovery, upsertEvent, recordPageAnalysis, checkCall, checkNumberRisk,
-    notificationStatus, enableNotifications, quietHours, quietNow, setQuietHours, lowPower, setLowPower,
+    notificationStatus, enableNotifications, quietHours, quietNow, setQuietHours, lowPower, setLowPower, storage,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

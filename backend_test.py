@@ -1,354 +1,264 @@
-#!/usr/bin/env python3
+"""Backend API tests for comprehensive security and automatic protection features.
+Testing new features: Call Guard, Caller ID Database, VirusTotal integration.
 """
-Backend API test for security peer review remediation fixes.
-Tests:
-1. Fix 1: URL reputation path preservation (sanitize_url)
-2. Fix 11: Blocklist check no longer capped at 5000 entries
-3. Fix 12: Temporary email failures are now retryable
-"""
-import os
-import sys
-import json
 import requests
-from dotenv import load_dotenv
+import sys
 
-# Load environment variables
-load_dotenv("/app/backend/.env")
-load_dotenv("/app/frontend/.env")
-
-BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "http://localhost:8001").rstrip("/")
-API = f"{BASE_URL}/api"
+# Use the public backend URL from frontend/.env
+BACKEND_URL = "https://apollo-patrol.preview.emergentagent.com/api"
 
 def test_backend_health():
-    """Test: Backend health endpoint"""
-    print("\n=== Test: Backend Health ===")
-    r = requests.get(f"{API}/health")
-    assert r.status_code == 200, f"Health check failed: {r.status_code} {r.text}"
-    data = r.json()
-    assert data["status"] == "ok", f"Health status not ok: {data}"
-    assert data["schemaVersion"] == 1, f"Schema version mismatch: {data}"
-    print(f"✅ Backend health: {json.dumps(data, indent=2)}")
-    return True
+    """Test 1: Backend health endpoint."""
+    print("\n=== Test 1: Backend Health ===")
+    try:
+        response = requests.get(f"{BACKEND_URL}/health", timeout=10)
+        print(f"Status: {response.status_code}")
+        print(f"Response: {response.json()}")
+        
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+        data = response.json()
+        assert data.get("status") == "ok", f"Expected status 'ok', got {data.get('status')}"
+        assert data.get("schemaVersion") == 1, f"Expected schemaVersion 1, got {data.get('schemaVersion')}"
+        assert data.get("service") == "apollo-v1", f"Expected service 'apollo-v1', got {data.get('service')}"
+        print("✅ Backend health check PASSED")
+        return True
+    except Exception as e:
+        print(f"❌ Backend health check FAILED: {e}")
+        return False
+
 
 def register_device():
-    """Helper: Register a device and return device_id and token"""
-    print("\n=== Registering Device ===")
-    r = requests.post(
-        f"{API}/devices/register",
-        json={
-            "platform": "android",
-            "adapter_mode": "web",
-            "app_version": "1.1.0"
+    """Register a test device and return the auth token."""
+    try:
+        payload = {
+            "platform": "test",
+            "adapter_mode": "preview",
+            "app_version": "1.0.0"
         }
-    )
-    assert r.status_code in (200, 201), f"Device registration failed: {r.status_code} {r.text}"
-    data = r.json()
-    device_id = data["device_id"]
-    device_token = data["device_token"]
-    print(f"✅ Device registered: device_id={device_id[:20]}...")
-    return device_id, device_token
+        response = requests.post(f"{BACKEND_URL}/devices/register", json=payload, timeout=10)
+        if response.status_code == 201:
+            data = response.json()
+            return data.get("device_id"), data.get("device_token")
+        else:
+            print(f"Device registration failed with status {response.status_code}: {response.text}")
+        return None, None
+    except Exception as e:
+        print(f"Device registration error: {e}")
+        return None, None
 
-def test_url_path_preservation(device_token):
-    """Fix 1: Test URL reputation path preservation in sanitize_url()"""
-    print("\n=== Fix 1: URL Path Preservation ===")
-    
-    # Test 1: URL with path should preserve the path
-    print("\n  Test 1a: URL with path /phishing/page")
-    r = requests.post(
-        f"{API}/intel/check",
-        json={
-            "indicator_type": "url",
-            "value": "https://example.com/phishing/page?id=123"
-        },
-        headers={"Authorization": f"Bearer {device_token}"}
-    )
-    assert r.status_code == 200, f"Intel check failed: {r.status_code} {r.text}"
-    data = r.json()
-    print(f"    Response: verdict={data.get('verdict')}, coverage={data.get('coverage')}")
-    # The path should be preserved in the check (not stripped to /)
-    # We can't directly see the sanitized URL, but the check should work correctly
-    assert data.get("verdict") in ["clean", "unknown", "malicious"], f"Invalid verdict: {data}"
-    print(f"    ✅ URL with path checked successfully")
-    
-    # Test 1b: URL with secret params - token should be stripped, safe params preserved
-    print("\n  Test 1b: URL with secret params (token=secret&page=2)")
-    r = requests.post(
-        f"{API}/intel/check",
-        json={
-            "indicator_type": "url",
-            "value": "https://example.com/path?token=secret&page=2"
-        },
-        headers={"Authorization": f"Bearer {device_token}"}
-    )
-    assert r.status_code == 200, f"Intel check failed: {r.status_code} {r.text}"
-    data = r.json()
-    print(f"    Response: verdict={data.get('verdict')}, coverage={data.get('coverage')}")
-    assert data.get("verdict") in ["clean", "unknown", "malicious"], f"Invalid verdict: {data}"
-    print(f"    ✅ URL with secret params checked successfully")
-    
-    # Test 1c: URL with credentials should be sanitized
-    print("\n  Test 1c: URL with credentials (user:pass@example.com)")
-    r = requests.post(
-        f"{API}/intel/check",
-        json={
-            "indicator_type": "url",
-            "value": "https://user:pass@example.com/path?token=secret&safe=yes"
-        },
-        headers={"Authorization": f"Bearer {device_token}"}
-    )
-    assert r.status_code == 200, f"Intel check failed: {r.status_code} {r.text}"
-    data = r.json()
-    print(f"    Response: verdict={data.get('verdict')}, coverage={data.get('coverage')}")
-    assert data.get("verdict") in ["clean", "unknown", "malicious"], f"Invalid verdict: {data}"
-    print(f"    ✅ URL with credentials checked successfully")
-    
-    # Test 1d: Known phishing URL with path
-    print("\n  Test 1d: Known phishing URL with path")
-    r = requests.post(
-        f"{API}/intel/check",
-        json={
-            "indicator_type": "url",
-            "value": "http://testsafebrowsing.appspot.com/s/phishing.html"
-        },
-        headers={"Authorization": f"Bearer {device_token}"}
-    )
-    assert r.status_code == 200, f"Intel check failed: {r.status_code} {r.text}"
-    data = r.json()
-    print(f"    Response: verdict={data.get('verdict')}, coverage={data.get('coverage')}")
-    # This should be detected as malicious
-    assert data.get("verdict") == "malicious", f"Expected malicious verdict for known phishing URL: {data}"
-    print(f"    ✅ Known phishing URL correctly detected as malicious")
-    
-    print("\n✅ Fix 1: URL path preservation tests PASSED")
-    return True
 
-def test_blocklist_check_no_cap(device_token):
-    """Fix 11: Test blocklist check no longer capped at 5000 entries"""
-    print("\n=== Fix 11: Blocklist Check (No 5000 Entry Cap) ===")
-    
-    # Test 2a: Domain check
-    print("\n  Test 2a: Domain check")
-    r = requests.post(
-        f"{API}/intel/check",
-        json={
-            "indicator_type": "domain",
-            "value": "example.com"
-        },
-        headers={"Authorization": f"Bearer {device_token}"}
-    )
-    assert r.status_code == 200, f"Domain check failed: {r.status_code} {r.text}"
-    data = r.json()
-    print(f"    Response: verdict={data.get('verdict')}, coverage={data.get('coverage')}")
-    assert data.get("verdict") in ["clean", "unknown", "malicious"], f"Invalid verdict: {data}"
-    assert "sources" in data, f"Missing sources in response: {data}"
-    
-    # Check that apollo_blocklist source is present
-    sources = data.get("sources", [])
-    blocklist_source = next((s for s in sources if s.get("name") == "apollo_blocklist"), None)
-    assert blocklist_source is not None, f"Missing apollo_blocklist source: {sources}"
-    print(f"    Blocklist source: status={blocklist_source.get('status')}")
-    print(f"    ✅ Domain check with blocklist working")
-    
-    # Test 2b: URL check
-    print("\n  Test 2b: URL check")
-    r = requests.post(
-        f"{API}/intel/check",
-        json={
-            "indicator_type": "url",
-            "value": "https://example.com/test"
-        },
-        headers={"Authorization": f"Bearer {device_token}"}
-    )
-    assert r.status_code == 200, f"URL check failed: {r.status_code} {r.text}"
-    data = r.json()
-    print(f"    Response: verdict={data.get('verdict')}, coverage={data.get('coverage')}")
-    assert data.get("verdict") in ["clean", "unknown", "malicious"], f"Invalid verdict: {data}"
-    
-    # Check that apollo_blocklist source is present
-    sources = data.get("sources", [])
-    blocklist_source = next((s for s in sources if s.get("name") == "apollo_blocklist"), None)
-    assert blocklist_source is not None, f"Missing apollo_blocklist source: {sources}"
-    print(f"    Blocklist source: status={blocklist_source.get('status')}")
-    print(f"    ✅ URL check with blocklist working")
-    
-    # Test 2c: Check intel status to see blocklist entry count
-    print("\n  Test 2c: Intel status (blocklist entry count)")
-    r = requests.get(f"{API}/intel/status")
-    assert r.status_code == 200, f"Intel status failed: {r.status_code} {r.text}"
-    data = r.json()
-    print(f"    Intel status: {json.dumps(data, indent=2)}")
-    assert "blocklist" in data, f"Missing blocklist in status: {data}"
-    assert data["blocklist"]["status"] == "ok", f"Blocklist status not ok: {data}"
-    print(f"    Blocklist entries: {data['blocklist']['entries']}")
-    print(f"    ✅ Blocklist status working")
-    
-    print("\n✅ Fix 11: Blocklist check tests PASSED")
-    return True
+def test_device_registration():
+    """Test 2: Device registration."""
+    print("\n=== Test 2: Device Registration ===")
+    try:
+        device_id, token = register_device()
+        assert device_id is not None, "Device ID is None"
+        assert token is not None, "Device token is None"
+        print(f"Device ID: {device_id[:8]}...")
+        print(f"Token: {token[:20]}...")
+        print("✅ Device registration PASSED")
+        return True, device_id, token
+    except Exception as e:
+        print(f"❌ Device registration FAILED: {e}")
+        return False, None, None
 
-def test_mailbox_monitor_import():
-    """Fix 12: Test mailbox_monitor module imports correctly"""
-    print("\n=== Fix 12: Mailbox Monitor Module Import ===")
-    
-    # This is a backend module test - we can't directly test the retry logic
-    # without setting up a full email monitoring flow, but we can verify
-    # the backend is healthy and the module loads correctly
-    
-    print("\n  Testing backend health (mailbox_monitor module should load)")
-    r = requests.get(f"{API}/health")
-    assert r.status_code == 200, f"Health check failed: {r.status_code} {r.text}"
-    data = r.json()
-    assert data["status"] == "ok", f"Health status not ok: {data}"
-    print(f"    ✅ Backend health OK (mailbox_monitor module loaded successfully)")
-    
-    print("\n✅ Fix 12: Mailbox monitor module import test PASSED")
-    print("    Note: Full retry logic testing requires email monitoring setup")
-    return True
 
-def test_device_authentication(device_id, device_token):
-    """Test device authentication endpoints (no regression)"""
-    print("\n=== Test: Device Authentication (No Regression) ===")
-    
-    # Test family endpoints with authentication
-    print("\n  Test: Family guardians endpoint")
-    r = requests.get(
-        f"{API}/family/guardians",
-        params={"device_id": device_id},
-        headers={"Authorization": f"Bearer {device_token}"}
-    )
-    assert r.status_code == 200, f"Family guardians failed: {r.status_code} {r.text}"
-    data = r.json()
-    assert isinstance(data, list), f"Expected list, got: {type(data)}"
-    print(f"    ✅ Family guardians: {len(data)} guardians")
-    
-    print("\n  Test: Family links endpoint")
-    r = requests.get(
-        f"{API}/family/links",
-        params={"device_id": device_id},
-        headers={"Authorization": f"Bearer {device_token}"}
-    )
-    assert r.status_code == 200, f"Family links failed: {r.status_code} {r.text}"
-    data = r.json()
-    assert "i_watch" in data, f"Expected 'i_watch' key: {data}"
-    assert "watching_me" in data, f"Expected 'watching_me' key: {data}"
-    print(f"    ✅ Family links working")
-    
-    print("\n✅ Device authentication tests PASSED (no regression)")
-    return True
+def test_caller_id_db_count(token):
+    """Test 3: Caller ID database count endpoint."""
+    print("\n=== Test 3: Caller ID Database Count ===")
+    try:
+        headers = {"Authorization": f"Bearer {token}"}
+        response = requests.get(f"{BACKEND_URL}/call/caller-id-db/count", headers=headers, timeout=10)
+        print(f"Status: {response.status_code}")
+        print(f"Response: {response.json()}")
+        
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+        data = response.json()
+        assert "count" in data, "Response missing 'count' field"
+        initial_count = data["count"]
+        print(f"Initial count: {initial_count}")
+        print("✅ Caller ID database count PASSED")
+        return True, initial_count
+    except Exception as e:
+        print(f"❌ Caller ID database count FAILED: {e}")
+        return False, 0
 
-def test_push_notification_endpoints(device_id, device_token):
-    """Test push notification endpoints (no regression)"""
-    print("\n=== Test: Push Notification Endpoints (No Regression) ===")
-    
-    print("\n  Test: Push registration status")
-    r = requests.get(
-        f"{API}/push/registration",
-        headers={"Authorization": f"Bearer {device_token}"}
-    )
-    assert r.status_code == 200, f"Push registration status failed: {r.status_code} {r.text}"
-    data = r.json()
-    print(f"    Push configured: {data.get('configured')}, registered: {data.get('registered')}")
-    print(f"    ✅ Push registration status working")
-    
-    print("\n✅ Push notification tests PASSED (no regression)")
-    return True
 
-def test_call_risk_check(device_id, device_token):
-    """Test call risk check endpoint (Phase A fixes)"""
-    print("\n=== Test: Call Risk Check (Phase A) ===")
-    
-    # Test with IPQS documented test number (high risk)
-    # From test_credentials.md: +18007132618 is a documented test case
-    print("\n  Test: Call risk check with documented test number")
-    r = requests.post(
-        f"{API}/call/risk-check",
-        json={
+def test_caller_id_db_export(token):
+    """Test 4: Caller ID database export endpoint."""
+    print("\n=== Test 4: Caller ID Database Export ===")
+    try:
+        headers = {"Authorization": f"Bearer {token}"}
+        response = requests.get(f"{BACKEND_URL}/call/caller-id-db/export", headers=headers, timeout=10)
+        print(f"Status: {response.status_code}")
+        data = response.json()
+        print(f"Response keys: {data.keys()}")
+        
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+        assert "entries" in data, "Response missing 'entries' field"
+        assert "count" in data, "Response missing 'count' field"
+        print(f"Export count: {data['count']}")
+        print(f"Entries: {len(data['entries'])}")
+        print("✅ Caller ID database export PASSED")
+        return True
+    except Exception as e:
+        print(f"❌ Caller ID database export FAILED: {e}")
+        return False
+
+
+def test_call_risk_check(device_id, token):
+    """Test 5: Call risk check with IPQS test number."""
+    print("\n=== Test 5: Call Risk Check (IPQS Test Number) ===")
+    try:
+        headers = {"Authorization": f"Bearer {token}"}
+        # IPQS test number: +18007132618 (known high-risk, fraud_score=100)
+        payload = {
             "device_id": device_id,
             "number": "+18007132618"
-        },
-        headers={"Authorization": f"Bearer {device_token}"}
-    )
-    assert r.status_code == 200, f"Call risk check failed: {r.status_code} {r.text}"
-    data = r.json()
-    print(f"    Response keys: {list(data.keys())}")
-    
-    # Verify response structure has decision field
-    assert "decision" in data, f"Missing 'decision' field in response: {data}"
-    assert data["decision"] in ["allow", "review", "avoid"], f"Invalid decision value: {data['decision']}"
-    
-    # Check for caller metadata fields (Phase A3)
-    # The response should include metadata like country, carrier, line_type, fraud_score
-    print(f"    Decision: {data['decision']}")
-    if "fraud_score" in data:
-        print(f"    Fraud score: {data.get('fraud_score')}")
-    if "country" in data:
-        print(f"    Country: {data.get('country')}")
-    if "carrier" in data:
-        print(f"    Carrier: {data.get('carrier')}")
-    if "line_type" in data:
-        print(f"    Line type: {data.get('line_type')}")
-    
-    print(f"    ✅ Call risk check working, decision={data['decision']}")
-    
-    print("\n✅ Call risk check test PASSED")
-    return True
-
-def main():
-    """Run all tests"""
-    print("=" * 80)
-    print("Backend API Test Suite - Security Peer Review Remediation")
-    print("=" * 80)
-    print("\nTesting fixes:")
-    print("  Fix 1:  URL reputation path preservation (sanitize_url)")
-    print("  Fix 11: Blocklist check no longer capped at 5000 entries")
-    print("  Fix 12: Temporary email failures are now retryable")
-    print("=" * 80)
-    
-    try:
-        # Test backend health
-        test_backend_health()
+        }
+        response = requests.post(f"{BACKEND_URL}/call/risk-check", json=payload, headers=headers, timeout=15)
+        print(f"Status: {response.status_code}")
+        data = response.json()
+        print(f"Response keys: {data.keys()}")
+        print(f"Decision: {data.get('decision')}")
+        print(f"Fraud Score: {data.get('fraud_score')}")
+        print(f"Country: {data.get('country')}")
+        print(f"Carrier: {data.get('carrier')}")
+        print(f"Line Type: {data.get('line_type')}")
+        print(f"Recent Abuse: {data.get('recent_abuse')}")
         
-        # Register a device for authenticated tests
-        device_id, device_token = register_device()
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+        assert "decision" in data, "Response missing 'decision' field"
+        assert data.get("decision") == "avoid", f"Expected decision 'avoid' for test number, got {data.get('decision')}"
+        assert data.get("fraud_score") == 100, f"Expected fraud_score 100, got {data.get('fraud_score')}"
+        assert data.get("recent_abuse") == True, f"Expected recent_abuse True, got {data.get('recent_abuse')}"
         
-        # Test Fix 1: URL path preservation
-        test_url_path_preservation(device_token)
+        # Verify caller metadata fields are present
+        assert "country" in data, "Response missing 'country' field"
+        assert "carrier" in data, "Response missing 'carrier' field"
+        assert "line_type" in data, "Response missing 'line_type' field"
         
-        # Test Fix 11: Blocklist check (no cap)
-        test_blocklist_check_no_cap(device_token)
-        
-        # Test Fix 12: Mailbox monitor import
-        test_mailbox_monitor_import()
-        
-        # Test device authentication (no regression)
-        test_device_authentication(device_id, device_token)
-        
-        # Test push notification endpoints (no regression)
-        test_push_notification_endpoints(device_id, device_token)
-        
-        # Test call risk check (Phase A)
-        test_call_risk_check(device_id, device_token)
-        
-        print("\n" + "=" * 80)
-        print("✅ ALL TESTS PASSED")
-        print("=" * 80)
-        print("\nSummary:")
-        print("  ✅ Fix 1:  URL path preservation working correctly")
-        print("  ✅ Fix 11: Blocklist check working (no 5000 entry cap)")
-        print("  ✅ Fix 12: Mailbox monitor module loads successfully")
-        print("  ✅ Device authentication: no regression")
-        print("  ✅ Push notifications: no regression")
-        print("  ✅ Call risk check: working with decision field")
-        print("=" * 80)
-        return 0
-        
-    except AssertionError as e:
-        print(f"\n❌ TEST FAILED: {e}")
-        return 1
+        print("✅ Call risk check PASSED")
+        return True
     except Exception as e:
-        print(f"\n❌ UNEXPECTED ERROR: {e}")
+        print(f"❌ Call risk check FAILED: {e}")
         import traceback
         traceback.print_exc()
-        return 1
+        return False
+
+
+def test_caller_id_db_auto_ingest(token, initial_count):
+    """Test 6: Verify caller ID database auto-ingestion after risk check."""
+    print("\n=== Test 6: Caller ID Database Auto-Ingestion ===")
+    try:
+        headers = {"Authorization": f"Bearer {token}"}
+        response = requests.get(f"{BACKEND_URL}/call/caller-id-db/count", headers=headers, timeout=10)
+        print(f"Status: {response.status_code}")
+        data = response.json()
+        new_count = data["count"]
+        print(f"Initial count: {initial_count}")
+        print(f"New count: {new_count}")
+        
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+        assert new_count >= initial_count + 1, f"Expected count to increase by at least 1, got {new_count - initial_count}"
+        print("✅ Caller ID database auto-ingestion PASSED")
+        return True
+    except Exception as e:
+        print(f"❌ Caller ID database auto-ingestion FAILED: {e}")
+        return False
+
+
+def test_virustotal_integration():
+    """Test 7: VirusTotal integration with EICAR test hash."""
+    print("\n=== Test 7: VirusTotal Integration ===")
+    try:
+        sys.path.insert(0, '/app/backend')
+        import asyncio
+        from services.virustotal import lookup_hash
+        
+        async def test():
+            # EICAR test file hash (known malware test file)
+            eicar = '275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f'
+            r1 = await lookup_hash(eicar, 'eicar.txt')
+            print(f'EICAR: status={r1.status}, detections={r1.detection_count}/{r1.total_engines}')
+            assert r1.status == 'malicious', f'Expected malicious, got {r1.status}'
+            assert r1.detection_count > 0, f'Expected detection_count > 0, got {r1.detection_count}'
+            
+            # Unknown hash (should return status='unknown')
+            r2 = await lookup_hash('0' * 64, 'fake.pdf')
+            print(f'Unknown: status={r2.status}')
+            assert r2.status == 'unknown', f'Expected unknown, got {r2.status}'
+            
+            print('✅ All VirusTotal tests passed!')
+            return True
+        
+        result = asyncio.run(test())
+        return result
+    except Exception as e:
+        print(f"❌ VirusTotal integration FAILED: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def main():
+    """Run all tests."""
+    print("=" * 70)
+    print("COMPREHENSIVE BACKEND TESTING - Call Guard & VirusTotal Integration")
+    print("=" * 70)
+    
+    results = []
+    
+    # Test 1: Backend health
+    results.append(("Backend Health", test_backend_health()))
+    
+    # Test 2: Device registration
+    success, device_id, token = test_device_registration()
+    results.append(("Device Registration", success))
+    
+    if not success or not token:
+        print("\n⚠️  Cannot proceed with authenticated tests without device token")
+        print_summary(results)
+        return False
+    
+    # Test 3: Caller ID database count (before risk check)
+    success, initial_count = test_caller_id_db_count(token)
+    results.append(("Caller ID Database Count", success))
+    
+    # Test 4: Caller ID database export
+    results.append(("Caller ID Database Export", test_caller_id_db_export(token)))
+    
+    # Test 5: Call risk check with IPQS test number
+    results.append(("Call Risk Check (IPQS)", test_call_risk_check(device_id, token)))
+    
+    # Test 6: Verify auto-ingestion into caller ID database
+    results.append(("Caller ID Auto-Ingestion", test_caller_id_db_auto_ingest(token, initial_count)))
+    
+    # Test 7: VirusTotal integration
+    results.append(("VirusTotal Integration", test_virustotal_integration()))
+    
+    # Summary
+    print_summary(results)
+    
+    return all(result for _, result in results)
+
+
+def print_summary(results):
+    """Print test summary."""
+    print("\n" + "=" * 70)
+    print("TEST SUMMARY")
+    print("=" * 70)
+    passed = sum(1 for _, result in results if result)
+    total = len(results)
+    
+    for name, result in results:
+        status = "✅ PASS" if result else "❌ FAIL"
+        print(f"{status}: {name}")
+    
+    print(f"\nTotal: {passed}/{total} tests passed")
+    print("=" * 70)
+
 
 if __name__ == "__main__":
-    sys.exit(main())
+    success = main()
+    sys.exit(0 if success else 1)

@@ -22,8 +22,128 @@ from core.db import db, now_utc
 from core.redaction import redact_investigation_secrets
 from services import gmail
 from services.higgins import evidence, jobs, repository as repo
+from urllib.parse import urlparse
+
+
+def _extract_domain_from_email(email_str: str) -> str | None:
+    """Extract the domain from an email address or From header like 'Name <user@domain.com>'."""
+    import re as _re
+    match = _re.search(r'[\w.+-]+@([\w.-]+)', email_str)
+    return match.group(1).lower() if match else None
+
+
+def _org_domain(domain: str) -> str:
+    """Get the organizational domain (eTLD+1 approximation). For 'mail.example.com' → 'example.com'.
+    For 'example.co.uk' → 'example.co.uk' (simplified: uses last 2 parts, or 3 for known 2-part TLDs)."""
+    parts = domain.lower().rstrip(".").split(".")
+    two_part_tlds = {"co.uk", "com.au", "co.nz", "co.za", "com.br", "co.jp", "co.kr", "org.uk", "net.au", "ac.uk"}
+    if len(parts) >= 3 and ".".join(parts[-2:]) in two_part_tlds:
+        return ".".join(parts[-3:])
+    return ".".join(parts[-2:]) if len(parts) >= 2 else domain
+
+
+def _domains_same_org(a: str, b: str) -> bool:
+    """Check if two domains belong to the same organization (share the same eTLD+1)."""
+    return _org_domain(a) == _org_domain(b)
+
+
+def _find_domain_mismatches(sender_domain: str, links: list) -> set[str]:
+    """Find link domains that don't match the sender's organization domain.
+    Returns set of mismatched domains. Treats subdomains of the same org as equivalent."""
+    mismatched = set()
+    sender_org = _org_domain(sender_domain)
+    for link in links:
+        if not isinstance(link, dict):
+            continue
+        href = link.get("href", "")
+        if not href:
+            continue
+        try:
+            parsed = urlparse(href if "://" in href else f"https://{href}")
+            host = (parsed.hostname or "").lower()
+            if not host or host == sender_domain:
+                continue
+            # Skip common tracking/infrastructure domains that are not the actual destination
+            tracking_domains = {"click.", "track.", "links.", "email.", "mail.", "e.", "go.", "t.", "l."}
+            if any(host.startswith(p) for p in tracking_domains):
+                continue
+            link_org = _org_domain(host)
+            if link_org != sender_org:
+                mismatched.add(host)
+        except Exception:
+            continue
+    return mismatched
 
 URL_RE = re.compile(r"(?i)\bhttps?://[^\s<>\]\[\"']+")
+
+
+async def _scan_attachments_vt(device_id: str, message: dict, provider: str) -> list[str]:
+    """Scan email attachments via VirusTotal hash lookup. Returns list of finding strings.
+    Non-blocking: failures or missing configuration produce informational messages, not errors."""
+    from services.virustotal import VT_API_KEY
+    if not VT_API_KEY:
+        return []  # Not configured — silently skip (already reported by attachment risk flagging)
+    attachment_names = message.get("attachment_names", [])
+    if not attachment_names or not isinstance(attachment_names, list):
+        return []
+    message_id = message.get("id", "")
+    if not message_id:
+        return []
+    findings: list[str] = []
+    try:
+        # Get attachment IDs from the Gmail message payload
+        # Note: we need the raw message payload which isn't stored in our scan results.
+        # The attachment data is fetched on-demand from Gmail API.
+        from services.gmail import download_attachment, get_attachment_ids
+        from services.virustotal import lookup_hash, compute_sha256
+
+        # Reconstruct attachment info — re-fetch message metadata to get attachment IDs
+        access_token = await gmail._access_token_for(device_id)
+        import httpx
+        async with httpx.AsyncClient(timeout=30) as http:
+            resp = await http.get(
+                f"{gmail.GMAIL_API}/messages/{message_id}",
+                params={"format": "metadata", "metadataHeaders": ""},
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+        if resp.status_code != 200:
+            return []
+
+        msg_data = resp.json()
+        attachments = get_attachment_ids(msg_data.get("payload", {}))
+
+        for att in attachments[:5]:  # Limit to 5 attachments per email (rate limit protection)
+            try:
+                file_bytes = await download_attachment(device_id, message_id, att["attachmentId"])
+                if not file_bytes:
+                    continue
+                sha256 = compute_sha256(file_bytes)
+                result = await lookup_hash(sha256, att["filename"])
+                if result.status == "malicious":
+                    names_str = f" ({', '.join(result.malware_names[:3])})" if result.malware_names else ""
+                    findings.append(
+                        f"Malware detected in attachment '{att['filename']}': "
+                        f"{result.detection_count}/{result.total_engines} antivirus engines flagged this file{names_str}. "
+                        f"Do not open this attachment."
+                    )
+                elif result.status == "suspicious":
+                    findings.append(
+                        f"Suspicious attachment '{att['filename']}': "
+                        f"{result.detection_count}/{result.total_engines} engines flagged this file. "
+                        f"Exercise caution — some engines may produce false positives."
+                    )
+                elif result.status == "unknown":
+                    findings.append(
+                        f"Attachment '{att['filename']}' is not in the VirusTotal malware database. "
+                        f"This does not confirm it is safe — it means this file has not been previously analyzed."
+                    )
+                # "clean" and "error" results are not added as findings (clean is good news, error is non-actionable)
+            except Exception as exc:
+                logger.info("VT scan failed for attachment %s: %s", att.get("filename", "?"), type(exc).__name__)
+    except Exception as exc:
+        logger.info("VT attachment scanning failed for message %s: %s", message_id, type(exc).__name__)
+    return findings
+
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
 PHONE_RE = re.compile(r"(?<!\w)(?:\+?\d[\s().-]*){9,14}(?!\w)")
 SCAN_SECONDS = 15 * 60
@@ -71,15 +191,28 @@ async def _submit_shared_case(provider: str, device_id: str, message: dict[str, 
     # Preserve Reply-To and attachment filenames during intake where available
     reply_to = str(message.get("reply_to", "")) if message.get("reply_to") else ""
     attachment_names = message.get("attachment_names", []) if isinstance(message.get("attachment_names"), list) else []
+    auth_results = message.get("auth_results", {}) if isinstance(message.get("auth_results"), dict) else {}
     link_context = "\n".join(f"Displayed link text: {link.get('text', '')}\nActual destination: {link.get('href', '')}" for link in links if isinstance(link, dict))
     link_section = f"\n\nHTML link destinations:\n{link_context}" if link_context else ""
     reply_section = f"\nReply-To: {reply_to}" if reply_to and reply_to != sender else ""
     attachment_section = f"\nAttachment filenames: {', '.join(attachment_names)}" if attachment_names else ""
-    text = f"From: {sender}{reply_section}\nSubject: {subject}{attachment_section}\n\n{body}{link_section}".strip()
+    # #3: Include authentication evidence plainly
+    auth_section = ""
+    if auth_results:
+        auth_lines = []
+        for mech in ("spf", "dkim", "dmarc"):
+            result = auth_results.get(mech, "unknown")
+            if result in ("fail", "softfail", "permerror"):
+                auth_lines.append(f"Sender authentication ({mech.upper()}): FAILED ({result})")
+            elif result == "pass":
+                auth_lines.append(f"Sender authentication ({mech.upper()}): passed")
+            elif result != "unknown":
+                auth_lines.append(f"Sender authentication ({mech.upper()}): {result}")
+        if auth_lines:
+            auth_section = "\n" + "\n".join(auth_lines)
+    text = f"From: {sender}{reply_section}\nSubject: {subject}{auth_section}{attachment_section}\n\n{body}{link_section}".strip()
 
     # C1: Reconcile retries with existing case/job to prevent duplicate investigations.
-    # If the receipt already has a caseId and jobId from a previous attempt, check if they exist
-    # and reuse them instead of creating new ones.
     existing_case_id = receipt.get("case_id")
     existing_job_id = receipt.get("job_id")
     reuse_existing = False
@@ -87,19 +220,15 @@ async def _submit_shared_case(provider: str, device_id: str, message: dict[str, 
         try:
             existing_case = await repo.get_case(device_id, existing_case_id)
             existing_job = await repo.get_job(device_id, existing_case_id, existing_job_id)
-            # If the job is still runnable or already completed, don't create a new one
             if existing_job["status"] in ("queued", "investigating", "retry_wait", "waiting_device"):
-                # Job is still in progress — mark as submitted and let finalise handle it
                 await db.mailbox_assessment_receipts.update_one(key, {"$set": {"state": "submitted", "updated_at": now_utc()}})
                 return True
             if existing_case.get("response_ciphertext"):
-                # Already completed — mark as complete
                 await db.mailbox_assessment_receipts.update_one(key, {"$set": {"state": "complete", "processed_at": now_utc(), "updated_at": now_utc()}})
                 return False
-            # Job exists but failed/cancelled — reuse the case, create new job
             reuse_existing = True
         except Exception:
-            pass  # Case/job not found — create fresh ones
+            pass
 
     if reuse_existing and existing_case_id:
         case = await repo.get_case(device_id, existing_case_id)
@@ -111,9 +240,56 @@ async def _submit_shared_case(provider: str, device_id: str, message: dict[str, 
         local_findings.append("The email contains one or more links requiring sender and destination verification.")
     if re.search(r"(?i)urgent|verify|payment|password|code|invoice|account|transfer", text):
         local_findings.append("The email contains urgency, account, credential or payment language worth checking.")
+
+    # Email Gate: Sender/link domain mismatch detection
+    sender_domain = _extract_domain_from_email(sender)
+    if sender_domain and links:
+        mismatched_domains = _find_domain_mismatches(sender_domain, links)
+        if mismatched_domains:
+            domains_str = ", ".join(sorted(mismatched_domains)[:5])
+            local_findings.append(
+                f"The sender's email address ({sender_domain}) and link destinations use different domains ({domains_str}). "
+                "Verify the sender before opening the link or following payment instructions."
+            )
+    # Reply-To mismatch detection
+    if reply_to:
+        reply_domain = _extract_domain_from_email(reply_to)
+        if reply_domain and sender_domain and not _domains_same_org(reply_domain, sender_domain):
+            local_findings.append(
+                f"The Reply-To address ({reply_to}) uses a different domain ({reply_domain}) from the sender ({sender_domain}). "
+                "Replies will go to a different address than the one displayed."
+            )
+    # Authentication failure detection (#4)
+    if auth_results:
+        for mech in ("dmarc", "spf", "dkim"):
+            result = auth_results.get(mech, "unknown")
+            if result in ("fail", "softfail", "permerror"):
+                local_findings.append(
+                    f"Sender authentication failed ({mech.upper()}: {result}). "
+                    "The sender's identity could not be authenticated by the email provider. "
+                    "This does not prove fraud, but the sender could not be verified."
+                )
+                break  # one auth failure finding is enough
+    # Attachment risk flagging (#5)
+    risky_extensions = {".exe", ".scr", ".bat", ".cmd", ".com", ".pif", ".js", ".vbs", ".wsf",
+                        ".msi", ".dll", ".hta", ".ps1", ".reg", ".lnk", ".iso", ".img", ".cab"}
+    for name in attachment_names:
+        ext = "." + name.rsplit(".", 1)[-1].lower() if "." in name else ""
+        if ext in risky_extensions:
+            local_findings.append(
+                f"Risky attachment type: {name} ({ext}). This file type can execute code on your device. "
+                "Apollo flagged the filename — attachment contents were not inspected."
+            )
+
     for index, finding in enumerate(local_findings):
         await evidence.ingest_text(device_id, case, f"mailbox-{digest}-finding-{index}", finding, origin="apollo_inference",
                                    label="Apollo background intake observation", coverage=evidence.Coverage(status="examined", unit="items", total=1, examined=1))
+    # #6: VirusTotal hash-based malware scanning for attachments (non-blocking, best-effort).
+    # Only runs when VIRUSTOTAL_API_KEY is configured. Uses hash-only mode — no file content leaves Apollo.
+    vt_findings = await _scan_attachments_vt(device_id, message, provider)
+    for vt_idx, vt_finding in enumerate(vt_findings):
+        await evidence.ingest_text(device_id, case, f"mailbox-{digest}-vt-{vt_idx}", vt_finding, origin="apollo_inference",
+                                   label="VirusTotal attachment scan", coverage=evidence.Coverage(status="examined", unit="items", total=1, examined=1))
     turn_id = str(uuid.uuid4())
     payload = {"message": "Investigate this monitored email. Verify its sender, claims and every material link; explain one safe next action.",
                "answerToQuestionId": None, "evidenceIds": [item.id], "turnId": turn_id}
@@ -146,16 +322,46 @@ async def _finalise_receipt(receipt: dict) -> None:
             await db.mailbox_assessment_receipts.update_one(selector, {"$set": {"state": "failed", "failure": job["status"], "updated_at": now_utc()}})
         return
     await db.mailbox_assessment_receipts.update_one(selector, {"$set": {"state": "complete", "processed_at": now_utc(), "updated_at": now_utc()}})
-    # C2: Update the gmail connection's assessment timestamp so the Email Gate can distinguish
-    # "retrieval works but assessment failed" from "everything is working".
+    # C2: Update the gmail connection's assessment timestamp
     try:
         await db.gmail_connections.update_one(
             {"device_id": owner},
             {"$set": {"monitor_last_assessment_at": now_utc()}}
         )
     except Exception:
-        pass  # non-critical metadata update
+        pass
+    # #1: Push notification for background warning delivery. When the investigation completed
+    # with findings that require attention, send a push notification so the user is alerted even
+    # when Apollo is closed. The push payload contains only the case ID, not email content.
+    try:
+        await _send_assessment_push(owner, case_id, case, receipt)
+    except Exception as exc:
+        logger.info("Assessment push for case %s failed (non-blocking): %s", case_id, type(exc).__name__)
 
+
+
+async def _send_assessment_push(owner: str, case_id: str, case: dict, receipt: dict) -> None:
+    """Send a push notification when a background email assessment identifies concerns.
+    The notification content is generic and contains no email content — just enough for the
+    user to open Apollo and review the finding."""
+    if not case.get("response_ciphertext"):
+        return
+    device = await db.devices.find_one({"device_id": owner}, {"push_token": 1})
+    if not device or not device.get("push_token"):
+        return
+    push_token = device["push_token"]
+    provider = receipt.get("provider", "email")
+    from routers.push import send_push
+    await send_push(
+        recipients=[push_token],
+        data={
+            "title": "Apollo: email needs attention",
+            "body": f"Apollo found concerns in a monitored {provider} message. Open Apollo to review.",
+            "type": "email_assessment",
+            "caseId": case_id,
+        },
+        owner_id=owner,
+    )
 
 async def finalise_pending_assessments() -> None:
     async for receipt in db.mailbox_assessment_receipts.find({"state": "submitted"}, {"_id": 0}).limit(100):

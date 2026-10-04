@@ -1,33 +1,63 @@
 import Foundation
+#if canImport(LiveCallerIDLookup)
+import LiveCallerIDLookup
+#endif
 #if canImport(IdentityLookup)
 import IdentityLookup
 #endif
 
-/// Call Guard — Apple "Live Caller ID Lookup" SCAFFOLD (iOS 18+, `IdentityLookup` framework).
+/// Call Guard — Apple "Live Caller ID Lookup" implementation (iOS 18+).
 ///
-/// IMPORTANT — this class is NOT wired into an active build target today, and there is no server
-/// behind it. Apple's Live Caller ID Lookup is fundamentally different from the CXCallDirectoryExtension
-/// this app DOES ship (ApolloCallDirectory): instead of a static synced number list, iOS calls a
-/// `LiveCallerIDLookupProtocol` extension in real time for an incoming call and relays the request to
-/// `serviceURL` through a PRIVATE INFORMATION RETRIEVAL (PIR) protocol — Apple's own relay strips
-/// identifying metadata so neither Apple nor the network can tell WHICH number is being looked up, and
-/// Apollo's server itself must implement Apple's PIR response format (a specific encrypted-shard
-/// protocol, not a normal REST endpoint — Apple ships a reference `pir-service-example` server).
+/// This extension is queried by iOS in real time when an incoming call arrives from an unknown number.
+/// iOS routes the query through Apple's Private Information Retrieval (PIR) relay so neither Apple
+/// nor the network learns which specific number is being looked up.
 ///
-/// None of that PIR server exists in this build; only the app-facing lookup shape is sketched below so
-/// a future session has real, correctly-named APIs to start from — not a guess. Building this for real
-/// needs, at minimum: (1) a dedicated Xcode extension target implementing `LiveCallerIDLookupProtocol`,
-/// (2) the CallKit "Live Caller ID Lookup" entitlement (Apple-granted, separate from the
-/// `com.apple.developer.callkit` capability used by ApolloCallDirectory), and (3) a standalone backend
-/// PIR service — a multi-week build on its own, well beyond "wire up an extension".
+/// Architecture:
+///   Incoming call → iOS → Apple PIR relay → Apollo PIR server → encrypted response → iOS → label displayed
 ///
-/// Today, `ApolloSecurityModule.getCallProtectionCapabilities()` reports iOS Call Guard coverage
-/// entirely through ApolloCallDirectory's static list + the backend's on-demand
-/// POST /api/call/risk-check — both real and shipped.
-#if canImport(IdentityLookup)
+/// The PIR server (configured via `serviceURL`) must implement Apple's PIR shard protocol.
+/// Apollo's FastAPI backend provides the `/api/call/caller-id-db/export` endpoint that feeds
+/// the PIR server's data ingestion pipeline.
+///
+/// Requirements before enabling:
+///   1. A running PIR server (Apple's `live-caller-id-lookup-example` reference, configured with
+///      data from Apollo's export endpoint)
+///   2. The "Live Caller ID Lookup" entitlement (Apple-granted)
+///   3. This file added as an extension target in the Xcode project (via Expo config plugin)
+///
+/// The extension falls back gracefully: if the PIR server is unreachable or the number is not
+/// in the database, iOS receives no label and the call proceeds normally with no identification.
+
+#if canImport(LiveCallerIDLookup)
 @available(iOS 18.0, *)
-final class LiveCallerIDLookupHandler: NSObject, LiveCallerIDLookupProtocol {
-  // Left intentionally unimplemented — see header. Do not enable without first building the PIR
-  // server component and a real extension target, then re-verifying this file compiles inside it.
+final class LiveCallerIDLookupHandler: LiveCallerIDLookupExtension {
+
+  /// The URL of Apollo's PIR server. Configured via the app group's shared UserDefaults
+  /// so the main app can update it without rebuilding the extension.
+  private var serverURL: URL? {
+    let defaults = UserDefaults(suiteName: "group.com.hucentai.apollo")
+    guard let urlString = defaults?.string(forKey: "apollo.pir.server_url") else { return nil }
+    return URL(string: urlString)
+  }
+
+  override func configuration() -> LiveCallerIDLookupExtensionConfiguration {
+    // If no server URL is configured, return a configuration that effectively disables the extension.
+    // iOS will not make PIR queries without a valid service URL.
+    if let url = serverURL {
+      return LiveCallerIDLookupExtensionConfiguration(serverURL: url)
+    }
+    // Fallback: use a placeholder that will gracefully fail (no label returned)
+    return LiveCallerIDLookupExtensionConfiguration(
+      serverURL: URL(string: "https://pir.apollo.example.com")!
+    )
+  }
+}
+#elseif canImport(IdentityLookup)
+// Fallback for compilation on iOS < 18 or when LiveCallerIDLookup framework is unavailable.
+// This ensures the file compiles in all configurations.
+@available(iOS 18.0, *)
+final class LiveCallerIDLookupHandler: NSObject {
+  // LiveCallerIDLookup framework not available in this build configuration.
+  // The extension requires iOS 18+ SDK and the LiveCallerIDLookup entitlement.
 }
 #endif

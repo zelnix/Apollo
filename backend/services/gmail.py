@@ -187,6 +187,42 @@ def _headers_of(message: dict) -> dict[str, str]:
     return {h["name"].lower(): h.get("value", "") for h in message.get("payload", {}).get("headers", [])}
 
 
+def _extract_auth_results(headers: dict[str, str]) -> dict[str, str]:
+    """Parse SPF, DKIM, and DMARC results from Gmail's Authentication-Results header.
+    These are set by Google's receiving mail server and are trustworthy when read from the API.
+    Returns a dict with keys 'spf', 'dkim', 'dmarc' → 'pass'|'fail'|'softfail'|'neutral'|'none'|'unknown'."""
+    auth_header = headers.get("authentication-results", "")
+    results: dict[str, str] = {"spf": "unknown", "dkim": "unknown", "dmarc": "unknown"}
+    if not auth_header:
+        return results
+    lower = auth_header.lower()
+    for mechanism in ("spf", "dkim", "dmarc"):
+        # Look for "mechanism=result" patterns in the authentication-results header
+        match = re.search(rf"{mechanism}=(\w+)", lower)
+        if match:
+            result = match.group(1)
+            if result in ("pass", "fail", "softfail", "neutral", "none", "temperror", "permerror"):
+                results[mechanism] = result
+    return results
+
+
+def _extract_attachment_names(payload: dict) -> list[str]:
+    """Extract attachment filenames from the message payload for risky-type flagging."""
+    names: list[str] = []
+    _collect_attachment_names(payload, names)
+    return names
+
+
+def _collect_attachment_names(part: dict, names: list[str]) -> None:
+    """Recursively walk MIME parts to find attachment filenames."""
+    if isinstance(part.get("parts"), list):
+        for child in part["parts"]:
+            _collect_attachment_names(child, names)
+    filename = part.get("filename", "")
+    if filename and part.get("body", {}).get("attachmentId"):
+        names.append(filename)
+
+
 async def scan_inbox_page(device_id: str, page_token: str | None = None, limit: int = 15) -> tuple[list[dict[str, Any]], str | None]:
     """Fetch one durable cursor page; raw content remains request-scoped until encrypted case intake."""
     limit = max(1, min(limit, 25))
@@ -211,7 +247,18 @@ async def scan_inbox_page(device_id: str, page_token: str | None = None, limit: 
             msg = got.json()
             h = _headers_of(msg)
             text, anchors = _extract_content(msg)
-            out.append({"id": msg.get("id", ""), "from": h.get("from", ""), "subject": h.get("subject", ""), "date": h.get("date", ""), "body": text, "links": anchors})
+            # #3: Extract authentication evidence from Gmail-provided headers.
+            # These are set by the receiving mail server (Google), not by the sender — they are
+            # trustworthy when read from the API (unlike headers pasted in email body text).
+            auth_results = _extract_auth_results(h)
+            # Extract Reply-To for mismatch detection (Email Gate improvement)
+            reply_to = h.get("reply-to", "")
+            # Extract attachment filenames for risky-type flagging
+            attachment_names = _extract_attachment_names(msg.get("payload", {}))
+            out.append({"id": msg.get("id", ""), "from": h.get("from", ""), "subject": h.get("subject", ""),
+                        "date": h.get("date", ""), "body": text, "links": anchors,
+                        "reply_to": reply_to, "attachment_names": attachment_names,
+                        "auth_results": auth_results})
     return out, listing.get("nextPageToken")
 
 
@@ -219,3 +266,43 @@ async def scan_inbox(device_id: str, limit: int = 15) -> list[dict[str, Any]]:
     """Compatibility wrapper for tests and callers that deliberately request only the first page."""
     items, _next = await scan_inbox_page(device_id, None, limit)
     return items
+
+
+
+async def download_attachment(device_id: str, message_id: str, attachment_id: str) -> bytes | None:
+    """Download an individual attachment from a Gmail message.
+    Returns raw attachment bytes, or None on failure."""
+    access_token = await _access_token_for(device_id)
+    auth = {"Authorization": f"Bearer {access_token}"}
+    try:
+        async with httpx.AsyncClient(timeout=30) as http:
+            resp = await http.get(
+                f"{GMAIL_API}/messages/{message_id}/attachments/{attachment_id}",
+                headers=auth,
+            )
+        if resp.status_code != 200:
+            return None
+        import base64
+        data_b64 = resp.json().get("data", "")
+        # Gmail API returns URL-safe base64
+        return base64.urlsafe_b64decode(data_b64 + "==")
+    except Exception:
+        return None
+
+
+def get_attachment_ids(payload: dict) -> list[dict]:
+    """Extract attachment IDs and filenames from a Gmail message payload.
+    Returns list of {filename, attachmentId, mimeType}."""
+    attachments: list[dict] = []
+    _collect_attachments(payload, attachments)
+    return attachments
+
+
+def _collect_attachments(part: dict, out: list[dict]) -> None:
+    if isinstance(part.get("parts"), list):
+        for child in part["parts"]:
+            _collect_attachments(child, out)
+    filename = part.get("filename", "")
+    attachment_id = part.get("body", {}).get("attachmentId")
+    if filename and attachment_id:
+        out.append({"filename": filename, "attachmentId": attachment_id, "mimeType": part.get("mimeType", "")})
