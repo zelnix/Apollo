@@ -110,11 +110,10 @@ for (const item of [
 
 const netStatus = (overrides: any = {}) => ({ connected: true, type: "wifi", ssid: "Cafe Guest", wifiSecurity: "open", captivePortal: false, vpnActive: false, inspectable: false, ...overrides });
 for (const item of [
-  ["network-threat-dangerous", "threatening", { status: netStatus(), context: "public", sdk: { blockedMalicious: 0, c2Apps: ["Unknown Helper"], unknownHosts: 0, dnsChanged: false, vpnChangedRecently: false } }, "barking", "Dangerous traffic", "does not provide enough evidence", "Check This App"],
   ["network-legitimate-home", "legitimate", { status: netStatus({ ssid: "Home", wifiSecurity: "wpa3", inspectable: true }), context: "home" }, "resting", "Home Wi", "No suspicious", "Nothing to do"],
   ["network-ambiguous-open", "ambiguous", { status: netStatus(), context: "public" }, "ears_up", "Open Wi", "could", "mobile data"],
 ] as const) {
-  const [id, tone, input, state, detectionNeedle, investigationNeedle, actionNeedle] = item; const a = analyseNetwork({ trustedSsids: [], expectedName: null, captiveUrl: null, vpnTrusted: null, recentScentCategories: [], sdk: null, ...(input as any) });
+  const [id, tone, input, state, detectionNeedle, investigationNeedle, actionNeedle] = item; const a = analyseNetwork({ trustedSsids: [], expectedName: null, captiveUrl: null, vpnTrusted: null, recentScentCategories: [], ...(input as any) });
   scenarios.push(result(id, "network", tone, JSON.stringify(input), exp("network", state as ApolloState, detectionNeedle, investigationNeedle, "unknown", actionNeedle), actual("network", a.state, a.scenario, a.title, `${a.verdict} ${a.why.join(" ")}`, a.recommendation, "Available network signals do not establish interception or a confirmed block.")));
 }
 

@@ -43,7 +43,9 @@ test("fresh native evidence is required for Protection on", () => {
 test("Email Gate requires a fresh successful service heartbeat", () => {
   const stale = buildGatesOverview({ ...base, email: { checking: false, configured: true, connected: true, monitoringRequested: true, lastCheckedAt: null, lastErrorAt: null } }).gates.find((gate) => gate.id === "email")!;
   assert.equal(stale.statusLabel, "Status unavailable");
-  const live = buildGatesOverview({ ...base, email: { checking: false, configured: true, connected: true, monitoringRequested: true, lastCheckedAt: new Date().toISOString(), lastErrorAt: null } }).gates.find((gate) => gate.id === "email")!;
+  const retrievalOnly = buildGatesOverview({ ...base, email: { checking: false, configured: true, connected: true, monitoringRequested: true, lastCheckedAt: new Date().toISOString(), lastErrorAt: null } }).gates.find((gate) => gate.id === "email")!;
+  assert.equal(retrievalOnly.statusLabel, "Checking");
+  const live = buildGatesOverview({ ...base, email: { checking: false, configured: true, connected: true, monitoringRequested: true, lastCheckedAt: new Date().toISOString(), lastAssessmentAt: new Date().toISOString(), lastErrorAt: null } }).gates.find((gate) => gate.id === "email")!;
   assert.equal(live.statusLabel, "Watching");
 });
 

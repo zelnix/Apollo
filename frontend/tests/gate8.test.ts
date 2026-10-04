@@ -5,7 +5,6 @@ import { test } from "node:test";
 import { analyseAccountAlert, inspectAccountEvidence, isOfficialHost, type AccountInput } from "../src/domain/accountAnalysis.ts";
 import { analyseNetwork, ssidMatches, type NetworkInput } from "../src/domain/networkAnalysis.ts";
 import type { NetworkStatus } from "../src/security/SecurityPlatformAdapter";
-import { summariseNetworkEvents } from "../src/domain/networkAnalysis.ts";
 
 const wifi = (over: Partial<NetworkStatus> = {}): NetworkStatus => ({ connected: true, type: "wifi", isInternetReachable: true, inspectable: true, wifiSecurity: "wpa", captivePortal: false, vpnActive: false, ssid: "Home-5G", checkedAt: new Date().toISOString(), ...over });
 const net = (over: Partial<NetworkInput> = {}): NetworkInput => ({ status: wifi(), context: "unknown", trustedSsids: [], vpnTrusted: null, ...over });
@@ -34,17 +33,6 @@ test("unknown or uninspectable network details remain uncertain", () => {
 test("N05 captive portal with page address → growling + web handoff", () => {
   const r = analyseNetwork(net({ status: wifi({ captivePortal: true }), captiveUrl: "http://hotel-wifi-login.top/auth" })); assert.equal(r.state, "growling"); assert.equal(r.handoff, "web");
 });
-test("N12 aggregate device signal never claims a confirmed block without enforcement evidence", () => {
-  const r = analyseNetwork(net({ context: "home", sdk: { blockedMalicious: 1, c2Apps: [], unknownHosts: 0, dnsChanged: false, vpnChangedRecently: false } }));
-  assert.equal(r.state, "barking"); assert.match(r.verdict, /does not contain confirmed enforcement evidence/i); assert.doesNotMatch(r.verdict, /I blocked/);
-});
-test("N07 C2 traffic from an app → barking + app handoff", () => {
-  const r = analyseNetwork(net({ sdk: { blockedMalicious: 3, c2Apps: ["Example Support"], unknownHosts: 0, dnsChanged: false, vpnChangedRecently: false } })); assert.equal(r.state, "barking"); assert.equal(r.handoff, "app"); assert.match(r.verdict, /Example Support/);
-});
-test("N08 DNS change alone → ears_up; after app event → growling", () => {
-  const sdk = { blockedMalicious: 0, c2Apps: [], unknownHosts: 0, dnsChanged: true, vpnChangedRecently: false };
-  assert.equal(analyseNetwork(net({ sdk })).state, "ears_up"); assert.equal(analyseNetwork(net({ sdk, recentScentCategories: ["app"] })).state, "growling");
-});
 test("N09 VPN on after suspicious app install → growling + app handoff", () => {
   const r = analyseNetwork(net({ status: wifi({ vpnActive: true }), recentScentCategories: ["app"] })); assert.equal(r.state, "growling"); assert.equal(r.scenario, "N09"); assert.equal(r.handoff, "app");
 });
@@ -52,17 +40,9 @@ test("N10 / acceptance 5: trusted VPN the user turned on → resting", () => {
   const r = analyseNetwork(net({ status: wifi({ vpnActive: true }), vpnTrusted: true, context: "public" })); assert.equal(r.state, "resting"); assert.equal(r.scenario, "N10");
 });
 test("VPN on, not sure who started it → ears_up (not growl)", () => { assert.equal(analyseNetwork(net({ status: wifi({ vpnActive: true }) })).state, "ears_up"); });
-test("N11 many unknown destinations → ears_up, no malware claim", () => {
-  const r = analyseNetwork(net({ context: "home", sdk: { blockedMalicious: 0, c2Apps: [], unknownHosts: 7, dnsChanged: false, vpnChangedRecently: false } })); assert.equal(r.state, "ears_up"); assert.ok(!/malware/i.test(r.verdict));
-});
 test("mobile data → resting; offline → resting N00", () => {
   assert.equal(analyseNetwork(net({ status: wifi({ type: "cellular", ssid: null, wifiSecurity: "n/a" }) })).state, "resting");
   assert.equal(analyseNetwork(net({ status: wifi({ connected: false }) })).scenario, "N00");
-});
-test("summariseNetworkEvents folds SDK events", () => {
-  const now = new Date().toISOString();
-  const s = summariseNetworkEvents([{ eventType: "blocked_destination", domain: "bad.test", appName: null, verdict: "malicious", blocked: true, occurredAt: now, relatedThreatScent: null }, { eventType: "c2_traffic", domain: "c2.test", appName: "Evil", verdict: "malicious", blocked: true, occurredAt: now, relatedThreatScent: null }, { eventType: "dns_change", domain: null, appName: null, verdict: "unknown", blocked: false, occurredAt: now, relatedThreatScent: null }]);
-  assert.equal(s.blockedMalicious, 1); assert.deepEqual(s.c2Apps, ["Evil"]); assert.equal(s.dnsChanged, true);
 });
 
 // ---- Account Guard ----

@@ -7,7 +7,7 @@ import { Redirect, useRouter } from "expo-router";
 import * as Crypto from "expo-crypto";
 import Wifi from "lucide-react-native/icons/wifi";
 import X from "lucide-react-native/icons/x";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Pressable, Switch, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -71,10 +71,9 @@ export default function CheckNetwork() {
     let event: PatrolEvent | null = null;
     if (a.state !== "resting") {
       // Network Guard creates a Patrol event from platform-observed network facts only.
-      // summarised block COUNT, not a per-connection evidence record) — so the PERSISTED Patrol
-      // entry must never claim state="biting"/verified_block regardless of what analyseNetwork's
-      // on-screen verdict text says the SDK reported. Cap the synced state at "barking" (still
-      // visible, still actionable) so this can never look like a server-verified block it isn't;
+      // The persisted Patrol entry must never claim state="biting"/verified_block because no
+      // traffic inspection or per-connection enforcement evidence exists in this build.
+      // Cap the synced state at "barking" so it can never look like a server-verified block;
       // see the biting invariant in backend/routers/patrol.py::_derive_verified_block.
       const syncedState = a.state === "biting" ? "barking" : a.state;
       event = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "connection", state: syncedState, status: "active", headline: `Network: ${a.title}`, what_happened: a.verdict, why: a.why, what_to_do: a.recommendation, indicator_host: captiveUrl.trim() ? captiveUrl.trim().replace(/^https?:\/\//i, "").split("/")[0] : null, indicator_digest: null, local_indicator: a.ssid, verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: syncedState === "ears_up" || syncedState === "growling", claimed_brand: null, scenario: a.scenario });
@@ -140,7 +139,7 @@ export default function CheckNetwork() {
         ) : null}
         <Card style={{ gap: spacing.xs }} testID="network-cannot-see">
           <SectionTitle>What Apollo can see here</SectionTitle>
-          <Body>{sdkLive ? "Available device checks: destination filtering status, DNS/VPN state and network events." : "This build sees only what the platform reports: connection type, Wi‑Fi name (with location permission), captive portal and VPN flags. It cannot read DNS queries, per-app traffic or confirm destination blocking — Apollo won't pretend otherwise."}</Body>
+          <Body>This build sees only what the platform reports: connection type, Wi‑Fi name (with location permission), captive portal and VPN flags. It cannot read DNS queries, per-app traffic or confirm destination blocking — Apollo won&apos;t pretend otherwise.</Body>
         </Card>
       </KeyboardAwareScrollView>
     </View>
