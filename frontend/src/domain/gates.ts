@@ -7,7 +7,7 @@ import { VERIFICATION_FRESHNESS_MS } from "./stateMachine.ts";
 
 export type GateId = "site" | "link" | "text" | "call" | "network" | "account" | "email" | "file" | "app" | "device";
 export type GateAutomationKind = "enforcement" | "monitoring" | "event_driven";
-export type AutomaticCapabilityState = "running" | "checking" | "permission_needed" | "setup_needed" | "off_by_choice" | "temporarily_unavailable" | "unsupported";
+export type AutomaticCapabilityState = "running" | "checking" | "permission_needed" | "setup_needed" | "off_by_choice" | "temporarily_unavailable" | "unsupported" | "not_activated";
 export type OnDemandCapabilityState = "ready" | "temporarily_unavailable" | "unsupported";
 export type GateStatusLabel = "Protection on" | "Watching" | "Ready when you need it" | "Ready now" | "Needs your attention" | "Off" | "Checking" | "Status unavailable" | "Not available on this device";
 export type GateTone = "good" | "attention" | "neutral" | "unavailable";
@@ -44,6 +44,7 @@ function presentation(base: Omit<GatePresentation, "statusLabel" | "tone">): Gat
   let statusLabel: GateStatusLabel; let tone: GateTone;
   if (auto?.state === "running") { statusLabel = auto.kind === "enforcement" ? "Protection on" : "Watching"; tone = "good"; }
   else if (auto?.state === "checking") { statusLabel = "Checking"; tone = "neutral"; }
+  else if (auto?.state === "not_activated") { statusLabel = "Ready when you need it"; tone = "neutral"; }
   else if (request) { statusLabel = "Needs your attention"; tone = "attention"; }
   else if (auto?.state === "off_by_choice") { statusLabel = base.capability.onDemand?.state === "ready" ? "Ready now" : "Off"; tone = "neutral"; }
   else if (auto?.state === "temporarily_unavailable") { statusLabel = "Status unavailable"; tone = "unavailable"; }
