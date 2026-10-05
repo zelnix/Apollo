@@ -63,8 +63,22 @@ const cfg = Object.fromEntries(KEYS.map((k) => [k, process.env[k] ?? environment
 if (!cfg.EXPO_PUBLIC_APP_ENV && profile) cfg.EXPO_PUBLIC_APP_ENV = guessedEnv;
 
 const errors = [];
-const appConfigModule = require(path.join(root, "app.config.js"));
-const resolvedAppConfig = appConfigModule.expo || appConfigModule;  // support { expo: {...} } and flat
+// In the EAS build environment the Emergent pipeline generates app.json from
+// app.config.js and then deletes app.config.js.  Fall back to app.json so this
+// pre-install hook works in both local and EAS contexts.
+let resolvedAppConfig;
+const appConfigPath = path.join(root, "app.config.js");
+const appJsonPath = path.join(root, "app.json");
+if (fs.existsSync(appConfigPath)) {
+  const appConfigModule = require(appConfigPath);
+  resolvedAppConfig = appConfigModule.expo || appConfigModule;
+} else if (fs.existsSync(appJsonPath)) {
+  const appJson = JSON.parse(fs.readFileSync(appJsonPath, "utf8"));
+  resolvedAppConfig = appJson.expo || appJson;
+} else {
+  errors.push("Neither app.config.js nor app.json found — cannot validate app identity.");
+  resolvedAppConfig = {};
+}
 if (resolvedAppConfig.android?.package !== ANDROID_PACKAGE) errors.push(`Android package must be ${ANDROID_PACKAGE}.`);
 if (resolvedAppConfig.ios?.bundleIdentifier !== IOS_BUNDLE_IDENTIFIER) errors.push(`iOS bundle identifier must be ${IOS_BUNDLE_IDENTIFIER}.`);
 // CNG has no android/ until prebuild. The authoritative package is app.config.js; if a
