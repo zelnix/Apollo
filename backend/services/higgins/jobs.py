@@ -200,10 +200,24 @@ async def recover() -> None:
     from routers.investigations import _finish_device_submission  # local import: router depends on this module
     async for pending in db.investigation_device_requests.find({"submission.state": {"$in": ["claimed", "storing", "stored", "resuming"]}}, {"_id": 0}):
         case = await db.investigation_cases.find_one({"owner_id": pending["owner_id"], "case_id": pending["case_id"], "deleted": False}, {"_id": 0})
-        if case:
-            try:
-                await _finish_device_submission(pending["owner_id"], case, pending)
-            except Exception:  # noqa: BLE001
+        if not case:
+            # Case deleted while submission was in-flight — abandon so it's not retried every sweep.
+            await db.investigation_device_requests.update_one(
+                {"owner_id": pending["owner_id"], "case_id": pending["case_id"], "request_id": pending["request_id"]},
+                {"$set": {"submission.state": "abandoned"}})
+            logger.warning("device submission recovery: case gone, abandoned request=%s", pending["request_id"])
+            continue
+        try:
+            await _finish_device_submission(pending["owner_id"], case, pending)
+        except Exception as exc:  # noqa: BLE001
+            from fastapi.exceptions import HTTPException
+            if isinstance(exc, HTTPException) and exc.status_code == 404:
+                # Job was deleted/expired/swept — mark abandoned so the sweep stops retrying.
+                await db.investigation_device_requests.update_one(
+                    {"owner_id": pending["owner_id"], "case_id": pending["case_id"], "request_id": pending["request_id"]},
+                    {"$set": {"submission.state": "abandoned"}})
+                logger.warning("device submission recovery: job gone (404), abandoned request=%s", pending["request_id"])
+            else:
                 logger.exception("device submission recovery failed request=%s", pending["request_id"])
     async for job in db.investigation_jobs.find({"status": {"$in": ["queued", "investigating", "retry_wait"]}, "deadline_at": {"$gt": now},
                                                  "$or": [{"lease_until": None}, {"lease_until": {"$lte": now}}]}, {"_id": 0, "owner_id": 1, "case_id": 1, "job_id": 1}):
