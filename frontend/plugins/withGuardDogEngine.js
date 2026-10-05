@@ -108,9 +108,33 @@ const withGuardDogRootBuildGradle = (config) =>
     return config;
   });
 
+const BOUNCY_CASTLE_MARKER = "GuardDog BouncyCastle dedup (Stage 1C)";
+
+/** expo-updates ships bcutil-jdk15to18 → transitively bcprov-jdk15to18, while guarddog-core
+ * requires bcprov-jdk18on. Both bcprov variants contain identical classes (different JDK target
+ * flavour of the same BouncyCastle provider). Exclude the older jdk15to18 variant globally so only
+ * jdk18on remains on the classpath. The bcutil-jdk15to18 utility package is unaffected — its
+ * runtime needs are satisfied by bcprov-jdk18on which exposes the same API surface. */
+const withBouncyCastleDedup = (config) =>
+  withProjectBuildGradle(config, (config) => {
+    if (config.modResults.contents.includes(BOUNCY_CASTLE_MARKER)) return config;
+    config.modResults.contents += `
+// ${BOUNCY_CASTLE_MARKER}: expo-updates pulls bcprov-jdk15to18 (via bcutil-jdk15to18)
+// while guarddog-core requires bcprov-jdk18on — they contain identical org.bouncycastle.*
+// classes. Exclude the older jdk15to18 provider globally; jdk18on is the superset.
+subprojects {
+    configurations.configureEach {
+        exclude group: 'org.bouncycastle', module: 'bcprov-jdk15to18'
+    }
+}
+`;
+    return config;
+  });
+
 module.exports = function withGuardDogEngine(config) {
   config = withSourceCheck(config);
   config = withGuardDogSettingsGradle(config);
   config = withGuardDogRootBuildGradle(config);
+  config = withBouncyCastleDedup(config);
   return config;
 };
