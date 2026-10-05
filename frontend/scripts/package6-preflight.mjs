@@ -1,5 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
 
 const frontend = process.cwd();
 const root = path.resolve(frontend, "..");
@@ -21,9 +23,10 @@ const required = [
 ];
 const errors = [];
 for (const rel of required) if (!fs.existsSync(path.join(root, rel))) errors.push(`Missing ${rel}`);
-const app = JSON.parse(fs.readFileSync(path.join(frontend, "app.json"), "utf8"));
-if (app.expo.android.package !== "app.apollo.hwg" || app.expo.ios.bundleIdentifier !== "app.apollo.hwg") errors.push("Mobile application identity changed.");
-const extensions = app.expo.extra?.eas?.build?.experimental?.ios?.appExtensions ?? [];
+// Resolve the dynamic config (app.config.js is the sole authoritative source; app.json was removed).
+const app = require(path.join(frontend, "app.config.js"))();
+if (app.android.package !== "app.apollo.hwg" || app.ios.bundleIdentifier !== "app.apollo.hwg") errors.push("Mobile application identity changed.");
+const extensions = app.extra?.eas?.build?.experimental?.ios?.appExtensions ?? [];
 for (const target of ["ApolloContentBlocker", "ApolloCallDirectory", "ApolloMessageFilter"]) if (!extensions.some((item) => item.targetName === target)) errors.push(`Missing iOS target metadata: ${target}`);
 const desktop = fs.readFileSync(path.join(root, "desktop/src-tauri/src/lib.rs"), "utf8");
 for (const command of ["native_filter_status", "native_enforcement_evidence", "acknowledge_native_evidence", "deactivate_native_filter"]) if (!desktop.includes(command)) errors.push(`Missing desktop host command ${command}`);
@@ -32,4 +35,4 @@ if (/simulated/i.test(adapter)) errors.push("Desktop production adapter referenc
 const macManager = fs.readFileSync(path.join(root, "desktop/native/macos/ApolloExtensionManager/main.swift"), "utf8");
 for (const token of ["NEFilterManager.shared()", "filterDataProviderBundleIdentifier", "saveToPreferences"]) if (!macManager.includes(token)) errors.push(`Missing macOS filter activation step: ${token}`);
 if (errors.length) { for (const error of errors) console.error(`[package6-preflight] ${error}`); process.exit(1); }
-console.log(`[package6-preflight] OK ios-extensions=${extensions.length} desktop-contract=1 package=${app.expo.android.package}`);
+console.log(`[package6-preflight] OK ios-extensions=${extensions.length} desktop-contract=1 package=${app.android.package}`);
