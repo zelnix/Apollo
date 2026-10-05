@@ -112,19 +112,25 @@ const BOUNCY_CASTLE_MARKER = "GuardDog BouncyCastle dedup (Stage 1C)";
 
 /** expo-updates ships bcutil-jdk15to18 → transitively bcprov-jdk15to18, while guarddog-core
  * requires bcprov-jdk18on. Both bcprov variants contain identical classes (different JDK target
- * flavour of the same BouncyCastle provider). Exclude the older jdk15to18 variant globally so only
- * jdk18on remains on the classpath. The bcutil-jdk15to18 utility package is unaffected — its
- * runtime needs are satisfied by bcprov-jdk18on which exposes the same API surface. */
+ * flavour of the same BouncyCastle provider). Use Gradle module substitution to redirect the older
+ * jdk15to18 artifacts to their jdk18on equivalents, so only one copy lands on the classpath.
+ * This preserves the BouncyCastle API surface that expo-updates code-signing needs (ASN1Primitive,
+ * DEROctetString, etc.) while eliminating the duplicate-class conflict with guarddog-core. */
 const withBouncyCastleDedup = (config) =>
   withProjectBuildGradle(config, (config) => {
     if (config.modResults.contents.includes(BOUNCY_CASTLE_MARKER)) return config;
     config.modResults.contents += `
 // ${BOUNCY_CASTLE_MARKER}: expo-updates pulls bcprov-jdk15to18 (via bcutil-jdk15to18)
 // while guarddog-core requires bcprov-jdk18on — they contain identical org.bouncycastle.*
-// classes. Exclude the older jdk15to18 provider globally; jdk18on is the superset.
+// classes. Substitute the older jdk15to18 artifacts with jdk18on equivalents so both
+// dependency trees resolve to a single copy. Version 1.78.1 matches guarddog-core's pin.
 subprojects {
     configurations.configureEach {
-        exclude group: 'org.bouncycastle', module: 'bcprov-jdk15to18'
+        resolutionStrategy.dependencySubstitution {
+            substitute module('org.bouncycastle:bcprov-jdk15to18') using module('org.bouncycastle:bcprov-jdk18on:1.78.1')
+            substitute module('org.bouncycastle:bcpkix-jdk15to18') using module('org.bouncycastle:bcpkix-jdk18on:1.78.1')
+            substitute module('org.bouncycastle:bcutil-jdk15to18') using module('org.bouncycastle:bcutil-jdk18on:1.78.1')
+        }
     }
 }
 `;
