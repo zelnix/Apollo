@@ -24,7 +24,7 @@ const required = [
 const errors = [];
 for (const rel of required) if (!fs.existsSync(path.join(root, rel))) errors.push(`Missing ${rel}`);
 // Resolve the dynamic config (app.config.js is the sole authoritative source; app.json was removed).
-const app = require(path.join(frontend, "app.config.js"))();
+const app = require(path.join(frontend, "app.config.js"));
 if (app.android.package !== "app.apollo.hwg" || app.ios.bundleIdentifier !== "app.apollo.hwg") errors.push("Mobile application identity changed.");
 const extensions = app.extra?.eas?.build?.experimental?.ios?.appExtensions ?? [];
 for (const target of ["ApolloContentBlocker", "ApolloCallDirectory", "ApolloMessageFilter"]) if (!extensions.some((item) => item.targetName === target)) errors.push(`Missing iOS target metadata: ${target}`);

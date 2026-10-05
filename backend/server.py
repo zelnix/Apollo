@@ -90,7 +90,10 @@ async def lifespan(_: FastAPI):
     except Exception:  # noqa: BLE001
         logger.warning("OAuth state index migration skipped (first deploy or index already migrated)")
     await db.gmail_oauth_states.create_index("state_digest", unique=True)
-    await db.gmail_oauth_states.create_index("expires_at", name="oauth_csrf_expiry_ttl", expireAfterSeconds=0,
+    # Plain index on expires_at; expiry is checked at read time, never auto-deleted.
+    # A TTL index (expireAfterSeconds=0) would hard-delete OAuth CSRF state records
+    # automatically, which is destructive on deployment restarts.
+    await db.gmail_oauth_states.create_index("expires_at",
                                               partialFilterExpression={"retention_class": "oauth_csrf_temporary"})
     # Generic IMAP credentials are no longer accepted or written. Legacy rows are retained for an explicit,
     # audited migration rather than destructively dropping user data on every process start.

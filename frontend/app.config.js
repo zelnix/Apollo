@@ -23,13 +23,17 @@ const EAS_OWNER      = process.env.EAS_PROJECT_OWNER || CANONICAL_OWNER;
 const EAS_SLUG       = process.env.EAS_PROJECT_SLUG  || CANONICAL_SLUG;
 const EAS_PROJECT_ID = process.env.EAS_PROJECT_ID    || CANONICAL_PROJECT_ID;
 
-module.exports = () => {
-  const appEnvironment = process.env.EXPO_PUBLIC_APP_ENV || "development";
-  const engine = process.env.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE || (appEnvironment === "production" ? "guarddog_production" : "legacy");
-  const candidate = engine === "guarddog_acceptance" ? acceptance : {};
-  return {
-    // ── core identity ────────────────────────────────────────────────────
-    name: "Apollo",
+// Evaluate dynamic values at require-time (all env vars are available).
+const appEnvironment = process.env.EXPO_PUBLIC_APP_ENV || "development";
+const engine = process.env.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE || (appEnvironment === "production" ? "guarddog_production" : "legacy");
+const candidate = engine === "guarddog_acceptance" ? acceptance : {};
+
+// Direct object export — compatible with both Expo's config loader and the
+// Emergent build pipeline which does require('./app.config.js') without
+// calling a function.  All dynamic values are resolved above.
+module.exports = {
+  // ── core identity ────────────────────────────────────────────────────
+  name: "Apollo",
     owner: EAS_OWNER,
     slug: EAS_SLUG,
     version: "1.1.0",
@@ -191,5 +195,4 @@ module.exports = () => {
         dedupeWindowMs: Number(process.env.EXPO_PUBLIC_GUARDDOG_DEDUPE_WINDOW_MS || "2000"),
       },
     },
-  };
 };
