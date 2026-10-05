@@ -93,7 +93,15 @@ async def lifespan(_: FastAPI):
     # Plain index on expires_at; expiry is checked at read time, never auto-deleted.
     # A TTL index (expireAfterSeconds=0) would hard-delete OAuth CSRF state records
     # automatically, which is destructive on deployment restarts.
+    # Migration: the old TTL index "oauth_csrf_expiry_ttl" must be dropped first
+    # because MongoDB rejects a new index on the same key+filter with different options.
+    try:
+        await db.gmail_oauth_states.drop_index("oauth_csrf_expiry_ttl")
+        logger.info("Dropped legacy TTL index oauth_csrf_expiry_ttl")
+    except Exception:  # noqa: BLE001
+        pass  # Index doesn't exist (first deploy or already migrated)
     await db.gmail_oauth_states.create_index("expires_at",
+                                              name="oauth_csrf_expiry_plain",
                                               partialFilterExpression={"retention_class": "oauth_csrf_temporary"})
     # Generic IMAP credentials are no longer accepted or written. Legacy rows are retained for an explicit,
     # audited migration rather than destructively dropping user data on every process start.
