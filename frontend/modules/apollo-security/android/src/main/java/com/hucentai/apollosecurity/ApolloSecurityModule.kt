@@ -162,7 +162,7 @@ class ApolloSecurityModule : Module() {
       // - always true when connected (Android provides network capabilities without VPN)
       // - VPN running provides additional DNS-level observation (reported separately via vpnActive)
       val networkObservable = caps != null
-      val vpnRunning = ApolloDnsVpnService.isRunning(ctx)
+      val vpnRunning = ApolloDnsVpnService.isRunning
       JSONObject().put("connected", caps != null).put("type", type)
         .put("isInternetReachable", caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) ?: JSONObject.NULL)
         .put("inspectable", networkObservable).put("wifiSecurity", wifiSecurity)
