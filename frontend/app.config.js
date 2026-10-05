@@ -28,10 +28,11 @@ const appEnvironment = process.env.EXPO_PUBLIC_APP_ENV || "development";
 const engine = process.env.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE || (appEnvironment === "production" ? "guarddog_production" : "legacy");
 const candidate = engine === "guarddog_acceptance" ? acceptance : {};
 
-// Direct object export — compatible with both Expo's config loader and the
-// Emergent build pipeline which does require('./app.config.js') without
-// calling a function.  All dynamic values are resolved above.
+// Direct object export with standard { expo: { ... } } wrapper — compatible with
+// both Expo's config loader and the Emergent build pipeline which serializes this
+// to app.json and expects json.expo.extra to exist during its cleanup step.
 module.exports = {
+  expo: {
   // ── core identity ────────────────────────────────────────────────────
   name: "Apollo",
     owner: EAS_OWNER,
@@ -195,4 +196,5 @@ module.exports = {
         dedupeWindowMs: Number(process.env.EXPO_PUBLIC_GUARDDOG_DEDUPE_WINDOW_MS || "2000"),
       },
     },
+  },
 };
