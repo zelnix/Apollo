@@ -13,3 +13,6 @@ coverage/
 **/.gradle/
 **/.kotlin/
 ios/build/
+# GuardDog SDK Gradle build outputs — broken symlinks or stale dirs here cause
+# "Failed to create parent directory" errors during EAS cloud builds.
+packages/**/build/
