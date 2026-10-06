@@ -3,7 +3,6 @@
 import { Platform } from "react-native";
 
 import { SECURITY_CONFIG } from "@/src/config/appEnvironment";
-import { GuardDogSecurityAdapter } from "./guarddog/GuardDogSecurityAdapter";
 import { GuardDogProductionSecurityAdapter } from "./guarddog/GuardDogProductionSecurityAdapter";
 import { getNativeModule } from "./nativeBridge";
 import { AndroidSecurityAdapter, IOSSecurityAdapter } from "./NativeSecurityAdapters";
@@ -23,7 +22,6 @@ export function validateHost(): void {
 export function chooseHostAdapter(): SecurityPlatformAdapter {
   if (Platform.OS === "ios") return IOSSecurityAdapter;
   if (Platform.OS === "android") {
-    if (SECURITY_CONFIG.androidEnforcementEngine === "guarddog_acceptance") return new GuardDogSecurityAdapter();
     if (SECURITY_CONFIG.androidEnforcementEngine === "guarddog_production") return new GuardDogProductionSecurityAdapter();
     return AndroidSecurityAdapter;
   }

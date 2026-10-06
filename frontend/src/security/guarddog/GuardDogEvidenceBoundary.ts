@@ -8,7 +8,7 @@ const results = new Set(["verified", "unverified", "failed"]);
 const confidences = new Set(["high", "medium", "low"]);
 const attributionConfidences = new Set([...confidences, "unavailable"]);
 
-export function parseGuardDogCandidateEvidence(raw: string): EnforcementEvidence[] {
+export function parseGuardDogEvidence(raw: string): EnforcementEvidence[] {
   const value: unknown = JSON.parse(raw);
   if (!Array.isArray(value)) throw new Error("GuardDog evidence inbox is not an array");
   return value.map((item, index) => validate(item, index));

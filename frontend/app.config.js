@@ -2,8 +2,6 @@
 // There is no app.json; this file is the sole config source.
 // Expo loads it automatically (https://docs.expo.dev/workflow/configuration/).
 
-const acceptance = require("./guarddog-acceptance.config.json");
-
 const ANDROID_PACKAGE = "app.apollo.hwg";
 const IOS_BUNDLE_IDENTIFIER = "app.apollo.hwg";
 
@@ -26,7 +24,6 @@ const EAS_PROJECT_ID = process.env.EAS_PROJECT_ID    || CANONICAL_PROJECT_ID;
 // Evaluate dynamic values at require-time (all env vars are available).
 const appEnvironment = process.env.EXPO_PUBLIC_APP_ENV || "development";
 const engine = process.env.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE || (appEnvironment === "production" ? "guarddog_production" : "legacy");
-const candidate = engine === "guarddog_acceptance" ? acceptance : {};
 
 // Direct object export with standard { expo: { ... } } wrapper — compatible with
 // both Expo's config loader and the Emergent build pipeline which serializes this
@@ -134,7 +131,6 @@ module.exports = {
       "./plugins/withApolloCallGuard",
       "./plugins/withApolloTextGuard",
       "./plugins/withGuardDogEngine",
-      "./plugins/withGuardDogCandidateProfile",
       "./plugins/withGuardDogProductionTrust",
       "./plugins/withLiveCallerID",
       "expo-sharing",
@@ -176,15 +172,6 @@ module.exports = {
           },
         },
         projectId: EAS_PROJECT_ID,
-      },
-      guardDogCandidate: {
-        engine,
-        profile: "guarddog-stage1d-acceptance",
-        controlledHost: process.env.EXPO_PUBLIC_GUARDDOG_CONTROLLED_HOST || candidate.controlledHost || "",
-        controlledIpv4: process.env.EXPO_PUBLIC_GUARDDOG_CONTROLLED_IPV4 || candidate.controlledIpv4 || "",
-        controlledUrl: process.env.EXPO_PUBLIC_GUARDDOG_CONTROLLED_URL || candidate.controlledUrl || "",
-        rulesetId: process.env.EXPO_PUBLIC_GUARDDOG_RULESET_ID || candidate.rulesetId || "",
-        signedBundleB64: process.env.EXPO_PUBLIC_GUARDDOG_SIGNED_BUNDLE_B64 || candidate.signedBundleB64 || "",
       },
       guardDogProduction: {
         manifestUrl: process.env.EXPO_PUBLIC_GUARDDOG_TRUST_MANIFEST_URL || "",

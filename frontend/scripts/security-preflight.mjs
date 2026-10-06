@@ -50,9 +50,9 @@ function readDotenv(file) {
 
 const profile = process.env.EAS_BUILD_PROFILE;
 const profileDefaults = profile ? {
-  EXPO_PUBLIC_APP_ENV: ["device-test", "guarddog-acceptance", "staging"].includes(profile) ? "staging" : "production",
+  EXPO_PUBLIC_APP_ENV: profile === "staging" ? "staging" : "production",
   EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS: "off",
-  EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE: profile === "guarddog-acceptance" ? "guarddog_acceptance" : ["production", "app-bundle", "guarddog-production"].includes(profile) ? "guarddog_production" : "legacy",
+  EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE: ["production", "guarddog-production"].includes(profile) ? "guarddog_production" : "legacy",
 } : {};
 const guessedEnv = process.env.EXPO_PUBLIC_APP_ENV || profileDefaults.EXPO_PUBLIC_APP_ENV || (process.env.NODE_ENV === "production" ? "production" : "development");
 const baseFile = readDotenv(path.join(root, ".env"));
@@ -96,8 +96,7 @@ if (harness !== undefined && harness !== "" && harness !== "off" && harness !== 
 if (harness === "enabled" && cfg.EXPO_PUBLIC_APP_ENV !== "development") errors.push("The device-preview harness (simulated device inputs) is only permitted in development builds.");
 if (harness === "enabled" && profile) errors.push("The device-preview harness is web-only and can never be part of an EAS native build profile.");
 const engine = cfg.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE ?? (cfg.EXPO_PUBLIC_APP_ENV === "production" ? "guarddog_production" : "legacy");
-if (!["legacy", "guarddog_acceptance", "guarddog_production"].includes(engine)) errors.push(`EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE="${engine}" is invalid.`);
-if (cfg.EXPO_PUBLIC_APP_ENV === "production" && engine === "guarddog_acceptance") errors.push("The GuardDog acceptance candidate is test-only and cannot be selected in production.");
+if (!["legacy", "guarddog_production"].includes(engine)) errors.push(`EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE="${engine}" is invalid.`);
 if (cfg.EXPO_PUBLIC_APP_ENV === "production" && engine !== "guarddog_production") errors.push("Production must select exactly one Apollo-owned GuardDog production runtime; legacy and test engines are prohibited.");
 if (engine === "guarddog_production" && cfg.EXPO_PUBLIC_APP_ENV !== "production") errors.push("GuardDog production authority requires a production app environment.");
 if (engine === "guarddog_production") {

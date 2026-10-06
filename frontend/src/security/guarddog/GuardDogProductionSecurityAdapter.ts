@@ -1,9 +1,8 @@
 import type { Capability } from "@/src/domain/types";
 import type { EnforcementEvidence, PlatformCapabilityProfile } from "@/src/security/PlatformCapabilityProfile";
-import type { BlockResult, NativeUrlAnalysis, ProtectionStatus, SecurityPlatformAdapter } from "@/src/security/SecurityPlatformAdapter";
-import { AndroidSecurityAdapter } from "@/src/security/NativeSecurityAdapters";
+import type { BlockResult, NetworkStatus, NativeUrlAnalysis, ProtectionPermission, ProtectionStatus, SecurityPlatformAdapter } from "@/src/security/SecurityPlatformAdapter";
 import { getNativeModule, NativeModuleUnavailable } from "@/src/security/nativeBridge";
-import { parseGuardDogCandidateEvidence } from "./GuardDogEvidenceBoundary";
+import { parseGuardDogEvidence } from "./GuardDogEvidenceBoundary";
 import { getGuardDogProductionConfig } from "./GuardDogProductionConfig";
 
 type ProductionStatus = ProtectionStatus & { trustExpiresAt?: string | null; ruleExpiresAt?: string | null; productionAuthority?: boolean };
@@ -41,17 +40,29 @@ export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapte
   analyseDomain(domain: string) { return this.analyseURL(`https://${domain}/`); }
   blockDestination(): Promise<BlockResult> { return Promise.resolve({ verified: false, method: "none", detail: "Production rules are signed; manual blocking is unavailable.", adapterLabel: this.label, blockedAt: null, evidence: null }); }
   unblockDestination(): Promise<BlockResult> { return Promise.resolve({ verified: false, method: "none", detail: "Production rules are signed; manual unblocking is unavailable.", adapterLabel: this.label, blockedAt: null, evidence: null }); }
-  getNetworkStatus() { return AndroidSecurityAdapter.getNetworkStatus(); }
+  async getNetworkStatus(): Promise<NetworkStatus> {
+    // Dedicated production native method — reads OS ConnectivityManager and derives
+    // vpnActive from GuardDog production VPN state, never from the legacy DNS service.
+    return this.json<NetworkStatus>(this.mod().getGuardDogProductionNetworkStatus());
+  }
   getSecuritySignals() { return Promise.resolve([]); }
   async startProtection() { await this.refreshIfDue(true); return this.json<ProtectionStatus>(this.mod().startGuardDogProduction()); }
   stopProtection() { return this.json<ProtectionStatus>(this.mod().stopGuardDogProduction()); }
-  getProtectionPermissions() { return AndroidSecurityAdapter.getProtectionPermissions(); }
-  requestProtectionPermission(id: Parameters<SecurityPlatformAdapter["requestProtectionPermission"]>[0]) { return AndroidSecurityAdapter.requestProtectionPermission(id); }
+  async getProtectionPermissions(): Promise<ProtectionPermission[]> {
+    // Dedicated production native method — same OS permission observations with
+    // production-accurate descriptions (selective packet filter, not DNS filter).
+    return this.json<ProtectionPermission[]>(this.mod().getGuardDogProductionProtectionPermissions());
+  }
+  async requestProtectionPermission(id: ProtectionPermission["id"]): Promise<ProtectionPermission> {
+    // Dedicated production native method — same OS permission requests with
+    // production-accurate descriptions.
+    return this.json<ProtectionPermission>(this.mod().requestGuardDogProductionProtectionPermission(id));
+  }
   getPlatformCapabilityProfile(): Promise<PlatformCapabilityProfile> { return Promise.resolve({ platform: "android", platformVersion: null,
     sdkVersion: "guarddog-production-authority", capabilityVersion: "1", networkFiltering: "partial", packetVisibility: "partial", dnsVisibility: "partial",
     processAttribution: "none", appAttribution: "none", domainVisibility: "partial", localBlocking: "partial", backgroundProtection: "full",
     offlineProtection: "partial", realTimeEvents: "partial", scope: ["dns:ipv4-udp-53", "ip:controlled-/32", "ip:website-gate-sinkhole-/32"] }); }
-  async getEnforcementEvidence(): Promise<EnforcementEvidence[]> { await this.ensureConfigured(); return parseGuardDogCandidateEvidence(this.mod().getGuardDogProductionEvidence()); }
+  async getEnforcementEvidence(): Promise<EnforcementEvidence[]> { await this.ensureConfigured(); return parseGuardDogEvidence(this.mod().getGuardDogProductionEvidence()); }
   async acknowledgeEnforcementEvidence(evidenceIds: string[]) {
     const result = await this.json<{ persistenceError?: string | null }>(this.mod().acknowledgeGuardDogProductionEvidence(JSON.stringify(evidenceIds)));
     if (result.persistenceError) throw new Error(result.persistenceError);

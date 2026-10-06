@@ -78,6 +78,107 @@ class ApolloSecurityModule : Module() {
     Function("acknowledgeGuardDogProductionEvidence") { ids: String -> guardDogProduction().acknowledgeEvidence(ids) }
     Function("getGuardDogProductionRecovery") { guardDogProduction().recovery() }
 
+    // ── Production-dedicated OS observation methods ─────────────────────────
+    // These provide the same OS-level facts as the legacy bridge functions but
+    // derive VPN state from the GuardDog production runtime, never from
+    // ApolloDnsVpnService.  The production JS adapter calls only these.
+
+    AsyncFunction("getGuardDogProductionNetworkStatus") {
+      val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+      val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+      val type = when {
+        caps == null -> "none"
+        caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> "vpn"
+        caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "wifi"
+        caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "cellular"
+        caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "ethernet"
+        else -> "other"
+      }
+      var wifiSecurity = if (type == "wifi") "unknown" else "n/a"
+      if (type == "wifi" && android.os.Build.VERSION.SDK_INT >= 31) {
+        val info = caps?.transportInfo as? android.net.wifi.WifiInfo
+        wifiSecurity = when (info?.currentSecurityType) {
+          android.net.wifi.WifiInfo.SECURITY_TYPE_OPEN, android.net.wifi.WifiInfo.SECURITY_TYPE_OWE -> "open"
+          android.net.wifi.WifiInfo.SECURITY_TYPE_WEP -> "wep"
+          android.net.wifi.WifiInfo.SECURITY_TYPE_PSK -> "wpa"
+          android.net.wifi.WifiInfo.SECURITY_TYPE_SAE -> "wpa3"
+          android.net.wifi.WifiInfo.SECURITY_TYPE_EAP, android.net.wifi.WifiInfo.SECURITY_TYPE_EAP_WPA3_ENTERPRISE -> "enterprise"
+          null -> "unknown"
+          else -> "unknown"
+        }
+      }
+      val captive = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)
+      val rawSsid = if (type == "wifi" && android.os.Build.VERSION.SDK_INT >= 31) (caps?.transportInfo as? android.net.wifi.WifiInfo)?.ssid else null
+      val ssid = rawSsid?.trim('"')?.takeIf { it.isNotBlank() && it != "<unknown ssid>" }
+      val networkObservable = caps != null
+      // VPN state from GuardDog production runtime — never from the legacy DNS service.
+      val productionState = VpnStateRepository.shared.current().state
+      val vpnRunning = productionState == ProtectionState.ACTIVE
+      JSONObject().put("connected", caps != null).put("type", type)
+        .put("isInternetReachable", caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) ?: JSONObject.NULL)
+        .put("inspectable", networkObservable).put("wifiSecurity", wifiSecurity)
+        .put("captivePortal", captive ?: JSONObject.NULL).put("vpnActive", vpnRunning).put("ssid", ssid ?: JSONObject.NULL).put("checkedAt", now()).toString()
+    }
+
+    AsyncFunction("getGuardDogProductionProtectionPermissions") {
+      val observedAt = now()
+      val vpn = if (VpnService.prepare(ctx) == null) "granted" else "undetermined"
+      val notificationsEnabled = androidx.core.app.NotificationManagerCompat.from(ctx).areNotificationsEnabled()
+      val postGranted = if (android.os.Build.VERSION.SDK_INT >= 33)
+        ctx.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED else true
+      val notificationsState = when {
+        notificationsEnabled && postGranted -> "granted"
+        requestedAt("notifications") != null -> "denied"
+        else -> "undetermined"
+      }
+      val listener = ApolloSmsListenerService.isEnabled(ctx)
+      JSONArray().apply {
+        put(perm("vpn_config", "Local VPN (selective packet filter)", vpn, true, "Lets Apollo enforce signed protection rules by selectively filtering network packets on this device. Only traffic matching verified threat rules is affected.", observedAt, enabled = vpn == "granted"))
+        put(perm("notifications", "Notifications", notificationsState, notificationsState != "denied" || android.os.Build.VERSION.SDK_INT < 33, "Lets Apollo tell you when it barks.", observedAt, enabled = notificationsEnabled && postGranted))
+        put(perm("network_filter", "Notification access (Text Gate)", if (listener) "granted" else "undetermined", true, "Lets Apollo read message notifications you allow so Text Gate can warn you. Apollo never reads SMS directly.", observedAt, enabled = listener))
+        put(perm("accessibility", "Accessibility service", "not_applicable", false, "Apollo does not use an accessibility service.", observedAt, enabled = null, unavailableReason = "not_implemented"))
+      }.toString()
+    }
+
+    AsyncFunction("requestGuardDogProductionProtectionPermission") { id: String ->
+      recordRequest(id)
+      val observedAt = now()
+      when (id) {
+        "vpn_config" -> {
+          val intent = VpnService.prepare(ctx)
+          if (intent == null) perm("vpn_config", "Local VPN (selective packet filter)", "granted", true, "Granted.", observedAt, enabled = true).put("requestState", "already_granted").toString()
+          else {
+            try {
+              intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+              appContext.currentActivity?.startActivity(intent) ?: ctx.startActivity(intent)
+              perm("vpn_config", "Local VPN (selective packet filter)", "undetermined", true, "System VPN consent opened. Apollo will check the result when you return.", observedAt, enabled = false).put("requestState", "system_ui_opened").toString()
+            } catch (_: Exception) {
+              perm("vpn_config", "Local VPN (selective packet filter)", "undetermined", true, "Android could not open VPN consent.", observedAt, enabled = false).put("requestState", "launch_failed").toString()
+            }
+          }
+        }
+        "notifications" -> {
+          val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+          try {
+            appContext.currentActivity?.startActivity(intent) ?: ctx.startActivity(intent)
+            perm("notifications", "Notifications", "undetermined", true, "Notification settings opened. Apollo will check when you return.", observedAt, enabled = null).put("requestState", "system_ui_opened").toString()
+          } catch (_: Exception) {
+            perm("notifications", "Notifications", "undetermined", true, "Android could not open notification settings.", observedAt, enabled = null).put("requestState", "launch_failed").toString()
+          }
+        }
+        "network_filter" -> {
+          val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+          try {
+            appContext.currentActivity?.startActivity(intent) ?: ctx.startActivity(intent)
+            perm("network_filter", "Notification access (Text Gate)", "undetermined", true, "Notification access settings opened. Apollo will check when you return.", observedAt, enabled = null).put("requestState", "system_ui_opened").toString()
+          } catch (_: Exception) {
+            perm("network_filter", "Notification access (Text Gate)", "undetermined", true, "Android could not open notification access settings.", observedAt, enabled = null).put("requestState", "launch_failed").toString()
+          }
+        }
+        else -> perm(id, id, "not_applicable", false, "Apollo does not request this permission on Android.", observedAt, enabled = null, unavailableReason = "not_implemented").put("requestState", "unsupported").toString()
+      }
+    }
+
     AsyncFunction("getCapabilities") {
       val vpnGranted = VpnService.prepare(ctx) == null
       val running = ApolloDnsVpnService.isRunning

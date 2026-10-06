@@ -8,10 +8,10 @@
 //  - The only permitted simulation is the separate device-preview harness (frontend/tools, web-only host selector),
 //    selectable ONLY by EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS=enabled in a *development* *web* host. Staging and
 //    production reject the flag; native hosts reject it regardless of environment.
-//  - The GuardDog Stage 1D candidate engine stays test-only (never production).
+//  - The GuardDog production authority is the only permitted production engine.
 
 export type AppEnvironment = "development" | "staging" | "production";
-export type AndroidEnforcementEngine = "legacy" | "guarddog_acceptance" | "guarddog_production";
+export type AndroidEnforcementEngine = "legacy" | "guarddog_production";
 export type DevicePreviewHarness = "off" | "enabled";
 
 export const APP_ENVIRONMENTS: readonly AppEnvironment[] = ["development", "staging", "production"];
@@ -55,7 +55,7 @@ function parseHarness(value: string | undefined): DevicePreviewHarness {
 export function validateSecurityConfig(input: SecurityConfigInput): ValidatedSecurityConfig {
   const appEnvironment = parseEnv(input.appEnvironment);
   const androidEnforcementEngine = input.androidEnforcementEngine ?? (appEnvironment === "production" ? "guarddog_production" : "legacy");
-  if (androidEnforcementEngine !== "legacy" && androidEnforcementEngine !== "guarddog_acceptance" && androidEnforcementEngine !== "guarddog_production") {
+  if (androidEnforcementEngine !== "legacy" && androidEnforcementEngine !== "guarddog_production") {
     throw new SecurityConfigurationError(`EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE="${androidEnforcementEngine}" is invalid.`);
   }
   if (appEnvironment === "production" && androidEnforcementEngine !== "guarddog_production") {
