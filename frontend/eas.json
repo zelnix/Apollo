@@ -4,33 +4,6 @@
     "appVersionSource": "remote"
   },
   "build": {
-    "device-test": {
-      "distribution": "internal",
-      "channel": "device-test",
-      "android": {
-        "buildType": "apk"
-      },
-      "ios": {
-        "simulator": false
-      },
-      "env": {
-        "EXPO_PUBLIC_APP_ENV": "staging",
-        "EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE": "legacy",
-        "EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS": "off"
-      }
-    },
-    "guarddog-acceptance": {
-      "distribution": "internal",
-      "channel": "guarddog-stage1d-acceptance",
-      "android": {
-        "buildType": "apk"
-      },
-      "env": {
-        "EXPO_PUBLIC_APP_ENV": "staging",
-        "EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE": "guarddog_acceptance",
-        "EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS": "off"
-      }
-    },
     "production": {
       "channel": "production",
       "environment": "production",
