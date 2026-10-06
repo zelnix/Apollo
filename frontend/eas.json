@@ -28,9 +28,9 @@
         "APOLLO_GUARDDOG_RECOVERY_ROOT_PUBLIC_KEY_B64": "OiCzOzzRentElPzuEnn11vGi73NeyFUWa4Ofuv1Spi0=",
         "EXPO_PUBLIC_GUARDDOG_TRUST_MANIFEST_URL": "https://threat-patrol-1.emergent.host/api/guarddog/trust-manifest",
         "EXPO_PUBLIC_GUARDDOG_RULE_BUNDLE_URL": "https://threat-patrol-1.emergent.host/api/guarddog/rule-bundle",
-        "EXPO_PUBLIC_GUARDDOG_CONTROLLED_HOST": "blocktest.btciq.app",
+        "EXPO_PUBLIC_GUARDDOG_CONTROLLED_HOST": "apolloverify.harmonywellnessgroup.com.au",
         "EXPO_PUBLIC_GUARDDOG_CONTROLLED_IPV4": "52.25.179.131",
-        "EXPO_PUBLIC_GUARDDOG_CONTROLLED_URL": "https://blocktest.btciq.app/",
+        "EXPO_PUBLIC_GUARDDOG_CONTROLLED_URL": "https://apolloverify.harmonywellnessgroup.com.au/",
         "EXPO_PUBLIC_GUARDDOG_RULESET_ID": "apollo-rules-v1"
       }
     },
