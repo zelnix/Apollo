@@ -111,25 +111,35 @@ const withGuardDogRootBuildGradle = (config) =>
 const BOUNCY_CASTLE_MARKER = "GuardDog BouncyCastle dedup (Stage 1C)";
 
 /** expo-updates ships bcutil-jdk15to18 → transitively bcprov-jdk15to18, while guarddog-core
- * requires bcprov-jdk18on. Both bcprov variants contain identical classes (different JDK target
- * flavour of the same BouncyCastle provider). Use Gradle module substitution to redirect the older
- * jdk15to18 artifacts to their jdk18on equivalents, so only one copy lands on the classpath.
- * This preserves the BouncyCastle API surface that expo-updates code-signing needs (ASN1Primitive,
- * DEROctetString, etc.) while eliminating the duplicate-class conflict with guarddog-core. */
+ * requires bcprov-jdk18on. Both families contain identical org.bouncycastle.* classes.
+ * Uses the proven allprojects + configurations.all + dependencySubstitution pattern
+ * (cf. https://stackoverflow.com/a/77981808) to redirect ALL BouncyCastle variants
+ * (jdk15on, jdk15to18, jdk18on) to a single jdk18on copy at version 1.78.1.
+ * Self-substitution of jdk18on pins the version so no transitive can override it. */
 const withBouncyCastleDedup = (config) =>
   withProjectBuildGradle(config, (config) => {
     if (config.modResults.contents.includes(BOUNCY_CASTLE_MARKER)) return config;
     config.modResults.contents += `
-// ${BOUNCY_CASTLE_MARKER}: expo-updates pulls bcprov-jdk15to18 (via bcutil-jdk15to18)
-// while guarddog-core requires bcprov-jdk18on — they contain identical org.bouncycastle.*
-// classes. Substitute the older jdk15to18 artifacts with jdk18on equivalents so both
-// dependency trees resolve to a single copy. Version 1.78.1 matches guarddog-core's pin.
-subprojects {
-    configurations.configureEach {
-        resolutionStrategy.dependencySubstitution {
-            substitute module('org.bouncycastle:bcprov-jdk15to18') using module('org.bouncycastle:bcprov-jdk18on:1.78.1')
-            substitute module('org.bouncycastle:bcpkix-jdk15to18') using module('org.bouncycastle:bcpkix-jdk18on:1.78.1')
-            substitute module('org.bouncycastle:bcutil-jdk15to18') using module('org.bouncycastle:bcutil-jdk18on:1.78.1')
+// ${BOUNCY_CASTLE_MARKER}
+allprojects {
+    configurations.all {
+        resolutionStrategy {
+            dependencySubstitution {
+                // bcprov — the core provider (ASN1Primitive, DEROctetString, Ed25519, etc.)
+                substitute module('org.bouncycastle:bcprov-jdk15on')    using module('org.bouncycastle:bcprov-jdk18on:1.78.1')
+                substitute module('org.bouncycastle:bcprov-jdk15to18')  using module('org.bouncycastle:bcprov-jdk18on:1.78.1')
+                substitute module('org.bouncycastle:bcprov-jdk18on')    using module('org.bouncycastle:bcprov-jdk18on:1.78.1')
+
+                // bcutil — utility classes used by expo-updates code-signing
+                substitute module('org.bouncycastle:bcutil-jdk15on')    using module('org.bouncycastle:bcutil-jdk18on:1.78.1')
+                substitute module('org.bouncycastle:bcutil-jdk15to18')  using module('org.bouncycastle:bcutil-jdk18on:1.78.1')
+                substitute module('org.bouncycastle:bcutil-jdk18on')    using module('org.bouncycastle:bcutil-jdk18on:1.78.1')
+
+                // bcpkix — PKIX/CMS (certificate chain verification)
+                substitute module('org.bouncycastle:bcpkix-jdk15on')    using module('org.bouncycastle:bcpkix-jdk18on:1.78.1')
+                substitute module('org.bouncycastle:bcpkix-jdk15to18')  using module('org.bouncycastle:bcpkix-jdk18on:1.78.1')
+                substitute module('org.bouncycastle:bcpkix-jdk18on')    using module('org.bouncycastle:bcpkix-jdk18on:1.78.1')
+            }
         }
     }
 }
