@@ -19,6 +19,9 @@ export const DISCLOSURE_VERSION = "purpose-limited-v2";
 const LEAVES_DEVICE = PRIVACY_FLOWS;
 const NEVER_LEAVES = LOCAL_ONLY_CONTENT;
 
+const SETUP_FAILURE_MESSAGE =
+  "Apollo couldn\u2019t finish setting up protection. Nothing has been activated yet. Please try again shortly.";
+
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   top: { paddingHorizontal: spacing.xl, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: spacing.md },
@@ -30,6 +33,10 @@ const useStyles = makeStyles((c) => ({
   when: { fontFamily: fonts.textMedium, fontSize: 13, color: c.growlingText },
   footer: { paddingHorizontal: spacing.xl, paddingTop: spacing.md, gap: spacing.sm, borderTopWidth: 1, borderTopColor: c.border },
   legal: { fontFamily: fonts.text, fontSize: 12, lineHeight: 18, color: c.muted },
+  errorBox: { gap: spacing.xs },
+  errorText: { color: c.barkingText, fontFamily: fonts.textMedium, fontSize: 14 },
+  detailToggle: { fontFamily: fonts.textMedium, fontSize: 13, color: c.muted, textDecorationLine: "underline" as const },
+  detailText: { fontFamily: fonts.text, fontSize: 12, color: c.muted, marginTop: spacing.xs },
 }));
 
 export default function PrivacyDisclosure() {
@@ -40,11 +47,16 @@ export default function PrivacyDisclosure() {
   const { setupDone, completeSetup } = useApollo();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [technicalDetail, setTechnicalDetail] = useState<string | null>(null);
+  const [showDetail, setShowDetail] = useState(false);
 
   const accept = async () => {
-    setBusy(true); setError(null);
+    setBusy(true); setError(null); setTechnicalDetail(null); setShowDetail(false);
     try { await completeSetup(); router.replace("/(tabs)/home"); }
-    catch (e) { setError(e instanceof Error ? e.message : "Setup failed"); }
+    catch (e) {
+      setError(SETUP_FAILURE_MESSAGE);
+      setTechnicalDetail(e instanceof Error ? e.message : String(e));
+    }
     finally { setBusy(false); }
   };
 
@@ -98,7 +110,19 @@ export default function PrivacyDisclosure() {
       </ScrollView>
       {!setupDone ? (
         <View style={[s.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
-          {error ? <Text style={{ color: colors.barkingText, fontFamily: fonts.textMedium }} testID="disclosure-error">{error}</Text> : null}
+          {error ? (
+            <View style={s.errorBox}>
+              <Text style={s.errorText} testID="disclosure-error">{error}</Text>
+              {technicalDetail ? (
+                <>
+                  <Pressable onPress={() => setShowDetail((v) => !v)} accessibilityRole="button">
+                    <Text style={s.detailToggle}>{showDetail ? "Hide details" : "More details"}</Text>
+                  </Pressable>
+                  {showDetail ? <Text style={s.detailText} testID="disclosure-error-detail" selectable>{technicalDetail}</Text> : null}
+                </>
+              ) : null}
+            </View>
+          ) : null}
           <Button testID="disclosure-accept-button" label={busy ? "Setting up…" : "I understand — set up Apollo"} onPress={accept} disabled={busy} icon={busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : undefined} />
           <Button testID="disclosure-back-button" variant="ghost" label="Back" onPress={() => goBackOrHome(router)} />
         </View>
