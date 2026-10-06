@@ -9,7 +9,8 @@
       ],
       "android": {
         "exclude": [
-          "guarddog-expo-module"
+          "guarddog-expo-module",
+          "apollo-family-assist"
         ]
       },
       "ios": {
