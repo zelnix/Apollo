@@ -7,6 +7,8 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
 import android.provider.Settings
+import com.guarddog.core.protection.ProtectionState
+import com.guarddog.vpn.VpnStateRepository
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
@@ -48,8 +50,8 @@ class AppDeviceSignals(private val ctx: Context) {
       .put("overlayApps", JSONObject.NULL)
       .put("notificationAccessApps", JSONArray(listeners))
       .put("vpnActive", vpn ?: JSONObject.NULL)
-      // Only Apollo's own filter is a "known" provider; any other VPN is reported as unknown (null), never as trusted.
-      .put("vpnProviderKnown", if (vpn == true) (if (ApolloDnsVpnService.isRunning) true else JSONObject.NULL) else JSONObject.NULL)
+      // Only Apollo's own GuardDog production filter is a "known" provider.
+      .put("vpnProviderKnown", if (vpn == true) (if (VpnStateRepository.shared.current().state == ProtectionState.ACTIVE) true else JSONObject.NULL) else JSONObject.NULL)
       .put("managementProfile", when { admins == null -> "unknown"; admins.isNotEmpty() -> "present"; else -> "none" })
       .put("userTrustedCertificates", JSONObject.NULL)         // user CA store is not readable by apps
       .put("remoteAccessApps", JSONArray(remote.map { it.second }))

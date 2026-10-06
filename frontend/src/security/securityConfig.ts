@@ -11,7 +11,7 @@
 //  - The GuardDog production authority is the only permitted production engine.
 
 export type AppEnvironment = "development" | "staging" | "production";
-export type AndroidEnforcementEngine = "legacy" | "guarddog_production";
+export type AndroidEnforcementEngine = "guarddog_production";
 export type DevicePreviewHarness = "off" | "enabled";
 
 export const APP_ENVIRONMENTS: readonly AppEnvironment[] = ["development", "staging", "production"];
@@ -54,9 +54,9 @@ function parseHarness(value: string | undefined): DevicePreviewHarness {
 
 export function validateSecurityConfig(input: SecurityConfigInput): ValidatedSecurityConfig {
   const appEnvironment = parseEnv(input.appEnvironment);
-  const androidEnforcementEngine = input.androidEnforcementEngine ?? (appEnvironment === "production" ? "guarddog_production" : "legacy");
-  if (androidEnforcementEngine !== "legacy" && androidEnforcementEngine !== "guarddog_production") {
-    throw new SecurityConfigurationError(`EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE="${androidEnforcementEngine}" is invalid.`);
+  const androidEnforcementEngine = input.androidEnforcementEngine ?? "guarddog_production";
+  if (androidEnforcementEngine !== "guarddog_production") {
+    throw new SecurityConfigurationError(`EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE="${androidEnforcementEngine}" is invalid. Only "guarddog_production" is supported.`);
   }
   if (appEnvironment === "production" && androidEnforcementEngine !== "guarddog_production") {
     throw new SecurityConfigurationError("Production Android builds require Apollo's GuardDog production authority. Legacy and test-only acceptance engines are prohibited.");

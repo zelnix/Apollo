@@ -40,5 +40,3 @@ class NativeAdapterBase implements SecurityPlatformAdapter {
 
 /** Swift-backed adapter (modules/apollo-security/ios). */
 export const IOSSecurityAdapter: SecurityPlatformAdapter = new NativeAdapterBase("ios", "iOS security module", "iOS (Swift)");
-/** Kotlin-backed adapter (modules/apollo-security/android). */
-export const AndroidSecurityAdapter: SecurityPlatformAdapter = new NativeAdapterBase("android", "Android security module", "Android (Kotlin)");

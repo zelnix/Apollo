@@ -3,8 +3,7 @@ package com.hucentai.apollosecurity
 /**
  * Pure data model for one enforcement action — mirrors src/security/PlatformCapabilityProfile.ts
  * EnforcementEvidence field-for-field so the JSON ApolloSecurityModule builds from this needs no
- * reshaping on the JS side beyond JSON.parse. No Android dependencies: testable under plain JVM,
- * same as DnsPacket.kt and SiteGuardTruth.kt.
+ * reshaping on the JS side beyond JSON.parse. No Android dependencies: testable under plain JVM.
  *
  * THE rule this file exists to protect: only [verifiedDnsBlock] may ever produce
  * result="verified" + enforcedAction="blocked" from an ACTUAL observed packet. Everything else
@@ -38,7 +37,7 @@ data class EnforcementEvidence(
 ) {
   companion object {
     /**
-     * The ONLY factory that may claim a verified DNS block. Called from ApolloDnsVpnService.handlePacket
+     * The ONLY factory that may claim a verified DNS block. Called from the GuardDog VPN packet handler
      * at the exact moment a real IPv4/UDP/port-53 packet was matched against the on-device blocklist and
      * an NXDOMAIN reply was actually written back to the tunnel. Every field is a live fact about that
      * one packet — nothing here is inferred, scheduled, or assumed to have happened.

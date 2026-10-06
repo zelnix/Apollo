@@ -5,7 +5,7 @@ import { Platform } from "react-native";
 import { SECURITY_CONFIG } from "@/src/config/appEnvironment";
 import { GuardDogProductionSecurityAdapter } from "./guarddog/GuardDogProductionSecurityAdapter";
 import { getNativeModule } from "./nativeBridge";
-import { AndroidSecurityAdapter, IOSSecurityAdapter } from "./NativeSecurityAdapters";
+import { IOSSecurityAdapter } from "./NativeSecurityAdapters";
 import { SecurityConfigurationError, validateSecurityConfig } from "./securityConfig";
 import type { SecurityPlatformAdapter } from "./SecurityPlatformAdapter";
 
@@ -23,7 +23,7 @@ export function chooseHostAdapter(): SecurityPlatformAdapter {
   if (Platform.OS === "ios") return IOSSecurityAdapter;
   if (Platform.OS === "android") {
     if (SECURITY_CONFIG.androidEnforcementEngine === "guarddog_production") return new GuardDogProductionSecurityAdapter();
-    return AndroidSecurityAdapter;
+    throw new Error(`Android enforcement engine "${SECURITY_CONFIG.androidEnforcementEngine}" is not available.`);
   }
   throw new SecurityConfigurationError(`Apollo has no native security host for platform "${Platform.OS}" in this build.`);
 }

@@ -170,7 +170,7 @@ export const PLATFORM_CAPABILITY_BASELINES: Record<SdkPlatform, PlatformCapabili
     networkFiltering: "full", packetVisibility: "full", dnsVisibility: "full",
     processAttribution: "full", appAttribution: "full", domainVisibility: "full",
     localBlocking: "full", backgroundProtection: "full", offlineProtection: "partial", realTimeEvents: "full",
-    // Ceiling scope only — the DEPLOYED AndroidSecurityAdapter (ApolloDnsVpnService) is DNS-only
+    // Ceiling scope for Android VpnService — GuardDog production does selective packet filtering.
     // ("dns:udp-53", reported by the native module itself), narrower than this general ceiling.
     scope: ["packet:all", "dns:all"],
   },

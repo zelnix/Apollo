@@ -37,23 +37,6 @@ internal object ApolloGuardDogEngineOwnership {
   fun current(): String? = owner
 }
 
-internal object ApolloGuardDogProcessOwner {
-  private val cell = ProcessOwnerCell<ApolloGuardDogCandidateRuntime>()
-
-  fun isEligible(context: Context): Boolean {
-    val info = context.packageManager.getApplicationInfo(context.packageName, PackageManager.GET_META_DATA)
-    return info.metaData?.getBoolean(ApolloGuardDogCandidateRuntime.ACCEPTANCE_METADATA_KEY, false) == true
-  }
-
-  fun get(context: Context): ApolloGuardDogCandidateRuntime {
-    check(isEligible(context)) { "GuardDog acceptance trust is disabled in this build" }
-    ApolloGuardDogEngineOwnership.claim("acceptance")
-    return cell.getOrCreate { ApolloGuardDogCandidateRuntime(context.applicationContext) }
-  }
-
-  fun current(): ApolloGuardDogCandidateRuntime? = cell.current()
-}
-
 internal object ApolloGuardDogProductionOwner {
   private val cell = ProcessOwnerCell<ApolloGuardDogProductionRuntime>()
   fun isEligible(context: Context): Boolean {

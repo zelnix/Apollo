@@ -24,19 +24,6 @@ export interface ApolloSecurityNativeModule {
   getEnforcementEvidence(): Promise<string>;
   /** Real manufacturer/model/OS/form-factor/locale facts (JSON DeviceProfileFacts). */
   getDeviceProfileFacts(): Promise<string>;
-  getGuardDogCandidateCapabilities(): Promise<string>;
-  getGuardDogCandidateStatus(): Promise<string>;
-  configureGuardDogCandidate(configJson: string): Promise<string>;
-  acceptGuardDogCandidateBundle(bundleJson: string): Promise<string>;
-  startGuardDogCandidate(): Promise<string>;
-  stopGuardDogCandidate(): Promise<string>;
-  analyzeGuardDogCandidateUrl(url: string): Promise<string>;
-  getGuardDogCandidateEvidence(): Promise<string>;
-  acknowledgeGuardDogCandidateEvidence(idsJson: string): Promise<string>;
-  getGuardDogCandidateRecovery(): Promise<string>;
-  probeGuardDogCandidateFresh(timeoutMs: number): Promise<string>;
-  getGuardDogCandidateProvenance(): Promise<string>;
-  runGuardDogCandidateAcceptance(timeoutMs: number): Promise<string>;
   getGuardDogProductionCapabilities(): string;
   getGuardDogProductionStatus(): string;
   configureGuardDogProduction(configJson: string): string;
@@ -49,6 +36,9 @@ export interface ApolloSecurityNativeModule {
   getGuardDogProductionEvidence(): string;
   acknowledgeGuardDogProductionEvidence(idsJson: string): string;
   getGuardDogProductionRecovery(): string;
+  getGuardDogProductionNetworkStatus(): Promise<string>;
+  getGuardDogProductionProtectionPermissions(): Promise<string>;
+  requestGuardDogProductionProtectionPermission(id: string): Promise<string>;
   // Gate 2 — Text & Messaging (SDK contract). Each returns a JSON string; see src/security/messagingSdk.ts.
   getMessagingCapabilities(): Promise<string>;
   analyseMessageMetadata(metadataJson: string): Promise<string>;

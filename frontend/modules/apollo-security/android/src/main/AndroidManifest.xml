@@ -53,15 +53,6 @@
         <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
       </intent-filter>
     </receiver>
-    <service
-      android:name="com.hucentai.apollosecurity.ApolloDnsVpnService"
-      android:exported="false"
-      android:permission="android.permission.BIND_VPN_SERVICE">
-      <intent-filter>
-        <action android:name="android.net.VpnService" />
-      </intent-filter>
-      <meta-data android:name="android.net.VpnService.SUPPORTS_ALWAYS_ON" android:value="false" />
-    </service>
     <!-- Text Guard: opt-in NotificationListenerService (Settings > Notification access). No READ_SMS,
          ever — see ApolloSmsListenerService.kt header for the full truth-of-state contract. -->
     <service

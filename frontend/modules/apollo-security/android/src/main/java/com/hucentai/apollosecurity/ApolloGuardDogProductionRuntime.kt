@@ -188,7 +188,7 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
   fun start(): String = transitions.serialized { startLocked() }
   private fun startLocked(): String {
     requireProductionEnabled(); val activeConfig = checkNotNull(config); check(authorityCurrent()) { "Production trust/rule authority is unavailable or expired" }
-    check(VpnService.prepare(context) == null) { "VPN consent is not granted" }; ensureLegacyStopped()
+    check(VpnService.prepare(context) == null) { "VPN consent is not granted" }
     val activeEngine = checkNotNull(engine); val resolved = when (val binding = ControlledEndpointResolver(activeConfig.vpn(), GuardDogVpnRuntime.resolver).verifyBinding()) {
       is BindingResult.Match -> binding.ipv4; is BindingResult.Mismatch -> error("DNS/IP binding mismatch"); is BindingResult.ResolutionFailed -> error("Controlled host did not resolve")
     }
@@ -255,7 +255,6 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
   fun acknowledgeEvidence(raw: String): String { val ids = JSONArray(raw); val count = inbox.acknowledge((0 until ids.length()).map { ids.getString(it) }.toSet()); return JSONObject().put("acknowledged", count).put("pending", inbox.status().pending).toString() }
   fun recovery(): String { val result = RecoveryInspector.inspect(context, state); return JSONObject().put("lifecycle", result.lifecycle).put("tunOpen", result.tunOpen).put("selectiveRouteActive", result.selectiveRouteActive).put("vpnTransportPresent", result.vpnTransportPresent).put("routeCidr", result.routeCidr ?: JSONObject.NULL).put("dropReporterAttached", result.dropReporterAttached).put("recovered", result.recovered).toString() }
 
-  private fun ensureLegacyStopped() { if (ApolloDnsVpnService.isRunning) { context.startService(Intent(context, ApolloDnsVpnService::class.java).setAction(ApolloDnsVpnService.ACTION_STOP)); check(transitions.await(8_000) { !ApolloDnsVpnService.isRunning }) { "Legacy Site Guard did not stop" } } }
   private fun fetch(rawUrl: String): String { val connection = URL(rawUrl).openConnection() as HttpURLConnection; connection.connectTimeout = 15_000; connection.readTimeout = 20_000; connection.instanceFollowRedirects = false
     try { check(connection.responseCode == 200) { "signed update service returned ${connection.responseCode}" }; check((connection.contentLengthLong.takeIf { it >= 0 } ?: 0) <= 2_000_000)
       val bytes = connection.inputStream.use { input -> val output = java.io.ByteArrayOutputStream(); val buffer = ByteArray(8192)

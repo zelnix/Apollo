@@ -33,6 +33,7 @@ class ApolloCallScreeningService : CallScreeningService() {
 
   companion object {
     private const val PREFS = "apollo_callguard"
+    private const val MODULE_VERSION = "apollo-security-1.0.0"
     private const val KEY_BLOCK = "block_numbers"
     private const val KEY_ALLOW = "allow_numbers"
     private const val KEY_AUTO_RISKY = "auto_risky_numbers"
@@ -205,7 +206,7 @@ class ApolloCallScreeningService : CallScreeningService() {
         recordEvidence(EnforcementEvidence.verifiedCallBlock(
           evidenceId = UUID.randomUUID().toString(), observedAt = Instant.now().toString(), number = number,
           ruleSource = if (number in block) "user_override" else "cloud_intel",
-          osVersion = "Android ${android.os.Build.VERSION.RELEASE}", sdkVersion = ApolloDnsVpnService.MODULE_VERSION,
+          osVersion = "Android ${android.os.Build.VERSION.RELEASE}", sdkVersion = MODULE_VERSION,
         ).copy(result = "rejection_requested", enforcedAction = "reject_requested", destinationDomain = null, matchedRuleId = "call_local_rule"))
         return
       }
