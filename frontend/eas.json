@@ -34,14 +34,6 @@
         "EXPO_PUBLIC_GUARDDOG_RULESET_ID": "apollo-rules-v1"
       }
     },
-    "app-bundle": {
-      "extends": "production",
-      "distribution": "internal",
-      "android": {
-        "buildType": "apk",
-        "image": "sdk-57"
-      }
-    },
     "guarddog-production": {
       "extends": "production",
       "distribution": "internal",
