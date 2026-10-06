@@ -61,6 +61,18 @@ const deviceMeta = () => ({
 
 const K = { setup: "apollo.setup.done", events: "apollo.patrol.events", trust: "apollo.trust.entries", verified: "apollo.lastVerifiedAt", protection: "apollo.protection.on", wifi: "apollo.wifi.trusted", quiet: "apollo.quiet.hours", lowPower: "apollo.lowPower", seenEvidence: "apollo.evidence.seen" };
 
+/** Safe JSON parse that returns `fallback` instead of throwing on corrupt data.
+ *  If data is quarantined, the bad key is cleared from storage so the next boot is clean. */
+function safeParse<T>(raw: string | null | undefined, fallback: T, storageKey?: string): T {
+  if (!raw) return fallback;
+  try { return JSON.parse(raw) as T; }
+  catch (e) {
+    console.warn(`[Apollo boot] corrupt data in "${storageKey ?? "?"}", quarantining:`, e);
+    if (storageKey) void storage.setItem(storageKey, null as unknown as string).catch(() => {});
+    return fallback;
+  }
+}
+
 export interface TrustEntry { trust_id: string; device_id: string; indicator_type: "url" | "domain"; indicator_digest: string; indicator_host: string; event_id: string | null; created_at: string; local_indicator?: string }
 
 export interface CheckOutcome { submissionId: string; local: LocalAnalysis; intel: IntelResult | null; intelError: string | null; decision: Decision; assessment: InvestigationResult | null; investigationError: string | null; event: PatrolEvent | null }
@@ -171,7 +183,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const [quietHours, setQuietHoursState] = useState<QuietHours>(DEFAULT_QUIET);
   const [lowPower, setLowPowerState] = useState(false);
   useEffect(() => {
-    void storage.getItem<string | null>(K.quiet, null).then((raw) => { if (raw) setQuietHoursState({ ...DEFAULT_QUIET, ...(JSON.parse(raw) as QuietHours) }); });
+    void storage.getItem<string | null>(K.quiet, null).then((raw) => { if (raw) { const parsed = safeParse<QuietHours | null>(raw, null, K.quiet); if (parsed) setQuietHoursState({ ...DEFAULT_QUIET, ...parsed }); } });
     void storage.getItem<boolean>(K.lowPower, false).then((v) => setLowPowerState(!!v));
   }, []);
   const quietNow = useMemo(() => isQuietNow(quietHours), [quietHours, tick]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -253,7 +265,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     if (!evidence.length) return;
     if (!seenEvidenceRef.current) {
       const raw = await storage.getItem<string | null>(K.seenEvidence, null);
-      seenEvidenceRef.current = new Set(raw ? (JSON.parse(raw) as string[]) : []);
+      seenEvidenceRef.current = new Set(raw ? safeParse<string[]>(raw, [], K.seenEvidence) : []);
     }
     const seen = seenEvidenceRef.current;
     // isVerifiedEnforcement() + the evidenceId dedupe below together guarantee repeated evidence for
@@ -337,7 +349,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const [trustedSsids, setTrustedSsids] = useState<string[]>([]);
   const trustedSsidsRef = useRef<string[]>([]);
   useEffect(() => { trustedSsidsRef.current = trustedSsids; }, [trustedSsids]);
-  useEffect(() => { storage.getItem<string | null>(K.wifi, null).then((raw) => { if (raw) { const v = JSON.parse(raw) as string[]; setTrustedSsids(v); trustedSsidsRef.current = v; } }); }, []);
+  useEffect(() => { storage.getItem<string | null>(K.wifi, null).then((raw) => { if (raw) { const v = safeParse<string[]>(raw, [], K.wifi); setTrustedSsids(v); trustedSsidsRef.current = v; } }); }, []);
   const trustNetwork = useCallback(async (ssid: string) => {
     const next = Array.from(new Set([...trustedSsidsRef.current, ssid])); setTrustedSsids(next); trustedSsidsRef.current = next; await storage.setItem(K.wifi, JSON.stringify(next));
     // Resolve any active connection event for this condition and re-assess.
@@ -366,8 +378,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         const href = typeof globalThis.location?.href === "string" ? globalThis.location.href : "";
         const done = storedDone || shouldBypassSetup(Platform.OS, __DEV__, href);
         setSetupDone(!!done);
-        if (ev) { const restored = (JSON.parse(ev) as PatrolEvent[]).map(normalizeHistoricalEvent); eventsRef.current = restored; alertedStates.current = new Map(restored.map((event) => [event.event_id, event.state])); setEvents(restored); }
-        if (tr) setTrust(JSON.parse(tr)); setLastVerifiedAt(null); // persisted observations are never live boot health
+        if (ev) { const restored = safeParse<PatrolEvent[]>(ev, [], K.events).map(normalizeHistoricalEvent); eventsRef.current = restored; alertedStates.current = new Map(restored.map((event) => [event.event_id, event.state])); setEvents(restored); }
+        if (tr) setTrust(safeParse<TrustEntry[]>(tr, [], K.trust)); setLastVerifiedAt(null); // persisted observations are never live boot health
         if (done) {
           // Server-issued identity. Legacy (pre-token) installs have none and get a fresh identity — never a claimed one.
           let identity = await getDeviceIdentity();
@@ -391,6 +403,10 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           if (protOn) await storage.setItem(K.protection, true);
         }
         await refresh(0, "boot");
+      } catch (bootError) {
+        // Degraded boot: log the failure, continue with whatever state was loaded so far.
+        // The app remains functional but may be missing Patrol history or trust entries.
+        console.warn("[Apollo boot] startup error, entering degraded state:", bootError);
       } finally { setReady(true); }
     })();
   }, [refresh]);

@@ -20,7 +20,8 @@ import { ShareIntakeListener } from "@/src/share/ShareIntakeListener";
 import { ApolloProvider } from "@/src/store/ApolloContext";
 import { useTheme } from "@/src/theme";
 
-LogBox.ignoreAllLogs(true);
+// Production: suppress LogBox entirely. Development: keep it active for diagnosis.
+if (!__DEV__) LogBox.ignoreAllLogs(true);
 void SplashScreen.preventAutoHideAsync().catch(() => {});
 
 // Security boot boundary: if any security selector failed validation during module evaluation, the app
