@@ -62,13 +62,22 @@ const deviceMeta = () => ({
 const K = { setup: "apollo.setup.done", events: "apollo.patrol.events", trust: "apollo.trust.entries", verified: "apollo.lastVerifiedAt", protection: "apollo.protection.on", wifi: "apollo.wifi.trusted", quiet: "apollo.quiet.hours", lowPower: "apollo.lowPower", seenEvidence: "apollo.evidence.seen" };
 
 /** Safe JSON parse that returns `fallback` instead of throwing on corrupt data.
- *  If data is quarantined, the bad key is cleared from storage so the next boot is clean. */
-function safeParse<T>(raw: string | null | undefined, fallback: T, storageKey?: string): T {
+ *  Optionally validates parsed shape (e.g. Array.isArray for list keys).
+ *  Corrupt or shape-invalid keys are **removed** from storage so the next boot is clean. */
+function safeParse<T>(raw: string | null | undefined, fallback: T, storageKey?: string, validate?: (v: unknown) => boolean): T {
   if (!raw) return fallback;
-  try { return JSON.parse(raw) as T; }
+  try {
+    const parsed = JSON.parse(raw);
+    if (validate && !validate(parsed)) {
+      console.warn(`[Apollo boot] shape mismatch in "${storageKey ?? "?"}", quarantining`);
+      if (storageKey) void storage.removeItem(storageKey).catch(() => {});
+      return fallback;
+    }
+    return parsed as T;
+  }
   catch (e) {
     console.warn(`[Apollo boot] corrupt data in "${storageKey ?? "?"}", quarantining:`, e);
-    if (storageKey) void storage.setItem(storageKey, null as unknown as string).catch(() => {});
+    if (storageKey) void storage.removeItem(storageKey).catch(() => {});
     return fallback;
   }
 }
@@ -183,7 +192,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const [quietHours, setQuietHoursState] = useState<QuietHours>(DEFAULT_QUIET);
   const [lowPower, setLowPowerState] = useState(false);
   useEffect(() => {
-    void storage.getItem<string | null>(K.quiet, null).then((raw) => { if (raw) { const parsed = safeParse<QuietHours | null>(raw, null, K.quiet); if (parsed) setQuietHoursState({ ...DEFAULT_QUIET, ...parsed }); } });
+    void storage.getItem<string | null>(K.quiet, null).then((raw) => { if (raw) { const parsed = safeParse<QuietHours | null>(raw, null, K.quiet, (v) => typeof v === "object" && v !== null && !Array.isArray(v)); if (parsed) setQuietHoursState({ ...DEFAULT_QUIET, ...parsed }); } });
     void storage.getItem<boolean>(K.lowPower, false).then((v) => setLowPowerState(!!v));
   }, []);
   const quietNow = useMemo(() => isQuietNow(quietHours), [quietHours, tick]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -265,7 +274,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     if (!evidence.length) return;
     if (!seenEvidenceRef.current) {
       const raw = await storage.getItem<string | null>(K.seenEvidence, null);
-      seenEvidenceRef.current = new Set(raw ? safeParse<string[]>(raw, [], K.seenEvidence) : []);
+      seenEvidenceRef.current = new Set(raw ? safeParse<string[]>(raw, [], K.seenEvidence, Array.isArray) : []);
     }
     const seen = seenEvidenceRef.current;
     // isVerifiedEnforcement() + the evidenceId dedupe below together guarantee repeated evidence for
@@ -349,7 +358,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   const [trustedSsids, setTrustedSsids] = useState<string[]>([]);
   const trustedSsidsRef = useRef<string[]>([]);
   useEffect(() => { trustedSsidsRef.current = trustedSsids; }, [trustedSsids]);
-  useEffect(() => { storage.getItem<string | null>(K.wifi, null).then((raw) => { if (raw) { const v = safeParse<string[]>(raw, [], K.wifi); setTrustedSsids(v); trustedSsidsRef.current = v; } }); }, []);
+  useEffect(() => { storage.getItem<string | null>(K.wifi, null).then((raw) => { if (raw) { const v = safeParse<string[]>(raw, [], K.wifi, Array.isArray); setTrustedSsids(v); trustedSsidsRef.current = v; } }); }, []);
   const trustNetwork = useCallback(async (ssid: string) => {
     const next = Array.from(new Set([...trustedSsidsRef.current, ssid])); setTrustedSsids(next); trustedSsidsRef.current = next; await storage.setItem(K.wifi, JSON.stringify(next));
     // Resolve any active connection event for this condition and re-assess.
@@ -370,38 +379,46 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        await primeDeviceFacts();
-        const [storedDone, ev, tr, protOn] = await Promise.all([
-          storage.getItem<boolean>(K.setup, false), storage.getItem<string | null>(K.events, null), storage.getItem<string | null>(K.trust, null),
-          storage.getItem<boolean>(K.protection, false),
-        ]);
-        const href = typeof globalThis.location?.href === "string" ? globalThis.location.href : "";
-        const done = storedDone || shouldBypassSetup(Platform.OS, __DEV__, href);
-        setSetupDone(!!done);
-        if (ev) { const restored = safeParse<PatrolEvent[]>(ev, [], K.events).map(normalizeHistoricalEvent); eventsRef.current = restored; alertedStates.current = new Map(restored.map((event) => [event.event_id, event.state])); setEvents(restored); }
-        if (tr) setTrust(safeParse<TrustEntry[]>(tr, [], K.trust)); setLastVerifiedAt(null); // persisted observations are never live boot health
-        if (done) {
-          // Server-issued identity. Legacy (pre-token) installs have none and get a fresh identity — never a claimed one.
-          let identity = await getDeviceIdentity();
-          const resetWhy = identity ? null : await getIdentityResetReason();
-          if (resetWhy) setIdentityReset(resetWhy); // explicit reset state survives reloads — never re-register silently
-          else if (!identity) { try { identity = await registerDeviceIdentity(API_BASE, deviceMeta()); } catch { identity = null; } }
-          if (identity) {
-            setDeviceId(identity.deviceId);
-            // Build the request inside the Promise chain too: egress validation is synchronous, so a
-            // future client/server contract mismatch must remain contained like an offline heartbeat.
-            void Promise.resolve().then(() => apiPost("/devices/heartbeat", "device_register", deviceMeta())).catch(() => undefined);
-            // Live Caller ID PIR — silently write the PIR server URL to shared UserDefaults (iOS)
-            // so the LiveCallerIDLookup extension knows where to query. Non-blocking, best-effort.
-            if (Platform.OS === "ios") {
-              const pirUrl = Constants.expoConfig?.extra?.pirServer?.url;
-              if (pirUrl && typeof pirUrl === "string" && pirUrl.length > 0) {
-                void getNativeModule()?.configurePirServerUrl(pirUrl).catch(() => undefined);
+        // Phase 1 — restore persisted local state. Each step is individually guarded so a
+        // corrupt/stale record cannot prevent the live boot-health observation in Phase 2.
+        try {
+          await primeDeviceFacts();
+          const [storedDone, ev, tr, protOn] = await Promise.all([
+            storage.getItem<boolean>(K.setup, false), storage.getItem<string | null>(K.events, null), storage.getItem<string | null>(K.trust, null),
+            storage.getItem<boolean>(K.protection, false),
+          ]);
+          const href = typeof globalThis.location?.href === "string" ? globalThis.location.href : "";
+          const done = storedDone || shouldBypassSetup(Platform.OS, __DEV__, href);
+          setSetupDone(!!done);
+          if (ev) { const restored = safeParse<PatrolEvent[]>(ev, [], K.events, Array.isArray).map(normalizeHistoricalEvent); eventsRef.current = restored; alertedStates.current = new Map(restored.map((event) => [event.event_id, event.state])); setEvents(restored); }
+          if (tr) setTrust(safeParse<TrustEntry[]>(tr, [], K.trust, Array.isArray)); setLastVerifiedAt(null); // persisted observations are never live boot health
+          if (done) {
+            // Server-issued identity. Legacy (pre-token) installs have none and get a fresh identity — never a claimed one.
+            let identity = await getDeviceIdentity();
+            const resetWhy = identity ? null : await getIdentityResetReason();
+            if (resetWhy) setIdentityReset(resetWhy); // explicit reset state survives reloads — never re-register silently
+            else if (!identity) { try { identity = await registerDeviceIdentity(API_BASE, deviceMeta()); } catch { identity = null; } }
+            if (identity) {
+              setDeviceId(identity.deviceId);
+              // Build the request inside the Promise chain too: egress validation is synchronous, so a
+              // future client/server contract mismatch must remain contained like an offline heartbeat.
+              void Promise.resolve().then(() => apiPost("/devices/heartbeat", "device_register", deviceMeta())).catch(() => undefined);
+              // Live Caller ID PIR — silently write the PIR server URL to shared UserDefaults (iOS)
+              // so the LiveCallerIDLookup extension knows where to query. Non-blocking, best-effort.
+              if (Platform.OS === "ios") {
+                const pirUrl = Constants.expoConfig?.extra?.pirServer?.url;
+                if (pirUrl && typeof pirUrl === "string" && pirUrl.length > 0) {
+                  void getNativeModule()?.configurePirServerUrl(pirUrl).catch(() => undefined);
+                }
               }
             }
+            if (protOn) await storage.setItem(K.protection, true);
           }
-          if (protOn) await storage.setItem(K.protection, true);
+        } catch (restoreError) {
+          console.warn("[Apollo boot] local state restoration failed, continuing to boot-health check:", restoreError);
         }
+        // Phase 2 — live boot-health observation. Runs regardless of Phase 1 outcome so the
+        // initial protection-health check is never silently skipped.
         await refresh(0, "boot");
       } catch (bootError) {
         // Degraded boot: log the failure, continue with whatever state was loaded so far.
