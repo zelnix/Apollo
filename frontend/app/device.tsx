@@ -58,6 +58,7 @@ export default function CheckDevice() {
   const [checking, setChecking] = useState(true);
   const [changes, setChanges] = useState<DeviceSecurityChange[]>([]);
   const [changeLog, setChangeLog] = useState<DeviceSecurityChange[]>([]);
+  const [logReviewOnly, setLogReviewOnly] = useState(false);
   const [settingsGuidance, setSettingsGuidance] = useState<string | null>(null);
   const [checkSequence, setCheckSequence] = useState(0);
   const refreshDevice = useCallback(async (notify = false) => {
@@ -142,8 +143,12 @@ export default function CheckDevice() {
         {changeLog.length ? (
           <Card testID="device-change-log" style={{ gap: spacing.sm }}>
             <SectionTitle>Recent security setting changes</SectionTitle>
-            <Body>Changes Apollo has observed to security, privacy or protection settings. Changes Apollo made for its own protection are tagged “Apollo”.</Body>
-            {changeLog.slice(0, 8).map((change, i) => (
+            <Body>Changes Apollo has observed to security, privacy or protection settings. Changes Apollo made for its own protection are tagged “Apollo”. Tap any entry to open the matching settings screen.</Body>
+            <View style={{ flexDirection: "row", gap: spacing.sm }}>
+              <Button testID="device-log-filter-all" variant={logReviewOnly ? "ghost" : "secondary"} label="All" onPress={() => setLogReviewOnly(false)} />
+              <Button testID="device-log-filter-review" variant={logReviewOnly ? "secondary" : "ghost"} label="Review only" onPress={() => setLogReviewOnly(true)} />
+            </View>
+            {(() => { const shown = (logReviewOnly ? changeLog.filter((c) => c.attributedTo !== "apollo") : changeLog).slice(0, 8); return shown.length ? shown.map((change, i) => (
               <Pressable key={`${change.eventType}-${change.occurredAt}-${i}`} testID={`device-change-${i}`} accessibilityRole="button" accessibilityHint="Opens the matching settings screen to confirm this change" onPress={() => openChange(change)} style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xs, opacity: pressed ? 0.7 : 1 }]}>
                 <View style={{ flex: 1 }}>
                   <Text style={[s.why, { fontFamily: fonts.textSemibold }]}>{DEVICE_CHANGE_LABEL[change.eventType]}{change.appName ? `: ${change.appName}` : ""}</Text>
@@ -151,7 +156,7 @@ export default function CheckDevice() {
                 </View>
                 <Pill tone={change.attributedTo === "apollo" ? "resting" : "growling"} label={change.attributedTo === "apollo" ? "Apollo" : "Review"} testID={`device-change-${i}-tag`} />
               </Pressable>
-            ))}
+            )) : <Body testID="device-log-empty">No changes need review.</Body>; })()}
           </Card>
         ) : null}
 

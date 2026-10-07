@@ -14,6 +14,7 @@ import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
 import { PhonePickerSheet } from "@/src/components/PhonePickerSheet";
 import { PhonePickers } from "@/src/security/phonePickers";
+import { getTrustedCallers, untrustCaller } from "@/src/domain/trustedCallers";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { CALL_ASKS, CALL_CLAIMS, type CallAnalysis, type CallAsk, type CallClaim } from "@/src/domain/callAnalysis";
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
@@ -60,7 +61,9 @@ export default function CheckCall() {
   const [callerPickerOpen, setCallerPickerOpen] = useState(false);
   const canPickPhone = PhonePickers.isSupported();
   const [autoCheck, setAutoCheck] = useState(false);
-  useEffect(() => { void storage.getItem("apollo.call.auto_check", null).then((v: string | null) => setAutoCheck(v === "true")); }, [storage]);
+  const [trustedList, setTrustedList] = useState<string[]>([]);
+  const reloadTrusted = React.useCallback(() => { void getTrustedCallers().then(setTrustedList); }, []);
+  useEffect(() => { void storage.getItem("apollo.call.auto_check", null).then((v: string | null) => setAutoCheck(v === "true")); reloadTrusted(); }, [storage, reloadTrusted]);
 
   const toggle = (id: CallAsk) => setAsks((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : id === "nothing" ? ["nothing"] : [...cur.filter((x) => x !== "nothing"), id]));
   const run = async () => setResult(await checkCall({ asks, claim, number: number.trim() || undefined, transcript: transcript.trim() || undefined }));
@@ -83,6 +86,18 @@ export default function CheckCall() {
               <Body>When on, Apollo checks incoming caller numbers against its reputation service after each call, so scam and fraud callers are flagged without opening Apollo.</Body>
               <Body style={{ fontStyle: "italic" }}>Disclosure: this sends numbers that call you to Apollo&apos;s backend for a reputation check (via IPQualityScore). Numbers are cached briefly for repeat-call detection and are not shared with other users. You can turn it off anytime.</Body>
             </Card>
+            {trustedList.length ? (
+              <Card style={{ gap: spacing.sm }} testID="call-trusted-list">
+                <SectionTitle>Trusted numbers</SectionTitle>
+                <Body>Apollo stays quiet for these numbers and won&apos;t auto-check them.</Body>
+                {trustedList.map((num) => (
+                  <View key={num} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                    <Text style={[s.why, { flex: 1 }]} testID={`call-trusted-${num}`}>{num}</Text>
+                    <Button testID={`call-untrust-${num}`} variant="ghost" label="Remove" onPress={() => { void untrustCaller(num).then(reloadTrusted); }} />
+                  </View>
+                ))}
+              </Card>
+            ) : null}
             {canPickPhone ? (
               <Card style={{ gap: spacing.sm }} testID="call-number-picker">
                 <SectionTitle>Who called?</SectionTitle>
@@ -147,7 +162,7 @@ export default function CheckCall() {
         <Body>Never verify using a number, link or website the caller gave you.</Body>
         <Button testID="verify-caller-close" variant="ghost" label="Got it" onPress={() => setVerify(false)} />
       </Sheet>
-      <PhonePickerSheet visible={callerPickerOpen} mode="calls" onClose={() => setCallerPickerOpen(false)} onPickCall={(c) => { setNumber(c.number); setMore(true); }} />
+      <PhonePickerSheet visible={callerPickerOpen} mode="calls" onClose={() => { setCallerPickerOpen(false); reloadTrusted(); }} onPickCall={(c) => { setNumber(c.number); setMore(true); }} />
     </View>
   );
 }

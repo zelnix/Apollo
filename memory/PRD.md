@@ -1104,3 +1104,18 @@ AND inbox (READ_SMS); same privacy rule for email. User accepts the Play-restric
   10 digits). PhonePickerSheet caller rows have a Trust/Trusted toggle. ApolloContext auto-check poll now
   skips trusted numbers (acknowledges from queue, no assessment/event) so Apollo stays quiet for them.
 - tsc + eslint clean; gatesOverview/gate8/phase2Patrol pass. Native-only pieces need a production Android build.
+
+## Trusted callers/senders mgmt + change-log filter (2026-06)
+- Manage Trusted Callers (app/call.tsx): a "Trusted numbers" card lists trusted numbers with Remove
+  (untrustCaller), refreshes after the picker closes. getTrustedCallers/untrustCaller from trustedCallers.ts.
+- Change Log Filters (app/device.tsx): the change-log card has All / Review-only buttons; Review-only hides
+  "Apollo"-attributed entries; empty state "No changes need review."
+- Trusted Senders (src/components/PhonePickerSheet.tsx + ApolloContext): SMS picker rows show a Trust/Trusted
+  toggle (numeric senders, reusing trustedCallers store). The JS Text-Guard background assess loop now skips
+  trusted senders (acknowledge, no assessment/Patrol item) so Apollo stays quiet for them.
+- tsc + eslint clean.
+## PENDING (large, deferred to a focused session): Higgins First Check + Re-check malware/compromise
+  baseline (onboarding step 3, capability-based FirstCheckCapability, result model
+  CLEAR/ATTENTION/HIGH_RISK/CONFIRMED_THREAT/LIMITED/NOT_AVAILABLE/ERROR, per-platform adapters reusing
+  Diagnostic Core + device signals, Check-tab "Higgins Re-check", Checkup history, full test matrix). Spec
+  captured in this message; not yet implemented.

@@ -38,7 +38,8 @@ export function PhonePickerSheet({ visible, mode, onClose, onPickCall, onPickSms
   const title = mode === "calls" ? "Pick a recent caller" : "Pick a message from your inbox";
 
   const load = useCallback(async () => {
-    if (mode === "calls") { const [list, trust] = await Promise.all([PhonePickers.listRecentCalls(), getTrustedCallers()]); setCalls(list); setTrusted(trust); }
+    const trust = await getTrustedCallers(); setTrusted(trust);
+    if (mode === "calls") { const list = await PhonePickers.listRecentCalls(); setCalls(list); }
     else { const list = await PhonePickers.listRecentSms(); setMessages(list); }
     setPhase("ready");
   }, [mode]);
@@ -119,6 +120,7 @@ export function PhonePickerSheet({ visible, mode, onClose, onPickCall, onPickSms
                     <Text style={s.primary} numberOfLines={1}>{msg.address || "Unknown sender"}</Text>
                     <Text style={[s.secondary, { color: colors.onSurface }]} numberOfLines={2}>{msg.body}</Text>
                   </View>
+                  {normalizeNumber(msg.address).length >= 7 ? <Pressable testID={`phone-picker-sms-trust-${i}`} accessibilityRole="button" accessibilityLabel={trusted.includes(normalizeNumber(msg.address)) ? "Untrust this sender" : "Trust this sender so Apollo stays quiet"} hitSlop={8} onPress={() => void toggleTrust(msg.address)} style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.sm }}><Text style={[s.secondary, { fontFamily: fonts.textSemibold, color: trusted.includes(normalizeNumber(msg.address)) ? colors.resting : colors.brand }]}>{trusted.includes(normalizeNumber(msg.address)) ? "Trusted" : "Trust"}</Text></Pressable> : null}
                   <ChevronRight size={18} color={colors.brand} />
                 </Pressable>
               ))}

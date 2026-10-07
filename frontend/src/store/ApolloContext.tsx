@@ -747,6 +747,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           const text = typeof item?.text === "string" ? item.text : "";
           if (!id || !text.trim()) continue;
           const sender = typeof item.sender === "string" ? item.sender : "";
+          // Trusted senders: stay quiet — acknowledge without assessing or raising a Patrol item.
+          if (sender && await isTrustedCaller(sender)) { await MessagingSdk.acknowledgeMessageSecurityEvents([id]); continue; }
           await apiPost("/investigations/background/text", "investigation", {
             submissionId: id, sourceKey: typeof item.sourceKey === "string" ? item.sourceKey : id,
             revisionDigest: typeof item.revisionDigest === "string" ? item.revisionDigest : id,
