@@ -183,23 +183,24 @@ async function ensureAndroidVpnConsent(): Promise<boolean> {
   if (!vpn || vpn.status === "granted") return true; // not applicable on this device, or already granted
   const result = await securityAdapter.requestProtectionPermission("vpn_config").catch(() => null);
   if (!result) return false;
-  if (result.status === "granted" || result.requestState === "already_granted") return vpnGranted();
-  if (result.requestState !== "system_ui_opened") return false; // launch_failed / unsupported
-  // Android's VPN-consent screen is now a foreground system activity. Resolve as soon as the person
-  // returns (AppState → active) and a fresh read lands, with a hard 120s ceiling so we never hang.
-  return new Promise<boolean>((resolve) => {
-    let done = false; let deadline = Date.now() + 120_000; let timer: ReturnType<typeof setTimeout>;
-    const finish = (v: boolean) => { if (done) return; done = true; sub.remove(); clearTimeout(timer); resolve(v); };
-    const tick = async () => {
-      if (done) return;
-      if (await vpnGranted()) { finish(true); return; }
-      if (Date.now() > deadline) { finish(false); return; }
+  // Current native build launches Android's VPN-consent dialog FOR RESULT and resolves only after
+  // the user responds, so these states are authoritative — no polling/guessing needed.
+  if (result.status === "granted" || result.requestState === "granted" || result.requestState === "already_granted") return true;
+  if (result.requestState === "denied" || result.requestState === "launch_failed" || result.requestState === "unsupported" || result.requestState === "cancelled") return false;
+  // Legacy fallback (older native that returned "system_ui_opened" immediately): wait for the user to
+  // respond and return from the consent screen, then read the real state. Never bails early — it
+  // settles only after a genuine background→active return, or at a hard 120s ceiling.
+  if (result.requestState === "system_ui_opened") {
+    return new Promise<boolean>((resolve) => {
+      let done = false; let backgrounded = false; const ceiling = Date.now() + 120_000; let timer: ReturnType<typeof setTimeout>;
+      const finish = (v: boolean) => { if (done) return; done = true; sub.remove(); clearTimeout(timer); resolve(v); };
+      const onReturn = async () => { for (let i = 0; i < 6 && !done; i++) { if (await vpnGranted()) { finish(true); return; } await new Promise((r) => setTimeout(r, 500)); } finish(await vpnGranted()); };
+      const tick = async () => { if (done) return; if (await vpnGranted()) { finish(true); return; } if (Date.now() > ceiling) { finish(false); return; } timer = setTimeout(tick, 1000); };
+      const sub = AppState.addEventListener("change", (st) => { if (st === "background" || st === "inactive") backgrounded = true; else if (st === "active" && backgrounded) { backgrounded = false; void onReturn(); } });
       timer = setTimeout(tick, 1000);
-    };
-    // Returning from the consent screen shrinks the window to ~4s so a decline is detected promptly.
-    const sub = AppState.addEventListener("change", (st) => { if (st === "active") deadline = Math.min(deadline, Date.now() + 4000); });
-    timer = setTimeout(tick, 1000);
-  });
+    });
+  }
+  return vpnGranted();
 }
 
 const Ctx = createContext<ApolloContextValue | null>(null);

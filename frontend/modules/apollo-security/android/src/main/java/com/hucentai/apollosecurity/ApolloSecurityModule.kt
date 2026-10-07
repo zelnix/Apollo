@@ -8,6 +8,7 @@ import android.net.VpnService
 import android.provider.Settings
 import com.guarddog.core.protection.ProtectionState
 import com.guarddog.vpn.VpnStateRepository
+import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import org.json.JSONArray
@@ -24,8 +25,13 @@ class ApolloSecurityModule : Module() {
   private val prefs get() = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
   private fun guardDogProduction(): ApolloGuardDogProductionRuntime = ApolloGuardDogProductionOwner.get(ctx)
 
+  // Pending VPN-consent request. The AsyncFunction stores its Promise here and OnActivityResult
+  // resolves it once the user actually responds to Android's system VPN-consent dialog.
+  private var vpnConsentPromise: Promise? = null
+
   companion object {
     private const val PREFS = "apollo_siteguard"
+    private const val VPN_REQUEST_CODE = 0xA901
   }
 
   override fun definition() = ModuleDefinition {
@@ -104,20 +110,30 @@ class ApolloSecurityModule : Module() {
       }.toString()
     }
 
-    AsyncFunction("requestGuardDogProductionProtectionPermission") { id: String ->
+    AsyncFunction("requestGuardDogProductionProtectionPermission") { id: String, promise: Promise ->
       recordRequest(id)
       val observedAt = now()
       when (id) {
         "vpn_config" -> {
           val intent = VpnService.prepare(ctx)
-          if (intent == null) perm("vpn_config", "Local VPN (selective packet filter)", "granted", true, "Granted.", observedAt, enabled = true).put("requestState", "already_granted").toString()
-          else {
-            try {
-              intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-              appContext.currentActivity?.startActivity(intent) ?: ctx.startActivity(intent)
-              perm("vpn_config", "Local VPN (selective packet filter)", "undetermined", true, "System VPN consent opened. Apollo will check the result when you return.", observedAt, enabled = false).put("requestState", "system_ui_opened").toString()
-            } catch (_: Exception) {
-              perm("vpn_config", "Local VPN (selective packet filter)", "undetermined", true, "Android could not open VPN consent.", observedAt, enabled = false).put("requestState", "launch_failed").toString()
+          if (intent == null) {
+            promise.resolve(perm("vpn_config", "Local VPN (selective packet filter)", "granted", true, "Granted.", observedAt, enabled = true).put("requestState", "already_granted").toString())
+          } else {
+            val activity = appContext.currentActivity
+            if (activity == null) {
+              promise.resolve(perm("vpn_config", "Local VPN (selective packet filter)", "undetermined", true, "Android could not open VPN consent (no active screen).", observedAt, enabled = false).put("requestState", "launch_failed").toString())
+            } else {
+              try {
+                // Launch the system VPN-consent dialog FOR RESULT and wait for the user's response —
+                // OnActivityResult resolves this promise with the real granted/denied outcome. (No
+                // FLAG_ACTIVITY_NEW_TASK: that would break result delivery back to this activity.)
+                vpnConsentPromise?.resolve(perm("vpn_config", "Local VPN (selective packet filter)", "undetermined", true, "Superseded by a newer request.", observedAt, enabled = false).put("requestState", "cancelled").toString())
+                vpnConsentPromise = promise
+                activity.startActivityForResult(intent, VPN_REQUEST_CODE)
+              } catch (_: Exception) {
+                vpnConsentPromise = null
+                promise.resolve(perm("vpn_config", "Local VPN (selective packet filter)", "undetermined", true, "Android could not open VPN consent.", observedAt, enabled = false).put("requestState", "launch_failed").toString())
+              }
             }
           }
         }
@@ -125,21 +141,34 @@ class ApolloSecurityModule : Module() {
           val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
           try {
             appContext.currentActivity?.startActivity(intent) ?: ctx.startActivity(intent)
-            perm("notifications", "Notifications", "undetermined", true, "Notification settings opened. Apollo will check when you return.", observedAt, enabled = null).put("requestState", "system_ui_opened").toString()
+            promise.resolve(perm("notifications", "Notifications", "undetermined", true, "Notification settings opened. Apollo will check when you return.", observedAt, enabled = null).put("requestState", "system_ui_opened").toString())
           } catch (_: Exception) {
-            perm("notifications", "Notifications", "undetermined", true, "Android could not open notification settings.", observedAt, enabled = null).put("requestState", "launch_failed").toString()
+            promise.resolve(perm("notifications", "Notifications", "undetermined", true, "Android could not open notification settings.", observedAt, enabled = null).put("requestState", "launch_failed").toString())
           }
         }
         "network_filter" -> {
           val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
           try {
             appContext.currentActivity?.startActivity(intent) ?: ctx.startActivity(intent)
-            perm("network_filter", "Notification access (Text Gate)", "undetermined", true, "Notification access settings opened. Apollo will check when you return.", observedAt, enabled = null).put("requestState", "system_ui_opened").toString()
+            promise.resolve(perm("network_filter", "Notification access (Text Gate)", "undetermined", true, "Notification access settings opened. Apollo will check when you return.", observedAt, enabled = null).put("requestState", "system_ui_opened").toString())
           } catch (_: Exception) {
-            perm("network_filter", "Notification access (Text Gate)", "undetermined", true, "Android could not open notification access settings.", observedAt, enabled = null).put("requestState", "launch_failed").toString()
+            promise.resolve(perm("network_filter", "Notification access (Text Gate)", "undetermined", true, "Android could not open notification access settings.", observedAt, enabled = null).put("requestState", "launch_failed").toString())
           }
         }
-        else -> perm(id, id, "not_applicable", false, "Apollo does not request this permission on Android.", observedAt, enabled = null, unavailableReason = "not_implemented").put("requestState", "unsupported").toString()
+        else -> promise.resolve(perm(id, id, "not_applicable", false, "Apollo does not request this permission on Android.", observedAt, enabled = null, unavailableReason = "not_implemented").put("requestState", "unsupported").toString())
+      }
+    }
+
+    // Resolve the pending VPN-consent request when the user responds to Android's consent dialog.
+    OnActivityResult { _, payload ->
+      if (payload.requestCode == VPN_REQUEST_CODE) {
+        val pending = vpnConsentPromise
+        vpnConsentPromise = null
+        if (pending != null) {
+          val observedAt = now()
+          val granted = VpnService.prepare(ctx) == null
+          pending.resolve(perm("vpn_config", "Local VPN (selective packet filter)", if (granted) "granted" else "undetermined", true, if (granted) "VPN consent granted." else "VPN consent was declined.", observedAt, enabled = granted).put("requestState", if (granted) "granted" else "denied").toString())
+        }
       }
     }
 

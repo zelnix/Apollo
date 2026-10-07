@@ -867,3 +867,22 @@ Current position: waiting on step 1 input (Step 7 stderr for build aa24dd73-eab7
 - Tests: tests/gatesOverview.test.ts 13/13 pass (added non-Site reduced-coverage case).
 - NATIVE-ONLY: VPN/notification/call-role flows can't run in Expo Go or the web preview (web fails
   closed). Validate the walkthrough end-to-end on an Android dev build.
+
+## Fix — Android VPN consent now waits for the user's real response (device bug)
+- Root cause: VPN consent was fire-and-forget (startActivity) + JS polling with a 4s "shrink on first
+  active" window. A transient AppState=active (or the consent screen not backgrounding fast enough)
+  ended the wait BEFORE the user tapped Allow → Site Gate reported "needs VPN permission" even when
+  the user intended to grant.
+- Native (ApolloSecurityModule.kt): `requestGuardDogProductionProtectionPermission("vpn_config")` now
+  accepts a Promise and launches the consent intent via `activity.startActivityForResult(VPN_REQUEST_CODE)`
+  (no FLAG_ACTIVITY_NEW_TASK). A new `OnActivityResult` handler resolves the Promise ONLY when the user
+  responds, returning requestState "granted"/"denied" (VpnService.prepare==null = granted). Also returns
+  "launch_failed" when no current Activity. Added `Promise` import + `vpnConsentPromise` + VPN_REQUEST_CODE.
+- JS (ApolloContext.ensureAndroidVpnConsent): treats native "granted"/"already_granted" as true and
+  "denied"/"launch_failed"/"unsupported"/"cancelled" as false. Legacy "system_ui_opened" fallback now
+  waits for a genuine background→active return (no premature bail) then settles.
+- setup-gates.tsx & CoverageCard.tsx `waitForForeground` (text/call settings): only start the short
+  grace window after a real background→active return; 8s no-show safety only if the screen never opened.
+- Type: added "granted"/"denied"/"cancelled" to ProtectionPermission.requestState.
+- Stage1B SHA256 manifest unaffected (covers guarddog-android-sdk/ only, not modules/apollo-security/).
+- REQUIRES A NATIVE ANDROID REBUILD to take effect (native module changed).

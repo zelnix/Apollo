@@ -28,7 +28,7 @@ export interface ProtectionPermission {
   observedAt?: string | null;
   unavailableReason?: PermissionUnavailableReason | null;
   /** Native launch result; opening system UI is not the same as a granted permission. */
-  requestState?: "already_granted" | "system_ui_opened" | "launch_failed" | "unsupported" | null;
+  requestState?: "already_granted" | "system_ui_opened" | "launch_failed" | "unsupported" | "granted" | "denied" | "cancelled" | null;
 }
 
 /** Real device facts a native host can report (never inferred from screen size). */

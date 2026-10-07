@@ -20,19 +20,24 @@ import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 const PENDING_STATES = ["permission_needed", "setup_needed"];
 const ROUTE: Record<GatePermId, string> = { site: "/(tabs)/guard", text: "/text-guard", call: "/call-guard", email: "/email" };
 
-// Wait for the person to return from a system settings screen, then confirm the real state. Resolves
-// as soon as `verify` is true, shrinks to ~4s after the app regains focus, never waits past ceiling.
+// Wait for the person to return from a system settings screen, then confirm the real state. Keeps
+// polling up to the ceiling; only after a genuine background→active return does it start a short
+// grace window (so a transient "active" event can't end the wait before the user has acted).
 function waitForForeground(verify: () => Promise<boolean>, ceilingMs = 120_000): Promise<boolean> {
   return new Promise((resolve) => {
-    let done = false; let deadline = Date.now() + ceilingMs; let timer: ReturnType<typeof setTimeout>;
+    let done = false; let backgrounded = false; const started = Date.now(); let deadline = started + ceilingMs; let timer: ReturnType<typeof setTimeout>;
     const finish = (v: boolean) => { if (done) return; done = true; sub.remove(); clearTimeout(timer); resolve(v); };
     const tick = async () => {
       if (done) return;
       try { if (await verify()) { finish(true); return; } } catch { /* transient */ }
+      if (!backgrounded && Date.now() - started > 8000) { finish(false); return; }
       if (Date.now() > deadline) { finish(false); return; }
       timer = setTimeout(tick, 1000);
     };
-    const sub = AppState.addEventListener("change", (st) => { if (st === "active") deadline = Math.min(deadline, Date.now() + 4000); });
+    const sub = AppState.addEventListener("change", (st) => {
+      if (st === "background" || st === "inactive") backgrounded = true;
+      else if (st === "active" && backgrounded) deadline = Math.min(deadline, Date.now() + 6000);
+    });
     timer = setTimeout(tick, 1000);
   });
 }
