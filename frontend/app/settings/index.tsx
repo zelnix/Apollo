@@ -64,6 +64,7 @@ export default function SettingsScreen() {
             <View style={s.row}><Text style={s.label}>Site Gate</Text><Pill tone={siteRunning ? "resting" : canEnableSite ? "growling" : "unknown"} label={siteGate?.statusLabel ?? "Checking"} testID="settings-site-status" /></View>
             <Body>Site Gate filters known dangerous websites using a local VPN. You can grant VPN permission anytime — your other protection keeps working whether or not this is on.</Body>
             {canEnableSite ? <Button testID="settings-site-enable" variant="secondary" label={enablingSite ? "Turning on…" : "Turn on Site Gate"} disabled={enablingSite} onPress={() => void grantSiteGate()} /> : null}
+            {canEnableSite ? <Text style={s.mono} testID="settings-site-reminder">If you skip this, we&apos;ll remind you gently in a few days — you can turn it on here anytime.</Text> : null}
           </Card></View>
       ) : null}
       <View><SectionTitle>Share into Apollo</SectionTitle><Card style={{ gap: spacing.sm }} testID="settings-share"><Body>Use Share in Messages, Mail or your browser, then choose Apollo. Apollo waits for you to confirm before starting a check.</Body><Pill testID="settings-share-status" tone={Platform.OS === "web" ? "unknown" : "neutral"} label={Platform.OS === "web" ? "Available in the installed app" : "Available on this device"} /></Card></View>
