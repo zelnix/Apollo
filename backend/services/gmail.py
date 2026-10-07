@@ -83,36 +83,56 @@ async def _refresh_access_token(refresh_token: str) -> str:
     return resp.json()["access_token"]
 
 
-async def save_connection(device_id: str, refresh_token: str) -> None:
+async def fetch_profile_email(access_token: str) -> str:
+    """Read the connected account's address (profile.emailAddress) so each account is labelled."""
+    async with httpx.AsyncClient(timeout=10) as http:
+        resp = await http.get(f"{GMAIL_API}/profile", headers={"Authorization": f"Bearer {access_token}"})
+    if resp.status_code != 200:
+        raise HTTPException(400, "Could not read the Gmail account address")
+    return str(resp.json().get("emailAddress", "")).lower()
+
+
+async def save_connection(device_id: str, refresh_token: str, email: str) -> None:
     if not _fernet:
         raise HTTPException(503, "Gmail isn't configured on this build")
     enc = _fernet.encrypt(refresh_token.encode()).decode()
+    # One row per (device, account) so a device can protect multiple Gmail accounts.
     await db.gmail_connections.update_one(
-        {"device_id": device_id},
+        {"device_id": device_id, "email": email},
         {"$set": {"refresh_token_enc": enc, "scopes": [SCOPE], "updated_at": now_utc()},
-         "$setOnInsert": {"device_id": device_id, "created_at": now_utc(), "monitoring_enabled": False}},
+         "$setOnInsert": {"device_id": device_id, "email": email, "created_at": now_utc(), "monitoring_enabled": True}},
         upsert=True,
     )
 
 
-async def get_connection(device_id: str) -> Optional[dict]:
-    return await db.gmail_connections.find_one({"device_id": device_id})
+async def get_connections(device_id: str) -> list[dict]:
+    return [row async for row in db.gmail_connections.find({"device_id": device_id})]
 
 
-async def disconnect(device_id: str) -> None:
-    row = await get_connection(device_id)
-    if row and _fernet:
-        try:
-            refresh = _fernet.decrypt(row["refresh_token_enc"].encode()).decode()
-            async with httpx.AsyncClient(timeout=10) as http:
-                await http.post("https://oauth2.googleapis.com/revoke", data={"token": refresh})
-        except Exception as exc:
-            logger.info("gmail provider revocation did not complete: %s", type(exc).__name__)
-    await db.gmail_connections.delete_one({"device_id": device_id})
+async def get_connection(device_id: str, email: Optional[str] = None) -> Optional[dict]:
+    query: dict[str, Any] = {"device_id": device_id}
+    if email:
+        query["email"] = email
+    return await db.gmail_connections.find_one(query)
 
 
-async def _access_token_for(device_id: str) -> str:
-    row = await get_connection(device_id)
+async def disconnect(device_id: str, email: Optional[str] = None) -> None:
+    query: dict[str, Any] = {"device_id": device_id}
+    if email:
+        query["email"] = email
+    async for row in db.gmail_connections.find(query):
+        if _fernet and row.get("refresh_token_enc"):
+            try:
+                refresh = _fernet.decrypt(row["refresh_token_enc"].encode()).decode()
+                async with httpx.AsyncClient(timeout=10) as http:
+                    await http.post("https://oauth2.googleapis.com/revoke", data={"token": refresh})
+            except Exception as exc:
+                logger.info("gmail provider revocation did not complete: %s", type(exc).__name__)
+    await db.gmail_connections.delete_many(query)
+
+
+async def _access_token_for(device_id: str, email: Optional[str] = None) -> str:
+    row = await get_connection(device_id, email)
     if not row or not _fernet:
         raise HTTPException(404, "Gmail is not connected")
     if not row.get("refresh_token_enc"):
@@ -120,12 +140,12 @@ async def _access_token_for(device_id: str) -> str:
     try:
         refresh = _fernet.decrypt(row["refresh_token_enc"].encode()).decode()
     except (InvalidToken, KeyError, UnicodeDecodeError):
-        await db.gmail_connections.delete_one({"device_id": device_id})
+        await db.gmail_connections.delete_one({"device_id": device_id, "email": row.get("email")})
         raise HTTPException(401, "Gmail grant could not be decrypted; reconnect")
     try:
         return await _refresh_access_token(refresh)
     except HTTPException:
-        await disconnect(device_id)
+        await disconnect(device_id, row.get("email"))
         raise
 
 
@@ -223,10 +243,12 @@ def _collect_attachment_names(part: dict, names: list[str]) -> None:
         names.append(filename)
 
 
-async def scan_inbox_page(device_id: str, page_token: str | None = None, limit: int = 15) -> tuple[list[dict[str, Any]], str | None]:
-    """Fetch one durable cursor page; raw content remains request-scoped until encrypted case intake."""
+async def scan_inbox_page(device_id: str, page_token: str | None = None, limit: int = 15, email: str | None = None) -> tuple[list[dict[str, Any]], str | None]:
+    """Fetch one durable cursor page for a single account; content remains request-scoped."""
     limit = max(1, min(limit, 25))
-    token = await _access_token_for(device_id)
+    row = await get_connection(device_id, email)
+    account = row.get("email") if row else email
+    token = await _access_token_for(device_id, account)
     auth = {"Authorization": f"Bearer {token}"}
     async with httpx.AsyncClient(timeout=20) as http:
         params = {"maxResults": limit, "q": "newer_than:30d"}
@@ -234,7 +256,7 @@ async def scan_inbox_page(device_id: str, page_token: str | None = None, limit: 
             params["pageToken"] = page_token
         listed = await http.get(f"{GMAIL_API}/messages", params=params, headers=auth)
         if listed.status_code == 401:
-            await disconnect(device_id)
+            await disconnect(device_id, account)
             raise HTTPException(401, "Gmail access was rejected; reconnect")
         listed.raise_for_status()
         listing = listed.json()
@@ -255,7 +277,7 @@ async def scan_inbox_page(device_id: str, page_token: str | None = None, limit: 
             reply_to = h.get("reply-to", "")
             # Extract attachment filenames for risky-type flagging
             attachment_names = _extract_attachment_names(msg.get("payload", {}))
-            out.append({"id": msg.get("id", ""), "from": h.get("from", ""), "subject": h.get("subject", ""),
+            out.append({"id": msg.get("id", ""), "account": account, "from": h.get("from", ""), "subject": h.get("subject", ""),
                         "date": h.get("date", ""), "body": text, "links": anchors,
                         "reply_to": reply_to, "attachment_names": attachment_names,
                         "auth_results": auth_results})
@@ -263,16 +285,26 @@ async def scan_inbox_page(device_id: str, page_token: str | None = None, limit: 
 
 
 async def scan_inbox(device_id: str, limit: int = 15) -> list[dict[str, Any]]:
-    """Compatibility wrapper for tests and callers that deliberately request only the first page."""
-    items, _next = await scan_inbox_page(device_id, None, limit)
-    return items
+    """Scan the first page of EVERY connected account for this device (monitor all together).
+    Each returned item is tagged with its `account` address."""
+    connections = await get_connections(device_id)
+    if not connections:
+        raise HTTPException(404, "Gmail is not connected")
+    aggregated: list[dict[str, Any]] = []
+    for row in connections:
+        try:
+            items, _next = await scan_inbox_page(device_id, None, limit, row.get("email"))
+            aggregated.extend(items)
+        except HTTPException:
+            continue  # a single revoked/expired account must not block the others
+    return aggregated
 
 
 
-async def download_attachment(device_id: str, message_id: str, attachment_id: str) -> bytes | None:
+async def download_attachment(device_id: str, message_id: str, attachment_id: str, email: str | None = None) -> bytes | None:
     """Download an individual attachment from a Gmail message.
     Returns raw attachment bytes, or None on failure."""
-    access_token = await _access_token_for(device_id)
+    access_token = await _access_token_for(device_id, email)
     auth = {"Authorization": f"Bearer {access_token}"}
     try:
         async with httpx.AsyncClient(timeout=30) as http:

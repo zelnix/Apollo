@@ -64,6 +64,7 @@ export default function CheckEmail() {
   const [gmailConnected, setGmailConnected] = useState<boolean | null>(null);
   const [gmailConfigured, setGmailConfigured] = useState(true);
   const [gmailMonitoring, setGmailMonitoring] = useState(false);
+  const [gmailAccounts, setGmailAccounts] = useState<{ email: string; monitoring_enabled?: boolean }[]>([]);
   const [gmailBusy, setGmailBusy] = useState(false);
   const [scanBusy, setScanBusy] = useState(false);
   const [gmailStatusError, setGmailStatusError] = useState<string | null>(null);
@@ -80,12 +81,13 @@ export default function CheckEmail() {
         timer = setTimeout(() => reject(new Error("Gmail status took too long to answer.")), GMAIL_STATUS_UI_TIMEOUT_MS);
       });
       const response = await Promise.race([
-        apiGet<{ connected: boolean; configured: boolean; monitoring_enabled: boolean }>(`/gmail/status?device_id=${deviceId}`),
+        apiGet<{ connected: boolean; configured: boolean; monitoring_enabled: boolean; accounts?: { email: string; monitoring_enabled: boolean }[] }>(`/gmail/status?device_id=${deviceId}`),
         timeout,
       ]);
       setGmailConnected(response.connected);
       setGmailConfigured(response.configured);
       setGmailMonitoring(response.monitoring_enabled);
+      setGmailAccounts(response.accounts ?? []);
     } catch {
       setGmailConnected(false);
       setGmailStatusError("Apollo couldn't confirm the Gmail connection. Manual email checks remain available.");
@@ -109,11 +111,14 @@ export default function CheckEmail() {
     } catch (e) { showToast(e instanceof Error ? e.message : "Couldn't connect Gmail right now.", "growling"); } finally { setGmailBusy(false); }
   };
 
-  const disconnectGmail = async () => {
+  const disconnectGmail = async (email?: string) => {
     if (!deviceId) return;
-    try { await apiDelete(`/gmail/connection?device_id=${deviceId}`); } catch { /* already gone */ }
-    setGmailConnected(false); setGmailMonitoring(false); setScanSummary(null); void runProtectionHealthCheck("protection_change");
-    showToast("Gmail disconnected.", "neutral");
+    const qs = email ? `?device_id=${deviceId}&email=${encodeURIComponent(email)}` : `?device_id=${deviceId}`;
+    try { await apiDelete(`/gmail/connection${qs}`); } catch { /* already gone */ }
+    setScanSummary(null);
+    void runProtectionHealthCheck("protection_change");
+    showToast(email ? `${email} disconnected.` : "Gmail disconnected.", "neutral");
+    await refreshGmailStatus();
   };
   const toggleGmailMonitoring = async () => {
     if (!deviceId) return;
@@ -185,17 +190,24 @@ export default function CheckEmail() {
                   </View>
                 ) : gmailConnected ? (
                   <>
-                    <View style={s.chips}><Pill tone="resting" label="Gmail OAuth connected — read-only" testID="email-gmail-connected" /></View>
-                    <Button testID="email-gmail-scan" label={scanBusy ? "Assessing recent Gmail…" : "Assess recent Gmail"} icon={scanBusy ? <ActivityIndicator color={colors.onBrandPrimary} /> : undefined} onPress={() => void scanInbox()} disabled={scanBusy || gmailBusy} />
+                    <View style={s.chips}><Pill tone="resting" label={`${gmailAccounts.length || 1} Gmail ${gmailAccounts.length === 1 ? "account" : "accounts"} connected — read-only`} testID="email-gmail-connected" /></View>
+                    {gmailAccounts.map((acct) => (
+                      <View key={acct.email} style={s.row} testID={`email-gmail-account-${acct.email}`}>
+                        <Body>{acct.email}</Body>
+                        <Button testID={`email-gmail-disconnect-${acct.email}`} variant="ghost" label="Disconnect" onPress={() => void disconnectGmail(acct.email)} disabled={scanBusy || gmailBusy} />
+                      </View>
+                    ))}
+                    <Button testID="email-gmail-scan" label={scanBusy ? "Assessing recent Gmail…" : "Assess recent Gmail (all accounts)"} icon={scanBusy ? <ActivityIndicator color={colors.onBrandPrimary} /> : undefined} onPress={() => void scanInbox()} disabled={scanBusy || gmailBusy} />
                     <Button testID="email-gmail-monitoring" variant="secondary" label={gmailMonitoring ? "Stop ongoing Gmail monitoring" : "Enable ongoing Gmail monitoring"} onPress={() => void toggleGmailMonitoring()} disabled={scanBusy || gmailBusy} />
-                    <Body testID="email-gmail-monitoring-status">{gmailMonitoring ? "Monitoring requested. Gates shows Active only after a fresh successful monitor check." : "Ongoing monitoring is off."}</Body>
+                    <Body testID="email-gmail-monitoring-status">{gmailMonitoring ? "Monitoring requested for every connected account. Gates shows Active only after a fresh successful monitor check." : "Ongoing monitoring is off."}</Body>
                     {scanSummary ? (
                       <>
                         <Body testID="email-gmail-scan-summary">{scanSummary.text}</Body>
                         {scanSummary.flagged ? <Button testID="email-gmail-view-patrol" variant="secondary" label="View in Patrol" onPress={() => router.push("/(tabs)/patrol")} /> : null}
                       </>
                     ) : null}
-                    <Button testID="email-gmail-disconnect" variant="ghost" label="Disconnect Gmail" onPress={() => void disconnectGmail()} disabled={scanBusy || gmailBusy} />
+                    <Button testID="email-gmail-connect-another" variant="secondary" icon={gmailBusy ? <ActivityIndicator color={colors.brand} /> : <Mail size={18} color={colors.onSurface} />} label={gmailBusy ? "Opening Google…" : "Connect another account"} onPress={() => void connectGmail()} disabled={gmailBusy || !deviceId} />
+                    <Button testID="email-gmail-disconnect" variant="ghost" label="Disconnect all accounts" onPress={() => void disconnectGmail()} disabled={scanBusy || gmailBusy} />
                   </>
                 ) : (
                   <>

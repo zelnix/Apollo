@@ -900,3 +900,24 @@ Current position: waiting on step 1 input (Step 7 stderr for build aa24dd73-eab7
 - Cross-platform note: all graceful-permission/reduced-coverage/nudge/coverage-card/setup-walkthrough
   behavior is platform-agnostic JS; the native for-result fix is Android-only because the bug was.
 - REQUIRES A NATIVE ANDROID REBUILD (native module changed).
+
+## Feature — Multiple Gmail accounts (Email Gate)
+- Also fixed: Google "Error 403 access_denied" is a Cloud Console setting (OAuth consent screen in
+  Testing mode) — user adds Gmail addresses as Test Users (or publishes/ verifies the app). Not a code bug.
+- Backend gmail_connections now stores ONE ROW PER (device_id, email). server.py drops the legacy
+  unique index on device_id, backfills email="", and creates a compound unique (device_id, email) index.
+- services/gmail.py: save_connection(device_id, refresh, email) + fetch_profile_email; get_connections();
+  get_connection(device_id, email?); disconnect(device_id, email?) (one or all); _access_token_for(device_id, email?);
+  scan_inbox aggregates the first page of EVERY connected account (items tagged with `account`);
+  scan_inbox_page/download_attachment accept optional email.
+- routers/gmail.py: callback fetches the account email and saves per-account; /gmail/status returns
+  `accounts: [{email, monitoring_enabled, monitor_state,...}]` (plus back-compat single fields);
+  /gmail/monitoring is device-wide (update_many — monitor all together); DELETE /gmail/connection
+  accepts optional ?email to remove one account, omitted = all.
+- services/mailbox_monitor.py: scan_gmail_through_shared_pipeline(device_id, mode, email?) leases &
+  scans per (device,email); the enabled-mailbox loop passes each account's email.
+- Frontend app/email.tsx: lists connected accounts with per-account Disconnect, "Connect another
+  account", "Disconnect all", and device-wide monitoring/scan across all accounts.
+- Validated service-layer multi-account (store 2, per-account + all disconnect) PASS. HTTP endpoints are
+  device-credential protected; OAuth connect needs the Google test-user/verification fix + a device to
+  test end-to-end. Native build not required (JS+backend only).

@@ -387,12 +387,15 @@ async def finalise_pending_assessments() -> None:
         await _finalise_receipt(receipt)
 
 
-async def scan_gmail_through_shared_pipeline(device_id: str, intake_mode: str) -> dict:
+async def scan_gmail_through_shared_pipeline(device_id: str, intake_mode: str, email: str | None = None) -> dict:
     lease = str(uuid.uuid4()); now = now_utc()
+    lease_query: dict = {"device_id": device_id, "$or": [{"monitor_lease_until": {"$lte": now}}, {"monitor_lease_until": {"$exists": False}}, {"monitor_lease_until": None}]}
+    if email:
+        lease_query["email"] = email
     row = await db.gmail_connections.find_one_and_update(
-        {"device_id": device_id, "$or": [{"monitor_lease_until": {"$lte": now}}, {"monitor_lease_until": {"$exists": False}}, {"monitor_lease_until": None}]},
+        lease_query,
         {"$set": {"monitor_lease": lease, "monitor_lease_until": now + timedelta(seconds=90), "monitor_last_attempt_at": now}},
-        projection={"_id": 0, "monitor_next_page_token": 1},
+        projection={"_id": 0, "monitor_next_page_token": 1, "email": 1},
         return_document=ReturnDocument.AFTER,
     )
     if row is None:
@@ -400,8 +403,10 @@ async def scan_gmail_through_shared_pipeline(device_id: str, intake_mode: str) -
         if exists is None:
             raise HTTPException(404, "Gmail is not connected")
         return {"status": "busy", "checked": 0, "accepted": 0, "nextCursor": None}
+    account = row.get("email")
+    lease_filter = {"device_id": device_id, "monitor_lease": lease}
     try:
-        messages, next_cursor = await gmail.scan_inbox_page(device_id, row.get("monitor_next_page_token"))
+        messages, next_cursor = await gmail.scan_inbox_page(device_id, row.get("monitor_next_page_token"), email=account)
         accepted = 0
         for message in messages:
             accepted += int(await _submit_shared_case("gmail", device_id, message, intake_mode))
@@ -409,7 +414,7 @@ async def scan_gmail_through_shared_pipeline(device_id: str, intake_mode: str) -
         # now reflects RETRIEVAL success only. `monitor_last_assessment_at` tracks when assessments
         # actually complete (updated by finalise_pending_assessments). The Email Gate should check
         # BOTH timestamps — retrieval without assessment means the gate is degraded, not working.
-        await db.gmail_connections.update_one({"device_id": device_id, "monitor_lease": lease}, {"$set": {
+        await db.gmail_connections.update_one(lease_filter, {"$set": {
             "monitor_next_page_token": next_cursor, "monitor_last_checked_at": now_utc(),
             "monitor_last_retrieval_at": now_utc(),  # C2: renamed from monitor_last_success_at
             "monitor_last_success_at": now_utc(),    # kept for backward compat; gate must also check assessment
@@ -417,16 +422,16 @@ async def scan_gmail_through_shared_pipeline(device_id: str, intake_mode: str) -
         }})
         return {"status": "accepted", "checked": len(messages), "accepted": accepted, "nextCursor": next_cursor}
     except Exception as exc:
-        await db.gmail_connections.update_one({"device_id": device_id, "monitor_lease": lease}, {"$set": {
+        await db.gmail_connections.update_one(lease_filter, {"$set": {
             "monitor_last_error_at": now_utc(), "monitor_last_error": type(exc).__name__, "monitor_lease": None, "monitor_lease_until": None,
         }})
         raise
 
 
 async def monitor_enabled_mailboxes_once() -> None:
-    async for row in db.gmail_connections.find({"monitoring_enabled": True, "refresh_token_enc": {"$exists": True}}, {"_id": 0, "device_id": 1}):
+    async for row in db.gmail_connections.find({"monitoring_enabled": True, "refresh_token_enc": {"$exists": True}}, {"_id": 0, "device_id": 1, "email": 1}):
         try:
-            await scan_gmail_through_shared_pipeline(row["device_id"], "monitored")
+            await scan_gmail_through_shared_pipeline(row["device_id"], "monitored", row.get("email"))
         except Exception as exc:  # noqa: BLE001
             logger.warning("gmail mailbox monitoring failed for one device: %s", type(exc).__name__)
 

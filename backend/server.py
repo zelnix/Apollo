@@ -71,7 +71,17 @@ async def lifespan(_: FastAPI):
     await db.reputation_cache.create_index("expires_at")  # plain index; expiry is checked at read time, never auto-deleted
     await db.domain_info_cache.create_index("domain", unique=True)
     await db.domain_info_cache.create_index("expires_at")  # plain index; expiry is checked at read time, never auto-deleted
-    await db.gmail_connections.create_index("device_id", unique=True)
+    # Multi-account: one row per (device, Gmail account). Drop the legacy device_id-unique index
+    # (it capped a device to a single account) and migrate to a compound unique index.
+    try:
+        existing = await db.gmail_connections.index_information()
+        if "device_id_1" in existing and not existing["device_id_1"].get("key") == [("device_id", 1), ("email", 1)]:
+            await db.gmail_connections.drop_index("device_id_1")
+    except Exception as exc:  # noqa: BLE001
+        logger.info("gmail index migration skipped: %s", type(exc).__name__)
+    # Backfill: legacy rows without an email get a placeholder so the compound index accepts them.
+    await db.gmail_connections.update_many({"email": {"$exists": False}}, {"$set": {"email": ""}})
+    await db.gmail_connections.create_index([("device_id", 1), ("email", 1)], unique=True)
     # Legacy: cleanup_unreadable_connections was removed from automatic startup
     # to avoid destroying user data in production. If cleanup is needed, run it
     # as an explicit admin operation.

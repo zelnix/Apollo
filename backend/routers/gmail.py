@@ -86,33 +86,48 @@ async def gmail_callback(code: Optional[str] = None, state: Optional[str] = None
     try:
         token_data = await gmail_service.exchange_code(code)
         refresh = token_data.get("refresh_token")
+        email = await gmail_service.fetch_profile_email(token_data["access_token"])
         if not refresh:
-            # Google omits it on a repeat consent; only fail if we don't already have one on file.
-            existing = await gmail_service.get_connection(row["device_id"])
+            # Google omits it on a repeat consent; only fail if we don't already have one for THIS account.
+            existing = await gmail_service.get_connection(row["device_id"], email)
             if not existing:
                 return RedirectResponse(_bounce(app_redirect, gmail="error", reason="no_refresh_token"), status_code=303)
         else:
-            await gmail_service.save_connection(row["device_id"], refresh)
+            await gmail_service.save_connection(row["device_id"], refresh, email)
     except HTTPException as exc:
         logger.info("gmail callback failed: %s", exc.detail)
         return RedirectResponse(_bounce(app_redirect, gmail="error"), status_code=303)
     return RedirectResponse(_bounce(app_redirect, gmail="connected"), status_code=303)
 
 
+def _account_state(row: dict) -> dict:
+    lease_active = bool(row.get("monitor_lease_until") and row["monitor_lease_until"].replace(tzinfo=timezone.utc) > now_utc())
+    state = "off" if not row.get("monitoring_enabled") else "checking" if lease_active else "needs_attention" if row.get("monitor_last_error_at") and not row.get("monitor_last_success_at") else "ready"
+    return {"email": row.get("email"), "monitoring_enabled": bool(row.get("monitoring_enabled")),
+            "monitor_last_checked_at": row.get("monitor_last_checked_at"), "monitor_last_error_at": row.get("monitor_last_error_at"),
+            "monitor_last_success_at": row.get("monitor_last_success_at"), "monitor_last_assessment_at": row.get("monitor_last_assessment_at"),
+            "monitor_last_attempt_at": row.get("monitor_last_attempt_at"), "monitor_state": state,
+            "cursor_pending": bool(row.get("monitor_next_page_token"))}
+
+
 @router.get("/gmail/status")
 async def gmail_status(device_id: str = Query(min_length=8, max_length=64)):
-    row = await gmail_service.get_connection(device_id)
-    lease_active = bool(row and row.get("monitor_lease_until") and row["monitor_lease_until"].replace(tzinfo=timezone.utc) > now_utc())
-    monitor_state = "disconnected" if not row else "off" if not row.get("monitoring_enabled") else "checking" if lease_active else "needs_attention" if row.get("monitor_last_error_at") and not row.get("monitor_last_success_at") else "ready"
-    return {"connected": row is not None, "configured": gmail_service.configured(),
+    rows = await gmail_service.get_connections(device_id)
+    accounts = [_account_state(r) for r in rows]
+    primary = rows[0] if rows else None
+    lease_active = bool(primary and primary.get("monitor_lease_until") and primary["monitor_lease_until"].replace(tzinfo=timezone.utc) > now_utc())
+    monitor_state = "disconnected" if not primary else "off" if not primary.get("monitoring_enabled") else "checking" if lease_active else "needs_attention" if primary.get("monitor_last_error_at") and not primary.get("monitor_last_success_at") else "ready"
+    return {"connected": len(rows) > 0, "configured": gmail_service.configured(),
             "oauth_redirect_uri": GOOGLE_GMAIL_REDIRECT_URI if gmail_service.configured() else None,
-            "monitoring_enabled": bool(row and row.get("monitoring_enabled")),
-            "monitor_last_checked_at": row.get("monitor_last_checked_at") if row else None,
-            "monitor_last_error_at": row.get("monitor_last_error_at") if row else None,
-            "monitor_last_success_at": row.get("monitor_last_success_at") if row else None,
-            "monitor_last_assessment_at": row.get("monitor_last_assessment_at") if row else None,
-            "monitor_last_attempt_at": row.get("monitor_last_attempt_at") if row else None,
-            "monitor_state": monitor_state, "cursor_pending": bool(row and row.get("monitor_next_page_token"))}
+            "accounts": accounts,
+            # Back-compat single-account fields mirror the first account.
+            "monitoring_enabled": bool(primary and primary.get("monitoring_enabled")),
+            "monitor_last_checked_at": primary.get("monitor_last_checked_at") if primary else None,
+            "monitor_last_error_at": primary.get("monitor_last_error_at") if primary else None,
+            "monitor_last_success_at": primary.get("monitor_last_success_at") if primary else None,
+            "monitor_last_assessment_at": primary.get("monitor_last_assessment_at") if primary else None,
+            "monitor_last_attempt_at": primary.get("monitor_last_attempt_at") if primary else None,
+            "monitor_state": monitor_state, "cursor_pending": bool(primary and primary.get("monitor_next_page_token"))}
 
 
 class GmailMonitoringIn(BaseModel):
@@ -122,7 +137,8 @@ class GmailMonitoringIn(BaseModel):
 
 @router.post("/gmail/monitoring")
 async def gmail_monitoring(body: GmailMonitoringIn):
-    result = await db.gmail_connections.update_one({"device_id": body.device_id},
+    # Monitor all connected accounts together — the toggle applies device-wide.
+    result = await db.gmail_connections.update_many({"device_id": body.device_id},
         {"$set": {"monitoring_enabled": body.enabled, "updated_at": now_utc()}})
     if not result.matched_count:
         raise HTTPException(404, "Connect Gmail before enabling monitoring")
@@ -130,8 +146,9 @@ async def gmail_monitoring(body: GmailMonitoringIn):
 
 
 @router.delete("/gmail/connection", status_code=204)
-async def gmail_disconnect(device_id: str = Query(min_length=8, max_length=64)):
-    await gmail_service.disconnect(device_id)
+async def gmail_disconnect(device_id: str = Query(min_length=8, max_length=64), email: Optional[str] = Query(default=None, max_length=320)):
+    # Omit `email` to disconnect every account on this device; pass one to remove a single account.
+    await gmail_service.disconnect(device_id, email)
 
 
 class GmailScanIn(BaseModel):
