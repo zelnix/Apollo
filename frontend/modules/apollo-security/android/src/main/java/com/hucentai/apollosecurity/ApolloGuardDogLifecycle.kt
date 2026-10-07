@@ -39,7 +39,7 @@ internal object ApolloGuardDogEngineOwnership {
 
 /**
  * Production GuardDog eligibility constants.
- * The signing-key trust infrastructure (Ed25519, BouncyCastle) has been removed.
+ * The custom signing key infrastructure has been removed.
  * Eligibility is now controlled solely by a manifest meta-data boolean.
  */
 internal object ApolloGuardDogProductionTrust {

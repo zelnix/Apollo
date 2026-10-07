@@ -20,7 +20,6 @@ import com.guarddog.core.protection.ProtectionEnforcementReporter
 import com.guarddog.core.protection.ProtectionState
 import com.guarddog.core.rules.RuleBundleValidator
 import com.guarddog.core.rules.RuleBundle
-import com.guarddog.core.rules.BundleJson
 import com.guarddog.core.rules.ValidationResult
 import com.guarddog.vpn.BindingResult
 import com.guarddog.vpn.ControlledEndpointResolver
@@ -161,7 +160,7 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
     val raw = persistedBundle() ?: return
     val rebuilt = rebuildEngine()
     runCatching {
-      val expires = Instant.parse(BundleJson.decodeFromString(RuleBundle.serializer(), raw).expiresAt)
+      val expires = Instant.parse(RuleBundle.fromJson(raw).expiresAt)
       check(expires.isAfter(Instant.now()))
       check(rebuilt.acceptRuleBundle(raw) is ValidationResult.Accepted); check(rebuilt.acceptWebsiteGateRuleBundle(raw) is ValidationResult.Accepted)
       acceptedBundleExpiresAt = expires; scheduleExpiry(expires)

@@ -5,32 +5,36 @@ import { getNativeModule, NativeModuleUnavailable } from "@/src/security/nativeB
 import { parseGuardDogEvidence } from "./GuardDogEvidenceBoundary";
 import { getGuardDogProductionConfig } from "./GuardDogProductionConfig";
 
-type ProductionStatus = ProtectionStatus & { trustExpiresAt?: string | null; ruleExpiresAt?: string | null; productionAuthority?: boolean };
+type ProductionStatus = ProtectionStatus & { ruleExpiresAt?: string | null; productionAuthority?: boolean };
 
 export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapter {
   readonly kind = "android" as const;
   readonly label = "GuardDog production Website Gate";
   private configured: Promise<void> | null = null;
   private refreshedAt = 0;
-  private mod() { const module = getNativeModule(); if (!module) throw new NativeModuleUnavailable("Android GuardDog production authority"); return module; }
+  private mod() { const module = getNativeModule(); if (!module) throw new NativeModuleUnavailable("Android GuardDog production runtime"); return module; }
   private async json<T>(value: Promise<string> | string): Promise<T> { return JSON.parse(await value) as T; }
   private ensureConfigured(): Promise<void> {
     if (!this.configured) this.configured = (async () => {
       this.mod().configureGuardDogProduction(JSON.stringify(getGuardDogProductionConfig()));
       try { await this.mod().refreshGuardDogProductionRules(); this.refreshedAt = Date.now(); }
       catch (refreshError) {
+        // Offline fallback: if rules are still locally valid, don't throw.
         const status = await this.json<ProductionStatus>(this.mod().getGuardDogProductionStatus());
-        const now = Date.now(); const trustLive = !!status.trustExpiresAt && Date.parse(status.trustExpiresAt) > now;
+        const now = Date.now();
         const rulesLive = !!status.ruleExpiresAt && Date.parse(status.ruleExpiresAt) > now;
-        if (!trustLive || !rulesLive || status.productionAuthority !== true) throw refreshError;
+        if (!rulesLive || status.productionAuthority !== true) throw refreshError;
       }
     })().catch((error) => { this.configured = null; throw error; });
     return this.configured;
   }
   private async refreshIfDue(force = false) { await this.ensureConfigured(); if (!force && Date.now() - this.refreshedAt < 15 * 60 * 1000) return;
     try { await this.mod().refreshGuardDogProductionRules(); this.refreshedAt = Date.now(); }
-    catch (error) { const status = await this.json<ProductionStatus>(this.mod().getGuardDogProductionStatus()); const now = Date.now();
-      if (!status.trustExpiresAt || !status.ruleExpiresAt || Date.parse(status.trustExpiresAt) <= now || Date.parse(status.ruleExpiresAt) <= now) throw error; }
+    catch (error) {
+      // Offline fallback: if locally-persisted rules are still valid, swallow the refresh failure.
+      const status = await this.json<ProductionStatus>(this.mod().getGuardDogProductionStatus()); const now = Date.now();
+      if (!status.ruleExpiresAt || Date.parse(status.ruleExpiresAt) <= now) throw error;
+    }
   }
   async getCapabilities(): Promise<Capability[]> { try { await this.refreshIfDue(); return this.json<Capability[]>(this.mod().getGuardDogProductionCapabilities()); }
     catch { return [{ id: "site_guard", title: "Site Gate", status: "permission_required", detail: "Production protection is inactive because its rules are missing, invalid or expired." }]; } }

@@ -34,15 +34,15 @@ cryptographic signing keys for rule bundles.
 - TLS certificates are managed by the existing hosting provider.
 - No Apollo-managed private signing keys exist.
 - No new API-key system is introduced.
-- The app trusts the backend because:
-  1. HTTPS ensures transport integrity and server authentication.
-  2. The backend URL is baked into the signed APK/IPA at build time.
-  3. The API uses existing Apollo authentication.
+- **Current implementation**: HTTPS-only (TLS + baked-in URL in signed APK).
+  The Android runtime's `fetch()` does not send an auth header; the endpoint
+  does not require one. The baked-in URL in the signed APK provides origin-binding.
+- **Future enhancement**: If per-device auth is needed, add Apollo JWT verification
+  to the backend endpoint and a matching Authorization header in the native fetcher.
 
 ### Rule delivery API
 - **Endpoint**: `GET /api/guarddog/rules`
-- **Authentication**: Existing Apollo auth only (no new API-key system)
-- **Endpoint**: `GET /api/guarddog/rules`
+- **Authentication**: HTTPS-only (TLS + baked-in URL in signed APK)
 - **Response schema**:
 ```json
 {

@@ -31,6 +31,11 @@ data class RuleBundle(
     /** Exact-host lookup used by the engine for authorization decisions. */
     fun exactMatch(canonicalHost: String): Rule? =
         payload.rules.firstOrNull { it.host == canonicalHost && it.matchType == "exact" }
+
+    companion object {
+        /** Parse a rule bundle from raw JSON using the strict bundle parser. */
+        fun fromJson(raw: String): RuleBundle = BundleJson.decodeFromString(serializer(), raw)
+    }
 }
 
 internal val BundleJson = Json {
