@@ -13,7 +13,6 @@ import { PRIVACY_POLICY_SUMMARY } from "@/src/domain/privacy";
 import type { NotificationStatus } from "@/src/push/notifications";
 import { useApollo } from "@/src/store/ApolloContext";
 import { useProtectionHealth } from "@/src/protection/healthStore";
-import { requestSiteProtectionRecovery } from "@/src/protection/healthCoordinator";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { minimiseApp } from "@/src/utils/minimise";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -29,7 +28,7 @@ const useStyles = makeStyles((c) => ({
 
 export default function SettingsScreen() {
   const s = useStyles(); const insets = useSafeAreaInsets(); const router = useRouter(); const { colors } = useTheme();
-  const { deviceId, trust, revokeTrust, clearPatrol, notificationStatus, enableNotifications, quietHours, quietNow, setQuietHours, lowPower, setLowPower, showToast, storage } = useApollo();
+  const { deviceId, trust, revokeTrust, clearPatrol, notificationStatus, enableNotifications, quietHours, quietNow, setQuietHours, lowPower, setLowPower, showToast, storage, enableSiteProtection } = useApollo();
   const [higginsAuto, setHigginsAutoState] = useState(false); const [confirmClear, setConfirmClear] = useState(false); const [preview, setPreview] = useState(false);
   const [callAutoCheck, setCallAutoCheck] = useState(false);
   useEffect(() => { void getHigginsAuto().then(setHigginsAutoState); }, []);
@@ -44,9 +43,15 @@ export default function SettingsScreen() {
   const siteState = siteGate?.capability.automatic?.state;
   const siteRunning = siteState === "running";
   const canEnableSite = !!siteState && !["running", "checking", "unsupported"].includes(siteState);
+  const [enablingSite, setEnablingSite] = useState(false);
   const grantSiteGate = async () => {
-    const attempt = await requestSiteProtectionRecovery();
-    showToast(attempt.status === "failed" ? "Android could not open the VPN permission screen. Try again shortly." : "Apollo will turn on Site Gate when you return.", attempt.status === "failed" ? "growling" : "neutral");
+    setEnablingSite(true);
+    try {
+      const granted = await enableSiteProtection();
+      showToast(granted ? "Site Gate is on." : "Site Gate needs VPN permission. Your other protection stays active.", granted ? "resting" : "growling");
+    } catch {
+      showToast("Android could not open the VPN permission screen. Try again shortly.", "growling");
+    } finally { setEnablingSite(false); }
   };
 
   return <View style={s.root} testID="settings-screen">
@@ -58,7 +63,7 @@ export default function SettingsScreen() {
           <Card style={{ gap: spacing.sm }} testID="settings-site-gate">
             <View style={s.row}><Text style={s.label}>Site Gate</Text><Pill tone={siteRunning ? "resting" : canEnableSite ? "growling" : "unknown"} label={siteGate?.statusLabel ?? "Checking"} testID="settings-site-status" /></View>
             <Body>Site Gate filters known dangerous websites using a local VPN. You can grant VPN permission anytime — your other protection keeps working whether or not this is on.</Body>
-            {canEnableSite ? <Button testID="settings-site-enable" variant="secondary" label="Turn on Site Gate" onPress={() => void grantSiteGate()} /> : null}
+            {canEnableSite ? <Button testID="settings-site-enable" variant="secondary" label={enablingSite ? "Turning on…" : "Turn on Site Gate"} disabled={enablingSite} onPress={() => void grantSiteGate()} /> : null}
           </Card></View>
       ) : null}
       <View><SectionTitle>Share into Apollo</SectionTitle><Card style={{ gap: spacing.sm }} testID="settings-share"><Body>Use Share in Messages, Mail or your browser, then choose Apollo. Apollo waits for you to confirm before starting a check.</Body><Pill testID="settings-share-status" tone={Platform.OS === "web" ? "unknown" : "neutral"} label={Platform.OS === "web" ? "Available in the installed app" : "Available on this device"} /></Card></View>

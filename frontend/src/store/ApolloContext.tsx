@@ -120,6 +120,8 @@ interface ApolloContextValue {
   lastVerifiedAt: string | null;
   toggleProtection(on: boolean): Promise<void>;
   requestPermission(id: ProtectionPermission["id"]): Promise<ProtectionPermission>;
+  /** Grant VPN consent (if needed) and start Site Gate, flipping its status immediately. Returns whether consent was granted. */
+  enableSiteProtection(): Promise<boolean>;
   events: PatrolEvent[];
   trust: TrustEntry[];
   resolution: StateResolution;
@@ -1012,6 +1014,18 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     return p;
   }, [refresh]);
 
+  // Settings "Turn on Site Gate": record intent, ensure VPN consent lands (waits for the system
+  // consent screen to return on Android — see ensureAndroidVpnConsent), then start the VPN service
+  // and refresh so the Gate flips to "Protection on" immediately, without reopening the app. A
+  // decline leaves Apollo in reduced coverage (Site Gate stays "permission required").
+  const enableSiteProtection = useCallback(async (): Promise<boolean> => {
+    await storage.setItem(K.protection, true);
+    const granted = Platform.OS === "android" ? await ensureAndroidVpnConsent() : true;
+    if (granted) { try { await securityAdapter.startProtection(); } catch { /* reduced coverage — health check retries */ } }
+    await refresh(0, "protection_change");
+    return granted;
+  }, [refresh]);
+
   const checkLink = useCallback(async (input: string): Promise<CheckOutcome> => {
     const local = analyseUrlLocally(input);
     if (!local.valid || !local.normalizedUrl || !local.host) {
@@ -1149,7 +1163,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   const value: ApolloContextValue = {
     ready, setupDone, deviceId, identityReset, reRegisterDevice, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label, isMock: IS_PREVIEW_HARNESS,
-    refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, scanGmailInbox, recordRecovery, upsertEvent, recordPageAnalysis, checkCall, checkNumberRisk,
+    refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, enableSiteProtection, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, scanGmailInbox, recordRecovery, upsertEvent, recordPageAnalysis, checkCall, checkNumberRisk,
     notificationStatus, enableNotifications, quietHours, quietNow, setQuietHours, lowPower, setLowPower, storage,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
