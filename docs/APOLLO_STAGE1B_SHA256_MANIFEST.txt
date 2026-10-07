@@ -1,3 +1,4 @@
+91b98bed7e69ea8fe0840f28b2e6ee60d08d699d9ccdea29db1b866aa4e94cc4  ./guarddog-android-sdk/.gitignore
 f4bdd89462e61aa0a0c84741a4be46e9cc08fb8e7bf2b0b167563ed05fee8099  ./guarddog-android-sdk/build.gradle.kts
 1dfc10e53b55890256b1b3ec9af2ade90e0bfc7fb65cae63e9f8696452a92647  ./guarddog-android-sdk/gradle.properties
 81a82aaea5abcc8ff68b3dfcb58b3c3c429378efd98e7433460610fecd7ae45f  ./guarddog-android-sdk/gradle/wrapper/gradle-wrapper.jar
@@ -15,7 +16,7 @@ adb0b4ca0b8514c2a20a50671a79a4f10a701e5e196d48bd81d6557abcf86e88  ./guarddog-and
 5e5976bdfa85ba784ef994eda71bc79f7c43600699991de82a56698657f60e7a  ./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/protection/ProtectionRuntimeStateProvider.kt
 0d7f2b00f926ce2c45019fae00f7346dbc940999d05f24a2a11aa7a61cd65002  ./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/rules/BundleVersionStore.kt
 e79d0299438c06932708df81dd178d23b8216f272e918937982c2349ee80a827  ./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/rules/RuleBundle.kt
-0714e21c15c7b1cf7528a1f1983cdb3a6dd3bba637072664cf18a5d8218f3cec  ./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/rules/RuleBundleVerifier.kt
+cc9bae39b790d5c061b61cd3377f8ec12215c086dd4cb72e13f6f636f801c272  ./guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/rules/RuleBundleVerifier.kt
 9d4383b8f1468a9e89861ef5bedb063ae0e0bd2dac5cca21d734e116f54b172a  ./guarddog-android-sdk/guarddog-core/src/test/java/com/guarddog/core/GuardDogSDKEngineTest.kt
 282de4b7605e46587772eeb352205faef40fd7950bda5179135a1cac77e8a6d3  ./guarddog-android-sdk/guarddog-core/src/test/java/com/guarddog/core/net/HostCanonicalizerParityTest.kt
 6d0e593ce4f2ecaded155ea80b8e88bc4d75dffc55646884e55916eec8da68fb  ./guarddog-android-sdk/guarddog-core/src/test/java/com/guarddog/core/net/UrlSanitizerParityTest.kt
@@ -76,6 +77,14 @@ d5e265a21014c1ca9fd2f0586bd942fe381ec5c6d623496961b2d0f1744b9627  ./guarddog-exp
 384f655cf584f906453f64236926e061dacd2c4cfd1dc511c4faa40312c5b669  ./guarddog-expo-module/android/src/main/java/com/guarddog/expo/dto/BridgeSecurityEventRecord.kt
 91626541046a1098caee5f8601b3da253df944ea46e0d58c7c22843aa22b0423  ./guarddog-expo-module/android/src/main/java/com/guarddog/expo/dto/BridgeWebsiteGateRecord.kt
 de5e8980e3df255a0f14b1df1a16f0719df1ade991de29d67f97e47098b837bb  ./guarddog-expo-module/android/src/test/java/com/guarddog/expo/GuardDogExpoModuleDefinitionTest.kt
+3522983dad0d1417c67b2d1d801f1ea6e96bd17bf76e2cca2db581b1d9e45572  ./guarddog-expo-module/app.plugin.js
+ee175df1e5dcbe28a8d50d307580694568815fac27c7e67c3c31321c1bbce727  ./guarddog-expo-module/app.plugin.test.js
 ce2aaa6d2e9e23b79c6ff8c24697bb24754c6ba3477bcc2a1fffca32dc026d3a  ./guarddog-expo-module/expo-module.config.json
+53eddc14f8e393c4903638a0561163db79a5449a092ed1ab2d90186b3b0633b4  ./guarddog-expo-module/ios/GuardDogExpoModule.podspec
+2687d827ca1f1e3a537c67bd93c2e27de2aba929fd6f2774b5cc99a5a6336333  ./guarddog-expo-module/ios/GuardDogExpoModule/Adapters/ExpoBridgeAdapters.swift
+1a40ce7629078d34233c20fae01943ae6ce57b51053d5eb8c0259ba05fe1972e  ./guarddog-expo-module/ios/GuardDogExpoModule/DTO/BridgeCapabilityDTO.swift
+6ae23fb34811935e5ac0a2da441cc35cc99f9bc9d435ea2d9afb48a323cc6f0f  ./guarddog-expo-module/ios/GuardDogExpoModule/DTO/BridgeSecurityEventDTO.swift
+a1d70f62bc1181814f135ba5399caed1999cff74edd1cd2005799c316dec5d96  ./guarddog-expo-module/ios/GuardDogExpoModule/GuardDogExpoModule.swift
+bc62998eb07b1c03f3eda04522242003ebd6089cb5a257ae96774daf52e7cc64  ./guarddog-expo-module/ios/GuardDogExpoModule/Tests/BridgeDTOAdapterTests.swift
 8c48b10192abb7cc3e55e5fcc600135809394a7225c1b8e9bd6eb6841e29ce84  ./guarddog-expo-module/package.json
 25a6aa594f5fc4d6063bd56ce9a332134ab9f5261b80eb563102b8352d1f9909  ./guarddog-expo-module/src/index.ts

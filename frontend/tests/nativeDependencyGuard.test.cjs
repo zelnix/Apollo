@@ -199,15 +199,28 @@ test('Android AND iOS prebuild callbacks reject duplicates after installation', 
 test('combined preflight is strict except for the actual EAS pre-install lifecycle', t => {
   const root = fixture(t);
   fs.cpSync(path.resolve(__dirname, '../scripts'), path.join(root, 'scripts'), { recursive: true });
-  for (const filename of ['app.config.js', 'package.json']) {
-    const src = path.resolve(__dirname, '..', filename);
-    if (fs.existsSync(src)) fs.copyFileSync(src, path.join(root, filename));
-  }
+  // Copy app.config.js for identity checks but do NOT overwrite the fixture's clean package.json —
+  // the real one declares every production dependency, causing the guard to report dozens of
+  // "declared but missing" errors in a fixture that intentionally has a minimal node_modules.
+  const appConfigSrc = path.resolve(__dirname, '../app.config.js');
+  if (fs.existsSync(appConfigSrc)) fs.copyFileSync(appConfigSrc, path.join(root, 'app.config.js'));
   fs.mkdirSync(path.join(root, 'src/security'), { recursive: true });
   fs.copyFileSync(path.resolve(__dirname, '../src/security/securityConfig.ts'), path.join(root, 'src/security/securityConfig.ts'));
   // Use production env so the securityConfig check passes (guarddog_production is production-only).
+  // All five PRODUCTION_KEYS must be present; without them the preflight exits with a config error
+  // before reaching the native-dependency guard, making status assertions wrong.
   const run = lifecycle => spawnSync(process.execPath, [path.join(root, 'scripts/security-preflight.mjs')], {
-    encoding: 'utf8', env: { ...process.env, EXPO_PUBLIC_APP_ENV: 'production', EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE: 'guarddog_production', npm_lifecycle_event: lifecycle },
+    encoding: 'utf8', env: {
+      ...process.env,
+      EXPO_PUBLIC_APP_ENV: 'production',
+      EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE: 'guarddog_production',
+      EXPO_PUBLIC_GUARDDOG_RULE_BUNDLE_URL: 'https://test.example/rules',
+      EXPO_PUBLIC_GUARDDOG_CONTROLLED_HOST: 'test.example',
+      EXPO_PUBLIC_GUARDDOG_CONTROLLED_IPV4: '192.0.2.1',
+      EXPO_PUBLIC_GUARDDOG_CONTROLLED_URL: 'https://test.example/',
+      EXPO_PUBLIC_GUARDDOG_RULESET_ID: 'test-rules',
+      npm_lifecycle_event: lifecycle,
+    },
   });
   assert.equal(run('security:preflight').status, 2, 'no node_modules is not a pass');
   assert.match(run('eas-build-pre-install').stdout, /DEFERRED/);

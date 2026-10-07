@@ -45,8 +45,8 @@ class RuleBundleValidator(
             return ValidationResult.Rejected(RejectionReason.INVALID_JSON)
         }
 
-        // 2. Schema checks
-        if (bundle.schemaVersion.isBlank() || bundle.rulesetId.isBlank() || bundle.bundleVersion < 1) {
+        // 2. Schema checks — only the current "2.0" schema is accepted.
+        if (bundle.schemaVersion != "2.0" || bundle.rulesetId.isBlank() || bundle.bundleVersion < 1) {
             return ValidationResult.Rejected(RejectionReason.INVALID_SCHEMA)
         }
 
@@ -74,13 +74,16 @@ class RuleBundleValidator(
         if (!expires.isAfter(now)) return ValidationResult.Rejected(RejectionReason.EXPIRED)
 
         // 5. Rollback protection
+        // Same-version identity uses the SHA-256 of CANONICAL content (parse → re-serialize)
+        // to ensure formatting differences in the raw transport JSON don't cause false conflicts.
+        val canonicalJson = BundleJson.encodeToString(RuleBundle.serializer(), bundle)
         val highest = versionStore.highestAccepted(bundle.rulesetId)
         if (highest != null) {
             if (bundle.bundleVersion < highest.bundleVersion) {
                 return ValidationResult.Rejected(RejectionReason.ROLLBACK)
             }
             if (bundle.bundleVersion == highest.bundleVersion && highest.contentHash != null) {
-                val contentHash = sha256Hex(rawJson)
+                val contentHash = sha256Hex(canonicalJson)
                 if (contentHash != highest.contentHash) {
                     return ValidationResult.Rejected(RejectionReason.VERSION_CONFLICT)
                 }
@@ -88,7 +91,7 @@ class RuleBundleValidator(
         }
 
         // 6. Record accepted version
-        val contentHash = sha256Hex(rawJson)
+        val contentHash = sha256Hex(canonicalJson)
         versionStore.recordAccepted(bundle.rulesetId, bundle.bundleVersion, contentHash)
 
         return ValidationResult.Accepted(bundle)

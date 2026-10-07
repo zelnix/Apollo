@@ -48,7 +48,7 @@ def minimal_patrol(body, verified):
     if e:
         if e.mechanism == 'call_screening' or not packet_verified(body):
             raise HTTPException(422, 'Only correlated packet-drop evidence may be uploaded')
-        for key in ('os_version', 'sdk_version', 'destination_ip', 'app_id', 'process_name', 'threat_id', 'correlation_id'):
+        for key in ('os_version', 'sdk_version', 'app_id', 'process_name', 'threat_id'):
             if getattr(e, key) is not None:
                 raise HTTPException(422, 'Evidence contains fields outside the minimal privacy boundary')
     # Never persist free-form local narratives from old clients either.
