@@ -167,6 +167,39 @@ export function isQuietNow(q: QuietHours, at = new Date()): boolean {
   return q.start_minutes <= q.end_minutes ? m >= q.start_minutes && m < q.end_minutes : m >= q.start_minutes || m < q.end_minutes;
 }
 
+/** Android only: ensure system VPN consent before GuardDog's VpnService starts.
+ *  Requests consent when needed, lets Android's consent screen complete, and returns the result of a
+ *  FRESH permission read. Never throws — a declined/failed request resolves false so setup can finish
+ *  with Site Gate in "permission required" (reduced coverage) rather than disabling Apollo as a whole. */
+async function ensureAndroidVpnConsent(): Promise<boolean> {
+  const vpnGranted = async () => {
+    try { return (await securityAdapter.getProtectionPermissions()).find((p) => p.id === "vpn_config")?.status === "granted"; }
+    catch { return false; }
+  };
+  const perms = await securityAdapter.getProtectionPermissions().catch(() => [] as ProtectionPermission[]);
+  const vpn = perms.find((p) => p.id === "vpn_config");
+  if (!vpn || vpn.status === "granted") return true; // not applicable on this device, or already granted
+  const result = await securityAdapter.requestProtectionPermission("vpn_config").catch(() => null);
+  if (!result) return false;
+  if (result.status === "granted" || result.requestState === "already_granted") return vpnGranted();
+  if (result.requestState !== "system_ui_opened") return false; // launch_failed / unsupported
+  // Android's VPN-consent screen is now a foreground system activity. Resolve as soon as the person
+  // returns (AppState → active) and a fresh read lands, with a hard 120s ceiling so we never hang.
+  return new Promise<boolean>((resolve) => {
+    let done = false; let deadline = Date.now() + 120_000; let timer: ReturnType<typeof setTimeout>;
+    const finish = (v: boolean) => { if (done) return; done = true; sub.remove(); clearTimeout(timer); resolve(v); };
+    const tick = async () => {
+      if (done) return;
+      if (await vpnGranted()) { finish(true); return; }
+      if (Date.now() > deadline) { finish(false); return; }
+      timer = setTimeout(tick, 1000);
+    };
+    // Returning from the consent screen shrinks the window to ~4s so a decline is detected promptly.
+    const sub = AppState.addEventListener("change", (st) => { if (st === "active") deadline = Math.min(deadline, Date.now() + 4000); });
+    timer = setTimeout(tick, 1000);
+  });
+}
+
 const Ctx = createContext<ApolloContextValue | null>(null);
 
 export function ApolloProvider({ children }: { children: React.ReactNode }) {
@@ -528,46 +561,19 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     if (!identity) { try { identity = await registerDeviceIdentity(API_BASE, deviceMeta()); } catch { identity = null; /* offline: retried on next launch */ } }
     if (identity) setDeviceId(identity.deviceId);
 
-    // Android: GuardDog's VpnService needs the user to grant system VPN consent before
-    // startGuardDogProduction() can run — otherwise it throws IllegalStateException("VPN
-    // consent is not granted"). We request consent, let Android's system VPN-consent screen
-    // complete, and ONLY start protection after a fresh permission read confirms the grant.
-    // Setup/protection are never marked complete until that confirmation.
-    if (Platform.OS === "android") {
-      const perms = await securityAdapter.getProtectionPermissions();
-      const vpn = perms.find((p) => p.id === "vpn_config");
-      if (vpn && vpn.status !== "granted") {
-        const result = await securityAdapter.requestProtectionPermission("vpn_config");
-        if (result.requestState === "system_ui_opened") {
-          // Android's VPN-consent screen is now visible. It is a separate system activity, so
-          // the request already resolved; wait (poll) until the user returns and the grant lands.
-          await new Promise<void>((resolve) => {
-            const deadline = Date.now() + 120_000;
-            const poll = async () => {
-              if (Date.now() > deadline) { resolve(); return; }
-              try {
-                const check = await securityAdapter.getProtectionPermissions();
-                if (check.find((p) => p.id === "vpn_config")?.status === "granted") { resolve(); return; }
-              } catch { /* ignore transient errors while the system UI is up */ }
-              setTimeout(poll, 1000);
-            };
-            setTimeout(poll, 1000);
-          });
-        } else if (result.requestState === "launch_failed" || result.requestState === "unsupported") {
-          throw new Error("Android could not open the VPN consent dialog. Please grant VPN permission in Settings.");
-        }
-      }
-      // Fresh confirmation is the ONLY gate that permits startGuardDogProduction().
-      const confirm = await securityAdapter.getProtectionPermissions();
-      const vpnNow = confirm.find((p) => p.id === "vpn_config");
-      if (vpnNow && vpnNow.status !== "granted") {
-        setPermissions(confirm);
-        throw new Error("VPN consent was not granted. Apollo needs VPN permission to filter malicious traffic.");
-      }
-    }
-
-    await securityAdapter.startProtection();
+    // Record the person's intent to run protection. This drives Site Gate's "permission required"
+    // presentation and the background auto-start once VPN consent lands — so declining consent now
+    // never disables Apollo as a whole.
     await storage.setItem(K.protection, true);
+
+    // Android: GuardDog's VpnService needs system VPN consent before startGuardDogProduction() can
+    // run (it throws IllegalStateException("VPN consent is not granted") otherwise). We request
+    // consent, let Android's system consent screen complete, and ONLY start the VPN service after a
+    // FRESH permission read confirms the grant. If consent is declined, setup STILL completes: every
+    // other Gate stays active and Site Gate shows "permission required" with a grant-later button.
+    const vpnGranted = Platform.OS === "android" ? await ensureAndroidVpnConsent() : true;
+    if (vpnGranted) await securityAdapter.startProtection();
+
     await storage.setItem(K.setup, true);
     setSetupDone(true);
     await verifyNow();

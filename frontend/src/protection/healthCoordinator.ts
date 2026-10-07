@@ -57,7 +57,7 @@ async function collect(trigger: HealthTrigger): Promise<ProtectionHealthSnapshot
     if (decision === "healthy") await clearAttempt(); else if (trigger === "foreground") await clearAttempt();
   }
   const base = { revision: current.revision + 1, checkedAt: new Date().toISOString(), trigger, checking: false, capabilities, protection, permissions, network };
-  const overview = buildGatesOverview({ platform: securityAdapter.kind, checking: false, protection, permissions, capabilities, messaging, calls, network, email, online: network.isInternetReachable !== false, callAutoCheckEnabled, accountBreachConfigured: breachLookupConfigured });
+  const overview = buildGatesOverview({ platform: securityAdapter.kind, checking: false, protection, permissions, capabilities, messaging, calls, network, email, online: network.isInternetReachable !== false, callAutoCheckEnabled, accountBreachConfigured: breachLookupConfigured, desiredSiteOn: desiredOn });
   const next: ProtectionHealthSnapshot = { ...base, gates: overview.gates };
   publishProtectionHealth(next);
   void publishCapabilitySnapshot({ platform: securityAdapter.kind, adapter: securityAdapter.label, online: network.isInternetReachable, gates: overview.gates, capabilities, protection }).catch(() => undefined);

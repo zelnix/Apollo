@@ -20,7 +20,7 @@ export interface GatePresentation {
 export type GateItem = GatePresentation;
 export interface GatesOverview { summary: string; higgins: string; primary: GatePresentation | null; gates: GatePresentation[] }
 export interface EmailMonitorCapability { checking: boolean; configured: boolean; connected: boolean; monitoringRequested: boolean; lastCheckedAt: string | null; lastSuccessAt?: string | null; lastAssessmentAt?: string | null; lastErrorAt: string | null }
-export interface GatesInput { platform: string; checking: boolean; protection: ProtectionStatus | null; permissions: ProtectionPermission[]; capabilities: Capability[]; messaging: MessagingCapabilities | null; calls: CallProtectionCapabilities | null; network?: NetworkStatus | null; email?: EmailMonitorCapability; online?: boolean; accountBreachConfigured?: boolean; callAutoCheckEnabled?: boolean; now?: number }
+export interface GatesInput { platform: string; checking: boolean; protection: ProtectionStatus | null; permissions: ProtectionPermission[]; capabilities: Capability[]; messaging: MessagingCapabilities | null; calls: CallProtectionCapabilities | null; network?: NetworkStatus | null; email?: EmailMonitorCapability; online?: boolean; accountBreachConfigured?: boolean; callAutoCheckEnabled?: boolean; desiredSiteOn?: boolean; now?: number }
 
 const PURPOSE: Record<GateId, string> = {
   site: "Helps stop known dangerous websites before they load.",
@@ -64,11 +64,11 @@ export function buildGatesOverview(input: GatesInput): GatesOverview {
   const siteFresh = verifiedAt > 0 && verifiedAt <= now && now - verifiedAt <= VERIFICATION_FRESHNESS_MS;
   const sitePermission = input.permissions.some((permission) => (permission.id === "network_filter" || permission.id === "vpn_config") && !["granted", "not_applicable"].includes(permission.status));
   const siteUnsupported = siteCapability?.status === "unsupported" || (input.platform === "web" && input.protection?.enforcementMethod === "simulated");
-  const siteState: AutomaticCapabilityState = input.checking || !input.protection ? "checking" : siteUnsupported ? "unsupported" : input.protection.operational && siteFresh && siteCapability?.status === "active" ? "running" : !input.protection.requested ? "off_by_choice" : sitePermission ? "permission_needed" : "temporarily_unavailable";
+  const siteState: AutomaticCapabilityState = input.checking || !input.protection ? "checking" : siteUnsupported ? "unsupported" : input.protection.operational && siteFresh && siteCapability?.status === "active" ? "running" : !(input.protection.requested || input.desiredSiteOn) ? "off_by_choice" : sitePermission ? "permission_needed" : "temporarily_unavailable";
   const site = presentation({ id: "site", title: TITLE.site, purpose: PURPOSE.site,
-    currentHelp: siteState === "running" ? "Apollo is filtering supported website traffic." : siteState === "off_by_choice" ? "Website protection is off. You can still check suspicious links." : siteState === "checking" ? "Apollo is checking website protection." : "Apollo cannot confirm website protection right now.",
-    capability: { automatic: { kind: "enforcement", state: siteState, lastObservedAt: input.protection?.checkedAt ?? undefined, limitation: siteState === "permission_needed" ? "Allow the device protection request to turn Site Gate on." : siteState === "temporarily_unavailable" ? "Apollo will keep checking in the background." : undefined }, onDemand: onDemand("check_link", "Check a suspicious link") },
-    primaryAction: siteState === "running" ? action("check_link", "Check a suspicious link") : action("restore_site", "Turn on Site Gate") });
+    currentHelp: siteState === "running" ? "Apollo is filtering supported website traffic." : siteState === "permission_needed" ? "Site Gate needs VPN permission to filter website traffic. Your other protection is still active — grant it whenever you're ready." : siteState === "off_by_choice" ? "Website protection is off. You can still check suspicious links." : siteState === "checking" ? "Apollo is checking website protection." : "Apollo cannot confirm website protection right now.",
+    capability: { automatic: { kind: "enforcement", state: siteState, lastObservedAt: input.protection?.checkedAt ?? undefined, limitation: siteState === "permission_needed" ? "Grant the VPN permission to turn Site Gate on. Your other protection stays active." : siteState === "temporarily_unavailable" ? "Apollo will keep checking in the background." : undefined }, onDemand: onDemand("check_link", "Check a suspicious link") },
+    primaryAction: siteState === "running" ? action("check_link", "Check a suspicious link") : action("restore_site", siteState === "permission_needed" ? "Grant VPN permission" : "Turn on Site Gate") });
 
   // B4: Text Gate status — distinguish background processing from merely having notification access.
   // On Android, "smsFiltering: supported" means notification access is granted but NOT that background
@@ -150,7 +150,10 @@ export function buildGatesOverview(input: GatesInput): GatesOverview {
   const primary = gates.find((gate) => gate.tone === "attention") ?? null; const working = gates.filter((gate) => gate.capability.automatic?.state === "running").length;
   const attentionGates = gates.filter((gate) => gate.tone === "attention");
   const attentionNames = attentionGates.map((g) => g.title.replace(/ Gate$/, "")).join(" and ");
-  const summary = input.checking ? "Checking your protection" : attentionGates.length ? `${attentionNames} ${attentionGates.length === 1 ? "needs" : "need"} your attention` : `${working} ${working === 1 ? "Gate is" : "Gates are"} helping automatically`;
+  // Site Gate awaiting VPN permission while other Gates work is "reduced coverage", not "off" —
+  // Apollo stays active and surfaces a grant-later affordance instead of disabling as a whole.
+  const siteNeedsPermission = site.capability.automatic?.state === "permission_needed";
+  const summary = input.checking ? "Checking your protection" : (siteNeedsPermission && working > 0) ? "Protection active — reduced coverage" : attentionGates.length ? `${attentionNames} ${attentionGates.length === 1 ? "needs" : "need"} your attention` : `${working} ${working === 1 ? "Gate is" : "Gates are"} helping automatically`;
   return { summary, higgins: primary ? `${primary.title} needs your attention. ${primary.currentHelp}` : "Apollo watches what this device allows. You can also ask it to check anything you are unsure about.", primary, gates };
 }
 

@@ -831,3 +831,18 @@ Current position: waiting on step 1 input (Step 7 stderr for build aa24dd73-eab7
   (→ native `startGuardDogProduction`). Setup/protection are NOT marked complete unless the
   fresh check confirms `vpn_config === "granted"`.
 - Native-only: must be validated on an Android dev build (not Expo Go / web preview).
+
+## Update — Declining Android VPN consent no longer disables Apollo (reduced coverage)
+- `completeSetup` (ApolloContext.tsx): records protection intent (`apollo.protection.on=true`),
+  then `ensureAndroidVpnConsent()` (new, non-throwing helper). On Android it requests `vpn_config`,
+  waits for the system consent screen, and detects return promptly via AppState→active (≈4s window)
+  with a 120s ceiling. `startGuardDogProduction` (startProtection) is called ONLY when a fresh read
+  confirms consent granted. If declined, setup still completes — Apollo is not disabled as a whole.
+- `gates.ts`: Site Gate shows `permission_needed` from stored intent (`desiredSiteOn`) even though
+  native `requested` only flips true after a successful start. Overview summary reads
+  "Protection active — reduced coverage" when Site Gate awaits VPN and other Gates run. Primary
+  action label becomes "Grant VPN permission" (id stays `restore_site`).
+- `healthCoordinator.ts`: passes `desiredSiteOn` (from `apollo.protection.on`) into the gates overview.
+  Existing `decideSiteRecovery` auto-starts once consent lands; declined stays `ask_permission` (no crash).
+- `guard.tsx`: Gates summary title mirrors the reduced-coverage wording.
+- Tests: tests/gatesOverview.test.ts (+4 cases, 12/12 pass). Native-only flow — validate on an Android dev build.

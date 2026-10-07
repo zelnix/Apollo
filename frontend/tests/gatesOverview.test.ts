@@ -27,6 +27,30 @@ test("Site Gate needs attention when native permission is missing", () => {
   assert.equal(site.primaryAction?.id, "restore_site");
 });
 
+test("declined VPN consent keeps Site Gate in permission_needed via stored intent (native requested=false)", () => {
+  // After a decline, native start() never ran, so protection.requested stays false. The user's
+  // stored intent (desiredSiteOn) must still surface Site Gate as permission_needed, not "off".
+  const overview = buildGatesOverview({ ...base, protection: protection({ requested: false }), desiredSiteOn: true });
+  const site = overview.gates.find((gate) => gate.id === "site")!;
+  assert.equal(site.capability.automatic?.state, "permission_needed");
+  assert.equal(site.statusLabel, "Needs your attention");
+  assert.equal(site.primaryAction?.id, "restore_site");
+  assert.match(site.primaryAction?.label ?? "", /grant vpn permission/i);
+});
+
+test("no stored intent and native requested=false reads as off_by_choice", () => {
+  const site = buildGatesOverview({ ...base, protection: protection({ requested: false }), desiredSiteOn: false }).gates.find((gate) => gate.id === "site")!;
+  assert.equal(site.capability.automatic?.state, "off_by_choice");
+});
+
+test("Site Gate awaiting VPN permission while other Gates work reports reduced coverage", () => {
+  // numberReputation is "supported" in base, so Call Gate is running → working > 0.
+  const overview = buildGatesOverview({ ...base, protection: protection({ requested: false }), desiredSiteOn: true });
+  const working = overview.gates.filter((g) => g.capability.automatic?.state === "running").length;
+  assert.ok(working > 0);
+  assert.equal(overview.summary, "Protection active — reduced coverage");
+});
+
 test("stale enforcement never claims protection on", () => {
   const stale = new Date(Date.now() - 11 * 60 * 1000).toISOString();
   const site = buildGatesOverview({ ...base, permissions: [permission("granted")], protection: protection({ running: true, operational: true, lastVerified: stale, visibility: "full" }), capabilities: [{ id: "site_guard" as const, title: "Site Gate", status: "active" as const, detail: "Stale" }] }).gates.find((gate) => gate.id === "site")!;
