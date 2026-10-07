@@ -5,16 +5,37 @@
 import { useRouter } from "expo-router";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
 import React from "react";
-import { Pressable, Text, View } from "react-native";
+import { AppState, Pressable, Text, View } from "react-native";
 
 import { Card, Pill } from "@/src/components/ui";
 import { GATE_ORDER, GATE_PERMISSIONS, gateAppliesToPlatform, type GatePermId } from "@/src/domain/gatePermissions";
+import { connectGmailOAuth } from "@/src/domain/gmailConnect";
+import { runProtectionHealthCheck } from "@/src/protection/healthCoordinator";
 import { useProtectionHealth } from "@/src/protection/healthStore";
+import { CallSdk } from "@/src/security/callSdk";
+import { MessagingSdk } from "@/src/security/messagingSdk";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
 const PENDING_STATES = ["permission_needed", "setup_needed"];
 const ROUTE: Record<GatePermId, string> = { site: "/(tabs)/guard", text: "/text-guard", call: "/call-guard", email: "/email" };
+
+// Wait for the person to return from a system settings screen, then confirm the real state. Resolves
+// as soon as `verify` is true, shrinks to ~4s after the app regains focus, never waits past ceiling.
+function waitForForeground(verify: () => Promise<boolean>, ceilingMs = 120_000): Promise<boolean> {
+  return new Promise((resolve) => {
+    let done = false; let deadline = Date.now() + ceilingMs; let timer: ReturnType<typeof setTimeout>;
+    const finish = (v: boolean) => { if (done) return; done = true; sub.remove(); clearTimeout(timer); resolve(v); };
+    const tick = async () => {
+      if (done) return;
+      try { if (await verify()) { finish(true); return; } } catch { /* transient */ }
+      if (Date.now() > deadline) { finish(false); return; }
+      timer = setTimeout(tick, 1000);
+    };
+    const sub = AppState.addEventListener("change", (st) => { if (st === "active") deadline = Math.min(deadline, Date.now() + 4000); });
+    timer = setTimeout(tick, 1000);
+  });
+}
 
 const useStyles = makeStyles((c) => ({
   titleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
@@ -28,7 +49,7 @@ export function CoverageCard() {
   const s = useStyles();
   const { colors } = useTheme();
   const router = useRouter();
-  const { enableSiteProtection, showToast } = useApollo();
+  const { deviceId, enableSiteProtection, showToast } = useApollo();
   const health = useProtectionHealth();
   const [busyId, setBusyId] = React.useState<GatePermId | null>(null);
   if (health.checking) return null;
@@ -41,20 +62,34 @@ export function CoverageCard() {
   }).filter((r): r is { id: GatePermId; on: boolean } => r !== null);
   if (rows.length === 0) return null;
 
-  // Tapping an On pill opens the Gate; a pending pill triggers the enable flow directly — Site inline
-  // (VPN consent), the rest from their Gate screen's enable path (notification/role/OAuth).
+  // Tapping an On pill opens the Gate; a pending pill runs that Gate's enable flow right here — Site
+  // (VPN consent), Text (notification access), Call (screening role) and Email (Gmail OAuth) — then
+  // verifies the real state and refreshes so the pill flips without opening the Gate screen.
   const press = async (id: GatePermId, on: boolean) => {
     if (on) { router.push(ROUTE[id] as never); return; }
-    if (id === "site") {
-      setBusyId("site");
-      try {
-        const granted = await enableSiteProtection();
-        showToast(granted ? "Site Gate is on." : "Site Gate needs VPN permission. Your other protection stays active.", granted ? "resting" : "growling");
-      } catch { showToast("Couldn't open that just now. Try again shortly.", "growling"); }
-      finally { setBusyId(null); }
-      return;
-    }
-    router.push(ROUTE[id] as never);
+    const title = GATE_PERMISSIONS[id].title;
+    setBusyId(id);
+    try {
+      let granted = false;
+      if (id === "site") {
+        granted = await enableSiteProtection();
+      } else if (id === "text") {
+        await MessagingSdk.openSmsListenerSettings();
+        granted = await waitForForeground(async () => (await MessagingSdk.getMessagingCapabilities()).smsFiltering === "supported");
+        await runProtectionHealthCheck("protection_change");
+      } else if (id === "call") {
+        await CallSdk.requestCallScreeningRole();
+        granted = await waitForForeground(async () => (await CallSdk.getCallProtectionCapabilities()).callScreening === "supported");
+        await runProtectionHealthCheck("protection_change");
+      } else if (id === "email") {
+        if (!deviceId) { router.push(ROUTE.email as never); return; }
+        granted = (await connectGmailOAuth(deviceId)) === "connected";
+        await runProtectionHealthCheck("protection_change");
+      }
+      showToast(granted ? `${title} is on.` : `${title} isn't on yet — your other protection stays active.`, granted ? "resting" : "growling");
+    } catch {
+      showToast("Couldn't finish that just now. You can also enable it from the Gate screen.", "growling");
+    } finally { setBusyId(null); }
   };
 
   const onCount = rows.filter((r) => r.on).length;
