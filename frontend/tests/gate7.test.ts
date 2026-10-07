@@ -118,6 +118,28 @@ test("A11 / D02 unexpected management profile → Action required; expected → 
   assert.equal(assessDevice(sig).status, "action"); assert.match(assessDevice(sig).findings[0].plain, /how your device is managed/i);
   const ok = assessDevice(sig, { managementExpected: true }); assert.equal(ok.status, "protected"); assert.equal(ok.state, "ears_up");
 });
+test("D02b ordinary device-admin app (Find My Device) is benign info, never barks", () => {
+  const sig = { ...EMPTY_SIGNALS("android"), managementProfile: "device_admin" as const, managementAdmins: ["Find My Device (Google)"] };
+  const r = assessDevice(sig);
+  assert.equal(r.status, "protected");
+  assert.notEqual(r.state, "barking");
+  const finding = r.findings.find((x) => x.id === "D02b")!;
+  assert.equal(finding.severity, "info");
+  assert.match(finding.title, /Find My Device/);
+  assert.match(finding.plain, /lock your screen|erase the phone/i);
+  assert.match(finding.action, /turn it off|no action is needed/i);
+});
+test("D02b escalates only when the person reports the profile as unexpected", () => {
+  const sig = { ...EMPTY_SIGNALS("android"), managementProfile: "device_admin" as const };
+  const r = assessDevice(sig, { unexpectedProfile: true });
+  assert.equal(r.status, "action");
+  assert.equal(r.findings[0].severity, "high");
+});
+test("managed MDM (device/profile owner) is Action required when unexpected", () => {
+  const sig = { ...EMPTY_SIGNALS("android"), managementProfile: "managed" as const };
+  assert.equal(assessDevice(sig).status, "action");
+  assert.equal(assessDevice(sig, { managementExpected: true }).status, "protected");
+});
 test("A12 / D03 extra trusted certificate → Action required, explains trust", () => {
   const r = assessDevice({ ...EMPTY_SIGNALS("android"), userTrustedCertificates: 1 }); assert.equal(r.status, "action"); assert.match(r.findings[0].plain, /secure connections your device trusts/i);
 });

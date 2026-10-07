@@ -2,6 +2,8 @@ package com.hucentai.apollosecurity
 
 import android.app.AppOpsManager
 import android.content.Context
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import android.provider.Settings
 
 /**
@@ -75,11 +77,39 @@ object AppDeviceCatalog {
    * Parses Settings.Secure ENABLED_ACCESSIBILITY_SERVICES ("pkg/cls:pkg/cls") and keeps third-party packages only.
    * Package names are reported (labels need visibility we don't have). Never includes Apollo itself.
    */
-  fun thirdPartyServices(setting: String?, ownPackage: String): List<String> {
+  fun thirdPartyServices(setting: String?, ownPackage: String, pm: PackageManager? = null): List<String> {
     if (setting.isNullOrBlank()) return emptyList()
     return setting.split(':').mapNotNull { it.substringBefore('/').trim().ifEmpty { null } }
       .filter { pkg -> pkg != ownPackage }
+      // Hide first-party OS / OEM components (Play Services, Android Auto, Samsung launcher, etc.) — the
+      // user never "granted" these and listing them is noise, not an actual issue to review.
+      .filter { pkg -> !isSystemPackage(pkg, pm) }
       .distinct()
+  }
+
+  /** Friendly names for well-known device-admin packages so findings can state the actual app. */
+  val KNOWN_ADMINS: Map<String, String> = mapOf(
+    "com.google.android.gms" to "Find My Device (Google)",
+    "com.samsung.android.fmm" to "Find My Mobile (Samsung)",
+    "com.samsung.android.server.wifi.mobilewips" to "Samsung security",
+    "com.android.settings" to "System device admin",
+  )
+
+  private val SYSTEM_PREFIXES: List<String> = listOf(
+    "com.google.android.", "com.android.", "android", "com.samsung.android.", "com.samsung.", "com.sec.android.",
+    "com.samsung.knox.", "com.sec.", "com.qualcomm.", "com.mediatek.", "com.coloros.", "com.oplus.", "com.miui.",
+    "com.xiaomi.", "com.huawei.", "com.hihonor.", "com.motorola.", "com.oneplus.",
+  )
+
+  /** True when the package is a preinstalled OS/OEM component (FLAG_SYSTEM when visible, else a known vendor prefix). */
+  private fun isSystemPackage(pkg: String, pm: PackageManager?): Boolean {
+    if (pm != null) {
+      try {
+        val ai = pm.getApplicationInfo(pkg, 0)
+        return (ai.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0
+      } catch (_: Exception) { /* package visibility blocked — fall back to prefix */ }
+    }
+    return SYSTEM_PREFIXES.any { pkg == it.trimEnd('.') || pkg.startsWith(it) }
   }
 
   /** Android "dangerous" permissions worth explaining, mapped to the plain names the App engine understands. */

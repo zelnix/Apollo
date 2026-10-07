@@ -13,12 +13,17 @@ export interface DeviceSignals {
   notificationAccessApps: string[] | null;
   vpnActive: boolean | null;
   vpnProviderKnown: boolean | null;
-  managementProfile: "none" | "present" | "unknown";
+  // "device_admin" = an ordinary device-admin app is active (normal on consumer phones — Find My Device,
+  // anti-theft, some security apps). "managed" = a genuine device-owner/work-profile MDM. "present" is the
+  // iOS honest signal (Apollo itself is managed → genuinely managed). Only "managed"/"present" are notable.
+  managementProfile: "none" | "device_admin" | "managed" | "present" | "unknown";
+  /** Human-readable names of the active device-admin apps, when the platform can name them. */
+  managementAdmins?: string[] | null;
   userTrustedCertificates: number | null;
   remoteAccessApps: string[] | null;
   developerOptions: boolean | null;
 }
-export const EMPTY_SIGNALS = (platform: DevicePlatform): DeviceSignals => ({ platform, unknownSourcesEnabled: null, thirdPartyAccessibilityServices: null, overlayApps: null, notificationAccessApps: null, vpnActive: null, vpnProviderKnown: null, managementProfile: "unknown", userTrustedCertificates: null, remoteAccessApps: null, developerOptions: null });
+export const EMPTY_SIGNALS = (platform: DevicePlatform): DeviceSignals => ({ platform, unknownSourcesEnabled: null, thirdPartyAccessibilityServices: null, overlayApps: null, notificationAccessApps: null, vpnActive: null, vpnProviderKnown: null, managementProfile: "unknown", managementAdmins: null, userTrustedCertificates: null, remoteAccessApps: null, developerOptions: null });
 
 export type SelfReportKey = "gaveRemoteAccess" | "usedBankingDuringAccess" | "unexpectedProfile" | "managementExpected" | "newCertificate" | "unexpectedVpn" | "grantedAccessibility" | "unknownSourcesOn" | "newAppUnexpected";
 export const SELF_REPORT: { id: SelfReportKey; label: string }[] = [
@@ -111,9 +116,14 @@ export function assessDevice(sig: DeviceSignals, self: SelfReport = {}, context:
     recoverySteps.push("End the remote-access session now: turn off Wi‑Fi and mobile data, or restart the phone.", "Hang up and don't call the number back.", "Remove or disable the remote-access app and any permissions it was given.", "Review the accounts you used during the session — change passwords from a device they didn't touch.", "Reject any login or MFA prompts you didn't start.");
     if (self.usedBankingDuringAccess) { f.push({ id: "D01b", title: "Banking or email used during remote access", severity: "high", plain: "Credentials and codes typed while someone watched should be treated as exposed.", action: "Call your bank on the number on your card now. Change your email password from another device.", settings: path("apps", p), handoff: "identity" }); recoverySteps.push("Contact your bank immediately using the number on the back of your card — ask them to check for unauthorised activity."); }
   }
-  const mgmtPresent = sig.managementProfile === "present" || !!self.unexpectedProfile;
-  if (mgmtPresent && !self.managementExpected) f.push({ id: "D02", title: "Device management profile", severity: "high", plain: "This can change how your device is managed — install apps, alter network settings or read some activity.", action: "If your work or school didn't set this up, remove it.", settings: path("profile", p), handoff: "network" });
-  else if (mgmtPresent) f.push({ id: "D02", title: "Managed by work or school", severity: "info", plain: "Expected management lowers the risk. Your organisation can still see and control parts of this device.", action: "Verify with your IT team if anything looks unfamiliar.", settings: path("profile", p) });
+  // A genuine managed profile (MDM device-owner / work-profile, or iOS "present") is notable. An ordinary
+  // device-admin app (Find My Device, anti-theft, security apps) is normal and must NOT bark. The user can
+  // always escalate by reporting the profile as unexpected.
+  const managed = sig.managementProfile === "managed" || sig.managementProfile === "present" || !!self.unexpectedProfile;
+  const adminLabels = sig.managementAdmins ?? [];
+  if (managed && !self.managementExpected) f.push({ id: "D02", title: "Device management profile", severity: "high", plain: "This can change how your device is managed — install apps, alter network settings or read some activity.", action: "If your work or school didn't set this up, remove it.", settings: path("profile", p), handoff: "network" });
+  else if (managed) f.push({ id: "D02", title: "Managed by work or school", severity: "info", plain: "Expected management lowers the risk. Your organisation can still see and control parts of this device.", action: "Verify with your IT team if anything looks unfamiliar.", settings: path("profile", p) });
+  else if (sig.managementProfile === "device_admin") f.push({ id: "D02b", title: adminLabels.length ? `Device admin app active: ${adminLabels.join(", ")}` : "Device admin app active", severity: "info", plain: "A device-admin app is active. Device-admin apps can lock your screen, reset your passcode or erase the phone — powerful, but normal: Find My Device, anti-theft and some security apps use it to protect you. It does not mean someone else is managing your phone.", action: adminLabels.length ? `If you recognise ${adminLabels.length > 1 ? "these" : "this"}, no action is needed. If one looks unfamiliar, open Device admin apps, tap it to see what it controls, then turn it off — the phone will ask you to confirm.` : "If you recognise it, no action is needed. If it looks unfamiliar, open Device admin apps, tap it to see what it controls, then turn it off — the phone will ask you to confirm.", settings: path("profile", p) });
   if ((sig.userTrustedCertificates ?? 0) > 0 || self.newCertificate) f.push({ id: "D03", title: "Extra trusted certificate", severity: "high", plain: "This can affect which secure connections your device trusts — someone could read traffic that looks encrypted.", action: "Remove any certificate you didn't deliberately install for work or a VPN you chose.", settings: path("cert", p), handoff: "network" });
   if (self.unexpectedVpn || (sig.vpnActive && sig.vpnProviderKnown === false)) f.push({ id: "D04", title: "Unexpected VPN", severity: "review", plain: "A VPN you didn't choose can watch or redirect everything your phone does online.", action: "Turn it off and remove the app or profile that created it.", settings: path("vpn", p), handoff: "network" });
   // Observed VPN whose provider the platform won't name (iOS always; Android when it isn't Apollo's own filter): report the fact, don't judge it.

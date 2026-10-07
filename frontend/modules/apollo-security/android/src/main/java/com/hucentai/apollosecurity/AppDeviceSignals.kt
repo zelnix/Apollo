@@ -37,10 +37,15 @@ class AppDeviceSignals(private val ctx: Context) {
   /** DeviceSignals contract (src/domain/deviceAnalysis.ts). */
   fun deviceSignalsJson(): String {
     val own = ctx.packageName
-    val a11y = AppDeviceCatalog.thirdPartyServices(secure(Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES), own)
-    val listeners = AppDeviceCatalog.thirdPartyServices(secure("enabled_notification_listeners"), own)
+    val a11y = AppDeviceCatalog.thirdPartyServices(secure(Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES), own, pm)
+    val listeners = AppDeviceCatalog.thirdPartyServices(secure("enabled_notification_listeners"), own, pm)
     val vpn = vpnActive()
-    val admins = try { (ctx.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager).activeAdmins ?: emptyList() } catch (_: Exception) { null }
+    val dpm = try { ctx.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager } catch (_: Exception) { null }
+    val admins = try { dpm?.activeAdmins } catch (_: Exception) { null }
+    // A genuine *managed* device has a device-owner or profile-owner. Ordinary device-admin apps
+    // (Find My Device, anti-theft, security apps) are NOT owners and must not be treated as management.
+    val managed = try { dpm != null && admins != null && admins.any { dpm.isDeviceOwnerApp(it.packageName) || dpm.isProfileOwnerApp(it.packageName) } } catch (_: Exception) { false }
+    val adminLabels = try { admins?.map { adminLabel(it.packageName) }?.distinct() ?: emptyList() } catch (_: Exception) { emptyList() }
     val remote = installedCatalogApps()
     val dev = try { Settings.Global.getInt(ctx.contentResolver, Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0) == 1 } catch (_: Exception) { null }
     return JSONObject()
@@ -52,12 +57,17 @@ class AppDeviceSignals(private val ctx: Context) {
       .put("vpnActive", vpn ?: JSONObject.NULL)
       // Only Apollo's own GuardDog production filter is a "known" provider.
       .put("vpnProviderKnown", if (vpn == true) (if (VpnStateRepository.shared.current().state == ProtectionState.ACTIVE) true else JSONObject.NULL) else JSONObject.NULL)
-      .put("managementProfile", when { admins == null -> "unknown"; admins.isNotEmpty() -> "present"; else -> "none" })
+      .put("managementProfile", when { admins == null -> "unknown"; managed -> "managed"; admins.isNotEmpty() -> "device_admin"; else -> "none" })
+      .put("managementAdmins", JSONArray(adminLabels))
       .put("userTrustedCertificates", JSONObject.NULL)         // user CA store is not readable by apps
       .put("remoteAccessApps", JSONArray(remote.map { it.second }))
       .put("developerOptions", dev ?: JSONObject.NULL)
       .toString()
   }
+
+  /** Friendly name for an active device-admin package. Falls back to a known-admin map, then the package id. */
+  private fun adminLabel(pkg: String): String = AppDeviceCatalog.KNOWN_ADMINS[pkg]
+    ?: try { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() } catch (_: Exception) { pkg }
 
   /** SdkAppAssessment for a catalog package (or catalog display name). Null when Apollo cannot see that app. */
   fun appAssessmentJson(nameOrPackage: String): String {

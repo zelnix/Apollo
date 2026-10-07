@@ -973,3 +973,30 @@ Current position: waiting on step 1 input (Step 7 stderr for build aa24dd73-eab7
 - Tests: updated the two Account-Gate cases in tests/gatesOverview.test.ts to assert "Ready when you need it"
   (16/16 pass). eslint + tsc clean.
 - To actually enable the live breach lookup, the user must provide a HIBP_API_KEY in backend/.env.
+
+## Bug fix — Device Gate false "Action required / high-risk" + unhelpful findings (2026-06)
+- Report (multiple screenshots): Device Gate barked "Barking / Action required / 1 high-risk item" for a
+  benign device-admin ("Device management profile — High risk"), listed benign Google/Samsung system apps
+  under notification access, and findings didn't explain consequences or a concrete action. User: "This is
+  legitimate... does not explain consequences and action to take."
+- Root causes:
+  1. Native AppDeviceSignals.kt set managementProfile = admins.isNotEmpty() ? "present" : "none" — ANY active
+     device-admin (Find My Device, Samsung Find My Mobile, Play Protect) became "present", which
+     deviceAnalysis.ts D02 flagged severity:"high" → barking. False positive on virtually every consumer phone.
+  2. notification/accessibility lists only filtered Apollo's own package, so OS/OEM components (gms,
+     gearhead, ringplugin, launcher, smartmirroring) showed as noise.
+- Fixes:
+  - Native AppDeviceSignals.kt: classify managementProfile = "managed" (device-owner/profile-owner via
+    DevicePolicyManager.isDeviceOwnerApp/isProfileOwnerApp), else "device_admin" (ordinary admin), else
+    "none"/"unknown". Added managementAdmins[] (friendly labels via KNOWN_ADMINS + PackageManager).
+  - Native AppDeviceCatalog.kt: thirdPartyServices(setting, own, pm?) now drops first-party system packages
+    (FLAG_SYSTEM when visible, else vendor-prefix fallback: com.google.android./com.android./com.samsung./
+    com.sec./OEM prefixes). Added KNOWN_ADMINS map. (Aligns the existing JVM test.)
+  - deviceAnalysis.ts: DeviceSignals.managementProfile union now "none"|"device_admin"|"managed"|"present"|
+    "unknown" + optional managementAdmins. "managed"/"present" (incl. iOS) → high when unexpected, info when
+    expected. Ordinary "device_admin" → benign INFO finding D02b that NAMES the apps and explains the
+    consequence ("can lock your screen, reset your passcode or erase the phone — powerful but normal…") and a
+    concrete action ("open Device admin apps, tap it to see what it controls, then turn it off"). User can
+    still escalate via the "unexpected profile" self-report → high.
+- Tests: tests/gate7.test.ts +3 cases (44 pass); gatesOverview 16 pass; fileDeviceGateUi pass; tsc+eslint clean.
+- Native-only: verify on the user's Android production build after redeploy + rebuild.
