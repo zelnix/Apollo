@@ -12,6 +12,8 @@ import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { PRIVACY_POLICY_SUMMARY } from "@/src/domain/privacy";
 import type { NotificationStatus } from "@/src/push/notifications";
 import { useApollo } from "@/src/store/ApolloContext";
+import { useProtectionHealth } from "@/src/protection/healthStore";
+import { requestSiteProtectionRecovery } from "@/src/protection/healthCoordinator";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { minimiseApp } from "@/src/utils/minimise";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -35,10 +37,30 @@ export default function SettingsScreen() {
   useEffect(() => { void storage.getItem("apollo.call.auto_check", null).then((v: string | null) => setCallAutoCheck(v === "true")); }, [storage]);
   const higgins = useHiggins(deviceId);
 
+  // Site Gate (Android VPN-filter) status + one-tap grant. Lets people grant VPN consent anytime
+  // without re-running setup; other protection keeps working whether or not this is on.
+  const health = useProtectionHealth();
+  const siteGate = health.gates.find((gate) => gate.id === "site");
+  const siteState = siteGate?.capability.automatic?.state;
+  const siteRunning = siteState === "running";
+  const canEnableSite = !!siteState && !["running", "checking", "unsupported"].includes(siteState);
+  const grantSiteGate = async () => {
+    const attempt = await requestSiteProtectionRecovery();
+    showToast(attempt.status === "failed" ? "Android could not open the VPN permission screen. Try again shortly." : "Apollo will turn on Site Gate when you return.", attempt.status === "failed" ? "growling" : "neutral");
+  };
+
   return <View style={s.root} testID="settings-screen">
     <View style={[s.top, { paddingTop: insets.top + spacing.md }]}><Text style={s.title} testID="settings-title">Settings</Text><Pressable testID="settings-close" accessibilityRole="button" accessibilityLabel="Close Settings" onPress={() => goBackOrHome(router)} style={s.close}><X size={22} color={colors.onSurface} /></Pressable></View>
     <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="settings-scroll">
       <View><SectionTitle>Privacy</SectionTitle><Card testID="settings-privacy">{PRIVACY_POLICY_SUMMARY.map((line) => <Body key={line} style={{ marginBottom: spacing.sm }}>• {line}</Body>)}<View style={s.row}><Text style={s.label}>Anonymous device reference</Text><Text style={s.mono} testID="settings-device-id">{deviceId ? `${deviceId.slice(0, 8)}…` : "—"}</Text></View><Button testID="settings-privacy-disclosure" variant="secondary" label="Read the privacy information" onPress={() => router.push("/privacy-disclosure")} /></Card></View>
+      {Platform.OS === "android" ? (
+        <View><SectionTitle>Website protection (Site Gate)</SectionTitle>
+          <Card style={{ gap: spacing.sm }} testID="settings-site-gate">
+            <View style={s.row}><Text style={s.label}>Site Gate</Text><Pill tone={siteRunning ? "resting" : canEnableSite ? "growling" : "unknown"} label={siteGate?.statusLabel ?? "Checking"} testID="settings-site-status" /></View>
+            <Body>Site Gate filters known dangerous websites using a local VPN. You can grant VPN permission anytime — your other protection keeps working whether or not this is on.</Body>
+            {canEnableSite ? <Button testID="settings-site-enable" variant="secondary" label="Turn on Site Gate" onPress={() => void grantSiteGate()} /> : null}
+          </Card></View>
+      ) : null}
       <View><SectionTitle>Share into Apollo</SectionTitle><Card style={{ gap: spacing.sm }} testID="settings-share"><Body>Use Share in Messages, Mail or your browser, then choose Apollo. Apollo waits for you to confirm before starting a check.</Body><Pill testID="settings-share-status" tone={Platform.OS === "web" ? "unknown" : "neutral"} label={Platform.OS === "web" ? "Available in the installed app" : "Available on this device"} /></Card></View>
       <View><SectionTitle>Security alerts</SectionTitle><Card style={{ gap: spacing.sm }} testID="settings-push"><View style={s.row}><Text style={s.label}>Allow important security alerts</Text><Pill tone={notificationStatus === "granted" ? "resting" : notificationStatus === "unsupported" ? "unknown" : "growling"} label={ALERT_LABEL[notificationStatus]} testID="settings-push-status" /></View><Body>On-device alerts need notification permission. Permission alone does not prove an alert was delivered; Family replies on another device require separate delivery setup.</Body>{notificationStatus === "denied" || notificationStatus === "undetermined" ? <Button testID="settings-push-enable" variant="secondary" label="Allow security alerts" onPress={() => void enableNotifications()} /> : null}{notificationStatus === "blocked" ? <Button testID="settings-push-settings" variant="secondary" label="Open notification settings" onPress={() => void Linking.openSettings()} /> : null}<Button testID="settings-alert-preview" variant="ghost" label="Preview an alert" onPress={() => setPreview(true)} /></Card></View>
       <View><SectionTitle>Quiet hours</SectionTitle><Card style={{ gap: spacing.sm }} testID="settings-quiet"><View style={s.row}><Text style={s.label}>Silence non-urgent reminders at night</Text><Switch testID="settings-quiet-switch" value={quietHours.enabled} onValueChange={(value) => void setQuietHours({ ...quietHours, enabled: value })} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View><Body>Urgent threat warnings and family alerts can still appear.</Body>{quietHours.enabled ? <View style={{ flexDirection: "row", gap: spacing.md }}><TimeStepper testID="settings-quiet-start" label="From" minutes={quietHours.start_minutes} onChange={(minutes) => void setQuietHours({ ...quietHours, start_minutes: minutes })} /><TimeStepper testID="settings-quiet-end" label="Until" minutes={quietHours.end_minutes} onChange={(minutes) => void setQuietHours({ ...quietHours, end_minutes: minutes })} /></View> : null}{quietHours.enabled ? <Pill tone={quietNow ? "unknown" : "resting"} label={quietNow ? "Quiet hours are active" : "Quiet hours are not active now"} testID="settings-quiet-now" /> : null}</Card></View>
