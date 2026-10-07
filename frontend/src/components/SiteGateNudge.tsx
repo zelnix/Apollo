@@ -27,6 +27,7 @@ export function SiteGateNudge() {
   const [snoozedUntil, setSnoozedUntil] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [justSnoozed, setJustSnoozed] = useState(false);
 
   useEffect(() => {
     void storage.getItem(SNOOZE_KEY, null).then((raw) => {
@@ -39,7 +40,16 @@ export function SiteGateNudge() {
   const siteGate = health.gates.find((gate) => gate.id === "site");
   const awaitingPermission = siteGate?.capability.automatic?.state === "permission_needed";
   const snoozed = snoozedUntil !== null && Date.now() < snoozedUntil;
-  if (Platform.OS !== "android" || !awaitingPermission || !loaded || snoozed) return null;
+  if (Platform.OS !== "android" || !loaded) return null;
+  // Brief confirmation so the snooze behaviour is clear, then the card collapses away.
+  if (justSnoozed) {
+    return (
+      <Card style={{ gap: spacing.sm, borderColor: colors.navyBorder }} testID="site-gate-nudge-snoozed">
+        <Body testID="site-gate-nudge-snoozed-line">Okay — we&apos;ll remind you in a few days. You can turn on Site Gate anytime from Settings.</Body>
+      </Card>
+    );
+  }
+  if (!awaitingPermission || snoozed) return null;
 
   const enable = async () => {
     setBusy(true);
@@ -54,6 +64,8 @@ export function SiteGateNudge() {
   const snooze = async () => {
     const until = Date.now() + SNOOZE_MS;
     setSnoozedUntil(until);
+    setJustSnoozed(true);
+    setTimeout(() => setJustSnoozed(false), 2800);
     await storage.setItem(SNOOZE_KEY, new Date(until).toISOString());
   };
 
