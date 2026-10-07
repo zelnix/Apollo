@@ -100,22 +100,22 @@ export function buildGatesOverview(input: GatesInput): GatesOverview {
     capability: { automatic: { kind: "event_driven", state: callState, lastObservedAt: observedNow, limitation: callLimitation }, onDemand: onDemand("check_call", "Check a call or number") },
     primaryAction: action("setup_call", "Set up call checking") });
 
-  // C3/C4: Network Gate reflects actual background observation capability.
-  // "running" requires Site Gate's DNS VPN to be actively filtering — that is the only genuine
-  // background network observer. Without it, the gate has no continuous listener; network info
-  // comes from a point-in-time health-check snapshot, which is on-demand, not "Watching."
+  // C3/C4: Network Gate watches the live OS connection snapshot — it re-checks on every app open,
+  // network change and periodic sweep, so it is "Watching" whenever Apollo has a current, connected
+  // reading (no VPN needed). Site Gate's DNS VPN additionally provides a continuous *background*
+  // observer; when it is off Apollo still watches in the foreground — disclosed in the limitation.
   const networkObserved = input.network?.checkedAt;
   const vpnActive = (input.network as Record<string, unknown> | undefined)?.vpnActive === true;
-  const networkState: AutomaticCapabilityState = input.checking ? "checking" : !input.network ? "temporarily_unavailable" : vpnActive ? "running" : input.network.inspectable ? "not_activated" : input.network.connected ? "permission_needed" : "temporarily_unavailable";
+  const networkState: AutomaticCapabilityState = input.checking ? "checking" : !input.network || !input.network.connected ? "temporarily_unavailable" : (vpnActive || input.network.inspectable) ? "running" : "permission_needed";
   const networkLimitation = networkState === "permission_needed"
     ? "Allow network information to receive automatic warnings."
-    : networkState === "not_activated"
-      ? "Enable Site Gate's DNS filter for continuous network observation."
+    : networkState === "running" && !vpnActive
+      ? "Apollo checks the connection on every app open and network change. Turn on Site Gate for continuous background watching."
       : networkState === "temporarily_unavailable"
         ? "Apollo cannot observe the current connection yet."
         : undefined;
   const network = presentation({ id: "network", title: TITLE.network, purpose: PURPOSE.network,
-    currentHelp: networkState === "running" ? "Apollo is filtering DNS traffic through Site Gate." : networkState === "not_activated" ? `Last checked: ${networkObserved ?? "never"}. Run a check to see the current connection status.` : "You can run a current network check now.",
+    currentHelp: networkState === "running" ? (vpnActive ? "Apollo is watching this connection, with continuous background filtering through Site Gate." : "Apollo is watching this connection and re-checks on every app open and network change.") : networkState === "permission_needed" ? "Allow network information so Apollo can watch this connection." : "You can run a current network check now.",
     capability: { automatic: { kind: "monitoring", state: networkState, lastObservedAt: networkObserved, limitation: networkLimitation }, onDemand: onDemand("check_network", "Check this network") },
     primaryAction: action("check_network", "Check this network") });
 

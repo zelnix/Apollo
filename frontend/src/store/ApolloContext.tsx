@@ -281,7 +281,10 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       await storage.setItem(K.verified, verified);
       // Connection Guard: raise one growling event per distinct unsafe network condition (trusted networks stay quiet).
       const a = assessConnection(net, trustedSsidsRef.current);
-      if (a.state && status.running && lastConnectionKey.current !== a.key) {
+      // Network Gate monitors the live OS connection snapshot and needs no VPN — raise one event
+      // per distinct unsafe network condition whenever observed (open/WEP Wi‑Fi, captive portal),
+      // regardless of whether the Website Gate VPN is running.
+      if (a.state && lastConnectionKey.current !== a.key) {
         lastConnectionKey.current = a.key;
         const ev: PatrolEvent = {
           event_id: Crypto.randomUUID(), device_id: deviceIdRef.current ?? "local", category: "connection", state: a.state, status: "active",

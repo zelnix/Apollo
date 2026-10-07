@@ -116,3 +116,23 @@ test("reduced-coverage summary generalizes to a non-Site gate (Text permission) 
   assert.equal(text.capability.automatic?.state, "permission_needed");
   assert.equal(overview.summary, "Protection active — reduced coverage");
 });
+
+const netStatus = (patch = {}) => ({ connected: true, type: "wifi" as const, isInternetReachable: true, inspectable: true, wifiSecurity: "wpa" as const, captivePortal: false, vpnActive: false, ssid: null, checkedAt: new Date().toISOString(), ...patch });
+
+test("Network Gate is Watching on an inspectable connection even without the VPN, disclosing the background caveat", () => {
+  const network = buildGatesOverview({ ...base, network: netStatus() }).gates.find((gate) => gate.id === "network")!;
+  assert.equal(network.capability.automatic?.state, "running");
+  assert.equal(network.statusLabel, "Watching");
+  assert.match(network.capability.automatic?.limitation ?? "", /continuous background watching/i);
+});
+
+test("Network Gate reports running with no background caveat when the VPN is active", () => {
+  const network = buildGatesOverview({ ...base, network: netStatus({ vpnActive: true }) }).gates.find((gate) => gate.id === "network")!;
+  assert.equal(network.capability.automatic?.state, "running");
+  assert.equal(network.capability.automatic?.limitation, undefined);
+});
+
+test("Network Gate needs attention only when the platform withholds network info", () => {
+  const network = buildGatesOverview({ ...base, network: netStatus({ inspectable: false }) }).gates.find((gate) => gate.id === "network")!;
+  assert.equal(network.capability.automatic?.state, "permission_needed");
+});

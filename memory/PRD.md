@@ -935,3 +935,26 @@ Current position: waiting on step 1 input (Step 7 stderr for build aa24dd73-eab7
   regardless of that state.
 - NOTE: Network Gate is native-only; web preview is hard-gated ("GuardDog production authority can be
   selected only in a production build"), so this must be verified on the user's Android build.
+
+## Bug fix (part 2) — Network Gate should be ON and monitoring independent of the VPN (2026-06)
+- User pushback: "I should be on and monitoring especially when network changes." The Network Gate showed
+  "Protection off / Unknown" because it was reading the Website-Gate VPN status, and the Android production
+  runtime never reports a `connection_guard` capability (only `site_guard`).
+- Root cause: (a) ApolloContext.refresh() only raised Connection-Guard events when the VPN was running
+  (`status.running` gate on line ~284); (b) network.tsx dashboard headline/pill derived from the VPN
+  `protection` object + absent connection_guard capability; (c) gates.ts marked Network "running" only when
+  `vpnActive`, else "not_activated".
+- Fixes:
+  - ApolloContext.tsx: removed the `status.running` gate — assessConnection() runs on the OS network snapshot
+    (needs no VPN) and raises one deduped event per distinct unsafe condition (open/WEP Wi-Fi, captive portal)
+    on every foreground/periodic/network-change refresh.
+  - app/network.tsx: dashboard now reflects the Network Gate's own live monitoring — "Monitoring this
+    connection" / Active when there is a current connected reading; honest detail: re-checks on every app
+    open and network change; reads connection type, Wi-Fi security, captive-portal flags only.
+  - src/domain/gates.ts: Network Gate = "running" (Watching) whenever connected + inspectable (or VPN on).
+    Honest limitation when VPN off: "Apollo checks the connection on every app open and network change. Turn
+    on Site Gate for continuous background watching." permission_needed only when platform withholds net info.
+- Truthfulness preserved: foreground watching is real; continuous *background* observation still needs Site
+  Gate's VPN and is disclosed, never claimed otherwise.
+- Tests: tests/gatesOverview.test.ts +3 cases (16/16 pass). tsc + eslint clean on all three files.
+- Native-only screen; verify on the user's Android production build (web preview is hard-gated).

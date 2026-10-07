@@ -13,8 +13,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { markCheckDone } from "@/src/store/checkCompletion";
-import { Body, Button, Card, Pill, SectionTitle, capabilityTone, toneColor } from "@/src/components/ui";
-import { CAPABILITY_STATUS_LABEL } from "@/src/domain/capability";
+import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { analyseNetwork, NETWORK_CONTEXTS, type NetworkAnalysis, type NetworkContext } from "@/src/domain/networkAnalysis";
 import { SCENT_WINDOW_MS } from "@/src/domain/threatScent";
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
@@ -46,7 +45,7 @@ export default function CheckNetwork() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { ready, setupDone, network, capabilities, protection, trustedSsids, trustNetwork, events, upsertEvent, deviceId, adapterLabel, verifyNow, refreshing } = useApollo();
+  const { ready, setupDone, network, capabilities, trustedSsids, trustNetwork, events, upsertEvent, deviceId, adapterLabel, verifyNow, refreshing } = useApollo();
   const [context, setContext] = useState<NetworkContext>("unknown");
   const [expected, setExpected] = useState("");
   const [vpnTrusted, setVpnTrusted] = useState<boolean | null>(null);
@@ -62,8 +61,14 @@ export default function CheckNetwork() {
   const unresolved = recentNet.filter((e) => e.status === "active" && e.state !== "resting").length;
   const scentCats = useMemo(() => { const now = Date.now(); return events.filter((e) => e.state !== "resting" && (e.category === "app" || e.category === "device") && now - Date.parse(e.occurred_at) <= SCENT_WINDOW_MS).map((e) => e.category); }, [events]);
   const vpnOn = network?.vpnActive === true || network?.type === "vpn";
-  const protectionTone = !(protection?.requested ?? protection?.running) ? "unknown" : guard?.status === "active" ? "resting" : guard?.status === "permission_required" ? "growling" : "unknown";
-  const protectionTitle = !(protection?.requested ?? protection?.running) ? "Protection off" : guard?.status === "active" ? "Active" : guard?.status === "permission_required" ? "Permission required" : guard?.status === "unsupported" ? "Not supported on this device" : "Available";
+  // Network Gate watches the live OS connection snapshot — it re-checks on every foreground, network
+  // change and periodic sweep, and needs no VPN. It is "monitoring" whenever Apollo has a current,
+  // connected network reading; "unknown" only when the platform reveals nothing or the capability is
+  // unsupported on this platform (e.g. web).
+  const unsupported = guard?.status === "unsupported";
+  const monitoring = !unsupported && !!network && Number.isFinite(Date.parse(network.checkedAt)) && network.connected;
+  const protectionTone = monitoring ? "resting" : "unknown";
+  const protectionTitle = unsupported ? "Not supported on this device" : !network ? "Checking…" : !network.connected ? "Not connected" : "Monitoring this connection";
 
   const run = async (ctx: NetworkContext = context, existingId?: string | null) => {
 
@@ -105,8 +110,8 @@ export default function CheckNetwork() {
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="network-scroll">
         <Card testID="network-dashboard" style={{ gap: spacing.sm, borderColor: toneColor(colors, protectionTone) }}>
-          <View style={s.row}><View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><Wifi size={20} color={toneColor(colors, protectionTone)} /><Text style={s.statTitle} testID="network-protection-title">{protectionTitle}</Text></View><Pill tone={guard ? capabilityTone(guard.status) : "unknown"} label={guard ? CAPABILITY_STATUS_LABEL[guard.status] : "Unknown"} testID="network-protection-pill" /></View>
-          <Body testID="network-protection-detail">{!(protection?.requested ?? protection?.running) ? "Open Gates to review the current protection status." : guard?.status === "active" ? "Apollo assesses the connection type, Wi-Fi security and captive portal status the platform reports." : guard?.detail ?? ""}</Body>
+          <View style={s.row}><View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><Wifi size={20} color={toneColor(colors, protectionTone)} /><Text style={s.statTitle} testID="network-protection-title">{protectionTitle}</Text></View><Pill tone={protectionTone} label={monitoring ? "Active" : unsupported ? "Unsupported" : network?.connected === false ? "Offline" : "Checking"} testID="network-protection-pill" /></View>
+          <Body testID="network-protection-detail">{unsupported ? (guard?.detail ?? "") : monitoring ? "Apollo is watching this connection. It re-checks when you switch networks or reopen the app, reading the connection type, Wi‑Fi security and captive-portal status the platform reports." : !network?.connected ? "You're offline. Apollo will assess the connection as soon as you reconnect." : "Apollo is reading the current connection…"}</Body>
           <Text style={s.label}>Current network</Text>
           <Body testID="network-current">{!network?.connected ? "Not connected" : network.type === "wifi" ? `Wi‑Fi${network.ssid ? ` “${network.ssid}”` : " (name not revealed)"} · security ${network.wifiSecurity === "unknown" ? "not revealed" : network.wifiSecurity.toUpperCase()}${trustedSsids.includes(network.ssid ?? "") ? " · trusted" : ""}` : network.type === "cellular" ? "Mobile data" : `Connected via ${network.type}`}{vpnOn ? " · VPN on" : ""}</Body>
           <Text style={s.label}>Recent activity (24h)</Text>
