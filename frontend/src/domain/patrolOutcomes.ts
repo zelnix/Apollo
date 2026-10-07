@@ -54,3 +54,14 @@ export function matchesPatrolFilter(outcome: PatrolOutcome, filter: PatrolFilter
   if (filter === "threats_stopped") return outcome.state === "biting" && outcome.event.verified_block;
   return outcome.state === "resting" || outcome.event.status === "resolved" || outcome.event.status === "trusted";
 }
+
+/** UX-06: plain-English answer to "do I need to act?", derived from existing outcome state only.
+ *  Priority: things that need the person → concerns Apollo is still tracking → nothing. Never claims
+ *  "all clear"/"fully protected"/"no threats exist". */
+export function patrolConsumerSummary(outcomes: PatrolOutcome[]): string {
+  const needsYou = outcomes.filter((outcome) => matchesPatrolFilter(outcome, "needs_you")).length;
+  if (needsYou > 0) return needsYou === 1 ? "1 thing needs you" : `${needsYou} things need you`;
+  const checking = outcomes.filter((outcome) => outcome.event.status === "active" && ["ears_up", "growling", "barking"].includes(outcome.state)).length;
+  if (checking > 0) return checking === 1 ? "Apollo is checking 1 concern" : `Apollo is checking ${checking} concerns`;
+  return "Nothing needs you right now";
+}

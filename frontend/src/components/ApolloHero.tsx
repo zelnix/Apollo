@@ -6,7 +6,7 @@
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useMemo, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { AccessibilityInfo, Pressable, Text, View } from "react-native";
 import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming } from "react-native-reanimated";
 import { useRouter } from "expo-router";
 
@@ -63,8 +63,18 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
   const { colors } = useTheme();
   const tone = resolution.state;
   const color = toneColor(colors, tone);
+  // UX-16: respect the platform reduced-motion accessibility preference by routing it through the
+  // existing animation-disable path (the same one battery saver uses). No new animation subsystem.
+  const [reduceMotion, setReduceMotion] = useState(false);
+  useEffect(() => {
+    let mounted = true;
+    AccessibilityInfo.isReduceMotionEnabled().then((v) => { if (mounted) setReduceMotion(!!v); }).catch(() => undefined);
+    const sub = AccessibilityInfo.addEventListener("reduceMotionChanged", (v) => setReduceMotion(!!v));
+    return () => { mounted = false; sub?.remove?.(); };
+  }, []);
+  const motionOn = animate && !reduceMotion;
   const state: ApolloState = sniffing ? "sniffing" : resolution.state;
-  const gif = animate ? STATE_GIF[state] : undefined;
+  const gif = motionOn ? STATE_GIF[state] : undefined;
   const [checklistOpen, setChecklistOpen] = useState(false);
 
   const ring = useSharedValue(1);
@@ -75,7 +85,7 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
   useEffect(() => {
     [ring, scale, ty, glow].forEach(cancelAnimation);
     ring.value = 1; scale.value = 1; ty.value = 0; glow.value = 0.25;
-    if (!animate) return;
+    if (!motionOn) return;
     if (state === "resting") {
       // The patrolling GIF carries the dog's motion; code adds only a slow breath and ring pulse.
       scale.value = withRepeat(withSequence(withTiming(1.03, { duration: 2400, easing: ease }), withTiming(1, { duration: 2400, easing: ease })), -1, false);
@@ -107,7 +117,7 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
       // Visibility lost: dim, slow fade — deliberately lifeless.
       glow.value = withRepeat(withSequence(withTiming(0.15, { duration: 1800 }), withTiming(0.05, { duration: 1800 })), -1, false);
     }
-  }, [state, animate, ring, scale, ty, glow]);
+  }, [state, motionOn, ring, scale, ty, glow]);
 
   const ringStyle = useAnimatedStyle(() => ({ transform: [{ scale: ring.value }], opacity: 1.35 - ring.value }));
   const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value }));
@@ -130,6 +140,10 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
   }, [resolution.visibilityLost, resolution.reason, health.checking, attentionGates]);
   // Deep-link to the gates screen where attention gates appear first.
   const heroRoute = attentionGates.length ? "/(tabs)/guard" : reasonRoute;
+  // UX-02: when the person must actually do something, show a prominent corrective action — more
+  // prominent than Hear Higgins. Hear Higgins stays available below as the secondary explanation.
+  const needsAction = state !== "resting" && state !== "sniffing" && !!heroRoute;
+  const actionLabel = attentionGates.length ? (attentionGates[0].primaryAction?.label ?? "See what needs attention") : "See what needs attention";
   // "Run a check" is never said bare: the exact checks are listed (tappable, in a popup) and read aloud. Completion
   // counts from the start of today, so a check already done this morning shows as done.
   const checks = sniffing ? [] : recommendedChecks(resolution);
@@ -164,7 +178,12 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
         {(state === "resting" || state === "sniffing") ? (
           <Text style={s.meaning} testID="apollo-state-meaning">{meaning}</Text>
         ) : null}
-        {heroRoute ? (
+        {needsAction ? (
+          <>
+            <Text style={s.reason} testID="apollo-state-reason">{reason}</Text>
+            <Button testID="hero-primary-action" label={actionLabel} onPress={() => router.push(heroRoute as any)} />
+          </>
+        ) : heroRoute ? (
           <Pressable onPress={() => router.push(heroRoute as any)} accessibilityRole="link" testID="apollo-state-reason-link" style={{ minHeight: 44, justifyContent: "center" }}>
             <Text style={s.reasonLink} testID="apollo-state-reason">{reason} →</Text>
           </Pressable>

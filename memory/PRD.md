@@ -1000,3 +1000,24 @@ Current position: waiting on step 1 input (Step 7 stderr for build aa24dd73-eab7
     still escalate via the "unexpected profile" self-report → high.
 - Tests: tests/gate7.test.ts +3 cases (44 pass); gatesOverview 16 pass; fileDeviceGateUi pass; tsc+eslint clean.
 - Native-only: verify on the user's Android production build after redeploy + rebuild.
+
+## UX Refinement Package UX-01…UX-16 (2026-06) — presentation/wording/hierarchy only
+No architecture, infrastructure, security behaviour, routes, Gate types or product scope changed.
+- UX-01 Gate wording: gates.ts presentation() now maps running→ enforcement:"Protection on" / monitoring:"Watching" / event_driven:"Ready automatically" (new user-facing label added to GateStatusLabel union; no new capability type). Home GateRow replaced the blanket "Auto" badge with compact capability-derived labels: On / Watching / Ready / Needs you / Off / Checking / Unavailable.
+- UX-02 Home hierarchy: ApolloHero now shows a prominent primary action Button (testID hero-primary-action) when state is a warning and a corrective route exists; Hear Higgins stays below as secondary. Calm states keep Hear Higgins prominence.
+- UX-03 dedup: Home suppresses GateNudge when the hero is already naming attention Gates (heroNamingAttention); CoverageCard + Gates Protection list remain as secondary coverage below the hero; HigginsFollowUp unchanged (distinct follow-up).
+- UX-04 background copy: "Guarding in the background — minimise to save battery." → "Apollo continues protecting in the background." Minimise control retained as secondary ghost button.
+- UX-05 Check It intro: "These checks start only when you tap one." → "These are checks you start yourself. Apollo may also protect or watch automatically where supported."
+- UX-06 Patrol summary: new patrolConsumerSummary() + ListHeaderComponent at top of Patrol: "Nothing needs you right now" / "N thing(s) need you" / "Apollo is checking N concern(s)". Header "{n} outcomes" pill kept as secondary.
+- UX-07 Patrol empty: removed engineering explanation. Now "No Patrol activity yet." (all) / "Nothing here currently needs your attention." (filtered).
+- UX-08 Filters: unchanged (All activity / Needs you / Warnings / Threats stopped / Resolved).
+- UX-09 Patrol cards: PatrolItem adds a "Needs you" pill (from matchesPatrolFilter) and shows primaryAction.label as the footer hint when present — existing fields only.
+- UX-10 Higgins hub reorder: Ask Higgins → Current investigations → Recent activity → reference grid [New scams, Learn, Saved reports] → History.
+- UX-11 "Ordinary chat" removed from user-facing: header pill "Ask Higgins", hub card "Ask Higgins", "Return to ordinary chat"→"Back to chat", empty/disclaimer/error copy reworded. Internal investigationMode var unchanged.
+- UX-12 technical wording: "Retry server deletion"→"Try deleting again"; "Investigation answer complete within its stated scope"→"Higgins has finished this investigation." Scope/uncertainty still shown in supporting disclaimer + investigation details.
+- UX-13 roles: no Higgins copy claims Apollo actions — no change needed.
+- UX-14 vocabulary: plain-English result strings retained; Growling/Barking only used as Apollo character language in educational Q&A, never as instructions — no change needed.
+- UX-15 Biting: hero still reuses barking GIF but accessibility label already "Apollo biting after a confirmed block" and biting only resolves with verified_block — animation never presented as proof; unchanged.
+- UX-16 reduced motion: ApolloHero now reads AccessibilityInfo reduce-motion and routes it through the existing animate-disable path (motionOn) — no new a11y subsystem. (Previously only manual battery-saver lowPower existed.)
+- Tests: gatesOverview 19, phase2Patrol 4 (incl. new patrolConsumerSummary + link-gate "Ready automatically" + account label change). Full gate/higgins suites pass; eslint + tsc clean.
+- NOTE: web preview is hard-gated (GuardDog production authority only in a production build) so UI cannot be smoke-tested here; verify on a production build.

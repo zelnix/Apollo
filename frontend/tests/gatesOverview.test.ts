@@ -79,13 +79,20 @@ test("File Gate purpose keeps cloud-hosting limitation", () => {
   assert.equal(file.capability.onDemand?.state, "ready");
 });
 
-test("Account Gate is Watching when accountBreachConfigured is true", () => {
+test("Account Gate reads 'Ready automatically' (event-driven, not continuous) when breach lookup is configured", () => {
   const account = buildGatesOverview({ ...base, accountBreachConfigured: true }).gates.find((gate) => gate.id === "account")!;
   assert.equal(account.capability.automatic?.state, "running");
-  assert.equal(account.statusLabel, "Watching");
+  assert.equal(account.statusLabel, "Ready automatically");
   assert.equal(account.capability.automatic?.kind, "event_driven");
   assert.match(account.capability.automatic?.limitation ?? "", /responds when triggered/i);
 });
+
+test("Link Gate (event-driven) reads 'Ready automatically', never 'Watching'", () => {
+  const link = buildGatesOverview({ ...base, online: true }).gates.find((gate) => gate.id === "link")!;
+  assert.equal(link.capability.automatic?.kind, "event_driven");
+  assert.equal(link.statusLabel, "Ready automatically");
+});
+
 
 test("Account Gate stays Ready when breach lookup is not configured (core alert checks still work)", () => {
   const account = buildGatesOverview({ ...base, accountBreachConfigured: false }).gates.find((gate) => gate.id === "account")!;

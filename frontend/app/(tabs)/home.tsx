@@ -50,6 +50,10 @@ export default function Home() {
   const router = useRouter();
   const { resolution, capabilities, protection, adapterLabel, isMock, refreshing, events, lowPower, quietNow, showToast, identityReset, reRegisterDevice } = useApollo();
   const health = useProtectionHealth();
+  // UX-03 dedup: when the hero is already naming the Gates that need attention, the GateNudge would
+  // repeat the same protection problem at equal prominence — so suppress it in that case. The nudge
+  // still appears for a pending Gate that the hero is not already surfacing.
+  const heroNamingAttention = resolution.visibilityLost && health.gates.some((g) => g.tone === "attention");
   // Recent Patrol on Home is a glance, not the archive — at most 2-3 items; the full history lives on Patrol.
   const recent = projectPatrolOutcomes(events).slice(0, 3);
   const digest = buildWeeklyDigest(events);
@@ -71,14 +75,14 @@ export default function Home() {
           </Card>
         ) : null}
         <ServiceBanner />
-        <GateNudge />
+        {heroNamingAttention ? null : <GateNudge />}
         <HigginsFollowUp />
         <ClipboardLinkBanner />
         <CoverageCard />
         {protection?.operational ? (
           <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }} testID="home-background-card">
             <BatteryCharging size={20} color={colors.resting} />
-            <View style={{ flex: 1 }}><Body>Guarding in the background — minimise to save battery.</Body></View>
+            <View style={{ flex: 1 }}><Body>Apollo continues protecting in the background.</Body></View>
             <Button testID="home-minimise" variant="ghost" label="Minimise" onPress={() => void minimiseApp(showToast)} />
           </Card>
         ) : null}
@@ -157,31 +161,37 @@ export default function Home() {
 }
 
 
-/** Compact row for a single gate: name on the left, auto/manual badge on the right. */
+/** Compact row for a single gate: name on the left, an accurate compact status on the right.
+ *  Wording is derived from the existing capability and must not imply continuous observation where
+ *  none exists (event-driven → "Ready", monitoring → "Watching", enforcement → "On"). */
 function GateRow({ gate, colors, styles: s }: { gate: GatePresentation; colors: Record<string, string>; styles: ReturnType<typeof useStyles> }) {
   const auto = gate.capability.automatic;
-  const needsAttention = gate.tone === "attention";
-  const offByChoice = auto?.state === "off_by_choice";
   const shortName = gate.title.replace(/ Gate$/, "");
 
-  let badgeLabel: string;
-  let badgeBg: string;
-  let badgeColor: string;
+  let badgeLabel = "Ready";
+  let badgeBg = colors.navyTint;
+  let badgeColor = colors.muted;
 
-  if (needsAttention) {
-    badgeLabel = "Attention";
-    badgeBg = colors.barkingTint ?? colors.goldHighlight;
-    badgeColor = colors.barking ?? colors.onSurface;
-  } else if (offByChoice) {
-    badgeLabel = "Off";
-    badgeBg = colors.navyTint;
-    badgeColor = colors.muted;
+  const good = (label: string) => { badgeLabel = label; badgeBg = colors.restingTint ?? colors.navyTint; badgeColor = colors.resting ?? colors.brand; };
+  const neutral = (label: string) => { badgeLabel = label; badgeBg = colors.navyTint; badgeColor = colors.muted; };
+
+  if (gate.tone === "attention") {
+    badgeLabel = "Needs you"; badgeBg = colors.barkingTint ?? colors.goldHighlight; badgeColor = colors.barking ?? colors.onSurface;
+  } else if (auto?.state === "off_by_choice") {
+    neutral(gate.capability.onDemand?.state === "ready" ? "Ready" : "Off");
+  } else if (auto?.state === "checking") {
+    neutral("Checking");
+  } else if (auto?.state === "temporarily_unavailable") {
+    neutral("Unavailable");
+  } else if (auto?.state === "running") {
+    // enforcement → continuous blocking; monitoring → genuine background watch; event-driven → responds when triggered.
+    if (auto.kind === "enforcement") good("On");
+    else if (auto.kind === "monitoring") good("Watching");
+    else good("Ready");
+  } else if (auto?.state === "not_activated" || gate.capability.onDemand?.state === "ready") {
+    neutral("Ready");
   } else {
-    // Every gate in Apollo has automatic capability on a real device.
-    // Show "Auto" unless explicitly off or needing attention.
-    badgeLabel = "Auto";
-    badgeBg = colors.restingTint ?? colors.navyTint;
-    badgeColor = colors.resting ?? colors.brand;
+    neutral("Unavailable");
   }
 
   return (

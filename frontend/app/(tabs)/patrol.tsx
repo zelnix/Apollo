@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PatrolItem } from "@/src/components/PatrolItem";
 import { RootScreenHeader } from "@/src/components/RootScreenHeader";
 import { Body, Card, Pill } from "@/src/components/ui";
-import { matchesPatrolFilter, projectPatrolOutcomes, type PatrolFilter, type PatrolOutcome } from "@/src/domain/patrolOutcomes";
+import { matchesPatrolFilter, patrolConsumerSummary, projectPatrolOutcomes, type PatrolFilter, type PatrolOutcome } from "@/src/domain/patrolOutcomes";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { exportPatrolPdf } from "@/src/utils/exportPatrol";
@@ -24,6 +24,8 @@ const useStyles = makeStyles((c) => ({
   chipText: { fontFamily: fonts.textMedium, fontSize: 13, color: c.onSurfaceSecondary },
   list: { paddingHorizontal: spacing.xl, paddingTop: spacing.sm, paddingBottom: spacing.xl },
   day: { fontFamily: fonts.display, fontSize: 13, color: c.onSurfaceSecondary, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: spacing.md, marginTop: spacing.sm },
+  summaryCard: { marginBottom: spacing.md, gap: 2 },
+  summaryText: { fontFamily: fonts.displayBold, fontSize: 18, lineHeight: 24, color: c.onSurface },
   emptyTitle: { fontFamily: fonts.display, fontSize: 16, color: c.onSurface },
   iconBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: c.surfaceTertiary },
 }));
@@ -93,11 +95,16 @@ export default function Patrol() {
         keyExtractor={(r) => r.key}
         contentContainerStyle={s.list}
         testID="patrol-list"
+        ListHeaderComponent={
+          <Card testID="patrol-summary" style={s.summaryCard}>
+            <Text style={s.summaryText} testID="patrol-summary-text">{patrolConsumerSummary(outcomes)}</Text>
+          </Card>
+        }
         renderItem={({ item }) => item.type === "day" ? <Text style={s.day}>{item.label}</Text> : <PatrolItem outcome={item.outcome} isLast={item.isLast} />}
         ListEmptyComponent={
           <Card testID="patrol-empty" style={{ gap: spacing.sm }}>
-            <Text style={s.emptyTitle}>No Patrol outcomes{filter !== "all_activity" ? " for this filter" : ""}</Text>
-            <Body>There are no meaningful outcomes for this view. Commands and technical service messages are kept out of Patrol; check Gates for current protection.</Body>
+            <Text style={s.emptyTitle}>{filter === "all_activity" ? "No Patrol activity yet." : "Nothing here currently needs your attention."}</Text>
+            {filter === "all_activity" ? <Body>Apollo adds items here as things happen.</Body> : null}
           </Card>
         }
       />
