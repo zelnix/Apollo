@@ -527,6 +527,41 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     let identity = await getDeviceIdentity();
     if (!identity) { try { identity = await registerDeviceIdentity(API_BASE, deviceMeta()); } catch { identity = null; /* offline: retried on next launch */ } }
     if (identity) setDeviceId(identity.deviceId);
+
+    // Ensure VPN consent is obtained before starting GuardDog production.
+    // Without it, startGuardDogProduction() throws IllegalStateException("VPN consent is not granted").
+    // The system VPN consent dialog is an Android system activity; when the user grants/denies
+    // and returns, we detect it via polling the native permission state.
+    const perms = await securityAdapter.getProtectionPermissions();
+    const vpn = perms.find((p) => p.id === "vpn_config");
+    if (vpn && vpn.status !== "granted") {
+      const result = await securityAdapter.requestProtectionPermission("vpn_config");
+      if (result.status === "granted" || result.requestState === "already_granted") {
+        // Consent already granted — proceed.
+      } else if (result.requestState === "system_ui_opened") {
+        // The Android VPN consent dialog is now visible. Wait for the user to return.
+        // Poll the permission state until granted or timeout (2 min).
+        const granted = await new Promise<boolean>((resolve) => {
+          let resolved = false;
+          const deadline = Date.now() + 120_000;
+          const poll = async () => {
+            if (resolved || Date.now() > deadline) { if (!resolved) { resolved = true; resolve(false); } return; }
+            try {
+              const check = await securityAdapter.getProtectionPermissions();
+              const vpnNow = check.find((p) => p.id === "vpn_config");
+              if (vpnNow?.status === "granted") { resolved = true; resolve(true); return; }
+            } catch { /* ignore transient errors during poll */ }
+            setTimeout(poll, 1000);
+          };
+          setTimeout(poll, 1000);
+        });
+        if (!granted) throw new Error("VPN consent was not granted. Apollo requires VPN permission to filter malicious traffic.");
+      } else {
+        // launch_failed or unsupported
+        throw new Error("Android could not open VPN consent dialog. Please grant VPN permission in Settings.");
+      }
+    }
+
     await securityAdapter.startProtection();
     await storage.setItem(K.protection, true);
     await storage.setItem(K.setup, true);
