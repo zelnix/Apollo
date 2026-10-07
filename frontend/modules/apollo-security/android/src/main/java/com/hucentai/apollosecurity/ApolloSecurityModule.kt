@@ -205,6 +205,23 @@ class ApolloSecurityModule : Module() {
     AsyncFunction("getAppDeviceCapabilities") { AppDeviceSignals(ctx).capabilitiesJson() }
     AsyncFunction("getInstalledAppAssessment") { nameOrPackage: String -> AppDeviceSignals(ctx).appAssessmentJson(nameOrPackage) }
     AsyncFunction("listInstalledApps") { AppDeviceSignals(ctx).installedLaunchableAppsJson() }
+    // ── Call Gate / Text Gate on-demand pickers (sensitive runtime permissions) ──────────────
+    // The person grants READ_CALL_LOG / READ_SMS explicitly; JS polls hasRuntimePermission after
+    // requesting. Readers return [] when the permission is not held (never throw).
+    AsyncFunction("hasRuntimePermission") { name: String ->
+      val perm = runtimePermission(name)
+      JSONObject().put("granted", perm != null && androidx.core.content.ContextCompat.checkSelfPermission(ctx, perm) == android.content.pm.PackageManager.PERMISSION_GRANTED).toString()
+    }
+    AsyncFunction("requestRuntimePermission") { name: String ->
+      val perm = runtimePermission(name)
+      val activity = appContext.currentActivity
+      if (perm == null) JSONObject().put("requested", false).put("reason", "unsupported").toString()
+      else if (androidx.core.content.ContextCompat.checkSelfPermission(ctx, perm) == android.content.pm.PackageManager.PERMISSION_GRANTED) JSONObject().put("requested", false).put("granted", true).toString()
+      else if (activity == null) JSONObject().put("requested", false).put("reason", "no_activity").toString()
+      else { try { activity.requestPermissions(arrayOf(perm), 0xA910) } catch (_: Exception) {}; JSONObject().put("requested", true).toString() }
+    }
+    AsyncFunction("listRecentCalls") { PhonePickers.recentCallsJson(ctx) }
+    AsyncFunction("listRecentSms") { PhonePickers.recentSmsJson(ctx) }
     AsyncFunction("getRecentInstallEvents") { "[]" }        // no PACKAGE_ADDED receiver by design (would need broad visibility)
     AsyncFunction("getDeviceSecuritySignals") { AppDeviceSignals(ctx).deviceSignalsJson() }
     AsyncFunction("getRecentAppSecurityEvents") { "[]" }
@@ -355,4 +372,11 @@ class ApolloSecurityModule : Module() {
   private fun recordRequest(id: String) { prefs.edit().putString("perm_requested_at_$id", now()).apply() }
 
   private fun now(): String = Instant.now().toString()
+
+  /** Maps the JS picker permission key to the Android manifest permission (null = unsupported). */
+  private fun runtimePermission(name: String): String? = when (name) {
+    "call_log" -> android.Manifest.permission.READ_CALL_LOG
+    "sms" -> android.Manifest.permission.READ_SMS
+    else -> null
+  }
 }

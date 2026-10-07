@@ -26,6 +26,8 @@ import { redactUserSecrets } from "@/src/domain/privacy";
 import { issueContext } from "@/src/domain/higginsHandoff";
 import { dispatchInvestigationAction } from "@/src/domain/investigationActions";
 import { getShareIntake } from "@/src/share/shareIntake";
+import { PhonePickerSheet } from "@/src/components/PhonePickerSheet";
+import { PhonePickers } from "@/src/security/phonePickers";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -65,6 +67,9 @@ export default function CheckMessage() {
   const [error, setError] = useState<string | null>(null);
   const [higginsResolved, setHigginsResolved] = useState(false);
   const [screenshotUri, setScreenshotUri] = useState<string | null>(sharedImage ? String(sharedImage) : null);
+  const [smsPickerOpen, setSmsPickerOpen] = useState(false);
+  const isEmail = params.source === "email";
+  const canPickSms = !isEmail && PhonePickers.isSupported();
   const autoRan = useRef(false);
   const autoImage = useRef(false);
   const autoPicker = useRef(false);
@@ -123,8 +128,9 @@ export default function CheckMessage() {
         <Pressable testID="message-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="message-scroll">
-        <Body testID="message-privacy">Submitting this item authorises one purpose-limited assessment of its text, sender, links and chosen screenshot. Apollo does not retain the raw content. Background access remains off unless you enable it separately.</Body>
+        <Body testID="message-privacy">{isEmail ? "Apollo reads only incoming emails you choose, assesses each once, then discards the raw content. An email is kept only if it's flagged, and stays until you dismiss it. Background access remains off unless you enable it separately." : "Apollo reads only incoming messages you choose, assesses each once, then discards the raw content. A message is kept only if it's flagged, and stays until you dismiss it. You can also share a text from your Messages app, or pick one below. Background access remains off unless you enable it separately."}</Body>
         <TextInput testID="message-sender" style={s.input} value={sender} onChangeText={setSender} placeholder="Sender (number, name or handle) — optional" placeholderTextColor={colors.muted} autoCorrect={false} />
+        {canPickSms ? <Button testID="message-pick-sms" variant="secondary" label="Pick a text from your inbox" onPress={() => setSmsPickerOpen(true)} /> : null}
         <TextInput testID="message-text" style={[s.input, s.multi]} value={text} onChangeText={setText} placeholder="Paste the message here" placeholderTextColor={colors.muted} multiline autoCorrect={false} />
         {screenshotUri ? <ExpoImage testID="message-screenshot-preview" source={{ uri: screenshotUri }} style={s.preview} contentFit="contain" accessibilityLabel="Screenshot selected for investigation" /> : null}
         <View style={s.actions}>
@@ -206,6 +212,7 @@ export default function CheckMessage() {
       </Sheet>
       <ScreenshotPermissionSheet prefix="message" visible={!!photoAccess.permission} canAskAgain={photoAccess.permission?.canAskAgain ?? true}
         checking={photoAccess.checking} onContinue={() => void photoAccess.continueAccess()} onClose={photoAccess.close} />
+      <PhonePickerSheet visible={smsPickerOpen} mode="sms" onClose={() => setSmsPickerOpen(false)} onPickSms={(m) => { setText(m.body); if (m.address) setSender(m.address); }} />
 
     </View>
   );

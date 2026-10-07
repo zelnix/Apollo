@@ -12,6 +12,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
+import { PhonePickerSheet } from "@/src/components/PhonePickerSheet";
+import { PhonePickers } from "@/src/security/phonePickers";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { CALL_ASKS, CALL_CLAIMS, type CallAnalysis, type CallAsk, type CallClaim } from "@/src/domain/callAnalysis";
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
@@ -55,6 +57,8 @@ export default function CheckCall() {
   const [result, setResult] = useState<{ analysis: CallAnalysis; event: PatrolEvent | null } | null>(null);
   const [why, setWhy] = useState(false);
   const [verify, setVerify] = useState(false);
+  const [callerPickerOpen, setCallerPickerOpen] = useState(false);
+  const canPickPhone = PhonePickers.isSupported();
 
   const toggle = (id: CallAsk) => setAsks((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : id === "nothing" ? ["nothing"] : [...cur.filter((x) => x !== "nothing"), id]));
   const run = async () => setResult(await checkCall({ asks, claim, number: number.trim() || undefined, transcript: transcript.trim() || undefined }));
@@ -72,6 +76,13 @@ export default function CheckCall() {
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="call-scroll">
         {!result ? (
           <>
+            {canPickPhone ? (
+              <Card style={{ gap: spacing.sm }} testID="call-number-picker">
+                <SectionTitle>Who called?</SectionTitle>
+                {number.trim() ? <Text style={s.chipText} testID="call-picked-number">Checking: {number}</Text> : <Body>Pick the caller from your recent calls, or add the number lower down.</Body>}
+                <Button testID="call-pick-recent" variant="secondary" label={number.trim() ? "Pick a different caller" : "Pick a recent caller"} onPress={() => setCallerPickerOpen(true)} />
+              </Card>
+            ) : null}
             <Text style={s.q}>What are they asking you to do?</Text>
             <View style={s.grid}>
               {CALL_ASKS.map((o) => (
@@ -129,6 +140,7 @@ export default function CheckCall() {
         <Body>Never verify using a number, link or website the caller gave you.</Body>
         <Button testID="verify-caller-close" variant="ghost" label="Got it" onPress={() => setVerify(false)} />
       </Sheet>
+      <PhonePickerSheet visible={callerPickerOpen} mode="calls" onClose={() => setCallerPickerOpen(false)} onPickCall={(c) => { setNumber(c.number); setMore(true); }} />
     </View>
   );
 }

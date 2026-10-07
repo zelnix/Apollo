@@ -1042,3 +1042,25 @@ No architecture, infrastructure, security behaviour, routes, Gate types or produ
 - PENDING (from the prior message, not yet actioned): recognise Apollo's own VPN so the Network Gate doesn't
   ask the user to "confirm you recognise the VPN service"; recognise Apollo-caused device changes; add a
   security/privacy/protection setting-change log with date-time attributing Apollo-caused changes.
+
+## Feature — Call/Text pickers + SMS/email data-handling rule (2026-06)
+User decisions: Call Gate number from recent calls (READ_CALL_LOG), number-first; Text Gate pick via Share
+AND inbox (READ_SMS); same privacy rule for email. User accepts the Play-restricted permissions.
+- Native (apollo-security): new PhonePickers.kt reads CallLog.Calls (recent, de-duped) and Telephony.Sms.Inbox
+  (incoming only) on demand, returning [] when the permission isn't held (never throws). Module adds
+  hasRuntimePermission/requestRuntimePermission (maps call_log→READ_CALL_LOG, sms→READ_SMS via
+  Activity.requestPermissions) + listRecentCalls/listRecentSms. Manifest: added READ_CALL_LOG, READ_SMS.
+- JS: src/security/phonePickers.ts (PhonePickers SDK, isSupported=android+native). New shared
+  src/components/PhonePickerSheet.tsx implements the permission contract (contextual explain → request →
+  poll grant → Open Settings on denial) and a searchable list; Android-only, else "needs production build".
+- Call Gate (app/call.tsx): number-first "Who called?" card with "Pick a recent caller" → fills number.
+- Text Gate (app/message.tsx): "Pick a text from your inbox" (incoming only) + Share-from-Messages already
+  supported via shareIntake. Privacy copy rewritten to the rule: reads incoming only, assesses once,
+  discards raw, keeps only if flagged until dismissed.
+- Email Gate (app/email.tsx): policy copy rewritten to the same rule. Backend already compliant — stores
+  only hashed mailbox_assessment_receipts + flagged outcomes, never raw bodies (services/mailbox_monitor.py).
+- tsc + eslint clean. Native-only; requires a production Android build (web preview hard-gated; Expo Go
+  returns empty lists, handled gracefully). READ_CALL_LOG/READ_SMS are Play-restricted — user accepted.
+- Earlier same session: App Gate "pick from installed apps" (listInstalledApps, launcher <queries>).
+- STILL PENDING (older message): recognise Apollo's own VPN in Network Gate; recognise Apollo-caused device
+  changes; dated security/privacy/protection setting-change log attributing Apollo-caused changes.

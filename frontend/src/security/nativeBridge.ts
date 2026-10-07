@@ -88,6 +88,10 @@ export interface ApolloSecurityNativeModule {
   getAppDeviceCapabilities(): Promise<string>;
   getInstalledAppAssessment(packageId: string): Promise<string>;
   listInstalledApps(): Promise<string>;
+  hasRuntimePermission(name: string): Promise<string>;
+  requestRuntimePermission(name: string): Promise<string>;
+  listRecentCalls(): Promise<string>;
+  listRecentSms(): Promise<string>;
   getRecentInstallEvents(): Promise<string>;
   getDeviceSecuritySignals(): Promise<string>;
   getRecentAppSecurityEvents(): Promise<string>;

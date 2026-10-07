@@ -219,7 +219,7 @@ export default function CheckEmail() {
                 ) : (
                   <>
                     {gmailStatusError ? <Body testID="email-gmail-status-error">{gmailStatusError}</Body> : null}
-                    <Body testID="email-gmail-policy">Connecting Gmail uses Google&apos;s read-only OAuth consent. Apollo never asks for or stores your Gmail username or password. Recent messages are used for the assessment, then discarded; only summaries and safe references may enter Patrol.</Body>
+                    <Body testID="email-gmail-policy">Connecting Gmail uses Google&apos;s read-only OAuth consent. Apollo never asks for or stores your Gmail username or password. Apollo reads only incoming messages, assesses each once, then discards the raw content — an email is kept only if it&apos;s flagged, and stays in Patrol until you dismiss it.</Body>
                     <Button testID="email-gmail-connect" variant="secondary" icon={gmailBusy ? <ActivityIndicator color={colors.brand} /> : <Mail size={18} color={colors.onSurface} />} label={gmailBusy ? "Opening Google…" : "Connect Gmail read-only"} onPress={() => void connectGmail()} disabled={gmailBusy || !deviceId} />
                     {gmailStatusError ? <Button testID="email-gmail-status-retry" variant="ghost" label="Check connection again" onPress={() => void refreshGmailStatus()} disabled={!deviceId} /> : null}
                   </>

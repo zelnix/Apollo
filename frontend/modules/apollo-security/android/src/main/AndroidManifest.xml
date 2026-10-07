@@ -3,6 +3,10 @@
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+  <!-- Call Gate / Text Gate on-demand pickers: the person chooses a recent caller or an inbox message.
+       These are sensitive; Apollo requests them contextually and only reads on demand (no background use). -->
+  <uses-permission android:name="android.permission.READ_CALL_LOG" />
+  <uses-permission android:name="android.permission.READ_SMS" />
   <!-- Package visibility (Android 11+): Apollo deliberately does NOT use QUERY_ALL_PACKAGES. It can only see the
        remote-access risk catalog plus the stores/browsers/messengers needed to name an install source.
        Keep this list identical to AppDeviceCatalog.VISIBLE_PACKAGES. -->
