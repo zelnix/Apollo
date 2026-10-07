@@ -9,6 +9,7 @@ import { ActivityIndicator, Linking, Pressable, ScrollView, Text, TextInput, Vie
 import { Body, Button } from "@/src/components/ui";
 import { Sheet } from "@/src/components/Sheet";
 import { PhonePickers, type RecentCall, type RecentSms } from "@/src/security/phonePickers";
+import { getTrustedCallers, normalizeNumber, trustCaller, untrustCaller } from "@/src/domain/trustedCallers";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 type Phase = "checking" | "need_permission" | "requesting" | "ready" | "denied" | "unsupported";
@@ -31,15 +32,22 @@ export function PhonePickerSheet({ visible, mode, onClose, onPickCall, onPickSms
   const [calls, setCalls] = useState<RecentCall[]>([]);
   const [messages, setMessages] = useState<RecentSms[]>([]);
   const [query, setQuery] = useState("");
+  const [trusted, setTrusted] = useState<string[]>([]);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const perm = mode === "calls" ? "call_log" : "sms";
   const title = mode === "calls" ? "Pick a recent caller" : "Pick a message from your inbox";
 
   const load = useCallback(async () => {
-    if (mode === "calls") { const list = await PhonePickers.listRecentCalls(); setCalls(list); }
+    if (mode === "calls") { const [list, trust] = await Promise.all([PhonePickers.listRecentCalls(), getTrustedCallers()]); setCalls(list); setTrusted(trust); }
     else { const list = await PhonePickers.listRecentSms(); setMessages(list); }
     setPhase("ready");
   }, [mode]);
+
+  const toggleTrust = async (num: string) => {
+    const norm = normalizeNumber(num);
+    if (trusted.includes(norm)) { await untrustCaller(num); setTrusted((t) => t.filter((x) => x !== norm)); }
+    else { await trustCaller(num); setTrusted((t) => [...t, norm]); }
+  };
 
   const evaluate = useCallback(async () => {
     if (!PhonePickers.isSupported()) { setPhase("unsupported"); return; }
@@ -100,6 +108,9 @@ export function PhonePickerSheet({ visible, mode, onClose, onPickCall, onPickSms
                     <Text style={s.primary}>{call.name || call.number}</Text>
                     <Text style={s.secondary} numberOfLines={1}>{call.name ? `${call.number} · ` : ""}{call.type}{call.date ? ` · ${new Date(call.date).toLocaleDateString()}` : ""}</Text>
                   </View>
+                  <Pressable testID={`phone-picker-trust-${i}`} accessibilityRole="button" accessibilityLabel={trusted.includes(normalizeNumber(call.number)) ? "Untrust this number" : "Trust this number so Apollo stays quiet"} hitSlop={8} onPress={() => void toggleTrust(call.number)} style={{ minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.sm }}>
+                    <Text style={[s.secondary, { fontFamily: fonts.textSemibold, color: trusted.includes(normalizeNumber(call.number)) ? colors.resting : colors.brand }]}>{trusted.includes(normalizeNumber(call.number)) ? "Trusted" : "Trust"}</Text>
+                  </Pressable>
                   <ChevronRight size={18} color={colors.brand} />
                 </Pressable>
               )) : filteredMsgs.map((msg, i) => (

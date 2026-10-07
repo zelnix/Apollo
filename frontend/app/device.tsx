@@ -112,6 +112,12 @@ export default function CheckDevice() {
     if (platform === "web") setSettingsGuidance(`${f.title}: ${f.settings}`);
     else void openDeviceSettings(dynamic ?? TARGET[f.id] ?? (f.id === "D12" || f.id === "D13" ? "vpn" : "apps"), f.settings, (m) => showToast(m, "neutral"));
   };
+  const openChange = (change: DeviceSecurityChange) => {
+    const target: SettingsTarget = change.eventType === "vpn_change" ? "vpn" : change.eventType === "profile_change" ? "security" : change.eventType === "service_enabled" ? "accessibility" : "apps";
+    const label = DEVICE_CHANGE_LABEL[change.eventType];
+    if (platform === "web") setSettingsGuidance(`${label}: open the matching settings screen to confirm this change.`);
+    else void openDeviceSettings(target, label, (m) => showToast(m, "neutral"));
+  };
   const firstAction = [...result.findings].sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity])[0] ?? null;
   const submissionFirstAction = useMemo(() => submission ? [...submission.result.findings].sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity])[0] ?? null : null, [submission]);
 
@@ -138,13 +144,13 @@ export default function CheckDevice() {
             <SectionTitle>Recent security setting changes</SectionTitle>
             <Body>Changes Apollo has observed to security, privacy or protection settings. Changes Apollo made for its own protection are tagged “Apollo”.</Body>
             {changeLog.slice(0, 8).map((change, i) => (
-              <View key={`${change.eventType}-${change.occurredAt}-${i}`} testID={`device-change-${i}`} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xs }}>
+              <Pressable key={`${change.eventType}-${change.occurredAt}-${i}`} testID={`device-change-${i}`} accessibilityRole="button" accessibilityHint="Opens the matching settings screen to confirm this change" onPress={() => openChange(change)} style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xs, opacity: pressed ? 0.7 : 1 }]}>
                 <View style={{ flex: 1 }}>
                   <Text style={[s.why, { fontFamily: fonts.textSemibold }]}>{DEVICE_CHANGE_LABEL[change.eventType]}{change.appName ? `: ${change.appName}` : ""}</Text>
                   <Text style={s.mono}>{new Date(change.occurredAt).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</Text>
                 </View>
                 <Pill tone={change.attributedTo === "apollo" ? "resting" : "growling"} label={change.attributedTo === "apollo" ? "Apollo" : "Review"} testID={`device-change-${i}-tag`} />
-              </View>
+              </Pressable>
             ))}
           </Card>
         ) : null}

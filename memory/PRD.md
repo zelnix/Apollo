@@ -1086,3 +1086,21 @@ AND inbox (READ_SMS); same privacy rule for email. User accepts the Play-restric
 - tsc + eslint clean. Suites: gate5/6/7/8, gatesOverview, phase2Patrol all pass.
 - Native-only pieces (call/SMS pickers, VPN/device signals) still require a production Android build to test;
   web preview hard-gated. READ_CALL_LOG/READ_SMS are Play-restricted (user accepted).
+
+## Nav + Check It/Gates separation, Change Log Detail, Trusted Callers (2026-06)
+- Navigation reorder (app/(tabs)/_layout.tsx): tab order is now Home → Higgins → Check It → Gates → Patrol
+  (both the iOS-26 NativeTabs and the standard Tabs blocks). Gates sits directly after Check It, before Patrol.
+- Gates = passive status (app/(tabs)/guard.tsx): each gate still shows purpose ("What this Gate helps with"),
+  status pill, current help, and attention alert. The primaryAction button now renders ONLY when
+  tone === "attention" (a required corrective action, e.g. Restore protection) — the check_* diagnostic
+  buttons no longer appear on non-attention gates (those belong to Check It). Intro now says "To check
+  something yourself, use Check It." No check/test/scan/diagnostic controls remain on Gates. Enforcement and
+  evidence rules unchanged.
+- Check It unchanged (already manual-only).
+- Change Log Detail (app/device.tsx): change-log rows are now Pressable; tapping opens the matching settings
+  screen (openChange maps vpn_change→vpn, profile_change→security, service_enabled→accessibility, else apps;
+  web shows guidance text) to confirm the change.
+- Trusted Callers: new src/domain/trustedCallers.ts (AsyncStorage key apollo.call.trusted.v1, matches on last
+  10 digits). PhonePickerSheet caller rows have a Trust/Trusted toggle. ApolloContext auto-check poll now
+  skips trusted numbers (acknowledges from queue, no assessment/event) so Apollo stays quiet for them.
+- tsc + eslint clean; gatesOverview/gate8/phase2Patrol pass. Native-only pieces need a production Android build.

@@ -14,6 +14,7 @@ import { getBackendHealth, onBackendHealth, probeBackend } from "@/src/api/backe
 import { getDeviceIdentity, getDeviceToken, getIdentityResetReason, onIdentityReset, registerDeviceIdentity } from "@/src/auth/deviceIdentity";
 import { visibilityFrom } from "@/src/domain/capability";
 import { assessConnection } from "@/src/domain/connection";
+import { isTrustedCaller } from "@/src/domain/trustedCallers";
 import { decide } from "@/src/domain/decision";
 import { parseIntelResult } from "@/src/domain/intelContract";
 import { minimalIndicator } from "@/src/domain/privacy";
@@ -878,6 +879,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         for (const item of items) {
           if (cancelled) break;
           if (!item?.number) continue;
+          // Trusted callers: stay quiet — acknowledge (clear from queue) without an assessment or event.
+          if (await isTrustedCaller(item.number)) { acknowledged.push(item.number); continue; }
           try {
             await checkNumberRisk(item.number);
             acknowledged.push(item.number);

@@ -54,7 +54,7 @@ function HealthCard({ record }: { record: GateHealthRecord }) {
     <View><Text style={s.question}>What this Gate helps with</Text><Body testID={`gate-health-${record.id}-purpose`}>{record.purpose}</Body></View>
     <View><Text style={s.question}>What Apollo is doing now</Text><Body testID={`gate-health-${record.id}-current`}>{record.currentHelp}</Body></View>
     {record.tone === "attention" && record.capability.automatic?.limitation ? <View style={s.attention} testID={`gate-health-${record.id}-attention`}><Text style={s.question}>Needs your attention</Text><Body>{record.capability.automatic.limitation}</Body></View> : null}
-    {record.primaryAction ? <Button testID={`gate-health-${record.id}-action`} variant={record.tone === "attention" ? "primary" : "secondary"} label={isRestoreSite && enablingSite ? "Turning on…" : record.primaryAction.label} disabled={isRestoreSite && enablingSite} onPress={() => void act(record.primaryAction!)} /> : null}
+    {record.tone === "attention" && record.primaryAction ? <Button testID={`gate-health-${record.id}-action`} variant="primary" label={isRestoreSite && enablingSite ? "Turning on…" : record.primaryAction.label} disabled={isRestoreSite && enablingSite} onPress={() => void act(record.primaryAction!)} /> : null}
   </Card>;
 }
 
@@ -80,7 +80,7 @@ export default function GuardScreen() {
             <Body testID="gates-summary-time">{health.checking ? "Checking current device status…" : health.checkedAt ? "Status checked from current device signals." : "Status will appear after the first device check."}</Body></View>
         </View>
       </Card>
-      <Body testID="gates-introduction">Your protection. Apollo watches what this device allows. You can also ask it to check anything you are unsure about.</Body>
+      <Body testID="gates-introduction">Your protection. Apollo watches what this device allows and shows you what&apos;s working and anything that needs you. To check something yourself, use Check It.</Body>
       <View testID="gates-capability-section" style={{ gap: spacing.md }}><SectionTitle>Your Gates</SectionTitle>{health.gates.map((record) => <HealthCard key={record.id} record={record} />)}</View>
     </ScrollView>
   </View>;
