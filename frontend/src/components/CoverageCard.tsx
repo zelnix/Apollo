@@ -10,6 +10,7 @@ import { Pressable, Text, View } from "react-native";
 import { Card, Pill } from "@/src/components/ui";
 import { GATE_ORDER, GATE_PERMISSIONS, gateAppliesToPlatform, type GatePermId } from "@/src/domain/gatePermissions";
 import { useProtectionHealth } from "@/src/protection/healthStore";
+import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
 const PENDING_STATES = ["permission_needed", "setup_needed"];
@@ -27,7 +28,9 @@ export function CoverageCard() {
   const s = useStyles();
   const { colors } = useTheme();
   const router = useRouter();
+  const { enableSiteProtection, showToast } = useApollo();
   const health = useProtectionHealth();
+  const [busyId, setBusyId] = React.useState<GatePermId | null>(null);
   if (health.checking) return null;
 
   const rows = GATE_ORDER.filter(gateAppliesToPlatform).map((id) => {
@@ -37,6 +40,22 @@ export function CoverageCard() {
     return null;
   }).filter((r): r is { id: GatePermId; on: boolean } => r !== null);
   if (rows.length === 0) return null;
+
+  // Tapping an On pill opens the Gate; a pending pill triggers the enable flow directly — Site inline
+  // (VPN consent), the rest from their Gate screen's enable path (notification/role/OAuth).
+  const press = async (id: GatePermId, on: boolean) => {
+    if (on) { router.push(ROUTE[id] as never); return; }
+    if (id === "site") {
+      setBusyId("site");
+      try {
+        const granted = await enableSiteProtection();
+        showToast(granted ? "Site Gate is on." : "Site Gate needs VPN permission. Your other protection stays active.", granted ? "resting" : "growling");
+      } catch { showToast("Couldn't open that just now. Try again shortly.", "growling"); }
+      finally { setBusyId(null); }
+      return;
+    }
+    router.push(ROUTE[id] as never);
+  };
 
   const onCount = rows.filter((r) => r.on).length;
   return (
@@ -48,8 +67,8 @@ export function CoverageCard() {
       <Text style={s.count} testID="home-coverage-count">{onCount} of {rows.length} key protections on{onCount < rows.length ? " — reduced coverage" : ""}</Text>
       <View style={s.pills}>
         {rows.map((r) => (
-          <Pressable key={r.id} testID={`home-coverage-${r.id}`} accessibilityRole="button" onPress={() => router.push(ROUTE[r.id] as never)}>
-            <Pill tone={r.on ? "resting" : "growling"} label={`${GATE_PERMISSIONS[r.id].title.replace(/ Gate$/, "")}: ${r.on ? "On" : GATE_PERMISSIONS[r.id].pendingLabel}`} />
+          <Pressable key={r.id} testID={`home-coverage-${r.id}`} accessibilityRole="button" disabled={busyId === r.id} onPress={() => void press(r.id, r.on)}>
+            <Pill tone={r.on ? "resting" : "growling"} label={`${GATE_PERMISSIONS[r.id].title.replace(/ Gate$/, "")}: ${r.on ? "On" : busyId === r.id ? "Opening…" : GATE_PERMISSIONS[r.id].pendingLabel}`} />
           </Pressable>
         ))}
       </View>
