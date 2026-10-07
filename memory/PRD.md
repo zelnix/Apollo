@@ -921,3 +921,17 @@ Current position: waiting on step 1 input (Step 7 stderr for build aa24dd73-eab7
 - Validated service-layer multi-account (store 2, per-account + all disconnect) PASS. HTTP endpoints are
   device-credential protected; OAuth connect needs the Google test-user/verification fix + a device to
   test end-to-end. Native build not required (JS+backend only).
+
+## Bug fix — Network Gate: no option to set as Home (2026-06)
+- Report: "Network gate not active. There also is no option to set as home network." (screenshot showed
+  N02 "Wi-Fi you haven't classified" result card whose recommendation says "Pick a context above" — but
+  the home/work/public context chips only rendered in the pre-check view, never in the result view).
+- Fix (app/network.tsx): the "Where are you?" context chips are now ALWAYS visible (moved above the
+  result/actions block). Tapping a chip calls pickContext(), which re-runs analysis live reusing the same
+  Patrol event id (no event spam). Classifying as Home/Work/Trusted yields N01 "resting" and quietly
+  resolves the earlier active N02 network item via upsertEvent(status:"resolved").
+- "Protection off / Unknown" on the dashboard is the connection/VPN protection state (reduced-coverage when
+  VPN consent declined) — a native-build + permission matter, not a code bug. "Check this network" works
+  regardless of that state.
+- NOTE: Network Gate is native-only; web preview is hard-gated ("GuardDog production authority can be
+  selected only in a production build"), so this must be verified on the user's Android build.

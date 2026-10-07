@@ -65,10 +65,13 @@ export default function CheckNetwork() {
   const protectionTone = !(protection?.requested ?? protection?.running) ? "unknown" : guard?.status === "active" ? "resting" : guard?.status === "permission_required" ? "growling" : "unknown";
   const protectionTitle = !(protection?.requested ?? protection?.running) ? "Protection off" : guard?.status === "active" ? "Active" : guard?.status === "permission_required" ? "Permission required" : guard?.status === "unsupported" ? "Not supported on this device" : "Available";
 
-  const run = async () => {
+  const run = async (ctx: NetworkContext = context, existingId?: string | null) => {
 
-    void markCheckDone("network");    const a = analyseNetwork({ status: network, context, trustedSsids, expectedName: expected, vpnTrusted, captiveUrl, recentScentCategories: scentCats });
+    void markCheckDone("network");    const a = analyseNetwork({ status: network, context: ctx, trustedSsids, expectedName: expected, vpnTrusted, captiveUrl, recentScentCategories: scentCats });
     let event: PatrolEvent | null = null;
+    // Reuse the id from the current result when the person reclassifies, so changing the
+    // network context updates the same Patrol entry instead of creating a new one each tap.
+    const eventId = existingId ?? Math.random().toString(36).slice(2) + Date.now().toString(36);
     if (a.state !== "resting") {
       // Network Guard creates a Patrol event from platform-observed network facts only.
       // The persisted Patrol entry must never claim state="biting"/verified_block because no
@@ -76,9 +79,19 @@ export default function CheckNetwork() {
       // Cap the synced state at "barking" so it can never look like a server-verified block;
       // see the biting invariant in backend/routers/patrol.py::_derive_verified_block.
       const syncedState = a.state === "biting" ? "barking" : a.state;
-      event = await upsertEvent({ event_id: Math.random().toString(36).slice(2) + Date.now().toString(36), device_id: deviceId ?? "local", category: "connection", state: syncedState, status: "active", headline: `Network: ${a.title}`, what_happened: a.verdict, why: a.why, what_to_do: a.recommendation, indicator_host: captiveUrl.trim() ? captiveUrl.trim().replace(/^https?:\/\//i, "").split("/")[0] : null, indicator_digest: null, local_indicator: a.ssid, verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: syncedState === "ears_up" || syncedState === "growling", claimed_brand: null, scenario: a.scenario });
+      event = await upsertEvent({ event_id: eventId, device_id: deviceId ?? "local", category: "connection", state: syncedState, status: "active", headline: `Network: ${a.title}`, what_happened: a.verdict, why: a.why, what_to_do: a.recommendation, indicator_host: captiveUrl.trim() ? captiveUrl.trim().replace(/^https?:\/\//i, "").split("/")[0] : null, indicator_digest: null, local_indicator: a.ssid, verified_block: false, adapter_label: adapterLabel, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: syncedState === "ears_up" || syncedState === "growling", claimed_brand: null, scenario: a.scenario });
+    } else if (existingId && result?.event && result.event.status === "active") {
+      // Reclassifying to a calm context (e.g. Home) clears the earlier unresolved network item.
+      await upsertEvent({ ...result.event, status: "resolved", resolved_at: new Date().toISOString() });
     }
     setResult({ submissionId: event?.event_id ?? Crypto.randomUUID(), a, event });
+  };
+
+  // Picking a context re-runs the check live when a result is already on screen so the
+  // person can classify the network (e.g. mark it Home) straight from the verdict card.
+  const pickContext = (id: NetworkContext) => {
+    setContext(id);
+    if (result) void run(id, result.event?.event_id ?? null);
   };
 
   if (ready && !setupDone) return <Redirect href="/" />;
@@ -102,12 +115,13 @@ export default function CheckNetwork() {
           <Button testID="network-refresh" variant="ghost" label={refreshing ? "Checking…" : "Refresh"} onPress={verifyNow} disabled={refreshing} />
         </Card>
 
+        <SectionTitle>Check this network</SectionTitle>
+        <Body>Public Wi‑Fi isn&apos;t automatically dangerous, and Apollo won&apos;t say it is. Tell it a little about where you are.</Body>
+        <Text style={s.label}>Where are you?</Text>
+        <View style={s.chips}>{NETWORK_CONTEXTS.map((o) => <Pressable key={o.id} testID={`network-ctx-${o.id}`} accessibilityRole="button" onPress={() => pickContext(o.id)} style={[s.chip, context === o.id && s.chipOn]}><Text style={s.chipText}>{o.label}</Text></Pressable>)}</View>
+
         {!result ? (
           <>
-            <SectionTitle>Check this network</SectionTitle>
-            <Body>Public Wi‑Fi isn&apos;t automatically dangerous, and Apollo won&apos;t say it is. Tell it a little about where you are.</Body>
-            <Text style={s.label}>Where are you?</Text>
-            <View style={s.chips}>{NETWORK_CONTEXTS.map((o) => <Pressable key={o.id} testID={`network-ctx-${o.id}`} accessibilityRole="button" onPress={() => setContext(o.id)} style={[s.chip, context === o.id && s.chipOn]}><Text style={s.chipText}>{o.label}</Text></Pressable>)}</View>
             <Text style={s.label}>Network name the venue advertised (optional)</Text>
             <TextInput testID="network-expected" style={s.input} value={expected} onChangeText={setExpected} placeholder="e.g. Hotel_Guest" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} />
             {vpnOn ? <View style={s.row}><Text style={[s.why, { flex: 1 }]}>I turned this VPN on myself</Text><Switch testID="network-vpn-trusted" value={vpnTrusted === true} onValueChange={(v) => setVpnTrusted(v ? true : false)} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View> : null}
