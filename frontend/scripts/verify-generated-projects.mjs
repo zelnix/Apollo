@@ -19,9 +19,10 @@ function verifyAndroid() {
   requireMatch(gradle, /versionName ['"]1\.1\.0['"]/, "android_version_name_mismatch");
   requireMatch(gradle, /versionCode 2\b/, "android_version_code_mismatch");
   requireMatch(manifest, /android:allowBackup="false"/, "android_backup_must_be_disabled");
-  for (const name of ["productionEnabled", "trustDomain", "trustProfile", "primaryRootId", "primaryRootKey", "recoveryRootId", "recoveryRootKey"]) requireMatch(manifest, new RegExp(`app\\.apollo\\.guarddog\\.${name}`), `guarddog_metadata_missing:${name}`);
-  requireMatch(manifest, /app\.apollo\.guarddog\.productionEnabled[^>]+android:value="true"/, "guarddog_production_not_enabled");
+  requireMatch(manifest, /com\.hucentai\.apollosecurity\.GUARDDOG_PRODUCTION_ENABLED[^>]+android:value="true"/, "guarddog_production_not_enabled");
   if (/app\.apollo\.guarddog\.acceptance(?:Enabled|RootId|RootKey)/.test(manifest)) throw new Error("acceptance_trust_must_be_absent");
+  // Trust meta-data (trustDomain, primaryRootId, etc.) was removed with the signing-key infrastructure.
+  // Only the production-enabled boolean remains.
   for (const permission of ["android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION", "android.permission.POST_NOTIFICATIONS"]) requireMatch(manifest, new RegExp(permission), `ff10_permission_missing:${permission}`);
   if (manifestPath.includes("merged_manifests")) requireMatch(manifest, /FamilyAssistProjectionService/, "ff10_projection_service_missing");
   for (const project of [":guarddog-core", ":guarddog-vpn"]) requireMatch(settings, new RegExp(project.replace("-", "\\-")), `native_module_missing:${project}`);

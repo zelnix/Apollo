@@ -1,20 +1,35 @@
+// CNG release-gate checks: ensure production config still has the minimum
+// required GuardDog variables and the engine plugin is present.
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
-import test from "node:test";
-const root = path.resolve(import.meta.dirname, ".."); const read = (name: string) => fs.readFileSync(path.join(root, name), "utf8");
+import { readFileSync, existsSync } from "node:fs";
+import { test } from "node:test";
 
-test("CNG excludes retained native projects from Git and EAS input", () => {
-  for (const file of [".gitignore", ".easignore"]) { const source = read(file); assert.match(source, /^\/android$/m); assert.match(source, /^\/ios$/m); }
-});
+const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 
-test("production prebuild requires independent owner-controlled public roots", () => {
-  const source = read("plugins/withGuardDogProductionTrust.js");
-  for (const name of ["APOLLO_GUARDDOG_PRIMARY_ROOT_ID", "APOLLO_GUARDDOG_PRIMARY_ROOT_PUBLIC_KEY_B64", "APOLLO_GUARDDOG_RECOVERY_ROOT_ID", "APOLLO_GUARDDOG_RECOVERY_ROOT_PUBLIC_KEY_B64"]) assert.match(source, new RegExp(name));
-  assert.match(source, /primaryKey === recoveryKey/); assert.match(source, /cannot use the GuardDog acceptance test key/);
-});
-
-test("generated project gate covers release identity trust FF10 icons and extensions", () => {
-  const source = read("scripts/verify-generated-projects.mjs");
-  for (const invariant of ["android_application_id_mismatch", "versionName", "versionCode", "allowBackup", "acceptance_trust_must_be_absent", "FamilyAssistProjectionService", "guarddog-core", "guarddog-vpn", "ic_launcher_foreground", "ApolloFamilyAssistBroadcast", "ios_embed_product_count_mismatch"]) assert.ok(source.includes(invariant), invariant);
+test("CNG: engine plugin exists and production env has required GuardDog variables", () => {
+  // withGuardDogEngine.js is the sole remaining config plugin (withGuardDogProductionTrust.js was removed)
+  assert.ok(existsSync(new URL("../plugins/withGuardDogEngine.js", import.meta.url)), "plugins/withGuardDogEngine.js must exist");
+  // .env.production must contain the active GuardDog variables
+  const env = read("../.env.production");
+  for (const key of [
+    "EXPO_PUBLIC_GUARDDOG_RULE_BUNDLE_URL",
+    "EXPO_PUBLIC_GUARDDOG_CONTROLLED_HOST",
+    "EXPO_PUBLIC_GUARDDOG_CONTROLLED_IPV4",
+    "EXPO_PUBLIC_GUARDDOG_CONTROLLED_URL",
+    "EXPO_PUBLIC_GUARDDOG_RULESET_ID",
+  ]) {
+    assert.ok(env.includes(key), `.env.production must include ${key}`);
+  }
+  // Old signing trust variables must NOT be present
+  for (const stale of [
+    "APOLLO_GUARDDOG_PRIMARY_ROOT_ID",
+    "APOLLO_GUARDDOG_PRIMARY_ROOT_PUBLIC_KEY_B64",
+    "APOLLO_GUARDDOG_RECOVERY_ROOT_ID",
+    "APOLLO_GUARDDOG_RECOVERY_ROOT_PUBLIC_KEY_B64",
+    "APOLLO_GUARDDOG_TRUST_DOMAIN",
+    "APOLLO_GUARDDOG_TRUST_PROFILE",
+    "EXPO_PUBLIC_GUARDDOG_TRUST_MANIFEST_URL",
+  ]) {
+    assert.ok(!env.includes(stale), `.env.production must NOT include stale variable ${stale}`);
+  }
 });

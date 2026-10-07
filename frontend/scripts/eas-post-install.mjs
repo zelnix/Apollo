@@ -168,20 +168,15 @@ function fixEnvForProduction() {
     }
   }
 
-  // Inject GuardDog production trust variables if not already present.
-  // These are required by security-preflight.mjs for guarddog_production builds.
+  // Inject GuardDog production variables if not already present.
+  // Trust/signing variables (TRUST_DOMAIN, PRIMARY_ROOT_*, RECOVERY_ROOT_*, TRUST_MANIFEST_URL)
+  // were removed with the signing-key infrastructure. Only the active delivery/controlled-verify
+  // variables remain. Values here are fallbacks — eas.json env section takes precedence.
   const guarddogVars = {
-    APOLLO_GUARDDOG_TRUST_DOMAIN: "apollo.hwg",
-    APOLLO_GUARDDOG_TRUST_PROFILE: "production-v1",
-    APOLLO_GUARDDOG_PRIMARY_ROOT_ID: "apollo-primary-root-v1",
-    APOLLO_GUARDDOG_PRIMARY_ROOT_PUBLIC_KEY_B64: "tlf0vrkjDV0BSg0j46QA/JyC1l8lvw9Jo5TCsrov0WA=",
-    APOLLO_GUARDDOG_RECOVERY_ROOT_ID: "apollo-recovery-root-v1",
-    APOLLO_GUARDDOG_RECOVERY_ROOT_PUBLIC_KEY_B64: "OiCzOzzRentElPzuEnn11vGi73NeyFUWa4Ofuv1Spi0=",
-    EXPO_PUBLIC_GUARDDOG_TRUST_MANIFEST_URL: "https://threat-patrol-1.emergent.host/api/guarddog/trust-manifest",
-    EXPO_PUBLIC_GUARDDOG_RULE_BUNDLE_URL: "https://threat-patrol-1.emergent.host/api/guarddog/rule-bundle",
-    EXPO_PUBLIC_GUARDDOG_CONTROLLED_HOST: "threat-patrol-1.emergent.host",
-    EXPO_PUBLIC_GUARDDOG_CONTROLLED_IPV4: "10.111.111.1",
-    EXPO_PUBLIC_GUARDDOG_CONTROLLED_URL: "https://threat-patrol-1.emergent.host/api/guarddog/controlled-verify",
+    EXPO_PUBLIC_GUARDDOG_RULE_BUNDLE_URL: "https://threat-patrol-1.emergent.host/api/guarddog/rules",
+    EXPO_PUBLIC_GUARDDOG_CONTROLLED_HOST: "apolloverify.harmonywellnessgroup.com.au",
+    EXPO_PUBLIC_GUARDDOG_CONTROLLED_IPV4: "52.25.179.131",
+    EXPO_PUBLIC_GUARDDOG_CONTROLLED_URL: "https://apolloverify.harmonywellnessgroup.com.au/",
     EXPO_PUBLIC_GUARDDOG_RULESET_ID: "apollo-rules-v1",
   };
 

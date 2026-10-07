@@ -18,7 +18,6 @@ export interface NativeRuleBundleResult {
   rejectReason?: string | null;
   rulesetId?: string | null;
   bundleVersion?: number | null;
-  keyId?: string | null;
   ruleCount: number;
 }
 
@@ -68,7 +67,6 @@ export interface NativeWebsiteGateStatus {
   dnsGatewayActive: boolean;
   acceptedRulesetId: string | null;
   acceptedBundleVersion: number | null;
-  acceptedKeyId: string | null;
   overrideCount: number;
 }
 
@@ -163,7 +161,7 @@ export interface GuardDogNativeModule {
   acceptWebsiteGateRuleBundle(rawJson: string): NativeRuleBundleResult;
   getWebsiteGateStatus(): NativeWebsiteGateStatus;
   /** Local, reversible, auditable ALLOW-only override. Can only ever prevent a sinkhole arming the
-   * signed rule bundle would otherwise trigger for `host` -- never arms a binding itself, never
+   * validated rule bundle would otherwise trigger for `host` -- never arms a binding itself, never
    * produces a THREAT_BLOCKED. Returns false if `host` fails native canonicalization. */
   setWebsiteGateAllowOverride(config: { host: string; allowed: boolean }): boolean;
   getWebsiteGateOverrides(): string[];

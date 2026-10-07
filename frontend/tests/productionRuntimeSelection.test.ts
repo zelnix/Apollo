@@ -4,16 +4,17 @@ import { test } from "node:test";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 
-test("V37 ordinary production profiles resolve to exactly one production runtime owner", () => {
+test("V37 production profiles resolve to exactly one production runtime owner", () => {
   const eas = JSON.parse(read("../eas.json"));
-  for (const profile of ["production", "app-bundle"]) {
-    assert.equal(eas.build[profile].env.EXPO_PUBLIC_APP_ENV, "production");
-    assert.equal(eas.build[profile].env.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE, "guarddog_production");
-  }
+  // Only "production" and "guarddog-production" (which extends production) exist.
+  // "app-bundle" was removed.
+  assert.equal(eas.build.production.env.EXPO_PUBLIC_APP_ENV, "production");
+  assert.equal(eas.build.production.env.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE, "guarddog_production");
+  assert.equal(eas.build["guarddog-production"].extends, "production");
   const host = read("../src/security/hostAdapter.ts");
   assert.equal((host.match(/new GuardDogProductionSecurityAdapter/g) ?? []).length, 1);
   assert.match(host, /guarddog_production/);
-  assert.match(read("../src/security/securityConfig.ts"), /Legacy and test-only acceptance engines are prohibited/);
+  assert.match(read("../src/security/securityConfig.ts"), /Only "guarddog_production" is supported/);
 });
 
 test("V37 production trust failure has no legacy or acceptance fallback", () => {

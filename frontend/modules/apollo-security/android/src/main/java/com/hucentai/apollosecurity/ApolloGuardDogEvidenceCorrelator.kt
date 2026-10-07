@@ -92,7 +92,7 @@ internal object ApolloGuardDogEvidenceCorrelator {
                 "rulesetId" to (event.rulesetId ?: ""),
             ),
 
-            "correlationId" to event.correlationId,
+            "correlationId" to event.id,
         )
     }
 

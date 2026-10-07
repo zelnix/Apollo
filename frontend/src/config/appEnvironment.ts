@@ -2,7 +2,6 @@
 // Never throws at module load: an invalid configuration is recorded on the security boot registry
 // (app/_layout.tsx then shows SafeStartScreen) and the strictest fail-closed values are returned so
 // no simulated component can be selected downstream.
-import Constants from "expo-constants";
 import { Platform } from "react-native";
 
 import { recordSecurityBootError } from "@/src/security/securityBoot";
@@ -10,10 +9,9 @@ import { validateSecurityConfig, type AppEnvironment, type ValidatedSecurityConf
 
 function resolve(): ValidatedSecurityConfig {
   try {
-    const candidate = Constants.expoConfig?.extra?.guardDogCandidate as { engine?: string } | undefined;
     return validateSecurityConfig({
       appEnvironment: process.env.EXPO_PUBLIC_APP_ENV,
-      androidEnforcementEngine: candidate?.engine ?? process.env.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE,
+      androidEnforcementEngine: process.env.EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE,
       devicePreviewHarness: process.env.EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS,
       hostPlatform: Platform.OS,
     });
