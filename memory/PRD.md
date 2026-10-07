@@ -886,3 +886,17 @@ Current position: waiting on step 1 input (Step 7 stderr for build aa24dd73-eab7
 - Type: added "granted"/"denied"/"cancelled" to ProtectionPermission.requestState.
 - Stage1B SHA256 manifest unaffected (covers guarddog-android-sdk/ only, not modules/apollo-security/).
 - REQUIRES A NATIVE ANDROID REBUILD to take effect (native module changed).
+
+## Fix — Call Gate role request now shows the dialog & waits for response (device bug)
+- Root cause (same class as VPN): Android call-screening role was launched with startActivity +
+  FLAG_ACTIVITY_NEW_TASK, which does NOT show RoleManager's role dialog and can't deliver a result.
+- Native (ApolloSecurityModule.kt): `requestCallScreeningRole` is now Promise-based and launches
+  `createRequestRoleIntent(ROLE_CALL_SCREENING)` via `startActivityForResult(CALL_ROLE_REQUEST_CODE)`
+  (no NEW_TASK). OnActivityResult resolves `{opened:true, held:<isRoleHeld>}` after the user responds.
+  Returns `{opened:false, held}` when unavailable/already-held/no-activity.
+- JS: callSdk type adds `held?`. call-guard/setup-gates/CoverageCard use `r.held` as authoritative
+  (fall back to waitForForeground for legacy builds). call-guard shows "Call screening is on" on held.
+- iOS unchanged and already consistent: opens Settings + verifies CXCallDirectory state on return.
+- Cross-platform note: all graceful-permission/reduced-coverage/nudge/coverage-card/setup-walkthrough
+  behavior is platform-agnostic JS; the native for-result fix is Android-only because the bug was.
+- REQUIRES A NATIVE ANDROID REBUILD (native module changed).

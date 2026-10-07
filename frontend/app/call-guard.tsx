@@ -67,12 +67,16 @@ export default function CallGuard() {
     setOpeningSettings(true);
     try {
       const r = await CallSdk.requestCallScreeningRole();
-      if (r.opened) {
+      // Current native build waits for the user's response and returns the real role state.
+      if (r.held) {
+        showToast("Call screening is on.", "resting");
+      } else if (r.opened) {
         showToast(
           Platform.OS === "android" ? "Select Apollo as your call-screening app, then come back." : "Settings opened. Turn on Apollo under Phone › Call Blocking & Identification, then come back.",
           "neutral",
         );
       }
+      refresh();
     } finally { setOpeningSettings(false); }
   };
 

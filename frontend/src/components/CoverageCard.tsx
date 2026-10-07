@@ -83,8 +83,8 @@ export function CoverageCard() {
         granted = await waitForForeground(async () => (await MessagingSdk.getMessagingCapabilities()).smsFiltering === "supported");
         await runProtectionHealthCheck("protection_change");
       } else if (id === "call") {
-        await CallSdk.requestCallScreeningRole();
-        granted = await waitForForeground(async () => (await CallSdk.getCallProtectionCapabilities()).callScreening === "supported");
+        const r = await CallSdk.requestCallScreeningRole();
+        granted = r.held ?? await waitForForeground(async () => (await CallSdk.getCallProtectionCapabilities()).callScreening === "supported");
         await runProtectionHealthCheck("protection_change");
       } else if (id === "email") {
         if (!deviceId) { router.push(ROUTE.email as never); return; }

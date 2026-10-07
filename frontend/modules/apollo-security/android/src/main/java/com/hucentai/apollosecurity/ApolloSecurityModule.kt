@@ -25,13 +25,15 @@ class ApolloSecurityModule : Module() {
   private val prefs get() = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
   private fun guardDogProduction(): ApolloGuardDogProductionRuntime = ApolloGuardDogProductionOwner.get(ctx)
 
-  // Pending VPN-consent request. The AsyncFunction stores its Promise here and OnActivityResult
-  // resolves it once the user actually responds to Android's system VPN-consent dialog.
+  // Pending VPN-consent / call-screening-role requests. The AsyncFunctions store their Promise here
+  // and OnActivityResult resolves it once the user actually responds to the system dialog.
   private var vpnConsentPromise: Promise? = null
+  private var callRolePromise: Promise? = null
 
   companion object {
     private const val PREFS = "apollo_siteguard"
     private const val VPN_REQUEST_CODE = 0xA901
+    private const val CALL_ROLE_REQUEST_CODE = 0xA902
   }
 
   override fun definition() = ModuleDefinition {
@@ -159,7 +161,7 @@ class ApolloSecurityModule : Module() {
       }
     }
 
-    // Resolve the pending VPN-consent request when the user responds to Android's consent dialog.
+    // Resolve the pending VPN-consent / call-screening-role request when the user responds.
     OnActivityResult { _, payload ->
       if (payload.requestCode == VPN_REQUEST_CODE) {
         val pending = vpnConsentPromise
@@ -168,6 +170,13 @@ class ApolloSecurityModule : Module() {
           val observedAt = now()
           val granted = VpnService.prepare(ctx) == null
           pending.resolve(perm("vpn_config", "Local VPN (selective packet filter)", if (granted) "granted" else "undetermined", true, if (granted) "VPN consent granted." else "VPN consent was declined.", observedAt, enabled = granted).put("requestState", if (granted) "granted" else "denied").toString())
+        }
+      } else if (payload.requestCode == CALL_ROLE_REQUEST_CODE) {
+        val pending = callRolePromise
+        callRolePromise = null
+        if (pending != null) {
+          val held = ApolloCallScreeningService.isRoleHeld(ctx)
+          pending.resolve(JSONObject().put("opened", true).put("held", held).toString())
         }
       }
     }
@@ -252,14 +261,24 @@ class ApolloSecurityModule : Module() {
         .put("liveTranscript", "unsupported")
         .toString()
     }
-    AsyncFunction("requestCallScreeningRole") {
+    AsyncFunction("requestCallScreeningRole") { promise: Promise ->
       val rm = ctx.getSystemService(Context.ROLE_SERVICE) as? android.app.role.RoleManager
-      val opened = if (rm != null && ApolloCallScreeningService.isRoleAvailable(ctx) && !ApolloCallScreeningService.isRoleHeld(ctx)) {
-        val intent = rm.createRequestRoleIntent(android.app.role.RoleManager.ROLE_CALL_SCREENING).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        appContext.currentActivity?.startActivity(intent) ?: ctx.startActivity(intent)
-        true
-      } else false
-      JSONObject().put("opened", opened).toString()
+      val activity = appContext.currentActivity
+      if (rm == null || !ApolloCallScreeningService.isRoleAvailable(ctx) || ApolloCallScreeningService.isRoleHeld(ctx) || activity == null) {
+        promise.resolve(JSONObject().put("opened", false).put("held", ApolloCallScreeningService.isRoleHeld(ctx)).toString())
+      } else {
+        try {
+          // Launch the call-screening role dialog FOR RESULT (no FLAG_ACTIVITY_NEW_TASK — that
+          // prevents the dialog showing and breaks result delivery). Resolved in OnActivityResult.
+          val intent = rm.createRequestRoleIntent(android.app.role.RoleManager.ROLE_CALL_SCREENING)
+          callRolePromise?.resolve(JSONObject().put("opened", false).put("held", ApolloCallScreeningService.isRoleHeld(ctx)).toString())
+          callRolePromise = promise
+          activity.startActivityForResult(intent, CALL_ROLE_REQUEST_CODE)
+        } catch (_: Exception) {
+          callRolePromise = null
+          promise.resolve(JSONObject().put("opened", false).put("held", ApolloCallScreeningService.isRoleHeld(ctx)).toString())
+        }
+      }
     }
     // Mailbox semantics — non-destructive read. Acknowledge individually after successful processing.
     AsyncFunction("getPendingCallLookups") { ApolloCallScreeningService.readPendingLookups(ctx).toString() }

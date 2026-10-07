@@ -13,7 +13,7 @@ export const CallSdk = {
   checkNumberReputation: (n: string) => { const m = getNativeModule(); return call<{ status: "unknown" | "trusted" | "reported"; reports: number } | null>(m ? () => m.checkNumberReputation(n) : undefined, null); },
   reportCallContext: (ctx: { asks: string[]; claim: string; state: string }) => { const m = getNativeModule(); return call<{ accepted: boolean }>(m ? () => m.reportCallContext(JSON.stringify(ctx)) : undefined, { accepted: false }); },
   getRecentCallSecurityEvents: () => { const m = getNativeModule(); return call<SdkCallFinding[]>(m ? () => m.getRecentCallSecurityEvents() : undefined, []); },
-  requestCallScreeningRole: () => { const m = getNativeModule(); return call<{ opened: boolean }>(m ? () => m.requestCallScreeningRole() : undefined, { opened: false }); },
+  requestCallScreeningRole: () => { const m = getNativeModule(); return call<{ opened: boolean; held?: boolean }>(m ? () => m.requestCallScreeningRole() : undefined, { opened: false }); },
   getPendingCallLookups: () => { const m = getNativeModule(); return call<{ number: string; seenAtMs: number }[]>(m ? () => m.getPendingCallLookups() : undefined, []); },
   acknowledgeCallLookups: (numbers: string[]) => { const m = getNativeModule(); return call<{ acknowledged: number }>(m ? () => m.acknowledgeCallLookups(JSON.stringify(numbers)) : undefined, { acknowledged: 0 }); },
   retryCallLookups: (numbers: string[]) => { const m = getNativeModule(); return call<{ retried: number }>(m ? () => m.retryCallLookups(JSON.stringify(numbers)) : undefined, { retried: 0 }); },

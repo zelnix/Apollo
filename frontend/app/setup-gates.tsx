@@ -130,8 +130,8 @@ export default function SetupGates() {
         await MessagingSdk.openSmsListenerSettings();
         granted = await waitForForeground(async () => (await MessagingSdk.getMessagingCapabilities()).smsFiltering === "supported");
       } else if (current === "call") {
-        await CallSdk.requestCallScreeningRole();
-        granted = await waitForForeground(async () => (await CallSdk.getCallProtectionCapabilities()).callScreening === "supported");
+        const r = await CallSdk.requestCallScreeningRole();
+        granted = r.held ?? await waitForForeground(async () => (await CallSdk.getCallProtectionCapabilities()).callScreening === "supported");
       } else if (current === "email" && deviceId) {
         granted = (await connectGmailOAuth(deviceId)) === "connected";
       }
