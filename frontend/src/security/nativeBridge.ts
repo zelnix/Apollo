@@ -87,6 +87,7 @@ export interface ApolloSecurityNativeModule {
   // Gate 7 — Apps & Device (SDK contract). JSON strings; see src/security/appDeviceSdk.ts.
   getAppDeviceCapabilities(): Promise<string>;
   getInstalledAppAssessment(packageId: string): Promise<string>;
+  listInstalledApps(): Promise<string>;
   getRecentInstallEvents(): Promise<string>;
   getDeviceSecuritySignals(): Promise<string>;
   getRecentAppSecurityEvents(): Promise<string>;

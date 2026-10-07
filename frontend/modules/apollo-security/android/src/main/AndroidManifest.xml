@@ -7,6 +7,12 @@
        remote-access risk catalog plus the stores/browsers/messengers needed to name an install source.
        Keep this list identical to AppDeviceCatalog.VISIBLE_PACKAGES. -->
   <queries>
+    <!-- Launchable user apps only: lets Apollo offer a "pick from installed apps" list without
+         QUERY_ALL_PACKAGES. This exposes apps the user can open from the launcher, nothing hidden. -->
+    <intent>
+      <action android:name="android.intent.action.MAIN" />
+      <category android:name="android.intent.category.LAUNCHER" />
+    </intent>
     <package android:name="com.anydesk.anydeskandroid" />
     <package android:name="com.teamviewer.teamviewer.market.mobile" />
     <package android:name="com.teamviewer.quicksupport.market" />

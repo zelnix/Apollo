@@ -204,6 +204,7 @@ class ApolloSecurityModule : Module() {
     // Phase A — Apps & Device (AppDeviceSdk contract). Real signals within package-visibility limits; see AppDeviceSignals.
     AsyncFunction("getAppDeviceCapabilities") { AppDeviceSignals(ctx).capabilitiesJson() }
     AsyncFunction("getInstalledAppAssessment") { nameOrPackage: String -> AppDeviceSignals(ctx).appAssessmentJson(nameOrPackage) }
+    AsyncFunction("listInstalledApps") { AppDeviceSignals(ctx).installedLaunchableAppsJson() }
     AsyncFunction("getRecentInstallEvents") { "[]" }        // no PACKAGE_ADDED receiver by design (would need broad visibility)
     AsyncFunction("getDeviceSecuritySignals") { AppDeviceSignals(ctx).deviceSignalsJson() }
     AsyncFunction("getRecentAppSecurityEvents") { "[]" }

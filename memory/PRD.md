@@ -1021,3 +1021,24 @@ No architecture, infrastructure, security behaviour, routes, Gate types or produ
 - UX-16 reduced motion: ApolloHero now reads AccessibilityInfo reduce-motion and routes it through the existing animate-disable path (motionOn) — no new a11y subsystem. (Previously only manual battery-saver lowPower existed.)
 - Tests: gatesOverview 19, phase2Patrol 4 (incl. new patrolConsumerSummary + link-gate "Ready automatically" + account label change). Full gate/higgins suites pass; eslint + tsc clean.
 - NOTE: web preview is hard-gated (GuardDog production authority only in a production build) so UI cannot be smoke-tested here; verify on a production build.
+
+## Feature — App Gate: pick from a list of installed apps (2026-06)
+- Request: "When checking an app should be able to pick from a list of installed apps."
+- Implementation (Android only; iOS can't enumerate apps, falls back to manual entry):
+  - AndroidManifest (apollo-security): added a <queries><intent> MAIN/LAUNCHER block so Apollo can list
+    launchable user apps WITHOUT QUERY_ALL_PACKAGES (keeps the app's no-broad-visibility stance).
+  - Native AppDeviceSignals.installedLaunchableAppsJson(): queryIntentActivities(MAIN/LAUNCHER) → sorted
+    [{packageId, appName}], excludes Apollo itself. Registered AsyncFunction("listInstalledApps").
+  - appDeviceSdk.listInstalledApps() + InstalledAppRef type; nativeBridge method added.
+  - app-check.tsx: "Pick from installed apps" button (Android) opens a searchable Sheet (app-picker-sheet)
+    listing installed apps; selecting one fills the name AND stores the packageId, which is passed to
+    getInstalledAppAssessment(pickedPackage) so Apollo reads real install source + permissions for the
+    chosen app (the launcher <queries> now makes getPackageInfo resolve). Manual typing still works and
+    clears any picked package. Scope copy updated for Android.
+- tsc + eslint clean. Pre-existing adapterContract.test.ts failures (getCapabilities / AndroidSecurityAdapter
+  / dns:udp-53) are unrelated and were present before this change (verified by stash).
+- Native-only: requires a production Android build; web preview is hard-gated and Expo Go returns an empty
+  list (handled with a "needs a production Android build" message in the picker).
+- PENDING (from the prior message, not yet actioned): recognise Apollo's own VPN so the Network Gate doesn't
+  ask the user to "confirm you recognise the VPN service"; recognise Apollo-caused device changes; add a
+  security/privacy/protection setting-change log with date-time attributing Apollo-caused changes.

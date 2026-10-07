@@ -2,6 +2,7 @@ package com.hucentai.apollosecurity
 
 import android.app.admin.DevicePolicyManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -98,6 +99,24 @@ class AppDeviceSignals(private val ctx: Context) {
   fun installedCatalogApps(): List<Pair<String, String>> = AppDeviceCatalog.RISK_CATALOG.mapNotNull { (pkg, name) ->
     try { pm.getPackageInfo(pkg, 0); pkg to name } catch (_: PackageManager.NameNotFoundException) { null } catch (_: Exception) { null }
   }
+
+  /** [{packageId, appName}] for launchable user apps, so the App Gate can offer a pick-from-list.
+   *  Uses the MAIN/LAUNCHER <queries> intent (no QUERY_ALL_PACKAGES) and excludes Apollo itself. */
+  fun installedLaunchableAppsJson(): String = try {
+    val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+    val own = ctx.packageName
+    val seen = HashSet<String>()
+    val arr = JSONArray()
+    pm.queryIntentActivities(intent, 0).mapNotNull { ri ->
+      val pkg = ri.activityInfo?.packageName ?: return@mapNotNull null
+      if (pkg == own || !seen.add(pkg)) return@mapNotNull null
+      val label = try { ri.loadLabel(pm).toString() } catch (_: Exception) { pkg }
+      pkg to label
+    }.sortedBy { it.second.lowercase() }.forEach { (pkg, label) ->
+      arr.put(JSONObject().put("packageId", pkg).put("appName", label))
+    }
+    arr.toString()
+  } catch (_: Exception) { "[]" }
 
   private fun secure(key: String): String? = try { Settings.Secure.getString(ctx.contentResolver, key) } catch (_: Exception) { null }
 

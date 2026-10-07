@@ -5,7 +5,7 @@ import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import * as Crypto from "expo-crypto";
 import X from "lucide-react-native/icons/x";
 import React, { useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, Switch, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -18,7 +18,7 @@ import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/compone
 import { analyseApp, APP_PERMISSIONS, APP_PURPOSES, APP_SOURCES, PERMISSION_INFO, type AppAnalysis, type AppNetwork, type AppPermission, type AppPurpose, type AppSource } from "@/src/domain/appAnalysis";
 import { SCENT_WINDOW_MS } from "@/src/domain/threatScent";
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
-import { AppDeviceSdk, sdkPermissionsToApp } from "@/src/security/appDeviceSdk";
+import { AppDeviceSdk, sdkPermissionsToApp, type InstalledAppRef } from "@/src/security/appDeviceSdk";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { openDeviceSettings } from "@/src/utils/deviceSettings";
@@ -66,6 +66,12 @@ export default function CheckApp() {
   const [tech, setTech] = useState(false);
   const [permSheet, setPermSheet] = useState<AppPermission | null>(null);
   const [sdkVisible, setSdkVisible] = useState(false);
+  // Pick-from-installed-apps (Android): list launchable apps so the person doesn't have to type the name.
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [installedApps, setInstalledApps] = useState<InstalledAppRef[] | null>(null);
+  const [appsLoading, setAppsLoading] = useState(false);
+  const [pickedPackage, setPickedPackage] = useState<string | null>(null);
+  const [appQuery, setAppQuery] = useState("");
   const [actionGuidance, setActionGuidance] = useState<string | null>(null);
   const [reportState, setReportState] = useState<"idle" | "sending" | "failed" | "sent">("idle");
   const showSettings = (analysis: AppAnalysis) => {
@@ -74,6 +80,17 @@ export default function CheckApp() {
     else void openDeviceSettings(label, path, (message) => showToast(message, "neutral"));
   };
   useEffect(() => { void AppDeviceSdk.getAppDeviceCapabilities().then((c) => setSdkVisible(c.appPermissions === "supported")); }, []);
+  const canPickApps = Platform.OS === "android";
+  const openPicker = async () => {
+    setPickerOpen(true);
+    if (installedApps !== null || appsLoading) return;
+    setAppsLoading(true);
+    try { const list = await AppDeviceSdk.listInstalledApps(); setInstalledApps(list); }
+    catch { setInstalledApps([]); }
+    finally { setAppsLoading(false); }
+  };
+  const pickApp = (app: InstalledAppRef) => { setName(app.appName); setPickedPackage(app.packageId); setSource("not_sure"); setPerms([]); setPickerOpen(false); setAppQuery(""); };
+  const filteredApps = (installedApps ?? []).filter((a) => a.appName.toLowerCase().includes(appQuery.trim().toLowerCase()));
 
   // Threat Scent: non-resting events from other gates inside the window (call → link → download → install).
   const recentLinked = useMemo(() => { const now = Date.now(); return events.filter((e) => e.state !== "resting" && LINKED_CATEGORIES.has(e.category) && now - Date.parse(e.occurred_at) <= SCENT_WINDOW_MS); }, [events]);
@@ -83,7 +100,7 @@ export default function CheckApp() {
     try {
     void markCheckDone("app");
       let network: AppNetwork | null = null;
-      const sdk = await AppDeviceSdk.getInstalledAppAssessment(name.trim());
+      const sdk = await AppDeviceSdk.getInstalledAppAssessment((pickedPackage ?? name).trim());
       if (sdk?.network) network = sdk.network;
       // Phase A: observed facts from the native SDK override guesses — install source when the person wasn't sure,
       // and the app's actual permissions (plus remote-access capability) are added to what they ticked.
@@ -123,9 +140,10 @@ export default function CheckApp() {
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="app-scroll">
         {!result ? (
           <>
-            <Body testID="app-check-scope">Apollo checks an app whether it was installed today or has been on the device for months. It looks at capabilities, source, permissions and available behaviour evidence—not the name alone. {sdkVisible ? "On this device Apollo can read the install source and permissions of known remote-access apps (AnyDesk, TeamViewer and similar). For any other app, tell it what you see in Settings — Apollo can't list every app." : "On this build Apollo can't read other apps' permissions — tell it what you see in Settings."}</Body>
+            <Body testID="app-check-scope">Apollo checks an app whether it was installed today or has been on the device for months. It looks at capabilities, source, permissions and available behaviour evidence—not the name alone. {canPickApps ? "On this device you can pick an app from your installed list below, and Apollo reads its install source and permissions directly. You can also type any app name." : sdkVisible ? "On this device Apollo can read the install source and permissions of known remote-access apps (AnyDesk, TeamViewer and similar). For any other app, tell it what you see in Settings — Apollo can't list every app." : "On this build Apollo can't read other apps' permissions — tell it what you see in Settings."}</Body>
             <Text style={s.label}>App name</Text>
-            <TextInput testID="app-name" style={s.input} value={name} onChangeText={setName} maxLength={120} placeholder="e.g. Bank Security Update" placeholderTextColor={colors.muted} autoCapitalize="words" autoCorrect={false} />
+            <TextInput testID="app-name" style={s.input} value={name} onChangeText={(t) => { setName(t); setPickedPackage(null); }} maxLength={120} placeholder="e.g. Bank Security Update" placeholderTextColor={colors.muted} autoCapitalize="words" autoCorrect={false} />
+            {canPickApps ? <Button testID="app-pick-installed" variant="secondary" label="Pick from installed apps" onPress={() => void openPicker()} /> : null}
             <Text style={s.label}>Developer (if shown)</Text>
             <TextInput testID="app-developer" style={s.input} value={developer} onChangeText={setDeveloper} maxLength={120} placeholder="Optional" placeholderTextColor={colors.muted} autoCapitalize="words" autoCorrect={false} />
             <Text style={s.label}>Where did it come from?</Text>
@@ -188,11 +206,25 @@ export default function CheckApp() {
               {result.event ? <Button testID="app-keep" variant="ghost" label="Mark as handled" onPress={() => { void resolveEvent(result.event!); setResult({ ...result, event: { ...result.event!, status: "resolved" } }); }} /> : null}
               {reportState === "failed" ? <Body testID="app-report-error">The report was not sent. This app result remains available; retry when connected.</Body> : reportState === "sent" ? <Body testID="app-report-success">Report sent for review.</Body> : null}
               {result.event && reportState !== "sent" ? <Button testID="app-report" variant="ghost" label={reportState === "sending" ? "Sending…" : reportState === "failed" ? "Retry report" : "Report a mistake"} disabled={reportState === "sending"} onPress={async () => { setReportState("sending"); try { await apiPost("/feedback", "feedback", { device_id: deviceId ?? "local-device", event_id: result.event!.event_id, kind: "false_positive", state: result.event!.state, host: null, sources: ["app_device_engine"], note: "" }); setReportState("sent"); } catch { setReportState("failed"); } }} /> : null}
-              <Button testID="app-again" variant="ghost" label="Check another app" onPress={() => { setResult(null); setName(""); setDeveloper(""); setPerms([]); setReportState("idle"); setActionGuidance(null); }} />
+              <Button testID="app-again" label="Check another app" variant="ghost" onPress={() => { setResult(null); setName(""); setDeveloper(""); setPerms([]); setPickedPackage(null); setReportState("idle"); setActionGuidance(null); }} />
             </Card>
           </>
         ) : null}
       </KeyboardAwareScrollView>
+      <Sheet visible={pickerOpen} onClose={() => { setPickerOpen(false); setAppQuery(""); }} title="Pick an installed app" testID="app-picker-sheet">
+        <TextInput testID="app-picker-search" style={s.input} value={appQuery} onChangeText={setAppQuery} placeholder="Search your apps" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} />
+        {appsLoading ? <View style={{ paddingVertical: spacing.lg, alignItems: "center" }}><ActivityIndicator color={colors.gold} /></View>
+          : (installedApps?.length ?? 0) === 0 ? <Body testID="app-picker-empty">Apollo can&apos;t list installed apps on this build. Type the app name instead — this feature needs a production Android build.</Body>
+          : <ScrollView style={{ maxHeight: 360 }} testID="app-picker-list" keyboardShouldPersistTaps="handled">
+              {filteredApps.length === 0 ? <Body>No apps match “{appQuery}”.</Body> : filteredApps.map((app) => (
+                <Pressable key={app.packageId} testID={`app-picker-${app.packageId}`} accessibilityRole="button" onPress={() => pickApp(app)} style={({ pressed }) => [s.permRow, { paddingVertical: spacing.md, opacity: pressed ? 0.7 : 1 }]}>
+                  <Text style={s.label}>{app.appName}</Text>
+                  <Text style={s.why} numberOfLines={1}>{app.packageId}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>}
+        <Button testID="app-picker-close" variant="ghost" label="Close" onPress={() => { setPickerOpen(false); setAppQuery(""); }} />
+      </Sheet>
       <Sheet visible={tech} onClose={() => setTech(false)} title="Technical details" testID="app-tech-sheet">
         {a?.technical.map((t, i) => <Body key={i} testID={`app-tech-${i}`}>{t}</Body>)}
         <Body>Automatic install monitoring, permission reading and app-to-network correlation are unavailable in this build. iOS never exposes other apps&apos; permissions to another app — Apollo won&apos;t pretend otherwise.</Body>
