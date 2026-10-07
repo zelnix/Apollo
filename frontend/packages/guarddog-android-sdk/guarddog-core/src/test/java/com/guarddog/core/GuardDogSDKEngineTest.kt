@@ -9,9 +9,8 @@ import com.guarddog.core.protection.ProtectionRuntimeStateProvider
 import com.guarddog.core.protection.ProtectionState
 import com.guarddog.core.rules.BundleVersionStore
 import com.guarddog.core.rules.InMemoryBundleVersionStore
-import com.guarddog.core.rules.RuleBundleVerifier
-import com.guarddog.core.rules.TrustedKeyRegistry
-import com.guarddog.core.rules.VerificationResult
+import com.guarddog.core.rules.RuleBundleValidator
+import com.guarddog.core.rules.ValidationResult
 import java.io.File
 import java.time.Instant
 import java.util.concurrent.CopyOnWriteArrayList
@@ -28,7 +27,6 @@ import kotlin.test.assertTrue
  * real, independently-observed dropped packet (BlockedThreatEvidence) may produce THREAT_BLOCKED.
  *
  * NOTE: code-review ready / not runtime-verified in this environment (no Android/JVM toolchain here);
- * same convention as RuleBundleVerifierTest. Verified compilable/passing by the native-gates CI job.
  */
 class GuardDogSDKEngineTest {
     private val vectors = File(System.getProperty("guarddog.vectors") ?: "../../../security/test-vectors")
@@ -60,8 +58,8 @@ class GuardDogSDKEngineTest {
         clock: FixedClock = frozen,
         runtimeState: FakeRuntimeState = FakeRuntimeState(ProtectionState.ACTIVE),
     ): Triple<GuardDogSDKEngine, FakeRuntimeState, MutableList<SecurityEvent>> {
-        val verifier = RuleBundleVerifier(TrustedKeyRegistry.m1Default(), store, clock)
-        val eng = GuardDogSDKEngine(verifier, runtimeState, clock)
+        val validator = RuleBundleValidator(store, clock)
+        val eng = GuardDogSDKEngine(validator, runtimeState, clock)
         val emitted = mutableListOf<SecurityEvent>()
         eng.addEventListener { emitted.add(it) }
         return Triple(eng, runtimeState, emitted)
@@ -76,7 +74,7 @@ class GuardDogSDKEngineTest {
 
     @Test fun acceptingWebsiteGateBundleAndBinding_emitsNoThreatBlockedOrDetected() {
         val (eng, _, emitted) = engine()
-        assertIs<VerificationResult.Accepted>(eng.acceptWebsiteGateRuleBundle(read("m2-website-gate/m2_website_gate_valid_bundle.json")))
+        assertIs<ValidationResult.Accepted>(eng.acceptWebsiteGateRuleBundle(read("m2-website-gate/m2_website_gate_valid_bundle.json")))
         val result = eng.authorizeWebsiteGateTarget("bad-test.guarddog.example", "10.0.0.99", frozen.nowEpochMillis() + 5_000)
         assertIs<WebsiteGateAuthorization.Bound>(result)
         assertEquals("bad-test.guarddog.example", result.binding.host)
@@ -167,10 +165,10 @@ class GuardDogSDKEngineTest {
 
         // M1 bundle (frozen v25-style fixture) into the M1 slot only.
         val m1Frozen = FixedClock(Instant.parse("2026-06-15T00:00:00Z").toEpochMilli())
-        val m1Verifier = RuleBundleVerifier(TrustedKeyRegistry.m1Default(), InMemoryBundleVersionStore(), m1Frozen)
-        val m1Engine = GuardDogSDKEngine(m1Verifier, FakeRuntimeState(ProtectionState.ACTIVE), m1Frozen)
+        val m1Validator = RuleBundleValidator(InMemoryBundleVersionStore(), m1Frozen)
+        val m1Engine = GuardDogSDKEngine(m1Validator, FakeRuntimeState(ProtectionState.ACTIVE), m1Frozen)
         m1Engine.addEventListener { emitted.add(it) }
-        assertIs<VerificationResult.Accepted>(m1Engine.acceptRuleBundle(read("signing/valid_bundle.json")))
+        assertIs<ValidationResult.Accepted>(m1Engine.acceptRuleBundle(read("signing/valid_bundle.json")))
         assertIs<BlockAuthorization.Authorized>(m1Engine.authorizeControlledTarget("m1-block-test.guarddog.example", "203.0.113.7"))
         assertNull(m1Engine.acceptedWebsiteGateBundle()) // M1 slot accept never touches the M2 slot
 

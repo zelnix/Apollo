@@ -1,5 +1,7 @@
 package com.guarddog.core.rules
 
+import com.guarddog.core.clock.Clock
+import com.guarddog.core.clock.SystemClock
 import java.time.Instant
 
 /**
@@ -32,7 +34,7 @@ enum class RejectionReason {
  */
 class RuleBundleValidator(
     private val versionStore: BundleVersionStore,
-    private val clock: () -> Instant = { Instant.now() },
+    private val clock: Clock = SystemClock,
 ) {
     fun validate(rawJson: String): ValidationResult {
         // 1. Parse
@@ -59,7 +61,7 @@ class RuleBundleValidator(
         }
 
         // 4. Temporal validity
-        val now = clock()
+        val now = Instant.ofEpochMilli(clock.nowEpochMillis())
         val issued: Instant
         val expires: Instant
         try {

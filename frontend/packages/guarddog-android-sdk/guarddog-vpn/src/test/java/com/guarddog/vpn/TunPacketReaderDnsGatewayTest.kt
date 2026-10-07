@@ -6,8 +6,7 @@ import com.guarddog.core.protection.ProtectionRuntimeState
 import com.guarddog.core.protection.ProtectionRuntimeStateProvider
 import com.guarddog.core.protection.ProtectionState
 import com.guarddog.core.rules.InMemoryBundleVersionStore
-import com.guarddog.core.rules.RuleBundleVerifier
-import com.guarddog.core.rules.TrustedKeyRegistry
+import com.guarddog.core.rules.RuleBundleValidator
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import kotlin.test.Test
@@ -74,8 +73,8 @@ class TunPacketReaderDnsGatewayTest {
     }
 
     private fun engineWithNoAcceptedBundle(): GuardDogSDKEngine {
-        val verifier = RuleBundleVerifier(TrustedKeyRegistry.m1Default(), InMemoryBundleVersionStore(), clock)
-        return GuardDogSDKEngine(verifier, FakeRuntimeState(), clock)
+        val validator = RuleBundleValidator(InMemoryBundleVersionStore(), clock)
+        return GuardDogSDKEngine(validator, FakeRuntimeState(), clock)
     }
 
     @Test fun dnsGatewayPacketNeverReachesPacketDropReporterAndWritesAResponseBack() {

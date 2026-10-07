@@ -23,7 +23,6 @@ class BridgeWebsiteGateStatusRecord : Record {
     @Field var dnsGatewayActive: Boolean = false
     @Field var acceptedRulesetId: String? = null
     @Field var acceptedBundleVersion: Double? = null
-    @Field var acceptedKeyId: String? = null
     @Field var overrideCount: Double = 0.0
 }
 

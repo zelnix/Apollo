@@ -6,8 +6,7 @@ import com.guarddog.core.protection.ProtectionRuntimeState
 import com.guarddog.core.protection.ProtectionRuntimeStateProvider
 import com.guarddog.core.protection.ProtectionState
 import com.guarddog.core.rules.InMemoryBundleVersionStore
-import com.guarddog.core.rules.RuleBundleVerifier
-import com.guarddog.core.rules.TrustedKeyRegistry
+import com.guarddog.core.rules.RuleBundleValidator
 import java.io.File
 import java.time.Instant
 import kotlin.test.Test
@@ -36,8 +35,8 @@ class DnsGatewayPacketHandlerTest {
     }
 
     private fun engineWithAcceptedM2Bundle(): GuardDogSDKEngine {
-        val verifier = RuleBundleVerifier(TrustedKeyRegistry.m1Default(), InMemoryBundleVersionStore(), clock)
-        val eng = GuardDogSDKEngine(verifier, FakeRuntimeState(), clock)
+        val validator = RuleBundleValidator(InMemoryBundleVersionStore(), clock)
+        val eng = GuardDogSDKEngine(validator, FakeRuntimeState(), clock)
         eng.acceptWebsiteGateRuleBundle(read("m2-website-gate/m2_website_gate_valid_bundle.json"))
         return eng
     }

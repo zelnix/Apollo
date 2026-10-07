@@ -4,9 +4,9 @@ import com.guarddog.core.events.SecurityEvent
 import com.guarddog.core.events.SecurityEventSource
 import com.guarddog.core.events.SecurityEventType
 import com.guarddog.core.protection.ProtectionRuntimeState
-import com.guarddog.core.rules.RejectReason
-import com.guarddog.core.rules.SignedRuleBundle
-import com.guarddog.core.rules.VerificationResult
+import com.guarddog.core.rules.RejectionReason
+import com.guarddog.core.rules.RuleBundle
+import com.guarddog.core.rules.ValidationResult
 import com.guarddog.expo.dto.BridgeCapabilityRecord
 import com.guarddog.expo.dto.BridgeProtectionConfigRecord
 import com.guarddog.expo.dto.BridgeProtectionStateRecord
@@ -28,7 +28,7 @@ object GuardDogExpoAdapters {
     private val sources = mapOf(
         SecurityEventSource.ANDROID_VPN_ENFORCEMENT to "android-vpn-enforcement",
         SecurityEventSource.LOCAL_ANALYSIS to "local-analysis",
-        SecurityEventSource.RULE_VERIFIER to "rule-verifier",
+        SecurityEventSource.RULE_VALIDATOR to "rule-validator",
         SecurityEventSource.PROTECTION_LIFECYCLE to "protection-lifecycle",
     )
     private val sanitizedUrlShape = Regex("^https?://[^\\s/?#@]+(/[^\\s?#]*)?$")
@@ -56,13 +56,13 @@ object GuardDogExpoAdapters {
         universalDeviceProtection = false; analysisAndWarningOnly = false; vpnConsentRequired = true
     }
 
-    fun toRecord(result: VerificationResult): BridgeRuleBundleRecord = BridgeRuleBundleRecord().apply {
+    fun toRecord(result: ValidationResult): BridgeRuleBundleRecord = BridgeRuleBundleRecord().apply {
         when (result) {
-            is VerificationResult.Accepted -> {
+            is ValidationResult.Accepted -> {
                 accepted = true; rulesetId = result.bundle.rulesetId; bundleVersion = result.bundle.bundleVersion.toDouble()
-                keyId = result.bundle.keyId; ruleCount = result.bundle.payload.rules.size.toDouble()
+                ruleCount = result.bundle.payload.rules.size.toDouble()
             }
-            is VerificationResult.Rejected -> { accepted = false; rejectReason = result.reason.name }
+            is ValidationResult.Rejected -> { accepted = false; rejectReason = result.reason.name }
         }
     }
 
@@ -76,7 +76,7 @@ object GuardDogExpoAdapters {
         rulesetId = record.rulesetId, dedupeWindowMillis = record.dedupeWindowMs.toLong(),
     )
 
-    fun rejectReasonName(reason: RejectReason): String = reason.name
+    fun rejectReasonName(reason: RejectionReason): String = reason.name
 
     /**
      * Gate Guard M2 Website Gate: truthful, live status. [dnsGatewayActive] must be exactly
@@ -87,14 +87,13 @@ object GuardDogExpoAdapters {
     fun toWebsiteGateStatus(
         configured: Boolean,
         dnsGatewayActive: Boolean,
-        acceptedBundle: SignedRuleBundle?,
+        acceptedBundle: RuleBundle?,
         overrideCount: Int,
     ): BridgeWebsiteGateStatusRecord = BridgeWebsiteGateStatusRecord().apply {
         this.configured = configured
         this.dnsGatewayActive = dnsGatewayActive
         acceptedRulesetId = acceptedBundle?.rulesetId
         acceptedBundleVersion = acceptedBundle?.bundleVersion?.toDouble()
-        acceptedKeyId = acceptedBundle?.keyId
         this.overrideCount = overrideCount.toDouble()
     }
 }

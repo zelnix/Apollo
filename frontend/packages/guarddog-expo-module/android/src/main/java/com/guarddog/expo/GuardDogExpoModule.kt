@@ -13,8 +13,7 @@ import com.guarddog.core.clock.SystemClock
 import com.guarddog.core.rules.AcceptedBundle
 import com.guarddog.core.rules.BundleVersionStore
 import com.guarddog.core.rules.InMemoryBundleVersionStore
-import com.guarddog.core.rules.RuleBundleVerifier
-import com.guarddog.core.rules.TrustedKeyRegistry
+import com.guarddog.core.rules.RuleBundleValidator
 import com.guarddog.expo.dto.BridgeProtectionConfigRecord
 import com.guarddog.expo.dto.BridgeWebsiteGateConfigRecord
 import com.guarddog.expo.dto.BridgeWebsiteGateOverrideRecord
@@ -41,10 +40,10 @@ class SharedPreferencesBundleVersionStore(context: Context) : BundleVersionStore
     override fun highestAccepted(rulesetId: String): AcceptedBundle? =
         if (prefs.contains(rulesetId)) AcceptedBundle(prefs.getLong(rulesetId, 0), prefs.getString("$rulesetId.envelopeHash", null)) else null
 
-    override fun recordAccepted(rulesetId: String, bundleVersion: Long, envelopeHash: String?) {
-        val merged = InMemoryBundleVersionStore.merge(highestAccepted(rulesetId), AcceptedBundle(bundleVersion, envelopeHash))
+    override fun recordAccepted(rulesetId: String, bundleVersion: Long, contentHash: String?) {
+        val merged = InMemoryBundleVersionStore.merge(highestAccepted(rulesetId), AcceptedBundle(bundleVersion, contentHash))
         val editor = prefs.edit().putLong(rulesetId, merged.bundleVersion)
-        if (merged.envelopeHash != null) editor.putString("$rulesetId.envelopeHash", merged.envelopeHash) else editor.remove("$rulesetId.envelopeHash")
+        if (merged.contentHash != null) editor.putString("$rulesetId.envelopeHash", merged.contentHash) else editor.remove("$rulesetId.envelopeHash")
         editor.apply()
     }
 }
@@ -71,8 +70,8 @@ class GuardDogExpoModule : Module() {
         Events(EVENT_SECURITY, EVENT_STATE)
 
         OnCreate {
-            val verifier = RuleBundleVerifier(TrustedKeyRegistry.m1Default(), SharedPreferencesBundleVersionStore(context), SystemClock)
-            engine = GuardDogSDKEngine(verifier, state, SystemClock)
+            val validator = RuleBundleValidator(SharedPreferencesBundleVersionStore(context), SystemClock)
+            engine = GuardDogSDKEngine(validator, state, SystemClock)
             engine.addEventListener { event ->
                 GuardDogExpoAdapters.toRecord(event)?.let { sendEvent(EVENT_SECURITY, it.toBundle()) }
             }

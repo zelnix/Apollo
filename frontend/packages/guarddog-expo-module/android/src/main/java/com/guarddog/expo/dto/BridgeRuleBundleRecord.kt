@@ -3,13 +3,12 @@ package com.guarddog.expo.dto
 import expo.modules.kotlin.records.Field
 import expo.modules.kotlin.records.Record
 
-/** Result of on-device bundle verification returned to JS. */
+/** Result of on-device bundle validation returned to JS. */
 class BridgeRuleBundleRecord : Record {
     @Field var accepted: Boolean = false
     @Field var rejectReason: String? = null
     @Field var rulesetId: String? = null
     @Field var bundleVersion: Double? = null
-    @Field var keyId: String? = null
     @Field var ruleCount: Double = 0.0
 }
 

@@ -37,6 +37,16 @@ internal object ApolloGuardDogEngineOwnership {
   fun current(): String? = owner
 }
 
+/**
+ * Production GuardDog eligibility constants.
+ * The signing-key trust infrastructure (Ed25519, BouncyCastle) has been removed.
+ * Eligibility is now controlled solely by a manifest meta-data boolean.
+ */
+internal object ApolloGuardDogProductionTrust {
+    /** AndroidManifest meta-data key. Set true by the withGuardDogEngine config plugin. */
+    const val ENABLED = "com.hucentai.apollosecurity.GUARDDOG_PRODUCTION_ENABLED"
+}
+
 internal object ApolloGuardDogProductionOwner {
   private val cell = ProcessOwnerCell<ApolloGuardDogProductionRuntime>()
   fun isEligible(context: Context): Boolean {

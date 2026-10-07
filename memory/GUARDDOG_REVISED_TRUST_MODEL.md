@@ -94,12 +94,15 @@ cryptographic signing keys for rule bundles.
 
 ## Migration path
 
-1. Replace `RuleBundleVerifier` with `RuleBundleValidator` (schema + version + expiry checks only, no Ed25519).
-2. Replace `SignedRuleBundle` with `RuleBundle` (remove `keyId`, `payloadHash`, `signature`).
-3. Remove `TrustedKeyRegistry`, `ApolloGuardDogProductionTrust`, trust manifest flow.
-4. Remove `withGuardDogProductionTrust` config plugin and related EAS env vars.
-5. Replace backend static file serving with authenticated API endpoint.
-6. Update `GuardDogProductionSecurityAdapter` to fetch rules directly via HTTPS (no trust manifest intermediate).
-7. Update production runtime `refreshAuthority()` → `refreshRules()`.
-8. Baseline controlled-verify rule ships embedded in the app.
-9. Remove signing scripts and unsigned bundle templates.
+1. ✅ Replaced `RuleBundleVerifier` with `RuleBundleValidator` (schema + version + expiry checks only, no Ed25519).
+2. ✅ Replaced `SignedRuleBundle` with `RuleBundle` (removed `keyId`, `payloadHash`, `signature`).
+3. ✅ Removed `TrustedKeyRegistry`, trust manifest flow. `ApolloGuardDogProductionTrust` simplified to a manifest meta-data boolean gate.
+4. ✅ Removed `withGuardDogProductionTrust` config plugin. Production meta-data now set by `withGuardDogEngine`.
+5. ✅ Replaced backend static file serving with authenticated API endpoint (`GET /api/guarddog/rules`).
+6. ✅ Updated production runtime `refreshAuthority()` → `refreshRules()`.
+7. ✅ Removed signing scripts and unsigned bundle templates.
+8. ✅ Removed BouncyCastle dependency from `guarddog-core` build config.
+9. ✅ Fixed all Expo module adapters (`GuardDogExpoAdapters.kt`, `GuardDogExpoModule.kt`) to use `ValidationResult`/`RejectionReason`/`RuleBundle`.
+10. ✅ Created `ApolloBundleVersionStore.kt` and `ApolloGuardDogEvidenceCorrelator.kt` in `apollo-security` module.
+11. ✅ Fixed `RuleBundleValidator` clock type to accept `Clock` interface instead of `() -> Instant`.
+12. ✅ Cleaned up all test files referencing removed signing types.

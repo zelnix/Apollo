@@ -108,62 +108,27 @@ const withGuardDogRootBuildGradle = (config) =>
     return config;
   });
 
-const BOUNCY_CASTLE_MARKER = "GuardDog BouncyCastle dedup (Stage 1C)";
-
-/** expo-updates ships bcutil-jdk15to18:1.81, while guarddog-core requires bcprov-jdk18on:1.78.1.
- * Both families contain identical org.bouncycastle.* classes (different JDK-target flavour).
- *
- * Resolution strategy (cf. https://stackoverflow.com/a/77981808):
- *   • allprojects + configurations.all (eager) — substitution is applied before resolution.
- *   • ALL three legacy families (jdk15on, jdk15to18, jdk18on) redirect to jdk18on.
- *   • Pinned to 1.81 — the HIGHER of the two declared versions — so expo-updates is never
- *     forced below its own dependency. 1.81 is fully backward-compatible with 1.78.1;
- *     guarddog-core's Ed25519 API surface is unchanged since 1.70.
- *   • Self-substitution of jdk18on pins the version so no transitive can override it.
- */
-const withBouncyCastleDedup = (config) =>
-  withProjectBuildGradle(config, (config) => {
-    if (config.modResults.contents.includes(BOUNCY_CASTLE_MARKER)) return config;
-    config.modResults.contents += `
-// ${BOUNCY_CASTLE_MARKER}
-// Pin all BouncyCastle families to a single jdk18on:1.81 — the higher of
-// expo-updates (1.81) and guarddog-core (1.78.1). Backward-compatible; the
-// ASN1/Ed25519 surface is stable across this range.
-allprojects {
-    configurations.all {
-        resolutionStrategy {
-            dependencySubstitution {
-                // bcprov — core provider (ASN1Primitive, DEROctetString, Ed25519, etc.)
-                substitute module('org.bouncycastle:bcprov-jdk15on')    using module('org.bouncycastle:bcprov-jdk18on:1.81')
-                substitute module('org.bouncycastle:bcprov-jdk15to18')  using module('org.bouncycastle:bcprov-jdk18on:1.81')
-                substitute module('org.bouncycastle:bcprov-jdk18on')    using module('org.bouncycastle:bcprov-jdk18on:1.81')
-
-                // bcutil — utility classes for expo-updates code-signing
-                substitute module('org.bouncycastle:bcutil-jdk15on')    using module('org.bouncycastle:bcutil-jdk18on:1.81')
-                substitute module('org.bouncycastle:bcutil-jdk15to18')  using module('org.bouncycastle:bcutil-jdk18on:1.81')
-                substitute module('org.bouncycastle:bcutil-jdk18on')    using module('org.bouncycastle:bcutil-jdk18on:1.81')
-
-                // bcpkix — PKIX/CMS (certificate chain verification)
-                substitute module('org.bouncycastle:bcpkix-jdk15on')    using module('org.bouncycastle:bcpkix-jdk18on:1.81')
-                substitute module('org.bouncycastle:bcpkix-jdk15to18')  using module('org.bouncycastle:bcpkix-jdk18on:1.81')
-                substitute module('org.bouncycastle:bcpkix-jdk18on')    using module('org.bouncycastle:bcpkix-jdk18on:1.81')
-            }
-        }
-    }
-}
-`;
-    return config;
-  });
 
 module.exports = function withGuardDogEngine(config) {
   config = withSourceCheck(config);
   config = withGuardDogSettingsGradle(config);
   config = withGuardDogRootBuildGradle(config);
-  config = withBouncyCastleDedup(config);
-  // Preserve android:allowBackup="false" (previously set by withGuardDogProductionTrust).
+  // Preserve android:allowBackup="false" and enable GuardDog production authority.
   config = withAndroidManifest(config, (mod) => {
     const app = mod.modResults.manifest.application?.[0]?.$;
     if (app) app["android:allowBackup"] = "false";
+    // Enable the production GuardDog runtime via AndroidManifest meta-data.
+    const application = mod.modResults.manifest.application?.[0];
+    if (application) {
+      if (!application["meta-data"]) application["meta-data"] = [];
+      const key = "com.hucentai.apollosecurity.GUARDDOG_PRODUCTION_ENABLED";
+      const existing = application["meta-data"].find((m) => m.$?.["android:name"] === key);
+      if (!existing) {
+        application["meta-data"].push({
+          $: { "android:name": key, "android:value": "true" },
+        });
+      }
+    }
     return mod;
   });
   return config;
