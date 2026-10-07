@@ -8,12 +8,12 @@
 import { useRouter } from "expo-router";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, AppState, Platform, Text, View } from "react-native";
+import { ActivityIndicator, AppState, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiGet } from "@/src/api/client";
 import { ApolloLogo } from "@/src/components/ApolloLogo";
-import { Body, Button, Card, SectionTitle } from "@/src/components/ui";
+import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { GATE_ORDER, GATE_PERMISSIONS, GATE_SNOOZE_MS, gateAppliesToPlatform, gateSnoozeKey, type GatePermId } from "@/src/domain/gatePermissions";
 import { connectGmailOAuth } from "@/src/domain/gmailConnect";
 import { CallSdk } from "@/src/security/callSdk";
@@ -61,9 +61,20 @@ export default function SetupGates() {
   const [steps, setSteps] = useState<GatePermId[] | null>(null);
   const [idx, setIdx] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [recap, setRecap] = useState<{ id: GatePermId; on: boolean }[] | null>(null);
   const leaving = useRef(false);
 
   const goHome = useCallback(() => { if (leaving.current) return; leaving.current = true; router.replace("/(tabs)/home"); }, [router]);
+
+  // Read a Gate's REAL on/pending state. Returns null when the Gate isn't applicable here
+  // (unsupported platform, or Email not configured) so it's left out of setup and the recap.
+  const readGateOn = useCallback(async (id: GatePermId): Promise<boolean | null> => {
+    if (id === "site") { const v = (await securityAdapter.getProtectionPermissions()).find((p) => p.id === "vpn_config"); return v ? v.status === "granted" : null; }
+    if (id === "text") { const c = (await MessagingSdk.getMessagingCapabilities()).smsFiltering; return c === "unsupported" ? null : c === "supported"; }
+    if (id === "call") { const c = (await CallSdk.getCallProtectionCapabilities()).callScreening; return c === "unsupported" ? null : c === "supported"; }
+    if (id === "email") { if (!deviceId) return null; const st = await apiGet<{ connected: boolean; configured: boolean }>(`/gmail/status?device_id=${deviceId}`); return st.configured ? st.connected : null; }
+    return null;
+  }, [deviceId]);
 
   // Build the list of Gates that still need action on this device/platform.
   useEffect(() => {
@@ -72,37 +83,35 @@ export default function SetupGates() {
       const needs: GatePermId[] = [];
       for (const id of GATE_ORDER) {
         if (!gateAppliesToPlatform(id)) continue;
-        try {
-          if (id === "site") {
-            const perms = await securityAdapter.getProtectionPermissions();
-            if (perms.find((p) => p.id === "vpn_config")?.status !== "granted") needs.push("site");
-          } else if (id === "text") {
-            if ((await MessagingSdk.getMessagingCapabilities()).smsFiltering === "permission_required") needs.push("text");
-          } else if (id === "call") {
-            if ((await CallSdk.getCallProtectionCapabilities()).callScreening === "permission_required") needs.push("call");
-          } else if (id === "email") {
-            if (!deviceId) continue;
-            const status = await apiGet<{ connected: boolean; configured: boolean }>(`/gmail/status?device_id=${deviceId}`);
-            if (status.configured && !status.connected) needs.push("email");
-          }
-        } catch { /* if we can't tell, skip — the Gate screen remains available later */ }
+        try { if ((await readGateOn(id)) === false) needs.push(id); } catch { /* can't tell — skip; Gate screen stays available */ }
       }
       if (!cancelled) { setSteps(needs); if (needs.length === 0) goHome(); }
     })();
     return () => { cancelled = true; };
-  }, [deviceId, goHome]);
+  }, [readGateOn, goHome]);
 
   const snooze = useCallback(async (id: GatePermId) => {
     await storage.setItem(gateSnoozeKey(id), new Date(Date.now() + GATE_SNOOZE_MS).toISOString());
   }, [storage]);
 
+  // End of setup — compute the "what's on / what's pending" recap from real state (not assumptions).
+  const finish = useCallback(async () => {
+    const rows: { id: GatePermId; on: boolean }[] = [];
+    for (const id of GATE_ORDER) {
+      if (!gateAppliesToPlatform(id)) continue;
+      try { const on = await readGateOn(id); if (on !== null) rows.push({ id, on }); } catch { /* skip */ }
+    }
+    if (rows.length === 0) { goHome(); return; }
+    setRecap(rows);
+  }, [readGateOn, goHome]);
+
   const advance = useCallback(() => {
     setIdx((i) => {
       const next = i + 1;
-      if (!steps || next >= steps.length) { goHome(); return i; }
+      if (!steps || next >= steps.length) { void finish(); return i; }
       return next;
     });
-  }, [steps, goHome]);
+  }, [steps, finish]);
 
   const current = steps && idx < steps.length ? steps[idx] : null;
 
@@ -135,7 +144,35 @@ export default function SetupGates() {
   };
 
   const notNow = async () => { if (current) await snooze(current); advance(); };
-  const skipRest = async () => { if (steps) for (let i = idx; i < steps.length; i++) await snooze(steps[i]); goHome(); };
+  const skipRest = async () => { if (steps) for (let i = idx; i < steps.length; i++) await snooze(steps[i]); await finish(); };
+
+  if (recap !== null) {
+    const onCount = recap.filter((r) => r.on).length;
+    return (
+      <View style={s.root} testID="setup-gates-recap">
+        <View style={[s.content, { paddingTop: insets.top }]}>
+          <View style={{ gap: spacing.sm }}>
+            <ApolloLogo size={72} />
+            <Text style={s.eyebrow}>You&apos;re set up</Text>
+            <Text style={s.title} testID="setup-gates-recap-title">{onCount === recap.length ? "Apollo is fully on" : "Protection active — reduced coverage"}</Text>
+            <Text style={s.progress} testID="setup-gates-recap-count">{onCount} of {recap.length} Gates on</Text>
+          </View>
+          <Card style={{ gap: spacing.sm }} testID="setup-gates-recap-list">
+            {recap.map((r) => (
+              <View key={r.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md }} testID={`setup-gates-recap-${r.id}`}>
+                <Text style={[s.why, { flex: 1 }]}>{GATE_PERMISSIONS[r.id].title}</Text>
+                <Pill tone={r.on ? "resting" : "growling"} label={r.on ? "On" : GATE_PERMISSIONS[r.id].pendingLabel} testID={`setup-gates-recap-${r.id}-pill`} />
+              </View>
+            ))}
+          </Card>
+          {onCount < recap.length ? <Body style={{ color: colors.muted }}>You can turn on anything marked pending anytime from its Gate screen or Settings.</Body> : null}
+        </View>
+        <View style={[s.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
+          <Button testID="setup-gates-recap-done" label="Go to Apollo" onPress={goHome} icon={<ShieldCheck size={18} color={colors.onBrandPrimary} />} />
+        </View>
+      </View>
+    );
+  }
 
   if (steps === null || current === null) {
     return <View style={[s.root, { alignItems: "center", justifyContent: "center" }]} testID="setup-gates-loading"><ActivityIndicator color={colors.brand} /></View>;
