@@ -88,6 +88,7 @@ export default function RootLayout() {
                 <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }}>
                   <Stack.Screen name="index" />
                   <Stack.Screen name="onboarding" />
+                  <Stack.Screen name="setup-gates" />
                   <Stack.Screen name="(tabs)" />
                   <Stack.Screen name="settings/index" options={{ presentation: "modal" }} />
                   <Stack.Screen name="higgins/history" />

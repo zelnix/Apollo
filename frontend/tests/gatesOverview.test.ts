@@ -99,3 +99,20 @@ test("Account Gate is temporarily_unavailable when accountBreachConfigured is om
   assert.equal(account.statusLabel, "Status unavailable");
   assert.match(account.capability.automatic?.limitation ?? "", /breach lookup is unavailable/i);
 });
+
+test("reduced-coverage summary generalizes to a non-Site gate (Text permission) while Site runs", () => {
+  // Site running + Text awaiting notification permission → overall "Protection active — reduced coverage".
+  const siteRunning = {
+    ...base,
+    protection: protection({ operational: true, running: true, lastVerified: new Date().toISOString(), degradedReason: null, visibility: "list" as const }),
+    permissions: [{ id: "vpn_config" as const, title: "VPN", status: "granted" as const, canAskAgain: true, why: "Required" }],
+    capabilities: [{ id: "link_guard" as const, title: "Link Gate", status: "available" as const, detail: "Manual" }, { id: "site_guard" as const, title: "Site Gate", status: "active" as const, detail: "On" }],
+    messaging: { ...base.messaging, smsFiltering: "permission_required" as const },
+  };
+  const overview = buildGatesOverview(siteRunning);
+  const site = overview.gates.find((g) => g.id === "site")!;
+  const text = overview.gates.find((g) => g.id === "text")!;
+  assert.equal(site.capability.automatic?.state, "running");
+  assert.equal(text.capability.automatic?.state, "permission_needed");
+  assert.equal(overview.summary, "Protection active — reduced coverage");
+});

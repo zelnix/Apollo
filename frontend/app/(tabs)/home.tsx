@@ -13,7 +13,7 @@ import { HigginsFollowUp } from "@/src/components/HigginsFollowUp";
 import { ClipboardLinkBanner } from "@/src/components/ClipboardLinkBanner";
 import { PatrolItem } from "@/src/components/PatrolItem";
 import { ServiceBanner } from "@/src/components/ServiceBanner";
-import { SiteGateNudge } from "@/src/components/SiteGateNudge";
+import { GateNudge } from "@/src/components/GateNudge";
 import { Body, Button, Card, DevTag, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { buildScents } from "@/src/domain/threatScent";
 import { STATE_NAME } from "@/src/domain/types";
@@ -70,7 +70,7 @@ export default function Home() {
           </Card>
         ) : null}
         <ServiceBanner />
-        <SiteGateNudge />
+        <GateNudge />
         <HigginsFollowUp />
         <ClipboardLinkBanner />
         {protection?.operational ? (

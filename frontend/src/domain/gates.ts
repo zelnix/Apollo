@@ -150,10 +150,9 @@ export function buildGatesOverview(input: GatesInput): GatesOverview {
   const primary = gates.find((gate) => gate.tone === "attention") ?? null; const working = gates.filter((gate) => gate.capability.automatic?.state === "running").length;
   const attentionGates = gates.filter((gate) => gate.tone === "attention");
   const attentionNames = attentionGates.map((g) => g.title.replace(/ Gate$/, "")).join(" and ");
-  // Site Gate awaiting VPN permission while other Gates work is "reduced coverage", not "off" —
-  // Apollo stays active and surfaces a grant-later affordance instead of disabling as a whole.
-  const siteNeedsPermission = site.capability.automatic?.state === "permission_needed";
-  const summary = input.checking ? "Checking your protection" : (siteNeedsPermission && working > 0) ? "Protection active — reduced coverage" : attentionGates.length ? `${attentionNames} ${attentionGates.length === 1 ? "needs" : "need"} your attention` : `${working} ${working === 1 ? "Gate is" : "Gates are"} helping automatically`;
+  // Any Gate awaiting a permission/connection while others run is "reduced coverage", not "off" —
+  // Apollo stays active and surfaces an enable-later affordance instead of disabling as a whole.
+  const summary = input.checking ? "Checking your protection" : (attentionGates.length > 0 && working > 0) ? "Protection active — reduced coverage" : attentionGates.length ? `${attentionNames} ${attentionGates.length === 1 ? "needs" : "need"} your attention` : `${working} ${working === 1 ? "Gate is" : "Gates are"} helping automatically`;
   return { summary, higgins: primary ? `${primary.title} needs your attention. ${primary.currentHelp}` : "Apollo watches what this device allows. You can also ask it to check anything you are unsure about.", primary, gates };
 }
 

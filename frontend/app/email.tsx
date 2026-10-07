@@ -2,9 +2,7 @@
 // Read on-device first; links go to the Web gate, account alerts to Account Guard, attachments to Check This File.
 import { GateInvestigation } from "@/src/components/GateInvestigation";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
-import * as Linking from "expo-linking";
 import * as Crypto from "expo-crypto";
-import * as WebBrowser from "expo-web-browser";
 import Mail from "lucide-react-native/icons/mail";
 import X from "lucide-react-native/icons/x";
 import React, { useCallback, useEffect, useState } from "react";
@@ -23,6 +21,7 @@ import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { STATE_RANK } from "@/src/domain/stateMachine";
 import { patrolSafeSummary, type InvestigationResult } from "@/src/domain/investigation";
 import { redactUserSecrets } from "@/src/domain/privacy";
+import { connectGmailOAuth } from "@/src/domain/gmailConnect";
 import { issueContext } from "@/src/domain/higginsHandoff";
 import { runProtectionHealthCheck } from "@/src/protection/healthCoordinator";
 import { dispatchInvestigationAction } from "@/src/domain/investigationActions";
@@ -103,12 +102,10 @@ export default function CheckEmail() {
     if (!deviceId) return;
     setGmailBusy(true);
     try {
-      const redirect = Linking.createURL("/email");
-      const { authorization_url } = await apiGet<{ authorization_url: string }>(`/gmail/connect?device_id=${deviceId}&app_redirect=${encodeURIComponent(redirect)}`);
-      const res = await WebBrowser.openAuthSessionAsync(authorization_url, redirect);
-      if (res.type === "success" && res.url.includes("gmail=connected")) { setGmailConnected(true); setGmailMonitoring(false); void runProtectionHealthCheck("protection_change"); showToast("Gmail OAuth connected — monitoring stays off until you enable it.", "resting"); }
-      else if (res.type === "success" && res.url.includes("gmail=denied")) showToast("Gmail connection was cancelled.", "neutral");
-      else if (res.type !== "cancel" && res.type !== "dismiss") showToast("Couldn't connect Gmail right now.", "growling");
+      const result = await connectGmailOAuth(deviceId);
+      if (result === "connected") { setGmailConnected(true); setGmailMonitoring(false); void runProtectionHealthCheck("protection_change"); showToast("Gmail OAuth connected — monitoring stays off until you enable it.", "resting"); }
+      else if (result === "denied") showToast("Gmail connection was cancelled.", "neutral");
+      else if (result === "error") showToast("Couldn't connect Gmail right now.", "growling");
     } catch (e) { showToast(e instanceof Error ? e.message : "Couldn't connect Gmail right now.", "growling"); } finally { setGmailBusy(false); }
   };
 

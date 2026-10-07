@@ -846,3 +846,24 @@ Current position: waiting on step 1 input (Step 7 stderr for build aa24dd73-eab7
   Existing `decideSiteRecovery` auto-starts once consent lands; declined stays `ask_permission` (no crash).
 - `guard.tsx`: Gates summary title mirrors the reduced-coverage wording.
 - Tests: tests/gatesOverview.test.ts (+4 cases, 12/12 pass). Native-only flow — validate on an Android dev build.
+
+## Update — Graceful permission handling across all permission/connection Gates
+- New `src/domain/gatePermissions.ts`: shared copy/config (what/why/enableLabel/pendingLabel) + ~3-day
+  snooze keys for Site, Text, Call, Email; `gateAppliesToPlatform`.
+- New `src/domain/gmailConnect.ts`: extracted read-only Gmail OAuth (`connectGmailOAuth`), reused by
+  email.tsx and the setup walkthrough.
+- New `app/setup-gates.tsx`: after the privacy disclosure, Apollo walks through each applicable Gate
+  needing permission/connection one at a time (Enable / Not now), launches the system/OAuth flow,
+  verifies the REAL state on return (waitForForeground), and never blocks setup. Declines snooze ~3 days.
+  Registered in app/_layout.tsx; privacy-disclosure now routes here after completeSetup.
+- `completeSetup` (ApolloContext): no longer requests Android VPN inline (walkthrough owns it); records
+  intent and starts protection only on non-Android. Setup never fails on a missing permission.
+- `GateNudge` (generalizes old SiteGateNudge; SiteGateNudge.tsx now re-exports it): Home reminder for
+  ANY pending Gate (Site/Text/Call/Email), one at a time, respecting the per-gate ~3-day snooze.
+- gates.ts + guard.tsx: "Protection active — reduced coverage" now shows whenever ANY permission/
+  connection Gate is pending while others run (generalized from Site-only).
+- Truthful per-Gate states already existed (Text/Call permission_needed, Email setup_needed) with
+  enable-later actions; pendingLabel copy provides "Permission required" / "Not connected" wording.
+- Tests: tests/gatesOverview.test.ts 13/13 pass (added non-Site reduced-coverage case).
+- NATIVE-ONLY: VPN/notification/call-role flows can't run in Expo Go or the web preview (web fails
+  closed). Validate the walkthrough end-to-end on an Android dev build.

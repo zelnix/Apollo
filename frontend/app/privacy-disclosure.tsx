@@ -52,7 +52,7 @@ export default function PrivacyDisclosure() {
 
   const accept = async () => {
     setBusy(true); setError(null); setTechnicalDetail(null); setShowDetail(false);
-    try { await completeSetup(); router.replace("/(tabs)/home"); }
+    try { await completeSetup(); router.replace("/setup-gates"); }
     catch (e) {
       setError(SETUP_FAILURE_MESSAGE);
       setTechnicalDetail(e instanceof Error ? e.message : String(e));

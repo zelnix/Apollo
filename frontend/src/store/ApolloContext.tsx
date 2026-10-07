@@ -563,18 +563,12 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     if (!identity) { try { identity = await registerDeviceIdentity(API_BASE, deviceMeta()); } catch { identity = null; /* offline: retried on next launch */ } }
     if (identity) setDeviceId(identity.deviceId);
 
-    // Record the person's intent to run protection. This drives Site Gate's "permission required"
-    // presentation and the background auto-start once VPN consent lands — so declining consent now
-    // never disables Apollo as a whole.
+    // Record the person's intent to run protection. Site Gate's VPN consent (Android) and the other
+    // per-Gate permissions are now requested in the setup walkthrough (app/setup-gates.tsx) using a
+    // consistent Enable / Not now pattern — so setup never blocks on any single permission. On
+    // non-Android, protection starts here (content filter needs no system consent dialog).
     await storage.setItem(K.protection, true);
-
-    // Android: GuardDog's VpnService needs system VPN consent before startGuardDogProduction() can
-    // run (it throws IllegalStateException("VPN consent is not granted") otherwise). We request
-    // consent, let Android's system consent screen complete, and ONLY start the VPN service after a
-    // FRESH permission read confirms the grant. If consent is declined, setup STILL completes: every
-    // other Gate stays active and Site Gate shows "permission required" with a grant-later button.
-    const vpnGranted = Platform.OS === "android" ? await ensureAndroidVpnConsent() : true;
-    if (vpnGranted) await securityAdapter.startProtection();
+    if (Platform.OS !== "android") { try { await securityAdapter.startProtection(); } catch { /* reduced coverage */ } }
 
     await storage.setItem(K.setup, true);
     setSetupDone(true);

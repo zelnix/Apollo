@@ -68,8 +68,7 @@ export default function GuardScreen() {
   const active = health.gates.filter((gate) => gate.capability.automatic?.state === "running").length;
   const attentionGates = health.gates.filter((gate) => gate.tone === "attention");
   const attentionNames = attentionGates.map((g) => g.title.replace(/ Gate$/, "")).join(" and ");
-  const siteNeedsPermission = health.gates.some((g) => g.id === "site" && g.capability.automatic?.state === "permission_needed");
-  const reducedCoverage = siteNeedsPermission && active > 0;
+  const reducedCoverage = attentionGates.length > 0 && active > 0;
   const summaryTitle = reducedCoverage ? "Protection active — reduced coverage" : attentionGates.length ? `${attentionNames} ${attentionGates.length === 1 ? "needs" : "need"} your attention` : `${active} ${active === 1 ? "Gate is" : "Gates are"} helping automatically`;
   return <View style={s.root} testID="gates-screen">
     <View style={{ paddingTop: insets.top + spacing.md }}><RootScreenHeader title="Gates" testID="gates-header" /></View>
