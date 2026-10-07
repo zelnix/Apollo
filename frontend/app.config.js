@@ -131,7 +131,6 @@ module.exports = {
       "./plugins/withApolloCallGuard",
       "./plugins/withApolloTextGuard",
       "./plugins/withGuardDogEngine",
-      "./plugins/withGuardDogProductionTrust",
       "./plugins/withLiveCallerID",
       "expo-sharing",
       ["expo-camera", { cameraPermission: "Scan QR codes so Apollo can check where they lead", microphonePermission: false, recordAudioAndroid: false }],
@@ -174,7 +173,6 @@ module.exports = {
         projectId: EAS_PROJECT_ID,
       },
       guardDogProduction: {
-        manifestUrl: process.env.EXPO_PUBLIC_GUARDDOG_TRUST_MANIFEST_URL || "",
         ruleBundleUrl: process.env.EXPO_PUBLIC_GUARDDOG_RULE_BUNDLE_URL || "",
         controlledHost: process.env.EXPO_PUBLIC_GUARDDOG_CONTROLLED_HOST || "",
         controlledIpv4: process.env.EXPO_PUBLIC_GUARDDOG_CONTROLLED_IPV4 || "",

@@ -17,7 +17,7 @@ enum class SecurityEventType {
 enum class SecurityEventSource {
     @SerialName("android-vpn-enforcement") ANDROID_VPN_ENFORCEMENT,
     @SerialName("local-analysis") LOCAL_ANALYSIS,
-    @SerialName("rule-verifier") RULE_VERIFIER,
+    @SerialName("rule-validator") RULE_VALIDATOR,
     @SerialName("protection-lifecycle") PROTECTION_LIFECYCLE,
 }
 

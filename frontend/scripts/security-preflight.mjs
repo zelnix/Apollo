@@ -23,9 +23,8 @@ const RETIRED_SELECTORS = [
 ];
 const RETIRED_RUNTIME_MOCK = ["Mock", "Security", "Adapter"].join("");
 const RETIRED_SECURITY_MODE = ["EXPO", "PUBLIC", "SECURITY", "MODE"].join("_");
-const PRODUCTION_KEYS = ["APOLLO_GUARDDOG_TRUST_DOMAIN", "APOLLO_GUARDDOG_TRUST_PROFILE", "APOLLO_GUARDDOG_PRIMARY_ROOT_ID",
-  "APOLLO_GUARDDOG_PRIMARY_ROOT_PUBLIC_KEY_B64", "APOLLO_GUARDDOG_RECOVERY_ROOT_ID", "APOLLO_GUARDDOG_RECOVERY_ROOT_PUBLIC_KEY_B64",
-  "EXPO_PUBLIC_GUARDDOG_TRUST_MANIFEST_URL", "EXPO_PUBLIC_GUARDDOG_RULE_BUNDLE_URL", "EXPO_PUBLIC_GUARDDOG_CONTROLLED_HOST",
+const PRODUCTION_KEYS = [
+  "EXPO_PUBLIC_GUARDDOG_RULE_BUNDLE_URL", "EXPO_PUBLIC_GUARDDOG_CONTROLLED_HOST",
   "EXPO_PUBLIC_GUARDDOG_CONTROLLED_IPV4", "EXPO_PUBLIC_GUARDDOG_CONTROLLED_URL", "EXPO_PUBLIC_GUARDDOG_RULESET_ID"];
 const KEYS = ["EXPO_PUBLIC_APP_ENV", "EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS", "EXPO_PUBLIC_ANDROID_ENFORCEMENT_ENGINE", ...PRODUCTION_KEYS];
 
@@ -101,14 +100,6 @@ if (cfg.EXPO_PUBLIC_APP_ENV === "production" && engine !== "guarddog_production"
 if (engine === "guarddog_production" && cfg.EXPO_PUBLIC_APP_ENV !== "production") errors.push("GuardDog production authority requires a production app environment.");
 if (engine === "guarddog_production") {
   for (const key of PRODUCTION_KEYS) if (!cfg[key]) errors.push(`${key} is required for GuardDog production authority.`);
-  const primary = cfg.APOLLO_GUARDDOG_PRIMARY_ROOT_PUBLIC_KEY_B64; const recovery = cfg.APOLLO_GUARDDOG_RECOVERY_ROOT_PUBLIC_KEY_B64;
-  for (const [name, value] of [["primary", primary], ["recovery", recovery]]) {
-    if (value) { try { if (Buffer.from(value, "base64").length !== 32 || Buffer.from(value, "base64").toString("base64") !== value) errors.push(`${name} root public key must be canonical 32-byte base64.`); } catch { errors.push(`${name} root public key is invalid base64.`); } }
-  }
-  if (cfg.APOLLO_GUARDDOG_PRIMARY_ROOT_ID === cfg.APOLLO_GUARDDOG_RECOVERY_ROOT_ID) errors.push("Primary and recovery root IDs must be distinct.");
-  if (primary && recovery && primary === recovery) errors.push("Primary and recovery public roots must be independent.");
-  if (cfg.APOLLO_GUARDDOG_PRIMARY_ROOT_ID === "m1-acceptance" || cfg.APOLLO_GUARDDOG_RECOVERY_ROOT_ID === "m1-acceptance") errors.push("Acceptance test root IDs are forbidden in production.");
-  if (primary === "xWUz5JD/mRHiCg7axpaEQV+dJ6cllJV4UHWOA9YPh1A=" || recovery === "xWUz5JD/mRHiCg7axpaEQV+dJ6cllJV4UHWOA9YPh1A=") errors.push("Acceptance test public keys are forbidden in production.");
 }
 const packageConfig = require(path.join(root, "package.json"));
 const autolinking = resolvedAppConfig.autolinking ?? packageConfig.expo?.autolinking ?? {};

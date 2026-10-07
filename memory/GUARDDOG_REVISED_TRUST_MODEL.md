@@ -30,17 +30,19 @@ cryptographic signing keys for rule bundles.
 ## Revised trust model
 
 ### Authentication
-- Rules are delivered over **HTTPS** from Apollo's backend API.
-- TLS certificates are managed by the hosting/cloud provider (Cloudflare + origin cert).
+- Rules are delivered over **HTTPS** from Apollo's existing backend API.
+- TLS certificates are managed by the existing hosting provider.
 - No Apollo-managed private signing keys exist.
+- No new API-key system is introduced.
 - The app trusts the backend because:
   1. HTTPS ensures transport integrity and server authentication.
   2. The backend URL is baked into the signed APK/IPA at build time.
-  3. The API requires authentication (existing Apollo auth).
+  3. The API uses existing Apollo authentication.
 
 ### Rule delivery API
 - **Endpoint**: `GET /api/guarddog/rules`
-- **Authentication**: Bearer token (existing Apollo auth) or API key
+- **Authentication**: Existing Apollo auth only (no new API-key system)
+- **Endpoint**: `GET /api/guarddog/rules`
 - **Response schema**:
 ```json
 {

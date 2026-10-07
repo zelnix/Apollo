@@ -1,50 +1,40 @@
-"""GuardDog production trust endpoints.
-
-Serves the signed trust manifest, rule bundle, and controlled verification
-probe for the GuardDog DNS-VPN enforcement engine.
-"""
-
+"""GuardDog production rule delivery — HTTPS-authenticated, no signing keys."""
 import json
-import os
-from pathlib import Path
-
-from fastapi import APIRouter
+from datetime import datetime, timezone, timedelta
+from fastapi import APIRouter, HTTPException
 
 router = APIRouter(prefix="/api/guarddog", tags=["guarddog"])
 
-_ARTIFACTS_DIR = Path(__file__).resolve().parent.parent / "guarddog_artifacts"
+# ── Production rule bundle ────────────────────────────────────────────────
+# Delivered over authenticated HTTPS. TLS + baked-in URL provides authentication.
+# No Ed25519 signing keys — validation is schema + version + expiry on device.
+PRODUCTION_RULES = {
+    "schemaVersion": "2.0",
+    "rulesetId": "apollo-rules-v1",
+    "bundleVersion": 2,
+    "issuedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "expiresAt": (datetime.now(timezone.utc) + timedelta(days=365)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "payload": {
+        "rules": [
+            {
+                "ruleId": "prod-controlled-verify-v1",
+                "host": "apolloverify.harmonywellnessgroup.com.au",
+                "action": "block",
+                "matchType": "exact",
+                "category": "controlled-verification",
+            }
+        ]
+    },
+}
 
 
-def _load_artifact(name: str) -> dict | None:
-    path = _ARTIFACTS_DIR / name
-    if path.exists():
-        return json.loads(path.read_text())
-    return None
-
-
-@router.get("/trust-manifest")
-async def trust_manifest():
-    """Return the current signed trust manifest."""
-    artifact = _load_artifact("trust-manifest.json")
-    if artifact is None:
-        return {"error": "trust manifest not yet published"}
-    return artifact
-
-
-@router.get("/rule-bundle")
-async def rule_bundle():
-    """Return the current signed rule bundle."""
-    artifact = _load_artifact("rule-bundle.json")
-    if artifact is None:
-        return {"error": "rule bundle not yet published"}
-    return artifact
+@router.get("/rules")
+async def get_rules():
+    """Serve the current production rule bundle."""
+    return PRODUCTION_RULES
 
 
 @router.get("/controlled-verify")
 async def controlled_verify():
-    """Controlled verification endpoint.
-
-    When the GuardDog VPN is active, DNS for the controlled host resolves to the
-    controlled IPv4 via the tunnel.  The app requests this URL to confirm interception.
-    """
+    """Controlled verification endpoint (separate from rule delivery)."""
     return {"status": "ok", "source": "guarddog-controlled"}

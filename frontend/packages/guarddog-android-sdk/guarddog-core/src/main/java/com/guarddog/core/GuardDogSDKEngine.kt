@@ -10,9 +10,9 @@ import com.guarddog.core.net.UrlSanitizer
 import com.guarddog.core.protection.ProtectionEnforcementReporter
 import com.guarddog.core.protection.ProtectionRuntimeState
 import com.guarddog.core.protection.ProtectionRuntimeStateProvider
-import com.guarddog.core.rules.RuleBundleVerifier
-import com.guarddog.core.rules.SignedRuleBundle
-import com.guarddog.core.rules.VerificationResult
+import com.guarddog.core.rules.RuleBundleValidator
+import com.guarddog.core.rules.RuleBundle
+import com.guarddog.core.rules.ValidationResult
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
@@ -55,18 +55,18 @@ sealed class WebsiteGateAuthorization {
  * equals the currently authorized target (signed rule + verified resolution).
  */
 class GuardDogSDKEngine(
-    private val verifier: RuleBundleVerifier,
+    private val validator: RuleBundleValidator,
     private val runtimeState: ProtectionRuntimeStateProvider,
     private val clock: Clock,
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
 ) : ProtectionEnforcementReporter {
 
     private val listeners = CopyOnWriteArrayList<(SecurityEvent) -> Unit>()
-    @Volatile private var acceptedBundle: SignedRuleBundle? = null
+    @Volatile private var acceptedBundle: RuleBundle? = null
     @Volatile private var authorization: BlockAuthorization.Authorized? = null
 
     // --- Gate Guard M2 Website Gate state: strictly parallel to the two fields above, never merged. ---
-    @Volatile private var acceptedWebsiteGateBundle: SignedRuleBundle? = null
+    @Volatile private var acceptedWebsiteGateBundle: RuleBundle? = null
     private val websiteGateBindings = java.util.concurrent.ConcurrentHashMap<String, WebsiteGateBinding>()
 
     init {
@@ -78,7 +78,7 @@ class GuardDogSDKEngine(
         return { listeners.remove(listener) }
     }
 
-    fun acceptedBundle(): SignedRuleBundle? = acceptedBundle
+    fun acceptedBundle(): RuleBundle? = acceptedBundle
     fun currentAuthorization(): BlockAuthorization.Authorized? = authorization
     fun protectionState(): ProtectionRuntimeState = runtimeState.current()
 
@@ -86,27 +86,26 @@ class GuardDogSDKEngine(
      *  When the incoming bundle is byte-identical to the already-accepted one, the accept is idempotent:
      *  no authorization or state is cleared. This prevents a routine refresh of an unchanged bundle
      *  from disrupting live enforcement. */
-    fun acceptRuleBundle(rawJson: String): VerificationResult {
-        val result = verifier.verify(rawJson)
+    fun acceptRuleBundle(rawJson: String): ValidationResult {
+        val result = validator.validate(rawJson)
         when (result) {
-            is VerificationResult.Accepted -> {
+            is ValidationResult.Accepted -> {
                 val current = acceptedBundle
                 val unchanged = current != null
                     && current.rulesetId == result.bundle.rulesetId
                     && current.bundleVersion == result.bundle.bundleVersion
                 if (unchanged) {
-                    // Idempotent: bundle content is identical — preserve live authorization.
                     return result
                 }
                 acceptedBundle = result.bundle
                 authorization = null
                 emit(
-                    SecurityEventType.RULE_BUNDLE_ACCEPTED, SecurityEventSource.RULE_VERIFIER,
+                    SecurityEventType.RULE_BUNDLE_ACCEPTED, SecurityEventSource.RULE_VALIDATOR,
                     rulesetId = result.bundle.rulesetId, bundleVersion = result.bundle.bundleVersion,
                 )
             }
-            is VerificationResult.Rejected -> emit(
-                SecurityEventType.RULE_BUNDLE_REJECTED, SecurityEventSource.RULE_VERIFIER, reason = result.reason.name,
+            is ValidationResult.Rejected -> emit(
+                SecurityEventType.RULE_BUNDLE_REJECTED, SecurityEventSource.RULE_VALIDATOR, reason = result.reason.name,
             )
         }
         return result
@@ -136,33 +135,30 @@ class GuardDogSDKEngine(
     // the M1 methods above. A website-gate bundle can never satisfy authorizeControlledTarget or vice
     // versa -- they read from two entirely separate @Volatile bundle slots. ---
 
-    fun acceptedWebsiteGateBundle(): SignedRuleBundle? = acceptedWebsiteGateBundle
+    fun acceptedWebsiteGateBundle(): RuleBundle? = acceptedWebsiteGateBundle
 
-    /** Independent verification slot, parallel to [acceptRuleBundle]. Verifies through the same
-     * [RuleBundleVerifier] (signature/expiry/rollback checks are ruleset-agnostic); stored separately.
-     * When the incoming bundle is identical to the already-accepted one, the accept is idempotent:
-     * existing bindings are preserved. */
-    fun acceptWebsiteGateRuleBundle(rawJson: String): VerificationResult {
-        val result = verifier.verify(rawJson)
+    /** Validation slot for website gate rules, parallel to [acceptRuleBundle]. Validates through
+     * the same [RuleBundleValidator]; stored separately. Idempotent when bundle is unchanged. */
+    fun acceptWebsiteGateRuleBundle(rawJson: String): ValidationResult {
+        val result = validator.validate(rawJson)
         when (result) {
-            is VerificationResult.Accepted -> {
+            is ValidationResult.Accepted -> {
                 val current = acceptedWebsiteGateBundle
                 val unchanged = current != null
                     && current.rulesetId == result.bundle.rulesetId
                     && current.bundleVersion == result.bundle.bundleVersion
                 if (unchanged) {
-                    // Idempotent: bundle content is identical — preserve live website-gate bindings.
                     return result
                 }
                 acceptedWebsiteGateBundle = result.bundle
-                websiteGateBindings.clear() // a new bundle invalidates prior bindings' rule/version provenance
+                websiteGateBindings.clear()
                 emit(
-                    SecurityEventType.RULE_BUNDLE_ACCEPTED, SecurityEventSource.RULE_VERIFIER,
+                    SecurityEventType.RULE_BUNDLE_ACCEPTED, SecurityEventSource.RULE_VALIDATOR,
                     rulesetId = result.bundle.rulesetId, bundleVersion = result.bundle.bundleVersion,
                 )
             }
-            is VerificationResult.Rejected -> emit(
-                SecurityEventType.RULE_BUNDLE_REJECTED, SecurityEventSource.RULE_VERIFIER, reason = result.reason.name,
+            is ValidationResult.Rejected -> emit(
+                SecurityEventType.RULE_BUNDLE_REJECTED, SecurityEventSource.RULE_VALIDATOR, reason = result.reason.name,
             )
         }
         return result

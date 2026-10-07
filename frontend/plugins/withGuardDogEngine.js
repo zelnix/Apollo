@@ -38,7 +38,7 @@
 // expo-build-properties (a product-support decision — drops Android 7.x — approved 2026-06), not
 // by this plugin and not by touching certified GuardDog source.
 
-const { withSettingsGradle, withProjectBuildGradle, withDangerousMod } = require("@expo/config-plugins");
+const { withSettingsGradle, withProjectBuildGradle, withDangerousMod, withAndroidManifest } = require("@expo/config-plugins");
 const fs = require("fs");
 const path = require("path");
 
@@ -160,5 +160,11 @@ module.exports = function withGuardDogEngine(config) {
   config = withGuardDogSettingsGradle(config);
   config = withGuardDogRootBuildGradle(config);
   config = withBouncyCastleDedup(config);
+  // Preserve android:allowBackup="false" (previously set by withGuardDogProductionTrust).
+  config = withAndroidManifest(config, (mod) => {
+    const app = mod.modResults.manifest.application?.[0]?.$;
+    if (app) app["android:allowBackup"] = "false";
+    return mod;
+  });
   return config;
 };

@@ -17,7 +17,7 @@ export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapte
   private ensureConfigured(): Promise<void> {
     if (!this.configured) this.configured = (async () => {
       this.mod().configureGuardDogProduction(JSON.stringify(getGuardDogProductionConfig()));
-      try { await this.mod().refreshGuardDogProductionAuthority(); this.refreshedAt = Date.now(); }
+      try { await this.mod().refreshGuardDogProductionRules(); this.refreshedAt = Date.now(); }
       catch (refreshError) {
         const status = await this.json<ProductionStatus>(this.mod().getGuardDogProductionStatus());
         const now = Date.now(); const trustLive = !!status.trustExpiresAt && Date.parse(status.trustExpiresAt) > now;

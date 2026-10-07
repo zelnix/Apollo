@@ -27,9 +27,8 @@ export interface ApolloSecurityNativeModule {
   getGuardDogProductionCapabilities(): string;
   getGuardDogProductionStatus(): string;
   configureGuardDogProduction(configJson: string): string;
-  installGuardDogProductionTrustManifest(manifestJson: string): string;
   acceptGuardDogProductionRuleBundle(bundleJson: string): string;
-  refreshGuardDogProductionAuthority(): Promise<string>;
+  refreshGuardDogProductionRules(): Promise<string>;
   startGuardDogProduction(): Promise<string>;
   stopGuardDogProduction(): Promise<string>;
   analyzeGuardDogProductionUrl(url: string): string;

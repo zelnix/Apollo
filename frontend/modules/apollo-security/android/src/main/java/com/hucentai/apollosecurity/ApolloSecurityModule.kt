@@ -33,9 +33,8 @@ class ApolloSecurityModule : Module() {
     Function("getGuardDogProductionCapabilities") { guardDogProduction().capabilities() }
     Function("getGuardDogProductionStatus") { guardDogProduction().status() }
     Function("configureGuardDogProduction") { json: String -> guardDogProduction().configure(json) }
-    Function("installGuardDogProductionTrustManifest") { json: String -> guardDogProduction().installTrustManifest(json) }
     Function("acceptGuardDogProductionRuleBundle") { json: String -> guardDogProduction().acceptBundle(json) }
-    AsyncFunction("refreshGuardDogProductionAuthority") { guardDogProduction().refreshAuthority() }
+    AsyncFunction("refreshGuardDogProductionRules") { guardDogProduction().refreshRules() }
     AsyncFunction("startGuardDogProduction") { guardDogProduction().start() }
     AsyncFunction("stopGuardDogProduction") { guardDogProduction().stop() }
     Function("analyzeGuardDogProductionUrl") { url: String -> guardDogProduction().analyzeUrl(url) }
