@@ -1,5 +1,6 @@
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
+import CheckCircle2 from "lucide-react-native/icons/circle-check";
 import X from "lucide-react-native/icons/x";
 import React, { useEffect, useState } from "react";
 import { Platform, Pressable, ScrollView, Switch, Text, View } from "react-native";
@@ -61,7 +62,7 @@ export default function SettingsScreen() {
       {Platform.OS === "android" ? (
         <View><SectionTitle>Website protection (Site Gate)</SectionTitle>
           <Card style={{ gap: spacing.sm }} testID="settings-site-gate">
-            <View style={s.row}><Text style={s.label}>Site Gate</Text><Pill tone={siteRunning ? "resting" : canEnableSite ? "growling" : "unknown"} label={siteGate?.statusLabel ?? "Checking"} testID="settings-site-status" /></View>
+            <View style={s.row}><Text style={s.label}>Site Gate</Text><View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>{siteRunning ? <CheckCircle2 size={18} color={colors.resting} testID="settings-site-on-check" /> : null}<Pill tone={siteRunning ? "resting" : canEnableSite ? "growling" : "unknown"} label={siteGate?.statusLabel ?? "Checking"} testID="settings-site-status" /></View></View>
             <Body>Site Gate filters known dangerous websites using a local VPN. You can grant VPN permission anytime — your other protection keeps working whether or not this is on.</Body>
             {canEnableSite ? <Button testID="settings-site-enable" variant="secondary" label={enablingSite ? "Turning on…" : "Turn on Site Gate"} disabled={enablingSite} onPress={() => void grantSiteGate()} /> : null}
             {canEnableSite ? <Text style={s.mono} testID="settings-site-reminder">If you skip this, we&apos;ll remind you gently in a few days — you can turn it on here anytime.</Text> : null}
