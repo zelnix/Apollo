@@ -821,3 +821,13 @@ Current position: waiting on step 1 input (Step 7 stderr for build aa24dd73-eab7
 - Identity: base commit `dac83b072bba9a541dde431b78b8668659625e27`; closure source digest
   `e7ca068ff6a902d4d347760fb7b8dab259f3ea1d081875930590b66961d87c3e`; package remains `app.apollo.hwg`.
 - Detailed evidence: `docs/APOLLO_REVIEW_CLOSURE_RECORD.md`.
+
+## Update — Android VPN consent gate in completeSetup (ApolloContext.tsx)
+- `completeSetup` now scopes the VPN-consent flow to `Platform.OS === "android"`.
+- Flow: read `vpn_config` → if not granted, call `requestProtectionPermission("vpn_config")`
+  (→ native `requestGuardDogProductionProtectionPermission`); on `system_ui_opened` poll until
+  the user returns; on `launch_failed`/`unsupported` throw.
+- A FRESH `getProtectionPermissions()` check is the only gate permitting `startProtection()`
+  (→ native `startGuardDogProduction`). Setup/protection are NOT marked complete unless the
+  fresh check confirms `vpn_config === "granted"`.
+- Native-only: must be validated on an Android dev build (not Expo Go / web preview).
