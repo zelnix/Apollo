@@ -16,6 +16,8 @@ export interface NetworkInput {
   expectedName?: string;
   /** Did the user turn the active VPN on themselves? null = not sure. */
   vpnTrusted: boolean | null;
+  /** True when the active VPN is Apollo's own Site Gate protection (recognised, never flagged). */
+  apolloVpn?: boolean;
   /** A Wi‑Fi sign-in page appeared at this address (handed to Gate 3). */
   captiveUrl?: string;
   recentScentCategories?: EventCategory[];
@@ -47,6 +49,7 @@ export function analyseNetwork(input: NetworkInput): NetworkAnalysis {
   const trusted = !!ssid && input.trustedSsids.includes(ssid);
   const scent = new Set(input.recentScentCategories ?? []);
   const vpnOn = n?.vpnActive === true || n?.type === "vpn";
+  const apolloVpn = input.apolloVpn === true;
   const match = ssidMatches(ssid, input.expectedName);
   const technical = [`Connection: ${n ? (n.connected ? n.type : "offline") : "unknown"}`, ssid ? `Network name: ${ssid}` : "Network name: not revealed by the platform", wifi ? `Wi‑Fi security: ${n?.wifiSecurity}` : "", `Captive portal: ${n?.captivePortal === null || n?.captivePortal === undefined ? "unknown" : n.captivePortal ? "yes" : "no"}`, `VPN: ${vpnOn ? "active" : n?.vpnActive === null ? "unknown" : "off"}`, `Inspectable by this build: ${n?.inspectable ? "yes" : "no"}`,
     `Context: ${input.context}${trusted ? " (trusted network)" : ""}`, `Threat Scent: ${scent.size ? [...scent].join(", ") : "none"}`].filter(Boolean);
@@ -56,7 +59,8 @@ export function analyseNetwork(input: NetworkInput): NetworkAnalysis {
   // N05 — captive portal on a suspicious domain → Gate 3.
   if (n.captivePortal && input.captiveUrl?.trim()) return R("N05", "Wi‑Fi sign-in page to check", "growling", "This network's sign-in page deserves a look before you type anything into it.", ["Fake sign-in pages imitate hotels, airports and even Google or Microsoft logins.", "Venue Wi‑Fi never needs your email or bank password."], "Apollo will check the page's address. Enter only what the venue would reasonably ask.", "web");
   if (n.captivePortal) return R("N05", "Wi‑Fi wants you to sign in", "growling", "This network holds you behind a sign-in page. These pages are sometimes faked.", ["The platform reported a captive portal.", "Only enter what the venue would reasonably ask — never an email or bank password."], "Paste the sign-in page's address above and Apollo will check it.", "web");
-  // N09 / N10 — VPN.
+  // N09 / N10 / N11 — VPN. Apollo recognises its own Site Gate protection tunnel first and never flags it.
+  if (vpnOn && apolloVpn) return R("N11", "Apollo's own protection VPN", "resting", "This VPN is Apollo's own Site Gate protection — Apollo set it up, so there's nothing for you to check.", ["Apollo recognises its own protection tunnel.", "Your traffic is being filtered by Apollo, not an unknown app."], "Nothing to do.");
   if (vpnOn && input.vpnTrusted === true) return R("N10", "Your VPN is on", "resting", "A VPN you turned on yourself is protecting this connection. Nothing to do.", ["You chose it — that's the whole difference.", "Apollo stays quiet for VPNs you trust."], "Nothing to do.");
   if (vpnOn && (scent.has("app") || scent.has("device"))) return R("N09", "VPN switched on after an app or device change", "growling", "A VPN became active shortly after a suspicious app or device change. It can route everything you do through someone else.", ["A VPN you didn't set up can read or redirect your traffic.", "Apollo connected this to the earlier app/device event (Threat Scent)."], "Turn the VPN off (Settings → VPN) and check the app or profile that created it.", "app");
   if (vpnOn && input.vpnTrusted !== true) return R("N09", "A VPN is active", "ears_up", "A VPN is running. If you turned it on, all good — if not, find out what did.", ["VPNs are usually fine; unexpected ones aren't.", "Check Settings → VPN for the app or profile behind it."], "If you didn't set it up, turn it off and run Check My Device.", "app");

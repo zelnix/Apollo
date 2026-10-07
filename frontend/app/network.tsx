@@ -45,7 +45,7 @@ export default function CheckNetwork() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { ready, setupDone, network, capabilities, trustedSsids, trustNetwork, events, upsertEvent, deviceId, adapterLabel, verifyNow, refreshing } = useApollo();
+  const { ready, setupDone, network, capabilities, protection, trustedSsids, trustNetwork, events, upsertEvent, deviceId, adapterLabel, verifyNow, refreshing } = useApollo();
   const [context, setContext] = useState<NetworkContext>("unknown");
   const [expected, setExpected] = useState("");
   const [vpnTrusted, setVpnTrusted] = useState<boolean | null>(null);
@@ -72,7 +72,7 @@ export default function CheckNetwork() {
 
   const run = async (ctx: NetworkContext = context, existingId?: string | null) => {
 
-    void markCheckDone("network");    const a = analyseNetwork({ status: network, context: ctx, trustedSsids, expectedName: expected, vpnTrusted, captiveUrl, recentScentCategories: scentCats });
+    void markCheckDone("network");    const a = analyseNetwork({ status: network, context: ctx, trustedSsids, expectedName: expected, vpnTrusted, apolloVpn: protection?.running === true, captiveUrl, recentScentCategories: scentCats });
     let event: PatrolEvent | null = null;
     // Reuse the id from the current result when the person reclassifies, so changing the
     // network context updates the same Patrol entry instead of creating a new one each tap.

@@ -49,11 +49,21 @@ export interface DeviceSecurityChange {
   appName: string | null;
   recommendedAction: string;
   occurredAt: string;
+  /** Who caused the change. "apollo" = a change Apollo made for its own protection (not flagged). */
+  attributedTo?: "apollo" | "user_or_unknown";
 }
 export interface DeviceAssessmentContext {
   protection?: ApolloProtectionHealthInput | null;
   recentChanges?: DeviceSecurityChange[];
 }
+export const DEVICE_CHANGE_LABEL: Record<DeviceSecurityChange["eventType"], string> = {
+  app_install: "App installed",
+  permission_change: "Permission changed",
+  service_enabled: "Accessibility service enabled",
+  vpn_change: "VPN turned on or off",
+  profile_change: "Device-management profile changed",
+  app_network: "App network activity",
+};
 export interface DeviceProtectionHealth {
   status: "active" | "needs_attention" | "off" | "unavailable";
   title: string;
@@ -62,12 +72,16 @@ export interface DeviceProtectionHealth {
 
 const sameList = (a: string[] | null, b: string[] | null) => a === null || b === null || JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
 
-/** Compare two user-triggered snapshots. A difference is evidence of a change, never evidence of who caused it. */
-export function deriveDeviceSecurityChanges(previous: DeviceSignals | null, current: DeviceSignals, observedAt = new Date().toISOString()): DeviceSecurityChange[] {
+/** Compare two user-triggered snapshots. A difference is evidence of a change, never evidence of who caused it —
+ *  except a VPN that turned on while Apollo's own protection is active, which Apollo attributes to itself. */
+export function deriveDeviceSecurityChanges(previous: DeviceSignals | null, current: DeviceSignals, observedAt = new Date().toISOString(), apolloVpnActive = false): DeviceSecurityChange[] {
   if (!previous || previous.platform !== current.platform) return [];
   const changes: DeviceSecurityChange[] = [];
-  const add = (eventType: DeviceSecurityChange["eventType"], recommendedAction: string, appName: string | null = null) => changes.push({ eventType, status: "suspicious", confidence: "high", appName, recommendedAction, occurredAt: observedAt });
-  if (previous.vpnActive !== null && current.vpnActive !== null && previous.vpnActive !== current.vpnActive) add("vpn_change", "Open VPN settings and confirm whether you made this change.");
+  const add = (eventType: DeviceSecurityChange["eventType"], recommendedAction: string, appName: string | null = null) => changes.push({ eventType, status: "suspicious", confidence: "high", appName, recommendedAction, occurredAt: observedAt, attributedTo: "user_or_unknown" });
+  if (previous.vpnActive !== null && current.vpnActive !== null && previous.vpnActive !== current.vpnActive) {
+    const apolloOwned = current.vpnActive === true && apolloVpnActive;
+    changes.push({ eventType: "vpn_change", status: apolloOwned ? "low_risk" : "suspicious", confidence: "high", appName: null, occurredAt: observedAt, attributedTo: apolloOwned ? "apollo" : "user_or_unknown", recommendedAction: apolloOwned ? "Apollo turned on its own protection VPN. No action needed." : "Open VPN settings and confirm whether you made this change." });
+  }
   if (previous.managementProfile !== "unknown" && current.managementProfile !== "unknown" && previous.managementProfile !== current.managementProfile) add("profile_change", "Open device-management settings and confirm whether you added or removed this profile.");
   if (!sameList(previous.thirdPartyAccessibilityServices, current.thirdPartyAccessibilityServices)) {
     const added = (current.thirdPartyAccessibilityServices ?? []).filter((item) => !(previous.thirdPartyAccessibilityServices ?? []).includes(item));

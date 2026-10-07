@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { markCheckDone } from "@/src/store/checkCompletion";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
-import { assessDevice, deriveDeviceSecurityChanges, DEVICE_STATUS, EMPTY_SIGNALS, SELF_REPORT, type DeviceFinding, type DevicePlatform, type DeviceSecurityChange, type DeviceSignals, type SelfReport } from "@/src/domain/deviceAnalysis";
+import { assessDevice, deriveDeviceSecurityChanges, DEVICE_CHANGE_LABEL, DEVICE_STATUS, EMPTY_SIGNALS, SELF_REPORT, type DeviceFinding, type DevicePlatform, type DeviceSecurityChange, type DeviceSignals, type SelfReport } from "@/src/domain/deviceAnalysis";
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { AppDeviceSdk } from "@/src/security/appDeviceSdk";
 import { useApollo } from "@/src/store/ApolloContext";
@@ -25,6 +25,7 @@ import { issueContext } from "@/src/domain/higginsHandoff";
 
 const TARGET: Record<string, SettingsTarget> = { D01: "apps", D01b: "apps", D02: "security", D03: "security", D04: "vpn", D05: "accessibility", D06: "apps", D07: "apps", D08: "unknown_sources", D09: "overlay", D10: "notification_access", D11: "developer" };
 const DEVICE_SNAPSHOT_KEY = "apollo.device.signals.v1";
+const DEVICE_CHANGELOG_KEY = "apollo.device.changelog.v1";
 const SEVERITY_RANK: Record<DeviceFinding["severity"], number> = { high: 2, review: 1, info: 0 };
 interface DeviceSubmission { submissionId: string; result: ReturnType<typeof assessDevice>; observedAt: string; source: "device_check" | "user_report" }
 
@@ -40,6 +41,7 @@ const useStyles = makeStyles((c) => ({
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
   step: { flexDirection: "row", gap: spacing.sm },
   num: { fontFamily: fonts.displayBold, fontSize: 15, color: c.brandPrimary, width: 20 },
+  mono: { fontFamily: fonts.text, fontSize: 12, color: c.onSurfaceSecondary },
 }));
 
 export default function CheckDevice() {
@@ -55,6 +57,7 @@ export default function CheckDevice() {
   const [saving, setSaving] = useState(false);
   const [checking, setChecking] = useState(true);
   const [changes, setChanges] = useState<DeviceSecurityChange[]>([]);
+  const [changeLog, setChangeLog] = useState<DeviceSecurityChange[]>([]);
   const [settingsGuidance, setSettingsGuidance] = useState<string | null>(null);
   const [checkSequence, setCheckSequence] = useState(0);
   const refreshDevice = useCallback(async (notify = false) => {
@@ -62,17 +65,27 @@ export default function CheckDevice() {
     try {
       const [nextSignals, recent, previousRaw] = await Promise.all([AppDeviceSdk.getDeviceSecuritySignals(platform), AppDeviceSdk.getRecentAppSecurityEvents(), storage.getItem<string | null>(DEVICE_SNAPSHOT_KEY, null), verifyNow()]);
       const previous = previousRaw ? JSON.parse(previousRaw) as DeviceSignals : null;
-      const observedChanges = deriveDeviceSecurityChanges(previous, nextSignals);
+      const observedChanges = deriveDeviceSecurityChanges(previous, nextSignals, new Date().toISOString(), protection?.running === true);
       setSignals(nextSignals);
       setChanges([...recent, ...observedChanges].filter((item, index, all) => all.findIndex((candidate) => candidate.eventType === item.eventType && candidate.appName === item.appName) === index));
       await storage.setItem(DEVICE_SNAPSHOT_KEY, JSON.stringify(nextSignals));
+      // Dated log of security/privacy/protection setting changes. Apollo-caused changes keep their
+      // "apollo" attribution; everything else is "user_or_unknown". Newest first, capped at 50.
+      if (observedChanges.length) {
+        const priorRaw = await storage.getItem<string | null>(DEVICE_CHANGELOG_KEY, null);
+        const prior = priorRaw ? JSON.parse(priorRaw) as DeviceSecurityChange[] : [];
+        const merged = [...observedChanges, ...prior].slice(0, 50);
+        await storage.setItem(DEVICE_CHANGELOG_KEY, JSON.stringify(merged));
+        setChangeLog(merged);
+      }
       void markCheckDone("device");
       if (notify) showToast("Device Gate checked the signals this platform exposes.", "neutral");
     } catch {
       if (notify) showToast("Device Gate couldn't refresh every signal. The visible limits are listed below.", "growling");
     } finally { setChecking(false); setCheckSequence((value) => value + 1); }
-  }, [platform, showToast, verifyNow]);
+  }, [platform, showToast, verifyNow, protection?.running, storage]);
   useEffect(() => { void refreshDevice(false); }, [refreshDevice]);
+  useEffect(() => { void storage.getItem<string | null>(DEVICE_CHANGELOG_KEY, null).then((raw) => { if (raw) setChangeLog(JSON.parse(raw) as DeviceSecurityChange[]); }); }, [storage]);
   const context = useMemo(() => ({
     protection: protection ? { requested: protection.requested, operational: protection.operational, degradedReason: protection.degradedReason,
       permissionIssues: permissions.filter((permission) => permission.status === "denied" || permission.status === "blocked").map((permission) => permission.title), checkedAt: protection.checkedAt } : null,
@@ -120,6 +133,21 @@ export default function CheckDevice() {
           <Body>{meta.meaning}</Body>
         </Card>
         {settingsGuidance ? <Card testID="device-settings-guidance" style={{ gap: spacing.sm }}><SectionTitle>Settings steps</SectionTitle><Body>{settingsGuidance}</Body><Button testID="device-settings-guidance-close" variant="ghost" label="Hide instructions" onPress={() => setSettingsGuidance(null)} /></Card> : null}
+        {changeLog.length ? (
+          <Card testID="device-change-log" style={{ gap: spacing.sm }}>
+            <SectionTitle>Recent security setting changes</SectionTitle>
+            <Body>Changes Apollo has observed to security, privacy or protection settings. Changes Apollo made for its own protection are tagged “Apollo”.</Body>
+            {changeLog.slice(0, 8).map((change, i) => (
+              <View key={`${change.eventType}-${change.occurredAt}-${i}`} testID={`device-change-${i}`} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xs }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.why, { fontFamily: fonts.textSemibold }]}>{DEVICE_CHANGE_LABEL[change.eventType]}{change.appName ? `: ${change.appName}` : ""}</Text>
+                  <Text style={s.mono}>{new Date(change.occurredAt).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</Text>
+                </View>
+                <Pill tone={change.attributedTo === "apollo" ? "resting" : "growling"} label={change.attributedTo === "apollo" ? "Apollo" : "Review"} testID={`device-change-${i}-tag`} />
+              </View>
+            ))}
+          </Card>
+        ) : null}
 
         <Card testID="device-protection-health" style={{ gap: spacing.sm, borderColor: result.protectionHealth.status === "active" ? colors.resting : result.protectionHealth.status === "unavailable" ? colors.border : colors.growling }}>
           <View style={s.row}><SectionTitle>Apollo protection health</SectionTitle><Pill testID="device-protection-health-status" tone={result.protectionHealth.status === "active" ? "resting" : result.protectionHealth.status === "unavailable" ? "unknown" : "growling"} label={result.protectionHealth.status === "active" ? "Active" : result.protectionHealth.status === "off" ? "Off" : result.protectionHealth.status === "needs_attention" ? "Needs attention" : "Unavailable"} /></View>

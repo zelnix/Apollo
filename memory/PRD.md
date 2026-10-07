@@ -1064,3 +1064,25 @@ AND inbox (READ_SMS); same privacy rule for email. User accepts the Play-restric
 - Earlier same session: App Gate "pick from installed apps" (listInstalledApps, launcher <queries>).
 - STILL PENDING (older message): recognise Apollo's own VPN in Network Gate; recognise Apollo-caused device
   changes; dated security/privacy/protection setting-change log attributing Apollo-caused changes.
+
+## Next-steps batch (2026-06) — VPN recognition, Call Guard move, device change log, easy dismiss
+- Apollo's own VPN recognised (networkAnalysis.ts): new input apolloVpn; new scenario N11 "Apollo's own
+  protection VPN" (resting) takes priority over N09/N10 so the Network Gate never asks the user to confirm
+  Apollo's own Site Gate tunnel. network.tsx passes apolloVpn = protection.running === true. connection.ts
+  never flagged VPNs (no change). Test: gate8 N11 (34 pass).
+- Call Guard "Automatically check incoming numbers" MOVED from Settings → Call Gate (app/call.tsx): toggle +
+  disclosure card at top of the pre-result view, bound to storage apollo.call.auto_check. Removed the
+  Settings Call Guard section. Defaulted ON during onboarding: ApolloContext.completeSetup seeds
+  apollo.call.auto_check="true" when never set (so a later user choice is preserved).
+- Device security-settings change log + Apollo attribution:
+  - deviceAnalysis.ts: DeviceSecurityChange gains attributedTo ("apollo" | "user_or_unknown");
+    deriveDeviceSecurityChanges takes apolloVpnActive — a VPN that turns on while Apollo's protection is
+    running is attributed to "apollo" and downgraded to low_risk (not flagged). Added DEVICE_CHANGE_LABEL.
+  - app/device.tsx: persists a dated log (apollo.device.changelog.v1, newest-first, cap 50) and renders a
+    "Recent security setting changes" card with date-time + an "Apollo"/"Review" tag per entry. Passes
+    protection.running as apolloVpnActive.
+- Easy dismiss for flagged items (PatrolItem.tsx): flagged ("Needs you") list cards now show a one-tap
+  "Dismiss" that calls resolveEvent without opening the detail (detail already had Mark as handled/contained).
+- tsc + eslint clean. Suites: gate5/6/7/8, gatesOverview, phase2Patrol all pass.
+- Native-only pieces (call/SMS pickers, VPN/device signals) still require a production Android build to test;
+  web preview hard-gated. READ_CALL_LOG/READ_SMS are Play-restricted (user accepted).

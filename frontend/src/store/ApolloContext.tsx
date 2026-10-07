@@ -572,6 +572,10 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     // consistent Enable / Not now pattern — so setup never blocks on any single permission. On
     // non-Android, protection starts here (content filter needs no system consent dialog).
     await storage.setItem(K.protection, true);
+    // Call Guard: automatic incoming-number checks are turned ON during onboarding by default (the Call
+    // Gate shows the disclosure and lets the person turn it off anytime). Only seed when never set, so a
+    // later user choice is never overwritten.
+    if ((await storage.getItem("apollo.call.auto_check", null)) === null) await storage.setItem("apollo.call.auto_check", "true");
     if (Platform.OS !== "android") { try { await securityAdapter.startProtection(); } catch { /* reduced coverage */ } }
 
     await storage.setItem(K.setup, true);

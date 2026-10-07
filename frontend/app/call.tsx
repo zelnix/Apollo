@@ -5,8 +5,8 @@ import { GateInvestigation } from "@/src/components/GateInvestigation";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import PhoneOff from "lucide-react-native/icons/phone-off";
 import X from "lucide-react-native/icons/x";
-import React, { useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Pressable, Switch, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -47,7 +47,7 @@ export default function CheckCall() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { ready, setupDone, checkCall, resolveEvent, showToast } = useApollo();
+  const { ready, setupDone, checkCall, resolveEvent, showToast, storage } = useApollo();
   const [asks, setAsks] = useState<CallAsk[]>([]);
   const [claim, setClaim] = useState<CallClaim>("unknown");
   const params = useLocalSearchParams<{ number?: string }>();
@@ -59,6 +59,8 @@ export default function CheckCall() {
   const [verify, setVerify] = useState(false);
   const [callerPickerOpen, setCallerPickerOpen] = useState(false);
   const canPickPhone = PhonePickers.isSupported();
+  const [autoCheck, setAutoCheck] = useState(false);
+  useEffect(() => { void storage.getItem("apollo.call.auto_check", null).then((v: string | null) => setAutoCheck(v === "true")); }, [storage]);
 
   const toggle = (id: CallAsk) => setAsks((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : id === "nothing" ? ["nothing"] : [...cur.filter((x) => x !== "nothing"), id]));
   const run = async () => setResult(await checkCall({ asks, claim, number: number.trim() || undefined, transcript: transcript.trim() || undefined }));
@@ -76,6 +78,11 @@ export default function CheckCall() {
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="call-scroll">
         {!result ? (
           <>
+            <Card style={{ gap: spacing.sm }} testID="call-guard-auto">
+              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><Text style={[s.why, { flex: 1, fontFamily: fonts.textSemibold }]}>Automatically check incoming numbers</Text><Switch testID="call-auto-switch" value={autoCheck} onValueChange={(value) => { setAutoCheck(value); void storage.setItem("apollo.call.auto_check", value ? "true" : "false"); showToast(value ? "Call Guard on — Apollo will check incoming numbers." : "Call Guard off — you can still check numbers manually.", value ? "resting" : "neutral"); }} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View>
+              <Body>When on, Apollo checks incoming caller numbers against its reputation service after each call, so scam and fraud callers are flagged without opening Apollo.</Body>
+              <Body style={{ fontStyle: "italic" }}>Disclosure: this sends numbers that call you to Apollo&apos;s backend for a reputation check (via IPQualityScore). Numbers are cached briefly for repeat-call detection and are not shared with other users. You can turn it off anytime.</Body>
+            </Card>
             {canPickPhone ? (
               <Card style={{ gap: spacing.sm }} testID="call-number-picker">
                 <SectionTitle>Who called?</SectionTitle>

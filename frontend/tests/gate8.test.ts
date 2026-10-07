@@ -39,6 +39,13 @@ test("N09 VPN on after suspicious app install → growling + app handoff", () =>
 test("N10 / acceptance 5: trusted VPN the user turned on → resting", () => {
   const r = analyseNetwork(net({ status: wifi({ vpnActive: true }), vpnTrusted: true, context: "public" })); assert.equal(r.state, "resting"); assert.equal(r.scenario, "N10");
 });
+test("N11 Apollo's own protection VPN → resting, recognised, never asks to confirm (even post-scent)", () => {
+  const r = analyseNetwork(net({ status: wifi({ vpnActive: true }), apolloVpn: true, recentScentCategories: ["app"] }));
+  assert.equal(r.state, "resting"); assert.equal(r.scenario, "N11");
+  assert.match(r.title, /Apollo's own protection VPN/);
+  assert.equal(r.handoff, "none");
+});
+
 test("VPN on, not sure who started it → ears_up (not growl)", () => { assert.equal(analyseNetwork(net({ status: wifi({ vpnActive: true }) })).state, "ears_up"); });
 test("mobile data → resting; offline → resting N00", () => {
   assert.equal(analyseNetwork(net({ status: wifi({ type: "cellular", ssid: null, wifiSecurity: "n/a" }) })).state, "resting");
