@@ -68,7 +68,9 @@ export default function SetupGates() {
   const [recap, setRecap] = useState<{ id: GatePermId; on: boolean }[] | null>(null);
   const leaving = useRef(false);
 
-  const goHome = useCallback(() => { if (leaving.current) return; leaving.current = true; router.replace("/(tabs)/home"); }, [router]);
+  // After permissions/platform setup, onboarding proceeds to Higgins First Check (spec §4) BEFORE the
+  // normal all-clear experience — never straight to Home.
+  const goHome = useCallback(() => { if (leaving.current) return; leaving.current = true; router.replace("/first-check"); }, [router]);
 
   // Read a Gate's REAL on/pending state. Returns null when the Gate isn't applicable here
   // (unsupported platform, or Email not configured) so it's left out of setup and the recap.

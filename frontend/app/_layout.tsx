@@ -89,6 +89,7 @@ export default function RootLayout() {
                   <Stack.Screen name="index" />
                   <Stack.Screen name="onboarding" />
                   <Stack.Screen name="setup-gates" />
+                  <Stack.Screen name="first-check" />
                   <Stack.Screen name="(tabs)" />
                   <Stack.Screen name="settings/index" options={{ presentation: "modal" }} />
                   <Stack.Screen name="higgins/history" />
@@ -102,6 +103,7 @@ export default function RootLayout() {
                   <Stack.Screen name="file" options={{ presentation: "modal" }} />
                   <Stack.Screen name="app-check" options={{ presentation: "modal" }} />
                   <Stack.Screen name="device" options={{ presentation: "modal" }} />
+                  <Stack.Screen name="recheck" options={{ presentation: "modal" }} />
                   <Stack.Screen name="network" options={{ presentation: "modal" }} />
                   <Stack.Screen name="account" options={{ presentation: "modal" }} />
                   <Stack.Screen name="email" options={{ presentation: "modal" }} />

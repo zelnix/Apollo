@@ -1,3 +1,17 @@
+## Higgins First Check + Re-check (2026-06)
+
+- **Problem:** Apollo must never assume a newly installed device is clean. Added an onboarding malware/virus/compromise BASELINE assessment ("Higgins First Check") and a manual "Higgins Re-check" in the Check tab, per the owner's detailed spec. Point-in-time, capability-based, local-first — NOT an antivirus engine and NOT a background scanner.
+- **Architecture (all frontend):**
+  - `src/domain/firstCheck.ts` — pure, unit-tested engine. Per-check states PASS/INFORMATION/CAUTION/SUSPICIOUS/CONFIRMED_THREAT/NOT_AVAILABLE/ERROR; overall CLEAR/ATTENTION/HIGH_RISK/CONFIRMED_THREAT/LIMITED_CHECK/ERROR. Checks: apollo_integrity, device_integrity (root/jailbreak — NOT_AVAILABLE on current build, never upgraded to PASS), application_risk (Android signals only; iOS/web NOT_AVAILABLE), network_config (VPN/profile/cert), os_security (OS version = INFORMATION only). `deriveOverall` + `diffFirstCheck` + Higgins copy. **Heuristics alone can never produce CONFIRMED_THREAT** — only a deterministic `osReportedThreat`.
+  - `src/security/firstCheckSignals.ts` — collector reusing existing Diagnostic Core adapters (`AppDeviceSdk.getDeviceSecuritySignals`, `securityAdapter.getProtectionStatus`/`getDeviceProfileFacts`). No new native subsystem; nothing uploaded. Collection failure → honest ERROR report.
+  - `src/store/firstCheckStore.ts` — local baseline + history (cap 30), reuses `storage`.
+  - `src/components/FirstCheckResult.tsx` — shared result UI (checked / found / couldn't-check), embeds `GateInvestigation` for the AI/Higgins plain-English pass (owner chose on-device signals + AI summary).
+  - `app/first-check.tsx` — onboarding screen. Onboarding order is now setup-gates → `/first-check` (runs baseline, saves it) → `/(tabs)/home`. Never shows all-clear before First Check completes; a concern never blocks entry.
+  - `app/recheck.tsx` + Check It card ("Higgins Re-check") — manual re-run, diffs against previous baseline, auto-runs the AI pass, saves to history. Not duplicated in Gates.
+- **Also (P1):** "Trust this number" / "Trusted — tap to remove" button added to the Call Gate RESULT card (`app/call.tsx`), not just the picker overlay.
+- **Verification:** `tsc --noEmit` clean; ESLint clean on all touched files; `tests/firstCheck.test.ts` 9/9 (CLEAR/ATTENTION/HIGH_RISK/CONFIRMED_THREAT/LIMITED/ERROR + NOT_AVAILABLE-never-PASS + re-check diff); gate7/higginsChecks regressions 67/67; Android Metro bundle compiles (HTTP 200). Testing agent NOT used (project rule: not authorised without explicit owner approval; web preview is fail-closed for native). Device-side behaviour of native signals needs an EAS Android build to confirm.
+
+
 ## Expo preview startup crash correction (2026-10-02)
 
 - **Problem:** The boot heartbeat passed `locale` from `deviceMeta()`, but the frontend `device_register` privacy allow-list omitted that backend-supported field. Egress validation throws synchronously, before the previous `.catch()` existed, so startup emitted an unhandled `EgressViolation` that could be reported as a preview crash.

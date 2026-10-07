@@ -14,7 +14,7 @@ import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
 import { PhonePickerSheet } from "@/src/components/PhonePickerSheet";
 import { PhonePickers } from "@/src/security/phonePickers";
-import { getTrustedCallers, untrustCaller } from "@/src/domain/trustedCallers";
+import { getTrustedCallers, normalizeNumber, trustCaller, untrustCaller } from "@/src/domain/trustedCallers";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { CALL_ASKS, CALL_CLAIMS, type CallAnalysis, type CallAsk, type CallClaim } from "@/src/domain/callAnalysis";
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
@@ -141,6 +141,11 @@ export default function CheckCall() {
               {a.state === "barking" || a.state === "growling" ? <Button testID="call-hangup-verify" label="Show me how to verify safely" icon={<PhoneOff size={18} color={colors.onBrandPrimary} />} onPress={() => setVerify(true)} /> : <Button testID="call-verify" variant="secondary" label="Show me how to check the caller" onPress={() => setVerify(true)} />}
               <Button testID="call-why" variant="secondary" label="Tell me why" onPress={() => setWhy((w) => !w)} />
               {why ? <View style={{ gap: spacing.xs }}>{a.why.map((w, i) => <Text key={i} style={s.why} testID={`call-why-${i}`}>• {w}</Text>)}<Text style={s.small}>Based on: {a.basis.join(" · ")}</Text></View> : null}
+              {number.trim() ? (trustedList.includes(normalizeNumber(number)) ? (
+                <Button testID="call-untrust-result" variant="ghost" label="Trusted — tap to remove" onPress={() => { void untrustCaller(number).then(reloadTrusted); showToast("Removed from trusted numbers.", "neutral"); }} />
+              ) : (
+                <Button testID="call-trust-result" variant="secondary" label="Trust this number" onPress={() => { void trustCaller(number).then(reloadTrusted); showToast("Added to trusted numbers — Apollo will stay quiet for it and won't auto-check it.", "resting"); }} />
+              )) : null}
             </Card>
             <View>
               <SectionTitle>Already did something?</SectionTitle>
