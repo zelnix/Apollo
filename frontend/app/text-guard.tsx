@@ -161,11 +161,11 @@ export default function TextGuard() {
                 <Pill tone="neutral" label={a.scenarioTitle} />
               </View>
               <Text style={s.stateLabel}>{STATE_LABEL[a.state]}</Text>
-              <Text style={s.verdict} testID="textguard-verdict">{result.explanation?.summary ?? a.verdict}</Text>
+              <Text style={s.verdict} testID="textguard-verdict" selectable>{result.explanation?.summary ?? a.verdict}</Text>
               <SectionTitle>Why?</SectionTitle>
-              {(result.explanation?.why?.length ? result.explanation.why : a.why).map((w, i) => <Text key={i} style={s.why}>• {w}</Text>)}
+              {(result.explanation?.why?.length ? result.explanation.why : a.why).map((w, i) => <Text key={i} style={s.why} selectable>• {w}</Text>)}
               <SectionTitle>Recommendation</SectionTitle>
-              <Text style={s.why} testID="textguard-recommendation">{result.explanation?.recommendation ?? a.recommendation}</Text>
+              <Text style={s.why} testID="textguard-recommendation" selectable>{result.explanation?.recommendation ?? a.recommendation}</Text>
               {a.signalLabels.length ? <View style={s.chips}>{a.signalLabels.map((l) => <Pill key={l} tone="unknown" label={l} />)}</View> : null}
             </Card> : null}
 

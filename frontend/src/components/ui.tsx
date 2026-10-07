@@ -129,9 +129,9 @@ export function ScreenHeader({ title, right, testID }: { title: string; right?: 
   );
 }
 
-export function Body({ children, style, testID, numberOfLines }: { children: React.ReactNode; style?: StyleProp<any>; testID?: string; numberOfLines?: number }) {
+export function Body({ children, style, testID, numberOfLines, selectable = true }: { children: React.ReactNode; style?: StyleProp<any>; testID?: string; numberOfLines?: number; selectable?: boolean }) {
   const s = useStyles();
-  return <Text testID={testID} numberOfLines={numberOfLines} style={[s.body, style]}>{children}</Text>;
+  return <Text testID={testID} numberOfLines={numberOfLines} selectable={selectable} style={[s.body, style]}>{children}</Text>;
 }
 
 type BtnVariant = "primary" | "secondary" | "ghost" | "danger" | "warning";

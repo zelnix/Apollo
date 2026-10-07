@@ -64,7 +64,7 @@ export default function CheckEmail() {
   const [gmailConnected, setGmailConnected] = useState<boolean | null>(null);
   const [gmailConfigured, setGmailConfigured] = useState(true);
   const [gmailMonitoring, setGmailMonitoring] = useState(false);
-  const [gmailAccounts, setGmailAccounts] = useState<{ email: string; monitoring_enabled?: boolean }[]>([]);
+  const [gmailAccounts, setGmailAccounts] = useState<{ email: string; monitoring_enabled?: boolean; monitor_state?: string; monitor_last_success_at?: string | null }[]>([]);
   const [gmailBusy, setGmailBusy] = useState(false);
   const [scanBusy, setScanBusy] = useState(false);
   const [gmailStatusError, setGmailStatusError] = useState<string | null>(null);
@@ -81,7 +81,7 @@ export default function CheckEmail() {
         timer = setTimeout(() => reject(new Error("Gmail status took too long to answer.")), GMAIL_STATUS_UI_TIMEOUT_MS);
       });
       const response = await Promise.race([
-        apiGet<{ connected: boolean; configured: boolean; monitoring_enabled: boolean; accounts?: { email: string; monitoring_enabled: boolean }[] }>(`/gmail/status?device_id=${deviceId}`),
+        apiGet<{ connected: boolean; configured: boolean; monitoring_enabled: boolean; accounts?: { email: string; monitoring_enabled: boolean; monitor_state?: string; monitor_last_success_at?: string | null }[] }>(`/gmail/status?device_id=${deviceId}`),
         timeout,
       ]);
       setGmailConnected(response.connected);
@@ -191,12 +191,19 @@ export default function CheckEmail() {
                 ) : gmailConnected ? (
                   <>
                     <View style={s.chips}><Pill tone="resting" label={`${gmailAccounts.length || 1} Gmail ${gmailAccounts.length === 1 ? "account" : "accounts"} connected — read-only`} testID="email-gmail-connected" /></View>
-                    {gmailAccounts.map((acct) => (
-                      <View key={acct.email} style={s.row} testID={`email-gmail-account-${acct.email}`}>
-                        <Body>{acct.email}</Body>
-                        <Button testID={`email-gmail-disconnect-${acct.email}`} variant="ghost" label="Disconnect" onPress={() => void disconnectGmail(acct.email)} disabled={scanBusy || gmailBusy} />
-                      </View>
-                    ))}
+                    {gmailAccounts.map((acct) => {
+                      const tone = acct.monitor_state === "ready" ? "resting" : acct.monitor_state === "needs_attention" ? "growling" : acct.monitor_state === "checking" ? "sniffing" : "unknown";
+                      const label = acct.monitor_state === "ready" ? "Monitoring" : acct.monitor_state === "needs_attention" ? "Needs attention" : acct.monitor_state === "checking" ? "Checking…" : acct.monitoring_enabled ? "Monitoring" : "Connected";
+                      return (
+                        <View key={acct.email} style={{ gap: 4 }} testID={`email-gmail-account-${acct.email}`}>
+                          <View style={s.row}>
+                            <Body>{acct.email}</Body>
+                            <Button testID={`email-gmail-disconnect-${acct.email}`} variant="ghost" label="Disconnect" onPress={() => void disconnectGmail(acct.email)} disabled={scanBusy || gmailBusy} />
+                          </View>
+                          <View style={s.chips}><Pill tone={tone} label={label} testID={`email-gmail-account-state-${acct.email}`} />{acct.monitor_last_success_at ? <Body style={{ fontSize: 12 }}>Last checked {new Date(acct.monitor_last_success_at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</Body> : null}</View>
+                        </View>
+                      );
+                    })}
                     <Button testID="email-gmail-scan" label={scanBusy ? "Assessing recent Gmail…" : "Assess recent Gmail (all accounts)"} icon={scanBusy ? <ActivityIndicator color={colors.onBrandPrimary} /> : undefined} onPress={() => void scanInbox()} disabled={scanBusy || gmailBusy} />
                     <Button testID="email-gmail-monitoring" variant="secondary" label={gmailMonitoring ? "Stop ongoing Gmail monitoring" : "Enable ongoing Gmail monitoring"} onPress={() => void toggleGmailMonitoring()} disabled={scanBusy || gmailBusy} />
                     <Body testID="email-gmail-monitoring-status">{gmailMonitoring ? "Monitoring requested for every connected account. Gates shows Active only after a fresh successful monitor check." : "Ongoing monitoring is off."}</Body>

@@ -1,0 +1,30 @@
+{
+  "summary": "Backend-only validation of Gmail multi-account per-device feature at the HTTP layer. Registered a real device via /api/devices/register, seeded two gmail_connections rows (same device_id, different emails, refresh_token_enc='' so disconnect never calls Google), and exercised every endpoint under the device bearer gate. All 11 tests passed. Verified: (a) GET /api/gmail/status returns connected/configured/accounts[] with per-account {email, monitoring_enabled, monitor_state in {disconnected|off|checking|needs_attention|ready}} plus the back-compat top-level fields; (b) two accounts for the same device both persist and both surface in /status.accounts; (c) POST /api/gmail/monitoring is device-wide — enabling flips monitoring_enabled=true on BOTH rows (update_many) and disabling flips both back; 404 is returned when no connections exist; (d) DELETE /api/gmail/connection?device_id=...&email=<one> removes only that account (returns 204), DELETE without email removes all accounts for the device (returns 204), and the delete is idempotent on an empty device; (e) the compound unique index on (device_id, email) exists and the legacy device_id_1 single-field unique index is no longer present; (f) regression — GET /api/health still returns 200 with schemaVersion=1, status='ok', service='apollo-v1', checkedAt. All seeded TEST_* rows were cleaned up (verified 0 remaining).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_gmail_multi_account.py",
+    "/app/test_reports/pytest/pytest_iter78_gmail_multi.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routers/gmail.py:_account_state — monitor_state ordering means a row with monitoring_enabled=False always maps to 'off' even if monitor_last_error_at is set; that matches the request spec but worth remembering when the UI needs to show stale-error info while monitoring is paused.",
+    "services/gmail.py:save_connection sets monitoring_enabled=True on $setOnInsert, so a newly connected account starts monitored by default. Device-wide POST /gmail/monitoring then overrides across all rows — correct.",
+    "server.py gmail index migration drops device_id_1 only if its key != [(device_id,1),(email,1)]; condition is slightly awkward (uses `and not ... == ...`) but functionally correct and already migrated on this preview."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "N/A (skipped per request)"},
+  "seed_data_creation": "Per-test seeding of two gmail_connections docs with device_id=<registered>, emails TEST_apollo_multi_a@example.com and TEST_apollo_multi_b@example.com, refresh_token_enc=''. autouse fixture clears before/after each test. Final sweep confirmed 0 TEST_apollo_multi_* rows remain. Registered test device was left in db.devices (anonymous, token not persisted elsewhere) — matches existing test pattern.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Use test_gmail_multi_account.py as the regression suite for Gmail multi-account changes. It requires MONGO_URL + DB_NAME in backend/.env and bearer-authenticates via /api/devices/register. Google OAuth consent remains out of automation scope (project in Testing mode). Note: the older tests/test_gate_gmail.py does NOT send a bearer token and will fail against the current device-auth gate — this new file is the authoritative one.",
+  "rca_of_issue": "N/A — no bugs reproduced. All five requested behaviours (status shape, multi-row persistence, device-wide monitoring toggle, single vs all-account disconnect, /health regression) pass end-to-end through the public preview URL."
+}
