@@ -9,7 +9,6 @@ import { RootScreenHeader } from "@/src/components/RootScreenHeader";
 import { gateTone } from "@/src/domain/gates";
 import type { UserAction } from "@/src/domain/userActions";
 import { userActionRoute } from "@/src/domain/userActions";
-import { requestSiteProtectionRecovery } from "@/src/protection/healthCoordinator";
 import { useProtectionHealth } from "@/src/protection/healthStore";
 import type { GateHealthRecord } from "@/src/protection/healthTypes";
 import { useApollo } from "@/src/store/ApolloContext";
@@ -31,22 +30,31 @@ const useStyles = makeStyles((c) => ({
 function HealthCard({ record }: { record: GateHealthRecord }) {
   const s = useStyles();
   const router = useRouter();
-  const { showToast } = useApollo();
+  const { showToast, enableSiteProtection } = useApollo();
+  const [enablingSite, setEnablingSite] = React.useState(false);
   const act = async (action: UserAction) => {
     if (action.id === "restore_site") {
-      const attempt = await requestSiteProtectionRecovery();
-      showToast(attempt.status === "failed" ? "Android could not open the approval screen." : "Apollo will check the result when you return.", attempt.status === "failed" ? "growling" : "neutral");
+      // Same instant-flip path as Settings: wait for VPN consent to land, start Site Gate, then
+      // refresh so this card updates to "Protection on" right away — no app reopen.
+      setEnablingSite(true);
+      try {
+        const granted = await enableSiteProtection();
+        showToast(granted ? "Site Gate is on." : "Site Gate needs VPN permission. Your other protection stays active.", granted ? "resting" : "growling");
+      } catch {
+        showToast("Android could not open the VPN permission screen. Try again shortly.", "growling");
+      } finally { setEnablingSite(false); }
       return;
     }
     const route = userActionRoute(action.id);
     if (route) router.push(route as never);
   };
+  const isRestoreSite = record.primaryAction?.id === "restore_site";
   return <Card testID={`gate-health-${record.id}`} style={s.card}>
     <View style={s.row}><Text testID={`gate-health-${record.id}-title`} style={s.name}>{record.title}</Text><Pill testID={`gate-health-${record.id}-state`} tone={gateTone(record.tone)} label={record.statusLabel} /></View>
     <View><Text style={s.question}>What this Gate helps with</Text><Body testID={`gate-health-${record.id}-purpose`}>{record.purpose}</Body></View>
     <View><Text style={s.question}>What Apollo is doing now</Text><Body testID={`gate-health-${record.id}-current`}>{record.currentHelp}</Body></View>
     {record.tone === "attention" && record.capability.automatic?.limitation ? <View style={s.attention} testID={`gate-health-${record.id}-attention`}><Text style={s.question}>Needs your attention</Text><Body>{record.capability.automatic.limitation}</Body></View> : null}
-    {record.primaryAction ? <Button testID={`gate-health-${record.id}-action`} variant={record.tone === "attention" ? "primary" : "secondary"} label={record.primaryAction.label} onPress={() => void act(record.primaryAction!)} /> : null}
+    {record.primaryAction ? <Button testID={`gate-health-${record.id}-action`} variant={record.tone === "attention" ? "primary" : "secondary"} label={isRestoreSite && enablingSite ? "Turning on…" : record.primaryAction.label} disabled={isRestoreSite && enablingSite} onPress={() => void act(record.primaryAction!)} /> : null}
   </Card>;
 }
 
