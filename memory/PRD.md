@@ -958,3 +958,18 @@ Current position: waiting on step 1 input (Step 7 stderr for build aa24dd73-eab7
   Gate's VPN and is disclosed, never claimed otherwise.
 - Tests: tests/gatesOverview.test.ts +3 cases (16/16 pass). tsc + eslint clean on all three files.
 - Native-only screen; verify on the user's Android production build (web preview is hard-gated).
+
+## Bug fix — Account Gate wrongly showed "Status unavailable" (2026-06)
+- Report: Account Gate card read "Status unavailable" / "Breach lookup is currently unavailable" even
+  though its core "Check an account alert" action works fully.
+- Root cause: gates.ts set accountAuto.state = "temporarily_unavailable" whenever
+  accountBreachConfigured !== true (backend /account/status → breach_lookup_configured = bool(HIBP_API_KEY),
+  and HIBP_API_KEY is unset). presentation() maps temporarily_unavailable → "Status unavailable" (tone
+  unavailable), making a working, on-demand gate look broken.
+- Fix (gates.ts): the optional live breach-list lookup (HIBP) no longer gates the whole Account Gate.
+  When configured → event_driven "running" ("Watching"). When NOT configured → automatic = undefined so it
+  falls through to onDemand "ready" → "Ready when you need it" (neutral), with currentHelp: "You can check a
+  login, breach or recovery alert anytime. Live breach-list lookup isn't set up, but alert analysis still works."
+- Tests: updated the two Account-Gate cases in tests/gatesOverview.test.ts to assert "Ready when you need it"
+  (16/16 pass). eslint + tsc clean.
+- To actually enable the live breach lookup, the user must provide a HIBP_API_KEY in backend/.env.

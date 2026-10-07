@@ -87,17 +87,17 @@ test("Account Gate is Watching when accountBreachConfigured is true", () => {
   assert.match(account.capability.automatic?.limitation ?? "", /responds when triggered/i);
 });
 
-test("Account Gate is temporarily_unavailable when accountBreachConfigured is false", () => {
+test("Account Gate stays Ready when breach lookup is not configured (core alert checks still work)", () => {
   const account = buildGatesOverview({ ...base, accountBreachConfigured: false }).gates.find((gate) => gate.id === "account")!;
-  assert.equal(account.capability.automatic?.state, "temporarily_unavailable");
-  assert.equal(account.statusLabel, "Status unavailable");
+  assert.equal(account.capability.automatic, undefined);
+  assert.equal(account.statusLabel, "Ready when you need it");
+  assert.equal(account.capability.onDemand?.state, "ready");
 });
 
-test("Account Gate is temporarily_unavailable when accountBreachConfigured is omitted (status fetch failure)", () => {
+test("Account Gate stays Ready when /account/status fetch fails (configured omitted)", () => {
   const account = buildGatesOverview(base).gates.find((gate) => gate.id === "account")!;
-  assert.equal(account.capability.automatic?.state, "temporarily_unavailable");
-  assert.equal(account.statusLabel, "Status unavailable");
-  assert.match(account.capability.automatic?.limitation ?? "", /breach lookup is unavailable/i);
+  assert.equal(account.statusLabel, "Ready when you need it");
+  assert.match(account.currentHelp, /breach-list lookup isn.t set up/i);
 });
 
 test("reduced-coverage summary generalizes to a non-Site gate (Text permission) while Site runs", () => {

@@ -133,11 +133,15 @@ export function buildGatesOverview(input: GatesInput): GatesOverview {
   // background monitoring loop or enforcement mechanism should report "running".
   const linkAuto: GatePresentation["capability"]["automatic"] = { kind: "event_driven", state: input.online === false ? "temporarily_unavailable" : "running", lastObservedAt: observedNow, limitation: input.online === false ? "Online reputation and public research are unavailable." : "Link checking responds when triggered — no continuous background monitoring." };
   const link = simple("link", input.online === false ? "On-device link checks remain ready; online checks are unavailable." : "Apollo checks links when triggered by a Gate or when you submit one.", "check_link", "Check a link", linkAuto);
-  // Gate 8 — Account Breach. Event-driven (responds when triggered). "running" only when the
-  // backend has confirmed breach_lookup_configured === true. Failure to fetch /account/status
-  // means breachLookupConfigured defaults to false in healthCoordinator → "temporarily_unavailable".
-  const accountAuto: GatePresentation["capability"]["automatic"] = { kind: "event_driven", state: input.accountBreachConfigured === true ? "running" : "temporarily_unavailable", lastObservedAt: observedNow, limitation: input.accountBreachConfigured === true ? "Account checking responds when triggered — no continuous background monitoring." : "Live breach lookup is unavailable; alert checks still work." };
-  const account = simple("account", input.accountBreachConfigured === true ? "Apollo is ready for account alerts from supported messages, email and checks you start." : "Breach lookup is currently unavailable. Alert checks still work.", "check_account", "Check an account alert", accountAuto);
+  // Gate 8 — Account alerts. Event-driven (responds when triggered). The core check ("Check an
+  // account alert" — analysing a login/MFA/reset/breach warning) always works and needs no backend
+  // key, so the gate is never "unavailable". The optional live breach-list lookup (HIBP) is an extra:
+  // when the backend confirms breach_lookup_configured it is reported as "Watching"; when it is not
+  // configured the gate simply reads "Ready when you need it" with the lookup noted as off.
+  const accountAuto: GatePresentation["capability"]["automatic"] | undefined = input.accountBreachConfigured === true
+    ? { kind: "event_driven", state: "running", lastObservedAt: observedNow, limitation: "Account checking responds when triggered — no continuous background monitoring." }
+    : undefined;
+  const account = simple("account", input.accountBreachConfigured === true ? "Apollo is ready for account alerts from supported messages, email and checks you start." : "You can check a login, breach or recovery alert anytime. Live breach-list lookup isn’t set up, but alert analysis still works.", "check_account", "Check an account alert", accountAuto);
   const fileCap = cap(input.capabilities, "file_guard"); const fileAuto = fileCap ? { kind: "event_driven" as const, state: fileCap.status === "active" ? "running" as const : fileCap.status === "permission_required" ? "permission_needed" as const : "unsupported" as const, lastObservedAt: observedNow } : undefined;
   const appCap = cap(input.capabilities, "app_guard"); const appAuto = appCap ? { kind: "event_driven" as const, state: appCap.status === "active" ? "running" as const : appCap.status === "permission_required" ? "permission_needed" as const : "unsupported" as const, lastObservedAt: observedNow } : undefined;
   const deviceCap = cap(input.capabilities, "device_guard"); const deviceAuto = deviceCap ? { kind: "monitoring" as const, state: deviceCap.status === "active" ? "running" as const : deviceCap.status === "permission_required" ? "permission_needed" as const : "unsupported" as const, lastObservedAt: observedNow } : undefined;
