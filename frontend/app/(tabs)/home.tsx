@@ -14,6 +14,7 @@ import { ClipboardLinkBanner } from "@/src/components/ClipboardLinkBanner";
 import { PatrolItem } from "@/src/components/PatrolItem";
 import { ServiceBanner } from "@/src/components/ServiceBanner";
 import { GateNudge } from "@/src/components/GateNudge";
+import { CoverageCard } from "@/src/components/CoverageCard";
 import { Body, Button, Card, DevTag, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { buildScents } from "@/src/domain/threatScent";
 import { STATE_NAME } from "@/src/domain/types";
@@ -73,6 +74,7 @@ export default function Home() {
         <GateNudge />
         <HigginsFollowUp />
         <ClipboardLinkBanner />
+        <CoverageCard />
         {protection?.operational ? (
           <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }} testID="home-background-card">
             <BatteryCharging size={20} color={colors.resting} />
