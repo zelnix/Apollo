@@ -16,8 +16,8 @@ object ProtectionNotificationFactory {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (manager.getNotificationChannel(CHANNEL_ID) == null) {
             manager.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "Guard Dog protection", NotificationManager.IMPORTANCE_LOW).apply {
-                    description = "Shows while Guard Dog selective protection is active"
+                NotificationChannel(CHANNEL_ID, "Apollo protection", NotificationManager.IMPORTANCE_LOW).apply {
+                    description = "Shows while Apollo selective protection is active"
                     setShowBadge(false)
                 },
             )
@@ -34,10 +34,10 @@ object ProtectionNotificationFactory {
             is VpnLifecycleState.Running -> "Selective protection active (${state.routeCidr})"
             VpnLifecycleState.Starting -> "Starting selective protection…"
             is VpnLifecycleState.Degraded -> "Protection degraded: ${state.reason}"
-            else -> "Guard Dog protection"
+            else -> "Apollo protection"
         }
         return Notification.Builder(context, CHANNEL_ID)
-            .setContentTitle("Guard Dog")
+            .setContentTitle("Apollo")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setOngoing(true)

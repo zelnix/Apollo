@@ -14,7 +14,7 @@ data class VpnConfig(
     val tunAddress: String = "10.255.255.2",
     val tunPrefix: Int = 32,
     val mtu: Int = 1500,
-    val sessionName: String = "Guard Dog M1 selective block",
+    val sessionName: String = "Apollo M1 selective block",
 ) {
     init {
         require(IPV4.matches(controlledIpv4)) { "controlledIpv4 must be a dotted IPv4 literal" }
