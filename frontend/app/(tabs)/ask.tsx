@@ -39,7 +39,7 @@ const useStyles = makeStyles((c) => ({
   avatar: { width: 42, height: 42, borderRadius: 21, backgroundColor: c.navyTint, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   avatarImg: { width: 42, height: 42 },
   aboutAvatar: { width: 76, height: 76, borderRadius: 38, backgroundColor: c.navyTint, alignItems: "center", justifyContent: "center", overflow: "hidden", alignSelf: "center" },
-  aboutAvatarImg: { width: 76, height: 76 },
+  aboutAvatarImg: { width: "100%", height: 200, borderRadius: 16, marginBottom: spacing.sm },
   headerText: { flex: 1 },
   name: { fontFamily: fonts.displayBold, fontSize: 18, color: c.onSurface },
   subtitle: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary },
@@ -228,7 +228,7 @@ export default function Ask() {
     </Sheet>
 
     <Sheet visible={aboutOpen} onClose={() => setAboutOpen(false)} title="About Higgins" testID="higgins-about-sheet">
-      <View style={s.aboutAvatar}><Image source={require("../../assets/images/higgins-avatar.png")} style={s.aboutAvatarImg} contentFit="cover" accessibilityLabel="Higgins" /></View>
+      <Image source={require("../../assets/images/higgins-apollo-portrait.png")} style={s.aboutAvatarImg} contentFit="cover" accessibilityLabel="Higgins with Apollo" />
       <Text style={s.sheetBody}>{WELCOME}{"\n\n"}{ABOUT}</Text>
     </Sheet>
 

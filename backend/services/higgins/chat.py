@@ -5,7 +5,8 @@ import json
 from typing import Literal, Optional
 
 from google.genai import types
-from pydantic import Field
+from pydantic import ConfigDict, Field
+from pydantic.alias_generators import to_camel
 
 from core.redaction import redact_investigation_secrets
 from services.higgins import context as memory
@@ -22,6 +23,9 @@ question. Never ask for passwords, verification codes, recovery phrases or token
 
 
 class ModelChatReply(Wire):
+    # Keep the camelCase wire aliases, but do NOT forbid extra: `extra="forbid"` makes Pydantic emit
+    # `additionalProperties: false`, which the Gemini response_schema API rejects (400 INVALID_ARGUMENT).
+    model_config = ConfigDict(extra="ignore", alias_generator=to_camel, populate_by_name=True)
     answer: str = Field(min_length=1, max_length=4000)
     evidence_basis: list[str] = Field(default_factory=list, max_length=8)
     uncertainty: list[str] = Field(default_factory=list, max_length=6)

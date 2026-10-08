@@ -1,5 +1,26 @@
 ## 2026-09-23 Review closure
 
+## 2026-10-08 BUGFIX — Ask Higgins chat 503 (response_schema additionalProperties)
+
+backend:
+  - task: "Ask Higgins chat (POST /api/higgins/chat) returns a real answer, not 503"
+    implemented: true
+    working: true
+    file: "backend/services/higgins/chat.py"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        comment: "ROOT CAUSE: ModelChatReply inherited Wire model_config extra='forbid' -> Pydantic emitted additionalProperties:false in the schema -> google-genai response_schema rejected by Gemini (400 INVALID_ARGUMENT 'Unknown name additional_properties') -> ProviderFailure('provider_configuration') -> 503 'Higgins is temporarily unavailable.' FIX: ModelChatReply now sets model_config=ConfigDict(extra='ignore', alias_generator=to_camel, populate_by_name=True); schema no longer emits additionalProperties (camelCase aliases kept). Verified locally + live: POST /api/higgins/chat returns 200 with a non-empty answer."
+test_plan:
+  current_focus:
+    - "POST /api/higgins/chat returns 200 with non-empty answer and does not 503"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+
+
 ## 2026-10-08 Scam Alerts correctness overhaul (three-tier + AI-grounded facts) + Privacy & Data deletion
 
 backend:

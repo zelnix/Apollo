@@ -1,0 +1,22 @@
+{
+  "summary": "Backend-only regression verification for the Higgins chat Gemini response_schema fix (ModelChatReply now uses extra='ignore' instead of inheriting Wire's extra='forbid'). Pytest suite tests/test_higgins_chat_fix.py: 3/3 passed. Additionally reproduced both review-request scenarios via a direct script against http://localhost:8001: (1) 'Why is Apollo barking?' and (2) 'Is this SMS a scam: ... http://aus-post.parcel-fee.top'. Both returned HTTP 200 with coherent non-empty 'answer' strings and full ChatReply contract fields (turnId, conversationId, answer, evidenceBasis, uncertainty, clarification, contextUsed, suggestedActions, investigationAvailable, investigativeWorkStarted=false, retention). No 'Higgins is temporarily unavailable' 503, no 'additionalProperties' markers, no provider_failure/model_failures. The scam SMS prompt correctly produced investigationAvailable=true with a suggestedActions entry pointing to 'check_it'.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": [], "react_native_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_higgins_chat_fix.py",
+    "/app/test_reports/pytest/higgins_chat_fix_iter81.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "chat.py:28 fix is correct: ConfigDict(extra='ignore', alias_generator=to_camel, populate_by_name=True) prevents Pydantic emitting additionalProperties:false, which google-genai rejects with 400 INVALID_ARGUMENT. CamelCase wire aliases preserved.",
+    "provider.py maps SDK 4xx -> ProviderFailure('provider_configuration') -> 503 in routers/ask.py; mapping remains intact and correctly non-triggered after the fix.",
+    "Consider adding a focused unit test that asserts ModelChatReply.model_json_schema() does NOT contain 'additionalProperties' to lock in the regression at the schema layer (fast, no live Gemini call)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "n/a"},
+  "seed_data_creation": "None. Device registered per-test via POST /api/devices/register (ephemeral device_token).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Live Gemini is reachable from the preview; each /api/higgins/chat call takes ~5-15s. Use EXPO_PUBLIC_BACKEND_URL=http://localhost:8001 (or the public EXPO_PUBLIC_BACKEND_URL) and set X-Apollo-Raw: 1 plus Authorization: Bearer <device_token>. The chat body uses camelCase (turnId min 8 chars, conversationId min 4 chars, previousTurnIds[]).",
+  "rca_of_issue": "Root cause confirmed as described in the review request. ModelChatReply originally inherited Wire's model_config with extra='forbid', which caused Pydantic v2 to emit additionalProperties:false in the JSON Schema. google-genai forwards that schema to Gemini as response_schema; Gemini rejects unknown schema keywords with 400 INVALID_ARGUMENT 'Unknown name additional_properties'. provider.generate() maps 400 -> ProviderFailure('provider_configuration'); routers/ask.higgins_chat converts that to HTTP 503 'Higgins is temporarily unavailable'. Fix overrides model_config to extra='ignore' while keeping to_camel aliases + populate_by_name, so additionalProperties is no longer emitted. Verified live: two different prompts return HTTP 200 with substantive answers (481 and 495 chars) and intact contract shape; scam prompt correctly suggests investigation hand-off to 'check_it'."
+}
