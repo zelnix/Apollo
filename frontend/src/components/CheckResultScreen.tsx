@@ -190,6 +190,22 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose 
   );
 }
 
+/** Render the `raw` payload as a human-readable string. Special-cases known shapes
+ *  (urls, permissions, settings) so the person never sees raw JSON. */
+function formatRaw(raw: Record<string, unknown>): string {
+  // URLs list (from message/text gate links)
+  if (Array.isArray(raw.urls) && raw.urls.length > 0) {
+    return (raw.urls as string[]).map((u, i) => `${i + 1}. ${u}`).join("\n");
+  }
+  // Key-value pairs (settings, permissions, etc.)
+  const entries = Object.entries(raw).filter(([, v]) => v !== null && v !== undefined && v !== "");
+  if (entries.length > 0 && entries.every(([, v]) => typeof v === "string" || typeof v === "number" || typeof v === "boolean")) {
+    return entries.map(([k, v]) => `${k.replace(/_/g, " ")}: ${v}`).join("\n");
+  }
+  // Fallback — still avoid raw JSON; show a flat summary
+  return entries.map(([k, v]) => `${k.replace(/_/g, " ")}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`).join("\n");
+}
+
 function CheckItemRow({ item, open, onToggle, showDivider }: { item: CheckItem; open: boolean; onToggle: () => void; showDivider: boolean }) {
   const s = useStyles();
   const { colors } = useTheme();
@@ -215,7 +231,7 @@ function CheckItemRow({ item, open, onToggle, showDivider }: { item: CheckItem; 
         </View>
       ) : null}
       {open && hasRaw ? (
-        <Text style={s.itemRaw}>{JSON.stringify(item.raw, null, 2)}</Text>
+        <Text style={s.itemRaw}>{formatRaw(item.raw)}</Text>
       ) : null}
     </Pressable>
   );
