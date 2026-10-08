@@ -28,6 +28,7 @@ import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { type RecoveryKind, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { InfoButton } from "@/src/components/InfoButton";
 import { useScreenshotAccess } from "@/src/hooks/useScreenshotAccess";
 import { getShareIntake } from "@/src/share/shareIntake";
 
@@ -187,7 +188,10 @@ export default function CheckAccount() {
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <Text style={s.title}>Account Gate</Text>
-        <Pressable testID="account-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+          <InfoButton info={{ title: "About Account Gate", body: ["Received an unexpected security alert from a service? Paste or describe the alert and Apollo will investigate whether it's genuine or a phishing attempt.", "Apollo checks the claimed sender, alert language, embedded links and known phishing patterns. This does not access your accounts — it analyses the alert itself."] }} testID="account-info" />
+          <Pressable testID="account-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        </View>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="account-scroll">
         <Card testID="account-dashboard" style={{ gap: spacing.sm, borderColor: toneColor(colors, dashTone) }}>

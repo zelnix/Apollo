@@ -30,6 +30,7 @@ import { saveCheck } from "@/src/store/savedCheckStore";
 import { useApollo, type CheckOutcome } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { InfoButton } from "@/src/components/InfoButton";
 import { useScreenshotAccess } from "@/src/hooks/useScreenshotAccess";
 import { extractUrl } from "@/src/share/classifyShare";
 import { getShareIntake } from "@/src/share/shareIntake";
@@ -227,7 +228,10 @@ export default function CheckLink() {
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
           <Text style={s.title}>Link Gate</Text>
-        <Pressable testID="check-close" accessibilityRole="button" accessibilityLabel="Close" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+          <InfoButton info={{ title: "About Link Gate", body: ["Paste or share any URL and Apollo will inspect the destination page, check it against known threat databases, and have Higgins explain the result.", "Apollo checks domain reputation, SSL certificates, redirect chains and page content. The link is visited in a sandboxed environment — your device never loads the page directly."] }} testID="check-info" />
+          <Pressable testID="check-close" accessibilityRole="button" accessibilityLabel="Close" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        </View>
       </View>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={16}>
         <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} keyboardShouldPersistTaps="handled" testID="check-scroll">

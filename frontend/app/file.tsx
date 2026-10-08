@@ -23,6 +23,7 @@ import { type PatrolEvent } from "@/src/domain/types";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { InfoButton } from "@/src/components/InfoButton";
 import { getShareIntake } from "@/src/share/shareIntake";
 import { disposePickerCopy, sweepPickerCopies } from '@/src/domain/fileCopyLifecycle';
 
@@ -184,7 +185,10 @@ export default function CheckFile() {
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <Text style={s.title}>File Gate</Text>
-        <Pressable testID="file-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+          <InfoButton info={{ title: "About File Gate", body: ["Upload or describe a file and Apollo will check it for known threats, suspicious patterns and malware indicators.", "Apollo uses hash-based reputation checks and content analysis. Files are not stored after the assessment is complete."] }} testID="file-info" />
+          <Pressable testID="file-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        </View>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="file-scroll">
         <GateAbout title="How Apollo checks files" testID="file-inspection-scope"

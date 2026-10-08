@@ -30,6 +30,7 @@ import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { openDeviceSettings, permissionSettings } from "@/src/utils/deviceSettings";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { InfoButton } from "@/src/components/InfoButton";
 
 type Reputation = { remote_access_tool: string | null; known_security_vendor: string | null; impersonates_brand: string | null; official_store: boolean; note: string };
 type Remote = { reputation: Reputation; hosts: { host: string; verdict: "clean" | "malicious" | "unknown" }[]; explanation: { summary: string; why: string[]; recommendation: string } | null; assessment: InvestigationResult | null };
@@ -232,7 +233,10 @@ export default function CheckApp() {
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <Text style={s.title}>App Gate</Text>
-        <Pressable testID="app-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+          <InfoButton info={{ title: "About App Gate", body: ["Enter any app name and Apollo will research its safety, permissions, publisher reputation and known issues.", "Apollo checks app store listings, publisher history, permission requests and community reports. This is a research check — Apollo does not scan installed apps directly."] }} testID="app-info" />
+          <Pressable testID="app-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        </View>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="app-scroll">
         {!result ? (

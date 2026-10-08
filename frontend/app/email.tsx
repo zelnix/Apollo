@@ -28,6 +28,7 @@ import { runProtectionHealthCheck } from "@/src/protection/healthCoordinator";
 import { type MessageExplanation, type MessageUrlResult, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { InfoButton } from "@/src/components/InfoButton";
 import { getShareIntake } from "@/src/share/shareIntake";
 
 const GMAIL_STATUS_UI_TIMEOUT_MS = 8000;
@@ -218,7 +219,10 @@ export default function CheckEmail() {
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <Text style={s.title}>Email Gate</Text>
-        <Pressable testID="email-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+          <InfoButton info={{ title: "About Email Gate", body: ["Paste a forwarded email (headers included if possible) or fill in the sender, subject and body. Apollo analyses the email for scam indicators, phishing patterns and suspicious links.", "Apollo checks sender reputation, authentication headers (SPF/DKIM/DMARC), embedded links and content patterns. Raw content is discarded after the assessment."] }} testID="email-info" />
+          <Pressable testID="email-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        </View>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="email-scroll">
         {!result ? (

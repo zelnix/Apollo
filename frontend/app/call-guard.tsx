@@ -18,6 +18,7 @@ import { PatrolItem } from "@/src/components/PatrolItem";
 import { projectPatrolOutcomes } from "@/src/domain/patrolOutcomes";
 import { CheckResultScreen } from "@/src/components/CheckResultScreen";
 import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
+import { InfoButton } from "@/src/components/InfoButton";
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { STATE_LABEL, STATE_MEANING } from "@/src/domain/types";
 import { buildCallRiskCheckResult } from "@/src/domain/callRiskCheckResultAdapter";
@@ -152,7 +153,10 @@ export default function CallGuard() {
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <Text style={s.title}>Call Gate</Text>
-        <Pressable testID="callguard-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+          <InfoButton info={{ title: "About Call Gate", body: ["Check any phone number before you answer or call back. Apollo queries a trusted reputation service and Higgins explains the result.", "On Android, Apollo can automatically screen incoming calls and reject numbers on your personal block list. On iOS, your block list is shared with the system Phone app.", "Reputation is supporting evidence only — it does not authenticate the caller or establish their location."] }} testID="callguard-info" />
+          <Pressable testID="callguard-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        </View>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="callguard-scroll">
         <Body testID="callguard-policy">Submitting a number authorises one reputation lookup. Apollo does not persist the submitted number. Reputation is a warning only; call rejection is separate and never packet-backed Biting.</Body>

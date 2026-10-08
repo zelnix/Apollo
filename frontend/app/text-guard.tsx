@@ -28,6 +28,7 @@ import { goBackOrHome } from "@/src/utils/navigation";
 import { recordCheck } from "@/src/store/checkHistoryStore";
 import { saveCheck } from "@/src/store/savedCheckStore";
 import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
+import { InfoButton } from "@/src/components/InfoButton";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -144,7 +145,10 @@ export default function TextGuard() {
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <Text style={s.title}>Text Gate</Text>
-        <Pressable testID="textguard-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+          <InfoButton info={{ title: "About Text Gate", body: ["Apollo investigates pasted texts and chosen screenshots using local scam detection, link and public evidence checks, and Higgins's explanation.", "On Android, Apollo can also automatically scan new text-message notifications from your chosen messaging app as they arrive. Apollo never reads your SMS inbox or message history.", "Raw content is discarded after the assessment; provider-side retention follows the configured Higgins policy."] }} testID="textguard-info" />
+          <Pressable testID="textguard-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        </View>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="textguard-scroll">
         <Body testID="textguard-intro">Apollo investigates pasted texts and chosen screenshots using local scam detection, link and public evidence checks, and Higgins&apos;s explanation. Raw content is not retained by Apollo.</Body>

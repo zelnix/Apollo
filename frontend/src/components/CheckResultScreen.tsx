@@ -231,7 +231,7 @@ function CheckItemRow({ item, open, onToggle, showDivider }: { item: CheckItem; 
         </View>
       ) : null}
       {open && hasRaw ? (
-        <Text style={s.itemRaw}>{formatRaw(item.raw)}</Text>
+        <Text style={s.itemRaw}>{formatRaw(item.raw!)}</Text>
       ) : null}
     </Pressable>
   );

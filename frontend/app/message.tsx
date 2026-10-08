@@ -26,6 +26,7 @@ import { saveCheck } from "@/src/store/savedCheckStore";
 import { apiUpload } from "@/src/api/client";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { InfoButton } from "@/src/components/InfoButton";
 import { useScreenshotAccess } from "@/src/hooks/useScreenshotAccess";
 import { redactUserSecrets } from "@/src/domain/privacy";
 import { getShareIntake } from "@/src/share/shareIntake";
@@ -176,7 +177,10 @@ export default function CheckMessage() {
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <Text style={s.title}>{params.source === "email" ? "Email Gate" : "Text Gate"}</Text>
-        <Pressable testID="message-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+          <InfoButton info={{ title: params.source === "email" ? "About Email Gate" : "About Text Gate", body: ["Paste any message and Apollo will investigate it using local scam detection, link and public evidence checks, and Higgins's explanation.", "Apollo checks claimed identity, pressure tactics, embedded links and sender reputation. Raw content is discarded after the assessment."] }} testID="message-info" />
+          <Pressable testID="message-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        </View>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="message-scroll">
         <GateAbout title={isEmail ? "How Apollo handles your emails" : "How Apollo handles your messages"} testID="message-privacy"
