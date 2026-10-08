@@ -61,6 +61,8 @@ const useStyles = makeStyles((c) => ({
   sectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
   sectionHeadTitle: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface, flex: 1 },
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.md },
+  statusRow: { alignItems: "flex-start", gap: spacing.xs },
+  rowLabel: { fontFamily: fonts.textMedium, fontSize: 15, color: c.onSurface },
   label: { fontFamily: fonts.textMedium, fontSize: 15, color: c.onSurface, flex: 1 },
   value: { fontFamily: fonts.textMedium, fontSize: 13, color: c.onSurfaceSecondary, flexShrink: 1, textAlign: "right" },
   detail: { fontFamily: fonts.text, fontSize: 13, lineHeight: 19, color: c.muted },
@@ -91,7 +93,7 @@ function Section({ title, testID, children, defaultOpen = true }: { title: strin
 function ResultRow({ label, result, id }: { label: string; result: CheckRow; id: keyof typeof RESULT_TEXT }) {
   const s = useStyles();
   const sentence = result.status === "checking" ? "Checking current status…" : RESULT_TEXT[id][result.status === "healthy" ? "working" : "problem"];
-  return <View testID={`support-${id}-row`}><View style={s.row}><Text style={s.label} testID={`support-${id}-label`}>{label}</Text><Pill testID={`support-${id}-status`} tone={statusTone(result.status)} label={STATUS[result.status]} /></View><Body testID={`support-${id}-message`}>{sentence}</Body>{result.checkedAt ? <Body style={s.detail}>Checked {new Date(result.checkedAt).toLocaleString()}</Body> : null}</View>;
+  return <View testID={`support-${id}-row`}><View style={s.statusRow}><Text style={s.rowLabel} testID={`support-${id}-label`}>{label}</Text><Pill testID={`support-${id}-status`} tone={statusTone(result.status)} label={STATUS[result.status]} /></View><Body testID={`support-${id}-message`}>{sentence}</Body>{result.checkedAt ? <Body style={s.detail}>Checked {new Date(result.checkedAt).toLocaleString()}</Body> : null}</View>;
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {
@@ -204,7 +206,7 @@ export default function SupportScreen() {
         <Body style={s.detail}>Live states from Apollo&apos;s native telemetry. A reachable service or enabled setting is not the same as a verified block — only &quot;Active and verified&quot; reflects OS-confirmed enforcement.</Body>
         {protectionRows.map((p) => (
           <View key={p.label} testID={`support-protection-${p.label.replace(/[^a-z]+/gi, "-").toLowerCase()}`}>
-            <View style={s.row}><Text style={s.label}>{p.label}</Text><Pill tone={protectionTone(p.state)} label={p.state} /></View>
+            <View style={s.statusRow}><Text style={s.rowLabel}>{p.label}</Text><Pill tone={protectionTone(p.state)} label={p.state} /></View>
             <Body style={s.detail}>{p.detail}</Body>
           </View>
         ))}
