@@ -1,3 +1,18 @@
+## Deployment readiness health check (2026-06)
+
+**Genuine config fixes applied (safe, verified — backend 200, preview 200):**
+- Quoted two malformed `.env` values that start with `/`: `backend/.env` `INVESTIGATION_KEY_FILE="/app/backend/.secrets/investigation.key"` and `frontend/.env` `METRO_CACHE_ROOT="/app/frontend/.metro-cache"` (python-dotenv strips the quotes at runtime — confirmed).
+- Removed the `.env` / `.env.*` / `*.env` lines from `/app/.gitignore` so the deployment pipeline can read the env files (`.env.local`/`*.env.local` still ignored).
+
+**Flagged-but-ACCEPTED by owner (intentional design / platform-managed — do NOT "fix"):**
+- **TTL + maintenance cleanup** (`services/higgins/retention.py` TTL indexes on `ask_messages`/`ask_handoffs`/`voice_cache`; `services/higgins/repository.py` sweep via `maintenance.supervise_maintenance`): this IS Apollo's privacy feature (submitted evidence auto-erases within ~15 min; stale investigation records swept). Owner decision: KEEP as accepted design. The static deploy check will keep flagging it as "destructive_db_startup".
+- **Secrets in `backend/.env`** (SAFE_BROWSING/GEMINI/encryption/email/etc.): `backend/.env` is the platform's managed secret store; removing breaks runtime. Owner decision: KEEP.
+- **Push** (`routers/push.py` sends directly to Expo with `EXPO_PUSH_ACCESS_TOKEN`, `EXPO_PUSH_ENABLED=true`): not the supported production push path. Owner decision: LEAVE enabled as-is for now; proper Emergent push is pending Task 2 (needs Firebase google-services.json).
+- **`frontend/eas.json`**: retained — carries production build config (GuardDog enforcement engine, controlled host/IP, preview-harness off) that a pipeline-generated default would lose. Owner decision: KEEP.
+
+NOTE: Because the four accepted items are deliberate, a re-run of the deployment health check will still report them as blockers by design; this is expected and acknowledged by the owner.
+
+
 ## Share to Apollo — multi-file correction + honest preservation (2026-06)
 
 **Scope:** corrections to the EXISTING Share-to-Apollo feature (no new Gate/route/backend). KISS.
