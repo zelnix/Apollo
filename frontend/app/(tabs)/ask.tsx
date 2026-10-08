@@ -17,6 +17,7 @@ import { parseHigginsIssueContext, type HigginsIssueContext } from "@/src/domain
 import { redactInvestigationSecrets as redactUserSecrets } from "@/src/domain/privacy";
 import { askHiggins, clearHigginsHistory, higginsHistory, rememberHigginsContext, type HigginsChatAction, type HigginsChatMessage } from "@/src/higgins/chatClient";
 import { clearLocalChat, loadLocalChat, saveLocalChat } from "@/src/higgins/chatMemory";
+import { clearStarterMemory, loadStarterMemory, recordStarter, topStarters } from "@/src/higgins/starterMemory";
 import { useInvestigation } from "@/src/investigation/caseStore";
 import { createCaseInput } from "@/src/investigation/fromContext";
 import { rememberCaseForEvent } from "@/src/investigation/caseIndex";
@@ -57,6 +58,9 @@ const useStyles = makeStyles((c) => ({
   starterText: { fontFamily: fonts.textMedium, fontSize: 14, color: c.brandPrimary },
 
   composer: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, backgroundColor: c.glass, borderTopWidth: 1, borderTopColor: c.border },
+  repeatRow: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, gap: spacing.sm, alignItems: "center" },
+  repeatChip: { maxWidth: 240, minHeight: 36, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: c.border, backgroundColor: c.surfaceSecondary, justifyContent: "center" },
+  repeatText: { fontFamily: fonts.textMedium, fontSize: 13, color: c.onSurfaceSecondary },
   input: { flex: 1, minHeight: 48, maxHeight: 120, backgroundColor: c.surfaceTertiary, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, fontFamily: fonts.text, fontSize: 16, color: c.onSurface },
   send: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: c.brandPrimary },
 
@@ -76,6 +80,7 @@ export default function Ask() {
   const [text, setText] = useState(""); const [activeContext, setActiveContext] = useState<HigginsIssueContext | null>(null); const [investigationMode, setInvestigationMode] = useState(false);
   const [chatMessages, setChatMessages] = useState<HigginsChatMessage[]>([]); const [chatBusy, setChatBusy] = useState(false); const [chatError, setChatError] = useState<string | null>(null); const [lastAction, setLastAction] = useState<HigginsChatAction | null>(null);
   const [routeError, setRouteError] = useState<string | null>(null); const [menuOpen, setMenuOpen] = useState(false); const [aboutOpen, setAboutOpen] = useState(false); const [confirmClear, setConfirmClear] = useState(false);
+  const [starters, setStarters] = useState<string[]>([]);
   const conversationId = useRef(Crypto.randomUUID()); const seenRoute = useRef<string | null>(null); const scrollRef = useRef<ScrollView>(null); const inputRef = useRef<TextInput>(null); const contextRecorded = useRef<string | null>(null); const stick = useRef(true);
   const caseBusy = state.phase === "creating" || state.phase === "working" || state.phase === "reconnecting" || state.phase === "waiting_device";
   const busy = caseBusy || chatBusy;
@@ -84,6 +89,7 @@ export default function Ask() {
   useEffect(() => {
     if (!deviceId) return;
     void loadLocalChat().then(setChatMessages).catch(() => undefined);
+    void loadStarterMemory().then((entries) => setStarters(topStarters(entries))).catch(() => undefined);
     void higginsHistory(deviceId).catch(() => undefined); // server keeps only five-minute content and non-content receipts
   }, [deviceId]);
   useEffect(() => { const caseId = params.resumeCaseId ? String(params.resumeCaseId) : ""; if (!caseId || caseId === seenRoute.current) return; seenRoute.current = caseId; setInvestigationMode(true); router.setParams({ resumeCaseId: "" }); void attach(caseId); }, [params.resumeCaseId, attach, router]);
@@ -123,6 +129,7 @@ export default function Ask() {
     const clean = redactUserSecrets(message).trim(); if (!clean || busy || !deviceId) return;
     if (investigationMode || activeContext || state.caseData) { setText(""); if (state.caseData) void ask(clean); else startInvestigation(clean, activeContext); return; }
     setText(""); sendToHiggins(clean, true);
+    void recordStarter(clean).then((entries) => setStarters(topStarters(entries))).catch(() => undefined);
   };
   const retryLast = () => { if (!deviceId || chatBusy || !latestUserMessage) return; sendToHiggins(latestUserMessage, false); };
 
@@ -136,11 +143,13 @@ export default function Ask() {
   }, [params.handoffId, params.context, params.prompt, deviceId, router, attach, ask, startInvestigation]);
 
   const deleteInvestigation = async () => { stopHiggins(); clearHandoffTransfers(); setActiveContext(null); setRouteError(null); setInvestigationMode(false); await remove(); };
-  const clearChat = async () => { if (!deviceId || chatBusy) return; await Promise.all([clearHigginsHistory(deviceId), clearLocalChat()]); setChatMessages([]); setLastAction(null); setChatError(null); conversationId.current = Crypto.randomUUID(); };
+  const clearChat = async () => { if (!deviceId || chatBusy) return; await Promise.all([clearHigginsHistory(deviceId), clearLocalChat(), clearStarterMemory()]); setChatMessages([]); setStarters([]); setLastAction(null); setChatError(null); conversationId.current = Crypto.randomUUID(); };
   const newQuestion = () => { if (busy) return; stopHiggins(); setActiveContext(null); setInvestigationMode(false); void remove(); };
   const goMenu = (fn: () => void) => { setMenuOpen(false); setTimeout(fn, 180); };
   const caseStatus = state.phase === "answered" ? "Higgins has finished this investigation." : state.phase === "waiting_user" ? "Higgins needs one answer from you" : state.phase === "failed" ? "Investigation incomplete — Retry available" : state.phase === "expired" ? "Temporary investigation content expired" : caseBusy ? "Higgins is investigating…" : "Investigation content expires within 15 minutes";
   const showWelcome = !investigationMode && chatMessages.length === 0;
+  const welcomeStarters = useMemo(() => [...new Set([...starters, ...STARTERS])].slice(0, 4), [starters]);
+  const showRepeatRow = !investigationMode && chatMessages.length > 0 && !text.trim() && starters.length > 0;
 
   return <View style={s.root} testID="higgins-screen">
     <View style={{ paddingTop: insets.top + spacing.md }}>
@@ -167,7 +176,7 @@ export default function Ask() {
             <View style={s.bubbleHiggins}><Text style={s.msgHiggins} testID="higgins-welcome">{WELCOME}</Text></View>
           </View>
           <View style={s.starters} testID="ask-suggestions">
-            {STARTERS.map((question, index) => <Pressable key={question} testID={`ask-suggestion-${index}`} style={s.starter} accessibilityRole="button" onPress={() => submit(question)} disabled={busy}><Text style={s.starterText}>{question}</Text></Pressable>)}
+            {welcomeStarters.map((question, index) => <Pressable key={question} testID={`ask-suggestion-${index}`} style={s.starter} accessibilityRole="button" onPress={() => submit(question)} disabled={busy}><Text style={s.starterText} numberOfLines={2}>{question}</Text></Pressable>)}
           </View>
         </> : null}
 
@@ -196,6 +205,9 @@ export default function Ask() {
         {investigationMode ? <Text testID="ask-processing-state" style={[s.subtitle, { paddingHorizontal: spacing.lg, paddingTop: spacing.xs }]}>{caseStatus}</Text> : null}
       </ScrollView>
 
+      {showRepeatRow ? <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={s.repeatRow} testID="higgins-repeat-row">
+        {starters.map((question, index) => <Pressable key={question} testID={`higgins-repeat-${index}`} style={s.repeatChip} accessibilityRole="button" accessibilityLabel={`Ask again: ${question}`} onPress={() => submit(question)} disabled={busy}><Text style={s.repeatText} numberOfLines={1}>{question}</Text></Pressable>)}
+      </ScrollView> : null}
       <View style={[s.composer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
         <TextInput ref={inputRef} testID="ask-input" style={s.input} value={text} onChangeText={setText} placeholder={investigationMode ? state.phase === "waiting_user" ? "Answer Higgins' question…" : "Ask about this investigation…" : "Message Higgins…"} placeholderTextColor={colors.muted} multiline returnKeyType="send" blurOnSubmit onSubmitEditing={() => submit(text)} onFocus={() => scrollToEnd(true)} />
         <Pressable testID="ask-send-button" accessibilityRole="button" accessibilityLabel="Send message to Higgins" onPress={() => submit(text)} disabled={busy || !text.trim()} style={[s.send, { opacity: busy || !text.trim() ? 0.5 : 1 }]}>{busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : <SendHorizontal size={20} color={colors.onBrandPrimary} />}</Pressable>

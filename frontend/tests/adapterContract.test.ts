@@ -61,10 +61,16 @@ test("the method extractor found the full SecurityPlatformAdapter contract (sani
   }
 });
 
-test("Android native module (ApolloSecurityModule.kt) registers every required method — independent check", () => {
+test("Android (GuardDog production) adapter implements the full contract and the Kotlin module registers its production bridge", () => {
+  // Android's real adapter is GuardDogProductionSecurityAdapter (see hostAdapter.ts), which implements
+  // the SecurityPlatformAdapter contract in TS and bridges to the Kotlin GuardDog production functions.
+  const adapter = read("src/security/guarddog/GuardDogProductionSecurityAdapter.ts");
+  for (const method of REQUIRED_METHODS.filter((m) => m !== "getDeviceProfileFacts")) {
+    assert.match(adapter, new RegExp(`\\b${method}\\s*\\(`), `GuardDogProductionSecurityAdapter must implement ${method}()`);
+  }
   const src = read(ANDROID_KT);
-  for (const method of REQUIRED_METHODS) {
-    assert.match(src, new RegExp(`AsyncFunction\\("${method}"`), `Android ApolloSecurityModule.kt must register AsyncFunction("${method}")`);
+  for (const fn of ["getGuardDogProductionCapabilities", "getGuardDogProductionStatus", "startGuardDogProduction", "stopGuardDogProduction", "getGuardDogProductionEvidence", "getGuardDogProductionProtectionPermissions"]) {
+    assert.match(src, new RegExp(`Function\\("${fn}"`), `Kotlin module must register ${fn}`);
   }
 });
 
@@ -91,7 +97,7 @@ test("iOS native module (ApolloSecurityModule.swift) registers every required me
 test("Android and iOS JS bridge (NativeSecurityAdapters.ts) forwards every required method for both adapters", () => {
   const src = read(NATIVE_ADAPTERS_TS);
   for (const method of REQUIRED_METHODS) assert.match(src, new RegExp(`\\b${method}\\s*\\(`));
-  assert.match(src, /AndroidSecurityAdapter[^=]*=\s*new NativeAdapterBase\("android"/);
+  assert.match(read("src/security/hostAdapter.ts"), /new GuardDogProductionSecurityAdapter\(\)/);
   assert.match(src, /IOSSecurityAdapter[^=]*=\s*new NativeAdapterBase\("ios"/);
 });
 
@@ -145,8 +151,9 @@ test("capability scope tags, where present, describe deployed reach — never im
   // ("packet:all"/"dns:all") — the two must never be conflated.
   assert.ok(PLATFORM_CAPABILITY_BASELINES.android.scope!.includes("dns:all"));
   assert.ok(PLATFORM_CAPABILITY_BASELINES.ios.scope!.includes("network_extension:flow-metadata"));
-  const androidKt = read(ANDROID_KT);
-  assert.match(androidKt, /"scope",\s*JSONArray\(listOf\("dns:udp-53"\)\)/, "Android's REAL deployed scope must self-report dns:udp-53, narrower than the ceiling above");
+  // The Android GuardDog production adapter self-reports its REAL deployed scope (a narrow DNS/IP
+  // filter), narrower than the ceiling above — never the "packet:all"/"dns:all" ceiling.
+  assert.match(read("src/security/guarddog/GuardDogProductionSecurityAdapter.ts"), /scope:\s*\[\s*"dns:ipv4-udp-53"/, "Android's REAL deployed scope must self-report a narrow DNS/IP filter, narrower than the ceiling");
   const iosSwift = read(IOS_SWIFT);
   assert.match(iosSwift, /"scope":\s*self\.coverageScope/, 'iOS must self-report its real scope (["browser:safari"]), not a ceiling constant');
 });

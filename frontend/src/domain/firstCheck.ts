@@ -68,7 +68,7 @@ export interface FirstCheckReport {
 const CONCERN_STATES: FirstCheckResultState[] = ["CAUTION", "SUSPICIOUS", "CONFIRMED_THREAT"];
 const MEANINGFUL_CATEGORIES: FirstCheckCategory[] = ["device_integrity", "application_risk", "network_config"];
 
-const platformName = (p: DevicePlatform) => (p === "ios" ? "iPhone or iPad" : p === "android" ? "Android device" : "device");
+const platformName = (p: DevicePlatform) => (p === "ios" ? "iPhone or iPad" : p === "android" ? "Android device" : p === "windows" ? "Windows PC" : p === "macos" ? "Mac" : "device");
 
 // --- Individual checks -------------------------------------------------------------------------------
 

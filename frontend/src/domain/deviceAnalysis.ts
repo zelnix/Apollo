@@ -3,7 +3,7 @@
 
 import type { ApolloState } from "./types";
 
-export type DevicePlatform = "ios" | "android" | "web";
+export type DevicePlatform = "ios" | "android" | "windows" | "macos" | "web";
 /** SDK-observed signals. `null` means the platform/build cannot see it — the UI says so instead of pretending. */
 export interface DeviceSignals {
   platform: DevicePlatform;
@@ -22,8 +22,11 @@ export interface DeviceSignals {
   userTrustedCertificates: number | null;
   remoteAccessApps: string[] | null;
   developerOptions: boolean | null;
+  /** Whether a secure screen lock (PIN/pattern/password/biometric) is set. Android: KeyguardManager.isDeviceSecure();
+   *  iOS: a passcode is set (LAContext deviceOwnerAuthentication). `null` where the platform/build can't read it. */
+  screenLockSecure: boolean | null;
 }
-export const EMPTY_SIGNALS = (platform: DevicePlatform): DeviceSignals => ({ platform, unknownSourcesEnabled: null, thirdPartyAccessibilityServices: null, overlayApps: null, notificationAccessApps: null, vpnActive: null, vpnProviderKnown: null, managementProfile: "unknown", managementAdmins: null, userTrustedCertificates: null, remoteAccessApps: null, developerOptions: null });
+export const EMPTY_SIGNALS = (platform: DevicePlatform): DeviceSignals => ({ platform, unknownSourcesEnabled: null, thirdPartyAccessibilityServices: null, overlayApps: null, notificationAccessApps: null, vpnActive: null, vpnProviderKnown: null, managementProfile: "unknown", managementAdmins: null, userTrustedCertificates: null, remoteAccessApps: null, developerOptions: null, screenLockSecure: null });
 
 export type SelfReportKey = "gaveRemoteAccess" | "usedBankingDuringAccess" | "unexpectedProfile" | "managementExpected" | "newCertificate" | "unexpectedVpn" | "grantedAccessibility" | "unknownSourcesOn" | "newAppUnexpected";
 export const SELF_REPORT: { id: SelfReportKey; label: string }[] = [
@@ -118,7 +121,7 @@ const SETTINGS = {
   notif: { ios: "Not applicable on iPhone", android: "Settings → Apps → Special app access → Notification access" },
   dev: { ios: "Not applicable on iPhone", android: "Settings → System → Developer options" },
 };
-const path = (k: keyof typeof SETTINGS, p: DevicePlatform) => (p === "ios" ? SETTINGS[k].ios : SETTINGS[k].android);
+const path = (k: keyof typeof SETTINGS, p: DevicePlatform) => (p === "ios" ? SETTINGS[k].ios : p === "android" ? SETTINGS[k].android : "your device's security settings");
 
 export function assessDevice(sig: DeviceSignals, self: SelfReport = {}, context: DeviceAssessmentContext = {}): DeviceAssessment {
   const p = sig.platform;
@@ -175,12 +178,12 @@ export function assessDevice(sig: DeviceSignals, self: SelfReport = {}, context:
   }
 
   const cannotSee: string[] = [];
-  if (p === "ios" || p === "web") cannotSee.push("The list of installed apps and their permissions (iOS doesn't expose this to any app).");
-  if (sig.thirdPartyAccessibilityServices === null && p !== "ios") cannotSee.push("Which third-party apps currently have Accessibility access (this build cannot read that setting)." );
-  if (sig.managementProfile === "unknown") cannotSee.push(p === "ios" ? "Whether a management profile is installed — iOS only tells an app when it is managed itself, so Apollo can confirm management but never rule it out." : "Device-management / configuration profiles on this build.");
-  if (sig.vpnActive === null) cannotSee.push("VPN state on this build.");
-  if (sig.userTrustedCertificates === null) cannotSee.push("User-installed certificates on this build.");
-  if (sig.remoteAccessApps === null) cannotSee.push("Which remote-access apps are installed.");
+  if (p === "ios" || p === "web") cannotSee.push("Higgins can walk you through your installed apps and their permissions — iPhone keeps these private from every app, so you review them together.");
+  if (sig.thirdPartyAccessibilityServices === null && p !== "ios") cannotSee.push("Higgins can guide you through Accessibility settings to confirm only apps you trust have access.");
+  if (sig.managementProfile === "unknown") cannotSee.push(p === "ios" ? "Higgins can help you confirm no management profile you didn't add is present (iPhone only tells an app when it is itself managed)." : "Higgins can guide you through device-management profiles to confirm nothing unexpected is set up.");
+  if (sig.vpnActive === null) cannotSee.push("Higgins can help you confirm your VPN is one you chose.");
+  if (sig.userTrustedCertificates === null) cannotSee.push("Higgins can walk you through trusted certificates to spot anything you didn't install.");
+  if (sig.remoteAccessApps === null) cannotSee.push("Higgins can help you check for remote-access apps you don't recognise.");
 
   const status: DeviceStatus = self.gaveRemoteAccess ? "recovery" : f.some((x) => x.severity === "high") ? "action" : f.some((x) => x.severity === "review") ? "review" : "protected";
   const state = DEVICE_STATUS[status].state === "resting" && f.length ? "ears_up" : DEVICE_STATUS[status].state;

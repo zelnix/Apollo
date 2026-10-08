@@ -17,14 +17,16 @@ final class DeviceSignalsTruthTests: XCTestCase {
     XCTAssertEqual(DeviceSignalsTruth.managementProfile(managedConfigPresent: false), "unknown")  // iOS cannot enumerate profiles
   }
   func testSignalsKeepIosBlindSpotsNullAndNeverNameTheVpnProvider() {
-    let s = DeviceSignalsTruth.signals(vpnActive: true, managedConfigPresent: false)
+    let s = DeviceSignalsTruth.signals(vpnActive: true, managedConfigPresent: false, screenLockSecure: true)
     XCTAssertEqual(s["platform"] as? String, "ios")
     XCTAssertEqual(s["vpnActive"] as? Bool, true)
+    XCTAssertEqual(s["screenLockSecure"] as? Bool, true)
     XCTAssertTrue(s["vpnProviderKnown"] is NSNull)
     for key in ["unknownSourcesEnabled", "thirdPartyAccessibilityServices", "overlayApps", "notificationAccessApps", "userTrustedCertificates", "remoteAccessApps", "developerOptions"] {
       XCTAssertTrue(s[key] is NSNull, "\(key) must be null on iOS")
     }
-    XCTAssertTrue(DeviceSignalsTruth.signals(vpnActive: nil, managedConfigPresent: false)["vpnActive"] is NSNull)  // offline → unknown, not "off"
+    XCTAssertTrue(DeviceSignalsTruth.signals(vpnActive: nil, managedConfigPresent: false, screenLockSecure: nil)["vpnActive"] is NSNull)  // offline → unknown, not "off"
+    XCTAssertTrue(DeviceSignalsTruth.signals(vpnActive: nil, managedConfigPresent: false, screenLockSecure: nil)["screenLockSecure"] is NSNull)
   }
   func testCapabilitiesAreHonest() {
     let c = DeviceSignalsTruth.capabilities()

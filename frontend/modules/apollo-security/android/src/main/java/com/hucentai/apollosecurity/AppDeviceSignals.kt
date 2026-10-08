@@ -49,6 +49,8 @@ class AppDeviceSignals(private val ctx: Context) {
     val adminLabels = try { admins?.map { adminLabel(it.packageName) }?.distinct() ?: emptyList() } catch (_: Exception) { emptyList() }
     val remote = installedCatalogApps()
     val dev = try { Settings.Global.getInt(ctx.contentResolver, Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0) == 1 } catch (_: Exception) { null }
+    val lockSecure = try { (ctx.getSystemService(Context.KEYGUARD_SERVICE) as android.app.KeyguardManager).isDeviceSecure } catch (_: Exception) { null }
+    val userCerts = userTrustedCaCount()
     return JSONObject()
       .put("platform", "android")
       .put("unknownSourcesEnabled", JSONObject.NULL)          // per-app since Android 8; not readable for other apps
@@ -60,11 +62,21 @@ class AppDeviceSignals(private val ctx: Context) {
       .put("vpnProviderKnown", if (vpn == true) (if (VpnStateRepository.shared.current().state == ProtectionState.ACTIVE) true else JSONObject.NULL) else JSONObject.NULL)
       .put("managementProfile", when { admins == null -> "unknown"; managed -> "managed"; admins.isNotEmpty() -> "device_admin"; else -> "none" })
       .put("managementAdmins", JSONArray(adminLabels))
-      .put("userTrustedCertificates", JSONObject.NULL)         // user CA store is not readable by apps
+      .put("userTrustedCertificates", userCerts ?: JSONObject.NULL)   // user-added CA store is readable via AndroidCAStore
       .put("remoteAccessApps", JSONArray(remote.map { it.second }))
       .put("developerOptions", dev ?: JSONObject.NULL)
+      .put("screenLockSecure", lockSecure ?: JSONObject.NULL)         // KeyguardManager.isDeviceSecure() — no permission needed
       .toString()
   }
+
+  /** Number of user-installed trusted CA certificates. The AndroidCAStore keystore aliases user-added CAs with a
+   *  "user:" prefix (system roots use "system:"), so a normal app can count extras without any special permission.
+   *  Returns null only when the trust store can't be opened. */
+  private fun userTrustedCaCount(): Int? = try {
+    val ks = java.security.KeyStore.getInstance("AndroidCAStore")
+    ks.load(null)
+    ks.aliases().toList().count { it.startsWith("user:") }
+  } catch (_: Exception) { null }
 
   /** Friendly name for an active device-admin package. Falls back to a known-admin map, then the package id. */
   private fun adminLabel(pkg: String): String = AppDeviceCatalog.KNOWN_ADMINS[pkg]

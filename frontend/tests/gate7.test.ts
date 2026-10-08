@@ -161,8 +161,8 @@ test("observed VPN with unknown provider is reported as a fact, not a verdict (i
   assert.ok(!r.cannotSee.some((c) => /VPN state/.test(c)));
   // Apollo's own DNS filter as the VPN is expected: no finding at all.
   assert.ok(!assessDevice({ ...EMPTY_SIGNALS("android"), vpnActive: true, vpnProviderKnown: true }).findings.some((x) => x.id.startsWith("D04")));
-  // iOS management can be confirmed, never ruled out.
-  assert.match(assessDevice(EMPTY_SIGNALS("ios")).cannotSee.find((c) => /management profile/.test(c)) ?? "", /never rule it out/);
+  // iOS management can be confirmed, never ruled out — communicated positively (Higgins guides the user).
+  assert.match(assessDevice(EMPTY_SIGNALS("ios")).cannotSee.find((c) => /management profile/.test(c)) ?? "", /only tells an app when it is itself managed/);
 });
 
 test("Device Gate reports Apollo permission loss and stopped protection without alleging tampering", () => {

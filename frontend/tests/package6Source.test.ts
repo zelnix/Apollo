@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { test } from "node:test";
 import { isVerifiedDesktopFlowDrop, parseDesktopEnforcementEvidence } from "../src/security/desktopEvidence.ts";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
+// Config lives in app.config.js (there is no app.json); load the resolved object.
+const app = createRequire(import.meta.url)("../app.config.js");
 
 test("Package 6 iOS configuration registers all native extension targets under app.apollo.hwg", () => {
-  const app = JSON.parse(read("../app.json"));
   assert.equal(app.expo.ios.bundleIdentifier, "app.apollo.hwg");
   const extensions = app.expo.extra.eas.build.experimental.ios.appExtensions;
   assert.deepEqual(extensions.map((item: { targetName: string }) => item.targetName), ["ApolloFamilyAssistBroadcast", "ApolloShareExtension", "ApolloContentBlocker", "ApolloCallDirectory", "ApolloMessageFilter", "ApolloLiveCallerID"]);

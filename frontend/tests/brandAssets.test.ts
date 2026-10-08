@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { test } from "node:test";
 
 const root = new URL("../", import.meta.url);
-const app = JSON.parse(readFileSync(new URL("app.json", root), "utf8"));
+// Config lives in app.config.js (there is no app.json); load the resolved object.
+const app = createRequire(import.meta.url)("../app.config.js");
 
 function png(path: string) {
   const bytes = readFileSync(new URL(path, root));

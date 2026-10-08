@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { test } from "node:test";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
-const app = JSON.parse(read("../app.json"));
+// Config lives in app.config.js (there is no app.json); load the resolved object.
+const app = createRequire(import.meta.url)("../app.config.js");
 
 test("iOS target inventory has unique canonical identifiers and one shared App Group", () => {
   assert.equal(app.expo.ios.bundleIdentifier, "app.apollo.hwg");

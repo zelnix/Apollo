@@ -1,5 +1,6 @@
 import CallKit
 import ExpoModulesCore
+import LocalAuthentication
 import Network
 import NetworkExtension
 import SafariServices
@@ -287,13 +288,15 @@ public class ApolloSecurityModule: Module {
     AsyncFunction("getRecentAppSecurityEvents") { () -> String in "[]" }
     AsyncFunction("getDeviceSecuritySignals") { (promise: Promise) in
       let managed = UserDefaults.standard.dictionary(forKey: "com.apple.configuration.managed") != nil
+      // A device passcode is required for deviceOwnerAuthentication; its availability proves a secure lock is set.
+      let lockSecure = LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: nil)
       let scoped = ((CFNetworkCopySystemProxySettings()?.takeRetainedValue() as? [String: Any])?["__SCOPED__"] as? [String: Any])?.keys.map { $0 } ?? []
       let monitor = NWPathMonitor(); let queue = DispatchQueue(label: "apollo.device.path")
       monitor.pathUpdateHandler = { path in
         monitor.cancel()
         let names = path.availableInterfaces.map { $0.name }
         let vpn: Bool? = path.status == .satisfied ? DeviceSignalsTruth.vpnActive(interfaceNames: names, scopedProxyKeys: scoped) : nil
-        promise.resolve(self.json(DeviceSignalsTruth.signals(vpnActive: vpn, managedConfigPresent: managed)))
+        promise.resolve(self.json(DeviceSignalsTruth.signals(vpnActive: vpn, managedConfigPresent: managed, screenLockSecure: lockSecure)))
       }
       monitor.start(queue: queue)
     }

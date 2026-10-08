@@ -31,7 +31,9 @@ test("P2.1 Check It has exactly ten trusted one-tap destinations", () => {
 test("P2.1 Settings is a stack route and every root screen uses the shared Settings header", () => {
   assert.ok(existsSync(join(root, "app/settings/index.tsx")));
   assert.equal(existsSync(join(root, "app/(tabs)/settings.tsx")), false);
-  for (const file of ["home.tsx", "ask.tsx", "guard.tsx", "check-it.tsx", "patrol.tsx"]) assert.match(read(`app/(tabs)/${file}`), /RootScreenHeader/);
+  for (const file of ["home.tsx", "guard.tsx", "check-it.tsx", "patrol.tsx"]) assert.match(read(`app/(tabs)/${file}`), /RootScreenHeader/);
+  // Higgins (ask.tsx) is a full chat screen with its own messaging header, not the shared root header.
+  assert.match(read("app/(tabs)/ask.tsx"), /testID="higgins-header"/);
   const header = read("src/components/RootScreenHeader.tsx");
   assert.match(header, /useFocusEffect/);
   assert.match(header, /opening\.current = false/);

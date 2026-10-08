@@ -11,7 +11,8 @@ import { AppDeviceSdk } from "@/src/security/appDeviceSdk";
 import { IS_NATIVE_HOST, securityAdapter } from "@/src/security/securityAdapter";
 
 export function currentPlatform(): DevicePlatform {
-  return Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : "web";
+  const os = Platform.OS as string;
+  return os === "ios" ? "ios" : os === "android" ? "android" : os === "windows" ? "windows" : os === "macos" ? "macos" : "web";
 }
 
 /** Runs the baseline. Each adapter call is contained so one failure can't abort the whole check. */

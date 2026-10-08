@@ -17,7 +17,8 @@ import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { GateAbout } from "@/src/components/GateAbout";
 import { assessDevice, deriveDeviceSecurityChanges, DEVICE_CHANGE_LABEL, DEVICE_STATUS, EMPTY_SIGNALS, SELF_REPORT, type DeviceFinding, type DevicePlatform, type DeviceSecurityChange, type DeviceSignals, type SelfReport } from "@/src/domain/deviceAnalysis";
-import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
+import { groupByCategory, OUTCOME_LABEL, OUTCOME_TONE, overallState, runDeviceReview, type CheckResult, type ReviewPlatform } from "@/src/domain/deviceReview";
+import { STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { AppDeviceSdk } from "@/src/security/appDeviceSdk";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -27,6 +28,8 @@ import { storage } from "@/src/utils/storage";
 import { issueContext } from "@/src/domain/higginsHandoff";
 
 const TARGET: Record<string, SettingsTarget> = { D01: "apps", D01b: "apps", D02: "security", D03: "security", D04: "vpn", D05: "accessibility", D06: "apps", D07: "apps", D08: "unknown_sources", D09: "overlay", D10: "notification_access", D11: "developer" };
+// Deep-link target for each review check so "Open Settings" lands the person on the right screen.
+const REVIEW_TARGET: Record<string, SettingsTarget> = { lock: "security", os_updates: "security", developer_mode: "developer", apollo_protection: "vpn", antivirus: "security", unknown_sources: "unknown_sources", remote_access: "apps", accessibility: "accessibility", unexpected_app: "apps", sensitive_permissions: "apps", notification_access: "notification_access", sharing_services: "security", vpn: "vpn", firewall: "security", management_profile: "security", certificates: "security", encryption: "security", backup: "security" };
 const DEVICE_SNAPSHOT_KEY = "apollo.device.signals.v1";
 const DEVICE_CHANGELOG_KEY = "apollo.device.changelog.v1";
 const SEVERITY_RANK: Record<DeviceFinding["severity"], number> = { high: 2, review: 1, info: 0 };
@@ -45,6 +48,7 @@ const useStyles = makeStyles((c) => ({
   step: { flexDirection: "row", gap: spacing.sm },
   num: { fontFamily: fonts.displayBold, fontSize: 15, color: c.brandPrimary, width: 20 },
   mono: { fontFamily: fonts.text, fontSize: 12, color: c.onSurfaceSecondary },
+  catLabel: { fontFamily: fonts.textSemibold, fontSize: 13, letterSpacing: 0.3, color: c.muted, textTransform: "uppercase" },
 }));
 
 export default function CheckDevice() {
@@ -97,6 +101,15 @@ export default function CheckDevice() {
   }), [changes, permissions, protection]);
   const result = useMemo(() => assessDevice(signals, self, context), [signals, self, context]);
   const meta = DEVICE_STATUS[result.status];
+  // Cross-platform Security & Privacy Review — every applicable setting gets an explicit outcome.
+  const reviewPlatform: ReviewPlatform | null = platform === "web" ? null : platform;
+  const review = useMemo(() => reviewPlatform ? runDeviceReview({ platform: reviewPlatform, signals, self, protection: context.protection }) : null, [reviewPlatform, signals, self, context.protection]);
+  const reviewGroups = useMemo(() => review ? groupByCategory(review) : [], [review]);
+  const openCheck = (r: CheckResult) => {
+    if (!r.settings) return;
+    if (platform === "web") setSettingsGuidance(`${r.title}: ${r.settings}`);
+    else void openDeviceSettings(REVIEW_TARGET[r.id] ?? "security", r.settings, (m) => showToast(m, "neutral"));
+  };
   const anySelf = Object.values(self).some(Boolean);
   // Each completed device check is a fresh timestamped observation. GateInvestigation uses a continuity key, so a
   // new submission appends to the SAME case rather than replacing its accepted history.
@@ -140,12 +153,11 @@ export default function CheckDevice() {
           tip="An app you don't remember installing, one with camera, microphone or Accessibility access it shouldn't need, or security settings (lock screen, Play Protect, updates) switched off.">
           <Body>Device Gate checks existing apps with visible sensitive access, current security settings and Apollo&apos;s own protection health—not only recent installs. It does not continuously scan every dormant app, and app capabilities are not proof of malicious behaviour.</Body>
         </GateAbout>
-        <Card testID="device-status" style={{ borderColor: toneColor(colors, result.state), gap: spacing.sm }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><ShieldCheck size={22} color={toneColor(colors, result.state)} /><Pill tone={result.state} label={STATE_NAME[result.state]} testID="device-state" /></View>
-          <Text style={s.statusTitle} testID="device-status-title">{meta.title}</Text>
-          <Text style={s.why}>{STATE_LABEL[result.state]}</Text>
-          <Text style={s.why} testID="device-summary">{result.summary}</Text>
-          <Body>{meta.meaning}</Body>
+        <Card testID="device-status" style={{ borderColor: toneColor(colors, review ? overallState(review.overall) : result.state), gap: spacing.sm }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><ShieldCheck size={22} color={toneColor(colors, review ? overallState(review.overall) : result.state)} /><Pill tone={review ? overallState(review.overall) : result.state} label={review ? review.overallLabel : STATE_NAME[result.state]} testID="device-state" /></View>
+          <Text style={s.statusTitle} testID="device-status-title">{review ? review.overallLabel : meta.title}</Text>
+          <Text style={s.why} testID="device-summary">{review ? review.summary : result.summary}</Text>
+          {review ? <Body testID="device-coverage">{review.coverage.automated} of {review.coverage.total} settings checked automatically here; Higgins can help with the rest below.</Body> : <Body>{meta.meaning}</Body>}
         </Card>
         {settingsGuidance ? <Card testID="device-settings-guidance" style={{ gap: spacing.sm }}><SectionTitle>Settings steps</SectionTitle><Body>{settingsGuidance}</Body><Button testID="device-settings-guidance-close" variant="ghost" label="Hide instructions" onPress={() => setSettingsGuidance(null)} /></Card> : null}
         {changeLog.length ? (
@@ -182,21 +194,31 @@ export default function CheckDevice() {
           </Card>
         ) : null}
 
-        {result.findings.length ? (
-          <View style={{ gap: spacing.md }}>
-            <SectionTitle>What deserves attention</SectionTitle>
-            {result.findings.map((f) => (
-              <Card key={f.id} style={{ gap: spacing.xs, borderColor: toneColor(colors, f.severity === "high" ? "barking" : f.severity === "review" ? "growling" : "ears_up") }} testID={`device-finding-${f.id}`}>
-                <View style={s.row}><Text style={[s.label, { flex: 1 }]}>{f.title}</Text><Pill tone={f.severity === "high" ? "barking" : f.severity === "review" ? "growling" : "ears_up"} label={f.severity === "high" ? "High risk" : f.severity === "review" ? "Review" : "Good to know"} /></View>
-                <Text style={s.why}>{f.plain}</Text>
-                <Text style={s.label}>What to do</Text>
-                <Text style={s.why}>{f.action}</Text>
-                <Body>{f.settings}</Body>
-                <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}>
-                  <Button testID={`device-open-${f.id}`} variant={f.severity === "high" ? "danger" : "secondary"} label={platform === "web" ? "Show Settings steps" : "Open Settings"} onPress={() => open(f)} />
-                  {f.handoff === "app" ? <Button testID={`device-app-${f.id}`} variant="ghost" label="Check this app" onPress={() => router.push("/app-check")} /> : null}
-                </View>
-              </Card>
+        {reviewGroups.length ? (
+          <View style={{ gap: spacing.md }} testID="device-review">
+            <SectionTitle>Security & privacy review</SectionTitle>
+            <Body>Every setting Apollo checks on this {review!.osLabel}, with a clear result for each. Tap “Open Settings” and Higgins takes you to the exact place to make a change.</Body>
+            {reviewGroups.map((group) => (
+              <View key={group.category} style={{ gap: spacing.sm }} testID={`device-review-cat-${group.category}`}>
+                <Text style={s.catLabel}>{group.label}</Text>
+                {group.results.map((r) => {
+                  const tone = OUTCOME_TONE[r.outcome];
+                  return (
+                    <Card key={r.id} style={{ gap: spacing.xs, borderColor: toneColor(colors, tone) }} testID={`device-check-${r.id}`}>
+                      <View style={s.row}><Text style={[s.label, { flex: 1 }]}>{r.title}</Text><Pill tone={tone} label={OUTCOME_LABEL[r.outcome]} testID={`device-check-${r.id}-outcome`} /></View>
+                      {r.risk ? <Text style={s.why}>{r.risk}</Text> : null}
+                      {r.remediation ? <><Text style={s.label}>What to do</Text><Text style={s.why}>{r.remediation}</Text></> : null}
+                      <Text style={s.mono}>{r.evidence}{r.verifiedBy === "user_confirmed" ? " · You confirmed this." : r.verifiedBy === "observation" ? " · Verified by Apollo." : ""}</Text>
+                      {r.settings && r.outcome !== "checked" ? (
+                        <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap", alignItems: "center" }}>
+                          <Button testID={`device-check-${r.id}-open`} variant={r.outcome === "action" ? "danger" : "secondary"} label={platform === "web" ? "Show Settings steps" : "Open Settings"} onPress={() => openCheck(r)} />
+                          <Text style={s.mono}>{r.settings}</Text>
+                        </View>
+                      ) : null}
+                    </Card>
+                  );
+                })}
+              </View>
             ))}
           </View>
         ) : null}
@@ -211,7 +233,7 @@ export default function CheckDevice() {
 
         <Card style={{ gap: spacing.sm }} testID="device-self-report">
           <SectionTitle>Tell Higgins what you&apos;ve noticed</SectionTitle>
-          <Body>{platform === "ios" ? "iPhone doesn't let any app inspect other apps or profiles, so Higgins uses your report alongside Apollo's available device checks." : signals.thirdPartyAccessibilityServices === null ? "This build can't read these device settings automatically yet — tell Higgins what you've seen." : "Higgins keeps your report distinct from results Apollo observed through available device checks."}</Body>
+          <Body>{platform === "ios" ? "You and Higgins review iPhone profiles and app access together, alongside Apollo's automatic checks." : signals.thirdPartyAccessibilityServices === null ? "Tell Higgins what you've noticed and he'll check it with you, alongside Apollo's automatic checks." : "Higgins keeps your report distinct from the results Apollo observed automatically."}</Body>
           {SELF_REPORT.filter((o) => !(platform === "ios" && o.id === "unknownSourcesOn")).map((o) => (
             <View key={o.id} style={s.row}><Text style={[s.why, { flex: 1 }]}>{o.label}</Text><Switch testID={`device-self-${o.id}`} value={!!self[o.id]} onValueChange={(v) => setSelf((c) => ({ ...c, [o.id]: v }))} trackColor={{ true: o.id === "managementExpected" ? colors.resting : colors.growling, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View>
           ))}
@@ -220,9 +242,9 @@ export default function CheckDevice() {
         </Card>
 
         <Card style={{ gap: spacing.xs }} testID="device-cannot-see">
-          <SectionTitle>What Apollo can&apos;t see here</SectionTitle>
-          {result.cannotSee.length ? result.cannotSee.map((c, i) => <Body key={i} testID={`device-cannot-${i}`}>• {c}</Body>) : <Body>Everything listed above was read from the device.</Body>}
-          <Body>Apollo shows only what it can verify. It never guesses at a full forensic scan.</Body>
+          <SectionTitle>Where Higgins can help</SectionTitle>
+          {result.cannotSee.length ? result.cannotSee.map((c, i) => <Body key={i} testID={`device-cannot-${i}`}>• {c}</Body>) : <Body>Everything above was read straight from your device.</Body>}
+          <Body>For anything your device keeps private from apps, Higgins walks you through it so nothing is left unchecked.</Body>
         </Card>
 
         <Card style={{ gap: spacing.sm }} testID="device-actions">

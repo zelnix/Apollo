@@ -25,10 +25,11 @@ public enum DeviceSignalsTruth {
   }
 
   /// DeviceSignals contract (src/domain/deviceAnalysis.ts) with iOS' honest nulls.
-  public static func signals(vpnActive: Bool?, managedConfigPresent: Bool) -> [String: Any] {
+  public static func signals(vpnActive: Bool?, managedConfigPresent: Bool, screenLockSecure: Bool?) -> [String: Any] {
     ["platform": "ios", "unknownSourcesEnabled": NSNull(), "thirdPartyAccessibilityServices": NSNull(), "overlayApps": NSNull(),
      "notificationAccessApps": NSNull(), "vpnActive": vpnActive.map { $0 as Any } ?? NSNull(), "vpnProviderKnown": NSNull(),
      "managementProfile": managementProfile(managedConfigPresent: managedConfigPresent), "userTrustedCertificates": NSNull(),
-     "remoteAccessApps": NSNull(), "developerOptions": NSNull()]
+     "remoteAccessApps": NSNull(), "developerOptions": NSNull(),
+     "screenLockSecure": screenLockSecure.map { $0 as Any } ?? NSNull()]
   }
 }

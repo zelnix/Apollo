@@ -1,3 +1,21 @@
+## Device Gate cross-platform Security & Privacy Review + positive framing + deep links (2026-06)
+
+**Platform typing (P0):** `DevicePlatform` expanded to `ios | android | windows | macos | web`; `firstCheckSignals.currentPlatform()` and `firstCheck.platformName()` now handle Windows/macOS (desktop no longer collapsed to web); `deviceAnalysis.path()` desktop-safe.
+
+**New engine `src/domain/deviceReview.ts` (P0):** registry-driven cross-platform review. 9 categories (access/system/malware/apps/personal_info/privacy/network/administration/data), 6 exact outcomes (`OUTCOME_LABEL`: Checked / Review recommended / Action required / Manual review required / Unavailable / Not applicable). ~18 checks, each declaring applicable platforms + per-OS Settings destinations + a pure evaluator that reuses existing `DeviceSignals`/self-report/protection health. Android/iOS read real signals; Windows/macOS return guided **Manual review** until native collectors land (never false "Checked"). `runDeviceReview()` returns per-check `{outcome, risk, evidence, remediation, settings, verifiedBy}` + honest `overall` (action/review/manual/clear/unknown) with coverage counts — **"clear"/Protected only when zero action/review AND zero skipped checks** (no-false-PASS). `groupByCategory`, `overallState`, `OUTCOME_TONE` helpers. Fully unit-tested: `tests/deviceReview.test.ts` (safe/unsafe/unknown/failed/user-confirmed/not-applicable/4-platform coverage/no-false-PASS).
+
+**Device Gate UI (`app/device.tsx`, P2):** new "Security & privacy review" section groups results by category; each shows title + outcome Pill + risk + "What to do" (Higgins remediation) + evidence + verifiedBy note + a **deep-linked "Open Settings"** button (`openDeviceSettings` via `REVIEW_TARGET`). Status card now driven by the honest `overall`/coverage. Replaced the old single-severity findings list.
+
+**Positive reframing (user ask):** negative "Apollo cannot…" copy reframed to what Higgins *can* do — Device Gate's "What Apollo can't see here" → "Where Higgins can help"; `deviceAnalysis.cannotSee[]` strings; app-check scope + `app-capability-evidence-note` + self-report blurb; review engine's manual/unavailable evidence. Fixed two pre-existing test failures from an earlier GateAbout edit (`fileDeviceGateUi`, restored app-check phrase) and updated `gate7` for the new positive iOS-management wording.
+
+**Not yet done (remaining):** full First Check / Higgins Re-check UI rebuild to the per-setting model (Phase 2 remainder); native collectors for Windows/macOS + deeper iOS/Android signals (Phase 3); positive-tone pass across non-device gates; the dev-only Safe Start screen still reads "GuardDog production authority". tsc + ESLint clean; suite 485/493 (8 failures all pre-existing app.json/source/brand scans).
+
+
+## Higgins starter memory (2026-06)
+
+Higgins now remembers the ordinary questions a person asks most often and offers them back as one-tap chips. Pure logic in `src/higgins/starterMemoryCore.ts` (`recordInto`, `topStarters`; unit-tested in `tests/starterMemory.test.ts`), local-only persistence in `src/higgins/starterMemory.ts` (AsyncStorage key `apollo.higgins.starter-memory.v1`, stored as JSON string). Wired into `app/(tabs)/ask.tsx`: records each ordinary chat message (min 6 chars), shows repeated questions (count ≥ 2) — merged into the welcome starters when empty, and as a slim horizontal "ask again" row above the composer during a chat (only when the input is empty). Cleared alongside Clear chat history. tsc + lint clean, tests pass.
+
+
 ## Higgins tab → full chat experience (2026-06)
 
 Rebuilt `app/(tabs)/ask.tsx` as a messaging screen ("Open Higgins. Start talking.").
@@ -1369,3 +1387,22 @@ AND inbox (READ_SMS); same privacy rule for email. User accepts the Play-restric
   CLEAR/ATTENTION/HIGH_RISK/CONFIRMED_THREAT/LIMITED/NOT_AVAILABLE/ERROR, per-platform adapters reusing
   Diagnostic Core + device signals, Check-tab "Higgins Re-check", Checkup history, full test matrix). Spec
   captured in this message; not yet implemented.
+
+## Device Gate — Phase 3 (native collectors extended) — DONE (2026-06)
+Extended each platform's native collector to read two more signals the OS legitimately exposes to a normal
+app (no new permissions), and wired them into the registry-driven review engine (src/domain/deviceReview.ts):
+- New DeviceSignals field `screenLockSecure: boolean | null` (deviceAnalysis.ts, EMPTY_SIGNALS).
+  - Android: KeyguardManager.isDeviceSecure() (AppDeviceSignals.kt).
+  - iOS: LAContext.canEvaluatePolicy(.deviceOwnerAuthentication) = a passcode is set (DeviceSignalsTruth.swift,
+    ApolloSecurityModule.swift). Windows/macOS → null → stays Manual.
+  - `lock` check now returns Checked (secure) / Action required (no lock) / Manual (unreadable).
+  - iOS `encryption` check now returns Checked when a passcode is set (iOS encrypts automatically), Action when
+    none, Manual when unreadable.
+- Android `userTrustedCertificates` now populated via the AndroidCAStore keystore ("user:" aliases) instead of
+  always null, so the `certificates` check reports real extra user-trusted CAs on Android.
+Truth rules preserved: anything the build can't read stays null → Manual/Unavailable, never a false Checked.
+Tests: deviceReview.test.ts (+ screen-lock & iOS-encryption cases), DeviceSignalsTruthTests.swift updated. Full
+TS/Node suite green. Also fixed the last legacy failure: package6Source.test.ts now loads app.config.js (there
+is no app.json), matching iosSourceReadiness.test.ts.
+NOTE: native reads (KeyguardManager / LAContext / AndroidCAStore) only verify on a real Android/iOS build — the
+web preview shows the Safe Start build-gate and cannot exercise them.
