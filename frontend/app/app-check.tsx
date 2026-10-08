@@ -191,7 +191,8 @@ export default function CheckApp() {
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="app-scroll">
         {!result ? (
           <>
-            <GateAbout title="How Apollo checks apps" testID="app-check-scope">
+            <GateAbout title="How Apollo checks apps" testID="app-check-scope"
+              tip="An app that wants Accessibility, 'draw over other apps' or full screen-sharing with no clear reason, was installed from a link rather than the official store, or asks to control your screen remotely.">
               <Body>Apollo checks an app whether it was installed today or has been on the device for months. It looks at capabilities, source, permissions and available behaviour evidence—not the name alone. {canPickApps ? "On this device you can pick an app from your installed list below, and Apollo reads its install source and permissions directly. You can also type any app name." : sdkVisible ? "On this device Apollo can read the install source and permissions of known remote-access apps (AnyDesk, TeamViewer and similar). For any other app, tell it what you see in Settings — Apollo can't list every app." : "On this build Apollo can't read other apps' permissions — tell it what you see in Settings."}</Body>
             </GateAbout>
             <Text style={s.label}>App name</Text>

@@ -133,7 +133,8 @@ export default function CheckMessage() {
         <Pressable testID="message-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="message-scroll">
-        <GateAbout title={isEmail ? "How Apollo handles your emails" : "How Apollo handles your messages"} testID="message-privacy">
+        <GateAbout title={isEmail ? "How Apollo handles your emails" : "How Apollo handles your messages"} testID="message-privacy"
+          tip={isEmail ? "A sender name that doesn't match the real address, a link or attachment you didn't expect, or an urgent 'account locked' or 'payment failed' message pushing you to click." : "A link you didn't expect, a 'your parcel is held' or 'account locked' text, odd spelling, or a request to tap a link or share a one-time code urgently."}>
           <Body>{isEmail ? "Apollo reads only incoming emails you choose, assesses each once, then discards the raw content. An email is kept only if it's flagged, and stays until you dismiss it. Background access remains off unless you enable it separately." : "Apollo reads only incoming messages you choose, assesses each once, then discards the raw content. A message is kept only if it's flagged, and stays until you dismiss it. You can also share a text from your Messages app, or pick one below. Background access remains off unless you enable it separately."}</Body>
         </GateAbout>
         <TextInput testID="message-sender" style={s.input} value={sender} onChangeText={setSender} placeholder="Sender (number, name or handle) — optional" placeholderTextColor={colors.muted} autoCorrect={false} />

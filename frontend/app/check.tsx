@@ -166,7 +166,8 @@ export default function CheckLink() {
           {!deviceId ? <Body testID="check-device-preparing">Apollo is registering this device before online reputation and Higgins checks.</Body> : null}
           <Button testID="check-page-screenshot" variant="secondary" label="Assess page screenshot" icon={<ImageIcon size={18} color={colors.onSurface} />} onPress={() => void photoAccess.start()} />
           <Button testID="check-page-crawl" variant="secondary" label="Inspect page safely" icon={<Globe size={18} color={colors.onSurface} />} onPress={() => void crawlPage()} disabled={!input.trim()} />
-          <GateAbout title="How these checks work" testID="check-privacy-scope">
+          <GateAbout title="How these checks work" testID="check-privacy-scope"
+            tip="A web address with tiny spelling changes (like 'rn' instead of 'm'), a shortened link you can't preview, or a login page you reached from a message rather than typing it yourself.">
             <Body>These are explicit one-off checks. Apollo fetches only public HTTP(S) content through SSRF protections or processes the chosen screenshot. Request copies close immediately and never later than 15 minutes. Gemini-side retention follows the configured API policy.</Body>
           </GateAbout>
           {pageError ? <Card testID="check-page-error"><Body>{pageError}</Body></Card> : null}

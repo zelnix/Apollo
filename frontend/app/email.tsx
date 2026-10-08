@@ -227,7 +227,8 @@ export default function CheckEmail() {
                 )}
               </Card>
             ) : null}
-            <GateAbout title="How Apollo handles this email" testID="email-processing-scope">
+            <GateAbout title="How Apollo handles this email" testID="email-processing-scope"
+              tip="A sender address that doesn't match the company, a link whose real address differs from the words shown, or an attachment or 'invoice' you didn't expect.">
               <Body>Submitting this email authorises one assessment of its sender, body and links. Apollo does not retain the full email; provider-side retention follows configured services.</Body>
             </GateAbout>
             <TextInput testID="email-from" style={s.input} value={from} onChangeText={setFrom} placeholder="From (e.g. CommBank <alerts@cb-secure.top>)" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} />

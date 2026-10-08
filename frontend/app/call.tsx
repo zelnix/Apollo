@@ -86,6 +86,7 @@ export default function CheckCall() {
         {!result ? (
           <>
             <GateAbout title="Automatically check incoming numbers" sheetTitle="Automatic call checking" testID="call-guard-auto"
+              tip="An unknown number claiming to be your bank, a delivery firm or 'tech support' that pressures you to act fast — asking you to move money, read out a code, or install an app."
               control={<Switch testID="call-auto-switch" value={autoCheck} onValueChange={(value) => { setAutoCheck(value); void storage.setItem("apollo.call.auto_check", value ? "true" : "false"); showToast(value ? "Call Guard on — Apollo will check incoming numbers." : "Call Guard off — you can still check numbers manually.", value ? "resting" : "neutral"); }} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} />}>
               <Body>When on, Apollo checks incoming caller numbers against its reputation service after each call, so scam and fraud callers are flagged without opening Apollo.</Body>
               <Body style={{ fontStyle: "italic" }}>Disclosure: this sends numbers that call you to Apollo&apos;s backend for a reputation check (via IPQualityScore). Numbers are cached briefly for repeat-call detection and are not shared with other users. You can turn it off anytime.</Body>

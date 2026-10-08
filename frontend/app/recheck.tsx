@@ -73,7 +73,8 @@ export default function Recheck() {
         <Pressable testID="recheck-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="recheck-scroll">
-        <GateAbout title="About Higgins Re-check" testID="recheck-intro">
+        <GateAbout title="About Higgins Re-check" testID="recheck-intro"
+          tip="Pop-ups or ads appearing outside apps, the battery or data draining unusually fast, new apps or icons you didn't add, or settings that change back after you fix them.">
           <Body>Re-check this device for signs of malware, unsafe changes or an existing compromise. Higgins repeats the checks this device allows and compares them with the last check.</Body>
         </GateAbout>
         {stamp ? <Text style={s.stamp} testID="recheck-stamp">Last checked {stamp}</Text> : null}

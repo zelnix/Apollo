@@ -91,7 +91,8 @@ export default function CheckMyAccounts() {
         <Pressable testID="monitor-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="monitor-scroll">
-        <GateAbout title="How account monitoring works" testID="monitor-intro">
+        <GateAbout title="How account monitoring works" testID="monitor-intro"
+          tip="One of your emails showing up in a breach — especially if you reuse that password elsewhere, or if the breach exposed passwords rather than just the email address.">
           <Body>Apollo watches your own email addresses for appearing in known data breaches. Checks run weekly when you open the app, and you can run one any time. Apollo never asks for or stores a password.</Body>
         </GateAbout>
 

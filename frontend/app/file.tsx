@@ -151,7 +151,8 @@ export default function CheckFile() {
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="file-scroll">
         {!result ? (
           <>
-            <GateAbout title="How Apollo checks files" testID="file-inspection-scope">
+            <GateAbout title="How Apollo checks files" testID="file-inspection-scope"
+              tip="A file ending in .apk, .exe or a double extension like 'invoice.pdf.exe', one you didn't expect, or a 'document' that asks you to enable macros or install something to open it.">
               <Body>Select or share any download or attachment, including one from Google Drive or another cloud service. Apollo checks a signature and up to 200 KB locally, for files up to 20 MB. Cloud hosting is not proof of safety. No archive extraction or malware scan. A name-only check does not read content. This local check never uploads the file; asking Higgins about it afterwards does, only with your explicit action.</Body>
             </GateAbout>
             <Button testID="file-pick" label={busy ? "Inspecting file…" : "Choose a file"} onPress={() => void pick()} disabled={busy} />

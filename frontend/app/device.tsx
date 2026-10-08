@@ -136,7 +136,8 @@ export default function CheckDevice() {
         <Pressable testID="device-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="device-scroll">
-        <GateAbout title="What the Device Gate checks" testID="device-gate-scope">
+        <GateAbout title="What the Device Gate checks" testID="device-gate-scope"
+          tip="An app you don't remember installing, one with camera, microphone or Accessibility access it shouldn't need, or security settings (lock screen, Play Protect, updates) switched off.">
           <Body>Device Gate checks existing apps with visible sensitive access, current security settings and Apollo&apos;s own protection health—not only recent installs. It does not continuously scan every dormant app, and app capabilities are not proof of malicious behaviour.</Body>
         </GateAbout>
         <Card testID="device-status" style={{ borderColor: toneColor(colors, result.state), gap: spacing.sm }}>

@@ -171,7 +171,8 @@ export default function CheckNetwork() {
           </>
         ) : null}
         <CheckHistoryCard gate="network" refreshKey={historyKey} testID="network-history" />
-        <GateAbout title="What Apollo can see here" testID="network-cannot-see">
+        <GateAbout title="What Apollo can see here" testID="network-cannot-see"
+          tip="A Wi‑Fi sign-in page asking for your email password or card details, a network name that's almost-but-not-quite the café's, or 'Free Wi‑Fi' with no password in a place you don't recognise.">
           <Body>This build sees only what the platform reports: connection type, Wi‑Fi name (with location permission), captive portal and VPN flags. It cannot read DNS queries, per-app traffic or confirm destination blocking — Apollo won&apos;t pretend otherwise.</Body>
         </GateAbout>
       </KeyboardAwareScrollView>
