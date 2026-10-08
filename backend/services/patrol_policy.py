@@ -35,6 +35,18 @@ def packet_verified(body):
     return e.mechanism != 'dns_filter' or (e.platform, e.direction, e.protocol, e.destination_port) == ('android', 'outbound', 'dns', 53)
 
 
+# Plain-English phrasing for Apollo's internal dog-posture states, so raw values like "ears_up" never reach users.
+_STATE_PHRASE = {
+    'resting': 'nothing unusual',
+    'sniffing': 'a check in progress',
+    'ears_up': 'something worth a closer look',
+    'growling': 'a possible concern',
+    'barking': 'a problem that needs your attention',
+    'biting': 'a blocked threat',
+    'unknown': 'an unclear result',
+}
+
+
 def minimal_patrol(body, verified):
     payload = body.model_dump()
     payload.pop('investigation_case_id', None)  # association has its own owner-validated route
@@ -54,7 +66,7 @@ def minimal_patrol(body, verified):
     # Never persist free-form local narratives from old clients either.
     payload.update(
         headline='Apollo observed a blocked connection' if verified else f'Apollo recorded a {body.category} check',
-        what_happened='An observed packet was intentionally blocked by the on-device filter.' if verified else f'The on-device assessment reported {body.state}. Details stay on the device.',
+        what_happened='An observed packet was intentionally blocked by the on-device filter.' if verified else f'The on-device check noticed {_STATE_PHRASE.get(body.state, "a result")}. Details stay on the device.',
         why=['Packet-backed enforcement evidence is attached.' if verified else 'Only a minimal security summary is shared.'],
         what_to_do='Avoid the suspicious interaction. Review the original alert on your phone.' if body.state == 'barking' else 'Review the original alert on your phone. A past check does not establish current safety.',
         indicator_host=body.indicator_host if body.category != 'call' and domain_only(body.indicator_host) else None,
