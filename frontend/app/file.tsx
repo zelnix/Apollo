@@ -2,7 +2,6 @@
 // nothing is uploaded. URLs found inside are handed to Gate 3.
 import * as DocumentPicker from "expo-document-picker";
 import * as Crypto from "expo-crypto";
-import { GateInvestigation } from "@/src/components/GateInvestigation";
 import { File } from "expo-file-system";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import X from "lucide-react-native/icons/x";
@@ -12,18 +11,19 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { markCheckDone } from "@/src/store/checkCompletion";
+import { CheckResultScreen } from "@/src/components/CheckResultScreen";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
-import { Sheet } from "@/src/components/Sheet";
 import { GateAbout } from "@/src/components/GateAbout";
-import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
+import { Body, Button, Card, SectionTitle } from "@/src/components/ui";
+import { buildFileCheckResult } from "@/src/domain/fileCheckResultAdapter";
+import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { analyseFile, FILE_SOURCES, type FileAnalysis, type FileSource } from "@/src/domain/fileAnalysis";
 import { FILE_SIZE_LIMIT, inspectSample, inspectWithHandle, type Inspection } from '@/src/domain/fileInspection';
-import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
+import { type PatrolEvent } from "@/src/domain/types";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { getShareIntake } from "@/src/share/shareIntake";
-import { issueContext } from "@/src/domain/higginsHandoff";
 import { disposePickerCopy, sweepPickerCopies } from '@/src/domain/fileCopyLifecycle';
 
 const useStyles = makeStyles((c) => ({
@@ -56,7 +56,6 @@ export default function CheckFile() {
   const [pw, setPw] = useState<boolean | null>(null);
   const [nameOnly, setNameOnly] = useState("");
   const [result, setResult] = useState<{ submissionId: string; a: FileAnalysis; event: PatrolEvent | null } | null>(null);
-  const [tech, setTech] = useState(false);
   const [busy, setBusy] = useState(false);
   const [pickerError, setPickerError] = useState<string | null>(null);
   const [selected, setSelected] = useState<{ asset: FileAsset; inspected: Inspection; realType: string; owned: boolean } | null>(null);
@@ -142,6 +141,45 @@ export default function CheckFile() {
   if (ready && !setupDone) return <Redirect href="/" />;
   const a = result?.a;
 
+  // UNIVERSAL CHECK RESULT — when the file check has produced an outcome, the entire screen
+  // becomes the shared Check Result. ONE Higgins paragraph, ONE items list, ONE actions row.
+  if (result && a) {
+    const model = buildFileCheckResult({ analysis: a, event: result.event, fileName: selected?.asset.name ?? (nameOnly || "file"), submissionId: result.submissionId });
+    const askPrompt = `About the file I just checked (${model.subject}). ${model.headline} Can you walk me through what Apollo found and what I should do?`;
+    const fileActions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];
+    if (a.handoff === "app") {
+      fileActions.push({ testID: "file-check-app", variant: "secondary", label: "I installed it — check the app", onPress: () => router.push({ pathname: "/app-check", params: { name: a.technical[0].replace(/^Name: /, "").replace(/\.[^.]+$/, ""), source: source === "browser" ? "browser" : "message", scent: result.event?.scent_id ?? result.event?.event_id ?? "" } }) });
+    }
+    if (a.handoff === "network") {
+      fileActions.push({ testID: "file-check-device", variant: "secondary", label: "I installed it — check my device", onPress: () => router.push("/device") });
+    }
+    if (a.urls.length) {
+      a.urls.forEach((u, i) => {
+        fileActions.push({ testID: `file-check-link-${i}`, variant: "ghost", label: `Check link: ${u.length > 40 ? u.slice(0, 40) + "\u2026" : u}`, onPress: () => router.push({ pathname: "/check", params: { url: u, source: "file" } }) });
+      });
+    }
+    fileActions.push({ testID: "file-again", variant: "ghost", label: "Check another file", onPress: checkAnother });
+
+    return (
+      <>
+        <CheckResultScreen
+          result={model}
+          onAskHiggins={() => router.push({
+            pathname: "/(tabs)/ask",
+            params: {
+              context: result.event ? JSON.stringify(contextFromEvent(result.event, gateForCategory(result.event.category))) : "",
+              prompt: askPrompt,
+            },
+          })}
+          actions={fileActions}
+        />
+        {result.event ? (
+          <RecoveryFlow event={result.event} kinds={["clicked", "app", "password", "card", "money", "download"]} testID="file-recovery" />
+        ) : null}
+      </>
+    );
+  }
+
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
@@ -149,67 +187,18 @@ export default function CheckFile() {
         <Pressable testID="file-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="file-scroll">
-        {!result ? (
-          <>
-            <GateAbout title="How Apollo checks files" testID="file-inspection-scope"
-              tip="A file ending in .apk, .exe or a double extension like 'invoice.pdf.exe', one you didn't expect, or a 'document' that asks you to enable macros or install something to open it.">
-              <Body>Select or share any download or attachment, including one from Google Drive or another cloud service. Apollo checks a signature and up to 200 KB locally, for files up to 20 MB. Cloud hosting is not proof of safety. No archive extraction or malware scan. A name-only check does not read content. This local check never uploads the file; asking Higgins about it afterwards does, only with your explicit action.</Body>
-            </GateAbout>
-            <Button testID="file-pick" label={busy ? "Inspecting file…" : "Choose a file"} onPress={() => void pick()} disabled={busy} />
-            {pickerError ? <Card testID="file-picker-error" style={{ gap: spacing.sm }}><Body>{pickerError}</Body><Button testID="file-picker-retry" variant="secondary" label="Try choosing again" onPress={() => void pick()} disabled={busy} /></Card> : null}
-            {selected ? <Card testID="file-evidence" style={{ gap: spacing.xs }}><SectionTitle>What Apollo inspected</SectionTitle><Body testID="file-evidence-name">Filename: {selected.asset.name}</Body><Body testID="file-evidence-size">Size: {selected.asset.size == null ? "not supplied" : `${selected.asset.size} bytes`}</Body><Body testID="file-evidence-mime">Supplied type: {selected.asset.mimeType || "unknown"}</Body><Body testID="file-evidence-signature">Signature result: {selected.realType}</Body><Body testID="file-evidence-sample">Content sample: {selected.inspected.inspectionError ? selected.inspected.inspectionError : selected.inspected.textSample ? "supported text was read locally" : "not readable or not present"}</Body></Card> : null}
+        <GateAbout title="How Apollo checks files" testID="file-inspection-scope"
+          tip="A file ending in .apk, .exe or a double extension like 'invoice.pdf.exe', one you didn't expect, or a 'document' that asks you to enable macros or install something to open it.">
+          <Body>Select or share any download or attachment, including one from Google Drive or another cloud service. Apollo checks a signature and up to 200 KB locally, for files up to 20 MB. Cloud hosting is not proof of safety. No archive extraction or malware scan. A name-only check does not read content. This local check never uploads the file; asking Higgins about it afterwards does, only with your explicit action.</Body>
+        </GateAbout>
+        <Button testID="file-pick" label={busy ? "Inspecting file\u2026" : "Choose a file"} onPress={() => void pick()} disabled={busy} />
+        {pickerError ? <Card testID="file-picker-error" style={{ gap: spacing.sm }}><Body>{pickerError}</Body><Button testID="file-picker-retry" variant="secondary" label="Try choosing again" onPress={() => void pick()} disabled={busy} /></Card> : null}
+        {selected ? <Card testID="file-evidence" style={{ gap: spacing.xs }}><SectionTitle>What Apollo inspected</SectionTitle><Body testID="file-evidence-name">Filename: {selected.asset.name}</Body><Body testID="file-evidence-size">Size: {selected.asset.size == null ? "not supplied" : `${selected.asset.size} bytes`}</Body><Body testID="file-evidence-mime">Supplied type: {selected.asset.mimeType || "unknown"}</Body><Body testID="file-evidence-signature">Signature result: {selected.realType}</Body><Body testID="file-evidence-sample">Content sample: {selected.inspected.inspectionError ? selected.inspected.inspectionError : selected.inspected.textSample ? "supported text was read locally" : "not readable or not present"}</Body></Card> : null}
             {pending?.needsSource && !pending.sourceAnswered ? <Card testID="file-source-followup" style={{ gap: spacing.sm }}><SectionTitle>One detail could change the advice</SectionTitle><Body>Where did this file come from? Choose “Not sure” if the source is unknown.</Body><View style={s.chips}>{FILE_SOURCES.map((o) => <Pressable key={o.id} testID={`file-source-${o.id}`} accessibilityRole="radio" accessibilityState={{ checked: source === o.id && pending.sourceAnswered }} aria-checked={source === o.id && pending.sourceAnswered} onPress={() => { setSource(o.id); setPending((current) => current ? { ...current, sourceAnswered: true } : current); }} style={[s.chip, source === o.id && pending.sourceAnswered && s.chipOn]}><Text style={s.chipText}>{o.label}</Text></Pressable>)}</View></Card> : null}
             {pending?.needsPassword && (!pending.needsSource || pending.sourceAnswered) ? <Card testID="file-password-followup" style={{ gap: spacing.sm }}><SectionTitle>One more detail</SectionTitle><View style={s.passwordRow}><Text style={[s.why, { flex: 1, flexShrink: 1 }]}>A password for this archive was supplied with it</Text><Switch style={{ flexShrink: 0 }} testID="file-pw" value={pw === true} onValueChange={(value) => setPw(value)} trackColor={{ true: colors.growling, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View><Body testID="file-password-answer">{pw === null ? "Not answered yet" : pw ? "You reported that a password was supplied." : "You reported that no password was supplied."}</Body>{pw === null ? <Button testID="file-pw-no" variant="secondary" label="No password was supplied" onPress={() => setPw(false)} /> : null}</Card> : null}
             {pending ? <Button testID="file-finish-check" label={busy ? "Finishing check…" : "Finish file check"} onPress={() => void completePending()} disabled={busy || (pending.needsSource && !pending.sourceAnswered) || (pending.needsPassword && pw === null)} /> : null}
-            {!pending && !selected ? <><SectionTitle>Limited alternative: filename only</SectionTitle><Body>A filename-only check cannot read the signature or content and cannot establish safety.</Body><TextInput testID="file-name" style={s.input} value={nameOnly} onChangeText={setNameOnly} placeholder="e.g. Statement.pdf.exe" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} /><Button testID="file-name-check" variant="secondary" label="Check filename only" onPress={() => void finish(analyseFile({ name: nameOnly.trim(), source: "unknown", passwordInMessage: false }))} disabled={!nameOnly.trim()} /></> : null}
-          </>
-        ) : a ? (
-          <>
-            <Card testID="file-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
-              <View style={s.chips}><Pill tone={a.state} label={STATE_NAME[a.state]} testID="file-state" /><Pill tone="neutral" label={a.title} testID="file-scenario" /><Pill tone="neutral" label={`Signature hint: ${a.realType}`} testID="file-realtype" /></View>
-              <Text style={s.why}>{STATE_LABEL[a.state]}</Text>
-              <Text style={s.verdict} testID="file-verdict">{a.verdict}</Text>
-              <SectionTitle>Why?</SectionTitle>
-              {a.why.map((w, i) => <Text key={i} style={s.why} testID={`file-why-${i}`}>• {w}</Text>)}
-              <SectionTitle>Recommendation</SectionTitle>
-              <Text style={s.why} testID="file-recommendation">{a.recommendation}</Text>
-            </Card>
-            <Card testID="file-higgins" style={{ gap: spacing.sm, borderColor: colors.navyBorder }}>
-              <SectionTitle>Higgins</SectionTitle>
-              <Body testID="file-higgins-explanation">I&apos;ve explained what Apollo actually inspected, what remains unknown and the safest next step. A familiar sender or cloud host is context—not proof that the file is safe.</Body>
-              <Body testID="file-higgins-next">{a.recommendation}</Body>
-            </Card>
-            {a.urls.length ? (
-              <Card style={{ gap: spacing.sm }} testID="file-links">
-                <SectionTitle>Links inside the file</SectionTitle>
-                {a.urls.map((u, i) => <View key={u} style={s.row}><Text style={[s.why, { flex: 1 }]} numberOfLines={1}>{u}</Text><Button testID={`file-check-link-${i}`} variant="secondary" label="Check link" onPress={() => router.push({ pathname: "/check", params: { url: u, source: "file" } })} /></View>)}
-              </Card>
-            ) : null}
-            <Card style={{ gap: spacing.sm }} testID="file-actions">
-              {a.handoff === "app" ? <Button testID="file-check-app" label="I installed it — check the app" onPress={() => router.push({ pathname: "/app-check", params: { name: a.technical[0].replace(/^Name: /, "").replace(/\.[^.]+$/, ""), source: source === "browser" ? "browser" : "message", scent: result.event?.scent_id ?? result.event?.event_id ?? "" } })} /> : null}
-              {a.handoff === "network" ? <Button testID="file-check-device" label="I installed it — check my device" onPress={() => router.push("/device")} /> : null}
-              <Button testID="file-tech" variant="secondary" label="View technical details" onPress={() => setTech(true)} />
-              {result.event ? <RecoveryFlow event={result.event} kinds={["clicked", "app", "password", "card", "money", "download"]} testID="file-recovery" /> : null}
-              <GateInvestigation submission={result} eventId={result.event?.event_id} testID="file-tell-more" label="Ask Higgins about this file" context={issueContext({ gate: "file", issue_summary: a.title, assessment_state: a.state, event_id: result.event?.event_id, findings: [
-                { summary: `Filename: ${selected?.asset.name ?? "not supplied"}`, provenance: "observed", status: "uncertain" },
-                { summary: `Supplied size/type: ${selected?.asset.size ?? "unknown"} bytes; ${selected?.asset.mimeType ?? "unknown"}`, provenance: "observed", status: "uncertain" },
-                { summary: `Signature result: ${a.realType}`, provenance: "observed", status: a.state === "barking" ? "warning" : "uncertain" },
-                { summary: selected?.inspected.inspectionError ? `Content sample unavailable: ${selected.inspected.inspectionError}` : selected?.inspected.textSample ? "A bounded supported text sample was read locally." : "No supported text sample was readable.", provenance: "observed", status: "uncertain" },
-                ...a.why.slice(0, 4).map((summary) => ({ summary, provenance: "inferred" as const, status: a.state === "barking" ? "warning" as const : "uncertain" as const })),
-              ], uncertainty: ["Only the signature and a bounded supported sample were inspected; complete contents and safety remain unknown."], confirmed_protective_actions: [], user_reported_actions: [], original_evidence: shared ? [...(shared.text || shared.webUrl ? [{ kind: "text" as const, value: [shared.text, shared.webUrl].filter(Boolean).join("\n"), label: "shared text" }] : []), ...(shared.files ?? []).map((file, index) => ({ kind: "file" as const, uri: file.path, name: file.fileName || `shared-attachment-${index + 1}`, mediaType: file.mimeType || "application/octet-stream", size: file.size ?? undefined }))] : selected ? [{ kind: "file", uri: selected.asset.uri, name: selected.asset.name, mediaType: selected.asset.mimeType || "application/octet-stream", size: selected.asset.size }] : [], available_actions: [
-                { label: "Follow the File Gate recommendation", instruction: a.recommendation },
-                { label: "Use I already opened it", instruction: "Return to the File Gate result and use I already opened it in Stay With Me for recovery steps." },
-              ] })} question="What should I do with this file?" autoStart={false} />
-              <Button testID="file-again" variant="ghost" label="Check another file" onPress={checkAnother} />
-            </Card>
-          </>
-        ) : null}
+        {!pending && !selected ? <><SectionTitle>Limited alternative: filename only</SectionTitle><Body>A filename-only check cannot read the signature or content and cannot establish safety.</Body><TextInput testID="file-name" style={s.input} value={nameOnly} onChangeText={setNameOnly} placeholder="e.g. Statement.pdf.exe" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} /><Button testID="file-name-check" variant="secondary" label="Check filename only" onPress={() => void finish(analyseFile({ name: nameOnly.trim(), source: "unknown", passwordInMessage: false }))} disabled={!nameOnly.trim()} /></> : null}
       </KeyboardAwareScrollView>
-      <Sheet visible={tech} onClose={() => setTech(false)} title="Technical details" testID="file-tech-sheet">
-        {a?.technical.map((t, i) => <Body key={i} testID={`file-tech-${i}`}>{t}</Body>)}
-        <Body>Deep malware scanning and hash reputation are not available in this build. Apollo shows only the device checks that completed.</Body>
-        <Button testID="file-tech-close" variant="ghost" label="Done" onPress={() => setTech(false)} />
-      </Sheet>
     </View>
   );
 }

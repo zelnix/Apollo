@@ -2,7 +2,6 @@
 // the verdict; the user adds context (home/work/public, expected network name, whether they turned the VPN on).
 // The unimplemented native SDK contract has been removed — all observations come from
 // the platform network snapshot (connection type, Wi-Fi security, captive portal, VPN flags).
-import { GateInvestigation } from "@/src/components/GateInvestigation";
 import { Redirect, useRouter } from "expo-router";
 import * as Crypto from "expo-crypto";
 import Wifi from "lucide-react-native/icons/wifi";
@@ -13,18 +12,20 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { markCheckDone } from "@/src/store/checkCompletion";
+import { CheckResultScreen } from "@/src/components/CheckResultScreen";
 import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
 import { recordCheck } from "@/src/store/checkHistoryStore";
 import { saveCheck } from "@/src/store/savedCheckStore";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { GateAbout } from "@/src/components/GateAbout";
+import { buildNetworkCheckResult } from "@/src/domain/networkCheckResultAdapter";
+import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { analyseNetwork, NETWORK_CONTEXTS, type NetworkAnalysis, type NetworkContext } from "@/src/domain/networkAnalysis";
 import { SCENT_WINDOW_MS } from "@/src/domain/threatScent";
 import { STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
-import { issueContext } from "@/src/domain/higginsHandoff";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -55,7 +56,6 @@ export default function CheckNetwork() {
   const [vpnTrusted, setVpnTrusted] = useState<boolean | null>(null);
   const [captiveUrl, setCaptiveUrl] = useState("");
   const [result, setResult] = useState<{ submissionId: string; a: NetworkAnalysis; event: PatrolEvent | null } | null>(null);
-  const [showFull, setShowFull] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const guard = capabilities.find((c) => c.id === "connection_guard");
@@ -109,6 +109,40 @@ export default function CheckNetwork() {
   if (ready && !setupDone) return <Redirect href="/" />;
   const a = result?.a;
 
+  // UNIVERSAL CHECK RESULT — when the network check has produced an outcome, the entire screen
+  // becomes the shared Check Result. The dashboard stays above; result replaces legacy cards.
+  if (result && a) {
+    const submissionId = result.event?.event_id ?? `net-${Date.now().toString(36)}`;
+    const model = buildNetworkCheckResult({ analysis: a, event: result.event, context, submissionId });
+    const askPrompt = `About the network I just checked (${model.subject}). ${model.headline} Can you walk me through what Apollo found and what I should do?`;
+    const netActions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];
+    if (a.handoff === "web" && captiveUrl.trim()) {
+      netActions.push({ testID: "network-check-portal", variant: "secondary", label: "Check the sign-in page", onPress: () => router.push({ pathname: "/check", params: { url: captiveUrl.trim().startsWith("http") ? captiveUrl.trim() : `https://${captiveUrl.trim()}`, source: "network" } }) });
+    }
+    if (a.handoff === "app") {
+      netActions.push({ testID: "network-check-device", variant: "secondary", label: "Check my device", onPress: () => router.push("/device") });
+    }
+    if (a.ssid && !trustedSsids.includes(a.ssid) && (a.state === "resting" || a.state === "ears_up") && context !== "public") {
+      netActions.push({ testID: "network-trust", variant: "ghost", label: `Trust "${a.ssid}" — it's mine`, onPress: () => void trustNetwork(a.ssid!) });
+    }
+    netActions.push({ testID: "network-save", variant: "ghost", label: saved ? "Saved \u2713 — View saved checks" : "Save this check", onPress: () => { if (saved) { router.push("/saved-checks"); return; } void saveCheck({ id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`, gate: "network", title: a.title, subject: a.ssid || "This network", state: a.state, stateName: STATE_NAME[a.state], summary: a.verdict, recommendation: a.recommendation, sections: [{ title: "Why Apollo reacted", lines: a.why }, { title: "Technical details", lines: a.technical }, { title: "Reference", lines: [`Scenario: ${a.scenario}`] }] }).then(() => { setSaved(true); showToast("Saved. Find it under Saved checks.", "neutral"); }); } });
+    netActions.push({ testID: "network-again", variant: "ghost", label: "Check again", onPress: () => { setResult(null); setSaved(false); } });
+
+    return (
+      <CheckResultScreen
+        result={model}
+        onAskHiggins={() => router.push({
+          pathname: "/(tabs)/ask",
+          params: {
+            context: result.event ? JSON.stringify(contextFromEvent(result.event, gateForCategory(result.event.category))) : "",
+            prompt: askPrompt,
+          },
+        })}
+        actions={netActions}
+      />
+    );
+  }
+
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
@@ -136,44 +170,11 @@ export default function CheckNetwork() {
         <Text style={s.label}>Where are you?</Text>
         <View style={s.chips}>{NETWORK_CONTEXTS.map((o) => <Pressable key={o.id} testID={`network-ctx-${o.id}`} accessibilityRole="button" onPress={() => pickContext(o.id)} style={[s.chip, context === o.id && s.chipOn]}><Text style={s.chipText}>{o.label}</Text></Pressable>)}</View>
 
-        {!result ? (
-          <>
-            <Text style={s.label}>Network name the venue advertised (optional)</Text>
-            <TextInput testID="network-expected" style={s.input} value={expected} onChangeText={setExpected} placeholder="e.g. Hotel_Guest" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} />
-            {vpnOn ? <View style={s.row}><Text style={[s.why, { flex: 1 }]}>I turned this VPN on myself</Text><Switch testID="network-vpn-trusted" value={vpnTrusted === true} onValueChange={(v) => setVpnTrusted(v ? true : false)} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View> : null}
-            {network?.captivePortal ? <><Text style={s.label}>Address of the Wi‑Fi sign-in page (optional)</Text><TextInput testID="network-captive" style={s.input} value={captiveUrl} onChangeText={setCaptiveUrl} placeholder="https://…" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} keyboardType="url" /></> : null}
-            <Button testID="network-run" label="Check this network" onPress={() => void run()} disabled={!network} />
-          </>
-        ) : a ? (
-          <>
-            {/* Summary-first: outcome + what-to-do + the direct action; details fold away. */}
-            <Card testID="network-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
-              <View style={s.chips}><Pill tone={a.state} label={STATE_NAME[a.state]} testID="network-state" /></View>
-              <Text style={s.verdict} testID="network-title">{a.title}</Text>
-              <Text style={s.why} testID="network-verdict">{a.verdict}</Text>
-              <SectionTitle>What to do</SectionTitle>
-              <Text style={s.why} testID="network-recommendation">{a.recommendation}</Text>
-              {a.handoff === "web" && captiveUrl.trim() ? <Button testID="network-check-portal" label="Check the sign-in page" onPress={() => router.push({ pathname: "/check", params: { url: captiveUrl.trim().startsWith("http") ? captiveUrl.trim() : `https://${captiveUrl.trim()}`, source: "network" } })} /> : null}
-              {a.handoff === "app" ? <Button testID="network-check-device" label="Check my device" onPress={() => router.push("/device")} /> : null}
-              {a.ssid && !trustedSsids.includes(a.ssid) && (a.state === "resting" || a.state === "ears_up") && context !== "public" ? <Button testID="network-trust" variant="secondary" label={`Trust “${a.ssid}” — it's mine`} onPress={() => void trustNetwork(a.ssid!)} /> : null}
-              <Button testID="network-view-full" variant="secondary" label={showFull ? "Hide full details" : "View full details"} onPress={() => setShowFull((v) => !v)} />
-            </Card>
-            {showFull ? (
-              <Card style={{ gap: spacing.xs }} testID="network-full">
-                <SectionTitle>Why Apollo reacted</SectionTitle>
-                {a.why.map((w, i) => <Text key={i} style={s.why} testID={`network-why-${i}`}>• {w}</Text>)}
-                <SectionTitle>Technical details</SectionTitle>
-                {a.technical.map((t, i) => <Body key={i} testID={`network-tech-${i}`}>{t}</Body>)}
-                <Body>Scenario reference: {a.scenario}</Body>
-              </Card>
-            ) : null}
-            <Card style={{ gap: spacing.sm }} testID="network-actions">
-              <GateInvestigation submission={result} testID="network-ask" label="Ask Higgins about this network" context={issueContext({ gate: "network", issue_summary: a.title, assessment_state: a.state, findings: a.why.slice(0, 6).map((summary) => ({ summary, provenance: "inferred", status: a.state === "barking" ? "warning" : "uncertain" })), uncertainty: ["These signals do not establish that anyone intercepted traffic."], confirmed_protective_actions: [], user_reported_actions: context === "unknown" ? [] : [`Network context: ${context}`], original_evidence: [{ kind: "text", value: `Network assessment (available signals only; no traffic inspection):\n${a.title}\n${a.why.join("\n")}\nContext reported by the person: ${context}`, label: "network signals" }] })} question="What should I do on this network?" />
-              <Button testID="network-save" variant="ghost" label={saved ? "Saved ✓ — View saved checks" : "Save this check"} onPress={() => { if (saved) { router.push("/saved-checks"); return; } void saveCheck({ id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`, gate: "network", title: a.title, subject: a.ssid || "This network", state: a.state, stateName: STATE_NAME[a.state], summary: a.verdict, recommendation: a.recommendation, sections: [{ title: "Why Apollo reacted", lines: a.why }, { title: "Technical details", lines: a.technical }, { title: "Reference", lines: [`Scenario: ${a.scenario}`] }] }).then(() => { setSaved(true); showToast("Saved. Find it under Saved checks.", "neutral"); }); }} />
-              <Button testID="network-again" variant="ghost" label="Check again" onPress={() => { setResult(null); setShowFull(false); setSaved(false); }} />
-            </Card>
-          </>
-        ) : null}
+        <Text style={s.label}>Network name the venue advertised (optional)</Text>
+        <TextInput testID="network-expected" style={s.input} value={expected} onChangeText={setExpected} placeholder="e.g. Hotel_Guest" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} />
+        {vpnOn ? <View style={s.row}><Text style={[s.why, { flex: 1 }]}>I turned this VPN on myself</Text><Switch testID="network-vpn-trusted" value={vpnTrusted === true} onValueChange={(v) => setVpnTrusted(v ? true : false)} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View> : null}
+        {network?.captivePortal ? <><Text style={s.label}>Address of the Wi‑Fi sign-in page (optional)</Text><TextInput testID="network-captive" style={s.input} value={captiveUrl} onChangeText={setCaptiveUrl} placeholder="https://…" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} keyboardType="url" /></> : null}
+        <Button testID="network-run" label="Check this network" onPress={() => void run()} disabled={!network} />
         <CheckHistoryCard gate="network" refreshKey={historyKey} testID="network-history" />
       </KeyboardAwareScrollView>
     </View>

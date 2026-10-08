@@ -16,6 +16,27 @@
 
 **Verification (code-level only — no automated tests run per rule):** `tsc --noEmit` clean; ESLint clean; Android bundle HTTP 200. Full visual verification needs a native build + your sign-off on the Link Gate before I migrate the rest.
 
+## Universal Check Result — Phase 2 Batch 1: Call, File, Network Gates (2026-06)
+
+**Migrated three more Gates** to the shared `CheckResultScreen` component, eliminating legacy duplicate verdict cards and bringing them in line with the "Apollo investigates, Higgins explains" principle.
+
+**Call Gate (`app/call.tsx`):**
+- New `src/domain/callCheckResultAdapter.ts`: `buildCallCheckResult({ analysis, event, number, transcript })` maps `CallAnalysis` to `CheckResultModel`. Items: What they asked, Claimed identity, Caller number, Voicemail/transcript, Threat Scent correlation. Higgins paragraph composed from verdict + why + recommendation, tone-driven. Evidence rows: caller, claims, scenario, basis, transcript.
+- When a result exists, the entire screen becomes `<CheckResultScreen>` with actions: Verify safely, Trust/untrust number, Check related gates (App Gate for install requests, Account Gate for code/password requests), Mark as handled, Check another call. RecoveryFlow and Verify Caller sheet retained as overlays.
+
+**File Gate (`app/file.tsx`):**
+- New `src/domain/fileCheckResultAdapter.ts`: `buildFileCheckResult({ analysis, event, fileName, submissionId })` maps `FileAnalysis` to `CheckResultModel`. Items: File signature, Extension mismatch, Embedded links, Content sample. Higgins paragraph qualifies inspected scope — never claims safety beyond what was actually checked.
+- When a result exists, early return renders `<CheckResultScreen>` with actions: "I installed it — check the app/device", Check embedded links, Check another file. RecoveryFlow retained. Old "Higgins card", "Technical details sheet", and `GateInvestigation` inline component removed — all now handled by the universal screen's "Full investigation details" and "Ask Higgins" button.
+
+**Network/Internet Gate (`app/network.tsx`):**
+- New `src/domain/networkCheckResultAdapter.ts`: `buildNetworkCheckResult({ analysis, event, context, submissionId })` maps `NetworkAnalysis` to `CheckResultModel`. Items: Connection type, Wi-Fi encryption, Network name, Captive portal, VPN status, Network context, Threat Scent. Higgins paragraph honestly qualifies what platform signals can and cannot establish.
+- When a result exists, early return renders `<CheckResultScreen>` with actions: Check sign-in page, Check device, Trust network, Save check, Check again. Dashboard and input form remain on the entry view.
+
+**Code cleanup:** Removed unused imports (`GateInvestigation`, `Pill`, `toneColor`, `STATE_LABEL`, `STATE_NAME`, `issueContext`, `Sheet`, `PhoneOff`), dead state variables (`why`, `tech`, `showFull`), deduplicated `higginsHandoff` imports.
+
+**Still to do (Phase 2 Batch 2):** Text Gate, Email Gate. **Batch 3:** App Gate, Device Gate. **Deferred:** First Check, Re-check (different UX pattern).
+
+
 
 ## Scam Share + "What Apollo has done today" Protection Timeline (2026-06)
 
