@@ -263,7 +263,7 @@ async def investigate_message(*, sender: str, text: str, urls: list[str], claime
                      "numberResults": len(phones), "unavailableSourceIds": gaps, "partialPages": partial_pages,
                      "externalResearch": "not_yet_available"},
         "capacityPolicy": policy()["version"], "provider_metadata": metadata,
-        "provider_note": "Request copies are discarded after processing. Gemini account retention settings have not been independently verified.",
+        "provider_note": "Request copies are discarded after processing. The AI provider account retention settings have not been independently verified.",
         "completed_at": checked_now() if complete else None}
     return InvestigationResult(assessment_id=str(uuid.uuid4()), risk=risk, entities=entities, findings=findings,
         sources=sources, higgins=higgins, technical_summary=["Static page reads and configured reputation only; no full research coordinator yet."], processing=processing)
@@ -279,7 +279,7 @@ async def extract_message_screenshot(image_bytes: bytes) -> dict:
             "urls": [purpose_limited_url(str(url)) for url in data.get("urls", [])], "source": str(data.get("source", "other")),
             "processing": {"raw_retained_by_apollo": False, **metadata,
                 "temporary_copy_policy": TEMPORARY_COPY_POLICY,
-                "provider_note": "The screenshot is processed by Gemini and not retained by Apollo. Provider policy is account-controlled."}}
+                "provider_note": "The screenshot is processed by Higgins and not retained by Apollo. Provider policy is account-controlled."}}
 
 
 def phone_risk_investigation(result: Any) -> InvestigationResult:

@@ -18,9 +18,9 @@ from services.higgins.contracts import Failure
 MAX_TRANSIENT_RETRIES = 2
 _tasks: set[asyncio.Task] = set()
 
-MESSAGES = {"rate_limited": "Gemini is rate-limiting requests. Higgins will retry shortly.", "provider_unavailable": "Gemini did not answer in time.",
-            "provider_configuration": "The Gemini configuration on this server is invalid or lacks a required capability. Operator attention is needed.",
-            "incomplete_output": "Gemini stopped before completing its answer.", "response_invalid": "Higgins' answer did not pass Apollo's interface checks after one repair.",
+MESSAGES = {"rate_limited": "Higgins is briefly rate-limited and will retry shortly.", "provider_unavailable": "Higgins did not answer in time.",
+            "provider_configuration": "Higgins' AI service on this server is misconfigured or lacks a required capability. Operator attention is needed.",
+            "incomplete_output": "Higgins stopped before completing his answer.", "response_invalid": "Higgins' answer did not pass Apollo's interface checks after one repair.",
             "budget_exhausted": "The evidence exceeds the model's context budget for a single pass.", "transport_interrupted": "The investigation was superseded before it could be committed.",
             "evidence_expired": "Temporary evidence expired before the investigation finished."}
 

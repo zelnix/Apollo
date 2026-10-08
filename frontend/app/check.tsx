@@ -86,7 +86,7 @@ export default function CheckLink() {
       setPageScreenshotUri(asset.uri);
       const signals = await apiUpload<PageSignals>("/page/extract", "page_extract", { device_id: deviceId, url_hint: input.trim() },
         { uri: asset.uri, name: asset.fileName ?? "page-screenshot.jpg", type: asset.mimeType ?? "image/jpeg" });
-      await applyPageSignals(signals, "Gemini extracted visible page signals; Apollo's local rules made the assessment.");
+      await applyPageSignals(signals, "Higgins extracted visible page signals; Apollo's local rules made the assessment.");
     } catch (error) { setPageError(error instanceof Error ? error.message : "Could not assess that screenshot."); }
   };
   const photoAccess = useScreenshotAccess(launchPagePicker);
@@ -147,7 +147,7 @@ export default function CheckLink() {
         <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} keyboardShouldPersistTaps="handled" testID="check-scroll">
           <GateAbout title="How these checks work" testID="check-privacy-scope"
             tip="A web address with tiny spelling changes (like 'rn' instead of 'm'), a shortened link you can't preview, or a login page you reached from a message rather than typing it yourself.">
-            <Body>These are explicit one-off checks. Apollo fetches only public HTTP(S) content through SSRF protections or processes the chosen screenshot. Request copies close immediately and never later than 15 minutes. Gemini-side retention follows the configured API policy.</Body>
+            <Body>These are explicit one-off checks. Apollo fetches only public HTTP(S) content through SSRF protections or processes the chosen screenshot. Request copies close immediately and never later than 15 minutes. Higgins-side retention follows the configured API policy.</Body>
           </GateAbout>
           <View style={s.inputWrap}>
             <TextInput

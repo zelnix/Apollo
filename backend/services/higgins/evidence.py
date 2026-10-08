@@ -325,7 +325,7 @@ async def ingest_file(owner: str, case: dict, meta_in: dict, data: bytes, *, evi
                                    parent_id=item.id, collected_at=now_utc(), expires_at=expires, media_type="text/plain", byte_length=len(text.encode("utf-8")),
                                    coverage=Coverage(status="not_started", unit="characters", total=len(text), examined=0,
                                                      material_gap=incomplete, permanent_gap=incomplete, reason=transcription_gap_reason),
-                                   transformations=[Transformation(kind="secret_redaction", description="Targeted redaction by the Gemini preflight: only secret values were replaced; other visible text is verbatim.")],
+                                   transformations=[Transformation(kind="secret_redaction", description="Targeted redaction by the Higgins preflight: only secret values were replaced; other visible text is verbatim.")],
                                    label="redacted transcription of the withheld screenshot")
             await repo.insert_evidence(owner, derived, {"derivedFrom": item.id}, publication_root_id=item.id, ingestion_attempt_id=attempt_id, publication_owner=publication_owner)
             await repo.store_bytes(owner, case["case_id"], derived.id, text.encode("utf-8"), expires, publish_root=False)
@@ -410,7 +410,7 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
                 for number, png in _render_pdf_pages(data, to_render):
                     page_item = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=f"{item.client_item_id}.page{number}", origin=item.origin, kind="image",
                                              parent_id=item.id, collected_at=now_utc(), expires_at=item.expires_at, media_type="image/png", byte_length=len(png),
-                                             coverage=Coverage(status="not_started", unit="items", total=1, examined=0, reason="rendered scanned page available to Gemini vision; not yet examined"),
+                                             coverage=Coverage(status="not_started", unit="items", total=1, examined=0, reason="rendered scanned page available to Higgins vision; not yet examined"),
                                              transformations=[Transformation(kind="decode", description=f"Page {number} contains visual material or lacks a text layer; rasterised at {SCAN_DPI} DPI for visual reading.")],
                                              label=f"visual page {number} (rendered image)")
                     await repo.insert_evidence(owner, page_item, {"page": number, "derivedFrom": item.id}, publication_root_id=item.id, ingestion_attempt_id=attempt_id, publication_owner=publication_owner)
@@ -456,7 +456,7 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
                 if image.width * image.height > MAX_IMAGE_PIXELS:
                     await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"availability": "unavailable"}}, attempt_id=attempt_id)
                     raise ValueError("pixels")
-            await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"coverage.reason": "original image available to Gemini vision; not yet examined"}}, attempt_id=attempt_id)
+            await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"coverage.reason": "original image available to Higgins vision; not yet examined"}}, attempt_id=attempt_id)
         elif detected == "text/plain":
             derived = await ingest_text(owner, case, f"{item.client_item_id}.text", data.decode("utf-8", errors="replace"), parent_id=item.id, label="file text", meta={"registerClues": True},
                                         publication_root_id=item.id, ingestion_attempt_id=attempt_id, publication_owner=publication_owner, publish=False)

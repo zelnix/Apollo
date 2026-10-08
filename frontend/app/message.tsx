@@ -145,7 +145,7 @@ export default function CheckMessage() {
           <Button testID="message-check" label={busy === "checking" ? "Sniffing…" : "Check message"} onPress={() => void run()} disabled={!text.trim() || busy !== "idle"} style={{ flex: 1 }} />
           <Button testID="message-screenshot" variant="secondary" label={busy === "reading" ? "Reading…" : "Choose screenshot"} icon={<ImageIcon size={18} color={colors.onSurface} />} onPress={() => void photoAccess.start()} disabled={busy !== "idle"} />
         </View>
-        <Text style={s.small} testID="message-processing-scope">Apollo combines local detection, Gemini context, caller reputation and bounded webpage checks. Raw content is discarded after the assessment; provider-side retention follows the configured Gemini API policy.</Text>
+        <Text style={s.small} testID="message-processing-scope">Apollo combines local detection, Higgins context, caller reputation and bounded webpage checks. Raw content is discarded after the assessment; provider-side retention follows the configured Higgins policy.</Text>
         {error ? <Card testID="message-error"><Body>{error}</Body></Card> : null}
         {busy !== "idle" ? (
           <Card style={{ gap: spacing.md }} testID="message-sniffing">

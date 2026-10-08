@@ -98,7 +98,7 @@ export default function TextGuard() {
         <Pressable testID="textguard-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="textguard-scroll">
-        <Body testID="textguard-intro">Apollo investigates pasted texts and chosen screenshots using local scam detection, link and public evidence checks, and Higgins&apos;s Gemini explanation. Raw content is not retained by Apollo.</Body>
+        <Body testID="textguard-intro">Apollo investigates pasted texts and chosen screenshots using local scam detection, link and public evidence checks, and Higgins&apos;s explanation. Raw content is not retained by Apollo.</Body>
 
         <Card style={{ gap: spacing.sm }} testID="textguard-auto-card">
           <View style={s.rowTop}>

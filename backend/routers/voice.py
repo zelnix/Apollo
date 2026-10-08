@@ -39,7 +39,7 @@ class SpeakOut(BaseModel):
     scope_id: str
     chars: int
     expires_at: str
-    provider: str = "Gemini"
+    provider: str = "Higgins"
 
 
 @router.post("/voice/speak", response_model=SpeakOut)
@@ -63,7 +63,7 @@ async def voice_speak(body: SpeakIn, request: Request):
         await require_scope(owner, body.scope_id)
     except ProviderFailure as exc:
         raise HTTPException(503 if exc.code == "provider_configuration" else 502,
-                            f"Gemini narration unavailable ({exc.code}). Text remains available.") from exc
+                            f"Higgins narration unavailable ({exc.code}). Text remains available.") from exc
     except HTTPException:
         await db.voice_cache.delete_one({"device_id": owner, "audio_id": audio_id})
         raise

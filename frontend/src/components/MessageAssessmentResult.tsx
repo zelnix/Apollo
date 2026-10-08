@@ -69,7 +69,7 @@ export function MessageAssessmentResult({ assessment, state, onPrimaryAction, su
         <Pill testID={`${prefix}-truth`} tone={state} label={truthLabel} />
       </View>
       <Text testID={`${prefix}-risk-label`} style={s.overline}>{riskLabel}</Text>
-      <Text testID={`${prefix}-investigation-mode`} style={s.overline}>{assessment.processing.higgins_source === 'gemini' ? `Gemini response received — ${assessment.processing.completion === 'partial' ? 'evidence coverage is partial' : 'supplied-evidence assessment only; further research is not yet available'}` : `Higgins investigation incomplete${assessment.processing.model_failures?.length ? ` (${assessment.processing.model_failures.join(', ')})` : ''}. No substitute answer is shown.`}</Text>
+      <Text testID={`${prefix}-investigation-mode`} style={s.overline}>{assessment.processing.higgins_source === 'gemini' ? `Higgins' response received — ${assessment.processing.completion === 'partial' ? 'evidence coverage is partial' : 'supplied-evidence assessment only; further research is not yet available'}` : `Higgins investigation incomplete${assessment.processing.model_failures?.length ? ` (${assessment.processing.model_failures.join(', ')})` : ''}. No substitute answer is shown.`}</Text>
       <Text testID={`${prefix}-headline`} style={s.title}>{assessment.higgins.headline}</Text>
       <Text testID={`${prefix}-next-action`} style={s.next}>{assessment.higgins.next_action}</Text>
       <Button testID={`${prefix}-primary-action`} label={INVESTIGATION_ACTION_LABEL[assessment.higgins.action_kind]} onPress={onPrimaryAction} />
@@ -91,7 +91,7 @@ export function MessageAssessmentResult({ assessment, state, onPrimaryAction, su
     <View testID={`${prefix}-uncertainty`} style={{ gap: spacing.sm }}><SectionTitle>What remains uncertain</SectionTitle>
       {assessment.higgins.could_not_establish.length ? assessment.higgins.could_not_establish.map((item, index) =>
         <Body key={index} testID={`${prefix}-uncertainty-${index}`}>• {item}</Body>) :
-        <Body testID={`${prefix}-uncertainty-none`}>{assessment.processing.higgins_source === 'gemini' ? 'No additional uncertainty was listed by Gemini. This does not establish universal safety.' : 'The Higgins investigation did not complete. Available local observations do not establish safety.'}</Body>}
+        <Body testID={`${prefix}-uncertainty-none`}>{assessment.processing.higgins_source === 'gemini' ? 'No additional uncertainty was listed by Higgins. This does not establish universal safety.' : 'The Higgins investigation did not complete. Available local observations do not establish safety.'}</Body>}
     </View>
     <Pressable testID={`${prefix}-more-details`} accessibilityRole="button" accessibilityState={{ expanded: details }} style={s.detailButton}
       onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setDetails((value) => !value); }}>

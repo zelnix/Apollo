@@ -244,8 +244,8 @@ export const PRIVACY_POLICY_SUMMARY = [
   "Submitted screenshots are processed only for the requested assessment and Apollo closes request-scoped upload copies after success or failure.",
   "Background notification access, mailbox connections and ongoing monitoring require separate opt-in. Automatic notification checks remain local unless you enable a supported connection.",
   "Patrol keeps the assessment summary and safe supporting references, not full messages, screenshots, files or sensitive tokens.",
-  "Ask Higgins conversation content and generated speech are encrypted temporarily, for no more than 15 minutes. Clear temporary history invalidates them; provider-side retention follows your Gemini account policy.",
+  "Ask Higgins conversation content and generated speech are encrypted temporarily, for no more than 15 minutes. Clear temporary history invalidates them; provider-side retention follows your Higgins account policy.",
   "Apollo uses an anonymous device ID. No account, no email. A phone number is shared only if you choose to add one so family can call you.",
   "Ask Higgins sends only your question and, if you choose, a short event summary.",
-  "Hear Higgins reads the displayed explanation in temporary protected audio sections. It uses the owner's Gemini account, not a different AI provider.",
+  "Hear Higgins reads the displayed explanation in temporary protected audio sections. It uses the owner's Higgins account, not a different AI provider.",
 ];

@@ -168,7 +168,7 @@ async def message_extract(device_id: str = Form(min_length=8, max_length=64), fi
         raise
     except ProviderFailure as exc:
         raise HTTPException(503 if exc.code == 'provider_configuration' else 502,
-                            f'Gemini screenshot processing did not complete ({exc.code}). The image was not assessed.') from exc
+                            f'Higgins screenshot processing did not complete ({exc.code}). The image was not assessed.') from exc
     except Exception as exc:  # noqa: BLE001
         logger.warning("message screenshot extraction failed: %s", type(exc).__name__)
         raise HTTPException(status_code=502, detail="Couldn't read that screenshot. Try a clearer image or paste the text.") from exc
@@ -244,7 +244,7 @@ async def page_extract(device_id: str = Form(min_length=8, max_length=64), url_h
             "prices_look_unrealistic": b_("prices_look_unrealistic"), "payment_methods": l_("payment_methods"), "business_identity": s_("business_identity", 200),
             "os_or_security_branding": s_("os_or_security_branding", 60), "text_excerpt": s_("text_excerpt", 400),
             "processing": {"raw_retained_by_apollo": False, **provider_metadata,
-                           "provider_note": "Apollo does not persist the screenshot. Gemini-side retention follows the configured API policy."}}
+                           "provider_note": "Apollo does not persist the screenshot. Provider-side retention follows the configured API policy."}}
 
 
 # --------------------------------------------------------------------------- Gate 3 Phase C: "Let Apollo read the page"
