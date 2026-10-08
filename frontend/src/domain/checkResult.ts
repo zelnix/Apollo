@@ -45,7 +45,7 @@ export interface CheckResultModel {
   gate:
     | "Link Gate" | "Site Gate" | "Text Gate" | "Call Gate" | "Internet Gate"
     | "App Gate" | "Device Gate" | "Email Gate" | "File Gate" | "Account Gate"
-    | "Higgins Check";
+    | "Device Re-check";
   /** Short label for the KIND of check, e.g. "Link check", "Message check". */
   checkType: string;
   /** What was checked, in a short human string (e.g. "www.godaddy.com"). */
