@@ -100,7 +100,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
             if (action.kind === "open_verified_source") { const src = sources.find((x) => action.sourceIds.includes(x.id)); if (src) void WebBrowser.openBrowserAsync(src.url); onAction?.(action, { kind: "opened_source" }); return; }
             if (!caseData) return;
             void runAction(action, caseData).then((outcome) => {
-              setActionNote(outcome.kind === "observed" ? `Apollo recorded a fresh observation (${outcome.result.status}${outcome.result.unavailableReason ? `: ${outcome.result.unavailableReason.replace("_", " ")}` : ""}); ask Higgins to re-check.`
+              setActionNote(outcome.kind === "observed" ? `Apollo took a fresh reading of that setting. Ask Higgins to re-check so it folds the new result in.`
                 : outcome.kind === "opened" ? `${outcome.descriptor.label} — opened${outcome.iosPath ? `. In Settings go to: ${outcome.iosPath}` : ""}. When you come back, Apollo takes a fresh check of that setting automatically.`
                 : outcome.kind === "requested" ? "Apollo asked the system for that permission. When you come back, it takes a fresh check of the actual state — a request is not a grant."
                 : outcome.kind === "opened_source" ? "Opened the source." : outcome.reason);

@@ -5,8 +5,11 @@
 
 import type { ApolloState, PatrolEvent, Visibility } from "./types";
 import { eventHasPacketProof } from './packetEvidence.ts';
+import { areaLabel } from './messageVoice.ts';
 
 export const STATE_RANK: Record<ApolloState, number> = { sniffing: 0, resting: 0, ears_up: 1, growling: 2, barking: 3, biting: 4 };
+
+const capitalise = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
 /** How recent a verification must be to permit returning to Patrolling. */
 export const VERIFICATION_FRESHNESS_MS = 10 * 60 * 1000;
@@ -60,15 +63,15 @@ export function resolveApolloState(input: StateInput): StateResolution {
   }
   const barking = active.filter((e) => e.state === "barking").sort(byNewest)[0];
   if (barking) {
-    return { state: "barking", reason: "Something needs your decision.", recovering: false, visibilityLost: false, drivingEvent: barking };
+    return { state: "barking", reason: `${capitalise(areaLabel(barking.category))} needs your decision.`, recovering: false, visibilityLost: false, drivingEvent: barking };
   }
   const growling = active.filter((e) => e.state === "growling").sort(byNewest)[0];
   if (growling) {
-    return { state: "growling", reason: "Something looks suspicious and is not yet confirmed.", recovering: false, visibilityLost: false, drivingEvent: growling };
+    return { state: "growling", reason: `${capitalise(areaLabel(growling.category))} looks suspicious and isn't confirmed yet.`, recovering: false, visibilityLost: false, drivingEvent: growling };
   }
   const earsUp = active.filter((e) => e.state === "ears_up").sort(byNewest)[0];
   if (earsUp) {
-    return { state: "ears_up", reason: "Something matches a known pattern. Take a careful look.", recovering: false, visibilityLost: false, drivingEvent: earsUp };
+    return { state: "ears_up", reason: `${capitalise(areaLabel(earsUp.category))} is worth a careful look.`, recovering: false, visibilityLost: false, drivingEvent: earsUp };
   }
 
   // No active events. Recovery rules apply.

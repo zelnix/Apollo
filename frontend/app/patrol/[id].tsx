@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EventActions } from "@/src/components/EventActions";
 import { HigginsReadAloud } from "@/src/components/HigginsReadAloud";
 import { narrateEvent } from "@/src/domain/higginsNarration";
+import { displayStateLabel, looksLikeInternalCode, projectedEventVoice, sourceLabel } from "@/src/domain/messageVoice";
 import { Body, Button, Card, Pill, toneColor } from "@/src/components/ui";
 import { STATE_LABEL, STATE_MEANING } from "@/src/domain/types";
 import type { PatrolRecord } from "@/src/domain/types";
@@ -40,12 +41,18 @@ export default function EventDetail() {
   const [timeline, setTimeline] = useState<PatrolRecord[]>([]);
   useEffect(() => { const recordId = event?.patrol_record?.recordId; if (!recordId) { setTimeline([]); return; } void apiGet<{ items: PatrolRecord[] }>(`/patrol/records/${encodeURIComponent(recordId)}/timeline`).then((value) => setTimeline(value.items)).catch(() => setTimeline([])); }, [event?.patrol_record?.recordId]);
   const outcome = event ? projectPatrolOutcomes([event])[0] : null;
+  // Safety net for already-synced events whose text still carries internal codes: humanise at display.
+  const voice = event && (looksLikeInternalCode(event.what_happened) || looksLikeInternalCode(outcome?.title ?? "") || looksLikeInternalCode(event.what_to_do))
+    ? projectedEventVoice(event.category, event.state, !!event.verified_block) : null;
+  const shownTitle = voice && looksLikeInternalCode(outcome?.title ?? "") ? voice.headline : (outcome?.title ?? "Patrol outcome");
+  const shownWhatHappened = voice && looksLikeInternalCode(event?.what_happened ?? "") ? voice.whatHappened : event?.what_happened;
+  const shownWhatToDo = voice && looksLikeInternalCode(event?.what_to_do ?? "") ? voice.whatToDo : event?.what_to_do;
   if (ready && !setupDone) return <Redirect href="/onboarding" />;
 
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title} numberOfLines={2} testID="event-title">{outcome?.title ?? "Patrol outcome"}</Text>
+        <Text style={s.title} numberOfLines={2} testID="event-title">{shownTitle}</Text>
         <Pressable testID="event-close" accessibilityRole="button" accessibilityLabel="Close" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       {!event ? (
@@ -61,7 +68,7 @@ export default function EventDetail() {
 
           <Card style={{ gap: spacing.sm }}>
             <Text style={s.sub}>What happened</Text>
-            <Text style={s.big} testID="event-what-happened">{event.what_happened}</Text>
+            <Text style={s.big} testID="event-what-happened">{shownWhatHappened}</Text>
             {event.local_indicator ? <Text style={s.meta} selectable testID="event-indicator">{event.local_indicator}</Text> : event.indicator_host ? <Text style={s.meta}>{event.indicator_host}</Text> : null}
           </Card>
 
@@ -91,15 +98,15 @@ export default function EventDetail() {
 
           <Card style={{ gap: spacing.sm, borderColor: toneColor(colors, event.state === "biting" && event.resolved_at ? "resting" : event.state) }}>
             <Text style={s.sub}>What to do</Text>
-            <Text style={s.big} testID="event-what-to-do">{event.what_to_do}</Text>
+            <Text style={s.big} testID="event-what-to-do">{shownWhatToDo}</Text>
           </Card>
 
-          <Card style={{ gap: spacing.sm }} testID="event-read-card"><HigginsReadAloud chunks={narrateEvent(event)} testID="event-read" /></Card>
-          {timeline.length > 1 ? <Card style={{ gap: spacing.sm }} testID="event-server-timeline"><Text style={s.sub}>Issue timeline</Text>{timeline.map((record) => <View key={record.recordId} testID={`event-timeline-${record.revision}`}><Body>Revision {record.revision}: {record.effectiveState.replace("_", " ")} — {record.summary}</Body><Text style={s.meta}>{new Date(record.occurredAt).toLocaleString()}</Text></View>)}</Card> : null}
+          <Card style={{ gap: spacing.sm }} testID="event-read-card"><HigginsReadAloud chunks={narrateEvent(voice ? { ...event, headline: voice.headline, what_happened: voice.whatHappened, what_to_do: voice.whatToDo } : event)} testID="event-read" /></Card>
+          {timeline.length > 1 ? <Card style={{ gap: spacing.sm }} testID="event-server-timeline"><Text style={s.sub}>Issue timeline</Text>{timeline.map((record) => <View key={record.recordId} testID={`event-timeline-${record.revision}`}><Body>Revision {record.revision}: {displayStateLabel(record.effectiveState)} — {record.summary}</Body><Text style={s.meta}>{new Date(record.occurredAt).toLocaleString()}</Text></View>)}</Card> : null}
           <EventActions event={event} />
           {event.scent_id && events.filter((e) => e.scent_id === event.scent_id).length > 1 ? <Card style={{ gap: spacing.sm }} testID="event-incident-card"><Body>This event is part of a connected incident ({events.filter((e) => e.scent_id === event.scent_id).length} events).</Body><Button testID="event-incident-open" variant="secondary" label="View incident timeline" onPress={() => router.push({ pathname: "/patrol/scent/[id]", params: { id: event.scent_id! } })} /></Card> : null}
 
-          <Text style={s.meta}>Source: {outcome?.source.replace("_", " ") ?? "Apollo"} · Occurred {new Date(event.occurred_at).toLocaleString()}{event.resolved_at ? ` · Resolved ${new Date(event.resolved_at).toLocaleString()}` : ""}</Text>
+          <Text style={s.meta}>{sourceLabel(outcome?.source ?? "")} · Occurred {new Date(event.occurred_at).toLocaleString()}{event.resolved_at ? ` · Resolved ${new Date(event.resolved_at).toLocaleString()}` : ""}</Text>
         </ScrollView>
       )}
     </View>

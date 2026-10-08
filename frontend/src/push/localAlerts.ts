@@ -7,12 +7,14 @@ import type { LocalAlert } from "./notifications";
 export function eventLocalAlert(event: PatrolEvent): LocalAlert | null {
   if (event.status === "resolved" || event.status === "trusted") return null;
   if (!event.background && event.category !== "connection") return null;
+  // Deep-link straight to this specific Patrol event, never a generic tab (standing message requirement).
+  const actionUrl = `/patrol/${encodeURIComponent(event.event_id)}`;
   if (event.state === "biting") {
     if (!event.verified_block || event.status !== "blocked" || !eventHasPacketProof(event)) return null;
-    return { title: "Apollo is biting", body: event.headline, channel: "threats", actionUrl: "/(tabs)/patrol" };
+    return { title: "Apollo is biting", body: event.headline, channel: "threats", actionUrl };
   }
-  if (event.state === "barking") return { title: "Apollo is barking", body: event.headline, channel: "threats", actionUrl: "/(tabs)/patrol" };
-  if (event.state === "growling" || event.state === "ears_up") return { title: "Apollo is growling", body: event.headline, channel: "growling", actionUrl: "/(tabs)/patrol" };
+  if (event.state === "barking") return { title: "Apollo is barking", body: event.headline, channel: "threats", actionUrl };
+  if (event.state === "growling" || event.state === "ears_up") return { title: "Apollo is growling", body: event.headline, channel: "growling", actionUrl };
   return null;
 }
 

@@ -165,7 +165,7 @@ test("mapper -> patrolPayload -> enforceEgress accepts valid packet evidence", (
   const payload = patrolPayload(event({ enforcement_evidence: mapped }), "dev-123");
   const out = enforceEgress("patrol_sync", payload);
   assert.equal((out as any).enforcement_evidence.evidence_id, "ev-123");
-  assert.equal((out as any).headline, "Apollo observed a blocked connection");
+  assert.equal((out as any).headline, "Apollo blocked a connection it had flagged");
   assert.ok(!JSON.stringify(out).includes("private marker"));
 });
 

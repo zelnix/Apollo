@@ -1,3 +1,24 @@
+## Apollo-wide message & event-messaging audit — Phase 1 + partial 2/3 (2026-06)
+
+Standing requirement: every user-facing message answers What/Where/Why/What-Apollo-is-doing/What-to-do/Where-to-go, never leaks internal codes, never overstates status, and deep-links to the exact record. Root cause of the screenshot ("known_threat check", "ears_up", "Something changed", "server_projection_of_recorded_outcome") was the privacy/sync projection layer substituting code-exposing text that the UI rendered verbatim.
+
+**Phase 1 (done, tested) — central voice + generation fix:**
+- NEW `src/domain/messageVoice.ts` — single source of truth: `areaLabel` (category→plain, e.g. known_threat→"a website safety check"), `resultChip` (ears_up→"Worth a look", not "Something changed"), `sourceLabel` (user_started→"Started by you"), `displayStateLabel` (PatrolDisplayState→plain, no snake_case), `humanizeReason` (strips snake_case codes like server_projection_of_recorded_outcome, keeps genuine prose), `apolloStatusLabel` (never "stopped" without verified block), `projectedEventVoice` (privacy-preserving synced-event text with zero codes/detail leak), `looksLikeInternalCode`.
+- `privacy.ts` (authoritative patrol_sync egress) + `patrolPayload.ts` now emit `projectedEventVoice` text — no raw category/state codes on the wire or on any device that renders the projection.
+- `patrolOutcomes.ts`: `result()`→resultChip; investigation title no longer generic "completed an investigation update" (evidence-based); resultBasis via `humanizeReason`.
+- `app/patrol/[id].tsx`: humanises title/what-happened/what-to-do/read-aloud for any already-synced cached event that still carries codes; source + timeline use plain labels.
+- Tests: `tests/messageVoice.test.ts` 8/8; updated `p0TruthPrivacyFile` verified-block headline.
+
+**Phase 2/3 (partial, tested):**
+- `stateMachine.ts` barking/growling/ears_up reasons now name the area ("A phone call needs your decision.") instead of "Something needs your decision."
+- `localAlerts.ts` notifications deep-link to the specific event (`/patrol/{id}`) not a generic tab (retained dog-vocab titles kept).
+- `InvestigationView.tsx` action note no longer exposes raw observation status/`unavailableReason` codes.
+
+**Remaining (not yet done):** Gates alert tone (optional setup like Email-Gate-not-connected must not bark), Home dashboard status surfaces, Check results wording, Higgins conversation surfaces, onboarding/permissions/error messages, universal deep-linking for every message type (gate details, Check result, permission screens, Support), and automated routing/consistency tests. Then the "Copy of support email to user" item (user chose: CC the user + Sent copy; capture email once in Support).
+
+Verification: tsc + ESLint clean on all touched files; full suite 436/443 (7 failures are pre-existing/environmental — app.json missing for iosSourceReadiness, native-bridge/iOS-config/tab-order/brand-asset source assertions — none reference the message layer). Android bundle HTTP 200.
+
+
 ## Support screen enhancement + Apollo naming standard (2026-06)
 
 **Apollo naming standard** — Customer-facing wording uses "Apollo", internal `GuardDog` identifiers retained (per rule). Thorough repo scan done: the ONLY user-facing rendered "guard dog" string was the onboarding hero title → now "Meet Apollo, your calm guard dog for the links you tap." (keeps the allowed dog metaphor). App display name is already "Apollo"; notifications already say "Apollo". All other ~249 hits are internal (Kotlin `com.guarddog.*`, class/method names, `guarddog_production` env, config plugin, SharedPreferences keys) or code comments — correctly left untouched. The email body keeps the spec-mandated product descriptor "Apollo Cyber Security Guard Dog".

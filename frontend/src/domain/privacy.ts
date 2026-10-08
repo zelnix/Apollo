@@ -1,4 +1,6 @@
 import { domainOnly, packetFields, evidenceToken } from './packetEvidence.ts';
+import { projectedEventVoice } from './messageVoice.ts';
+import type { ApolloState } from './types';
 // Data egress policy, enforced in code. Every outbound payload passes through
 // `enforceEgress` which rejects anything outside the allow-list.
 // User-submitted content may leave the device only for the disclosed, one-off assessment the user
@@ -125,6 +127,13 @@ export function enforceEgress<T extends Record<string, unknown>>(endpoint: Egres
     out.what_happened = ev ? 'An observed packet was intentionally blocked by the on-device filter.' : 'A local assessment was recorded. Details stay on the device.';
     out.why = [ev ? 'Packet-backed enforcement evidence is attached.' : 'Only a minimal security summary is shared.'];
     out.what_to_do = 'Review the original alert on your phone. A past check does not establish current safety.';
+    // Plain-English, code-free, privacy-preserving projection shown on any device/surface (standing
+    // message requirement): no raw category/state codes ever reach the user, no detail leaves the phone.
+    const voice = projectedEventVoice(category, String(out.state) as ApolloState, !!ev);
+    out.headline = voice.headline;
+    out.what_happened = voice.whatHappened;
+    out.why = [voice.why];
+    out.what_to_do = voice.whatToDo;
     out.claimed_brand = null;
     out.scenario = typeof out.scenario === 'string' && /^[A-Z]{1,3}\d{1,3}[a-z]?$/.test(out.scenario) ? out.scenario : null;
     out.adapter_label = 'Apollo on-device assessment';
