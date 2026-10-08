@@ -2,6 +2,7 @@ import * as Crypto from "expo-crypto";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import EllipsisVertical from "lucide-react-native/icons/ellipsis-vertical";
+import Info from "lucide-react-native/icons/info";
 import SendHorizontal from "lucide-react-native/icons/send-horizontal";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
@@ -162,7 +163,10 @@ export default function Ask() {
           </View>
           <Text style={s.subtitle} numberOfLines={1}>{investigationMode ? "Working with Apollo on this issue" : "Apollo's trusted adviser"}</Text>
         </View>
-        <Pressable testID="higgins-menu" accessibilityRole="button" accessibilityLabel="Higgins menu" hitSlop={8} style={s.menuBtn} onPress={() => setMenuOpen(true)}><EllipsisVertical size={22} color={colors.onSurface} /></Pressable>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+          <Pressable testID="higgins-header-info" accessibilityRole="button" accessibilityLabel="About Higgins" hitSlop={8} style={s.menuBtn} onPress={() => setAboutOpen(true)}><Info size={21} color={colors.onSurface} /></Pressable>
+          <Pressable testID="higgins-menu" accessibilityRole="button" accessibilityLabel="Higgins menu" hitSlop={8} style={s.menuBtn} onPress={() => setMenuOpen(true)}><EllipsisVertical size={22} color={colors.onSurface} /></Pressable>
+        </View>
       </View>
     </View>
 

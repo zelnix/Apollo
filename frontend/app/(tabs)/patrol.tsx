@@ -72,7 +72,7 @@ export default function Patrol() {
   return (
     <View style={s.root}>
       <View style={{ paddingTop: insets.top + spacing.md }}>
-        <RootScreenHeader title="Apollo's Patrol" testID="patrol-header" rightAccessory={
+        <RootScreenHeader title="Apollo's Patrol" testID="patrol-header" info={{ title: "About Apollo's Patrol", body: ["Patrol is a plain-English record of what Apollo noticed while it was watching — checks that completed and anything that needed attention.", "It holds no browsing history or message content. Clear it anytime in Settings → Privacy & data."] }} rightAccessory={
           <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}>
             <Pill tone="neutral" label={`${outcomes.length} outcomes`} testID="patrol-count" />
             <Pressable testID="patrol-saved-reports-button" accessibilityRole="button" accessibilityLabel="Open saved reports" onPress={() => router.push("/saved-reports")} style={s.iconBtn}><Library size={20} color={colors.onSurface} /></Pressable>
