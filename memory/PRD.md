@@ -1,3 +1,17 @@
+## Support screen enhancement + Apollo naming standard (2026-06)
+
+**Apollo naming standard** — Customer-facing wording uses "Apollo", internal `GuardDog` identifiers retained (per rule). Thorough repo scan done: the ONLY user-facing rendered "guard dog" string was the onboarding hero title → now "Meet Apollo, your calm guard dog for the links you tap." (keeps the allowed dog metaphor). App display name is already "Apollo"; notifications already say "Apollo". All other ~249 hits are internal (Kotlin `com.guarddog.*`, class/method names, `guarddog_production` env, config plugin, SharedPreferences keys) or code comments — correctly left untouched. The email body keeps the spec-mandated product descriptor "Apollo Cyber Security Guard Dog".
+
+**Support screen (app/support.tsx, full reorganise into 5 collapsible sections):**
+1. App & Device Details — real metadata via expo-application/expo-device/expo-updates (`src/support/supportInfo.ts`). OTA bundle date vs native install/update dates reported distinctly; unknown → "Unavailable"; preview builds flagged, never fabricated. Kept `support-version`/`support-build`/`support-more-details-panel` testIDs.
+2. Protection & Services — plain-English states from `ProtectionStatus`/`NetworkStatus`/`EnforcementEvidence`/intel (`buildProtectionRows`). A reachable/enabled service is never shown as a verified block; only "Active and verified" = OS-confirmed enforcement; preview = "Available".
+3. Protection Issues & Higgins Checkup — last checkup time/result/warnings + missing permissions + the 4 system-health rows (display only). "Check now" replaced with **Go to Check** → Check tab. Higgins Re-check now also refreshes system health so Support reflects it.
+4. App Logs & Diagnostics — View recent activity, Copy Support Summary (expo-clipboard), Export Higgins Diagnostic Report (expo-print + expo-sharing). Redacted: only status/counts/dates, no credentials/tokens/browsing history.
+5. Contact Apollo Support — **Email Apollo Support** to support@harmonywellnessgroup.com.au via expo-mail-composer (mailto fallback with correct encoding + oversize guard; Copy Summary fallback when no email app). Never auto-sends, never auto-attaches. Subject `Apollo Support [AP-YYYYMMDD-<128-bit hex>]`; reference minted with expo-crypto CSPRNG (`src/support/supportReference.ts`), reused on reopen, new on "Start a new support request"; identical reference across subject/body/report.
+
+New deps: expo-mail-composer. New modules: src/support/{supportReference,supportInfo,supportSummary,supportEmail}.ts. Tests: tests/support.test.ts (6/6 — protection states, preview truthfulness, higgins merge, shared reference, redaction, reference format). tsc + ESLint clean; firstCheck 9/9, systemHealth 4/4 (incl. updated Go-to-Check assertion), gate7/higgins 67/67; Android bundle HTTP 200. Note: tests/iosSourceReadiness.test.ts fails at load reading app.json (generated only at build time) — pre-existing env issue, unrelated.
+
+
 ## Higgins First Check + Re-check (2026-06)
 
 - **Problem:** Apollo must never assume a newly installed device is clean. Added an onboarding malware/virus/compromise BASELINE assessment ("Higgins First Check") and a manual "Higgins Re-check" in the Check tab, per the owner's detailed spec. Point-in-time, capability-based, local-first — NOT an antivirus engine and NOT a background scanner.

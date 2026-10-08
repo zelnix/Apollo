@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FirstCheckResult } from "@/src/components/FirstCheckResult";
 import { Body, Button, Card } from "@/src/components/ui";
 import { diffFirstCheck, reCheckHeadline, type FirstCheckChange, type FirstCheckReport } from "@/src/domain/firstCheck";
+import { runSystemHealthCheck } from "@/src/health/systemHealthCoordinator";
 import { collectFirstCheck } from "@/src/security/firstCheckSignals";
 import { getBaseline, saveFirstCheck } from "@/src/store/firstCheckStore";
 import { useApollo } from "@/src/store/ApolloContext";
@@ -34,7 +35,7 @@ export default function Recheck() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { ready, setupDone } = useApollo();
+  const { ready, setupDone, isMock } = useApollo();
   const [report, setReport] = useState<FirstCheckReport | null>(null);
   const [previous, setPrevious] = useState<FirstCheckReport | null>(null);
   const [changes, setChanges] = useState<FirstCheckChange[]>([]);
@@ -54,13 +55,15 @@ export default function Recheck() {
       setChanges(diff);
       setReport(fresh);
       void markCheckDone("device");
+      // Re-check is a full diagnostic: also refresh Apollo/Higgins system health so Support reflects it.
+      void runSystemHealthCheck(isMock);
     } finally { setRunning(false); }
-  }, []);
-
-  if (ready && !setupDone) return <Redirect href="/" />;
+  }, [isMock]);
 
   const justRan = report && previous !== report;
   const stamp = report ? new Date(report.checkedAt).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : null;
+
+  if (ready && !setupDone) return <Redirect href="/" />;
 
   return (
     <View style={s.root} testID="recheck-root">

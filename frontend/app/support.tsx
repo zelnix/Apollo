@@ -1,17 +1,34 @@
+// Apollo Support — central place for app/device details, live protection status, current issues,
+// Higgins Checkup history, diagnostics export and support contact (spec: Support Screen Enhancement).
+// It DISPLAYS status; it never runs duplicate diagnostics — "Go to Check" sends manual diagnostics
+// (including Higgins Re-check) to the Check tab. Preview builds never show fabricated native data.
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
+import * as Clipboard from "expo-clipboard";
+import * as Print from "expo-print";
+import * as Sharing from "expo-sharing";
+import ArrowRight from "lucide-react-native/icons/arrow-right";
+import ChevronDown from "lucide-react-native/icons/chevron-down";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
+import Copy from "lucide-react-native/icons/copy";
+import FileDown from "lucide-react-native/icons/file-down";
+import Mail from "lucide-react-native/icons/mail";
 import X from "lucide-react-native/icons/x";
-import React, { useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import React, { useMemo, useState } from "react";
+import { Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiGet } from "@/src/api/client";
-import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
-import { APP_ENV } from "@/src/config/appEnvironment";
-import { APP_VERSION, buildLabel } from "@/src/config/buildInfo";
-import { runSystemHealthCheck, useSystemHealth } from "@/src/health/systemHealthCoordinator";
-import type { CheckRow, CheckStatus } from "@/src/health/systemHealthTypes";
+import { Body, Button, Card, Pill, SectionTitle, type Tone } from "@/src/components/ui";
+import { useSystemHealth } from "@/src/health/systemHealthCoordinator";
+import type { CheckRow, CheckStatus, FullHealthCheck } from "@/src/health/systemHealthTypes";
+import { securityAdapter } from "@/src/security/securityAdapter";
+import { getBaseline } from "@/src/store/firstCheckStore";
 import { useApollo } from "@/src/store/ApolloContext";
+import { collectAppDeviceInfo, UNAVAILABLE } from "@/src/support/supportInfo";
+import { openSupportEmail, SUPPORT_RECIPIENT } from "@/src/support/supportEmail";
+import { getOrCreateSupportReference, startNewSupportReference } from "@/src/support/supportReference";
+import { buildHigginsInfo, buildProtectionRows, buildSupportSummary, renderEmailBody, renderReportHtml, renderSupportSummaryText, type ProtectionState, type SupportProtectionRow } from "@/src/support/supportSummary";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 
@@ -23,81 +40,200 @@ const RESULT_TEXT = {
   higgins: { working: "Higgins can complete investigations.", problem: "Higgins cannot complete an investigation right now." },
   report: { working: "Higgins can prepare reports.", problem: "Higgins cannot prepare a report right now." },
 } as const;
-const DETAILS: Record<string, string> = {
-  native_build_required: "A native Apollo build is needed for this device check.",
-  observation_unavailable: "Apollo could not confirm current device protection.",
-  protection_needs_attention: "Current protection needs your attention.",
-  backend_unreachable: "The Apollo service could not be reached or checked.",
-  readiness_unavailable: "A required service or privacy check is unavailable.",
-  provider_not_configured: "Higgins is not configured for a live check.",
-  provider_timeout: "Higgins did not confirm a result in time.",
-  invalid_provider_response: "Higgins could not confirm a complete answer.",
-  render_unavailable: "This device could not prepare the temporary report.",
-  cleanup_not_confirmed: "Apollo could not confirm temporary report cleanup.",
-  device_cleanup_failed: "Apollo could not remove the temporary file on this device.",
-  rate_limited: "Higgins was checked recently. Try again later.",
-  cached_result: "This is an earlier result; Higgins was not contacted again.",
-  check_cancelled: "The check was interrupted when this screen closed.",
-};
-function statusTone(status: CheckStatus): "resting" | "growling" | "unknown" { return status === "healthy" ? "resting" : status === "degraded" ? "growling" : "unknown"; }
-function ResultRow({ label, result, id }: { label: string; result: CheckRow; id: keyof typeof RESULT_TEXT }) {
-  const s = useStyles();
-  const sentence = result.status === "checking" ? "Checking current status…" : RESULT_TEXT[id][result.status === "healthy" ? "working" : "problem"];
-  return <View testID={`support-${id}-row`}><View style={s.row}><Text style={s.label} testID={`support-${id}-label`}>{label}</Text><Pill testID={`support-${id}-status`} tone={statusTone(result.status)} label={STATUS[result.status]} /></View><Body testID={`support-${id}-message`}>{sentence}</Body>{result.checkedAt ? <Body testID={`support-${id}-checked-at`}>Checked {new Date(result.checkedAt).toLocaleString()}</Body> : null}{result.code && result.status !== "healthy" ? <Body testID={`support-${id}-detail`}>{DETAILS[result.code] ?? "This part of the check could not be confirmed."}</Body> : null}</View>;
+function statusTone(status: CheckStatus): Tone { return status === "healthy" ? "resting" : status === "degraded" ? "growling" : "unknown"; }
+function protectionTone(state: ProtectionState): Tone {
+  if (state === "Active and verified" || state === "Active" || state === "Available") return "resting";
+  if (state === "Warning") return "growling";
+  if (state === "Unverified") return "ears_up";
+  return "unknown";
 }
+
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   top: { paddingHorizontal: spacing.xl, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: spacing.md },
   title: { fontFamily: fonts.displayBold, fontSize: 26, color: c.onSurface },
   close: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: c.surfaceTertiary },
-  content: { paddingHorizontal: spacing.xl, gap: spacing.xl },
+  content: { paddingHorizontal: spacing.xl, gap: spacing.lg },
   card: { gap: spacing.md },
+  sectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
+  sectionHeadTitle: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface, flex: 1 },
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.md },
   label: { fontFamily: fonts.textMedium, fontSize: 15, color: c.onSurface, flex: 1 },
-  value: { fontFamily: fonts.textMedium, fontSize: 12, color: c.onSurfaceSecondary },
+  value: { fontFamily: fonts.textMedium, fontSize: 13, color: c.onSurfaceSecondary, flexShrink: 1, textAlign: "right" },
+  detail: { fontFamily: fonts.text, fontSize: 13, lineHeight: 19, color: c.muted },
+  refBox: { padding: spacing.md, borderRadius: radius.md, backgroundColor: c.surfaceTertiary, gap: 2 },
+  refValue: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.onSurface },
+  logLine: { fontFamily: fonts.text, fontSize: 12, lineHeight: 18, color: c.onSurfaceSecondary },
 }));
+
+function Section({ title, testID, children, defaultOpen = true }: { title: string; testID: string; children: React.ReactNode; defaultOpen?: boolean }) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <Card style={s.card} testID={testID}>
+      <Pressable testID={`${testID}-toggle`} accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={() => setOpen((v) => !v)} style={s.sectionHead}>
+        <Text style={s.sectionHeadTitle}>{title}</Text>
+        {open ? <ChevronDown size={20} color={colors.muted} /> : <ChevronRight size={20} color={colors.muted} />}
+      </Pressable>
+      {open ? children : null}
+    </Card>
+  );
+}
+
+function ResultRow({ label, result, id }: { label: string; result: CheckRow; id: keyof typeof RESULT_TEXT }) {
+  const s = useStyles();
+  const sentence = result.status === "checking" ? "Checking current status…" : RESULT_TEXT[id][result.status === "healthy" ? "working" : "problem"];
+  return <View testID={`support-${id}-row`}><View style={s.row}><Text style={s.label} testID={`support-${id}-label`}>{label}</Text><Pill testID={`support-${id}-status`} tone={statusTone(result.status)} label={STATUS[result.status]} /></View><Body testID={`support-${id}-message`}>{sentence}</Body>{result.checkedAt ? <Body style={s.detail}>Checked {new Date(result.checkedAt).toLocaleString()}</Body> : null}</View>;
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  const s = useStyles();
+  return <View style={s.row}><Text style={s.label}>{label}</Text><Text style={s.value}>{value}</Text></View>;
+}
+
+function recentLogLines(health: FullHealthCheck, firstCheckConcerns: string[], evidenceSummary: string | null): string[] {
+  const lines: string[] = [];
+  if (health.checkedAt) for (const [id, label] of [["device", "Apollo protection"], ["backend", "Online services"], ["higgins", "Higgins"], ["report", "Reports"]] as const) {
+    const row = health[id as "device"]; lines.push(`${new Date(row.checkedAt ?? health.checkedAt!).toLocaleString()} · ${STATUS[row.status].toUpperCase()} · ${label}`);
+  }
+  for (const concern of firstCheckConcerns) lines.push(`Higgins First Check · ${concern}`);
+  if (evidenceSummary) lines.push(evidenceSummary);
+  if (!lines.length) lines.push("No diagnostic events recorded yet. Run a check from the Check tab.");
+  return lines;
+}
 
 export default function SupportScreen() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { adapterLabel, isMock } = useApollo();
+  const { adapterLabel, isMock, protection, showToast } = useApollo();
   const health = useSystemHealth();
+
   const [moreDetails, setMoreDetails] = useState(false);
-  const intel = useQuery({ queryKey: ["support-intel-status"], queryFn: () => apiGet<IntelStatus>("/intel/status"), staleTime: 60_000, enabled: moreDetails });
-  const safeBrowsing = intel.data?.safe_browsing;
+  const [showLogs, setShowLogs] = useState(false);
+
+  const appDevice = useQuery({ queryKey: ["support-app-device"], queryFn: collectAppDeviceInfo, staleTime: 300_000 });
+  const net = useQuery({ queryKey: ["support-net"], queryFn: () => securityAdapter.getNetworkStatus(), staleTime: 30_000 });
+  const evidence = useQuery({ queryKey: ["support-evidence"], queryFn: () => securityAdapter.getEnforcementEvidence(), staleTime: 60_000 });
+  const perms = useQuery({ queryKey: ["support-perms"], queryFn: () => securityAdapter.getProtectionPermissions(), staleTime: 60_000 });
+  const firstCheck = useQuery({ queryKey: ["support-firstcheck"], queryFn: getBaseline, staleTime: 30_000 });
+  const intel = useQuery({ queryKey: ["support-intel-status"], queryFn: () => apiGet<IntelStatus>("/intel/status"), staleTime: 60_000 });
+  const reference = useQuery({ queryKey: ["support-reference"], queryFn: getOrCreateSupportReference });
+
+  const protectionRows = useMemo<SupportProtectionRow[]>(() => buildProtectionRows(
+    protection, net.data ?? null, evidence.data ?? [],
+    { safeBrowsing: (intel.data?.safe_browsing.status as "ok" | "not_configured" | "unavailable" | undefined) ?? null, blocklistEntries: intel.data?.blocklist.entries ?? null },
+    isMock,
+  ), [protection, net.data, evidence.data, intel.data, isMock]);
+
+  const higgins = useMemo(() => buildHigginsInfo(health.checkedAt ? health : null, firstCheck.data ?? null), [health, firstCheck.data]);
+  const missingPerms = (perms.data ?? []).filter((p) => p.status === "denied" || p.status === "blocked");
+
+  const summary = useMemo(() => appDevice.data ? buildSupportSummary(appDevice.data.app, appDevice.data.device, protectionRows, higgins) : null, [appDevice.data, protectionRows, higgins]);
+  const ref = reference.data ?? null;
+  const ready = !!summary && !!ref;
+
+  const copySummary = async () => { if (!ready) return; await Clipboard.setStringAsync(renderSupportSummaryText(summary!, ref!)); showToast("Support summary copied.", "resting"); };
+  const exportReport = async () => {
+    if (!ready) return;
+    const html = renderReportHtml(summary!, ref!);
+    if (Platform.OS === "web") { await Print.printAsync({ html }); return; }
+    const { uri } = await Print.printToFileAsync({ html });
+    if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri, { mimeType: "application/pdf", UTI: "com.adobe.pdf", dialogTitle: "Apollo Higgins Diagnostic Report" });
+    else await Print.printAsync({ uri });
+    showToast("Diagnostic report ready to share.", "resting");
+  };
+  const emailSupport = async () => {
+    if (!ready) return;
+    const outcome = await openSupportEmail(ref!, renderEmailBody(summary!, ref!));
+    if (outcome === "unavailable") { await Clipboard.setStringAsync(renderSupportSummaryText(summary!, ref!)); showToast(`No email app found. Summary copied — paste it into an email to ${SUPPORT_RECIPIENT}.`, "neutral"); }
+    else showToast("Review the draft, then send it when you're ready.", "resting");
+  };
+  const newRequest = async () => { await startNewSupportReference(); await reference.refetch(); showToast("Started a new support request.", "neutral"); };
+
+  const verifiedEvidence = (evidence.data ?? []).filter((e) => e.result === "verified").sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0] ?? null;
+
   return <View style={s.root} testID="support-screen">
     <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
       <Text style={s.title} testID="support-title">Support</Text>
       <Pressable testID="support-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
     </View>
     <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="support-scroll">
-      <View><SectionTitle>Check Apollo and Higgins</SectionTitle><Card style={s.card} testID="support-health-card">
-        <Body testID="support-health-intro">Confirm that protection, online services, Higgins investigations and reports are working.</Body>
-        <Body testID="support-health-caution">This is a diagnostic, not proof that a threat was blocked.</Body>
-        {health.checking || health.checkedAt ? <>
+
+      {/* 1. App & Device Details */}
+      <Section title="App & Device Details" testID="support-app-device-section">
+        {appDevice.data ? <>
+          <InfoRow label="App Version" value={appDevice.data.app.version} />
+          <View style={s.row}><Text style={s.label}>Build</Text><Text style={s.value} testID="support-build">{appDevice.data.app.build}</Text></View>
+          <View style={s.row}><Text style={s.label}>Build ID</Text><Text style={s.value}>{appDevice.data.app.buildId}</Text></View>
+          <InfoRow label="Update ID" value={appDevice.data.app.updateId} />
+          <View style={s.row}><Text style={s.label}>Environment</Text><Text style={s.value} testID="support-environment">{appDevice.data.app.environment}{appDevice.data.app.nativeBuild ? "" : " · preview"}</Text></View>
+          <InfoRow label="Device" value={`${appDevice.data.device.manufacturer} ${appDevice.data.device.model}`} />
+          <InfoRow label="Device Type" value={appDevice.data.device.deviceType} />
+          <InfoRow label="Operating System" value={`${appDevice.data.device.os} ${appDevice.data.device.osVersion}`} />
+          <InfoRow label="Architecture" value={appDevice.data.device.architecture} />
+          <InfoRow label="App first installed" value={appDevice.data.app.installedAt} />
+          <InfoRow label="Bundle published" value={appDevice.data.app.bundlePublishedAt} />
+          <InfoRow label="Last native update" value={appDevice.data.app.lastNativeUpdateAt} />
+          {!appDevice.data.app.nativeBuild ? <Body style={s.detail}>This preview doesn&apos;t include native build metadata. A native Apollo build shows real build numbers and install dates.</Body> : null}
+          <Button testID="support-more-details" variant="ghost" label={moreDetails ? "Hide extra details" : "More details"} onPress={() => setMoreDetails((v) => !v)} />
+          {moreDetails ? <View style={s.card} testID="support-more-details-panel">
+            <View style={s.row}><Text style={s.label}>Version</Text><Text style={s.value} testID="support-version">{appDevice.data.app.version}</Text></View>
+            <View style={s.row}><Text style={s.label}>Security adapter</Text><Text style={s.value} testID="support-adapter">{adapterLabel}</Text></View>
+            <View style={s.row}><Text style={s.label}>Google Safe Browsing</Text><Pill testID="support-safe-browsing-status" tone={intel.data?.safe_browsing.status === "ok" ? "resting" : "unknown"} label={intel.isLoading ? "Checking" : intel.data?.safe_browsing.status === "ok" ? "Available" : intel.data?.safe_browsing.status === "not_configured" ? "Not configured" : "Unavailable"} /></View>
+            <View style={s.row}><Text style={s.label}>Apollo threat list</Text><Text style={s.value} testID="support-blocklist-count">{intel.data?.blocklist.entries ?? "—"} entries</Text></View>
+          </View> : null}
+        </> : <Body>Reading app and device details…</Body>}
+      </Section>
+
+      {/* 2. Protection & Services */}
+      <Section title="Protection & Services" testID="support-protection-section">
+        <Body style={s.detail}>Live states from Apollo&apos;s native telemetry. A reachable service or enabled setting is not the same as a verified block — only &quot;Active and verified&quot; reflects OS-confirmed enforcement.</Body>
+        {protectionRows.map((p) => (
+          <View key={p.label} testID={`support-protection-${p.label.replace(/[^a-z]+/gi, "-").toLowerCase()}`}>
+            <View style={s.row}><Text style={s.label}>{p.label}</Text><Pill tone={protectionTone(p.state)} label={p.state} /></View>
+            <Body style={s.detail}>{p.detail}</Body>
+          </View>
+        ))}
+      </Section>
+
+      {/* 3. Current Issues & Higgins */}
+      <Section title="Protection Issues & Higgins Checkup" testID="support-issues-section">
+        <InfoRow label="Last Higgins Checkup" value={higgins.lastCheckAt} />
+        <InfoRow label="Last result" value={higgins.result} />
+        {higgins.warnings.length ? <View style={{ gap: 2 }} testID="support-warnings">{higgins.warnings.map((w, i) => <Body key={i} style={s.detail}>• {w}</Body>)}</View> : <Body style={s.detail}>No active warnings recorded.</Body>}
+        {missingPerms.length ? <View testID="support-missing-perms" style={{ gap: 2 }}><Text style={s.label}>Missing permissions</Text>{missingPerms.map((p) => <Body key={p.id} style={s.detail}>• {p.title}: {p.why}</Body>)}</View> : null}
+        {health.checkedAt ? <>
           <ResultRow id="device" label="Apollo protection" result={health.device} />
           <ResultRow id="backend" label="Apollo services" result={health.backend} />
           <ResultRow id="higgins" label="Higgins investigations" result={health.higgins} />
           <ResultRow id="report" label="Higgins reports" result={health.report} />
-          {health.device.status === "healthy" && health.backend.status !== "healthy" && !health.checking ? <Body testID="support-health-partial-note">Protection on this phone continues. New online checks may be unavailable.</Body> : null}
-          {health.checkedAt ? <Body testID="support-health-checked-at">Last checked {new Date(health.checkedAt).toLocaleString()}</Body> : null}
-        </> : null}
-        <Button testID="support-run-health-check" label={health.checking ? "Checking…" : "Check now"} disabled={health.checking} onPress={() => void runSystemHealthCheck(isMock)} />
-        {health.checkedAt && [health.device, health.backend, health.higgins, health.report].some((item) => item.status !== "healthy") && !moreDetails ? <Button testID="support-open-support-details" variant="ghost" label="Open Support details" onPress={() => setMoreDetails(true)} /> : null}
-        <Button testID="support-more-details" variant="ghost" label={moreDetails ? "Hide details" : "More details"} onPress={() => setMoreDetails((value) => !value)} />
-        {moreDetails ? <View style={s.card} testID="support-more-details-panel">
-          <View style={s.row}><Text style={s.label}>Version</Text><Text style={s.value} testID="support-version">{APP_VERSION}</Text></View>
-          <View style={s.row}><Text style={s.label}>Build</Text><Text style={s.value} testID="support-build">{buildLabel()}</Text></View>
-          <View style={s.row}><Text style={s.label}>Environment</Text><Text style={s.value} testID="support-environment">{APP_ENV}</Text></View>
-          <View style={s.row}><Text style={s.label}>Security adapter</Text><Text style={s.value} testID="support-adapter">{adapterLabel}</Text></View>
-          {isMock ? <Body testID="support-preview-adapter">This preview uses development device observations. Native builds read current operating-system signals.</Body> : null}
-          <View style={s.row}><Text style={s.label}>Google Safe Browsing</Text><Pill testID="support-safe-browsing-status" tone={safeBrowsing?.status === "ok" ? "resting" : "unknown"} label={intel.isLoading ? "Checking" : safeBrowsing?.status === "ok" ? "Available" : safeBrowsing?.status === "not_configured" ? "Not configured" : "Unavailable"} /></View>
-          <Body testID="support-safe-browsing-detail">{safeBrowsing?.detail ?? "Checks submitted links against Google's threat lists."}</Body>
-          <View style={s.row}><Text style={s.label}>Apollo threat list</Text><Text style={s.value} testID="support-blocklist-count">{intel.data?.blocklist.entries ?? "—"} entries</Text></View>
+        </> : <Body style={s.detail}>No recent verified results. Run a check in the Check tab.</Body>}
+        <Button testID="support-go-to-check" label="Go to Check" icon={<ArrowRight size={18} color={colors.onBrandPrimary} />} onPress={() => router.push("/(tabs)/check-it")} />
+      </Section>
+
+      {/* 4. App Logs & Diagnostics */}
+      <Section title="App Logs & Diagnostics" testID="support-logs-section" defaultOpen={false}>
+        <Button testID="support-view-logs" variant="ghost" label={showLogs ? "Hide recent activity" : "View recent activity"} onPress={() => setShowLogs((v) => !v)} />
+        {showLogs ? <View testID="support-logs-panel" style={{ gap: 4 }}>
+          {recentLogLines(health, firstCheck.data?.concerns ?? [], verifiedEvidence ? `${new Date(verifiedEvidence.observedAt).toLocaleString()} · VERIFIED BLOCK · ${verifiedEvidence.destination?.domain ?? verifiedEvidence.destination?.ip ?? "destination"}` : null).map((line, i) => <Text key={i} style={s.logLine}>{line}</Text>)}
+          <Body style={s.detail}>Only status, counts and dates are shown — no credentials, tokens or browsing history.</Body>
         </View> : null}
-      </Card></View>
+        <Button testID="support-copy-summary" variant="secondary" label="Copy Support Summary" icon={<Copy size={18} color={colors.brand} />} disabled={!ready} onPress={() => void copySummary()} />
+        <Button testID="support-export-report" variant="secondary" label="Export Higgins Diagnostic Report" icon={<FileDown size={18} color={colors.brand} />} disabled={!ready} onPress={() => void exportReport()} />
+      </Section>
+
+      {/* 5. Contact Apollo Support */}
+      <Section title="Contact Apollo Support" testID="support-contact-section">
+        <Body>Prepare an email to Apollo support. Your email app opens with everything filled in — you review and send it yourself. Nothing is sent automatically and logs are never attached unless you attach them.</Body>
+        {ref ? <View style={s.refBox} testID="support-reference-box"><Text style={s.detail}>Support reference</Text><Text style={s.refValue} testID="support-reference">{ref}</Text></View> : null}
+        <Button testID="support-email" label="Email Apollo Support" icon={<Mail size={18} color={colors.onBrandPrimary} />} disabled={!ready} onPress={() => void emailSupport()} />
+        <Button testID="support-new-request" variant="ghost" label="Start a new support request" onPress={() => void newRequest()} />
+        <Body style={s.detail}>Reusing this screen keeps the same reference. Starting a new request creates a fresh one.</Body>
+      </Section>
+
     </ScrollView>
   </View>;
 }

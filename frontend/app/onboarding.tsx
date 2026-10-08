@@ -42,7 +42,7 @@ export default function Onboarding() {
           <ApolloLogo size={112} testID="onboarding-logo" />
           <Text style={s.eyebrow}>Apollo</Text>
         </View>
-        <Text style={s.title}>A calm guard dog for the links you tap.</Text>
+        <Text style={s.title}>Meet Apollo, your calm guard dog for the links you tap.</Text>
         <Body>Apollo checks dangerous links, suspicious websites and known online threats. It tells you exactly what it can see, and never pretends to protect what it can&apos;t.</Body>
 
         <Card>

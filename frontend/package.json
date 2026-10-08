@@ -91,6 +91,7 @@
     "expo-linear-gradient": "~57.0.2",
     "expo-linking": "~57.0.11",
     "expo-localization": "~57.0.2",
+    "expo-mail-composer": "~57.0.2",
     "expo-network": "~57.0.2",
     "expo-notifications": "~57.0.21",
     "expo-print": "~57.0.2",
