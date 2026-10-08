@@ -11,18 +11,18 @@ import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, wi
 import { useRouter } from "expo-router";
 
 import type { StateResolution } from "@/src/domain/stateMachine";
+import type { AttentionItem } from "@/src/domain/homeAttention";
 import { STATE_LABEL, STATE_MEANING, type ApolloState, type Capability } from "@/src/domain/types";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { HigginsChecks } from "@/src/components/HigginsChecks";
 import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
 import { checksSpoken, higginsPermissionNote, recommendedChecks } from "@/src/domain/higginsChecks";
-import { useProtectionHealth } from "@/src/protection/healthStore";
 import { Sheet } from "./Sheet";
 import { Body, Button, DevTag, Pill, toneColor, toneWash } from "./ui";
 
 /** Apollo is an animated character, not a static shield — this is core brand identity.
  *  One state → one asset, in one place, so dropping in apollo-ears-up.gif later is a one-line change. */
-const HERO_SIZE = 170;
+const HERO_SIZE = 104;
 const STATE_GIF: Partial<Record<ApolloState, { src: number; label: string; testID: string }>> = {
   resting: { src: require("../../assets/images/apollo-patrolling.gif"), label: "Apollo patrolling", testID: "apollo-hero-gif" },
   sniffing: { src: require("../../assets/images/apollo-sniffing.gif"), label: "Apollo sniffing", testID: "apollo-hero-gif-sniffing" },
@@ -36,28 +36,34 @@ const useStyles = makeStyles((c) => ({
   hero: { borderRadius: radius.lg, borderWidth: 1, borderColor: c.navyBorder, overflow: "hidden" },
   topEdge: { position: "absolute", top: 0, left: 0, right: 0, height: 5 },
   topSeam: { position: "absolute", top: 5, left: 0, right: 0, height: 1, backgroundColor: c.navySoft, opacity: 0.35 },
-  inner: { padding: spacing.xl, gap: spacing.sm, alignItems: "center" },
-  orbWrap: { alignItems: "center", justifyContent: "center", height: 208 },
-  outerRing: { position: "absolute", width: 224, height: 224, borderRadius: 112, borderWidth: 1 },
-  orbRing: { position: "absolute", width: 192, height: 192, borderRadius: 96, borderWidth: 1 },
-  goldRing: { position: "absolute", width: 182, height: 182, borderRadius: 91, borderWidth: 1.5 },
-  glow: { position: "absolute", width: 204, height: 204, borderRadius: 102 },
-  label: { fontFamily: fonts.displayBold, fontSize: 26, color: c.onSurface, letterSpacing: -0.3, textAlign: "center" },
-  meaning: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary, textAlign: "center" },
+  inner: { padding: spacing.lg, gap: spacing.sm, alignItems: "center" },
+  orbWrap: { alignItems: "center", justifyContent: "center", height: 128 },
+  outerRing: { position: "absolute", width: 132, height: 132, borderRadius: 66, borderWidth: 1 },
+  orbRing: { position: "absolute", width: 120, height: 120, borderRadius: 60, borderWidth: 1 },
+  goldRing: { position: "absolute", width: 112, height: 112, borderRadius: 56, borderWidth: 1.5 },
+  glow: { position: "absolute", width: 120, height: 120, borderRadius: 60 },
+  label: { fontFamily: fonts.displayBold, fontSize: 22, color: c.onSurface, letterSpacing: -0.3, textAlign: "center" },
+  meaning: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary, textAlign: "center" },
   reason: { fontFamily: fonts.textMedium, fontSize: 14, lineHeight: 20, color: c.onSurface, textAlign: "center" },
   reasonLink: { fontFamily: fonts.displayBold, fontSize: 14, lineHeight: 20, color: c.onSurface, textAlign: "center" },
+  problemBox: { width: "100%", gap: 4, backgroundColor: c.surfaceSecondary, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, padding: spacing.md },
+  problemLabel: { fontFamily: fonts.textSemibold, fontSize: 12, letterSpacing: 0.3, color: c.muted },
+  problemText: { fontFamily: fonts.textMedium, fontSize: 14, lineHeight: 20, color: c.onSurface },
+  higginsText: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary },
   row: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap", justifyContent: "center" },
   note: { fontFamily: fonts.text, fontSize: 12, lineHeight: 17, color: c.onSurfaceSecondary },
 }));
 
 const ease = Easing.inOut(Easing.ease);
 
-export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = [], animate = true, quietNow = false, sniffing = false }: {
+export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = [], animate = true, quietNow = false, sniffing = false, attention = [] }: {
   resolution: StateResolution; adapterLabel: string; isMock: boolean; animate?: boolean; quietNow?: boolean;
   /** Used only to have Higgins name a real permission gap by name — never a generic "this is mock" disclaimer. */
   capabilities?: Capability[];
   /** True while Apollo is actively re-checking (Verify now / pull-to-refresh) — shows the transient Sniffing state. */
   sniffing?: boolean;
+  /** Specific, real issues that need the person — drives the exact problem + Higgins step + action. */
+  attention?: AttentionItem[];
 }) {
   const s = useStyles();
   const { colors } = useTheme();
@@ -128,28 +134,23 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
   const reasonRoute = resolution.reasonRoute;
   const router = useRouter();
 
-  // When visibility is lost, build a specific reason naming the gates that need attention.
-  const health = useProtectionHealth();
-  const attentionGates = useMemo(() => health.gates.filter((g) => g.tone === "action"), [health.gates]);
-  const reason = useMemo(() => {
-    if (!resolution.visibilityLost || health.checking) return resolution.reason;
-    if (!attentionGates.length) return resolution.reason;
-    const names = attentionGates.map((g) => g.title.replace(/ Gate$/, ""));
-    const list = names.length === 1 ? names[0] : names.length === 2 ? `${names[0]} and ${names[1]}` : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-    return `Higgins here, your device ${list} protection needs your attention.`;
-  }, [resolution.visibilityLost, resolution.reason, health.checking, attentionGates]);
-  // Deep-link to the gates screen where attention gates appear first.
-  const heroRoute = attentionGates.length ? "/(tabs)/guard" : reasonRoute;
+  // The specific issue Apollo is surfacing, from REAL gate/event data. When present, it names the
+  // affected gate, the exact problem and Higgins' next step. When absent, fall back to the honest
+  // resolution reason (e.g. "waiting for a fresh check") — never a vague "needs your decision".
+  const primary = attention[0] ?? null;
+  const reason = primary ? primary.problem : resolution.reason;
+  const higginsStep = primary ? primary.higgins : null;
+  const heroRoute = primary ? primary.route : reasonRoute;
   // UX-02: when the person must actually do something, show a prominent corrective action — more
   // prominent than Hear Higgins. Hear Higgins stays available below as the secondary explanation.
   const needsAction = state !== "resting" && state !== "sniffing" && !!heroRoute;
-  const actionLabel = attentionGates.length ? (attentionGates[0].primaryAction?.label ?? "See what needs attention") : "See what needs attention";
+  const actionLabel = primary ? primary.actionLabel : "See what needs attention";
   // "Run a check" is never said bare: the exact checks are listed (tappable, in a popup) and read aloud. Completion
   // counts from the start of today, so a check already done this morning shows as done.
   const checks = sniffing ? [] : recommendedChecks(resolution);
   const askedAt = useMemo(() => new Date(new Date().setHours(0, 0, 0, 0)).toISOString(), []);
   const permissionNote = higginsPermissionNote(capabilities);
-  const spokenText = `${title}. ${meaning} ${reason} ${checksSpoken(checks)} ${permissionNote ?? ""}`.trim();
+  const spokenText = `${title}. ${primary ? `${primary.title}. ${reason} ${higginsStep ?? ""}` : `${meaning} ${reason}`} ${checksSpoken(checks)} ${permissionNote ?? ""}`.trim();
 
   const onHearHiggins = () => {
     if (checks.length) setChecklistOpen(true);
@@ -180,7 +181,15 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
         ) : null}
         {needsAction ? (
           <>
-            <Text style={s.reason} testID="apollo-state-reason">{reason}</Text>
+            {primary ? (
+              <View style={s.problemBox} testID="apollo-attention-primary">
+                <Text style={s.problemLabel}>{primary.title.toUpperCase()}</Text>
+                <Text style={s.problemText} testID="apollo-state-reason">{reason}</Text>
+                {higginsStep ? <Text style={s.higginsText} testID="apollo-higgins-step">Higgins: {higginsStep}</Text> : null}
+              </View>
+            ) : (
+              <Text style={s.reason} testID="apollo-state-reason">{reason}</Text>
+            )}
             <Button testID="hero-primary-action" label={actionLabel} onPress={() => router.push(heroRoute as any)} />
           </>
         ) : heroRoute ? (

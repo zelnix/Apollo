@@ -57,7 +57,7 @@ function HealthCard({ record, highlighted, log }: { record: GateHealthRecord; hi
   const isRestoreSite = record.primaryAction?.id === "restore_site";
   const needsUser = record.tone === "action";
   const notWatching = record.statusLabel !== "Watching";
-  const explainHeading = record.tone === "action" ? "Needs your attention" : record.tone === "limited" ? "Working with limits" : record.tone === "unverified" ? "Couldn't be verified" : record.statusLabel === "Setup available" ? "Optional — set up when ready" : record.statusLabel === "Off" ? "Turned off" : record.statusLabel === "Unavailable" ? "Not available here" : record.statusLabel === "Check in progress" ? "Checking" : "Good to know";
+  const explainHeading = record.tone === "action" ? "Needs your attention" : record.tone === "limited" ? "Working with limits" : record.tone === "unverified" ? "Couldn't be verified" : record.statusLabel === "Setup required" ? "Optional — set up when ready" : record.statusLabel === "Off" ? "Turned off" : record.statusLabel === "Unavailable" ? "Not available here" : record.statusLabel === "Check in progress" ? "Checking" : "Good to know";
   return <Card testID={`gate-health-${record.id}`} style={[s.card, highlighted ? { borderColor: colors.gold, borderWidth: 2 } : null]}>
     {highlighted ? <Pill tone="ears_up" label="Opened from your alert" testID={`gate-health-${record.id}-focused`} /> : null}
     <View style={s.row}><Text testID={`gate-health-${record.id}-title`} style={s.name}>{record.title}</Text><Pill testID={`gate-health-${record.id}-state`} tone={gateTone(record.tone)} label={record.statusLabel} /></View>

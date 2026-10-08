@@ -1,7 +1,6 @@
 import { useRouter } from "expo-router";
 import BatteryCharging from "lucide-react-native/icons/battery-charging";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
-import ShieldCheck from "lucide-react-native/icons/shield-check";
 import Sparkles from "lucide-react-native/icons/sparkles";
 import React from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
@@ -13,10 +12,10 @@ import { HigginsFollowUp } from "@/src/components/HigginsFollowUp";
 import { ClipboardLinkBanner } from "@/src/components/ClipboardLinkBanner";
 import { PatrolItem } from "@/src/components/PatrolItem";
 import { ServiceBanner } from "@/src/components/ServiceBanner";
-import { GateNudge } from "@/src/components/GateNudge";
 import { CoverageCard } from "@/src/components/CoverageCard";
 import { Body, Button, Card, DevTag, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { buildScents } from "@/src/domain/threatScent";
+import { buildHomeAttention, type AttentionItem } from "@/src/domain/homeAttention";
 import { STATE_NAME } from "@/src/domain/types";
 import { buildWeeklyDigest } from "@/src/domain/digest";
 import { useApollo } from "@/src/store/ApolloContext";
@@ -24,23 +23,24 @@ import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 import { minimiseApp } from "@/src/utils/minimise";
 import { useProtectionHealth } from "@/src/protection/healthStore";
 import { projectPatrolOutcomes } from "@/src/domain/patrolOutcomes";
-import type { GatePresentation } from "@/src/domain/gates";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
-  content: { paddingHorizontal: spacing.xl, gap: spacing.xl, paddingBottom: spacing.xl },
+  content: { paddingHorizontal: spacing.xl, gap: spacing.xl, paddingBottom: spacing["3xl"] },
   empty: { alignItems: "flex-start", gap: spacing.sm },
   emptyTitle: { fontFamily: fonts.display, fontSize: 16, color: c.onSurface },
-  link: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.restingText },
+  link: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.restingText, minHeight: 32 },
   cardIconWell: { width: 30, height: 30, borderRadius: 15, backgroundColor: c.navyTint, alignItems: "center", justifyContent: "center" },
   cardTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.brand },
-  cardTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  cardLinkRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: spacing.xs, minHeight: 32 },
-  gateRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 6 },
-  gateName: { fontFamily: fonts.textMedium, fontSize: 13, color: c.onSurface, flex: 1 },
-  gateBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
-  gateBadgeText: { fontFamily: fonts.textSemibold, fontSize: 11, letterSpacing: 0.2 },
-  gateSep: { height: 1, backgroundColor: c.navyBorder, opacity: 0.4 },
+  // Compact single-line background indicator (replaces the bulky wrapping card).
+  bgRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  bgText: { flex: 1, fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary },
+  bgMinimise: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.brand, minHeight: 32, paddingVertical: 6 },
+  // Needs-your-attention item.
+  attnTitle: { fontFamily: fonts.displayBold, fontSize: 16, lineHeight: 21, color: c.onSurface },
+  attnLabel: { fontFamily: fonts.textSemibold, color: c.onSurface },
+  attnDismiss: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.muted, minHeight: 44, paddingTop: spacing.xs },
+  sectionGap: { gap: spacing.md },
 }));
 
 export default function Home() {
@@ -50,10 +50,12 @@ export default function Home() {
   const router = useRouter();
   const { resolution, capabilities, protection, adapterLabel, isMock, refreshing, events, lowPower, quietNow, showToast, identityReset, reRegisterDevice } = useApollo();
   const health = useProtectionHealth();
-  // UX-03 dedup: when the hero is already naming the Gates that need attention, the GateNudge would
-  // repeat the same protection problem at equal prominence — so suppress it in that case. The nudge
-  // still appears for a pending Gate that the hero is not already surfacing.
-  const heroNamingAttention = resolution.visibilityLost && health.gates.some((g) => g.tone === "action");
+
+  // Specific, real issues that need the person — computed once from live gate + event data.
+  const attention = React.useMemo(
+    () => (health.checking ? [] : buildHomeAttention({ gates: health.gates, events })),
+    [health.checking, health.gates, events],
+  );
   // Recent Patrol on Home is a glance, not the archive — at most 2-3 items; the full history lives on Patrol.
   const recent = projectPatrolOutcomes(events).slice(0, 3);
   const digest = buildWeeklyDigest(events);
@@ -65,7 +67,9 @@ export default function Home() {
         <RootScreenHeader title="Home" testID="home-header" rightAccessory={isMock ? <DevTag label="Preview" testID="home-mock-pill" /> : null} />
       </View>
       <ScrollView contentContainerStyle={s.content} testID="home-scroll">
-        <ApolloHero resolution={resolution} adapterLabel={adapterLabel} isMock={isMock} capabilities={capabilities} animate={!lowPower} quietNow={quietNow} sniffing={refreshing} />
+        {/* 1. Apollo's current status — small emblem, exact problem, Higgins' next step, action. */}
+        <ApolloHero resolution={resolution} adapterLabel={adapterLabel} isMock={isMock} capabilities={capabilities} animate={!lowPower} quietNow={quietNow} sniffing={refreshing} attention={attention} />
+
         {identityReset ? (
           <Card style={{ gap: spacing.sm, borderColor: colors.barking }} testID="identity-reset-card">
             <Text style={s.cardTitle}>Apollo needs to re-register this phone</Text>
@@ -75,42 +79,32 @@ export default function Home() {
           </Card>
         ) : null}
         <ServiceBanner />
-        {heroNamingAttention ? null : <GateNudge />}
         <HigginsFollowUp />
         <ClipboardLinkBanner />
+
+        {/* 2. Coverage at a glance — every gate verifiably Watching, shown once. */}
         <CoverageCard />
-        {protection?.operational ? (
-          <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }} testID="home-background-card">
-            <BatteryCharging size={20} color={colors.resting} />
-            <View style={{ flex: 1 }}><Body>Apollo continues protecting in the background.</Body></View>
-            <Button testID="home-minimise" variant="ghost" label="Minimise" onPress={() => void minimiseApp(showToast)} />
-          </Card>
+
+        {/* 3. Needs your attention — only specific unresolved issues; hidden when empty. */}
+        {attention.length > 0 ? (
+          <View style={s.sectionGap}>
+            <SectionTitle>Needs your attention</SectionTitle>
+            {attention.map((item) => (
+              <AttentionCard key={item.id} item={item} />
+            ))}
+          </View>
         ) : null}
 
-        <Pressable accessibilityRole="button" onPress={() => router.push("/(tabs)/guard")} testID="home-protection-summary">
-          <Card style={{ gap: spacing.sm }}>
-            <View style={s.cardTitleRow}>
-              <View style={s.cardIconWell}><ShieldCheck size={16} color={colors.brand} /></View>
-              <Text style={s.cardTitle}>Gates Protection</Text>
-            </View>
-            {health.checking ? (
-              <Body>Checking current device status…</Body>
-            ) : (
-              <View style={{ gap: 0 }}>
-                {health.gates.map((gate, i) => (
-                  <React.Fragment key={gate.id}>
-                    {i > 0 ? <View style={s.gateSep} /> : null}
-                    <GateRow gate={gate} colors={colors} styles={s} />
-                  </React.Fragment>
-                ))}
-              </View>
-            )}
-            <View style={s.cardLinkRow}>
-              <Text style={s.link}>View Gates</Text>
-              <ChevronRight size={14} color={colors.restingText} />
-            </View>
-          </Card>
-        </Pressable>
+        {/* Compact background-protection indicator. */}
+        {protection?.operational ? (
+          <View style={s.bgRow} testID="home-background-row">
+            <BatteryCharging size={16} color={colors.resting} />
+            <Text style={s.bgText} numberOfLines={1}>Apollo is protecting in the background.</Text>
+            <Pressable testID="home-minimise" accessibilityRole="button" hitSlop={8} onPress={() => void minimiseApp(showToast)}>
+              <Text style={s.bgMinimise}>Minimise</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         {scents.length ? (
           <View>
@@ -118,7 +112,7 @@ export default function Home() {
             {scents.slice(0, 2).map((sc) => (
               <Pressable key={sc.scent_id} testID={`home-scent-${sc.scent_id}`} accessibilityRole="button" onPress={() => router.push({ pathname: "/patrol/scent/[id]", params: { id: sc.scent_id } })}>
                 <Card style={{ gap: spacing.xs, borderColor: toneColor(colors, sc.state) }}>
-                  <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}><Pill tone={sc.state} label={STATE_NAME[sc.state]} />{sc.brand ? <Pill tone="neutral" label={sc.brand} /> : null}<Pill tone="neutral" label={`${sc.events.length} events`} /></View>
+                  <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center", flexWrap: "wrap" }}><Pill tone={sc.state} label={STATE_NAME[sc.state]} />{sc.brand ? <Pill tone="neutral" label={sc.brand} /> : null}<Pill tone="neutral" label={`${sc.events.length} events`} /></View>
                   <Body>{sc.summary}</Body>
                   <Body>Tap to see the timeline and one Stay With Me plan for the whole incident.</Body>
                 </Card>
@@ -127,6 +121,7 @@ export default function Home() {
           </View>
         ) : null}
 
+        {/* 4. Recent Patrol — two or three meaningful findings and See all. */}
         <View>
           <SectionTitle>Recent patrol</SectionTitle>
           {recent.length === 0 ? (
@@ -148,8 +143,8 @@ export default function Home() {
             <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
               <View style={s.cardIconWell}><Sparkles size={16} color={colors.brand} /></View>
               <View style={{ flex: 1, gap: 2 }}>
-                <Text style={s.cardTitle} numberOfLines={1}>{digest.headline}</Text>
-                <Body numberOfLines={2}>{digest.summary}</Body>
+                <Text style={s.cardTitle} numberOfLines={2}>{digest.headline}</Text>
+                <Body numberOfLines={3}>{digest.summary}</Body>
               </View>
               <ChevronRight size={18} color={colors.onSurfaceSecondary} />
             </Card>
@@ -160,30 +155,23 @@ export default function Home() {
   );
 }
 
-
-/** Compact row for a single gate: name on the left, the centralised status badge on the right.
- *  Home and the Gates tab derive from the SAME source (buildGatesOverview), so the label and tone
- *  shown here are identical to the Gates tab — never recomputed independently. */
-function GateRow({ gate, colors, styles: s }: { gate: GatePresentation; colors: Record<string, string>; styles: ReturnType<typeof useStyles> }) {
-  const shortName = gate.title.replace(/ Gate$/, "");
-  // tone → badge colours (same meaning as the Gates tab Pill).
-  const palette: Record<string, { bg: string; fg: string }> = {
-    good: { bg: colors.restingTint ?? colors.navyTint, fg: colors.resting ?? colors.brand },
-    action: { bg: colors.barkingTint ?? colors.goldHighlight, fg: colors.barking ?? colors.onSurface },
-    limited: { bg: colors.goldTint ?? colors.navyTint, fg: colors.ears_up ?? colors.gold ?? colors.onSurface },
-    unverified: { bg: colors.goldTint ?? colors.navyTint, fg: colors.ears_up ?? colors.gold ?? colors.onSurface },
-    neutral: { bg: colors.navyTint, fg: colors.muted },
-    off: { bg: colors.navyTint, fg: colors.muted },
-    unavailable: { bg: colors.navyTint, fg: colors.muted },
-  };
-  const tone = palette[gate.tone] ?? palette.neutral;
-
+/** A single "needs your attention" item: names the affected gate, the specific problem, Higgins'
+ *  recommendation and a direct action. Event items can also be dismissed. */
+function AttentionCard({ item }: { item: AttentionItem }) {
+  const s = useStyles();
+  const router = useRouter();
+  const { resolveEvent } = useApollo();
   return (
-    <View style={s.gateRow} testID={`home-gate-${gate.id}`}>
-      <Text style={s.gateName}>{shortName}</Text>
-      <View style={[s.gateBadge, { backgroundColor: tone.bg }]}>
-        <Text style={[s.gateBadgeText, { color: tone.fg }]}>{gate.statusLabel}</Text>
-      </View>
-    </View>
+    <Card style={{ gap: spacing.xs }} testID={`home-attention-${item.id}`}>
+      <Text style={s.attnTitle}>{item.title}</Text>
+      <Body><Text style={s.attnLabel}>Problem: </Text>{item.problem}</Body>
+      <Body><Text style={s.attnLabel}>Higgins: </Text>{item.higgins}</Body>
+      <Button testID={`home-attention-${item.id}-action`} label={item.actionLabel} onPress={() => router.push(item.route as never)} />
+      {item.kind === "event" && item.event ? (
+        <Pressable accessibilityRole="button" hitSlop={8} onPress={() => void resolveEvent(item.event!)} testID={`home-attention-${item.id}-dismiss`}>
+          <Text style={s.attnDismiss}>Dismiss</Text>
+        </Pressable>
+      ) : null}
+    </Card>
   );
 }

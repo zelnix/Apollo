@@ -83,7 +83,7 @@ export default function SettingsScreen() {
           <NavRow first label="Website protection" hint="See its verified coverage in Gates" onPress={() => router.push("/(tabs)/guard?gate=site")} testID="settings-site-gates" />
           {Platform.OS === "android" && canEnableSite ? (
             <View style={[s.rowItem, s.divider, { flexDirection: "column", alignItems: "stretch", gap: spacing.sm }]} testID="settings-site-gate">
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm }}><Text style={s.rowLabel}>Site Gate (VPN filter)</Text><Pill tone="growling" label={siteGate?.statusLabel ?? "Setup available"} testID="settings-site-status" /></View>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm }}><Text style={s.rowLabel}>Site Gate (VPN filter)</Text><Pill tone="growling" label={siteGate?.statusLabel ?? "Setup required"} testID="settings-site-status" /></View>
               <Body>Grant VPN permission anytime to filter known dangerous websites. Your other protection keeps working whether or not this is on.</Body>
               <Button testID="settings-site-enable" variant="secondary" label={enablingSite ? "Turning on…" : "Turn on Site Gate"} disabled={enablingSite} onPress={() => void grantSiteGate()} />
             </View>

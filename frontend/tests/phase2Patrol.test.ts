@@ -14,7 +14,9 @@ test("V34 Patrol removes commands and folds a repeated incident into one outcome
   ]);
   assert.equal(outcomes.length, 1);
   assert.equal(outcomes[0].repeatCount, 2);
-  assert.equal(matchesPatrolFilter(outcomes[0], "needs_you"), true);
+  // A growling "worth checking" item is a warning Apollo is tracking — not a "needs you" decision.
+  assert.equal(matchesPatrolFilter(outcomes[0], "needs_you"), false);
+  assert.equal(matchesPatrolFilter(outcomes[0], "warnings"), true);
 });
 
 test("resolved filter semantics come only from resolved/trusted/contained outcomes", () => {
@@ -29,11 +31,11 @@ test("Biting can only survive projection with verified block evidence", () => {
 
 test("UX-06 patrol consumer summary: needs-you takes priority, else checking, else nothing", () => {
   assert.equal(patrolConsumerSummary([]), "Nothing needs you right now");
-  // A growling outcome with a primaryAction counts as "needs you".
-  const needs = projectPatrolOutcomes([event({ event_id: "n1" })]);
+  // Only a barking item that needs a decision counts as "needs you".
+  const needs = projectPatrolOutcomes([event({ event_id: "n1", state: "barking" })]);
   assert.equal(patrolConsumerSummary(needs), "1 thing needs you");
-  // An active ears_up warning with no action is a concern Apollo is checking, not a needs-you item.
-  const checking = projectPatrolOutcomes([event({ event_id: "c1", state: "ears_up" })]);
+  // A growling "worth checking" item is a concern Apollo is checking, not a needs-you item.
+  const checking = projectPatrolOutcomes([event({ event_id: "c1", state: "growling" })]);
   assert.equal(patrolConsumerSummary(checking), "Apollo is checking 1 concern");
   // A resting outcome needs nothing and isn't an active concern.
   const resolved = projectPatrolOutcomes([event({ event_id: "r1", state: "resting", status: "resolved", resolved_at: "2026-09-22T10:02:00Z" })]);

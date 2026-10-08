@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 
 /** Foreground-service notification (required for a long-running VpnService). */
 object ProtectionNotificationFactory {
@@ -30,6 +31,15 @@ object ProtectionNotificationFactory {
             Intent(context, GuardDogVpnService::class.java).setAction(GuardDogVpnService.ACTION_STOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
+        // Tapping the notification opens Apollo straight to the Patrol screen via its deep link.
+        val contentIntent = PendingIntent.getActivity(
+            context, 2,
+            Intent(Intent.ACTION_VIEW, Uri.parse("apollo:///patrol")).apply {
+                setPackage(context.packageName)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
         val text = when (state) {
             is VpnLifecycleState.Running -> "Selective protection active (${state.routeCidr})"
             VpnLifecycleState.Starting -> "Starting selective protection…"
@@ -39,6 +49,7 @@ object ProtectionNotificationFactory {
         return Notification.Builder(context, CHANNEL_ID)
             .setContentTitle("Apollo")
             .setContentText(text)
+            .setContentIntent(contentIntent)
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setOngoing(true)
             .setOnlyAlertOnce(true)

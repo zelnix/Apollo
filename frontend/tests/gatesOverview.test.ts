@@ -22,7 +22,7 @@ test("C21 produces one truthful consumer presentation per Gate", () => {
 
 test("Site Gate offers optional setup (never an alarm) when native permission is missing", () => {
   const site = buildGatesOverview(base).gates.find((gate) => gate.id === "site")!;
-  assert.equal(site.statusLabel, "Setup available");
+  assert.equal(site.statusLabel, "Setup required");
   assert.equal(site.tone, "neutral");
   assert.equal(site.capability.automatic?.state, "permission_needed");
   assert.equal(site.primaryAction?.id, "restore_site");
@@ -32,7 +32,7 @@ test("declined VPN consent keeps Site Gate in permission_needed via stored inten
   const overview = buildGatesOverview({ ...base, protection: protection({ requested: false }), desiredSiteOn: true });
   const site = overview.gates.find((gate) => gate.id === "site")!;
   assert.equal(site.capability.automatic?.state, "permission_needed");
-  assert.equal(site.statusLabel, "Setup available");
+  assert.equal(site.statusLabel, "Setup required");
   assert.equal(site.primaryAction?.id, "restore_site");
   assert.match(site.primaryAction?.label ?? "", /grant vpn permission/i);
 });
@@ -88,32 +88,32 @@ test("File Gate purpose keeps cloud-hosting limitation", () => {
   assert.equal(file.capability.onDemand?.state, "ready");
 });
 
-test("Account Gate is a manual check — reads 'Ready to check', never 'Watching'", () => {
+test("Account Gate is a manual check — reads 'Manual check', never 'Watching'", () => {
   const account = buildGatesOverview({ ...base, accountBreachConfigured: true }).gates.find((gate) => gate.id === "account")!;
   assert.equal(account.capability.automatic?.state, "running");
   assert.equal(account.capability.automatic?.manualOnly, true);
-  assert.equal(account.statusLabel, "Ready to check");
+  assert.equal(account.statusLabel, "Manual check");
   assert.equal(account.capability.automatic?.kind, "event_driven");
 });
 
-test("Link Gate (manual) reads 'Ready to check', never 'Watching'", () => {
+test("Link Gate (manual) reads 'Manual check', never 'Watching'", () => {
   const link = buildGatesOverview({ ...base, online: true }).gates.find((gate) => gate.id === "link")!;
   assert.equal(link.capability.automatic?.kind, "event_driven");
   assert.equal(link.capability.automatic?.manualOnly, true);
-  assert.equal(link.statusLabel, "Ready to check");
+  assert.equal(link.statusLabel, "Manual check");
 });
 
 
 test("Account Gate stays Ready to check when breach lookup is not configured (core alert checks still work)", () => {
   const account = buildGatesOverview({ ...base, accountBreachConfigured: false }).gates.find((gate) => gate.id === "account")!;
   assert.equal(account.capability.automatic, undefined);
-  assert.equal(account.statusLabel, "Ready to check");
+  assert.equal(account.statusLabel, "Manual check");
   assert.equal(account.capability.onDemand?.state, "ready");
 });
 
 test("Account Gate stays Ready to check when /account/status fetch fails (configured omitted)", () => {
   const account = buildGatesOverview(base).gates.find((gate) => gate.id === "account")!;
-  assert.equal(account.statusLabel, "Ready to check");
+  assert.equal(account.statusLabel, "Manual check");
   assert.match(account.currentHelp, /breach-list lookup isn.t set up/i);
 });
 
@@ -130,7 +130,7 @@ test("optional setup (Text permission) is never an alarm; it does not trigger re
   const text = overview.gates.find((g) => g.id === "text")!;
   assert.equal(site.statusLabel, "Watching");
   assert.equal(text.capability.automatic?.state, "permission_needed");
-  assert.equal(text.statusLabel, "Setup available");
+  assert.equal(text.statusLabel, "Setup required");
   assert.equal(text.tone, "neutral");
   assert.equal(overview.summary, "1 Gate is helping automatically");
 });
@@ -155,5 +155,5 @@ test("Internet Gate is Watching with no caveat when the VPN is active", () => {
 test("Internet Gate offers setup only when the platform withholds network info", () => {
   const network = buildGatesOverview({ ...base, network: netStatus({ inspectable: false }) }).gates.find((gate) => gate.id === "network")!;
   assert.equal(network.capability.automatic?.state, "permission_needed");
-  assert.equal(network.statusLabel, "Setup available");
+  assert.equal(network.statusLabel, "Setup required");
 });

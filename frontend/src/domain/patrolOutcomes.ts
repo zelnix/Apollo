@@ -56,7 +56,7 @@ export function projectPatrolOutcomes(events: PatrolEvent[]): PatrolOutcome[] {
 
 export function matchesPatrolFilter(outcome: PatrolOutcome, filter: PatrolFilter): boolean {
   if (filter === "all_activity") return true;
-  if (filter === "needs_you") return !!outcome.primaryAction && (outcome.state === "growling" || outcome.state === "barking");
+  if (filter === "needs_you") return outcome.state === "barking" && !!outcome.primaryAction;
   if (filter === "warnings") return ["ears_up", "growling", "barking"].includes(outcome.state);
   if (filter === "threats_stopped") return outcome.state === "biting" && outcome.event.verified_block;
   return outcome.state === "resting" || outcome.event.status === "resolved" || outcome.event.status === "trusted";

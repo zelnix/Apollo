@@ -1,3 +1,23 @@
+## Home redesign + specific-problem status + tappable notification (2026-06)
+
+**Notification tap → Patrol:** `ProtectionNotificationFactory.build` now sets a `contentIntent` that deep-links `apollo:///patrol` (ACTION_VIEW, app package, NEW_TASK|SINGLE_TOP) so tapping the protection notification opens Apollo on the Patrol tab. Native → only on an Android build.
+
+**Home (`app/(tabs)/home.tsx`) rebuilt to a 4-part hierarchy, all from REAL data (no invented text / no parallel status system):**
+1. Status card (`ApolloHero`, now compact: emblem 104dp, rings shrunk, padding reduced). When there's a real issue it shows a boxed "<Gate> needs …" title + the specific Problem + "Higgins: <next step>" + action button. Driven by new `attention` prop.
+2. `CoverageCard` rewritten — lists every gate that is verifiably Watching (tone good + automatic.running + !manualOnly), "N gates Watching", tap opens the gate. No hard-coded subset/count. "On" → "Watching".
+3. "Needs your attention" section — renders only when real issues exist; one `AttentionCard` per issue (gate failure or active barking event) with Problem / Higgins / action / Dismiss (events).
+4. Recent Patrol — `PatrolItem` redesigned: gate chip + severity + time (overlap fixed with flex), headline, summary, "Higgins recommends: <what_to_do>", "Open investigation ›" + Dismiss (barking only).
+- Removed the duplicate "Gates Protection" card and the Home `GateNudge`. Compact single-line background indicator replaces the bulky wrapping card. Weekly digest headline now wraps (numberOfLines 2).
+
+**New domain `src/domain/homeAttention.ts`** — `buildHomeAttention({gates, events})` → ordered `AttentionItem[]`: gates in verified "Action needed" first, then ACTIVE barking events (needs a decision). Optional setup and "worth checking" growls are deliberately excluded (no false barking). Problem/recommendation come from gate.currentHelp/limitation and event.what_happened/what_to_do. Pure, unit-tested (`tests/homeAttention.test.ts`).
+
+**Gate terminology (`gates.ts`):** "Ready to check" → "Manual check", "Setup available" → "Setup required" (Watching/Action needed/Limited/Off unchanged). Updated `guard.tsx`, `settings/index.tsx` fallbacks and the label tests.
+
+**Patrol "needs you" tightened:** `matchesPatrolFilter("needs_you")` is now barking-only (a growling "worth checking" item is no longer a "Needs you" decision). Tests updated.
+
+Verified: `tsc` clean, ESLint clean, all touched/new unit tests green (gatesOverview, phase2Patrol, messageGuardrails, homeAttention). Pre-existing unrelated failures (app.json-based navigation/source-scan/brand tests) confirmed present at baseline with changes stashed. Home + notification only render on a production Android build (web preview is fail-closed Safe Start).
+
+
 ## Check screens — compact "Find out more" about headers (2026-06)
 
 Replaced the wordy intro/about paragraphs at the top of every check screen with a compact header: a short title + a "Find out more" link that opens a popup (Sheet) holding the full detail. New reusable component `src/components/GateAbout.tsx` (title, optional `control` slot for an inline switch, optional `sheetTitle`, children = popup detail). Applied to: Call Gate (`call-guard-auto`, keeps the auto-check toggle as the `control`), Text/Email Gate (`message-privacy`), Internet Gate (`network-cannot-see`), App Gate (`app-check-scope`), Email Gate (`email-processing-scope`), Check My Accounts (`monitor-intro`), Device Gate (`device-gate-scope`), Link Gate (`check-privacy-scope`), File Gate (`file-inspection-scope`), Higgins Re-check (`recheck-intro`). Original testIDs preserved on the GateAbout card; the link adds `<testID>-more`. Each popup also shows a "WHAT TO LOOK FOR" tip block (`tip` prop, testID `<testID>-tip`) with a short, concrete example of warning signs for that gate. No logic/engine changes. tsc + ESLint clean. Visual check only on an Android build (web preview is fail-closed Safe Start).

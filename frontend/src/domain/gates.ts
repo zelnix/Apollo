@@ -11,7 +11,7 @@ export type AutomaticCapabilityState = "running" | "checking" | "permission_need
 export type OnDemandCapabilityState = "ready" | "temporarily_unavailable" | "unsupported";
 // Standardised user-facing statuses. "Watching" is the ONLY success label and means verified, active,
 // automatic protection within its supported scope — never merely "enabled" or "permission granted".
-export type GateStatusLabel = "Watching" | "Ready to check" | "Check in progress" | "Setup available" | "Off" | "Limited" | "Action needed" | "Unavailable" | "Unable to verify";
+export type GateStatusLabel = "Watching" | "Manual check" | "Check in progress" | "Setup required" | "Off" | "Limited" | "Action needed" | "Unavailable" | "Unable to verify";
 export type GateTone = "good" | "limited" | "action" | "neutral" | "off" | "unavailable" | "unverified";
 
 export interface GatePresentation {
@@ -46,16 +46,16 @@ function presentation(base: Omit<GatePresentation, "statusLabel" | "tone">): Gat
   // WATCHING is only for verified, active automatic protection (not manual-only, not restricted).
   let statusLabel: GateStatusLabel; let tone: GateTone;
   if (!auto) {
-    if (od?.state === "ready") { statusLabel = "Ready to check"; tone = "neutral"; }
+    if (od?.state === "ready") { statusLabel = "Manual check"; tone = "neutral"; }
     else if (od?.state === "temporarily_unavailable") { statusLabel = "Unable to verify"; tone = "unverified"; }
     else { statusLabel = "Unavailable"; tone = "unavailable"; }
   } else if (auto.state === "running") {
-    if (auto.manualOnly) { statusLabel = "Ready to check"; tone = "neutral"; }
+    if (auto.manualOnly) { statusLabel = "Manual check"; tone = "neutral"; }
     else if (auto.coverageLimited) { statusLabel = "Limited"; tone = "limited"; }
     else { statusLabel = "Watching"; tone = "good"; }
   } else if (auto.state === "checking") { statusLabel = "Check in progress"; tone = "neutral"; }
   else if (auto.state === "interrupted") { statusLabel = "Action needed"; tone = "action"; }
-  else if (auto.state === "permission_needed" || auto.state === "setup_needed" || auto.state === "not_activated") { statusLabel = "Setup available"; tone = "neutral"; }
+  else if (auto.state === "permission_needed" || auto.state === "setup_needed" || auto.state === "not_activated") { statusLabel = "Setup required"; tone = "neutral"; }
   else if (auto.state === "off_by_choice") { statusLabel = "Off"; tone = "off"; }
   else if (auto.state === "temporarily_unavailable") { statusLabel = "Unable to verify"; tone = "unverified"; }
   else { statusLabel = "Unavailable"; tone = "unavailable"; }
