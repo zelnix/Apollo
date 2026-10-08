@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { alternativeRoutes, classifyShare, SHARE_KIND_LABEL, type ShareRoute, type SharedPayload } from "@/src/share/classifyShare";
+import { ShareFileBatch } from "@/src/components/ShareFileBatch";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -45,6 +46,7 @@ export default function ShareLanding() {
   const intakeId = useMemo(() => payload ? (params.intakeId ?? putShareIntake(payload)) : null, [params.intakeId, payload]);
   const route = useMemo(() => payload ? classifyShare(payload) : null, [payload]);
   const others = useMemo(() => payload && route ? alternativeRoutes(payload, route.kind) : [], [payload, route]);
+  const multiFiles = (payload?.files && payload.files.length > 1) ? payload.files : null;
   const go = (r: ShareRoute) => {
     if (!intakeId) return;
     void acknowledgeNativeShareHandoff(params.nativeHandoffId);
@@ -65,6 +67,10 @@ export default function ShareLanding() {
         <Pressable testID="share-close" accessibilityRole="button" accessibilityLabel="Close shared items" onPress={close} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="share-scroll">
+        {multiFiles ? (
+          <ShareFileBatch files={multiFiles} />
+        ) : (
+        <>
         <Card style={{ gap: spacing.sm }} testID="share-detected">
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><Share2 size={20} color={colors.brandPrimary} /><Pill tone="neutral" label={`Looks like ${SHARE_KIND_LABEL[route.kind]}`} testID="share-kind" /></View>
           <Text style={s.preview} numberOfLines={8} testID="share-preview">{preview}</Text>
@@ -77,6 +83,8 @@ export default function ShareLanding() {
             {others.map((r) => <Button key={r.kind} testID={`share-alt-${r.kind}`} variant="secondary" label={SHARE_KIND_LABEL[r.kind].replace(/^(a|an) /, (m) => m.charAt(0).toUpperCase() + m.slice(1))} onPress={() => go(r)} />)}
           </View>
         ) : null}
+        </>
+        )}
         <Body>Share to Apollo from any app: Share → Apollo. Apollo keeps native handoffs protected for no more than 24 hours.</Body>
       </ScrollView>
     </View>

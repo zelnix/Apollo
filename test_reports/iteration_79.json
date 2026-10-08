@@ -1,0 +1,35 @@
+{
+  "summary": "Verified the three-tier Scam Alerts contract end-to-end (backend + mobile UI) plus the Social Media & Messaging Protection section on the About Apollo sheet. 11/11 new pytest tests in test_scams_three_tier_feed.py pass against the live preview URL. Backend GET /api/higgins/scams returns {coverage,generatedAt,feeds,alerts,emerging,pendingCount,lastAnalysedAt,growling} with NO legacy 'items' key; alerts[] all have tier=='specific_scam' and emerging[] all have tier=='emerging_pattern' (zero general_education leaks). Each specific alert carries higgins.whatHappened + severityReason that are non-empty and non-generic, and a facts dict with all 7 keys (who/what/how/where/when/whatCriminalsWant/evidence). Live snapshot: 3 AU HIGH/EXTREME specific alerts (Job recruitment, ATO/myGov, NASC 10,000 contacts), all growling==true; top-level growling matches one of them. 5 emerging patterns surfaced. Device data-inventory returns {device_id,total,categories[]} and delete-data returns {device_id,total,removed,deleted_at} and revokes the token (next call 401). FRONTEND: Scams tab renders coverage card, filter chips, growling-styled specific cards (auto-expanded for growling alerts), 'Emerging patterns' section heading with cards, and 'Open Learn with Higgins' button that navigates to /higgins/learning. Higgins toggle (testID scam-higgins-toggle) reveals 'What happened', 'Where it's happening', 'What it means for you', 'What to watch for', 'What to do'. About Apollo sheet (Settings → About Apollo) contains the 'Social Media & Messaging Protection' section listing Facebook, Instagram, TikTok, X, Messenger, WhatsApp and Snapchat. No deprecated expo-av / expo-barcode-scanner / expo-background-fetch usage in the files under review.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_scams_three_tier_feed.py",
+    "/app/test_reports/pytest/pytest_iter79_scams.xml",
+    "/app/test_reports/iter79_30_scams.jpeg",
+    "/app/test_reports/iter79_40_scrolled.jpeg",
+    "/app/test_reports/iter79_41_learn.jpeg",
+    "/app/test_reports/iter79_52_about_opened.jpeg",
+    "/app/test_reports/iter79_53_about_scrolled.jpeg"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "services/government_alerts.py:_alert — growling for 'confirmed' AU alerts has no date floor, so an undated AU listing that is actually old will still growl. That matches the stated intent (official AU sources are frequently undated) but worth revisiting if a stale confirmed-AU item ever starts holding Apollo in a growl loop.",
+    "services/scam_analysis.py:_coerce — if the model returns tier=='general_education' with a severity other than LOW it is silently clamped to LOW; good safeguard but the audit trail of model severity vs. clamped severity is lost. Consider logging the pre-clamp value for later analysis.",
+    "frontend/app/higgins/scams.tsx — the HigginsBlock auto-opens whenever alert.growling is true; combined with 'Hide Higgins' explanation' label it works, but on a tall growling list this means multiple cards start expanded. Consider auto-opening only the top growling card.",
+    "frontend/src/higgins/hubClient.ts:line 8 — GovernmentAlert interface is a single very long line (~900 chars). Not a bug, but readability/diff-friendliness is poor. Split onto multiple lines in a future tidy."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_scams_three_tier_feed.py (new regression suite)"
+  ],
+  "success_rate": {"backend": "100% (11/11)", "frontend": "100% (all requested elements present and interactive)"},
+  "seed_data_creation": "No seed required. Live sources already have analysed items (3 specific + 5 emerging + pendingCount=4). Device identities created by tests are small anonymous docs; delete-data tests remove their own.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Use backend/tests/test_scams_three_tier_feed.py for Scam Alerts contract regression. It respects the conftest.py auth shim: unauth tests send 'X-Apollo-Raw: 1' to bypass the auto-authorizer. Live preview behaviour: a fresh page load that goes straight to /higgins/scams before onboarding will show 'Sources unavailable / Try again' because the device isn't registered yet — always walk through the Continue → 'I understand — set up Apollo' flow (or hit onboarding) before expecting authenticated screens. The expectation 'at least some AU HIGH/EXTREME alerts growl' passes right now with 3/3 growling; if the Gemini analysis cache gets flushed, re-run after ~1 hour so refresh_all() repopulates.",
+  "rca_of_issue": "N/A — all requested behaviours confirmed. The only transient-looking signal (first attempt to open /higgins/scams in a fresh browser showed 'Sources unavailable') is caused by the device bearer not yet being registered on that session, not by a feed-side issue; walking through onboarding resolves it immediately."
+}

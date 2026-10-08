@@ -1,3 +1,42 @@
+## Share to Apollo — multi-file correction + honest preservation (2026-06)
+
+**Scope:** corrections to the EXISTING Share-to-Apollo feature (no new Gate/route/backend). KISS.
+
+**Defects fixed**
+1. Multi-file shares only inspected the first file (`file.tsx` read `shared.files[0]`), yet the batch could claim it was checked. NOW: when >1 files are shared, `app/share.tsx` renders `src/components/ShareFileBatch.tsx` which accounts for EVERY file, inspects each individually with the SAME engine (`readInspection` + `analyseFile`), shows a per-file status (waiting/checking/checked/couldn't-check), per-file verdict, flags files whose contents couldn't be read, shows "N of M checked", and lets each file be opened on its own in the full File Gate (fresh single-file intake). Never a single batch "all clear".
+2. iOS extension silently discarded extra URLs (`urls.first`). NOW every shared URL is preserved — `webUrl` keeps the first for routing and all URLs are merged into the combined `text` so none are lost (`ShareViewController.swift` commit()).
+3. iOS extension silently truncated long text at 200k chars. NOW it appends a plain-English note that the text was shortened.
+4. Image classification wording: no longer claims an image IS a message screenshot. `SHARE_KIND_LABEL.screenshot` = "an image"; reason explains the screenshot check is optional and "Apollo doesn't know what's in it until it looks".
+
+**Reuse / helpers**
+- `src/domain/fileInspection.ts`: added `readInspection(asset)` (web fetch / native File handle → Inspection), reused by the batch; single-file `analyseAsset` left untouched (no regression).
+- Android `ShareIntakeListener` already mapped ALL files into the intake; batch now consumes them.
+
+**Verification (code-level only — native Share requires a device build)**
+- tsc + ESLint clean; `yarn test:share` 13/13 green; app boots with ShareIntakeListener mounted.
+- NOT validated on a physical device yet: Android ACTION_SEND/SEND_MULTIPLE menu registration, iOS Share Extension activation/App Group handoff, and real multi-file/URL/screenshot shares. These must be tested in an installed development/release build (Expo Go/web are not acceptable proof).
+
+
+## Scam Alerts correctness overhaul — three-tier + AI-grounded facts + UI refinements (2026-06)
+
+**Problem:** Scam Alerts were showing generic scam *education* and generic Higgins filler as if they were newly detected campaigns. User's non-negotiable: alerts must describe specific, evidence-backed scams actually reported by official sources, with facts drawn only from the source.
+
+**Approach (user-approved):** fetch each official advisory's article and use **Gemini 3.1 Pro** (`gemini-3.1-pro-preview` via `EMERGENT_LLM_KEY`) to classify + extract facts strictly from the text (never invent); analyse+cache once at ingest.
+
+**Backend**
+- `services/scam_analysis.py` (NEW): fetches the source article (`outbound.public_get`, HTML→text), strict JSON prompt → `{tier, severity, severityReason(cited), confidence, australianRelevance(+reason), reportedDate(YYYY-MM-DD/YYYY-MM/''), facts{who,what,how,where,when,whatCriminalsWant,evidence}, sections{whatHappened,whereHappening,whatItMeansForYou,whatToWatch,whatToDo}}`. `_coerce` clamps to the contract (a malformed reply can never yield a High alert; education forced to LOW). Free `_obviously_not_an_alert` pre-filter for nav/index/pagination links (no AI spend). `analyze_pending(limit)` caches on `learning_feed_items.scam_analysis`. `ANALYSIS_VERSION=2`.
+- `services/government_alerts.py`: `refresh_all()` now also runs `analyze_pending(8)` (hourly loop). `snapshot()` returns `{coverage, generatedAt, feeds, alerts, emerging, pendingCount, lastAnalysedAt, lastSourcedAt, growling}` — **general_education excluded**; specific→alerts, emerging_pattern→emerging. Per alert: real source name, `reportedDate`, `dateLabel` ('Month YYYY'/'Date not stated'), `effectiveDate`. **Recency:** items older than ~15 months (RECENCY_CUTOFF) dropped; lists sorted most-recent-first. **Growl:** specific HIGH/EXTREME that is AU-confirmed (even undated) or AU-potential+fresh.
+- Tests: `tests/test_scam_analysis.py` (10) + `tests/test_scam_intel.py` green. Live curl confirmed: specific AU HIGH/EXTREME alerts with grounded whatHappened/severityReason, dateLabel month/year, recency sort, growling, lastSourcedAt.
+
+**Frontend**
+- `app/higgins/scams.tsx`: three-tier UI (specific alerts list + 'Emerging patterns' footer + 'Learn with Higgins' link). **Removed** the redundant collapsible Higgins explanation; card now shows real source name + month/year, body = whatHappened, 'Ask Higgins about this' + 'Open official source'. Header uses the new `info` template (title + ⓘ popup) instead of a long inline paragraph; 'Last sourced <date>' line replaces the status pill.
+- `src/components/InfoButton.tsx` (NEW) + `info` prop on `RootScreenHeader`/`ChildScreenHeader` = reusable 'title + ⓘ → popup' template for all screens.
+- `src/components/HomeScamAlerts.tsx`: uses `r.alerts`; each row tappable → opens the official source; shows source + month/year.
+- `src/higgins/hubClient.ts`: types updated (alerts/emerging/pendingCount/lastSourcedAt; tier/facts/reportedDate/dateLabel).
+- `src/components/AboutApolloSheet.tsx`: added 'Social Media & Messaging Protection' section (Facebook, Instagram, TikTok, X, Messenger, WhatsApp, Snapchat; protection via existing Gates).
+- tsc + ESLint clean. NOTE: v2 backlog re-analysis still filling (hourly loop); pendingCount>0 is expected transient. User will self-test (declined automated frontend test this round).
+
+
 ## Privacy & Data — honest retention inventory + "Delete My Apollo Data" (2026-06)
 
 **Problem/Task 1 (P0):** Give the person an authoritative view of everything Apollo stores for their anonymous device, and a verified, complete "Delete My Apollo Data" workflow with honest offline/pending states.

@@ -1,5 +1,62 @@
 ## 2026-09-23 Review closure
 
+## 2026-10-08 Scam Alerts correctness overhaul (three-tier + AI-grounded facts) + Privacy & Data deletion
+
+backend:
+  - task: "AI-grounded scam analysis: classify each official advisory into specific_scam / emerging_pattern / general_education, extract facts only from the source, evidence-based severity, cached at ingest"
+    implemented: true
+    working: true
+    file: "backend/services/scam_analysis.py, backend/services/government_alerts.py, backend/tests/test_scam_analysis.py"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        comment: "New scam_analysis.py fetches each advisory's source article and uses Gemini 3.1 Pro (gemini-3.1-pro-preview via EMERGENT_LLM_KEY) to return strict JSON. Hard grounding rule: only facts present in the text, never invent; thin/vague items downgraded to general_education; malformed replies coerced to safe LOW/education. Cached on learning_feed_items.scam_analysis at ingest (hourly government_alert_loop -> analyze_pending(limit=8)), with a free pre-filter for nav/index/pagination links. government_alerts.snapshot() now returns {alerts, emerging, pendingCount, lastAnalysedAt, growling}; general_education excluded from the feed. Growl rule: specific_scam HIGH/EXTREME that is AU-confirmed (growls even undated) or AU-potential+fresh. Verified live: GET /api/higgins/scams returns 2 specific alerts (1 EXTREME, 1 HIGH, both AU, growling) + emerging items, with factual whatHappened/severityReason. 19 deterministic unit tests pass (coerce/pre-filter/json/growl) + test_scam_intel green."
+  - task: "Delete My Apollo Data: device-scoped inventory + complete purge"
+    implemented: true
+    working: true
+    file: "backend/services/account_deletion.py, backend/routers/devices.py, backend/tests/test_delete_my_data.py"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "main"
+        comment: "GET /api/devices/data-inventory and POST /api/devices/delete-data (device-auth). Purge invalidates investigation generation, deletes across 7 categories by device_id/owner_id/recipient_id (+family keys), revokes sessions, removes the device identity. 3 tests pass; device isolation verified."
+
+frontend:
+  - task: "Scam Alerts screen: three-tier rendering (specific alerts feed, Emerging patterns section, Learn with Higgins link), factual Higgins sections, pending-count note"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/higgins/scams.tsx, frontend/src/higgins/hubClient.ts, frontend/src/components/HomeScamAlerts.tsx, frontend/src/components/AboutApolloSheet.tsx"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        comment: "scams.tsx consumes new {alerts, emerging, pendingCount} shape; renders specific alerts in the main list, an 'Emerging patterns' footer section, and a 'Learn with Higgins' link for general education. Higgins block relabelled 'What it means for you' and only renders non-empty sections. HomeScamAlerts uses r.alerts. About screen gained a 'Social Media & Messaging Protection' block below Scam Alerts & Education. tsc + ESLint clean. Not yet validated in preview (app gates on onboarding for direct deep-link)."
+  - task: "Privacy & Data screen + type-to-confirm delete"
+    implemented: true
+    working: true
+    file: "frontend/app/privacy-data.tsx, frontend/src/domain/privacyData.ts, frontend/src/store/ApolloContext.tsx, frontend/app/settings/index.tsx"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "main"
+        comment: "Settings -> Privacy & data shows live inventory + type-to-confirm DELETE flow with confirm sheet and offline pending handling. UI verified in preview; backend tested."
+test_plan:
+  current_focus:
+    - "GET /api/higgins/scams returns three-tier shape; alerts contain only specific scams with grounded facts; general_education excluded; emerging separated; growling set for AU HIGH/EXTREME"
+    - "Scam Alerts screen renders specific alerts, Emerging patterns section, and Learn with Higgins link; Higgins explanation shows factual sections"
+    - "Privacy & data inventory + delete flow (frontend)"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+agent_communication:
+  - agent: "main"
+    message: "Please validate the Scam Alerts correction. BACKEND: GET /api/higgins/scams (device-auth) must return keys alerts/emerging/pendingCount/lastAnalysedAt/growling; every item in 'alerts' must have tier=='specific_scam' and non-generic higgins.whatHappened/severityReason; no general_education should appear. FRONTEND: on the Scams tab, confirm specific alerts render, an 'Emerging patterns' section appears when present, a 'Learn with Higgins' link exists, and expanding 'What Higgins says' shows factual sections incl. 'What it means for you'. Also confirm the About sheet (Settings -> About Apollo) shows the new 'Social Media & Messaging Protection' section. Credentials: anonymous device auto-registers; no login. The app may require completing onboarding first in preview."
+  - agent: "main"
+    message: "FOLLOW-UP CHANGES to Scam Alerts (re-validate). BACKEND GET /api/higgins/scams now also returns lastSourcedAt (ISO); each alert has reportedDate (YYYY-MM-DD or ''), dateLabel ('Month YYYY' or 'Date not stated'), and the real source name; alerts sorted most-recent-first with items older than ~15 months excluded (ANALYSIS_VERSION=2; backlog re-analysis may still be running so pendingCount>0 is fine). FRONTEND Scam Alerts screen: (1) header title 'Scam Alerts' + ⓘ info button (testID higgins-scams-header-info) opens a popup/sheet with the 'About Scam Alerts' coverage text — long paragraph NO LONGER inline; (2) 'Last sourced <date>' line (testID higgins-scams-sourced) replaces the old status pill; (3) each alert card shows real source name + month/year (testID higgins-scam-0-source-name), NO collapsible Higgins explanation block, but HAS an 'Ask Higgins about this' button (testID higgins-scam-0-ask) + 'Open official source' link; (4) Home scam rows (testID home-scam-0) are tappable, open the official source URL, show source + month/year. Reusable InfoButton template now in RootScreenHeader/ChildScreenHeader via optional `info` prop. Complete onboarding (privacy disclosure -> 'I understand — set up Apollo') to reach the tabs."
+
+
+
 ## 2026-10-02 Expo preview startup crash fix
 
 frontend:

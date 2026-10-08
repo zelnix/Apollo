@@ -1,16 +1,14 @@
 import * as Linking from "expo-linking";
 import { router, useSegments } from "expo-router";
-import ChevronDown from "lucide-react-native/icons/chevron-down";
-import ChevronUp from "lucide-react-native/icons/chevron-up";
 import ExternalLink from "lucide-react-native/icons/external-link";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ChildScreenHeader } from "@/src/components/ChildScreenHeader";
 import { RootScreenHeader } from "@/src/components/RootScreenHeader";
 import { Body, Button, Card, Pill, type Tone } from "@/src/components/ui";
-import { governmentScams, type GovernmentAlert, type GovernmentFeedState } from "@/src/higgins/hubClient";
+import { governmentScams, type GovernmentAlert } from "@/src/higgins/hubClient";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
 type FilterId = "all" | "AU" | "GLOBAL" | "US" | "UK" | "EU" | "HIGH" | "EXTREME";
@@ -27,6 +25,7 @@ const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   list: { paddingHorizontal: spacing.xl, gap: spacing.md },
   title: { fontFamily: fonts.displayBold, fontSize: 17, lineHeight: 23, color: c.onSurface },
+  sectionHeading: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface, marginTop: spacing.md },
   row: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: spacing.sm },
   spread: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
   link: { fontFamily: fonts.textSemibold, fontSize: 15, color: c.brand },
@@ -34,62 +33,72 @@ const useStyles = makeStyles((c) => ({
   filterChipOn: { backgroundColor: c.brand, borderColor: c.brand },
   filterText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.onSurface },
   filterTextOn: { color: "#FFFFFF" },
+  source: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.onSurface },
   meta: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary },
-  higTitle: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.onSurface, marginTop: spacing.xs },
-  higBody: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary },
 }));
 
-function HigginsBlock({ alert }: { alert: GovernmentAlert }) {
-  const s = useStyles();
-  const [open, setOpen] = useState(alert.growling);
-  const { colors } = useTheme();
-  const h = alert.higgins;
+function AlertCard({ item, index }: { item: GovernmentAlert; index: number }) {
+  const s = useStyles(); const { colors } = useTheme();
   return (
-    <View style={{ gap: spacing.xs }}>
-      <Pressable accessibilityRole="button" onPress={() => setOpen((v) => !v)} style={s.spread} testID="scam-higgins-toggle">
-        <Text style={s.link}>{open ? "Hide Higgins' explanation" : alert.growling ? "Why is Apollo growling?" : "What Higgins says"}</Text>
-        {open ? <ChevronUp size={18} color={colors.brand} /> : <ChevronDown size={18} color={colors.brand} />}
+    <Card style={{ gap: spacing.sm, borderColor: item.growling ? colors.growling : undefined }} testID={`higgins-scam-${index}`}>
+      <View style={s.row}>
+        <Pill testID={`higgins-scam-${index}-severity`} tone={SEVERITY_TONE[item.severity]} label={item.severity === "LOW" ? "Info" : `${item.severity[0]}${item.severity.slice(1).toLowerCase()}`} />
+        <Pill tone="neutral" label={item.regionLabel} />
+        <Pill tone={item.australianRelevance === "confirmed" ? "growling" : "neutral"} label={RELEVANCE_LABEL[item.australianRelevance]} />
+      </View>
+      <Text style={s.title}>{item.title}</Text>
+      <Text style={s.source} testID={`higgins-scam-${index}-source-name`}>{item.source}<Text style={s.meta}>{`  ·  ${item.dateLabel}`}</Text></Text>
+      {item.higgins.whatHappened ? <Body>{item.higgins.whatHappened}</Body> : item.summary ? <Body>{item.summary}</Body> : null}
+      <View style={s.row}>
+        <Button testID={`higgins-scam-${index}-ask`} variant="ghost" label="Ask Higgins about this" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { scamTitle: item.title, scamSource: item.source } })} />
+      </View>
+      <Pressable accessibilityRole="link" accessibilityLabel={`Open official source: ${item.title}`} onPress={() => void Linking.openURL(item.url)} style={s.spread} testID={`higgins-scam-${index}-source`}>
+        <Text style={s.link}>Open official source</Text><ExternalLink size={18} color={colors.brand} />
       </Pressable>
-      {open ? (
-        <View style={{ gap: 2 }}>
-          <Text style={s.higTitle}>What happened</Text><Text style={s.higBody}>{h.whatHappened}</Text>
-          {alert.growling ? <><Text style={s.higTitle}>Why Apollo is growling</Text><Text style={s.higBody}>{h.whyGrowling}</Text></> : null}
-          <Text style={s.higTitle}>Where it&apos;s happening</Text><Text style={s.higBody}>{h.whereHappening}</Text>
-          <Text style={s.higTitle}>What it means for Australia</Text><Text style={s.higBody}>{h.whatItMeansForAustralia}</Text>
-          <Text style={s.higTitle}>What to watch for</Text><Text style={s.higBody}>{h.whatToWatch}</Text>
-          <Text style={s.higTitle}>What to do</Text><Text style={s.higBody}>{h.whatToDo}</Text>
-          <Button testID="scam-ask-higgins" variant="ghost" label="Ask Higgins about this" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { scamTitle: alert.title, scamSource: alert.source } })} />
-        </View>
-      ) : null}
-    </View>
+    </Card>
   );
 }
 
 export default function GovernmentScamsScreen() {
   const s = useStyles(); const { colors } = useTheme(); const insets = useSafeAreaInsets();
-  const [items, setItems] = useState<GovernmentAlert[]>([]); const [feeds, setFeeds] = useState<Record<string, GovernmentFeedState>>({});
-  const [coverage, setCoverage] = useState(""); const [loading, setLoading] = useState(true); const [error, setError] = useState(false);
+  const [alerts, setAlerts] = useState<GovernmentAlert[]>([]); const [emerging, setEmerging] = useState<GovernmentAlert[]>([]);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [coverage, setCoverage] = useState(""); const [lastSourced, setLastSourced] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true); const [error, setError] = useState(false);
   const [filter, setFilter] = useState<FilterId>("all");
   const segments = useSegments();
   const isTab = (segments as string[]).includes("(tabs)");
-  const load = () => { setLoading(true); setError(false); void governmentScams().then((result) => { setItems(result.items); setFeeds(result.feeds); setCoverage(result.coverage); }).catch(() => setError(true)).finally(() => setLoading(false)); };
+  const load = () => {
+    setLoading(true); setError(false);
+    void governmentScams().then((result) => {
+      setAlerts(result.alerts); setEmerging(result.emerging); setPendingCount(result.pendingCount);
+      setCoverage(result.coverage); setLastSourced(result.lastSourcedAt);
+    }).catch(() => setError(true)).finally(() => setLoading(false));
+  };
   useEffect(load, []);
-  const overall = useMemo(() => { const states = Object.values(feeds).map((feed) => feed.status); return states.length > 0 && states.every((state) => state === "fresh") ? "fresh" : states.some((state) => state === "fresh" || state === "stale") ? "stale" : "unavailable"; }, [feeds]);
-  const shown = useMemo(() => items.filter((it) => (filter === "all" || filter === "GLOBAL") ? true : filter === "AU" ? (it.region === "AU" || it.australianRelevance === "confirmed") : filter === "HIGH" ? it.severity === "HIGH" : filter === "EXTREME" ? it.severity === "EXTREME" : it.region === filter), [items, filter]);
+  const sourcedLabel = useMemo(() => {
+    if (!lastSourced) return "Checking official sources…";
+    const d = new Date(lastSourced);
+    return `Last sourced ${d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}`;
+  }, [lastSourced]);
+  const info = { title: "About Scam Alerts", body: [coverage || "Specific scam campaigns reported by recognised government and official cyber-authority sources (Australia, USA, UK, EU), each read and explained from the source itself.", "General scam education lives in Learn with Higgins. Emerging patterns are techniques appearing across several reports with no single named campaign yet."] };
+  const matchFilter = useCallback((it: GovernmentAlert) => (filter === "all" || filter === "GLOBAL") ? true : filter === "AU" ? (it.region === "AU" || it.australianRelevance === "confirmed") : filter === "HIGH" ? it.severity === "HIGH" : filter === "EXTREME" ? it.severity === "EXTREME" : it.region === filter, [filter]);
+  const shown = useMemo(() => alerts.filter(matchFilter), [alerts, matchFilter]);
+  const shownEmerging = useMemo(() => emerging.filter(matchFilter), [emerging, matchFilter]);
   return (
     <View style={s.root} testID="higgins-scams-screen">
       {isTab
-        ? <View style={{ paddingTop: insets.top + spacing.md }}><RootScreenHeader title="Scam Alerts" testID="higgins-scams-header" /></View>
-        : <ChildScreenHeader title="Scam Alerts" testID="higgins-scams-header" />}
+        ? <View style={{ paddingTop: insets.top + spacing.md }}><RootScreenHeader title="Scam Alerts" testID="higgins-scams-header" info={info} /></View>
+        : <ChildScreenHeader title="Scam Alerts" testID="higgins-scams-header" info={info} />}
       <FlatList
         testID="higgins-scams-list" data={shown} keyExtractor={(item) => item.url}
         contentContainerStyle={[s.list, { paddingBottom: insets.bottom + spacing.xl }]}
         ListHeaderComponent={
           <View style={{ gap: spacing.md }}>
-            <Card testID="higgins-scams-coverage" style={{ gap: spacing.sm }}>
-              <View style={s.spread}><Text style={s.title}>Official scam alerts</Text><Pill testID="higgins-scams-feed-state" tone={overall === "fresh" ? "resting" : overall === "stale" ? "growling" : "unknown"} label={overall === "fresh" ? "Sources current" : overall === "stale" ? "Some sources stale" : "Sources unavailable"} /></View>
-              <Body>{coverage || "Recognised government and official cyber-authority sources (Australia, USA, UK, EU). Newest first."}</Body>
-            </Card>
+            <View style={s.spread}>
+              <Text style={s.meta} testID="higgins-scams-sourced">{sourcedLabel}</Text>
+              {pendingCount > 0 ? <Text style={s.meta} testID="higgins-scams-pending">Reading {pendingCount} new…</Text> : null}
+            </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingVertical: 2 }}>
               {FILTERS.map((f) => (
                 <Pressable key={f.id} testID={`scam-filter-${f.id}`} accessibilityRole="button" onPress={() => setFilter(f.id)} style={[s.filterChip, filter === f.id && s.filterChipOn]}>
@@ -99,28 +108,28 @@ export default function GovernmentScamsScreen() {
             </ScrollView>
           </View>
         }
-        renderItem={({ item, index }) => (
-          <Card style={{ gap: spacing.sm, borderColor: item.growling ? colors.growling : undefined }} testID={`higgins-scam-${index}`}>
-            <View style={s.row}>
-              <Pill testID={`higgins-scam-${index}-severity`} tone={SEVERITY_TONE[item.severity]} label={item.severity === "LOW" ? "Info" : `${item.severity[0]}${item.severity.slice(1).toLowerCase()}`} />
-              <Pill tone="neutral" label={item.regionLabel} />
-              <Pill tone={item.australianRelevance === "confirmed" ? "growling" : "neutral"} label={RELEVANCE_LABEL[item.australianRelevance]} />
-              <Text style={s.meta}>{item.ageLabel}</Text>
-            </View>
-            <Text style={s.title}>{item.title}</Text>
-            <Body>{item.summary || "Open the official source for details."}</Body>
-            <Text style={s.meta}>{item.source} · {item.sourceType === "live_alert" ? "Official alert" : "Official advice"}</Text>
-            <HigginsBlock alert={item} />
-            <Pressable accessibilityRole="link" accessibilityLabel={`Open official source: ${item.title}`} onPress={() => void Linking.openURL(item.url)} style={s.spread} testID={`higgins-scam-${index}-source`}>
-              <Text style={s.link}>Open official source</Text><ExternalLink size={18} color={colors.brand} />
-            </Pressable>
-          </Card>
-        )}
+        renderItem={({ item, index }) => <AlertCard item={item} index={index} />}
         ListEmptyComponent={loading ? <ActivityIndicator testID="higgins-scams-loading" color={colors.brand} /> : error ? (
           <Card testID="higgins-scams-error"><Body>Official guidance could not be loaded. Apollo will not substitute unrecognised sources.</Body><Button testID="higgins-scams-retry" label="Try again" onPress={load} /></Card>
         ) : (
-          <Card testID="higgins-scams-empty"><Body>{filter === "all" ? "No current items are available from the configured official sources. This does not mean there are no new scams." : "No alerts match this filter right now."}</Body></Card>
+          <Card testID="higgins-scams-empty"><Body>{pendingCount > 0 ? "Apollo is still reading the latest official reports. Specific alerts will appear here once their facts are verified." : filter === "all" ? "No specific scam campaigns are being reported by the configured official sources right now. This does not mean there are no new scams." : "No alerts match this filter right now."}</Body></Card>
         )}
+        ListFooterComponent={
+          <View style={{ gap: spacing.sm }}>
+            {shownEmerging.length > 0 ? (
+              <>
+                <Text style={s.sectionHeading} testID="higgins-scams-emerging-heading">Emerging patterns</Text>
+                <Body>Techniques showing up across several reports. No single named campaign yet — stay aware.</Body>
+                {shownEmerging.map((item, i) => <AlertCard key={item.url} item={item} index={1000 + i} />)}
+              </>
+            ) : null}
+            <Card testID="higgins-scams-learn" style={{ gap: spacing.xs, marginTop: spacing.md }}>
+              <Text style={s.title}>Want the background?</Text>
+              <Body>General scam education — how common scams work and how to stay safe — lives in Learn with Higgins.</Body>
+              <Button testID="higgins-scams-learn-link" variant="secondary" label="Open Learn with Higgins" onPress={() => router.push("/higgins/learning")} />
+            </Card>
+          </View>
+        }
       />
     </View>
   );

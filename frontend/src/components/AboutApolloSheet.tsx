@@ -48,6 +48,10 @@ export function AboutApolloSheet({ visible, onClose }: { visible: boolean; onClo
       <Text style={s.heading}>🚨 Scam Alerts &amp; Education</Text>
       <Text style={s.body}>Stay informed about emerging scams and learn how to recognise warning signs, avoid common tricks and protect yourself and your family.</Text>
 
+      <Text style={s.heading}>💬 Social Media &amp; Messaging Protection</Text>
+      <Text style={s.body}>Apollo helps protect you from online scams, phishing links and known malicious websites encountered through social media and messaging platforms, including Facebook, Instagram, TikTok, X, Messenger, WhatsApp, Snapchat and others.</Text>
+      <Text style={[s.body, { marginTop: spacing.sm }]}>Protection is provided through Apollo&apos;s existing security Gates, depending on your device and its capabilities.</Text>
+
       <Text style={s.heading}>👨‍💼 Meet Higgins</Text>
       <View style={s.higginsRow}>
         <Image source={require("../../assets/images/higgins-avatar.png")} style={s.higginsFace} contentFit="cover" accessibilityLabel="Higgins" />

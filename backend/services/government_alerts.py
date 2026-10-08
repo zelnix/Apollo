@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from core.db import db, now_utc
-from services import learning_feeds, scam_intel
+from services import learning_feeds, scam_analysis, scam_intel
 
 STALE_AFTER = timedelta(hours=6)
 
@@ -21,6 +21,72 @@ async def ensure_indexes() -> None:
 
 async def refresh_all() -> None:
     await learning_feeds.refresh_due()
+    try:
+        from services import scam_analysis
+        await scam_analysis.analyze_pending(limit=8)
+    except Exception:  # noqa: BLE001 — analysis is best-effort; ingestion must never fail because of it
+        pass
+
+
+RECENCY_CUTOFF = timedelta(days=455)  # ~15 months: a specific alert older than this is not "recent"
+
+
+def _parse_reported(value: str | None) -> datetime | None:
+    """Parse the AI's structured reportedDate ('YYYY-MM-DD' or 'YYYY-MM') into an aware datetime."""
+    value = (value or "").strip()
+    for fmt in ("%Y-%m-%d", "%Y-%m"):
+        try:
+            return datetime.strptime(value, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return None
+
+
+def _month_year(dt: datetime | None) -> str:
+    return dt.strftime("%B %Y") if dt else "Date not stated"
+
+
+def _alert(row: dict, source: dict, analysis: dict, now: datetime) -> dict:
+    """Build one consumer alert from a feed item + its cached AI analysis. Only facts the analysis
+    extracted from the source are shown; nothing is invented here."""
+    published = _aware(row.get("published_at"))
+    reported = _parse_reported(analysis.get("reportedDate"))
+    effective = published or reported  # when this specific scam was reported
+    region = scam_intel.region_for(row["source_id"])
+    sections = analysis.get("sections") or {}
+    severity = analysis["severity"]
+    relevance = analysis["australianRelevance"]
+    fresh = bool(effective and (now - effective) <= RECENCY_CUTOFF)
+    # A specific High/Extreme campaign growls when there's real Australian exposure. Confirmed-AU campaigns
+    # growl regardless of date (official AU sources are often undated listings); overseas "potential"
+    # techniques must still be recent so a stale overseas bulletin can't hold Apollo growling.
+    growling = (analysis["tier"] == "specific_scam" and severity in ("HIGH", "EXTREME")
+                and (relevance == "confirmed" or (relevance == "potential" and fresh)))
+    higgins = {
+        "whatHappened": sections.get("whatHappened") or (row.get("summary") or row.get("title") or ""),
+        "whyGrowling": analysis.get("severityReason") or "",
+        "whereHappening": sections.get("whereHappening") or "",
+        "whatItMeansForAustralia": sections.get("whatItMeansForYou") or "",
+        "whatToWatch": sections.get("whatToWatch") or "",
+        "whatToDo": sections.get("whatToDo") or "",
+        "source": source.get("name") or row["source_id"],
+        "publishedAt": (published or reported).isoformat() if (published or reported) else None,
+        "dateLabel": _month_year(effective),
+        "url": row.get("url"),
+    }
+    return {
+        "title": row["title"], "url": row["url"], "summary": row["summary"], "source": source.get("name") or row["source_id"],
+        "sourceUrl": (source.get("canonical_base_urls") or [None])[0], "sourceType": row["content_type"], "sourceTrust": row["trust_status"],
+        "publishedAt": published, "updatedAt": _aware(row.get("updated_at")), "lastCheckedAt": _aware(row["last_checked_at"]),
+        "reportedDate": analysis.get("reportedDate") or "", "effectiveDate": effective, "dateLabel": _month_year(effective),
+        "ageLabel": _month_year(effective),
+        "region": region, "regionLabel": scam_intel.REGION_LABEL.get(region, region),
+        "tier": analysis["tier"], "facts": analysis.get("facts") or {},
+        "severity": severity, "severityReason": analysis.get("severityReason") or "", "severityConfidence": analysis.get("confidence") or "low",
+        "sourceSeverity": row.get("source_severity"),
+        "australianRelevance": relevance, "australianRelevanceReason": analysis.get("australianRelevanceReason") or "",
+        "growling": growling, "higgins": higgins,
+    }
 
 
 async def snapshot(limit: int = 50) -> dict:
@@ -37,17 +103,30 @@ async def snapshot(limit: int = 50) -> dict:
             "sourceType": feed["content_type"], "lastSuccessAt": success, "lastCheckedAt": _aware(row.get("last_checked_at")) if row else None,
             "errorType": row.get("error") if latest_failed else None}
     rows = await db.learning_feed_items.find({}, {"_id": 0, "fingerprint": 0, "candidate_id": 0, "expires_at": 0}).sort("published_at", -1).limit(min(limit, 100)).to_list(min(limit, 100))
-    items = []
+    alerts: list[dict] = []; emerging: list[dict] = []; pending = 0; stale = 0
     for row in rows:
-        source = sources.get(row["source_id"], {}); published = _aware(row.get("published_at"))
-        intel = scam_intel.enrich(row, row["source_id"], source.get("name") or row["source_id"])
-        items.append({"title": row["title"], "url": row["url"], "summary": row["summary"], "source": source.get("name"),
-            "sourceUrl": (source.get("canonical_base_urls") or [None])[0], "sourceType": row["content_type"], "sourceTrust": row["trust_status"],
-            "publishedAt": published, "updatedAt": _aware(row.get("updated_at")), "lastCheckedAt": _aware(row["last_checked_at"]),
-            "ageLabel": "Official advice" if row["content_type"] == "official_advice" or not published else "Today" if now.date() == published.date() else f"{max(1, (now.date() - published.date()).days)} days ago",
-            **intel})
-    # Current growling advisory: the freshest eligible High/Extreme with real Australian exposure. Stale or
-    # overseas-only advisories never hold Apollo in a growling state.
-    growling = next((it for it in items if it["growling"] and scam_intel.is_fresh_advisory({"publishedAt": it["publishedAt"]}, now=now)), None)
-    return {"coverage": "Configured recognised government and official cyber-authority sources (Australia, USA, UK, EU). Feed candidates never publish learning articles without human review.",
-            "generatedAt": now, "feeds": feed_states, "items": items, "growling": growling}
+        analysis = row.get("scam_analysis")
+        if not analysis or analysis.get("analysisVersion") != scam_analysis.ANALYSIS_VERSION:
+            pending += 1  # not yet analysed — never shown as a scam alert until its facts are verified
+            continue
+        source = sources.get(row["source_id"], {})
+        built = _alert(row, source, analysis, now)
+        # Only recent reports belong in the feed: drop specific/emerging items whose stated date is older
+        # than the recency cutoff. Items with no determinable date are kept (staleness can't be proven).
+        if built["effectiveDate"] and (now - built["effectiveDate"]) > RECENCY_CUTOFF:
+            stale += 1
+            continue
+        if built["tier"] == "specific_scam":
+            alerts.append(built)
+        elif built["tier"] == "emerging_pattern":
+            emerging.append(built)
+        # general_education is intentionally excluded from the alerts feed (it belongs in Learn with Higgins).
+    # Most recent first; undated items sort last.
+    _key = lambda it: it["effectiveDate"] or datetime.min.replace(tzinfo=timezone.utc)
+    alerts.sort(key=_key, reverse=True); emerging.sort(key=_key, reverse=True)
+    growling = next((it for it in alerts if it["growling"]), None)
+    last_analysed = max((_aware(r.get("scam_analysis", {}).get("analyzedAt")) for r in rows if r.get("scam_analysis")), default=None)
+    last_sourced = max((v.get("lastSuccessAt") for v in feed_states.values() if v.get("lastSuccessAt")), default=None)
+    return {"coverage": "Specific scam campaigns reported by recognised government and official cyber-authority sources (Australia, USA, UK, EU), each read and explained from the source itself. General scam education lives in Learn with Higgins.",
+            "generatedAt": now, "feeds": feed_states, "alerts": alerts, "emerging": emerging, "pendingCount": pending,
+            "lastAnalysedAt": last_analysed, "lastSourcedAt": last_sourced, "growling": growling}

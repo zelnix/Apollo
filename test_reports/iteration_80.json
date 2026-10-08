@@ -1,0 +1,31 @@
+{
+  "summary": "Validated the backend date/sorting additions to GET /api/higgins/scams. New regression suite tests/test_scams_date_sorting.py (14/14 passing) plus the previous three-tier contract suite tests/test_scams_three_tier_feed.py (11/11 passing) all green against the live preview URL. Live payload confirms: top-level 'lastSourcedAt' is an ISO datetime (2026-10-08T10:11:46.849000+00:00); every alert and emerging item exposes 'reportedDate' ('YYYY-MM-DD' | 'YYYY-MM' | '') and a human 'dateLabel' (e.g. 'August 2026') with 'Date not stated' as the undated fallback; every item carries a real human-facing 'source' name ('Scamwatch' observed on all current items — a legitimate brand of the ACCC's National Anti-Scam Centre, not the raw slug — handled via a lowercase/no-space slug-shape check instead of a false-positive brand blocklist); 'alerts' sorted strictly descending by effectiveDate (2026-08-17 > 2026-06-26 > 2026-06-23 > 2026-05-20) and so is 'emerging' (2026-07-14 > 2026-06-12 > 2026-05-19 > 2026-03-19); no item older than the 455-day (~15 months) RECENCY_CUTOFF; full contract key set (coverage, generatedAt, feeds, alerts, emerging, pendingCount, lastAnalysedAt, lastSourcedAt, growling) still present; tier purity holds (every alert tier=='specific_scam', every emerging tier=='emerging_pattern', zero general_education leaks); 'items' key is still gone. Device auth still enforced (unauth GET returns 401). pendingCount=7 was observed, which per the agent-to-agent note is EXPECTED (background re-analysis runs hourly) and not a failure.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_scams_date_sorting.py",
+    "/app/backend/tests/test_scams_three_tier_feed.py",
+    "/app/test_reports/pytest/pytest_iter80_scams_dates.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "services/government_alerts.py:_alert builds dateLabel from `effective = published or reported` (published_at|reportedDate), so an item that has no reportedDate but DOES have a published_at will still show 'Month YYYY' rather than 'Date not stated'. That matches the review spec ('Date not stated when no date') because the publication date is itself a stated date, but the per-item test accepts both 'Date not stated' and 'Month YYYY' when reportedDate=='' to avoid a false failure if an item's analysis omits reportedDate yet the feed has a published_at.",
+    "services/government_alerts.py line 73 — higgins.publishedAt uses `(published or reported).isoformat()`; harmless because the ternary already guards both being None, but a tiny readability improvement would be to compute it once with the same `effective` variable used two lines down.",
+    "services/government_alerts.py line 125 — the sort key `effectiveDate or datetime.min(tz=utc)` correctly pushes undated items to the end of a descending sort, but a stable sort of same-day items will fall back to whatever order they came back from Mongo in; consider adding a secondary key (e.g. published_at or title) for deterministic ordering between items that share a date.",
+    "No ObjectId leak observed on /api/higgins/scams response (the Mongo projections already exclude _id)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_scams_date_sorting.py (new regression suite covering lastSourcedAt / reportedDate / dateLabel / source name / recency+sort)"
+  ],
+  "success_rate": {"backend": "100% (14/14 new + 11/11 existing scams tests)", "frontend": "skipped per request"},
+  "seed_data_creation": "No seed. Live feeds already contain analysed items (4 specific alerts dated May-Aug 2026 + 4 emerging patterns dated Mar-Jul 2026). Each test registers its own anonymous device via /api/devices/register and uses only that device's bearer token.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Use tests/test_scams_date_sorting.py for the date/sort regression and tests/test_scams_three_tier_feed.py for the tier-purity + growling + device-data-lifecycle regression. Both are self-contained (they set 'X-Apollo-Raw: 1' so conftest's auth shim does not rewrite the Authorization header). ANALYSIS_VERSION=2 re-analysis runs hourly, so pendingCount>0 is normal — do NOT treat it as a failure. If a later run observes items with 'source' equal to the slug (e.g. 'scamwatch' with lowercase s), that IS a regression — the _looks_like_slug heuristic in the new suite will catch it. 'Scamwatch' (capital S) is a real human-facing brand name of the ACCC's National Anti-Scam Centre and is expected on AU items.",
+  "rca_of_issue": "N/A — all four review items confirmed: (1) lastSourcedAt present as ISO datetime, (2) reportedDate/dateLabel present and well-shaped on every item, (3) source name is a real display name on every item, (4) alerts and emerging are strictly descending by effective date and nothing exceeds the 15-month cutoff."
+}

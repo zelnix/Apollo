@@ -5,7 +5,7 @@ export type ShareKind = "link" | "message" | "email" | "account" | "file" | "scr
 export interface SharedPayload { text?: string | null; webUrl?: string | null; files?: { path: string; mimeType?: string | null; fileName?: string | null; size?: number | null }[]; title?: string | null }
 export interface ShareRoute { kind: ShareKind; pathname: "/check" | "/message" | "/email" | "/account" | "/file"; params: Record<string, string>; reason: string }
 
-export const SHARE_KIND_LABEL: Record<ShareKind, string> = { link: "a link", message: "a text message or chat", email: "an email", account: "an account or login alert", file: "a file", screenshot: "a screenshot" };
+export const SHARE_KIND_LABEL: Record<ShareKind, string> = { link: "a link", message: "a text message or chat", email: "an email", account: "an account or login alert", file: "a file", screenshot: "an image" };
 
 const URL_RE = /https?:\/\/[^\s<>"']+/i;
 const BARE_DOMAIN_RE = /\b[a-z0-9-]+(\.[a-z0-9-]+)+(\/[^\s<>"']*)?/i;
@@ -25,7 +25,7 @@ export function classifyShare(p: SharedPayload): ShareRoute {
   if (file) {
     const mime = (file.mimeType ?? "").toLowerCase();
     const name = file.fileName ?? file.path.split("/").pop() ?? "shared file";
-    if (mime.startsWith("image/") || /\.(png|jpe?g|webp|heic|heif)$/i.test(name)) return { kind: "screenshot", pathname: "/message", params: { source: "share" }, reason: "It's an image — Apollo will read it as a screenshot of a message." };
+    if (mime.startsWith("image/") || /\.(png|jpe?g|webp|heic|heif)$/i.test(name)) return { kind: "screenshot", pathname: "/message", params: { source: "share" }, reason: "Looks like an image. If it's a screenshot of a message, Apollo can read the text and check it — or you can check it as a file instead. Apollo doesn't know what's in it until it looks." };
     return { kind: "file", pathname: "/file", params: { source: "unknown" }, reason: "It's a file — Apollo checks what it really is before trusting the name or where it was hosted." };
   }
   const raw = (p.text ?? "").trim();

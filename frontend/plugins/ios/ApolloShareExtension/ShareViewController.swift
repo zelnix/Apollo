@@ -77,7 +77,10 @@ final class ShareViewController: UIViewController {
       return compact(["index": index, "kind": "url", "url": url.absoluteString, "declaredType": declaredType, "context": context])
     }
     if let text = item as? String {
-      return compact(["index": index, "kind": "text", "text": String(text.prefix(200_000)), "declaredType": declaredType, "context": context])
+      // Make any shortening explicit rather than silently truncating a very long shared message.
+      let limit = 200_000
+      let shown = text.count > limit ? String(text.prefix(limit)) + "\n\n[Apollo note: this shared text was long and has been shortened to the first 200,000 characters.]" : text
+      return compact(["index": index, "kind": "text", "text": shown, "declaredType": declaredType, "context": context])
     }
     if let image = item as? UIImage, let data = image.pngData() {
       return try writeData(data, safeName: "shared-image.png", declaredType: declaredType, actualType: UTType.png.identifier, index: index, context: context, directory: directory)
@@ -134,13 +137,16 @@ final class ShareViewController: UIViewController {
     }
     let texts = snapshot.0.compactMap { $0["text"] as? String }
     let urls = snapshot.0.compactMap { $0["url"] as? String }
+    // Keep EVERY shared URL. webUrl carries the first for routing; any additional URLs are preserved in the
+    // combined text block so they are never silently discarded (the message/link checks still see them).
+    let combined = texts + urls
     let files = snapshot.0.filter { ($0["path"] as? String) != nil }.map { row in
       compact(["path": row["path"], "fileName": row["fileName"], "mimeType": row["mimeType"], "size": row["size"],
                "declaredType": row["declaredType"], "actualType": row["actualType"], "context": row["context"]])
     }
     let created = Date(); let expires = created.addingTimeInterval(retentionSeconds)
     let manifest: [String: Any] = ["schemaVersion": 1, "handoffId": handoffId, "state": "committed", "createdAt": iso(created), "expiresAt": iso(expires),
-      "itemCount": expectedCount, "payload": compact(["text": texts.isEmpty ? nil : texts.joined(separator: "\n"), "webUrl": urls.first, "files": files])]
+      "itemCount": expectedCount, "payload": compact(["text": combined.isEmpty ? nil : combined.joined(separator: "\n"), "webUrl": urls.first, "files": files])]
     do {
       let data = try JSONSerialization.data(withJSONObject: manifest, options: [.sortedKeys])
       let pending = directory.appendingPathComponent("manifest.pending.json")
