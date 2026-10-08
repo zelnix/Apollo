@@ -130,6 +130,45 @@ export function looksLikeInternalCode(text: string): boolean {
   return /\b(known_threat|ears_up|user_started|server_projection|recorded_outcome|[a-z]+_[a-z]+(?:_[a-z]+)+)\b/.test(text);
 }
 
+// --- Live scrubber for Higgins' free-text replies (Scan Gate Chat) -----------------------------------
+// Higgins' overview/explanation/findings come from the model and could echo an internal token. This is
+// the last line of defence: it rewrites any code token to plain English before it reaches the user, and
+// in dev it warns so the leak gets fixed at the source too.
+const CODE_REPLACEMENTS: Record<string, string> = {
+  known_threat: "website safety", ears_up: "worth a look", user_started: "started by you",
+  server_projection_of_recorded_outcome: "synced from another device", recorded_outcome: "recorded outcome",
+  action_needed: "action needed", no_concern_found_within_scope: "no concern found in the checks performed",
+  concern_found: "concern found", off_by_choice: "turned off", not_activated: "not set up yet",
+  permission_needed: "permission needed", setup_needed: "setup needed", temporarily_unavailable: "temporarily unavailable",
+};
+export function scrubMessage(text: string | null | undefined): string {
+  if (!text) return text ?? "";
+  let flagged = false;
+  const out = text.replace(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g, (m) => { flagged = true; return CODE_REPLACEMENTS[m] ?? m.replace(/_/g, " "); });
+  if (flagged && typeof (globalThis as { __DEV__?: boolean }).__DEV__ !== "undefined" && (globalThis as { __DEV__?: boolean }).__DEV__) {
+    console.warn(`[Apollo message guardrail] scrubbed an internal code from a Higgins reply: "${text}"`);
+  }
+  return out;
+}
+
+// --- Investigation status history (History Everywhere) -----------------------------------------------
+/** Plain-English "what Higgins has done so far", derived from the turns and current phase. */
+export function investigationHistory(args: {
+  turns: { question: string; overview: string }[]; phase: string; completion?: string | null;
+}): HistoryEntry[] {
+  const entries: { text: string }[] = [{ text: "Higgins opened this investigation." }];
+  args.turns.forEach((t, i) => { if (i > 0 || args.turns.length > 1) entries.push({ text: `You asked a follow-up — Higgins answered: ${scrubMessage(t.overview).slice(0, 120)}` }); });
+  const current = args.phase === "working" || args.phase === "creating" || args.phase === "reconnecting" ? "Higgins is still investigating."
+    : args.phase === "waiting_user" ? "Higgins is waiting on your answer to continue."
+    : args.phase === "waiting_device" ? "Higgins is checking this device for a fresh observation."
+    : args.phase === "failed" || args.phase === "expired" ? "This investigation stopped before finishing."
+    : args.completion === "complete" ? "Higgins completed the investigation within scope."
+    : args.completion === "partial" ? "Higgins answered, with more still to examine."
+    : "Higgins has a question before it can finish.";
+  entries.push({ text: current });
+  return entries.map((e) => ({ at: "", text: e.text }));
+}
+
 // --- Higgins investigation verdicts (plain English, never raw enum values) ---------------------------
 export function assessmentLabel(assessment: string): string {
   switch (assessment) {

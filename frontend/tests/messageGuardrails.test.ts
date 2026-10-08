@@ -93,4 +93,7 @@ test("Higgins chat replies: every verdict maps to plain English, never a raw enu
   // The investigation view must not interpolate raw enums into the UI.
   const view = readFileSync("src/components/InvestigationView.tsx", "utf8");
   assert.doesNotMatch(view, /\.(assessment|attention)\.replace|\{response\.(assessment|attention)\}/, "InvestigationView must render verdicts via messageVoice labels, not raw enums");
+  // Live scrub: the model's free text must pass through scrubMessage before it reaches the user.
+  assert.match(view, /scrubMessage\(response\.overview\)/, "Higgins overview must be live-scrubbed");
+  assert.match(view, /scrubMessage/g);
 });

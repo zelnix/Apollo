@@ -1,3 +1,14 @@
+## Scan Gate Chat + History Everywhere (2026-06)
+
+- **Scan Gate Chat (live free-text scrub):** `messageVoice.scrubMessage()` rewrites any internal-code token (snake_case / known map like known_threat→"website safety", ears_up→"worth a look") to plain English before display, and `console.warn`s in `__DEV__` so the source leak gets fixed too. Applied to EVERY Higgins free-text render in `InvestigationView.tsx` — turn/response overview, attentionReason, explanation (`plain()` now scrubs), findings text, uncertainties, scope, question text/reason, source retrieval, and the recheck observation note. This closes the one real remaining gap in the standing requirement: model-authored replies could previously echo a code.
+- **History Everywhere:** `messageVoice.investigationHistory()` builds a plain-English, code-free progress list (opened → follow-ups → current status: investigating / waiting on you / completed within scope / partial / has a question / stopped), rendered as an "Investigation history" card (`inv-history`) in `InvestigationView.tsx`. Check results already carry history via Higgins Re-check diff; event detail has the `eventHistory` "Status history" card from the prior pass.
+- Guardrails extended: `messageGuardrails` now asserts the investigation view live-scrubs `response.overview`; `messageVoice` tests cover `scrubMessage` and `investigationHistory`.
+
+Standing-requirement status: substantially complete. §1 offenders all fixed; §2 examples honoured; §3 six-part standard applied on covered surfaces; §4 deep-links carry specific event ids (a couple of protection-health notices still open the Gates tab — minor); §5 surfaces covered; §6 acceptance enforced by automated guardrails incl. live free-text scrubbing.
+
+Verification: tsc + ESLint clean; messaging tests 17/17; full suite 445/452 (same 7 pre-existing env/native/tab-order/brand-asset failures); Android bundle HTTP 200.
+
+
 ## Messaging follow-ups 2 — guardrails, timeline, smart links, inbox (2026-06)
 
 Notification naming check: PASS — all notification copy uses "Apollo" (+ retained "Apollo is barking/biting/growling" vocabulary); no "guard dog"/"guarddog" in `src/push`.

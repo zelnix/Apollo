@@ -5,7 +5,7 @@ import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
 import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
 import { Body, Button, Card, Pill, type Tone } from "@/src/components/ui";
-import { assessmentLabel, attentionLabel } from "@/src/domain/messageVoice";
+import { assessmentLabel, attentionLabel, investigationHistory, scrubMessage } from "@/src/domain/messageVoice";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import type { CaseState } from "@/src/investigation/caseStore";
 import * as investigationApi from "@/src/investigation/client";
@@ -26,13 +26,13 @@ const useStyles = makeStyles((c) => ({
 export function attentionTone(attention: Attention): Tone { return attention === "urgent" || attention === "action_needed" ? "barking" : attention === "review" ? "growling" : "resting"; }
 
 function plain(markdown: string) {
-  return markdown.replace(/^#{1,6}\s*/gm, "").replace(/\*\*(.+?)\*\*/g, "$1").replace(/\*(.+?)\*/g, "$1").replace(/`(.+?)`/g, "$1").replace(/^\s*[-*]\s+/gm, "• ").replace(/\[(.+?)\]\((https?:[^)]+)\)/g, "$1 ($2)");
+  return scrubMessage(markdown.replace(/^#{1,6}\s*/gm, "").replace(/\*\*(.+?)\*\*/g, "$1").replace(/\*(.+?)\*/g, "$1").replace(/`(.+?)`/g, "$1").replace(/^\s*[-*]\s+/gm, "• ").replace(/\[(.+?)\]\((https?:[^)]+)\)/g, "$1 ($2)"));
 }
 
 function SourceRow({ source, s }: { source: SourceReference; s: ReturnType<typeof useStyles> }) {
   return <Pressable style={s.source} onPress={() => void WebBrowser.openBrowserAsync(source.url)} accessibilityRole="link" testID={`inv-source-${source.id}`}>
     <Text style={s.link}>{source.title || source.url}</Text>
-    <Text style={s.muted}>{source.authority === "official" ? "Official platform/vendor source" : source.authority === "self_claimed" ? "Fetched from the destination itself — not independent" : "Search result — publisher not independently verified"} · {source.retrieval.replace("_", " ")}</Text>
+    <Text style={s.muted}>{source.authority === "official" ? "Official platform/vendor source" : source.authority === "self_claimed" ? "Fetched from the destination itself — not independent" : "Search result — publisher not independently verified"} · {scrubMessage(source.retrieval)}</Text>
   </Pressable>;
 }
 
@@ -50,7 +50,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
   // Fresh recheck after returning from a Settings destination opened for THIS case (recheck.ts completes the pending attempt).
   useEffect(() => onRecheck((o) => {
     if (!state.caseData || o.attempt.caseId !== state.caseData.id) return;
-    const fresh = o.observation ? `fresh observation: ${o.observation.status}${o.observation.unavailableReason ? ` (${o.observation.unavailableReason.replace("_", " ")})` : ""}` : "no observation possible on this device";
+    const fresh = o.observation ? `fresh observation: ${scrubMessage(o.observation.status)}${o.observation.unavailableReason ? ` (${scrubMessage(o.observation.unavailableReason)})` : ""}` : "no observation possible on this device";
     const verdict = o.plan ? ({ correct: "The setting now matches what Higgins asked for.", not_yet_correct: "The setting is not yet at the expected value.", cannot_observe: "Apollo cannot read this setting here — only you can confirm it.", failed: "The re-check failed." } as const)[o.plan.outcome] : "";
     setActionNote(`Back from Settings — ${fresh}. ${verdict} ${o.plan?.explanation ?? ""}`.trim());
     setFailedRecheck(o.attempt.status === "failed" && o.plan?.outcome === "failed");
@@ -69,7 +69,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
   return <View style={{ gap: spacing.md }} testID={testID}>
     {turns.slice(0, -1).map((turn) => <View key={turn.turnId} style={s.turn} testID={`inv-turn-${turn.turnId}`}>
       <View style={s.user}><Text style={s.text}>{turn.question}</Text></View>
-      <Text style={s.text}>{turn.response.overview}</Text>
+      <Text style={s.text}>{scrubMessage(turn.response.overview)}</Text>
     </View>)}
     {turns.length ? <View style={s.user} testID="inv-current-question"><Text style={s.text}>{turns[turns.length - 1].question}</Text></View> : null}
     {working ? <Card style={s.card} testID="inv-progress"><View style={s.row}><ActivityIndicator color={colors.gold} /><Body>{phase === "reconnecting" ? "Connection interrupted — reconnecting to the same investigation…" : phase === "waiting_device" ? "Checking this device for a fresh observation…" : "Higgins is investigating…"}</Body></View>
@@ -79,17 +79,17 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
       <View style={s.row}><Pill tone={attentionTone(response.attention)} label={attentionLabel(response.attention)} testID="inv-attention" />
         <Pill tone="neutral" label={response.completion === "complete" ? "Complete within scope" : response.completion === "partial" ? "Partial — more to examine" : "Higgins has a question"} testID="inv-completion" />
         <Pill tone="neutral" label={assessmentLabel(response.assessment)} testID="inv-assessment" /></View>
-      <Text style={s.text} testID="inv-overview">{response.overview}</Text>
-      {response.attentionReason ? <Text style={s.muted}>Why: {response.attentionReason}</Text> : null}
+      <Text style={s.text} testID="inv-overview">{scrubMessage(response.overview)}</Text>
+      {response.attentionReason ? <Text style={s.muted}>Why: {scrubMessage(response.attentionReason)}</Text> : null}
       <HigginsSpeakButton text={expanded ? plain(response.explanationMarkdown) : response.overview} compact testID="inv-hear" scopeId={caseData?.id} />
       <Button testID="inv-expand" variant="ghost" label={expanded ? "Hide full explanation" : "Show full explanation"} onPress={() => setExpanded((v) => !v)} />
       {expanded ? <View style={{ gap: spacing.sm }} testID="inv-explanation">
         <Text style={s.text}>{plain(response.explanationMarkdown)}</Text>
         {response.findings.length ? <Text style={s.heading}>What this rests on</Text> : null}
-        {response.findings.map((f) => <Text key={f.id} style={s.muted} testID={`inv-finding-${f.id}`}>{f.basis === "observation" ? "Observed" : f.basis === "user_report" ? "You reported" : "Higgins infers"} ({f.confidence}): {f.text}</Text>)}
+        {response.findings.map((f) => <Text key={f.id} style={s.muted} testID={`inv-finding-${f.id}`}>{f.basis === "observation" ? "Observed" : f.basis === "user_report" ? "You reported" : "Higgins infers"} ({f.confidence}): {scrubMessage(f.text)}</Text>)}
         {response.uncertainties.length ? <Text style={s.heading}>Still uncertain</Text> : null}
-        {response.uncertainties.map((u, i) => <Text key={i} style={s.muted}>• {u}</Text>)}
-        {response.scope ? <Text style={s.muted}>Scope: {response.scope}</Text> : null}
+        {response.uncertainties.map((u, i) => <Text key={i} style={s.muted}>• {scrubMessage(u)}</Text>)}
+        {response.scope ? <Text style={s.muted}>Scope: {scrubMessage(response.scope)}</Text> : null}
         {inventory ? <Text style={s.muted} testID="inv-coverage">Evidence: {inventory.examined} of {inventory.total} items fully examined{inventory.partial ? `, ${inventory.partial} partially` : ""}{inventory.unavailable ? `, ${inventory.unavailable} unavailable` : ""}{response.remainingEvidenceIds.length ? ` — ${response.remainingEvidenceIds.length} still to examine` : ""}.</Text> : null}
       </View> : null}
       {usedSources.length ? <Button testID="inv-sources-toggle" variant="ghost" label={showSources ? "Hide sources" : `Sources (${usedSources.length})`} onPress={() => setShowSources((v) => !v)} /> : <Text style={s.muted}>No external sources were retrieved for this answer.</Text>}
@@ -136,8 +136,11 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
         }} /> : null}</View> : null}
         {reportNote ? <Text style={s.muted} testID="inv-report-note">{reportNote}</Text> : null}
       </View> : null}
+      <View style={{ gap: spacing.xs }} testID="inv-history"><Text style={s.heading}>Investigation history</Text>
+        {investigationHistory({ turns: turns.map((t) => ({ question: t.question, overview: t.response.overview })), phase, completion: response.completion }).map((h, i) => <Text key={i} style={s.muted} testID={`inv-history-${i}`}>• {h.text}</Text>)}
+      </View>
     </Card> : null}
-    {question && phase === "waiting_user" ? <View style={s.question} testID="inv-question"><Text style={s.text}>{question.text}</Text><Text style={s.muted}>Why Higgins asks: {question.reasonNeeded}</Text>
+    {question && phase === "waiting_user" ? <View style={s.question} testID="inv-question"><Text style={s.text}>{scrubMessage(question.text)}</Text><Text style={s.muted}>Why Higgins asks: {scrubMessage(question.reasonNeeded)}</Text>
       {question.answerType === "yes_no" ? <View style={s.row}><Button testID="inv-answer-yes" label="Yes" onPress={() => onAnswer?.("Yes")} /><Button testID="inv-answer-no" variant="ghost" label="No" onPress={() => onAnswer?.("No")} /></View> : null}
       {question.answerType === "choice" ? <View style={s.row}>{question.choices.map((c) => <Button key={c} testID={`inv-answer-${c}`} variant="ghost" label={c} onPress={() => onAnswer?.(c)} />)}</View> : null}</View> : null}
     {failure && phase !== "failed" ? <Text style={s.muted} testID="inv-partial-reason">Incomplete: {failure.message}</Text> : null}

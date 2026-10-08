@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { apolloStatusLabel, areaLabel, displayStateLabel, eventHistory, humanizeReason, looksLikeInternalCode, projectedEventVoice, resultChip, sourceLabel } from "../src/domain/messageVoice.ts";
+import { apolloStatusLabel, areaLabel, displayStateLabel, eventHistory, humanizeReason, investigationHistory, looksLikeInternalCode, projectedEventVoice, resultChip, scrubMessage, sourceLabel } from "../src/domain/messageVoice.ts";
 
 test("area labels never expose raw category codes", () => {
   assert.equal(areaLabel("known_threat"), "a website safety check");
@@ -48,6 +48,20 @@ test("looksLikeInternalCode catches the exact screenshot offenders", () => {
   for (const bad of ["known_threat", "ears_up", "user_started", "server_projection_of_recorded_outcome"]) assert.ok(looksLikeInternalCode(bad));
   assert.ok(!looksLikeInternalCode("Apollo ran a website safety check"));
 });
+
+test("scrubMessage rewrites any internal code in free text to plain English", () => {
+  assert.doesNotMatch(scrubMessage("Higgins saw a known_threat and set ears_up."), /known_threat|ears_up|_/);
+  assert.equal(scrubMessage("All clear — no concern."), "All clear — no concern.");
+  assert.ok(!looksLikeInternalCode(scrubMessage("state is server_projection_of_recorded_outcome now")));
+});
+
+test("investigationHistory gives a plain-English, code-free progress list ending in a status", () => {
+  const h = investigationHistory({ turns: [{ question: "Is this safe?", overview: "state ears_up found" }], phase: "idle", completion: "complete" });
+  assert.ok(h.length >= 2);
+  for (const e of h) assert.ok(!looksLikeInternalCode(e.text), `history leaked: ${e.text}`);
+  assert.match(h[h.length - 1].text, /completed/i);
+});
+
 
 test("eventHistory renders a plain-English timeline with no codes, ordered, incl. resolution", () => {
   const hist = eventHistory(
