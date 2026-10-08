@@ -8,6 +8,18 @@ from services import learning_feeds, scam_analysis, scam_intel
 
 STALE_AFTER = timedelta(hours=6)
 
+# Display names for official sources whose stored name is an unexplained acronym. Apollo never shows a
+# bare acronym to the person — the full authority name is spelled out (abbreviation kept in brackets).
+SOURCE_DISPLAY_NAME = {
+    "ncsc-uk": "UK National Cyber Security Centre",
+    "ic3": "FBI Internet Crime Complaint Center (IC3)",
+    "enisa": "European Union Agency for Cybersecurity (ENISA)",
+}
+
+
+def _source_name(source_id: str, fallback: str | None) -> str:
+    return SOURCE_DISPLAY_NAME.get(source_id, fallback or source_id)
+
 
 def _aware(value: datetime | None) -> datetime | None:
     return value.replace(tzinfo=timezone.utc) if value and value.tzinfo is None else value
@@ -56,6 +68,7 @@ def _alert(row: dict, source: dict, analysis: dict, now: datetime) -> dict:
     sections = analysis.get("sections") or {}
     severity = analysis["severity"]
     relevance = analysis["australianRelevance"]
+    source_name = _source_name(row["source_id"], source.get("name"))
     fresh = bool(effective and (now - effective) <= RECENCY_CUTOFF)
     # A specific High/Extreme campaign growls when there's real Australian exposure. Confirmed-AU campaigns
     # growl regardless of date (official AU sources are often undated listings); overseas "potential"
@@ -69,13 +82,13 @@ def _alert(row: dict, source: dict, analysis: dict, now: datetime) -> dict:
         "whatItMeansForAustralia": sections.get("whatItMeansForYou") or "",
         "whatToWatch": sections.get("whatToWatch") or "",
         "whatToDo": sections.get("whatToDo") or "",
-        "source": source.get("name") or row["source_id"],
+        "source": source_name,
         "publishedAt": (published or reported).isoformat() if (published or reported) else None,
         "dateLabel": _month_year(effective),
         "url": row.get("url"),
     }
     return {
-        "title": row["title"], "url": row["url"], "summary": row["summary"], "source": source.get("name") or row["source_id"],
+        "title": row["title"], "url": row["url"], "summary": row["summary"], "source": source_name,
         "sourceUrl": (source.get("canonical_base_urls") or [None])[0], "sourceType": row["content_type"], "sourceTrust": row["trust_status"],
         "publishedAt": published, "updatedAt": _aware(row.get("updated_at")), "lastCheckedAt": _aware(row["last_checked_at"]),
         "reportedDate": analysis.get("reportedDate") or "", "effectiveDate": effective, "dateLabel": _month_year(effective),
@@ -99,10 +112,12 @@ async def snapshot(limit: int = 50) -> dict:
         latest_failed = bool(row and row.get("status") == "unavailable")
         status = "unavailable" if not success else "stale" if latest_failed or now - success > STALE_AFTER else "fresh"
         source = sources.get(feed["source_id"], {})
-        feed_states[feed["feed_id"]] = {"status": status, "source": source.get("name"), "sourceUrl": (source.get("canonical_base_urls") or [None])[0],
+        feed_states[feed["feed_id"]] = {"status": status, "source": _source_name(feed["source_id"], source.get("name")), "sourceUrl": (source.get("canonical_base_urls") or [None])[0],
             "sourceType": feed["content_type"], "lastSuccessAt": success, "lastCheckedAt": _aware(row.get("last_checked_at")) if row else None,
             "errorType": row.get("error") if latest_failed else None}
-    rows = await db.learning_feed_items.find({}, {"_id": 0, "fingerprint": 0, "candidate_id": 0, "expires_at": 0}).sort("published_at", -1).limit(min(limit, 100)).to_list(min(limit, 100))
+    # Scan a wide window of items (not just `limit`) so a consumer alert with no publish date but a
+    # recent reported date is never hidden behind more-recent general-education items; `limit` caps OUTPUT.
+    rows = await db.learning_feed_items.find({}, {"_id": 0, "fingerprint": 0, "candidate_id": 0, "expires_at": 0}).sort("published_at", -1).limit(200).to_list(200)
     alerts: list[dict] = []; emerging: list[dict] = []; pending = 0; stale = 0
     for row in rows:
         analysis = row.get("scam_analysis")
@@ -124,6 +139,7 @@ async def snapshot(limit: int = 50) -> dict:
     # Most recent first; undated items sort last.
     _key = lambda it: it["effectiveDate"] or datetime.min.replace(tzinfo=timezone.utc)
     alerts.sort(key=_key, reverse=True); emerging.sort(key=_key, reverse=True)
+    alerts = alerts[:limit]; emerging = emerging[:limit]
     growling = next((it for it in alerts if it["growling"]), None)
     last_analysed = max((_aware(r.get("scam_analysis", {}).get("analyzedAt")) for r in rows if r.get("scam_analysis")), default=None)
     last_sourced = max((v.get("lastSuccessAt") for v in feed_states.values() if v.get("lastSuccessAt")), default=None)

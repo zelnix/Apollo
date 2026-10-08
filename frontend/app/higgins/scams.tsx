@@ -7,16 +7,22 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ChildScreenHeader } from "@/src/components/ChildScreenHeader";
 import { RootScreenHeader } from "@/src/components/RootScreenHeader";
+import { MultiSelectFilter } from "@/src/components/MultiSelectFilter";
 import { Body, Button, Card, Pill, type Tone } from "@/src/components/ui";
 import { governmentScams, type GovernmentAlert } from "@/src/higgins/hubClient";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
-type FilterId = "all" | "AU" | "GLOBAL" | "US" | "UK" | "EU" | "HIGH" | "EXTREME";
-const FILTERS: { id: FilterId; label: string }[] = [
-  { id: "all", label: "All" }, { id: "AU", label: "Australia" }, { id: "GLOBAL", label: "Global" },
-  { id: "US", label: "USA" }, { id: "UK", label: "United Kingdom" }, { id: "EU", label: "Europe" },
-  { id: "HIGH", label: "High" }, { id: "EXTREME", label: "Extreme" },
+type FilterId = "AU" | "GLOBAL" | "US" | "UK" | "EU" | "HIGH" | "EXTREME";
+// Multi-select options (OR semantics). An empty selection shows every alert.
+const FILTER_OPTIONS: { id: FilterId; label: string }[] = [
+  { id: "AU", label: "Australia" }, { id: "US", label: "USA" }, { id: "UK", label: "United Kingdom" },
+  { id: "EU", label: "Europe" }, { id: "GLOBAL", label: "Global" }, { id: "HIGH", label: "High severity" }, { id: "EXTREME", label: "Extreme severity" },
 ];
+const singleMatch = (it: GovernmentAlert, f: FilterId): boolean =>
+  f === "AU" ? (it.region === "AU" || it.australianRelevance === "confirmed")
+    : f === "HIGH" ? it.severity === "HIGH"
+      : f === "EXTREME" ? it.severity === "EXTREME"
+        : it.region === f;
 
 const SEVERITY_TONE: Record<GovernmentAlert["severity"], Tone> = { EXTREME: "barking", HIGH: "growling", MODERATE: "ears_up", LOW: "neutral" };
 const RELEVANCE_LABEL: Record<GovernmentAlert["australianRelevance"], string> = { confirmed: "Confirmed in Australia", potential: "Could reach Australia", overseas_only: "Overseas only", unknown: "Relevance unknown" };
@@ -65,7 +71,7 @@ export default function GovernmentScamsScreen() {
   const [pendingCount, setPendingCount] = useState(0);
   const [coverage, setCoverage] = useState(""); const [lastSourced, setLastSourced] = useState<string | null>(null);
   const [loading, setLoading] = useState(true); const [error, setError] = useState(false);
-  const [filter, setFilter] = useState<FilterId>("all");
+  const [filters, setFilters] = useState<string[]>([]);
   const segments = useSegments();
   const isTab = (segments as string[]).includes("(tabs)");
   const load = () => {
@@ -82,7 +88,7 @@ export default function GovernmentScamsScreen() {
     return `Last sourced ${d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}`;
   }, [lastSourced]);
   const info = { title: "About Scam Alerts", body: [coverage || "Specific scam campaigns reported by recognised government and official cyber-authority sources (Australia, USA, UK, EU), each read and explained from the source itself.", "General scam education lives in Learn with Higgins. Emerging patterns are techniques appearing across several reports with no single named campaign yet."] };
-  const matchFilter = useCallback((it: GovernmentAlert) => (filter === "all" || filter === "GLOBAL") ? true : filter === "AU" ? (it.region === "AU" || it.australianRelevance === "confirmed") : filter === "HIGH" ? it.severity === "HIGH" : filter === "EXTREME" ? it.severity === "EXTREME" : it.region === filter, [filter]);
+  const matchFilter = useCallback((it: GovernmentAlert) => filters.length === 0 ? true : filters.some((f) => singleMatch(it, f as FilterId)), [filters]);
   const shown = useMemo(() => alerts.filter(matchFilter), [alerts, matchFilter]);
   const shownEmerging = useMemo(() => emerging.filter(matchFilter), [emerging, matchFilter]);
   return (
@@ -100,11 +106,7 @@ export default function GovernmentScamsScreen() {
               {pendingCount > 0 ? <Text style={s.meta} testID="higgins-scams-pending">Reading {pendingCount} new…</Text> : null}
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm, paddingVertical: 2 }}>
-              {FILTERS.map((f) => (
-                <Pressable key={f.id} testID={`scam-filter-${f.id}`} accessibilityRole="button" onPress={() => setFilter(f.id)} style={[s.filterChip, filter === f.id && s.filterChipOn]}>
-                  <Text style={[s.filterText, filter === f.id && s.filterTextOn]}>{f.label}</Text>
-                </Pressable>
-              ))}
+              <MultiSelectFilter options={FILTER_OPTIONS} selected={filters} onChange={setFilters} title="Filter alerts" testID="scam-filter" />
             </ScrollView>
           </View>
         }
@@ -112,7 +114,7 @@ export default function GovernmentScamsScreen() {
         ListEmptyComponent={loading ? <ActivityIndicator testID="higgins-scams-loading" color={colors.brand} /> : error ? (
           <Card testID="higgins-scams-error"><Body>Official guidance could not be loaded. Apollo will not substitute unrecognised sources.</Body><Button testID="higgins-scams-retry" label="Try again" onPress={load} /></Card>
         ) : (
-          <Card testID="higgins-scams-empty"><Body>{pendingCount > 0 ? "Apollo is still reading the latest official reports. Specific alerts will appear here once their facts are verified." : filter === "all" ? "No specific scam campaigns are being reported by the configured official sources right now. This does not mean there are no new scams." : "No alerts match this filter right now."}</Body></Card>
+          <Card testID="higgins-scams-empty"><Body>{pendingCount > 0 ? "Apollo is still reading the latest official reports. Specific alerts will appear here once their facts are verified." : filters.length === 0 ? "No specific scam campaigns are being reported by the configured official sources right now. This does not mean there are no new scams." : "No alerts match the filters you chose right now."}</Body></Card>
         )}
         ListFooterComponent={
           <View style={{ gap: spacing.sm }}>

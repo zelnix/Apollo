@@ -24,33 +24,57 @@ from services.outbound import OutboundBlocked, public_get
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 logger = logging.getLogger("apollo")
 
-ANALYSIS_VERSION = 2
+ANALYSIS_VERSION = 5
 MODEL = ("gemini", "gemini-3.1-pro-preview")
 _MAX_ARTICLE_CHARS = 14000
 
 TIERS = {"specific_scam", "emerging_pattern", "general_education"}
 SEVERITIES = {"LOW", "MODERATE", "HIGH", "EXTREME"}
 RELEVANCES = {"confirmed", "potential", "overseas_only", "unknown"}
+AUDIENCES = {"consumer", "organisation"}
 
 SYSTEM = (
-    "You are Apollo's scam-intelligence analyst. You are given the text of ONE article published by an "
-    "official government or cyber-security authority. Your job is to classify it and extract ONLY facts that "
-    "are explicitly stated in the supplied text.\n\n"
+    "You are Apollo's scam-intelligence analyst. Apollo protects ORDINARY MEMBERS OF THE PUBLIC (everyday "
+    "people on their personal phones) from scams and fraud. You are given the text of ONE article published "
+    "by an official government or cyber-security authority. Your job is to classify it and extract ONLY facts "
+    "that are explicitly stated in the supplied text.\n\n"
     "ABSOLUTE RULES:\n"
     "- Use ONLY the supplied article text. Never use outside knowledge. Never invent or infer names, dates, "
     "numbers, places, URLs, or claims that are not written in the text.\n"
     "- If a fact is not in the text, return an empty string for that field. Do not guess.\n"
     "- Never pad with generic fraud advice (e.g. 'scammers may steal your money', 'fraudsters create fake "
     "websites'). Every sentence you write must be specific to THIS report or plainly say the report does not "
-    "state it.\n\n"
+    "state it.\n"
+    "- ACRONYMS: never use an abbreviation or acronym on its own. The first time you name any organisation or "
+    "scheme, write its FULL name followed by the abbreviation in brackets, e.g. 'National Cyber Security "
+    "Centre (NCSC)'. If the full name is not in the supplied text, write the name exactly as the text gives "
+    "it and do not introduce an unexplained acronym.\n\n"
+    "AUDIENCE — does this affect ORDINARY MEMBERS OF THE PUBLIC? Set 'audience' to:\n"
+    "- 'consumer': relevant to everyday people — a scam or fraud aimed at the public (phishing texts/emails/"
+    "calls, impersonation of a trusted brand, bank or government agency, fake websites/offers, investment/"
+    "romance/job/remote-access/refund scams), OR a security incident or data breach of a consumer brand, shop, "
+    "app or service that ordinary people use (their customers' accounts or personal details are affected). A "
+    "breach of a well-known consumer retailer or app IS relevant because its customers are members of the "
+    "public.\n"
+    "- 'organisation': purely enterprise, technical, infrastructure or national-security matters that an "
+    "ordinary member of the public cannot act on and that are NOT about everyday consumer fraud — e.g. a "
+    "software vulnerability or patch advisory aimed at IT administrators, a business-to-business incident, an "
+    "attack on critical infrastructure, or nation-state / state-sponsored / espionage / advanced-persistent-"
+    "threat (APT) activity, INCLUDING targeted surveillance or spyware aimed at specific individuals such as "
+    "activists, journalists, dissidents, politicians or officials. These are NOT consumer scams even though "
+    "they involve cybercrime.\n"
+    "Apollo ONLY shows items relevant to the public. If 'audience' is 'organisation', you MUST set tier to "
+    "'general_education'. Only 'consumer' items may be 'specific_scam' or 'emerging_pattern'.\n\n"
     "CLASSIFY into exactly one tier:\n"
-    "- 'specific_scam': the article describes a particular, identifiable fraudulent campaign or scheme with "
-    "distinctive behaviour — e.g. a named impersonated organisation/person, a specific fraudulent offer or "
-    "message, or a specific method against specific targets.\n"
-    "- 'emerging_pattern': the article documents several incidents forming a recognisable technique, but names "
-    "no single specific campaign.\n"
-    "- 'general_education': background/explainer/awareness/tips about broad fraud types, OR the text does not "
-    "contain enough specific detail to describe a particular incident. When in doubt, choose this.\n\n"
+    "- 'specific_scam': a consumer-relevant article describing a particular, identifiable scam campaign with "
+    "distinctive behaviour (a named impersonated organisation/person, a specific fraudulent offer or message, "
+    "or a specific method against the public) OR a specific security incident or data breach of a named "
+    "consumer brand, shop, app or service that directly affects its customers.\n"
+    "- 'emerging_pattern': a consumer-facing article documenting several scam incidents forming a recognisable "
+    "technique, but naming no single specific campaign.\n"
+    "- 'general_education': background/explainer/awareness/tips about broad fraud types, OR an "
+    "organisation-audience report, OR text without enough specific detail to describe a particular consumer "
+    "incident. When in doubt, choose this.\n\n"
     "SEVERITY (justified ONLY by evidence in the text):\n"
     "- 'EXTREME': an active campaign with serious harm (money, identity, account/credential takeover) AND "
     "explicit urgency or scale signals.\n"
@@ -65,6 +89,7 @@ SYSTEM = (
     "Return a SINGLE JSON object and nothing else, with exactly these keys:\n"
     "{\n"
     '  "tier": "specific_scam|emerging_pattern|general_education",\n'
+    '  "audience": "consumer|organisation",\n'
     '  "severity": "LOW|MODERATE|HIGH|EXTREME",\n'
     '  "severityReason": "cites the specific evidence in the text",\n'
     '  "confidence": "high|medium|low",\n'
@@ -137,6 +162,11 @@ def _coerce(parsed: dict) -> dict:
     """Validate and clamp the model output to Apollo's contract. Anything out of range falls back to the
     safest honest value so a malformed response can never fabricate a High-severity alert."""
     tier = parsed.get("tier") if parsed.get("tier") in TIERS else "general_education"
+    audience = parsed.get("audience") if parsed.get("audience") in AUDIENCES else "consumer"
+    # Apollo only surfaces consumer scams. An organisation-audience report (company data breach,
+    # vulnerability advisory, enterprise incident) can never be a specific/emerging alert.
+    if audience != "consumer":
+        tier = "general_education"
     severity = parsed.get("severity") if parsed.get("severity") in SEVERITIES else "LOW"
     if tier == "general_education":
         severity = "LOW"
@@ -147,6 +177,7 @@ def _coerce(parsed: dict) -> dict:
     sections = {k: str(sec_in.get(k, "") or "")[:900] for k in ("whatHappened", "whereHappening", "whatItMeansForYou", "whatToWatch", "whatToDo")}
     return {
         "tier": tier,
+        "audience": audience,
         "severity": severity,
         "severityReason": str(parsed.get("severityReason", "") or "")[:600],
         "confidence": parsed.get("confidence") if parsed.get("confidence") in ("high", "medium", "low") else "low",
@@ -225,7 +256,7 @@ def _obviously_not_an_alert(row: dict) -> bool:
 
 
 _SKIPPED_ANALYSIS = {
-    "tier": "general_education", "severity": "LOW",
+    "tier": "general_education", "audience": "consumer", "severity": "LOW",
     "severityReason": "This is a navigation or index link from the source site, not a report of a specific scam.",
     "confidence": "high", "australianRelevance": "unknown", "australianRelevanceReason": "", "reportedDate": "",
     "facts": {k: "" for k in ("who", "what", "how", "where", "when", "whatCriminalsWant", "evidence")},

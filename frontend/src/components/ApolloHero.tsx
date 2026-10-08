@@ -16,7 +16,7 @@ import { STATE_LABEL, STATE_MEANING, type ApolloState, type Capability } from "@
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { HigginsChecks } from "@/src/components/HigginsChecks";
 import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
-import { checksSpoken, higginsPermissionNote, recommendedChecks } from "@/src/domain/higginsChecks";
+import { checksSpoken, higginsPermissionNote, recommendedChecks, CHECKS } from "@/src/domain/higginsChecks";
 import { Sheet } from "./Sheet";
 import { Body, Button, DevTag, Pill, toneColor, toneWash } from "./ui";
 
@@ -51,12 +51,36 @@ const useStyles = makeStyles((c) => ({
   problemTitle: { fontFamily: fonts.displayBold, fontSize: 15, lineHeight: 20, color: c.onSurface, textAlign: "center" },
   problemText: { fontFamily: fonts.textMedium, fontSize: 14, lineHeight: 20, color: c.onSurface },
   higginsText: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurface },
-  smallBtn: { minHeight: 38, paddingHorizontal: spacing.lg },
+  openHint: { marginTop: 8, fontFamily: fonts.displayBold, fontSize: 14, color: c.brand },
   row: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap", justifyContent: "center" },
   note: { fontFamily: fonts.text, fontSize: 12, lineHeight: 17, color: c.onSurfaceSecondary },
 }));
 
 const ease = Easing.inOut(Easing.ease);
+
+/** A full, plain-English explanation of WHY Apollo is in a warning state and what it means for the
+ *  person — used when there isn't a more specific incident to quote. Never a terse "run a check". */
+function warningExplainer(resolution: StateResolution, checkNames: string[]): string {
+  const names = checkNames.join(" and ");
+  if (resolution.visibilityLost) {
+    return `Apollo is growling because it can't confirm its automatic protection is switched on, which means it may not be watching your device for threats in the background right now. ${names ? `Open the ${names} so I can check exactly what's running and help you switch protection back on.` : "Open this so I can check exactly what's running and help you switch protection back on."}`;
+  }
+  if (resolution.recovering) {
+    return `Apollo is staying cautious after a recent alert and won't settle back to normal patrol until it has run a fresh check. ${names ? `Run the ${names} and I'll confirm whether the concern has cleared or still needs your attention.` : "Open this and I'll show you the checks that confirm whether the concern has cleared."}`;
+  }
+  return names
+    ? `Apollo has noticed something that needs a closer look. Run the ${names} and I'll take you through exactly what it found and what it means for you.`
+    : "Apollo has noticed something that needs a closer look. Open this and I'll take you through exactly what it found and what it means for you.";
+}
+
+/** When Apollo can't verify protection, name the SPECIFIC protections affected and what's wrong with each
+ *  (from the capability's own truthful detail) rather than a vague "protection is unavailable". */
+function protectionProblem(capabilities: Capability[], fallback: string): string {
+  const affected = capabilities.filter((c) => c.status !== "active" && c.status !== "coming_later");
+  if (!affected.length) return fallback;
+  const lines = affected.slice(0, 4).map((c) => `• ${c.title}: ${c.detail}`);
+  return `Apollo can't confirm these protections are running right now:\n${lines.join("\n")}`;
+}
 
 export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = [], animate = true, quietNow = false, sniffing = false, attention = [] }: {
   resolution: StateResolution; adapterLabel: string; isMock: boolean; animate?: boolean; quietNow?: boolean;
@@ -143,16 +167,29 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
   // reason (e.g. "waiting for a fresh check") — never a vague "needs your decision".
   const primary = attention[0] ?? null;
   const reason = resolution.reason;
-  const higginsStep = primary ? primary.higgins : null;
-  const heroRoute = primary ? primary.route : reasonRoute;
-  const needsAction = state !== "resting" && state !== "sniffing" && !!heroRoute;
-  const actionLabel = "See what needs attention";
-  // "Run a check" is never said bare: the exact checks are listed (tappable, in a popup) and read aloud. Completion
-  // counts from the start of today, so a check already done this morning shows as done.
+  const drivingEvent = resolution.drivingEvent;
   const checks = sniffing ? [] : recommendedChecks(resolution);
   const askedAt = useMemo(() => new Date(new Date().setHours(0, 0, 0, 0)).toISOString(), []);
   const permissionNote = higginsPermissionNote(capabilities);
-  const spokenText = `${title}. ${primary ? `${primary.title}. ${reason} ${higginsStep ?? ""}` : `${meaning} ${reason}`} ${checksSpoken(checks)} ${permissionNote ?? ""}`.trim();
+  // The exact problem + Higgins' next step shown on the card for ANY warning state. Prefer a specific
+  // incident (an attention item), then the Patrol event currently driving Apollo's state (so a growling
+  // "worth checking" shows its REAL detail), then the honest resolution reason + the concrete checks
+  // Higgins recommends. Never a bare "needs your decision".
+  const checkNames = checks.map((c) => CHECKS[c].label);
+  const detailTitle = primary ? primary.title : ((drivingEvent?.headline || "").trim() || null);
+  const detailProblem = primary
+    ? primary.problem
+    : ((drivingEvent?.what_happened || "").trim()
+      || (resolution.visibilityLost ? protectionProblem(capabilities, reason) : reason));
+  const detailHiggins = primary
+    ? primary.higgins
+    : ((drivingEvent?.what_to_do || "").trim() || warningExplainer(resolution, checkNames));
+  // Deep-link straight to the specific issue — the whole card is tappable, so a separate "see" button is not needed.
+  const heroRoute = primary ? primary.route : (drivingEvent ? `/patrol/${encodeURIComponent(drivingEvent.event_id)}` : reasonRoute);
+  const needsAction = state !== "resting" && state !== "sniffing" && !!heroRoute;
+  const spokenText = (state === "resting" || state === "sniffing")
+    ? `${title}. ${meaning} ${reason} ${permissionNote ?? ""}`.trim()
+    : `${title}. ${detailTitle ? `${detailTitle}. ` : ""}${detailProblem} ${detailHiggins} ${checksSpoken(checks)} ${permissionNote ?? ""}`.trim();
 
   const onHearHiggins = () => {
     if (checks.length) setChecklistOpen(true);
@@ -181,21 +218,16 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
          *  SPECIFIC problem Apollo found and Higgins' plain-English next step right here on the card. */}
         {(state === "resting" || state === "sniffing") ? (
           <Text style={s.meaning} testID="apollo-state-meaning">{meaning}</Text>
-        ) : primary ? (
-          <>
-            <Text style={s.problemTitle} testID="apollo-state-problem-title">{primary.title}</Text>
-            <View style={s.problemBox} testID="apollo-hero-problem">
-              <Text style={s.problemLabel}>PROBLEM</Text>
-              <Text style={s.problemText} testID="apollo-hero-problem-text">{primary.problem}</Text>
-              <Text style={[s.problemLabel, { marginTop: 6 }]}>HIGGINS</Text>
-              <Text style={s.higginsText} testID="apollo-hero-higgins-text">{primary.higgins}</Text>
-            </View>
-            <Button testID="hero-primary-action" label={actionLabel} style={s.smallBtn} onPress={() => router.push(primary.route as any)} />
-          </>
         ) : needsAction ? (
           <>
-            <Text style={s.reason} testID="apollo-state-reason">{reason}</Text>
-            <Button testID="hero-primary-action" label={actionLabel} style={s.smallBtn} onPress={() => router.push(heroRoute as any)} />
+            {detailTitle ? <Text style={s.problemTitle} testID="apollo-state-problem-title">{detailTitle}</Text> : null}
+            <Pressable testID="hero-open-issue" accessibilityRole="button" accessibilityLabel={`Open ${detailTitle || "what needs attention"}`} onPress={() => router.push(heroRoute as any)} style={({ pressed }) => [s.problemBox, { opacity: pressed ? 0.85 : 1 }]}>
+              <Text style={s.problemLabel}>PROBLEM</Text>
+              <Text style={s.problemText} testID="apollo-hero-problem-text">{detailProblem}</Text>
+              <Text style={[s.problemLabel, { marginTop: 6 }]}>HIGGINS</Text>
+              <Text style={s.higginsText} testID="apollo-hero-higgins-text">{detailHiggins}</Text>
+              <Text style={s.openHint}>Open this &rsaquo;</Text>
+            </Pressable>
           </>
         ) : heroRoute ? (
           <Pressable onPress={() => router.push(heroRoute as any)} accessibilityRole="link" testID="apollo-state-reason-link" style={{ minHeight: 44, justifyContent: "center" }}>
