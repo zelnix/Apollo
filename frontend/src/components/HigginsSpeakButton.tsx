@@ -40,7 +40,7 @@ export function HigginsSpeakButton({ text, label = "Hear Higgins", compact = fal
   }
   return (
     <Pressable testID={testID} accessibilityRole="button" onPress={onPress} style={[s.btn, active && s.btnOn]}>
-      <Image source={require("../../assets/images/higgins-headshot.png")} style={s.face} contentFit="cover" accessibilityLabel="Higgins" />
+      <Image source={require("../../assets/images/higgins-avatar.png")} style={s.face} contentFit="cover" accessibilityLabel="Higgins" />
       {busy ? <ActivityIndicator size="small" color={colors.resting} /> : <Icon size={18} color={active ? colors.resting : colors.gold} />}
       <Text style={s.label}>{busy ? "Higgins is clearing his throat…" : active ? "Stop" : label}</Text>
     </Pressable>

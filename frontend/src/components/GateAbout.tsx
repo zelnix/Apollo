@@ -45,16 +45,23 @@ export function GateAbout({
   return (
     <Card style={{ gap: spacing.sm }} testID={testID}>
       <View style={s.row}>
-        <Text style={s.title}>{title}</Text>
+        <Pressable
+          accessibilityRole="button"
+          style={{ flex: 1 }}
+          onPress={() => setOpen(true)}
+          testID={testID ? `${testID}-more` : "gate-about-more"}
+        >
+          <Text style={s.title}>{title}</Text>
+        </Pressable>
         {control ?? null}
       </View>
       <Pressable
         accessibilityRole="button"
         hitSlop={8}
         onPress={() => setOpen(true)}
-        testID={testID ? `${testID}-more` : "gate-about-more"}
+        testID={testID ? `${testID}-more-link` : "gate-about-more-link"}
       >
-        <Text style={s.link}>Find out more</Text>
+        <Text style={s.link}>Find out more ›</Text>
       </Pressable>
       <Sheet
         visible={open}

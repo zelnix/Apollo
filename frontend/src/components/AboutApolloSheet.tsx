@@ -10,7 +10,7 @@ import { Sheet } from "./Sheet";
 const GATES = ["Site", "Link", "Text", "Call", "Email", "File", "App", "Device", "Internet", "Account"];
 
 const useStyles = makeStyles((c) => ({
-  hero: { width: "100%", height: 200, borderRadius: radius.lg, backgroundColor: c.navyTint, marginBottom: spacing.xs },
+  hero: { width: "100%", aspectRatio: 900 / 1124, borderRadius: radius.lg, backgroundColor: c.navyTint, marginBottom: spacing.xs },
   tagline: { fontFamily: fonts.displayBold, fontSize: 20, color: c.onSurface, textAlign: "center" },
   taglineSub: { fontFamily: fonts.textMedium, fontSize: 15, color: c.onSurfaceSecondary, textAlign: "center", marginBottom: spacing.sm },
   heading: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface, marginTop: spacing.md },
@@ -24,7 +24,7 @@ const useStyles = makeStyles((c) => ({
   higginsFace: { width: 72, height: 72, borderRadius: 36, overflow: "hidden", borderWidth: 2, borderColor: c.goldBorder },
   higginsName: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface },
   higginsRole: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary },
-  portrait: { width: "100%", height: 220, borderRadius: radius.lg, backgroundColor: c.navyTint, marginTop: spacing.sm },
+  portrait: { width: "100%", aspectRatio: 900 / 1080, borderRadius: radius.lg, backgroundColor: c.navyTint, marginTop: spacing.sm },
   divider: { height: 1, backgroundColor: c.divider, marginVertical: spacing.sm },
   closing: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface, textAlign: "center", marginTop: spacing.md },
   credit: { fontFamily: fonts.text, fontSize: 13, color: c.muted, textAlign: "center" },
@@ -50,7 +50,7 @@ export function AboutApolloSheet({ visible, onClose }: { visible: boolean; onClo
 
       <Text style={s.heading}>👨‍💼 Meet Higgins</Text>
       <View style={s.higginsRow}>
-        <Image source={require("../../assets/images/higgins-headshot.png")} style={s.higginsFace} contentFit="cover" accessibilityLabel="Higgins" />
+        <Image source={require("../../assets/images/higgins-avatar.png")} style={s.higginsFace} contentFit="cover" accessibilityLabel="Higgins" />
         <View style={{ flex: 1 }}>
           <Text style={s.higginsName}>Albert Higginstien (Higgins)</Text>
           <Text style={s.higginsRole}>Apollo&apos;s trusted handler</Text>

@@ -154,7 +154,7 @@ export default function Ask() {
   return <View style={s.root} testID="higgins-screen">
     <View style={{ paddingTop: insets.top + spacing.md }}>
       <View style={s.header} testID="higgins-header">
-        <View style={s.avatar}><Image source={require("../../assets/images/higgins-headshot.png")} style={s.avatarImg} contentFit="cover" accessibilityLabel="Higgins" /></View>
+        <View style={s.avatar}><Image source={require("../../assets/images/higgins-avatar.png")} style={s.avatarImg} contentFit="cover" accessibilityLabel="Higgins" /></View>
         <View style={s.headerText}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
             <Text style={s.name}>Higgins</Text>
@@ -172,7 +172,7 @@ export default function Ask() {
       <ScrollView ref={scrollRef} contentContainerStyle={s.list} testID="ask-messages" keyboardShouldPersistTaps="handled" scrollEventThrottle={64} onScroll={onScroll} onContentSizeChange={() => scrollToEnd(investigationMode)}>
         {showWelcome ? <>
           <View style={s.rowHiggins}>
-            <View style={s.miniAvatar}><Image source={require("../../assets/images/higgins-headshot.png")} style={{ width: 26, height: 26 }} contentFit="cover" /></View>
+            <View style={s.miniAvatar}><Image source={require("../../assets/images/higgins-avatar.png")} style={{ width: 26, height: 26 }} contentFit="cover" /></View>
             <View style={s.bubbleHiggins}><Text style={s.msgHiggins} testID="higgins-welcome">{WELCOME}</Text></View>
           </View>
           <View style={s.starters} testID="ask-suggestions">
@@ -183,12 +183,12 @@ export default function Ask() {
         {!investigationMode ? chatMessages.map((message) => message.role === "user"
           ? <View key={message.id} testID={`ask-chat-${message.id}`} style={s.rowUser}><View style={s.bubbleUser}><Text style={s.msgUser}>{message.content}</Text></View><Text style={s.time}>{formatTime(message.createdAt)}</Text></View>
           : <View key={message.id} testID={`ask-chat-${message.id}`} style={s.rowHiggins}>
-              <View style={s.miniAvatar}><Image source={require("../../assets/images/higgins-headshot.png")} style={{ width: 26, height: 26 }} contentFit="cover" /></View>
+              <View style={s.miniAvatar}><Image source={require("../../assets/images/higgins-avatar.png")} style={{ width: 26, height: 26 }} contentFit="cover" /></View>
               <View style={{ flexShrink: 1 }}><View style={s.bubbleHiggins}><Text style={s.msgHiggins}>{message.content}</Text></View><Text style={s.time}>{formatTime(message.createdAt)}</Text></View>
             </View>) : null}
 
         {!investigationMode && chatBusy ? <View style={s.rowHiggins} testID="ask-chat-progress">
-          <View style={s.miniAvatar}><Image source={require("../../assets/images/higgins-headshot.png")} style={{ width: 26, height: 26 }} contentFit="cover" /></View>
+          <View style={s.miniAvatar}><Image source={require("../../assets/images/higgins-avatar.png")} style={{ width: 26, height: 26 }} contentFit="cover" /></View>
           <View style={s.bubbleHiggins}><TypingDots /></View>
         </View> : null}
 
