@@ -29,7 +29,7 @@ import { stopHiggins } from "@/src/voice/higgins";
 
 const WELCOME = "Hello! I'm Higgins.\n\nI'm here to help you understand Apollo, explain security alerts, and answer your cyber-safety questions.\n\nWhat can I help you with today?";
 const STARTERS = ["Why is Apollo barking?", "Is my device protected?", "Explain a scam warning."];
-const ABOUT = "Higgins is Apollo's trusted adviser. He can explain Apollo's protection statuses and warnings, answer general cyber-safety questions, interpret recent Apollo information when it's actually available, explain what you should do next, and point you to the right Check, Gates or app screen.\n\nHiggins can't inspect links, files or your device, run a scan, verify protection, or start an investigation on his own — Apollo does that. Apollo acts; Higgins interprets.\n\nChatting uses redacted, recent Apollo context and never includes secrets.";
+const ABOUT = "Higgins is Apollo’s trusted handler. He can explain Apollo's protection statuses and warnings, answer general cyber-safety questions, interpret recent Apollo information when it's actually available, explain what you should do next, and point you to the right Check, Gates or app screen.\n\nHiggins can't inspect links, files or your device, run a scan, verify protection, or start an investigation on his own — Apollo does that. Apollo acts; Higgins interprets.\n\nChatting uses redacted, recent Apollo context and never includes secrets.";
 
 const formatTime = (iso: string) => { try { return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
 
@@ -73,6 +73,7 @@ const useStyles = makeStyles((c) => ({
   menuLabel: { fontFamily: fonts.textMedium, fontSize: 16, color: c.onSurface },
   menuDanger: { fontFamily: fonts.textSemibold, fontSize: 16, color: c.barkingText },
   sheetBody: { fontFamily: fonts.text, fontSize: 15, lineHeight: 23, color: c.onSurfaceSecondary },
+  welcomePrompt: { fontFamily: fonts.textMedium, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary, paddingHorizontal: spacing.xs },
   errorText: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.barkingText },
 }));
 
@@ -163,7 +164,7 @@ export default function Ask() {
             <Text style={s.name}>Higgins</Text>
             {isMock ? <DevTag label="Preview" testID="higgins-mock-pill" /> : null}
           </View>
-          <Text style={s.subtitle} numberOfLines={1}>{investigationMode ? "Working with Apollo on this issue" : "Apollo's trusted adviser"}</Text>
+          <Text style={s.subtitle} numberOfLines={1}>{investigationMode ? "Working with Apollo on this issue" : "Apollo’s trusted handler"}</Text>
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
           <Pressable testID="higgins-header-info" accessibilityRole="button" accessibilityLabel="About Higgins" hitSlop={8} style={s.menuBtn} onPress={() => setAboutOpen(true)}><Info size={21} color={colors.onSurface} /></Pressable>
@@ -177,10 +178,7 @@ export default function Ask() {
 
       <ScrollView ref={scrollRef} contentContainerStyle={s.list} testID="ask-messages" keyboardShouldPersistTaps="handled" scrollEventThrottle={64} onScroll={onScroll} onContentSizeChange={() => scrollToEnd(investigationMode)}>
         {showWelcome ? <>
-          <View style={s.rowHiggins}>
-            <View style={s.miniAvatar}><Image source={require("../../assets/images/higgins-avatar.png")} style={{ width: 26, height: 26 }} contentFit="cover" /></View>
-            <View style={s.bubbleHiggins}><Text style={s.msgHiggins} testID="higgins-welcome">{WELCOME}</Text></View>
-          </View>
+          <Text style={s.welcomePrompt} testID="higgins-welcome">What can I help you with? Ask me anything, or tap ⓘ to learn what I do.</Text>
           <View style={s.starters} testID="ask-suggestions">
             {welcomeStarters.map((question, index) => <Pressable key={question} testID={`ask-suggestion-${index}`} style={s.starter} accessibilityRole="button" onPress={() => submit(question)} disabled={busy}><Text style={s.starterText} numberOfLines={2}>{question}</Text></Pressable>)}
           </View>
@@ -231,7 +229,7 @@ export default function Ask() {
 
     <Sheet visible={aboutOpen} onClose={() => setAboutOpen(false)} title="About Higgins" testID="higgins-about-sheet">
       <View style={s.aboutAvatar}><Image source={require("../../assets/images/higgins-avatar.png")} style={s.aboutAvatarImg} contentFit="cover" accessibilityLabel="Higgins" /></View>
-      <Text style={s.sheetBody}>{ABOUT}</Text>
+      <Text style={s.sheetBody}>{WELCOME}{"\n\n"}{ABOUT}</Text>
     </Sheet>
 
     <Sheet visible={confirmClear} onClose={() => setConfirmClear(false)} title="Clear chat history?" testID="higgins-clear-sheet">
