@@ -18,7 +18,7 @@ import { recordCheck } from "@/src/store/checkHistoryStore";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { analyseNetwork, NETWORK_CONTEXTS, type NetworkAnalysis, type NetworkContext } from "@/src/domain/networkAnalysis";
 import { SCENT_WINDOW_MS } from "@/src/domain/threatScent";
-import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
+import { STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -53,7 +53,7 @@ export default function CheckNetwork() {
   const [vpnTrusted, setVpnTrusted] = useState<boolean | null>(null);
   const [captiveUrl, setCaptiveUrl] = useState("");
   const [result, setResult] = useState<{ submissionId: string; a: NetworkAnalysis; event: PatrolEvent | null } | null>(null);
-  const [tech, setTech] = useState(false);
+  const [showFull, setShowFull] = useState(false);
 
   const guard = capabilities.find((c) => c.id === "connection_guard");
   const site = capabilities.find((c) => c.id === "site_guard");
@@ -139,24 +139,30 @@ export default function CheckNetwork() {
           </>
         ) : a ? (
           <>
+            {/* Summary-first: outcome + what-to-do + the direct action; details fold away. */}
             <Card testID="network-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
-              <View style={s.chips}><Pill tone={a.state} label={STATE_NAME[a.state]} testID="network-state" /><Pill tone="neutral" label={a.scenario} testID="network-scenario" /></View>
-              <Text style={s.why}>{STATE_LABEL[a.state]}</Text>
-              <Text style={s.label} testID="network-title">{a.title}</Text>
-              <Text style={s.verdict} testID="network-verdict">{a.verdict}</Text>
-              <SectionTitle>Why?</SectionTitle>
-              {a.why.map((w, i) => <Text key={i} style={s.why} testID={`network-why-${i}`}>• {w}</Text>)}
-              <SectionTitle>Recommendation</SectionTitle>
+              <View style={s.chips}><Pill tone={a.state} label={STATE_NAME[a.state]} testID="network-state" /></View>
+              <Text style={s.verdict} testID="network-title">{a.title}</Text>
+              <Text style={s.why} testID="network-verdict">{a.verdict}</Text>
+              <SectionTitle>What to do</SectionTitle>
               <Text style={s.why} testID="network-recommendation">{a.recommendation}</Text>
-            </Card>
-            <Card style={{ gap: spacing.sm }} testID="network-actions">
               {a.handoff === "web" && captiveUrl.trim() ? <Button testID="network-check-portal" label="Check the sign-in page" onPress={() => router.push({ pathname: "/check", params: { url: captiveUrl.trim().startsWith("http") ? captiveUrl.trim() : `https://${captiveUrl.trim()}`, source: "network" } })} /> : null}
               {a.handoff === "app" ? <Button testID="network-check-device" label="Check my device" onPress={() => router.push("/device")} /> : null}
               {a.ssid && !trustedSsids.includes(a.ssid) && (a.state === "resting" || a.state === "ears_up") && context !== "public" ? <Button testID="network-trust" variant="secondary" label={`Trust “${a.ssid}” — it's mine`} onPress={() => void trustNetwork(a.ssid!)} /> : null}
-              <Button testID="network-tech" variant="ghost" label="View technical details" onPress={() => setTech((t) => !t)} />
-              {tech ? a.technical.map((t, i) => <Body key={i} testID={`network-tech-${i}`}>{t}</Body>) : null}
+              <Button testID="network-view-full" variant="secondary" label={showFull ? "Hide full details" : "View full details"} onPress={() => setShowFull((v) => !v)} />
+            </Card>
+            {showFull ? (
+              <Card style={{ gap: spacing.xs }} testID="network-full">
+                <SectionTitle>Why Apollo reacted</SectionTitle>
+                {a.why.map((w, i) => <Text key={i} style={s.why} testID={`network-why-${i}`}>• {w}</Text>)}
+                <SectionTitle>Technical details</SectionTitle>
+                {a.technical.map((t, i) => <Body key={i} testID={`network-tech-${i}`}>{t}</Body>)}
+                <Body>Scenario reference: {a.scenario}</Body>
+              </Card>
+            ) : null}
+            <Card style={{ gap: spacing.sm }} testID="network-actions">
               <GateInvestigation submission={result} testID="network-ask" label="Ask Higgins about this network" context={issueContext({ gate: "network", issue_summary: a.title, assessment_state: a.state, findings: a.why.slice(0, 6).map((summary) => ({ summary, provenance: "inferred", status: a.state === "barking" ? "warning" : "uncertain" })), uncertainty: ["These signals do not establish that anyone intercepted traffic."], confirmed_protective_actions: [], user_reported_actions: context === "unknown" ? [] : [`Network context: ${context}`], original_evidence: [{ kind: "text", value: `Network assessment (available signals only; no traffic inspection):\n${a.title}\n${a.why.join("\n")}\nContext reported by the person: ${context}`, label: "network signals" }] })} question="What should I do on this network?" />
-              <Button testID="network-again" variant="ghost" label="Check again" onPress={() => setResult(null)} />
+              <Button testID="network-again" variant="ghost" label="Check again" onPress={() => { setResult(null); setShowFull(false); }} />
             </Card>
           </>
         ) : null}

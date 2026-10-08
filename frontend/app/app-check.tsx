@@ -19,6 +19,7 @@ import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { analyseApp, APP_PERMISSIONS, APP_PURPOSES, APP_SOURCES, PERMISSION_INFO, type AppAnalysis, type AppNetwork, type AppPermission, type AppPurpose, type AppSource } from "@/src/domain/appAnalysis";
 import { buildPermissionFindings, confirmedResolved, type PermissionFinding } from "@/src/domain/appPermissionFindings";
+import { saveAppReport } from "@/src/store/appReportStore";
 import { SCENT_WINDOW_MS } from "@/src/domain/threatScent";
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { AppDeviceSdk, sdkPermissionsToApp, type InstalledAppRef } from "@/src/security/appDeviceSdk";
@@ -86,6 +87,7 @@ export default function CheckApp() {
   const [reportState, setReportState] = useState<"idle" | "sending" | "failed" | "sent">("idle");
   const [showFull, setShowFull] = useState(false);
   const [verifyNote, setVerifyNote] = useState<string | null>(null);
+  const [savedState, setSavedState] = useState<"idle" | "saved">("idle");
   const awaitingReturn = React.useRef(false);
   const showSettings = (analysis: AppAnalysis) => {
     const [label, path] = settingsFor(analysis);
@@ -208,6 +210,7 @@ export default function CheckApp() {
             <View style={s.row}><Text style={[s.why, { flex: 1 }]}>Someone is connected to / controlling my phone through it</Text><Switch testID="app-ctx-access" value={ctx.accessGrantedNow} onValueChange={(v) => setCtx((c) => ({ ...c, accessGrantedNow: v }))} trackColor={{ true: colors.barking, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View>
             {recentLinked.length ? <Card style={{ gap: spacing.xs, borderColor: colors.growling }} testID="app-scent-notice"><Text style={s.label}>Threat Scent</Text><Body>Apollo saw {recentLinked.length} suspicious event{recentLinked.length > 1 ? "s" : ""} in the last 30 minutes ({[...new Set(recentLinked.map((e) => e.category))].join(", ")}). An app installed now will be assessed as part of that sequence.</Body></Card> : null}
             <Button testID="app-run" label={busy ? "Sniffing…" : "Check this app"} onPress={() => void run()} disabled={!canRun} />
+            <Button testID="app-open-saved" variant="ghost" label="Saved app checks" onPress={() => router.push("/app-reports")} />
           </>
         ) : a ? (
           <>
@@ -267,7 +270,8 @@ export default function CheckApp() {
               {result.event ? <Button testID="app-keep" variant="ghost" label="Mark as handled" onPress={() => { void resolveEvent(result.event!); setResult({ ...result, event: { ...result.event!, status: "resolved" } }); }} /> : null}
               {reportState === "failed" ? <Body testID="app-report-error">The report was not sent. This app result remains available; retry when connected.</Body> : reportState === "sent" ? <Body testID="app-report-success">Report sent for review.</Body> : null}
               {result.event && reportState !== "sent" ? <Button testID="app-report" variant="ghost" label={reportState === "sending" ? "Sending…" : reportState === "failed" ? "Retry report" : "Report a mistake"} disabled={reportState === "sending"} onPress={async () => { setReportState("sending"); try { await apiPost("/feedback", "feedback", { device_id: deviceId ?? "local-device", event_id: result.event!.event_id, kind: "false_positive", state: result.event!.state, host: null, sources: ["app_device_engine"], note: "" }); setReportState("sent"); } catch { setReportState("failed"); } }} /> : null}
-              <Button testID="app-again" label="Check another app" variant="ghost" onPress={() => { setResult(null); setName(""); setDeveloper(""); setPerms([]); setPickedPackage(null); setReportState("idle"); setActionGuidance(null); setShowFull(false); setVerifyNote(null); }} />
+              <Button testID="app-save-report" variant="ghost" label={savedState === "saved" ? "Saved ✓ — View saved checks" : "Save this check"} onPress={() => { if (savedState === "saved") { router.push("/app-reports"); return; } void saveAppReport({ id: Crypto.randomUUID(), appLabel, state: a.state, stateName: STATE_NAME[a.state], title: a.title, verdict: a.verdict, recommendation: a.recommendation, scenario: a.scenario, riskScore: a.riskScore, identity: identityLines, permissions: findings.map((f) => `${f.label}: ${f.statusLabel}`), why: a.why, network: networkLines, reputation: result.remote?.reputation.note ?? null, evidence: evidenceLines, coverage: coverageLines }).then(() => { setSavedState("saved"); showToast("Saved. Find it under Saved app checks.", "neutral"); }); }} />
+              <Button testID="app-again" label="Check another app" variant="ghost" onPress={() => { setResult(null); setName(""); setDeveloper(""); setPerms([]); setPickedPackage(null); setReportState("idle"); setActionGuidance(null); setShowFull(false); setVerifyNote(null); setSavedState("idle"); }} />
             </Card>
           </>
         ) : null}

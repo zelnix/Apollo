@@ -1,3 +1,18 @@
+## Saved App Reports + summary-first Internet Gate (2026-06)
+
+**Saved App Reports (App Gate):**
+- `src/domain/appReport.ts` (pure, 1/1 test): `AppReportSnapshot` + `buildAppReportSnapshot` — a faithful on-device copy of a completed App Gate investigation (identity, permissions+statuses, why, network, reputation, evidence, severity, coverage/limits). Keeps the honest coverage caveats; a saved report is never a safety guarantee.
+- `src/store/appReportStore.ts`: local `saveAppReport`/`listAppReports`/`getAppReport`/`deleteAppReport`, capped 30, newest first. No server storage.
+- `app/app-check.tsx`: "Save this check" button in secondary actions (snapshots current result + derived sections); after saving the button becomes "Saved ✓ — View saved checks". Intro has a "Saved app checks" link.
+- `app/app-reports.tsx`: list of saved checks with inline full detail (same organised sections as the live full investigation) + per-item delete.
+
+**Internet Gate summary-first (app/network.tsx):** result reorganised to outcome → **What to do** → the direct action (check sign-in page / check device / trust network) up top, with "Why Apollo reacted" + technical + scenario ref folded into a **View full details** toggle. Dropped the raw scenario pill and the redundant STATE_LABEL line from the summary (consistent with App Gate).
+
+**Link/Site Gate (app/check.tsx):** already summary-first (decision headline → why → what-to-do → actions, technical in a sheet) — left as-is; it already matches the pattern.
+
+**Verification:** tsc + ESLint clean; tests — appReport 1/1, appPermissionFindings 7/7, gatesOverview 17/17, gate7 44/44, messageGuardrails 6/6 (no regressions). App bundles (expected Safe Start). Saved-report persistence and the reorganised screens verify fully on an Android build.
+
+
 ## Gate Health Log + App Gate results redesign (2026-06)
 
 **Gate Health Log:**
