@@ -1457,3 +1457,42 @@ GTK/pkg-config dependency (container limitation), not a code error.
 2. Privacy, Data Storage, Retention & Deletion corrections (authoritative inventory, retention rules, Clear Patrol
    + "Delete My Apollo Data" device-scoped deletion, per-Gate privacy audit, Settings → Privacy & Data screen,
    onboarding/About consistency, honest deletion-state messaging, tests).
+
+## Global Scam Early Warnings (#1) — FOUNDATION DONE (2026-06)
+- NEW backend/services/scam_intel.py (pure, tested): region_for, classify_severity (LOW/MODERATE/HIGH/EXTREME,
+  evidence/keyword rules — NOT AI; official_advice & tips stay LOW; alarming words alone never reach EXTREME),
+  australian_relevance (confirmed/potential/overseas_only/unknown), is_growling (HIGH|EXTREME + confirmed|potential),
+  is_fresh_advisory (<=21d), higgins_explanation (structured AU-English, never claims a personal attack), enrich().
+- government_alerts.snapshot() now attaches region/severity/sourceSeverity/australianRelevance/higgins + a top-level
+  `growling` advisory (freshest eligible). Coverage string updated (AU/US/UK/EU).
+- International sources+feeds added to content/learning_catalogue_au.json (FTC, FBI/IC3, Europol, ENISA, NCSC UK)
+  with country/region; import_package persists country/region. NEW learning.seed_catalogue_sources_feeds() runs on
+  startup (idempotent, sources+feeds only) — server.py wired. 9 sources / 7 feeds configured & verified.
+- context_tools.scams: fixed published_at→publishedAt bug; now returns region/severity/australianRelevance.
+- tests/test_scam_intel.py (9) pass; updated test_phase2_remediation allowlist to the per-source invariant.
+- Frontend: hubClient GovernmentAlert extended (region/severity/relevance/growling/higgins); app/higgins/scams.tsx
+  rebuilt with filters (All/Australia/Global/USA/UK/Europe/High/Extreme), severity+region+AU-relevance pills,
+  expandable Higgins explanation, growling highlight, "Ask Higgins about this".
+- DEFERRED in #1: server-side push delivery of growling advisories (localAlerts already titles "Apollo is growling"
+  for growling/ears_up; a server trigger for new HIGH/EXTREME advisories is not yet wired), ask.tsx consuming the
+  scamTitle/scamSource params as bounded Higgins context, and live-feed availability verification (feeds will show
+  unavailable/stale honestly until reachable).
+
+## Navigation + Scams tab (#2) — DONE (2026-06)
+- app/(tabs)/_layout.tsx: tabs are now Home · Higgins · Check It · Scams · Patrol (NativeTabs + Tabs). Gates tab
+  removed; guard kept as href:null hidden tab for compatibility. Scams icon = ExclamationTriangle / sf
+  exclamationmark.triangle.fill. Tab label is "Scams" (screen title stays "Scam Alerts").
+- Gates moved to /gates stack route (app/gates.tsx re-exports (tabs)/guard; registered in app/_layout.tsx). guard.tsx
+  shows a ChildScreenHeader (back) when rendered under /gates (useSegments) else the RootScreenHeader tab header.
+  Legacy /(tabs)/guard still resolves.
+- app/(tabs)/scams.tsx re-exports higgins/scams; that screen picks RootScreenHeader when under (tabs) else
+  ChildScreenHeader.
+- Check It: "View Gates" card added at top (→/gates). Settings: Protection & permissions now a single "View Gates"
+  row (→/gates); removed the duplicate Website-protection shortcut + Site Gate status panel + in-settings activation
+  (VPN activation still lives on the Gates screen). Removed now-unused useProtectionHealth/enableSiteProtection.
+- Home: NEW src/components/HomeScamAlerts.tsx compact section (top 3, growling first, severity+region, "View all
+  scam alerts"→/(tabs)/scams), separate from Gate coverage.
+- appDestination ApolloRoute += "/gates","/(tabs)/scams". Tests updated: phase2Navigation + iosSourceReadiness parity.
+  Full TS/Node suite green, tsc+lint clean. Verified in preview: tab bar + Scams screen render.
+
+## Privacy & Data / Deletion (#3) — NOT STARTED (next session; large standalone spec)

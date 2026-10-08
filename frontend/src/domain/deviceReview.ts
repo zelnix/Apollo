@@ -241,8 +241,9 @@ export function runDeviceReview(input: ReviewInput, now: string = new Date().toI
           : counts.checked > 0 ? "clear" : "unknown";
   const overallLabel = OVERALL_LABEL[overall];
   const osLabel = input.osLabel ?? PLATFORM_LABEL[input.platform];
-  const summary = overall === "action" ? `${counts.action} item${counts.action > 1 ? "s" : ""} need${counts.action > 1 ? "" : "s"} action, and other settings still need a manual review.`
-    : overall === "review" ? `${counts.review} item${counts.review > 1 ? "s" : ""} worth reviewing. Nothing confirmed dangerous.`
+  const names = (o: CheckOutcome) => results.filter((r) => r.outcome === o).map((r) => r.title).join("; ");
+  const summary = overall === "action" ? `Needs your attention: ${names("action")}.${counts.review ? ` Also worth a look: ${names("review")}.` : ""}`
+    : overall === "review" ? `Worth a look: ${names("review")}. Nothing confirmed dangerous.`
       : overall === "manual" ? `${counts.checked} setting${counts.checked === 1 ? "" : "s"} verified automatically; ${needsManual} still need a manual review on this ${osLabel}.`
         : overall === "clear" ? `Every applicable setting Apollo could check on this ${osLabel} looks protected.`
           : "Apollo couldn't assess this device.";

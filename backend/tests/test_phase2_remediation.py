@@ -37,12 +37,12 @@ def test_registered_chat_context_tools_are_read_only_and_bounded():
 
 
 def test_new_scams_sources_and_fallback_are_recognised_government_only():
-    allowed = {"www.cyber.gov.au", "cyber.gov.au", "www.scamwatch.gov.au", "scamwatch.gov.au"}
     package = json.loads((ROOT / "backend" / "content" / "learning_catalogue_au.json").read_text())
     government = {source["sourceId"]: source for source in package["sources"] if source["governmentAuthority"]}
     assert {feed["sourceId"] for feed in package["feeds"]}.issubset(government)
+    # Approved international expansion (AU/US/UK/EU): the invariant is that every feed stays inside its own
+    # recognised authority's host allowlist and is always reviewed — never a fixed single-country list.
     for feed in package["feeds"]:
-        assert urlparse(feed["url"]).hostname in allowed
         assert urlparse(feed["url"]).hostname in government[feed["sourceId"]]["allowedHosts"]
         assert feed["reviewQueuePolicy"] == "always_review"
 

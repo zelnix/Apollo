@@ -96,6 +96,7 @@ export default function RootLayout() {
                   <Stack.Screen name="higgins/learning" />
                   <Stack.Screen name="higgins/learning/[slug]" />
                   <Stack.Screen name="higgins/scams" />
+                  <Stack.Screen name="gates" />
                   <Stack.Screen name="check" options={{ presentation: "modal" }} />
                   <Stack.Screen name="message" options={{ presentation: "modal" }} />
                   <Stack.Screen name="call" options={{ presentation: "modal" }} />

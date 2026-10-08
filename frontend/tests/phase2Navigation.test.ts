@@ -12,13 +12,16 @@ const read = (path: string) => readFileSync(join(root, path), "utf8");
 test("P2.1 exposes the exact root tab order in native and standard navigation", () => {
   const source = read("app/(tabs)/_layout.tsx");
   for (const sequence of [
-    ['name="home"', 'name="ask"', 'name="guard"', 'name="check-it"', 'name="patrol"'],
-    ['name="home" options', 'name="ask" options', 'name="guard" options', 'name="check-it" options', 'name="patrol" options'],
+    ['name="home"', 'name="ask"', 'name="check-it"', 'name="scams"', 'name="patrol"'],
+    ['name="home" options', 'name="ask" options', 'name="check-it" options', 'name="scams" options', 'name="patrol" options'],
   ]) {
     let cursor = -1;
     for (const token of sequence) { const next = source.indexOf(token, cursor + 1); assert.ok(next > cursor, `${token} must appear in order`); cursor = next; }
   }
   assert.doesNotMatch(source, /name="settings"/);
+  // Gates is no longer a visible tab — it moved to the /gates stack route (hidden tab + stack alias).
+  assert.match(source, /name="guard" options=\{\{ href: null \}\}/);
+  assert.ok(existsSync(join(root, "app/gates.tsx")));
 });
 
 test("P2.1 Check It has exactly ten trusted one-tap destinations", () => {

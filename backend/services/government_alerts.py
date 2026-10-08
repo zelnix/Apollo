@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from core.db import db, now_utc
-from services import learning_feeds
+from services import learning_feeds, scam_intel
 
 STALE_AFTER = timedelta(hours=6)
 
@@ -40,9 +40,14 @@ async def snapshot(limit: int = 50) -> dict:
     items = []
     for row in rows:
         source = sources.get(row["source_id"], {}); published = _aware(row.get("published_at"))
+        intel = scam_intel.enrich(row, row["source_id"], source.get("name") or row["source_id"])
         items.append({"title": row["title"], "url": row["url"], "summary": row["summary"], "source": source.get("name"),
             "sourceUrl": (source.get("canonical_base_urls") or [None])[0], "sourceType": row["content_type"], "sourceTrust": row["trust_status"],
             "publishedAt": published, "updatedAt": _aware(row.get("updated_at")), "lastCheckedAt": _aware(row["last_checked_at"]),
-            "ageLabel": "Official advice" if row["content_type"] == "official_advice" or not published else "Today" if now.date() == published.date() else f"{max(1, (now.date() - published.date()).days)} days ago"})
-    return {"coverage": "Configured recognised Australian government sources only. Feed candidates never publish learning articles without human review.",
-            "generatedAt": now, "feeds": feed_states, "items": items}
+            "ageLabel": "Official advice" if row["content_type"] == "official_advice" or not published else "Today" if now.date() == published.date() else f"{max(1, (now.date() - published.date()).days)} days ago",
+            **intel})
+    # Current growling advisory: the freshest eligible High/Extreme with real Australian exposure. Stale or
+    # overseas-only advisories never hold Apollo in a growling state.
+    growling = next((it for it in items if it["growling"] and scam_intel.is_fresh_advisory({"publishedAt": it["publishedAt"]}, now=now)), None)
+    return {"coverage": "Configured recognised government and official cyber-authority sources (Australia, USA, UK, EU). Feed candidates never publish learning articles without human review.",
+            "generatedAt": now, "feeds": feed_states, "items": items, "growling": growling}

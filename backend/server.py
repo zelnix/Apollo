@@ -59,6 +59,10 @@ async def lifespan(_: FastAPI):
     await higgins_context.ensure_indexes()
     await government_alerts.ensure_indexes()
     await learning.ensure_indexes()
+    try:
+        await learning.seed_catalogue_sources_feeds()
+    except Exception:  # noqa: BLE001 — seeding must never block startup
+        pass
     await capability_registry.ensure_indexes()
     await investigation_repository.backfill_work_epochs()
     await ensure_maintenance_indexes()

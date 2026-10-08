@@ -195,6 +195,20 @@ async def restore_version(slug: str, version: int, actor: str) -> dict[str, Any]
     return snapshot
 
 
+async def seed_catalogue_sources_feeds() -> dict[str, int]:
+    """Idempotently ensure the recognised source + feed catalogue (incl. international authorities) is configured.
+    Imports only sources and feeds — never articles — so startup stays light and the review queue is untouched.
+    """
+    import json
+    from pathlib import Path
+    path = Path(__file__).resolve().parent.parent / "content" / "learning_catalogue_au.json"
+    try:
+        package = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {"sources": 0, "feeds": 0, "articles": 0}
+    return await import_package({"sources": package.get("sources", []), "feeds": package.get("feeds", [])}, "system:seed")
+
+
 async def import_package(payload: dict[str, Any], actor: str) -> dict[str, int]:
     source_count = feed_count = article_count = 0
     for raw in payload.get("sources", []):
@@ -203,6 +217,7 @@ async def import_package(payload: dict[str, Any], actor: str) -> dict[str, int]:
                "canonical_base_urls": [str(v)[:1000] for v in raw.get("canonicalBaseUrls", [])][:20], "source_type": str(raw.get("sourceType") or "official_guidance")[:40],
                "government_authority": bool(raw.get("governmentAuthority")), "allowed_hosts": [str(v).lower()[:253] for v in raw.get("allowedHosts", [])][:30],
                "citation_display": str(raw.get("citationDisplay") or raw.get("name") or "")[:160], "active": bool(raw.get("active", True)),
+               "country": str(raw.get("country") or "")[:8] or None, "region": str(raw.get("region") or "")[:16] or None,
                "updated_at": now_utc(), "updated_by": actor[:80]}
         if not doc["name"] or not doc["canonical_base_urls"] or not doc["allowed_hosts"]: raise ValueError(f"source {source_id} is incomplete")
         await db.learning_sources.update_one({"source_id": source_id}, {"$set": doc, "$setOnInsert": {"created_at": now_utc()}}, upsert=True); source_count += 1

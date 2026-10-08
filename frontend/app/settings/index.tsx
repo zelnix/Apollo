@@ -3,7 +3,7 @@ import { useRouter } from "expo-router";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import X from "lucide-react-native/icons/x";
 import React, { useEffect, useState } from "react";
-import { Platform, Pressable, ScrollView, Switch, Text, View } from "react-native";
+import { Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AlertPreviewSheet } from "@/src/components/AlertPreviewSheet";
@@ -13,7 +13,6 @@ import { TimeStepper } from "@/src/components/TimeStepper";
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import type { NotificationStatus } from "@/src/push/notifications";
 import { useApollo } from "@/src/store/ApolloContext";
-import { useProtectionHealth } from "@/src/protection/healthStore";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { minimiseApp } from "@/src/utils/minimise";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -40,27 +39,11 @@ const useStyles = makeStyles((c) => ({
 
 export default function SettingsScreen() {
   const s = useStyles(); const insets = useSafeAreaInsets(); const router = useRouter(); const { colors } = useTheme();
-  const { deviceId, trust, revokeTrust, clearPatrol, notificationStatus, enableNotifications, quietHours, quietNow, setQuietHours, lowPower, setLowPower, showToast, enableSiteProtection } = useApollo();
+  const { deviceId, trust, revokeTrust, clearPatrol, notificationStatus, enableNotifications, quietHours, quietNow, setQuietHours, lowPower, setLowPower, showToast } = useApollo();
   const [higginsAuto, setHigginsAutoState] = useState(false); const [confirmClear, setConfirmClear] = useState(false); const [preview, setPreview] = useState(false);
   const [showTrust, setShowTrust] = useState(false); const [showShare, setShowShare] = useState(false); const [showAbout, setShowAbout] = useState(false);
   useEffect(() => { void getHigginsAuto().then(setHigginsAutoState); }, []);
   const higgins = useHiggins(deviceId);
-
-  // Site Gate (Android VPN-filter): show a contextual enable action only when setup/action is required.
-  // Verified coverage and health live in Gates — no duplicate status dashboard here.
-  const health = useProtectionHealth();
-  const siteGate = health.gates.find((gate) => gate.id === "site");
-  const siteState = siteGate?.capability.automatic?.state;
-  const canEnableSite = !!siteState && !["running", "checking", "unsupported"].includes(siteState);
-  const [enablingSite, setEnablingSite] = useState(false);
-  const grantSiteGate = async () => {
-    setEnablingSite(true);
-    try {
-      const granted = await enableSiteProtection();
-      showToast(granted ? "Site Gate is on." : "Site Gate needs VPN permission. Your other protection stays active.", granted ? "resting" : "growling");
-    } catch { showToast("Android could not open the VPN permission screen. Try again shortly.", "growling"); }
-    finally { setEnablingSite(false); }
-  };
 
   const NavRow = ({ label, hint, onPress, testID, first }: { label: string; hint?: string; onPress: () => void; testID: string; first?: boolean }) => (
     <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={[s.rowItem, !first && s.divider]}>
@@ -81,14 +64,7 @@ export default function SettingsScreen() {
 
       <View><SectionTitle>Protection &amp; permissions</SectionTitle>
         <Card testID="settings-protection">
-          <NavRow first label="Website protection" hint="See its verified coverage in Gates" onPress={() => router.push("/(tabs)/guard?gate=site")} testID="settings-site-gates" />
-          {Platform.OS === "android" && canEnableSite ? (
-            <View style={[s.rowItem, s.divider, { flexDirection: "column", alignItems: "stretch", gap: spacing.sm }]} testID="settings-site-gate">
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm }}><Text style={s.rowLabel}>Site Gate (VPN filter)</Text><Pill tone="growling" label={siteGate?.statusLabel ?? "Setup required"} testID="settings-site-status" /></View>
-              <Body>Grant VPN permission anytime to filter known dangerous websites. Your other protection keeps working whether or not this is on.</Body>
-              <Button testID="settings-site-enable" variant="secondary" label={enablingSite ? "Turning on…" : "Turn on Site Gate"} disabled={enablingSite} onPress={() => void grantSiteGate()} />
-            </View>
-          ) : null}
+          <NavRow first label="View Gates" hint="View all Apollo Gates, their protection status, coverage and available setup." onPress={() => router.push("/gates")} testID="settings-view-gates" />
         </Card>
       </View>
 

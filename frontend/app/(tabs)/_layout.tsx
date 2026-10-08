@@ -3,7 +3,7 @@ import { NativeTabs } from "expo-router/unstable-native-tabs";
 // Bottom nav uses genuine solid/filled icons (pure SVG, no native font linking — safe in Expo Go
 // and web). Lucide is outline-only by design; faking "solid" with thicker strokes looks wrong, so
 // Lucide stays for secondary in-screen actions only (see other screens) and never the tab bar.
-import { ChatBubbleLeftRight, Home, QueueList, ShieldCheck, Squares2x2 } from "@nandorojo/heroicons/24/solid";
+import { ChatBubbleLeftRight, ExclamationTriangle, Home, QueueList, Squares2x2 } from "@nandorojo/heroicons/24/solid";
 import React from "react";
 import { Platform, Text } from "react-native";
 
@@ -25,8 +25,8 @@ export default function TabsLayout() {
       <NativeTabs>
         <NativeTabs.Trigger name="home"><NativeTabs.Trigger.Icon sf="house.fill" /><NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label></NativeTabs.Trigger>
         <NativeTabs.Trigger name="ask"><NativeTabs.Trigger.Icon sf="bubble.left.fill" /><NativeTabs.Trigger.Label>Higgins</NativeTabs.Trigger.Label></NativeTabs.Trigger>
-        <NativeTabs.Trigger name="guard"><NativeTabs.Trigger.Icon sf="shield.fill" /><NativeTabs.Trigger.Label>Gates</NativeTabs.Trigger.Label></NativeTabs.Trigger>
         <NativeTabs.Trigger name="check-it"><NativeTabs.Trigger.Icon sf="square.grid.2x2.fill" /><NativeTabs.Trigger.Label>Check It</NativeTabs.Trigger.Label></NativeTabs.Trigger>
+        <NativeTabs.Trigger name="scams"><NativeTabs.Trigger.Icon sf="exclamationmark.triangle.fill" /><NativeTabs.Trigger.Label>Scams</NativeTabs.Trigger.Label></NativeTabs.Trigger>
         <NativeTabs.Trigger name="patrol"><NativeTabs.Trigger.Icon sf="list.bullet.rectangle" /><NativeTabs.Trigger.Label>Patrol</NativeTabs.Trigger.Label></NativeTabs.Trigger>
       </NativeTabs>
     );
@@ -54,9 +54,10 @@ export default function TabsLayout() {
     >
       <Tabs.Screen name="home" options={{ title: "Home", tabBarButtonTestID: "tab-home", tabBarIcon: tabIcon(Home), tabBarLabel: tabLabel("Home") }} />
       <Tabs.Screen name="ask" options={{ title: "Higgins", tabBarButtonTestID: "tab-ask", tabBarIcon: tabIcon(ChatBubbleLeftRight), tabBarLabel: tabLabel("Higgins") }} />
-      <Tabs.Screen name="guard" options={{ title: "Gates", tabBarButtonTestID: "tab-guard", tabBarIcon: tabIcon(ShieldCheck), tabBarLabel: tabLabel("Gates") }} />
       <Tabs.Screen name="check-it" options={{ title: "Check It", tabBarButtonTestID: "tab-check-it", tabBarIcon: tabIcon(Squares2x2), tabBarLabel: tabLabel("Check It") }} />
+      <Tabs.Screen name="scams" options={{ title: "Scams", tabBarButtonTestID: "tab-scams", tabBarIcon: tabIcon(ExclamationTriangle), tabBarLabel: tabLabel("Scams") }} />
       <Tabs.Screen name="patrol" options={{ title: "Patrol", tabBarButtonTestID: "tab-patrol", tabBarIcon: tabIcon(QueueList), tabBarLabel: tabLabel("Patrol") }} />
+      <Tabs.Screen name="guard" options={{ href: null }} />
     </Tabs>
   );
 }

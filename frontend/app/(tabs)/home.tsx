@@ -13,6 +13,7 @@ import { ClipboardLinkBanner } from "@/src/components/ClipboardLinkBanner";
 import { PatrolItem } from "@/src/components/PatrolItem";
 import { ServiceBanner } from "@/src/components/ServiceBanner";
 import { CoverageCard } from "@/src/components/CoverageCard";
+import { HomeScamAlerts } from "@/src/components/HomeScamAlerts";
 import { Body, Button, Card, DevTag, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { buildScents } from "@/src/domain/threatScent";
 import { buildHomeAttention, type AttentionItem } from "@/src/domain/homeAttention";
@@ -84,6 +85,9 @@ export default function Home() {
 
         {/* 2. Coverage at a glance — every gate verifiably Watching, shown once. */}
         <CoverageCard />
+
+        {/* 2b. Latest official scam alerts — awareness only, separate from Gate coverage. */}
+        <HomeScamAlerts />
 
         {/* 3. Needs your attention — only specific unresolved issues; hidden when empty. */}
         {attention.length > 0 ? (

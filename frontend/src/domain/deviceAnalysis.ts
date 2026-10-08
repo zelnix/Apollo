@@ -193,7 +193,9 @@ export function assessDevice(sig: DeviceSignals, self: SelfReport = {}, context:
 
   const status: DeviceStatus = self.gaveRemoteAccess ? "recovery" : f.some((x) => x.severity === "high") ? "action" : f.some((x) => x.severity === "review") ? "review" : "protected";
   const state = DEVICE_STATUS[status].state === "resting" && f.length ? "ears_up" : DEVICE_STATUS[status].state;
-  const summary = status === "protected" ? (f.length ? "Nothing risky — a couple of settings are worth knowing about." : `No meaningful issues within what Apollo can see on this ${p === "ios" ? "iPhone" : p === "android" ? "Android device" : "device"}.`)
-    : status === "recovery" ? "Someone had access to this device. Work through the steps below — one at a time." : status === "action" ? `${f.filter((x) => x.severity === "high").length} high-risk item${f.filter((x) => x.severity === "high").length > 1 ? "s" : ""} need${f.filter((x) => x.severity === "high").length > 1 ? "" : "s"} your attention.` : `${f.length} item${f.length > 1 ? "s" : ""} worth reviewing. Nothing confirmed dangerous.`;
+  const names = (list: DeviceFinding[]) => list.map((x) => x.title).join("; ");
+  const highItems = f.filter((x) => x.severity === "high");
+  const summary = status === "protected" ? (f.length ? `Nothing risky, but worth knowing about: ${names(f)}.` : `No meaningful issues within what Apollo can see on this ${p === "ios" ? "iPhone" : p === "android" ? "Android device" : "device"}.`)
+    : status === "recovery" ? "Someone had access to this device. Work through the steps below — one at a time." : status === "action" ? `Needs your attention: ${names(highItems)}.${f.length > highItems.length ? ` Also worth a look: ${names(f.filter((x) => x.severity !== "high"))}.` : ""}` : `Worth a look: ${names(f)}. Nothing confirmed dangerous.`;
   return { status, state, summary, findings: f, cannotSee, recoverySteps, protectionHealth };
 }

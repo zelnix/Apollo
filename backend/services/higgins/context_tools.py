@@ -88,7 +88,11 @@ async def preferences(owner: str) -> dict:
 
 
 async def scams(_owner: str) -> dict:
-    value = await government_alerts.snapshot(5); items = [{"title": item["title"], "source": item["source"], "publishedAt": item.get("published_at").isoformat() if item.get("published_at") else None, "url": item["url"]} for item in value["items"]]
+    value = await government_alerts.snapshot(5)
+    items = [{"title": item["title"], "source": item["source"], "region": item.get("regionLabel"),
+              "severity": item.get("severity"), "australianRelevance": item.get("australianRelevance"),
+              "publishedAt": item["publishedAt"].isoformat() if item.get("publishedAt") else None, "url": item["url"]}
+             for item in value["items"]]
     statuses = [feed["status"] for feed in value["feeds"].values()]
     return _result(items, ["recognised_government_feed_cache"], confidence="high" if "fresh" in statuses else "medium")
 

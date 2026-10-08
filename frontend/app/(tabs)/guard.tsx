@@ -1,4 +1,4 @@
-import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter, useSegments } from "expo-router";
 import Shield from "lucide-react-native/icons/shield";
 import KeyRound from "lucide-react-native/icons/key-round";
 import React, { useEffect, useState } from "react";
@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { RootScreenHeader } from "@/src/components/RootScreenHeader";
+import { ChildScreenHeader } from "@/src/components/ChildScreenHeader";
 import { deriveGateState, type AccountScan } from "@/src/domain/accountMonitor";
 import { getLastCheckedAt, getLastScan, getMonitoredEmails } from "@/src/store/accountMonitorStore";
 import { getGateHealthLog, recordWorking, relativeTime, type GateHealthLog } from "@/src/store/gateHealthLog";
@@ -76,6 +77,7 @@ export default function GuardScreen() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const isGatesRoute = (useSegments() as string[]).includes("gates");
   const { gate: gateParam } = useLocalSearchParams<{ gate?: string }>();
   const { ready, setupDone } = useApollo();
   const router = useRouter();
@@ -96,7 +98,9 @@ export default function GuardScreen() {
   const reducedCoverage = attentionGates.length > 0 && active > 0;
   const summaryTitle = reducedCoverage ? "Protection active — reduced coverage" : attentionGates.length ? `${attentionNames} ${attentionGates.length === 1 ? "needs" : "need"} your attention` : `${active} ${active === 1 ? "Gate is" : "Gates are"} helping automatically`;
   return <View style={s.root} testID="gates-screen">
-    <View style={{ paddingTop: insets.top + spacing.md }}><RootScreenHeader title="Gates" testID="gates-header" /></View>
+    {isGatesRoute
+      ? <ChildScreenHeader title="Gates" testID="gates-header" />
+      : <View style={{ paddingTop: insets.top + spacing.md }}><RootScreenHeader title="Gates" testID="gates-header" /></View>}
     <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 110 }]}>
       <Text style={s.title} testID="gates-title">Your protection</Text>
       <Card testID="gates-summary-card">

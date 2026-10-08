@@ -168,7 +168,7 @@ export default function CheckDevice() {
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><ShieldCheck size={22} color={toneColor(colors, review ? overallState(review.overall) : result.state)} /><Pill tone={review ? overallState(review.overall) : result.state} label={review ? review.overallLabel : STATE_NAME[result.state]} testID="device-state" /></View>
           <Text style={s.statusTitle} testID="device-status-title">{review ? review.overallLabel : meta.title}</Text>
           <Text style={s.why} testID="device-summary">{review ? review.summary : result.summary}</Text>
-          {review ? <Body testID="device-coverage">{review.coverage.automated} of {review.coverage.total} settings checked automatically here; Higgins can help with the rest below.</Body> : <Body>{meta.meaning}</Body>}
+          {review ? <Body testID="device-coverage">{review.coverage.automated} of {review.coverage.total} settings checked automatically here; Higgins can help with the rest below.</Body> : <Body>{result.findings.length ? "Tap each item in the review below to see exactly what to do." : meta.meaning}</Body>}
         </Card>
         {settingsGuidance ? <Card testID="device-settings-guidance" style={{ gap: spacing.sm }}><SectionTitle>Settings steps</SectionTitle><Body>{settingsGuidance}</Body><Button testID="device-settings-guidance-close" variant="ghost" label="Hide instructions" onPress={() => setSettingsGuidance(null)} /></Card> : null}
         {changeLog.length ? (
