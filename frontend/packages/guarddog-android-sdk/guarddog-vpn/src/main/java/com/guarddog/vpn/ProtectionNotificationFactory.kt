@@ -17,8 +17,8 @@ object ProtectionNotificationFactory {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (manager.getNotificationChannel(CHANNEL_ID) == null) {
             manager.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "Apollo Site Gate", NotificationManager.IMPORTANCE_LOW).apply {
-                    description = "Shows while Apollo's Site Gate is checking the websites this device connects to"
+                NotificationChannel(CHANNEL_ID, "Apollo", NotificationManager.IMPORTANCE_LOW).apply {
+                    description = "Shows while Apollo's protection service is running"
                     setShowBadge(false)
                 },
             )
@@ -31,26 +31,23 @@ object ProtectionNotificationFactory {
             Intent(context, GuardDogVpnService::class.java).setAction(GuardDogVpnService.ACTION_STOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        // Tapping the notification opens Apollo straight to the Patrol screen via its deep link.
+        // Tapping the notification opens Apollo straight to the Home screen via its deep link.
         val contentIntent = PendingIntent.getActivity(
             context, 2,
-            Intent(Intent.ACTION_VIEW, Uri.parse("apollo:///patrol")).apply {
+            Intent(Intent.ACTION_VIEW, Uri.parse("apollo:///")).apply {
                 setPackage(context.packageName)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        // Keep user-facing copy plain English, friendly, and free of technical details (never show
-        // IP addresses or CIDRs — those are internal plumbing for the VPN tunnel). "Site Gate" is the
-        // user-facing name for Apollo's website-safety protection.
         val text = when (state) {
-            is VpnLifecycleState.Running -> "Site Gate is on — Apollo is watching the websites this device opens."
-            VpnLifecycleState.Starting -> "Site Gate is starting up…"
-            is VpnLifecycleState.Degraded -> "Site Gate is paused — Apollo will try again."
-            else -> "Site Gate"
+            is VpnLifecycleState.Running -> "Apollo protection service is running."
+            VpnLifecycleState.Starting -> "Apollo protection service is starting…"
+            is VpnLifecycleState.Degraded -> "Apollo protection service is paused."
+            else -> "Apollo"
         }
         return Notification.Builder(context, CHANNEL_ID)
-            .setContentTitle("Apollo · Site Gate")
+            .setContentTitle("Apollo")
             .setContentText(text)
             .setContentIntent(contentIntent)
             .setSmallIcon(android.R.drawable.ic_lock_lock)

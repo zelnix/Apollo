@@ -1,6 +1,5 @@
 // Gate 8 — Account Guard dashboard + Check Account Alert. Paste or describe a login/MFA/reset/breach alert;
 // Apollo distinguishes "something suspicious happened" from "your account is compromised". Never asks for passwords.
-import { GateInvestigation } from "@/src/components/GateInvestigation";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import * as Crypto from "expo-crypto";
@@ -15,18 +14,20 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { markCheckDone } from "@/src/store/checkCompletion";
 import { apiPost, apiUpload } from "@/src/api/client";
+import { CheckResultScreen } from "@/src/components/CheckResultScreen";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { ScreenshotPermissionSheet } from "@/src/components/ScreenshotPermissionSheet";
-import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
+import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { ACCOUNT_PROVIDERS, ALERT_KINDS, analyseAccountAlert, inspectAccountEvidence, type AccountAnalysis, type AccountEvidence, type AccountProvider, type AlertKind } from "@/src/domain/accountAnalysis";
 import { SCENT_WINDOW_MS } from "@/src/domain/threatScent";
-import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
+import { type PatrolEvent } from "@/src/domain/types";
 import { patrolSafeSummary } from "@/src/domain/investigation";
 import { redactUserSecrets } from "@/src/domain/privacy";
+import { buildAccountCheckResult } from "@/src/domain/accountCheckResultAdapter";
+import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { type RecoveryKind, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
-import { issueContext } from "@/src/domain/higginsHandoff";
 import { useScreenshotAccess } from "@/src/hooks/useScreenshotAccess";
 import { getShareIntake } from "@/src/share/shareIntake";
 
@@ -144,6 +145,44 @@ export default function CheckAccount() {
   const a = result?.a;
   const recovery = (a?.recoveryKinds.length ? a.recoveryKinds : ["password", "code", "mfa_approved", "locked_out"]) as RecoveryKind[];
 
+  // UNIVERSAL CHECK RESULT — when the account check has produced an outcome
+  if (result && a) {
+    const model = buildAccountCheckResult({ analysis: a, event: result.event, provider, kind, initiated });
+    const askPrompt = `About the account alert I just checked (${model.subject}). ${model.headline} Can you walk me through what Apollo found and what I should do?`;
+    const acctActions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];
+    acctActions.push({ testID: "account-open-official", variant: "secondary", label: `Open ${a.providerLabel} safely`, onPress: () => { void Linking.openURL(ACCOUNT_PROVIDERS.find((p) => p.id === provider)?.official[0] ? `https://${ACCOUNT_PROVIDERS.find((p) => p.id === provider)!.official[0]}` : "https://www.google.com"); } });
+    if (a.suspiciousUrls.length) {
+      a.suspiciousUrls.forEach((u, i) => {
+        acctActions.push({ testID: `account-check-link-${i}`, variant: "ghost", label: `Check link: ${u.length > 35 ? u.slice(0, 35) + "\u2026" : u}`, onPress: () => router.push({ pathname: "/check", params: { url: u.startsWith("http") ? u : `https://${u}`, source: "account" } }) });
+      });
+    }
+    if (result.event) {
+      acctActions.push({ testID: "account-mark-safe", variant: "ghost", label: "Mark as handled", onPress: () => { void resolveEvent(result.event!); showToast("Marked as handled.", "neutral"); goBackOrHome(router); } });
+    }
+    acctActions.push({ testID: "account-again", variant: "ghost", label: "Check another alert", onPress: () => { setResult(null); setManualMode(false); setKind("other"); setProvider("other"); setInitiated(null); } });
+
+    return (
+      <>
+        <CheckResultScreen
+          result={model}
+          onAskHiggins={() => router.push({
+            pathname: "/(tabs)/ask",
+            params: {
+              context: result.event ? JSON.stringify(contextFromEvent(result.event, gateForCategory(result.event.category))) : "",
+              prompt: askPrompt,
+            },
+          })}
+          actions={acctActions}
+        />
+        {a.stayWithMe && result.event ? (
+          <RecoveryFlow event={result.event} kinds={recovery} testID="account-recovery" />
+        ) : null}
+        <ScreenshotPermissionSheet prefix="account" visible={!!photoAccess.permission} canAskAgain={photoAccess.permission?.canAskAgain ?? true}
+          checking={photoAccess.checking} onContinue={() => void photoAccess.continueAccess()} onClose={photoAccess.close} />
+      </>
+    );
+  }
+
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
@@ -180,40 +219,6 @@ export default function CheckAccount() {
             {recentLinked.length ? <Card style={{ gap: spacing.xs, borderColor: colors.growling }} testID="account-scent-notice"><Text style={s.label}>Threat Scent</Text><Body>Apollo saw {recentLinked.length} suspicious event{recentLinked.length > 1 ? "s" : ""} in the last 30 minutes{recentLinked[0].claimed_brand ? ` (about ${recentLinked[0].claimed_brand})` : ""}. An account alert now will be assessed as part of that sequence.</Body></Card> : null}
             <Button testID="account-run" label={busy ? "Checking…" : "Assess this alert"} onPress={() => void run()} disabled={busy || !evidenceReviewed || !kind || !!followUp} />
           </>
-        ) : a ? (
-          <>
-            <Card testID="account-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
-              <View style={s.chips}><Pill tone={a.state} label={STATE_NAME[a.state]} testID="account-state" /><Pill tone="neutral" label={a.scenario} testID="account-scenario" /><Pill tone={a.takeoverRisk === "low" ? "resting" : a.takeoverRisk === "elevated" ? "growling" : "barking"} label={RISK_LABEL[a.takeoverRisk]} testID="account-risk" /></View>
-              <Text style={s.why}>{STATE_LABEL[a.state]}</Text>
-              <Text style={s.label} testID="account-title">{a.title}</Text>
-              <Text style={s.verdict} testID="account-verdict">{a.verdict}</Text>
-              <SectionTitle>Why?</SectionTitle>
-              {a.why.map((w, i) => <Text key={i} style={s.why} testID={`account-why-${i}`}>• {w}</Text>)}
-              {result.linked ? <Text style={s.why} testID="account-linked">• Connected to: {result.linked.headline} (Threat Scent). These events may be connected — do not approve the login request.</Text> : null}
-              <SectionTitle>What to do</SectionTitle>
-              <Text style={s.why} testID="account-recommendation">{a.recommendation}</Text>
-            </Card>
-            {a.urls.length ? (
-              <Card style={{ gap: spacing.sm }} testID="account-links">
-                <SectionTitle>Links in the alert</SectionTitle>
-                {a.urls.map((u, i) => { const r = result.remote?.urls.find((x) => x.url === u || x.host === u.replace(/^https?:\/\//i, "").split("/")[0]); const sus = a.suspiciousUrls.includes(u); return (
-                  <View key={u} style={s.row}><View style={{ flex: 1 }}><Text style={s.why} numberOfLines={1}>{u}</Text><Pill tone={r?.verdict === "malicious" ? "barking" : sus ? "growling" : "unknown"} label={r?.verdict === "malicious" ? "Malicious reputation warning" : sus ? `Not ${a.providerLabel === "Other / not sure" ? "a known official" : `${a.providerLabel}'s`} domain` : "Matches configured official domain"} /></View><Button testID={`account-check-link-${i}`} variant="secondary" label="Check link" onPress={() => router.push({ pathname: "/check", params: { url: u.startsWith("http") ? u : `https://${u}`, source: "account" } })} /></View>); })}
-              </Card>
-            ) : null}
-            <Card style={{ gap: spacing.sm }} testID="account-actions">
-              {actionGuidance ? <Card testID="account-action-guidance" style={{ gap: spacing.xs }}><SectionTitle>How to check</SectionTitle><Body>{actionGuidance}</Body><Button testID="account-action-guidance-close" variant="ghost" label="Hide instructions" onPress={() => setActionGuidance(null)} /></Card> : null}
-              <Text style={s.label}>Go in through the front door</Text>
-              <Body testID="account-open-official">{a.openOfficial}</Body>
-              {result.event ? <RecoveryFlow event={result.event} kinds={recovery} testID="account-recovery" /> : null}
-              <GateInvestigation submission={result} testID="account-ask" label="Ask Higgins about this alert" context={issueContext({ gate: "account", issue_summary: a.title, assessment_state: a.state, findings: a.why.slice(0, 6).map((summary) => ({ summary, provenance: "inferred", status: a.state === "barking" ? "warning" : "uncertain" })), uncertainty: ["The alert's sender and claims were not independently authenticated."], confirmed_protective_actions: [], user_reported_actions: initiated === null ? [] : [initiated ? "Requested the change" : "Did not request the change"], original_evidence: [{ kind: "text", value: `Sender: ${sender}\n${text}`, label: "submitted alert" }] })} question="What should I do about this account alert?" />
-              <Button testID="account-tech" variant="ghost" label="View technical details" onPress={() => setTech((t) => !t)} />
-              {tech ? a.technical.map((t, i) => <Body key={i} testID={`account-tech-${i}`}>{t}</Body>) : null}
-              {result.event ? <Button testID="account-resolve" variant="ghost" label="Mark as handled" onPress={() => { void resolveEvent(result.event!); setResult({ ...result, event: { ...result.event!, status: "resolved" } }); }} /> : null}
-              {reportState === "failed" ? <Body testID="account-report-error">The report was not sent. Your result is still here; retry when connected.</Body> : reportState === "sent" ? <Body testID="account-report-success">Report sent for review.</Body> : null}
-              {result.event && reportState !== "sent" ? <Button testID="account-report" variant="ghost" label={reportState === "sending" ? "Sending…" : reportState === "failed" ? "Retry report" : "Report a mistake"} disabled={reportState === "sending"} onPress={async () => { setReportState("sending"); try { await apiPost("/feedback", "feedback", { device_id: deviceId ?? "local-device", event_id: result.event!.event_id, kind: "false_positive", state: result.event!.state, host: result.event!.indicator_host, sources: ["identity_account_engine"], note: "" }); setReportState("sent"); } catch { setReportState("failed"); } }} /> : null}
-              <Button testID="account-again" variant="ghost" label="Check another alert" onPress={() => { setResult(null); setText(""); setSender(""); setFlags({ repeated: null, unusualLocation: null }); setInitiated(null); setAnswered({ initiated: false, repeated: false, location: false }); setKind(null); setProvider("other"); setEvidence(null); setEvidenceReviewed(false); setScreenshotUri(null); setReportState("idle"); setActionGuidance(null); }} />
-            </Card>
-          </>
         ) : null}
 
         <Card style={{ gap: spacing.sm }} testID="account-breach">
@@ -241,7 +246,7 @@ export default function CheckAccount() {
           <Body>Apollo assesses what you submit. Ongoing notification or mailbox access stays off until you explicitly enable it. Apollo never asks for or stores your password.</Body>
         </Card>
       </KeyboardAwareScrollView>
-      <ScreenshotPermissionSheet prefix="account" visible={!!photoAccess.permission} canAskAgain={photoAccess.permission?.canAskAgain ?? true} checking={photoAccess.checking} onContinue={() => void photoAccess.continueAccess()} onClose={photoAccess.close} />
+      
     </View>
   );
 }

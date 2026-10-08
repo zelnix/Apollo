@@ -95,15 +95,23 @@ class GuardDogVpnService : VpnService() {
             return
         }
 
-        // DNS/IP binding re-check immediately before route install. Mismatch aborts. The lookup runs OFF the main thread
-        // (NetworkOnMainThreadException otherwise — crashed the proof phone); the outcome is applied back on the main thread.
+        // DNS/IP binding re-check immediately before route install. If the controlled endpoint
+        // (BlockTest) is reachable, full M1+M2 protection starts. If not, protection still starts
+        // with Website Gate only (M2) — BlockTest is retained for testing/diagnostics but is no
+        // longer required for normal protection operation.
         bindingCheck.run(config, GuardDogVpnRuntime.resolver) { binding ->
             mainHandler.post {
                 if (state.lifecycle != VpnLifecycleState.Starting) return@post // stopped/revoked/destroyed while resolving
                 when (binding) {
                     is BindingResult.Match -> establish(config, reporter, binding.ipv4)
-                    is BindingResult.Mismatch -> fail("DNS/IP binding mismatch: expected ${binding.expected}, resolved ${binding.resolved}")
-                    is BindingResult.ResolutionFailed -> fail("controlled host did not resolve: ${binding.host}")
+                    is BindingResult.Mismatch -> {
+                        Log.w(TAG, "BlockTest binding mismatch (expected ${binding.expected}, resolved ${binding.resolved}); starting Website Gate-only protection")
+                        establishWithoutBlockTest(config, reporter)
+                    }
+                    is BindingResult.ResolutionFailed -> {
+                        Log.w(TAG, "BlockTest host did not resolve (${binding.host}); starting Website Gate-only protection")
+                        establishWithoutBlockTest(config, reporter)
+                    }
                 }
             }
         }
@@ -191,6 +199,83 @@ class GuardDogVpnService : VpnService() {
         state.transition(running)
         startForegroundCompat(ProtectionNotificationFactory.build(this, running))
         Log.i(TAG, "Selective route installed: ${spec.routes.map { it.cidr }} (dnsGateway=${dnsGateway != null})")
+    }
+
+    /**
+     * Website Gate-only establishment (M2 without M1 controlled endpoint route). Used when the
+     * BlockTest verification server is unreachable or binding mismatches. The M2 DNS/sinkhole
+     * pipeline (if configured) operates independently. If neither M1 nor M2 is available,
+     * protection cannot start and we fail closed.
+     */
+    private fun establishWithoutBlockTest(config: VpnConfig, reporter: ProtectionEnforcementReporter) {
+        val websiteGateConfig = GuardDogVpnRuntime.websiteGateRouteConfig
+        val websiteGateEngine = GuardDogVpnRuntime.websiteGateEngine
+        if (websiteGateConfig == null) {
+            fail("BlockTest unavailable and no Website Gate configured — cannot start protection")
+            return
+        }
+        // Build a TUN spec with only the M2 Website Gate routes (DNS gateway + sinkhole pool),
+        // no M1 controlled endpoint route.
+        val m2Routes = (listOf(websiteGateConfig.dnsGatewayIpv4) + websiteGateConfig.sinkholePool).map { RouteSpec(it, 32) }
+        val spec = TunSpec(
+            address = config.tunAddress,
+            addressPrefix = config.tunPrefix,
+            routes = m2Routes,
+            mtu = config.mtu,
+            sessionName = config.sessionName,
+            dnsServers = listOf(websiteGateConfig.dnsGatewayIpv4),
+        )
+        val pfd = try {
+            SelectiveRouteInstaller.applyTo(Builder(), spec).establish()
+        } catch (e: IllegalStateException) {
+            null
+        } catch (e: SecurityException) {
+            null
+        }
+        if (pfd == null) {
+            fail("establish() returned null (consent revoked or another VPN active)")
+            return
+        }
+        // No M1 drop reporter in this mode — no controlled endpoint to match against.
+        // Construct M2 DNS gateway if the engine is available.
+        val dnsGateway = if (websiteGateEngine != null) {
+            val bindingStore = SinkholeBindingStore(
+                websiteGateEngine, websiteGateConfig.sinkholePool, GuardDogVpnRuntime.websiteGateBindingLifetimeMillis, SystemClock,
+                GuardDogVpnRuntime.websiteGateOverrideStore,
+            )
+            val upstream = GuardDogVpnRuntime.upstreamDnsResolverIpv4
+            val forwarder: UpstreamDnsForwarder = if (upstream != null) {
+                ProtectedUdpDnsForwarder(InetAddress.getByName(upstream), protector = SocketProtector { socket -> protect(socket) })
+            } else {
+                UpstreamDnsForwarder { _, _, _ -> null }
+            }
+            DnsGatewayPacketHandler(bindingStore, forwarder) { reason -> Log.d(TAG, "DNS gateway pass-through: $reason") }
+        } else {
+            null
+        }
+
+        val tunReader = TunPacketReader(
+            input = FileInputStream(pfd.fileDescriptor),
+            dropReporter = null,
+            onError = { e: IOException ->
+                Log.w(TAG, "TUN read failed: ${e.message}")
+                mainHandler.post { degrade("TUN read error: ${e.message}") }
+            },
+            output = if (dnsGateway != null) FileOutputStream(pfd.fileDescriptor) else null,
+            dnsGatewayIpv4 = websiteGateConfig.dnsGatewayIpv4,
+            dnsGateway = dnsGateway,
+        )
+        session = TunSession(pfd, tunReader, Thread(tunReader, "guarddog-tun-reader")) {
+            GuardDogVpnRuntime.dropReporter = null
+            GuardDogVpnRuntime.activeSession = null
+            GuardDogVpnRuntime.websiteGateActive = false
+        }.also { it.start() }
+        GuardDogVpnRuntime.activeSession = session
+        GuardDogVpnRuntime.websiteGateActive = dnsGateway != null
+        val running = VpnLifecycleState.Running(System.currentTimeMillis(), spec.routes[0].cidr)
+        state.transition(running)
+        startForegroundCompat(ProtectionNotificationFactory.build(this, running))
+        Log.i(TAG, "Website Gate-only protection started (BlockTest unavailable): ${spec.routes.map { it.cidr }} (dnsGateway=${dnsGateway != null})")
     }
 
     override fun onRevoke() {

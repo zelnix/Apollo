@@ -1,6 +1,5 @@
 // Gate 7 — Check My Device. Shows only what this platform/build can truthfully see, plus what the user
 // reports. Produces a device security status (Protected / Review / Action / Recovery) — never a "full scan".
-import { GateInvestigation } from "@/src/components/GateInvestigation";
 import { Redirect, useRouter } from "expo-router";
 import * as Crypto from "expo-crypto";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
@@ -18,6 +17,7 @@ import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/compone
 import { GateAbout } from "@/src/components/GateAbout";
 import { assessDevice, deriveDeviceSecurityChanges, DEVICE_CHANGE_LABEL, DEVICE_STATUS, EMPTY_SIGNALS, SELF_REPORT, type DeviceFinding, type DevicePlatform, type DeviceSecurityChange, type DeviceSignals, type SelfReport } from "@/src/domain/deviceAnalysis";
 import { groupByCategory, OUTCOME_LABEL, OUTCOME_TONE, overallState, runDeviceReview, type CheckResult, type ReviewPlatform } from "@/src/domain/deviceReview";
+import { buildDeviceCheckResult } from "@/src/domain/deviceCheckResultAdapter";
 import { STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { AppDeviceSdk } from "@/src/security/appDeviceSdk";
 import { securityAdapter } from "@/src/security/securityAdapter";
@@ -28,7 +28,6 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { openDeviceSettings, type SettingsTarget } from "@/src/utils/deviceSettings";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { storage } from "@/src/utils/storage";
-import { issueContext } from "@/src/domain/higginsHandoff";
 
 const TARGET: Record<string, SettingsTarget> = { D01: "apps", D01b: "apps", D02: "security", D03: "security", D04: "vpn", D05: "accessibility", D06: "apps", D07: "apps", D08: "unknown_sources", D09: "overlay", D10: "notification_access", D11: "developer" };
 // Deep-link target for each review check so "Open Settings" lands the person on the right screen.
@@ -149,7 +148,6 @@ export default function CheckDevice() {
     else void openDeviceSettings(target, label, (m) => showToast(m, "neutral"));
   };
   const firstAction = [...result.findings].sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity])[0] ?? null;
-  const submissionFirstAction = useMemo(() => submission ? [...submission.result.findings].sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity])[0] ?? null : null, [submission]);
 
   if (ready && !setupDone) return <Redirect href="/" />;
 
@@ -238,7 +236,8 @@ export default function CheckDevice() {
           <SectionTitle>Higgins</SectionTitle>
           <Body testID="device-higgins-explanation">{firstAction ? `${firstAction.title} is the first item to review. ${firstAction.action}` : "Apollo did not identify a meaningful concern within the signals this platform exposes. The visibility limits below still apply."}</Body>
           {firstAction ? <Button testID="device-higgins-open-settings" label={platform === "web" ? "Show relevant Settings steps" : "Open relevant Settings"} onPress={() => open(firstAction)} /> : null}
-          <Button testID="device-higgins-recheck" variant="secondary" icon={<RefreshCw size={17} color={colors.brand} />} label={checking ? "Checking again…" : "I changed it — check again"} onPress={() => void refreshDevice(true)} disabled={checking} />
+          <Button testID="device-higgins-recheck" variant="secondary" icon={<RefreshCw size={17} color={colors.brand} />} label={checking ? "Checking again\u2026" : "I changed it \u2014 check again"} onPress={() => void refreshDevice(true)} disabled={checking} />
+          <Button testID="device-ask-higgins" variant="ghost" label="Ask Higgins about my device" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { prompt: review ? `My device security review says: ${review.summary} What should I do first?` : `My device assessment says: ${result.summary} How do I keep my phone secure?` } })} />
           <Body testID="device-higgins-tampering-rule">Apollo reports suspected tampering only when a specific high-confidence configuration or permission change was observed. A stopped service or missing permission alone is a protection gap, not proof of tampering.</Body>
         </Card>
 
@@ -259,13 +258,9 @@ export default function CheckDevice() {
         </Card>
 
         <Card style={{ gap: spacing.sm }} testID="device-actions">
-          {result.status !== "protected" && !event ? <Button testID="device-save" label={saving ? "Saving…" : "Save to Patrol & stay with me"} onPress={() => void save()} disabled={saving} /> : null}
+          {result.status !== "protected" && !event ? <Button testID="device-save" label={saving ? "Saving\u2026" : "Save to Patrol & stay with me"} onPress={() => void save()} disabled={saving} /> : null}
           {event ? <RecoveryFlow event={event} kinds={["remote", "banking_during_access", "accessibility", "profile", "password", "code"]} testID="device-recovery-flow" /> : null}
           <Button testID="device-check-app" variant="secondary" label="Check a specific app" onPress={() => router.push("/app-check")} />
-          {submission ? <GateInvestigation submission={submission} continuityKey="device" eventId={event?.event_id} testID="device-ask" label="Ask Higgins about my device" context={issueContext({ gate: "device", issue_summary: DEVICE_STATUS[submission.result.status].title, assessment_state: submission.result.state, findings: submission.result.findings.slice(0, 6).map((finding) => ({ summary: `${finding.title}: ${finding.plain}`, provenance: submission.source === "user_report" ? "user_reported" : "observed", status: finding.severity === "high" ? "warning" : "uncertain" })), uncertainty: submission.result.cannotSee, confirmed_protective_actions: [], user_reported_actions: Object.keys(self).filter((key) => self[key as keyof SelfReport]), event_id: event?.event_id, original_evidence: [{ kind: "text", value: `Observation timestamp: ${submission.observedAt}\nObservation source: ${submission.source}\nDevice assessment (visible settings and Apollo health only):\n${submission.result.summary}\n${submission.result.findings.map((f) => `${f.severity.toUpperCase()} ${f.title}: ${f.plain}`).join("\n")}\nApollo cannot see: ${submission.result.cannotSee.join("; ") || "nothing additional listed"}`, label: submission.source === "user_report" ? "fresh device observations and explicit user report" : "fresh device observations" }], available_actions: [
-            ...(submissionFirstAction ? [{ label: platform === "web" ? "Show relevant Settings steps" : "Open relevant Settings", instruction: `${submissionFirstAction.action} ${submissionFirstAction.settings}` }] : []),
-            { label: "I changed it — check again", instruction: "Return to Device Gate and choose I changed it — check again so Apollo refreshes the signals this platform exposes." },
-          ] })} question={anySelf ? "What should I do first?" : "How do I keep my phone secure?"} /> : null}
         </Card>
         <CheckHistoryCard gate="device" refreshKey={historyKey} testID="device-history" />
       </ScrollView>

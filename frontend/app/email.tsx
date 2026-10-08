@@ -1,6 +1,5 @@
 // Gate 1 — Check an Email. Paste a forwarded email (headers included if you have them) or fill From/Subject/Body.
 // Read on-device first; links go to the Web gate, account alerts to Account Guard, attachments to Check This File.
-import { GateInvestigation } from "@/src/components/GateInvestigation";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import * as Crypto from "expo-crypto";
 import Mail from "lucide-react-native/icons/mail";
@@ -11,21 +10,21 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiDelete, apiGet, apiPost } from "@/src/api/client";
+import { CheckResultScreen } from "@/src/components/CheckResultScreen";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
-import { MessageAssessmentResult } from "@/src/components/MessageAssessmentResult";
 import { Sheet } from "@/src/components/Sheet";
 import { GateAbout } from "@/src/components/GateAbout";
-import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
+import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { analyseEmail, type EmailAnalysis } from "@/src/domain/emailAnalysis";
 import { evaluateLinkGuardFindings, extractAnchorsFromPlainText } from "@/src/domain/linkGuard";
-import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
+import { type PatrolEvent } from "@/src/domain/types";
 import { STATE_RANK } from "@/src/domain/stateMachine";
 import { patrolSafeSummary, type InvestigationResult } from "@/src/domain/investigation";
 import { redactUserSecrets } from "@/src/domain/privacy";
 import { connectGmailOAuth } from "@/src/domain/gmailConnect";
-import { issueContext } from "@/src/domain/higginsHandoff";
+import { buildEmailCheckResult } from "@/src/domain/emailCheckResultAdapter";
+import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { runProtectionHealthCheck } from "@/src/protection/healthCoordinator";
-import { dispatchInvestigationAction } from "@/src/domain/investigationActions";
 import { type MessageExplanation, type MessageUrlResult, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -61,7 +60,6 @@ export default function CheckEmail() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ submissionId: string; a: EmailAnalysis; event: PatrolEvent | null; urls: MessageUrlResult[]; explanation: MessageExplanation | null; assessment: InvestigationResult | null } | null>(null);
   const [verify, setVerify] = useState(false);
-  const [tech, setTech] = useState(false);
   const [gmailConnected, setGmailConnected] = useState<boolean | null>(null);
   const [gmailConfigured, setGmailConfigured] = useState(true);
   const [gmailMonitoring, setGmailMonitoring] = useState(false);
@@ -70,7 +68,6 @@ export default function CheckEmail() {
   const [scanBusy, setScanBusy] = useState(false);
   const [gmailStatusError, setGmailStatusError] = useState<string | null>(null);
   const [scanSummary, setScanSummary] = useState<{ text: string; flagged: number } | null>(null);
-  const [higginsResolved, setHigginsResolved] = useState(false);
 
   const refreshGmailStatus = useCallback(async () => {
     if (!deviceId) return;
@@ -139,7 +136,7 @@ export default function CheckEmail() {
   };
 
   const run = async () => {
-    setBusy(true); setHigginsResolved(false);
+    setBusy(true);
     try {
       const safeRaw = redactUserSecrets(raw); const safeSubject = redactUserSecrets(subject);
       if (safeRaw !== raw) setRaw(safeRaw); if (safeSubject !== subject) setSubject(safeSubject);
@@ -171,6 +168,51 @@ export default function CheckEmail() {
   if (ready && !setupDone) return <Redirect href="/" />;
   const a = result?.a;
   const scent = result?.event?.scent_id ?? result?.event?.event_id ?? "";
+
+  // UNIVERSAL CHECK RESULT — when the email check has produced an outcome, the entire screen
+  // becomes the shared Check Result. ONE Higgins paragraph, ONE items list, ONE actions row.
+  if (result && a) {
+    const model = buildEmailCheckResult({ analysis: a, event: result.event, from, subject, submissionId: result.submissionId, urlResults: result.urls, explanation: result.explanation });
+    const askPrompt = `About the email I just checked (from ${model.subject}). ${model.headline} Can you walk me through what Apollo found and what I should do?`;
+    const emailActions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];
+    if (a.handoff.account) {
+      emailActions.push({ testID: "email-check-account", variant: a.state === "barking" ? "secondary" : "secondary", label: "It's about my account \u2014 Account Gate", onPress: () => router.push({ pathname: "/account", params: { text: `${a.parsed.subject ?? ""}\n${a.parsed.body}`.trim().slice(0, 3000), scent } }) });
+    }
+    emailActions.push({ testID: "email-verify-sender", variant: "secondary", label: "Show me how to check the sender", onPress: () => setVerify(true) });
+    a.urls.forEach((u, i) => {
+      const r = result.urls.find((x) => x.url === u || x.host === u.replace(/^https?:\/\//i, "").split("/")[0]);
+      const off = a.lookalikeUrls.includes(u);
+      const label = r?.verdict === "malicious" ? `\u26a0 ${u.length > 35 ? u.slice(0, 35) + "\u2026" : u}` : off ? `Off-domain: ${u.length > 30 ? u.slice(0, 30) + "\u2026" : u}` : `Check: ${u.length > 35 ? u.slice(0, 35) + "\u2026" : u}`;
+      emailActions.push({ testID: `email-check-link-${i}`, variant: r?.verdict === "malicious" || off ? "secondary" : "ghost", label, onPress: () => router.push({ pathname: "/check", params: { url: u.startsWith("http") ? u : `https://${u}`, source: "email" } }) });
+    });
+    if (a.handoff.file) {
+      emailActions.push({ testID: "email-check-file", variant: "secondary", label: "Check the attachment with Apollo", onPress: () => router.push({ pathname: "/file", params: { source: "email" } }) });
+    }
+    emailActions.push({ testID: "email-again", variant: "ghost", label: "Check another email", onPress: () => { setResult(null); setRaw(""); setFrom(""); setSubject(""); } });
+
+    return (
+      <>
+        <CheckResultScreen
+          result={model}
+          onAskHiggins={() => router.push({
+            pathname: "/(tabs)/ask",
+            params: {
+              context: result.event ? JSON.stringify(contextFromEvent(result.event, gateForCategory(result.event.category))) : "",
+              prompt: askPrompt,
+            },
+          })}
+          actions={emailActions}
+        />
+        {result.event ? (
+          <RecoveryFlow event={result.event} kinds={["clicked", "password", "code", "money", "card", "info", "download"]} linkToCheck={a.urls[0] ?? null} testID="email-recovery" />
+        ) : null}
+        <Sheet visible={verify} onClose={() => setVerify(false)} title="Verify the sender safely" testID="email-verify-sheet">
+          <Body testID="email-verify-text">{a.verifySender}</Body>
+          <Button testID="email-verify-close" variant="ghost" label="Done" onPress={() => setVerify(false)} />
+        </Sheet>
+      </>
+    );
+  }
 
   return (
     <View style={s.root}>
@@ -238,64 +280,9 @@ export default function CheckEmail() {
             <Button testID="email-check-screenshot" variant="secondary" label="Assess an email screenshot" onPress={() => router.push({ pathname: "/message", params: { openScreenshot: "1", source: "email" } })} />
             <Body testID="email-preview-disclaimer">Preview note: choose the email screenshot manually. Apollo cannot read or retrieve a message from another app&apos;s notification preview.</Body>
           </>
-        ) : a ? (
-          <>
-            {!higginsResolved && result.assessment ? <MessageAssessmentResult assessment={result.assessment} state={a.state} testIDPrefix="email"
-              submittedLabel="Email investigated" submittedTitle={a.parsed.fromAddress || from || "Sender not supplied"} submittedText={`${a.parsed.subject ?? subject}\n${a.parsed.body || raw}`.trim()}
-              onPrimaryAction={() => dispatchInvestigationAction(result.assessment!.higgins.action_kind, {
-                showVerification: () => setVerify(true), showCallingGuidance: () => setVerify(true), openAccount: () => router.push({ pathname: "/account", params: { text: `${a.parsed.subject ?? ""}\n${a.parsed.body}`.trim().slice(0, 3000), scent } }),
-                clearSubmittedCopy: () => { setRaw(""); setFrom(""); setSubject(""); showToast("The copy submitted to Apollo was cleared from this screen. The original email was not deleted.", "neutral"); }, showReview: () => setTech(true),
-              })} /> : !higginsResolved ? <Card testID="email-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
-              <View style={s.chips}><Pill tone={a.state} label={STATE_NAME[a.state]} testID="email-state" /><Pill tone="neutral" label={a.scenario} testID="email-scenario" />{a.claimedBrand ? <Pill tone="neutral" label={`Claims: ${a.claimedBrand}`} testID="email-brand" /> : null}</View>
-              <Text style={s.why}>{STATE_LABEL[a.state]}</Text>
-              <Text style={s.label} testID="email-title">{a.title}</Text>
-              <Text style={s.verdict} testID="email-verdict">{a.verdict}</Text>
-              <SectionTitle>Why?</SectionTitle>
-              {a.why.map((w, i) => <Text key={i} style={s.why} testID={`email-why-${i}`}>• {w}</Text>)}
-              <SectionTitle>What to do</SectionTitle>
-              <Text style={s.why} testID="email-recommendation">{a.recommendation}</Text>
-              {a.signalLabels.length ? <View style={s.chips}>{a.signalLabels.map((l) => <Pill key={l} tone="neutral" label={l} />)}</View> : null}
-            </Card> : null}
-            <Card style={{ gap: spacing.xs }} testID="email-sender">
-              <SectionTitle>Who sent it</SectionTitle>
-              <Body testID="email-sender-line">{a.parsed.fromName ? `${a.parsed.fromName} ` : ""}{a.parsed.fromAddress ? `<${a.parsed.fromAddress}>` : "(no address given)"}</Body>
-              {a.senderDomain ? <Pill tone={a.claimedBrand && a.scenario !== "E11" && /E01|E07/.test(a.scenario) ? "barking" : a.scenario === "E11" ? "resting" : "neutral"} label={a.scenario === "E11" ? `${a.senderDomain} — official` : /E01|E07/.test(a.scenario) ? `${a.senderDomain} — not ${a.claimedBrand}'s domain` : a.senderDomain} testID="email-sender-domain" /> : null}
-              {a.parsed.replyTo ? <Body>Replies go to: {a.parsed.replyTo}</Body> : null}
-            </Card>
-            {a.urls.length ? (
-              <Card style={{ gap: spacing.sm }} testID="email-links">
-                <SectionTitle>Links in the email</SectionTitle>
-                {a.urls.map((u, i) => { const r = result.urls.find((x) => x.url === u || x.host === u.replace(/^https?:\/\//i, "").split("/")[0]); const off = a.lookalikeUrls.includes(u); return (
-                  <View key={u} style={s.row}><View style={{ flex: 1 }}><Text style={s.why} numberOfLines={1}>{u}</Text><Pill tone={r?.verdict === "malicious" ? "biting" : off ? "growling" : r?.verdict === "clean" ? "resting" : "neutral"} label={r?.verdict === "malicious" ? "Confirmed dangerous" : off ? `Not ${a.claimedBrand}'s site` : r?.verdict === "clean" ? "No known threat" : "Unchecked"} /></View><Button testID={`email-check-link-${i}`} variant="secondary" label="Check" onPress={() => router.push({ pathname: "/check", params: { url: u.startsWith("http") ? u : `https://${u}`, source: "email" } })} /></View>); })}
-              </Card>
-            ) : null}
-            {a.parsed.attachments.length ? (
-              <Card style={{ gap: spacing.xs }} testID="email-attachments">
-                <SectionTitle>Attachments mentioned</SectionTitle>
-                {a.parsed.attachments.map((at) => <View key={at} style={s.row}><Text style={[s.why, { flex: 1 }]} numberOfLines={1}>{at}</Text><Pill tone={a.riskyAttachments.includes(at) ? "barking" : "neutral"} label={a.riskyAttachments.includes(at) ? "Risky type" : "Document"} /></View>)}
-                <Body testID="email-attachment-limitation">Apollo only found the attachment name in the pasted email. The file itself was not transferred. File Gate will ask you to select the actual attachment before inspecting its contents.</Body>
-                <Button testID="email-check-file" variant="secondary" label="Check the file with Apollo" onPress={() => router.push({ pathname: "/file", params: { source: "email" } })} accessibilityLabel="Open File Gate to select and inspect the attachment" accessibilityHint="The actual attachment must be selected before Apollo can inspect it." />
-              </Card>
-            ) : null}
-            <Card style={{ gap: spacing.sm }} testID="email-actions">
-              {a.handoff.account ? <Button testID="email-check-account" variant={a.state === "barking" ? "warning" : "secondary"} label="It's about my account — Account Gate" onPress={() => router.push({ pathname: "/account", params: { text: `${a.parsed.subject ?? ""}\n${a.parsed.body}`.trim().slice(0, 3000), scent } })} /> : null}
-              <Button testID="email-verify-sender" variant="secondary" label="Show me how to check the sender" onPress={() => setVerify(true)} />
-              {result.event ? <RecoveryFlow event={result.event} kinds={["clicked", "password", "code", "money", "card", "info", "download"]} linkToCheck={a.urls[0] ?? null} testID="email-recovery" /> : null}
-              <GateInvestigation submission={result} eventId={result.event?.event_id} onResolved={setHigginsResolved} testID="email-ask" label="Continue this investigation" context={issueContext({ gate: "email", issue_summary: a.title, assessment_state: a.state, findings: a.why.map((summary) => ({ summary, provenance: "inferred", status: "uncertain" })), uncertainty: ["The sender was not independently authenticated."], confirmed_protective_actions: [], user_reported_actions: [], event_id: result.event?.event_id, original_evidence: [{ kind: "text", value: `From: ${from}\nSubject: ${subject}\n\n${raw}`, label: "submitted email" }, ...(shared?.files?.map((file, index) => ({ kind: "file" as const, uri: file.path, name: file.fileName || `shared-attachment-${index + 1}`, mediaType: file.mimeType || "application/octet-stream", size: file.size ?? undefined })) ?? [])] })} question="What should I do about this email?" />
-              <Button testID="email-tech" variant="ghost" label="View technical details" onPress={() => setTech(true)} />
-              <Button testID="email-again" variant="ghost" label="Check another email" onPress={() => { setResult(null); setHigginsResolved(false); setRaw(""); setFrom(""); setSubject(""); }} />
-            </Card>
-          </>
         ) : null}
       </KeyboardAwareScrollView>
-      <Sheet visible={verify} onClose={() => setVerify(false)} title="Verify the sender safely" testID="email-verify-sheet">
-        <Body testID="email-verify-text">{a?.verifySender}</Body>
-        <Button testID="email-verify-close" variant="ghost" label="Done" onPress={() => setVerify(false)} />
-      </Sheet>
-      <Sheet visible={tech} onClose={() => setTech(false)} title="Technical details" testID="email-tech-sheet">
-        {a?.technical.map((t, i) => <Body key={i} testID={`email-tech-${i}`}>{t}</Body>)}
-        <Button testID="email-tech-close" variant="ghost" label="Done" onPress={() => setTech(false)} />
-      </Sheet>
+      
     </View>
   );
 }

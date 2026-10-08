@@ -25,7 +25,7 @@ import java.io.OutputStream
  */
 class TunPacketReader(
     private val input: InputStream,
-    private val dropReporter: PacketDropReporter,
+    private val dropReporter: PacketDropReporter?,
     private val bufferSize: Int = 32 * 1024,
     private val onError: (IOException) -> Unit = {},
     private val output: OutputStream? = null,
@@ -80,7 +80,7 @@ class TunPacketReader(
                     }
                     continue
                 }
-                dropReporter.onPacket(info, Ipv4PacketParser.classify(buffer, n))
+                dropReporter?.onPacket(info, Ipv4PacketParser.classify(buffer, n))
             }
         } catch (e: IOException) {
             if (running) onError(e)

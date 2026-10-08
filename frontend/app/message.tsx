@@ -1,6 +1,5 @@
 // Gate 2 — Check a message. Paste (or share / screenshot) a suspicious text, get a plain-language
 // verdict, verify the sender safely, hand links to the link check, and enter recovery if needed.
-import { GateInvestigation } from "@/src/components/GateInvestigation";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { Image as ExpoImage } from "expo-image";
@@ -11,13 +10,15 @@ import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-nativ
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { CheckResultScreen } from "@/src/components/CheckResultScreen";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
-import { MessageAssessmentResult } from "@/src/components/MessageAssessmentResult";
 import { ScreenshotPermissionSheet } from "@/src/components/ScreenshotPermissionSheet";
 import { Sheet } from "@/src/components/Sheet";
 import { GateAbout } from "@/src/components/GateAbout";
-import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
+import { Body, Button, Card } from "@/src/components/ui";
 import { STATE_LABEL, STATE_MEANING, STATE_NAME } from "@/src/domain/types";
+import { buildMessageCheckResult } from "@/src/domain/messageCheckResultAdapter";
+import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { type MessageOutcome, useApollo } from "@/src/store/ApolloContext";
 import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
 import { recordCheck } from "@/src/store/checkHistoryStore";
@@ -27,8 +28,6 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { useScreenshotAccess } from "@/src/hooks/useScreenshotAccess";
 import { redactUserSecrets } from "@/src/domain/privacy";
-import { issueContext } from "@/src/domain/higginsHandoff";
-import { dispatchInvestigationAction } from "@/src/domain/investigationActions";
 import { getShareIntake } from "@/src/share/shareIntake";
 import { PhonePickers } from "@/src/security/phonePickers";
 
@@ -69,7 +68,6 @@ export default function CheckMessage() {
   const [verify, setVerify] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [higginsResolved, setHigginsResolved] = useState(false);
   const [screenshotUri, setScreenshotUri] = useState<string | null>(sharedImage ? String(sharedImage) : null);
   const isEmail = params.source === "email";
   const canPickSms = !isEmail && PhonePickers.isSupported();
@@ -81,14 +79,14 @@ export default function CheckMessage() {
     const safeText = redactUserSecrets(t);
     if (!safeText.trim()) return;
     if (safeText !== t) setText(safeText);
-    setBusy("checking"); setError(null); setResult(null); setHigginsResolved(false);
+    setBusy("checking"); setError(null); setResult(null);
     try { setResult(await checkMessage(snd, safeText)); } catch (e) { setError(e instanceof Error ? e.message : "Could not check this message."); } finally { setBusy("idle"); }
   };
   useEffect(() => { if (sharedText && ready && setupDone && !autoRan.current) { autoRan.current = true; void run(String(sharedText), params.sender ? String(params.sender) : ""); } }, [sharedText, params.sender, ready, setupDone]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const readScreenshot = async (uri: string, name: string, type: string) => {
     if (!deviceId) throw new Error("Apollo is still preparing this device.");
-    setBusy("reading"); setError(null); setResult(null); setHigginsResolved(false); setScreenshotUri(uri);
+    setBusy("reading"); setError(null); setResult(null); setScreenshotUri(uri);
     try {
       const extracted = await apiUpload<{ sender: string; text: string; urls: string[] }>("/message/extract", "message_extract",
         { device_id: deviceId }, { uri, name, type });
@@ -120,11 +118,59 @@ export default function CheckMessage() {
     void readScreenshot(uri, `shared-message.${ext || "jpg"}`, type).catch((e) => { setError(e instanceof Error ? e.message : "Could not read that screenshot."); setBusy("idle"); });
   }, [sharedImage, deviceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (ready && !setupDone) return <Redirect href="/" />;
   const [historyKey, setHistoryKey] = useState(0);
   useEffect(() => { if (result?.analysis) { void recordCheck("message", { at: new Date().toISOString(), state: result.analysis.state, summary: result.analysis.scenarioTitle }); setHistoryKey((k) => k + 1); } }, [result]);
+
+  if (ready && !setupDone) return <Redirect href="/" />;
   const a = result?.analysis;
-  const tone = a?.state ?? "neutral";
+
+  // UNIVERSAL CHECK RESULT — when the message check has produced an outcome, the entire screen
+  // becomes the shared Check Result. ONE Higgins paragraph, ONE items list, ONE actions row.
+  if (result && a) {
+    const model = buildMessageCheckResult({ analysis: a, event: result.event, sender, explanation: result.explanation, urlResults: result.urls });
+    const askPrompt = `About the message I just checked (from ${model.subject}). ${model.headline} Can you walk me through what Apollo found and what I should do?`;
+    const msgActions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];
+    msgActions.push({ testID: "message-verify-sender", variant: "secondary", label: "Show me how to check the sender", onPress: () => setVerify(true) });
+    if (a.signals.loginRequest || a.signals.codeRequest || /password|sign[- ]?in|login|account/i.test(text)) {
+      msgActions.push({ testID: "message-check-account", variant: "secondary", label: "It's about my account \u2014 open Account Gate", onPress: () => router.push({ pathname: "/account", params: { text, scent: result.event?.scent_id ?? result.event?.event_id ?? "" } }) });
+    }
+    a.signals.urls.forEach((u, i) => {
+      const r = result.urls.find((x) => x.url.replace(/\/$/, "").includes(u.replace(/^https?:\/\//i, "").replace(/\/$/, "")));
+      const label = r?.verdict === "malicious" ? `\u26a0 ${u.length > 35 ? u.slice(0, 35) + "\u2026" : u}` : `Check: ${u.length > 35 ? u.slice(0, 35) + "\u2026" : u}`;
+      msgActions.push({ testID: `message-check-link-${i}`, variant: r?.verdict === "malicious" ? "secondary" : "ghost", label, onPress: () => router.push({ pathname: "/check", params: { url: u.startsWith("http") ? u : `https://${u}`, source: "message" } }) });
+    });
+    if (result.event) {
+      msgActions.push({ testID: "message-mark-safe", variant: "ghost", label: "Mark as handled", onPress: () => { void resolveEvent(result.event!); showToast("Marked as handled.", "neutral"); goBackOrHome(router); } });
+    }
+    msgActions.push({ testID: "message-save", variant: "ghost", label: saved ? "Saved \u2713 \u2014 View saved checks" : "Save this check", onPress: () => { if (saved) { router.push("/saved-checks"); return; } void saveCheck({ id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`, gate: "message", title: a.scenarioTitle, subject: sender || "Sender not supplied", state: a.state, stateName: STATE_NAME[a.state], summary: result.explanation?.summary ?? a.verdict, recommendation: result.explanation?.recommendation ?? a.recommendation, sections: [{ title: "Why", lines: result.explanation?.why?.length ? result.explanation.why : a.why }, { title: "Signals Apollo saw", lines: a.signalLabels }, { title: "Links in this message", lines: a.signals.urls }] }).then(() => { setSaved(true); showToast("Saved. Find it under Saved checks.", "neutral"); }); } });
+    msgActions.push({ testID: "message-again", variant: "ghost", label: "Check another message", onPress: () => { setResult(null); setText(""); setSender(""); setScreenshotUri(null); } });
+
+    return (
+      <>
+        <CheckResultScreen
+          result={model}
+          onAskHiggins={() => router.push({
+            pathname: "/(tabs)/ask",
+            params: {
+              context: result.event ? JSON.stringify(contextFromEvent(result.event, gateForCategory(result.event.category))) : "",
+              prompt: askPrompt,
+            },
+          })}
+          actions={msgActions}
+        />
+        {result.event ? (
+          <RecoveryFlow event={result.event} kinds={["called", "clicked", "password", "code", "money", "info", "app"]} linkToCheck={a.signals.urls[0] ?? null} testID="message-recovery" />
+        ) : null}
+        <Sheet visible={verify} onClose={() => setVerify(false)} title={a.signals.callbackRequest ? (a.signals.claimedBrand?.toLowerCase() === "paypal" ? "Check PayPal independently" : "Check the account independently") : "Verify the sender"} testID="verify-sender-sheet">
+          <Body>{a.verifySender}</Body>
+          <Body>Never verify using a number, link or email that only appears in the suspicious message.</Body>
+          <Button testID="verify-sender-close" variant="ghost" label="Got it" onPress={() => setVerify(false)} />
+        </Sheet>
+        <ScreenshotPermissionSheet prefix="message" visible={!!photoAccess.permission} canAskAgain={photoAccess.permission?.canAskAgain ?? true}
+          checking={photoAccess.checking} onContinue={() => void photoAccess.continueAccess()} onClose={photoAccess.close} />
+      </>
+    );
+  }
 
   return (
     <View style={s.root}>
@@ -156,70 +202,10 @@ export default function CheckMessage() {
             <Body testID="message-progress-truth">{STATE_MEANING.sniffing}</Body>
           </Card>
         ) : null}
-
-        {result && a ? (
-          <>
-            {!higginsResolved && result.assessment ? <MessageAssessmentResult assessment={result.assessment} state={a.state}
-              submittedLabel={screenshotUri ? (params.source === "email" ? "Email screenshot investigated" : "Screenshot text investigated") : "Message investigated"}
-              submittedTitle={sender || "Sender not supplied"} submittedText={text} onPrimaryAction={() => dispatchInvestigationAction(result.assessment!.higgins.action_kind, {
-                showVerification: () => setVerify(true), openAccount: () => router.push({ pathname: "/account", params: { text, scent: result.event?.scent_id ?? result.event?.event_id ?? "" } }),
-                clearSubmittedCopy: () => { setText(""); setSender(""); setScreenshotUri(null); showToast("The copy submitted to Apollo was cleared from this screen. The original message was not deleted.", "neutral"); },
-                showReview: () => setVerify(true),
-              })} /> : !higginsResolved ? <Card testID="message-result" style={{ borderColor: toneColor(colors, tone), gap: spacing.sm }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" }}>
-                <Pill tone={tone} label={STATE_NAME[a.state]} testID="message-state" />
-                <Pill tone="neutral" label={a.scenarioTitle} testID="message-scenario" />
-                {result.explanation ? <Pill tone="neutral" label="Shared with Apollo for analysis" /> : null}
-              </View>
-              <Text style={s.stateLabel}>{STATE_LABEL[a.state]}</Text>
-              <Text style={s.verdict} testID="message-verdict">{result.explanation?.summary ?? a.verdict}</Text>
-              <SectionTitle>Why?</SectionTitle>
-              {(result.explanation?.why?.length ? [...result.explanation.why, ...a.why.filter((w) => w.includes("confirmed dangerous") || w.includes("Connected to"))] : a.why).map((w, i) => <Text key={i} style={s.why} testID={`message-why-${i}`}>• {w}</Text>)}
-              <SectionTitle>Recommendation</SectionTitle>
-              <Text style={s.why} testID="message-recommendation">{result.explanation?.recommendation ?? a.recommendation}</Text>
-              {a.signalLabels.length ? <View style={s.chips}>{a.signalLabels.map((l) => <Pill key={l} tone="unknown" label={l} />)}</View> : null}
-              {result.remoteError ? <Text style={s.small}>Second opinion unavailable — showing results from Apollo&apos;s device checks.</Text> : null}
-            </Card> : null}
-
-            {a.signals.urls.length ? (
-              <View>
-                <SectionTitle>Links in this message</SectionTitle>
-                <Card style={{ gap: spacing.sm }} testID="message-links">
-                  {a.signals.urls.map((u) => {
-                    const r = result.urls.find((x) => x.url.replace(/\/$/, "").includes(u.replace(/^https?:\/\//i, "").replace(/\/$/, "")));
-                    return (
-                      <View key={u} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-                        <View style={{ flex: 1 }}><Text style={s.why} numberOfLines={1}>{u}</Text>{r ? <Pill tone={r.verdict === "malicious" ? "biting" : r.verdict === "clean" ? "resting" : "unknown"} label={r.verdict === "malicious" ? "Known threat" : r.verdict === "clean" ? "No known threat" : "Unknown"} /> : null}</View>
-                        <Button testID={`message-check-link-${a.signals.urls.indexOf(u)}`} variant="secondary" label="Check link" onPress={() => router.push({ pathname: "/check", params: { url: u.startsWith("http") ? u : `https://${u}`, source: "message" } })} />
-                      </View>
-                    );
-                  })}
-                  <Text style={s.small}>Checking a link here hands it to Apollo&apos;s link check — the two are recorded as one connected event.</Text>
-                </Card>
-              </View>
-            ) : null}
-
-            <View>
-              <SectionTitle>What next</SectionTitle>
-              <Card style={{ gap: spacing.sm }}>
-                <Button testID="message-verify-sender" variant="secondary" label="Show me how to check the sender" onPress={() => setVerify(true)} />
-                {a.signals.loginRequest || a.signals.codeRequest || /password|sign[- ]?in|login|account/i.test(text) ? <Button testID="message-check-account" variant="secondary" label="It's about my account — open Account Gate" onPress={() => router.push({ pathname: "/account", params: { text, scent: result.event?.scent_id ?? result.event?.event_id ?? "" } })} /> : null}
-                <GateInvestigation submission={result} eventId={result.event?.event_id} onResolved={setHigginsResolved} testID="message-tell-more" label="Continue this investigation" context={issueContext({ gate: "text", issue_summary: a.scenarioTitle, assessment_state: a.state, findings: a.signalLabels.map((summary) => ({ summary, provenance: "observed", status: "uncertain" })), uncertainty: ["The sender was not independently authenticated."], confirmed_protective_actions: [], user_reported_actions: [], event_id: result.event?.event_id, original_evidence: [{ kind: "text", value: `From: ${sender}\n${text}`, label: screenshotUri ? "text extracted from the screenshot" : "submitted message" }, ...(shared?.files?.map((file, index) => ({ kind: "file" as const, uri: file.path, name: file.fileName || `shared-attachment-${index + 1}`, mediaType: file.mimeType || "application/octet-stream", size: file.size ?? undefined })) ?? (screenshotUri ? [{ kind: "file" as const, uri: screenshotUri, name: "screenshot.jpg", mediaType: "image/jpeg" }] : []))] })} question="Explain this message check in plain language and what I should do." />
-                {result.event ? <RecoveryFlow event={result.event} kinds={["called", "clicked", "password", "code", "money", "info", "app"]} linkToCheck={a.signals.urls[0] ?? null} testID="message-recovery" /> : null}
-                {result.event ? <Button testID="message-mark-safe" variant="ghost" label="Mark as handled" onPress={() => { void resolveEvent(result.event!); showToast("Marked as handled. This does not verify the sender or suppress future alerts.", "neutral"); goBackOrHome(router); }} /> : null}
-                <Button testID="message-save" variant="ghost" label={saved ? "Saved ✓ — View saved checks" : "Save this check"} onPress={() => { if (saved) { router.push("/saved-checks"); return; } void saveCheck({ id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`, gate: "message", title: a.scenarioTitle, subject: sender || "Sender not supplied", state: a.state, stateName: STATE_NAME[a.state], summary: result.explanation?.summary ?? a.verdict, recommendation: result.explanation?.recommendation ?? a.recommendation, sections: [{ title: "Why", lines: result.explanation?.why?.length ? result.explanation.why : a.why }, { title: "Signals Apollo saw", lines: a.signalLabels }, { title: "Links in this message", lines: a.signals.urls }] }).then(() => { setSaved(true); showToast("Saved. Find it under Saved checks.", "neutral"); }); }} />
-              </Card>
-            </View>
-          </>
-        ) : null}
         <CheckHistoryCard gate="message" refreshKey={historyKey} testID="message-history" />
       </KeyboardAwareScrollView>
 
-      <Sheet visible={verify} onClose={() => setVerify(false)} title={a?.signals.callbackRequest ? (a.signals.claimedBrand?.toLowerCase() === "paypal" ? "Check PayPal independently" : "Check the account independently") : "Verify the sender"} testID="verify-sender-sheet">
-        <Body>{a?.verifySender}</Body>
-        <Body>Never verify using a number, link or email that only appears in the suspicious message.</Body>
-        <Button testID="verify-sender-close" variant="ghost" label="Got it" onPress={() => setVerify(false)} />
-      </Sheet>
+
       <ScreenshotPermissionSheet prefix="message" visible={!!photoAccess.permission} canAskAgain={photoAccess.permission?.canAskAgain ?? true}
         checking={photoAccess.checking} onContinue={() => void photoAccess.continueAccess()} onClose={photoAccess.close} />
 

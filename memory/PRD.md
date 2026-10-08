@@ -40,6 +40,28 @@
 
 ## Scam Share + "What Apollo has done today" Protection Timeline (2026-06)
 
+## Universal Gate Results — Complete Phase 2 & 3 + Android Native Updates (2026-06)
+
+**Phase 2 complete:** All 8 manual Gate screens now use the shared `CheckResultScreen`:
+- Batch 1: Call Gate, File Gate, Network Gate (adapters + early return pattern)
+- Batch 2: Text Gate, Email Gate (adapters + early return, removed MessageAssessmentResult)
+- Batch 3: App Gate (adapter + early return with permission review), Device Gate (adapter + Ask Higgins button), Account Gate (adapter + early return)
+
+**Phase 3 cleanup:** Removed `GateInvestigation`, `MessageAssessmentResult`, duplicate verdict cards, "Why Apollo reacted" sections, and technical detail sheets from all manual gate screens. All replaced by `CheckResultScreen`'s integrated Higgins paragraph + expandable evidence. Unused imports (`toneColor`, `Pill`, `STATE_LABEL`, `STATE_NAME`, `issueContext`, `Sheet`, `GateInvestigation`, `MessageAssessmentResult`) cleaned from all migrated files.
+
+**Android notification update:**
+- Title changed from "Apollo · Site Gate" to "Apollo"
+- Text changed from "Site Gate is on — Apollo is watching..." to "Apollo protection service is running."
+- Tap now opens Home screen (`apollo:///`) instead of Patrol (`apollo:///patrol`)
+- Channel name simplified to "Apollo"
+
+**BlockTest decoupled:**
+- If BlockTest server is unreachable or binding mismatches, protection STILL starts in Website Gate-only mode (M2)
+- New `establishWithoutBlockTest()` method creates TUN with only DNS gateway routes
+- `TunPacketReader.dropReporter` made nullable for Website Gate-only mode (no M1 packet reporting)
+- BlockTest retained for testing/diagnostics but no longer required for normal protection
+
+
 **Scam Share:**
 - Both `app/higgins/scams.tsx` and `src/components/HomeScamAlerts.tsx` gained a one-tap "Share alert" chip next to "Ask Higgins" / "Open source".
 - `shareScamAlert` / `shareHomeScam` compose a plain-text share message — title, source name + date, severity, Higgins' whatHappened one-liner, the official source URL, and an "Apollo Cyber Security" byline — then open React Native's native share sheet (`Share.share`, no new dependency). The OS routes the forward (SMS, WhatsApp, Email, etc.); nothing is sent via Apollo's servers.
