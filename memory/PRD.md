@@ -1,3 +1,26 @@
+## Account Gate — exposure monitoring BUILT (2026-06)
+
+Built the full personal account-exposure monitoring feature with XposedOrNot (free, no key); HIBP is a drop-in for later.
+
+**Backend:**
+- `services/breach_check.py` — provider-agnostic: `scan_email(email)` routes to HIBP when `HIBP_API_KEY` is set, else XposedOrNot (`/v1/check-email/{email}`, rate-limited 0.6s floor, serialized). Honest statuses clear/found/unavailable; never fabricates "clear" on failure; no passwords/secrets. `active_provider()`/`source_label()` carry attribution.
+- `POST /api/account/monitor/scan` (in `routers/analysis.py`, device-auth, bounded): body `{device_id, emails[≤10]}`; validates each address; returns `{provider, source_label, checked_at, results:[{email,status,breaches:[{name,date}],password_exposed,detail}]}`. Live-verified: `test@example.com`→found(25), random→clear, `notanemail`→unavailable.
+
+**Frontend:**
+- `src/domain/accountMonitor.ts` (pure, unit-tested 6/6): `maskEmail`, `isDue`/`DUE_MS`(7d), `scanSummary`, `deriveGateState` (8 states: not_set_up/monitoring/checking/no_exposure/exposure_found/action_needed/unavailable/overdue), `diffExposures` (new vs resolved), `buildWeeklyReport` (Higgins Weekly Account Exposure Report — sections accounts monitored/new/exposures found/no-longer-showing/couldn't-check/what-to-do/coverage; generated even when clean; partial coverage flagged; never leaks raw email — masked only; attributes source).
+- `src/store/accountMonitorStore.ts` — local persistence: monitored emails (add/remove, cap 10), last scan, scan history (cap 12), last report, lastCheckedAt. `runScan(deviceId)` calls backend, diffs vs previous, builds+persists report; preserves prior good scan on total failure.
+- `app/account-monitor.tsx` — "Check My Accounts" screen: status card, monitored-email management, "Check my accounts now", weekly report render, XposedOrNot attribution + "exposure ≠ compromise" / "not found ≠ secure" copy.
+- `src/hooks/useAccountMonitorDueCheck.ts` — on-app-open due check (mounted in `(tabs)/_layout.tsx`): if emails exist and 7+ days elapsed, runs scan in background; raises ONE Patrol `account` event only for newly-appeared exposures (dedup); best-effort, never blocks app or overwrites good results.
+- Check It tab (`check-it.tsx`): new dedicated "Check My Accounts" card → `/account-monitor`. Gates tab (`guard.tsx`): read-only "Account exposure" status card (controls live only in Check It), opens the screen.
+- Egress: new `account_monitor` endpoint (`{device_id, emails}`) in `privacy.ts`; `/account/monitor/scan` added to client LONG_PATHS.
+
+**History Card extended (P1):** "Your recent checks" `CheckHistoryCard` now wired into `app/app-check.tsx` (gate `app`), `app/network.tsx` (gate `network`) and `app/device.tsx` (gate `device`) — previously only Call/Message.
+
+**Deferred:** HIBP wiring (P2) awaits the user's HIBP key — abstraction is ready, no code change needed beyond setting `HIBP_API_KEY`.
+
+**Verification:** tsc + ESLint clean; `tests/accountMonitor.test.ts` 6/6; firstCheck 9/9, support 6/6, messageVoice 11/11, messageGuardrails 6/6, gate8 34/34 (no regressions); backend endpoint live-verified against real XposedOrNot data; web bundle compiled (2256 modules). NATIVE: UI not visually testable in web preview (fail-closed Safe Start — needs EAS Android build to verify on-device). On-app-open trigger + Patrol event need a device build to confirm end-to-end.
+
+
 ## Specific Gate Links + Check History Card + Scrub Everywhere (2026-06) + Account Gate PLAN
 
 **Done & verified this session:**

@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import io
 import re
+from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 
 import httpx
@@ -15,6 +16,7 @@ from core.config import GEMINI_API_KEY, HIBP_API_KEY, logger
 
 from core.models import ApolloState, DomainInfo, Verdict
 from services.intel import assess_indicator, run_intel_check, sanitize_url
+from services.breach_check import active_provider, scan_email, source_label
 from services.webcrawl import CrawlBlocked, fetch_page
 from services.investigation import InvestigationResult, extract_message_screenshot, investigate_message, purpose_limited_url
 from services.higgins.provider import ProviderFailure, VISION_MODEL, generate_json
@@ -548,3 +550,61 @@ async def account_breach(body: BreachCheckIn):
     action = "Change that password everywhere it was reused, then enable two-factor authentication." if pw else "Expect targeted phishing and enable two-factor authentication."
     return BreachCheckOut(status="found", breaches=breaches, password_exposed=pw, detail=detail,
         higgins={"headline": "This email appears in known breach data", "exact_response": f"{detail} {action}", "next_action": action})
+
+
+
+# --------------------------------------------------------------------------- Account Gate — exposure monitoring
+# The owner monitors their own email addresses for appearance in known breaches. The addresses are the
+# user's own, authorised per scan, forwarded once to the configured provider and never stored or logged.
+EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+class MonitorScanIn(BaseModel):
+    device_id: str = Field(min_length=8, max_length=64)
+    emails: list[str] = Field(min_length=1, max_length=10)
+
+
+class MonitorBreach(BaseModel):
+    name: str
+    date: str = ""
+
+
+class MonitorFinding(BaseModel):
+    email: str
+    status: Literal["clear", "found", "unavailable"]
+    breaches: list[MonitorBreach] = Field(default_factory=list)
+    password_exposed: bool = False
+    detail: str
+
+
+class MonitorScanOut(BaseModel):
+    provider: str
+    source_label: str
+    checked_at: str
+    results: list[MonitorFinding]
+
+
+@router.post("/account/monitor/scan", response_model=MonitorScanOut)
+@bounded_analysis
+async def account_monitor_scan(body: MonitorScanIn):
+    """Check each monitored address once through the active provider (XposedOrNot, or HIBP when keyed).
+    Degrades to a per-address 'unavailable' status; it never fabricates a clean result on failure."""
+    provider = active_provider()
+    results: list[MonitorFinding] = []
+    seen: set[str] = set()
+    for raw in body.emails:
+        email = raw.strip().lower()
+        if email in seen:
+            continue
+        seen.add(email)
+        if not EMAIL_RE.match(email) or len(email) > 254:
+            results.append(MonitorFinding(email=raw.strip()[:254], status="unavailable",
+                                          detail="That doesn't look like an email address, so Apollo couldn't check it."))
+            continue
+        outcome = await scan_email(email)
+        results.append(MonitorFinding(email=email, status=outcome["status"],
+                                      breaches=[MonitorBreach(**b) for b in outcome.get("breaches", [])],
+                                      password_exposed=bool(outcome.get("password_exposed")), detail=outcome["detail"]))
+    return MonitorScanOut(provider=provider, source_label=source_label(provider),
+                          checked_at=datetime.now(timezone.utc).isoformat(),
+                          results=results)

@@ -6,7 +6,7 @@ import type { ApolloState } from './types';
 // User-submitted content may leave the device only for the disclosed, one-off assessment the user
 // requested. It must not be copied into Patrol payloads, logs, analytics, or background monitoring.
 
-export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "higgins_chat" | "higgins_context" | "capability_snapshot" | "device_register" | "push_register" | "family" | "device_settings" | "message_check" | "message_extract" | "link_investigation" | "feedback" | "page_extract" | "page_crawl" | "gmail_scan" | "gmail_monitor" | "app_check" | "account_check" | "breach_check" | "voice" | "call_risk_check" | "investigation";
+export type EgressEndpoint = "intel_check" | "patrol_sync" | "trust_sync" | "ask_apollo" | "higgins_chat" | "higgins_context" | "capability_snapshot" | "device_register" | "push_register" | "family" | "device_settings" | "message_check" | "message_extract" | "link_investigation" | "feedback" | "page_extract" | "page_crawl" | "gmail_scan" | "gmail_monitor" | "app_check" | "account_check" | "breach_check" | "account_monitor" | "voice" | "call_risk_check" | "investigation";
 
 const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   family: new Set(["device_id", "email", "name", "owner_name", "code", "reply", "phone", "protected_device_id", "scent_id", "headline", "state", "events", "steps", "done", "note", "resolved", "kind", "text", "from_name", "enabled", "preview_only", "guardian_name", "duration_s", "submission_id", "relationshipId", "sharerDeviceId", "captureScope", "microphoneRequested", "clientRequestId", "decision", "helperDeviceId", "expectedRevision", "generation", "nativeState", "failureCode"]),
@@ -45,6 +45,8 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   // Gate 8: alert text leaves the device only when the user taps "Check this alert"; the breach lookup sends the identifier the user typed, nothing else.
   account_check: new Set(["device_id", "kind", "provider", "sender", "text", "urls", "local_state", "scenario", "second_opinion"]),
   breach_check: new Set(["device_id", "identifier"]),
+  // Account Gate exposure monitoring: only the owner's own email addresses, forwarded once per scan.
+  account_monitor: new Set(["device_id", "emails"]),
   // Quiet hours window (local minutes + UTC offset) so the server can hold growling pushes at night.
   device_settings: new Set(["quiet_hours"]),
   // Call Guard (Gate 4 add-on): only the number itself (+ optional 2-letter country for local

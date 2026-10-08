@@ -22,7 +22,7 @@ export const DEFAULT_TIMEOUT_MS = 20000;
 /** Endpoints that legitimately take longer (vision/LLM second opinions, TTS, redirect expansion). */
 const LONG_TIMEOUT_MS = 135000; // interim alignment while analysis routes migrate to asynchronous jobs
 const ASK_STREAM_TIMEOUT_MS = 135000; // compatibility transport: server's absolute work budget + transport margin
-const LONG_PATHS = ["/message/extract", "/message/analyse", "/link/investigate", "/page/extract", "/page/crawl", "/voice/speak", "/app/analyse", "/account/analyse", "/intel/check", "/ask/", "/gmail/scan"];
+const LONG_PATHS = ["/message/extract", "/message/analyse", "/link/investigate", "/page/extract", "/page/crawl", "/voice/speak", "/app/analyse", "/account/analyse", "/account/monitor/scan", "/intel/check", "/ask/", "/gmail/scan"];
 export function timeoutFor(path: string): number { return LONG_PATHS.some((p) => path.startsWith(p)) ? LONG_TIMEOUT_MS : DEFAULT_TIMEOUT_MS; }
 
 /** Bearer credential for every call. Fails closed: with no identity the request is not sent. */

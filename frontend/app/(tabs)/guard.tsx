@@ -1,11 +1,14 @@
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import Shield from "lucide-react-native/icons/shield";
-import React from "react";
+import KeyRound from "lucide-react-native/icons/key-round";
+import React, { useEffect, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
+import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { RootScreenHeader } from "@/src/components/RootScreenHeader";
+import { deriveGateState, type AccountScan } from "@/src/domain/accountMonitor";
+import { getLastCheckedAt, getLastScan, getMonitoredEmails } from "@/src/store/accountMonitorStore";
 import { gateTone } from "@/src/domain/gates";
 import type { UserAction } from "@/src/domain/userActions";
 import { userActionRoute } from "@/src/domain/userActions";
@@ -66,8 +69,14 @@ export default function GuardScreen() {
   const insets = useSafeAreaInsets();
   const { gate: gateParam } = useLocalSearchParams<{ gate?: string }>();
   const { ready, setupDone } = useApollo();
+  const router = useRouter();
   const health = useProtectionHealth();
+  const [acctEmails, setAcctEmails] = useState(0);
+  const [acctScan, setAcctScan] = useState<AccountScan | null>(null);
+  const [acctCheckedAt, setAcctCheckedAt] = useState<string | null>(null);
+  useEffect(() => { void Promise.all([getMonitoredEmails(), getLastScan(), getLastCheckedAt()]).then(([e, sc, ca]) => { setAcctEmails(e.length); setAcctScan(sc); setAcctCheckedAt(ca); }); }, []);
   if (ready && !setupDone) return <Redirect href="/" />;
+  const acctStatus = deriveGateState({ monitoredCount: acctEmails, lastScan: acctScan, lastCheckedAt: acctCheckedAt, checking: false });
   const active = health.gates.filter((gate) => gate.capability.automatic?.state === "running").length;
   const attentionGates = health.gates.filter((gate) => gate.tone === "attention");
   const attentionNames = attentionGates.map((g) => g.title.replace(/ Gate$/, "")).join(" and ");
@@ -85,6 +94,14 @@ export default function GuardScreen() {
       </Card>
       <Body testID="gates-introduction">Your protection. Apollo watches what this device allows and shows you what&apos;s working and anything that needs you. To check something yourself, use Check It.</Body>
       <View testID="gates-capability-section" style={{ gap: spacing.md }}><SectionTitle>Your Gates</SectionTitle>{health.gates.map((record) => <HealthCard key={record.id} record={record} highlighted={record.id === gateParam} />)}</View>
+      <View testID="gates-account-section" style={{ gap: spacing.md }}>
+        <SectionTitle>Account exposure</SectionTitle>
+        <Card testID="gates-account-card" style={{ gap: spacing.sm, borderColor: toneColor(colors, acctStatus.tone) }}>
+          <View style={s.row}><View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flex: 1 }}><KeyRound size={20} color={toneColor(colors, acctStatus.tone)} /><Text style={s.name} testID="gates-account-title">{acctStatus.title}</Text></View><Pill tone={acctStatus.tone} label={acctStatus.state === "not_set_up" ? "Not set up" : acctStatus.state === "no_exposure" || acctStatus.state === "monitoring" ? "Monitoring" : acctStatus.state === "action_needed" ? "Action needed" : acctStatus.state === "exposure_found" ? "Worth a look" : acctStatus.state === "overdue" ? "Overdue" : "Partly checked"} testID="gates-account-pill" /></View>
+          <Body testID="gates-account-detail">{acctStatus.detail}</Body>
+          <Button testID="gates-account-open" variant="secondary" label={acctEmails === 0 ? "Set up in Check It" : "Open Check My Accounts"} onPress={() => router.push("/account-monitor")} />
+        </Card>
+      </View>
     </ScrollView>
   </View>;
 }

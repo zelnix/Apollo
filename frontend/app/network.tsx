@@ -7,12 +7,14 @@ import { Redirect, useRouter } from "expo-router";
 import * as Crypto from "expo-crypto";
 import Wifi from "lucide-react-native/icons/wifi";
 import X from "lucide-react-native/icons/x";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, Switch, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { markCheckDone } from "@/src/store/checkCompletion";
+import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
+import { recordCheck } from "@/src/store/checkHistoryStore";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { analyseNetwork, NETWORK_CONTEXTS, type NetworkAnalysis, type NetworkContext } from "@/src/domain/networkAnalysis";
 import { SCENT_WINDOW_MS } from "@/src/domain/threatScent";
@@ -99,6 +101,8 @@ export default function CheckNetwork() {
     if (result) void run(id, result.event?.event_id ?? null);
   };
 
+  const [historyKey, setHistoryKey] = useState(0);
+  useEffect(() => { if (result?.a) { void recordCheck("network", { at: new Date().toISOString(), state: result.a.state, summary: result.a.title }); setHistoryKey((k) => k + 1); } }, [result]);
   if (ready && !setupDone) return <Redirect href="/" />;
   const a = result?.a;
 
@@ -156,6 +160,7 @@ export default function CheckNetwork() {
             </Card>
           </>
         ) : null}
+        <CheckHistoryCard gate="network" refreshKey={historyKey} testID="network-history" />
         <Card style={{ gap: spacing.xs }} testID="network-cannot-see">
           <SectionTitle>What Apollo can see here</SectionTitle>
           <Body>This build sees only what the platform reports: connection type, Wi‑Fi name (with location permission), captive portal and VPN flags. It cannot read DNS queries, per-app traffic or confirm destination blocking — Apollo won&apos;t pretend otherwise.</Body>

@@ -11,6 +11,8 @@ import { Platform, Pressable, ScrollView, Switch, Text, View } from "react-nativ
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { markCheckDone } from "@/src/store/checkCompletion";
+import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
+import { recordCheck } from "@/src/store/checkHistoryStore";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { assessDevice, deriveDeviceSecurityChanges, DEVICE_CHANGE_LABEL, DEVICE_STATUS, EMPTY_SIGNALS, SELF_REPORT, type DeviceFinding, type DevicePlatform, type DeviceSecurityChange, type DeviceSignals, type SelfReport } from "@/src/domain/deviceAnalysis";
@@ -99,6 +101,8 @@ export default function CheckDevice() {
   // new submission appends to the SAME case rather than replacing its accepted history.
   const [submission, setSubmission] = useState<DeviceSubmission | null>(null);
   useEffect(() => { if (checkSequence) setSubmission({ submissionId: Crypto.randomUUID(), result, observedAt: new Date().toISOString(), source: "device_check" }); }, [checkSequence]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [historyKey, setHistoryKey] = useState(0);
+  useEffect(() => { if (checkSequence) { void recordCheck("device", { at: new Date().toISOString(), state: result.state, summary: meta.title }); setHistoryKey((k) => k + 1); } }, [checkSequence]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = async () => {
     setSaving(true);
@@ -226,6 +230,7 @@ export default function CheckDevice() {
             { label: "I changed it — check again", instruction: "Return to Device Gate and choose I changed it — check again so Apollo refreshes the signals this platform exposes." },
           ] })} question={anySelf ? "What should I do first?" : "How do I keep my phone secure?"} /> : null}
         </Card>
+        <CheckHistoryCard gate="device" refreshKey={historyKey} testID="device-history" />
       </ScrollView>
     </View>
   );

@@ -8,6 +8,7 @@ import React from "react";
 import { Platform, Text } from "react-native";
 
 import { useApollo } from "@/src/store/ApolloContext";
+import { useAccountMonitorDueCheck } from "@/src/hooks/useAccountMonitorDueCheck";
 import { fonts, useTheme } from "@/src/theme";
 
 const isIOS26 = Platform.OS === "ios" && parseInt(String(Platform.Version), 10) >= 26;
@@ -16,6 +17,7 @@ const NAV_ICON_SIZE = 25;
 export default function TabsLayout() {
   const { colors } = useTheme();
   const { ready, setupDone } = useApollo();
+  useAccountMonitorDueCheck();
   if (ready && !setupDone) return <Redirect href="/onboarding" />;
 
   if (isIOS26) {

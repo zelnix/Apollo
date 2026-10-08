@@ -11,6 +11,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { markCheckDone } from "@/src/store/checkCompletion";
 import { apiPost } from "@/src/api/client";
+import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
+import { recordCheck } from "@/src/store/checkHistoryStore";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import type { InvestigationResult } from "@/src/domain/investigation";
 import { Sheet } from "@/src/components/Sheet";
@@ -127,10 +129,11 @@ export default function CheckApp() {
   };
   const settingsFor = (a: AppAnalysis) => (a.permissionNotes.some((n) => n.id === "accessibility" && !n.expected) ? (["accessibility", "Settings → Accessibility"] as const) : (["apps", "Settings → Apps → the app"] as const));
 
+  const [historyKey, setHistoryKey] = useState(0);
+  useEffect(() => { if (result?.a) { void recordCheck("app", { at: new Date().toISOString(), state: result.a.state, summary: result.a.title }); setHistoryKey((k) => k + 1); } }, [result]);
   if (ready && !setupDone) return <Redirect href="/" />;
   const a = result?.a;
   const canRun = name.trim().length > 0 && !busy;
-
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
@@ -210,6 +213,7 @@ export default function CheckApp() {
             </Card>
           </>
         ) : null}
+        <CheckHistoryCard gate="app" refreshKey={historyKey} testID="app-history" />
       </KeyboardAwareScrollView>
       <Sheet visible={pickerOpen} onClose={() => { setPickerOpen(false); setAppQuery(""); }} title="Pick an installed app" testID="app-picker-sheet">
         <TextInput testID="app-picker-search" style={s.input} value={appQuery} onChangeText={setAppQuery} placeholder="Search your apps" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} />
