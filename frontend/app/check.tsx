@@ -18,7 +18,6 @@ import { EventActions } from "@/src/components/EventActions";
 import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
-import { GateAbout } from "@/src/components/GateAbout";
 import { ScreenshotPermissionSheet } from "@/src/components/ScreenshotPermissionSheet";
 import { getHigginsAuto, speakHiggins } from "@/src/voice/higgins";
 import { Body, Button, Pill, Card, toneColor } from "@/src/components/ui";
@@ -40,6 +39,7 @@ const useStyles = makeStyles((c) => ({
   top: { paddingHorizontal: spacing.xl, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: spacing.md },
   title: { fontFamily: fonts.displayBold, fontSize: 26, color: c.onSurface },
   close: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: c.surfaceTertiary },
+  subtitle: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary, marginBottom: spacing.xs },
   content: { paddingHorizontal: spacing.xl, gap: spacing.lg, paddingBottom: spacing.xl },
   inputWrap: { backgroundColor: c.surfaceTertiary, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, flexDirection: "row", alignItems: "center", paddingLeft: spacing.lg, paddingRight: spacing.sm },
   input: { flex: 1, minHeight: 52, fontFamily: fonts.text, fontSize: 15, color: c.onSurface },
@@ -235,10 +235,7 @@ export default function CheckLink() {
       </View>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={16}>
         <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} keyboardShouldPersistTaps="handled" testID="check-scroll">
-          <GateAbout title="How these checks work" testID="check-privacy-scope"
-            tip="A web address with tiny spelling changes (like 'rn' instead of 'm'), a shortened link you can't preview, or a login page you reached from a message rather than typing it yourself.">
-            <Body>These are explicit one-off checks. Apollo fetches only public HTTP(S) content through SSRF protections or processes the chosen screenshot. Request copies close immediately and never later than 15 minutes. Higgins-side retention follows the configured API policy.</Body>
-          </GateAbout>
+          <Text style={s.subtitle}>Paste any URL and Apollo will inspect it in a sandbox.</Text>
           <View style={s.inputWrap}>
             <TextInput
               testID="check-url-input"

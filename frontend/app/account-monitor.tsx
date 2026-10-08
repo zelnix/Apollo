@@ -11,18 +11,19 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
-import { GateAbout } from "@/src/components/GateAbout";
 import { buildWeeklyReport, deriveGateState, maskEmail, nextScanLabel, outstandingExposures, type AccountScan, type HandledMap, type MonitoredEmail, type WeeklyReport } from "@/src/domain/accountMonitor";
 import { addMonitoredEmail, getHandled, getLastCheckedAt, getLastScan, getMonitoredEmails, getScanHistory, isValidEmail, markHandled, removeMonitoredEmail, runScan, unmarkHandled } from "@/src/store/accountMonitorStore";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { InfoButton } from "@/src/components/InfoButton";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   top: { paddingHorizontal: spacing.xl, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: spacing.md },
   title: { fontFamily: fonts.displayBold, fontSize: 22, color: c.onSurface },
   close: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: c.surfaceTertiary },
+  subtitle: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary, marginBottom: spacing.xs },
   content: { paddingHorizontal: spacing.xl, gap: spacing.lg },
   input: { minHeight: 48, flex: 1, backgroundColor: c.surfaceTertiary, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.lg, fontFamily: fonts.text, fontSize: 15, color: c.onSurface },
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
@@ -88,13 +89,13 @@ export default function CheckMyAccounts() {
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <Text style={s.title}>Check My Accounts</Text>
-        <Pressable testID="monitor-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+          <InfoButton info={{ title: "About Account Monitoring", body: ["Apollo watches your email addresses for appearances in known data breaches. Checks run weekly when you open the app.", "Apollo never asks for or stores a password. Breach data comes from trusted public disclosure sources."] }} testID="monitor-info" />
+          <Pressable testID="monitor-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        </View>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="monitor-scroll">
-        <GateAbout title="How account monitoring works" testID="monitor-intro"
-          tip="One of your emails showing up in a breach — especially if you reuse that password elsewhere, or if the breach exposed passwords rather than just the email address.">
-          <Body>Apollo watches your own email addresses for appearing in known data breaches. Checks run weekly when you open the app, and you can run one any time. Apollo never asks for or stores a password.</Body>
-        </GateAbout>
+        <Text style={s.subtitle}>Monitor your email addresses for known data breaches.</Text>
 
         <Card testID="monitor-status" style={{ gap: spacing.sm, borderColor: toneColor(colors, status.tone) }}>
           <View style={s.row}><View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flex: 1 }}><KeyRound size={20} color={toneColor(colors, status.tone)} /><Text style={s.statTitle} testID="monitor-status-title">{status.title}</Text></View></View>

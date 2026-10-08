@@ -14,7 +14,6 @@ import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
 import { recordCheck } from "@/src/store/checkHistoryStore";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
-import { GateAbout } from "@/src/components/GateAbout";
 import { assessDevice, deriveDeviceSecurityChanges, DEVICE_CHANGE_LABEL, DEVICE_STATUS, EMPTY_SIGNALS, SELF_REPORT, type DeviceFinding, type DevicePlatform, type DeviceSecurityChange, type DeviceSignals, type SelfReport } from "@/src/domain/deviceAnalysis";
 import { groupByCategory, OUTCOME_LABEL, OUTCOME_TONE, overallState, runDeviceReview, type CheckResult, type ReviewPlatform } from "@/src/domain/deviceReview";
 import { buildDeviceCheckResult } from "@/src/domain/deviceCheckResultAdapter";
@@ -47,6 +46,7 @@ const useStyles = makeStyles((c) => ({
   top: { paddingHorizontal: spacing.xl, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: spacing.md },
   title: { fontFamily: fonts.displayBold, fontSize: 22, color: c.onSurface },
   close: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: c.surfaceTertiary },
+  subtitle: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary, marginBottom: spacing.xs },
   content: { paddingHorizontal: spacing.xl, gap: spacing.lg },
   statusTitle: { fontFamily: fonts.displayBold, fontSize: 24, color: c.onSurface },
   why: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurface },
@@ -162,10 +162,7 @@ export default function CheckDevice() {
         </View>
       </View>
       <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="device-scroll">
-        <GateAbout title="What the Device Gate checks" testID="device-gate-scope"
-          tip="An app you don't remember installing, one with camera, microphone or Accessibility access it shouldn't need, or security settings (lock screen, Play Protect, updates) switched off.">
-          <Body>Device Gate checks existing apps with visible sensitive access, current security settings and Apollo&apos;s own protection health—not only recent installs. It does not continuously scan every dormant app, and app capabilities are not proof of malicious behaviour.</Body>
-        </GateAbout>
+        <Text style={s.subtitle}>Checks your device security settings, app permissions and Apollo protection health.</Text>
         <Card testID="device-status" style={{ borderColor: toneColor(colors, review ? overallState(review.overall) : result.state), gap: spacing.sm }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><ShieldCheck size={22} color={toneColor(colors, review ? overallState(review.overall) : result.state)} /><Pill tone={review ? overallState(review.overall) : result.state} label={review ? review.overallLabel : STATE_NAME[result.state]} testID="device-state" /></View>
           <Text style={s.statusTitle} testID="device-status-title">{review ? review.overallLabel : meta.title}</Text>

@@ -13,7 +13,6 @@ import { apiDelete, apiGet, apiPost } from "@/src/api/client";
 import { CheckResultScreen } from "@/src/components/CheckResultScreen";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
-import { GateAbout } from "@/src/components/GateAbout";
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { analyseEmail, type EmailAnalysis } from "@/src/domain/emailAnalysis";
 import { evaluateLinkGuardFindings, extractAnchorsFromPlainText } from "@/src/domain/linkGuard";
@@ -38,6 +37,7 @@ const useStyles = makeStyles((c) => ({
   top: { paddingHorizontal: spacing.xl, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: spacing.md },
   title: { fontFamily: fonts.displayBold, fontSize: 22, color: c.onSurface },
   close: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: c.surfaceTertiary },
+  subtitle: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary, marginBottom: spacing.xs },
   content: { paddingHorizontal: spacing.xl, gap: spacing.lg },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   input: { minHeight: 48, backgroundColor: c.surfaceTertiary, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, fontFamily: fonts.text, fontSize: 15, color: c.onSurface },
@@ -227,10 +227,7 @@ export default function CheckEmail() {
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="email-scroll">
         {!result ? (
           <>
-            <GateAbout title="How Apollo handles this email" testID="email-processing-scope"
-              tip="A sender address that doesn't match the company, a link whose real address differs from the words shown, or an attachment or 'invoice' you didn't expect.">
-              <Body>Submitting this email authorises one assessment of its sender, body and links. Apollo does not retain the full email; provider-side retention follows configured services.</Body>
-            </GateAbout>
+            <Text style={s.subtitle}>Analyse sender, body and links for phishing patterns.</Text>
             {gmailConfigured ? (
               <Card testID="email-gmail-card" style={{ gap: spacing.sm }}>
                 <SectionTitle>Connect Gmail (optional)</SectionTitle>

@@ -14,7 +14,6 @@ import { CheckResultScreen } from "@/src/components/CheckResultScreen";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { ScreenshotPermissionSheet } from "@/src/components/ScreenshotPermissionSheet";
 import { Sheet } from "@/src/components/Sheet";
-import { GateAbout } from "@/src/components/GateAbout";
 import { Body, Button, Card } from "@/src/components/ui";
 import { STATE_LABEL, STATE_MEANING, STATE_NAME } from "@/src/domain/types";
 import { buildMessageCheckResult } from "@/src/domain/messageCheckResultAdapter";
@@ -37,6 +36,7 @@ const useStyles = makeStyles((c) => ({
   top: { paddingHorizontal: spacing.xl, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: spacing.md },
   title: { fontFamily: fonts.displayBold, fontSize: 22, color: c.onSurface },
   close: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: c.surfaceTertiary },
+  subtitle: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary, marginBottom: spacing.xs },
   content: { paddingHorizontal: spacing.xl, gap: spacing.lg },
   input: { minHeight: 48, backgroundColor: c.surfaceTertiary, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, fontFamily: fonts.text, fontSize: 15, color: c.onSurface },
   multi: { minHeight: 132, textAlignVertical: "top" },
@@ -183,10 +183,7 @@ export default function CheckMessage() {
         </View>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="message-scroll">
-        <GateAbout title={isEmail ? "How Apollo handles your emails" : "How Apollo handles your messages"} testID="message-privacy"
-          tip={isEmail ? "A sender name that doesn't match the real address, a link or attachment you didn't expect, or an urgent 'account locked' or 'payment failed' message pushing you to click." : "A link you didn't expect, a 'your parcel is held' or 'account locked' text, odd spelling, or a request to tap a link or share a one-time code urgently."}>
-          <Body>{isEmail ? "Apollo reads only incoming emails you choose, assesses each once, then discards the raw content. An email is kept only if it's flagged, and stays until you dismiss it. Background access remains off unless you enable it separately." : "Apollo reads only incoming messages you choose, assesses each once, then discards the raw content. A message is kept only if it's flagged, and stays until you dismiss it. You can also share a text from your Messages app, or pick one below. Background access remains off unless you enable it separately."}</Body>
-        </GateAbout>
+        <Text style={s.subtitle}>{isEmail ? "Analyse sender, body and links for phishing patterns." : "Investigate any message for scam indicators and suspicious links."}</Text>
         <TextInput testID="message-sender" style={s.input} value={sender} onChangeText={setSender} placeholder="Sender (number, name or handle) — optional" placeholderTextColor={colors.muted} autoCorrect={false} />
         {canPickSms ? <Button testID="message-pick-sms" variant="secondary" label="Pick a text from your inbox" onPress={() => router.push("/message-picker")} /> : null}
         <TextInput testID="message-text" style={[s.input, s.multi]} value={text} onChangeText={setText} placeholder="Paste the message here" placeholderTextColor={colors.muted} multiline autoCorrect={false} />

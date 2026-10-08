@@ -16,7 +16,6 @@ import { recordCheck } from "@/src/store/checkHistoryStore";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import type { InvestigationResult } from "@/src/domain/investigation";
 import { Sheet } from "@/src/components/Sheet";
-import { GateAbout } from "@/src/components/GateAbout";
 import { Body, Button, Card, SectionTitle } from "@/src/components/ui";
 import { analyseApp, APP_PERMISSIONS, APP_PURPOSES, APP_SOURCES, PERMISSION_INFO, type AppAnalysis, type AppNetwork, type AppPermission, type AppPurpose, type AppSource } from "@/src/domain/appAnalysis";
 import { buildPermissionFindings, confirmedResolved, type PermissionFinding } from "@/src/domain/appPermissionFindings";
@@ -41,6 +40,7 @@ const useStyles = makeStyles((c) => ({
   top: { paddingHorizontal: spacing.xl, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: spacing.md },
   title: { fontFamily: fonts.displayBold, fontSize: 22, color: c.onSurface },
   close: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: c.surfaceTertiary },
+  subtitle: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary, marginBottom: spacing.xs },
   content: { paddingHorizontal: spacing.xl, gap: spacing.lg },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   chip: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: c.border, minHeight: 40, justifyContent: "center" },
@@ -241,10 +241,7 @@ export default function CheckApp() {
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="app-scroll">
         {!result ? (
           <>
-            <GateAbout title="How Apollo checks apps" testID="app-check-scope"
-              tip="An app that wants Accessibility, 'draw over other apps' or full screen-sharing with no clear reason, was installed from a link rather than the official store, or asks to control your screen remotely.">
-              <Body>Apollo checks an app whether it was installed today or has been on the device for months. It looks at capabilities, source, permissions and available behaviour evidence—not the name alone. An inactive or dormant app keeps those capabilities, so Apollo reviews them too. {canPickApps ? "Pick an app from your installed list below and Apollo reads its install source and permissions directly — or type any app name." : sdkVisible ? "Apollo reads the install source and permissions of known remote-access apps (AnyDesk, TeamViewer and similar) directly; for any other app, tell Apollo what you see in Settings and Higgins will guide you." : "Tell Apollo what you see in Settings and Higgins will guide you through it."}</Body>
-            </GateAbout>
+            <Text style={s.subtitle}>Research any app&apos;s safety, permissions and publisher reputation.</Text>
             <Text style={s.label}>App name</Text>
             <TextInput testID="app-name" style={s.input} value={name} onChangeText={(t) => { setName(t); setPickedPackage(null); }} maxLength={120} placeholder="e.g. Bank Security Update" placeholderTextColor={colors.muted} autoCapitalize="words" autoCorrect={false} />
             {canPickApps ? <Button testID="app-pick-installed" variant="secondary" label="Pick from installed apps" onPress={() => void openPicker()} /> : null}

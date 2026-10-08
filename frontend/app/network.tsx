@@ -17,7 +17,6 @@ import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
 import { recordCheck } from "@/src/store/checkHistoryStore";
 import { saveCheck } from "@/src/store/savedCheckStore";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
-import { GateAbout } from "@/src/components/GateAbout";
 import { buildNetworkCheckResult } from "@/src/domain/networkCheckResultAdapter";
 import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { analyseNetwork, NETWORK_CONTEXTS, type NetworkAnalysis, type NetworkContext } from "@/src/domain/networkAnalysis";
@@ -33,6 +32,7 @@ const useStyles = makeStyles((c) => ({
   top: { paddingHorizontal: spacing.xl, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: spacing.md },
   title: { fontFamily: fonts.displayBold, fontSize: 22, color: c.onSurface },
   close: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: c.surfaceTertiary },
+  subtitle: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary, marginBottom: spacing.xs },
   content: { paddingHorizontal: spacing.xl, gap: spacing.lg },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   chip: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: c.border, minHeight: 40, justifyContent: "center" },
@@ -154,10 +154,7 @@ export default function CheckNetwork() {
         </View>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="network-scroll">
-        <GateAbout title="What Apollo can see here" testID="network-cannot-see"
-          tip="A Wi‑Fi sign-in page asking for your email password or card details, a network name that's almost-but-not-quite the café's, or 'Free Wi‑Fi' with no password in a place you don't recognise.">
-          <Body>This build sees only what the platform reports: connection type, Wi‑Fi name (with location permission), captive portal and VPN flags. It cannot read DNS queries, per-app traffic or confirm destination blocking — Apollo won&apos;t pretend otherwise.</Body>
-        </GateAbout>
+        <Text style={s.subtitle}>Monitor your connection for DNS hijacking and insecure Wi-Fi.</Text>
         <Card testID="network-dashboard" style={{ gap: spacing.sm, borderColor: toneColor(colors, protectionTone) }}>
           <View style={s.row}><View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><Wifi size={20} color={toneColor(colors, protectionTone)} /><Text style={s.statTitle} testID="network-protection-title">{protectionTitle}</Text></View><Pill tone={protectionTone} label={monitoring ? "Active" : unsupported ? "Unsupported" : network?.connected === false ? "Offline" : "Checking"} testID="network-protection-pill" /></View>
           <Body testID="network-protection-detail">{unsupported ? (guard?.detail ?? "") : monitoring ? "Apollo is watching this connection. It re-checks when you switch networks or reopen the app, reading the connection type, Wi‑Fi security and captive-portal status the platform reports." : !network?.connected ? "You're offline. Apollo will assess the connection as soon as you reconnect." : "Apollo is reading the current connection…"}</Body>

@@ -11,7 +11,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CheckResultScreen } from "@/src/components/CheckResultScreen";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
-import { GateAbout } from "@/src/components/GateAbout";
 import { PhonePickerSheet } from "@/src/components/PhonePickerSheet";
 import { PhonePickers } from "@/src/security/phonePickers";
 import { getTrustedCallers, normalizeNumber, trustCaller, untrustCaller } from "@/src/domain/trustedCallers";
@@ -32,6 +31,8 @@ const useStyles = makeStyles((c) => ({
   top: { paddingHorizontal: spacing.xl, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: spacing.md },
   title: { fontFamily: fonts.displayBold, fontSize: 22, color: c.onSurface },
   close: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: c.surfaceTertiary },
+  subtitle: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary, marginBottom: spacing.xs },
+  autoLabel: { fontFamily: fonts.textSemibold, fontSize: 15, color: c.onSurface, flex: 1 },
   content: { paddingHorizontal: spacing.xl, gap: spacing.lg },
   q: { fontFamily: fonts.displayBold, fontSize: 18, color: c.onSurface },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
@@ -141,12 +142,11 @@ export default function CheckCall() {
         </View>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="call-scroll">
-        <GateAbout title="Automatically check incoming numbers" sheetTitle="Automatic call checking" testID="call-guard-auto"
-          tip="An unknown number claiming to be your bank, a delivery firm or 'tech support' that pressures you to act fast — asking you to move money, read out a code, or install an app."
-          control={<Switch testID="call-auto-switch" value={autoCheck} onValueChange={(value) => { setAutoCheck(value); void storage.setItem("apollo.call.auto_check", value ? "true" : "false"); showToast(value ? "Call Guard on — Apollo will check incoming numbers." : "Call Guard off — you can still check numbers manually.", value ? "resting" : "neutral"); }} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} />}>
-          <Body>When on, Apollo checks incoming caller numbers against its reputation service after each call, so scam and fraud callers are flagged without opening Apollo.</Body>
-          <Body style={{ fontStyle: "italic" }}>Disclosure: this sends numbers that call you to Apollo&apos;s backend for a reputation check (via IPQualityScore). Numbers are cached briefly for repeat-call detection and are not shared with other users. You can turn it off anytime.</Body>
-        </GateAbout>
+        <Text style={s.subtitle}>Assess a live call — big buttons, short answers, no audio recorded.</Text>
+        <Card style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm }} testID="call-guard-auto">
+          <Text style={s.autoLabel}>Auto-check incoming numbers</Text>
+          <Switch testID="call-auto-switch" value={autoCheck} onValueChange={(value) => { setAutoCheck(value); void storage.setItem("apollo.call.auto_check", value ? "true" : "false"); showToast(value ? "Call Guard on — Apollo will check incoming numbers." : "Call Guard off — you can still check numbers manually.", value ? "resting" : "neutral"); }} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} />
+        </Card>
         {trustedList.length ? (
           <Card style={{ gap: spacing.sm }} testID="call-trusted-list">
             <SectionTitle>Trusted numbers</SectionTitle>
