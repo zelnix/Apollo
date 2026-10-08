@@ -6,17 +6,19 @@
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useMemo, useState } from "react";
-import { AccessibilityInfo, Pressable, Text, View } from "react-native";
+import { AccessibilityInfo, Text, View } from "react-native";
 import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming } from "react-native-reanimated";
 import { useRouter } from "expo-router";
 
 import type { StateResolution } from "@/src/domain/stateMachine";
 import type { AttentionItem } from "@/src/domain/homeAttention";
+import { buildHomeVoice } from "@/src/domain/higginsHomeVoice";
+import type { GatePresentation } from "@/src/domain/gates";
 import { STATE_LABEL, STATE_MEANING, type ApolloState, type Capability } from "@/src/domain/types";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { HigginsChecks } from "@/src/components/HigginsChecks";
 import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
-import { checksSpoken, higginsPermissionNote, recommendedChecks, CHECKS } from "@/src/domain/higginsChecks";
+import { higginsPermissionNote, recommendedChecks } from "@/src/domain/higginsChecks";
 import { Sheet } from "./Sheet";
 import { Body, Button, DevTag, Pill, toneColor, toneWash } from "./ui";
 
@@ -29,7 +31,8 @@ const STATE_GIF: Partial<Record<ApolloState, { src: number; label: string; testI
   growling: { src: require("../../assets/images/apollo-growling.gif"), label: "Apollo growling", testID: "apollo-hero-gif-growling" },
   barking: { src: require("../../assets/images/apollo-barking.gif"), label: "Apollo barking", testID: "apollo-hero-gif-barking" },
   biting: { src: require("../../assets/images/apollo-barking.gif"), label: "Apollo biting after a confirmed block", testID: "apollo-hero-gif-biting" },
-  // ears_up: no GIF yet — drop apollo-ears-up.gif in here when it exists. Falls back to the static mark below.
+  // ears_up: same visual as sniffing — Apollo noticed something and is taking a closer look (investigation).
+  ears_up: { src: require("../../assets/images/apollo-sniffing.gif"), label: "Apollo has his ears up", testID: "apollo-hero-gif-ears-up" },
 };
 
 const useStyles = makeStyles((c) => ({
@@ -46,6 +49,7 @@ const useStyles = makeStyles((c) => ({
   meaning: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary, textAlign: "center" },
   reason: { fontFamily: fonts.textMedium, fontSize: 14, lineHeight: 20, color: c.onSurface, textAlign: "center" },
   reasonLink: { fontFamily: fonts.displayBold, fontSize: 14, lineHeight: 20, color: c.onSurface, textAlign: "center" },
+  higginsPara: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurface, textAlign: "left" },
   problemBox: { width: "100%", gap: 3, backgroundColor: c.surfaceSecondary, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, padding: spacing.md },
   problemLabel: { fontFamily: fonts.textSemibold, fontSize: 11, letterSpacing: 0.4, color: c.muted },
   problemTitle: { fontFamily: fonts.displayBold, fontSize: 15, lineHeight: 20, color: c.onSurface, textAlign: "center" },
@@ -58,31 +62,7 @@ const useStyles = makeStyles((c) => ({
 
 const ease = Easing.inOut(Easing.ease);
 
-/** A full, plain-English explanation of WHY Apollo is in a warning state and what it means for the
- *  person — used when there isn't a more specific incident to quote. Never a terse "run a check". */
-function warningExplainer(resolution: StateResolution, checkNames: string[]): string {
-  const names = checkNames.join(" and ");
-  if (resolution.visibilityLost) {
-    return `Apollo is growling because it can't confirm its automatic protection is switched on, which means it may not be watching your device for threats in the background right now. ${names ? `Open the ${names} so I can check exactly what's running and help you switch protection back on.` : "Open this so I can check exactly what's running and help you switch protection back on."}`;
-  }
-  if (resolution.recovering) {
-    return `Apollo is staying cautious after a recent alert and won't settle back to normal patrol until it has run a fresh check. ${names ? `Run the ${names} and I'll confirm whether the concern has cleared or still needs your attention.` : "Open this and I'll show you the checks that confirm whether the concern has cleared."}`;
-  }
-  return names
-    ? `Apollo has noticed something that needs a closer look. Run the ${names} and I'll take you through exactly what it found and what it means for you.`
-    : "Apollo has noticed something that needs a closer look. Open this and I'll take you through exactly what it found and what it means for you.";
-}
-
-/** When Apollo can't verify protection, name the SPECIFIC protections affected and what's wrong with each
- *  (from the capability's own truthful detail) rather than a vague "protection is unavailable". */
-function protectionProblem(capabilities: Capability[], fallback: string): string {
-  const affected = capabilities.filter((c) => c.status !== "active" && c.status !== "coming_later");
-  if (!affected.length) return fallback;
-  const lines = affected.slice(0, 4).map((c) => `• ${c.title}: ${c.detail}`);
-  return `Apollo can't confirm these protections are running right now:\n${lines.join("\n")}`;
-}
-
-export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = [], animate = true, quietNow = false, sniffing = false, attention = [] }: {
+export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = [], animate = true, quietNow = false, sniffing = false, attention = [], gates = [] }: {
   resolution: StateResolution; adapterLabel: string; isMock: boolean; animate?: boolean; quietNow?: boolean;
   /** Used only to have Higgins name a real permission gap by name — never a generic "this is mock" disclaimer. */
   capabilities?: Capability[];
@@ -90,6 +70,8 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
   sniffing?: boolean;
   /** Specific, real issues that need the person — drives the exact problem + Higgins step + action. */
   attention?: AttentionItem[];
+  /** Live gate presentations — used by the Higgins voice helper to name affected gates. */
+  gates?: GatePresentation[];
 }) {
   const s = useStyles();
   const { colors } = useTheme();
@@ -157,39 +139,20 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
 
   const title = STATE_LABEL[resolution.state];
   const meaning = STATE_MEANING[resolution.state];
-  const reasonRoute = resolution.reasonRoute;
   const router = useRouter();
 
-  // The specific issue Apollo is surfacing, from REAL gate/event data. When present, it names the
-  // affected gate, the exact problem and Higgins' next step — shown directly on this card so the
-  // person sees what Apollo is reacting to without scrolling. The matching item is de-duplicated
-  // from the "Needs your attention" list below. When absent, fall back to the honest resolution
-  // reason (e.g. "waiting for a fresh check") — never a vague "needs your decision".
-  const primary = attention[0] ?? null;
-  const reason = resolution.reason;
-  const drivingEvent = resolution.drivingEvent;
+  // Higgins' interpretation of Apollo's behaviour — ONE short paragraph that names only the gates
+  // actually affected, and one primary action. Short on Home; the Protection Details screen (or the
+  // specific investigation / gate) has the full detail. Benign states (resting / sniffing) still get
+  // a line of voice so the person always sees Higgins.
+  const voice = useMemo(
+    () => buildHomeVoice({ resolution, attention, gates, capabilities }),
+    [resolution, attention, gates, capabilities],
+  );
   const checks = sniffing ? [] : recommendedChecks(resolution);
   const askedAt = useMemo(() => new Date(new Date().setHours(0, 0, 0, 0)).toISOString(), []);
   const permissionNote = higginsPermissionNote(capabilities);
-  // The exact problem + Higgins' next step shown on the card for ANY warning state. Prefer a specific
-  // incident (an attention item), then the Patrol event currently driving Apollo's state (so a growling
-  // "worth checking" shows its REAL detail), then the honest resolution reason + the concrete checks
-  // Higgins recommends. Never a bare "needs your decision".
-  const checkNames = checks.map((c) => CHECKS[c].label);
-  const detailTitle = primary ? primary.title : ((drivingEvent?.headline || "").trim() || null);
-  const detailProblem = primary
-    ? primary.problem
-    : ((drivingEvent?.what_happened || "").trim()
-      || (resolution.visibilityLost ? protectionProblem(capabilities, reason) : reason));
-  const detailHiggins = primary
-    ? primary.higgins
-    : ((drivingEvent?.what_to_do || "").trim() || warningExplainer(resolution, checkNames));
-  // Deep-link straight to the specific issue — the whole card is tappable, so a separate "see" button is not needed.
-  const heroRoute = primary ? primary.route : (drivingEvent ? `/patrol/${encodeURIComponent(drivingEvent.event_id)}` : reasonRoute);
-  const needsAction = state !== "resting" && state !== "sniffing" && !!heroRoute;
-  const spokenText = (state === "resting" || state === "sniffing")
-    ? `${title}. ${meaning} ${reason} ${permissionNote ?? ""}`.trim()
-    : `${title}. ${detailTitle ? `${detailTitle}. ` : ""}${detailProblem} ${detailHiggins} ${checksSpoken(checks)} ${permissionNote ?? ""}`.trim();
+  const spokenText = `${title}. ${voice.spoken} ${permissionNote ?? ""}`.trim();
 
   const onHearHiggins = () => {
     if (checks.length) setChecklistOpen(true);
@@ -214,31 +177,24 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
           </Animated.View>
         </View>
         <Text style={s.label} testID="apollo-state-label">{title}</Text>
-        {/* Benign states show the generic meaning. When Apollo is reacting to a real issue, show the
-         *  SPECIFIC problem Apollo found and Higgins' plain-English next step right here on the card. */}
-        {(state === "resting" || state === "sniffing") ? (
+        {/* Patrolling is the only "all is well" state — show the simple meaning. For every other
+         *  state (sniffing / ears_up / growling / barking / biting) Higgins speaks ONE short
+         *  paragraph (gate names assembled from the real affected set) and the card offers ONE
+         *  primary action — the Protection Details screen for broad concerns, or the specific
+         *  investigation / gate for a specific issue. */}
+        {state === "resting" ? (
           <Text style={s.meaning} testID="apollo-state-meaning">{meaning}</Text>
-        ) : needsAction ? (
-          <>
-            {detailTitle ? <Text style={s.problemTitle} testID="apollo-state-problem-title">{detailTitle}</Text> : null}
-            <Pressable testID="hero-open-issue" accessibilityRole="button" accessibilityLabel={`Open ${detailTitle || "what needs attention"}`} onPress={() => router.push(heroRoute as any)} style={({ pressed }) => [s.problemBox, { opacity: pressed ? 0.85 : 1 }]}>
-              <Text style={s.problemLabel}>PROBLEM</Text>
-              <Text style={s.problemText} testID="apollo-hero-problem-text">{detailProblem}</Text>
-              <Text style={[s.problemLabel, { marginTop: 6 }]}>HIGGINS</Text>
-              <Text style={s.higginsText} testID="apollo-hero-higgins-text">{detailHiggins}</Text>
-              <Text style={s.openHint}>Open this &rsaquo;</Text>
-            </Pressable>
-          </>
-        ) : heroRoute ? (
-          <Pressable onPress={() => router.push(heroRoute as any)} accessibilityRole="link" testID="apollo-state-reason-link" style={{ minHeight: 44, justifyContent: "center" }}>
-            <Text style={s.reasonLink} testID="apollo-state-reason">{reason} →</Text>
-          </Pressable>
-        ) : reasonRoute ? (
-          <Pressable onPress={() => router.push(reasonRoute as any)} accessibilityRole="link" testID="apollo-state-reason-link" style={{ minHeight: 44, justifyContent: "center" }}>
-            <Text style={s.reasonLink} testID="apollo-state-reason">{reason} →</Text>
-          </Pressable>
         ) : (
-          <Text style={s.reason} testID="apollo-state-reason">{reason}</Text>
+          <View style={{ width: "100%", gap: spacing.sm, alignItems: "stretch" }}>
+            <Text style={s.higginsPara} testID="apollo-higgins-paragraph">{voice.text}</Text>
+            {voice.ctaRoute ? (
+              <Button
+                testID="apollo-view-details"
+                label={voice.ctaLabel}
+                onPress={() => router.push(voice.ctaRoute as never)}
+              />
+            ) : null}
+          </View>
         )}
         <View style={[s.row, { alignItems: "center" }]}><HigginsSpeakButton small text={spokenText} testID="hero-hear-higgins" onPress={onHearHiggins} /></View>
         <View style={s.row}>

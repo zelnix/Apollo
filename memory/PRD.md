@@ -1,3 +1,29 @@
+## Apollo Guard Dog — Higgins-led Home + Protection Details screen + "Ears Up" rename + Scam deep-links (2026-06)
+
+**Home (`ApolloHero` + `app/(tabs)/home.tsx`) — Higgins is now the single voice:**
+- Patrolling (resting) is the one "all is well" state — simple meaning line, no CTA button.
+- Every other state (sniffing / ears_up / growling / barking / biting) now shows ONE short Higgins paragraph assembled from REAL data, with ONE primary action.
+- Gate names in the paragraph are dynamically generated from the live affected set (`capabilities[]` + `health.gates[]` + active patrol events). No hardcoded "Link, Site, Internet, Known Threat" strings.
+- Covers ANY detected concern — not just protection visibility: scams (growling text/email events), malicious messages, insecure connections, device setting changes, verified blocks (biting). Routes to the specific investigation when there's one driver, otherwise to the new Protection Details screen.
+- Removed the "Needs your attention" list from Home — Protection Details owns per-gate findings now.
+
+**New `src/domain/higginsHomeVoice.ts` (pure):** `buildHomeVoice({ resolution, attention, gates, capabilities })` → `{ text, ctaLabel, ctaRoute, spoken }`. Priority chain: biting-with-verified-block → multi-issue (names every affected gate) → one-attention-item (names the gate, points to it) → driving-event-only → visibility-lost → recovering → fallback. Verb/opener per state ("Apollo is biting", "Apollo is barking about X", "Apollo has his ears up"). Never claims a block without `verified_block`.
+
+**Widened `src/domain/homeAttention.ts`:** growling and ears_up events now appear as attention items too (previously barking-only), ranked barking → growling → ears_up by newest-first. Suspected scam/malicious concerns reach Protection Details. Optional setup still never raises an item (no false barking). Unit tests updated (7/7 pass).
+
+**New screen `app/protection-details.tsx` (`/protection-details`, modal):** reusable `ChildScreenHeader` with ⓘ "About Protection Details" popup. One Higgins voice card at the top (same copy as Home) + a card per affected Gate with: **What Apollo found** / **What it means** / **What to do** + a Pill for status + a Pill distinguishing **Manual check** vs **Automatic protection** + a direct "Open [Gate]" action to the gate / investigation / settings. Honest empty state when nothing's affected.
+
+**New `src/domain/protectionDetails.ts` (pure):** `buildProtectionFindings({ capabilities, gates, attention, events })` → ordered, de-duplicated findings. Sources: attention items first (action gates + active events), then non-active capabilities (Link Gate / Site Gate / Internet Gate / Known Threat Lookup / Share to Apollo / Text Gate / App Gate), then limited/unverified-tone gates. Manual capabilities are never represented as automatic protection.
+
+**"Ears Up" rename (`src/domain/types.ts`):** `STATE_NAME.ears_up` = "Ears Up" (was "Growling"); `STATE_LABEL.ears_up` = "Apollo has his ears up" (was "Apollo is growling"); `STATE_MEANING.ears_up` = "Apollo noticed something and is looking at it more closely." Hero GIF reuses the sniffing animation — ears_up is the "something caught my eye" variant of sniffing. Higgins voice treats ears_up like sniffing (no decision needed yet).
+
+**Scam deep-links:**
+- `app/higgins/scams.tsx`: tapping anywhere on an alert card now opens the official source (`Linking.openURL`). The "Ask Higgins about this" chip remains the one-tap shortcut into the Higgins chat pre-seeded with `{ scamTitle, scamSource }`. "Open official source" row kept as the visible affordance.
+- `src/components/HomeScamAlerts.tsx`: tapping the row (or the "Open source" chip) opens the official source directly; a dedicated **Ask Higgins** chip (`home-scam-{i}-ask`, `MessageCircle` icon) opens Higgins pre-seeded with the alert.
+
+**Verification:** `tsc --noEmit` clean; ESLint clean; `node --test` — homeAttention 7/7, apolloStateLabels 1/1, messageGuardrails + gatesOverview + messageVoice 34/34 (no regressions). Android Metro bundle HTTP 200. Native-shell preview is Safe Start so visual verification happens on an Android build.
+
+
 ## Multi-Select filter verification + Scam v5 re-analysis validation (2026-06, fork)
 
 **Multi-Select filter (`src/components/MultiSelectFilter.tsx`) — VERIFIED on Patrol + Scams:**

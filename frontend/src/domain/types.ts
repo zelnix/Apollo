@@ -10,12 +10,12 @@ export type ApolloState = "sniffing" | "resting" | "ears_up" | "growling" | "bar
 /** Ordered low → high for comparisons in UI code (mirrors stateMachine STATE_RANK). */
 export const STATE_RANK_ORDER: ApolloState[] = ["sniffing", "resting", "ears_up", "growling", "barking", "biting"];
 
-export const STATE_NAME: Record<ApolloState, string> = { sniffing: "Checking", resting: "Patrolling", ears_up: "Growling", growling: "Growling", barking: "Barking", biting: "Biting" };
+export const STATE_NAME: Record<ApolloState, string> = { sniffing: "Checking", resting: "Patrolling", ears_up: "Ears Up", growling: "Growling", barking: "Barking", biting: "Biting" };
 
 export const STATE_LABEL: Record<ApolloState, string> = {
   sniffing: "Apollo is sniffing",
   resting: "Apollo is Patrolling",
-  ears_up: "Apollo is growling",
+  ears_up: "Apollo has his ears up",
   growling: "Apollo is growling",
   barking: "Apollo is barking",
   biting: "Apollo is biting",
@@ -24,7 +24,7 @@ export const STATE_LABEL: Record<ApolloState, string> = {
 export const STATE_MEANING: Record<ApolloState, string> = {
   sniffing: "The current checks are still running; no assessment is final yet.",
   resting: "No concern was identified within the checks that completed.",
-  ears_up: "A possible concern needs caution or further investigation.",
+  ears_up: "Apollo noticed something and is looking at it more closely.",
   growling: "A possible concern needs caution or further investigation.",
   barking: "A significant concern requires your attention.",
   biting: "An actual protective block was confirmed by device evidence.",

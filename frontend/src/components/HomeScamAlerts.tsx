@@ -3,6 +3,7 @@
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import ExternalLink from "lucide-react-native/icons/external-link";
+import MessageCircle from "lucide-react-native/icons/message-circle";
 import React, { useEffect, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
@@ -17,11 +18,15 @@ const useStyles = makeStyles((c) => ({
   itemTitle: { fontFamily: fonts.textSemibold, fontSize: 15, lineHeight: 21, color: c.onSurface },
   meta: { fontFamily: fonts.text, fontSize: 12, color: c.onSurfaceSecondary },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" },
-  item: { gap: 4, paddingVertical: spacing.sm },
+  item: { gap: 6, paddingVertical: spacing.sm },
   divider: { borderTopWidth: 1, borderTopColor: c.divider },
   sourceLink: { flexDirection: "row", alignItems: "center", gap: 6 },
   sourceLinkText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.brand },
   retry: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.brand, minHeight: 44, paddingTop: spacing.xs },
+  // One-tap "Ask Higgins" chip under each row — stays reachable even when the whole row routes to the source.
+  askChip: { flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start", paddingHorizontal: spacing.md, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: c.border, backgroundColor: c.surfaceSecondary, minHeight: 36 },
+  askChipText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.onSurface },
+  actionRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm, flexWrap: "wrap" },
 }));
 
 export function HomeScamAlerts() {
@@ -57,16 +62,45 @@ export function HomeScamAlerts() {
         ) : top.length === 0 ? (
           <Body testID="home-scam-empty">No current scam alerts from the official sources. This doesn&apos;t mean there are no new scams — tap below to review the latest guidance.</Body>
         ) : top.map((it, i) => (
-          <Pressable key={it.url} style={[s.item, i > 0 && s.divider]} testID={`home-scam-${i}`} accessibilityRole="link" accessibilityLabel={`Open official source: ${it.title}`} onPress={() => void Linking.openURL(it.url)}>
-            <View style={s.row}>
-              <Pill tone={SEVERITY_TONE[it.severity]} label={it.severity === "LOW" ? "Info" : `${it.severity[0]}${it.severity.slice(1).toLowerCase()}`} />
-              <Pill tone="neutral" label={it.regionLabel} />
+          <View key={it.url} style={[s.item, i > 0 && s.divider]} testID={`home-scam-${i}`}>
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel={`Open official source: ${it.title}`}
+              onPress={() => void Linking.openURL(it.url)}
+              style={{ gap: 6 }}
+            >
+              <View style={s.row}>
+                <Pill tone={SEVERITY_TONE[it.severity]} label={it.severity === "LOW" ? "Info" : `${it.severity[0]}${it.severity.slice(1).toLowerCase()}`} />
+                <Pill tone="neutral" label={it.regionLabel} />
+              </View>
+              <Text style={s.itemTitle}>{it.title}</Text>
+              <Text style={s.meta}>{it.source} · {it.dateLabel}</Text>
+              {it.growling ? <Body>{it.higgins.whyGrowling}</Body> : null}
+            </Pressable>
+            <View style={s.actionRow}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Ask Higgins about ${it.title}`}
+                onPress={() => router.push({ pathname: "/(tabs)/ask", params: { scamTitle: it.title, scamSource: it.source } })}
+                testID={`home-scam-${i}-ask`}
+                style={({ pressed }) => [s.askChip, { opacity: pressed ? 0.7 : 1 }]}
+              >
+                <MessageCircle size={14} color={colors.onSurface} />
+                <Text style={s.askChipText}>Ask Higgins</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel={`Open official source: ${it.title}`}
+                onPress={() => void Linking.openURL(it.url)}
+                testID={`home-scam-${i}-source`}
+                style={s.sourceLink}
+                hitSlop={8}
+              >
+                <Text style={s.sourceLinkText}>Open source</Text>
+                <ExternalLink size={15} color={colors.brand} />
+              </Pressable>
             </View>
-            <Text style={s.itemTitle}>{it.title}</Text>
-            <Text style={s.meta}>{it.source} · {it.dateLabel}</Text>
-            {it.growling ? <Body>{it.higgins.whyGrowling}</Body> : null}
-            <View style={s.sourceLink}><Text style={s.sourceLinkText}>Open official source</Text><ExternalLink size={15} color={colors.brand} /></View>
-          </Pressable>
+          </View>
         ))}
         <Button testID="home-view-all-scams" label="View all scam alerts" variant="secondary" onPress={() => router.push("/(tabs)/scams")} />
       </Card>

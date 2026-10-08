@@ -41,8 +41,9 @@ const GATE_ROUTE: Record<string, string> = {
 
 /** Build the ordered list of things that genuinely need the person's attention right now.
  *  Order: verified gate failures first (protection actually stopped), then active events that need a
- *  decision (barking). Optional setup and "worth checking" growls are deliberately NOT included —
- *  they are not alarms. */
+ *  decision (barking), then active concerns Apollo is still assessing (growling and ears_up — e.g.
+ *  a suspected scam text, an insecure connection, a device setting change). Optional setup is
+ *  deliberately NOT included — it is not an alarm. */
 export function buildHomeAttention(input: { gates: GatePresentation[]; events: PatrolEvent[] }): AttentionItem[] {
   const items: AttentionItem[] = [];
 
@@ -63,20 +64,30 @@ export function buildHomeAttention(input: { gates: GatePresentation[]; events: P
     });
   }
 
-  // 2) Active events that genuinely need a decision (barking only — not growling / "worth checking").
-  const activeBarking = input.events
-    .filter((e) => isActive(e) && e.state === "barking")
-    .sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at));
-  for (const e of activeBarking) {
+  // 2) Active events — any state that Apollo is reacting to and the person should see.
+  //    barking = needs a decision (highest), growling / ears_up = Apollo is unsure and worth a look.
+  const activeAttention = input.events
+    .filter((e) => isActive(e) && (e.state === "barking" || e.state === "growling" || e.state === "ears_up"))
+    .sort((a, b) => {
+      const rank = (s: typeof a.state) => (s === "barking" ? 3 : s === "growling" ? 2 : s === "ears_up" ? 1 : 0);
+      const r = rank(b.state) - rank(a.state);
+      return r !== 0 ? r : Date.parse(b.occurred_at) - Date.parse(a.occurred_at);
+    });
+  for (const e of activeAttention) {
     const gate = gateForCategory(e.category);
     const problem = (e.what_happened || e.headline || "").trim();
     const higgins = (e.what_to_do || "").trim() || "Open the investigation to see exactly what to do next.";
+    const title = e.state === "barking"
+      ? `${gate} needs your decision`
+      : e.state === "growling"
+        ? `${gate} looks suspicious`
+        : `${gate} is worth a look`;
     items.push({
       id: `event:${e.event_id}`,
       kind: "event",
       gate,
-      title: `${gate} needs your decision`,
-      problem: problem || "Apollo flagged something that needs your decision.",
+      title,
+      problem: problem || "Apollo flagged something that needs your attention.",
       higgins,
       actionLabel: "Open investigation",
       route: `/patrol/${encodeURIComponent(e.event_id)}`,

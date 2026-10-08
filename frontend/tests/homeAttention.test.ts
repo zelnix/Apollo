@@ -39,10 +39,29 @@ test("an active barking event becomes an attention item naming the gate and the 
   assert.match(items[0].route, /^\/patrol\//);
 });
 
-test("optional setup and 'worth checking' growls never create attention items (no false barking)", () => {
+test("optional setup never creates an attention item (no false barking); growling events do appear", () => {
+  // Gates in neutral tone (optional setup) must not raise an attention item on their own.
   const gates = [gate({ id: "text", tone: "neutral" }), gate({ id: "email", tone: "neutral" })];
-  const events = [event({ event_id: "g1", state: "growling" }), event({ event_id: "r1", state: "resting", status: "resolved", resolved_at: "2026-10-08T04:05:00Z" })];
-  assert.deepEqual(buildHomeAttention({ gates, events }), []);
+  // Growling events (e.g. a suspected scam message, device setting change, insecure connection)
+  // ARE user-facing concerns that belong on the Protection Details screen.
+  const growlEvent = event({ event_id: "g1", state: "growling" });
+  const resolvedEvent = event({ event_id: "r1", state: "resting", status: "resolved", resolved_at: "2026-10-08T04:05:00Z" });
+  const items = buildHomeAttention({ gates, events: [growlEvent, resolvedEvent] });
+  assert.equal(items.length, 1);
+  assert.equal(items[0].kind, "event");
+  assert.equal(items[0].title, "App Gate looks suspicious");
+});
+
+test("barking events are ranked above growling and ears_up events", () => {
+  const items = buildHomeAttention({ gates: [], events: [
+    event({ event_id: "e1", state: "ears_up" }),
+    event({ event_id: "e2", state: "growling" }),
+    event({ event_id: "e3", state: "barking" }),
+  ]});
+  assert.equal(items.length, 3);
+  assert.equal(items[0].event?.event_id, "e3"); // barking first
+  assert.equal(items[1].event?.event_id, "e2"); // growling
+  assert.equal(items[2].event?.event_id, "e1"); // ears_up last
 });
 
 test("a resolved barking event is no longer active, so it drops out of attention", () => {

@@ -46,22 +46,30 @@ const useStyles = makeStyles((c) => ({
 function AlertCard({ item, index }: { item: GovernmentAlert; index: number }) {
   const s = useStyles(); const { colors } = useTheme();
   return (
-    <Card style={{ gap: spacing.sm, borderColor: item.growling ? colors.growling : undefined }} testID={`higgins-scam-${index}`}>
-      <View style={s.row}>
-        <Pill testID={`higgins-scam-${index}-severity`} tone={SEVERITY_TONE[item.severity]} label={item.severity === "LOW" ? "Info" : `${item.severity[0]}${item.severity.slice(1).toLowerCase()}`} />
-        <Pill tone="neutral" label={item.regionLabel} />
-        <Pill tone={item.australianRelevance === "confirmed" ? "growling" : "neutral"} label={RELEVANCE_LABEL[item.australianRelevance]} />
-      </View>
-      <Text style={s.title}>{item.title}</Text>
-      <Text style={s.source} testID={`higgins-scam-${index}-source-name`}>{item.source}<Text style={s.meta}>{`  ·  ${item.dateLabel}`}</Text></Text>
-      {item.higgins.whatHappened ? <Body>{item.higgins.whatHappened}</Body> : item.summary ? <Body>{item.summary}</Body> : null}
-      <View style={s.row}>
-        <Button testID={`higgins-scam-${index}-ask`} variant="ghost" label="Ask Higgins about this" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { scamTitle: item.title, scamSource: item.source } })} />
-      </View>
-      <Pressable accessibilityRole="link" accessibilityLabel={`Open official source: ${item.title}`} onPress={() => void Linking.openURL(item.url)} style={s.spread} testID={`higgins-scam-${index}-source`}>
-        <Text style={s.link}>Open official source</Text><ExternalLink size={18} color={colors.brand} />
-      </Pressable>
-    </Card>
+    <Pressable
+      accessibilityRole="link"
+      accessibilityLabel={`Open official source: ${item.title}`}
+      onPress={() => void Linking.openURL(item.url)}
+      testID={`higgins-scam-${index}`}
+      style={({ pressed }) => [{ opacity: pressed ? 0.85 : 1 }]}
+    >
+      <Card style={{ gap: spacing.sm, borderColor: item.growling ? colors.growling : undefined }}>
+        <View style={s.row}>
+          <Pill testID={`higgins-scam-${index}-severity`} tone={SEVERITY_TONE[item.severity]} label={item.severity === "LOW" ? "Info" : `${item.severity[0]}${item.severity.slice(1).toLowerCase()}`} />
+          <Pill tone="neutral" label={item.regionLabel} />
+          <Pill tone={item.australianRelevance === "confirmed" ? "growling" : "neutral"} label={RELEVANCE_LABEL[item.australianRelevance]} />
+        </View>
+        <Text style={s.title}>{item.title}</Text>
+        <Text style={s.source} testID={`higgins-scam-${index}-source-name`}>{item.source}<Text style={s.meta}>{`  ·  ${item.dateLabel}`}</Text></Text>
+        {item.higgins.whatHappened ? <Body>{item.higgins.whatHappened}</Body> : item.summary ? <Body>{item.summary}</Body> : null}
+        <View style={s.row}>
+          <Button testID={`higgins-scam-${index}-ask`} variant="secondary" label="Ask Higgins about this" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { scamTitle: item.title, scamSource: item.source } })} />
+        </View>
+        <View style={s.spread} testID={`higgins-scam-${index}-source`}>
+          <Text style={s.link}>Open official source</Text><ExternalLink size={18} color={colors.brand} />
+        </View>
+      </Card>
+    </Pressable>
   );
 }
 

@@ -14,7 +14,7 @@ import { CoverageCard } from "@/src/components/CoverageCard";
 import { HomeScamAlerts } from "@/src/components/HomeScamAlerts";
 import { Body, Button, Card, DevTag, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { buildScents } from "@/src/domain/threatScent";
-import { buildHomeAttention, type AttentionItem } from "@/src/domain/homeAttention";
+import { buildHomeAttention } from "@/src/domain/homeAttention";
 import { STATE_NAME } from "@/src/domain/types";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
@@ -35,11 +35,6 @@ const useStyles = makeStyles((c) => ({
   bgRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   bgText: { flex: 1, fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary },
   bgMinimise: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.brand, minHeight: 32, paddingVertical: 6 },
-  // Needs-your-attention item.
-  attnTitle: { fontFamily: fonts.displayBold, fontSize: 16, lineHeight: 21, color: c.onSurface },
-  attnLabel: { fontFamily: fonts.textSemibold, color: c.onSurface },
-  attnDismiss: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.muted, minHeight: 44, paddingTop: spacing.xs },
-  sectionGap: { gap: spacing.md },
 }));
 
 export default function Home() {
@@ -63,8 +58,10 @@ export default function Home() {
         <RootScreenHeader title="Home" testID="home-header" rightAccessory={isMock ? <DevTag label="Preview" testID="home-mock-pill" /> : null} />
       </View>
       <ScrollView contentContainerStyle={s.content} testID="home-scroll">
-        {/* 1. Apollo's current status — small emblem, exact problem, Higgins' next step, action. */}
-        <ApolloHero resolution={resolution} adapterLabel={adapterLabel} isMock={isMock} capabilities={capabilities} animate={!lowPower} quietNow={quietNow} sniffing={refreshing} attention={attention} />
+        {/* 1. Apollo's current status — small emblem, one short Higgins paragraph (gate names
+         *    dynamically generated), and ONE primary action (View Protection Details or the
+         *    specific issue). Details live on the next screen. */}
+        <ApolloHero resolution={resolution} adapterLabel={adapterLabel} isMock={isMock} capabilities={capabilities} animate={!lowPower} quietNow={quietNow} sniffing={refreshing} attention={attention} gates={health.gates} />
 
         {identityReset ? (
           <Card style={{ gap: spacing.sm, borderColor: colors.barking }} testID="identity-reset-card">
@@ -96,16 +93,8 @@ export default function Home() {
         </Pressable>
 
 
-        {/* 3. Needs your attention — remaining specific issues (the top one is shown on the card
-         *    above); hidden when there's nothing left to show. */}
-        {attention.length > 1 ? (
-          <View style={s.sectionGap}>
-            <SectionTitle>Needs your attention</SectionTitle>
-            {attention.slice(1).map((item) => (
-              <AttentionCard key={item.id} item={item} />
-            ))}
-          </View>
-        ) : null}
+        {/* 3. "Needs your attention" removed — the Protection Details screen is now the single
+         *    place for per-gate findings and actions. Home stays short and simple. */}
 
         {/* Compact background-protection indicator. */}
         {protection?.operational ? (
@@ -136,26 +125,5 @@ export default function Home() {
         {/* Recent patrol removed from Home — the full activity feed lives on the Patrol tab. */}
       </ScrollView>
     </View>
-  );
-}
-
-/** A single "needs your attention" item: names the affected gate, the specific problem, Higgins'
- *  recommendation and a direct action. Event items can also be dismissed. */
-function AttentionCard({ item }: { item: AttentionItem }) {
-  const s = useStyles();
-  const router = useRouter();
-  const { resolveEvent } = useApollo();
-  return (
-    <Card style={{ gap: spacing.xs }} testID={`home-attention-${item.id}`}>
-      <Text style={s.attnTitle}>{item.title}</Text>
-      <Body><Text style={s.attnLabel}>Problem: </Text>{item.problem}</Body>
-      <Body><Text style={s.attnLabel}>Higgins: </Text>{item.higgins}</Body>
-      <Button testID={`home-attention-${item.id}-action`} label={item.actionLabel} onPress={() => router.push(item.route as never)} />
-      {item.kind === "event" && item.event ? (
-        <Pressable accessibilityRole="button" hitSlop={8} onPress={() => void resolveEvent(item.event!)} testID={`home-attention-${item.id}-dismiss`}>
-          <Text style={s.attnDismiss}>Dismiss</Text>
-        </Pressable>
-      ) : null}
-    </Card>
   );
 }
