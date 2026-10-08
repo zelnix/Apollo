@@ -1,3 +1,23 @@
+## Resolve & Snooze + Gate-status standardisation + Internet Gate (2026-06)
+
+**Resolve & Snooze (Account Gate):**
+- `accountMonitor.ts`: new `HandledMap`, `outstandingExposures(scan, handled)`; `deriveGateState` and `buildWeeklyReport` now take an optional `handled` map. A fully-handled address drops out of outstanding/gate-state and gets a "Marked as handled" report section; a brand-new breach name makes it outstanding again. `accountMonitorStore.ts`: `getHandled`/`markHandled`/`unmarkHandled`, cleared on email removal; `runScan` + on-open hook filter new exposures against handled so handled breaches never re-alert. Screen (`account-monitor.tsx`): "Exposures found" card with per-address Mark-as-handled / Mark-as-outstanding; report recomputed live from scan+history+handled. Test: `accountMonitor.test.ts` 7/7 (incl. handled behaviour).
+
+**Gate-status standardisation (single source `src/domain/gates.ts`):**
+- New 9 standard statuses replacing the old 10: **Watching** (good/green — verified active automatic protection ONLY), **Ready to check** (neutral — manual available), **Check in progress** (neutral), **Setup available** (neutral — optional, incl. permission/connection not yet granted; never an alarm), **Off** (grey), **Limited** (amber — active but restricted coverage), **Action needed** (red — verified failure of enabled protection), **Unavailable** (grey — unsupported), **Unable to verify** (amber — can't confirm from evidence).
+- GateTone expanded to `good|limited|action|neutral|off|unavailable|unverified`; `gateTone()` maps to Pill tones (good→resting, action→barking, limited/unverified→ears_up, off/unavailable→unknown).
+- Watching gating: `running && !manualOnly && !coverageLimited`. Manual-only gates (**Link, Account, File, App**) carry `manualOnly:true` → "Ready to check" even when active. Text/Call = Watching when their automatic handling is verified running. New `interrupted` automatic state (enabled+permitted but not operating) = **Action needed**; stale-but-operational = **Unable to verify**. Internet Gate without VPN = **Limited** (coverageLimited), with VPN = **Watching**. Email optional-not-connected = **Setup available**.
+- Only tone `action` drives the "needs your attention" summary/primary/reduced-coverage — optional setup never barks (spec §6).
+- **Home and Gates derive from the same `buildGatesOverview`**: `home.tsx` GateRow now renders `gate.statusLabel`/`gate.tone` directly (no independent recompute) → identical on both surfaces.
+- **Higgins per-gate explanation**: `guard.tsx` HealthCard now shows an explanation heading + limitation + the correct action button for EVERY non-Watching state (not just attention), heading varies by tone (Needs your attention / Working with limits / Couldn't be verified / Optional — set up when ready / Turned off / Not available here / Checking).
+- **Network Gate → Internet Gate** (user-facing only; internal `network`/`connection`/route unchanged): `gates.ts` TITLE + purpose, `network.tsx` header, `checkIt.ts` label ("Check my internet", Wi-Fi/mobile data), `higginsChecks.ts`, `app-check.tsx` copy, `appAnalysis.ts` recommendation, Desktop/Web adapter capability titles, healthStore placeholder title.
+- Tests updated: `gatesOverview.test.ts` 17/17 (new labels, interrupted→Action needed+reduced coverage, manual gates Ready to check, optional setup not an alarm, Internet Gate Limited/Watching), `messageGuardrails.test.ts` ALLOWED_GATE_LABELS updated 6/6. Consumers updated: `ask.tsx`, `ApolloHero.tsx`, `healthStore.ts`.
+
+**Native capability/evidence gaps (deliverable #7):** status derivation relies on the native SecurityPlatformAdapter (`protection.operational`/`lastVerified`, capability `status`, `messaging`/`calls`, `network.vpnActive`/`inspectable`). Web preview is fail-closed (Safe Start) so these states, the `interrupted`→Action-needed path, and Internet Gate Wi-Fi/mobile reporting can only be visually verified on an EAS Android build.
+
+**Verification:** tsc + ESLint clean; node --test suites: accountMonitor 7/7, gatesOverview 17/17, messageGuardrails 6/6, gate3–8 + messageAnalysis + firstCheck + support + messageVoice + higginsGreeting all pass; app bundles (renders expected Safe Start). On-device Android build needed to confirm live gate states.
+
+
 ## Account Gate — exposure monitoring BUILT (2026-06)
 
 Built the full personal account-exposure monitoring feature with XposedOrNot (free, no key); HIBP is a drop-in for later.

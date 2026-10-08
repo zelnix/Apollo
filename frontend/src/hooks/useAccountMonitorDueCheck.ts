@@ -5,7 +5,7 @@
 import { useEffect, useRef } from "react";
 
 import { isDue, maskEmail } from "@/src/domain/accountMonitor";
-import { getLastCheckedAt, getMonitoredEmails, runScan } from "@/src/store/accountMonitorStore";
+import { getHandled, getLastCheckedAt, getMonitoredEmails, runScan } from "@/src/store/accountMonitorStore";
 import { useApollo } from "@/src/store/ApolloContext";
 
 export function useAccountMonitorDueCheck() {
@@ -20,13 +20,15 @@ export function useAccountMonitorDueCheck() {
         if (emails.length === 0) return;
         if (!isDue(await getLastCheckedAt())) return;
         const { diff } = await runScan(deviceId);
-        if (!diff.newExposures.length) return;
-        const count = diff.newExposures.length;
+        const handled = await getHandled();
+        const fresh = diff.newExposures.map((e) => ({ email: e.email, breaches: e.breaches.filter((b) => !(handled[e.email] ?? []).includes(b)) })).filter((e) => e.breaches.length);
+        if (!fresh.length) return;
+        const count = fresh.length;
         await upsertEvent({
           event_id: Math.random().toString(36).slice(2) + Date.now().toString(36),
           device_id: deviceId, category: "account", state: "ears_up", status: "active",
           headline: `Account exposure: ${count} new breach match${count > 1 ? "es" : ""}`,
-          what_happened: `This week's account check found ${count} monitored address${count > 1 ? "es" : ""} newly appearing in breach data: ${diff.newExposures.map((e) => maskEmail(e.email)).join(", ")}.`,
+          what_happened: `This week's account check found ${count} monitored address${count > 1 ? "es" : ""} newly appearing in breach data: ${fresh.map((e) => maskEmail(e.email)).join(", ")}.`,
           why: ["A monitored address appeared in known breach data that wasn't there at the last check.", "Appearing in a breach is not the same as your account being broken into — but it invites targeted phishing."],
           what_to_do: "Open Check It → Check My Accounts to read the full weekly report, then secure the affected accounts through their official app or website.",
           indicator_host: null, indicator_digest: null, local_indicator: null, verified_block: false,

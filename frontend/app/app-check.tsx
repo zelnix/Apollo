@@ -190,7 +190,7 @@ export default function CheckApp() {
             <Card style={{ gap: spacing.xs }} testID="app-network">
               <SectionTitle>Network</SectionTitle>
               {result.remote?.hosts.length ? result.remote.hosts.map((h) => <View key={h.host} style={s.row}><Text style={[s.why, { flex: 1 }]} numberOfLines={1}>{h.host}</Text><Pill tone={h.verdict === "malicious" ? "barking" : h.verdict === "clean" ? "resting" : "ears_up"} label={h.verdict === "malicious" ? "Known dangerous reputation" : h.verdict === "clean" ? "No reputation warning" : "Unknown reputation"} /></View>)
-                : <Body>{sdkVisible ? "No connections from this app have been seen yet." : "App-to-network behaviour isn't visible on this build. Check Network Gate and Site Gate for their separately verified status."}</Body>}
+                : <Body>{sdkVisible ? "No connections from this app have been seen yet." : "App-to-network behaviour isn't visible on this build. Check Internet Gate and Site Gate for their separately verified status."}</Body>}
             </Card>
             {result.remote ? (
               <Card style={{ gap: spacing.xs }} testID="app-reputation">

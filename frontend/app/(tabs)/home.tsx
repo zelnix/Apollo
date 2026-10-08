@@ -53,7 +53,7 @@ export default function Home() {
   // UX-03 dedup: when the hero is already naming the Gates that need attention, the GateNudge would
   // repeat the same protection problem at equal prominence — so suppress it in that case. The nudge
   // still appears for a pending Gate that the hero is not already surfacing.
-  const heroNamingAttention = resolution.visibilityLost && health.gates.some((g) => g.tone === "attention");
+  const heroNamingAttention = resolution.visibilityLost && health.gates.some((g) => g.tone === "action");
   // Recent Patrol on Home is a glance, not the archive — at most 2-3 items; the full history lives on Patrol.
   const recent = projectPatrolOutcomes(events).slice(0, 3);
   const digest = buildWeeklyDigest(events);
@@ -161,44 +161,28 @@ export default function Home() {
 }
 
 
-/** Compact row for a single gate: name on the left, an accurate compact status on the right.
- *  Wording is derived from the existing capability and must not imply continuous observation where
- *  none exists (event-driven → "Ready", monitoring → "Watching", enforcement → "On"). */
+/** Compact row for a single gate: name on the left, the centralised status badge on the right.
+ *  Home and the Gates tab derive from the SAME source (buildGatesOverview), so the label and tone
+ *  shown here are identical to the Gates tab — never recomputed independently. */
 function GateRow({ gate, colors, styles: s }: { gate: GatePresentation; colors: Record<string, string>; styles: ReturnType<typeof useStyles> }) {
-  const auto = gate.capability.automatic;
   const shortName = gate.title.replace(/ Gate$/, "");
-
-  let badgeLabel = "Ready";
-  let badgeBg = colors.navyTint;
-  let badgeColor = colors.muted;
-
-  const good = (label: string) => { badgeLabel = label; badgeBg = colors.restingTint ?? colors.navyTint; badgeColor = colors.resting ?? colors.brand; };
-  const neutral = (label: string) => { badgeLabel = label; badgeBg = colors.navyTint; badgeColor = colors.muted; };
-
-  if (gate.tone === "attention") {
-    badgeLabel = "Needs you"; badgeBg = colors.barkingTint ?? colors.goldHighlight; badgeColor = colors.barking ?? colors.onSurface;
-  } else if (auto?.state === "off_by_choice") {
-    neutral(gate.capability.onDemand?.state === "ready" ? "Ready" : "Off");
-  } else if (auto?.state === "checking") {
-    neutral("Checking");
-  } else if (auto?.state === "temporarily_unavailable") {
-    neutral("Unavailable");
-  } else if (auto?.state === "running") {
-    // enforcement → continuous blocking; monitoring → genuine background watch; event-driven → responds when triggered.
-    if (auto.kind === "enforcement") good("On");
-    else if (auto.kind === "monitoring") good("Watching");
-    else good("Ready");
-  } else if (auto?.state === "not_activated" || gate.capability.onDemand?.state === "ready") {
-    neutral("Ready");
-  } else {
-    neutral("Unavailable");
-  }
+  // tone → badge colours (same meaning as the Gates tab Pill).
+  const palette: Record<string, { bg: string; fg: string }> = {
+    good: { bg: colors.restingTint ?? colors.navyTint, fg: colors.resting ?? colors.brand },
+    action: { bg: colors.barkingTint ?? colors.goldHighlight, fg: colors.barking ?? colors.onSurface },
+    limited: { bg: colors.goldTint ?? colors.navyTint, fg: colors.ears_up ?? colors.gold ?? colors.onSurface },
+    unverified: { bg: colors.goldTint ?? colors.navyTint, fg: colors.ears_up ?? colors.gold ?? colors.onSurface },
+    neutral: { bg: colors.navyTint, fg: colors.muted },
+    off: { bg: colors.navyTint, fg: colors.muted },
+    unavailable: { bg: colors.navyTint, fg: colors.muted },
+  };
+  const tone = palette[gate.tone] ?? palette.neutral;
 
   return (
     <View style={s.gateRow} testID={`home-gate-${gate.id}`}>
       <Text style={s.gateName}>{shortName}</Text>
-      <View style={[s.gateBadge, { backgroundColor: badgeBg }]}>
-        <Text style={[s.gateBadgeText, { color: badgeColor }]}>{badgeLabel}</Text>
+      <View style={[s.gateBadge, { backgroundColor: tone.bg }]}>
+        <Text style={[s.gateBadgeText, { color: tone.fg }]}>{gate.statusLabel}</Text>
       </View>
     </View>
   );

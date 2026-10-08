@@ -13,7 +13,7 @@ export const CHECKS: Record<CheckId, { label: string; actionLabel: string; purpo
   app: { label: "Check an app", actionLabel: "Check an app", purpose: "Review the app's source, access and available device facts.", route: "/app-check" },
   device: { label: "Device Gate", actionLabel: "Open Device Gate", purpose: "Check important protection, permission and device changes.", route: "/device" },
   account: { label: "Account Gate", actionLabel: "Open Account Gate", purpose: "Review the account warning without sharing a password or code.", route: "/account" },
-  network: { label: "Network Gate", actionLabel: "Open Network Gate", purpose: "Review the connection facts this device can see.", route: "/network" },
+  network: { label: "Internet Gate", actionLabel: "Open Internet Gate", purpose: "Review the connection facts this device can see.", route: "/network" },
 };
 
 const IDS = Object.keys(CHECKS) as CheckId[];

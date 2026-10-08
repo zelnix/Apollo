@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildWeeklyReport, deriveGateState, diffExposures, isDue, maskEmail, scanSummary, type AccountScan } from "../src/domain/accountMonitor.ts";
+import { buildWeeklyReport, deriveGateState, diffExposures, isDue, maskEmail, outstandingExposures, scanSummary, type AccountScan, type HandledMap } from "../src/domain/accountMonitor.ts";
 
 const scan = (results: AccountScan["results"], at = new Date().toISOString()): AccountScan => ({ at, provider: "xposedornot", sourceLabel: "XposedOrNot", results });
 const found = (email: string, names: string[], pw = false): AccountScan["results"][number] => ({ email, status: "found", breaches: names.map((n) => ({ name: n, date: "" })), passwordExposed: pw, detail: "" });
@@ -56,4 +56,22 @@ test("password exposure drives a growling report headline", () => {
   const report = buildWeeklyReport(scan([found("me@x.io", ["Breach"], true)]), null);
   assert.equal(report.overall, "growling");
   assert.equal(scanSummary(scan([found("me@x.io", ["Breach"], true)])).passwordExposed, true);
+});
+
+test("Resolve & Snooze: handled exposures drop out of outstanding, gate state and report, until a new breach appears", () => {
+  const now = Date.now();
+  const fresh = new Date(now).toISOString();
+  const s1 = scan([found("me@x.io", ["Alpha"], true)], fresh);
+  const handled: HandledMap = { "me@x.io": ["Alpha"] };
+  // Fully handled → no longer outstanding; gate state becomes no_exposure; report not growling.
+  assert.equal(outstandingExposures(s1, handled).length, 0);
+  assert.equal(deriveGateState({ monitoredCount: 1, lastScan: s1, lastCheckedAt: fresh, checking: false, handled, now }).state, "no_exposure");
+  const report = buildWeeklyReport(s1, null, handled);
+  assert.equal(report.overall, "resting");
+  assert.ok(report.sections.some((sec) => sec.title === "Marked as handled"));
+  assert.ok(!report.sections.some((sec) => sec.title === "Exposures found"));
+  // A brand-new breach for the same address becomes outstanding again.
+  const s2 = scan([found("me@x.io", ["Alpha", "Beta"])], fresh);
+  assert.equal(outstandingExposures(s2, handled).length, 1);
+  assert.equal(deriveGateState({ monitoredCount: 1, lastScan: s2, lastCheckedAt: fresh, checking: false, handled, now }).state, "exposure_found");
 });

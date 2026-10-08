@@ -3,7 +3,7 @@
 // through the backend (provider-agnostic: XposedOrNot now, HIBP when keyed). Addresses leave the device
 // only inside an authorised scan request; nothing here stores passwords or secrets.
 import { apiPost } from "@/src/api/client";
-import { buildWeeklyReport, diffExposures, type AccountScan, type EmailFinding, type ExposureDiff, type MonitoredEmail, type WeeklyReport } from "@/src/domain/accountMonitor";
+import { buildWeeklyReport, diffExposures, type AccountScan, type EmailFinding, type ExposureDiff, type HandledMap, type MonitoredEmail, type WeeklyReport } from "@/src/domain/accountMonitor";
 import { storage } from "@/src/utils/storage";
 
 const K_EMAILS = "apollo.account.monitored.v1";
@@ -11,6 +11,7 @@ const K_SCAN = "apollo.account.lastscan.v1";
 const K_HISTORY = "apollo.account.scanhistory.v1";
 const K_REPORT = "apollo.account.report.v1";
 const K_CHECKED = "apollo.account.checkedat.v1";
+const K_HANDLED = "apollo.account.handled.v1";
 const HISTORY_CAP = 12;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -41,6 +42,29 @@ export async function addMonitoredEmail(email: string): Promise<MonitoredEmail[]
 export async function removeMonitoredEmail(email: string): Promise<MonitoredEmail[]> {
   const next = (await getMonitoredEmails()).filter((m) => m.email !== email);
   await storage.setItem(K_EMAILS, JSON.stringify(next));
+  const handled = await getHandled();
+  if (handled[email]) { delete handled[email]; await storage.setItem(K_HANDLED, JSON.stringify(handled)); }
+  return next;
+}
+
+export async function getHandled(): Promise<HandledMap> { return readJson<HandledMap>(K_HANDLED, {}); }
+
+/** Mark every current breach for this address as handled (Resolve & Snooze). */
+export async function markHandled(email: string, breachNames: string[]): Promise<HandledMap> {
+  const handled = await getHandled();
+  const merged = Array.from(new Set([...(handled[email] ?? []), ...breachNames]));
+  const next = { ...handled, [email]: merged };
+  await storage.setItem(K_HANDLED, JSON.stringify(next));
+  return next;
+}
+
+/** Undo "handled" for an address so its exposures count as outstanding again. */
+export async function unmarkHandled(email: string): Promise<HandledMap> {
+  const handled = await getHandled();
+  if (!handled[email]) return handled;
+  const next = { ...handled };
+  delete next[email];
+  await storage.setItem(K_HANDLED, JSON.stringify(next));
   return next;
 }
 
@@ -65,7 +89,8 @@ export async function runScan(deviceId: string): Promise<ScanOutcome> {
     results: res.results.map((r) => ({ email: r.email, status: r.status, breaches: r.breaches ?? [], passwordExposed: !!r.password_exposed, detail: r.detail })),
   };
   const diff = diffExposures(previous, scan);
-  const report = buildWeeklyReport(scan, previous);
+  const handled = await getHandled();
+  const report = buildWeeklyReport(scan, previous, handled);
   const history = [scan, ...(await getScanHistory())].slice(0, HISTORY_CAP);
   await storage.setItem(K_SCAN, JSON.stringify(scan));
   await storage.setItem(K_HISTORY, JSON.stringify(history));

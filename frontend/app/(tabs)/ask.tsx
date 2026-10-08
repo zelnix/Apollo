@@ -60,7 +60,7 @@ export default function Ask() {
   useEffect(() => {
     if (!deviceId || health.checking || !health.checkedAt || contextRecorded.current === health.checkedAt) return;
     contextRecorded.current = health.checkedAt;
-    const on = health.gates.filter((gate) => gate.capability.automatic?.state === "running").length; const attention = health.gates.filter((gate) => gate.tone === "attention").map((gate) => gate.title);
+    const on = health.gates.filter((gate) => gate.capability.automatic?.state === "running" && !gate.capability.automatic?.manualOnly).length; const attention = health.gates.filter((gate) => gate.tone === "action").map((gate) => gate.title);
     void rememberHigginsContext({ category: "protection_state", provenance: "device_observation", observedAt: health.checkedAt, summary: `${on} automatic protections are on.${attention.length ? ` Needs attention: ${attention.join(", ")}.` : ""}` }).catch(() => undefined);
   }, [deviceId, health]);
 

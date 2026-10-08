@@ -48,7 +48,7 @@ class DesktopSecurityAdapterImpl implements SecurityPlatformAdapter {
       { id: "link_guard", title: "Link Gate", status: "available", detail: "Checks links you paste into Apollo; it is a manual check." },
       { id: "known_threats", title: "Known Threat Lookup", status: "available", detail: "Privacy-preserving reputation checks using the link only." },
       { id: "site_guard", title: "Site Gate", status: native.active ? "active" : native.installed ? "permission_required" : "available", detail: native.active ? native.detail : `${native.detail} Exact-domain hosts filtering remains available as a narrower fallback and is labelled separately.` },
-      { id: "connection_guard", title: "Network Gate", status: "available", detail: "Reads the active network interface and VPN state from the OS." },
+      { id: "connection_guard", title: "Internet Gate", status: "available", detail: "Reads the active network interface and VPN state from the OS." },
       { id: "share_intake", title: "Open with Apollo", status: "available", detail: "Open or drop files into Apollo for File Gate." },
       { id: "message_guard", title: "Text Gate", status: "available", detail: "Checks texts and chats you paste or screenshot into Apollo." },
       { id: "app_guard", title: "App Gate", status: "available", detail: "Checks an app or device concern from the details you provide; installed-app inventory is not yet implemented." },

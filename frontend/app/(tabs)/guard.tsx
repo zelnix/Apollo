@@ -53,13 +53,16 @@ function HealthCard({ record, highlighted }: { record: GateHealthRecord; highlig
     if (route) router.push(route as never);
   };
   const isRestoreSite = record.primaryAction?.id === "restore_site";
+  const needsUser = record.tone === "action";
+  const notWatching = record.statusLabel !== "Watching";
+  const explainHeading = record.tone === "action" ? "Needs your attention" : record.tone === "limited" ? "Working with limits" : record.tone === "unverified" ? "Couldn't be verified" : record.statusLabel === "Setup available" ? "Optional — set up when ready" : record.statusLabel === "Off" ? "Turned off" : record.statusLabel === "Unavailable" ? "Not available here" : record.statusLabel === "Check in progress" ? "Checking" : "Good to know";
   return <Card testID={`gate-health-${record.id}`} style={[s.card, highlighted ? { borderColor: colors.gold, borderWidth: 2 } : null]}>
     {highlighted ? <Pill tone="ears_up" label="Opened from your alert" testID={`gate-health-${record.id}-focused`} /> : null}
     <View style={s.row}><Text testID={`gate-health-${record.id}-title`} style={s.name}>{record.title}</Text><Pill testID={`gate-health-${record.id}-state`} tone={gateTone(record.tone)} label={record.statusLabel} /></View>
     <View><Text style={s.question}>What this Gate helps with</Text><Body testID={`gate-health-${record.id}-purpose`}>{record.purpose}</Body></View>
     <View><Text style={s.question}>What Apollo is doing now</Text><Body testID={`gate-health-${record.id}-current`}>{record.currentHelp}</Body></View>
-    {record.tone === "attention" && record.capability.automatic?.limitation ? <View style={s.attention} testID={`gate-health-${record.id}-attention`}><Text style={s.question}>Needs your attention</Text><Body>{record.capability.automatic.limitation}</Body></View> : null}
-    {record.tone === "attention" && record.primaryAction ? <Button testID={`gate-health-${record.id}-action`} variant="primary" label={isRestoreSite && enablingSite ? "Turning on…" : record.primaryAction.label} disabled={isRestoreSite && enablingSite} onPress={() => void act(record.primaryAction!)} /> : null}
+    {notWatching && record.capability.automatic?.limitation ? <View style={[s.attention, needsUser ? null : { backgroundColor: colors.navyTint }]} testID={`gate-health-${record.id}-attention`}><Text style={s.question}>{explainHeading}</Text><Body>{record.capability.automatic.limitation}</Body></View> : null}
+    {notWatching && record.primaryAction ? <Button testID={`gate-health-${record.id}-action`} variant={needsUser ? "primary" : "secondary"} label={isRestoreSite && enablingSite ? "Turning on…" : record.primaryAction.label} disabled={isRestoreSite && enablingSite} onPress={() => void act(record.primaryAction!)} /> : null}
   </Card>;
 }
 
@@ -77,8 +80,8 @@ export default function GuardScreen() {
   useEffect(() => { void Promise.all([getMonitoredEmails(), getLastScan(), getLastCheckedAt()]).then(([e, sc, ca]) => { setAcctEmails(e.length); setAcctScan(sc); setAcctCheckedAt(ca); }); }, []);
   if (ready && !setupDone) return <Redirect href="/" />;
   const acctStatus = deriveGateState({ monitoredCount: acctEmails, lastScan: acctScan, lastCheckedAt: acctCheckedAt, checking: false });
-  const active = health.gates.filter((gate) => gate.capability.automatic?.state === "running").length;
-  const attentionGates = health.gates.filter((gate) => gate.tone === "attention");
+  const active = health.gates.filter((gate) => gate.capability.automatic?.state === "running" && !gate.capability.automatic?.manualOnly).length;
+  const attentionGates = health.gates.filter((gate) => gate.tone === "action");
   const attentionNames = attentionGates.map((g) => g.title.replace(/ Gate$/, "")).join(" and ");
   const reducedCoverage = attentionGates.length > 0 && active > 0;
   const summaryTitle = reducedCoverage ? "Protection active — reduced coverage" : attentionGates.length ? `${attentionNames} ${attentionGates.length === 1 ? "needs" : "need"} your attention` : `${active} ${active === 1 ? "Gate is" : "Gates are"} helping automatically`;

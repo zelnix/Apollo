@@ -130,7 +130,7 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
 
   // When visibility is lost, build a specific reason naming the gates that need attention.
   const health = useProtectionHealth();
-  const attentionGates = useMemo(() => health.gates.filter((g) => g.tone === "attention"), [health.gates]);
+  const attentionGates = useMemo(() => health.gates.filter((g) => g.tone === "action"), [health.gates]);
   const reason = useMemo(() => {
     if (!resolution.visibilityLost || health.checking) return resolution.reason;
     if (!attentionGates.length) return resolution.reason;

@@ -24,7 +24,7 @@ export const CHECK_IT_ITEMS = [
   { id: "app", label: "Check an app", purpose: "Review an installed app or one you are thinking of installing.", route: "/app-check", icon: "app", acceptedIntake: ["native_observation", "user_context"] },
   { id: "account", label: "Check an account alert", purpose: "Review a login, breach or recovery warning without sharing passwords or codes.", route: "/account", icon: "account", acceptedIntake: ["text", "image", "user_context"] },
   { id: "device", label: "Check my device", purpose: "Review important protection, permission and device changes.", route: "/device", icon: "device", acceptedIntake: ["native_observation", "user_context"] },
-  { id: "network", label: "Check my network", purpose: "Review the connection facts this device can see and describe your concern.", route: "/network", icon: "network", acceptedIntake: ["native_observation", "user_context"] },
+  { id: "network", label: "Check my internet", purpose: "Review your current Wi-Fi or mobile-data connection and describe any concern.", route: "/network", icon: "network", acceptedIntake: ["native_observation", "user_context"] },
 ] as const satisfies readonly CheckItItem[];
 
 export function checkItItem(id: CheckItId): CheckItItem {

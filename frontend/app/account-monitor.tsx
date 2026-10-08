@@ -11,8 +11,8 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
-import { deriveGateState, maskEmail, nextScanLabel, type AccountScan, type MonitoredEmail, type WeeklyReport } from "@/src/domain/accountMonitor";
-import { addMonitoredEmail, getLastCheckedAt, getLastReport, getLastScan, getMonitoredEmails, isValidEmail, removeMonitoredEmail, runScan } from "@/src/store/accountMonitorStore";
+import { buildWeeklyReport, deriveGateState, maskEmail, nextScanLabel, outstandingExposures, type AccountScan, type HandledMap, type MonitoredEmail, type WeeklyReport } from "@/src/domain/accountMonitor";
+import { addMonitoredEmail, getHandled, getLastCheckedAt, getLastScan, getMonitoredEmails, getScanHistory, isValidEmail, markHandled, removeMonitoredEmail, runScan, unmarkHandled } from "@/src/store/accountMonitorStore";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -40,6 +40,8 @@ export default function CheckMyAccounts() {
   const { ready, setupDone, deviceId, showToast } = useApollo();
   const [emails, setEmails] = useState<MonitoredEmail[]>([]);
   const [scan, setScan] = useState<AccountScan | null>(null);
+  const [previousScan, setPreviousScan] = useState<AccountScan | null>(null);
+  const [handled, setHandled] = useState<HandledMap>({});
   const [report, setReport] = useState<WeeklyReport | null>(null);
   const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
   const [input, setInput] = useState("");
@@ -47,8 +49,10 @@ export default function CheckMyAccounts() {
   const [error, setError] = useState<string | null>(null);
 
   const reload = async () => {
-    const [e, sc, rp, ca] = await Promise.all([getMonitoredEmails(), getLastScan(), getLastReport(), getLastCheckedAt()]);
-    setEmails(e); setScan(sc); setReport(rp); setLastCheckedAt(ca);
+    const [e, hist, hdl, ca] = await Promise.all([getMonitoredEmails(), getScanHistory(), getHandled(), getLastCheckedAt()]);
+    const sc = hist[0] ?? (await getLastScan());
+    setEmails(e); setScan(sc); setPreviousScan(hist[1] ?? null); setHandled(hdl); setLastCheckedAt(ca);
+    setReport(sc ? buildWeeklyReport(sc, hist[1] ?? null, hdl) : null);
   };
   useEffect(() => { void reload(); }, []);
 
@@ -58,21 +62,26 @@ export default function CheckMyAccounts() {
     setError(null); setInput("");
     setEmails(await addMonitoredEmail(value));
   };
-  const remove = async (email: string) => { setEmails(await removeMonitoredEmail(email)); };
+  const remove = async (email: string) => { setEmails(await removeMonitoredEmail(email)); await reload(); };
+  const handle = async (email: string, names: string[]) => { setHandled(await markHandled(email, names)); await reload(); showToast("Marked as handled. Apollo won't re-alert unless a new breach appears for this address.", "neutral"); };
+  const unhandle = async (email: string) => { setHandled(await unmarkHandled(email)); await reload(); };
 
   const check = async () => {
     if (!deviceId) { setError("Apollo is still preparing this device."); return; }
     setBusy(true); setError(null);
     try {
       const outcome = await runScan(deviceId);
-      setScan(outcome.scan); setReport(outcome.report); setLastCheckedAt(outcome.scan.at);
+      await reload();
       showToast(outcome.diff.newExposures.length ? "Check complete — new exposure found. See the report below." : "Check complete. See the report below.", outcome.diff.newExposures.length ? "growling" : "neutral");
     } catch (e) { setError(e instanceof Error ? e.message : "Apollo couldn't complete the check. Try again in a moment."); }
     finally { setBusy(false); }
   };
 
   if (ready && !setupDone) return <Redirect href="/" />;
-  const status = deriveGateState({ monitoredCount: emails.length, lastScan: scan, lastCheckedAt, checking: busy });
+  const status = deriveGateState({ monitoredCount: emails.length, lastScan: scan, lastCheckedAt, checking: busy, handled });
+  const found = scan?.results.filter((r) => r.status === "found") ?? [];
+  const outstanding = outstandingExposures(scan, handled);
+  const outstandingEmails = new Set(outstanding.map((r) => r.email));
 
   return (
     <View style={s.root}>
@@ -106,6 +115,28 @@ export default function CheckMyAccounts() {
 
         {error ? <Card testID="monitor-error"><Body>{error}</Body></Card> : null}
         <Button testID="monitor-run" label={busy ? "Checking…" : emails.length ? "Check my accounts now" : "Add an address first"} onPress={() => void check()} disabled={busy || emails.length === 0} />
+
+        {found.length ? (
+          <Card style={{ gap: spacing.sm }} testID="monitor-exposures">
+            <SectionTitle>Exposures found</SectionTitle>
+            {found.map((r) => {
+              const isOutstanding = outstandingEmails.has(r.email);
+              return (
+                <View key={r.email} style={{ gap: 4 }} testID={`monitor-exposure-${r.email}`}>
+                  <View style={s.row}>
+                    <Text style={[s.label, { flex: 1 }]} numberOfLines={1}>{maskEmail(r.email)}</Text>
+                    <Pill tone={isOutstanding ? (r.passwordExposed ? "growling" : "ears_up") : "resting"} label={isOutstanding ? (r.passwordExposed ? "Passwords exposed" : "Needs a look") : "Handled"} testID={`monitor-exposure-${r.email}-chip`} />
+                  </View>
+                  <Text style={s.why}>{r.breaches.map((b) => b.name).join(", ")}</Text>
+                  {isOutstanding
+                    ? <Button testID={`monitor-handle-${r.email}`} variant="secondary" label="Mark as handled" onPress={() => void handle(r.email, r.breaches.map((b) => b.name))} />
+                    : <Button testID={`monitor-unhandle-${r.email}`} variant="ghost" label="Mark as still outstanding" onPress={() => void unhandle(r.email)} />}
+                </View>
+              );
+            })}
+            <Body testID="monitor-exposures-note">Marking an exposure as handled removes it from your outstanding list. Apollo will still tell you if a brand-new breach appears for that address.</Body>
+          </Card>
+        ) : null}
 
         {report ? (
           <Card testID="monitor-report" style={{ gap: spacing.sm, borderColor: toneColor(colors, report.overall) }}>

@@ -43,6 +43,20 @@ export function scanSummary(scan: AccountScan | null): ScanSummary {
   return { monitored: scan.results.length, exposed, unavailable, clear, passwordExposed: scan.results.some((r) => r.passwordExposed) };
 }
 
+// Resolve & Snooze: the owner can mark an address's current exposures as "handled". Handled breaches
+// are dropped from the outstanding list and never re-alert — unless a brand-new breach name appears.
+export type HandledMap = Record<string, string[]>;
+function fullyHandled(f: EmailFinding, handled: HandledMap): boolean {
+  if (f.status !== "found" || f.breaches.length === 0) return false;
+  const h = new Set(handled[f.email] ?? []);
+  return f.breaches.every((b) => h.has(b.name));
+}
+/** Found addresses that still have at least one UNHANDLED breach name. */
+export function outstandingExposures(scan: AccountScan | null, handled: HandledMap = {}): EmailFinding[] {
+  if (!scan) return [];
+  return scan.results.filter((r) => r.status === "found" && !fullyHandled(r, handled));
+}
+
 export type AccountGateState =
   | "not_set_up" | "monitoring" | "checking" | "no_exposure"
   | "exposure_found" | "action_needed" | "unavailable" | "overdue";
@@ -51,17 +65,19 @@ export interface GateStatus { state: AccountGateState; tone: Tone; title: string
 
 /** The eight passive Account-Gate states. `checking` while a scan runs; `overdue` when the weekly check
  *  hasn't completed in time (OS may delay an on-open check — never presented as a guaranteed job). */
-export function deriveGateState(args: { monitoredCount: number; lastScan: AccountScan | null; lastCheckedAt: string | null; checking: boolean; now?: number }): GateStatus {
+export function deriveGateState(args: { monitoredCount: number; lastScan: AccountScan | null; lastCheckedAt: string | null; checking: boolean; handled?: HandledMap; now?: number }): GateStatus {
   const { monitoredCount, lastScan, lastCheckedAt, checking } = args;
   if (checking) return { state: "checking", tone: "sniffing", title: "Checking your accounts…", detail: "Apollo is checking your monitored addresses against known breach data." };
   if (monitoredCount === 0) return { state: "not_set_up", tone: "neutral", title: "Not set up yet", detail: "Add an email address and Apollo will watch for it appearing in known data breaches." };
   const sum = scanSummary(lastScan);
   if (!lastScan) return { state: "monitoring", tone: "resting", title: `Monitoring ${monitoredCount} address${monitoredCount > 1 ? "es" : ""}`, detail: "Apollo hasn't run its first check yet. Run one from Check It → Check My Accounts." };
   if (isDue(lastCheckedAt, args.now)) return { state: "overdue", tone: "ears_up", title: "A check is overdue", detail: "The weekly check hasn't run in over seven days. Open Check My Accounts to run it now." };
-  if (sum.passwordExposed) return { state: "action_needed", tone: "growling", title: "Action needed", detail: "A monitored address appears in a breach that exposed passwords. Change that password and turn on two-factor authentication." };
-  if (sum.exposed > 0) return { state: "exposure_found", tone: "ears_up", title: `${sum.exposed} address${sum.exposed > 1 ? "es appear" : " appears"} in a breach`, detail: "Review the exposures and secure those accounts through the official app or website." };
-  if (sum.unavailable > 0 && sum.exposed === 0) return { state: "unavailable", tone: "neutral", title: "Some checks couldn't complete", detail: "Apollo couldn't reach the breach service for every address. It will try again on the next check." };
-  return { state: "no_exposure", tone: "resting", title: "No known exposure", detail: `Your monitored address${monitoredCount > 1 ? "es don't" : " doesn't"} appear in known breach data. That's good — not a guarantee.` };
+  const outstanding = outstandingExposures(lastScan, args.handled ?? {});
+  const pwOutstanding = outstanding.some((r) => r.passwordExposed);
+  if (pwOutstanding) return { state: "action_needed", tone: "growling", title: "Action needed", detail: "A monitored address appears in a breach that exposed passwords. Change that password and turn on two-factor authentication." };
+  if (outstanding.length > 0) return { state: "exposure_found", tone: "ears_up", title: `${outstanding.length} address${outstanding.length > 1 ? "es appear" : " appears"} in a breach`, detail: "Review the exposures and secure those accounts through the official app or website." };
+  if (sum.unavailable > 0) return { state: "unavailable", tone: "neutral", title: "Some checks couldn't complete", detail: "Apollo couldn't reach the breach service for every address. It will try again on the next check." };
+  return { state: "no_exposure", tone: "resting", title: "No known exposure", detail: `Your monitored address${monitoredCount > 1 ? "es don't" : " doesn't"} appear in known breach data${sum.exposed > 0 ? " that still needs action" : ""}. That's good — not a guarantee.` };
 }
 
 function namesByEmail(scan: AccountScan | null): Map<string, Set<string>> {
@@ -95,17 +111,22 @@ export interface WeeklyReport { generatedAt: string; headline: string; overall: 
 
 /** Higgins Weekly Account Exposure Report — built from the ACTUAL scan, generated even when clean.
  *  Failures are explained (never shown as a false "all clear"); partial coverage is flagged. */
-export function buildWeeklyReport(scan: AccountScan, previous: AccountScan | null): WeeklyReport {
+export function buildWeeklyReport(scan: AccountScan, previous: AccountScan | null, handled: HandledMap = {}): WeeklyReport {
   const sum = scanSummary(scan);
   const diff = diffExposures(previous, scan);
+  const newExposures = diff.newExposures.filter((e) => !(handled[e.email] ?? []).length || e.breaches.some((b) => !(handled[e.email] ?? []).includes(b)));
+  const outstanding = outstandingExposures(scan, handled);
+  const pwOutstanding = outstanding.some((r) => r.passwordExposed);
+  const handledFound = scan.results.filter((r) => r.status === "found" && !outstanding.includes(r));
   const sections: WeeklyReportSection[] = [];
 
   sections.push({ title: "Accounts monitored", lines: scan.results.map((r) => maskEmail(r.email)) });
 
-  if (diff.newExposures.length) sections.push({ title: "New since your last check", lines: diff.newExposures.map((e) => `${maskEmail(e.email)} — ${e.breaches.join(", ")}`) });
+  if (newExposures.length) sections.push({ title: "New since your last check", lines: newExposures.map((e) => `${maskEmail(e.email)} — ${e.breaches.join(", ")}`) });
 
-  const ongoing = scan.results.filter((r) => r.status === "found");
-  if (ongoing.length) sections.push({ title: "Exposures found", lines: ongoing.map((r) => `${maskEmail(r.email)} — ${r.breaches.map((b) => b.name + (b.date ? ` (${b.date})` : "")).join(", ")}${r.passwordExposed ? " · passwords exposed" : ""}`) });
+  if (outstanding.length) sections.push({ title: "Exposures found", lines: outstanding.map((r) => `${maskEmail(r.email)} — ${r.breaches.map((b) => b.name + (b.date ? ` (${b.date})` : "")).join(", ")}${r.passwordExposed ? " · passwords exposed" : ""}`) });
+
+  if (handledFound.length) sections.push({ title: "Marked as handled", lines: handledFound.map((r) => `${maskEmail(r.email)} — you marked this as handled. Apollo won't re-alert unless a new breach appears.`) });
 
   if (diff.resolved.length) sections.push({ title: "No longer showing", lines: diff.resolved.map((e) => `${maskEmail(e.email)} — ${e.breaches.join(", ")}`) });
 
@@ -113,10 +134,10 @@ export function buildWeeklyReport(scan: AccountScan, previous: AccountScan | nul
   if (unavailable.length) sections.push({ title: "Couldn't be checked this time", lines: unavailable.map((r) => `${maskEmail(r.email)} — ${r.detail}`) });
 
   const actions: string[] = [];
-  if (sum.passwordExposed) actions.push("Change that password everywhere you used it, and turn on two-factor authentication.");
-  if (sum.exposed > 0) actions.push("Expect more targeted phishing. Turn on two-factor authentication and never reuse a password.");
-  if (sum.exposed > 0) actions.push("Open each affected service yourself — never through a link in a breach email.");
-  if (sum.exposed === 0 && unavailable.length === 0) actions.push("Nothing to do right now. Keep two-factor authentication on and keep using unique passwords.");
+  if (pwOutstanding) actions.push("Change that password everywhere you used it, and turn on two-factor authentication.");
+  if (outstanding.length > 0) actions.push("Expect more targeted phishing. Turn on two-factor authentication and never reuse a password.");
+  if (outstanding.length > 0) actions.push("Open each affected service yourself — never through a link in a breach email.");
+  if (outstanding.length === 0 && unavailable.length === 0) actions.push("Nothing to do right now. Keep two-factor authentication on and keep using unique passwords.");
   if (unavailable.length) actions.push("Apollo will re-check the addresses it couldn't reach on the next check.");
   sections.push({ title: "What to do", lines: actions });
 
@@ -124,9 +145,10 @@ export function buildWeeklyReport(scan: AccountScan, previous: AccountScan | nul
 
   let overall: Tone = "resting";
   let headline = "No new account exposure found";
-  if (diff.newExposures.length || sum.passwordExposed) { overall = "growling"; headline = sum.passwordExposed ? "A password was exposed — act now" : "New account exposure found"; }
-  else if (sum.exposed > 0) { overall = "ears_up"; headline = "Known exposures still need attention"; }
+  if (newExposures.length || pwOutstanding) { overall = "growling"; headline = pwOutstanding ? "A password was exposed — act now" : "New account exposure found"; }
+  else if (outstanding.length > 0) { overall = "ears_up"; headline = "Known exposures still need attention"; }
   else if (unavailable.length) { overall = "neutral"; headline = "Some accounts couldn't be checked"; }
+  else if (handledFound.length) { headline = "All known exposures marked as handled"; }
 
   return { generatedAt: scan.at, headline, overall, sections, sourceLabel: scan.sourceLabel, nextScan: nextScanLabel(scan.at) };
 }

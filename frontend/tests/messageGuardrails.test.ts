@@ -68,7 +68,7 @@ test("every notification routes to a screen that actually exists (no dead links)
   assert.ok(existsSync("app/patrol/[id].tsx"), "patrol detail route must exist for notification deep-link");
 });
 
-const ALLOWED_GATE_LABELS = new Set(["Protection on", "Watching", "Ready automatically", "Ready when you need it", "Ready now", "Needs your attention", "Off", "Checking", "Status unavailable", "Not available on this device"]);
+const ALLOWED_GATE_LABELS = new Set(["Watching", "Ready to check", "Check in progress", "Setup available", "Off", "Limited", "Action needed", "Unavailable", "Unable to verify"]);
 
 test("Gate alerts: every gate presentation is plain English with an actionable, code-free button", () => {
   const overview = buildGatesOverview({ platform: "android", checking: false, protection: null, permissions: [], capabilities: [], messaging: null, calls: null });

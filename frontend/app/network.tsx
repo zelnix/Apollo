@@ -109,7 +109,7 @@ export default function CheckNetwork() {
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>Network Gate</Text>
+        <Text style={s.title}>Internet Gate</Text>
         <Pressable testID="network-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="network-scroll">

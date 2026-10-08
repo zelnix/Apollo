@@ -7,14 +7,16 @@ import { VERIFICATION_FRESHNESS_MS } from "./stateMachine.ts";
 
 export type GateId = "site" | "link" | "text" | "call" | "network" | "account" | "email" | "file" | "app" | "device";
 export type GateAutomationKind = "enforcement" | "monitoring" | "event_driven";
-export type AutomaticCapabilityState = "running" | "checking" | "permission_needed" | "setup_needed" | "off_by_choice" | "temporarily_unavailable" | "unsupported" | "not_activated";
+export type AutomaticCapabilityState = "running" | "checking" | "permission_needed" | "setup_needed" | "off_by_choice" | "interrupted" | "temporarily_unavailable" | "unsupported" | "not_activated";
 export type OnDemandCapabilityState = "ready" | "temporarily_unavailable" | "unsupported";
-export type GateStatusLabel = "Protection on" | "Watching" | "Ready automatically" | "Ready when you need it" | "Ready now" | "Needs your attention" | "Off" | "Checking" | "Status unavailable" | "Not available on this device";
-export type GateTone = "good" | "attention" | "neutral" | "unavailable";
+// Standardised user-facing statuses. "Watching" is the ONLY success label and means verified, active,
+// automatic protection within its supported scope — never merely "enabled" or "permission granted".
+export type GateStatusLabel = "Watching" | "Ready to check" | "Check in progress" | "Setup available" | "Off" | "Limited" | "Action needed" | "Unavailable" | "Unable to verify";
+export type GateTone = "good" | "limited" | "action" | "neutral" | "off" | "unavailable" | "unverified";
 
 export interface GatePresentation {
   id: GateId; title: string; purpose: string; currentHelp: string; statusLabel: GateStatusLabel; tone: GateTone;
-  capability: { automatic?: { kind: GateAutomationKind; state: AutomaticCapabilityState; lastObservedAt?: string; limitation?: string }; onDemand?: { state: OnDemandCapabilityState; action: UserAction } };
+  capability: { automatic?: { kind: GateAutomationKind; state: AutomaticCapabilityState; lastObservedAt?: string; limitation?: string; manualOnly?: boolean; coverageLimited?: boolean }; onDemand?: { state: OnDemandCapabilityState; action: UserAction } };
   primaryAction?: UserAction;
 }
 export type GateItem = GatePresentation;
@@ -27,29 +29,37 @@ const PURPOSE: Record<GateId, string> = {
   link: "Checks where a link really leads and looks for scams, fake websites and harmful downloads.",
   text: "Looks for scam messages, fake alerts, urgent payment requests and dangerous links.",
   call: "Checks suspicious callers and numbers and helps you decide whether it is safe to respond.",
-  network: "Warns when the connection you are using may be unsafe or when a network change affects Apollo's protection.",
+  network: "Reports the internet connection you are using (Wi-Fi or mobile data) and whether Apollo's protection for it is operating, warning you about unsafe connections and network changes.",
   account: "Investigates warnings about your accounts and helps you take the right recovery steps.",
   email: "Looks for phishing, impersonation, dangerous links and risky attachments in emails you share or connect.",
   file: "Checks files and attachments for suspicious content, hidden links and signs they may be unsafe. A cloud download is not automatically trusted.",
   app: "Checks whether an app's source, permissions and behaviour give you a reason to be cautious—even if it has not been used recently.",
   device: "Checks whether important protections and permissions are working and looks for changes that may need your attention.",
 };
-const TITLE: Record<GateId, string> = { site: "Site Gate", link: "Link Gate", text: "Text Gate", call: "Call Gate", network: "Network Gate", account: "Account Gate", email: "Email Gate", file: "File Gate", app: "App Gate", device: "Device Gate" };
+const TITLE: Record<GateId, string> = { site: "Site Gate", link: "Link Gate", text: "Text Gate", call: "Call Gate", network: "Internet Gate", account: "Account Gate", email: "Email Gate", file: "File Gate", app: "App Gate", device: "Device Gate" };
 const cap = (items: Capability[], id: string) => items.find((item) => item.id === id);
 const action = (id: UserAction["id"], label: string): UserAction => ({ id, label });
 const onDemand = (id: UserAction["id"], label: string, state: OnDemandCapabilityState = "ready") => ({ state, action: action(id, label) });
 
 function presentation(base: Omit<GatePresentation, "statusLabel" | "tone">): GatePresentation {
-  const auto = base.capability.automatic; const request = auto && ["permission_needed", "setup_needed"].includes(auto.state);
+  const auto = base.capability.automatic; const od = base.capability.onDemand;
+  // WATCHING is only for verified, active automatic protection (not manual-only, not restricted).
   let statusLabel: GateStatusLabel; let tone: GateTone;
-  if (auto?.state === "running") { statusLabel = auto.kind === "enforcement" ? "Protection on" : auto.kind === "monitoring" ? "Watching" : "Ready automatically"; tone = "good"; }
-  else if (auto?.state === "checking") { statusLabel = "Checking"; tone = "neutral"; }
-  else if (auto?.state === "not_activated") { statusLabel = "Ready when you need it"; tone = "neutral"; }
-  else if (request) { statusLabel = "Needs your attention"; tone = "attention"; }
-  else if (auto?.state === "off_by_choice") { statusLabel = base.capability.onDemand?.state === "ready" ? "Ready now" : "Off"; tone = "neutral"; }
-  else if (auto?.state === "temporarily_unavailable") { statusLabel = "Status unavailable"; tone = "unavailable"; }
-  else if (base.capability.onDemand?.state === "ready") { statusLabel = "Ready when you need it"; tone = "neutral"; }
-  else { statusLabel = "Not available on this device"; tone = "unavailable"; }
+  if (!auto) {
+    if (od?.state === "ready") { statusLabel = "Ready to check"; tone = "neutral"; }
+    else if (od?.state === "temporarily_unavailable") { statusLabel = "Unable to verify"; tone = "unverified"; }
+    else { statusLabel = "Unavailable"; tone = "unavailable"; }
+  } else if (auto.state === "running") {
+    if (auto.manualOnly) { statusLabel = "Ready to check"; tone = "neutral"; }
+    else if (auto.coverageLimited) { statusLabel = "Limited"; tone = "limited"; }
+    else { statusLabel = "Watching"; tone = "good"; }
+  } else if (auto.state === "checking") { statusLabel = "Check in progress"; tone = "neutral"; }
+  else if (auto.state === "interrupted") { statusLabel = "Action needed"; tone = "action"; }
+  else if (auto.state === "permission_needed" || auto.state === "setup_needed" || auto.state === "not_activated") { statusLabel = "Setup available"; tone = "neutral"; }
+  else if (auto.state === "off_by_choice") { statusLabel = "Off"; tone = "off"; }
+  else if (auto.state === "temporarily_unavailable") { statusLabel = "Unable to verify"; tone = "unverified"; }
+  else { statusLabel = "Unavailable"; tone = "unavailable"; }
+  const request = !!auto && ["permission_needed", "setup_needed", "interrupted"].includes(auto.state);
   const primaryAction = request && base.primaryAction ? base.primaryAction : base.capability.onDemand?.action ?? base.primaryAction;
   return { ...base, statusLabel, tone, primaryAction };
 }
@@ -64,21 +74,24 @@ export function buildGatesOverview(input: GatesInput): GatesOverview {
   const siteFresh = verifiedAt > 0 && verifiedAt <= now && now - verifiedAt <= VERIFICATION_FRESHNESS_MS;
   const sitePermission = input.permissions.some((permission) => (permission.id === "network_filter" || permission.id === "vpn_config") && !["granted", "not_applicable"].includes(permission.status));
   const siteUnsupported = siteCapability?.status === "unsupported" || (input.platform === "web" && input.protection?.enforcementMethod === "simulated");
-  const siteState: AutomaticCapabilityState = input.checking || !input.protection ? "checking" : siteUnsupported ? "unsupported" : input.protection.operational && siteFresh && siteCapability?.status === "active" ? "running" : !(input.protection.requested || input.desiredSiteOn) ? "off_by_choice" : sitePermission ? "permission_needed" : "temporarily_unavailable";
+  const siteState: AutomaticCapabilityState = input.checking || !input.protection ? "checking" : siteUnsupported ? "unsupported" : input.protection.operational && siteFresh && siteCapability?.status === "active" ? "running" : !(input.protection.requested || input.desiredSiteOn) ? "off_by_choice" : sitePermission ? "permission_needed" : input.protection.operational && siteCapability?.status === "active" ? "temporarily_unavailable" : "interrupted";
   const site = presentation({ id: "site", title: TITLE.site, purpose: PURPOSE.site,
-    currentHelp: siteState === "running" ? "Apollo is filtering supported website traffic." : siteState === "permission_needed" ? "Site Gate needs VPN permission to filter website traffic. Your other protection is still active — grant it whenever you're ready." : siteState === "off_by_choice" ? "Website protection is off. You can still check suspicious links." : siteState === "checking" ? "Apollo is checking website protection." : "Apollo cannot confirm website protection right now.",
-    capability: { automatic: { kind: "enforcement", state: siteState, lastObservedAt: input.protection?.checkedAt ?? undefined, limitation: siteState === "permission_needed" ? "Grant the VPN permission to turn Site Gate on. Your other protection stays active." : siteState === "temporarily_unavailable" ? "Apollo will keep checking in the background." : undefined }, onDemand: onDemand("check_link", "Check a suspicious link") },
+    currentHelp: siteState === "running" ? "Apollo is filtering supported website traffic." : siteState === "interrupted" ? "Website protection was on but has stopped — it is not filtering right now." : siteState === "permission_needed" ? "Site Gate needs VPN permission to filter website traffic. Your other protection is still active — grant it whenever you're ready." : siteState === "off_by_choice" ? "Website protection is off. You can still check suspicious links." : siteState === "checking" ? "Apollo is checking website protection." : "Apollo cannot confirm website protection right now.",
+    capability: { automatic: { kind: "enforcement", state: siteState, lastObservedAt: input.protection?.checkedAt ?? undefined, limitation: siteState === "interrupted" ? "Website protection was on but is not operating. Open Site Gate to restart it." : siteState === "permission_needed" ? "Grant the VPN permission to turn Site Gate on. Your other protection stays active." : siteState === "temporarily_unavailable" ? "Apollo will keep checking in the background." : undefined }, onDemand: onDemand("check_link", "Check a suspicious link") },
     primaryAction: siteState === "running" ? action("check_link", "Check a suspicious link") : action("restore_site", siteState === "permission_needed" ? "Grant VPN permission" : "Turn on Site Gate") });
 
   // B4: Text Gate status — distinguish background processing from merely having notification access.
   // On Android, "smsFiltering: supported" means notification access is granted but NOT that background
   // assessment is completing. On iOS, "supported" now requires 72h recency, not 30 days.
-  const textState: AutomaticCapabilityState = input.checking || !input.messaging ? "checking" : input.messaging.smsFiltering === "supported" ? "running" : input.messaging.smsFiltering === "permission_required" ? "permission_needed" : "unsupported";
+  const textStateBase: AutomaticCapabilityState = input.checking || !input.messaging ? "checking" : input.messaging.smsFiltering === "supported" ? "running" : input.messaging.smsFiltering === "permission_required" ? "permission_needed" : "unsupported";
   const textHistorical = (input.messaging as unknown as Record<string, unknown> | undefined)?.messageFilterHistoricalOnly === true;
+  // Historical-only means the filter ran before but has no recent observation — we cannot verify it is
+  // actively filtering now, so this is "Unable to verify", never "Watching".
+  const textState: AutomaticCapabilityState = textStateBase === "running" && textHistorical ? "temporarily_unavailable" : textStateBase;
   const textLimitation = textState === "permission_needed"
     ? "Allow message checking to watch supported new messages."
-    : textState === "running" && textHistorical
-      ? "Message filter was active previously but has no recent observation. Messages may not be actively filtered."
+    : textState === "temporarily_unavailable"
+      ? "Message filter was active previously but has no recent observation. Manual checks still work for any message."
       : textState === "running"
         ? "Background assessment runs for captured messages. Manual checks work for all messages."
         : undefined;
@@ -116,7 +129,7 @@ export function buildGatesOverview(input: GatesInput): GatesOverview {
         : undefined;
   const network = presentation({ id: "network", title: TITLE.network, purpose: PURPOSE.network,
     currentHelp: networkState === "running" ? (vpnActive ? "Apollo is watching this connection, with continuous background filtering through Site Gate." : "Apollo is watching this connection and re-checks on every app open and network change.") : networkState === "permission_needed" ? "Allow network information so Apollo can watch this connection." : "You can run a current network check now.",
-    capability: { automatic: { kind: "monitoring", state: networkState, lastObservedAt: networkObserved, limitation: networkLimitation }, onDemand: onDemand("check_network", "Check this network") },
+    capability: { automatic: { kind: "monitoring", state: networkState, lastObservedAt: networkObserved, limitation: networkLimitation, coverageLimited: networkState === "running" && !vpnActive }, onDemand: onDemand("check_network", "Check this network") },
     primaryAction: action("check_network", "Check this network") });
 
   const email = input.email; const successAt = email?.lastSuccessAt ? Date.parse(email.lastSuccessAt) : email?.lastCheckedAt ? Date.parse(email.lastCheckedAt) : 0; const errorAt = email?.lastErrorAt ? Date.parse(email.lastErrorAt) : 0;
@@ -133,7 +146,7 @@ export function buildGatesOverview(input: GatesInput): GatesOverview {
   // Event-driven gates that respond to user actions (link, account) are always "ready" when online
   // but are NOT continuously monitoring — they should not claim "Watching". Only gates with a real
   // background monitoring loop or enforcement mechanism should report "running".
-  const linkAuto: GatePresentation["capability"]["automatic"] = { kind: "event_driven", state: input.online === false ? "temporarily_unavailable" : "running", lastObservedAt: observedNow, limitation: input.online === false ? "Online reputation and public research are unavailable." : "Link checking responds when triggered — no continuous background monitoring." };
+  const linkAuto: GatePresentation["capability"]["automatic"] = { kind: "event_driven", state: input.online === false ? "temporarily_unavailable" : "running", manualOnly: true, lastObservedAt: observedNow, limitation: input.online === false ? "Online reputation and public research are unavailable." : "Link checking responds when triggered — no continuous background monitoring." };
   const link = simple("link", input.online === false ? "On-device link checks remain ready; online checks are unavailable." : "Apollo checks links when triggered by a Gate or when you submit one.", "check_link", "Check a link", linkAuto);
   // Gate 8 — Account alerts. Event-driven (responds when triggered). The core check ("Check an
   // account alert" — analysing a login/MFA/reset/breach warning) always works and needs no backend
@@ -141,25 +154,25 @@ export function buildGatesOverview(input: GatesInput): GatesOverview {
   // when the backend confirms breach_lookup_configured it is reported as "Watching"; when it is not
   // configured the gate simply reads "Ready when you need it" with the lookup noted as off.
   const accountAuto: GatePresentation["capability"]["automatic"] | undefined = input.accountBreachConfigured === true
-    ? { kind: "event_driven", state: "running", lastObservedAt: observedNow, limitation: "Account checking responds when triggered — no continuous background monitoring." }
+    ? { kind: "event_driven", state: "running", manualOnly: true, lastObservedAt: observedNow, limitation: "Account checking responds when triggered — no continuous background monitoring." }
     : undefined;
   const account = simple("account", input.accountBreachConfigured === true ? "Apollo is ready for account alerts from supported messages, email and checks you start." : "You can check a login, breach or recovery alert anytime. Live breach-list lookup isn’t set up, but alert analysis still works.", "check_account", "Check an account alert", accountAuto);
-  const fileCap = cap(input.capabilities, "file_guard"); const fileAuto = fileCap ? { kind: "event_driven" as const, state: fileCap.status === "active" ? "running" as const : fileCap.status === "permission_required" ? "permission_needed" as const : "unsupported" as const, lastObservedAt: observedNow } : undefined;
-  const appCap = cap(input.capabilities, "app_guard"); const appAuto = appCap ? { kind: "event_driven" as const, state: appCap.status === "active" ? "running" as const : appCap.status === "permission_required" ? "permission_needed" as const : "unsupported" as const, lastObservedAt: observedNow } : undefined;
+  const fileCap = cap(input.capabilities, "file_guard"); const fileAuto = fileCap ? { kind: "event_driven" as const, state: fileCap.status === "active" ? "running" as const : fileCap.status === "permission_required" ? "permission_needed" as const : "unsupported" as const, manualOnly: true, lastObservedAt: observedNow } : undefined;
+  const appCap = cap(input.capabilities, "app_guard"); const appAuto = appCap ? { kind: "event_driven" as const, state: appCap.status === "active" ? "running" as const : appCap.status === "permission_required" ? "permission_needed" as const : "unsupported" as const, manualOnly: true, lastObservedAt: observedNow } : undefined;
   const deviceCap = cap(input.capabilities, "device_guard"); const deviceAuto = deviceCap ? { kind: "monitoring" as const, state: deviceCap.status === "active" ? "running" as const : deviceCap.status === "permission_required" ? "permission_needed" as const : "unsupported" as const, lastObservedAt: observedNow } : undefined;
   const file = simple("file", "Apollo is ready when a file or attachment is shared with it.", "check_file", "Check a file", fileAuto);
   const app = simple("app", "Apollo is ready to check an installed app or one you are considering.", "check_app", "Check an app", appAuto);
   const device = simple("device", "Apollo is checking visible protection health and is ready for a fuller device check.", "check_device", "Check my device", deviceAuto);
 
-  const rank = (gate: GatePresentation) => gate.tone === "attention" ? 0 : gate.capability.automatic?.state === "running" ? 1 : gate.capability.onDemand?.state === "ready" ? 2 : 3;
+  const rank = (gate: GatePresentation) => gate.tone === "action" ? 0 : (gate.capability.automatic?.state === "running" && !gate.capability.automatic?.manualOnly) ? 1 : gate.capability.onDemand?.state === "ready" ? 2 : 3;
   const gates = [site, link, text, call, network, account, emailGate, file, app, device].sort((a, b) => rank(a) - rank(b));
-  const primary = gates.find((gate) => gate.tone === "attention") ?? null; const working = gates.filter((gate) => gate.capability.automatic?.state === "running").length;
-  const attentionGates = gates.filter((gate) => gate.tone === "attention");
+  const primary = gates.find((gate) => gate.tone === "action") ?? null; const working = gates.filter((gate) => gate.capability.automatic?.state === "running" && !gate.capability.automatic?.manualOnly).length;
+  const attentionGates = gates.filter((gate) => gate.tone === "action");
   const attentionNames = attentionGates.map((g) => g.title.replace(/ Gate$/, "")).join(" and ");
-  // Any Gate awaiting a permission/connection while others run is "reduced coverage", not "off" —
-  // Apollo stays active and surfaces an enable-later affordance instead of disabling as a whole.
+  // A gate awaiting optional setup/permission is NOT an alarm. Only a verified problem (tone "action")
+  // counts as "needs your attention"; Apollo never barks about optional setup.
   const summary = input.checking ? "Checking your protection" : (attentionGates.length > 0 && working > 0) ? "Protection active — reduced coverage" : attentionGates.length ? `${attentionNames} ${attentionGates.length === 1 ? "needs" : "need"} your attention` : `${working} ${working === 1 ? "Gate is" : "Gates are"} helping automatically`;
   return { summary, higgins: primary ? `${primary.title} needs your attention. ${primary.currentHelp}` : "Apollo watches what this device allows. You can also ask it to check anything you are unsure about.", primary, gates };
 }
 
-export const gateTone = (tone: GateTone) => tone === "good" ? "resting" : tone === "attention" ? "growling" : "neutral";
+export const gateTone = (tone: GateTone) => tone === "good" ? "resting" : tone === "action" ? "barking" : tone === "limited" || tone === "unverified" ? "ears_up" : tone === "off" || tone === "unavailable" ? "unknown" : "neutral";
