@@ -1,3 +1,15 @@
+## Messaging follow-ups 2 — guardrails, timeline, smart links, inbox (2026-06)
+
+Notification naming check: PASS — all notification copy uses "Apollo" (+ retained "Apollo is barking/biting/growling" vocabulary); no "guard dog"/"guarddog" in `src/push`.
+
+- **Expanded guardrails** (`tests/messageGuardrails.test.ts`, now 6 tests): added (1) Gate-alert coverage — every `buildGatesOverview` presentation's statusLabel is from the allowed set, currentHelp/purpose/limitation carry no code, and primaryAction has a non-empty label+id to route with; (2) Higgins-reply coverage — `assessmentLabel`/`attentionLabel` cover all enums with no raw passthrough, and a source assertion that `InvestigationView.tsx` never interpolates raw `assessment`/`attention` enums.
+- **Status Timeline**: `messageVoice.eventHistory()` builds a plain-English, time-ordered history (detected → updates → resolved), replacing the raw "Issue timeline" in `app/patrol/[id].tsx` with a "Status history" card that always shows (even with one revision) and never leaks a revision code.
+- **Smart Reply Links**: notification deep-links now carry `?focus=alert` (`localAlerts.ts`); `patrol/[id].tsx` reads `focus` and shows an "Opened from your Apollo alert" banner pre-selecting that exact finding.
+- **Support Inbox**: `supportReference.ts` records a reference history (cap 25) on every mint/new-request; `reopenSupportReference` makes a past reference current again; Support screen shows a "Past requests" list (`support-inbox`) with a Reopen action.
+
+Verification: tsc + ESLint clean; messageVoice+guardrails 15/15 (incl. eventHistory); full suite 443/450 (same 7 pre-existing env/native/tab-order/brand-asset failures); Android bundle HTTP 200.
+
+
 ## Messaging audit — Phases 2–4 + Email copy (2026-06)
 
 Completed the four follow-ups to the Phase-1 message-voice foundation:

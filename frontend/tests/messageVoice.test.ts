@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { apolloStatusLabel, areaLabel, displayStateLabel, humanizeReason, looksLikeInternalCode, projectedEventVoice, resultChip, sourceLabel } from "../src/domain/messageVoice.ts";
+import { apolloStatusLabel, areaLabel, displayStateLabel, eventHistory, humanizeReason, looksLikeInternalCode, projectedEventVoice, resultChip, sourceLabel } from "../src/domain/messageVoice.ts";
 
 test("area labels never expose raw category codes", () => {
   assert.equal(areaLabel("known_threat"), "a website safety check");
@@ -47,4 +47,15 @@ test("projected (synced) event voice is plain English with no codes and no detai
 test("looksLikeInternalCode catches the exact screenshot offenders", () => {
   for (const bad of ["known_threat", "ears_up", "user_started", "server_projection_of_recorded_outcome"]) assert.ok(looksLikeInternalCode(bad));
   assert.ok(!looksLikeInternalCode("Apollo ran a website safety check"));
+});
+
+test("eventHistory renders a plain-English timeline with no codes, ordered, incl. resolution", () => {
+  const hist = eventHistory(
+    { category: "known_threat", state: "barking", occurred_at: "2026-06-01T10:00:00.000Z", resolved_at: "2026-06-01T12:00:00.000Z", verified_block: false },
+    [{ occurredAt: "2026-06-01T11:00:00.000Z", effectiveState: "warning", summary: "server_projection_of_recorded_outcome", revision: 2 }],
+  );
+  assert.equal(hist.length, 3);
+  assert.ok(hist[0].at < hist[1].at && hist[1].at < hist[2].at, "entries must be time-ordered");
+  for (const e of hist) assert.ok(!looksLikeInternalCode(e.text), `history leaked a code: ${e.text}`);
+  assert.match(hist[2].text, /resolved/i);
 });

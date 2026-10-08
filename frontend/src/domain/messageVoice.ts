@@ -148,3 +148,21 @@ export function attentionLabel(attention: string): string {
     default: return "Review";
   }
 }
+
+// --- Plain-English status history for an event detail screen (Status Timeline) -----------------------
+export interface HistoryEntry { at: string; text: string }
+/** Builds a human-readable history from the event's own facts plus any synced revisions. Never shows a
+ *  code; a revision summary that still looks like a code is replaced by a state-based sentence. */
+export function eventHistory(
+  e: { category: EventCategory | string; state: ApolloState; occurred_at: string; resolved_at?: string | null; verified_block?: boolean | null },
+  revisions: { occurredAt: string; effectiveState: PatrolDisplayState | string; summary: string; revision: number }[] = [],
+): HistoryEntry[] {
+  const area = areaLabel(e.category);
+  const entries: HistoryEntry[] = [{ at: e.occurred_at, text: `Apollo ran ${area} and ${e.verified_block ? "blocked a connection it had flagged" : apolloStatusLabel(e.state, {}).toLowerCase()}.` }];
+  for (const r of revisions) {
+    const summary = r.summary && !looksLikeInternalCode(r.summary) ? r.summary : `now ${displayStateLabel(r.effectiveState)}`;
+    entries.push({ at: r.occurredAt, text: `Update: ${summary}.` });
+  }
+  if (e.resolved_at) entries.push({ at: e.resolved_at, text: "Apollo marked this resolved." });
+  return entries.sort((a, b) => a.at.localeCompare(b.at));
+}

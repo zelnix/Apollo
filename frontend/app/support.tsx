@@ -27,7 +27,7 @@ import { getBaseline } from "@/src/store/firstCheckStore";
 import { useApollo } from "@/src/store/ApolloContext";
 import { collectAppDeviceInfo, UNAVAILABLE } from "@/src/support/supportInfo";
 import { openSupportEmail, SUPPORT_RECIPIENT } from "@/src/support/supportEmail";
-import { getOrCreateSupportReference, startNewSupportReference } from "@/src/support/supportReference";
+import { getOrCreateSupportReference, getReferenceHistory, reopenSupportReference, startNewSupportReference } from "@/src/support/supportReference";
 import { buildHigginsInfo, buildProtectionRows, buildSupportSummary, renderEmailBody, renderReportHtml, renderSupportSummaryText, type ProtectionState, type SupportProtectionRow } from "@/src/support/supportSummary";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -68,6 +68,9 @@ const useStyles = makeStyles((c) => ({
   refValue: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.onSurface },
   logLine: { fontFamily: fonts.text, fontSize: 12, lineHeight: 18, color: c.onSurfaceSecondary },
   emailInput: { borderWidth: 1, borderColor: c.border, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: 10, fontFamily: fonts.text, fontSize: 15, color: c.onSurface, backgroundColor: c.surfaceTertiary },
+  inboxRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.md, backgroundColor: c.surfaceTertiary },
+  inboxRef: { fontFamily: fonts.textMedium, fontSize: 12, color: c.onSurface },
+  inboxReopen: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.brand },
 }));
 
 function Section({ title, testID, children, defaultOpen = true }: { title: string; testID: string; children: React.ReactNode; defaultOpen?: boolean }) {
@@ -127,6 +130,7 @@ export default function SupportScreen() {
   const firstCheck = useQuery({ queryKey: ["support-firstcheck"], queryFn: getBaseline, staleTime: 30_000 });
   const intel = useQuery({ queryKey: ["support-intel-status"], queryFn: () => apiGet<IntelStatus>("/intel/status"), staleTime: 60_000 });
   const reference = useQuery({ queryKey: ["support-reference"], queryFn: getOrCreateSupportReference });
+  const history = useQuery({ queryKey: ["support-reference-history"], queryFn: getReferenceHistory });
 
   const protectionRows = useMemo<SupportProtectionRow[]>(() => buildProtectionRows(
     protection, net.data ?? null, evidence.data ?? [],
@@ -157,7 +161,8 @@ export default function SupportScreen() {
     if (outcome === "unavailable") { await Clipboard.setStringAsync(renderSupportSummaryText(summary!, ref!)); showToast(`No email app found. Summary copied — paste it into an email to ${SUPPORT_RECIPIENT}.`, "neutral"); }
     else showToast(userEmail ? "Review the draft, then send. A copy will reach your email too." : "Review the draft, then send it when you're ready.", "resting");
   };
-  const newRequest = async () => { await startNewSupportReference(); await reference.refetch(); showToast("Started a new support request.", "neutral"); };
+  const newRequest = async () => { await startNewSupportReference(); await reference.refetch(); await history.refetch(); showToast("Started a new support request.", "neutral"); };
+  const reopen = async (ref: string) => { await reopenSupportReference(ref); await reference.refetch(); showToast("Reopened that request — the email and report will reuse its reference.", "resting"); };
 
   const verifiedEvidence = (evidence.data ?? []).filter((e) => e.result === "verified").sort((a, b) => b.observedAt.localeCompare(a.observedAt))[0] ?? null;
 
@@ -242,7 +247,16 @@ export default function SupportScreen() {
         </View>
         <Button testID="support-email" label="Email Apollo Support" icon={<Mail size={18} color={colors.onBrandPrimary} />} disabled={!ready} onPress={() => void emailSupport()} />
         <Button testID="support-new-request" variant="ghost" label="Start a new support request" onPress={() => void newRequest()} />
-        <Body style={s.detail}>Reusing this screen keeps the same reference. Starting a new request creates a fresh one.</Body>
+        {history.data && history.data.length > 1 ? <View testID="support-inbox" style={{ gap: spacing.xs }}>
+          <Text style={s.label}>Past requests</Text>
+          {history.data.filter((h) => h.reference !== ref).slice(0, 6).map((h) => (
+            <Pressable key={h.reference} testID={`support-inbox-${h.reference}`} accessibilityRole="button" onPress={() => void reopen(h.reference)} style={({ pressed }) => [s.inboxRow, { opacity: pressed ? 0.7 : 1 }]}>
+              <View style={{ flex: 1 }}><Text style={s.inboxRef} numberOfLines={1}>{h.reference}</Text><Text style={s.detail}>{new Date(h.createdAt).toLocaleString()}</Text></View>
+              <Text style={s.inboxReopen}>Reopen</Text>
+            </Pressable>
+          ))}
+        </View> : null}
+        <Body style={s.detail}>Reusing this screen keeps the same reference. Starting a new request creates a fresh one. Tap a past request to reopen it.</Body>
       </Section>
 
     </ScrollView>

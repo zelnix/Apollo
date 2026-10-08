@@ -2,12 +2,13 @@
 // leaks an internal code, overstates protection ("blocked"/"stopped" without verified enforcement), or
 // routes to a screen that doesn't exist. Run: node --test tests/messageGuardrails.test.ts
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import type { ApolloState, EventCategory, PatrolEvent } from "../src/domain/types.ts";
-import { looksLikeInternalCode, projectedEventVoice } from "../src/domain/messageVoice.ts";
+import { assessmentLabel, attentionLabel, looksLikeInternalCode, projectedEventVoice } from "../src/domain/messageVoice.ts";
 import { resolveApolloState } from "../src/domain/stateMachine.ts";
+import { buildGatesOverview } from "../src/domain/gates.ts";
 import { patrolPayload } from "../src/domain/patrolPayload.ts";
 import { enforceEgress } from "../src/domain/privacy.ts";
 import { eventLocalAlert } from "../src/push/localAlerts.ts";
@@ -65,4 +66,31 @@ test("every notification routes to a screen that actually exists (no dead links)
   assert.ok(alert!.body && !looksLikeInternalCode(alert!.body));
   // The deep-link target must be a real route file.
   assert.ok(existsSync("app/patrol/[id].tsx"), "patrol detail route must exist for notification deep-link");
+});
+
+const ALLOWED_GATE_LABELS = new Set(["Protection on", "Watching", "Ready automatically", "Ready when you need it", "Ready now", "Needs your attention", "Off", "Checking", "Status unavailable", "Not available on this device"]);
+
+test("Gate alerts: every gate presentation is plain English with an actionable, code-free button", () => {
+  const overview = buildGatesOverview({ platform: "android", checking: false, protection: null, permissions: [], capabilities: [], messaging: null, calls: null });
+  assert.equal(overview.gates.length, 10);
+  for (const g of [...overview.gates, ...(overview.primary ? [overview.primary] : [])]) {
+    assert.ok(ALLOWED_GATE_LABELS.has(g.statusLabel), `unknown/leaky gate status label: ${g.statusLabel}`);
+    for (const text of [g.currentHelp, g.purpose, g.capability.automatic?.limitation ?? ""]) assert.ok(!looksLikeInternalCode(text), `gate ${g.id} leaked a code: ${text}`);
+    if (g.primaryAction) { assert.ok(g.primaryAction.label.trim().length > 0 && !looksLikeInternalCode(g.primaryAction.label), `gate ${g.id} action label bad: ${g.primaryAction.label}`); assert.ok(g.primaryAction.id.trim().length > 0, `gate ${g.id} action has no id to route with`); }
+  }
+  assert.ok(!looksLikeInternalCode(overview.summary) && !looksLikeInternalCode(overview.higgins));
+});
+
+test("Higgins chat replies: every verdict maps to plain English, never a raw enum", () => {
+  for (const a of ["concern_found", "no_concern_found_within_scope", "uncertain"]) {
+    const label = assessmentLabel(a);
+    assert.ok(label.trim().length > 0 && !looksLikeInternalCode(label), `assessment leaked: ${label}`);
+  }
+  for (const a of ["none", "review", "action_needed", "urgent"]) {
+    const label = attentionLabel(a);
+    assert.ok(label.trim().length > 0 && !looksLikeInternalCode(label), `attention leaked: ${label}`);
+  }
+  // The investigation view must not interpolate raw enums into the UI.
+  const view = readFileSync("src/components/InvestigationView.tsx", "utf8");
+  assert.doesNotMatch(view, /\.(assessment|attention)\.replace|\{response\.(assessment|attention)\}/, "InvestigationView must render verdicts via messageVoice labels, not raw enums");
 });

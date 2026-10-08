@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EventActions } from "@/src/components/EventActions";
 import { HigginsReadAloud } from "@/src/components/HigginsReadAloud";
 import { narrateEvent } from "@/src/domain/higginsNarration";
-import { displayStateLabel, looksLikeInternalCode, projectedEventVoice, sourceLabel } from "@/src/domain/messageVoice";
+import { eventHistory, looksLikeInternalCode, projectedEventVoice, sourceLabel } from "@/src/domain/messageVoice";
 import { Body, Button, Card, Pill, toneColor } from "@/src/components/ui";
 import { STATE_LABEL, STATE_MEANING } from "@/src/domain/types";
 import type { PatrolRecord } from "@/src/domain/types";
@@ -35,7 +35,7 @@ export default function EventDetail() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, focus } = useLocalSearchParams<{ id: string; focus?: string }>();
   const { events, isMock, ready, setupDone } = useApollo();
   const event = events.find((e) => e.event_id === id);
   const [timeline, setTimeline] = useState<PatrolRecord[]>([]);
@@ -59,6 +59,7 @@ export default function EventDetail() {
         <View style={s.content}><Body>This event is no longer available.</Body></View>
       ) : (
         <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="event-scroll">
+          {focus ? <Card testID="event-from-alert" style={{ gap: 4, borderColor: toneColor(colors, event.state) }}><Text style={s.sub}>Opened from your Apollo alert</Text><Body>Here&apos;s exactly what Apollo flagged. The details below are this specific finding.</Body></Card> : null}
           <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}>
             <Pill tone={outcome?.state ?? event.state} label={outcome?.result ?? STATE_LABEL[event.state]} testID="event-state-pill" />
             {event.verified_block ? <Pill tone={event.resolved_at ? "resting" : "biting"} label={event.resolved_at ? "Threat contained" : "Block verified"} testID="event-verified-pill" /> : null}
@@ -102,7 +103,9 @@ export default function EventDetail() {
           </Card>
 
           <Card style={{ gap: spacing.sm }} testID="event-read-card"><HigginsReadAloud chunks={narrateEvent(voice ? { ...event, headline: voice.headline, what_happened: voice.whatHappened, what_to_do: voice.whatToDo } : event)} testID="event-read" /></Card>
-          {timeline.length > 1 ? <Card style={{ gap: spacing.sm }} testID="event-server-timeline"><Text style={s.sub}>Issue timeline</Text>{timeline.map((record) => <View key={record.recordId} testID={`event-timeline-${record.revision}`}><Body>Revision {record.revision}: {displayStateLabel(record.effectiveState)} — {record.summary}</Body><Text style={s.meta}>{new Date(record.occurredAt).toLocaleString()}</Text></View>)}</Card> : null}
+          <Card style={{ gap: spacing.sm }} testID="event-history"><Text style={s.sub}>Status history</Text>{eventHistory(event, timeline.map((r) => ({ occurredAt: r.occurredAt, effectiveState: r.effectiveState, summary: r.summary, revision: r.revision }))).map((entry, i) => (
+            <View key={i} style={s.bullet} testID={`event-history-${i}`}><View style={[s.dot, { backgroundColor: toneColor(colors, event.state) }]} /><View style={{ flex: 1 }}><Body>{entry.text}</Body><Text style={s.meta}>{new Date(entry.at).toLocaleString()}</Text></View></View>
+          ))}</Card>
           <EventActions event={event} />
           {event.scent_id && events.filter((e) => e.scent_id === event.scent_id).length > 1 ? <Card style={{ gap: spacing.sm }} testID="event-incident-card"><Body>This event is part of a connected incident ({events.filter((e) => e.scent_id === event.scent_id).length} events).</Body><Button testID="event-incident-open" variant="secondary" label="View incident timeline" onPress={() => router.push({ pathname: "/patrol/scent/[id]", params: { id: event.scent_id! } })} /></Card> : null}
 
