@@ -19,6 +19,8 @@ import type { GateHealthRecord } from "@/src/protection/healthTypes";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
+const GATES_INFO = { title: "About Gates", body: ["Your protection. Apollo watches what this device allows and shows you what's working and anything that needs you.", "To check something yourself, use Check It."] };
+
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   content: { paddingHorizontal: spacing.xl, gap: spacing.xl },
@@ -99,8 +101,8 @@ export default function GuardScreen() {
   const summaryTitle = reducedCoverage ? "Protection active — reduced coverage" : attentionGates.length ? `${attentionNames} ${attentionGates.length === 1 ? "needs" : "need"} your attention` : `${active} ${active === 1 ? "Gate is" : "Gates are"} helping automatically`;
   return <View style={s.root} testID="gates-screen">
     {isGatesRoute
-      ? <ChildScreenHeader title="Gates" testID="gates-header" />
-      : <View style={{ paddingTop: insets.top + spacing.md }}><RootScreenHeader title="Gates" testID="gates-header" /></View>}
+      ? <ChildScreenHeader title="Gates" testID="gates-header" info={GATES_INFO} />
+      : <View style={{ paddingTop: insets.top + spacing.md }}><RootScreenHeader title="Gates" testID="gates-header" info={GATES_INFO} /></View>}
     <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 110 }]}>
       <Text style={s.title} testID="gates-title">Your protection</Text>
       <Card testID="gates-summary-card">
@@ -109,7 +111,6 @@ export default function GuardScreen() {
             <Body testID="gates-summary-time">{health.checking ? "Checking current device status…" : health.checkedAt ? "Status checked from current device signals." : "Status will appear after the first device check."}</Body></View>
         </View>
       </Card>
-      <Body testID="gates-introduction">Your protection. Apollo watches what this device allows and shows you what&apos;s working and anything that needs you. To check something yourself, use Check It.</Body>
       <View testID="gates-capability-section" style={{ gap: spacing.md }}><SectionTitle>Your Gates</SectionTitle>{health.gates.map((record) => <HealthCard key={record.id} record={record} highlighted={record.id === gateParam} log={healthLog[record.id]} />)}</View>
       <View testID="gates-account-section" style={{ gap: spacing.md }}>
         <SectionTitle>Account exposure</SectionTitle>
