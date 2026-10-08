@@ -1,3 +1,22 @@
+## Universal Check Result — shared screen + Link Gate reference (Phase 1) (2026-06)
+
+**Standing principle:** Apollo investigates. Higgins explains. ONE result, ONE Higgins paragraph, ONE itemised list, ONE actions row. No competing verdict cards, no auto-asked follow-up questions, no repetition. Technical evidence preserved behind progressive disclosure.
+
+**New shared model `src/domain/checkResult.ts`:** canonical `CheckResultModel` + `CheckItem` + `EvidenceRow` for every Apollo manual check (Link / Site / Text / Call / Internet / App / Device / Email / File / Account + Higgins First Check & Re-check). Statuses: `clear` / `concern` / `incomplete` / `unavailable` / `not_configured` / `error` / `not_performed`. `STATUS_LABEL` + `STATUS_TONE` for consistent pills.
+
+**New shared component `src/components/CheckResultScreen.tsx`:** full-screen Check Result with the agreed layout — Gate title + check type → ONE outcome Pill + Confidence Pill + headline → **Higgins says** (2–4 sentence paragraph + Hear-Higgins) → optional **What to do** → **What Apollo checked** (plain-English items, each expandable to raw JSON) → **Full investigation details** (progressive disclosure for all technical evidence, privacy processing, adapter, event id, redirects, intel coverage, domain registration) → secondary row (Ask Higgins about this result + gate-specific actions). Close returns via `goBackOrHome`.
+
+**Link Gate reference implementation:**
+- `src/domain/linkCheckResultAdapter.ts` (pure): `buildLinkCheckResult({ outcome, liveEvent, rawInput })` turns the existing `CheckOutcome` into a `CheckResultModel`. Items derived from REAL evidence: Apollo threat list, Google Safe Browsing, Higgins investigation, Domain registration (RDAP), On-device heuristics. Higgins' paragraph is state-driven and honestly qualifies when checks were incomplete (e.g. HTTP 403 restricted page inspection). Clean results don't force a "What to do" action.
+- `app/check.tsx` rewritten so when a check completes, the entire screen becomes the shared `CheckResultScreen` — the old chain (`MessageAssessmentResult` → `check-result-card` "Apollo technical decision" → `GateInvestigation` auto-ask → `check-gate3-actions`) is gone. Actions row carries "Show me how to check the website", "Deep technical details", "Report mistake", "Save this check". "Ask Higgins about this result" opens Higgins pre-seeded with the specific link context + a plain follow-up prompt. Input + "Check with Apollo" + page-screenshot / safe-inspect buttons remain on the entry view when no check has been run.
+
+**What this does NOT change:** no reduction in what Apollo actually investigates — every check still runs. Saved reports, technical evidence, provider responses, confidence methodology, privacy-processing disclosure, enforcement evidence remain fully accessible via "Full investigation details" + "Deep technical details" sheet.
+
+**Still to do (Phases 2–4):** route Text / Call / Internet / App / Device / Email / File / Account / Higgins Re-check / First Check through `CheckResultScreen` via per-gate adapters; progress indicators while a check runs; cross-screen consistency (Patrol / Home / Gates / Higgins all read the same canonical result).
+
+**Verification (code-level only — no automated tests run per rule):** `tsc --noEmit` clean; ESLint clean; Android bundle HTTP 200. Full visual verification needs a native build + your sign-off on the Link Gate before I migrate the rest.
+
+
 ## Scam Share + "What Apollo has done today" Protection Timeline (2026-06)
 
 **Scam Share:**

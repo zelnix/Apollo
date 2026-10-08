@@ -17,8 +17,8 @@ object ProtectionNotificationFactory {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (manager.getNotificationChannel(CHANNEL_ID) == null) {
             manager.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "Apollo protection", NotificationManager.IMPORTANCE_LOW).apply {
-                    description = "Shows while Apollo selective protection is active"
+                NotificationChannel(CHANNEL_ID, "Apollo Site Gate", NotificationManager.IMPORTANCE_LOW).apply {
+                    description = "Shows while Apollo's Site Gate is checking the websites this device connects to"
                     setShowBadge(false)
                 },
             )
@@ -40,14 +40,17 @@ object ProtectionNotificationFactory {
             },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
+        // Keep user-facing copy plain English, friendly, and free of technical details (never show
+        // IP addresses or CIDRs — those are internal plumbing for the VPN tunnel). "Site Gate" is the
+        // user-facing name for Apollo's website-safety protection.
         val text = when (state) {
-            is VpnLifecycleState.Running -> "Selective protection active (${state.routeCidr})"
-            VpnLifecycleState.Starting -> "Starting selective protection…"
-            is VpnLifecycleState.Degraded -> "Protection degraded: ${state.reason}"
-            else -> "Apollo protection"
+            is VpnLifecycleState.Running -> "Site Gate is on — Apollo is watching the websites this device opens."
+            VpnLifecycleState.Starting -> "Site Gate is starting up…"
+            is VpnLifecycleState.Degraded -> "Site Gate is paused — Apollo will try again."
+            else -> "Site Gate"
         }
         return Notification.Builder(context, CHANNEL_ID)
-            .setContentTitle("Apollo")
+            .setContentTitle("Apollo · Site Gate")
             .setContentText(text)
             .setContentIntent(contentIntent)
             .setSmallIcon(android.R.drawable.ic_lock_lock)

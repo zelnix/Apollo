@@ -13,19 +13,17 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiPost, apiUpload } from "@/src/api/client";
+import { CheckResultScreen } from "@/src/components/CheckResultScreen";
 import { EventActions } from "@/src/components/EventActions";
-import { GateInvestigation } from "@/src/components/GateInvestigation";
 import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
 import { GateAbout } from "@/src/components/GateAbout";
-import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
-import { MessageAssessmentResult } from "@/src/components/MessageAssessmentResult";
 import { ScreenshotPermissionSheet } from "@/src/components/ScreenshotPermissionSheet";
 import { getHigginsAuto, speakHiggins } from "@/src/voice/higgins";
-import { Body, Button, Card, Pill, toneColor } from "@/src/components/ui";
+import { Body, Button, Pill, Card, toneColor } from "@/src/components/ui";
+import { buildLinkCheckResult } from "@/src/domain/linkCheckResultAdapter";
 import { verifyWebsite } from "@/src/domain/brand";
-import { formatDomainInfoLine } from "@/src/domain/domainInfo";
 import { analysePage, type PageAnalysis, type PageSignals } from "@/src/domain/pageAnalysis";
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { saveCheck } from "@/src/store/savedCheckStore";
@@ -33,7 +31,6 @@ import { useApollo, type CheckOutcome } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { useScreenshotAccess } from "@/src/hooks/useScreenshotAccess";
-import { dispatchInvestigationAction } from "@/src/domain/investigationActions";
 import { extractUrl } from "@/src/share/classifyShare";
 import { getShareIntake } from "@/src/share/shareIntake";
 
@@ -60,7 +57,7 @@ export default function CheckLink() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { checkLink, events, isMock, ready, setupDone, deviceId, showToast, upsertEvent, recordPageAnalysis } = useApollo();
+  const { checkLink, events, ready, setupDone, deviceId, showToast, recordPageAnalysis } = useApollo();
   const [verify, setVerify] = useState(false);
   const [report, setReport] = useState(false);
   const [reportBusy, setReportBusy] = useState(false);
@@ -137,6 +134,95 @@ export default function CheckLink() {
   const paste = async () => { const t = await Clipboard.getStringAsync(); if (t) setInput(t.trim()); };
   const sourceLabel = params.source === "share" ? "Shared into Apollo" : params.source === "clipboard" ? "From your clipboard" : params.source === "link" ? "Opened via link" : null;
 
+  // UNIVERSAL CHECK RESULT — when the manual check has produced an outcome, the entire screen
+  // becomes the shared Check Result (ONE Higgins paragraph, ONE items list, ONE actions row). No
+  // duplicate verdict cards, no auto-asked follow-up questions. Technical evidence stays in the
+  // "Full investigation details" expand.
+  if (outcome && state) {
+    const model = buildLinkCheckResult({ outcome, liveEvent, rawInput: input });
+    const askPrompt = `About the link I just checked (${model.subject}). ${model.headline} Can you walk me through what Apollo found and what I should do?`;
+    const actions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];
+    if (liveEvent && (liveEvent.state === "biting" || liveEvent.state === "barking" || liveEvent.state === "growling" || liveEvent.state === "ears_up")) {
+      actions.push({ testID: "check-verify-website", variant: "ghost", label: "Show me how to check the website", onPress: () => setVerify(true) });
+    }
+    actions.push({ testID: "check-tech-details", variant: "ghost", label: liveEvent?.state === "biting" ? "What happened? / Deep technical details" : "Deep technical details", onPress: () => setTech(true) });
+    if (liveEvent && liveEvent.state !== "resting") {
+      actions.push({ testID: "check-report-mistake", variant: "ghost", label: "Report mistake", onPress: () => setReport(true) });
+    }
+    actions.push({
+      testID: "check-save",
+      variant: "ghost",
+      label: saved ? "Saved ✓ — View saved checks" : "Save this check",
+      onPress: () => {
+        if (saved) { router.push("/saved-checks"); return; }
+        if (!liveEvent || !outcome) return;
+        void saveCheck({
+          id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
+          gate: "link",
+          title: liveEvent.headline ?? outcome.decision.headline,
+          subject: outcome.local.host || input.trim() || "link",
+          state: liveEvent.state,
+          stateName: STATE_NAME[liveEvent.state],
+          summary: liveEvent.what_happened ?? outcome.decision.what_happened,
+          recommendation: liveEvent.what_to_do ?? outcome.decision.what_to_do,
+          sections: [
+            { title: "Why", lines: liveEvent.why ?? outcome.decision.why },
+            { title: "Intelligence", lines: outcome?.intel ? outcome.intel.sources.map((x) => `${x.name} = ${x.status}`) : [] },
+            { title: "Confidence", lines: [outcome.decision.confidence] },
+          ],
+        }).then(() => { setSaved(true); showToast("Saved. Find it under Saved checks.", "neutral"); });
+      },
+    });
+
+    return (
+      <>
+        <CheckResultScreen
+          result={model}
+          onAskHiggins={() => router.push({
+            pathname: "/(tabs)/ask",
+            params: {
+              context: liveEvent ? JSON.stringify({ ...contextFromEvent(liveEvent, gateForCategory(liveEvent.category)), original_evidence: [...(input.trim() ? [{ kind: "url" as const, value: input.trim(), label: "checked link" }] : [])] }) : "",
+              prompt: askPrompt,
+            },
+          })}
+          actions={actions}
+        />
+        {/* Recovery flow stays available for non-resting results — rendered via a Sheet below. */}
+        {liveEvent && liveEvent.state !== "resting" ? (
+          <RecoveryFlow event={liveEvent} kinds={["clicked", "password", "card", "code", "download", "app", "called"]} testID="check-recovery" />
+        ) : null}
+        <Sheet visible={verify} onClose={() => setVerify(false)} title="Verify website" testID="verify-website-sheet">
+          {(() => { const v = outcome?.local.host ? verifyWebsite(outcome.local.host, outcome.decision.claimed_brand) : null; return v ? (
+            <>
+              <Pill tone={v.matches === true ? "resting" : v.matches === false ? "barking" : "unknown"} label={v.title} testID="verify-website-title" />
+              {v.lines.map((l, i) => <Body key={i} testID={`verify-website-line-${i}`}>{l}</Body>)}
+              <Body>Apollo compares against an independently maintained list of official domains — never information from the page itself.</Body>
+            </>
+          ) : null; })()}
+          <Button testID="verify-website-close" variant="ghost" label="Done" onPress={() => setVerify(false)} />
+        </Sheet>
+        <Sheet visible={tech} onClose={() => setTech(false)} title="Deep technical details" testID="tech-details-sheet">
+          {outcome ? (
+            <>
+              <Body>Checked: {outcome.local.normalizedUrl ?? outcome.local.input}</Body>
+              {outcome.intel?.final_url ? <Body>Final destination: {outcome.intel.final_url}</Body> : null}
+              <Body>On-device score: {outcome.local.score}/100 ({outcome.local.level}). Signals: {outcome.local.signals.map((x) => x.code).join(", ") || "none"}.</Body>
+              <Body>Intelligence: {outcome.intel ? outcome.intel.sources.map((x) => `${x.name} = ${x.status}`).join("; ") : "unavailable"}. Verdict: {outcome.intel?.verdict ?? "n/a"}. Coverage: {outcome.intel?.coverage ?? "none"}.</Body>
+              <Body>Adapter: {liveEvent?.adapter_label}. Verified block: {liveEvent?.verified_block ? "yes" : "no"}. Event: {liveEvent?.event_id.slice(0, 8)}…</Body>
+            </>
+          ) : null}
+          <Button testID="tech-details-close" variant="ghost" label="Done" onPress={() => setTech(false)} />
+        </Sheet>
+        <Sheet visible={report} onClose={() => setReport(false)} title="Report a mistake" testID="report-sheet">
+          <Body>Think Apollo got this wrong? Your report includes the event, Apollo&apos;s decision, the domain and which intelligence sources responded — nothing else. A human reviews it; one report never whitelists a site for everyone.</Body>
+          {reportError ? <Body testID="report-error">{reportError}</Body> : null}
+          <Button testID="report-send" label={reportBusy ? "Sending…" : reportError ? "Retry report" : "Send report"} disabled={reportBusy} onPress={() => { if (!liveEvent) return; setReportBusy(true); setReportError(null); void sendFeedback("false_positive", liveEvent, outcome?.intel?.sources.map((x) => x.name) ?? []).then(() => { setReport(false); showToast("Thanks — report sent for review.", "resting"); }).catch(() => setReportError("The report was not sent. Check your connection and retry." )).finally(() => setReportBusy(false)); }} />
+          <Button testID="report-cancel" variant="ghost" label="Cancel" onPress={() => setReport(false)} />
+        </Sheet>
+      </>
+    );
+  }
+
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
@@ -195,113 +281,12 @@ export default function CheckLink() {
             </Animated.View>
           ) : null}
 
-          {outcome && state ? (
-            <Animated.View entering={FadeInDown.duration(350)}>
-              {outcome.assessment ? <MessageAssessmentResult assessment={outcome.assessment} state={state} testIDPrefix="link"
-                submittedLabel="Link investigated" submittedTitle={outcome.local.host ?? "Submitted link"} submittedText={input}
-                onPrimaryAction={() => dispatchInvestigationAction(outcome.assessment!.higgins.action_kind, {
-                  showVerification: () => setVerify(true), openAccount: () => router.push("/account"),
-                  clearSubmittedCopy: () => { setInput(""); showToast("The link submitted to Apollo was cleared from this screen. The original message or email was not deleted.", "neutral"); },
-                  showReview: () => setTech(true),
-                })} /> : outcome.investigationError ? <Card testID="link-investigation-error"><Body>Higgins&apos;s deeper investigation is unavailable: {outcome.investigationError} Apollo&apos;s deterministic and reputation findings remain below.</Body></Card> : null}
-              <Card testID="check-result-card" style={{ borderColor: toneColor(colors, liveEvent?.state === "biting" && liveEvent.resolved_at ? "resting" : state), gap: spacing.sm }}>
-                <Text style={s.sub} testID="check-result-technical-label">Apollo technical decision</Text>
-                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm }}><Pill tone={state} label={STATE_LABEL[state]} testID="check-result-state" /><HigginsSpeakButton compact text={`${STATE_LABEL[state]}. ${liveEvent?.state === "biting" ? "Apollo blocked a dangerous website." : (liveEvent?.headline ?? outcome.decision.headline)} ${liveEvent?.what_happened ?? outcome.decision.what_happened} What to do: ${liveEvent?.what_to_do ?? outcome.decision.what_to_do}`} testID="check-hear-higgins" /></View>
-                {liveEvent?.state === "biting" && liveEvent.resolved_at ? <Pill tone="resting" label="Threat contained" testID="check-result-contained" /> : null}
-                {liveEvent?.state === "biting" ? (
-                  <>
-                    <Text style={s.headline} testID="check-result-headline">Apollo is biting — a dangerous website was blocked on this device.</Text>
-                    <Body>{outcome.decision.claimed_brand ? `It was pretending to be ${outcome.decision.claimed_brand}. ` : ""}No action is needed unless you already entered information.</Body>
-                  </>
-                ) : (
-                  <>
-                    <Text style={s.headline} testID="check-result-headline">{liveEvent?.headline ?? outcome.decision.headline}</Text>
-                    <Body>{liveEvent?.what_happened ?? outcome.decision.what_happened}</Body>
-                  </>
-                )}
-                {outcome.intel?.redirect_chain?.length ? <Pill tone="unknown" label={`Redirected: ${outcome.intel.redirect_chain.join(" → ")}`} testID="check-result-redirects" /> : null}
-                {outcome.decision.claimed_brand ? <Pill tone={state === "resting" ? "resting" : "barking"} label={`Claims to be ${outcome.decision.claimed_brand}`} testID="check-result-brand" /> : null}
-                {!outcome.intel || outcome.intel.coverage === "none" ? <Pill tone="unknown" label="Online check unavailable — on-device checks only" testID="check-result-intel-unavailable" /> : outcome.intel.coverage === "partial" ? <Pill tone="unknown" label="Online check partial" testID="check-result-intel-partial" /> : null}
-                {outcome.intel?.domain_info ? (
-                  outcome.intel.domain_info.available === false ? (
-                    <Body style={s.hint} testID="check-result-domain-unavailable">Domain registration lookup unavailable.</Body>
-                  ) : (
-                    <>
-                      <Text style={s.sub}>Domain info</Text>
-                      <Body testID="check-result-domain-info">{formatDomainInfoLine(outcome.intel.domain_info)}</Body>
-                      {outcome.intel.domain_info.newly_registered ? <Pill tone="growling" label="Newly registered — elevated scam risk" testID="check-result-domain-new" /> : null}
-                    </>
-                  )
-                ) : null}
-                <Text style={s.sub}>Why Apollo reacted</Text>
-                {(liveEvent?.why ?? outcome.decision.why).map((w, i) => (
-                  <View key={i} style={s.bullet}><View style={[s.dot, { backgroundColor: toneColor(colors, state) }]} /><Body style={{ flex: 1 }}>{w}</Body></View>
-                ))}
-                <Text style={s.sub}>What to do</Text>
-                <Body testID="check-result-todo">{liveEvent?.what_to_do ?? outcome.decision.what_to_do}</Body>
-                <Text style={s.sub}>Confidence: {outcome.decision.confidence}</Text>
-                {outcome.intel ? outcome.intel.sources.map((src) => (
-                  <View key={src.name} style={s.sourceRow}>
-                    <Body style={{ flex: 1 }}>{src.name === "google_safe_browsing" ? "Google Safe Browsing" : "Apollo threat list"}</Body>
-                    <Pill tone={src.status === "match" ? "barking" : src.status === "clear" ? "resting" : "unknown"} label={src.status === "match" ? "Listed" : src.status === "clear" ? "Clear" : src.status === "not_configured" ? "Not configured" : "Unavailable"} />
-                  </View>
-                )) : outcome.intelError ? <Body testID="check-result-intel-error">Reputation check unavailable: {outcome.intelError}</Body> : null}
-                {isMock && liveEvent?.verified_block ? <Pill tone="unknown" label="Simulated block (mock adapter)" /> : null}
-              </Card>
-              {liveEvent ? <View style={{ marginTop: spacing.md, gap: spacing.md }}><EventActions event={liveEvent} hideAsk /><GateInvestigation submission={outcome!} testID="check-investigation" label="Ask Higgins about this link" context={{ ...contextFromEvent(liveEvent, gateForCategory(liveEvent.category)), original_evidence: [...(input.trim() ? [{ kind: "url" as const, value: input.trim(), label: "checked link" }] : []), ...(outcome?.intel ? [{ kind: "text" as const, value: `Apollo link check: verdict ${outcome.intel.verdict}; coverage ${outcome.intel.coverage}; redirect chain ${outcome.intel.redirect_chain?.join(" → ") || "none observed"}; final URL ${outcome.intel.final_url ?? "not resolved"}; sources ${outcome.intel.sources.map((x) => `${x.name}=${x.status}`).join(", ")}`, label: "link check observations" }] : [])] }} question="Is this link or site safe to use, and what should I do?" /></View> : null}
-              {liveEvent ? (
-                <Card style={{ marginTop: spacing.md, gap: spacing.sm }} testID="check-gate3-actions">
-                  <Button testID="check-verify-website" variant="secondary" label="Show me how to check the website" onPress={() => setVerify(true)} />
-                  <Button testID="check-tech-details" variant="ghost" label={liveEvent.state === "biting" ? "What happened? / Technical details" : "Technical details"} onPress={() => setTech(true)} />
-                  {liveEvent.state !== "resting" ? <RecoveryFlow event={liveEvent} kinds={["clicked", "password", "card", "code", "download", "app", "called"]} testID="check-recovery" /> : null}
-                  {(liveEvent.state === "growling" || liveEvent.state === "ears_up") && liveEvent.status === "active" ? (
-                    <Button testID="check-continue-anyway" variant="ghost" label="Record my choice to continue" onPress={() => { void upsertEvent({ ...liveEvent, why: [...liveEvent.why, "You chose to continue anyway. Apollo still recommends leaving this site."] }); void sendFeedback("override", liveEvent, outcome.intel?.sources.map((x) => x.name) ?? []).catch(() => undefined); showToast("Choice recorded. Apollo still recommends leaving this site.", "growling"); }} />
-                  ) : null}
-                  {liveEvent.state !== "resting" ? <Button testID="check-report-mistake" variant="ghost" label="Report mistake" onPress={() => setReport(true)} /> : null}
-                  <Button testID="check-save" variant="ghost" label={saved ? "Saved ✓ — View saved checks" : "Save this check"} onPress={() => { if (saved) { router.push("/saved-checks"); return; } void saveCheck({ id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`, gate: "link", title: liveEvent.headline ?? outcome!.decision.headline, subject: outcome?.local.host || input.trim() || "link", state: liveEvent.state, stateName: STATE_NAME[liveEvent.state], summary: liveEvent.what_happened ?? outcome!.decision.what_happened, recommendation: liveEvent.what_to_do ?? outcome!.decision.what_to_do, sections: [{ title: "Why", lines: liveEvent.why ?? outcome!.decision.why }, { title: "Intelligence", lines: outcome?.intel ? outcome.intel.sources.map((x) => `${x.name} = ${x.status}`) : [] }, { title: "Confidence", lines: [outcome!.decision.confidence] }] }).then(() => { setSaved(true); showToast("Saved. Find it under Saved checks.", "neutral"); }); }} />
-                </Card>
-              ) : null}
-            </Animated.View>
-          ) : null}
+          {/* Universal Check Result is rendered via the early-return branch above when outcome
+           *  exists. This entry view only ever shows the input + action buttons + page-assess
+           *  previews — no competing verdict cards. */}
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <Sheet visible={verify} onClose={() => setVerify(false)} title="Verify website" testID="verify-website-sheet">
-        {(() => { const v = outcome?.local.host ? verifyWebsite(outcome.local.host, outcome.decision.claimed_brand) : null; return v ? (
-          <>
-            <Pill tone={v.matches === true ? "resting" : v.matches === false ? "barking" : "unknown"} label={v.title} testID="verify-website-title" />
-            {v.lines.map((l, i) => <Body key={i} testID={`verify-website-line-${i}`}>{l}</Body>)}
-            <Body>Apollo compares against an independently maintained list of official domains — never information from the page itself.</Body>
-          </>
-        ) : null; })()}
-        <Button testID="verify-website-close" variant="ghost" label="Done" onPress={() => setVerify(false)} />
-      </Sheet>
-
-      <Sheet visible={tech} onClose={() => setTech(false)} title="Technical details" testID="tech-details-sheet">
-        {outcome ? (
-          <>
-            <Body>Checked: {outcome.local.normalizedUrl ?? outcome.local.input}</Body>
-            {outcome.intel?.final_url ? <Body>Final destination: {outcome.intel.final_url}</Body> : null}
-            <Body>On-device score: {outcome.local.score}/100 ({outcome.local.level}). Signals: {outcome.local.signals.map((x) => x.code).join(", ") || "none"}.</Body>
-            <Body>Intelligence: {outcome.intel ? outcome.intel.sources.map((x) => `${x.name} = ${x.status}`).join("; ") : "unavailable"}. Verdict: {outcome.intel?.verdict ?? "n/a"}. Coverage: {outcome.intel?.coverage ?? "none"}.</Body>
-            {outcome.intel?.domain_info && outcome.intel.domain_info.available !== false ? (
-              <Body testID="tech-domain-info">
-                Domain: {outcome.intel.domain_info.domain}. Registrar: {outcome.intel.domain_info.registrar ?? "unknown"}. Registered: {outcome.intel.domain_info.registered_at ? outcome.intel.domain_info.registered_at.slice(0, 10) : "unknown"}
-                {outcome.intel.domain_info.age_days != null ? ` (${outcome.intel.domain_info.age_days} days ago)` : ""}. Registrant organisation: {outcome.intel.domain_info.registrant_organization ?? "not disclosed"}. RDAP server: {outcome.intel.domain_info.rdap_server ?? "n/a"}.
-              </Body>
-            ) : null}
-            <Body>Adapter: {liveEvent?.adapter_label}. Verified block: {liveEvent?.verified_block ? "yes" : "no"}. Event: {liveEvent?.event_id.slice(0, 8)}…</Body>
-          </>
-        ) : null}
-        <Button testID="tech-details-close" variant="ghost" label="Done" onPress={() => setTech(false)} />
-      </Sheet>
-
-      <Sheet visible={report} onClose={() => setReport(false)} title="Report a mistake" testID="report-sheet">
-        <Body>Think Apollo got this wrong? Your report includes the event, Apollo&apos;s decision, the domain and which intelligence sources responded — nothing else. A human reviews it; one report never whitelists a site for everyone.</Body>
-        {reportError ? <Body testID="report-error">{reportError}</Body> : null}
-        <Button testID="report-send" label={reportBusy ? "Sending…" : reportError ? "Retry report" : "Send report"} disabled={reportBusy} onPress={() => { if (!liveEvent) return; setReportBusy(true); setReportError(null); void sendFeedback("false_positive", liveEvent, outcome?.intel?.sources.map((x) => x.name) ?? []).then(() => { setReport(false); showToast("Thanks — report sent for review.", "resting"); }).catch(() => setReportError("The report was not sent. Check your connection and retry." )).finally(() => setReportBusy(false)); }} />
-        <Button testID="report-cancel" variant="ghost" label="Cancel" onPress={() => setReport(false)} />
-      </Sheet>
       <ScreenshotPermissionSheet prefix="check" visible={!!photoAccess.permission} canAskAgain={photoAccess.permission?.canAskAgain ?? true}
         checking={photoAccess.checking} onContinue={() => void photoAccess.continueAccess()} onClose={photoAccess.close} />
     </View>

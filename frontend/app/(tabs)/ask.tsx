@@ -76,7 +76,7 @@ const useStyles = makeStyles((c) => ({
 
 export default function Ask() {
   const s = useStyles(); const { colors } = useTheme(); const insets = useSafeAreaInsets(); const router = useRouter(); const { deviceId, isMock } = useApollo(); const health = useProtectionHealth();
-  const params = useLocalSearchParams<{ context?: string; prompt?: string; handoffId?: string; operationId?: string; resumeCaseId?: string }>();
+  const params = useLocalSearchParams<{ context?: string; prompt?: string; autoSend?: string; handoffId?: string; operationId?: string; resumeCaseId?: string; scamTitle?: string; scamSource?: string; scamUrl?: string; scamSummary?: string }>();
   const { state, start, ask, retry, cancel, remove, attach, retryDelete } = useInvestigation(params.operationId ? String(params.operationId) : null);
   const [text, setText] = useState(""); const [activeContext, setActiveContext] = useState<HigginsIssueContext | null>(null); const [investigationMode, setInvestigationMode] = useState(false);
   const [chatMessages, setChatMessages] = useState<HigginsChatMessage[]>([]); const [chatBusy, setChatBusy] = useState(false); const [chatError, setChatError] = useState<string | null>(null); const [lastAction, setLastAction] = useState<HigginsChatAction | null>(null);
@@ -95,6 +95,8 @@ export default function Ask() {
   }, [deviceId]);
   useEffect(() => { const caseId = params.resumeCaseId ? String(params.resumeCaseId) : ""; if (!caseId || caseId === seenRoute.current) return; seenRoute.current = caseId; setInvestigationMode(true); router.setParams({ resumeCaseId: "" }); void attach(caseId); }, [params.resumeCaseId, attach, router]);
   useEffect(() => { if (!params.handoffId && params.prompt && !investigationMode) { setText(redactUserSecrets(String(params.prompt))); router.setParams({ prompt: "" }); } }, [params.prompt, params.handoffId, investigationMode, router]);
+
+  const autoSent = useRef<string | null>(null);
   useEffect(() => {
     if (!deviceId || health.checking || !health.checkedAt || contextRecorded.current === health.checkedAt) return;
     contextRecorded.current = health.checkedAt;
@@ -133,6 +135,34 @@ export default function Ask() {
     void recordStarter(clean).then((entries) => setStarters(topStarters(entries))).catch(() => undefined);
   };
   const retryLast = () => { if (!deviceId || chatBusy || !latestUserMessage) return; sendToHiggins(latestUserMessage, false); };
+
+  // Auto-feed a scam alert (or any card context) into the chat so Higgins can reply right away.
+  // The incoming `scamTitle` / `scamSource` / `scamUrl` / `scamSummary` are composed into the
+  // person's first message to Higgins. Guarded so a stale tab navigation can't re-send.
+  useEffect(() => {
+    if (!deviceId || busy || investigationMode) return;
+    const title = params.scamTitle ? String(params.scamTitle).trim() : "";
+    if (!title) return;
+    const key = `${title}::${params.scamSource ?? ""}`;
+    if (autoSent.current === key) return;
+    autoSent.current = key;
+    const source = params.scamSource ? String(params.scamSource).trim() : "";
+    const url = params.scamUrl ? String(params.scamUrl).trim() : "";
+    const summary = params.scamSummary ? String(params.scamSummary).trim() : "";
+    const lines = [
+      `I just read this scam alert and I want to understand it:`,
+      `• Title: ${title}`,
+      source ? `• Source: ${source}` : "",
+      summary ? `• What the source says: ${summary}` : "",
+      url ? `• Official source: ${url}` : "",
+      ``,
+      `Can you explain what this scam is, how it works, and how I stay safe from it?`,
+    ].filter(Boolean);
+    const prompt = redactUserSecrets(lines.join("\n")).trim();
+    // Clear the params immediately so a tab switch / rerender doesn't re-send.
+    router.setParams({ scamTitle: "", scamSource: "", scamUrl: "", scamSummary: "" });
+    if (prompt) sendToHiggins(prompt, true);
+  }, [params.scamTitle, params.scamSource, params.scamUrl, params.scamSummary, deviceId, busy, investigationMode, router, sendToHiggins]);
 
   useEffect(() => {
     const id = params.handoffId ? String(params.handoffId) : ""; if (!id || id === seenRoute.current || !deviceId) return; seenRoute.current = id;

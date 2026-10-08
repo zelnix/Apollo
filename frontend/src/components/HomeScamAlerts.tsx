@@ -103,7 +103,7 @@ export function HomeScamAlerts() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`Ask Higgins about ${it.title}`}
-                onPress={() => router.push({ pathname: "/(tabs)/ask", params: { scamTitle: it.title, scamSource: it.source } })}
+                onPress={() => router.push({ pathname: "/(tabs)/ask", params: { scamTitle: it.title, scamSource: it.source, scamUrl: it.url, scamSummary: (it.higgins.whatHappened || it.summary || "").slice(0, 600) } })}
                 testID={`home-scam-${i}-ask`}
                 style={({ pressed }) => [s.askChip, { opacity: pressed ? 0.7 : 1 }]}
               >

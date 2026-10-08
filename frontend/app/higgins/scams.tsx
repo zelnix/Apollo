@@ -88,7 +88,7 @@ function AlertCard({ item, index }: { item: GovernmentAlert; index: number }) {
         <Text style={s.source} testID={`higgins-scam-${index}-source-name`}>{item.source}<Text style={s.meta}>{`  ·  ${item.dateLabel}`}</Text></Text>
         {item.higgins.whatHappened ? <Body>{item.higgins.whatHappened}</Body> : item.summary ? <Body>{item.summary}</Body> : null}
         <View style={s.row}>
-          <Button testID={`higgins-scam-${index}-ask`} variant="secondary" label="Ask Higgins about this" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { scamTitle: item.title, scamSource: item.source } })} />
+          <Button testID={`higgins-scam-${index}-ask`} variant="secondary" label="Ask Higgins about this" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { scamTitle: item.title, scamSource: item.source, scamUrl: item.url, scamSummary: (item.higgins.whatHappened || item.summary || "").slice(0, 600) } })} />
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Share this scam alert: ${item.title}`}
