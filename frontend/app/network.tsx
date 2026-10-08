@@ -116,6 +116,10 @@ export default function CheckNetwork() {
         <Pressable testID="network-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="network-scroll">
+        <GateAbout title="What Apollo can see here" testID="network-cannot-see"
+          tip="A Wi‑Fi sign-in page asking for your email password or card details, a network name that's almost-but-not-quite the café's, or 'Free Wi‑Fi' with no password in a place you don't recognise.">
+          <Body>This build sees only what the platform reports: connection type, Wi‑Fi name (with location permission), captive portal and VPN flags. It cannot read DNS queries, per-app traffic or confirm destination blocking — Apollo won&apos;t pretend otherwise.</Body>
+        </GateAbout>
         <Card testID="network-dashboard" style={{ gap: spacing.sm, borderColor: toneColor(colors, protectionTone) }}>
           <View style={s.row}><View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><Wifi size={20} color={toneColor(colors, protectionTone)} /><Text style={s.statTitle} testID="network-protection-title">{protectionTitle}</Text></View><Pill tone={protectionTone} label={monitoring ? "Active" : unsupported ? "Unsupported" : network?.connected === false ? "Offline" : "Checking"} testID="network-protection-pill" /></View>
           <Body testID="network-protection-detail">{unsupported ? (guard?.detail ?? "") : monitoring ? "Apollo is watching this connection. It re-checks when you switch networks or reopen the app, reading the connection type, Wi‑Fi security and captive-portal status the platform reports." : !network?.connected ? "You're offline. Apollo will assess the connection as soon as you reconnect." : "Apollo is reading the current connection…"}</Body>
@@ -171,10 +175,6 @@ export default function CheckNetwork() {
           </>
         ) : null}
         <CheckHistoryCard gate="network" refreshKey={historyKey} testID="network-history" />
-        <GateAbout title="What Apollo can see here" testID="network-cannot-see"
-          tip="A Wi‑Fi sign-in page asking for your email password or card details, a network name that's almost-but-not-quite the café's, or 'Free Wi‑Fi' with no password in a place you don't recognise.">
-          <Body>This build sees only what the platform reports: connection type, Wi‑Fi name (with location permission), captive portal and VPN flags. It cannot read DNS queries, per-app traffic or confirm destination blocking — Apollo won&apos;t pretend otherwise.</Body>
-        </GateAbout>
       </KeyboardAwareScrollView>
     </View>
   );

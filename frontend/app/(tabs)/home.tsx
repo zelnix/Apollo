@@ -63,7 +63,7 @@ export default function Home() {
   return (
     <View style={s.root}>
       <View style={{ paddingTop: insets.top + spacing.md }}>
-        <RootScreenHeader title="Home" testID="home-header" info={{ title: "About Home", body: ["Home is your at-a-glance view: Apollo's current status, anything that needs your attention, recent Patrol activity, and the latest scam alerts.", "Tap any item to see the detail, or use Check It to check something yourself."] }} rightAccessory={isMock ? <DevTag label="Preview" testID="home-mock-pill" /> : null} />
+        <RootScreenHeader title="Home" testID="home-header" rightAccessory={isMock ? <DevTag label="Preview" testID="home-mock-pill" /> : null} />
       </View>
       <ScrollView contentContainerStyle={s.content} testID="home-scroll">
         {/* 1. Apollo's current status — small emblem, exact problem, Higgins' next step, action. */}
