@@ -15,6 +15,7 @@ import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
 import { recordCheck } from "@/src/store/checkHistoryStore";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
+import { GateAbout } from "@/src/components/GateAbout";
 import { assessDevice, deriveDeviceSecurityChanges, DEVICE_CHANGE_LABEL, DEVICE_STATUS, EMPTY_SIGNALS, SELF_REPORT, type DeviceFinding, type DevicePlatform, type DeviceSecurityChange, type DeviceSignals, type SelfReport } from "@/src/domain/deviceAnalysis";
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { AppDeviceSdk } from "@/src/security/appDeviceSdk";
@@ -135,7 +136,9 @@ export default function CheckDevice() {
         <Pressable testID="device-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="device-scroll">
-        <Body testID="device-gate-scope">Device Gate checks existing apps with visible sensitive access, current security settings and Apollo&apos;s own protection health—not only recent installs. It does not continuously scan every dormant app, and app capabilities are not proof of malicious behaviour.</Body>
+        <GateAbout title="What the Device Gate checks" testID="device-gate-scope">
+          <Body>Device Gate checks existing apps with visible sensitive access, current security settings and Apollo&apos;s own protection health—not only recent installs. It does not continuously scan every dormant app, and app capabilities are not proof of malicious behaviour.</Body>
+        </GateAbout>
         <Card testID="device-status" style={{ borderColor: toneColor(colors, result.state), gap: spacing.sm }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><ShieldCheck size={22} color={toneColor(colors, result.state)} /><Pill tone={result.state} label={STATE_NAME[result.state]} testID="device-state" /></View>
           <Text style={s.statusTitle} testID="device-status-title">{meta.title}</Text>

@@ -1,3 +1,23 @@
+## Check screens — compact "Find out more" about headers (2026-06)
+
+Replaced the wordy intro/about paragraphs at the top of every check screen with a compact header: a short title + a "Find out more" link that opens a popup (Sheet) holding the full detail. New reusable component `src/components/GateAbout.tsx` (title, optional `control` slot for an inline switch, optional `sheetTitle`, children = popup detail). Applied to: Call Gate (`call-guard-auto`, keeps the auto-check toggle as the `control`), Text/Email Gate (`message-privacy`), Internet Gate (`network-cannot-see`), App Gate (`app-check-scope`), Email Gate (`email-processing-scope`), Check My Accounts (`monitor-intro`), Device Gate (`device-gate-scope`), Link Gate (`check-privacy-scope`), File Gate (`file-inspection-scope`), Higgins Re-check (`recheck-intro`). Original testIDs preserved on the GateAbout card; the link adds `<testID>-more`. No logic/engine changes. tsc + ESLint clean. Visual check only on an Android build (web preview is fail-closed Safe Start).
+
+
+## Unify Saved Items + Text Gate Messages-style picker (2026-06)
+
+**Unify Saved Items:** App Gate saved reports now appear in the single **Saved checks** list. `savedCheck.ts` gained gate `"app"` (GATE_LABEL "App check"). `app/saved-checks.tsx` loads both `listSavedChecks()` and `listAppReports()`, maps app reports into the SavedCheck shape (`fromAppReport`), merges newest-first, and routes delete to the right store. App Gate's save button + intro now point to `/saved-checks` (old `/app-reports` route left in place but unreferenced). Check It "Saved checks" card copy updated to include app checks.
+
+**Text Gate — Messages-style inbox picker (Android, READ_SMS):**
+- Investigated access: the native `listRecentSms()` (READ_SMS, on-demand, already in `phonePickers.ts`) returns a flat `{address,body,date}` list — no unrestricted Google Messages inbox API exists, so a familiar inbox is built by **grouping client-side** (no new native infra). Where READ_SMS is unavailable/denied/off-build, the person is routed to **Share → Apollo** (existing share intake).
+- `src/domain/smsConversations.ts` (pure, 4/4 tests): `groupSms` (group by sender, conversations newest-first, messages oldest→newest), `filterConversations` (search sender+body), `timeLabel`, avatar initials (letters→initials, numbers→last two digits).
+- `app/message-picker.tsx` (new full screen, replaces the cramped bottom sheet → fixes overlap/unresponsive-row issues): conversation inbox (avatar, name/number, preview, timestamp, search) → tap → chat-bubble thread → **Check with Apollo** on a single incoming message → `router.replace("/message", { text, sender, source: "inbox_picker" })` which auto-runs the scam analysis. Never selects a whole thread. Full permission contract (checking/need_permission/requesting/denied/unsupported) with Share fallback. No message content persisted or logged.
+- `app/message.tsx`: "Pick a text from your inbox" now pushes `/message-picker`; removed the old SMS `PhonePickerSheet` usage/state (Call Gate still uses the sheet).
+
+**Note:** The re-pasted App Gate Investigation brief was already fully implemented earlier (two-layer summary, evidence-backed permission findings, direct Android settings per permission, re-verify-on-return, qualified Higgins language) — see the earlier PRD entry; no further change needed.
+
+**Verification:** tsc + ESLint clean; tests — smsConversations 4/4, savedCheck 2/2, appPermissionFindings 7/7, gatesOverview 17/17, messageGuardrails 6/6, gate7 44/44, systemHealth 5/5 (no regressions). App bundles (expected Safe Start). The inbox picker, READ_SMS flow and selection round-trip verify on a physical Android build.
+
+
 ## Saved Checks Everywhere + Settings reorganisation (2026-06)
 
 **Saved Checks Everywhere (link / message / internet):**

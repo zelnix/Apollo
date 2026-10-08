@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { markCheckDone } from "@/src/store/checkCompletion";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
+import { GateAbout } from "@/src/components/GateAbout";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { analyseFile, FILE_SOURCES, type FileAnalysis, type FileSource } from "@/src/domain/fileAnalysis";
 import { FILE_SIZE_LIMIT, inspectSample, inspectWithHandle, type Inspection } from '@/src/domain/fileInspection';
@@ -150,7 +151,9 @@ export default function CheckFile() {
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="file-scroll">
         {!result ? (
           <>
-            <Body testID="file-inspection-scope">Select or share any download or attachment, including one from Google Drive or another cloud service. Apollo checks a signature and up to 200 KB locally, for files up to 20 MB. Cloud hosting is not proof of safety. No archive extraction or malware scan. A name-only check does not read content. This local check never uploads the file; asking Higgins about it afterwards does, only with your explicit action.</Body>
+            <GateAbout title="How Apollo checks files" testID="file-inspection-scope">
+              <Body>Select or share any download or attachment, including one from Google Drive or another cloud service. Apollo checks a signature and up to 200 KB locally, for files up to 20 MB. Cloud hosting is not proof of safety. No archive extraction or malware scan. A name-only check does not read content. This local check never uploads the file; asking Higgins about it afterwards does, only with your explicit action.</Body>
+            </GateAbout>
             <Button testID="file-pick" label={busy ? "Inspecting file…" : "Choose a file"} onPress={() => void pick()} disabled={busy} />
             {pickerError ? <Card testID="file-picker-error" style={{ gap: spacing.sm }}><Body>{pickerError}</Body><Button testID="file-picker-retry" variant="secondary" label="Try choosing again" onPress={() => void pick()} disabled={busy} /></Card> : null}
             {selected ? <Card testID="file-evidence" style={{ gap: spacing.xs }}><SectionTitle>What Apollo inspected</SectionTitle><Body testID="file-evidence-name">Filename: {selected.asset.name}</Body><Body testID="file-evidence-size">Size: {selected.asset.size == null ? "not supplied" : `${selected.asset.size} bytes`}</Body><Body testID="file-evidence-mime">Supplied type: {selected.asset.mimeType || "unknown"}</Body><Body testID="file-evidence-signature">Signature result: {selected.realType}</Body><Body testID="file-evidence-sample">Content sample: {selected.inspected.inspectionError ? selected.inspected.inspectionError : selected.inspected.textSample ? "supported text was read locally" : "not readable or not present"}</Body></Card> : null}

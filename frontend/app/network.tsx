@@ -17,6 +17,7 @@ import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
 import { recordCheck } from "@/src/store/checkHistoryStore";
 import { saveCheck } from "@/src/store/savedCheckStore";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
+import { GateAbout } from "@/src/components/GateAbout";
 import { analyseNetwork, NETWORK_CONTEXTS, type NetworkAnalysis, type NetworkContext } from "@/src/domain/networkAnalysis";
 import { SCENT_WINDOW_MS } from "@/src/domain/threatScent";
 import { STATE_NAME, type PatrolEvent } from "@/src/domain/types";
@@ -170,10 +171,9 @@ export default function CheckNetwork() {
           </>
         ) : null}
         <CheckHistoryCard gate="network" refreshKey={historyKey} testID="network-history" />
-        <Card style={{ gap: spacing.xs }} testID="network-cannot-see">
-          <SectionTitle>What Apollo can see here</SectionTitle>
+        <GateAbout title="What Apollo can see here" testID="network-cannot-see">
           <Body>This build sees only what the platform reports: connection type, Wi‑Fi name (with location permission), captive portal and VPN flags. It cannot read DNS queries, per-app traffic or confirm destination blocking — Apollo won&apos;t pretend otherwise.</Body>
-        </Card>
+        </GateAbout>
       </KeyboardAwareScrollView>
     </View>
   );

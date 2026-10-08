@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
+import { GateAbout } from "@/src/components/GateAbout";
 import { PhonePickerSheet } from "@/src/components/PhonePickerSheet";
 import { PhonePickers } from "@/src/security/phonePickers";
 import { getTrustedCallers, normalizeNumber, trustCaller, untrustCaller } from "@/src/domain/trustedCallers";
@@ -84,11 +85,11 @@ export default function CheckCall() {
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="call-scroll">
         {!result ? (
           <>
-            <Card style={{ gap: spacing.sm }} testID="call-guard-auto">
-              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><Text style={[s.why, { flex: 1, fontFamily: fonts.textSemibold }]}>Automatically check incoming numbers</Text><Switch testID="call-auto-switch" value={autoCheck} onValueChange={(value) => { setAutoCheck(value); void storage.setItem("apollo.call.auto_check", value ? "true" : "false"); showToast(value ? "Call Guard on — Apollo will check incoming numbers." : "Call Guard off — you can still check numbers manually.", value ? "resting" : "neutral"); }} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View>
+            <GateAbout title="Automatically check incoming numbers" sheetTitle="Automatic call checking" testID="call-guard-auto"
+              control={<Switch testID="call-auto-switch" value={autoCheck} onValueChange={(value) => { setAutoCheck(value); void storage.setItem("apollo.call.auto_check", value ? "true" : "false"); showToast(value ? "Call Guard on — Apollo will check incoming numbers." : "Call Guard off — you can still check numbers manually.", value ? "resting" : "neutral"); }} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} />}>
               <Body>When on, Apollo checks incoming caller numbers against its reputation service after each call, so scam and fraud callers are flagged without opening Apollo.</Body>
               <Body style={{ fontStyle: "italic" }}>Disclosure: this sends numbers that call you to Apollo&apos;s backend for a reputation check (via IPQualityScore). Numbers are cached briefly for repeat-call detection and are not shared with other users. You can turn it off anytime.</Body>
-            </Card>
+            </GateAbout>
             {trustedList.length ? (
               <Card style={{ gap: spacing.sm }} testID="call-trusted-list">
                 <SectionTitle>Trusted numbers</SectionTitle>

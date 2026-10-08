@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { FirstCheckResult } from "@/src/components/FirstCheckResult";
 import { Body, Button, Card } from "@/src/components/ui";
+import { GateAbout } from "@/src/components/GateAbout";
 import { diffFirstCheck, reCheckHeadline, type FirstCheckChange, type FirstCheckReport } from "@/src/domain/firstCheck";
 import { runSystemHealthCheck } from "@/src/health/systemHealthCoordinator";
 import { collectFirstCheck } from "@/src/security/firstCheckSignals";
@@ -72,7 +73,9 @@ export default function Recheck() {
         <Pressable testID="recheck-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="recheck-scroll">
-        <Text style={s.intro} testID="recheck-intro">Re-check this device for signs of malware, unsafe changes or an existing compromise. Higgins repeats the checks this device allows and compares them with the last check.</Text>
+        <GateAbout title="About Higgins Re-check" testID="recheck-intro">
+          <Body>Re-check this device for signs of malware, unsafe changes or an existing compromise. Higgins repeats the checks this device allows and compares them with the last check.</Body>
+        </GateAbout>
         {stamp ? <Text style={s.stamp} testID="recheck-stamp">Last checked {stamp}</Text> : null}
         <Button testID="recheck-run" label={running ? "Checking…" : report ? "Run Higgins Re-check" : "Run the first check now"} onPress={() => void run()} disabled={running} icon={running ? <ActivityIndicator color={colors.onBrandPrimary} /> : <RefreshCw size={18} color={colors.onBrandPrimary} />} />
 

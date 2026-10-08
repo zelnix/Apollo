@@ -11,6 +11,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
+import { GateAbout } from "@/src/components/GateAbout";
 import { buildWeeklyReport, deriveGateState, maskEmail, nextScanLabel, outstandingExposures, type AccountScan, type HandledMap, type MonitoredEmail, type WeeklyReport } from "@/src/domain/accountMonitor";
 import { addMonitoredEmail, getHandled, getLastCheckedAt, getLastScan, getMonitoredEmails, getScanHistory, isValidEmail, markHandled, removeMonitoredEmail, runScan, unmarkHandled } from "@/src/store/accountMonitorStore";
 import { useApollo } from "@/src/store/ApolloContext";
@@ -90,7 +91,9 @@ export default function CheckMyAccounts() {
         <Pressable testID="monitor-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="monitor-scroll">
-        <Body testID="monitor-intro">Apollo watches your own email addresses for appearing in known data breaches. Checks run weekly when you open the app, and you can run one any time. Apollo never asks for or stores a password.</Body>
+        <GateAbout title="How account monitoring works" testID="monitor-intro">
+          <Body>Apollo watches your own email addresses for appearing in known data breaches. Checks run weekly when you open the app, and you can run one any time. Apollo never asks for or stores a password.</Body>
+        </GateAbout>
 
         <Card testID="monitor-status" style={{ gap: spacing.sm, borderColor: toneColor(colors, status.tone) }}>
           <View style={s.row}><View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flex: 1 }}><KeyRound size={20} color={toneColor(colors, status.tone)} /><Text style={s.statTitle} testID="monitor-status-title">{status.title}</Text></View></View>

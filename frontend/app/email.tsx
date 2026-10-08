@@ -14,6 +14,7 @@ import { apiDelete, apiGet, apiPost } from "@/src/api/client";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { MessageAssessmentResult } from "@/src/components/MessageAssessmentResult";
 import { Sheet } from "@/src/components/Sheet";
+import { GateAbout } from "@/src/components/GateAbout";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { analyseEmail, type EmailAnalysis } from "@/src/domain/emailAnalysis";
 import { evaluateLinkGuardFindings, extractAnchorsFromPlainText } from "@/src/domain/linkGuard";
@@ -226,7 +227,9 @@ export default function CheckEmail() {
                 )}
               </Card>
             ) : null}
-            <Body testID="email-processing-scope">Submitting this email authorises one assessment of its sender, body and links. Apollo does not retain the full email; provider-side retention follows configured services.</Body>
+            <GateAbout title="How Apollo handles this email" testID="email-processing-scope">
+              <Body>Submitting this email authorises one assessment of its sender, body and links. Apollo does not retain the full email; provider-side retention follows configured services.</Body>
+            </GateAbout>
             <TextInput testID="email-from" style={s.input} value={from} onChangeText={setFrom} placeholder="From (e.g. CommBank <alerts@cb-secure.top>)" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} />
             <TextInput testID="email-subject" style={s.input} value={subject} onChangeText={setSubject} placeholder="Subject" placeholderTextColor={colors.muted} autoCorrect={false} />
             <TextInput testID="email-body" style={[s.input, { minHeight: 140 }]} value={raw} onChangeText={setRaw} placeholder="Paste the email (or the whole forwarded message with headers)…" placeholderTextColor={colors.muted} multiline textAlignVertical="top" autoCapitalize="none" autoCorrect={false} />

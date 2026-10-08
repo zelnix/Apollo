@@ -3,8 +3,8 @@
 // wording that was shown; a saved check is a record of that check, never a renewed safety guarantee.
 import type { ApolloState } from "./types";
 
-export type CheckGate = "link" | "message" | "network";
-export const GATE_LABEL: Record<CheckGate, string> = { link: "Link check", message: "Message check", network: "Internet check" };
+export type CheckGate = "link" | "message" | "network" | "app";
+export const GATE_LABEL: Record<CheckGate, string> = { link: "Link check", message: "Message check", network: "Internet check", app: "App check" };
 
 export interface SavedCheckSection { title: string; lines: string[] }
 export interface SavedCheck { id: string; gate: CheckGate; savedAt: string; title: string; subject: string; state: ApolloState; stateName: string; summary: string; recommendation: string; sections: SavedCheckSection[] }
