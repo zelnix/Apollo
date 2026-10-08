@@ -20,6 +20,8 @@ import { CALL_ASKS, CALL_CLAIMS, type CallAnalysis, type CallAsk, type CallClaim
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { issueContext } from "@/src/domain/higginsHandoff";
 import { useApollo } from "@/src/store/ApolloContext";
+import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
+import { recordCheck } from "@/src/store/checkHistoryStore";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 
@@ -66,7 +68,8 @@ export default function CheckCall() {
   useEffect(() => { void storage.getItem("apollo.call.auto_check", null).then((v: string | null) => setAutoCheck(v === "true")); reloadTrusted(); }, [storage, reloadTrusted]);
 
   const toggle = (id: CallAsk) => setAsks((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : id === "nothing" ? ["nothing"] : [...cur.filter((x) => x !== "nothing"), id]));
-  const run = async () => setResult(await checkCall({ asks, claim, number: number.trim() || undefined, transcript: transcript.trim() || undefined }));
+  const [historyKey, setHistoryKey] = useState(0);
+  const run = async () => { const r = await checkCall({ asks, claim, number: number.trim() || undefined, transcript: transcript.trim() || undefined }); setResult(r); void recordCheck("call", { at: new Date().toISOString(), state: r.analysis.state, summary: r.analysis.title }); setHistoryKey((k) => k + 1); };
   const reset = () => { setResult(null); setAsks([]); setWhy(false); };
 
   if (ready && !setupDone) return <Redirect href="/" />;
@@ -160,6 +163,7 @@ export default function CheckCall() {
             </View>
           </>
         ) : null}
+        <CheckHistoryCard gate="call" refreshKey={historyKey} testID="call-history" />
       </KeyboardAwareScrollView>
 
       <Sheet visible={verify} onClose={() => setVerify(false)} title="Verify the caller independently" testID="verify-caller-sheet">

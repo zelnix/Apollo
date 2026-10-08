@@ -125,7 +125,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
         }} />
         <Button testID="inv-reports-toggle" variant="ghost" label={`${reportsOpen ? "Hide" : "Manage"} saved reports (${reports.length}${reportNext !== null ? "+" : ""})`} onPress={() => setReportsOpen((value) => !value)} />
         {reportsOpen ? <View style={{ gap: spacing.sm }} testID="inv-reports-list">{reports.map((report) => <View key={report.reportId} style={s.source} testID={`inv-report-${report.reportId}`}>
-          <Text style={s.text}>{report.overview}</Text><Text style={s.muted}>Saved {new Date(report.savedAt).toLocaleDateString()} · historical snapshot</Text>
+          <Text style={s.text}>{scrubMessage(report.overview)}</Text><Text style={s.muted}>Saved {new Date(report.savedAt).toLocaleDateString()} · historical snapshot</Text>
           <Button testID={`inv-report-delete-${report.reportId}`} variant="ghost" label="Delete saved report" onPress={() => {
             void investigationApi.deleteReport(report.reportId).then(() => { setReports((items) => items.filter((item) => item.reportId !== report.reportId)); setReportNote("Saved report deleted."); })
               .catch(() => setReportNote("That report could not be deleted."));

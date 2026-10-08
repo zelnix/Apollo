@@ -18,6 +18,8 @@ import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { STATE_LABEL, STATE_MEANING, STATE_NAME } from "@/src/domain/types";
 import { type MessageOutcome, useApollo } from "@/src/store/ApolloContext";
+import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
+import { recordCheck } from "@/src/store/checkHistoryStore";
 import { apiUpload } from "@/src/api/client";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -118,6 +120,8 @@ export default function CheckMessage() {
   }, [sharedImage, deviceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (ready && !setupDone) return <Redirect href="/" />;
+  const [historyKey, setHistoryKey] = useState(0);
+  useEffect(() => { if (result?.analysis) { void recordCheck("message", { at: new Date().toISOString(), state: result.analysis.state, summary: result.analysis.scenarioTitle }); setHistoryKey((k) => k + 1); } }, [result]);
   const a = result?.analysis;
   const tone = a?.state ?? "neutral";
 
@@ -203,6 +207,7 @@ export default function CheckMessage() {
             </View>
           </>
         ) : null}
+        <CheckHistoryCard gate="message" refreshKey={historyKey} testID="message-history" />
       </KeyboardAwareScrollView>
 
       <Sheet visible={verify} onClose={() => setVerify(false)} title={a?.signals.callbackRequest ? (a.signals.claimedBrand?.toLowerCase() === "paypal" ? "Check PayPal independently" : "Check the account independently") : "Verify the sender"} testID="verify-sender-sheet">

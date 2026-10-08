@@ -1,4 +1,4 @@
-import { Redirect, useRouter } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import Shield from "lucide-react-native/icons/shield";
 import React from "react";
 import { ScrollView, Text, View } from "react-native";
@@ -27,9 +27,10 @@ const useStyles = makeStyles((c) => ({
   name: { flex: 1, fontFamily: fonts.textSemibold, fontSize: 16, color: c.onSurface },
 }));
 
-function HealthCard({ record }: { record: GateHealthRecord }) {
+function HealthCard({ record, highlighted }: { record: GateHealthRecord; highlighted?: boolean }) {
   const s = useStyles();
   const router = useRouter();
+  const { colors } = useTheme();
   const { showToast, enableSiteProtection } = useApollo();
   const [enablingSite, setEnablingSite] = React.useState(false);
   const act = async (action: UserAction) => {
@@ -49,7 +50,8 @@ function HealthCard({ record }: { record: GateHealthRecord }) {
     if (route) router.push(route as never);
   };
   const isRestoreSite = record.primaryAction?.id === "restore_site";
-  return <Card testID={`gate-health-${record.id}`} style={s.card}>
+  return <Card testID={`gate-health-${record.id}`} style={[s.card, highlighted ? { borderColor: colors.gold, borderWidth: 2 } : null]}>
+    {highlighted ? <Pill tone="ears_up" label="Opened from your alert" testID={`gate-health-${record.id}-focused`} /> : null}
     <View style={s.row}><Text testID={`gate-health-${record.id}-title`} style={s.name}>{record.title}</Text><Pill testID={`gate-health-${record.id}-state`} tone={gateTone(record.tone)} label={record.statusLabel} /></View>
     <View><Text style={s.question}>What this Gate helps with</Text><Body testID={`gate-health-${record.id}-purpose`}>{record.purpose}</Body></View>
     <View><Text style={s.question}>What Apollo is doing now</Text><Body testID={`gate-health-${record.id}-current`}>{record.currentHelp}</Body></View>
@@ -62,6 +64,7 @@ export default function GuardScreen() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const { gate: gateParam } = useLocalSearchParams<{ gate?: string }>();
   const { ready, setupDone } = useApollo();
   const health = useProtectionHealth();
   if (ready && !setupDone) return <Redirect href="/" />;
@@ -81,7 +84,7 @@ export default function GuardScreen() {
         </View>
       </Card>
       <Body testID="gates-introduction">Your protection. Apollo watches what this device allows and shows you what&apos;s working and anything that needs you. To check something yourself, use Check It.</Body>
-      <View testID="gates-capability-section" style={{ gap: spacing.md }}><SectionTitle>Your Gates</SectionTitle>{health.gates.map((record) => <HealthCard key={record.id} record={record} />)}</View>
+      <View testID="gates-capability-section" style={{ gap: spacing.md }}><SectionTitle>Your Gates</SectionTitle>{health.gates.map((record) => <HealthCard key={record.id} record={record} highlighted={record.id === gateParam} />)}</View>
     </ScrollView>
   </View>;
 }

@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiGet, apiPost } from "@/src/api/client";
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { STATE_NAME, type ApolloState } from "@/src/domain/types";
+import { scrubMessage } from "@/src/domain/messageVoice";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -86,8 +87,8 @@ export default function FamilyAlert() {
                 <Pill tone={alert.state as "barking"} label={STATE_NAME[alert.state as ApolloState] ?? alert.state} />
                 <Body>{alert.from_label} · {new Date(alert.occurred_at).toLocaleString()}</Body>
               </View>
-              <Text style={s.headline} testID="family-alert-headline">{alert.headline}</Text>
-              <Body>{alert.what_to_do}</Body>
+              <Text style={s.headline} testID="family-alert-headline">{scrubMessage(alert.headline)}</Text>
+              <Body>{scrubMessage(alert.what_to_do)}</Body>
               {alert.indicator_host ? <Body>Website involved: {alert.indicator_host}</Body> : null}
               {alert.acknowledged_at ? <Pill tone="resting" label={`${alert.ack_label} · ${new Date(alert.acknowledged_at).toLocaleDateString()}`} testID="family-alert-ack-done" /> : null}
             </Card>

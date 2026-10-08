@@ -8,6 +8,7 @@ import * as Sharing from "expo-sharing";
 import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
 import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
+import { scrubMessage } from "@/src/domain/messageVoice";
 import * as reportsApi from "@/src/investigation/client";
 import { prepareReportPdf } from "@/src/investigation/reportFile";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -31,8 +32,8 @@ export default function SavedReportDetail() {
   return <View style={s.root} testID="saved-report-detail-screen"><View style={[s.header, { paddingTop: insets.top + spacing.md }]}><Text style={s.title} testID="saved-report-detail-title">Saved report</Text><Pressable testID="saved-report-detail-close" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable></View>
     {!report ? <View style={{ padding: spacing.xl, gap: spacing.md }}>{error ? <><Body testID="saved-report-detail-error">{error}</Body><Button testID="saved-report-detail-retry" label="Retry" onPress={load} /></> : <ActivityIndicator testID="saved-report-detail-loading" color={colors.brand} />}</View> : <ScrollView testID="saved-report-detail-scroll" contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]}>
       <View style={s.row}><Pill testID="saved-report-historical-badge" tone="neutral" label="Historical · not live status" /><HigginsSpeakButton testID="saved-report-hear" compact text={`${report.overview}. ${report.explanationMarkdown}`} scopeId={report.reportId} /></View>
-      <Card testID="saved-report-overview"><SectionTitle>Overview</SectionTitle><Text style={s.body}>{report.overview}</Text><Body>{new Date(report.savedAt).toLocaleString()} · {report.gates.join(", ")}</Body></Card>
-      <Card testID="saved-report-explanation"><SectionTitle>Explanation</SectionTitle><Text style={s.body}>{report.explanationMarkdown.replace(/[#*_`>-]/g, "")}</Text></Card>
+      <Card testID="saved-report-overview"><SectionTitle>Overview</SectionTitle><Text style={s.body}>{scrubMessage(report.overview)}</Text><Body>{new Date(report.savedAt).toLocaleString()} · {report.gates.join(", ")}</Body></Card>
+      <Card testID="saved-report-explanation"><SectionTitle>Explanation</SectionTitle><Text style={s.body}>{scrubMessage(report.explanationMarkdown).replace(/[#*`>-]/g, "")}</Text></Card>
       <Card testID="saved-report-scope"><SectionTitle>Scope at save time</SectionTitle><Body>{report.scope}</Body><Body>{report.retentionNotice}</Body></Card>
       <Card testID="saved-report-findings"><SectionTitle>Findings</SectionTitle>{report.findings.map((finding, index) => <Body key={`${index}-${finding}`}>• {finding}</Body>)}</Card>
       {report.uncertainties.length ? <Card testID="saved-report-uncertainties"><SectionTitle>Uncertainties</SectionTitle>{report.uncertainties.map((item, index) => <Body key={`${index}-${item}`}>• {item}</Body>)}</Card> : null}

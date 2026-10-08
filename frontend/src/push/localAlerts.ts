@@ -21,11 +21,12 @@ export function eventLocalAlert(event: PatrolEvent): LocalAlert | null {
 
 export function protectionLocalAlert(previous: ProtectionStatus, observed: ProtectionStatus): LocalAlert | null {
   if (previous.operational === observed.operational || previous.requested !== observed.requested) return null;
+  // Protection health is the Site Gate — deep-link straight to that gate's details, not the generic tab.
   if (observed.operational && observed.running && observed.lastVerified) return {
-    title: "Apollo protection restored", body: "The device has confirmed protection is running again.", channel: "default", actionUrl: "/(tabs)/guard",
+    title: "Apollo protection restored", body: "The device has confirmed protection is running again.", channel: "default", actionUrl: "/(tabs)/guard?gate=site",
   };
   if (observed.requested && !observed.operational) return {
-    title: "Higgins: Protection needs attention", body: observed.degradedReason ?? "Apollo could not confirm protection is running. Check Gates.", channel: "threats", actionUrl: "/(tabs)/guard",
+    title: "Higgins: Protection needs attention", body: observed.degradedReason ?? "Apollo could not confirm website protection is running. Open the Site Gate to review it.", channel: "threats", actionUrl: "/(tabs)/guard?gate=site",
   };
   return null;
 }
