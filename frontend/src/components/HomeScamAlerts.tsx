@@ -4,8 +4,9 @@ import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import ExternalLink from "lucide-react-native/icons/external-link";
 import MessageCircle from "lucide-react-native/icons/message-circle";
+import Share2 from "lucide-react-native/icons/share-2";
 import React, { useEffect, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Share, Text, View } from "react-native";
 
 import { Body, Button, Card, Pill, SectionTitle, type Tone } from "@/src/components/ui";
 import { governmentScams, type GovernmentAlert } from "@/src/higgins/hubClient";
@@ -13,6 +14,27 @@ import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
 const SEVERITY_TONE: Record<GovernmentAlert["severity"], Tone> = { EXTREME: "barking", HIGH: "growling", MODERATE: "ears_up", LOW: "neutral" };
 const SEVERITY_RANK: Record<GovernmentAlert["severity"], number> = { EXTREME: 3, HIGH: 2, MODERATE: 1, LOW: 0 };
+
+/** Compose a plain-text share message and open the native share sheet. Uses React Native's built-in
+ *  Share API — the OS picks the destination (SMS / WhatsApp / Email / etc.). Nothing is sent to
+ *  Apollo's servers. */
+async function shareHomeScam(alert: GovernmentAlert): Promise<void> {
+  const severityWord = alert.severity === "LOW" ? "Info" : alert.severity[0] + alert.severity.slice(1).toLowerCase();
+  const headline = (alert.higgins.whatHappened || alert.summary || "").trim();
+  const message = [
+    `⚠️ Scam alert: ${alert.title}`,
+    `Source: ${alert.source} · ${alert.dateLabel}`,
+    `Severity: ${severityWord}`,
+    headline ? `\n${headline}` : "",
+    `\nOfficial source: ${alert.url}`,
+    `\nShared from Apollo Cyber Security.`,
+  ].filter(Boolean).join("\n");
+  try {
+    await Share.share({ title: alert.title, message, url: alert.url }, { subject: `Scam alert: ${alert.title}`, dialogTitle: "Share this scam alert" });
+  } catch {
+    // Dismissed or OS error — no further action.
+  }
+}
 
 const useStyles = makeStyles((c) => ({
   itemTitle: { fontFamily: fonts.textSemibold, fontSize: 15, lineHeight: 21, color: c.onSurface },
@@ -87,6 +109,16 @@ export function HomeScamAlerts() {
               >
                 <MessageCircle size={14} color={colors.onSurface} />
                 <Text style={s.askChipText}>Ask Higgins</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Share this scam alert: ${it.title}`}
+                onPress={() => void shareHomeScam(it)}
+                testID={`home-scam-${i}-share`}
+                style={({ pressed }) => [s.askChip, { opacity: pressed ? 0.7 : 1 }]}
+              >
+                <Share2 size={14} color={colors.onSurface} />
+                <Text style={s.askChipText}>Share</Text>
               </Pressable>
               <Pressable
                 accessibilityRole="link"

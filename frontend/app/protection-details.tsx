@@ -7,17 +7,20 @@
 
 import { useRouter } from "expo-router";
 import ArrowRight from "lucide-react-native/icons/arrow-right";
-import React, { useMemo } from "react";
+import Dot from "lucide-react-native/icons/circle";
+import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ChildScreenHeader } from "@/src/components/ChildScreenHeader";
-import { Body, Card, Pill, type Tone } from "@/src/components/ui";
+import { Body, Card, Pill, toneColor, type Tone } from "@/src/components/ui";
 import { buildHomeAttention } from "@/src/domain/homeAttention";
 import { buildHomeVoice } from "@/src/domain/higginsHomeVoice";
 import { buildProtectionFindings, type ProtectionFinding } from "@/src/domain/protectionDetails";
+import { buildTodayTimeline, quietDayLine, type TimelineEntry, type TimelineTone } from "@/src/domain/protectionTimeline";
 import { useApollo } from "@/src/store/ApolloContext";
 import { useProtectionHealth } from "@/src/protection/healthStore";
+import { getGateHealthLog, type GateHealthLog } from "@/src/store/gateHealthLog";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
@@ -26,11 +29,20 @@ const useStyles = makeStyles((c) => ({
   intro: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurface },
   gateTitle: { fontFamily: fonts.displayBold, fontSize: 17, lineHeight: 23, color: c.onSurface },
   sectionLabel: { fontFamily: fonts.textSemibold, fontSize: 11, letterSpacing: 0.4, color: c.muted, textTransform: "uppercase" },
+  sectionTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface },
   sectionText: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurface },
   headerRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" },
   actionRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingTop: spacing.sm },
   actionText: { fontFamily: fonts.textSemibold, fontSize: 15, color: c.brand },
   emptyTitle: { fontFamily: fonts.displayBold, fontSize: 18, color: c.onSurface, textAlign: "center" },
+  // Timeline.
+  tlRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
+  tlDotCol: { width: 20, alignItems: "center", paddingTop: 4 },
+  tlBody: { flex: 1, gap: 2 },
+  tlTitle: { fontFamily: fonts.textSemibold, fontSize: 14, lineHeight: 19, color: c.onSurface },
+  tlSummary: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurfaceSecondary },
+  tlTime: { fontFamily: fonts.text, fontSize: 12, color: c.muted },
+  tlDivider: { height: 1, backgroundColor: c.divider, marginVertical: spacing.sm, marginLeft: 28 },
 }));
 
 const TONE_TO_PILL: Record<ProtectionFinding["tone"], Tone> = {
@@ -41,6 +53,15 @@ const TONE_TO_PILL: Record<ProtectionFinding["tone"], Tone> = {
   neutral: "neutral",
   off: "unknown",
   unavailable: "unknown",
+};
+
+const TIMELINE_TONE_TO_PILL: Record<TimelineTone, Tone> = {
+  resting: "resting",
+  ears_up: "ears_up",
+  growling: "growling",
+  barking: "barking",
+  biting: "biting",
+  neutral: "neutral",
 };
 
 export default function ProtectionDetailsScreen() {
@@ -64,6 +85,19 @@ export default function ProtectionDetailsScreen() {
     [capabilities, health.gates, attention, events],
   );
 
+  // "What Apollo has done today" — loaded from the on-device Gate Health Log + today's patrol events.
+  // Honest: a quiet day shows a reassurance line, not fake activity.
+  const [healthLog, setHealthLog] = useState<GateHealthLog>({});
+  useEffect(() => {
+    let mounted = true;
+    void getGateHealthLog().then((log) => { if (mounted) setHealthLog(log); }).catch(() => undefined);
+    return () => { mounted = false; };
+  }, [health.gates]);
+  const timeline = useMemo(
+    () => buildTodayTimeline({ events, gateHealthLog: healthLog, limit: 12 }),
+    [events, healthLog],
+  );
+
   const info = {
     title: "About Protection Details",
     body: [
@@ -84,6 +118,22 @@ export default function ProtectionDetailsScreen() {
         <Card style={{ gap: spacing.sm }} testID="protection-details-voice">
           <Text style={s.sectionLabel}>HIGGINS SAYS</Text>
           <Text style={s.intro}>{voice.text}</Text>
+        </Card>
+
+        {/* What Apollo has done today — the quiet proof-of-life timeline. */}
+        <Card style={{ gap: spacing.sm }} testID="protection-today">
+          <View style={s.headerRow}>
+            <Text style={s.sectionTitle}>What Apollo has done today</Text>
+          </View>
+          {timeline.length === 0 ? (
+            <Body testID="protection-today-empty">{quietDayLine()}</Body>
+          ) : (
+            <View>
+              {timeline.map((entry, i) => (
+                <TimelineRow key={entry.id} entry={entry} showDivider={i > 0} />
+              ))}
+            </View>
+          )}
         </Card>
 
         {findings.length === 0 ? (
@@ -128,6 +178,45 @@ export default function ProtectionDetailsScreen() {
           ))
         )}
       </ScrollView>
+    </View>
+  );
+}
+
+/** One entry in the "What Apollo has done today" timeline. Keeps a small coloured dot per tone,
+ *  a title + plain-English summary + the local time label. Tappable when the entry links to an
+ *  investigation. */
+function TimelineRow({ entry, showDivider }: { entry: TimelineEntry; showDivider: boolean }) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const router = useRouter();
+  const tone = TIMELINE_TONE_TO_PILL[entry.tone];
+  const dotColor = toneColor(colors, tone);
+  const content = (
+    <View style={s.tlRow}>
+      <View style={s.tlDotCol}><Dot size={10} color={dotColor} fill={dotColor} /></View>
+      <View style={s.tlBody}>
+        <Text style={s.tlTitle} testID={`protection-today-${entry.id}-title`}>{entry.title}</Text>
+        <Text style={s.tlSummary} numberOfLines={2}>{entry.summary}</Text>
+        <Text style={s.tlTime}>{entry.timeLabel}</Text>
+      </View>
+    </View>
+  );
+  return (
+    <View>
+      {showDivider ? <View style={s.tlDivider} /> : null}
+      {entry.route ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Open ${entry.title}`}
+          testID={`protection-today-${entry.id}`}
+          onPress={() => router.push(entry.route as never)}
+          style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
+        >
+          {content}
+        </Pressable>
+      ) : (
+        <View testID={`protection-today-${entry.id}`}>{content}</View>
+      )}
     </View>
   );
 }

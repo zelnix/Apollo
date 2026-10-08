@@ -1,8 +1,9 @@
 import * as Linking from "expo-linking";
 import { router, useSegments } from "expo-router";
 import ExternalLink from "lucide-react-native/icons/external-link";
+import Share2 from "lucide-react-native/icons/share-2";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, Pressable, Share, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ChildScreenHeader } from "@/src/components/ChildScreenHeader";
@@ -41,7 +42,31 @@ const useStyles = makeStyles((c) => ({
   filterTextOn: { color: "#FFFFFF" },
   source: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.onSurface },
   meta: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary },
+  shareChip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: spacing.md, paddingVertical: 10, borderRadius: 999, borderWidth: 1, borderColor: c.border, backgroundColor: c.surfaceSecondary, minHeight: 40 },
+  shareChipText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.onSurface },
 }));
+
+/** Compose a plain-text share message with the alert and its official source, and open the native
+ *  share sheet (SMS, WhatsApp, Email, etc.). Uses React Native's built-in Share API — nothing is
+ *  sent to Apollo's servers; the OS picks who the message is forwarded to. */
+export async function shareScamAlert(alert: GovernmentAlert): Promise<void> {
+  const relevance = RELEVANCE_LABEL[alert.australianRelevance];
+  const headline = (alert.higgins.whatHappened || alert.summary || "").trim();
+  const lines = [
+    `⚠️ Scam alert: ${alert.title}`,
+    `Source: ${alert.source} · ${alert.dateLabel}`,
+    `Severity: ${alert.severity === "LOW" ? "Info" : alert.severity[0] + alert.severity.slice(1).toLowerCase()} · ${relevance}`,
+    headline ? `\n${headline}` : "",
+    `\nOfficial source: ${alert.url}`,
+    `\nShared from Apollo Cyber Security.`,
+  ].filter(Boolean);
+  const message = lines.join("\n");
+  try {
+    await Share.share({ title: alert.title, message, url: alert.url }, { subject: `Scam alert: ${alert.title}`, dialogTitle: "Share this scam alert" });
+  } catch {
+    // The person dismissed the sheet or the OS rejected it — no further action needed.
+  }
+}
 
 function AlertCard({ item, index }: { item: GovernmentAlert; index: number }) {
   const s = useStyles(); const { colors } = useTheme();
@@ -64,6 +89,17 @@ function AlertCard({ item, index }: { item: GovernmentAlert; index: number }) {
         {item.higgins.whatHappened ? <Body>{item.higgins.whatHappened}</Body> : item.summary ? <Body>{item.summary}</Body> : null}
         <View style={s.row}>
           <Button testID={`higgins-scam-${index}-ask`} variant="secondary" label="Ask Higgins about this" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { scamTitle: item.title, scamSource: item.source } })} />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Share this scam alert: ${item.title}`}
+            onPress={() => void shareScamAlert(item)}
+            testID={`higgins-scam-${index}-share`}
+            style={({ pressed }) => [s.shareChip, { opacity: pressed ? 0.7 : 1 }]}
+            hitSlop={8}
+          >
+            <Share2 size={14} color={colors.onSurface} />
+            <Text style={s.shareChipText}>Share alert</Text>
+          </Pressable>
         </View>
         <View style={s.spread} testID={`higgins-scam-${index}-source`}>
           <Text style={s.link}>Open official source</Text><ExternalLink size={18} color={colors.brand} />

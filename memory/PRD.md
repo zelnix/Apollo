@@ -1,3 +1,17 @@
+## Scam Share + "What Apollo has done today" Protection Timeline (2026-06)
+
+**Scam Share:**
+- Both `app/higgins/scams.tsx` and `src/components/HomeScamAlerts.tsx` gained a one-tap "Share alert" chip next to "Ask Higgins" / "Open source".
+- `shareScamAlert` / `shareHomeScam` compose a plain-text share message — title, source name + date, severity, Higgins' whatHappened one-liner, the official source URL, and an "Apollo Cyber Security" byline — then open React Native's native share sheet (`Share.share`, no new dependency). The OS routes the forward (SMS, WhatsApp, Email, etc.); nothing is sent via Apollo's servers.
+- Icons: `Share2` from lucide. Dismissed sheets or OS errors are swallowed silently (no toast noise). New testIDs: `higgins-scam-{i}-share`, `home-scam-{i}-share`.
+
+**Protection Timeline — "What Apollo has done today":**
+- New `src/domain/protectionTimeline.ts` (pure, 6/6 unit tests): `buildTodayTimeline({ events, gateHealthLog, now?, limit? })` merges two REAL on-device sources — today's patrol events (flagged / investigating / blocked / resolved — any category: scam text, malicious email, insecure connection, device setting change, verified block, etc.) + today's Gate Health Log "Watching confirmed" entries. Local-timezone day boundary (`isSameLocalDay`), newest-first ordering, capped at 12 entries. `quietDayLine()` returns an honest reassurance when nothing happened — never fabricates activity.
+- New section in `app/protection-details.tsx`: "What Apollo has done today" card between the Higgins voice and the per-Gate findings. Each row = a small tone-coloured dot (resting/ears_up/growling/barking/biting), a short title + plain-English summary + a local time label. Tappable rows jump to the related investigation. Honest empty state uses `quietDayLine()`.
+
+**Verification:** `tsc --noEmit` clean; ESLint clean; `node --test tests/protectionTimeline.test.ts` 6/6; Android Metro bundle HTTP 200.
+
+
 ## Apollo Guard Dog — Higgins-led Home + Protection Details screen + "Ears Up" rename + Scam deep-links (2026-06)
 
 **Home (`ApolloHero` + `app/(tabs)/home.tsx`) — Higgins is now the single voice:**
