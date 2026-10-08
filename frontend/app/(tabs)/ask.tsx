@@ -1,7 +1,7 @@
 import * as Crypto from "expo-crypto";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import Trash2 from "lucide-react-native/icons/trash-2";
+import Trash2 from "lucide-react-native/icons/trash";
 import Info from "lucide-react-native/icons/info";
 import SendHorizontal from "lucide-react-native/icons/send-horizontal";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
