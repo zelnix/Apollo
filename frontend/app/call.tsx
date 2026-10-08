@@ -70,7 +70,7 @@ export default function CheckCall() {
   const toggle = (id: CallAsk) => setAsks((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : id === "nothing" ? ["nothing"] : [...cur.filter((x) => x !== "nothing"), id]));
   const [historyKey, setHistoryKey] = useState(0);
   const run = async () => { const r = await checkCall({ asks, claim, number: number.trim() || undefined, transcript: transcript.trim() || undefined }); setResult(r); void recordCheck("call", { at: new Date().toISOString(), state: r.analysis.state, summary: r.analysis.title }); setHistoryKey((k) => k + 1); };
-  const reset = () => { setResult(null); setAsks([]); setWhy(false); };
+  const reset = () => { setResult(null); setAsks([]); };
 
   if (ready && !setupDone) return <Redirect href="/" />;
   const a = result?.analysis;

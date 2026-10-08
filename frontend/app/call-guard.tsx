@@ -16,14 +16,17 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { PatrolItem } from "@/src/components/PatrolItem";
 import { projectPatrolOutcomes } from "@/src/domain/patrolOutcomes";
-import { MessageAssessmentResult } from "@/src/components/MessageAssessmentResult";
+import { CheckResultScreen } from "@/src/components/CheckResultScreen";
+import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { STATE_LABEL, STATE_MEANING } from "@/src/domain/types";
+import { buildCallRiskCheckResult } from "@/src/domain/callRiskCheckResultAdapter";
 import { CallSdk, type CallProtectionCapabilities } from "@/src/security/callSdk";
 import { type CallRiskResult, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
-import { dispatchInvestigationAction } from "@/src/domain/investigationActions";
+import { recordCheck } from "@/src/store/checkHistoryStore";
+import { saveCheck } from "@/src/store/savedCheckStore";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -86,7 +89,15 @@ export default function CallGuard() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<CallRiskResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [actionGuidance, setActionGuidance] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [historyKey, setHistoryKey] = useState(0);
+
+  useEffect(() => {
+    if (result) {
+      void recordCheck("call", { at: new Date().toISOString(), state: result.decision === "avoid" ? "barking" : result.decision === "review" ? "growling" : "resting", summary: result.higgins?.headline ?? result.number });
+      setHistoryKey((k) => k + 1);
+    }
+  }, [result]);
 
   const runCheck = async () => {
     if (!number.trim()) return;
@@ -109,6 +120,33 @@ export default function CallGuard() {
   };
 
   const recentCalls = events.filter((e) => e.category === "call" && e.state !== "resting").slice(0, 5);
+
+  // UNIVERSAL CHECK RESULT — when a number check has produced an outcome, the entire screen
+  // becomes the shared Check Result. ONE Higgins paragraph, ONE items list, ONE actions row.
+  if (result) {
+    const model = buildCallRiskCheckResult({ result });
+    const askPrompt = `About the number I just checked: ${result.number}. ${model.headline} Can you walk me through what Apollo found and what I should do?`;
+    const callActions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];
+    callActions.push({ testID: "callguard-result-block", variant: "secondary", label: "Add to block list", onPress: () => void addEntry(result.number, "block") });
+    callActions.push({ testID: "callguard-result-allow", variant: "ghost", label: "Always allow", onPress: () => void addEntry(result.number, "allow") });
+    callActions.push({
+      testID: "callguard-save", variant: "ghost",
+      label: saved ? "Saved \u2713 \u2014 View saved checks" : "Save this check",
+      onPress: () => {
+        if (saved) { router.push("/saved-checks"); return; }
+        void saveCheck({ id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`, gate: "call", title: result.higgins?.headline ?? "Number check", subject: result.number, state: result.decision === "avoid" ? "barking" : result.decision === "review" ? "growling" : "resting", stateName: result.decision === "avoid" ? "High risk" : result.decision === "review" ? "Some risk" : "No strong signal", summary: result.higgins?.found ?? "", recommendation: result.higgins?.next_action ?? "", sections: [{ title: "Details", lines: [`Fraud score: ${result.fraud_score ?? "N/A"}`, `Line type: ${result.line_type ?? "Unknown"}`, `Carrier: ${result.carrier ?? "Unknown"}`, `VOIP: ${result.voip ? "Yes" : "No"}`] }] }).then(() => { setSaved(true); showToast("Saved. Find it under Saved checks.", "neutral"); });
+      },
+    });
+    callActions.push({ testID: "callguard-again", variant: "ghost", label: "Check another number", onPress: () => { setResult(null); setNumber(""); setCountry(""); setSaved(false); } });
+
+    return (
+      <CheckResultScreen
+        result={model}
+        onAskHiggins={() => router.push({ pathname: "/(tabs)/ask", params: { prompt: askPrompt } })}
+        actions={callActions}
+      />
+    );
+  }
 
   return (
     <View style={s.root}>
@@ -177,32 +215,6 @@ export default function CallGuard() {
           </Card>
         ) : null}
 
-        {result ? (
-          <>
-          {result.assessment ? <MessageAssessmentResult assessment={result.assessment} state={result.decision === "avoid" ? "barking" : result.decision === "review" ? "growling" : "resting"}
-            testIDPrefix="call" submittedLabel="Number checked" submittedText={result.number} onPrimaryAction={() => dispatchInvestigationAction(result.assessment!.higgins.action_kind, {
-              showVerification: () => setActionGuidance(result.assessment!.higgins.next_action),
-              showCallingGuidance: () => setActionGuidance(result.assessment!.higgins.next_action),
-              openAccount: () => router.push("/account"),
-              clearSubmittedCopy: () => { setNumber(""); setActionGuidance("The submitted number was cleared from this screen. It was not removed from your call history."); },
-              showReview: () => setActionGuidance(result.assessment!.higgins.next_action),
-            })} /> : null}
-          {actionGuidance ? <Card testID="callguard-action-guidance" style={{ gap: spacing.sm }}><SectionTitle>Next action</SectionTitle><Body>{actionGuidance}</Body><Button testID="callguard-action-guidance-close" variant="ghost" label="Hide instructions" onPress={() => setActionGuidance(null)} /></Card> : null}
-          <Card testID="callguard-result-details" style={{ gap: spacing.sm }}>
-            <View style={s.row}>
-              <Pill tone={result.decision === "avoid" ? "barking" : result.decision === "review" ? "growling" : "unknown"} label={result.decision === "avoid" ? "High risk" : result.decision === "review" ? "Some risk" : "No strong signal"} testID="callguard-decision" />
-              {result.source === "not_configured" ? <Pill tone="unknown" label="Provider not configured" /> : null}
-            </View>
-            <Text style={s.why} testID="callguard-summary">{result.number}{result.fraud_score !== null ? ` — fraud score ${result.fraud_score}/100` : ""}</Text>
-            <Body testID="callguard-result-limit">Number reputation is supporting evidence only. It does not authenticate the caller or establish where they are located.</Body>
-            {result.line_type ? <Text style={s.small}>Line type: {result.line_type}{result.carrier ? ` · ${result.carrier}` : ""}{result.voip ? " · VOIP" : ""}</Text> : null}
-            <View style={s.row}>
-              <Button testID="callguard-result-block" variant="secondary" label="Add to block list" onPress={() => void addEntry(result.number, "block")} />
-              <Button testID="callguard-result-allow" variant="ghost" label="Always allow" onPress={() => void addEntry(result.number, "allow")} />
-            </View>
-          </Card></>
-        ) : null}
-
         <View>
           <SectionTitle>Your block list</SectionTitle>
           <Card testID="callguard-block-list">
@@ -228,6 +240,7 @@ export default function CallGuard() {
         </View>
 
         <Button testID="callguard-check-live-call" variant="ghost" label="Mid-call? Use Check This Call instead" icon={<PhoneOff size={16} color={colors.brand} />} onPress={() => router.push("/call")} />
+        <CheckHistoryCard gate="call" refreshKey={historyKey} testID="callguard-history" />
       </KeyboardAwareScrollView>
     </View>
   );

@@ -1,0 +1,171 @@
+{
+  "iteration": 85,
+  "timestamp": "2026-10-08T17:03:00Z",
+  "context": "text-guard.tsx and call-guard.tsx migration to unified CheckResultScreen component",
+  "test_results": {
+    "frontend": {
+      "typescript_compilation": {
+        "status": "FAILED",
+        "command": "cd /app/frontend && npx tsc --noEmit",
+        "exit_code": 0,
+        "errors_count": 9,
+        "critical_errors": [
+          {
+            "file": "app/text-guard.tsx",
+            "line": 98,
+            "error": "Argument of type '\"text\"' is not assignable to parameter of type 'CheckGate'",
+            "context": "recordCheck('text', ...) - 'text' not in CheckGate union"
+          },
+          {
+            "file": "app/text-guard.tsx",
+            "line": 121,
+            "error": "Type '\"text\"' is not assignable to type 'CheckGate'",
+            "context": "saveCheck({ gate: 'text', ... }) - 'text' not in CheckGate union"
+          },
+          {
+            "file": "app/text-guard.tsx",
+            "line": 199,
+            "error": "Type '\"text\"' is not assignable to type 'CheckGate'",
+            "context": "CheckHistoryCard gate='text' - 'text' not in CheckGate union"
+          },
+          {
+            "file": "app/call-guard.tsx",
+            "line": 137,
+            "error": "Type '\"call\"' is not assignable to type 'CheckGate'",
+            "context": "saveCheck({ gate: 'call', ... }) - 'call' not in CheckGate union"
+          },
+          {
+            "file": "app/account.tsx",
+            "line": 150,
+            "error": "Type 'AlertKind | null' is not assignable to type 'AlertKind'",
+            "context": "buildAccountCheckResult({ ..., kind, ... }) - kind can be null"
+          },
+          {
+            "file": "app/account.tsx",
+            "line": 162,
+            "error": "Cannot find name 'setManualMode'",
+            "context": "setManualMode(false) - function not defined"
+          },
+          {
+            "file": "app/account.tsx",
+            "line": 193,
+            "error": "Cannot find name 'toneColor'",
+            "context": "toneColor(colors, dashTone) - function not imported"
+          },
+          {
+            "file": "app/account.tsx",
+            "line": 194,
+            "error": "Cannot find name 'toneColor' and 'STATE_NAME'",
+            "context": "toneColor and STATE_NAME not imported"
+          }
+        ],
+        "root_cause": "CheckGate type in src/domain/savedCheck.ts only includes 'link' | 'message' | 'network' | 'app', missing 'text' and 'call'. Also missing imports and state variables in account.tsx from previous migration."
+      },
+      "eslint": {
+        "status": "PASSED",
+        "command": "cd /app/frontend && npx eslint app/text-guard.tsx app/call-guard.tsx --no-error-on-unmatched-pattern",
+        "exit_code": 0,
+        "errors": 0
+      },
+      "gate_tests": {
+        "gate2_message_text": {
+          "status": "PASSED",
+          "command": "yarn test:gate2",
+          "tests_passed": 23,
+          "tests_failed": 0,
+          "duration_ms": 102.06
+        },
+        "gate4_call": {
+          "status": "PASSED",
+          "command": "yarn test:gate4",
+          "tests_passed": 25,
+          "tests_failed": 0,
+          "duration_ms": 101.58
+        },
+        "gate8_account_network": {
+          "status": "PASSED",
+          "command": "yarn test:gate8",
+          "tests_passed": 34,
+          "tests_failed": 0,
+          "duration_ms": 107.05
+        }
+      },
+      "preview_load": {
+        "status": "PASSED",
+        "url": "http://localhost:3000",
+        "http_code": 200
+      }
+    },
+    "backend": {
+      "health_endpoint": {
+        "status": "PASSED",
+        "url": "http://localhost:8001/api/health",
+        "http_code": 200,
+        "response": {
+          "schemaVersion": 1,
+          "status": "ok",
+          "service": "apollo-v1"
+        }
+      },
+      "gate_tests": {
+        "gate7_app": {
+          "status": "PASSED",
+          "command": "python -m pytest tests/test_gate7_app.py -q",
+          "tests_passed": 9,
+          "tests_failed": 0
+        },
+        "gate8_account": {
+          "status": "PASSED",
+          "command": "python -m pytest tests/test_gate8_account.py -q",
+          "tests_passed": 6,
+          "tests_failed": 0
+        }
+      },
+      "full_pytest_suite": {
+        "status": "FAILED",
+        "command": "python -m pytest -x -q",
+        "tests_passed": 48,
+        "tests_failed": 2,
+        "failures": [
+          {
+            "test": "test_register_push_placeholder",
+            "file": "tests/test_iter33_api_regression.py",
+            "error": "AssertionError: unexpected 422: The push token belongs to a different Expo project",
+            "expected": "201 or 503",
+            "actual": "422",
+            "note": "Pre-existing issue, not related to text-guard/call-guard migration"
+          },
+          {
+            "test": "test_gmail_manual_and_monitored_scans_share_one_cursor_lease",
+            "file": "tests/test_recovery_fencing.py",
+            "error": "TypeError: fake_scan() got an unexpected keyword argument 'email'",
+            "note": "Pre-existing issue, not related to text-guard/call-guard migration"
+          }
+        ]
+      }
+    }
+  },
+  "summary": {
+    "overall_status": "FAILED",
+    "critical_issues": [
+      "TypeScript compilation fails with 9 errors - code will not compile",
+      "CheckGate type definition missing 'text' and 'call' values",
+      "account.tsx has missing imports (toneColor, STATE_NAME) and undefined setManualMode"
+    ],
+    "passed_tests": [
+      "ESLint validation on migrated files",
+      "All gate test suites (gate2: 23/23, gate4: 25/25, gate8: 34/34)",
+      "Backend health endpoint",
+      "Backend gate7 and gate8 tests (15/15)",
+      "Frontend preview loads successfully"
+    ],
+    "migration_status": "INCOMPLETE",
+    "blocking_issues": "TypeScript compilation errors prevent the app from building"
+  },
+  "recommendations": [
+    "Fix CheckGate type in src/domain/savedCheck.ts to include 'text' and 'call'",
+    "Fix account.tsx: import toneColor and STATE_NAME, handle null kind, remove setManualMode reference",
+    "Verify call.tsx setWhy issue if that file was also migrated",
+    "Backend pytest failures appear pre-existing and unrelated to this migration"
+  ]
+}

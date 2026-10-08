@@ -14,18 +14,20 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { PatrolItem } from "@/src/components/PatrolItem";
 import { projectPatrolOutcomes } from "@/src/domain/patrolOutcomes";
+import { CheckResultScreen } from "@/src/components/CheckResultScreen";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
-import { MessageAssessmentResult } from "@/src/components/MessageAssessmentResult";
 import { Sheet } from "@/src/components/Sheet";
-import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
+import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { STATE_LABEL, STATE_MEANING, STATE_NAME } from "@/src/domain/types";
+import { buildMessageCheckResult } from "@/src/domain/messageCheckResultAdapter";
+import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { MessagingSdk, type MessagingCapabilities } from "@/src/security/messagingSdk";
 import { type MessageOutcome, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
-import { dispatchInvestigationAction } from "@/src/domain/investigationActions";
-import { GateInvestigation } from "@/src/components/GateInvestigation";
-import { issueContext } from "@/src/domain/higginsHandoff";
+import { recordCheck } from "@/src/store/checkHistoryStore";
+import { saveCheck } from "@/src/store/savedCheckStore";
+import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -79,17 +81,64 @@ export default function TextGuard() {
   const [result, setResult] = useState<MessageOutcome | null>(null);
   const [verify, setVerify] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [higginsResolved, setHigginsResolved] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [historyKey, setHistoryKey] = useState(0);
 
   const run = async () => {
     if (!text.trim()) return;
-    setBusy(true); setError(null); setResult(null); setHigginsResolved(false);
+    setBusy(true); setError(null); setResult(null);
     try { setResult(await checkMessage(sender, text)); } catch (e) { setError(e instanceof Error ? e.message : "Could not check this message."); } finally { setBusy(false); }
   };
 
   const recent = events.filter((e) => e.category === "message" && e.state !== "resting").slice(0, 5);
   const a = result?.analysis;
-  const tone = a?.state ?? "neutral";
+
+  useEffect(() => {
+    if (result?.analysis) {
+      void recordCheck("text", { at: new Date().toISOString(), state: result.analysis.state, summary: result.analysis.scenarioTitle });
+      setHistoryKey((k) => k + 1);
+    }
+  }, [result]);
+
+  // UNIVERSAL CHECK RESULT — when the text check has produced an outcome, the entire screen
+  // becomes the shared Check Result. ONE Higgins paragraph, ONE items list, ONE actions row.
+  if (result && a) {
+    const model = buildMessageCheckResult({ analysis: a, event: result.event ?? null, sender, explanation: result.explanation ?? null, urlResults: result.urls ?? [] });
+    const askPrompt = `About the text I just checked (from ${model.subject}). ${model.headline} Can you walk me through what Apollo found and what I should do?`;
+    const textActions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];
+    textActions.push({ testID: "textguard-verify-sender", variant: "secondary", label: "Show me how to check the sender", onPress: () => setVerify(true) });
+    a.signals.urls.forEach((u: string, i: number) => {
+      textActions.push({ testID: `textguard-check-link-${i}`, variant: "ghost", label: `Check: ${u.length > 35 ? u.slice(0, 35) + "\u2026" : u}`, onPress: () => router.push({ pathname: "/check", params: { url: u.startsWith("http") ? u : `https://${u}`, source: "message" } }) });
+    });
+    if (result.event) {
+      textActions.push({ testID: "textguard-mark-safe", variant: "ghost", label: "Mark as handled", onPress: () => { void resolveEvent(result.event!); showToast("Marked as handled.", "neutral"); goBackOrHome(router); } });
+    }
+    textActions.push({
+      testID: "textguard-save", variant: "ghost",
+      label: saved ? "Saved \u2713 \u2014 View saved checks" : "Save this check",
+      onPress: () => {
+        if (saved) { router.push("/saved-checks"); return; }
+        void saveCheck({ id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`, gate: "text", title: a.scenarioTitle, subject: sender || "Sender not supplied", state: a.state, stateName: STATE_NAME[a.state], summary: result.explanation?.summary ?? a.verdict, recommendation: result.explanation?.recommendation ?? a.recommendation, sections: [{ title: "Why", lines: result.explanation?.why?.length ? result.explanation.why : a.why }, { title: "Signals", lines: a.signalLabels }, { title: "Links", lines: a.signals.urls }] }).then(() => { setSaved(true); showToast("Saved. Find it under Saved checks.", "neutral"); });
+      },
+    });
+    textActions.push({ testID: "textguard-again", variant: "ghost", label: "Check another message", onPress: () => { setResult(null); setText(""); setSender(""); setSaved(false); } });
+
+    return (
+      <>
+        <CheckResultScreen
+          result={model}
+          onAskHiggins={() => router.push({ pathname: "/(tabs)/ask", params: { context: result.event ? JSON.stringify(contextFromEvent(result.event, gateForCategory(result.event.category))) : "", prompt: askPrompt } })}
+          actions={textActions}
+        />
+        {result.event ? <RecoveryFlow event={result.event} kinds={["clicked", "password", "code", "money", "info", "app"]} linkToCheck={a.signals.urls[0] ?? null} testID="textguard-recovery" /> : null}
+        <Sheet visible={verify} onClose={() => setVerify(false)} title="Verify the sender" testID="textguard-verify-sheet">
+          <Body>{a.verifySender}</Body>
+          <Body>Never verify using a number, link or email that only appears in the suspicious message.</Body>
+          <Button testID="textguard-verify-close" variant="ghost" label="Got it" onPress={() => setVerify(false)} />
+        </Sheet>
+      </>
+    );
+  }
 
   return (
     <View style={s.root}>
@@ -147,63 +196,8 @@ export default function TextGuard() {
           </Card>
         ) : null}
 
-        {result && a ? (
-          <>
-            {!higginsResolved && result.assessment ? <MessageAssessmentResult assessment={result.assessment} state={a.state}
-              submittedLabel="Text investigated" submittedTitle={sender || "Sender not supplied"} submittedText={text}
-              onPrimaryAction={() => dispatchInvestigationAction(result.assessment!.higgins.action_kind, {
-                showVerification: () => setVerify(true), openAccount: () => router.push({ pathname: "/account", params: { text, scent: result.event?.scent_id ?? result.event?.event_id ?? "" } }),
-                clearSubmittedCopy: () => { setText(""); setSender(""); showToast("The copy submitted to Apollo was cleared from this screen. The original message was not deleted.", "neutral"); },
-                showReview: () => setVerify(true),
-              })} /> : !higginsResolved ? <Card testID="textguard-result" style={{ borderColor: toneColor(colors, tone), gap: spacing.sm }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" }}>
-                <Pill tone={tone} label={STATE_NAME[a.state]} testID="textguard-state" />
-                <Pill tone="neutral" label={a.scenarioTitle} />
-              </View>
-              <Text style={s.stateLabel}>{STATE_LABEL[a.state]}</Text>
-              <Text style={s.verdict} testID="textguard-verdict" selectable>{result.explanation?.summary ?? a.verdict}</Text>
-              <SectionTitle>Why?</SectionTitle>
-              {(result.explanation?.why?.length ? result.explanation.why : a.why).map((w, i) => <Text key={i} style={s.why} selectable>• {w}</Text>)}
-              <SectionTitle>Recommendation</SectionTitle>
-              <Text style={s.why} testID="textguard-recommendation" selectable>{result.explanation?.recommendation ?? a.recommendation}</Text>
-              {a.signalLabels.length ? <View style={s.chips}>{a.signalLabels.map((l) => <Pill key={l} tone="unknown" label={l} />)}</View> : null}
-            </Card> : null}
-
-            {a.signals.urls.length ? (
-              <View>
-                <SectionTitle>Links in this message</SectionTitle>
-                <Card style={{ gap: spacing.sm }}>
-                  {a.signals.urls.map((u) => (
-                    <View key={u} style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-                      <Text style={[s.why, { flex: 1 }]} numberOfLines={1}>{u}</Text>
-                      <Button testID={`textguard-check-link-${a.signals.urls.indexOf(u)}`} variant="secondary" label="Check link" onPress={() => router.push({ pathname: "/check", params: { url: u.startsWith("http") ? u : `https://${u}`, source: "message" } })} />
-                    </View>
-                  ))}
-                </Card>
-              </View>
-            ) : null}
-
-            <Card style={{ gap: spacing.sm }}>
-              <GateInvestigation submission={result} eventId={result.event?.event_id} onResolved={setHigginsResolved} testID="textguard-higgins" label="Continue this investigation" context={issueContext({
-                gate: "text", issue_summary: a.scenarioTitle, assessment_state: a.state,
-                findings: a.signalLabels.map((summary) => ({ summary, provenance: "observed", status: "uncertain" })),
-                uncertainty: ["The sender was not independently authenticated."], confirmed_protective_actions: [], user_reported_actions: [],
-                event_id: result.event?.event_id,
-                original_evidence: [{ kind: "text", value: `From: ${sender}\n${text}`, label: "submitted text message" }],
-              })} question="Investigate this text message and tell me what to do." />
-              <Button testID="textguard-verify-sender" variant="secondary" label="Show me how to check the sender" onPress={() => setVerify(true)} />
-              {result.event ? <RecoveryFlow event={result.event} kinds={["clicked", "password", "code", "money", "info", "app"]} linkToCheck={a.signals.urls[0] ?? null} testID="textguard-recovery" /> : null}
-              {result.event ? <Button testID="textguard-mark-safe" variant="ghost" label="Mark as handled" onPress={() => { void (async () => { await resolveEvent(result.event!); showToast("Marked as handled. This does not verify the sender or suppress future alerts.", "neutral"); })(); }} /> : null}
-            </Card>
-          </>
-        ) : null}
+        <CheckHistoryCard gate="text" refreshKey={historyKey} testID="textguard-history" />
       </KeyboardAwareScrollView>
-
-      <Sheet visible={verify} onClose={() => setVerify(false)} title="Verify the sender" testID="textguard-verify-sheet">
-        <Body>{a?.verifySender}</Body>
-        <Body>Never verify using a number, link or email that only appears in the suspicious message.</Body>
-        <Button testID="textguard-verify-close" variant="ghost" label="Got it" onPress={() => setVerify(false)} />
-      </Sheet>
     </View>
   );
 }

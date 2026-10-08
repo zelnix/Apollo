@@ -17,10 +17,10 @@ import { apiPost, apiUpload } from "@/src/api/client";
 import { CheckResultScreen } from "@/src/components/CheckResultScreen";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { ScreenshotPermissionSheet } from "@/src/components/ScreenshotPermissionSheet";
-import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
+import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { ACCOUNT_PROVIDERS, ALERT_KINDS, analyseAccountAlert, inspectAccountEvidence, type AccountAnalysis, type AccountEvidence, type AccountProvider, type AlertKind } from "@/src/domain/accountAnalysis";
 import { SCENT_WINDOW_MS } from "@/src/domain/threatScent";
-import { type PatrolEvent } from "@/src/domain/types";
+import { type PatrolEvent, STATE_NAME } from "@/src/domain/types";
 import { patrolSafeSummary } from "@/src/domain/investigation";
 import { redactUserSecrets } from "@/src/domain/privacy";
 import { buildAccountCheckResult } from "@/src/domain/accountCheckResultAdapter";
@@ -147,7 +147,7 @@ export default function CheckAccount() {
 
   // UNIVERSAL CHECK RESULT — when the account check has produced an outcome
   if (result && a) {
-    const model = buildAccountCheckResult({ analysis: a, event: result.event, provider, kind, initiated });
+    const model = buildAccountCheckResult({ analysis: a, event: result.event, provider, kind: kind ?? "other", initiated });
     const askPrompt = `About the account alert I just checked (${model.subject}). ${model.headline} Can you walk me through what Apollo found and what I should do?`;
     const acctActions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];
     acctActions.push({ testID: "account-open-official", variant: "secondary", label: `Open ${a.providerLabel} safely`, onPress: () => { void Linking.openURL(ACCOUNT_PROVIDERS.find((p) => p.id === provider)?.official[0] ? `https://${ACCOUNT_PROVIDERS.find((p) => p.id === provider)!.official[0]}` : "https://www.google.com"); } });
@@ -159,7 +159,7 @@ export default function CheckAccount() {
     if (result.event) {
       acctActions.push({ testID: "account-mark-safe", variant: "ghost", label: "Mark as handled", onPress: () => { void resolveEvent(result.event!); showToast("Marked as handled.", "neutral"); goBackOrHome(router); } });
     }
-    acctActions.push({ testID: "account-again", variant: "ghost", label: "Check another alert", onPress: () => { setResult(null); setManualMode(false); setKind("other"); setProvider("other"); setInitiated(null); } });
+    acctActions.push({ testID: "account-again", variant: "ghost", label: "Check another alert", onPress: () => { setResult(null); setKind("other"); setProvider("other"); setInitiated(null); } });
 
     return (
       <>

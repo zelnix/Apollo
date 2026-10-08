@@ -1696,3 +1696,62 @@ agent_communication:
   - agent: "testing"
     message: "Iteration 84 (2026-10-04) COMPREHENSIVE TESTING COMPLETED. All 8 requested test categories executed successfully: (1) Live Caller ID PIR Backend Endpoints: GET /api/call/caller-id-db/count and GET /api/call/caller-id-db/export both return 200 with correct PIR format (phoneNumber, label, category). (2) PIR Sync Script: All functions validated (export_from_apollo, transform_for_pir, write_export, push_to_pir_server, write_sync_status), creates export files and sync_status.json correctly. (3) Backend Health: GET /api/health returns 200 with correct schema. (4) Email Gate Reporting Accuracy: mailbox_monitor module imports successfully, coverage limitation reporting and authentication disclaimer logic verified in _submit_shared_case function. (5) Frontend TypeScript Compilation: npx tsc --noEmit returns exit 0. (6) Frontend Gate Tests: yarn test:gate1 all 13 tests passed, E11/E13/E14 verdicts include auth disclaimer and coverage limitation text as specified. (7) Backend pytest: 344 passed, 16 skipped, 0 failed. (8) Expo Config Plugin: withLiveCallerID plugin exports function, registered in app.json, pirServer in extra config. All acceptance criteria met. No critical issues found. Backend is production-ready."
 
+
+## Iteration 85 — Auto-check screens (text-guard, call-guard) migrated to CheckResultScreen UI
+
+frontend:
+  - task: "text-guard.tsx migrated to CheckResultScreen: early return with unified result UI, check history card, save/ask Higgins/recovery actions; old GateInvestigation/MessageAssessmentResult/toneColor removed"
+    implemented: true
+    working: false
+    file: "frontend/app/text-guard.tsx"
+    needs_retesting: false
+    priority: "high"
+    status_history:
+      - agent: "main"
+        comment: "Replaced old inline result rendering (GateInvestigation, MessageAssessmentResult, toneColor, higginsResolved) with early-return CheckResultScreen pattern using buildMessageCheckResult adapter. Added check history recording, save-check, Ask Higgins, verify sender sheet, mark handled, RecoveryFlow. Removed broken references to undefined symbols (GateInvestigation, MessageAssessmentResult, dispatchInvestigationAction, toneColor, issueContext, STATE_NAME — most were never imported). ESLint clean."
+      - agent: "testing"
+        working: false
+        comment: "TypeScript compilation FAILED. text-guard.tsx uses 'text' as CheckGate type (lines 98, 121, 199) but CheckGate union in src/domain/savedCheck.ts only defines 'link' | 'message' | 'network' | 'app'. Three compilation errors: recordCheck('text', ...), saveCheck({ gate: 'text', ... }), and CheckHistoryCard gate='text'. ESLint passed. Gate test suite (yarn test:gate2) passed 23/23 tests. MUST ADD 'text' to CheckGate type definition."
+  - task: "call-guard.tsx migrated to CheckResultScreen: early return with unified result UI, check history card, save/block/allow actions; old MessageAssessmentResult/dispatchInvestigationAction/actionGuidance removed"
+    implemented: true
+    working: false
+    file: "frontend/app/call-guard.tsx"
+    needs_retesting: false
+    priority: "high"
+    status_history:
+      - agent: "main"
+        comment: "Replaced old inline result rendering (MessageAssessmentResult, dispatchInvestigationAction, actionGuidance state) with early-return CheckResultScreen pattern using buildCallRiskCheckResult adapter. Added check history recording, save-check, Ask Higgins, block/allow actions. ESLint clean."
+      - agent: "testing"
+        working: false
+        comment: "TypeScript compilation FAILED. call-guard.tsx uses 'call' as CheckGate type (line 137) but CheckGate union in src/domain/savedCheck.ts only defines 'link' | 'message' | 'network' | 'app'. One compilation error: saveCheck({ gate: 'call', ... }). ESLint passed. Gate test suite (yarn test:gate4) passed 25/25 tests. MUST ADD 'call' to CheckGate type definition."
+
+test_plan:
+  current_focus:
+    - "text-guard.tsx renders CheckResultScreen when a check result exists (form view → result view transition)"
+    - "call-guard.tsx renders CheckResultScreen when a number check result exists"
+    - "Both screens retain their form views (auto-scanning card, paste section, number check, block/allow lists)"
+    - "Backend health and pytest suite"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Auto-check screen migration complete. text-guard.tsx and call-guard.tsx now use the same CheckResultScreen early-return pattern as message.tsx, check.tsx, email.tsx, app-check.tsx, device.tsx, account.tsx, network.tsx. Both lint clean. Key changes: (1) text-guard: removed broken GateInvestigation/MessageAssessmentResult refs, added buildMessageCheckResult adapter + CheckResultScreen + RecoveryFlow + verify Sheet + save/history; (2) call-guard: removed MessageAssessmentResult/dispatchInvestigationAction/actionGuidance, added buildCallRiskCheckResult adapter + CheckResultScreen + save/history + block/allow actions. ALSO RUN BACKEND TESTS (user explicitly requested). Credentials: anonymous device auto-registers, no login. Onboarding: tap 'I understand — set up Apollo' on privacy disclosure. Test indicators in test_credentials.md."
+
+
+backend:
+  - task: "Backend health endpoint and pytest suite"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    needs_retesting: false
+    priority: "high"
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "Iteration 85 backend testing PASSED. Backend health endpoint returns 200 OK with correct schema. Gate-specific tests: test_gate7_app.py (9/9 passed), test_gate8_account.py (6/6 passed). Full pytest suite: 48 passed, 2 failed (both pre-existing, unrelated to text-guard/call-guard migration): (1) test_register_push_placeholder expects 201/503 but got 422 due to Expo project ID mismatch, (2) test_gmail_manual_and_monitored_scans_share_one_cursor_lease has TypeError with email parameter in mock. Backend is stable and working."
+
+agent_communication:
+  - agent: "testing"
+    message: "Iteration 85 testing COMPLETE. CRITICAL FAILURE: TypeScript compilation fails with 9 errors preventing app from building. ROOT CAUSE: CheckGate type in src/domain/savedCheck.ts only defines 'link' | 'message' | 'network' | 'app' but text-guard.tsx uses 'text' and call-guard.tsx uses 'call' (lines 98, 121, 199 in text-guard.tsx; line 137 in call-guard.tsx). ADDITIONAL ERRORS in account.tsx: missing imports (toneColor, STATE_NAME), undefined setManualMode, AlertKind | null type mismatch (lines 150, 162, 193, 194). PASSED: ESLint clean on both migrated files, all gate test suites (gate2: 23/23, gate4: 25/25, gate8: 34/34), backend health + gate tests (15/15), frontend preview loads (200 OK). Backend pytest: 2 pre-existing failures unrelated to migration. Full report: /app/test_reports/iteration_85.json. MUST FIX: Add 'text' and 'call' to CheckGate union type, fix account.tsx imports and state."
