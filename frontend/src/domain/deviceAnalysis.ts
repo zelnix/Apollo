@@ -29,8 +29,10 @@ export interface DeviceSignals {
   firewallEnabled: boolean | null;
   /** Desktop (Windows/macOS) OS-update state: true = up to date, false = pending updates. `null` where unreadable. */
   osUpdatesCurrent: boolean | null;
+  /** Desktop antivirus state: Windows reads registered AV products via Security Center. `null` where unreadable. */
+  antivirusEnabled: boolean | null;
 }
-export const EMPTY_SIGNALS = (platform: DevicePlatform): DeviceSignals => ({ platform, unknownSourcesEnabled: null, thirdPartyAccessibilityServices: null, overlayApps: null, notificationAccessApps: null, vpnActive: null, vpnProviderKnown: null, managementProfile: "unknown", managementAdmins: null, userTrustedCertificates: null, remoteAccessApps: null, developerOptions: null, screenLockSecure: null, firewallEnabled: null, osUpdatesCurrent: null });
+export const EMPTY_SIGNALS = (platform: DevicePlatform): DeviceSignals => ({ platform, unknownSourcesEnabled: null, thirdPartyAccessibilityServices: null, overlayApps: null, notificationAccessApps: null, vpnActive: null, vpnProviderKnown: null, managementProfile: "unknown", managementAdmins: null, userTrustedCertificates: null, remoteAccessApps: null, developerOptions: null, screenLockSecure: null, firewallEnabled: null, osUpdatesCurrent: null, antivirusEnabled: null });
 
 export type SelfReportKey = "gaveRemoteAccess" | "usedBankingDuringAccess" | "unexpectedProfile" | "managementExpected" | "newCertificate" | "unexpectedVpn" | "grantedAccessibility" | "unknownSourcesOn" | "newAppUnexpected";
 export const SELF_REPORT: { id: SelfReportKey; label: string }[] = [

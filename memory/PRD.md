@@ -1426,3 +1426,34 @@ Windows/macOS desktop host (Tauri) now observes two more review signals directly
 Tests: deviceReview.test.ts (firewall + OS-update desktop cases). Full TS/Node suite green, tsc + lint clean.
 NOTE: the native reads only verify on a real Windows/macOS desktop build; cargo check here stops at a system
 GTK/pkg-config dependency (container limitation), not a code error.
+
+## About Apollo popup + Higgins headshot + Desktop antivirus/settings-jump + Preview boot — DONE (2026-06)
+- About Apollo: new scrollable popup `src/components/AboutApolloSheet.tsx`, opened from Settings → Help & about →
+  "About Apollo" (replaced the old static text block). Uses the supplied Higgins+Apollo photos
+  (assets/images/higgins-apollo-full.png hero, higgins-apollo-portrait.png in Meet Higgins) and the full approved
+  copy (10 Gates chips, Scam Alerts, Meet Higgins, Your Privacy & Data, Free Forever, Harmony Wellness Group).
+- Higgins headshot (assets/images/higgins-headshot.png): now shown on the "Hear Higgins" button
+  (src/components/HigginsSpeakButton.tsx), the Higgins chat header + message avatars (app/(tabs)/ask.tsx), and the
+  About Apollo "Meet Higgins" section. NOTE: after adding new image assets, Metro needed a cache clear
+  (rm -rf .metro-cache/* then restart expo) or the images render as blank circles.
+- Desktop antivirus: security_audit (lib.rs) now also reads Windows antivirus via Security Center2 productState
+  (macOS/Linux → null, stays manual). DeviceSignals.antivirusEnabled + deviceReview `antivirus` evaluator (Windows
+  Checked/Action; mac/android Manual).
+- Desktop "Open Settings" jump: lib.rs open_settings_target gained "firewall" and "updates" targets (Win:
+  ms-settings:windowsdefender / ms-settings:windowsupdate; mac: Network / Software-Update settings). device.tsx
+  openCheck now calls openDesktopSettings(desktopReviewTarget(id)) on a desktop host and the button reads "Open
+  Settings" there.
+- PREVIEW BOOT: the app is hard-gated to only boot in a production config ("no mocks in runtime"); dev/staging show
+  SafeStartScreen. To let the in-container web/Expo-Go preview run for UX/content review, frontend/.env now sets
+  EXPO_PUBLIC_APP_ENV=production and EXPO_PUBLIC_DEVICE_PREVIEW_HARNESS=off. On web this uses the honest browser
+  adapter (reports "no native protection"), so no fake protection is shown. The simulated-device harness is off.
+  securityConfig/boot unit tests are unchanged (they test the function, not .env). Verified: onboarding → setup →
+  Home/Gates/Higgins all render in the preview.
+
+## QUEUED (large, not yet started) — two product briefs received, to be done one at a time:
+1. Global Scam Early Warnings + Higgins "growling" alerts (AU/US/UK/EU sources, severity LOW/MODERATE/HIGH/EXTREME,
+   Australian-relevance, Home section, scams.tsx filters, growling push, Higgins explanations). Extend existing
+   government_alerts/learning_feeds/context_tools/ask.py/push.py + home.tsx/ask.tsx/scams.tsx/hubClient.ts.
+2. Privacy, Data Storage, Retention & Deletion corrections (authoritative inventory, retention rules, Clear Patrol
+   + "Delete My Apollo Data" device-scoped deletion, per-Gate privacy audit, Settings → Privacy & Data screen,
+   onboarding/About consistency, honest deletion-state messaging, tests).

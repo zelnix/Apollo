@@ -22,6 +22,7 @@ import { STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { AppDeviceSdk } from "@/src/security/appDeviceSdk";
 import { securityAdapter } from "@/src/security/securityAdapter";
 import { desktopHostKind } from "@/src/security/desktopHost";
+import { openDesktopSettings } from "@/src/security/DesktopSecurityAdapter";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { openDeviceSettings, type SettingsTarget } from "@/src/utils/deviceSettings";
@@ -32,6 +33,10 @@ import { issueContext } from "@/src/domain/higginsHandoff";
 const TARGET: Record<string, SettingsTarget> = { D01: "apps", D01b: "apps", D02: "security", D03: "security", D04: "vpn", D05: "accessibility", D06: "apps", D07: "apps", D08: "unknown_sources", D09: "overlay", D10: "notification_access", D11: "developer" };
 // Deep-link target for each review check so "Open Settings" lands the person on the right screen.
 const REVIEW_TARGET: Record<string, SettingsTarget> = { lock: "security", os_updates: "security", developer_mode: "developer", apollo_protection: "vpn", antivirus: "security", unknown_sources: "unknown_sources", remote_access: "apps", accessibility: "accessibility", unexpected_app: "apps", sensitive_permissions: "apps", notification_access: "notification_access", sharing_services: "security", vpn: "vpn", firewall: "security", management_profile: "security", certificates: "security", encryption: "security", backup: "security" };
+// Desktop (Tauri) OS Settings destinations accepted by open_settings_target. Specific review checks map to the
+// exact firewall/updates pages; everything else maps its mobile SettingsTarget to the nearest desktop page.
+const DESKTOP_TARGET_FOR_SETTINGS: Record<string, string> = { security: "security", developer: "privacy", vpn: "vpn", unknown_sources: "apps", apps: "apps", accessibility: "privacy", notification_access: "notifications" };
+const desktopReviewTarget = (checkId: string): string => checkId === "firewall" ? "firewall" : checkId === "os_updates" ? "updates" : checkId === "antivirus" ? "security" : (DESKTOP_TARGET_FOR_SETTINGS[REVIEW_TARGET[checkId]] ?? "security");
 const DEVICE_SNAPSHOT_KEY = "apollo.device.signals.v1";
 const DEVICE_CHANGELOG_KEY = "apollo.device.changelog.v1";
 const SEVERITY_RANK: Record<DeviceFinding["severity"], number> = { high: 2, review: 1, info: 0 };
@@ -112,7 +117,8 @@ export default function CheckDevice() {
   const reviewGroups = useMemo(() => review ? groupByCategory(review) : [], [review]);
   const openCheck = (r: CheckResult) => {
     if (!r.settings) return;
-    if (platform === "web") setSettingsGuidance(`${r.title}: ${r.settings}`);
+    if (hostKind) void openDesktopSettings(desktopReviewTarget(r.id)).catch(() => setSettingsGuidance(`${r.title}: ${r.settings}`));
+    else if (platform === "web") setSettingsGuidance(`${r.title}: ${r.settings}`);
     else void openDeviceSettings(REVIEW_TARGET[r.id] ?? "security", r.settings, (m) => showToast(m, "neutral"));
   };
   const anySelf = Object.values(self).some(Boolean);
@@ -216,7 +222,7 @@ export default function CheckDevice() {
                       <Text style={s.mono}>{r.evidence}{r.verifiedBy === "user_confirmed" ? " · You confirmed this." : r.verifiedBy === "observation" ? " · Verified by Apollo." : ""}</Text>
                       {r.settings && r.outcome !== "checked" ? (
                         <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap", alignItems: "center" }}>
-                          <Button testID={`device-check-${r.id}-open`} variant={r.outcome === "action" ? "danger" : "secondary"} label={platform === "web" ? "Show Settings steps" : "Open Settings"} onPress={() => openCheck(r)} />
+                          <Button testID={`device-check-${r.id}-open`} variant={r.outcome === "action" ? "danger" : "secondary"} label={platform === "web" && !hostKind ? "Show Settings steps" : "Open Settings"} onPress={() => openCheck(r)} />
                           <Text style={s.mono}>{r.settings}</Text>
                         </View>
                       ) : null}

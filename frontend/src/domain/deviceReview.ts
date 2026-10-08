@@ -118,8 +118,12 @@ const CHECKS: CheckDef[] = [
           : action("Protection was requested but the device did not confirm it running.", i.protection.permissionIssues.length ? `Restore: ${i.protection.permissionIssues.join(", ")}, then re-check.` : "Restore the protection service, then re-check.", i.protection.permissionIssues.length ? `Missing permission: ${i.protection.permissionIssues.join(", ")}.` : i.protection.degradedReason ?? "Protection did not confirm running.") },
   { id: "antivirus", category: "malware", title: "Antivirus / malware protection", platforms: ["windows", "macos", "android"],
     settings: DESKTOP_SET("Settings → Privacy & security → Windows Security → Virus & threat protection", "Open your antivirus app"),
-    evaluate: (i) => i.platform === "android" ? manual("Open Play Store → Play Protect and confirm scanning is on.")
-      : manual(i.platform === "windows" ? "Confirm Microsoft Defender (or your antivirus) real-time protection is on and up to date." : "Confirm your antivirus (or Apple's built-in protection) is active and updated.") },
+    evaluate: (i) => i.platform === "windows"
+      ? (i.signals.antivirusEnabled === true ? checked("The desktop host confirmed an antivirus product is enabled.")
+        : i.signals.antivirusEnabled === false ? action("No enabled antivirus was found, so malware isn't being screened.", "Turn on Microsoft Defender (or your antivirus) real-time protection.", "Windows Security reported no enabled antivirus product.")
+          : manual("Confirm Microsoft Defender (or your antivirus) real-time protection is on and up to date."))
+      : i.platform === "android" ? manual("Open Play Store → Play Protect and confirm scanning is on.")
+        : manual("Confirm your antivirus (or Apple's built-in protection) is active and updated.") },
 
   // --- Application security ---
   { id: "unknown_sources", category: "apps", title: "Installs from unknown sources", platforms: ["android", "windows", "macos"],

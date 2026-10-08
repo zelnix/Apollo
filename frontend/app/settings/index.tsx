@@ -7,6 +7,7 @@ import { Platform, Pressable, ScrollView, Switch, Text, View } from "react-nativ
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AlertPreviewSheet } from "@/src/components/AlertPreviewSheet";
+import { AboutApolloSheet } from "@/src/components/AboutApolloSheet";
 import { Sheet } from "@/src/components/Sheet";
 import { TimeStepper } from "@/src/components/TimeStepper";
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
@@ -41,7 +42,7 @@ export default function SettingsScreen() {
   const s = useStyles(); const insets = useSafeAreaInsets(); const router = useRouter(); const { colors } = useTheme();
   const { deviceId, trust, revokeTrust, clearPatrol, notificationStatus, enableNotifications, quietHours, quietNow, setQuietHours, lowPower, setLowPower, showToast, enableSiteProtection } = useApollo();
   const [higginsAuto, setHigginsAutoState] = useState(false); const [confirmClear, setConfirmClear] = useState(false); const [preview, setPreview] = useState(false);
-  const [showTrust, setShowTrust] = useState(false); const [showShare, setShowShare] = useState(false);
+  const [showTrust, setShowTrust] = useState(false); const [showShare, setShowShare] = useState(false); const [showAbout, setShowAbout] = useState(false);
   useEffect(() => { void getHigginsAuto().then(setHigginsAutoState); }, []);
   const higgins = useHiggins(deviceId);
 
@@ -139,10 +140,7 @@ export default function SettingsScreen() {
             <View style={{ flex: 1 }}><Text style={s.rowLabel}>How to share into Apollo</Text></View><ChevronRight size={20} color={colors.muted} />
           </Pressable>
           {showShare ? <Body testID="settings-share-help" style={{ paddingBottom: spacing.sm }}>Use Share in Messages, Mail or your browser, then choose Apollo. Apollo always waits for you to confirm before it checks anything you share.</Body> : null}
-          <View style={[s.rowItem, s.divider, { flexDirection: "column", alignItems: "stretch", gap: 4 }]} testID="settings-about">
-            <Text style={s.rowLabel}>About Apollo</Text>
-            <Body>Apollo is a brand of Harmony Wellness Group. Apollo performs supported checks and protection; Higgins explains findings and the next step.</Body>
-          </View>
+          <NavRow label="About Apollo" hint="Meet Apollo and Higgins, the 10 Gates, privacy and more" onPress={() => setShowAbout(true)} testID="settings-about-apollo" />
         </Card>
       </View>
 
@@ -151,6 +149,7 @@ export default function SettingsScreen() {
       <Text style={s.footer} testID="settings-footer">Apollo V1 · No account · No advertising tracking</Text>
     </ScrollView>
     <AlertPreviewSheet visible={preview} onClose={() => setPreview(false)} />
+    <AboutApolloSheet visible={showAbout} onClose={() => setShowAbout(false)} />
     <Sheet visible={confirmClear} onClose={() => setConfirmClear(false)} title="Clear Patrol history?" testID="clear-sheet"><Body>This hides Patrol items on this device and asks the service to hide synced summaries. Trusted links are kept.</Body><Button testID="clear-confirm" variant="danger" label="Clear history" onPress={() => { setConfirmClear(false); void clearPatrol(); }} /><Button testID="clear-cancel" variant="ghost" label="Keep history" onPress={() => setConfirmClear(false)} /></Sheet>
   </View>;
 }

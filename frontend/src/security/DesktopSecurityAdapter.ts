@@ -34,7 +34,7 @@ interface HostPermission { id: ProtectionPermission["id"]; state: ProtectionPerm
 interface HostFilterStatus { enabled: boolean; blockedDomains: string[]; method: "hosts_dns_filter" }
 interface HostFilterChange { verified: boolean; host: string; enabled: boolean; changedAt: string }
 interface HostNativeFilterStatus { mechanism: "wfp_ale_authorization" | "network_extension" | "none"; state: "active" | "permission_needed" | "configuration_missing" | "not_implemented" | "adapter_failed"; installed: boolean; active: boolean; detail: string; unavailableReason: ProtectionPermission["unavailableReason"]; checkedAt: string }
-interface HostSecurityAudit { firewallEnabled: boolean | null; firewallDetail: string; updatesCurrent: boolean | null; updatesDetail: string }
+interface HostSecurityAudit { firewallEnabled: boolean | null; firewallDetail: string; updatesCurrent: boolean | null; updatesDetail: string; antivirusEnabled: boolean | null; antivirusDetail: string }
 
 class DesktopSecurityAdapterImpl implements SecurityPlatformAdapter {
   // Explicit host identity: Higgins receives platform "windows"/"macos" with native-origin facts, not a browser profile.
@@ -141,6 +141,7 @@ class DesktopSecurityAdapterImpl implements SecurityPlatformAdapter {
       vpnActive: net ? net.vpnActive : null,
       firewallEnabled: audit ? audit.firewallEnabled : null,
       osUpdatesCurrent: audit ? audit.updatesCurrent : null,
+      antivirusEnabled: audit ? audit.antivirusEnabled : null,
     };
   }
 }

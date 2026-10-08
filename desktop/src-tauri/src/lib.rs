@@ -86,6 +86,8 @@ struct HostSecurityAudit {
     firewall_detail: String,
     updates_current: Option<bool>,
     updates_detail: String,
+    antivirus_enabled: Option<bool>,
+    antivirus_detail: String,
 }
 
 #[derive(Serialize)]
@@ -419,7 +421,15 @@ fn observe_security_audit() -> HostSecurityAudit {
         Some(v) => (Some(false), format!("Windows Update reports {} pending update(s).", v.trim())),
         None => (None, "Windows Update status could not be read on this host.".to_string()),
     };
-    HostSecurityAudit { firewall_enabled, firewall_detail, updates_current, updates_detail }
+    // Antivirus: Windows Security Center lists every registered AV product and a packed productState. The second byte
+    // (10/11 hex) means the product is enabled. Covers Microsoft Defender and third-party AV honestly.
+    let (antivirus_enabled, antivirus_detail) = match output("powershell", &["-NoProfile", "-Command",
+        "try { $p=Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct -ErrorAction Stop; $on=$false; foreach($a in $p){ $hex='{0:x6}' -f [int]$a.productState; $b=$hex.Substring(2,2); if($b -eq '10' -or $b -eq '11'){$on=$true} }; if($on){'on'}else{'off'} } catch { 'error' }"]) {
+        Some(ref v) if v.trim() == "on" => (Some(true), "An antivirus product is registered and enabled.".to_string()),
+        Some(ref v) if v.trim() == "off" => (Some(false), "No enabled antivirus product was found.".to_string()),
+        _ => (None, "Antivirus status could not be read on this host.".to_string()),
+    };
+    HostSecurityAudit { firewall_enabled, firewall_detail, updates_current, updates_detail, antivirus_enabled, antivirus_detail }
 }
 
 #[cfg(target_os = "macos")]
@@ -443,7 +453,9 @@ fn observe_security_audit() -> HostSecurityAudit {
         }
         None => (None, "macOS Software Update status could not be read on this host.".to_string()),
     };
-    HostSecurityAudit { firewall_enabled, firewall_detail, updates_current, updates_detail }
+    // macOS ships always-on built-in protection (XProtect/Gatekeeper) that an app cannot toggle or read as a product,
+    // so Apollo does not claim a readable antivirus state here — the review keeps this as a manual confirmation.
+    HostSecurityAudit { firewall_enabled, firewall_detail, updates_current, updates_detail, antivirus_enabled: None, antivirus_detail: "macOS uses built-in protection; confirm any additional antivirus yourself.".to_string() }
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
@@ -451,6 +463,7 @@ fn observe_security_audit() -> HostSecurityAudit {
     HostSecurityAudit {
         firewall_enabled: None, firewall_detail: "Firewall reading is available only in Windows and macOS packages.".into(),
         updates_current: None, updates_detail: "Update reading is available only in Windows and macOS packages.".into(),
+        antivirus_enabled: None, antivirus_detail: "Antivirus reading is available only in Windows and macOS packages.".into(),
     }
 }
 
@@ -613,12 +626,16 @@ fn open_settings_target(target: String) -> Result<(), String> {
         (true, "apps") => "ms-settings:appsfeatures",
         (true, "security") => "windowsdefender:",
         (true, "privacy") => "ms-settings:privacy",
+        (true, "firewall") => "ms-settings:windowsdefender",
+        (true, "updates") => "ms-settings:windowsupdate",
         (false, "notifications") => "x-apple.systempreferences:com.apple.Notifications-Settings.extension",
         (false, "network") => "x-apple.systempreferences:com.apple.Network-Settings.extension",
         (false, "vpn") => "x-apple.systempreferences:com.apple.NetworkExtensionSettingsUI.NESettingsUIExtension",
         (false, "security") => "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension",
         (false, "privacy") => "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension",
         (false, "apps") => "x-apple.systempreferences:com.apple.preferences.appstore",
+        (false, "firewall") => "x-apple.systempreferences:com.apple.Network-Settings.extension",
+        (false, "updates") => "x-apple.systempreferences:com.apple.Software-Update-Settings.extension",
         _ => return Err("unsupported settings target".into()),
     };
     tauri_plugin_opener::open_url(uri, None::<&str>).map_err(|e| e.to_string())

@@ -1,6 +1,7 @@
 // "Hear Higgins" — a small speaker button that reads the given text aloud in Higgins' voice. Tap again to stop.
 import Volume2 from "lucide-react-native/icons/volume-2";
 import VolumeX from "lucide-react-native/icons/volume-x";
+import { Image } from "expo-image";
 import React from "react";
 import { ActivityIndicator, Pressable, Text } from "react-native";
 
@@ -10,9 +11,10 @@ import { useHiggins } from "@/src/voice/higgins";
 
 const useStyles = makeStyles((c) => ({
   // Navy premium CTA — gold icon, white text, fine gold border. See design_guidelines.json "Buttons".
-  btn: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 48, paddingHorizontal: spacing.lg, borderRadius: radius.pill, borderWidth: 1, borderColor: c.goldBorder, backgroundColor: c.brand, alignSelf: "flex-start" },
+  btn: { flexDirection: "row", alignItems: "center", gap: spacing.sm, minHeight: 48, paddingLeft: spacing.sm, paddingRight: spacing.lg, borderRadius: radius.pill, borderWidth: 1, borderColor: c.goldBorder, backgroundColor: c.brand, alignSelf: "flex-start" },
   btnOn: { borderColor: c.resting },
   label: { fontFamily: fonts.textSemibold, fontSize: 14, color: "#FFFFFF" },
+  face: { width: 32, height: 32, borderRadius: 16, overflow: "hidden", borderWidth: 1, borderColor: c.goldBorder },
   icon: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill },
   iconOn: { backgroundColor: c.restingTint },
 }));
@@ -38,6 +40,7 @@ export function HigginsSpeakButton({ text, label = "Hear Higgins", compact = fal
   }
   return (
     <Pressable testID={testID} accessibilityRole="button" onPress={onPress} style={[s.btn, active && s.btnOn]}>
+      <Image source={require("../../assets/images/higgins-headshot.png")} style={s.face} contentFit="cover" accessibilityLabel="Higgins" />
       {busy ? <ActivityIndicator size="small" color={colors.resting} /> : <Icon size={18} color={active ? colors.resting : colors.gold} />}
       <Text style={s.label}>{busy ? "Higgins is clearing his throat…" : active ? "Stop" : label}</Text>
     </Pressable>

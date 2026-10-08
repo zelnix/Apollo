@@ -111,3 +111,16 @@ test("desktop OS updates: current → Checked; pending → Review; unreadable �
   const android = runDeviceReview({ platform: "android", signals: sig("android", { osUpdatesCurrent: true }), self: {} }).results.find((x) => x.id === "os_updates")!;
   assert.equal(android.outcome, "manual");
 });
+
+test("desktop antivirus: Windows observed on → Checked; off → Action; mac/android stay Manual", () => {
+  const on = runDeviceReview({ platform: "windows", signals: sig("windows", { antivirusEnabled: true }), self: {} }).results.find((x) => x.id === "antivirus")!;
+  assert.equal(on.outcome, "checked");
+  const off = runDeviceReview({ platform: "windows", signals: sig("windows", { antivirusEnabled: false }), self: {} }).results.find((x) => x.id === "antivirus")!;
+  assert.equal(off.outcome, "action");
+  assert.ok(off.risk && off.remediation);
+  const win_unknown = runDeviceReview({ platform: "windows", signals: sig("windows"), self: {} }).results.find((x) => x.id === "antivirus")!;
+  assert.equal(win_unknown.outcome, "manual");
+  // macOS has always-on built-in protection Apollo can't toggle-read; keep it a manual confirmation even if a value leaks in.
+  const mac = runDeviceReview({ platform: "macos", signals: sig("macos", { antivirusEnabled: true }), self: {} }).results.find((x) => x.id === "antivirus")!;
+  assert.equal(mac.outcome, "manual");
+});
