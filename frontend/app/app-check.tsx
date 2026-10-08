@@ -5,7 +5,7 @@ import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import * as Crypto from "expo-crypto";
 import X from "lucide-react-native/icons/x";
 import React, { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, AppState, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -18,12 +18,13 @@ import type { InvestigationResult } from "@/src/domain/investigation";
 import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { analyseApp, APP_PERMISSIONS, APP_PURPOSES, APP_SOURCES, PERMISSION_INFO, type AppAnalysis, type AppNetwork, type AppPermission, type AppPurpose, type AppSource } from "@/src/domain/appAnalysis";
+import { buildPermissionFindings, confirmedResolved, type PermissionFinding } from "@/src/domain/appPermissionFindings";
 import { SCENT_WINDOW_MS } from "@/src/domain/threatScent";
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { AppDeviceSdk, sdkPermissionsToApp, type InstalledAppRef } from "@/src/security/appDeviceSdk";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
-import { openDeviceSettings } from "@/src/utils/deviceSettings";
+import { openDeviceSettings, permissionSettings } from "@/src/utils/deviceSettings";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { issueContext } from "@/src/domain/higginsHandoff";
 
@@ -47,8 +48,15 @@ const useStyles = makeStyles((c) => ({
   why: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurface },
   label: { fontFamily: fonts.textSemibold, fontSize: 15, color: c.onSurface },
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
-  permRow: { gap: 2, paddingVertical: spacing.xs },
+  permRow: { gap: 4, paddingVertical: spacing.sm, borderTopWidth: 1, borderTopColor: c.border },
+  sectionLine: { fontFamily: fonts.text, fontSize: 14, lineHeight: 21, color: c.onSurface },
+  sectionHeading: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.muted, marginTop: spacing.xs },
 }));
+
+function Section({ title, lines, styles: s, testID }: { title: string; lines: string[]; styles: ReturnType<typeof useStyles>; testID: string }) {
+  if (!lines.length) return null;
+  return <View style={{ gap: 2 }} testID={testID}><Text style={s.sectionHeading}>{title}</Text>{lines.map((l, i) => <Text key={i} style={s.sectionLine} testID={`${testID}-${i}`}>• {l}</Text>)}</View>;
+}
 
 export default function CheckApp() {
   const s = useStyles();
@@ -76,8 +84,12 @@ export default function CheckApp() {
   const [appQuery, setAppQuery] = useState("");
   const [actionGuidance, setActionGuidance] = useState<string | null>(null);
   const [reportState, setReportState] = useState<"idle" | "sending" | "failed" | "sent">("idle");
+  const [showFull, setShowFull] = useState(false);
+  const [verifyNote, setVerifyNote] = useState<string | null>(null);
+  const awaitingReturn = React.useRef(false);
   const showSettings = (analysis: AppAnalysis) => {
     const [label, path] = settingsFor(analysis);
+    awaitingReturn.current = true;
     if (Platform.OS === "web") setActionGuidance(`${label}: ${path}`);
     else void openDeviceSettings(label, path, (message) => showToast(message, "neutral"));
   };
@@ -131,9 +143,42 @@ export default function CheckApp() {
 
   const [historyKey, setHistoryKey] = useState(0);
   useEffect(() => { if (result?.a) { void recordCheck("app", { at: new Date().toISOString(), state: result.a.state, summary: result.a.title }); setHistoryKey((k) => k + 1); } }, [result]);
+
+  const findings = useMemo<PermissionFinding[]>(() => (result?.a ? buildPermissionFindings(result.a.permissionNotes, result.sdk) : []), [result]);
+  // Re-verify on return: if the person went to Settings from a finding, re-read this app's permission
+  // states when Apollo comes back and report the change honestly (confirmed off / couldn't confirm).
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (st) => {
+      if (st !== "active" || !awaitingReturn.current) return;
+      awaitingReturn.current = false;
+      if (Platform.OS !== "android" || !pickedPackage || !result) { setVerifyNote("Apollo can't re-read this app's live permissions on this build, so it couldn't confirm the change. Check the screen you just left."); return; }
+      void AppDeviceSdk.getInstalledAppAssessment(pickedPackage).then((sdk) => {
+        if (!sdk) { setVerifyNote("Apollo couldn't confirm the change — it can't read this app's permissions right now."); return; }
+        const resolved = confirmedResolved(buildPermissionFindings(result.a.permissionNotes, result.sdk), buildPermissionFindings(result.a.permissionNotes, sdk));
+        setResult((cur) => (cur ? { ...cur, sdk } : cur));
+        setVerifyNote(resolved.length ? `Apollo confirmed: ${resolved.map((f) => f.label).join(", ")} ${resolved.length > 1 ? "are" : "is"} now off for this app.` : "Apollo re-checked this app. No change to its access was confirmed.");
+      });
+    });
+    return () => sub.remove();
+  }, [pickedPackage, result]);
+
+  const reviewPermission = (f: PermissionFinding) => {
+    const ps = permissionSettings(f.id, name);
+    setActionGuidance(`To review ${f.label}: ${ps.path}`);
+    awaitingReturn.current = true;
+    if (Platform.OS !== "web") void openDeviceSettings(ps.target, ps.path, (m) => showToast(m, "neutral"));
+  };
+
   if (ready && !setupDone) return <Redirect href="/" />;
   const a = result?.a;
   const canRun = name.trim().length > 0 && !busy;
+  const appLabel = result?.sdk?.appName || name || "This app";
+  const sourceLabel = APP_SOURCES.find((x) => x.id === source)?.label ?? "an unknown source";
+  const identitySummary = a ? `${appLabel} · from ${sourceLabel}${result?.sdk?.developer ? ` · ${result.sdk.developer}` : ""}` : "";
+  const identityLines = a ? [result?.sdk?.appName ? `Name on device: ${result.sdk.appName}` : `Name (as entered): ${name || "not given"}`, result?.sdk?.developer ? `Developer: ${result.sdk.developer}` : developer ? `Developer (as entered): ${developer}` : "Developer: not available", `Install source: ${sourceLabel}`, result?.sdk?.installSource && result.sdk.installSource !== source ? `Source observed on device: ${APP_SOURCES.find((x) => x.id === result!.sdk!.installSource)?.label}` : "", result?.sdk?.packageId ? `Package: ${result.sdk.packageId}` : ""].filter(Boolean) : [];
+  const networkLines = result?.remote?.hosts.length ? result.remote.hosts.map((h) => `${h.host} — ${h.verdict === "malicious" ? "known dangerous reputation" : h.verdict === "clean" ? "no reputation warning" : "unknown reputation"}`) : [result?.sdk ? "No connections from this app have been seen yet." : "App-to-network behaviour isn't visible on this build. Internet Gate and Site Gate have their own verified status."];
+  const evidenceLines = a ? ["On-device assessment of source, permissions, timing and capabilities.", result?.sdk ? "Native permission and special-access states read from this device." : "No native permission read on this build — based on what you reported.", result?.remote ? "Online reputation and threat-intelligence lookup performed." : "Offline: online reputation lookup was not performed.", "Threat Scent correlation with other recent Apollo events."] : [];
+  const coverageLines = a ? ["Permissions show what the app can do — not proof it has misused them.", result?.sdk ? "" : "Live permission states could not be read on this build.", "\u201CNo concern found\u201D reflects only the checks completed above — it is not a guarantee of safety.", a.remoteCapable ? "If granted, this app can view or control the screen." : ""].filter(Boolean) : [];
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
@@ -166,50 +211,63 @@ export default function CheckApp() {
           </>
         ) : a ? (
           <>
+            {/* LAYER 1 — Investigation summary: app, status, plain outcome, top findings, one action. */}
             <Card testID="app-result" style={{ borderColor: toneColor(colors, a.state), gap: spacing.sm }}>
-              <View style={s.chips}><Pill tone={a.state} label={STATE_NAME[a.state]} testID="app-state" /><Pill tone="neutral" label={a.scenario} testID="app-scenario" />{a.remoteCapable ? <Pill tone="barking" label="Remote access capable" testID="app-remote-pill" /> : null}</View>
-              <Text style={s.why}>{STATE_LABEL[a.state]}</Text>
-              <Text style={s.label} testID="app-title">{a.title}</Text>
-              <Text style={s.verdict} testID="app-verdict">{a.verdict}</Text>
-              <SectionTitle>Why Apollo is looking at it</SectionTitle>
-              {a.why.map((w, i) => <Text key={i} style={s.why} testID={`app-why-${i}`}>• {w}</Text>)}
+              <View style={s.chips}><Pill tone={a.state} label={STATE_NAME[a.state]} testID="app-state" />{a.remoteCapable ? <Pill tone="barking" label="Remote access capable" testID="app-remote-pill" /> : null}</View>
+              <Text style={s.verdict} testID="app-title">{a.title}</Text>
+              <Text style={s.why} testID="app-identity">{identitySummary}</Text>
+              <Text style={s.why} testID="app-verdict">{a.verdict}</Text>
+              {a.why.slice(0, 2).map((w, i) => <Text key={i} style={s.why} testID={`app-top-${i}`}>• {w}</Text>)}
               {result.linked ? <Text style={s.why} testID="app-linked">• Connected to: {result.linked.headline} (Threat Scent).</Text> : null}
-              <SectionTitle>Recommendation</SectionTitle>
+              <SectionTitle>What to do</SectionTitle>
               <Text style={s.why} testID="app-recommendation">{a.recommendation}</Text>
+              {a.state !== "resting" ? <Button testID="app-open-settings" variant={a.state === "barking" ? "danger" : "primary"} label={Platform.OS === "web" ? "Show Settings steps" : a.state === "barking" ? "Open removal settings" : "Open app settings"} onPress={() => showSettings(a)} /> : null}
+              <Button testID="app-view-full" variant="secondary" label={showFull ? "Hide full investigation" : "View full investigation"} onPress={() => setShowFull((v) => !v)} />
             </Card>
+
+            {verifyNote ? <Card testID="app-verify-note"><Body>{verifyNote}</Body></Card> : null}
+
+            {/* Evidence-backed permission findings with a direct, per-permission review action. */}
             <Card style={{ gap: spacing.xs }} testID="app-access">
-              <SectionTitle>Access</SectionTitle>
-              <Body testID="app-capability-evidence-note">Permissions show what this installed app could do; they are not proof that it behaved maliciously. An inactive or dormant app keeps those capabilities until you revoke them or remove it.</Body>
-              {a.permissionNotes.length ? a.permissionNotes.map((n) => (
-                <Pressable key={n.id} testID={`app-access-${n.id}`} accessibilityRole="button" onPress={() => setPermSheet(n.id)} style={s.permRow}>
-                  <View style={s.row}><Text style={s.label}>{n.label}</Text><Pill tone={n.expected ? "resting" : "growling"} label={n.expected ? "Fits purpose" : "More than it needs"} /></View>
-                  <Text style={s.why}>{n.plain}</Text>
-                </Pressable>
-              )) : <Body>No sensitive permissions selected.</Body>}
+              <SectionTitle>Permissions &amp; access</SectionTitle>
+              <Body testID="app-capability-evidence-note">{result.sdk ? "Access states below were read from this device. A permission shows what the app can do — not proof it has misused it." : "Apollo can't read this app's live permission states on this build, so these reflect what you reported. Review anything marked for review."}</Body>
+              {findings.length ? findings.map((f) => (
+                <View key={f.id} style={s.permRow} testID={`app-access-${f.id}`}>
+                  <View style={s.row}><Pressable accessibilityRole="button" onPress={() => setPermSheet(f.id)} style={{ flex: 1 }}><Text style={s.label}>{f.label}</Text></Pressable><Pill tone={f.tone} label={f.statusLabel} testID={`app-access-${f.id}-status`} /></View>
+                  <Text style={s.why}>{f.plain}</Text>
+                  {f.actionable ? <Button testID={`app-review-${f.id}`} variant="secondary" label={`Review ${f.label}`} onPress={() => reviewPermission(f)} /> : null}
+                </View>
+              )) : <Body>No sensitive permissions were reported or observed.</Body>}
             </Card>
-            <Card style={{ gap: spacing.xs }} testID="app-network">
-              <SectionTitle>Network</SectionTitle>
-              {result.remote?.hosts.length ? result.remote.hosts.map((h) => <View key={h.host} style={s.row}><Text style={[s.why, { flex: 1 }]} numberOfLines={1}>{h.host}</Text><Pill tone={h.verdict === "malicious" ? "barking" : h.verdict === "clean" ? "resting" : "ears_up"} label={h.verdict === "malicious" ? "Known dangerous reputation" : h.verdict === "clean" ? "No reputation warning" : "Unknown reputation"} /></View>)
-                : <Body>{sdkVisible ? "No connections from this app have been seen yet." : "App-to-network behaviour isn't visible on this build. Check Internet Gate and Site Gate for their separately verified status."}</Body>}
-            </Card>
-            {result.remote ? (
-              <Card style={{ gap: spacing.xs }} testID="app-reputation">
-                <SectionTitle>Reputation</SectionTitle>
-                <Body testID="app-reputation-note">{result.remote.reputation.note}</Body>
+
+            {actionGuidance ? <Card testID="app-action-guidance" style={{ gap: spacing.xs }}><SectionTitle>Next step in Settings</SectionTitle><Body>{actionGuidance}</Body><Body>Android can open the right screen but not the exact toggle for another app — follow the step above.</Body><Button testID="app-action-guidance-close" variant="ghost" label="Hide" onPress={() => setActionGuidance(null)} /></Card> : null}
+
+            {/* LAYER 2 — Full investigation (same results, organised; no new scanning). */}
+            {showFull ? (
+              <Card style={{ gap: spacing.md }} testID="app-full-investigation">
+                <SectionTitle>Full investigation</SectionTitle>
+                <Section title="Identity & provenance" lines={identityLines} styles={s} testID="app-full-identity" />
+                <Section title="Permissions & actual access" lines={findings.map((f) => `${f.label}: ${f.statusLabel}`)} styles={s} testID="app-full-perms" />
+                <Section title="Why Apollo is looking at it" lines={a.why} styles={s} testID="app-full-why" />
+                <Section title="Network investigation" lines={networkLines} styles={s} testID="app-full-network" />
+                {result.remote?.reputation.note ? <Section title="Reputation & threat intelligence" lines={[result.remote.reputation.note]} styles={s} testID="app-full-reputation" /> : null}
+                <Section title="Evidence & detection methods" lines={evidenceLines} styles={s} testID="app-full-evidence" />
+                <Section title="Findings & severity" lines={[`Apollo status: ${STATE_NAME[a.state]} — ${STATE_LABEL[a.state]}`, `Scenario reference: ${a.scenario}`, `Risk score: ${a.riskScore}/100`]} styles={s} testID="app-full-severity" />
+                <Section title="Confidence, coverage & limits" lines={coverageLines} styles={s} testID="app-full-coverage" />
+                <Section title="When this was checked" lines={[`Checked ${new Date().toLocaleString()}`, result.sdk?.installedAt ? `Reported install: ${new Date(result.sdk.installedAt).toLocaleDateString()}` : "Install date: not available on this build"]} styles={s} testID="app-full-timestamps" />
+                <Button testID="app-tech" variant="ghost" label="View raw technical details" onPress={() => setTech(true)} />
               </Card>
             ) : null}
+
+            {/* Secondary actions. */}
             <Card style={{ gap: spacing.sm }} testID="app-actions">
-              {actionGuidance ? <Card testID="app-action-guidance" style={{ gap: spacing.xs }}><SectionTitle>Next action</SectionTitle><Body>{actionGuidance}</Body><Button testID="app-action-guidance-close" variant="ghost" label="Hide instructions" onPress={() => setActionGuidance(null)} /></Card> : null}
-              {a.state !== "resting" ? <Button testID="app-open-settings" variant={a.state === "barking" ? "danger" : "primary"} label={Platform.OS === "web" ? "Show Settings steps" : a.state === "barking" ? "Open removal settings" : "Open Settings"} onPress={() => showSettings(a)} /> : null}
-              {a.permissionNotes.length ? <Button testID="app-review-perms" variant="secondary" label="Review permissions" onPress={() => void openDeviceSettings("apps", "Settings → Apps → the app → Permissions", (m) => showToast(m, "neutral"))} /> : null}
-              {(a.state !== "resting" || a.remoteCapable || a.permissionNotes.length > 0) ? <Button testID="app-check-device" variant="secondary" label="Check the rest of this device" onPress={() => router.push("/device")} /> : null}
-              {a.stayWithMe && result.event ? <RecoveryFlow event={result.event} kinds={["remote", "banking_during_access", "password", "code", "accessibility"]} testID="app-recovery" /> : result.event ? <RecoveryFlow event={result.event} kinds={["remote", "accessibility", "profile", "password", "banking_during_access", "money"]} testID="app-recovery" /> : null}
               <GateInvestigation submission={result} testID="app-tell-why" label="Ask Higgins why" context={issueContext({ gate: "app", issue_summary: a.title, assessment_state: a.state, findings: a.why.map((summary) => ({ summary, provenance: "inferred", status: a.state === "barking" ? "warning" : "uncertain" })), uncertainty: ["App capabilities are not proof that the app behaved maliciously."], confirmed_protective_actions: [], user_reported_actions: Object.keys(ctx).filter((key) => ctx[key as keyof typeof ctx]), original_evidence: [{ kind: "text", value: `App as described by the person (not an OS inventory):\nName: ${name}\nDeveloper: ${developer || "unknown"}\nStated purpose: ${purpose}\nPermissions the person selected: ${perms.join(", ") || "none listed"}`, label: "described app" }, ...(result.sdk ? [{ kind: "text" as const, value: `Native app observation (typed, from the Apollo security module on this device):\n${JSON.stringify(result.sdk, null, 1)}`, label: "native app observation" }] : []), ...(result.remote ? [{ kind: "text" as const, value: `Apollo server lookups already performed (reuse; do not repeat):\n${JSON.stringify({ hosts: result.remote.hosts, assessment: result.remote.assessment }, null, 1)}`, label: "apollo server lookups" }] : [])] })} question="Why is this app concerning, and what should I do?" />
-              <Button testID="app-tech" variant="ghost" label="View technical details" onPress={() => setTech(true)} />
+              {a.stayWithMe && result.event ? <RecoveryFlow event={result.event} kinds={["remote", "banking_during_access", "password", "code", "accessibility"]} testID="app-recovery" /> : result.event ? <RecoveryFlow event={result.event} kinds={["remote", "accessibility", "profile", "password", "banking_during_access", "money"]} testID="app-recovery" /> : null}
+              {(a.state !== "resting" || a.remoteCapable || findings.length > 0) ? <Button testID="app-check-device" variant="ghost" label="Check the rest of this device" onPress={() => router.push("/device")} /> : null}
               {result.event ? <Button testID="app-keep" variant="ghost" label="Mark as handled" onPress={() => { void resolveEvent(result.event!); setResult({ ...result, event: { ...result.event!, status: "resolved" } }); }} /> : null}
               {reportState === "failed" ? <Body testID="app-report-error">The report was not sent. This app result remains available; retry when connected.</Body> : reportState === "sent" ? <Body testID="app-report-success">Report sent for review.</Body> : null}
               {result.event && reportState !== "sent" ? <Button testID="app-report" variant="ghost" label={reportState === "sending" ? "Sending…" : reportState === "failed" ? "Retry report" : "Report a mistake"} disabled={reportState === "sending"} onPress={async () => { setReportState("sending"); try { await apiPost("/feedback", "feedback", { device_id: deviceId ?? "local-device", event_id: result.event!.event_id, kind: "false_positive", state: result.event!.state, host: null, sources: ["app_device_engine"], note: "" }); setReportState("sent"); } catch { setReportState("failed"); } }} /> : null}
-              <Button testID="app-again" label="Check another app" variant="ghost" onPress={() => { setResult(null); setName(""); setDeveloper(""); setPerms([]); setPickedPackage(null); setReportState("idle"); setActionGuidance(null); }} />
+              <Button testID="app-again" label="Check another app" variant="ghost" onPress={() => { setResult(null); setName(""); setDeveloper(""); setPerms([]); setPickedPackage(null); setReportState("idle"); setActionGuidance(null); setShowFull(false); setVerifyNote(null); }} />
             </Card>
           </>
         ) : null}

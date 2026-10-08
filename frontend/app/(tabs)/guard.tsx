@@ -9,6 +9,7 @@ import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/compone
 import { RootScreenHeader } from "@/src/components/RootScreenHeader";
 import { deriveGateState, type AccountScan } from "@/src/domain/accountMonitor";
 import { getLastCheckedAt, getLastScan, getMonitoredEmails } from "@/src/store/accountMonitorStore";
+import { getGateHealthLog, recordWorking, relativeTime, type GateHealthLog } from "@/src/store/gateHealthLog";
 import { gateTone } from "@/src/domain/gates";
 import type { UserAction } from "@/src/domain/userActions";
 import { userActionRoute } from "@/src/domain/userActions";
@@ -28,9 +29,10 @@ const useStyles = makeStyles((c) => ({
   question: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.onSurface },
   attention: { gap: spacing.xs, padding: spacing.md, borderRadius: radius.md, backgroundColor: c.goldTint },
   name: { flex: 1, fontFamily: fonts.textSemibold, fontSize: 16, color: c.onSurface },
+  logEntry: { fontFamily: fonts.text, fontSize: 13, color: c.muted },
 }));
 
-function HealthCard({ record, highlighted }: { record: GateHealthRecord; highlighted?: boolean }) {
+function HealthCard({ record, highlighted, log }: { record: GateHealthRecord; highlighted?: boolean; log?: string[] }) {
   const s = useStyles();
   const router = useRouter();
   const { colors } = useTheme();
@@ -63,6 +65,10 @@ function HealthCard({ record, highlighted }: { record: GateHealthRecord; highlig
     <View><Text style={s.question}>What Apollo is doing now</Text><Body testID={`gate-health-${record.id}-current`}>{record.currentHelp}</Body></View>
     {notWatching && record.capability.automatic?.limitation ? <View style={[s.attention, needsUser ? null : { backgroundColor: colors.navyTint }]} testID={`gate-health-${record.id}-attention`}><Text style={s.question}>{explainHeading}</Text><Body>{record.capability.automatic.limitation}</Body></View> : null}
     {notWatching && record.primaryAction ? <Button testID={`gate-health-${record.id}-action`} variant={needsUser ? "primary" : "secondary"} label={isRestoreSite && enablingSite ? "Turning on…" : record.primaryAction.label} disabled={isRestoreSite && enablingSite} onPress={() => void act(record.primaryAction!)} /> : null}
+    <View testID={`gate-health-${record.id}-log`}><Text style={s.question}>Protection history</Text>{log && log.length ? <>
+      <Body testID={`gate-health-${record.id}-log-last`}>Last confirmed working: {relativeTime(log[0])}</Body>
+      {log.slice(0, 3).map((t, i) => <Text key={t} style={s.logEntry} testID={`gate-health-${record.id}-log-${i}`}>• {new Date(t).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</Text>)}
+    </> : <Body testID={`gate-health-${record.id}-log-empty`}>{record.statusLabel === "Watching" ? "Confirming now…" : "Not yet confirmed working on this device."}</Body>}</View>
   </Card>;
 }
 
@@ -77,7 +83,11 @@ export default function GuardScreen() {
   const [acctEmails, setAcctEmails] = useState(0);
   const [acctScan, setAcctScan] = useState<AccountScan | null>(null);
   const [acctCheckedAt, setAcctCheckedAt] = useState<string | null>(null);
+  const [healthLog, setHealthLog] = useState<GateHealthLog>({});
   useEffect(() => { void Promise.all([getMonitoredEmails(), getLastScan(), getLastCheckedAt()]).then(([e, sc, ca]) => { setAcctEmails(e.length); setAcctScan(sc); setAcctCheckedAt(ca); }); }, []);
+  useEffect(() => { void getGateHealthLog().then(setHealthLog); }, []);
+  const workingIds = health.gates.filter((g) => g.statusLabel === "Watching").map((g) => g.id).join(",");
+  useEffect(() => { if (workingIds) void recordWorking(workingIds.split(",")).then(setHealthLog); }, [workingIds]);
   if (ready && !setupDone) return <Redirect href="/" />;
   const acctStatus = deriveGateState({ monitoredCount: acctEmails, lastScan: acctScan, lastCheckedAt: acctCheckedAt, checking: false });
   const active = health.gates.filter((gate) => gate.capability.automatic?.state === "running" && !gate.capability.automatic?.manualOnly).length;
@@ -96,7 +106,7 @@ export default function GuardScreen() {
         </View>
       </Card>
       <Body testID="gates-introduction">Your protection. Apollo watches what this device allows and shows you what&apos;s working and anything that needs you. To check something yourself, use Check It.</Body>
-      <View testID="gates-capability-section" style={{ gap: spacing.md }}><SectionTitle>Your Gates</SectionTitle>{health.gates.map((record) => <HealthCard key={record.id} record={record} highlighted={record.id === gateParam} />)}</View>
+      <View testID="gates-capability-section" style={{ gap: spacing.md }}><SectionTitle>Your Gates</SectionTitle>{health.gates.map((record) => <HealthCard key={record.id} record={record} highlighted={record.id === gateParam} log={healthLog[record.id]} />)}</View>
       <View testID="gates-account-section" style={{ gap: spacing.md }}>
         <SectionTitle>Account exposure</SectionTitle>
         <Card testID="gates-account-card" style={{ gap: spacing.sm, borderColor: toneColor(colors, acctStatus.tone) }}>

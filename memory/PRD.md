@@ -1,3 +1,21 @@
+## Gate Health Log + App Gate results redesign (2026-06)
+
+**Gate Health Log:**
+- `src/store/gateHealthLog.ts`: per-gate on-device history of "confirmed working" timestamps, recorded only when a gate's status is **Watching** (never fabricated). Throttled (1/10min per gate), capped (10). `relativeTime()` helper for friendly labels.
+- `guard.tsx`: GuardScreen records working gates whenever `buildGatesOverview` reports Watching; each HealthCard shows a "Protection history" block — "Last confirmed working: X" + up to 3 recent timestamps, or "Not yet confirmed working" for gates never seen Watching.
+
+**App Gate results redesign (app-check.tsx) — presentation + remediation only, engine untouched:**
+- **Two layers.** Layer 1 summary card: Apollo status + app identity line (`result.sdk?.appName`/developer/source) + 2–3 sentence outcome + top 2 findings + the one primary action + prominent **View full investigation** toggle. Layer 2 (`showFull`): organised sections (Identity & provenance, Permissions & actual access, Why, Network, Reputation, Evidence & detection methods, Findings & severity incl. scenario ref + risk score, Confidence/coverage/limits, timestamps, raw technical) — all from existing data, no new scanning.
+- **Evidence-backed permission findings** (`src/domain/appPermissionFindings.ts`, pure, 7/7 tests): maps the app engine's `permissionNotes` against the native SDK's `permissionStates`/`specialAccessStates` → `Access enabled — Review recommended` / `Access not allowed — No action needed` / `Permission requested — Access not verified` (grant unknown) / `Special access enabled — Review recommended` / `Current status unavailable` (SDK present, no evidence) / `Reported by you — …` (no SDK/iOS). Never guesses "granted". Replaces blanket "More than it needs".
+- **Direct Android settings per finding** (`deviceSettings.ts` `permissionSettings()`): a "Review [X]" button opens the closest supported destination (overlay/notification-listener/accessibility/VPN/device-admin/unknown-sources/all-files screens, else app list) and shows the remaining navigation step ("then → <app> → Permissions") — honest that RN can't open another app's exact toggle. Desktop (Windows/macOS) and iOS show the path to follow.
+- **Re-verify on return** (AppState listener): after opening Settings from a finding, on return Apollo re-reads that app's permission states (Android + picked package) and reports honestly — `confirmedResolved()` detects enabled→off ("Apollo confirmed: Camera is now off") or says it couldn't confirm. Never claims remediation just because the user came back.
+- **Tidied actions**: primary action + View full investigation in the summary; Ask Higgins, recovery, device-check, mark-handled, report kept as secondary. Removed the raw scenario-code pill from the summary. Higgins/engine already use qualified language ("did not establish a specific concern…"); optional reviews stay ears_up/growling, never escalate to barking.
+
+**iOS/desktop:** iOS cannot read other apps' permissions (OS limit) → findings reflect user-reported input and show the Settings path; re-verify is Android-only. Windows/macOS use the desktop adapter and path-guidance fallback.
+
+**Verification:** tsc + ESLint clean; tests — appPermissionFindings 7/7, gatesOverview 17/17, messageGuardrails 6/6, accountMonitor 7/7, gate7 44/44 (no regressions). App bundles (renders expected Safe Start). Native deep-links, re-verify-on-return and the health log over time need an EAS Android build to verify on-device.
+
+
 ## Resolve & Snooze + Gate-status standardisation + Internet Gate (2026-06)
 
 **Resolve & Snooze (Account Gate):**
