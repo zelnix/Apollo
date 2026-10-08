@@ -2,6 +2,7 @@
 // Real OS facts arrive through typed, allowlisted Tauri commands (desktop/src-tauri/src/main.rs). Anything the desktop
 // host has not observed is reported as unavailable with a canonical reason — never synthetic, never "safe".
 import type { Capability } from "@/src/domain/types";
+import { EMPTY_SIGNALS, type DeviceSignals } from "@/src/domain/deviceAnalysis";
 import { desktopHostKind } from "./desktopHost";
 import { PLATFORM_CAPABILITY_BASELINES, type EnforcementEvidence, type PlatformCapabilityProfile } from "./PlatformCapabilityProfile";
 import type {
@@ -33,6 +34,7 @@ interface HostPermission { id: ProtectionPermission["id"]; state: ProtectionPerm
 interface HostFilterStatus { enabled: boolean; blockedDomains: string[]; method: "hosts_dns_filter" }
 interface HostFilterChange { verified: boolean; host: string; enabled: boolean; changedAt: string }
 interface HostNativeFilterStatus { mechanism: "wfp_ale_authorization" | "network_extension" | "none"; state: "active" | "permission_needed" | "configuration_missing" | "not_implemented" | "adapter_failed"; installed: boolean; active: boolean; detail: string; unavailableReason: ProtectionPermission["unavailableReason"]; checkedAt: string }
+interface HostSecurityAudit { firewallEnabled: boolean | null; firewallDetail: string; updatesCurrent: boolean | null; updatesDetail: string }
 
 class DesktopSecurityAdapterImpl implements SecurityPlatformAdapter {
   // Explicit host identity: Higgins receives platform "windows"/"macos" with native-origin facts, not a browser profile.
@@ -125,6 +127,21 @@ class DesktopSecurityAdapterImpl implements SecurityPlatformAdapter {
   async getDeviceProfileFacts(): Promise<DeviceProfileFacts> {
     const h = await this.host();
     return { manufacturer: h.manufacturer, model: h.model, osVersion: h.osVersion, formFactor: h.formFactor, locale: h.locale };
+  }
+
+  /** Device-review signals this desktop host can observe directly: firewall + OS-update state (security_audit) and
+   *  the active VPN interface (network_status). Unreadable facts stay null → a "manual review" on the web side. */
+  async getDeviceSecuritySignals(): Promise<DeviceSignals> {
+    const [net, audit] = await Promise.all([
+      invoke<HostNetwork>("network_status").catch(() => null),
+      invoke<HostSecurityAudit>("security_audit").catch(() => null),
+    ]);
+    return {
+      ...EMPTY_SIGNALS(this.kind),
+      vpnActive: net ? net.vpnActive : null,
+      firewallEnabled: audit ? audit.firewallEnabled : null,
+      osUpdatesCurrent: audit ? audit.updatesCurrent : null,
+    };
   }
 }
 

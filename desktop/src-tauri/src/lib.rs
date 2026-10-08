@@ -77,6 +77,17 @@ struct NativeFilterStatus {
 #[serde(rename_all = "camelCase")]
 struct EvidenceAckArgs { ids: Vec<String> }
 
+/// Firewall and operating-system update facts, read directly from the host. Each field is `None` (→ null, a
+/// "manual review" outcome on the web side) when the host genuinely could not read it — never guessed.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HostSecurityAudit {
+    firewall_enabled: Option<bool>,
+    firewall_detail: String,
+    updates_current: Option<bool>,
+    updates_detail: String,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct FilterChange {
@@ -380,6 +391,72 @@ found=$(awk -v s="$start" -v e="$end" -v h="$host" '$0==s{{inside=1;next}} $0==e
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 fn privileged_filter_update(_action: &str, _host: Option<&str>) -> Result<(), String> { Err("desktop filter is supported on Windows and macOS only".into()) }
 
+// ---------------------------------------------------------------------------------------------------
+// Firewall + OS-update observation. Real OS reads only; any failure yields None (→ null → "manual review"
+// on the web side), never a guessed "safe".
+// ---------------------------------------------------------------------------------------------------
+#[cfg(target_os = "windows")]
+fn observe_security_audit() -> HostSecurityAudit {
+    // Firewall: netsh reports a "State ON/OFF" line per profile (Domain/Private/Public). Enabled only when every
+    // profile is ON; off when any readable profile is OFF.
+    let (firewall_enabled, firewall_detail) = match output("netsh", &["advfirewall", "show", "allprofiles", "state"]) {
+        Some(text) => {
+            let states: Vec<bool> = text.lines().filter(|l| l.contains("State")).filter_map(|l| {
+                let u = l.to_uppercase();
+                if u.contains("ON") { Some(true) } else if u.contains("OFF") { Some(false) } else { None }
+            }).collect();
+            if states.is_empty() { (None, "Windows did not report a firewall state.".to_string()) }
+            else if states.iter().all(|&on| on) { (Some(true), "Windows Defender Firewall is on for every network profile.".to_string()) }
+            else { (Some(false), "Windows Defender Firewall is off for at least one network profile.".to_string()) }
+        }
+        None => (None, "The firewall state could not be read on this host.".to_string()),
+    };
+    // Updates: the Windows Update Agent search for non-installed software updates. 0 pending → current.
+    let (updates_current, updates_detail) = match output("powershell", &["-NoProfile", "-Command",
+        "try { $s=(New-Object -ComObject Microsoft.Update.Session).CreateUpdateSearcher(); $r=$s.Search(\"IsInstalled=0 and Type='Software'\"); $r.Updates.Count } catch { 'error' }"]) {
+        Some(ref v) if v.trim() == "0" => (Some(true), "Windows Update reports no pending updates.".to_string()),
+        Some(ref v) if v.trim() == "error" => (None, "Windows Update status could not be read on this host.".to_string()),
+        Some(v) => (Some(false), format!("Windows Update reports {} pending update(s).", v.trim())),
+        None => (None, "Windows Update status could not be read on this host.".to_string()),
+    };
+    HostSecurityAudit { firewall_enabled, firewall_detail, updates_current, updates_detail }
+}
+
+#[cfg(target_os = "macos")]
+fn observe_security_audit() -> HostSecurityAudit {
+    // Firewall: the application firewall global state. socketfilterfw --getglobalstate prints "State = N" (0 off, 1/2 on).
+    let (firewall_enabled, firewall_detail) = match output("/usr/libexec/ApplicationFirewall/socketfilterfw", &["--getglobalstate"]) {
+        Some(text) => {
+            let u = text.to_lowercase();
+            if u.contains("enabled") || u.contains("state = 1") || u.contains("state = 2") { (Some(true), "The macOS application firewall is on.".to_string()) }
+            else if u.contains("disabled") || u.contains("state = 0") { (Some(false), "The macOS application firewall is off.".to_string()) }
+            else { (None, "The firewall state could not be read on this host.".to_string()) }
+        }
+        None => (None, "The firewall state could not be read on this host.".to_string()),
+    };
+    // Updates: cached software-update list (no network scan). "No new software available." → current.
+    let (updates_current, updates_detail) = match output("softwareupdate", &["-l", "--no-scan"]) {
+        Some(text) => {
+            if text.contains("No new software available") { (Some(true), "macOS Software Update reports no pending updates.".to_string()) }
+            else if text.contains("* Label:") || text.contains("recommended") || text.contains("Title:") { (Some(false), "macOS Software Update lists pending updates.".to_string()) }
+            else { (None, "macOS Software Update status was inconclusive on this host.".to_string()) }
+        }
+        None => (None, "macOS Software Update status could not be read on this host.".to_string()),
+    };
+    HostSecurityAudit { firewall_enabled, firewall_detail, updates_current, updates_detail }
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+fn observe_security_audit() -> HostSecurityAudit {
+    HostSecurityAudit {
+        firewall_enabled: None, firewall_detail: "Firewall reading is available only in Windows and macOS packages.".into(),
+        updates_current: None, updates_detail: "Update reading is available only in Windows and macOS packages.".into(),
+    }
+}
+
+#[tauri::command]
+fn security_audit() -> HostSecurityAudit { observe_security_audit() }
+
 #[tauri::command]
 fn host_info() -> HostInfo {
     let info = os_info::get();
@@ -555,7 +632,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![host_info, network_status, permissions, request_permission, filter_status, native_filter_status, deactivate_native_filter, native_enforcement_evidence, acknowledge_native_evidence, block_destination, unblock_destination, disable_filter, open_settings_target])
+        .invoke_handler(tauri::generate_handler![host_info, network_status, permissions, request_permission, filter_status, native_filter_status, deactivate_native_filter, native_enforcement_evidence, acknowledge_native_evidence, block_destination, unblock_destination, disable_filter, open_settings_target, security_audit])
         .run(tauri::generate_context!())
         .expect("error while running Apollo desktop host");
 }

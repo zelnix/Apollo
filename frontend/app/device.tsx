@@ -20,6 +20,8 @@ import { assessDevice, deriveDeviceSecurityChanges, DEVICE_CHANGE_LABEL, DEVICE_
 import { groupByCategory, OUTCOME_LABEL, OUTCOME_TONE, overallState, runDeviceReview, type CheckResult, type ReviewPlatform } from "@/src/domain/deviceReview";
 import { STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { AppDeviceSdk } from "@/src/security/appDeviceSdk";
+import { securityAdapter } from "@/src/security/securityAdapter";
+import { desktopHostKind } from "@/src/security/desktopHost";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { openDeviceSettings, type SettingsTarget } from "@/src/utils/deviceSettings";
@@ -58,7 +60,9 @@ export default function CheckDevice() {
   const router = useRouter();
   const { ready, setupDone, upsertEvent, deviceId, adapterLabel, showToast, protection, permissions, verifyNow } = useApollo();
   const platform: DevicePlatform = Platform.OS === "ios" ? "ios" : Platform.OS === "android" ? "android" : "web";
-  const [signals, setSignals] = useState<DeviceSignals>(EMPTY_SIGNALS(platform));
+  // On a desktop (Tauri) host Platform.OS is "web", but the host can observe Windows/macOS settings — review as that OS.
+  const hostKind = desktopHostKind();
+  const [signals, setSignals] = useState<DeviceSignals>(EMPTY_SIGNALS(hostKind ?? platform));
   const [self, setSelf] = useState<SelfReport>({});
   const [event, setEvent] = useState<PatrolEvent | null>(null);
   const [saving, setSaving] = useState(false);
@@ -71,7 +75,8 @@ export default function CheckDevice() {
   const refreshDevice = useCallback(async (notify = false) => {
     setChecking(true);
     try {
-      const [nextSignals, recent, previousRaw] = await Promise.all([AppDeviceSdk.getDeviceSecuritySignals(platform), AppDeviceSdk.getRecentAppSecurityEvents(), storage.getItem<string | null>(DEVICE_SNAPSHOT_KEY, null), verifyNow()]);
+      const collectSignals = hostKind && securityAdapter.getDeviceSecuritySignals ? securityAdapter.getDeviceSecuritySignals() : AppDeviceSdk.getDeviceSecuritySignals(platform);
+      const [nextSignals, recent, previousRaw] = await Promise.all([collectSignals, AppDeviceSdk.getRecentAppSecurityEvents(), storage.getItem<string | null>(DEVICE_SNAPSHOT_KEY, null), verifyNow()]);
       const previous = previousRaw ? JSON.parse(previousRaw) as DeviceSignals : null;
       const observedChanges = deriveDeviceSecurityChanges(previous, nextSignals, new Date().toISOString(), protection?.running === true);
       setSignals(nextSignals);
@@ -91,7 +96,7 @@ export default function CheckDevice() {
     } catch {
       if (notify) showToast("Device Gate couldn't refresh every signal. The visible limits are listed below.", "growling");
     } finally { setChecking(false); setCheckSequence((value) => value + 1); }
-  }, [platform, showToast, verifyNow, protection?.running, storage]);
+  }, [platform, hostKind, showToast, verifyNow, protection?.running, storage]);
   useEffect(() => { void refreshDevice(false); }, [refreshDevice]);
   useEffect(() => { void storage.getItem<string | null>(DEVICE_CHANGELOG_KEY, null).then((raw) => { if (raw) setChangeLog(JSON.parse(raw) as DeviceSecurityChange[]); }); }, [storage]);
   const context = useMemo(() => ({
@@ -102,7 +107,7 @@ export default function CheckDevice() {
   const result = useMemo(() => assessDevice(signals, self, context), [signals, self, context]);
   const meta = DEVICE_STATUS[result.status];
   // Cross-platform Security & Privacy Review — every applicable setting gets an explicit outcome.
-  const reviewPlatform: ReviewPlatform | null = platform === "web" ? null : platform;
+  const reviewPlatform: ReviewPlatform | null = hostKind ?? (platform === "web" ? null : platform);
   const review = useMemo(() => reviewPlatform ? runDeviceReview({ platform: reviewPlatform, signals, self, protection: context.protection }) : null, [reviewPlatform, signals, self, context.protection]);
   const reviewGroups = useMemo(() => review ? groupByCategory(review) : [], [review]);
   const openCheck = (r: CheckResult) => {

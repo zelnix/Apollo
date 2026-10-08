@@ -1406,3 +1406,23 @@ TS/Node suite green. Also fixed the last legacy failure: package6Source.test.ts 
 is no app.json), matching iosSourceReadiness.test.ts.
 NOTE: native reads (KeyguardManager / LAContext / AndroidCAStore) only verify on a real Android/iOS build — the
 web preview shows the Safe Start build-gate and cannot exercise them.
+
+## Device Gate — Desktop collectors read firewall + OS updates directly — DONE (2026-06)
+Windows/macOS desktop host (Tauri) now observes two more review signals directly instead of leaving them Manual:
+- New Rust command `security_audit` (desktop/src-tauri/src/lib.rs) returns `{ firewallEnabled, firewallDetail,
+  updatesCurrent, updatesDetail }`:
+  - Windows firewall via `netsh advfirewall show allprofiles state` (ON for every profile → on); updates via the
+    Windows Update Agent searcher (0 pending → current).
+  - macOS firewall via `/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate`; updates via
+    `softwareupdate -l --no-scan` ("No new software available." → current).
+  - Linux/other → all null (not_implemented) so the crate still compiles. Registered in generate_handler!.
+- DeviceSignals gained `firewallEnabled` and `osUpdatesCurrent` (deviceAnalysis.ts, EMPTY_SIGNALS).
+- DesktopSecurityAdapter.getDeviceSecuritySignals() (new, optional on SecurityPlatformAdapter) invokes
+  `security_audit` + `network_status` and maps them into DeviceSignals (vpnActive, firewallEnabled, osUpdatesCurrent).
+- device.tsx now detects a desktop host (desktopHostKind) → runs the review as "windows"/"macos" and collects
+  signals from the desktop adapter instead of the mobile AppDeviceSdk.
+- deviceReview.ts: `firewall` → Checked/Action/Manual from firewallEnabled; `os_updates` (windows/macos) →
+  Checked/Review/Manual from osUpdatesCurrent (mobile stays Manual — not readable there).
+Tests: deviceReview.test.ts (firewall + OS-update desktop cases). Full TS/Node suite green, tsc + lint clean.
+NOTE: the native reads only verify on a real Windows/macOS desktop build; cargo check here stops at a system
+GTK/pkg-config dependency (container limitation), not a code error.

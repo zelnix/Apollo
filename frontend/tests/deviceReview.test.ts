@@ -85,3 +85,29 @@ test("iOS encryption follows the observed passcode state", () => {
   const unknown = runDeviceReview({ platform: "ios", signals: sig("ios"), self: {} }).results.find((x) => x.id === "encryption")!;
   assert.equal(unknown.outcome, "manual");
 });
+
+test("desktop firewall: observed on → Checked; off → Action; unreadable → Manual", () => {
+  for (const p of ["windows", "macos"] as ReviewPlatform[]) {
+    const on = runDeviceReview({ platform: p, signals: sig(p, { firewallEnabled: true }), self: {} }).results.find((x) => x.id === "firewall")!;
+    assert.equal(on.outcome, "checked");
+    assert.equal(on.verifiedBy, "observation");
+    const off = runDeviceReview({ platform: p, signals: sig(p, { firewallEnabled: false }), self: {} }).results.find((x) => x.id === "firewall")!;
+    assert.equal(off.outcome, "action");
+    assert.ok(off.risk && off.remediation);
+    const unknown = runDeviceReview({ platform: p, signals: sig(p), self: {} }).results.find((x) => x.id === "firewall")!;
+    assert.equal(unknown.outcome, "manual");
+  }
+});
+
+test("desktop OS updates: current → Checked; pending → Review; unreadable → Manual", () => {
+  const current = runDeviceReview({ platform: "windows", signals: sig("windows", { osUpdatesCurrent: true }), self: {} }).results.find((x) => x.id === "os_updates")!;
+  assert.equal(current.outcome, "checked");
+  const pending = runDeviceReview({ platform: "macos", signals: sig("macos", { osUpdatesCurrent: false }), self: {} }).results.find((x) => x.id === "os_updates")!;
+  assert.equal(pending.outcome, "review");
+  assert.ok(pending.risk && pending.remediation);
+  const unknown = runDeviceReview({ platform: "windows", signals: sig("windows"), self: {} }).results.find((x) => x.id === "os_updates")!;
+  assert.equal(unknown.outcome, "manual");
+  // Mobile OS-update checks stay manual — the build can't read them.
+  const android = runDeviceReview({ platform: "android", signals: sig("android", { osUpdatesCurrent: true }), self: {} }).results.find((x) => x.id === "os_updates")!;
+  assert.equal(android.outcome, "manual");
+});

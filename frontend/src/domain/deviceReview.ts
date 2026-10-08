@@ -97,7 +97,11 @@ const CHECKS: CheckDef[] = [
   // --- System security ---
   { id: "os_updates", category: "system", title: "Operating-system updates", platforms: ["android", "ios", "windows", "macos"],
     settings: { android: "Settings → System → System update", ios: "Settings → General → Software Update", windows: "Settings → Windows Update", macos: "System Settings → General → Software Update" },
-    evaluate: () => manual("Install any pending updates — they usually contain security patches.") },
+    evaluate: (i) => (i.platform === "windows" || i.platform === "macos")
+      ? (i.signals.osUpdatesCurrent === true ? checked("The desktop host confirmed the operating system is up to date.")
+        : i.signals.osUpdatesCurrent === false ? review("Updates are waiting to install — they usually contain security fixes.", "Open Software Update and install the pending updates.", "The desktop host found pending operating-system updates.")
+          : manual("Install any pending updates — they usually contain security patches."))
+      : manual("Install any pending updates — they usually contain security patches.") },
   { id: "developer_mode", category: "system", title: "Developer / debugging mode", platforms: ["android", "windows", "macos"],
     settings: { android: "Settings → System → Developer options", windows: "Settings → Privacy & security → For developers", macos: "System Settings → Privacy & Security" },
     evaluate: (i) => i.platform !== "android" ? manual("Confirm developer/debugging mode is off unless you deliberately use it.")
@@ -172,7 +176,9 @@ const CHECKS: CheckDef[] = [
     } },
   { id: "firewall", category: "network", title: "Firewall", platforms: ["windows", "macos"],
     settings: DESKTOP_SET("Settings → Privacy & security → Windows Security → Firewall & network protection", "System Settings → Network → Firewall"),
-    evaluate: (i) => manual(i.platform === "windows" ? "Confirm the Windows firewall is on for your active network profile." : "Confirm the macOS firewall is on.") },
+    evaluate: (i) => i.signals.firewallEnabled === true ? checked(`The desktop host confirmed the ${i.platform === "windows" ? "Windows" : "macOS"} firewall is on.`)
+      : i.signals.firewallEnabled === false ? action("The firewall is off, so incoming connections aren't being screened.", i.platform === "windows" ? "Turn Windows Defender Firewall on for your active network." : "Turn the macOS firewall on.", "The desktop host reported the firewall is off.")
+        : manual(i.platform === "windows" ? "Confirm the Windows firewall is on for your active network profile." : "Confirm the macOS firewall is on.") },
 
   // --- Device administration ---
   { id: "management_profile", category: "administration", title: "Device-management profile", platforms: ["android", "ios", "windows", "macos"],

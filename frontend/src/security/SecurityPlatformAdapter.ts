@@ -3,6 +3,7 @@
 // Capabilities are discovered dynamically; never assume iOS/Android parity.
 
 import type { Capability, Visibility } from "@/src/domain/types";
+import type { DeviceSignals } from "@/src/domain/deviceAnalysis";
 import type { EnforcementEvidence, PlatformCapabilityProfile } from "./PlatformCapabilityProfile";
 
 // AdapterKind lists the hosts this app can select at runtime (securityAdapter.ts): real Kotlin/Swift modules, the Windows/macOS
@@ -133,6 +134,9 @@ export interface SecurityPlatformAdapter {
   getEnforcementEvidence(): Promise<EnforcementEvidence[]>;
   /** Real device facts from the native host; browser/preview hosts return null (they cannot observe them). */
   getDeviceProfileFacts?(): Promise<DeviceProfileFacts | null>;
+  /** Desktop (Windows/macOS) host reads of device-review signals it can observe directly (firewall, OS updates,
+   *  VPN). Mobile uses the native AppDeviceSdk instead; adapters that can't observe these omit this method. */
+  getDeviceSecuritySignals?(): Promise<DeviceSignals>;
   /** Optional two-phase acknowledgement for adapters with a durable native evidence inbox. */
   acknowledgeEnforcementEvidence?(evidenceIds: string[]): Promise<void>;
 }
