@@ -41,6 +41,29 @@ const DEVICE_CHANGELOG_KEY = "apollo.device.changelog.v1";
 const SEVERITY_RANK: Record<DeviceFinding["severity"], number> = { high: 2, review: 1, info: 0 };
 interface DeviceSubmission { submissionId: string; result: ReturnType<typeof assessDevice>; observedAt: string; source: "device_check" | "user_report" }
 
+/** Short "should be" recommendation for each check. Shown prominently so the user knows
+ *  what the setting SHOULD look like before they open it. */
+const RECOMMENDED: Record<string, string> = {
+  lock: "Should be: Enabled with PIN, password or biometric",
+  os_updates: "Should be: All updates installed",
+  developer_mode: "Should be: Off",
+  apollo_protection: "Should be: Running",
+  antivirus: "Should be: Active and up to date",
+  unknown_sources: "Should be: Off for all apps",
+  remote_access: "Should be: No remote-access apps installed",
+  accessibility: "Should be: Only genuine accessibility helpers",
+  unexpected_app: "Should be: No unrecognised apps",
+  sensitive_permissions: "Should be: Reviewed — revoke access apps don\u2019t need",
+  notification_access: "Should be: Only apps you trust",
+  sharing_services: "Should be: Off unless needed",
+  vpn: "Should be: Only Apollo\u2019s VPN active",
+  firewall: "Should be: On",
+  management_profile: "Should be: None unless from your employer",
+  certificates: "Should be: No user-installed certificates",
+  encryption: "Should be: On",
+  backup: "Should be: Enabled and recent",
+};
+
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   top: { paddingHorizontal: spacing.xl, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: spacing.md },
@@ -56,6 +79,10 @@ const useStyles = makeStyles((c) => ({
   num: { fontFamily: fonts.displayBold, fontSize: 15, color: c.brandPrimary, width: 20 },
   mono: { fontFamily: fonts.text, fontSize: 12, color: c.onSurfaceSecondary },
   catLabel: { fontFamily: fonts.textSemibold, fontSize: 13, letterSpacing: 0.3, color: c.muted, textTransform: "uppercase" },
+  rec: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.brandPrimary, marginTop: spacing.xs },
+  settingsLink: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.sm, backgroundColor: c.surfaceSecondary, borderRadius: radius.md, marginTop: spacing.xs },
+  settingsLabel: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.brandPrimary },
+  settingsPath: { fontFamily: fonts.text, fontSize: 12, color: c.onSurfaceSecondary, flex: 1 },
 }));
 
 export default function CheckDevice() {
@@ -213,17 +240,19 @@ export default function CheckDevice() {
                 <Text style={s.catLabel}>{group.label}</Text>
                 {group.results.map((r) => {
                   const tone = OUTCOME_TONE[r.outcome];
+                  const rec = RECOMMENDED[r.id];
                   return (
                     <Card key={r.id} style={{ gap: spacing.xs, borderColor: toneColor(colors, tone) }} testID={`device-check-${r.id}`}>
                       <View style={s.row}><Text style={[s.label, { flex: 1 }]}>{r.title}</Text><Pill tone={tone} label={OUTCOME_LABEL[r.outcome]} testID={`device-check-${r.id}-outcome`} /></View>
+                      {rec ? <Text style={s.rec} testID={`device-check-${r.id}-rec`}>{rec}</Text> : null}
                       {r.risk ? <Text style={s.why}>{r.risk}</Text> : null}
-                      {r.remediation ? <><Text style={s.label}>What to do</Text><Text style={s.why}>{r.remediation}</Text></> : null}
+                      {r.remediation && r.outcome !== "checked" ? <Text style={s.why}>{r.remediation}</Text> : null}
                       <Text style={s.mono}>{r.evidence}{r.verifiedBy === "user_confirmed" ? " · You confirmed this." : r.verifiedBy === "observation" ? " · Verified by Apollo." : ""}</Text>
-                      {r.settings && r.outcome !== "checked" ? (
-                        <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap", alignItems: "center" }}>
-                          <Button testID={`device-check-${r.id}-open`} variant={r.outcome === "action" ? "danger" : "secondary"} label={platform === "web" && !hostKind ? "Show Settings steps" : "Open Settings"} onPress={() => openCheck(r)} />
-                          <Text style={s.mono}>{r.settings}</Text>
-                        </View>
+                      {r.settings ? (
+                        <Pressable testID={`device-check-${r.id}-open`} accessibilityRole="button" onPress={() => openCheck(r)} style={({ pressed }) => [s.settingsLink, { opacity: pressed ? 0.7 : 1 }]}>
+                          <Text style={s.settingsLabel}>{platform === "web" && !hostKind ? "Show Settings steps" : "Open Settings"}</Text>
+                          <Text style={s.settingsPath}>{r.settings}</Text>
+                        </Pressable>
                       ) : null}
                     </Card>
                   );
