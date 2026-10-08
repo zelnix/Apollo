@@ -1,5 +1,6 @@
 import { useRouter } from "expo-router";
 import BatteryCharging from "lucide-react-native/icons/battery-charging";
+import GraduationCap from "lucide-react-native/icons/graduation-cap";
 import React from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -8,7 +9,6 @@ import { ApolloHero } from "@/src/components/ApolloHero";
 import { RootScreenHeader } from "@/src/components/RootScreenHeader";
 import { HigginsFollowUp } from "@/src/components/HigginsFollowUp";
 import { ClipboardLinkBanner } from "@/src/components/ClipboardLinkBanner";
-import { PatrolItem } from "@/src/components/PatrolItem";
 import { ServiceBanner } from "@/src/components/ServiceBanner";
 import { CoverageCard } from "@/src/components/CoverageCard";
 import { HomeScamAlerts } from "@/src/components/HomeScamAlerts";
@@ -20,16 +20,17 @@ import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 import { minimiseApp } from "@/src/utils/minimise";
 import { useProtectionHealth } from "@/src/protection/healthStore";
-import { projectPatrolOutcomes } from "@/src/domain/patrolOutcomes";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   content: { paddingHorizontal: spacing.xl, gap: spacing.xl, paddingBottom: spacing["3xl"] },
-  empty: { alignItems: "flex-start", gap: spacing.sm },
-  emptyTitle: { fontFamily: fonts.display, fontSize: 16, color: c.onSurface },
-  link: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.restingText, minHeight: 32 },
   cardIconWell: { width: 30, height: 30, borderRadius: 15, backgroundColor: c.navyTint, alignItems: "center", justifyContent: "center" },
   cardTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.brand },
+  // Learn with Higgins card.
+  learnCard: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  learnIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: c.navyTint, alignItems: "center", justifyContent: "center" },
+  learnTitle: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface },
+  learnBody: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurfaceSecondary },
   // Compact single-line background indicator (replaces the bulky wrapping card).
   bgRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   bgText: { flex: 1, fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary },
@@ -54,10 +55,6 @@ export default function Home() {
     () => (health.checking ? [] : buildHomeAttention({ gates: health.gates, events })),
     [health.checking, health.gates, events],
   );
-  // Recent Patrol on Home is a glance of HISTORY — it must not echo the active issues already shown in
-  // "Needs your attention". Exclude those event ids; the full archive lives on Patrol.
-  const attentionEventIds = new Set(attention.filter((a) => a.kind === "event" && a.event).map((a) => a.event!.event_id));
-  const recent = projectPatrolOutcomes(events).filter((o) => !attentionEventIds.has(o.event.event_id)).slice(0, 3);
   const scents = buildScents(events);
 
   return (
@@ -87,11 +84,24 @@ export default function Home() {
         {/* 2b. Latest official scam alerts — awareness only, separate from Gate coverage. */}
         <HomeScamAlerts />
 
-        {/* 3. Needs your attention — only specific unresolved issues; hidden when empty. */}
-        {attention.length > 0 ? (
+        {/* 2c. Learn with Higgins — plain-English scam-safety guidance library. */}
+        <Pressable testID="home-learn-higgins" accessibilityRole="button" accessibilityLabel="Learn with Higgins" accessibilityHint="Open Apollo's scam-safety guidance library" onPress={() => router.push("/higgins/learning")} style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]}>
+          <Card style={s.learnCard}>
+            <View style={s.learnIcon}><GraduationCap size={23} color={colors.brand} /></View>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={s.learnTitle}>Learn with Higgins</Text>
+              <Text style={s.learnBody}>Plain-English guidance on how common scams work and how to stay safe.</Text>
+            </View>
+          </Card>
+        </Pressable>
+
+
+        {/* 3. Needs your attention — remaining specific issues (the top one is shown on the card
+         *    above); hidden when there's nothing left to show. */}
+        {attention.length > 1 ? (
           <View style={s.sectionGap}>
             <SectionTitle>Needs your attention</SectionTitle>
-            {attention.map((item) => (
+            {attention.slice(1).map((item) => (
               <AttentionCard key={item.id} item={item} />
             ))}
           </View>
@@ -123,21 +133,7 @@ export default function Home() {
           </View>
         ) : null}
 
-        {/* 4. Recent Patrol — two or three meaningful findings and See all. */}
-        <View>
-          <SectionTitle>Recent patrol</SectionTitle>
-          {recent.length === 0 ? (
-            <Card style={s.empty} testID="home-patrol-empty">
-              <Text style={s.emptyTitle}>All quiet</Text>
-              <Body>Apollo is patrolling within the checks he can see.</Body>
-            </Card>
-          ) : (
-            <View>
-              {recent.map((outcome, i) => <PatrolItem key={outcome.outcomeId} outcome={outcome} isLast={i === recent.length - 1} />)}
-              <Text style={s.link} onPress={() => router.push("/(tabs)/patrol")} testID="home-open-patrol">See all</Text>
-            </View>
-          )}
-        </View>
+        {/* Recent patrol removed from Home — the full activity feed lives on the Patrol tab. */}
       </ScrollView>
     </View>
   );

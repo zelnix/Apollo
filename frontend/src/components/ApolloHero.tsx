@@ -46,10 +46,12 @@ const useStyles = makeStyles((c) => ({
   meaning: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary, textAlign: "center" },
   reason: { fontFamily: fonts.textMedium, fontSize: 14, lineHeight: 20, color: c.onSurface, textAlign: "center" },
   reasonLink: { fontFamily: fonts.displayBold, fontSize: 14, lineHeight: 20, color: c.onSurface, textAlign: "center" },
-  problemBox: { width: "100%", gap: 4, backgroundColor: c.surfaceSecondary, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, padding: spacing.md },
-  problemLabel: { fontFamily: fonts.textSemibold, fontSize: 12, letterSpacing: 0.3, color: c.muted },
+  problemBox: { width: "100%", gap: 3, backgroundColor: c.surfaceSecondary, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, padding: spacing.md },
+  problemLabel: { fontFamily: fonts.textSemibold, fontSize: 11, letterSpacing: 0.4, color: c.muted },
+  problemTitle: { fontFamily: fonts.displayBold, fontSize: 15, lineHeight: 20, color: c.onSurface, textAlign: "center" },
   problemText: { fontFamily: fonts.textMedium, fontSize: 14, lineHeight: 20, color: c.onSurface },
-  higginsText: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary },
+  higginsText: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurface },
+  smallBtn: { minHeight: 38, paddingHorizontal: spacing.lg },
   row: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap", justifyContent: "center" },
   note: { fontFamily: fonts.text, fontSize: 12, lineHeight: 17, color: c.onSurfaceSecondary },
 }));
@@ -135,10 +137,10 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
   const router = useRouter();
 
   // The specific issue Apollo is surfacing, from REAL gate/event data. When present, it names the
-  // affected gate, the exact problem and Higgins' next step. When absent, fall back to the honest
-  // resolution reason (e.g. "waiting for a fresh check") — never a vague "needs your decision".
-  // The hero communicates Apollo's OVERALL state only — the specific incident(s) live in "Needs your
-  // attention" below, so nothing is shown twice. Keep the honest overall reason here.
+  // affected gate, the exact problem and Higgins' next step — shown directly on this card so the
+  // person sees what Apollo is reacting to without scrolling. The matching item is de-duplicated
+  // from the "Needs your attention" list below. When absent, fall back to the honest resolution
+  // reason (e.g. "waiting for a fresh check") — never a vague "needs your decision".
   const primary = attention[0] ?? null;
   const reason = resolution.reason;
   const higginsStep = primary ? primary.higgins : null;
@@ -175,14 +177,25 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
           </Animated.View>
         </View>
         <Text style={s.label} testID="apollo-state-label">{title}</Text>
-        {/* Show the generic meaning only for benign states; for warning states the specific reason is enough. */}
+        {/* Benign states show the generic meaning. When Apollo is reacting to a real issue, show the
+         *  SPECIFIC problem Apollo found and Higgins' plain-English next step right here on the card. */}
         {(state === "resting" || state === "sniffing") ? (
           <Text style={s.meaning} testID="apollo-state-meaning">{meaning}</Text>
-        ) : null}
-        {needsAction ? (
+        ) : primary ? (
+          <>
+            <Text style={s.problemTitle} testID="apollo-state-problem-title">{primary.title}</Text>
+            <View style={s.problemBox} testID="apollo-hero-problem">
+              <Text style={s.problemLabel}>PROBLEM</Text>
+              <Text style={s.problemText} testID="apollo-hero-problem-text">{primary.problem}</Text>
+              <Text style={[s.problemLabel, { marginTop: 6 }]}>HIGGINS</Text>
+              <Text style={s.higginsText} testID="apollo-hero-higgins-text">{primary.higgins}</Text>
+            </View>
+            <Button testID="hero-primary-action" label={actionLabel} style={s.smallBtn} onPress={() => router.push(primary.route as any)} />
+          </>
+        ) : needsAction ? (
           <>
             <Text style={s.reason} testID="apollo-state-reason">{reason}</Text>
-            <Button testID="hero-primary-action" label={actionLabel} onPress={() => router.push(heroRoute as any)} />
+            <Button testID="hero-primary-action" label={actionLabel} style={s.smallBtn} onPress={() => router.push(heroRoute as any)} />
           </>
         ) : heroRoute ? (
           <Pressable onPress={() => router.push(heroRoute as any)} accessibilityRole="link" testID="apollo-state-reason-link" style={{ minHeight: 44, justifyContent: "center" }}>
@@ -195,7 +208,7 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
         ) : (
           <Text style={s.reason} testID="apollo-state-reason">{reason}</Text>
         )}
-        <View style={[s.row, { alignItems: "center" }]}><HigginsSpeakButton text={spokenText} testID="hero-hear-higgins" onPress={onHearHiggins} /></View>
+        <View style={[s.row, { alignItems: "center" }]}><HigginsSpeakButton small text={spokenText} testID="hero-hear-higgins" onPress={onHearHiggins} /></View>
         <View style={s.row}>
           {resolution.recovering ? <Pill tone="growling" label="Awaiting fresh check" testID="recovering-pill" /> : null}
           {resolution.recovering && resolution.drivingEvent?.state === "biting" && resolution.drivingEvent.verified_block ? <Pill tone="resting" label="Threat contained" testID="contained-pill" /> : null}

@@ -1,3 +1,30 @@
+## Home + Higgins + Patrol navigation reshuffle (2026-06)
+
+**Home (`app/(tabs)/home.tsx`):**
+- Removed the "Recent patrol" section (full feed still lives on the Patrol tab). Dropped now-unused `PatrolItem`/`projectPatrolOutcomes` imports and `recent`/`attentionEventIds`.
+- Added a "Learn with Higgins" card (GraduationCap icon) just below Scam alerts → routes to `/higgins/learning` (`home-learn-higgins`).
+
+**Home scam alerts (`src/components/HomeScamAlerts.tsx`):** fixed the misleading empty state — the card showed "No current scam alerts" while loading OR on fetch failure, so a transient hiccup looked like "no scams" even though the feed has EXTREME alerts. Now three explicit states: loading (`home-scam-loading`), error with retry (`home-scam-error`/`home-scam-retry`), and the genuine empty only when the feed truly returns zero. Ranking now prioritises severity (EXTREME→LOW) then growling, preserving the backend's most-recent-first order (stable sort).
+
+**Higgins tab (`app/(tabs)/ask.tsx`):** removed the ⋮ three-dot menu and its Sheet. "Clear chat history" is now a trash button (`higgins-clear-chat`) next to the ⓘ About button in the header (still opens the existing confirm Sheet). About Higgins stays on the ⓘ button. Scam alerts (Scams tab), Learning (Home card), Saved reports + Higgins history (Patrol buttons) are reachable elsewhere. Removed unused `menuOpen`/`goMenu`/`EllipsisVertical` and the menu styles. Updated `tests/phase2Hub.test.ts` (5/5 pass) for the new design.
+
+**Patrol tab (`app/(tabs)/patrol.tsx`):** added a row of 3 labelled buttons under the header — Higgins history (`patrol-nav-higgins-history` → `/higgins/history`), Saved reports (`patrol-nav-saved-reports` → `/saved-reports`), and Patrol history (`patrol-nav-history` → scrolls the FlatList to the top of the activity feed). Removed the duplicate small saved-reports header icon (export PDF icon kept).
+
+**Verification:** tsc + ESLint clean; phase2Hub 5/5. Owner verifies visually on a native build (web preview is fail-closed Safe Start). No automated tests run per owner rule.
+
+
+## Home status card now details the exact issue Apollo is reacting to (2026-06)
+
+**Problem:** When Apollo was barking, the Home status card only showed a generic line ("This device needs your decision.") — the specific issue lived in the "Needs your attention" section below the fold. The real detail (what happened + Higgins' step) was already in the data (`resolution.drivingEvent` / `buildHomeAttention` → `attention[0]`) but the hero deliberately omitted it.
+
+**Change (frontend only, no new data/backend):**
+- `src/components/ApolloHero.tsx`: when there's a real issue (`primary = attention[0]`), the card now shows the specific gate title, a PROBLEM block (the driving event's what-happened) and a HIGGINS block (his plain-English explanation + next step), plus a smaller "See what needs attention" button that routes straight to that item. "Hear Higgins" reads the specifics aloud (unchanged `spokenText`). New testIDs: `apollo-state-problem-title`, `apollo-hero-problem`, `apollo-hero-problem-text`, `apollo-hero-higgins-text`. Reused the previously-unused `problemBox`/`higginsText` styles.
+- `src/components/HigginsSpeakButton.tsx`: added optional `small` prop (slimmer height/face/label) used on the Home card.
+- `app/(tabs)/home.tsx`: de-duplicated — the "Needs your attention" list now renders `attention.slice(1)` (the top issue is on the card) and only shows when more than one issue exists.
+
+**Verification:** tsc + ESLint clean. Home renders fully only on a native build (web preview is fail-closed Safe Start); owner verifies visually. No automated tests run (owner approval rule).
+
+
 ## Deployment readiness health check (2026-06)
 
 **Genuine config fixes applied (safe, verified — backend 200, preview 200):**

@@ -1,7 +1,9 @@
 import FileDown from "lucide-react-native/icons/file-down";
 import Library from "lucide-react-native/icons/library";
+import MessageSquareText from "lucide-react-native/icons/message-square-text";
+import ScrollText from "lucide-react-native/icons/scroll-text";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { FlatList, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -28,6 +30,9 @@ const useStyles = makeStyles((c) => ({
   summaryText: { fontFamily: fonts.displayBold, fontSize: 18, lineHeight: 24, color: c.onSurface },
   emptyTitle: { fontFamily: fonts.display, fontSize: 16, color: c.onSurface },
   iconBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: c.surfaceTertiary },
+  navRow: { flexDirection: "row", gap: spacing.sm, paddingHorizontal: spacing.xl, paddingTop: spacing.md },
+  navBtn: { flex: 1, minHeight: 66, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, backgroundColor: c.surfaceSecondary, alignItems: "center", justifyContent: "center", gap: 5, paddingVertical: spacing.sm, paddingHorizontal: spacing.xs },
+  navLabel: { fontFamily: fonts.textSemibold, fontSize: 12, lineHeight: 15, color: c.onSurface, textAlign: "center" },
 }));
 
 function dayLabel(iso: string) {
@@ -60,6 +65,7 @@ export default function Patrol() {
   const { events, deviceId, showToast } = useApollo();
   const router = useRouter();
   const [filter, setFilter] = useState<PatrolFilter>("all_activity");
+  const listRef = useRef<FlatList<PatrolRow>>(null);
   const onExport = async () => {
     if (outcomes.length === 0) { showToast("Nothing to export yet.", "neutral"); return; }
     try { const r = await exportPatrolPdf(outcomes.map((outcome) => outcome.event), deviceId); showToast(r === "shared" ? "Patrol PDF ready to share" : "Print dialog opened", "resting"); }
@@ -75,10 +81,23 @@ export default function Patrol() {
         <RootScreenHeader title="Apollo's Patrol" testID="patrol-header" info={{ title: "About Apollo's Patrol", body: ["Patrol is a plain-English record of what Apollo noticed while it was watching — checks that completed and anything that needed attention.", "It holds no browsing history or message content. Clear it anytime in Settings → Privacy & data."] }} rightAccessory={
           <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}>
             <Pill tone="neutral" label={`${outcomes.length} outcomes`} testID="patrol-count" />
-            <Pressable testID="patrol-saved-reports-button" accessibilityRole="button" accessibilityLabel="Open saved reports" onPress={() => router.push("/saved-reports")} style={s.iconBtn}><Library size={20} color={colors.onSurface} /></Pressable>
             <Pressable testID="patrol-export-button" accessibilityRole="button" accessibilityLabel="Export Patrol as PDF" onPress={onExport} style={s.iconBtn}><FileDown size={20} color={colors.onSurface} /></Pressable>
           </View>
         } />
+        <View style={s.navRow}>
+          <Pressable testID="patrol-nav-higgins-history" accessibilityRole="button" accessibilityLabel="Higgins investigation history" onPress={() => router.push("/higgins/history")} style={({ pressed }) => [s.navBtn, { opacity: pressed ? 0.8 : 1 }]}>
+            <MessageSquareText size={20} color={colors.brand} />
+            <Text style={s.navLabel}>Higgins history</Text>
+          </Pressable>
+          <Pressable testID="patrol-nav-saved-reports" accessibilityRole="button" accessibilityLabel="Saved reports" onPress={() => router.push("/saved-reports")} style={({ pressed }) => [s.navBtn, { opacity: pressed ? 0.8 : 1 }]}>
+            <Library size={20} color={colors.brand} />
+            <Text style={s.navLabel}>Saved reports</Text>
+          </Pressable>
+          <Pressable testID="patrol-nav-history" accessibilityRole="button" accessibilityLabel="Patrol history" onPress={() => listRef.current?.scrollToOffset({ offset: 0, animated: true })} style={({ pressed }) => [s.navBtn, { opacity: pressed ? 0.8 : 1 }]}>
+            <ScrollText size={20} color={colors.brand} />
+            <Text style={s.navLabel}>Patrol history</Text>
+          </Pressable>
+        </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipRow} testID="patrol-filter-row">
           {FILTERS.map((f) => {
             const active = filter === f.key;
@@ -91,6 +110,7 @@ export default function Patrol() {
         </ScrollView>
       </View>
       <FlatList
+        ref={listRef}
         data={rows}
         keyExtractor={(r) => r.key}
         contentContainerStyle={s.list}

@@ -25,15 +25,16 @@ test("Empty state shows one Higgins welcome and tappable starters", () => {
   assert.match(source, /onPress=\{\(\) => submit\(question\)\}/);
 });
 
-test("Clearing history lives in the header menu and requires confirmation", () => {
-  assert.match(source, /testID="higgins-menu"/);
-  assert.match(source, /testID="higgins-menu-clear"/);
+test("Clearing history lives next to the info button and requires confirmation", () => {
+  assert.match(source, /testID="higgins-clear-chat"/);
   assert.match(source, /testID="higgins-clear-confirm"/);
   assert.match(source, /testID="higgins-clear-cancel"/);
+  // The old three-dot menu is gone.
+  assert.doesNotMatch(source, /testID="higgins-menu"/);
 });
 
 test("About Higgins states real capabilities and limits (Apollo acts, Higgins interprets)", () => {
-  assert.match(source, /testID="higgins-menu-about"/);
+  assert.match(source, /testID="higgins-header-info"/);
   assert.match(source, /Apollo acts; Higgins interprets/);
   assert.match(source, /can't inspect links, files or your device/);
 });

@@ -1,7 +1,7 @@
 import * as Crypto from "expo-crypto";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import EllipsisVertical from "lucide-react-native/icons/ellipsis-vertical";
+import Trash2 from "lucide-react-native/icons/trash-2";
 import Info from "lucide-react-native/icons/info";
 import SendHorizontal from "lucide-react-native/icons/send-horizontal";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -69,9 +69,6 @@ const useStyles = makeStyles((c) => ({
 
   context: { marginHorizontal: spacing.xl, marginTop: spacing.md, gap: spacing.xs, borderColor: c.navyBorder },
 
-  menuRow: { minHeight: 52, justifyContent: "center", borderBottomWidth: 1, borderBottomColor: c.border },
-  menuLabel: { fontFamily: fonts.textMedium, fontSize: 16, color: c.onSurface },
-  menuDanger: { fontFamily: fonts.textSemibold, fontSize: 16, color: c.barkingText },
   sheetBody: { fontFamily: fonts.text, fontSize: 15, lineHeight: 23, color: c.onSurfaceSecondary },
   welcomePrompt: { fontFamily: fonts.textMedium, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary, paddingHorizontal: spacing.xs },
   errorText: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.barkingText },
@@ -83,7 +80,7 @@ export default function Ask() {
   const { state, start, ask, retry, cancel, remove, attach, retryDelete } = useInvestigation(params.operationId ? String(params.operationId) : null);
   const [text, setText] = useState(""); const [activeContext, setActiveContext] = useState<HigginsIssueContext | null>(null); const [investigationMode, setInvestigationMode] = useState(false);
   const [chatMessages, setChatMessages] = useState<HigginsChatMessage[]>([]); const [chatBusy, setChatBusy] = useState(false); const [chatError, setChatError] = useState<string | null>(null); const [lastAction, setLastAction] = useState<HigginsChatAction | null>(null);
-  const [routeError, setRouteError] = useState<string | null>(null); const [menuOpen, setMenuOpen] = useState(false); const [aboutOpen, setAboutOpen] = useState(false); const [confirmClear, setConfirmClear] = useState(false);
+  const [routeError, setRouteError] = useState<string | null>(null); const [aboutOpen, setAboutOpen] = useState(false); const [confirmClear, setConfirmClear] = useState(false);
   const [starters, setStarters] = useState<string[]>([]);
   const conversationId = useRef(Crypto.randomUUID()); const seenRoute = useRef<string | null>(null); const scrollRef = useRef<ScrollView>(null); const inputRef = useRef<TextInput>(null); const contextRecorded = useRef<string | null>(null); const stick = useRef(true);
   const caseBusy = state.phase === "creating" || state.phase === "working" || state.phase === "reconnecting" || state.phase === "waiting_device";
@@ -149,7 +146,6 @@ export default function Ask() {
   const deleteInvestigation = async () => { stopHiggins(); clearHandoffTransfers(); setActiveContext(null); setRouteError(null); setInvestigationMode(false); await remove(); };
   const clearChat = async () => { if (!deviceId || chatBusy) return; await Promise.all([clearHigginsHistory(deviceId), clearLocalChat(), clearStarterMemory()]); setChatMessages([]); setStarters([]); setLastAction(null); setChatError(null); conversationId.current = Crypto.randomUUID(); };
   const newQuestion = () => { if (busy) return; stopHiggins(); setActiveContext(null); setInvestigationMode(false); void remove(); };
-  const goMenu = (fn: () => void) => { setMenuOpen(false); setTimeout(fn, 180); };
   const caseStatus = state.phase === "answered" ? "Higgins has finished this investigation." : state.phase === "waiting_user" ? "Higgins needs one answer from you" : state.phase === "failed" ? "Investigation incomplete — Retry available" : state.phase === "expired" ? "Temporary investigation content expired" : caseBusy ? "Higgins is investigating…" : "Investigation content expires within 15 minutes";
   const showWelcome = !investigationMode && chatMessages.length === 0;
   const welcomeStarters = useMemo(() => [...new Set([...starters, ...STARTERS])].slice(0, 4), [starters]);
@@ -168,7 +164,7 @@ export default function Ask() {
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
           <Pressable testID="higgins-header-info" accessibilityRole="button" accessibilityLabel="About Higgins" hitSlop={8} style={s.menuBtn} onPress={() => setAboutOpen(true)}><Info size={21} color={colors.onSurface} /></Pressable>
-          <Pressable testID="higgins-menu" accessibilityRole="button" accessibilityLabel="Higgins menu" hitSlop={8} style={s.menuBtn} onPress={() => setMenuOpen(true)}><EllipsisVertical size={22} color={colors.onSurface} /></Pressable>
+          <Pressable testID="higgins-clear-chat" accessibilityRole="button" accessibilityLabel="Clear chat history" hitSlop={8} style={s.menuBtn} onPress={() => setConfirmClear(true)}><Trash2 size={20} color={colors.onSurface} /></Pressable>
         </View>
       </View>
     </View>
@@ -217,15 +213,6 @@ export default function Ask() {
         <Pressable testID="ask-send-button" accessibilityRole="button" accessibilityLabel="Send message to Higgins" onPress={() => submit(text)} disabled={busy || !text.trim()} style={[s.send, { opacity: busy || !text.trim() ? 0.5 : 1 }]}>{busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : <SendHorizontal size={20} color={colors.onBrandPrimary} />}</Pressable>
       </View>
     </KeyboardAvoidingView>
-
-    <Sheet visible={menuOpen} onClose={() => setMenuOpen(false)} title="Higgins" testID="higgins-menu-sheet">
-      <Pressable style={s.menuRow} testID="higgins-menu-about" onPress={() => goMenu(() => setAboutOpen(true))}><Text style={s.menuLabel}>About Higgins</Text></Pressable>
-      <Pressable style={s.menuRow} testID="higgins-menu-scams" onPress={() => goMenu(() => router.push("/higgins/scams"))}><Text style={s.menuLabel}>New scam alerts</Text></Pressable>
-      <Pressable style={s.menuRow} testID="higgins-menu-learning" onPress={() => goMenu(() => router.push("/higgins/learning"))}><Text style={s.menuLabel}>Learning</Text></Pressable>
-      <Pressable style={s.menuRow} testID="higgins-menu-reports" onPress={() => goMenu(() => router.push("/saved-reports"))}><Text style={s.menuLabel}>Saved reports</Text></Pressable>
-      <Pressable style={s.menuRow} testID="higgins-menu-history" onPress={() => goMenu(() => router.push("/higgins/history"))}><Text style={s.menuLabel}>Higgins history</Text></Pressable>
-      <Pressable style={[s.menuRow, { borderBottomWidth: 0 }]} testID="higgins-menu-clear" onPress={() => goMenu(() => setConfirmClear(true))}><Text style={s.menuDanger}>Clear chat history</Text></Pressable>
-    </Sheet>
 
     <Sheet visible={aboutOpen} onClose={() => setAboutOpen(false)} title="About Higgins" testID="higgins-about-sheet">
       <Image source={require("../../assets/images/higgins-apollo-portrait.png")} style={s.aboutAvatarImg} contentFit="cover" accessibilityLabel="Higgins with Apollo" />
