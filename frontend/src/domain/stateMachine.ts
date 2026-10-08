@@ -15,6 +15,12 @@ const capitalise = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 export const VERIFICATION_FRESHNESS_MS = 10 * 60 * 1000;
 /** After an event resolves, Apollo stays alert until a fresh verification lands. */
 export const RECOVERY_COOLDOWN_MS = 2 * 60 * 1000;
+/** Events older than this no longer drive the hero to barking by themselves.
+ *  They remain visible in Patrol and still count as active — but the Home hero
+ *  won't bark about something the person likely already knows about and hasn't
+ *  acted on. Prevents the confusing case where Coverage-at-a-glance is all green
+ *  but Apollo is barking about stale findings. */
+export const EVENT_BARKING_FRESHNESS_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 export interface StateInput {
   events: PatrolEvent[];
@@ -47,13 +53,7 @@ export function resolveApolloState(input: StateInput): StateResolution {
   const verificationFresh = verifiedAt > 0 && verifiedAt <= now && now - verifiedAt <= VERIFICATION_FRESHNESS_MS;
   const visibilityLost = input.visibility === 'none' || !verificationFresh;
 
-  // Present health always remains visible, even alongside historical incidents.
-  if (visibilityLost) return {
-    state: active.some(e => e.state === 'barking') ? 'barking' : 'growling',
-    reason: input.visibility === 'none' ? 'Protection is unavailable or unverified.' : 'Protection observation has expired.',
-    reasonRoute: input.visibility === 'none' ? '/(tabs)/patrol' : '/(tabs)/guard',
-    recovering: false, visibilityLost: true, drivingEvent: active.sort(byNewest)[0] ?? null,
-  };
+  // ── Event-driven escalation always takes priority over visibility status ──
 
   // Biting only if a verified block exists. Never inferred.
   const biting = active.find((e) => e.state === "biting" && e.verified_block && eventHasPacketProof(e) &&
@@ -61,18 +61,40 @@ export function resolveApolloState(input: StateInput): StateResolution {
   if (biting) {
     return { state: "biting", reason: "Apollo verified and blocked a threat.", recovering: false, visibilityLost: false, drivingEvent: biting };
   }
-  const barking = active.filter((e) => e.state === "barking").sort(byNewest)[0];
-  if (barking) {
-    return { state: "barking", reason: `${capitalise(areaLabel(barking.category))} needs your decision.`, reasonRoute: `/patrol/${encodeURIComponent(barking.event_id)}`, recovering: false, visibilityLost: false, drivingEvent: barking };
+
+  // Barking — only RECENT events drive the hero to bark. Older unresolved events degrade to
+  // growling so the Home hero matches the Coverage-at-a-glance reality. Events remain in Patrol.
+  const recentBarking = active
+    .filter((e) => e.state === "barking" && (now - Date.parse(e.occurred_at)) < EVENT_BARKING_FRESHNESS_MS)
+    .sort(byNewest)[0];
+  if (recentBarking) {
+    return { state: "barking", reason: `${capitalise(areaLabel(recentBarking.category))} needs your decision.`, reasonRoute: `/patrol/${encodeURIComponent(recentBarking.event_id)}`, recovering: false, visibilityLost, drivingEvent: recentBarking };
   }
+
+  // Stale barking events (older than freshness window) degrade to growling — still worth a look,
+  // but no longer an emergency that makes Apollo bark on the Home screen.
+  const staleBarking = active.filter((e) => e.state === "barking").sort(byNewest)[0];
+  if (staleBarking) {
+    return { state: "growling", reason: `${capitalise(areaLabel(staleBarking.category))} has an older finding that still needs a look.`, reasonRoute: `/patrol/${encodeURIComponent(staleBarking.event_id)}`, recovering: false, visibilityLost, drivingEvent: staleBarking };
+  }
+
   const growling = active.filter((e) => e.state === "growling").sort(byNewest)[0];
   if (growling) {
-    return { state: "growling", reason: `${capitalise(areaLabel(growling.category))} looks suspicious and isn't confirmed yet.`, reasonRoute: `/patrol/${encodeURIComponent(growling.event_id)}`, recovering: false, visibilityLost: false, drivingEvent: growling };
+    return { state: "growling", reason: `${capitalise(areaLabel(growling.category))} looks suspicious and isn't confirmed yet.`, reasonRoute: `/patrol/${encodeURIComponent(growling.event_id)}`, recovering: false, visibilityLost, drivingEvent: growling };
   }
   const earsUp = active.filter((e) => e.state === "ears_up").sort(byNewest)[0];
   if (earsUp) {
-    return { state: "ears_up", reason: `${capitalise(areaLabel(earsUp.category))} is worth a careful look.`, reasonRoute: `/patrol/${encodeURIComponent(earsUp.event_id)}`, recovering: false, visibilityLost: false, drivingEvent: earsUp };
+    return { state: "ears_up", reason: `${capitalise(areaLabel(earsUp.category))} is worth a careful look.`, reasonRoute: `/patrol/${encodeURIComponent(earsUp.event_id)}`, recovering: false, visibilityLost, drivingEvent: earsUp };
   }
+
+  // ── No active events driving escalation — check visibility, then recovery ──
+
+  if (visibilityLost) return {
+    state: "growling",
+    reason: input.visibility === 'none' ? 'Protection is unavailable or unverified.' : 'Protection observation has expired.',
+    reasonRoute: input.visibility === 'none' ? '/(tabs)/patrol' : '/(tabs)/guard',
+    recovering: false, visibilityLost: true, drivingEvent: null,
+  };
 
   // No active events. Recovery rules apply.
   const recentlyResolved = input.events
