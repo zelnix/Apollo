@@ -1,7 +1,5 @@
 import { useRouter } from "expo-router";
 import BatteryCharging from "lucide-react-native/icons/battery-charging";
-import ChevronRight from "lucide-react-native/icons/chevron-right";
-import Sparkles from "lucide-react-native/icons/sparkles";
 import React from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,7 +16,6 @@ import { Body, Button, Card, DevTag, Pill, SectionTitle, toneColor } from "@/src
 import { buildScents } from "@/src/domain/threatScent";
 import { buildHomeAttention, type AttentionItem } from "@/src/domain/homeAttention";
 import { STATE_NAME } from "@/src/domain/types";
-import { buildWeeklyDigest } from "@/src/domain/digest";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 import { minimiseApp } from "@/src/utils/minimise";
@@ -57,9 +54,10 @@ export default function Home() {
     () => (health.checking ? [] : buildHomeAttention({ gates: health.gates, events })),
     [health.checking, health.gates, events],
   );
-  // Recent Patrol on Home is a glance, not the archive — at most 2-3 items; the full history lives on Patrol.
-  const recent = projectPatrolOutcomes(events).slice(0, 3);
-  const digest = buildWeeklyDigest(events);
+  // Recent Patrol on Home is a glance of HISTORY — it must not echo the active issues already shown in
+  // "Needs your attention". Exclude those event ids; the full archive lives on Patrol.
+  const attentionEventIds = new Set(attention.filter((a) => a.kind === "event" && a.event).map((a) => a.event!.event_id));
+  const recent = projectPatrolOutcomes(events).filter((o) => !attentionEventIds.has(o.event.event_id)).slice(0, 3);
   const scents = buildScents(events);
 
   return (
@@ -139,20 +137,6 @@ export default function Home() {
               <Text style={s.link} onPress={() => router.push("/(tabs)/patrol")} testID="home-open-patrol">See all</Text>
             </View>
           )}
-        </View>
-
-        <View>
-          <SectionTitle>This week</SectionTitle>
-          <Pressable testID="home-digest-card" accessibilityRole="button" onPress={() => router.push("/digest")}>
-            <Card style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-              <View style={s.cardIconWell}><Sparkles size={16} color={colors.brand} /></View>
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text style={s.cardTitle} numberOfLines={2}>{digest.headline}</Text>
-                <Body numberOfLines={3}>{digest.summary}</Body>
-              </View>
-              <ChevronRight size={18} color={colors.onSurfaceSecondary} />
-            </Card>
-          </Pressable>
         </View>
       </ScrollView>
     </View>

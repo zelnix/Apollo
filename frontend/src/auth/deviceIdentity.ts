@@ -63,6 +63,13 @@ export async function storeRotatedToken(token: string, expiresAt: string | null)
   if (cur) await write({ ...cur, token, expiresAt });
 }
 
+/** Full, clean wipe of this device's identity (used by "Delete My Apollo Data"). Unlike
+ *  resetDeviceIdentity, this leaves NO reset marker — the app returns to a true first-run state. */
+export async function clearDeviceIdentity(): Promise<void> {
+  await write(null);
+  await storage.removeItem(RESET_KEY);
+}
+
 /** Called when the server answers 401: the credential is dead. Clears it and tells the app to re-register. */
 export async function resetDeviceIdentity(why: string): Promise<void> {
   await write(null);

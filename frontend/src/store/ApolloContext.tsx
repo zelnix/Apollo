@@ -9,9 +9,10 @@ import * as Localization from "expo-localization";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
 
-import { API_BASE, apiDelete, apiGet, apiPost, apiPut } from "@/src/api/client";
+import { API_BASE, apiDelete, apiGet, apiPost, apiPostEmpty, apiPut } from "@/src/api/client";
 import { getBackendHealth, onBackendHealth, probeBackend } from "@/src/api/backendHealth";
-import { getDeviceIdentity, getDeviceToken, getIdentityResetReason, onIdentityReset, registerDeviceIdentity } from "@/src/auth/deviceIdentity";
+import { clearDeviceIdentity, getDeviceIdentity, getDeviceToken, getIdentityResetReason, onIdentityReset, registerDeviceIdentity } from "@/src/auth/deviceIdentity";
+import { PENDING_DELETE_KEY, wipeLocalApolloData, type DeleteDataResult } from "@/src/domain/privacyData";
 import { visibilityFrom } from "@/src/domain/capability";
 import { assessConnection } from "@/src/domain/connection";
 import { isTrustedCaller } from "@/src/domain/trustedCallers";
@@ -145,6 +146,7 @@ interface ApolloContextValue {
   resolveEvent(event: PatrolEvent): Promise<void>;
   revokeTrust(entry: TrustEntry): Promise<void>;
   clearPatrol(): Promise<void>;
+  requestDataDeletion(): Promise<{ ok: boolean; pending?: boolean; result?: DeleteDataResult }>;
   trustedSsids: string[];
   trustNetwork(ssid: string): Promise<void>;
   forgetNetwork(ssid: string): Promise<void>;
@@ -1165,12 +1167,41 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     finally { patrolDelivery.resume(deviceId); }
   }, [deviceId, persistEvents, qc, showToast]);
 
+  // Delete My Apollo Data — permanently erase everything for this device on the service, then wipe this
+  // phone and return to a true first-run state. Honest offline behaviour: if the service can't be reached,
+  // nothing is wiped; a pending request is recorded and retried automatically when Apollo reconnects.
+  const requestDataDeletion = useCallback(async (): Promise<{ ok: boolean; pending?: boolean; result?: DeleteDataResult }> => {
+    let result: DeleteDataResult;
+    try {
+      result = await apiPostEmpty<DeleteDataResult>("/devices/delete-data", Crypto.randomUUID());
+    } catch {
+      await storage.setItem(PENDING_DELETE_KEY, true);
+      return { ok: false, pending: true };
+    }
+    // Server records are gone. Now wipe this phone and reset the in-memory app state to first run.
+    try { await wipeLocalApolloData(); } catch { /* best effort — the service copy is already gone */ }
+    await clearDeviceIdentity();
+    eventsRef.current = [];
+    setEvents([]); setTrust([]); setTrustedSsids([]); setLastVerifiedAt(null);
+    setDeviceId(null); setSetupDone(false); setIdentityReset(null);
+    qc.clear();
+    return { ok: true, result };
+  }, [qc]);
+
+  // If a delete was requested while offline, retry it the moment Apollo reconnects.
+  useEffect(() => {
+    const off = onBackendHealth((h) => {
+      if (h.reachable === true) void storage.getItem<boolean>(PENDING_DELETE_KEY, false).then((pending) => { if (pending) void requestDataDeletion(); });
+    });
+    return off;
+  }, [requestDataDeletion]);
+
   const visibility = useMemo(() => visibilityFrom(capabilities, freshObservation(protection)), [capabilities, protection, tick]); // eslint-disable-line react-hooks/exhaustive-deps
   const resolution = useMemo(() => resolveApolloState({ events, visibility, lastVerifiedAt, now: Date.now() }), [events, visibility, lastVerifiedAt, tick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const value: ApolloContextValue = {
     ready, setupDone, deviceId, identityReset, reRegisterDevice, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label, isMock: IS_PREVIEW_HARNESS,
-    refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, enableSiteProtection, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, scanGmailInbox, recordRecovery, upsertEvent, recordPageAnalysis, checkCall, checkNumberRisk,
+    refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, enableSiteProtection, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, requestDataDeletion, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, scanGmailInbox, recordRecovery, upsertEvent, recordPageAnalysis, checkCall, checkNumberRisk,
     notificationStatus, enableNotifications, quietHours, quietNow, setQuietHours, lowPower, setLowPower, storage,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

@@ -35,7 +35,7 @@ const gateForCategory = (c: EventCategory | string) => GATE_FOR_CATEGORY[c as Ev
 
 // Where the action for a gate issue should take the person.
 const GATE_ROUTE: Record<string, string> = {
-  site: "/(tabs)/guard", text: "/text-guard", call: "/call-guard", network: "/network", email: "/email",
+  site: "/gates", text: "/text-guard", call: "/call-guard", network: "/network", email: "/email",
   link: "/check", account: "/account", file: "/file", app: "/app-check", device: "/device",
 };
 
@@ -59,7 +59,7 @@ export function buildHomeAttention(input: { gates: GatePresentation[]; events: P
       problem: g.currentHelp,
       higgins,
       actionLabel: g.primaryAction?.label ?? "Open gate",
-      route: GATE_ROUTE[g.id] ?? "/(tabs)/guard",
+      route: GATE_ROUTE[g.id] ?? "/gates",
     });
   }
 

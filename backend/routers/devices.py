@@ -62,6 +62,21 @@ async def revoke_device(request: Request):
     return None
 
 
+@router.get("/devices/data-inventory")
+async def device_data_inventory(request: Request):
+    """Honest, category-grouped count of everything Apollo currently stores for this device."""
+    from services.account_deletion import inventory
+    return await inventory(request.state.device["device_id"])
+
+
+@router.post("/devices/delete-data")
+async def device_delete_data(request: Request):
+    """Permanently delete EVERYTHING Apollo holds for this device, then remove the device identity.
+    The device must register again (a brand-new anonymous identity) to use Apollo afterwards."""
+    from services.account_deletion import purge_device
+    return await purge_device(request.state.device["device_id"])
+
+
 # --------------------------------------------------------------------------- Quiet hours (device settings)
 # Growling (non-urgent) pushes are silenced inside the window; Barking/Biting always come through.
 class QuietHours(BaseModel):

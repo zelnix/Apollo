@@ -1,3 +1,23 @@
+## Privacy & Data — honest retention inventory + "Delete My Apollo Data" (2026-06)
+
+**Problem/Task 1 (P0):** Give the person an authoritative view of everything Apollo stores for their anonymous device, and a verified, complete "Delete My Apollo Data" workflow with honest offline/pending states.
+
+**Backend:**
+- New `services/account_deletion.py` — authoritative, device-scoped (owner_id == device_id). `CATEGORIES` maps 7 service-side groups (Higgins conversations, Investigations & saved reports, Patrol activity & records, Trusted links, Email & account monitoring, Family links & guardians, Diagnostics & app signals) to their collections + id fields.
+  - `inventory(device_id)` → honest per-category counts (zeros reported truthfully, missing collections skipped).
+  - `purge_device(device_id)` → (1) invalidates the investigation `generation` first so late workers can't publish, (2) `delete_many` across every category by `device_id`/`owner_id`/`recipient_id` (+ family keys protected/guardian/owner_device_id), (3) revokes family-assist sessions, (4) **deletes the device identity** itself. Returns per-category removed counts.
+- New routes in `routers/devices.py` (device-auth): `GET /api/devices/data-inventory` and `POST /api/devices/delete-data`. Another device's data is never touched.
+
+**Frontend:**
+- `src/domain/privacyData.ts` — `RETENTION_INVENTORY` (plain-English what/where/retention per category incl. a local-only row), `wipeLocalApolloData()` (AsyncStorage.getAllKeys → multiRemove every `apollo.*` key), `DataInventory`/`DeleteDataResult` types, `PENDING_DELETE_KEY`, `CONFIRM_WORD="DELETE"`.
+- `src/auth/deviceIdentity.ts` — new `clearDeviceIdentity()` (full clean wipe, no reset marker → true first-run).
+- `ApolloContext.requestDataDeletion()` — calls `/devices/delete-data`; on success wipes local + clears identity + resets in-memory state (events/trust/ssids/verified cleared, deviceId null, setupDone false) + `qc.clear()`. On failure (offline) persists `PENDING_DELETE_KEY` and auto-retries on the next backend-reachable event.
+- `app/privacy-data.tsx` — modal screen: intro, live inventory (service counts + "On this device" rows), pending banner, type-to-confirm `DELETE` input gating a danger button → confirm Sheet → delete → toast + `router.replace("/onboarding")`.
+- Settings → "Privacy & data" section gains a top `Privacy & data` NavRow → `/privacy-data`; registered as a modal in `app/_layout.tsx`.
+
+**Verification:** tsc + ESLint clean. Backend `tests/test_delete_my_data.py` 3/3 (inventory counts this device only; delete erases everything + kills the identity (token→401); delete doesn't touch another device); `test_device_auth.py` 11/1-skip regression green. Live curl: register→inventory(0)→delete→token 401. UI: screen renders in web preview; type-to-confirm enables the danger button and opens the confirm sheet. NOTE: the happy-path delete needs a registered device token (native/real install); in web preview with no token the live inventory shows its honest fallback and delete follows the pending path.
+
+
 ## Device Gate cross-platform Security & Privacy Review + positive framing + deep links (2026-06)
 
 **Platform typing (P0):** `DevicePlatform` expanded to `ios | android | windows | macos | web`; `firstCheckSignals.currentPlatform()` and `firstCheck.platformName()` now handle Windows/macOS (desktop no longer collapsed to web); `deviceAnalysis.path()` desktop-safe.
@@ -1496,3 +1516,27 @@ GTK/pkg-config dependency (container limitation), not a code error.
   Full TS/Node suite green, tsc+lint clean. Verified in preview: tab bar + Scams screen render.
 
 ## Privacy & Data / Deletion (#3) — NOT STARTED (next session; large standalone spec)
+
+## Home — eliminate repetition + honest findings (P0 brief) — DONE (2026-06)
+- ApolloHero no longer embeds the specific incident (removed the problemBox showing attention[0].title/problem/
+  higgins). The hero now shows only Apollo's OVERALL state + honest reason + a single "See what needs attention"
+  action. The specific incident(s) live solely in the "Needs your attention" section → no duplicate presentation.
+- home.tsx: Recent Patrol now EXCLUDES event ids already surfaced in "Needs your attention" (attentionEventIds)
+  so history doesn't echo the active alert. Removed the "This week" weekly digest card from Home (reduced scroll +
+  removed a Pressable>Card that was a likely nested-button source). Dropped now-unused imports (Sparkles,
+  ChevronRight, buildWeeklyDigest).
+- Attention gate routes updated to /gates (was /(tabs)/guard).
+- Earlier backend fix already maps raw states (ears_up→"something worth a closer look") so no internal status leaks.
+- Verified in preview: hero shows "Apollo is growling / Protection is unavailable or unverified." + "See what needs
+  attention"; no runtime error banner; Scam Alerts section renders a HIGH AU growling item. Full TS/Node suite,
+  tsc, lint all green.
+- NOTE: the exact "nested <button>" React error could not be reproduced in the current state; the structural
+  simplifications remove the most likely causes. If it recurs in a specific state, capture that state to pinpoint.
+
+## STILL QUEUED (large, not started) — in requested order:
+1. Privacy & Data / Deletion (settings screen, Delete My Apollo Data, retention, verified deletion).
+2. Growling Push (server push for new HIGH/EXTREME scam advisories, deep-link to the alert).
+3. Ask Higgins Link (carry scamTitle/scamSource into Higgins chat context).
+4. Live Feed Check (verify/adjust overseas source feed URLs).
+5. Social Media & Messaging Scam Protection (reuse Internet Gate + add "Scam Check" in Check tab + Share to Apollo;
+   NO new Gate/infra).

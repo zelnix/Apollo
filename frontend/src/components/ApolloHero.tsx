@@ -137,14 +137,14 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
   // The specific issue Apollo is surfacing, from REAL gate/event data. When present, it names the
   // affected gate, the exact problem and Higgins' next step. When absent, fall back to the honest
   // resolution reason (e.g. "waiting for a fresh check") — never a vague "needs your decision".
+  // The hero communicates Apollo's OVERALL state only — the specific incident(s) live in "Needs your
+  // attention" below, so nothing is shown twice. Keep the honest overall reason here.
   const primary = attention[0] ?? null;
-  const reason = primary ? primary.problem : resolution.reason;
+  const reason = resolution.reason;
   const higginsStep = primary ? primary.higgins : null;
   const heroRoute = primary ? primary.route : reasonRoute;
-  // UX-02: when the person must actually do something, show a prominent corrective action — more
-  // prominent than Hear Higgins. Hear Higgins stays available below as the secondary explanation.
   const needsAction = state !== "resting" && state !== "sniffing" && !!heroRoute;
-  const actionLabel = primary ? primary.actionLabel : "See what needs attention";
+  const actionLabel = "See what needs attention";
   // "Run a check" is never said bare: the exact checks are listed (tappable, in a popup) and read aloud. Completion
   // counts from the start of today, so a check already done this morning shows as done.
   const checks = sniffing ? [] : recommendedChecks(resolution);
@@ -181,15 +181,7 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
         ) : null}
         {needsAction ? (
           <>
-            {primary ? (
-              <View style={s.problemBox} testID="apollo-attention-primary">
-                <Text style={s.problemLabel}>{primary.title.toUpperCase()}</Text>
-                <Text style={s.problemText} testID="apollo-state-reason">{reason}</Text>
-                {higginsStep ? <Text style={s.higginsText} testID="apollo-higgins-step">Higgins: {higginsStep}</Text> : null}
-              </View>
-            ) : (
-              <Text style={s.reason} testID="apollo-state-reason">{reason}</Text>
-            )}
+            <Text style={s.reason} testID="apollo-state-reason">{reason}</Text>
             <Button testID="hero-primary-action" label={actionLabel} onPress={() => router.push(heroRoute as any)} />
           </>
         ) : heroRoute ? (

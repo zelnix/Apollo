@@ -104,7 +104,8 @@ export default function SettingsScreen() {
 
       <View><SectionTitle>Privacy &amp; data</SectionTitle>
         <Card testID="settings-privacy">
-          <NavRow first label="Privacy statement" hint="What Apollo stores, shares and why" onPress={() => router.push("/privacy-disclosure")} testID="settings-privacy-disclosure" />
+          <NavRow first label="Privacy &amp; data" hint="See everything Apollo stores and delete all your data" onPress={() => router.push("/privacy-data")} testID="settings-privacy-data" />
+          <NavRow label="Privacy statement" hint="What Apollo stores, shares and why" onPress={() => router.push("/privacy-disclosure")} testID="settings-privacy-disclosure" />
           <NavRow label="Clear Patrol history" hint="Hide local summaries and ask the service to hide synced ones" onPress={() => setConfirmClear(true)} testID="settings-clear-patrol" />
         </Card>
       </View>
