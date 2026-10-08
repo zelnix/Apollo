@@ -1,3 +1,17 @@
+## Higgins tab → full chat experience (2026-06)
+
+Rebuilt `app/(tabs)/ask.tsx` as a messaging screen ("Open Higgins. Start talking.").
+- **Header**: small avatar (logo) + "Higgins" + subtitle "Apollo's trusted adviser" + discreet ⋮ menu (`higgins-menu`). Removed the old "Ask Higgins" badge / oversized heading / hub cards.
+- **Header menu (Sheet)**: About Higgins, New scam alerts, Learning, Saved reports, Higgins history, and **Clear chat history** (with a confirm Sheet — `higgins-clear-confirm`/`cancel`). "About Higgins" Sheet states real capabilities + limits ("Apollo acts; Higgins interprets").
+- **Conversation**: full-height ScrollView; user bubbles right (brand), Higgins bubbles left (with mini avatar) + subtle timestamps; animated typing indicator (`src/components/TypingDots.tsx`); smart auto-scroll (sticks to bottom only when the reader is already near the bottom).
+- **Welcome**: when no history, one Higgins welcome bubble + 3 tappable starters ("Why is Apollo barking?", "Is my device protected?", "Explain a scam warning.") that submit as ordinary messages; disappears once chatting starts (no permanent card).
+- **Composer**: anchored above the tab bar via keyboard-controller KeyboardAvoidingView, placeholder "Message Higgins…", multiline (max 120dp), prominent round Send. Error bubble has **Try again** (`retryLast`) that re-sends the last user message without duplicating it.
+- **Preserved**: local + server chat history rules, redacted Apollo context, and the entire Apollo→Higgins **investigation hand-off flow** (handoff/resume params, `startInvestigation`, `InvestigationView`, investigation offers/check-it offers) — unchanged. Removed the old `higgins-hub*` dashboard; `tests/phase2Hub.test.ts` rewritten to assert the chat-first design (5/5 pass).
+- Removed the bottom chip bar, the standalone "Clear chat history" button and the long redacted-context disclaimer from the body.
+
+Verified: tsc clean, ESLint clean, phase2Hub tests pass. Visual/keyboard behaviour verifies on an Android build (web preview is fail-closed Safe Start for the whole app).
+
+
 ## Home redesign + specific-problem status + tappable notification (2026-06)
 
 **Notification tap → Patrol:** `ProtectionNotificationFactory.build` now sets a `contentIntent` that deep-links `apollo:///patrol` (ACTION_VIEW, app package, NEW_TASK|SINGLE_TOP) so tapping the protection notification opens Apollo on the Patrol tab. Native → only on an Android build.
