@@ -6,7 +6,7 @@ import json
 import sys
 
 # Backend URL from environment
-BACKEND_URL = "https://apollo-patrol.preview.emergentagent.com/api"
+BACKEND_URL = "https://higgins-refine.preview.emergentagent.com/api"
 
 def log(msg):
     print(f"[TEST] {msg}", flush=True)

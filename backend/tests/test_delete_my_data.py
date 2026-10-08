@@ -2,7 +2,7 @@
 import os
 import requests
 
-BASE_URL = (os.environ.get("EXPO_BACKEND_URL") or os.environ.get("EXPO_PUBLIC_BACKEND_URL") or "https://apollo-patrol.preview.emergentagent.com").rstrip("/")
+BASE_URL = (os.environ.get("EXPO_BACKEND_URL") or os.environ.get("EXPO_PUBLIC_BACKEND_URL") or "https://higgins-refine.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
 
 

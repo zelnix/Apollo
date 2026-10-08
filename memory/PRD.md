@@ -1,3 +1,12 @@
+## Multi-Select filter verification + Scam v5 re-analysis validation (2026-06, fork)
+
+**Multi-Select filter (`src/components/MultiSelectFilter.tsx`) — VERIFIED on Patrol + Scams:**
+- Patrol (`patrol-filter`): "Filter activity" opens the Sheet (Show all / Needs you / Warnings / Threats stopped / Resolved), multi-select shows a count badge, and the activity list filters by OR semantics. Confirmed via screenshot (badge "2", "Nothing matches the filters you chose.").
+- Scams (`scam-filter`): "Filter alerts" (Australia/USA/UK/Europe/Global/High/Extreme). Confirmed by text assertion: AU+EXTREME correctly HIDES ASOS (Moderate/Global/potential) while KEEPING NASC (Extreme, AU-confirmed) and the AU Scamwatch "Food delivery" alert; "Show all" restores every alert. Empty selection = show everything.
+
+**Scam Alerts v5 re-analysis — VALIDATED (backend):** `learning_feed_items` 96/98 at `analysisVersion:5` (2 transient pending, hourly loop fills). Breakdown: 6 `specific_scam` + 5 `emerging_pattern` consumer alerts surfaced; 85 `general_education` + 27 `organisation`-audience items excluded. Spot-checks: "Incident affecting ASOS customers" → specific_scam/consumer (SHOWN); "Iranian cyber targeting of dissidents", Europol law-enforcement items → organisation (HIDDEN). Nation-state/espionage/APT correctly filtered out; consumer-brand breaches retained. Official source acronyms expanded (e.g. "UK National Cyber Security Centre").
+
+
 ## Home + Higgins + Patrol navigation reshuffle (2026-06)
 
 **Home (`app/(tabs)/home.tsx`):**
