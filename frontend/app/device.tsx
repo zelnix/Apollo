@@ -5,8 +5,8 @@ import * as Crypto from "expo-crypto";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
 import RefreshCw from "lucide-react-native/icons/refresh-cw";
 import X from "lucide-react-native/icons/x";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, ScrollView, Switch, Text, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AppState, Platform, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { markCheckDone } from "@/src/store/checkCompletion";
@@ -14,6 +14,7 @@ import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
 import { recordCheck } from "@/src/store/checkHistoryStore";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
+import { Sheet } from "@/src/components/Sheet";
 import { assessDevice, deriveDeviceSecurityChanges, DEVICE_CHANGE_LABEL, DEVICE_STATUS, EMPTY_SIGNALS, SELF_REPORT, type DeviceFinding, type DevicePlatform, type DeviceSecurityChange, type DeviceSignals, type SelfReport } from "@/src/domain/deviceAnalysis";
 import { groupByCategory, OUTCOME_LABEL, OUTCOME_TONE, overallState, runDeviceReview, type CheckResult, type ReviewPlatform } from "@/src/domain/deviceReview";
 import { buildDeviceCheckResult } from "@/src/domain/deviceCheckResultAdapter";
@@ -53,7 +54,7 @@ const RECOMMENDED: Record<string, string> = {
   remote_access: "Should be: No remote-access apps installed",
   accessibility: "Should be: Only genuine accessibility helpers",
   unexpected_app: "Should be: No unrecognised apps",
-  sensitive_permissions: "Should be: Reviewed — revoke access apps don\u2019t need",
+  sensitive_permissions: "Should be: Reviewed \u2014 revoke access apps don\u2019t need",
   notification_access: "Should be: Only apps you trust",
   sharing_services: "Should be: Off unless needed",
   vpn: "Should be: Only Apollo\u2019s VPN active",
@@ -62,6 +63,65 @@ const RECOMMENDED: Record<string, string> = {
   certificates: "Should be: No user-installed certificates",
   encryption: "Should be: On",
   backup: "Should be: Enabled and recent",
+};
+
+/** Step-by-step fix guides for each check. Platform-specific where needed. */
+const FIX_GUIDE: Record<string, { android: string[]; ios: string[]; fallback: string[] }> = {
+  lock: {
+    android: ["Open Settings \u2192 Security & privacy", "Tap \u2018Screen lock\u2019", "Choose PIN, Password or Pattern", "Set a strong code, then confirm it"],
+    ios: ["Open Settings \u2192 Face ID & Passcode (or Touch ID & Passcode)", "Tap \u2018Turn Passcode On\u2019", "Choose a 6-digit PIN or tap \u2018Passcode Options\u2019 for more", "Enter and confirm your passcode"],
+    fallback: ["Open your device\u2019s security settings", "Enable screen lock with a PIN, password or biometric"],
+  },
+  os_updates: {
+    android: ["Open Settings \u2192 System \u2192 System update", "Tap \u2018Check for update\u2019", "If an update is available, tap \u2018Download and install\u2019", "Restart when prompted"],
+    ios: ["Open Settings \u2192 General \u2192 Software Update", "If an update is available, tap \u2018Download and Install\u2019", "Enter your passcode if asked", "Wait for the update to complete"],
+    fallback: ["Check for system updates in your device settings", "Install any available updates"],
+  },
+  developer_mode: {
+    android: ["Open Settings \u2192 System \u2192 Developer options", "Toggle \u2018Developer options\u2019 to OFF at the top", "If you don\u2019t see Developer options, it\u2019s already off \u2014 that\u2019s correct"],
+    ios: ["Open Settings \u2192 Privacy & Security", "If \u2018Developer Mode\u2019 appears, toggle it OFF", "If you don\u2019t see it, it\u2019s already off \u2014 that\u2019s correct"],
+    fallback: ["Open your device settings and disable Developer Mode"],
+  },
+  unknown_sources: {
+    android: ["Open Settings \u2192 Apps \u2192 Special app access", "Tap \u2018Install unknown apps\u2019", "Check EACH app in the list", "Set them all to \u2018Not allowed\u2019"],
+    ios: ["iOS blocks unknown sources by default", "No action needed unless you\u2019ve jailbroken your device"],
+    fallback: ["Disable installation from unknown sources in your security settings"],
+  },
+  accessibility: {
+    android: ["Open Settings \u2192 Accessibility", "Scroll through \u2018Downloaded services\u2019", "Turn OFF any service you don\u2019t recognise", "Legitimate helpers: TalkBack, Switch Access, Voice Access"],
+    ios: ["Open Settings \u2192 Accessibility", "Review each enabled feature", "Disable any you don\u2019t recognise or use"],
+    fallback: ["Review accessibility services and disable any you don\u2019t recognise"],
+  },
+  sensitive_permissions: {
+    android: ["Open Settings \u2192 Privacy \u2192 Permission manager", "Tap Camera, then review which apps have access", "Repeat for Microphone, Location and Contacts", "Revoke access from any app that doesn\u2019t need it"],
+    ios: ["Open Settings \u2192 Privacy & Security", "Tap Camera, then review which apps have access", "Repeat for Microphone, Location and Contacts", "Toggle OFF any app that doesn\u2019t need it"],
+    fallback: ["Review app permissions for camera, microphone and location", "Revoke access from apps that don\u2019t need it"],
+  },
+  notification_access: {
+    android: ["Open Settings \u2192 Apps \u2192 Special app access", "Tap \u2018Notification access\u2019", "Turn OFF any app you don\u2019t trust", "Keep Apollo ON if you use text auto-scanning"],
+    ios: ["Open Settings \u2192 Notifications", "Review each app\u2019s notification permission", "Disable notifications for apps you don\u2019t trust"],
+    fallback: ["Review which apps have notification access and disable untrusted ones"],
+  },
+  remote_access: {
+    android: ["Open Settings \u2192 Apps", "Search for: AnyDesk, TeamViewer, QuickSupport", "If found and you don\u2019t need it, tap \u2018Uninstall\u2019", "If you\u2019re unsure, tap \u2018Disable\u2019 instead"],
+    ios: ["Open Settings \u2192 General \u2192 iPhone Storage", "Search for remote access apps (AnyDesk, TeamViewer)", "If found, tap the app \u2192 \u2018Delete App\u2019"],
+    fallback: ["Check for and remove remote-access apps you didn\u2019t install"],
+  },
+  apollo_protection: {
+    android: ["Return to Apollo\u2019s home screen", "Tap \u2018Start Protection\u2019 if shown", "Grant VPN permission when prompted"],
+    ios: ["Return to Apollo\u2019s home screen", "Tap \u2018Start Protection\u2019 if shown", "Approve the VPN profile when prompted"],
+    fallback: ["Open Apollo and start protection from the home screen"],
+  },
+  encryption: {
+    android: ["Open Settings \u2192 Security \u2192 Encryption & credentials", "Check that \u2018Encrypt phone\u2019 shows \u2018Encrypted\u2019", "If not, tap it and follow the prompts (this may take a while)"],
+    ios: ["If you have a passcode set, your device is already encrypted", "No further action needed"],
+    fallback: ["Enable device encryption in your security settings"],
+  },
+  backup: {
+    android: ["Open Settings \u2192 System \u2192 Backup", "Toggle \u2018Back up to Google Drive\u2019 ON", "Tap \u2018Back up now\u2019 to run an immediate backup"],
+    ios: ["Open Settings \u2192 [Your Name] \u2192 iCloud \u2192 iCloud Backup", "Toggle \u2018iCloud Backup\u2019 ON", "Tap \u2018Back Up Now\u2019 to run an immediate backup"],
+    fallback: ["Enable automatic backups in your device settings"],
+  },
 };
 
 const useStyles = makeStyles((c) => ({
@@ -83,6 +143,9 @@ const useStyles = makeStyles((c) => ({
   settingsLink: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.sm, backgroundColor: c.surfaceSecondary, borderRadius: radius.md, marginTop: spacing.xs },
   settingsLabel: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.brandPrimary },
   settingsPath: { fontFamily: fonts.text, fontSize: 12, color: c.onSurfaceSecondary, flex: 1 },
+  progressTrack: { height: 6, backgroundColor: c.borderStrong, borderRadius: 3, marginTop: spacing.xs, overflow: "hidden" as const },
+  progressFill: { height: 6, borderRadius: 3 },
+  fixStep: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurface, marginBottom: spacing.xs },
 }));
 
 export default function CheckDevice() {
@@ -155,6 +218,50 @@ export default function CheckDevice() {
   useEffect(() => { if (checkSequence) setSubmission({ submissionId: Crypto.randomUUID(), result, observedAt: new Date().toISOString(), source: "device_check" }); }, [checkSequence]); // eslint-disable-line react-hooks/exhaustive-deps
   const [historyKey, setHistoryKey] = useState(0);
   useEffect(() => { if (checkSequence) { void recordCheck("device", { at: new Date().toISOString(), state: result.state, summary: meta.title }); setHistoryKey((k) => k + 1); } }, [checkSequence]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Guided "Fix it" flow ──
+  const [fixingCheck, setFixingCheck] = useState<CheckResult | null>(null);
+  const pendingVerifyRef = useRef<string | null>(null);
+  const [fixProgress, setFixProgress] = useState<Record<string, "pending" | "verified" | "still_wrong">>({});
+
+  // When user returns from Settings, automatically re-check and verify
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active" && pendingVerifyRef.current) {
+        void refreshDevice(false);
+      }
+    });
+    return () => sub.remove();
+  }, [refreshDevice]);
+
+  // After a re-check completes, verify whether the pending fix worked
+  useEffect(() => {
+    const id = pendingVerifyRef.current;
+    if (!id || !review) return;
+    const updated = review.results.find((r) => r.id === id);
+    if (!updated) return;
+    pendingVerifyRef.current = null;
+    if (updated.outcome === "checked") {
+      setFixProgress((prev) => ({ ...prev, [id]: "verified" }));
+      showToast(`\u2705 ${updated.title} is now correct!`, "resting");
+    } else {
+      setFixProgress((prev) => ({ ...prev, [id]: "still_wrong" }));
+      showToast(`${updated.title} still needs attention \u2014 try the steps again or ask Higgins.`, "growling");
+    }
+  }, [checkSequence, review, showToast]);
+
+  const startFix = (r: CheckResult) => { setFixingCheck(r); };
+  const confirmAndOpenSettings = () => {
+    if (!fixingCheck) return;
+    pendingVerifyRef.current = fixingCheck.id;
+    setFixProgress((prev) => ({ ...prev, [fixingCheck.id]: "pending" }));
+    openCheck(fixingCheck);
+    setFixingCheck(null);
+  };
+
+  // Progress counter
+  const totalActionable = review?.results.filter((r) => r.outcome === "action" || r.outcome === "review").length ?? 0;
+  const fixedCount = Object.values(fixProgress).filter((v) => v === "verified").length;
 
   const save = async () => {
     setSaving(true);
@@ -234,21 +341,39 @@ export default function CheckDevice() {
         {reviewGroups.length ? (
           <View style={{ gap: spacing.md }} testID="device-review">
             <SectionTitle>Security & privacy review</SectionTitle>
-            <Body>Every setting Apollo checks on this {review!.osLabel}, with a clear result for each. Tap “Open Settings” and Higgins takes you to the exact place to make a change.</Body>
+            {totalActionable > 0 ? (
+              <Card style={{ gap: spacing.sm, borderColor: fixedCount >= totalActionable ? colors.resting : colors.growling }} testID="device-fix-progress">
+                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.label}>{fixedCount >= totalActionable ? "All items fixed!" : `${fixedCount} of ${totalActionable} fixed`}</Text>
+                    <View style={s.progressTrack}><View style={[s.progressFill, { width: `${totalActionable > 0 ? Math.round((fixedCount / totalActionable) * 100) : 0}%` as any, backgroundColor: fixedCount >= totalActionable ? colors.resting : colors.growling }]} /></View>
+                  </View>
+                  <Pill tone={fixedCount >= totalActionable ? "resting" : "growling"} label={fixedCount >= totalActionable ? "\u2705 Done" : `${totalActionable - fixedCount} left`} />
+                </View>
+              </Card>
+            ) : null}
             {reviewGroups.map((group) => (
               <View key={group.category} style={{ gap: spacing.sm }} testID={`device-review-cat-${group.category}`}>
                 <Text style={s.catLabel}>{group.label}</Text>
                 {group.results.map((r) => {
                   const tone = OUTCOME_TONE[r.outcome];
                   const rec = RECOMMENDED[r.id];
+                  const progress = fixProgress[r.id];
+                  const needsFix = r.outcome === "action" || r.outcome === "review" || r.outcome === "manual";
+                  const guide = FIX_GUIDE[r.id];
                   return (
-                    <Card key={r.id} style={{ gap: spacing.xs, borderColor: toneColor(colors, tone) }} testID={`device-check-${r.id}`}>
-                      <View style={s.row}><Text style={[s.label, { flex: 1 }]}>{r.title}</Text><Pill tone={tone} label={OUTCOME_LABEL[r.outcome]} testID={`device-check-${r.id}-outcome`} /></View>
+                    <Card key={r.id} style={{ gap: spacing.xs, borderColor: progress === "verified" ? colors.resting : toneColor(colors, tone) }} testID={`device-check-${r.id}`}>
+                      <View style={s.row}>
+                        <Text style={[s.label, { flex: 1 }]}>{r.title}</Text>
+                        {progress === "verified" ? <Pill tone="resting" label={"\u2705 Fixed"} testID={`device-check-${r.id}-fixed`} /> : progress === "still_wrong" ? <Pill tone="barking" label={"\u274c Still wrong"} testID={`device-check-${r.id}-still`} /> : <Pill tone={tone} label={OUTCOME_LABEL[r.outcome]} testID={`device-check-${r.id}-outcome`} />}
+                      </View>
                       {rec ? <Text style={s.rec} testID={`device-check-${r.id}-rec`}>{rec}</Text> : null}
                       {r.risk ? <Text style={s.why}>{r.risk}</Text> : null}
                       {r.remediation && r.outcome !== "checked" ? <Text style={s.why}>{r.remediation}</Text> : null}
-                      <Text style={s.mono}>{r.evidence}{r.verifiedBy === "user_confirmed" ? " · You confirmed this." : r.verifiedBy === "observation" ? " · Verified by Apollo." : ""}</Text>
-                      {r.settings ? (
+                      <Text style={s.mono}>{r.evidence}{r.verifiedBy === "user_confirmed" ? " \u00b7 You confirmed this." : r.verifiedBy === "observation" ? " \u00b7 Verified by Apollo." : ""}</Text>
+                      {needsFix && guide ? (
+                        <Button testID={`device-check-${r.id}-fix`} variant={r.outcome === "action" ? "danger" : "secondary"} label={progress === "still_wrong" ? "Try again" : "Fix it"} onPress={() => startFix(r)} />
+                      ) : r.settings ? (
                         <Pressable testID={`device-check-${r.id}-open`} accessibilityRole="button" onPress={() => openCheck(r)} style={({ pressed }) => [s.settingsLink, { opacity: pressed ? 0.7 : 1 }]}>
                           <Text style={s.settingsLabel}>{platform === "web" && !hostKind ? "Show Settings steps" : "Open Settings"}</Text>
                           <Text style={s.settingsPath}>{r.settings}</Text>
@@ -294,6 +419,22 @@ export default function CheckDevice() {
         </Card>
         <CheckHistoryCard gate="device" refreshKey={historyKey} testID="device-history" />
       </ScrollView>
+
+      {/* ── Guided Fix Sheet ── */}
+      <Sheet visible={!!fixingCheck} onClose={() => setFixingCheck(null)} title={`Fix: ${fixingCheck?.title ?? ""}`} testID="device-fix-sheet">
+        {fixingCheck ? (
+          <>
+            {RECOMMENDED[fixingCheck.id] ? <Text style={s.rec}>{RECOMMENDED[fixingCheck.id]}</Text> : null}
+            <SectionTitle>Steps</SectionTitle>
+            {(FIX_GUIDE[fixingCheck.id]?.[platform === "android" ? "android" : platform === "ios" ? "ios" : "fallback"] ?? FIX_GUIDE[fixingCheck.id]?.fallback ?? []).map((step, i) => (
+              <Text key={i} style={s.fixStep}>{i + 1}. {step}</Text>
+            ))}
+            <Body>When you return, Apollo will re-check this setting automatically.</Body>
+            <Button testID="device-fix-open-settings" variant="primary" label="Open Settings now" onPress={confirmAndOpenSettings} />
+            <Button testID="device-fix-cancel" variant="ghost" label="Cancel" onPress={() => setFixingCheck(null)} />
+          </>
+        ) : null}
+      </Sheet>
     </View>
   );
 }
