@@ -27,6 +27,7 @@ import { verifyWebsite } from "@/src/domain/brand";
 import { formatDomainInfoLine } from "@/src/domain/domainInfo";
 import { analysePage, type PageAnalysis, type PageSignals } from "@/src/domain/pageAnalysis";
 import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
+import { saveCheck } from "@/src/store/savedCheckStore";
 import { useApollo, type CheckOutcome } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -64,6 +65,7 @@ export default function CheckLink() {
   const [reportBusy, setReportBusy] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
   const [tech, setTech] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [page, setPage] = useState<PageAnalysis | null>(null);
   const [pageEvent, setPageEvent] = useState<PatrolEvent | null>(null);
   const [pageError, setPageError] = useState<string | null>(null);
@@ -252,6 +254,7 @@ export default function CheckLink() {
                     <Button testID="check-continue-anyway" variant="ghost" label="Record my choice to continue" onPress={() => { void upsertEvent({ ...liveEvent, why: [...liveEvent.why, "You chose to continue anyway. Apollo still recommends leaving this site."] }); void sendFeedback("override", liveEvent, outcome.intel?.sources.map((x) => x.name) ?? []).catch(() => undefined); showToast("Choice recorded. Apollo still recommends leaving this site.", "growling"); }} />
                   ) : null}
                   {liveEvent.state !== "resting" ? <Button testID="check-report-mistake" variant="ghost" label="Report mistake" onPress={() => setReport(true)} /> : null}
+                  <Button testID="check-save" variant="ghost" label={saved ? "Saved ✓ — View saved checks" : "Save this check"} onPress={() => { if (saved) { router.push("/saved-checks"); return; } void saveCheck({ id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`, gate: "link", title: liveEvent.headline ?? outcome!.decision.headline, subject: outcome?.local.host || input.trim() || "link", state: liveEvent.state, stateName: STATE_NAME[liveEvent.state], summary: liveEvent.what_happened ?? outcome!.decision.what_happened, recommendation: liveEvent.what_to_do ?? outcome!.decision.what_to_do, sections: [{ title: "Why", lines: liveEvent.why ?? outcome!.decision.why }, { title: "Intelligence", lines: outcome?.intel ? outcome.intel.sources.map((x) => `${x.name} = ${x.status}`) : [] }, { title: "Confidence", lines: [outcome!.decision.confidence] }] }).then(() => { setSaved(true); showToast("Saved. Find it under Saved checks.", "neutral"); }); }} />
                 </Card>
               ) : null}
             </Animated.View>

@@ -1,3 +1,23 @@
+## Saved Checks Everywhere + Settings reorganisation (2026-06)
+
+**Saved Checks Everywhere (link / message / internet):**
+- `src/domain/savedCheck.ts` (pure, 2/2 tests): `SavedCheck`/`buildSavedCheck` (drops empty sections, stamps savedAt) + `GATE_LABEL`. `src/store/savedCheckStore.ts`: local save/list/delete, cap 40, newest first, no server.
+- "Save this check" button added to `app/check.tsx` (link), `app/message.tsx`, `app/network.tsx` result actions — builds a snapshot (title, subject, state, summary, recommendation, sections: why/signals/technical/intelligence). After saving the button becomes "Saved ✓ — View saved checks".
+- `app/saved-checks.tsx` viewer: lists all saved checks (gate label + subject + time), inline-expands to full sections, per-item delete. Entry point: new "Saved checks" card on the Check It tab (`check-it.tsx`, bookmark icon).
+
+**Settings reorganisation (`app/settings/index.tsx`, full rewrite per brief):**
+- Replaced the long stack of separately-framed cards with 6 concise grouped cards of slim rows (reusable in-file `NavRow`/`SwitchRow`, 48px targets, chevron/switch/badge — not all three):
+  - **Protection & permissions** — "Website protection" nav row → Gates (`/(tabs)/guard?gate=site`); the Android Site Gate VPN enable action shows only when setup is required (no redundant healthy status card; no "Protection on"/unverified "Watching").
+  - **Alerts & voice** — security-alert OS label (never a delivery claim) + contextual allow/open-settings, Preview an alert; Quiet hours toggle (times when enabled); Higgins voice toggle + Hear a sample.
+  - **App preferences** — Battery saver toggle (never implies protection off); Minimise Apollo as a row.
+  - **Family & trusted links** — Family sharing → /family; Trusted links count with inline expand + per-link revoke (one exact link, never overrides a confirmed threat), empty "No trusted links".
+  - **Privacy & data** — Privacy statement is now a single tappable row → `/privacy-disclosure` (removed the inline `PRIVACY_POLICY_SUMMARY` bullet list from Settings only; disclosure page unchanged); Clear Patrol history (keeps the confirm dialog). Anonymous device reference removed from Settings (lives in Support).
+  - **Help & about** — Get help → /support; How to share into Apollo as a brief expandable help row; concise About Apollo (Harmony Wellness Group; Apollo checks/protects, Higgins explains). "Support Apollo" contribution card feature-gated behind `SHOW_CONTRIBUTION = false` (no live payments).
+- All functional testIDs preserved (push, quiet, higgins, battery/minimise, family, trust/revoke, clear-patrol, support, site-enable/status, alert-preview). systemHealth settings test still passes.
+
+**Verification:** tsc + ESLint clean; tests — savedCheck 2/2, appReport 1/1, appPermissionFindings 7/7, gatesOverview 17/17, systemHealth 5/5, messageGuardrails 6/6 (no regressions). App bundles (expected Safe Start). Saved-check persistence and the reorganised Settings verify fully on an Android build.
+
+
 ## Saved App Reports + summary-first Internet Gate (2026-06)
 
 **Saved App Reports (App Gate):**

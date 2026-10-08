@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { markCheckDone } from "@/src/store/checkCompletion";
 import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
 import { recordCheck } from "@/src/store/checkHistoryStore";
+import { saveCheck } from "@/src/store/savedCheckStore";
 import { Body, Button, Card, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { analyseNetwork, NETWORK_CONTEXTS, type NetworkAnalysis, type NetworkContext } from "@/src/domain/networkAnalysis";
 import { SCENT_WINDOW_MS } from "@/src/domain/threatScent";
@@ -47,13 +48,14 @@ export default function CheckNetwork() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { ready, setupDone, network, capabilities, protection, trustedSsids, trustNetwork, events, upsertEvent, deviceId, adapterLabel, verifyNow, refreshing } = useApollo();
+  const { ready, setupDone, network, capabilities, protection, trustedSsids, trustNetwork, events, upsertEvent, deviceId, adapterLabel, verifyNow, refreshing, showToast } = useApollo();
   const [context, setContext] = useState<NetworkContext>("unknown");
   const [expected, setExpected] = useState("");
   const [vpnTrusted, setVpnTrusted] = useState<boolean | null>(null);
   const [captiveUrl, setCaptiveUrl] = useState("");
   const [result, setResult] = useState<{ submissionId: string; a: NetworkAnalysis; event: PatrolEvent | null } | null>(null);
   const [showFull, setShowFull] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   const guard = capabilities.find((c) => c.id === "connection_guard");
   const site = capabilities.find((c) => c.id === "site_guard");
@@ -162,7 +164,8 @@ export default function CheckNetwork() {
             ) : null}
             <Card style={{ gap: spacing.sm }} testID="network-actions">
               <GateInvestigation submission={result} testID="network-ask" label="Ask Higgins about this network" context={issueContext({ gate: "network", issue_summary: a.title, assessment_state: a.state, findings: a.why.slice(0, 6).map((summary) => ({ summary, provenance: "inferred", status: a.state === "barking" ? "warning" : "uncertain" })), uncertainty: ["These signals do not establish that anyone intercepted traffic."], confirmed_protective_actions: [], user_reported_actions: context === "unknown" ? [] : [`Network context: ${context}`], original_evidence: [{ kind: "text", value: `Network assessment (available signals only; no traffic inspection):\n${a.title}\n${a.why.join("\n")}\nContext reported by the person: ${context}`, label: "network signals" }] })} question="What should I do on this network?" />
-              <Button testID="network-again" variant="ghost" label="Check again" onPress={() => { setResult(null); setShowFull(false); }} />
+              <Button testID="network-save" variant="ghost" label={saved ? "Saved ✓ — View saved checks" : "Save this check"} onPress={() => { if (saved) { router.push("/saved-checks"); return; } void saveCheck({ id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`, gate: "network", title: a.title, subject: a.ssid || "This network", state: a.state, stateName: STATE_NAME[a.state], summary: a.verdict, recommendation: a.recommendation, sections: [{ title: "Why Apollo reacted", lines: a.why }, { title: "Technical details", lines: a.technical }, { title: "Reference", lines: [`Scenario: ${a.scenario}`] }] }).then(() => { setSaved(true); showToast("Saved. Find it under Saved checks.", "neutral"); }); }} />
+              <Button testID="network-again" variant="ghost" label="Check again" onPress={() => { setResult(null); setShowFull(false); setSaved(false); }} />
             </Card>
           </>
         ) : null}

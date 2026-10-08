@@ -20,6 +20,7 @@ import { STATE_LABEL, STATE_MEANING, STATE_NAME } from "@/src/domain/types";
 import { type MessageOutcome, useApollo } from "@/src/store/ApolloContext";
 import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
 import { recordCheck } from "@/src/store/checkHistoryStore";
+import { saveCheck } from "@/src/store/savedCheckStore";
 import { apiUpload } from "@/src/api/client";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -66,6 +67,7 @@ export default function CheckMessage() {
   const [busy, setBusy] = useState<"idle" | "reading" | "checking">("idle");
   const [result, setResult] = useState<MessageOutcome | null>(null);
   const [verify, setVerify] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [higginsResolved, setHigginsResolved] = useState(false);
   const [screenshotUri, setScreenshotUri] = useState<string | null>(sharedImage ? String(sharedImage) : null);
@@ -203,6 +205,7 @@ export default function CheckMessage() {
                 <GateInvestigation submission={result} eventId={result.event?.event_id} onResolved={setHigginsResolved} testID="message-tell-more" label="Continue this investigation" context={issueContext({ gate: "text", issue_summary: a.scenarioTitle, assessment_state: a.state, findings: a.signalLabels.map((summary) => ({ summary, provenance: "observed", status: "uncertain" })), uncertainty: ["The sender was not independently authenticated."], confirmed_protective_actions: [], user_reported_actions: [], event_id: result.event?.event_id, original_evidence: [{ kind: "text", value: `From: ${sender}\n${text}`, label: screenshotUri ? "text extracted from the screenshot" : "submitted message" }, ...(shared?.files?.map((file, index) => ({ kind: "file" as const, uri: file.path, name: file.fileName || `shared-attachment-${index + 1}`, mediaType: file.mimeType || "application/octet-stream", size: file.size ?? undefined })) ?? (screenshotUri ? [{ kind: "file" as const, uri: screenshotUri, name: "screenshot.jpg", mediaType: "image/jpeg" }] : []))] })} question="Explain this message check in plain language and what I should do." />
                 {result.event ? <RecoveryFlow event={result.event} kinds={["called", "clicked", "password", "code", "money", "info", "app"]} linkToCheck={a.signals.urls[0] ?? null} testID="message-recovery" /> : null}
                 {result.event ? <Button testID="message-mark-safe" variant="ghost" label="Mark as handled" onPress={() => { void resolveEvent(result.event!); showToast("Marked as handled. This does not verify the sender or suppress future alerts.", "neutral"); goBackOrHome(router); }} /> : null}
+                <Button testID="message-save" variant="ghost" label={saved ? "Saved ✓ — View saved checks" : "Save this check"} onPress={() => { if (saved) { router.push("/saved-checks"); return; } void saveCheck({ id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`, gate: "message", title: a.scenarioTitle, subject: sender || "Sender not supplied", state: a.state, stateName: STATE_NAME[a.state], summary: result.explanation?.summary ?? a.verdict, recommendation: result.explanation?.recommendation ?? a.recommendation, sections: [{ title: "Why", lines: result.explanation?.why?.length ? result.explanation.why : a.why }, { title: "Signals Apollo saw", lines: a.signalLabels }, { title: "Links in this message", lines: a.signals.urls }] }).then(() => { setSaved(true); showToast("Saved. Find it under Saved checks.", "neutral"); }); }} />
               </Card>
             </View>
           </>
