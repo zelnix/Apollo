@@ -129,3 +129,22 @@ const capitalize = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 export function looksLikeInternalCode(text: string): boolean {
   return /\b(known_threat|ears_up|user_started|server_projection|recorded_outcome|[a-z]+_[a-z]+(?:_[a-z]+)+)\b/.test(text);
 }
+
+// --- Higgins investigation verdicts (plain English, never raw enum values) ---------------------------
+export function assessmentLabel(assessment: string): string {
+  switch (assessment) {
+    case "concern_found": return "Concern found";
+    case "no_concern_found_within_scope": return "No concern found in the checks performed";
+    case "uncertain": return "Not fully certain yet";
+    default: return "Checked";
+  }
+}
+export function attentionLabel(attention: string): string {
+  switch (attention) {
+    case "none": return "No action needed";
+    case "review": return "Worth a review";
+    case "action_needed": return "Action needed";
+    case "urgent": return "Needs attention now";
+    default: return "Review";
+  }
+}

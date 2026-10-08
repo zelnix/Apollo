@@ -63,15 +63,15 @@ export function resolveApolloState(input: StateInput): StateResolution {
   }
   const barking = active.filter((e) => e.state === "barking").sort(byNewest)[0];
   if (barking) {
-    return { state: "barking", reason: `${capitalise(areaLabel(barking.category))} needs your decision.`, recovering: false, visibilityLost: false, drivingEvent: barking };
+    return { state: "barking", reason: `${capitalise(areaLabel(barking.category))} needs your decision.`, reasonRoute: `/patrol/${encodeURIComponent(barking.event_id)}`, recovering: false, visibilityLost: false, drivingEvent: barking };
   }
   const growling = active.filter((e) => e.state === "growling").sort(byNewest)[0];
   if (growling) {
-    return { state: "growling", reason: `${capitalise(areaLabel(growling.category))} looks suspicious and isn't confirmed yet.`, recovering: false, visibilityLost: false, drivingEvent: growling };
+    return { state: "growling", reason: `${capitalise(areaLabel(growling.category))} looks suspicious and isn't confirmed yet.`, reasonRoute: `/patrol/${encodeURIComponent(growling.event_id)}`, recovering: false, visibilityLost: false, drivingEvent: growling };
   }
   const earsUp = active.filter((e) => e.state === "ears_up").sort(byNewest)[0];
   if (earsUp) {
-    return { state: "ears_up", reason: `${capitalise(areaLabel(earsUp.category))} is worth a careful look.`, recovering: false, visibilityLost: false, drivingEvent: earsUp };
+    return { state: "ears_up", reason: `${capitalise(areaLabel(earsUp.category))} is worth a careful look.`, reasonRoute: `/patrol/${encodeURIComponent(earsUp.event_id)}`, recovering: false, visibilityLost: false, drivingEvent: earsUp };
   }
 
   // No active events. Recovery rules apply.

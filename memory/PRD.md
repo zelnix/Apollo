@@ -1,3 +1,15 @@
+## Messaging audit — Phases 2–4 + Email copy (2026-06)
+
+Completed the four follow-ups to the Phase-1 message-voice foundation:
+
+- **Finish The Sweep:** Higgins investigation verdicts no longer show raw enums — `messageVoice.assessmentLabel`/`attentionLabel` map them to plain English in `InvestigationView.tsx` (assessment/attention Pills), and the action note no longer exposes raw observation status/`unavailableReason`. Check results already use proper STATE label maps (raw intel values stay under the "Technical details" expander, which the spec permits). Onboarding title fixed earlier; error copy is already friendly.
+- **Universal Deep Links:** Notifications deep-link to the exact event (`/patrol/{id}`), and the Home/Apollo status reason now carries `reasonRoute` to the specific driving event instead of a generic tab (`stateMachine.ts`). Patrol list/detail already route by event id.
+- **Message Guardrails:** NEW `tests/messageGuardrails.test.ts` (4 tests) fails the build if any generated message leaks an internal code (`looksLikeInternalCode` across every category×state×verified), overstates a block without verified enforcement, or routes to a non-existent screen (checks the deep-link target route file exists). Covers `projectedEventVoice`, `patrol_sync` egress output, `resolveApolloState` reasons, and `eventLocalAlert` routing.
+- **Email Me A Copy:** Support screen has an optional "Your email (for a copy)" field, persisted (`apollo.support.user_email.v1`); `openSupportEmail` CCs the user (MailComposer `ccRecipients` + mailto `cc=`), so a copy lands in their inbox as well as their Sent folder.
+
+Verification: tsc + ESLint clean on all touched files; new guardrails + messageVoice 12/12; full suite 440/447 (same 7 pre-existing env/native/tab-order/brand-asset failures, none messaging-related); Android bundle HTTP 200.
+
+
 ## Apollo-wide message & event-messaging audit — Phase 1 + partial 2/3 (2026-06)
 
 Standing requirement: every user-facing message answers What/Where/Why/What-Apollo-is-doing/What-to-do/Where-to-go, never leaks internal codes, never overstates status, and deep-links to the exact record. Root cause of the screenshot ("known_threat check", "ears_up", "Something changed", "server_projection_of_recorded_outcome") was the privacy/sync projection layer substituting code-exposing text that the UI rendered verbatim.

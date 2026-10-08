@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
 import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
 import { Body, Button, Card, Pill, type Tone } from "@/src/components/ui";
+import { assessmentLabel, attentionLabel } from "@/src/domain/messageVoice";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import type { CaseState } from "@/src/investigation/caseStore";
 import * as investigationApi from "@/src/investigation/client";
@@ -75,9 +76,9 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
       {progress.slice(-3).map((line, i) => <Text key={`${i}-${line}`} style={s.muted}>{line}</Text>)}
       {caseData?.activeJobId ? <Button testID="inv-cancel" variant="ghost" label="Cancel this investigation" onPress={onCancel} /> : null}</Card> : null}
     {response ? <Card style={[s.card, s.higgins]} testID="inv-response">
-      <View style={s.row}><Pill tone={attentionTone(response.attention)} label={response.attention === "none" ? "No action needed" : response.attention.replace("_", " ")} testID="inv-attention" />
+      <View style={s.row}><Pill tone={attentionTone(response.attention)} label={attentionLabel(response.attention)} testID="inv-attention" />
         <Pill tone="neutral" label={response.completion === "complete" ? "Complete within scope" : response.completion === "partial" ? "Partial — more to examine" : "Higgins has a question"} testID="inv-completion" />
-        <Pill tone="neutral" label={response.assessment.replace(/_/g, " ")} testID="inv-assessment" /></View>
+        <Pill tone="neutral" label={assessmentLabel(response.assessment)} testID="inv-assessment" /></View>
       <Text style={s.text} testID="inv-overview">{response.overview}</Text>
       {response.attentionReason ? <Text style={s.muted}>Why: {response.attentionReason}</Text> : null}
       <HigginsSpeakButton text={expanded ? plain(response.explanationMarkdown) : response.overview} compact testID="inv-hear" scopeId={caseData?.id} />

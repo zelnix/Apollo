@@ -14,8 +14,8 @@ import Copy from "lucide-react-native/icons/copy";
 import FileDown from "lucide-react-native/icons/file-down";
 import Mail from "lucide-react-native/icons/mail";
 import X from "lucide-react-native/icons/x";
-import React, { useMemo, useState } from "react";
-import { Platform, Pressable, ScrollView, Text, View } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import { Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiGet } from "@/src/api/client";
@@ -31,6 +31,9 @@ import { getOrCreateSupportReference, startNewSupportReference } from "@/src/sup
 import { buildHigginsInfo, buildProtectionRows, buildSupportSummary, renderEmailBody, renderReportHtml, renderSupportSummaryText, type ProtectionState, type SupportProtectionRow } from "@/src/support/supportSummary";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { storage } from "@/src/utils/storage";
+
+const USER_EMAIL_KEY = "apollo.support.user_email.v1";
 
 interface IntelStatus { safe_browsing: { status: string; detail: string }; blocklist: { status: string; entries: number } }
 const STATUS: Record<CheckStatus, string> = { pending: "Could not check", checking: "Checking", healthy: "Working", degraded: "Needs attention", unavailable: "Could not check" };
@@ -64,6 +67,7 @@ const useStyles = makeStyles((c) => ({
   refBox: { padding: spacing.md, borderRadius: radius.md, backgroundColor: c.surfaceTertiary, gap: 2 },
   refValue: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.onSurface },
   logLine: { fontFamily: fonts.text, fontSize: 12, lineHeight: 18, color: c.onSurfaceSecondary },
+  emailInput: { borderWidth: 1, borderColor: c.border, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: 10, fontFamily: fonts.text, fontSize: 15, color: c.onSurface, backgroundColor: c.surfaceTertiary },
 }));
 
 function Section({ title, testID, children, defaultOpen = true }: { title: string; testID: string; children: React.ReactNode; defaultOpen?: boolean }) {
@@ -113,6 +117,8 @@ export default function SupportScreen() {
 
   const [moreDetails, setMoreDetails] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
+  const [userEmail, setUserEmail] = useState("");
+  useEffect(() => { void storage.getItem<string | null>(USER_EMAIL_KEY, null).then((v) => { if (v) setUserEmail(v); }); }, []);
 
   const appDevice = useQuery({ queryKey: ["support-app-device"], queryFn: collectAppDeviceInfo, staleTime: 300_000 });
   const net = useQuery({ queryKey: ["support-net"], queryFn: () => securityAdapter.getNetworkStatus(), staleTime: 30_000 });
@@ -147,9 +153,9 @@ export default function SupportScreen() {
   };
   const emailSupport = async () => {
     if (!ready) return;
-    const outcome = await openSupportEmail(ref!, renderEmailBody(summary!, ref!));
+    const outcome = await openSupportEmail(ref!, renderEmailBody(summary!, ref!), userEmail || null);
     if (outcome === "unavailable") { await Clipboard.setStringAsync(renderSupportSummaryText(summary!, ref!)); showToast(`No email app found. Summary copied — paste it into an email to ${SUPPORT_RECIPIENT}.`, "neutral"); }
-    else showToast("Review the draft, then send it when you're ready.", "resting");
+    else showToast(userEmail ? "Review the draft, then send. A copy will reach your email too." : "Review the draft, then send it when you're ready.", "resting");
   };
   const newRequest = async () => { await startNewSupportReference(); await reference.refetch(); showToast("Started a new support request.", "neutral"); };
 
@@ -229,6 +235,11 @@ export default function SupportScreen() {
       <Section title="Contact Apollo Support" testID="support-contact-section">
         <Body>Prepare an email to Apollo support. Your email app opens with everything filled in — you review and send it yourself. Nothing is sent automatically and logs are never attached unless you attach them.</Body>
         {ref ? <View style={s.refBox} testID="support-reference-box"><Text style={s.detail}>Support reference</Text><Text style={s.refValue} testID="support-reference">{ref}</Text></View> : null}
+        <View style={{ gap: 4 }}>
+          <Text style={s.label}>Your email (optional — for a copy)</Text>
+          <TextInput testID="support-user-email" value={userEmail} onChangeText={(t) => { setUserEmail(t); void storage.setItem(USER_EMAIL_KEY, t.trim()); }} placeholder="you@example.com" placeholderTextColor={colors.muted} autoCapitalize="none" keyboardType="email-address" autoCorrect={false} style={s.emailInput} />
+          <Body style={s.detail}>Add your address and Apollo will CC you, so a copy lands in your inbox as well as your Sent folder.</Body>
+        </View>
         <Button testID="support-email" label="Email Apollo Support" icon={<Mail size={18} color={colors.onBrandPrimary} />} disabled={!ready} onPress={() => void emailSupport()} />
         <Button testID="support-new-request" variant="ghost" label="Start a new support request" onPress={() => void newRequest()} />
         <Body style={s.detail}>Reusing this screen keeps the same reference. Starting a new request creates a fresh one.</Body>
