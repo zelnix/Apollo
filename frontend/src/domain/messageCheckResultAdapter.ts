@@ -3,6 +3,7 @@
 
 import type { MessageAnalysis } from "./messageAnalysis";
 import type { CheckItem, CheckResultModel, EvidenceRow } from "./checkResult";
+import type { ActionLink } from "./checkResult";
 import type { PatrolEvent } from "./types";
 
 function toneForState(state: string): CheckResultModel["tone"] {
@@ -96,6 +97,13 @@ export function buildMessageCheckResult(args: {
   const higginsSays = explanation?.summary ?? a.verdict;
   const whatToDo = explanation?.recommendation ?? a.recommendation;
 
+  // Actionable links — help the person report scam messages.
+  const whatToDoLinks: ActionLink[] = [];
+  if (a.state === "barking" || a.state === "growling") {
+    whatToDoLinks.push({ label: "Report spam texts — forward to 7726 (SPAM)", url: "https://www.fcc.gov/consumers/guides/stop-unwanted-robocalls-and-texts" });
+    whatToDoLinks.push({ label: "Report fraud to the FTC", url: "https://reportfraud.ftc.gov" });
+  }
+
   // Evidence rows.
   const evidence: EvidenceRow[] = [];
   evidence.push({ label: "Scenario", value: `${a.scenario} — ${a.scenarioTitle}` });
@@ -116,6 +124,7 @@ export function buildMessageCheckResult(args: {
     items,
     confidence: confidenceForState(a.state),
     whatToDo: whatToDo !== "Nothing to do." ? whatToDo : undefined,
+    whatToDoLinks: whatToDoLinks.length ? whatToDoLinks : undefined,
     evidence,
     completedAt: new Date().toISOString(),
     investigationId: event?.event_id ?? null,

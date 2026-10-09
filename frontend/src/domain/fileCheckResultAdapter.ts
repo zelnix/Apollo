@@ -4,6 +4,7 @@
 
 import type { FileAnalysis } from "./fileAnalysis";
 import type { CheckItem, CheckResultModel, EvidenceRow } from "./checkResult";
+import type { ActionLink } from "./checkResult";
 import type { PatrolEvent } from "./types";
 
 function toneForState(state: string): CheckResultModel["tone"] {
@@ -89,6 +90,12 @@ export function buildFileCheckResult(args: {
     whatToDo = undefined;
   }
 
+  // Actionable links — help the person report or verify suspicious files.
+  const whatToDoLinks: ActionLink[] = [];
+  if (a.state === "barking" || a.state === "growling") {
+    whatToDoLinks.push({ label: "Scan this file with VirusTotal", url: "https://www.virustotal.com" });
+  }
+
   // Evidence rows for the expandable "Full investigation details".
   const evidence: EvidenceRow[] = a.technical.map((t) => {
     const colonIndex = t.indexOf(":");
@@ -112,6 +119,7 @@ export function buildFileCheckResult(args: {
     items,
     confidence: confidenceForState(a.state),
     whatToDo,
+    whatToDoLinks: whatToDoLinks.length ? whatToDoLinks : undefined,
     evidence,
     completedAt: new Date().toISOString(),
     investigationId: event?.event_id ?? null,

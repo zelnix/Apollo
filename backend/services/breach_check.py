@@ -66,7 +66,13 @@ async def _xposedornot_scan(email: str) -> dict[str, Any]:
         async with httpx.AsyncClient(base_url=_XON_BASE, timeout=12, headers={"user-agent": "Apollo-GuardDog"}) as client:
             r = await _xon_get(client, f"/v1/check-email/{encoded}")
     except httpx.HTTPError:
-        return _unavailable("xposedornot", "The breach service didn't answer. Apollo will try again on the next check.")
+        # Retry once before giving up
+        try:
+            await asyncio.sleep(1.5)
+            async with httpx.AsyncClient(base_url=_XON_BASE, timeout=15, headers={"user-agent": "Apollo-GuardDog"}) as client:
+                r = await _xon_get(client, f"/v1/check-email/{encoded}")
+        except httpx.HTTPError:
+            return _unavailable("xposedornot", "The breach service didn\u2019t answer after retrying. Apollo will try again on the next check.")
     if r.status_code == 404:
         return _clear("xposedornot")
     if r.status_code == 429:
@@ -101,7 +107,15 @@ async def _hibp_scan(email: str) -> dict[str, Any]:
                                  params={"truncateResponse": "false"},
                                  headers={"hibp-api-key": HIBP_API_KEY or "", "user-agent": "Apollo-GuardDog"})
     except httpx.HTTPError:
-        return _unavailable("hibp", "The breach service didn't answer. Apollo will try again on the next check.")
+        # Retry once before giving up
+        try:
+            await asyncio.sleep(1.5)
+            async with httpx.AsyncClient(timeout=15) as client:
+                r = await client.get(f"https://haveibeenpwned.com/api/v3/breachedaccount/{ident}",
+                                     params={"truncateResponse": "false"},
+                                     headers={"hibp-api-key": HIBP_API_KEY or "", "user-agent": "Apollo-GuardDog"})
+        except httpx.HTTPError:
+            return _unavailable("hibp", "The breach service didn\u2019t answer after retrying. Apollo will try again on the next check.")
     if r.status_code == 404:
         return _clear("hibp")
     if r.status_code != 200:

@@ -4,6 +4,7 @@
 
 import type { CallAnalysis, CallAsk, CallClaim } from "./callAnalysis";
 import type { CheckItem, CheckResultModel, EvidenceRow } from "./checkResult";
+import type { ActionLink } from "./checkResult";
 import type { PatrolEvent } from "./types";
 
 const CLAIM_LABEL: Record<CallClaim, string> = {
@@ -111,6 +112,13 @@ export function buildCallCheckResult(args: {
     whatToDo = undefined;
   }
 
+  // Actionable links — help the person report scam calls or take protective action.
+  const whatToDoLinks: ActionLink[] = [];
+  if (a.state === "barking" || a.state === "growling") {
+    whatToDoLinks.push({ label: "Report fraud to the FTC", url: "https://reportfraud.ftc.gov" });
+    whatToDoLinks.push({ label: "File a complaint with the FCC", url: "https://consumercomplaints.fcc.gov/hc/en-us" });
+  }
+
   // Evidence rows for the expandable "Full investigation details".
   const evidence: EvidenceRow[] = [];
   evidence.push({ label: "Caller", value: number.trim() || "Not supplied" });
@@ -134,6 +142,7 @@ export function buildCallCheckResult(args: {
     items,
     confidence: confidenceForState(a.state),
     whatToDo,
+    whatToDoLinks: whatToDoLinks.length ? whatToDoLinks : undefined,
     evidence,
     completedAt: new Date().toISOString(),
     investigationId: event?.event_id ?? null,

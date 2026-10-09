@@ -31,6 +31,14 @@ export interface CheckItem {
   raw?: Record<string, unknown>;
 }
 
+/** A tappable link rendered in the "What to do" section — opens a URL or deep-link. */
+export interface ActionLink {
+  /** Human-readable label, e.g. "Report to FTC". */
+  label: string;
+  /** Full URL to open (https, tel, mailto, or app deep-link). */
+  url: string;
+}
+
 /** One row in the expandable "Full investigation" section. */
 export interface EvidenceRow {
   label: string;
@@ -60,6 +68,8 @@ export interface CheckResultModel {
   confidence: Confidence;
   /** Only shown when action is genuinely needed. Omit for clean / informational results. */
   whatToDo?: string;
+  /** Tappable action links shown below whatToDo — e.g. "Report to FTC", provider password-reset pages. */
+  whatToDoLinks?: ActionLink[];
   evidence: EvidenceRow[];
   /** ISO completion timestamp — displayed in the full-details section. */
   completedAt: string;

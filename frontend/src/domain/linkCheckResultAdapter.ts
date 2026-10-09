@@ -6,6 +6,7 @@
 import { formatDomainInfoLine } from "./domainInfo";
 import type { CheckOutcome } from "@/src/store/ApolloContext";
 import type { CheckItem, CheckResultModel } from "./checkResult";
+import type { ActionLink } from "./checkResult";
 import type { PatrolEvent } from "./types";
 
 const SOURCE_NAME: Record<string, string> = {
@@ -161,6 +162,13 @@ export function buildLinkCheckResult(args: {
     whatToDo = undefined;
   }
 
+  // Actionable links — help the person report dangerous/suspicious sites.
+  const whatToDoLinks: ActionLink[] = [];
+  if (state === "barking" || state === "biting" || state === "growling") {
+    whatToDoLinks.push({ label: "Report this site to Google Safe Browsing", url: "https://safebrowsing.google.com/safebrowsing/report_phish/" });
+    whatToDoLinks.push({ label: "Report fraud to the FTC", url: "https://reportfraud.ftc.gov" });
+  }
+
   // Compose evidence rows for the "Full investigation details" expand. All existing technical info
   // is preserved — just moved behind progressive disclosure.
   const evidence: CheckResultModel["evidence"] = [];
@@ -199,6 +207,7 @@ export function buildLinkCheckResult(args: {
     items,
     confidence: confidenceLabel(outcome.decision.confidence),
     whatToDo,
+    whatToDoLinks: whatToDoLinks.length ? whatToDoLinks : undefined,
     evidence,
     completedAt: new Date().toISOString(),
     investigationId: liveEvent?.investigation_case_id ?? null,

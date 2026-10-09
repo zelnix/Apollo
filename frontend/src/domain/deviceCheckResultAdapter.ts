@@ -4,6 +4,7 @@
 
 import { type DeviceReview, type CheckResult as DeviceCheckResult, OUTCOME_LABEL, overallState, groupByCategory, CATEGORY_LABEL, type SecurityCategory } from "./deviceReview";
 import type { CheckItem, CheckResultModel, EvidenceRow } from "./checkResult";
+import type { ActionLink } from "./checkResult";
 
 function statusForOutcome(outcome: string): CheckItem["status"] {
   if (outcome === "checked") return "clear";
@@ -65,6 +66,17 @@ export function buildDeviceCheckResult(args: {
       ? `${r.coverage.needsManual} setting${r.coverage.needsManual === 1 ? " needs" : "s need"} a manual review — tap each one and Higgins will guide you.`
       : undefined;
 
+  // Actionable links — help the person fix device settings.
+  const whatToDoLinks: ActionLink[] = [];
+  if (r.overall === "action" || r.overall === "review") {
+    const isIos = r.osLabel.toLowerCase().includes("ios");
+    if (isIos) {
+      whatToDoLinks.push({ label: "Open iPhone security settings guide", url: "https://support.apple.com/guide/iphone/use-built-in-privacy-and-security-protections-iph6e7d349d1/ios" });
+    } else {
+      whatToDoLinks.push({ label: "Open Android security settings guide", url: "https://support.google.com/android/answer/9079631" });
+    }
+  }
+
   // Evidence rows.
   const evidence: EvidenceRow[] = [];
   evidence.push({ label: "Platform", value: r.osLabel });
@@ -86,6 +98,7 @@ export function buildDeviceCheckResult(args: {
     items,
     confidence: confidenceForOverall(r.overall),
     whatToDo,
+    whatToDoLinks: whatToDoLinks.length ? whatToDoLinks : undefined,
     evidence,
     completedAt: r.checkedAt,
     investigationId: null,

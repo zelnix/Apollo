@@ -1,7 +1,7 @@
 // Call Guard (number reputation) adapter — turns a `CallRiskResult` into the universal
 // `CheckResultModel`. ONE Higgins paragraph from the real evidence. Pure, no React.
 
-import type { CheckItem, CheckResultModel, EvidenceRow } from "./checkResult";
+import type { ActionLink, CheckItem, CheckResultModel, EvidenceRow } from "./checkResult";
 
 interface CallRiskResult {
   number: string; valid: boolean | null; active: boolean | null; fraud_score: number | null;
@@ -73,6 +73,16 @@ export function buildCallRiskCheckResult(args: { result: CallRiskResult }): Chec
   const higginsSays = r.higgins.headline + " " + r.higgins.found;
   const whatToDo = r.higgins.next_action;
 
+  // Actionable links — give the person a direct way to report or act.
+  const whatToDoLinks: ActionLink[] = [];
+  if (r.decision === "avoid" || r.decision === "review") {
+    whatToDoLinks.push({ label: "Report fraud to the FTC", url: "https://reportfraud.ftc.gov" });
+    whatToDoLinks.push({ label: "File a complaint with the FCC", url: "https://consumercomplaints.fcc.gov/hc/en-us" });
+  }
+  if (r.country === "US" || !r.country) {
+    whatToDoLinks.push({ label: "Look up this number on the National Do Not Call Registry", url: "https://www.donotcall.gov" });
+  }
+
   const evidence: EvidenceRow[] = [];
   evidence.push({ label: "Number", value: r.number });
   if (r.fraud_score !== null) evidence.push({ label: "Fraud score", value: `${r.fraud_score}/100` });
@@ -96,6 +106,7 @@ export function buildCallRiskCheckResult(args: { result: CallRiskResult }): Chec
     items,
     confidence,
     whatToDo,
+    whatToDoLinks: whatToDoLinks.length ? whatToDoLinks : undefined,
     evidence,
     completedAt: r.checked_at,
     investigationId: null,

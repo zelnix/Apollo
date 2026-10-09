@@ -3,6 +3,7 @@
 
 import type { AppAnalysis, PERMISSION_INFO } from "./appAnalysis";
 import type { CheckItem, CheckResultModel, EvidenceRow } from "./checkResult";
+import type { ActionLink } from "./checkResult";
 import type { PatrolEvent } from "./types";
 
 function toneForState(state: string): CheckResultModel["tone"] {
@@ -95,6 +96,13 @@ export function buildAppCheckResult(args: {
   const higginsSays = `${a.verdict} ${a.why[0] ?? ""}`.trim();
   const whatToDo = a.recommendation;
 
+  // Actionable links — help the person remove or report a suspicious app.
+  const whatToDoLinks: ActionLink[] = [];
+  if (a.state === "barking" || a.state === "growling") {
+    whatToDoLinks.push({ label: "Report a suspicious app to Google Play", url: "https://support.google.com/googleplay/answer/2853570" });
+    whatToDoLinks.push({ label: "Report a suspicious app to Apple", url: "https://reportaproblem.apple.com" });
+  }
+
   // Evidence rows.
   const evidence: EvidenceRow[] = a.technical.map((t) => {
     const colonIndex = t.indexOf(":");
@@ -117,6 +125,7 @@ export function buildAppCheckResult(args: {
     items,
     confidence: confidenceForState(a.state),
     whatToDo,
+    whatToDoLinks: whatToDoLinks.length ? whatToDoLinks : undefined,
     evidence,
     completedAt: new Date().toISOString(),
     investigationId: event?.event_id ?? null,

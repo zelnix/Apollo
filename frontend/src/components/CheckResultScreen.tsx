@@ -7,14 +7,15 @@
 import { useRouter } from "expo-router";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronUp from "lucide-react-native/icons/chevron-up";
+import ExternalLink from "lucide-react-native/icons/external-link";
 import X from "lucide-react-native/icons/x";
-import React, { useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import React, { useCallback, useState } from "react";
+import { Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Body, Button, Card, Pill } from "@/src/components/ui";
 import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
-import type { CheckItem, CheckResultModel } from "@/src/domain/checkResult";
+import type { ActionLink, CheckItem, CheckResultModel } from "@/src/domain/checkResult";
 import { STATUS_LABEL, STATUS_TONE } from "@/src/domain/checkResult";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
@@ -46,6 +47,10 @@ const useStyles = makeStyles((c) => ({
   evidenceValue: { flex: 1, fontFamily: fonts.text, fontSize: 13, color: c.onSurface },
 
   secondary: { gap: spacing.sm },
+
+  actionLink: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.sm, borderRadius: radius.sm, minHeight: 44 },
+  actionLinkLabel: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.brand, textDecorationLine: "underline" as const, flex: 1 },
+  inlineLink: { color: c.brand, textDecorationLine: "underline" as const },
 }));
 
 export interface CheckResultScreenProps {
@@ -70,7 +75,7 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose 
   const toggleItem = (id: string) => setItemsOpen((prev) => ({ ...prev, [id]: !prev[id] }));
   const close = () => (onClose ? onClose() : goBackOrHome(router));
 
-  const spokenText = `${result.headline}. ${result.higginsSays}${result.whatToDo ? ` What to do: ${result.whatToDo}` : ""}`;
+  const spokenText = `${result.headline}. ${result.higginsSays}${result.whatToDo ? ` Why action was taken: ${result.whatToDo}` : ""}`;
 
   return (
     <View style={s.root} testID="check-result-screen">
@@ -110,10 +115,19 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose 
             <Text style={s.higginsText} testID="check-result-higgins">{result.higginsSays}</Text>
           </View>
 
-          {result.whatToDo ? (
+          {result.whatToDo || result.whatToDoLinks?.length ? (
             <View style={{ gap: spacing.xs }}>
-              <Text style={s.sectionLabel}>WHAT TO DO</Text>
-              <Text style={s.higginsText} testID="check-result-whattodo">{result.whatToDo}</Text>
+              <Text style={s.sectionLabel}>WHY ACTION WAS TAKEN</Text>
+              {result.whatToDo ? (
+                <LinkifiedText style={s.higginsText} text={result.whatToDo} testID="check-result-whattodo" />
+              ) : null}
+              {result.whatToDoLinks?.length ? (
+                <View style={{ gap: 2, marginTop: result.whatToDo ? spacing.xs : 0 }}>
+                  {result.whatToDoLinks.map((link, i) => (
+                    <ActionLinkRow key={i} link={link} testID={`check-result-action-${i}`} />
+                  ))}
+                </View>
+              ) : null}
             </View>
           ) : null}
         </Card>
@@ -233,6 +247,76 @@ function CheckItemRow({ item, open, onToggle, showDivider }: { item: CheckItem; 
       {open && hasRaw ? (
         <Text style={s.itemRaw}>{formatRaw(item.raw!)}</Text>
       ) : null}
+    </Pressable>
+  );
+}
+
+// ── URL detection & inline linking ──────────────────────────────────────────
+
+const URL_RE = /https?:\/\/[^\s,)}\]]+/gi;
+
+/** Render plain text with any embedded URLs as tappable inline links. */
+function LinkifiedText({ text, style, testID }: { text: string; style: any; testID?: string }) {
+  const s = useStyles();
+  const parts = splitByUrls(text);
+  if (parts.length === 1 && !parts[0].isUrl) {
+    return <Text style={style} testID={testID}>{text}</Text>;
+  }
+  return (
+    <Text style={style} testID={testID}>
+      {parts.map((p, i) =>
+        p.isUrl ? (
+          <Text
+            key={i}
+            style={s.inlineLink}
+            accessibilityRole="link"
+            onPress={() => void Linking.openURL(p.text)}
+          >
+            {p.text}
+          </Text>
+        ) : (
+          <Text key={i}>{p.text}</Text>
+        ),
+      )}
+    </Text>
+  );
+}
+
+function splitByUrls(text: string): { text: string; isUrl: boolean }[] {
+  const result: { text: string; isUrl: boolean }[] = [];
+  let lastIndex = 0;
+  URL_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = URL_RE.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      result.push({ text: text.slice(lastIndex, match.index), isUrl: false });
+    }
+    result.push({ text: match[0], isUrl: true });
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) {
+    result.push({ text: text.slice(lastIndex), isUrl: false });
+  }
+  return result;
+}
+
+/** Tappable action link row — opens a URL for the user to take action. */
+function ActionLinkRow({ link, testID }: { link: ActionLink; testID?: string }) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const handlePress = useCallback(() => {
+    void Linking.openURL(link.url);
+  }, [link.url]);
+  return (
+    <Pressable
+      accessibilityRole="link"
+      accessibilityLabel={link.label}
+      onPress={handlePress}
+      style={({ pressed }) => [s.actionLink, pressed && { opacity: 0.7 }]}
+      testID={testID}
+    >
+      <ExternalLink size={16} color={colors.brand} />
+      <Text style={s.actionLinkLabel}>{link.label}</Text>
     </Pressable>
   );
 }

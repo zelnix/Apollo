@@ -3,6 +3,7 @@
 
 import type { EmailAnalysis } from "./emailAnalysis";
 import type { CheckItem, CheckResultModel, EvidenceRow } from "./checkResult";
+import type { ActionLink } from "./checkResult";
 import type { PatrolEvent } from "./types";
 
 function toneForState(state: string): CheckResultModel["tone"] {
@@ -119,6 +120,16 @@ export function buildEmailCheckResult(args: {
   const higginsSays = explanation?.summary ?? a.verdict;
   const whatToDo = explanation?.recommendation ?? a.recommendation;
 
+  // Actionable links — help the person report phishing emails or take protective steps.
+  const whatToDoLinks: ActionLink[] = [];
+  if (a.state === "barking" || a.state === "growling") {
+    whatToDoLinks.push({ label: "Report phishing to Google", url: "https://safebrowsing.google.com/safebrowsing/report_phish/" });
+    whatToDoLinks.push({ label: "Report fraud to the FTC", url: "https://reportfraud.ftc.gov" });
+  }
+  if (a.parsed.fromAddress && (a.state === "barking" || a.state === "growling")) {
+    whatToDoLinks.push({ label: "Report phishing email to Anti-Phishing Working Group", url: "mailto:reportphishing@apwg.org" });
+  }
+
   // Evidence rows — the expandable "Full investigation details".
   const evidence: EvidenceRow[] = a.technical.map((t) => {
     const colonIndex = t.indexOf(":");
@@ -142,6 +153,7 @@ export function buildEmailCheckResult(args: {
     items,
     confidence: confidenceForState(a.state),
     whatToDo: whatToDo !== "Nothing to do." ? whatToDo : undefined,
+    whatToDoLinks: whatToDoLinks.length ? whatToDoLinks : undefined,
     evidence,
     completedAt: new Date().toISOString(),
     investigationId: event?.event_id ?? null,

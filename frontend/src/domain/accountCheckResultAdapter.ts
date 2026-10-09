@@ -3,6 +3,7 @@
 
 import type { AccountAnalysis, AccountProvider, AlertKind } from "./accountAnalysis";
 import type { CheckItem, CheckResultModel, EvidenceRow } from "./checkResult";
+import type { ActionLink } from "./checkResult";
 import type { PatrolEvent } from "./types";
 
 function toneForState(state: string): CheckResultModel["tone"] {
@@ -69,6 +70,24 @@ export function buildAccountCheckResult(args: {
   const higginsSays = a.verdict;
   const whatToDo = a.recommendation;
 
+  // Actionable links — help the person secure their account.
+  const PROVIDER_PASSWORD_URLS: Partial<Record<AccountProvider, string>> = {
+    google: "https://myaccount.google.com/security",
+    apple: "https://appleid.apple.com/account/manage",
+    microsoft: "https://account.live.com/password/reset",
+    facebook: "https://www.facebook.com/settings?tab=security",
+    instagram: "https://www.instagram.com/accounts/password/change/",
+    amazon: "https://www.amazon.com/ap/forgotpassword",
+  };
+  const whatToDoLinks: ActionLink[] = [];
+  if (a.takeoverRisk === "very_high" || a.takeoverRisk === "high" || a.takeoverRisk === "elevated") {
+    const pwUrl = PROVIDER_PASSWORD_URLS[provider];
+    if (pwUrl) {
+      whatToDoLinks.push({ label: `Change your ${a.providerLabel} password now`, url: pwUrl });
+    }
+    whatToDoLinks.push({ label: "Check if your email was in a breach", url: "https://haveibeenpwned.com" });
+  }
+
   // Evidence rows.
   const evidence: EvidenceRow[] = a.technical.map((t) => {
     const colonIndex = t.indexOf(":");
@@ -91,6 +110,7 @@ export function buildAccountCheckResult(args: {
     items,
     confidence: confidenceForState(a.state),
     whatToDo,
+    whatToDoLinks: whatToDoLinks.length ? whatToDoLinks : undefined,
     evidence,
     completedAt: new Date().toISOString(),
     investigationId: event?.event_id ?? null,

@@ -4,6 +4,7 @@
 
 import type { NetworkAnalysis, NetworkContext } from "./networkAnalysis";
 import type { CheckItem, CheckResultModel, EvidenceRow } from "./checkResult";
+import type { ActionLink } from "./checkResult";
 import type { PatrolEvent } from "./types";
 
 const CONTEXT_LABEL: Record<NetworkContext, string> = {
@@ -124,6 +125,12 @@ export function buildNetworkCheckResult(args: {
     whatToDo = undefined;
   }
 
+  // Actionable links — help the person secure their connection.
+  const whatToDoLinks: ActionLink[] = [];
+  if (a.state === "growling" || a.state === "barking") {
+    whatToDoLinks.push({ label: "Learn how to stay safe on public Wi-Fi", url: "https://consumer.ftc.gov/articles/how-safely-use-public-wi-fi-networks" });
+  }
+
   // Evidence rows.
   const evidence: EvidenceRow[] = a.technical.map((t) => {
     const colonIndex = t.indexOf(":");
@@ -146,6 +153,7 @@ export function buildNetworkCheckResult(args: {
     items,
     confidence: confidenceForState(a.state),
     whatToDo,
+    whatToDoLinks: whatToDoLinks.length ? whatToDoLinks : undefined,
     evidence,
     completedAt: new Date().toISOString(),
     investigationId: event?.event_id ?? null,
