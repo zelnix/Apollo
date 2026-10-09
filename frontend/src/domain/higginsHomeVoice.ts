@@ -155,11 +155,23 @@ export function buildHomeVoice(input: {
   const primary = attention[0] ?? null;
   if (primary) {
     const gate = primary.gate;
-    // Try to name the specific threat, not the gate.
-    const specificWhat = (primary.problem || "").trim();
-    const opener = state === "barking"
-      ? `Apollo is barking — ${specificWhat || `something in ${gate} needs your decision`}`
-      : `Apollo is growling — ${specificWhat || `something in ${gate} looks suspicious`}`;
+    const problem = (primary.problem || "").trim();
+    // Build a concise, non-repetitive opener from the state + real evidence.
+    let opener: string;
+    if (state === "barking") {
+      opener = problem
+        ? `Apollo is barking — ${problem} and needs your decision`
+        : `Apollo is barking — something in ${gate} needs your decision`;
+    } else if (state === "biting") {
+      opener = problem
+        ? `Apollo blocked a threat — ${problem}`
+        : `Apollo blocked a threat in ${gate}`;
+    } else {
+      // Growling / ears_up — describe what Apollo found without repeating "suspicious".
+      opener = problem
+        ? `Apollo is growling — he flagged ${problem}`
+        : `Apollo is growling about something in ${gate}`;
+    }
     const text = `${opener}. Let me show you what Apollo found and what we can do about it.`;
     return {
       text,
@@ -172,9 +184,11 @@ export function buildHomeVoice(input: {
   // 3b) A driving event exists (e.g. growling scam text) but didn't surface as a dedicated attention
   //     item — build the paragraph from it directly rather than falling to a generic reason.
   if (drivingEvent) {
-    const gateName = GATE_FOR_CATEGORY[drivingEvent.category] ?? "a security check";
     const problem = (drivingEvent.what_happened || drivingEvent.headline || "").trim();
-    const text = `Apollo is ${state === "barking" ? "barking" : "growling"} about ${gateName}. ${problem} Let me show you what Apollo found and what we can do about it.`;
+    const verb = state === "barking" ? "barking" : "growling";
+    const text = problem
+      ? `Apollo is ${verb} — he flagged ${problem}. Let me show you what Apollo found and what we can do about it.`
+      : `Apollo is ${verb} about a security concern. Let me show you what Apollo found and what we can do about it.`;
     return {
       text,
       ctaLabel: "View what Apollo found",

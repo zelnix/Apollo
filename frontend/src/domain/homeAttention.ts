@@ -33,6 +33,22 @@ const GATE_FOR_CATEGORY: Record<EventCategory, string> = {
 };
 const gateForCategory = (c: EventCategory | string) => GATE_FOR_CATEGORY[c as EventCategory] ?? "a security check";
 
+/** Short event description using real evidence — avoids generic "Email Gate". */
+function describeEventBrief(e: PatrolEvent): string {
+  const cat = e.category;
+  const indicator = e.indicator_host || "";
+  const brand = e.claimed_brand || "";
+  const sender = brand || indicator;
+  if (cat === "email" && sender) return `Email from ${sender}`;
+  if (cat === "call" && indicator) return `Call from ${indicator}`;
+  if (cat === "message" && sender) return `Text from ${sender}`;
+  if ((cat === "link" || cat === "website" || cat === "known_threat") && indicator)
+    return `Site: ${indicator.length > 40 ? indicator.slice(0, 39) + "…" : indicator}`;
+  const hl = (e.headline || "").trim();
+  if (hl && hl.length <= 50) return hl;
+  return gateForCategory(cat);
+}
+
 // Where the action for a gate issue should take the person.
 const GATE_ROUTE: Record<string, string> = {
   site: "/gates", text: "/text-guard", call: "/call-guard", network: "/network", email: "/email",
@@ -77,11 +93,13 @@ export function buildHomeAttention(input: { gates: GatePresentation[]; events: P
     const gate = gateForCategory(e.category);
     const problem = (e.what_happened || e.headline || "").trim();
     const higgins = (e.what_to_do || "").trim() || "Open the investigation to see exactly what to do next.";
+    // Build an evidence-specific title rather than generic "Email Gate looks suspicious".
+    const specificLabel = describeEventBrief(e);
     const title = e.state === "barking"
-      ? `${gate} needs your decision`
+      ? `${specificLabel} — needs your decision`
       : e.state === "growling"
-        ? `${gate} looks suspicious`
-        : `${gate} is worth a look`;
+        ? `${specificLabel} — flagged by Apollo`
+        : `${specificLabel} — worth a look`;
     items.push({
       id: `event:${e.event_id}`,
       kind: "event",
