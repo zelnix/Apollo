@@ -35,7 +35,7 @@ async def refresh_all() -> None:
     await learning_feeds.refresh_due()
     try:
         from services import scam_analysis
-        await scam_analysis.analyze_pending(limit=8)
+        await scam_analysis.analyze_pending(limit=25)
     except Exception:  # noqa: BLE001 — analysis is best-effort; ingestion must never fail because of it
         pass
 

@@ -146,7 +146,7 @@ async def lifespan(_: FastAPI):
                 raise
             except Exception:  # noqa: BLE001
                 logger.warning("government alert refresh failed")
-            await asyncio.sleep(3600)
+            await asyncio.sleep(900)  # 15 min between refresh cycles
     government_alert_task = asyncio.create_task(government_alert_loop(), name="apollo-government-alerts")
     async def family_assist_loop():
         while True:
