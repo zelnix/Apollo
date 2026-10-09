@@ -8,7 +8,7 @@
 
 import type { AttentionItem } from "./homeAttention";
 import type { GatePresentation } from "./gates";
-import { isProjectedContent } from "./higginsNarration";
+import { hasLocalEvidence } from "./higginsNarration";
 import type { StateResolution } from "./stateMachine";
 import type { Capability } from "./types";
 
@@ -100,8 +100,8 @@ export function buildHomeVoice(input: {
     if (drivingEvent) {
       const gateName = GATE_FOR_CATEGORY[drivingEvent.category] ?? "a security check";
       const rawSubject = (drivingEvent.headline || drivingEvent.what_happened || "").trim();
-      // Don't narrate projected server text as if it's real evidence.
-      const subject = isProjectedContent(rawSubject) ? "" : rawSubject;
+      // Don't narrate server-projected text as if it's real evidence.
+      const subject = hasLocalEvidence(drivingEvent) ? rawSubject : "";
       const text = state === "ears_up"
         ? `Apollo ${verb} — something in ${gateName}${subject ? ` caught his attention: ${subject}` : " caught his attention"}. He's looking at it more closely. I'll let you know what he finds.`
         : `Apollo ${verb} — he's investigating ${gateName}${subject ? `: ${subject}` : ""}. I'll let you know what he finds, and you can watch along if you'd like.`;
@@ -130,7 +130,7 @@ export function buildHomeVoice(input: {
   //    with supporting evidence (per standing rule — never claim a block without evidence).
   if (state === "biting" && drivingEvent?.verified_block) {
     const rawWhat = (drivingEvent.what_happened || drivingEvent.headline || "").trim();
-    const what = isProjectedContent(rawWhat) ? "a threat" : rawWhat;
+    const what = hasLocalEvidence(drivingEvent) ? rawWhat : "a threat";
     const gateName = GATE_FOR_CATEGORY[drivingEvent.category] ?? "a protection check";
     const text = `Apollo is biting — ${gateName} blocked ${what} The device's own evidence is on the investigation page. Let me show you exactly what Apollo stopped and why.`;
     return {
@@ -189,7 +189,7 @@ export function buildHomeVoice(input: {
   //     item — build the paragraph from it directly rather than falling to a generic reason.
   if (drivingEvent) {
     const rawProblem = (drivingEvent.what_happened || drivingEvent.headline || "").trim();
-    const problem = isProjectedContent(rawProblem) ? "" : rawProblem;
+    const problem = hasLocalEvidence(drivingEvent) ? rawProblem : "";
     const verb = state === "barking" ? "barking" : "growling";
     const text = problem
       ? `Apollo is ${verb} — he flagged ${problem}. Let me show you what Apollo found and what we can do about it.`

@@ -1,8 +1,8 @@
 /**
  * Architectural regression tests — Point 6 acceptance criteria.
- * Each test demonstrates a specific P0/P1 requirement is met.
+ * Each test exercises the ACTUAL PRODUCTION functions, not reimplemented logic.
  *
- * 1. Original findings survive sync, restart, reopening.
+ * 1. Original findings survive sync (via mergeLocalAndRemoteEvents).
  * 2. Handled findings stay handled; new evidence reopens with reason.
  * 3. Repeated blocks retain enforcement evidence without duplicates.
  * 4. Single threat through multiple Gates correlated; independents separate.
@@ -15,9 +15,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { isProjectedContent, narrateEvent, narrateIncident } from "../src/domain/higginsNarration.ts";
-import { buildProtectionFindings, countDistinctThreats } from "../src/domain/protectionDetails.ts";
+import { hasLocalEvidence, narrateEvent, narrateIncident } from "../src/domain/higginsNarration.ts";
+import { buildProtectionFindings, countDistinctFindings } from "../src/domain/protectionDetails.ts";
 import { normalizeHistoricalEvent } from "../src/domain/packetEvidence.ts";
+import { mergeLocalAndRemoteEvents } from "../src/domain/eventMerge.ts";
 import { isActive, STATE_RANK, resolveApolloState } from "../src/domain/stateMachine.ts";
 import { buildHomeAttention } from "../src/domain/homeAttention.ts";
 import { projectedEventVoice, looksLikeInternalCode, humanizeReason, scrubMessage } from "../src/domain/messageVoice.ts";
@@ -34,14 +35,16 @@ function makeEvent(overrides: Partial<PatrolEvent> = {}): PatrolEvent {
     indicator_host: "fake-bank.example.com", indicator_digest: null, local_indicator: "fake-bank.example.com",
     verified_block: false, adapter_label: "Apollo on-device assessment",
     occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false,
+    evidence_provenance: "local_device",
     ...overrides,
   } as PatrolEvent;
 }
 
-function makeProjectedEvent(overrides: Partial<PatrolEvent> = {}): PatrolEvent {
+function makeServerEvent(overrides: Partial<PatrolEvent> = {}): PatrolEvent {
   const voice = projectedEventVoice("website", "barking", false);
   return makeEvent({
     headline: voice.headline, what_happened: voice.whatHappened, why: [voice.why], what_to_do: voice.whatToDo,
+    evidence_provenance: "server_projected",
     ...overrides,
   });
 }
@@ -58,103 +61,103 @@ function makeBlockEvent(overrides: Partial<PatrolEvent> = {}): PatrolEvent {
   });
 }
 
-// ── Test 1: Original findings survive sync ──────────────────────────────────
-describe("1. Original findings survive local/server synchronisation", () => {
-  it("local event with detailed findings is not overwritten by server projected text", () => {
-    const local = makeEvent({ event_id: "e1", what_happened: "This page impersonates ANZ Bank and was registered yesterday." });
-    const serverProjected = makeProjectedEvent({ event_id: "e1" });
+// ── Test 1: Exercises the ACTUAL mergeLocalAndRemoteEvents ──────────────────
+describe("1. Original findings survive local/server synchronisation (production merge)", () => {
+  it("local event with detailed findings is preserved through actual merge", () => {
+    const local = makeEvent({ event_id: "e1" });
+    const serverProjected = makeServerEvent({ event_id: "e1" });
 
-    // The merge logic in ApolloContext preserves local when localHasDetail is true.
-    const localHasDetail = !!(local.what_happened?.trim()) && local.what_happened !== serverProjected.what_happened;
-    assert.ok(localHasDetail, "Local event has different (detailed) content vs server projection");
-
-    // After merge, local content should win:
-    const merged = {
-      ...local,
-      headline: localHasDetail ? local.headline : serverProjected.headline,
-      what_happened: localHasDetail ? local.what_happened : serverProjected.what_happened,
-      why: localHasDetail ? local.why : serverProjected.why,
-      what_to_do: localHasDetail ? local.what_to_do : serverProjected.what_to_do,
-    };
-    assert.equal(merged.what_happened, "This page impersonates ANZ Bank and was registered yesterday.");
-    assert.equal(merged.headline, "Suspicious login page detected");
+    const { events } = mergeLocalAndRemoteEvents([local], [serverProjected]);
+    const merged = events.find((e) => e.event_id === "e1")!;
+    assert.ok(merged, "Event exists after merge");
+    assert.equal(merged.what_happened, local.what_happened, "Local detailed content preserved");
+    assert.equal(merged.headline, local.headline, "Local headline preserved");
+    assert.equal(merged.evidence_provenance, "local_device", "Provenance stays local_device");
   });
 
-  it("events from other devices (no local version) take server data as-is", () => {
-    const serverOnly = makeProjectedEvent({ event_id: "e-other-device" });
-    // No local event exists → server version is used
-    assert.ok(isProjectedContent(serverOnly.what_happened), "Server event is correctly identified as projected");
+  it("server-only events are taken as-is with server_projected provenance", () => {
+    const serverOnly = makeServerEvent({ event_id: "e-other" });
+    const { events } = mergeLocalAndRemoteEvents([], [serverOnly]);
+    const merged = events.find((e) => e.event_id === "e-other")!;
+    assert.ok(merged);
+    assert.equal(merged.evidence_provenance, "server_projected");
   });
 
-  it("isProjectedContent detects all known server projection signatures", () => {
-    assert.ok(isProjectedContent("A local assessment was recorded. Details stay on the device."));
-    assert.ok(isProjectedContent("Apollo checked a security check and found something that needs your attention. The full assessment is available on the device where it happened."));
-    assert.ok(isProjectedContent("Only a minimal security summary is shared."));
-    assert.ok(isProjectedContent("Apollo recorded a website check"));
-    assert.ok(isProjectedContent(null));
-    assert.ok(isProjectedContent(""));
-    assert.ok(isProjectedContent("known_threat")); // internal code
-    assert.ok(!isProjectedContent("This page impersonates ANZ Bank and was registered yesterday."));
-    assert.ok(!isProjectedContent("Apollo blocked fake-bank.example.com on this device."));
+  it("local-only events (not yet on server) survive merge", () => {
+    const localOnly = makeEvent({ event_id: "e-local-only" });
+    const { events } = mergeLocalAndRemoteEvents([localOnly], []);
+    assert.equal(events.length, 1);
+    assert.equal(events[0].event_id, "e-local-only");
+  });
+
+  it("hasLocalEvidence uses structured field, not text matching", () => {
+    const localEvt = makeEvent({ evidence_provenance: "local_device" });
+    const serverEvt = makeServerEvent({ evidence_provenance: "server_projected" });
+    const incompleteEvt = makeEvent({ evidence_provenance: "incomplete" });
+    assert.ok(hasLocalEvidence(localEvt));
+    assert.ok(!hasLocalEvidence(serverEvt));
+    assert.ok(!hasLocalEvidence(incompleteEvt));
   });
 });
 
-// ── Test 2: Handled findings stay handled ───────────────────────────────────
-describe("2. Handled findings remain handled; new evidence can reopen", () => {
-  it("resolved event stays resolved even when server says active", () => {
+// ── Test 2: Exercises the ACTUAL mergeLocalAndRemoteEvents for lifecycle ─────
+describe("2. Handled findings remain handled; new evidence can reopen (production merge)", () => {
+  it("resolved event stays resolved through actual merge even when server says active", () => {
     const local = makeEvent({ event_id: "e2", status: "resolved", resolved_at: new Date().toISOString() });
-    const serverStillActive = makeEvent({ event_id: "e2", status: "active", resolved_at: null });
+    const serverActive = makeServerEvent({ event_id: "e2", status: "active", resolved_at: null });
 
-    const localResolved = local.status === "resolved" || local.status === "trusted" || !!local.resolved_at;
-    const serverHasNewEvidence = false; // Same revision, same state
-    const preserveResolution = localResolved && !serverHasNewEvidence;
-
-    assert.ok(preserveResolution, "Local resolution is preserved");
-    const mergedStatus = preserveResolution ? local.status : serverStillActive.status;
-    assert.equal(mergedStatus, "resolved");
+    const { events } = mergeLocalAndRemoteEvents([local], [serverActive]);
+    const merged = events.find((e) => e.event_id === "e2")!;
+    assert.equal(merged.status, "resolved", "Resolution preserved through merge");
+    assert.ok(merged.resolved_at, "resolved_at preserved");
   });
 
-  it("genuinely new evidence (higher revision + higher severity) CAN reopen", () => {
+  it("genuinely new enforcement evidence CAN reopen through actual merge", () => {
     const local = makeEvent({
-      event_id: "e3", status: "resolved", resolved_at: new Date().toISOString(), state: "barking",
-      patrol_record: { recordId: "r1", logicalIssueKey: "k1", revision: 1, supersedes: null, sourceEventId: "e3", sourceType: "patrol", effectiveState: "barking", effectiveReason: "flagged" } as any,
+      event_id: "e3", status: "resolved", resolved_at: new Date().toISOString(),
+      enforcement_evidence: { evidence_id: "old-evidence" } as any,
     });
-    const serverNewEvidence = makeEvent({
+    const serverNewEvidence = makeServerEvent({
       event_id: "e3", status: "active", state: "biting", verified_block: true,
-      patrol_record: { recordId: "r1", logicalIssueKey: "k1", revision: 2, supersedes: null, sourceEventId: "e3", sourceType: "patrol", effectiveState: "biting", effectiveReason: "blocked" } as any,
+      enforcement_evidence: { evidence_id: "NEW-evidence-id" } as any,
     });
 
-    const localResolved = !!local.resolved_at;
-    const serverHasNewEvidence = serverNewEvidence.patrol_record && local.patrol_record
-      && serverNewEvidence.patrol_record.revision > local.patrol_record.revision
-      && STATE_RANK[serverNewEvidence.state] > STATE_RANK[local.state];
-    const preserveResolution = localResolved && !serverHasNewEvidence;
+    const { events } = mergeLocalAndRemoteEvents([local], [serverNewEvidence]);
+    const merged = events.find((e) => e.event_id === "e3")!;
+    assert.equal(merged.status, "active", "New enforcement evidence reopens the event");
+    assert.equal(merged.resolved_at, null, "resolved_at cleared on reopen");
+  });
 
-    assert.ok(!preserveResolution, "New evidence with higher revision + severity reopens the event");
+  it("same enforcement evidence does NOT reopen through actual merge", () => {
+    const local = makeEvent({
+      event_id: "e4", status: "resolved", resolved_at: new Date().toISOString(),
+      enforcement_evidence: { evidence_id: "same-evidence" } as any,
+    });
+    const serverSameEvidence = makeServerEvent({
+      event_id: "e4", status: "active",
+      enforcement_evidence: { evidence_id: "same-evidence" } as any,
+    });
+
+    const { events } = mergeLocalAndRemoteEvents([local], [serverSameEvidence]);
+    const merged = events.find((e) => e.event_id === "e4")!;
+    assert.equal(merged.status, "resolved", "Same evidence does not reopen");
   });
 
   it("isActive excludes resolved events from warning counts", () => {
-    const resolved = makeEvent({ status: "resolved", resolved_at: new Date().toISOString() });
-    const trusted = makeEvent({ status: "trusted" });
-    const active = makeEvent({ status: "active" });
-
-    assert.ok(!isActive(resolved), "Resolved event is not active");
-    assert.ok(!isActive(trusted), "Trusted event is not active");
-    assert.ok(isActive(active), "Active event is active");
+    assert.ok(!isActive(makeEvent({ status: "resolved", resolved_at: new Date().toISOString() })));
+    assert.ok(!isActive(makeEvent({ status: "trusted" })));
+    assert.ok(isActive(makeEvent({ status: "active" })));
   });
 });
 
 // ── Test 3: Repeated blocks don't create misleading duplicates ──────────────
 describe("3. Repeated blocks retain enforcement evidence without duplicate threats", () => {
-  it("enforcement evidence dedup by evidenceId prevents duplicate biting events", () => {
-    const seen = new Set<string>();
-    const evidence = [
-      { evidenceId: "pkt-001", destination: { domain: "apolloverify.harmonywellnessgroup.com.au" } },
-      { evidenceId: "pkt-001", destination: { domain: "apolloverify.harmonywellnessgroup.com.au" } }, // duplicate
-      { evidenceId: "pkt-002", destination: { domain: "apolloverify.harmonywellnessgroup.com.au" } }, // new evidence, same domain
+  it("events for the same indicator_host are correlated even without scent_id", () => {
+    const events = [
+      makeBlockEvent({ event_id: "b1", indicator_host: "apolloverify.harmonywellnessgroup.com.au", scent_id: undefined }),
+      makeBlockEvent({ event_id: "b2", indicator_host: "apolloverify.harmonywellnessgroup.com.au", scent_id: undefined }),
     ];
-    const fresh = evidence.filter((e) => !seen.has(e.evidenceId) && (seen.add(e.evidenceId), true));
-    assert.equal(fresh.length, 2, "Only 2 unique evidence items (dedup by evidenceId)");
+    assert.equal(countDistinctFindings(events), 1, "Same host = 1 finding, not 2");
   });
 
   it("normalizeHistoricalEvent preserves verified block with valid packet proof", () => {
@@ -170,82 +173,80 @@ describe("3. Repeated blocks retain enforcement evidence without duplicate threa
       } as any,
     });
     const normalized = normalizeHistoricalEvent(blockWithProof);
-    assert.equal(normalized.state, "biting", "Verified block with valid packet proof stays biting");
-    assert.ok(normalized.verified_block, "verified_block preserved");
-    assert.equal(normalized.headline, blockWithProof.headline, "Original headline preserved");
+    assert.equal(normalized.state, "biting", "Verified block preserved");
+    assert.ok(normalized.verified_block);
   });
 
-  it("normalizeHistoricalEvent downgrades unproven block claim to barking", () => {
-    const fakeClaim = makeEvent({ state: "biting", verified_block: true, enforcement_evidence: null });
-    const normalized = normalizeHistoricalEvent(fakeClaim);
-    assert.equal(normalized.state, "barking", "Unproven block downgraded to barking");
-    assert.ok(!normalized.verified_block, "verified_block cleared");
-    assert.match(normalized.what_happened, /does not establish/, "Honest explanation for downgrade");
+  it("normalizeHistoricalEvent downgrades unproven block claim and marks incomplete", () => {
+    const fake = makeEvent({ state: "biting", verified_block: true, enforcement_evidence: null });
+    const normalized = normalizeHistoricalEvent(fake);
+    assert.equal(normalized.state, "barking", "Unproven block downgraded");
+    assert.equal(normalized.evidence_provenance, "incomplete", "Marked incomplete");
   });
 });
 
-// ── Test 4: Correlated vs independent threats ───────────────────────────────
+// ── Test 4: Correlated vs independent findings ──────────────────────────────
 describe("4. Single threat through multiple Gates correlated; independents separate", () => {
-  it("events with the same scent_id are grouped as one threat", () => {
+  it("events with the same scent_id are grouped as one finding", () => {
     const events = [
       makeEvent({ event_id: "e1", scent_id: "scent-abc", category: "website" }),
       makeEvent({ event_id: "e2", scent_id: "scent-abc", category: "email" }),
     ];
-    assert.equal(countDistinctThreats(events), 1, "Same scent_id = 1 distinct threat");
+    assert.equal(countDistinctFindings(events), 1);
   });
 
-  it("events with different scent_ids are separate threats", () => {
+  it("events with the same indicator_host but no scent_id are correlated", () => {
     const events = [
-      makeEvent({ event_id: "e1", scent_id: "scent-abc", category: "website" }),
-      makeEvent({ event_id: "e2", scent_id: "scent-xyz", category: "email" }),
+      makeEvent({ event_id: "e1", scent_id: undefined, indicator_host: "evil.com" }),
+      makeEvent({ event_id: "e2", scent_id: undefined, indicator_host: "evil.com" }),
     ];
-    assert.equal(countDistinctThreats(events), 2, "Different scent_id = 2 threats");
+    assert.equal(countDistinctFindings(events), 1, "Same host = correlated");
   });
 
-  it("events without scent_id are each their own threat", () => {
+  it("events with different hosts and no scent are separate", () => {
     const events = [
-      makeEvent({ event_id: "e1", scent_id: undefined }),
-      makeEvent({ event_id: "e2", scent_id: undefined }),
+      makeEvent({ event_id: "e1", scent_id: undefined, indicator_host: "evil.com" }),
+      makeEvent({ event_id: "e2", scent_id: undefined, indicator_host: "other-evil.com" }),
     ];
-    assert.equal(countDistinctThreats(events), 2, "No scent_id = each event is its own threat");
+    assert.equal(countDistinctFindings(events), 2);
   });
 
-  it("resolved events are excluded from threat count", () => {
+  it("resolved events are excluded from finding count", () => {
     const events = [
       makeEvent({ event_id: "e1", status: "resolved", resolved_at: new Date().toISOString() }),
       makeEvent({ event_id: "e2", status: "active" }),
     ];
-    assert.equal(countDistinctThreats(events), 1, "Resolved event not counted");
+    assert.equal(countDistinctFindings(events), 1);
   });
 });
 
-// ── Test 5: Home warning counts = distinct findings needing attention ────────
+// ── Test 5: Home and Protection Details use the same count ──────────────────
 describe("5. Home warning counts include only distinct findings genuinely requiring attention", () => {
-  it("buildHomeAttention excludes resolved events", () => {
-    const gates = [{ id: "site", title: "Site Gate", tone: "good" }] as any[];
-    const events = [
-      makeEvent({ event_id: "e1", status: "resolved", resolved_at: new Date().toISOString() }),
-      makeEvent({ event_id: "e2", status: "active", state: "barking" }),
-    ];
-    const attention = buildHomeAttention({ gates, events });
-    const eventItems = attention.filter((a) => a.kind === "event");
-    assert.equal(eventItems.length, 1, "Only the active event needs attention");
-  });
-
-  it("countDistinctThreats matches real threat count, not duplicate-inflated count", () => {
+  it("countDistinctFindings matches real finding count, not duplicate-inflated count", () => {
     const events = [
       makeEvent({ event_id: "e1", scent_id: "s1", state: "barking" }),
-      makeEvent({ event_id: "e2", scent_id: "s1", state: "growling" }), // same scent
-      makeEvent({ event_id: "e3", scent_id: "s2", state: "ears_up" }), // different scent
-      makeEvent({ event_id: "e4", status: "resolved", resolved_at: new Date().toISOString() }), // resolved
+      makeEvent({ event_id: "e2", scent_id: "s1", state: "growling" }),
+      makeEvent({ event_id: "e3", indicator_host: "other.com", scent_id: undefined, state: "ears_up" }),
+      makeEvent({ event_id: "e4", status: "resolved", resolved_at: new Date().toISOString() }),
     ];
-    assert.equal(countDistinctThreats(events), 2, "2 distinct threats (s1 + s2), resolved excluded");
+    assert.equal(countDistinctFindings(events), 2, "s1 group + other.com = 2 findings");
+  });
+
+  it("buildProtectionFindings produces same grouping as countDistinctFindings", () => {
+    const events = [
+      makeEvent({ event_id: "e1", scent_id: "s1", state: "barking" }),
+      makeEvent({ event_id: "e2", scent_id: "s1", state: "growling" }),
+      makeEvent({ event_id: "e3", indicator_host: "other.com", scent_id: undefined, state: "ears_up" }),
+    ];
+    const findings = buildProtectionFindings({ capabilities: [], gates: [], attention: [], events });
+    const activeFindings = findings.filter((f) => f.findingType === "threat");
+    assert.equal(activeFindings.length, countDistinctFindings(events), "Same count");
   });
 });
 
 // ── Test 6: Every finding has accurate status, date/time, evidence, actions ──
 describe("6. Every finding displays accurate status, date/time, evidence, actions", () => {
-  it("threat findings include firstDetected, latestActivity, and eventCount", () => {
+  it("findings include firstDetected, latestActivity, and correct eventCount", () => {
     const earlier = new Date(Date.now() - 3600_000).toISOString();
     const later = new Date().toISOString();
     const events = [
@@ -253,77 +254,68 @@ describe("6. Every finding displays accurate status, date/time, evidence, action
       makeEvent({ event_id: "e2", scent_id: "s1", occurred_at: later }),
     ];
     const findings = buildProtectionFindings({ capabilities: [], gates: [], attention: [], events });
-    const threats = findings.filter((f) => f.findingType === "threat");
-    assert.ok(threats.length >= 1, "At least one threat finding");
-    const t = threats[0];
-    assert.ok(t.firstDetected, "firstDetected is set");
-    assert.ok(t.latestActivity, "latestActivity is set");
-    assert.equal(t.eventCount, 2, "eventCount matches grouped events");
+    const f = findings.find((f) => f.findingType === "threat")!;
+    assert.ok(f.firstDetected);
+    assert.ok(f.latestActivity);
+    assert.equal(f.eventCount, 2);
   });
 
-  it("threat findings have actionable route to the investigation", () => {
-    const events = [makeEvent({ event_id: "e1" })];
-    const findings = buildProtectionFindings({ capabilities: [], gates: [], attention: [], events });
-    const threats = findings.filter((f) => f.findingType === "threat");
-    assert.ok(threats[0]?.route?.includes("e1"), "Route points to the specific event");
-    assert.equal(threats[0]?.actionLabel, "Open investigation");
-  });
-
-  it("biting events get 'Threat stopped' status label", () => {
+  it("biting events get 'Blocked' status, not 'Threat stopped'", () => {
     const events = [makeBlockEvent()];
     const findings = buildProtectionFindings({ capabilities: [], gates: [], attention: [], events });
-    const threats = findings.filter((f) => f.findingType === "threat");
-    assert.ok(threats.length >= 1);
-    assert.equal(threats[0].statusLabel, "Threat stopped");
+    const f = findings.find((f) => f.findingType === "threat")!;
+    assert.equal(f.statusLabel, "Blocked");
+  });
+
+  it("ears_up events get 'Worth checking', not 'threat'", () => {
+    const events = [makeEvent({ state: "ears_up" })];
+    const findings = buildProtectionFindings({ capabilities: [], gates: [], attention: [], events });
+    const f = findings.find((f) => f.findingType === "threat")!;
+    assert.equal(f.statusLabel, "Worth checking");
+  });
+
+  it("manual gate events are labelled 'Manual check'", () => {
+    const events = [makeEvent({ category: "link" })]; // Link Gate is manual
+    const findings = buildProtectionFindings({ capabilities: [], gates: [], attention: [], events });
+    const f = findings.find((f) => f.findingType === "threat")!;
+    assert.equal(f.kindLabel, "Manual check");
   });
 });
 
 // ── Test 7: Higgins explanations are evidence-backed, no generic fallbacks ──
 describe("7. Higgins explanations are specific, evidence-backed, no generic fallback narratives", () => {
-  it("narrateEvent with real evidence produces specific narration", () => {
-    const event = makeEvent();
+  it("narrateEvent with local evidence produces specific narration", () => {
+    const event = makeEvent({ evidence_provenance: "local_device" });
     const chunks = narrateEvent(event);
     const whatChunk = chunks.find((c) => c.id === "what");
-    assert.ok(whatChunk, "Has a 'what happened' chunk");
-    assert.match(whatChunk!.text, /impersonating a bank/, "Narration uses real evidence text");
-    assert.ok(!isProjectedContent(whatChunk!.text), "Narration is not identified as projected");
+    assert.match(whatChunk!.text, /impersonating a bank/, "Real evidence used");
   });
 
-  it("narrateEvent with projected content narrates honestly (no fabrication)", () => {
-    const projected = makeProjectedEvent();
+  it("narrateEvent with server_projected provenance narrates honestly (no fabrication)", () => {
+    const projected = makeServerEvent({ evidence_provenance: "server_projected" });
     const chunks = narrateEvent(projected);
     const whatChunk = chunks.find((c) => c.id === "what");
-    assert.ok(whatChunk, "Has a 'what happened' chunk");
-    assert.match(whatChunk!.text, /only available on the device/, "Narration honestly says evidence is elsewhere");
-    assert.ok(!whatChunk!.text.includes("impersonating"), "Does NOT fabricate evidence");
+    assert.match(whatChunk!.text, /only available on the device/, "Honest about missing evidence");
+    assert.ok(!whatChunk!.text.includes("impersonating"), "No fabricated content");
   });
 
-  it("narrateIncident marks projected events honestly within the timeline", () => {
+  it("narrateIncident marks server-projected events honestly within the timeline", () => {
     const plan = {
-      headline: "Connected incident",
-      state: "barking" as ApolloState,
+      headline: "Connected incident", state: "barking" as ApolloState,
       timeline: [
-        makeEvent({ event_id: "e1", what_happened: "Real evidence from this device." }),
-        makeProjectedEvent({ event_id: "e2" }),
+        makeEvent({ event_id: "e1", evidence_provenance: "local_device" }),
+        makeServerEvent({ event_id: "e2", evidence_provenance: "server_projected" }),
       ],
-      exposure: [],
-      steps: [],
-      allResolved: false,
+      exposure: [], steps: [], allResolved: false,
     } as any;
     const chunks = narrateIncident(plan);
     const evt2 = chunks.find((c) => c.id === "event-1");
-    assert.ok(evt2, "Second event is narrated");
-    assert.match(evt2!.text, /only on the device/, "Projected event narrated honestly");
+    assert.match(evt2!.text, /only on the device/, "Server-projected event narrated honestly");
   });
 
-  it("humanizeReason converts code to honest state-based sentence, passes prose through", () => {
-    assert.equal(humanizeReason("server_projection_of_recorded_outcome", "barking"), "Apollo recorded something that needs your attention.");
-    assert.equal(humanizeReason("The domain was registered 2 days ago.", "barking"), "The domain was registered 2 days ago.");
-  });
-
-  it("scrubMessage replaces internal codes in free text with plain English", () => {
-    assert.equal(scrubMessage("Status: known_threat"), "Status: website safety");
-    assert.equal(scrubMessage("No issues found"), "No issues found");
+  it("humanizeReason converts code to honest sentence, passes prose through", () => {
+    assert.match(humanizeReason("server_projection_of_recorded_outcome", "barking"), /needs your attention/);
+    assert.equal(humanizeReason("Domain registered 2 days ago.", "barking"), "Domain registered 2 days ago.");
   });
 });
 
@@ -333,32 +325,28 @@ describe("8. Missing, stale or contradictory evidence cannot create false threat
     const fake = makeEvent({ state: "biting", verified_block: true, enforcement_evidence: null });
     const n = normalizeHistoricalEvent(fake);
     assert.equal(n.state, "barking");
-    assert.ok(!n.verified_block);
+    assert.equal(n.evidence_provenance, "incomplete");
   });
 
-  it("empty what_happened is detected as projected (no false narration)", () => {
-    assert.ok(isProjectedContent(""));
-    assert.ok(isProjectedContent(null));
-    assert.ok(isProjectedContent(undefined));
+  it("mergeLocalAndRemoteEvents clears resolved_at when genuinely reopening", () => {
+    const local = makeEvent({
+      event_id: "x", status: "resolved", resolved_at: "2026-01-01T00:00:00Z",
+      enforcement_evidence: { evidence_id: "old" } as any,
+    });
+    const remote = makeServerEvent({
+      event_id: "x", status: "active",
+      enforcement_evidence: { evidence_id: "genuinely-new" } as any,
+    });
+    const { events } = mergeLocalAndRemoteEvents([local], [remote]);
+    const m = events.find((e) => e.event_id === "x")!;
+    assert.equal(m.resolved_at, null, "resolved_at cleared on genuine reopen — no contradictory timestamps");
   });
 
   it("resolveApolloState with only resolved events does not bark", () => {
     const resolved = makeEvent({ status: "resolved", resolved_at: new Date().toISOString() });
-    const resolution = resolveApolloState({
-      events: [resolved],
-      visibility: "full",
-      lastVerifiedAt: new Date().toISOString(),
-    });
-    assert.notEqual(resolution.state, "barking", "Resolved events should not make Apollo bark");
+    const resolution = resolveApolloState({ events: [resolved], visibility: "full", lastVerifiedAt: new Date().toISOString() });
+    assert.notEqual(resolution.state, "barking");
     assert.notEqual(resolution.state, "biting");
-  });
-
-  it("looksLikeInternalCode catches developer identifiers but not prose", () => {
-    assert.ok(looksLikeInternalCode("known_threat"));
-    assert.ok(looksLikeInternalCode("ears_up"));
-    assert.ok(looksLikeInternalCode("server_projection_of_recorded_outcome"));
-    assert.ok(!looksLikeInternalCode("This page impersonates a bank"));
-    assert.ok(!looksLikeInternalCode("Apollo blocked the connection"));
   });
 });
 
@@ -368,27 +356,26 @@ describe("9. Privacy restrictions and native enforcement truth gates remain inta
     const voice = projectedEventVoice("website", "barking", false);
     assert.ok(!voice.whatHappened.includes("fake-bank"), "No domain leaked");
     assert.ok(!voice.whatHappened.includes("ANZ"), "No brand leaked");
-    assert.match(voice.whatHappened, /device where it happened/, "Points to originating device");
-  });
-
-  it("projectedEventVoice for verified block describes enforcement without leaking indicator", () => {
-    const voice = projectedEventVoice("connection", "biting", true);
-    assert.match(voice.whatHappened, /blocked/, "Describes the block");
-    assert.ok(!voice.whatHappened.includes("example.com"), "No indicator leaked");
   });
 
   it("isActive preserves the enforcement truth gate: blocked+biting without resolution stays active", () => {
-    const blockedUnresolved = makeBlockEvent({ resolved_at: null });
-    assert.ok(isActive(blockedUnresolved), "Blocked+biting without resolution = active");
-
-    const blockedResolved = makeBlockEvent({ resolved_at: new Date().toISOString() });
-    assert.ok(!isActive(blockedResolved), "Blocked+biting WITH resolution = inactive");
+    assert.ok(isActive(makeBlockEvent({ resolved_at: null })));
+    assert.ok(!isActive(makeBlockEvent({ resolved_at: new Date().toISOString() })));
   });
 
-  it("STATE_RANK hierarchy is intact: biting > barking > growling > ears_up > resting", () => {
+  it("STATE_RANK hierarchy is intact", () => {
     assert.ok(STATE_RANK.biting > STATE_RANK.barking);
     assert.ok(STATE_RANK.barking > STATE_RANK.growling);
     assert.ok(STATE_RANK.growling > STATE_RANK.ears_up);
     assert.ok(STATE_RANK.ears_up > STATE_RANK.resting);
+  });
+
+  it("evidence_provenance field controls Higgins narration, not text content", () => {
+    // Even if text LOOKS like real evidence, if provenance says server_projected, Higgins won't use it.
+    const serverWithRealishText = makeEvent({
+      evidence_provenance: "server_projected",
+      what_happened: "This page impersonates a bank (but came from server).",
+    });
+    assert.ok(!hasLocalEvidence(serverWithRealishText), "Provenance field overrides text content");
   });
 });

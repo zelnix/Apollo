@@ -35,7 +35,8 @@ export function eventHasPacketProof(event: PatrolEvent): boolean {
 
 export function normalizeHistoricalEvent(e: PatrolEvent): PatrolEvent {
   if ((e.state === 'biting' || e.verified_block) && !eventHasPacketProof(e)) return {
-    ...e, state: 'barking', verified_block: false, status: e.resolved_at ? 'resolved' : 'active', enforcement_evidence: null,
+    ...e, state: 'barking', verified_block: false, evidence_provenance: 'incomplete',
+    status: e.resolved_at ? 'resolved' : 'active', enforcement_evidence: null,
     headline: e.category === 'call' ? 'Call rejection requested' : 'Earlier block claim is not packet-verified',
     what_happened: 'This record does not establish an observed packet drop.',
     why: ['Historical evidence cannot establish current protection.'],

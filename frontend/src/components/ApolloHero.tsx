@@ -62,18 +62,14 @@ const useStyles = makeStyles((c) => ({
 
 const ease = Easing.inOut(Easing.ease);
 
-export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = [], animate = true, quietNow = false, sniffing = false, attention = [], gates = [], threatCount = 0 }: {
+export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = [], animate = true, quietNow = false, sniffing = false, attention = [], gates = [], findingCount = 0 }: {
   resolution: StateResolution; adapterLabel: string; isMock: boolean; animate?: boolean; quietNow?: boolean;
-  /** Used only to have Higgins name a real permission gap by name — never a generic "this is mock" disclaimer. */
   capabilities?: Capability[];
-  /** True while Apollo is actively re-checking (Verify now / pull-to-refresh) — shows the transient Sniffing state. */
   sniffing?: boolean;
-  /** Specific, real issues that need the person — drives the exact problem + Higgins step + action. */
   attention?: AttentionItem[];
-  /** Live gate presentations — used by the Higgins voice helper to name affected gates. */
   gates?: GatePresentation[];
-  /** Distinct unresolved threats count — displayed on the home hero when > 0. */
-  threatCount?: number;
+  /** Distinct unresolved findings count (observations + concerns + blocked) — same number as Protection Details. */
+  findingCount?: number;
 }) {
   const s = useStyles();
   const { colors } = useTheme();
@@ -189,9 +185,9 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
         ) : (
           <View style={{ width: "100%", gap: spacing.sm, alignItems: "stretch" }}>
             <Text style={s.higginsPara} testID="apollo-higgins-paragraph">{voice.text}</Text>
-            {threatCount > 0 ? (
-              <Text style={[s.higginsPara, { fontFamily: fonts.textSemibold }]} testID="apollo-threat-count">
-                {threatCount === 1 ? "1 distinct threat" : `${threatCount} distinct threats`} unresolved
+            {findingCount > 0 ? (
+              <Text style={[s.higginsPara, { fontFamily: fonts.textSemibold }]} testID="apollo-finding-count">
+                {findingCount === 1 ? "1 finding" : `${findingCount} findings`} requiring attention
               </Text>
             ) : null}
             {voice.ctaRoute ? (

@@ -130,6 +130,13 @@ async def upsert_event(body: PatrolEventIn):
         if existing and not claimed_here:
             return PatrolEvent.from_mongo(await revalidate_stored_patrol(existing))
     if existing:
+        # LIFECYCLE GUARD: A POST must never silently un-resolve an event. If the stored event
+        # has been resolved (via PATCH) and the incoming POST carries an older "active" status
+        # (e.g. delivery queue replay), preserve the existing resolution. The only way to reopen
+        # is through a PATCH with explicit new evidence.
+        if existing.get("resolved_at") and not body.resolved_at:
+            payload["status"] = existing["status"]
+            payload["resolved_at"] = existing["resolved_at"]
         await db.patrol_events.update_one({"_id": existing["_id"]}, {"$set": {**payload, "updated_at": ts}})
         doc = await db.patrol_events.find_one({"_id": existing["_id"]})
         await _append_authoritative_record(doc)

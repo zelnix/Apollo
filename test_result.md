@@ -1889,3 +1889,113 @@ agent_communication:
   - agent: "testing"
     message: "Apollo Protection Messaging QA Fixes testing COMPLETE. All 4 architectural fixes verified: (1) P0 Preserve Original Findings - ApolloContext.tsx merge logic correctly preserves local content and prevents server's privacy-projected text from overwriting detailed findings. (2) P0 Correct Finding Lifecycle - resolved events stay resolved unless server has genuinely new evidence (higher revision + severity). (3) P1 Remove hasLegacyJargon - function removed, only deprecation comment remains, no callable references found. (4) P1 Threat-First Reporting - buildProtectionFindings() groups by threat first, countDistinctThreats() exported, UI shows ACTIVE THREATS before GATE STATUS. Backend APIs all working: POST /api/patrol/events (with privacy projection), GET /api/patrol/records, PATCH /api/patrol/events/{id}. Frontend unit tests: 11/11 messageVoice tests passed, 6/6 messageGuardrails tests passed. Frontend loads with 200 status. KEY ARCHITECTURAL NOTE: Backend applies privacy projection via minimal_patrol() - this is EXPECTED and CORRECT. The P0 fix is in the FRONTEND merge logic (ApolloContext.tsx), which preserves local detailed content when syncing. No issues found. All tests passed."
 
+
+## 2026-10-09 Apollo Protection Messaging QA — Round 2 (Corrections Applied)
+
+backend:
+  - task: "Fix 2: Backend lifecycle persistence - resolved_at preservation during upsert"
+    implemented: true
+    working: true
+    file: "backend/routers/patrol.py"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "Backend lifecycle persistence verified. POST /api/patrol/events now correctly preserves resolved_at when existing event has been resolved and incoming POST does not include resolution (lines 133-139 in patrol.py). Tested with device registration, event creation, PATCH to resolved, then POST replay - resolution was preserved correctly. Backend test passed."
+
+frontend:
+  - task: "Fix 1: Replaced isProjectedContent() regex with structural evidence_provenance field"
+    implemented: true
+    working: true
+    file: "frontend/src/domain/types.ts, frontend/src/domain/messageVoice.ts"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "evidence_provenance field added to PatrolEvent type (line 127 in types.ts) with values 'local_device' | 'server_projected' | 'incomplete'. isProjectedContent() function and PROJECTED_SIGNATURES regex array completely removed from codebase (grep confirms no references). Architectural regression tests verify narration surfaces check evidence_provenance field instead of text patterns (test 7 and 9 passed)."
+  
+  - task: "Fix 3: Extracted merge into pure testable function (eventMerge.ts)"
+    implemented: true
+    working: true
+    file: "frontend/src/domain/eventMerge.ts, frontend/src/store/ApolloContext.tsx"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "mergeLocalAndRemoteEvents() function extracted to eventMerge.ts (line 23, exported). ApolloContext.tsx imports this function (line 40) and uses it for production merge logic. Architectural regression tests import and exercise the SAME function (tests 1-3 verify merge behavior). No inline merge logic remains in ApolloContext."
+  
+  - task: "Fix 4: Corrected threat-first reporting terminology"
+    implemented: true
+    working: true
+    file: "frontend/src/domain/protectionDetails.ts"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "Events now classified by severity: blocked_threat (biting), confirmed_concern (barking), possible_concern (growling), observation (ears_up/resting) - lines 156-171 in protectionDetails.ts. countDistinctFindings() function exported (line 283). Events correlated by indicator_host when no scent_id. Manual gate events correctly labelled 'Manual check'. Architectural regression tests verify correct terminology (test 6: ears_up gets 'Worth checking', not 'threat')."
+  
+  - task: "Fix 5: Evidence-based reopening (requires new evidence_id)"
+    implemented: true
+    working: true
+    file: "frontend/src/domain/eventMerge.ts"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "Reopening logic in mergeLocalAndRemoteEvents() requires genuinely new enforcement_evidence.evidence_id (not just revision + severity). resolved_at is cleared to null on genuine reopen. Same evidence_id cannot reopen a resolved event. Architectural regression test 2 verifies: 'genuinely new enforcement evidence CAN reopen' and 'same enforcement evidence does NOT reopen' both passed."
+  
+  - task: "Frontend architectural regression tests (32 tests covering 9 acceptance criteria)"
+    implemented: true
+    working: true
+    file: "frontend/tests/architecturalRegression.test.ts"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "All 32 architectural regression tests passed in 115ms. Coverage: (1) Original findings survive sync - 4/4 passed, (2) Handled findings remain handled - 4/4 passed, (3) Repeated blocks retain evidence - 3/3 passed, (4) Single threat correlation - 4/4 passed, (5) Home warning counts - 2/2 passed, (6) Finding display accuracy - 4/4 passed, (7) Higgins explanations specific - 4/4 passed, (8) False threat prevention - 3/3 passed, (9) Privacy/truth gates intact - 4/4 passed."
+  
+  - task: "Frontend full test suite (547 tests)"
+    implemented: true
+    working: true
+    file: "frontend/tests/*.test.ts"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "All 547 frontend tests passed in 1824ms. No failures, no skipped tests. Full regression coverage maintained."
+  
+  - task: "TypeScript type checking"
+    implemented: true
+    working: true
+    file: "frontend/"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "TypeScript compilation passed with exit code 0. No type errors. All structural changes (evidence_provenance field, merge function extraction, terminology updates) are type-safe."
+
+metadata:
+  created_by: "testing_agent"
+  version: "1.0"
+  test_sequence: 2
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "All Round 2 fixes verified and working"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "testing"
+    message: "Apollo Protection Messaging QA — Round 2 testing COMPLETE. All 5 targeted fixes verified: (Fix 1) evidence_provenance field replaces regex matching - isProjectedContent() deleted, structural field in place. (Fix 2) Backend lifecycle persistence - resolved_at preserved during replay, tested with POST/PATCH/POST sequence. (Fix 3) Merge function extracted to eventMerge.ts - mergeLocalAndRemoteEvents() is pure, testable, and used in production. (Fix 4) Threat-first terminology - blocked_threat/confirmed_concern/possible_concern/observation classifications in place, countDistinctFindings() exported. (Fix 5) Evidence-based reopening - requires new evidence_id, tested in architectural regression suite. Frontend tests: 32/32 architectural regression passed, 547/547 full suite passed, TypeScript clean. Backend tests: 3/3 passed (health, resolution persistence, architecture verification). No issues found."
+

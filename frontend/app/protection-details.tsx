@@ -18,7 +18,7 @@ import { ChildScreenHeader } from "@/src/components/ChildScreenHeader";
 import { Body, Card, Pill, toneColor, type Tone } from "@/src/components/ui";
 import { buildHomeAttention } from "@/src/domain/homeAttention";
 import { buildHomeVoice } from "@/src/domain/higginsHomeVoice";
-import { buildProtectionFindings, countDistinctThreats, type ProtectionFinding } from "@/src/domain/protectionDetails";
+import { buildProtectionFindings, countDistinctFindings, type ProtectionFinding } from "@/src/domain/protectionDetails";
 import { buildTodayTimeline, quietDayLine, type TimelineEntry, type TimelineTone } from "@/src/domain/protectionTimeline";
 import { useApollo } from "@/src/store/ApolloContext";
 import { useProtectionHealth } from "@/src/protection/healthStore";
@@ -100,7 +100,7 @@ export default function ProtectionDetailsScreen() {
     [events, healthLog],
   );
 
-  const threatCount = useMemo(() => countDistinctThreats(events), [events]);
+  const findingCount = useMemo(() => countDistinctFindings(events), [events]);
   const threatFindings = findings.filter((f) => f.findingType === "threat");
   const infraFindings = findings.filter((f) => f.findingType === "infrastructure");
 
@@ -123,9 +123,9 @@ export default function ProtectionDetailsScreen() {
         {/* Higgins' short interpretation — the same voice shown on Home, repeated here for context. */}
         <Card style={{ gap: spacing.sm }} testID="protection-details-voice">
           <Text style={s.intro}>{voice.text}</Text>
-          {threatCount > 0 ? (
-            <Text style={[s.intro, { fontFamily: fonts.textSemibold }]} testID="protection-threat-count">
-              {threatCount === 1 ? "1 distinct threat" : `${threatCount} distinct threats`} unresolved
+          {findingCount > 0 ? (
+            <Text style={[s.intro, { fontFamily: fonts.textSemibold }]} testID="protection-finding-count">
+              {findingCount === 1 ? "1 finding" : `${findingCount} findings`} requiring attention
             </Text>
           ) : null}
         </Card>
@@ -133,7 +133,7 @@ export default function ProtectionDetailsScreen() {
         {/* ── THREAT-FIRST: Active threats (grouped by incident) ── */}
         {threatFindings.length > 0 ? (
           <View style={{ gap: spacing.lg }}>
-            <Text style={s.sectionLabel}>ACTIVE THREATS</Text>
+            <Text style={s.sectionLabel}>FINDINGS</Text>
             {threatFindings.map((f) => (
               <Card key={f.id} style={{ gap: spacing.sm }} testID={`protection-finding-${f.id}`}>
                 <View style={s.headerRow}>

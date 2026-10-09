@@ -113,21 +113,22 @@ export function buildProtectionFindings(input: {
   const seenGates = new Set<string>();
   const seenEventIds = new Set<string>();
 
-  // ── 1) Active threats from events — grouped by scent_id for connected incidents ──
+  // ── 1) Active findings from events — grouped by scent_id or indicator_host for connected incidents ──
   const activeEvents = input.events.filter(
     (e) => (e.status === "active" || (e.status === "blocked" && !e.resolved_at))
       && (e.state === "barking" || e.state === "growling" || e.state === "ears_up" || e.state === "biting"),
   );
-  // Group by scent_id (connected incidents), or by event_id (standalone).
-  const threatGroups = new Map<string, PatrolEvent[]>();
+  // Group by scent_id first; when absent, correlate by indicator_host (same destination = same incident).
+  // Events with neither are standalone.
+  const findingGroups = new Map<string, PatrolEvent[]>();
   for (const e of activeEvents) {
-    const key = e.scent_id ?? e.event_id;
-    const group = threatGroups.get(key) ?? [];
+    const key = e.scent_id ?? (e.indicator_host ? `host:${e.indicator_host}` : e.event_id);
+    const group = findingGroups.get(key) ?? [];
     group.push(e);
-    threatGroups.set(key, group);
+    findingGroups.set(key, group);
   }
 
-  for (const [threatKey, groupEvents] of threatGroups) {
+  for (const [groupKey, groupEvents] of findingGroups) {
     // Sort by severity (highest first), then newest first.
     const sorted = groupEvents.sort((a, b) => {
       const rankDiff = STATE_RANK[b.state] - STATE_RANK[a.state];
@@ -148,26 +149,39 @@ export function buildProtectionFindings(input: {
     const problem = (lead.what_happened || lead.headline || "").trim();
     sorted.forEach((e) => seenEventIds.add(e.event_id));
 
+    // Determine whether this is from a manual gate check.
+    const isManualGate = ["link", "message", "call", "file", "app"].includes(lead.category);
+
+    // Severity-accurate classification — not everything is a "threat".
+    const classification: "blocked_threat" | "confirmed_concern" | "possible_concern" | "observation" =
+      lead.state === "biting" ? "blocked_threat"
+      : lead.state === "barking" ? "confirmed_concern"
+      : lead.state === "growling" ? "possible_concern"
+      : "observation";
+
+    const statusLabels: Record<typeof classification, string> = {
+      blocked_threat: "Blocked",
+      confirmed_concern: "Needs your decision",
+      possible_concern: "Possible concern",
+      observation: "Worth checking",
+    };
+    const whatItMeansLabels: Record<typeof classification, string> = {
+      blocked_threat: "Apollo observed and blocked a connection. Review the enforcement evidence to decide your next steps.",
+      confirmed_concern: "Apollo identified a specific concern and wants your decision before anything happens next.",
+      possible_concern: "Apollo flagged a possible concern. A closer look will confirm whether action is needed.",
+      observation: "Apollo noticed a pattern that is worth checking. No action has been taken yet.",
+    };
+
     findings.push({
-      id: `threat:${threatKey}`,
+      id: `finding:${groupKey}`,
       gate,
       threatTitle: headline,
-      kind: "automatic",
-      kindLabel: "Automatic protection",
-      tone: lead.state === "barking" || lead.state === "biting" ? "action" : "limited",
-      statusLabel: lead.state === "biting"
-        ? "Threat stopped"
-        : lead.state === "barking"
-          ? "Needs your decision"
-          : lead.state === "growling"
-            ? "Flagged by Apollo"
-            : "Worth a look",
-      whatFound: problem || "Apollo flagged something that needs your attention.",
-      whatItMeans: lead.state === "barking"
-        ? "Apollo flagged this and wants your decision before anything happens next."
-        : lead.state === "biting"
-          ? "Apollo blocked a confirmed threat. Review the details to decide your next steps."
-          : "Apollo isn't certain yet — a closer look will confirm whether it's a real concern.",
+      kind: isManualGate ? "manual" : "automatic",
+      kindLabel: isManualGate ? "Manual check" : "Automatic protection",
+      tone: classification === "blocked_threat" || classification === "confirmed_concern" ? "action" : "limited",
+      statusLabel: statusLabels[classification],
+      whatFound: problem || `Apollo ${classification === "observation" ? "noticed something" : "identified a concern"} via ${gate}.`,
+      whatItMeans: whatItMeansLabels[classification],
       whatToDo: (lead.what_to_do || "").trim() || "Open the investigation to see exactly what to do next.",
       actionLabel: "Open investigation",
       route: `/patrol/${encodeURIComponent(lead.event_id)}`,
@@ -265,13 +279,13 @@ export function buildProtectionFindings(input: {
   return findings;
 }
 
-/** Count distinct unresolved threats for the home summary. Grouped by scent_id. */
-export function countDistinctThreats(events: PatrolEvent[]): number {
+/** Count distinct unresolved findings for the home summary. Grouped by scent_id or indicator_host. */
+export function countDistinctFindings(events: PatrolEvent[]): number {
   const seen = new Set<string>();
   for (const e of events) {
     if (e.status !== "active" && !(e.status === "blocked" && !e.resolved_at)) continue;
     if (e.state !== "barking" && e.state !== "growling" && e.state !== "ears_up" && e.state !== "biting") continue;
-    seen.add(e.scent_id ?? e.event_id);
+    seen.add(e.scent_id ?? (e.indicator_host ? `host:${e.indicator_host}` : e.event_id));
   }
   return seen.size;
 }

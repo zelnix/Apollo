@@ -3,7 +3,6 @@
 // ARCHITECTURAL RULE: Higgins ONLY narrates real evidence. When the event carries privacy-projected
 // server text (not originating-device detail), Higgins says so honestly instead of inventing a narrative.
 import { CATEGORY_LABEL, type IncidentPlan } from "./incidentPlan.ts";
-import { looksLikeInternalCode } from "./messageVoice.ts";
 import { type PatrolEvent, STATE_LABEL, STATE_MEANING } from "./types.ts";
 
 const ORDINAL = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
@@ -13,29 +12,18 @@ const strip = (h: string) => h.replace(/^(Email|App|Device|Account|Network|Messa
 
 export interface NarrationChunk { id: string; label: string; text: string }
 
-// ── Evidence completeness check — used by every Higgins narration surface ──
-// Returns true when the event's content is privacy-projected server text (generic placeholders)
-// rather than the real findings from the originating device. Higgins must NOT narrate projected
-// text as if it were real evidence — that would be inventing history.
-const PROJECTED_SIGNATURES = [
-  /details stay on the device/i,
-  /available on the device where it happened/i,
-  /full assessment is available/i,
-  /full details are available/i,
-  /A local assessment was recorded/i,
-  /Apollo recorded a \w+ check$/i,
-  /minimal security summary/i,
-];
-export function isProjectedContent(text: string | undefined | null): boolean {
-  if (!text?.trim()) return true;
-  if (looksLikeInternalCode(text)) return true;
-  return PROJECTED_SIGNATURES.some((re) => re.test(text));
+// ── Evidence completeness — structural check, not text matching ──
+// An event has usable evidence when it was created on the local device with real findings.
+// Server-projected or incomplete events must be narrated honestly — never as real evidence.
+// This uses the explicit `evidence_provenance` field, NOT sentence pattern matching.
+export function hasLocalEvidence(e: PatrolEvent): boolean {
+  return e.evidence_provenance === "local_device";
 }
 
 /** One event, read in order: state → what happened → why → what to do (→ contained).
- *  When content is incomplete (projected from server), Higgins says so honestly. */
+ *  When content is incomplete (not from this device), Higgins says so honestly. */
 export function narrateEvent(e: PatrolEvent): NarrationChunk[] {
-  const incomplete = isProjectedContent(e.what_happened);
+  const incomplete = !hasLocalEvidence(e);
   const chunks: NarrationChunk[] = [
     { id: "state", label: "Apollo's behaviour", text: `Higgins here. ${STATE_LABEL[e.state]}. ${STATE_MEANING[e.state]}` },
   ];
@@ -67,7 +55,7 @@ export function narrateIncident(plan: IncidentPlan, ticked: Record<string, boole
   }];
   plan.timeline.forEach((e, i) => {
     const lead = i === 0 ? "It began" : i === n - 1 ? "Finally" : "Then";
-    const incomplete = isProjectedContent(e.what_happened);
+    const incomplete = !hasLocalEvidence(e);
     if (incomplete) {
       chunks.push({ id: `event-${i}`, label: `${ord(i)} event`, text: `${lead}, at ${clock(e.occurred_at)}, ${CATEGORY_LABEL[e.category].toLowerCase()}: The detailed evidence for this event is only on the device where it happened.${e.status !== "active" ? " That one is handled." : ""}` });
     } else {

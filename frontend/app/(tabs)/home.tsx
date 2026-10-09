@@ -15,7 +15,7 @@ import { HomeScamAlerts } from "@/src/components/HomeScamAlerts";
 import { Body, Button, Card, DevTag, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { buildScents } from "@/src/domain/threatScent";
 import { buildHomeAttention } from "@/src/domain/homeAttention";
-import { countDistinctThreats } from "@/src/domain/protectionDetails";
+import { countDistinctFindings } from "@/src/domain/protectionDetails";
 import { STATE_NAME } from "@/src/domain/types";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
@@ -52,7 +52,7 @@ export default function Home() {
     [health.checking, health.gates, events],
   );
   const scents = buildScents(events);
-  const threatCount = React.useMemo(() => countDistinctThreats(events), [events]);
+  const findingCount = React.useMemo(() => countDistinctFindings(events), [events]);
 
   return (
     <View style={s.root}>
@@ -63,7 +63,7 @@ export default function Home() {
         {/* 1. Apollo's current status — small emblem, one short Higgins paragraph (gate names
          *    dynamically generated), and ONE primary action (View Protection Details or the
          *    specific issue). Details live on the next screen. */}
-        <ApolloHero resolution={resolution} adapterLabel={adapterLabel} isMock={isMock} capabilities={capabilities} animate={!lowPower} quietNow={quietNow} sniffing={refreshing} attention={attention} gates={health.gates} threatCount={threatCount} />
+        <ApolloHero resolution={resolution} adapterLabel={adapterLabel} isMock={isMock} capabilities={capabilities} animate={!lowPower} quietNow={quietNow} sniffing={refreshing} attention={attention} gates={health.gates} findingCount={findingCount} />
 
         {identityReset ? (
           <Card style={{ gap: spacing.sm, borderColor: colors.barking }} testID="identity-reset-card">

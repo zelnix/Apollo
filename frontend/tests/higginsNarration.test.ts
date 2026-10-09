@@ -6,7 +6,7 @@ import { narrateEvent, narrateIncident } from "../src/domain/higginsNarration.ts
 import { buildIncidentPlan } from "../src/domain/incidentPlan.ts";
 import type { PatrolEvent } from "../src/domain/types";
 
-const ev = (o: Partial<PatrolEvent>): PatrolEvent => ({ event_id: "e1", device_id: "d", category: "message", state: "growling", status: "active", headline: "Message: CommBank SMS", what_happened: "A text claiming to be CommBank.", why: ["Link is not on CommBank's official domain", "Urgent wording."], what_to_do: "Don't tap the link.", indicator_host: null, indicator_digest: null, verified_block: false, adapter_label: "mock", occurred_at: "2026-06-01T09:14:00Z", resolved_at: null, ...o } as PatrolEvent);
+const ev = (o: Partial<PatrolEvent>): PatrolEvent => ({ event_id: "e1", device_id: "d", category: "message", state: "growling", status: "active", headline: "Message: CommBank SMS", what_happened: "A text claiming to be CommBank.", why: ["Link is not on CommBank's official domain", "Urgent wording."], what_to_do: "Don't tap the link.", indicator_host: null, indicator_digest: null, verified_block: false, adapter_label: "mock", occurred_at: "2026-06-01T09:14:00Z", resolved_at: null, evidence_provenance: "local_device", ...o } as PatrolEvent);
 
 test("event narration goes state → what → why (ordinals) → what to do", () => {
   const c = narrateEvent(ev({}));

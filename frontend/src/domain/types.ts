@@ -118,6 +118,13 @@ export interface PatrolEvent {
   /** Safe public references supporting the local assessment. Raw submitted links are excluded. */
   supporting_references?: { label: string; url: string }[];
   verified_block: boolean;
+  /** How the event's content was obtained — used by every display surface to decide whether
+   *  narration uses real evidence or must honestly say the data is incomplete.
+   *  Set at creation time; never derived from text pattern matching.
+   *  - "local_device": created on this device with real, detailed findings.
+   *  - "server_projected": came from the server's privacy-projected summary.
+   *  - "incomplete": data is missing, unverifiable, or was downgraded by an enforcement truth gate. */
+  evidence_provenance?: "local_device" | "server_projected" | "incomplete";
   adapter_label: string;
   occurred_at: string;
   resolved_at: string | null;
