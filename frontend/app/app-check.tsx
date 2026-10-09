@@ -217,6 +217,7 @@ export default function CheckApp() {
         />
         {a.stayWithMe && result.event ? <RecoveryFlow event={result.event} kinds={["remote", "banking_during_access", "password", "code", "accessibility"]} testID="app-recovery" /> : result.event ? <RecoveryFlow event={result.event} kinds={["remote", "accessibility", "profile", "password", "banking_during_access", "money"]} testID="app-recovery" /> : null}
         {verifyNote ? <Card testID="app-verify-note"><Body>{verifyNote}</Body></Card> : null}
+        <Card testID="app-capability-evidence-note" style={{ gap: spacing.xs }}><Body>An inactive or dormant app keeps those capabilities until you revoke them. Only uninstalling or disabling the app fully removes its access.</Body></Card>
         {actionGuidance ? <Card testID="app-action-guidance" style={{ gap: spacing.xs }}><SectionTitle>Next step in Settings</SectionTitle><Body>{actionGuidance}</Body><Button testID="app-action-guidance-close" variant="ghost" label="Hide" onPress={() => setActionGuidance(null)} /></Card> : null}
         <Sheet visible={tech} onClose={() => setTech(false)} title="Technical details" testID="app-tech-sheet">
           {a.technical.map((t, i) => <Body key={i} testID={`app-tech-${i}`}>{t}</Body>)}

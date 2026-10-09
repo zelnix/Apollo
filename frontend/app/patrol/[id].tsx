@@ -8,6 +8,7 @@ import { EventActions } from "@/src/components/EventActions";
 import { HigginsReadAloud } from "@/src/components/HigginsReadAloud";
 import { narrateEvent } from "@/src/domain/higginsNarration";
 import { eventHistory, looksLikeInternalCode, sourceLabel } from "@/src/domain/messageVoice";
+import { isProjectedContent } from "@/src/domain/higginsNarration";
 import { Body, Button, Card, Pill, toneColor } from "@/src/components/ui";
 import { STATE_LABEL, STATE_MEANING } from "@/src/domain/types";
 import type { PatrolRecord } from "@/src/domain/types";
@@ -41,15 +42,14 @@ export default function EventDetail() {
   const [timeline, setTimeline] = useState<PatrolRecord[]>([]);
   useEffect(() => { const recordId = event?.patrol_record?.recordId; if (!recordId) { setTimeline([]); return; } void apiGet<{ items: PatrolRecord[] }>(`/patrol/records/${encodeURIComponent(recordId)}/timeline`).then((value) => setTimeline(value.items)).catch(() => setTimeline([])); }, [event?.patrol_record?.recordId]);
   const outcome = event ? projectPatrolOutcomes([event])[0] : null;
-  // Show actual event data. Only looksLikeInternalCode catches genuinely leaked developer
-  // identifiers (snake_case codes like "known_threat"). If data is incomplete (e.g. privacy-
-  // projected from another device), say so honestly rather than inventing a narrative.
-  const isIncomplete = event && (!event.what_happened?.trim() || looksLikeInternalCode(event.what_happened));
-  const shownTitle = outcome?.title && !looksLikeInternalCode(outcome.title) ? outcome.title : (event?.headline && !looksLikeInternalCode(event.headline) ? event.headline : "Patrol outcome");
+  // Show actual event data. isProjectedContent detects privacy-projected server text (generic
+  // placeholders). If data is incomplete, say so honestly rather than inventing a narrative.
+  const isIncomplete = event && isProjectedContent(event.what_happened);
+  const shownTitle = outcome?.title && !looksLikeInternalCode(outcome.title) && !isProjectedContent(outcome.title) ? outcome.title : (event?.headline && !looksLikeInternalCode(event.headline) && !isProjectedContent(event.headline) ? event.headline : "Patrol outcome");
   const shownWhatHappened = isIncomplete
     ? "The full evidence for this check is only available on the device where it happened."
     : event?.what_happened;
-  const shownWhatToDo = event?.what_to_do && !looksLikeInternalCode(event.what_to_do)
+  const shownWhatToDo = event?.what_to_do && !looksLikeInternalCode(event.what_to_do) && !isProjectedContent(event.what_to_do)
     ? event.what_to_do
     : "Open this on the device where it happened for the recommended action.";
   if (ready && !setupDone) return <Redirect href="/onboarding" />;

@@ -62,7 +62,7 @@ const useStyles = makeStyles((c) => ({
 
 const ease = Easing.inOut(Easing.ease);
 
-export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = [], animate = true, quietNow = false, sniffing = false, attention = [], gates = [] }: {
+export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = [], animate = true, quietNow = false, sniffing = false, attention = [], gates = [], threatCount = 0 }: {
   resolution: StateResolution; adapterLabel: string; isMock: boolean; animate?: boolean; quietNow?: boolean;
   /** Used only to have Higgins name a real permission gap by name — never a generic "this is mock" disclaimer. */
   capabilities?: Capability[];
@@ -72,6 +72,8 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
   attention?: AttentionItem[];
   /** Live gate presentations — used by the Higgins voice helper to name affected gates. */
   gates?: GatePresentation[];
+  /** Distinct unresolved threats count — displayed on the home hero when > 0. */
+  threatCount?: number;
 }) {
   const s = useStyles();
   const { colors } = useTheme();
@@ -187,6 +189,11 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
         ) : (
           <View style={{ width: "100%", gap: spacing.sm, alignItems: "stretch" }}>
             <Text style={s.higginsPara} testID="apollo-higgins-paragraph">{voice.text}</Text>
+            {threatCount > 0 ? (
+              <Text style={[s.higginsPara, { fontFamily: fonts.textSemibold }]} testID="apollo-threat-count">
+                {threatCount === 1 ? "1 distinct threat" : `${threatCount} distinct threats`} unresolved
+              </Text>
+            ) : null}
             {voice.ctaRoute ? (
               <Button
                 testID="apollo-view-details"

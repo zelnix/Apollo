@@ -15,11 +15,11 @@ const ev = (over: Partial<PatrolEvent>): PatrolEvent => ({
   occurred_at: todayIso(10), resolved_at: null, ...over,
 });
 
-test("today's growling scam event is in the timeline, named by its gate", () => {
+test("today's growling scam event is in the timeline, described by its headline", () => {
   const items = buildTodayTimeline({ events: [ev({})], gateHealthLog: {}, now: NOW });
   assert.equal(items.length, 1);
   assert.equal(items[0].kind, "flagged");
-  assert.match(items[0].title, /Text Gate/);
+  assert.match(items[0].title, /Suspicious text/);
   assert.equal(items[0].tone, "growling");
 });
 
@@ -36,11 +36,10 @@ test("gate health log 'Watching confirmed' entries from today are included", () 
   assert.match(items[0].title, /Site Gate.*Watching/);
 });
 
-test("resolved events today add a second 'resolved' entry (ordered newest first)", () => {
+test("resolved events today produce a single 'resolved' entry (not a duplicate flagged + resolved pair)", () => {
   const items = buildTodayTimeline({ events: [ev({ status: "resolved", occurred_at: todayIso(9), resolved_at: todayIso(11) })], gateHealthLog: {}, now: NOW });
-  assert.equal(items.length, 2);
-  assert.equal(items[0].kind, "resolved"); // 11:00 — newest first
-  assert.equal(items[1].kind, "flagged");  // 09:00
+  assert.equal(items.length, 1);
+  assert.equal(items[0].kind, "resolved");
 });
 
 test("verified block today becomes a 'blocked' entry (biting tone)", () => {

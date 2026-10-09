@@ -49,7 +49,7 @@ test("optional setup never creates an attention item (no false barking); growlin
   const items = buildHomeAttention({ gates, events: [growlEvent, resolvedEvent] });
   assert.equal(items.length, 1);
   assert.equal(items[0].kind, "event");
-  assert.equal(items[0].title, "App Gate looks suspicious");
+  assert.equal(items[0].title, "Suspicious app — flagged by Apollo");
 });
 
 test("barking events are ranked above growling and ears_up events", () => {

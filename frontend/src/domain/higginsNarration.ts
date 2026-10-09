@@ -1,6 +1,9 @@
 // Higgins' narration — turns a Patrol event or an incident timeline into short spoken chunks, in order, so a person
 // who prefers listening hears the whole story: what happened, why Apollo reacted, what to do, step by step.
+// ARCHITECTURAL RULE: Higgins ONLY narrates real evidence. When the event carries privacy-projected
+// server text (not originating-device detail), Higgins says so honestly instead of inventing a narrative.
 import { CATEGORY_LABEL, type IncidentPlan } from "./incidentPlan.ts";
+import { looksLikeInternalCode } from "./messageVoice.ts";
 import { type PatrolEvent, STATE_LABEL, STATE_MEANING } from "./types.ts";
 
 const ORDINAL = ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth", "tenth"];
@@ -10,24 +13,52 @@ const strip = (h: string) => h.replace(/^(Email|App|Device|Account|Network|Messa
 
 export interface NarrationChunk { id: string; label: string; text: string }
 
-/** One event, read in order: state → what happened → why → what to do (→ contained). */
+// ── Evidence completeness check — used by every Higgins narration surface ──
+// Returns true when the event's content is privacy-projected server text (generic placeholders)
+// rather than the real findings from the originating device. Higgins must NOT narrate projected
+// text as if it were real evidence — that would be inventing history.
+const PROJECTED_SIGNATURES = [
+  /details stay on the device/i,
+  /available on the device where it happened/i,
+  /full assessment is available/i,
+  /full details are available/i,
+  /A local assessment was recorded/i,
+  /Apollo recorded a \w+ check$/i,
+  /minimal security summary/i,
+];
+export function isProjectedContent(text: string | undefined | null): boolean {
+  if (!text?.trim()) return true;
+  if (looksLikeInternalCode(text)) return true;
+  return PROJECTED_SIGNATURES.some((re) => re.test(text));
+}
+
+/** One event, read in order: state → what happened → why → what to do (→ contained).
+ *  When content is incomplete (projected from server), Higgins says so honestly. */
 export function narrateEvent(e: PatrolEvent): NarrationChunk[] {
+  const incomplete = isProjectedContent(e.what_happened);
   const chunks: NarrationChunk[] = [
     { id: "state", label: "Apollo's behaviour", text: `Higgins here. ${STATE_LABEL[e.state]}. ${STATE_MEANING[e.state]}` },
-    { id: "what", label: "What happened", text: `What happened: ${strip(e.headline)}. ${e.what_happened}` },
   ];
-  if (e.why.length) {
-    const reasons = e.why.map((w, i) => `${ord(i)}, ${w.replace(/\.$/, "")}`).join(". ");
-    chunks.push({ id: "why", label: "Why Apollo reacted", text: `Why Apollo reacted: ${reasons}.` });
+  if (incomplete) {
+    chunks.push({ id: "what", label: "What happened", text: "The full evidence for this check is only available on the device where it happened. I can't narrate what I don't have." });
+    chunks.push({ id: "why", label: "Why Apollo reacted", text: "The reason Apollo reacted is recorded on the originating device." });
+    chunks.push({ id: "todo", label: "What to do", text: "Open this on the device where the check happened for the recommended action." });
   } else {
-    chunks.push({ id: "why", label: "Why Apollo reacted", text: "Apollo found no specific warning signs." });
+    chunks.push({ id: "what", label: "What happened", text: `What happened: ${strip(e.headline)}. ${e.what_happened}` });
+    if (e.why.length) {
+      const reasons = e.why.map((w, i) => `${ord(i)}, ${w.replace(/\.$/, "")}`).join(". ");
+      chunks.push({ id: "why", label: "Why Apollo reacted", text: `Why Apollo reacted: ${reasons}.` });
+    } else {
+      chunks.push({ id: "why", label: "Why Apollo reacted", text: "Apollo found no specific warning signs." });
+    }
+    chunks.push({ id: "todo", label: "What to do", text: `What to do: ${e.what_to_do}` });
   }
-  chunks.push({ id: "todo", label: "What to do", text: `What to do: ${e.what_to_do}` });
   if (e.status !== "active") chunks.push({ id: "done", label: "Handled", text: e.state === "biting" && e.verified_block ? "This threat was blocked and is contained. Nothing further is needed." : "You've marked this one handled. Well done." });
   return chunks;
 }
 
-/** A whole incident: summary → each event in order → the Stay With Me plan, step by step, noting ticks. */
+/** A whole incident: summary → each event in order → the Stay With Me plan, step by step, noting ticks.
+ *  Events with projected/incomplete content are narrated honestly. */
 export function narrateIncident(plan: IncidentPlan, ticked: Record<string, boolean> = {}): NarrationChunk[] {
   const n = plan.timeline.length;
   const chunks: NarrationChunk[] = [{
@@ -36,7 +67,12 @@ export function narrateIncident(plan: IncidentPlan, ticked: Record<string, boole
   }];
   plan.timeline.forEach((e, i) => {
     const lead = i === 0 ? "It began" : i === n - 1 ? "Finally" : "Then";
-    chunks.push({ id: `event-${i}`, label: `${ord(i)} event`, text: `${lead}, at ${clock(e.occurred_at)}, ${CATEGORY_LABEL[e.category].toLowerCase()}: ${strip(e.headline)}. ${e.what_happened}${e.status !== "active" ? " That one is handled." : ""}` });
+    const incomplete = isProjectedContent(e.what_happened);
+    if (incomplete) {
+      chunks.push({ id: `event-${i}`, label: `${ord(i)} event`, text: `${lead}, at ${clock(e.occurred_at)}, ${CATEGORY_LABEL[e.category].toLowerCase()}: The detailed evidence for this event is only on the device where it happened.${e.status !== "active" ? " That one is handled." : ""}` });
+    } else {
+      chunks.push({ id: `event-${i}`, label: `${ord(i)} event`, text: `${lead}, at ${clock(e.occurred_at)}, ${CATEGORY_LABEL[e.category].toLowerCase()}: ${strip(e.headline)}. ${e.what_happened}${e.status !== "active" ? " That one is handled." : ""}` });
+    }
   });
   if (plan.steps.length) {
     chunks.push({ id: "plan", label: "Stay with me", text: `Now, the plan. ${plan.steps.length} step${plan.steps.length > 1 ? "s" : ""}, starting with the most urgent. Say stop at any time.` });

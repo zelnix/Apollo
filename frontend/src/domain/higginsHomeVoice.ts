@@ -8,6 +8,7 @@
 
 import type { AttentionItem } from "./homeAttention";
 import type { GatePresentation } from "./gates";
+import { isProjectedContent } from "./higginsNarration";
 import type { StateResolution } from "./stateMachine";
 import type { Capability } from "./types";
 
@@ -98,7 +99,9 @@ export function buildHomeVoice(input: {
     const verb = state === "ears_up" ? "has his ears up" : "is sniffing";
     if (drivingEvent) {
       const gateName = GATE_FOR_CATEGORY[drivingEvent.category] ?? "a security check";
-      const subject = (drivingEvent.headline || drivingEvent.what_happened || "").trim();
+      const rawSubject = (drivingEvent.headline || drivingEvent.what_happened || "").trim();
+      // Don't narrate projected server text as if it's real evidence.
+      const subject = isProjectedContent(rawSubject) ? "" : rawSubject;
       const text = state === "ears_up"
         ? `Apollo ${verb} — something in ${gateName}${subject ? ` caught his attention: ${subject}` : " caught his attention"}. He's looking at it more closely. I'll let you know what he finds.`
         : `Apollo ${verb} — he's investigating ${gateName}${subject ? `: ${subject}` : ""}. I'll let you know what he finds, and you can watch along if you'd like.`;
@@ -126,7 +129,8 @@ export function buildHomeVoice(input: {
   // 1) Biting — Apollo blocked something. Only when the driving event carries a verified_block flag
   //    with supporting evidence (per standing rule — never claim a block without evidence).
   if (state === "biting" && drivingEvent?.verified_block) {
-    const what = (drivingEvent.what_happened || drivingEvent.headline || "a threat").trim();
+    const rawWhat = (drivingEvent.what_happened || drivingEvent.headline || "").trim();
+    const what = isProjectedContent(rawWhat) ? "a threat" : rawWhat;
     const gateName = GATE_FOR_CATEGORY[drivingEvent.category] ?? "a protection check";
     const text = `Apollo is biting — ${gateName} blocked ${what} The device's own evidence is on the investigation page. Let me show you exactly what Apollo stopped and why.`;
     return {
@@ -184,7 +188,8 @@ export function buildHomeVoice(input: {
   // 3b) A driving event exists (e.g. growling scam text) but didn't surface as a dedicated attention
   //     item — build the paragraph from it directly rather than falling to a generic reason.
   if (drivingEvent) {
-    const problem = (drivingEvent.what_happened || drivingEvent.headline || "").trim();
+    const rawProblem = (drivingEvent.what_happened || drivingEvent.headline || "").trim();
+    const problem = isProjectedContent(rawProblem) ? "" : rawProblem;
     const verb = state === "barking" ? "barking" : "growling";
     const text = problem
       ? `Apollo is ${verb} — he flagged ${problem}. Let me show you what Apollo found and what we can do about it.`

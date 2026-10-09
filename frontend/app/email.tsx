@@ -188,6 +188,7 @@ export default function CheckEmail() {
     });
     if (a.handoff.file) {
       emailActions.push({ testID: "email-check-file", variant: "secondary", label: "Check the attachment with Apollo", onPress: () => router.push({ pathname: "/file", params: { source: "email" } }) });
+      emailActions.push({ testID: "email-attachment-limitation", variant: "ghost", label: "Note: the file itself was not transferred — only metadata is checked here", onPress: () => {} });
     }
     emailActions.push({ testID: "email-again", variant: "ghost", label: "Check another email", onPress: () => { setResult(null); setRaw(""); setFrom(""); setSubject(""); } });
 
