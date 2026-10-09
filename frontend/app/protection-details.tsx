@@ -7,6 +7,8 @@
 
 import { useRouter } from "expo-router";
 import ArrowRight from "lucide-react-native/icons/arrow-right";
+import ChevronDown from "lucide-react-native/icons/chevron-down";
+import ChevronUp from "lucide-react-native/icons/chevron-up";
 import Dot from "lucide-react-native/icons/circle";
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
@@ -119,22 +121,7 @@ export default function ProtectionDetailsScreen() {
           <Text style={s.intro}>{voice.text}</Text>
         </Card>
 
-        {/* What Apollo has done today — the quiet proof-of-life timeline. */}
-        <Card style={{ gap: spacing.sm }} testID="protection-today">
-          <View style={s.headerRow}>
-            <Text style={s.sectionTitle}>What Apollo has done today</Text>
-          </View>
-          {timeline.length === 0 ? (
-            <Body testID="protection-today-empty">{quietDayLine()}</Body>
-          ) : (
-            <View>
-              {timeline.map((entry, i) => (
-                <TimelineRow key={entry.id} entry={entry} showDivider={i > 0} />
-              ))}
-            </View>
-          )}
-        </Card>
-
+        {/* Actionable findings first — the things that need attention right now. */}
         {findings.length === 0 ? (
           <Card testID="protection-details-empty" style={{ gap: spacing.sm }}>
             <Text style={s.emptyTitle}>Nothing to flag right now</Text>
@@ -176,8 +163,61 @@ export default function ProtectionDetailsScreen() {
             </Card>
           ))
         )}
+
+        {/* What Apollo has done today — split into actionable and rest. */}
+        <TimelineSection timeline={timeline} />
       </ScrollView>
     </View>
+  );
+}
+
+/** Timeline section — shows actionable items first, rest collapsed under "Show more". */
+function TimelineSection({ timeline }: { timeline: TimelineEntry[] }) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const [showAll, setShowAll] = useState(false);
+
+  const actionable = timeline.filter((e) => e.kind !== "resolved" && e.kind !== "confirmed_watching");
+  const rest = timeline.filter((e) => e.kind === "resolved" || e.kind === "confirmed_watching");
+
+  return (
+    <Card style={{ gap: spacing.sm }} testID="protection-today">
+      <View style={s.headerRow}>
+        <Text style={s.sectionTitle}>What Apollo has done today</Text>
+      </View>
+      {timeline.length === 0 ? (
+        <Body testID="protection-today-empty">{quietDayLine()}</Body>
+      ) : (
+        <View>
+          {actionable.map((entry, i) => (
+            <TimelineRow key={entry.id} entry={entry} showDivider={i > 0} />
+          ))}
+          {rest.length > 0 ? (
+            <View>
+              {actionable.length > 0 ? <View style={s.tlDivider} /> : null}
+              {showAll ? (
+                rest.map((entry, i) => (
+                  <TimelineRow key={entry.id} entry={entry} showDivider={i > 0} />
+                ))
+              ) : null}
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setShowAll((v) => !v)}
+                style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingVertical: spacing.sm, opacity: pressed ? 0.7 : 1 }]}
+                testID="protection-today-show-more"
+              >
+                {showAll
+                  ? <ChevronUp size={16} color={colors.muted} />
+                  : <ChevronDown size={16} color={colors.muted} />}
+                <Text style={{ fontFamily: fonts.textSemibold, fontSize: 13, color: colors.muted }}>
+                  {showAll ? "Show less" : `Show ${rest.length} more`}
+                </Text>
+              </Pressable>
+            </View>
+          ) : null}
+        </View>
+      )}
+    </Card>
   );
 }
 

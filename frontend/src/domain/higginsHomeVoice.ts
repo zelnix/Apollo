@@ -137,11 +137,11 @@ export function buildHomeVoice(input: {
     };
   }
 
-  // 2) Multiple active concerns — name every affected gate, point to Protection Details.
+  // 2) Multiple active concerns — describe them specifically instead of just naming gates.
   if (attention.length > 1) {
-    const names = joinNames(attention.map((a) => a.gate));
+    const descriptions = attention.map((a) => (a.problem || a.gate).trim()).filter(Boolean);
     const verb = verbForState(state);
-    const text = `Apollo is ${state === "barking" ? "barking" : "growling"} because he ${verb} things across ${names}. That doesn't mean every one is a confirmed threat — some may be unsure, some may need a decision. Let me show you what Apollo found and what we can do about each one.`;
+    const text = `Apollo is ${state === "barking" ? "barking" : "growling"} because he ${verb} ${descriptions.length} things that need attention. Let me show you what Apollo found and what we can do about each one.`;
     return {
       text,
       ctaLabel: "View Protection Details",
@@ -155,15 +155,12 @@ export function buildHomeVoice(input: {
   const primary = attention[0] ?? null;
   if (primary) {
     const gate = primary.gate;
-    const openerByState: Record<string, string> = {
-      barking:  `Apollo is barking about ${gate}`,
-      growling: `Apollo is growling about ${gate}`,
-      ears_up:  `Apollo is paying attention to ${gate}`,
-      biting:   `Apollo is reacting to ${gate}`,
-    };
-    const opener = openerByState[state] ?? `Apollo is reacting to ${gate}`;
-    const problem = (primary.problem || "").trim();
-    const text = `${opener}. ${problem} Let me show you what Apollo found and what we can do about it.`;
+    // Try to name the specific threat, not the gate.
+    const specificWhat = (primary.problem || "").trim();
+    const opener = state === "barking"
+      ? `Apollo is barking — ${specificWhat || `something in ${gate} needs your decision`}`
+      : `Apollo is growling — ${specificWhat || `something in ${gate} looks suspicious`}`;
+    const text = `${opener}. Let me show you what Apollo found and what we can do about it.`;
     return {
       text,
       ctaLabel: primary.kind === "event" ? "View what Apollo found" : `View ${gate} issue`,

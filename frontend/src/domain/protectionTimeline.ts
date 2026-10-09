@@ -39,6 +39,36 @@ const GATE_LABEL_BY_ID: Record<string, string> = {
   account: "Account Gate", email: "Email Gate", file: "File Gate", app: "App Gate", device: "Device Gate",
 };
 
+/** Build a short, specific description of the event instead of the generic gate name.
+ *  e.g. "Suspicious email from Kogan.com" or "Scam call from +1 (555) 010-1234". */
+function describeEvent(e: PatrolEvent, gateFallback: string): string {
+  const cat = e.category;
+  const indicator = e.indicator_host || "";
+  const brand = e.claimed_brand || "";
+  const sender = brand || indicator;
+
+  if (cat === "email" && sender) {
+    return `Email from ${sender}`;
+  }
+  if (cat === "call" && indicator) {
+    return `Call from ${indicator}`;
+  }
+  if ((cat === "message" || cat === ("text" as string)) && sender) {
+    return `Text from ${sender}`;
+  }
+  if ((cat === "link" || cat === "website" || cat === "known_threat") && indicator) {
+    return `Site: ${truncate(indicator, 40)}`;
+  }
+  // Fall back to headline if it's short enough, otherwise use gate name.
+  const hl = (e.headline || "").trim();
+  if (hl && hl.length <= 50) return hl;
+  return gateFallback;
+}
+
+function truncate(s: string, max: number): string {
+  return s.length <= max ? s : s.slice(0, max - 1) + "…";
+}
+
 function toneForEventState(state: PatrolEvent["state"]): TimelineTone {
   if (state === "biting") return "biting";
   if (state === "barking") return "barking";
@@ -84,30 +114,36 @@ export function buildTodayTimeline(input: {
     // Flagged / blocked / investigating entry (uses occurred_at).
     if (Number.isFinite(occurredAt) && isSameLocalDay(occurredAt, now)) {
       let kind: TimelineKind = "flagged";
-      let title = `${gate} — flagged`;
       let tone = toneForEventState(e.state);
       let summary = (e.headline || e.what_happened || "Apollo noticed something.").trim();
 
+      // Build a descriptive title from the event instead of the generic gate name.
+      // e.g. "Suspicious email from Kogan.com" instead of "Email Gate — flagged".
+      const shortSubject = describeEvent(e, gate);
+
       // If the event has since been resolved, update the SAME entry instead of creating a new row.
       const isResolved = e.status === "resolved" || e.status === "trusted" || (resolvedAt != null);
+      let title: string;
       if (isResolved) {
         kind = "resolved";
         tone = "resting";
-        title = `${gate} — resolved`;
+        title = `${shortSubject} — resolved`;
         const resolvedTime = resolvedAt ? fmtTime(e.resolved_at as string, now) : "";
         summary = resolvedTime
           ? `Resolved at ${resolvedTime}. ${summary}`
           : `Resolved. ${summary}`;
       } else if (e.state === "biting" && e.verified_block) {
-        kind = "blocked"; title = `${gate} — blocked a threat`;
+        kind = "blocked"; title = `${shortSubject} — blocked`;
       } else if (e.state === "sniffing") {
-        kind = "investigating"; title = `${gate} — investigating`;
+        kind = "investigating"; title = `${shortSubject} — investigating`;
       } else if (e.state === "ears_up") {
-        title = `${gate} — ears up`;
+        title = `${shortSubject} — ears up`;
       } else if (e.state === "growling") {
-        title = `${gate} — flagged a concern`;
+        title = `${shortSubject} — flagged a concern`;
       } else if (e.state === "barking") {
-        title = `${gate} — needs your decision`;
+        title = `${shortSubject} — needs your decision`;
+      } else {
+        title = shortSubject;
       }
 
       out.push({
