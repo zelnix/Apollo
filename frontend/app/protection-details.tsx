@@ -116,7 +116,6 @@ export default function ProtectionDetailsScreen() {
       >
         {/* Higgins' short interpretation — the same voice shown on Home, repeated here for context. */}
         <Card style={{ gap: spacing.sm }} testID="protection-details-voice">
-          <Text style={s.sectionLabel}>HIGGINS SAYS</Text>
           <Text style={s.intro}>{voice.text}</Text>
         </Card>
 

@@ -80,7 +80,7 @@ export function MessageAssessmentResult({ assessment, state, onPrimaryAction, su
       <Text testID={`${prefix}-submitted-text`} style={s.submittedText}>{submittedText}</Text>
     </View> : null}
     {assessment.higgins.exact_response ? <View testID={testIDPrefix === 'message' ? 'higgins-core-result' : testIDPrefix === 'link' ? 'link-higgins-core-result' : `${prefix}-higgins-core-result`} style={{ gap: spacing.sm }}>
-      <View style={[s.row, { justifyContent: "space-between" }]}><SectionTitle>Higgins says</SectionTitle>
+      <View style={[s.row, { justifyContent: "space-between" }]}>
         <HigginsSpeakButton compact text={assessment.higgins.exact_response} testID={`${prefix}-hear-higgins`} />
       </View>
       <Text testID={`${prefix}-exact-response`} style={s.higgins}>{assessment.higgins.exact_response}</Text>
