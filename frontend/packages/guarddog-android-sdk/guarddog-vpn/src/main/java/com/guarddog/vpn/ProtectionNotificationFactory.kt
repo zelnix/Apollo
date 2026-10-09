@@ -26,11 +26,6 @@ object ProtectionNotificationFactory {
     }
 
     fun build(context: Context, state: VpnLifecycleState): Notification {
-        val stopIntent = PendingIntent.getService(
-            context, 1,
-            Intent(context, GuardDogVpnService::class.java).setAction(GuardDogVpnService.ACTION_STOP),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
         // Tapping the notification opens Apollo straight to the Home screen via its deep link.
         val contentIntent = PendingIntent.getActivity(
             context, 2,
@@ -53,7 +48,6 @@ object ProtectionNotificationFactory {
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .addAction(Notification.Action.Builder(null, "Stop", stopIntent).build())
             .build()
     }
 }
