@@ -46,6 +46,22 @@ _STATE_PHRASE = {
     'unknown': 'an unclear result',
 }
 
+# User-friendly names for event categories.
+_CATEGORY_LABEL = {
+    'email': 'email',
+    'message': 'text message',
+    'text': 'text message',
+    'call': 'phone call',
+    'link': 'website link',
+    'website': 'website',
+    'known_threat': 'known threat',
+    'network': 'network connection',
+    'device': 'device setting',
+    'app': 'app',
+    'file': 'file',
+    'account': 'account',
+}
+
 
 def minimal_patrol(body, verified):
     payload = body.model_dump()
@@ -64,11 +80,25 @@ def minimal_patrol(body, verified):
             if getattr(e, key) is not None:
                 raise HTTPException(422, 'Evidence contains fields outside the minimal privacy boundary')
     # Never persist free-form local narratives from old clients either.
+    state_phrase = _STATE_PHRASE.get(body.state, "a result")
+    cat_label = _CATEGORY_LABEL.get(body.category, body.category)
     payload.update(
-        headline='Apollo observed a blocked connection' if verified else f'Apollo recorded a {body.category} check',
-        what_happened='An observed packet was intentionally blocked by the on-device filter.' if verified else f'The on-device check noticed {_STATE_PHRASE.get(body.state, "a result")}. Details stay on the device.',
-        why=['Packet-backed enforcement evidence is attached.' if verified else 'Only a minimal security summary is shared.'],
-        what_to_do='Avoid the suspicious interaction. Review the original alert on your phone.' if body.state == 'barking' else 'Review the original alert on your phone. A past check does not establish current safety.',
+        headline=f'Apollo blocked a suspicious {cat_label}' if verified else f'Apollo flagged a {cat_label} for review',
+        what_happened=(
+            f'Apollo blocked a suspicious {cat_label} using its on-device filter.'
+            if verified
+            else f'Apollo checked a {cat_label} and found {state_phrase}. The full details are stored securely on your device.'
+        ),
+        why=[
+            f'The connection was blocked based on verified threat intelligence.'
+            if verified
+            else f'Apollo\'s on-device check identified {state_phrase}. For your privacy, detailed findings stay on this device.'
+        ],
+        what_to_do=(
+            f'Do not interact with this {cat_label}. Open the Check tab on your device to see the full assessment and decide what to do.'
+            if body.state == 'barking'
+            else f'Open the Check tab on your device to review the full details. A past check does not confirm current safety.'
+        ),
         indicator_host=body.indicator_host if body.category != 'call' and domain_only(body.indicator_host) else None,
         claimed_brand=None, scenario=body.scenario if body.scenario and re.fullmatch(r'[A-Z]{1,3}\d{1,3}[a-z]?', body.scenario) else None,
         adapter_label='Apollo on-device assessment', verified_block=verified,

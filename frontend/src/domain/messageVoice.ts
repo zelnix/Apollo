@@ -105,21 +105,21 @@ export function projectedEventVoice(category: EventCategory | string, state: Apo
   const headline = `Apollo ran ${area}`;
   if (state === "barking") return {
     headline,
-    whatHappened: `${capitalize(area)} flagged something that needs your attention. The full details stayed private on the phone where it happened.`,
-    why: "Only a short, private security summary is synced between your devices.",
-    whatToDo: "Open this on the phone where it happened and follow Apollo's recommended step.",
+    whatHappened: `Apollo checked ${area} and found something that needs your attention. The full assessment is available on the device where it happened.`,
+    why: "Apollo's on-device check identified a concern. For your privacy, the detailed findings stay on this device.",
+    whatToDo: "Open this on the device where it happened and follow Apollo's recommended action.",
   };
   if (state === "growling" || state === "ears_up") return {
     headline,
-    whatHappened: `${capitalize(area)} found something worth a look. The full details stayed private on the phone where it happened.`,
-    why: "Only a short, private security summary is synced between your devices.",
-    whatToDo: "Open this on the phone where it happened to see the full details. A past check doesn't confirm current safety.",
+    whatHappened: `Apollo checked ${area} and found something worth a closer look. The full details are available on the device where it happened.`,
+    why: "Apollo's on-device check flagged this for review. For your privacy, the detailed findings stay on this device.",
+    whatToDo: "Open this on the device where it happened to review the full details.",
   };
   return {
     headline,
-    whatHappened: `${capitalize(area)} finished with no concern found. The full details stayed private on the phone where it happened.`,
-    why: "Only a short, private security summary is synced between your devices.",
-    whatToDo: "No action needed. Open it on that phone to see the full details.",
+    whatHappened: `Apollo checked ${area} and found no concern. The full details are available on the device where it happened.`,
+    why: "For your privacy, the detailed security assessment stays on this device.",
+    whatToDo: "No action needed. Open it on the device where it happened to see the full details.",
   };
 }
 
@@ -128,6 +128,18 @@ const capitalize = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 /** True when a string still carries an internal identifier the user should never see. */
 export function looksLikeInternalCode(text: string): boolean {
   return /\b(known_threat|ears_up|user_started|server_projection|recorded_outcome|[a-z]+_[a-z]+(?:_[a-z]+)+)\b/.test(text);
+}
+
+/** True when text contains legacy jargon patterns from old event creation (e.g. "reported barking",
+ *  "on-device assessment reported", "minimal security summary"). These are grammatically English
+ *  but still developer-speak that shouldn't reach the user. */
+export function hasLegacyJargon(text: string): boolean {
+  if (!text) return false;
+  return /reported (barking|growling|ears_up|biting|sniffing|resting)/i.test(text)
+    || /on-device (assessment|check) reported/i.test(text)
+    || /minimal security summary/i.test(text)
+    || /details stay on the device/i.test(text)
+    || /Apollo recorded a \w+ check$/i.test(text);
 }
 
 // --- Live scrubber for Higgins' free-text replies (Scan Gate Chat) -----------------------------------

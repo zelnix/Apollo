@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EventActions } from "@/src/components/EventActions";
 import { HigginsReadAloud } from "@/src/components/HigginsReadAloud";
 import { narrateEvent } from "@/src/domain/higginsNarration";
-import { eventHistory, looksLikeInternalCode, projectedEventVoice, sourceLabel } from "@/src/domain/messageVoice";
+import { eventHistory, hasLegacyJargon, looksLikeInternalCode, projectedEventVoice, sourceLabel } from "@/src/domain/messageVoice";
 import { Body, Button, Card, Pill, toneColor } from "@/src/components/ui";
 import { STATE_LABEL, STATE_MEANING } from "@/src/domain/types";
 import type { PatrolRecord } from "@/src/domain/types";
@@ -41,12 +41,19 @@ export default function EventDetail() {
   const [timeline, setTimeline] = useState<PatrolRecord[]>([]);
   useEffect(() => { const recordId = event?.patrol_record?.recordId; if (!recordId) { setTimeline([]); return; } void apiGet<{ items: PatrolRecord[] }>(`/patrol/records/${encodeURIComponent(recordId)}/timeline`).then((value) => setTimeline(value.items)).catch(() => setTimeline([])); }, [event?.patrol_record?.recordId]);
   const outcome = event ? projectPatrolOutcomes([event])[0] : null;
-  // Safety net for already-synced events whose text still carries internal codes: humanise at display.
-  const voice = event && (looksLikeInternalCode(event.what_happened) || looksLikeInternalCode(outcome?.title ?? "") || looksLikeInternalCode(event.what_to_do))
-    ? projectedEventVoice(event.category, event.state, !!event.verified_block) : null;
-  const shownTitle = voice && looksLikeInternalCode(outcome?.title ?? "") ? voice.headline : (outcome?.title ?? "Patrol outcome");
-  const shownWhatHappened = voice && looksLikeInternalCode(event?.what_happened ?? "") ? voice.whatHappened : event?.what_happened;
-  const shownWhatToDo = voice && looksLikeInternalCode(event?.what_to_do ?? "") ? voice.whatToDo : event?.what_to_do;
+  // Safety net: rewrite legacy jargon stored in old events to plain English.
+  const needsScrub = event && (
+    looksLikeInternalCode(event.what_happened)
+    || looksLikeInternalCode(outcome?.title ?? "")
+    || looksLikeInternalCode(event.what_to_do)
+    || hasLegacyJargon(event.what_happened)
+    || hasLegacyJargon(event.headline)
+  );
+  const voice = needsScrub
+    ? projectedEventVoice(event!.category, event!.state, !!event!.verified_block) : null;
+  const shownTitle = voice && (looksLikeInternalCode(outcome?.title ?? "") || hasLegacyJargon(outcome?.title ?? "")) ? voice.headline : (outcome?.title ?? "Patrol outcome");
+  const shownWhatHappened = voice && (looksLikeInternalCode(event?.what_happened ?? "") || hasLegacyJargon(event?.what_happened ?? "")) ? voice.whatHappened : event?.what_happened;
+  const shownWhatToDo = voice && (looksLikeInternalCode(event?.what_to_do ?? "") || hasLegacyJargon(event?.what_to_do ?? "")) ? voice.whatToDo : event?.what_to_do;
   if (ready && !setupDone) return <Redirect href="/onboarding" />;
 
   return (
@@ -91,7 +98,7 @@ export default function EventDetail() {
           })() : null}
 
           <Card style={{ gap: spacing.sm }}>
-            <Text style={s.sub}>Why this rating</Text>
+            <Text style={s.sub}>Why action was taken</Text>
             {(outcome?.whyThisRating ?? event.why).length === 0 ? <Body>No specific warning signs were recorded.</Body> : (outcome?.whyThisRating ?? event.why).map((w, i) => (
               <View key={i} style={s.bullet}><View style={[s.dot, { backgroundColor: toneColor(colors, event.state) }]} /><Body style={{ flex: 1 }}>{w}</Body></View>
             ))}
