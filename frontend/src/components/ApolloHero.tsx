@@ -144,8 +144,8 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
   // specific investigation / gate) has the full detail. Benign states (resting / sniffing) still get
   // a line of voice so the person always sees Higgins.
   const voice = useMemo(
-    () => buildHomeVoice({ resolution, attention, gates, capabilities }),
-    [resolution, attention, gates, capabilities],
+    () => buildHomeVoice({ resolution, attention, gates, capabilities, findingCount }),
+    [resolution, attention, gates, capabilities, findingCount],
   );
   const checks = sniffing ? [] : recommendedChecks(resolution);
   const askedAt = useMemo(() => new Date(new Date().setHours(0, 0, 0, 0)).toISOString(), []);

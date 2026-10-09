@@ -21,6 +21,7 @@ observe a device, create a case, start a job, or claim Apollo checked or blocked
 context as unknown. Distinguish what supplied records show from general guidance. If a specific item needs inspection,
 offer an explicit investigation action; never start it. If ambiguity materially changes safe advice, ask one focused
 question. Never ask for passwords, verification codes, recovery phrases or tokens.
+EVIDENCE AVAILABILITY: Records with evidence_availability="limited_to_originating_device" do NOT contain actual findings. Do NOT interpret their summary text as real evidence. Only state what is structurally known (event state, category, whether a block was verified). Say the detailed evidence is on the originating device and suggest the person check there.
 GATE STATUS: Most Gates accept manual checks at any time — a gate with state 'ready' or 'manual_checks_available' is NOT offline. Only say a gate is offline or unavailable if its state is explicitly 'offline' or 'unavailable' with reason 'service_down'. Do not tell the user a gate is offline simply because the device observation is stale or missing.
 Return only the required JSON."""
 

@@ -38,8 +38,9 @@ export interface ProtectionFinding {
   latestActivity?: string;
   /** Threat-first: how many events are grouped under this threat. */
   eventCount?: number;
-  /** Whether this is a threat finding (event-based) vs infrastructure (gate/capability). */
-  findingType: "threat" | "infrastructure";
+  /** Whether this is an active finding (event-based), infrastructure (gate/capability),
+   *  or protection activity (verified blocks — evidence of Apollo working). */
+  findingType: "threat" | "infrastructure" | "protection_activity";
 }
 
 /** Capability id → gate title / kind. Mirrors the ApolloHero's affected-capability list. */
@@ -113,19 +114,41 @@ export function buildProtectionFindings(input: {
   const seenGates = new Set<string>();
   const seenEventIds = new Set<string>();
 
-  // ── 1) Active findings from events — grouped by scent_id or indicator_host for connected incidents ──
+  // ── 1) Active findings from events — grouped by established incident identity ──
   const activeEvents = input.events.filter(
     (e) => (e.status === "active" || (e.status === "blocked" && !e.resolved_at))
       && (e.state === "barking" || e.state === "growling" || e.state === "ears_up" || e.state === "biting"),
   );
-  // Group by scent_id first; when absent, correlate by indicator_host (same destination = same incident).
-  // Events with neither are standalone.
+  // Correlation rules (in priority order):
+  // 1. scent_id — established incident identity (most reliable)
+  // 2. Same indicator_host AND occurred within 24 hours of each other (time-bounded host correlation)
+  // 3. Standalone (no scent, no host, or host events too far apart)
+  const TIME_BOUNDARY_MS = 24 * 60 * 60 * 1000;
   const findingGroups = new Map<string, PatrolEvent[]>();
+  const hostGroupTimestamps = new Map<string, number>(); // track latest timestamp per host group
   for (const e of activeEvents) {
-    const key = e.scent_id ?? (e.indicator_host ? `host:${e.indicator_host}` : e.event_id);
-    const group = findingGroups.get(key) ?? [];
-    group.push(e);
-    findingGroups.set(key, group);
+    if (e.scent_id) {
+      const group = findingGroups.get(e.scent_id) ?? [];
+      group.push(e);
+      findingGroups.set(e.scent_id, group);
+    } else if (e.indicator_host) {
+      // Check if there's an existing group for this host within the time boundary.
+      const hostKey = `host:${e.indicator_host}`;
+      const existingTime = hostGroupTimestamps.get(hostKey);
+      const eventTime = Date.parse(e.occurred_at);
+      if (existingTime != null && Math.abs(eventTime - existingTime) <= TIME_BOUNDARY_MS) {
+        const group = findingGroups.get(hostKey)!;
+        group.push(e);
+        hostGroupTimestamps.set(hostKey, Math.max(existingTime, eventTime));
+      } else {
+        // New time-bounded group (use a unique key to avoid collapsing distant events).
+        const uniqueKey = existingTime != null ? `${hostKey}:${e.event_id}` : hostKey;
+        findingGroups.set(uniqueKey, [e]);
+        hostGroupTimestamps.set(existingTime != null ? uniqueKey : hostKey, eventTime);
+      }
+    } else {
+      findingGroups.set(e.event_id, [e]);
+    }
   }
 
   for (const [groupKey, groupEvents] of findingGroups) {
@@ -153,10 +176,12 @@ export function buildProtectionFindings(input: {
     const isManualGate = ["link", "message", "call", "file", "app"].includes(lead.category);
 
     // Severity-accurate classification — not everything is a "threat".
+    // Verified blocks are "protection_activity" — evidence of Apollo working, not unresolved concerns.
     const classification: "blocked_threat" | "confirmed_concern" | "possible_concern" | "observation" =
-      lead.state === "biting" ? "blocked_threat"
+      lead.state === "biting" && lead.verified_block ? "blocked_threat"
       : lead.state === "barking" ? "confirmed_concern"
       : lead.state === "growling" ? "possible_concern"
+      : lead.state === "biting" ? "confirmed_concern" // biting without verified block = needs decision
       : "observation";
 
     const statusLabels: Record<typeof classification, string> = {
@@ -166,10 +191,10 @@ export function buildProtectionFindings(input: {
       observation: "Worth checking",
     };
     const whatItMeansLabels: Record<typeof classification, string> = {
-      blocked_threat: "Apollo observed and blocked a connection. Review the enforcement evidence to decide your next steps.",
-      confirmed_concern: "Apollo identified a specific concern and wants your decision before anything happens next.",
-      possible_concern: "Apollo flagged a possible concern. A closer look will confirm whether action is needed.",
-      observation: "Apollo noticed a pattern that is worth checking. No action has been taken yet.",
+      blocked_threat: "Apollo observed and blocked this connection. The enforcement evidence is recorded.",
+      confirmed_concern: "Apollo identified a specific concern based on the evidence collected.",
+      possible_concern: "Apollo flagged this based on available evidence. The concern has not been confirmed or ruled out.",
+      observation: "Apollo noticed something based on available evidence. No specific concern has been established.",
     };
 
     findings.push({
@@ -183,12 +208,12 @@ export function buildProtectionFindings(input: {
       whatFound: problem || `Apollo ${classification === "observation" ? "noticed something" : "identified a concern"} via ${gate}.`,
       whatItMeans: whatItMeansLabels[classification],
       whatToDo: (lead.what_to_do || "").trim() || "Open the investigation to see exactly what to do next.",
-      actionLabel: "Open investigation",
+      actionLabel: classification === "blocked_threat" ? "Review block" : "Open investigation",
       route: `/patrol/${encodeURIComponent(lead.event_id)}`,
       firstDetected: new Date(firstDetected).toLocaleString(),
       latestActivity: new Date(latestActivity).toLocaleString(),
       eventCount: sorted.length,
-      findingType: "threat",
+      findingType: classification === "blocked_threat" ? "protection_activity" : "threat",
     });
   }
 
@@ -279,13 +304,32 @@ export function buildProtectionFindings(input: {
   return findings;
 }
 
-/** Count distinct unresolved findings for the home summary. Grouped by scent_id or indicator_host. */
+/** Count distinct unresolved findings for the home summary. Uses the same correlation rules as
+ *  buildProtectionFindings: scent_id > time-bounded indicator_host > standalone event. */
 export function countDistinctFindings(events: PatrolEvent[]): number {
+  const TIME_BOUNDARY_MS = 24 * 60 * 60 * 1000;
   const seen = new Set<string>();
+  const hostLatest = new Map<string, number>();
   for (const e of events) {
     if (e.status !== "active" && !(e.status === "blocked" && !e.resolved_at)) continue;
     if (e.state !== "barking" && e.state !== "growling" && e.state !== "ears_up" && e.state !== "biting") continue;
-    seen.add(e.scent_id ?? (e.indicator_host ? `host:${e.indicator_host}` : e.event_id));
+    // Verified blocks are protection activity, not unresolved concerns requiring attention.
+    if (e.state === "biting" && e.verified_block) continue;
+    if (e.scent_id) { seen.add(e.scent_id); continue; }
+    if (e.indicator_host) {
+      const hk = `host:${e.indicator_host}`;
+      const prev = hostLatest.get(hk);
+      const t = Date.parse(e.occurred_at);
+      if (prev != null && Math.abs(t - prev) <= TIME_BOUNDARY_MS) {
+        hostLatest.set(hk, Math.max(prev, t)); // same group, don't add to seen again
+      } else {
+        const key = prev != null ? `${hk}:${e.event_id}` : hk;
+        seen.add(key);
+        hostLatest.set(prev != null ? key : hk, t);
+      }
+      continue;
+    }
+    seen.add(e.event_id);
   }
   return seen.size;
 }

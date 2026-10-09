@@ -103,7 +103,10 @@ async def upsert_event(body: PatrolEventIn):
             if not _binding_matches(receipt, body, fingerprint):
                 raise HTTPException(409, 'Event or evidence identity is already bound to a different payload')
             if existing:
-                return PatrolEvent.from_mongo(await revalidate_stored_patrol(existing))
+                # LIFECYCLE GUARD (enforcement receipt replay): a receipt-replay must never
+                # un-resolve a handled event. Return the stored (possibly resolved) version.
+                doc = await revalidate_stored_patrol(existing)
+                return PatrolEvent.from_mongo(doc)
         stored_evidence = (existing or {}).get('enforcement_evidence')
         if stored_evidence and (_evidence_fingerprint(stored_evidence) != fingerprint
                                 or stored_evidence.get('evidence_id') != body.enforcement_evidence.evidence_id):
@@ -128,7 +131,9 @@ async def upsert_event(body: PatrolEventIn):
         _, claimed_here = await _claim_evidence_binding(body, fingerprint)
         existing = await db.patrol_events.find_one({'event_id': body.event_id, 'device_id': body.device_id})
         if existing and not claimed_here:
-            return PatrolEvent.from_mongo(await revalidate_stored_patrol(existing))
+            # LIFECYCLE GUARD (evidence binding): same as above — don't un-resolve.
+            doc = await revalidate_stored_patrol(existing)
+            return PatrolEvent.from_mongo(doc)
     if existing:
         # LIFECYCLE GUARD: A POST must never silently un-resolve an event. If the stored event
         # has been resolved (via PATCH) and the incoming POST carries an older "active" status

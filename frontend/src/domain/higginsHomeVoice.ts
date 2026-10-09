@@ -78,8 +78,10 @@ export function buildHomeVoice(input: {
   attention: AttentionItem[];
   gates: GatePresentation[];
   capabilities: Capability[];
+  /** Distinct finding count from countDistinctFindings — must match Protection Details. */
+  findingCount?: number;
 }): HomeVoice {
-  const { resolution, attention, gates, capabilities } = input;
+  const { resolution, attention, gates, capabilities, findingCount } = input;
   const state = resolution.state;
 
   if (state === "resting") {
@@ -141,11 +143,12 @@ export function buildHomeVoice(input: {
     };
   }
 
-  // 2) Multiple active concerns — describe them specifically instead of just naming gates.
-  if (attention.length > 1) {
+  // 2) Multiple active concerns — use the distinct finding count (aligned with Protection Details).
+  const effectiveCount = findingCount ?? attention.length;
+  if (effectiveCount > 1) {
     const descriptions = attention.map((a) => (a.problem || a.gate).trim()).filter(Boolean);
     const verb = verbForState(state);
-    const text = `Apollo is ${state === "barking" ? "barking" : "growling"} because he ${verb} ${descriptions.length} things that need attention. Let me show you what Apollo found and what we can do about each one.`;
+    const text = `Apollo is ${state === "barking" ? "barking" : "growling"} — ${verb} ${effectiveCount} ${effectiveCount === 1 ? "finding" : "findings"} that ${effectiveCount === 1 ? "needs" : "need"} attention. View Protection Details for what Apollo found and what to do.`;
     return {
       text,
       ctaLabel: "View Protection Details",

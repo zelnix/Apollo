@@ -293,7 +293,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         const ev: PatrolEvent = {
           event_id: Crypto.randomUUID(), device_id: deviceIdRef.current ?? "local", category: "connection", state: a.state, status: "active",
           headline: a.headline, what_happened: a.what_happened, why: a.why, what_to_do: a.what_to_do, indicator_host: null, indicator_digest: null,
-          verified_block: false, adapter_label: securityAdapter.label, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false,
+          verified_block: false, evidence_provenance: "local_device", adapter_label: securityAdapter.label, occurred_at: new Date().toISOString(), resolved_at: null, trust_allowed: false,
         };
         setEvents((prev) => { const next = [ev, ...prev]; void storage.setItem(K.events, JSON.stringify(next)); return next; });
         void syncEventRef.current?.(ev);
@@ -335,7 +335,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       const base: PatrolEvent = existing ?? {
         event_id: e.eventId ?? e.evidenceId, device_id: deviceIdRef.current ?? "local", category: "connection", state: "barking", status: "active",
         headline: "", what_happened: "", why: [], what_to_do: "", indicator_host: isCall ? null : domain, local_indicator: isCall ? domain : undefined, indicator_digest: null,
-        verified_block: false, adapter_label: securityAdapter.label, occurred_at: e.observedAt, resolved_at: null, trust_allowed: false,
+        verified_block: false, evidence_provenance: "local_device", adapter_label: securityAdapter.label, occurred_at: e.observedAt, resolved_at: null, trust_allowed: false,
       };
       if (!canTransition(base, "biting", { verifiedBlock: true })) continue; // defensive: same single gate everywhere
       const headline = isCall ? `Apollo blocked a call from ${domain}` : `Apollo blocked ${domain}`;
@@ -351,7 +351,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         why: [...base.why, whyLine],
         what_to_do: "This connection was blocked. If you already shared details or money, review the recovery steps.",
         indicator_host: isCall ? null : domain, local_indicator: isCall ? domain : base.local_indicator,
-        verified_block: true, adapter_label: securityAdapter.label, occurred_at: e.observedAt, resolved_at: null,
+        verified_block: true, evidence_provenance: "local_device", adapter_label: securityAdapter.label, occurred_at: e.observedAt, resolved_at: null,
         background: true, enforcement_evidence: toPatrolEnforcementEvidence(e),
       };
       await persistEvents([ev, ...eventsRef.current.filter(x => x.event_id !== ev.event_id)]);
@@ -372,7 +372,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         what_happened: `${mechanism} reported a blocked outbound connection${source ? ` from ${source}` : ""}. This is flow-level evidence, so Apollo does not label it Biting.`,
         why: ["The operating system reported an enforced flow or connection-authorization drop.", "Apollo reserves Biting for correlated packet-drop evidence."],
         what_to_do: "Review the application that attempted the connection and keep the destination blocked.", indicator_host: domain, indicator_digest: null,
-        verified_block: false, adapter_label: securityAdapter.label, occurred_at: e.observedAt, resolved_at: null, trust_allowed: false, background: true,
+        verified_block: false, evidence_provenance: "local_device", adapter_label: securityAdapter.label, occurred_at: e.observedAt, resolved_at: null, trust_allowed: false, background: true,
       };
       await persistEvents([ev, ...eventsRef.current.filter(x => x.event_id !== ev.event_id)]);
       await syncEventRef.current?.(ev); seen.add(e.evidenceId);
@@ -383,7 +383,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         event_id: e.eventId ?? e.evidenceId, device_id: deviceIdRef.current ?? 'local', category: 'call', state: 'barking', status: 'active',
         headline: 'Call rejection requested', what_happened: 'Call Gate submitted a rejection request to Android. No separate completion receipt is available.',
         why: ['This is a call-screening action, not an observed packet drop.'], what_to_do: 'If the call still reaches you, do not share private information. Review Call Gate.',
-        indicator_host: null, indicator_digest: null, local_indicator: e.destination.domain, verified_block: false,
+        indicator_host: null, indicator_digest: null, local_indicator: e.destination.domain, verified_block: false, evidence_provenance: "local_device",
         adapter_label: securityAdapter.label, occurred_at: e.observedAt, resolved_at: null, trust_allowed: false, background: true,
       };
       await persistEvents([ev, ...eventsRef.current.filter(x => x.event_id !== ev.event_id)]);

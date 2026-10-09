@@ -78,13 +78,14 @@ export default function ProtectionDetailsScreen() {
     () => (health.checking ? [] : buildHomeAttention({ gates: health.gates, events })),
     [health.checking, health.gates, events],
   );
-  const voice = useMemo(
-    () => buildHomeVoice({ resolution, attention, gates: health.gates, capabilities }),
-    [resolution, attention, health.gates, capabilities],
-  );
   const findings = useMemo(
     () => buildProtectionFindings({ capabilities, gates: health.gates, attention, events }),
     [capabilities, health.gates, attention, events],
+  );
+  const findingCount = useMemo(() => countDistinctFindings(events), [events]);
+  const voice = useMemo(
+    () => buildHomeVoice({ resolution, attention, gates: health.gates, capabilities, findingCount }),
+    [resolution, attention, health.gates, capabilities, findingCount],
   );
 
   // "What Apollo has done today" — loaded from the on-device Gate Health Log + today's patrol events.
@@ -100,14 +101,14 @@ export default function ProtectionDetailsScreen() {
     [events, healthLog],
   );
 
-  const findingCount = useMemo(() => countDistinctFindings(events), [events]);
-  const threatFindings = findings.filter((f) => f.findingType === "threat");
+  const actionFindings = findings.filter((f) => f.findingType === "threat");
+  const protectionActivity = findings.filter((f) => f.findingType === "protection_activity");
   const infraFindings = findings.filter((f) => f.findingType === "infrastructure");
 
   const info = {
     title: "About Protection Details",
     body: [
-      "This screen groups active threats first — the things that need your attention — followed by gate infrastructure status.",
+      "This screen shows findings that need your attention first, then protection activity (verified blocks), then gate infrastructure.",
       "Apollo does the security work. Higgins is the one voice explaining what Apollo found, what it means and what to do.",
       "Manual checks (like Link Gate) are called out separately — they are tools you can use, not continuous background protection.",
     ],
@@ -130,11 +131,11 @@ export default function ProtectionDetailsScreen() {
           ) : null}
         </Card>
 
-        {/* ── THREAT-FIRST: Active threats (grouped by incident) ── */}
-        {threatFindings.length > 0 ? (
+        {/* ── FINDINGS: Active concerns requiring attention ── */}
+        {actionFindings.length > 0 ? (
           <View style={{ gap: spacing.lg }}>
             <Text style={s.sectionLabel}>FINDINGS</Text>
-            {threatFindings.map((f) => (
+            {actionFindings.map((f) => (
               <Card key={f.id} style={{ gap: spacing.sm }} testID={`protection-finding-${f.id}`}>
                 <View style={s.headerRow}>
                   <Text style={s.gateTitle}>{f.threatTitle ?? f.gate}</Text>
@@ -175,6 +176,38 @@ export default function ProtectionDetailsScreen() {
                     style={({ pressed }) => [s.actionRow, { opacity: pressed ? 0.7 : 1 }]}
                     hitSlop={8}
                   >
+                    <Text style={s.actionText}>{f.actionLabel}</Text>
+                    <ArrowRight size={16} color={colors.brand} />
+                  </Pressable>
+                ) : null}
+              </Card>
+            ))}
+          </View>
+        ) : null}
+
+        {/* ── PROTECTION ACTIVITY: Verified blocks — evidence of Apollo working ── */}
+        {protectionActivity.length > 0 ? (
+          <View style={{ gap: spacing.lg }}>
+            <Text style={s.sectionLabel}>PROTECTION ACTIVITY</Text>
+            {protectionActivity.map((f) => (
+              <Card key={f.id} style={{ gap: spacing.sm }} testID={`protection-finding-${f.id}`}>
+                <View style={s.headerRow}>
+                  <Text style={s.gateTitle}>{f.threatTitle ?? f.gate}</Text>
+                  <Pill tone="resting" label={f.statusLabel} testID={`protection-finding-${f.id}-status`} />
+                </View>
+                <View style={{ gap: 4 }}>
+                  <Text style={s.sectionLabel}>WHAT APOLLO DID</Text>
+                  <Text style={s.sectionText} testID={`protection-finding-${f.id}-found`}>{f.whatFound}</Text>
+                </View>
+                <View style={{ gap: 4 }}>
+                  <Text style={s.sectionLabel}>WHAT TO DO</Text>
+                  <Text style={s.sectionText} testID={`protection-finding-${f.id}-do`}>{f.whatToDo}</Text>
+                </View>
+                {f.firstDetected ? (
+                  <Text style={s.tlTime}>Blocked: {f.firstDetected}</Text>
+                ) : null}
+                {f.route && f.actionLabel ? (
+                  <Pressable accessibilityRole="button" accessibilityLabel={f.actionLabel} testID={`protection-finding-${f.id}-action`} onPress={() => router.push(f.route as never)} style={({ pressed }) => [s.actionRow, { opacity: pressed ? 0.7 : 1 }]} hitSlop={8}>
                     <Text style={s.actionText}>{f.actionLabel}</Text>
                     <ArrowRight size={16} color={colors.brand} />
                   </Pressable>

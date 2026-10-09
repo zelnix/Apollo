@@ -58,11 +58,22 @@ async def recent_cases(owner: str) -> dict:
 async def patrol(owner: str, *, one: bool = False) -> dict:
     limit = 1 if one else 5
     rows = [row for row in await patrol_records.current(owner, limit + 5) if row["category"] != "system"][:limit]
-    items = [{"recordId": row["recordId"], "logicalIssueKey": row["logicalIssueKey"], "category": row["category"],
-              "effectiveState": row["effectiveState"], "effectiveReason": row["effectiveReason"],
-              "headline": redact_investigation_secrets(row["headline"])[:200], "summary": redact_investigation_secrets(row["summary"])[:400],
-              "occurredAt": row["occurredAt"].isoformat() if hasattr(row["occurredAt"], "isoformat") else str(row["occurredAt"]),
-              "observedBlockReference": row.get("observedBlockReference")} for row in rows]
+    items = []
+    for row in rows:
+        # Detect projected records: if the headline or summary contains known server-projection
+        # patterns, mark the record as having limited evidence so the LLM does not fabricate
+        # explanations from placeholder text. The real evidence is only on the originating device.
+        summary_text = row.get("summary") or ""
+        is_projected = not summary_text.strip() or row.get("evidence_provenance") == "server_projected"
+        items.append({
+            "recordId": row["recordId"], "logicalIssueKey": row["logicalIssueKey"], "category": row["category"],
+            "effectiveState": row["effectiveState"], "effectiveReason": row["effectiveReason"],
+            "headline": redact_investigation_secrets(row["headline"])[:200],
+            "summary": redact_investigation_secrets(summary_text)[:400] if not is_projected else "Detailed evidence is only available on the originating device.",
+            "evidence_availability": "full" if not is_projected else "limited_to_originating_device",
+            "occurredAt": row["occurredAt"].isoformat() if hasattr(row["occurredAt"], "isoformat") else str(row["occurredAt"]),
+            "observedBlockReference": row.get("observedBlockReference"),
+        })
     observed = rows[0]["occurredAt"] if rows else None
     return _result(items, ["authoritative_patrol_record_store"], observed_at=observed)
 

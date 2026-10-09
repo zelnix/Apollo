@@ -112,20 +112,38 @@ describe("2. Handled findings remain handled; new evidence can reopen (productio
     assert.ok(merged.resolved_at, "resolved_at preserved");
   });
 
-  it("genuinely new enforcement evidence CAN reopen through actual merge", () => {
+  it("genuinely new enforcement evidence CAN reopen through actual merge (observed after handling)", () => {
+    const resolvedTime = "2026-06-01T10:00:00Z";
     const local = makeEvent({
-      event_id: "e3", status: "resolved", resolved_at: new Date().toISOString(),
-      enforcement_evidence: { evidence_id: "old-evidence" } as any,
+      event_id: "e3", status: "resolved", resolved_at: resolvedTime,
+      enforcement_evidence: { evidence_id: "old-evidence", observed_at: "2026-06-01T09:00:00Z" } as any,
     });
     const serverNewEvidence = makeServerEvent({
       event_id: "e3", status: "active", state: "biting", verified_block: true,
-      enforcement_evidence: { evidence_id: "NEW-evidence-id" } as any,
+      enforcement_evidence: { evidence_id: "NEW-evidence-id", observed_at: "2026-06-01T11:00:00Z" } as any,
     });
 
     const { events } = mergeLocalAndRemoteEvents([local], [serverNewEvidence]);
     const merged = events.find((e) => e.event_id === "e3")!;
-    assert.equal(merged.status, "active", "New enforcement evidence reopens the event");
+    assert.equal(merged.status, "active", "New evidence observed after handling reopens the event");
     assert.equal(merged.resolved_at, null, "resolved_at cleared on reopen");
+  });
+
+  it("delayed delivery of older evidence does NOT reopen (observed before handling)", () => {
+    const resolvedTime = "2026-06-01T10:00:00Z";
+    const local = makeEvent({
+      event_id: "e3b", status: "resolved", resolved_at: resolvedTime,
+      enforcement_evidence: { evidence_id: "first-evidence", observed_at: "2026-06-01T09:00:00Z" } as any,
+    });
+    const serverOldEvidence = makeServerEvent({
+      event_id: "e3b", status: "active", state: "biting",
+      enforcement_evidence: { evidence_id: "delayed-old-evidence", observed_at: "2026-06-01T08:00:00Z" } as any,
+    });
+
+    const { events } = mergeLocalAndRemoteEvents([local], [serverOldEvidence]);
+    const merged = events.find((e) => e.event_id === "e3b")!;
+    assert.equal(merged.status, "resolved", "Delayed older evidence does not reopen");
+    assert.ok(merged.resolved_at, "resolved_at preserved");
   });
 
   it("same enforcement evidence does NOT reopen through actual merge", () => {
@@ -152,12 +170,22 @@ describe("2. Handled findings remain handled; new evidence can reopen (productio
 
 // ── Test 3: Repeated blocks don't create misleading duplicates ──────────────
 describe("3. Repeated blocks retain enforcement evidence without duplicate threats", () => {
-  it("events for the same indicator_host are correlated even without scent_id", () => {
+  it("events for the same indicator_host within 24h are correlated", () => {
+    const now = Date.now();
     const events = [
-      makeBlockEvent({ event_id: "b1", indicator_host: "apolloverify.harmonywellnessgroup.com.au", scent_id: undefined }),
-      makeBlockEvent({ event_id: "b2", indicator_host: "apolloverify.harmonywellnessgroup.com.au", scent_id: undefined }),
+      makeBlockEvent({ event_id: "b1", indicator_host: "apolloverify.harmonywellnessgroup.com.au", scent_id: undefined, occurred_at: new Date(now).toISOString() }),
+      makeBlockEvent({ event_id: "b2", indicator_host: "apolloverify.harmonywellnessgroup.com.au", scent_id: undefined, occurred_at: new Date(now - 3600_000).toISOString() }),
     ];
-    assert.equal(countDistinctFindings(events), 1, "Same host = 1 finding, not 2");
+    assert.equal(countDistinctFindings(events), 0, "Verified blocks are not counted as findings requiring attention");
+  });
+
+  it("events for the same host but >24h apart are separate findings", () => {
+    const now = Date.now();
+    const events = [
+      makeEvent({ event_id: "e1", indicator_host: "evil.com", scent_id: undefined, occurred_at: new Date(now).toISOString() }),
+      makeEvent({ event_id: "e2", indicator_host: "evil.com", scent_id: undefined, occurred_at: new Date(now - 25 * 3600_000).toISOString() }),
+    ];
+    assert.equal(countDistinctFindings(events), 2, "Same host but >24h apart = separate findings");
   });
 
   it("normalizeHistoricalEvent preserves verified block with valid packet proof", () => {
@@ -222,25 +250,30 @@ describe("4. Single threat through multiple Gates correlated; independents separ
 
 // ── Test 5: Home and Protection Details use the same count ──────────────────
 describe("5. Home warning counts include only distinct findings genuinely requiring attention", () => {
-  it("countDistinctFindings matches real finding count, not duplicate-inflated count", () => {
+  it("countDistinctFindings excludes verified blocks (protection activity, not unresolved concerns)", () => {
     const events = [
       makeEvent({ event_id: "e1", scent_id: "s1", state: "barking" }),
       makeEvent({ event_id: "e2", scent_id: "s1", state: "growling" }),
       makeEvent({ event_id: "e3", indicator_host: "other.com", scent_id: undefined, state: "ears_up" }),
+      makeBlockEvent({ event_id: "e4b" }), // verified block — protection activity
       makeEvent({ event_id: "e4", status: "resolved", resolved_at: new Date().toISOString() }),
     ];
-    assert.equal(countDistinctFindings(events), 2, "s1 group + other.com = 2 findings");
+    assert.equal(countDistinctFindings(events), 2, "s1 group + other.com = 2 findings; block and resolved excluded");
   });
 
-  it("buildProtectionFindings produces same grouping as countDistinctFindings", () => {
+  it("buildProtectionFindings separates concerns from protection activity", () => {
     const events = [
       makeEvent({ event_id: "e1", scent_id: "s1", state: "barking" }),
       makeEvent({ event_id: "e2", scent_id: "s1", state: "growling" }),
       makeEvent({ event_id: "e3", indicator_host: "other.com", scent_id: undefined, state: "ears_up" }),
+      makeBlockEvent({ event_id: "e4b" }),
     ];
     const findings = buildProtectionFindings({ capabilities: [], gates: [], attention: [], events });
-    const activeFindings = findings.filter((f) => f.findingType === "threat");
-    assert.equal(activeFindings.length, countDistinctFindings(events), "Same count");
+    const concerns = findings.filter((f) => f.findingType === "threat");
+    const blocks = findings.filter((f) => f.findingType === "protection_activity");
+    assert.equal(concerns.length, 2, "2 concern-type findings");
+    assert.equal(blocks.length, 1, "1 protection activity");
+    assert.equal(countDistinctFindings(events), concerns.length, "Count matches concern findings only");
   });
 });
 
@@ -260,10 +293,11 @@ describe("6. Every finding displays accurate status, date/time, evidence, action
     assert.equal(f.eventCount, 2);
   });
 
-  it("biting events get 'Blocked' status, not 'Threat stopped'", () => {
+  it("biting events with verified_block get 'Blocked' status and findingType 'protection_activity'", () => {
     const events = [makeBlockEvent()];
     const findings = buildProtectionFindings({ capabilities: [], gates: [], attention: [], events });
-    const f = findings.find((f) => f.findingType === "threat")!;
+    const f = findings.find((f) => f.findingType === "protection_activity")!;
+    assert.ok(f, "Verified block is protection_activity, not threat");
     assert.equal(f.statusLabel, "Blocked");
   });
 

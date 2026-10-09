@@ -44,10 +44,18 @@ export function mergeLocalAndRemoteEvents(
 
       // Lifecycle guard: local resolution is preserved unless genuinely new evidence exists.
       const localResolved = local.status === "resolved" || local.status === "trusted" || !!local.resolved_at;
-      // New evidence = server carries a new enforcement_evidence.evidence_id not previously on this event.
+      // New evidence must satisfy ALL of:
+      // 1. Different evidence_id (not a replay of the same enforcement receipt)
+      // 2. Observed AFTER the handling time (not a delayed delivery of older evidence)
+      // 3. Correctly associated with this event (evidence_id must be present)
       const localEvidenceId = local.enforcement_evidence?.evidence_id;
       const remoteEvidenceId = remote.enforcement_evidence?.evidence_id;
-      const hasNewEnforcementEvidence = !!remoteEvidenceId && remoteEvidenceId !== localEvidenceId;
+      const remoteObservedAt = remote.enforcement_evidence?.observed_at;
+      const localResolvedAt = local.resolved_at;
+      const isDifferentEvidence = !!remoteEvidenceId && remoteEvidenceId !== localEvidenceId;
+      const isObservedAfterHandling = !!remoteObservedAt && !!localResolvedAt
+        && Date.parse(remoteObservedAt) > Date.parse(localResolvedAt);
+      const hasNewEnforcementEvidence = isDifferentEvidence && isObservedAfterHandling;
       const preserveResolution = localResolved && !hasNewEnforcementEvidence;
 
       merged.push({
