@@ -75,7 +75,7 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose 
   const toggleItem = (id: string) => setItemsOpen((prev) => ({ ...prev, [id]: !prev[id] }));
   const close = () => (onClose ? onClose() : goBackOrHome(router));
 
-  const spokenText = `${result.headline}. ${result.higginsSays}${result.whatToDo ? ` Why action was taken: ${result.whatToDo}` : ""}`;
+  const spokenText = `${result.headline}. ${result.higginsSays}${result.whatToDo ? ` What to do: ${result.whatToDo}` : ""}`;
 
   return (
     <View style={s.root} testID="check-result-screen">
@@ -109,7 +109,7 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose 
 
           <View style={{ gap: spacing.xs }}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm }}>
-              <Text style={s.sectionLabel}>HIGGINS SAYS</Text>
+              <Text style={s.sectionLabel}>WHY ACTION WAS TAKEN</Text>
               <HigginsSpeakButton compact text={spokenText} testID="check-result-hear-higgins" />
             </View>
             <Text style={s.higginsText} testID="check-result-higgins">{result.higginsSays}</Text>
@@ -117,7 +117,7 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose 
 
           {result.whatToDo || result.whatToDoLinks?.length ? (
             <View style={{ gap: spacing.xs }}>
-              <Text style={s.sectionLabel}>WHY ACTION WAS TAKEN</Text>
+              <Text style={s.sectionLabel}>WHAT TO DO</Text>
               {result.whatToDo ? (
                 <LinkifiedText style={s.higginsText} text={result.whatToDo} testID="check-result-whattodo" />
               ) : null}
