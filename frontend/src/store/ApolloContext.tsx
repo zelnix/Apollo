@@ -590,27 +590,81 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     void registerRemotePush().catch(() => undefined);
   }, [verifyNow, enableNotifications]);
 
-  // Remote Patrol + trust merge (device may have reinstalled). Local wins.
+  // Remote Patrol + trust merge. On the ORIGINATING device, local content (headline, what_happened,
+  // why, what_to_do, local_indicator, claimed_brand, scenario) always wins — the server only stores
+  // a privacy-projected summary that must never overwrite the detailed findings the person actually
+  // saw. Server records contribute lifecycle metadata only (patrol_record, investigation_case_id).
+  // Resolved/trusted events are never reopened by a server sync unless the server record carries
+  // genuinely new evidence (a higher-severity patrol_record revision). Events from OTHER devices
+  // (post-reinstall sync) are taken as-is since no local detail exists for them.
   const remoteEvents = useQuery({ queryKey: ["patrol", deviceId], enabled: !!deviceId, queryFn: () => apiGet<PatrolRecord[]>(`/patrol/records?limit=200`) });
   const remoteTrust = useQuery({ queryKey: ["trust", deviceId], enabled: !!deviceId, queryFn: () => apiGet<TrustEntry[]>(`/trust?device_id=${deviceId}`) });
   useEffect(() => {
     if (!remoteEvents.data) return;
-    const authoritative = remoteEvents.data.map((record) => normalizeHistoricalEvent(patrolRecordToEvent(record)));
-    const remoteIds = new Set(authoritative.map((event) => event.event_id));
+    const remoteConverted = remoteEvents.data.map((record) => normalizeHistoricalEvent(patrolRecordToEvent(record)));
+    const remoteById = new Map(remoteConverted.map((e) => [e.event_id, e]));
     // Supersession: when a remote (Higgins-projected) event carries a client_submission_id, any
     // local placeholder with the same submission but a different event_id is dropped — the
     // projected event replaces it entirely. This is the completion of the local→remote handoff.
     const remoteBySubmission = new Map<string, string>();
-    for (const re of authoritative) {
+    for (const re of remoteConverted) {
       if (re.client_submission_id) remoteBySubmission.set(re.client_submission_id, re.event_id);
     }
-    const localOnly = events.filter((event) => {
-      if (remoteIds.has(event.event_id)) return false;
+    const localById = new Map(events.map((e) => [e.event_id, e]));
+
+    // Merge: iterate all remote events. For each, either blend with local or take as-is.
+    const merged: PatrolEvent[] = [];
+    const mergedIds = new Set<string>();
+    for (const remote of remoteConverted) {
+      const local = localById.get(remote.event_id);
+      if (local) {
+        // On the originating device: local content WINS. Absorb only server metadata.
+        const localHasDetail = !!(local.what_happened?.trim()) && local.what_happened !== remote.what_happened;
+        // Lifecycle guard: if local is resolved/trusted, the server must not reopen it unless
+        // the server record carries a strictly higher-severity revision (genuinely new evidence).
+        const localResolved = local.status === "resolved" || local.status === "trusted" || !!local.resolved_at;
+        const serverHasNewEvidence = remote.patrol_record && local.patrol_record
+          && remote.patrol_record.revision > local.patrol_record.revision
+          && STATE_RANK[remote.state] > STATE_RANK[local.state];
+        const preserveResolution = localResolved && !serverHasNewEvidence;
+        merged.push({
+          ...local,
+          // Preserve detailed local findings — never overwrite with privacy-projected server text.
+          headline: localHasDetail ? local.headline : remote.headline,
+          what_happened: localHasDetail ? local.what_happened : remote.what_happened,
+          why: localHasDetail ? local.why : remote.why,
+          what_to_do: localHasDetail ? local.what_to_do : remote.what_to_do,
+          // Keep local-only fields that the server never has.
+          local_indicator: local.local_indicator ?? remote.local_indicator,
+          claimed_brand: local.claimed_brand ?? remote.claimed_brand,
+          scenario: local.scenario ?? remote.scenario,
+          // Absorb server lifecycle metadata (the only things the server is authoritative on).
+          patrol_record: remote.patrol_record ?? local.patrol_record,
+          investigation_case_id: remote.investigation_case_id ?? local.investigation_case_id,
+          client_submission_id: remote.client_submission_id ?? local.client_submission_id,
+          // Lifecycle: preserve local resolution; only the server's genuinely new evidence can reopen.
+          status: preserveResolution ? local.status : remote.status,
+          state: preserveResolution ? local.state : (STATE_RANK[remote.state] > STATE_RANK[local.state] ? remote.state : local.state),
+          resolved_at: preserveResolution ? local.resolved_at : (remote.resolved_at ?? local.resolved_at),
+          verified_block: remote.verified_block || local.verified_block,
+          enforcement_evidence: remote.enforcement_evidence ?? local.enforcement_evidence,
+          supporting_references: (local.supporting_references?.length ? local.supporting_references : remote.supporting_references),
+        });
+      } else {
+        // No local version — this is from another device or post-reinstall. Take server as-is.
+        merged.push(remote);
+      }
+      mergedIds.add(remote.event_id);
+    }
+    // Add local-only events (not on server yet, or superseded placeholders).
+    for (const local of events) {
+      if (mergedIds.has(local.event_id)) continue;
       // Drop the local placeholder — the authoritative projected event replaces it.
-      if (event.client_submission_id && remoteBySubmission.has(event.client_submission_id) && event.event_id !== remoteBySubmission.get(event.client_submission_id)) return false;
-      return true;
-    });
-    void persistEvents([...authoritative, ...localOnly].sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at)));
+      if (local.client_submission_id && remoteBySubmission.has(local.client_submission_id) && local.event_id !== remoteBySubmission.get(local.client_submission_id)) continue;
+      merged.push(local);
+      mergedIds.add(local.event_id);
+    }
+    void persistEvents(merged.sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at)));
   }, [remoteEvents.data]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!remoteTrust.data) return;

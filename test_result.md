@@ -1757,3 +1757,135 @@ agent_communication:
     message: "Iteration 85 testing COMPLETE. CRITICAL FAILURE: TypeScript compilation fails with 9 errors preventing app from building. ROOT CAUSE: CheckGate type in src/domain/savedCheck.ts only defines 'link' | 'message' | 'network' | 'app' but text-guard.tsx uses 'text' and call-guard.tsx uses 'call' (lines 98, 121, 199 in text-guard.tsx; line 137 in call-guard.tsx). ADDITIONAL ERRORS in account.tsx: missing imports (toneColor, STATE_NAME), undefined setManualMode, AlertKind | null type mismatch (lines 150, 162, 193, 194). PASSED: ESLint clean on both migrated files, all gate test suites (gate2: 23/23, gate4: 25/25, gate8: 34/34), backend health + gate tests (15/15), frontend preview loads (200 OK). Backend pytest: 2 pre-existing failures unrelated to migration. Full report: /app/test_reports/iteration_85.json. MUST FIX: Add 'text' and 'call' to CheckGate union type, fix account.tsx imports and state."
   - agent: "main"
     message: "CHANGES SINCE ITERATION 85: (1) Added ActionLink type to checkResult.ts and whatToDoLinks optional field to CheckResultModel. (2) Updated CheckResultScreen.tsx with LinkifiedText (auto-detect URLs in text) and ActionLinkRow (tappable external link rows with icon) components; 'WHY ACTION WAS TAKEN' replaces 'HIGGINS SAYS' section title. (3) Added context-appropriate action links to ALL 9 gate adapters: call (FTC/FCC/DoNotCall), link (Google Safe Browsing/FTC), message (7726 SPAM/FTC), email (Google phishing/FTC/APWG), account (provider password URLs/HIBP), app (Google Play/Apple report), network (FTC Wi-Fi safety), file (VirusTotal), device (iOS/Android settings guides). (4) Fixed KeyError: 'alerts' in backend context_tools.py (was accessing value['items'] but snapshot returns 'alerts'). (5) Made government_alerts.py _alert() defensive with .get() defaults. (6) Applied resilient_get to virustotal.py for retry logic. (7) Updated protectionTimeline.ts: resolved events now UPDATE the original entry instead of creating a separate row. (8) Call adapter: formatted phone number display + checked-at date/time. (9) Fixed TS error: removed instagram/amazon from PROVIDER_PASSWORD_URLS (not in AccountProvider type). TypeScript compiles clean (npx tsc --noEmit exits 0). Please test: (A) TypeScript compilation, (B) Backend health + context_tools scam snapshot, (C) Frontend loads, (D) ESLint on modified domain adapters and CheckResultScreen. Credentials in /app/memory/test_credentials.md."
+
+## 2026-10-09 Apollo Protection Messaging QA Fixes Testing
+
+backend:
+  - task: "POST /api/patrol/events - upsert patrol event"
+    implemented: true
+    working: true
+    file: "backend/routers/patrol.py"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "POST /api/patrol/events tested and working correctly. Backend applies privacy projection via minimal_patrol() (expected behavior). Event creation, idempotent upserts, and response structure all verified. Backend correctly strips claimed_brand and preserves valid scenario patterns (e.g., M01, W04). This is the designed privacy policy."
+  
+  - task: "GET /api/patrol/records - fetch patrol records"
+    implemented: true
+    working: true
+    file: "backend/routers/patrol.py"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "GET /api/patrol/records tested and working correctly. Returns list of patrol records with proper authentication. Tested with device bearer token."
+  
+  - task: "PATCH /api/patrol/events/{id} - patch event status"
+    implemented: true
+    working: true
+    file: "backend/routers/patrol.py"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "PATCH /api/patrol/events/{id} tested and working correctly. Successfully updates event status to resolved, sets resolved_at timestamp. Idempotent behavior verified."
+
+frontend:
+  - task: "P0: Preserve Original Findings During Sync (ApolloContext.tsx lines 593-670)"
+    implemented: true
+    working: true
+    file: "frontend/src/store/ApolloContext.tsx"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "Remote merge effect verified in ApolloContext.tsx (lines 593-670). The merge logic correctly preserves local event content (headline, what_happened, why, what_to_do) when server records sync back. Local events with detailed findings are not overwritten by server's privacy-projected generic text. Server records only contribute lifecycle metadata (patrol_record, investigation_case_id). Implementation matches the P0 requirement exactly."
+  
+  - task: "P0: Correct Finding Lifecycle - resolved events stay resolved"
+    implemented: true
+    working: true
+    file: "frontend/src/store/ApolloContext.tsx"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "Lifecycle guard verified in ApolloContext.tsx merge effect (lines 625-629). If local event has status='resolved' or resolved_at set, the server cannot revert it to 'active' without new evidence (higher revision + higher severity). The preserveResolution logic correctly prevents reopening resolved events through sync."
+  
+  - task: "P1: Remove hasLegacyJargon() from messageVoice.ts and patrol/[id].tsx"
+    implemented: true
+    working: true
+    file: "frontend/src/domain/messageVoice.ts, frontend/app/patrol/[id].tsx"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "hasLegacyJargon() function removed as callable. Only deprecation comment remains at line 133-136 in messageVoice.ts. No references to hasLegacyJargon or projectedEventVoice found in patrol/[id].tsx. Grep search confirms no callable function exists in codebase. Event detail screen now uses looksLikeInternalCode() instead."
+  
+  - task: "P1: Threat-First Reporting (protectionDetails.ts + protection-details.tsx)"
+    implemented: true
+    working: true
+    file: "frontend/src/domain/protectionDetails.ts, frontend/app/protection-details.tsx"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "buildProtectionFindings() rewritten to group by threat (scent_id) first, then gate infrastructure issues. countDistinctThreats() function added and exported (line 269). ProtectionFinding interface includes new fields: findingType, threatTitle, firstDetected, latestActivity, eventCount. UI renders 'ACTIVE THREATS' section first (lines 134-185), then 'GATE STATUS' section (lines 188-226). Threat count displayed on protection-details screen (line 103)."
+  
+  - task: "Frontend unit tests - messageVoice.test.ts"
+    implemented: true
+    working: true
+    file: "frontend/tests/messageVoice.test.ts"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "All 11 tests passed: area labels, resultChip, source label, displayStateLabel, humanizeReason, status not overstated, projected event voice, looksLikeInternalCode, scrubMessage, investigationHistory, eventHistory. Test execution time: 90.86ms."
+  
+  - task: "Frontend unit tests - messageGuardrails.test.ts"
+    implemented: true
+    working: true
+    file: "frontend/tests/messageGuardrails.test.ts"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "All 6 tests passed: projected event text, patrol_sync egress, Apollo status reasons, notification routes, Gate alerts, Higgins chat replies. Test execution time: 93.17ms."
+  
+  - task: "Frontend app loads without errors"
+    implemented: true
+    working: true
+    file: "frontend/app"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "Frontend loads successfully at https://higgins-refine.preview.emergentagent.com/ with HTTP 200 status. No startup errors detected."
+
+metadata:
+  created_by: "testing_agent"
+  version: "1.0"
+  test_sequence: 1
+  run_ui: false
+
+test_plan:
+  current_focus:
+    - "All QA fixes verified and working"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "testing"
+    message: "Apollo Protection Messaging QA Fixes testing COMPLETE. All 4 architectural fixes verified: (1) P0 Preserve Original Findings - ApolloContext.tsx merge logic correctly preserves local content and prevents server's privacy-projected text from overwriting detailed findings. (2) P0 Correct Finding Lifecycle - resolved events stay resolved unless server has genuinely new evidence (higher revision + severity). (3) P1 Remove hasLegacyJargon - function removed, only deprecation comment remains, no callable references found. (4) P1 Threat-First Reporting - buildProtectionFindings() groups by threat first, countDistinctThreats() exported, UI shows ACTIVE THREATS before GATE STATUS. Backend APIs all working: POST /api/patrol/events (with privacy projection), GET /api/patrol/records, PATCH /api/patrol/events/{id}. Frontend unit tests: 11/11 messageVoice tests passed, 6/6 messageGuardrails tests passed. Frontend loads with 200 status. KEY ARCHITECTURAL NOTE: Backend applies privacy projection via minimal_patrol() - this is EXPECTED and CORRECT. The P0 fix is in the FRONTEND merge logic (ApolloContext.tsx), which preserves local detailed content when syncing. No issues found. All tests passed."
+

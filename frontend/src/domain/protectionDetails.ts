@@ -1,18 +1,21 @@
-// Protection Details — detailed, per-gate findings for the "View Protection Details" screen.
+// Protection Details — detailed threat-first findings for the "View Protection Details" screen.
 // Reuses existing capability + gate presentation + patrol-event data (no new infrastructure).
-// Each finding is one of three outcomes: an active-protection problem, a manual-check limitation,
-// or an active-event concern. Manual capabilities (e.g. Link Gate) are never represented as
-// automatic protection. Pure, unit-testable.
+// THREAT-FIRST: Active threats (grouped by scent_id) appear before gate infrastructure issues.
+// Manual capabilities (e.g. Link Gate) are never represented as automatic protection.
+// Pure, unit-testable.
 
 import type { AttentionItem } from "./homeAttention";
 import type { GatePresentation } from "./gates";
-import type { Capability, PatrolEvent } from "./types";
+import type { Capability, EventCategory, PatrolEvent } from "./types";
+import { STATE_RANK } from "./stateMachine";
 
 /** A finding to render on the Protection Details screen. */
 export interface ProtectionFinding {
   id: string;
   /** Gate name, e.g. "Site Gate". */
   gate: string;
+  /** For threat-first reporting: the threat headline (distinct from the gate). */
+  threatTitle?: string;
   /** Short label for the "kind" of protection — Manual vs Automatic — so the person sees the distinction. */
   kind: "automatic" | "manual";
   kindLabel: "Automatic protection" | "Manual check";
@@ -29,6 +32,14 @@ export interface ProtectionFinding {
   /** Action label + route (route optional — some findings are informational). */
   actionLabel?: string;
   route?: string;
+  /** Threat-first: when the threat was first detected (local date/time). */
+  firstDetected?: string;
+  /** Threat-first: latest activity on this threat. */
+  latestActivity?: string;
+  /** Threat-first: how many events are grouped under this threat. */
+  eventCount?: number;
+  /** Whether this is a threat finding (event-based) vs infrastructure (gate/capability). */
+  findingType: "threat" | "infrastructure";
 }
 
 /** Capability id → gate title / kind. Mirrors the ApolloHero's affected-capability list. */
@@ -45,6 +56,14 @@ const CAPABILITY_META: Record<Capability["id"], { gate: string; kind: Protection
 const GATE_ROUTE_BY_ID: Record<GatePresentation["id"], string> = {
   site: "/(tabs)/guard?gate=site", link: "/check", text: "/text-guard", call: "/call-guard",
   network: "/network", account: "/account", email: "/email", file: "/file", app: "/app-check", device: "/device",
+};
+
+/** Which gate a Patrol event belongs to (for naming the affected gate on the threat card). */
+const GATE_FOR_CATEGORY: Record<string, string> = {
+  link: "Link Gate", website: "Site Gate", known_threat: "Site Gate", protection: "Site Gate",
+  connection: "Internet Gate", system: "Device Gate", device: "Device Gate", message: "Text Gate",
+  call: "Call Gate", app: "App Gate", account: "Account Gate", email: "Email Gate", file: "File Gate",
+  family: "Family alert",
 };
 
 /** A gate is "manual" when it has no automatic capability or that capability is manual-only. */
@@ -77,12 +96,13 @@ function capabilityMeaning(c: Capability, kind: ProtectionFinding["kind"]): stri
   }
 }
 
-/** Build the ordered list of findings for the Protection Details screen. Order:
- *  1. Verified gate failures ('action').
- *  2. Active patrol events (barking / growling / ears_up).
+/** Build the ordered list of findings for the Protection Details screen. THREAT-FIRST ordering:
+ *  1. Active threats (grouped by scent_id / individual events) — the things the person cares about.
+ *  2. Gate infrastructure failures (protection stopped, permissions needed).
  *  3. Capabilities that aren't active (limited coverage).
- *  4. Gates with 'limited' or 'unverified' tone (reduced-coverage automatic protection).
- *  De-duplicated by gate name so a gate problem + a matching capability gap aren't shown twice. */
+ *  4. Gates with 'limited' or 'unverified' tone.
+ *  Threats are grouped by scent_id when available, otherwise each event is its own finding.
+ *  Resolved/trusted events are EXCLUDED from active threat findings. */
 export function buildProtectionFindings(input: {
   capabilities: Capability[];
   gates: GatePresentation[];
@@ -91,19 +111,81 @@ export function buildProtectionFindings(input: {
 }): ProtectionFinding[] {
   const findings: ProtectionFinding[] = [];
   const seenGates = new Set<string>();
+  const seenEventIds = new Set<string>();
 
-  const push = (f: ProtectionFinding) => {
-    if (seenGates.has(f.gate)) return;
-    seenGates.add(f.gate);
-    findings.push(f);
-  };
+  // ── 1) Active threats from events — grouped by scent_id for connected incidents ──
+  const activeEvents = input.events.filter(
+    (e) => (e.status === "active" || (e.status === "blocked" && !e.resolved_at))
+      && (e.state === "barking" || e.state === "growling" || e.state === "ears_up" || e.state === "biting"),
+  );
+  // Group by scent_id (connected incidents), or by event_id (standalone).
+  const threatGroups = new Map<string, PatrolEvent[]>();
+  for (const e of activeEvents) {
+    const key = e.scent_id ?? e.event_id;
+    const group = threatGroups.get(key) ?? [];
+    group.push(e);
+    threatGroups.set(key, group);
+  }
 
-  // 1 + 2) Everything already surfaced on Home ("needs attention") — gate failures and active events.
+  for (const [threatKey, groupEvents] of threatGroups) {
+    // Sort by severity (highest first), then newest first.
+    const sorted = groupEvents.sort((a, b) => {
+      const rankDiff = STATE_RANK[b.state] - STATE_RANK[a.state];
+      return rankDiff !== 0 ? rankDiff : Date.parse(b.occurred_at) - Date.parse(a.occurred_at);
+    });
+    const lead = sorted[0];
+    const gate = GATE_FOR_CATEGORY[lead.category] ?? "Apollo";
+    const firstDetected = sorted.reduce((earliest, e) => {
+      const t = Date.parse(e.occurred_at);
+      return t < earliest ? t : earliest;
+    }, Date.parse(sorted[0].occurred_at));
+    const latestActivity = sorted.reduce((latest, e) => {
+      const t = Date.parse(e.occurred_at);
+      return t > latest ? t : latest;
+    }, Date.parse(sorted[0].occurred_at));
+
+    const headline = lead.headline && !/^[a-z_]+$/.test(lead.headline) ? lead.headline : gate;
+    const problem = (lead.what_happened || lead.headline || "").trim();
+    sorted.forEach((e) => seenEventIds.add(e.event_id));
+
+    findings.push({
+      id: `threat:${threatKey}`,
+      gate,
+      threatTitle: headline,
+      kind: "automatic",
+      kindLabel: "Automatic protection",
+      tone: lead.state === "barking" || lead.state === "biting" ? "action" : "limited",
+      statusLabel: lead.state === "biting"
+        ? "Threat stopped"
+        : lead.state === "barking"
+          ? "Needs your decision"
+          : lead.state === "growling"
+            ? "Flagged by Apollo"
+            : "Worth a look",
+      whatFound: problem || "Apollo flagged something that needs your attention.",
+      whatItMeans: lead.state === "barking"
+        ? "Apollo flagged this and wants your decision before anything happens next."
+        : lead.state === "biting"
+          ? "Apollo blocked a confirmed threat. Review the details to decide your next steps."
+          : "Apollo isn't certain yet — a closer look will confirm whether it's a real concern.",
+      whatToDo: (lead.what_to_do || "").trim() || "Open the investigation to see exactly what to do next.",
+      actionLabel: "Open investigation",
+      route: `/patrol/${encodeURIComponent(lead.event_id)}`,
+      firstDetected: new Date(firstDetected).toLocaleString(),
+      latestActivity: new Date(latestActivity).toLocaleString(),
+      eventCount: sorted.length,
+      findingType: "threat",
+    });
+  }
+
+  // ── 2) Gate infrastructure failures (protection stopped / needs setup) ──
   for (const item of input.attention) {
     if (item.kind === "gate") {
+      if (seenGates.has(item.gate)) continue;
+      seenGates.add(item.gate);
       const gate = input.gates.find((g) => g.title === item.gate);
       const kind = gate ? gateKind(gate) : "automatic";
-      push({
+      findings.push({
         id: item.id,
         gate: item.gate,
         kind,
@@ -117,31 +199,16 @@ export function buildProtectionFindings(input: {
         whatToDo: item.higgins,
         actionLabel: item.actionLabel,
         route: item.route,
-      });
-    } else if (item.event) {
-      const e = item.event;
-      push({
-        id: item.id,
-        gate: item.gate,
-        kind: "automatic",
-        kindLabel: "Automatic protection",
-        tone: e.state === "barking" ? "action" : "limited",
-        statusLabel: e.state === "barking" ? "Needs your decision" : "Worth a look",
-        whatFound: item.problem,
-        whatItMeans: e.state === "barking"
-          ? "Apollo flagged this and wants your decision before anything happens next."
-          : "Apollo isn't certain yet — a closer look will confirm whether it's a real concern.",
-        whatToDo: item.higgins,
-        actionLabel: "Open investigation",
-        route: item.route,
+        findingType: "infrastructure",
       });
     }
+    // Skip event-type attention items — they're already grouped above as threats.
   }
 
-  // 3) Capabilities that aren't currently 'active' (and aren't marked unsupported / coming_later).
+  // ── 3) Capabilities that aren't currently 'active' ──
   for (const c of input.capabilities) {
     if (c.status === "active" || c.status === "coming_later") continue;
-    if (c.status === "unsupported") continue; // intentionally hidden — "not applicable" isn't a concern.
+    if (c.status === "unsupported") continue;
     const meta = CAPABILITY_META[c.id];
     if (!meta) continue;
     if (seenGates.has(meta.gate)) continue;
@@ -150,7 +217,7 @@ export function buildProtectionFindings(input: {
       : c.status === "available"
         ? `Open ${meta.gate} when you want to use this check.`
         : `Open ${meta.gate} to see what's needed next.`;
-    push({
+    findings.push({
       id: `cap:${c.id}`,
       gate: meta.gate,
       kind: meta.kind,
@@ -165,15 +232,17 @@ export function buildProtectionFindings(input: {
       whatToDo,
       actionLabel: `Open ${meta.gate}`,
       route: meta.route,
+      findingType: "infrastructure",
     });
+    seenGates.add(meta.gate);
   }
 
-  // 4) Gates with limited / unable-to-verify tone — reduced-coverage automatic protection.
+  // ── 4) Gates with limited / unable-to-verify tone ──
   for (const g of input.gates) {
     if (seenGates.has(g.title)) continue;
     if (g.tone !== "limited" && g.tone !== "unverified") continue;
     const kind = gateKind(g);
-    push({
+    findings.push({
       id: `gate:${g.id}`,
       gate: g.title,
       kind,
@@ -188,8 +257,21 @@ export function buildProtectionFindings(input: {
         ?? (g.primaryAction?.label ? `${g.primaryAction.label} to see more.` : `Open ${g.title} for details.`),
       actionLabel: g.primaryAction?.label ?? `Open ${g.title}`,
       route: GATE_ROUTE_BY_ID[g.id],
+      findingType: "infrastructure",
     });
+    seenGates.add(g.title);
   }
 
   return findings;
+}
+
+/** Count distinct unresolved threats for the home summary. Grouped by scent_id. */
+export function countDistinctThreats(events: PatrolEvent[]): number {
+  const seen = new Set<string>();
+  for (const e of events) {
+    if (e.status !== "active" && !(e.status === "blocked" && !e.resolved_at)) continue;
+    if (e.state !== "barking" && e.state !== "growling" && e.state !== "ears_up" && e.state !== "biting") continue;
+    seen.add(e.scent_id ?? e.event_id);
+  }
+  return seen.size;
 }

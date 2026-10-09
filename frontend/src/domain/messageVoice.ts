@@ -130,17 +130,10 @@ export function looksLikeInternalCode(text: string): boolean {
   return /\b(known_threat|ears_up|user_started|server_projection|recorded_outcome|[a-z]+_[a-z]+(?:_[a-z]+)+)\b/.test(text);
 }
 
-/** True when text contains legacy jargon patterns from old event creation (e.g. "reported barking",
- *  "on-device assessment reported", "minimal security summary"). These are grammatically English
- *  but still developer-speak that shouldn't reach the user. */
-export function hasLegacyJargon(text: string): boolean {
-  if (!text) return false;
-  return /reported (barking|growling|ears_up|biting|sniffing|resting)/i.test(text)
-    || /on-device (assessment|check) reported/i.test(text)
-    || /minimal security summary/i.test(text)
-    || /details stay on the device/i.test(text)
-    || /Apollo recorded a \w+ check$/i.test(text);
-}
+/** @deprecated hasLegacyJargon removed per P1 directive — cosmetic UI masking must not replace
+ *  root data fixes. The merge layer (ApolloContext) now preserves local findings so projected
+ *  server text never overwrites real content on the originating device. Callers should show
+ *  actual data or mark incomplete records honestly. Do not re-add. */
 
 // --- Live scrubber for Higgins' free-text replies (Scan Gate Chat) -----------------------------------
 // Higgins' overview/explanation/findings come from the model and could echo an internal token. This is

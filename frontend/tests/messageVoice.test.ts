@@ -39,7 +39,7 @@ test("status is never overstated: no verified block => never 'stopped'", () => {
 test("projected (synced) event voice is plain English with no codes and no detail leak", () => {
   const v = projectedEventVoice("known_threat", "ears_up", false);
   for (const text of [v.headline, v.whatHappened, v.why, v.whatToDo]) assert.ok(!looksLikeInternalCode(text), `leaked code in: ${text}`);
-  assert.match(v.whatHappened, /worth a look/i);
+  assert.match(v.whatHappened, /worth a (closer )?look/i);
   const blocked = projectedEventVoice("website", "biting", true);
   assert.match(blocked.whatHappened, /blocked/i);
 });

@@ -18,7 +18,7 @@ import { ChildScreenHeader } from "@/src/components/ChildScreenHeader";
 import { Body, Card, Pill, toneColor, type Tone } from "@/src/components/ui";
 import { buildHomeAttention } from "@/src/domain/homeAttention";
 import { buildHomeVoice } from "@/src/domain/higginsHomeVoice";
-import { buildProtectionFindings, type ProtectionFinding } from "@/src/domain/protectionDetails";
+import { buildProtectionFindings, countDistinctThreats, type ProtectionFinding } from "@/src/domain/protectionDetails";
 import { buildTodayTimeline, quietDayLine, type TimelineEntry, type TimelineTone } from "@/src/domain/protectionTimeline";
 import { useApollo } from "@/src/store/ApolloContext";
 import { useProtectionHealth } from "@/src/protection/healthStore";
@@ -100,10 +100,14 @@ export default function ProtectionDetailsScreen() {
     [events, healthLog],
   );
 
+  const threatCount = useMemo(() => countDistinctThreats(events), [events]);
+  const threatFindings = findings.filter((f) => f.findingType === "threat");
+  const infraFindings = findings.filter((f) => f.findingType === "infrastructure");
+
   const info = {
     title: "About Protection Details",
     body: [
-      "This screen lists every Apollo Gate that is affected right now — nothing more, nothing less.",
+      "This screen groups active threats first — the things that need your attention — followed by gate infrastructure status.",
       "Apollo does the security work. Higgins is the one voice explaining what Apollo found, what it means and what to do.",
       "Manual checks (like Link Gate) are called out separately — they are tools you can use, not continuous background protection.",
     ],
@@ -119,50 +123,115 @@ export default function ProtectionDetailsScreen() {
         {/* Higgins' short interpretation — the same voice shown on Home, repeated here for context. */}
         <Card style={{ gap: spacing.sm }} testID="protection-details-voice">
           <Text style={s.intro}>{voice.text}</Text>
+          {threatCount > 0 ? (
+            <Text style={[s.intro, { fontFamily: fonts.textSemibold }]} testID="protection-threat-count">
+              {threatCount === 1 ? "1 distinct threat" : `${threatCount} distinct threats`} unresolved
+            </Text>
+          ) : null}
         </Card>
 
-        {/* Actionable findings first — the things that need attention right now. */}
+        {/* ── THREAT-FIRST: Active threats (grouped by incident) ── */}
+        {threatFindings.length > 0 ? (
+          <View style={{ gap: spacing.lg }}>
+            <Text style={s.sectionLabel}>ACTIVE THREATS</Text>
+            {threatFindings.map((f) => (
+              <Card key={f.id} style={{ gap: spacing.sm }} testID={`protection-finding-${f.id}`}>
+                <View style={s.headerRow}>
+                  <Text style={s.gateTitle}>{f.threatTitle ?? f.gate}</Text>
+                  <Pill tone={TONE_TO_PILL[f.tone]} label={f.statusLabel} testID={`protection-finding-${f.id}-status`} />
+                </View>
+                {f.eventCount && f.eventCount > 1 ? (
+                  <Text style={s.sectionText}>{f.eventCount} connected events via {f.gate}</Text>
+                ) : (
+                  <Text style={[s.sectionText, { color: colors.muted }]}>{f.gate}</Text>
+                )}
+                <View style={{ gap: 4 }}>
+                  <Text style={s.sectionLabel}>WHAT APOLLO FOUND</Text>
+                  <Text style={s.sectionText} testID={`protection-finding-${f.id}-found`}>{f.whatFound}</Text>
+                </View>
+                <View style={{ gap: 4 }}>
+                  <Text style={s.sectionLabel}>WHAT IT MEANS</Text>
+                  <Text style={s.sectionText} testID={`protection-finding-${f.id}-means`}>{f.whatItMeans}</Text>
+                </View>
+                <View style={{ gap: 4 }}>
+                  <Text style={s.sectionLabel}>WHAT TO DO</Text>
+                  <Text style={s.sectionText} testID={`protection-finding-${f.id}-do`}>{f.whatToDo}</Text>
+                </View>
+                {/* Threat dates: first detected + latest activity */}
+                {f.firstDetected ? (
+                  <View style={{ flexDirection: "row", gap: spacing.md, flexWrap: "wrap" }}>
+                    <Text style={s.tlTime}>First detected: {f.firstDetected}</Text>
+                    {f.latestActivity && f.latestActivity !== f.firstDetected ? (
+                      <Text style={s.tlTime}>Latest: {f.latestActivity}</Text>
+                    ) : null}
+                  </View>
+                ) : null}
+                {f.route && f.actionLabel ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={f.actionLabel}
+                    testID={`protection-finding-${f.id}-action`}
+                    onPress={() => router.push(f.route as never)}
+                    style={({ pressed }) => [s.actionRow, { opacity: pressed ? 0.7 : 1 }]}
+                    hitSlop={8}
+                  >
+                    <Text style={s.actionText}>{f.actionLabel}</Text>
+                    <ArrowRight size={16} color={colors.brand} />
+                  </Pressable>
+                ) : null}
+              </Card>
+            ))}
+          </View>
+        ) : null}
+
+        {/* ── INFRASTRUCTURE: Gate status and capability issues ── */}
+        {infraFindings.length > 0 ? (
+          <View style={{ gap: spacing.lg }}>
+            <Text style={s.sectionLabel}>GATE STATUS</Text>
+            {infraFindings.map((f) => (
+              <Card key={f.id} style={{ gap: spacing.sm }} testID={`protection-finding-${f.id}`}>
+                <View style={s.headerRow}>
+                  <Text style={s.gateTitle}>{f.gate}</Text>
+                  <Pill tone={TONE_TO_PILL[f.tone]} label={f.statusLabel} testID={`protection-finding-${f.id}-status`} />
+                  <Pill tone="neutral" label={f.kindLabel} testID={`protection-finding-${f.id}-kind`} />
+                </View>
+                <View style={{ gap: 4 }}>
+                  <Text style={s.sectionLabel}>WHAT APOLLO FOUND</Text>
+                  <Text style={s.sectionText} testID={`protection-finding-${f.id}-found`}>{f.whatFound}</Text>
+                </View>
+                <View style={{ gap: 4 }}>
+                  <Text style={s.sectionLabel}>WHAT IT MEANS</Text>
+                  <Text style={s.sectionText} testID={`protection-finding-${f.id}-means`}>{f.whatItMeans}</Text>
+                </View>
+                <View style={{ gap: 4 }}>
+                  <Text style={s.sectionLabel}>WHAT TO DO</Text>
+                  <Text style={s.sectionText} testID={`protection-finding-${f.id}-do`}>{f.whatToDo}</Text>
+                </View>
+                {f.route && f.actionLabel ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={f.actionLabel}
+                    testID={`protection-finding-${f.id}-action`}
+                    onPress={() => router.push(f.route as never)}
+                    style={({ pressed }) => [s.actionRow, { opacity: pressed ? 0.7 : 1 }]}
+                    hitSlop={8}
+                  >
+                    <Text style={s.actionText}>{f.actionLabel}</Text>
+                    <ArrowRight size={16} color={colors.brand} />
+                  </Pressable>
+                ) : null}
+              </Card>
+            ))}
+          </View>
+        ) : null}
+
+        {/* No findings at all */}
         {findings.length === 0 ? (
           <Card testID="protection-details-empty" style={{ gap: spacing.sm }}>
             <Text style={s.emptyTitle}>Nothing to flag right now</Text>
-            <Body>Apollo isn&apos;t reporting any affected Gates at the moment. Your automatic protection is running, and manual checks are available on the Check tab whenever you need them.</Body>
+            <Body>Apollo isn&apos;t reporting any active threats or affected Gates at the moment. Your automatic protection is running, and manual checks are available on the Check tab whenever you need them.</Body>
           </Card>
-        ) : (
-          findings.map((f) => (
-            <Card key={f.id} style={{ gap: spacing.sm }} testID={`protection-finding-${f.id}`}>
-              <View style={s.headerRow}>
-                <Text style={s.gateTitle}>{f.gate}</Text>
-                <Pill tone={TONE_TO_PILL[f.tone]} label={f.statusLabel} testID={`protection-finding-${f.id}-status`} />
-                <Pill tone="neutral" label={f.kindLabel} testID={`protection-finding-${f.id}-kind`} />
-              </View>
-              <View style={{ gap: 4 }}>
-                <Text style={s.sectionLabel}>WHAT APOLLO FOUND</Text>
-                <Text style={s.sectionText} testID={`protection-finding-${f.id}-found`}>{f.whatFound}</Text>
-              </View>
-              <View style={{ gap: 4 }}>
-                <Text style={s.sectionLabel}>WHAT IT MEANS</Text>
-                <Text style={s.sectionText} testID={`protection-finding-${f.id}-means`}>{f.whatItMeans}</Text>
-              </View>
-              <View style={{ gap: 4 }}>
-                <Text style={s.sectionLabel}>WHAT TO DO</Text>
-                <Text style={s.sectionText} testID={`protection-finding-${f.id}-do`}>{f.whatToDo}</Text>
-              </View>
-              {f.route && f.actionLabel ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={f.actionLabel}
-                  testID={`protection-finding-${f.id}-action`}
-                  onPress={() => router.push(f.route as never)}
-                  style={({ pressed }) => [s.actionRow, { opacity: pressed ? 0.7 : 1 }]}
-                  hitSlop={8}
-                >
-                  <Text style={s.actionText}>{f.actionLabel}</Text>
-                  <ArrowRight size={16} color={colors.brand} />
-                </Pressable>
-              ) : null}
-            </Card>
-          ))
-        )}
+        ) : null}
 
         {/* What Apollo has done today — split into actionable and rest. */}
         <TimelineSection timeline={timeline} />
