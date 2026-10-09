@@ -26,7 +26,7 @@ GATES = {
     "account": ("Account checks", "hybrid", "on_demand"),
     "network": ("Network checks", "native", "on_demand"),
 }
-STALE_AFTER = timedelta(minutes=30)
+STALE_AFTER = timedelta(hours=24)
 
 
 async def ensure_indexes() -> None:
@@ -68,6 +68,14 @@ async def save_snapshot(owner: str, snapshot: dict[str, Any]) -> dict[str, Any]:
 async def snapshot(owner: str) -> dict[str, Any] | None:
     return await db.device_capability_snapshots.find_one(
         {"owner_id": owner, "expires_at": {"$gt": now_utc()}}, {"_id": 0, "owner_id": 0, "expires_at": 0}
+    )
+
+
+async def touch_snapshot(owner: str) -> None:
+    """Extend the snapshot expiry — proof the device is still active and online."""
+    await db.device_capability_snapshots.update_one(
+        {"owner_id": owner},
+        {"$set": {"expires_at": now_utc() + STALE_AFTER}},
     )
 
 

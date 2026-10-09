@@ -1,6 +1,7 @@
 """Device bearer authentication (Hardening Gate step 2) and the external admin key — two separate trust boundaries."""
 from __future__ import annotations
 
+import asyncio
 import base64
 import hmac
 import secrets
@@ -90,6 +91,9 @@ async def enforce_device_auth(request: Request, credentials: Optional[HTTPAuthor
     if any(c != me for c in claimed):
         raise HTTPException(status_code=403, detail="That device_id does not belong to this device.")
     request.state.device = dev
+    # Keep the capability snapshot alive — proof the device is still active.
+    from services.capability_registry import touch_snapshot  # noqa: E402 — avoid circular import at module level
+    asyncio.ensure_future(touch_snapshot(dev.get("owner_id") or me))
 
 
 # --------------------------------------------------------------------------- Admin console (external, shared secret)
