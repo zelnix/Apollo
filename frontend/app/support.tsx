@@ -1,7 +1,7 @@
 // Apollo Support — central place for app/device details, live protection status, current issues,
-// Higgins Checkup history, diagnostics export and support contact (spec: Support Screen Enhancement).
+// Device Checkup history, diagnostics export and support contact (spec: Support Screen Enhancement).
 // It DISPLAYS status; it never runs duplicate diagnostics — "Go to Check" sends manual diagnostics
-// (including Higgins Re-check) to the Check tab. Preview builds never show fabricated native data.
+// (including Device Re-check) to the Check tab. Preview builds never show fabricated native data.
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import * as Clipboard from "expo-clipboard";
@@ -213,8 +213,8 @@ export default function SupportScreen() {
       </Section>
 
       {/* 3. Current Issues & Higgins */}
-      <Section title="Protection Issues & Higgins Checkup" testID="support-issues-section">
-        <InfoRow label="Last Higgins Checkup" value={higgins.lastCheckAt} />
+      <Section title="Protection Issues & Device Checkup" testID="support-issues-section">
+        <InfoRow label="Last Device Checkup" value={higgins.lastCheckAt} />
         <InfoRow label="Last result" value={higgins.result} />
         {higgins.warnings.length ? <View style={{ gap: 2 }} testID="support-warnings">{higgins.warnings.map((w, i) => <Body key={i} style={s.detail}>• {w}</Body>)}</View> : <Body style={s.detail}>No active warnings recorded.</Body>}
         {missingPerms.length ? <View testID="support-missing-perms" style={{ gap: 2 }}><Text style={s.label}>Missing permissions</Text>{missingPerms.map((p) => <Body key={p.id} style={s.detail}>• {p.title}: {p.why}</Body>)}</View> : null}

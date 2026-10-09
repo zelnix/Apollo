@@ -51,7 +51,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
   useEffect(() => onRecheck((o) => {
     if (!state.caseData || o.attempt.caseId !== state.caseData.id) return;
     const fresh = o.observation ? `fresh observation: ${scrubMessage(o.observation.status)}${o.observation.unavailableReason ? ` (${scrubMessage(o.observation.unavailableReason)})` : ""}` : "no observation possible on this device";
-    const verdict = o.plan ? ({ correct: "The setting now matches what Higgins asked for.", not_yet_correct: "The setting is not yet at the expected value.", cannot_observe: "Apollo cannot read this setting here — only you can confirm it.", failed: "The re-check failed." } as const)[o.plan.outcome] : "";
+    const verdict = o.plan ? ({ correct: "The setting now matches what Apollo asked for.", not_yet_correct: "The setting is not yet at the expected value.", cannot_observe: "Apollo cannot read this setting here — only you can confirm it.", failed: "The re-check failed." } as const)[o.plan.outcome] : "";
     setActionNote(`Back from Settings — ${fresh}. ${verdict} ${o.plan?.explanation ?? ""}`.trim());
     setFailedRecheck(o.attempt.status === "failed" && o.plan?.outcome === "failed");
     setConfirmablePlanId(o.plan?.outcome === "cannot_observe" ? o.attempt.planId : null);

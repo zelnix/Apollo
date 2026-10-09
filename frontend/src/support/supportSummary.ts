@@ -162,7 +162,7 @@ export function renderReportHtml(s: SupportSummary, reference: string): string {
     ${[["Device", `${s.device.manufacturer} ${s.device.model}`], ["Operating System", `${s.device.os} ${s.device.osVersion}`], ["Device Type", s.device.deviceType], ["Architecture", s.device.architecture]].map(([k, v]) => `<div class="kv"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("")}
     <h2>Protection &amp; Services</h2>
     <table>${pRows}</table>
-    <h2>Higgins Checkup</h2>
+    <h2>Device Checkup</h2>
     <div class="kv"><span>Last check</span><b>${esc(s.higgins.lastCheckAt)}</b></div>
     <div class="kv"><span>Result</span><b>${esc(s.higgins.result)}</b></div>
     <h2>Warnings</h2>

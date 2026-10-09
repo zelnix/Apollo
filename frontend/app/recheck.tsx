@@ -1,4 +1,4 @@
-// Higgins Re-check — manual diagnostic in the Check tab (spec §17). Repeats the platform-appropriate
+// Device Re-check — manual diagnostic in the Check tab (spec §17). Repeats the platform-appropriate
 // baseline, compares with the previous baseline where data permits, and keeps history. This is a
 // manual action only: it never runs in the background and is never duplicated in Gates.
 import { Redirect, useRouter } from "expo-router";
@@ -69,16 +69,16 @@ export default function Recheck() {
   return (
     <View style={s.root} testID="recheck-root">
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>Higgins Re-check</Text>
+        <Text style={s.title}>Device Re-check</Text>
         <Pressable testID="recheck-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
       </View>
       <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="recheck-scroll">
-        <GateAbout title="About Higgins Re-check" testID="recheck-intro"
+        <GateAbout title="About Device Re-check" testID="recheck-intro"
           tip="Pop-ups or ads appearing outside apps, the battery or data draining unusually fast, new apps or icons you didn't add, or settings that change back after you fix them.">
           <Body>Re-check this device for signs of malware, unsafe changes or an existing compromise. Higgins repeats the checks this device allows and compares them with the last check.</Body>
         </GateAbout>
         {stamp ? <Text style={s.stamp} testID="recheck-stamp">Last checked {stamp}</Text> : null}
-        <Button testID="recheck-run" label={running ? "Checking…" : report ? "Run Higgins Re-check" : "Run the first check now"} onPress={() => void run()} disabled={running} icon={running ? <ActivityIndicator color={colors.onBrandPrimary} /> : <RefreshCw size={18} color={colors.onBrandPrimary} />} />
+        <Button testID="recheck-run" label={running ? "Checking…" : report ? "Run Device Re-check" : "Run the first check now"} onPress={() => void run()} disabled={running} icon={running ? <ActivityIndicator color={colors.onBrandPrimary} /> : <RefreshCw size={18} color={colors.onBrandPrimary} />} />
 
         {running ? (
           <Card testID="recheck-running" style={{ gap: spacing.sm }}>

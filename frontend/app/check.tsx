@@ -254,7 +254,7 @@ export default function CheckLink() {
           </View>
           {sourceLabel ? <Pill tone="neutral" label={sourceLabel} testID="check-source-pill" /> : null}
           <Button testID="check-submit-button" label={!deviceId ? "Preparing Apollo…" : busy ? "Checking…" : "Check with Apollo"} onPress={() => run(input)} disabled={!deviceId || busy || !input.trim()} icon={busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : undefined} />
-          {!deviceId ? <Body testID="check-device-preparing">Apollo is registering this device before online reputation and Higgins checks.</Body> : null}
+          {!deviceId ? <Body testID="check-device-preparing">Apollo is registering this device before online reputation checks.</Body> : null}
           <Button testID="check-page-screenshot" variant="secondary" label="Assess page screenshot" icon={<ImageIcon size={18} color={colors.onSurface} />} onPress={() => void photoAccess.start()} />
           <Button testID="check-page-crawl" variant="secondary" label="Inspect page safely" icon={<Globe size={18} color={colors.onSurface} />} onPress={() => void crawlPage()} disabled={!input.trim()} />
           {pageError ? <Card testID="check-page-error"><Body>{pageError}</Body></Card> : null}

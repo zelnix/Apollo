@@ -1,6 +1,6 @@
 // Universal Check Result screen component. Apollo investigates. Higgins explains. ONE result,
 // ONE explanation. Every Apollo Gate (Link / Site / Text / Call / Internet / App / Device / Email /
-// File / Account, plus Higgins First Check and Re-check) renders its manual-check outcome through
+// File / Account, plus Device First Check and Re-check) renders its manual-check outcome through
 // this single component — no competing verdict cards, no auto-asked follow-up questions, no
 // repetition. Technical evidence stays accessible through progressive disclosure.
 

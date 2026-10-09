@@ -1,5 +1,5 @@
 // Higgins First Check — Apollo's onboarding malware/virus/compromise BASELINE assessment, plus the
-// manual "Higgins Re-check" in the Check tab. This is NOT an antivirus engine and NOT a background
+// manual "Device Re-check" in the Check tab. This is NOT an antivirus engine and NOT a background
 // scanner: it is a point-in-time, capability-based reading of the security signals each platform
 // legitimately exposes. Pure and unit-tested; the collector (firstCheckSignals.ts) gathers the
 // inputs, the UI reports the result — neither invents a finding.
@@ -99,7 +99,7 @@ function applicationRiskCheck(i: FirstCheckInputs): FirstCheckCapabilityResult {
   const base = { id: "application_risk", category: "application_risk" as const, title: "Installed apps and their access" };
   if (i.platform !== "android") {
     return { ...base, supported: false, executed: false, result: "NOT_AVAILABLE", confidence: "low", severity: "none", evidenceRef: null,
-      explanation: "Higgins checked the security information this device allows apps to inspect. This platform restricts scanning of other apps and system files, so app-level malware checks aren't available here.",
+      explanation: "Apollo checked the security information this device allows apps to inspect. This platform restricts scanning of other apps and system files, so app-level malware checks aren't available here.",
       platformLimitation: i.platform === "ios" ? "Apple prevents any app from listing or scanning other apps." : "Installed-app inspection isn't available on this build." };
   }
   const s = i.signals;
@@ -222,7 +222,7 @@ export function reCheckHeadline(overall: FirstCheckOverall, changeCount: number)
   if (changeCount > 0 && (overall === "ATTENTION")) return `Higgins found something that's changed. ${changeCount === 1 ? "One item needs" : `${changeCount} items need`} your attention.`;
   if (overall === "LIMITED_CHECK") return "Higgins completed every check this device allows. Some areas can't be inspected on this platform.";
   if (overall === "ERROR") return FIRST_CHECK_COPY.ERROR.headline;
-  return "Higgins Re-check complete. I found no new signs of a problem in the areas this device allows me to check.";
+  return "Device Re-check complete. I found no new signs of a problem in the areas this device allows me to check.";
 }
 
 // --- Re-check comparison (spec §17 "compare with previous state") ------------------------------------

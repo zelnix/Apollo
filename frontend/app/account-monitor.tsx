@@ -1,5 +1,5 @@
 // Account Gate — Check My Accounts. The owner manages their own monitored email addresses, runs a
-// breach-exposure check on demand, and reads the Higgins Weekly Account Exposure Report. Manual controls
+// breach-exposure check on demand, and reads the Weekly Account Exposure Report. Manual controls
 // live here (Check It); the Gates tab shows only a read-only status. Apollo never asks for a password.
 import { Redirect, useRouter } from "expo-router";
 import KeyRound from "lucide-react-native/icons/key-round";

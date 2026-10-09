@@ -1,5 +1,5 @@
 // Universal Check Result — shared model for every Apollo manual check (Link / Site / Text / Call /
-// Internet / App / Device / Email / File / Higgins First Check / Re-check). Apollo investigates,
+// Internet / App / Device / Email / File / Device First Check / Re-check). Apollo investigates,
 // Higgins explains. ONE result, ONE explanation. Pure, serialisable, no React.
 //
 // Design principle (from product brief):

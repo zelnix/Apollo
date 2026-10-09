@@ -76,7 +76,7 @@ export default function FirstCheckOnboarding() {
           <Button testID="first-check-retry" variant="secondary" label="Try the check again" icon={<RefreshCw size={18} color={colors.brand} />} onPress={() => void run()} />
         ) : null}
         <Button testID="first-check-continue" label="Continue to Apollo" onPress={goHome} icon={<ShieldCheck size={18} color={colors.onBrandPrimary} />} />
-        <Text style={s.note}>You can repeat this anytime from Check It → Higgins Re-check.</Text>
+        <Text style={s.note}>You can repeat this anytime from Check It → Device Re-check.</Text>
       </View>
     </View>
   );

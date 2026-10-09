@@ -112,7 +112,7 @@ export default function SettingsScreen() {
 
       <View><SectionTitle>Help &amp; about</SectionTitle>
         <Card testID="settings-help">
-          <NavRow first label="Get help with Apollo" hint="App details, protection issues, Higgins checkup and support email" onPress={() => router.push("/support")} testID="settings-open-support" />
+          <NavRow first label="Get help with Apollo" hint="App details, protection issues, device checkup and support email" onPress={() => router.push("/support")} testID="settings-open-support" />
           <Pressable testID="settings-share" accessibilityRole="button" onPress={() => setShowShare((v) => !v)} style={[s.rowItem, s.divider]}>
             <View style={{ flex: 1 }}><Text style={s.rowLabel}>How to share into Apollo</Text></View><ChevronRight size={20} color={colors.muted} />
           </Pressable>

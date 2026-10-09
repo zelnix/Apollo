@@ -1,5 +1,5 @@
-// Shared Higgins First Check / Re-check result UI. Used by onboarding (app/first-check.tsx) and the
-// Check tab Re-check (app/recheck.tsx). Reports exactly what Higgins checked, found, and couldn't
+// Shared Device First Check / Re-check result UI. Used by onboarding (app/first-check.tsx) and the
+// Check tab Re-check (app/recheck.tsx). Reports exactly what Apollo checked, found, and couldn't
 // check (spec §13), and offers an AI/Higgins plain-English pass over the findings via GateInvestigation.
 import React, { useMemo } from "react";
 import { View } from "react-native";
@@ -39,7 +39,7 @@ export function FirstCheckResult({ report, changes, headlineOverride, kind, auto
 
   const context = useMemo(() => issueContext({
     gate: "device",
-    issue_summary: `Higgins ${kind === "re_check" ? "Re-check" : "First Check"}: ${copy.title}`,
+    issue_summary: `Device ${kind === "re_check" ? "Re-check" : "First Check"}: ${copy.title}`,
     assessment_state: copy.dogState,
     findings: report.checks.map((c) => ({
       summary: `${c.title} — ${c.explanation}`,
@@ -76,7 +76,7 @@ export function FirstCheckResult({ report, changes, headlineOverride, kind, auto
       ) : null}
 
       <Card testID={`${testID}-checks`} style={{ gap: spacing.md }}>
-        <SectionTitle>What Higgins checked</SectionTitle>
+        <SectionTitle>What Apollo checked</SectionTitle>
         {executed.map((c) => <CheckRow key={c.id} c={c} testID={`${testID}-check-${c.id}`} />)}
         {executed.length === 0 ? <Body>Higgins couldn&apos;t complete any checks this time.</Body> : null}
       </Card>
