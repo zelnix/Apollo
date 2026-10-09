@@ -889,23 +889,30 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
             await checkNumberRisk(item.number);
             acknowledged.push(item.number);
           } catch {
-            failed.push(item.number);
-            // Dedup-safe minimal event so the user knows a call was seen but not assessed.
-            const current = eventsRef.current;
-            if (!current.some((x) => x.local_indicator === item.number && x.category === "call")) {
-              const ev: PatrolEvent = {
-                event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "call" as const,
-                status: "active" as const, state: "ears_up" as const,
-                indicator_host: null, indicator_digest: null, local_indicator: item.number,
-                verified_block: false, adapter_label: securityAdapter.label,
-                occurred_at: new Date(item.seenAtMs).toISOString(), resolved_at: null,
-                trust_allowed: false, why: ["Apollo could not reach the reputation service for this number."],
-                headline: `Missed call: ${item.number}`,
-                what_happened: `A call from ${item.number} was seen but Apollo could not check it.`,
-                what_to_do: "You can check this number manually, or verify the caller independently before responding.",
-              };
-              const next = [ev, ...current.filter((x) => x.event_id !== ev.event_id)];
-              await persistEvents(next);
+            // Retry once after a short delay before giving up
+            try {
+              await new Promise((r) => setTimeout(r, 2000));
+              await checkNumberRisk(item.number);
+              acknowledged.push(item.number);
+            } catch {
+              failed.push(item.number);
+              // Dedup-safe minimal event so the user knows a call was seen but not assessed.
+              const current = eventsRef.current;
+              if (!current.some((x) => x.local_indicator === item.number && x.category === "call")) {
+                const ev: PatrolEvent = {
+                  event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "call" as const,
+                  status: "active" as const, state: "ears_up" as const,
+                  indicator_host: null, indicator_digest: null, local_indicator: item.number,
+                  verified_block: false, adapter_label: securityAdapter.label,
+                  occurred_at: new Date(item.seenAtMs).toISOString(), resolved_at: null,
+                  trust_allowed: false, why: ["Apollo could not reach the reputation service for this number after multiple attempts."],
+                  headline: `Missed call: ${item.number}`,
+                  what_happened: `A call from ${item.number} was seen but Apollo could not check it. You can re-check it manually.`,
+                  what_to_do: "Tap 'Check this number' below, or verify the caller independently before responding.",
+                };
+                const next = [ev, ...current.filter((x) => x.event_id !== ev.event_id)];
+                await persistEvents(next);
+              }
             }
           }
         }
