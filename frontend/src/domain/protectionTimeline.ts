@@ -85,33 +85,39 @@ export function buildTodayTimeline(input: {
     if (Number.isFinite(occurredAt) && isSameLocalDay(occurredAt, now)) {
       let kind: TimelineKind = "flagged";
       let title = `${gate} — flagged`;
-      if (e.state === "biting" && e.verified_block) { kind = "blocked"; title = `${gate} — blocked a threat`; }
-      else if (e.state === "sniffing") { kind = "investigating"; title = `${gate} — investigating`; }
-      else if (e.state === "ears_up") { title = `${gate} — ears up`; }
-      else if (e.state === "growling") { title = `${gate} — flagged a concern`; }
-      else if (e.state === "barking") { title = `${gate} — needs your decision`; }
+      let tone = toneForEventState(e.state);
+      let summary = (e.headline || e.what_happened || "Apollo noticed something.").trim();
+
+      // If the event has since been resolved, update the SAME entry instead of creating a new row.
+      const isResolved = e.status === "resolved" || e.status === "trusted" || (resolvedAt != null);
+      if (isResolved) {
+        kind = "resolved";
+        tone = "resting";
+        title = `${gate} — resolved`;
+        const resolvedTime = resolvedAt ? fmtTime(e.resolved_at as string, now) : "";
+        summary = resolvedTime
+          ? `Resolved at ${resolvedTime}. ${summary}`
+          : `Resolved. ${summary}`;
+      } else if (e.state === "biting" && e.verified_block) {
+        kind = "blocked"; title = `${gate} — blocked a threat`;
+      } else if (e.state === "sniffing") {
+        kind = "investigating"; title = `${gate} — investigating`;
+      } else if (e.state === "ears_up") {
+        title = `${gate} — ears up`;
+      } else if (e.state === "growling") {
+        title = `${gate} — flagged a concern`;
+      } else if (e.state === "barking") {
+        title = `${gate} — needs your decision`;
+      }
+
       out.push({
         id: `event:${e.event_id}:flagged`,
         kind,
-        tone: toneForEventState(e.state),
+        tone,
         title,
-        summary: (e.headline || e.what_happened || "Apollo noticed something.").trim(),
+        summary,
         at: e.occurred_at,
         timeLabel: fmtTime(e.occurred_at, now),
-        route: `/patrol/${encodeURIComponent(e.event_id)}`,
-      });
-    }
-
-    // Resolved entry (only if resolved today AND distinct from the flagged time).
-    if (resolvedAt && isSameLocalDay(resolvedAt, now) && resolvedAt !== occurredAt) {
-      out.push({
-        id: `event:${e.event_id}:resolved`,
-        kind: "resolved",
-        tone: "resting",
-        title: `${gate} — resolved`,
-        summary: `The earlier alert from ${gate} has been resolved.`,
-        at: e.resolved_at as string,
-        timeLabel: fmtTime(e.resolved_at as string, now),
         route: `/patrol/${encodeURIComponent(e.event_id)}`,
       });
     }

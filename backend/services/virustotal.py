@@ -19,6 +19,7 @@ import httpx
 
 from dotenv import load_dotenv
 from core.config import logger
+from core.resilience import resilient_get
 
 load_dotenv()
 
@@ -77,11 +78,12 @@ async def lookup_hash(sha256: str, filename: str = "") -> ScanResult:
     await _rate_limit()
 
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(
-                f"{VT_API_URL}/files/{sha256}",
-                headers={"x-apikey": VT_API_KEY, "Accept": "application/json"},
-            )
+        resp = await resilient_get(
+            f"{VT_API_URL}/files/{sha256}",
+            timeout=15.0,
+            headers={"x-apikey": VT_API_KEY, "Accept": "application/json"},
+            label="virustotal",
+        )
 
         if resp.status_code == 404:
             return ScanResult(

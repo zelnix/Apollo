@@ -92,7 +92,7 @@ async def scams(_owner: str) -> dict:
     items = [{"title": item["title"], "source": item["source"], "region": item.get("regionLabel"),
               "severity": item.get("severity"), "australianRelevance": item.get("australianRelevance"),
               "publishedAt": item["publishedAt"].isoformat() if item.get("publishedAt") else None, "url": item["url"]}
-             for item in value["items"]]
+             for item in value["alerts"]]
     statuses = [feed["status"] for feed in value["feeds"].values()]
     return _result(items, ["recognised_government_feed_cache"], confidence="high" if "fresh" in statuses else "medium")
 

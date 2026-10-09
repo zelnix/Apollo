@@ -76,8 +76,6 @@ export function buildAccountCheckResult(args: {
     apple: "https://appleid.apple.com/account/manage",
     microsoft: "https://account.live.com/password/reset",
     facebook: "https://www.facebook.com/settings?tab=security",
-    instagram: "https://www.instagram.com/accounts/password/change/",
-    amazon: "https://www.amazon.com/ap/forgotpassword",
   };
   const whatToDoLinks: ActionLink[] = [];
   if (a.takeoverRisk === "very_high" || a.takeoverRisk === "high" || a.takeoverRisk === "elevated") {

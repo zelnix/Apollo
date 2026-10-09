@@ -66,14 +66,14 @@ def _alert(row: dict, source: dict, analysis: dict, now: datetime) -> dict:
     effective = published or reported  # when this specific scam was reported
     region = scam_intel.region_for(row["source_id"])
     sections = analysis.get("sections") or {}
-    severity = analysis["severity"]
-    relevance = analysis["australianRelevance"]
+    severity = analysis.get("severity", "LOW")
+    relevance = analysis.get("australianRelevance", "unknown")
     source_name = _source_name(row["source_id"], source.get("name"))
     fresh = bool(effective and (now - effective) <= RECENCY_CUTOFF)
     # A specific High/Extreme campaign growls when there's real Australian exposure. Confirmed-AU campaigns
     # growl regardless of date (official AU sources are often undated listings); overseas "potential"
     # techniques must still be recent so a stale overseas bulletin can't hold Apollo growling.
-    growling = (analysis["tier"] == "specific_scam" and severity in ("HIGH", "EXTREME")
+    growling = (analysis.get("tier") == "specific_scam" and severity in ("HIGH", "EXTREME")
                 and (relevance == "confirmed" or (relevance == "potential" and fresh)))
     higgins = {
         "whatHappened": sections.get("whatHappened") or (row.get("summary") or row.get("title") or ""),
@@ -94,7 +94,7 @@ def _alert(row: dict, source: dict, analysis: dict, now: datetime) -> dict:
         "reportedDate": analysis.get("reportedDate") or "", "effectiveDate": effective, "dateLabel": _month_year(effective),
         "ageLabel": _month_year(effective),
         "region": region, "regionLabel": scam_intel.REGION_LABEL.get(region, region),
-        "tier": analysis["tier"], "facts": analysis.get("facts") or {},
+        "tier": analysis.get("tier", "general_education"), "facts": analysis.get("facts") or {},
         "severity": severity, "severityReason": analysis.get("severityReason") or "", "severityConfidence": analysis.get("confidence") or "low",
         "sourceSeverity": row.get("source_severity"),
         "australianRelevance": relevance, "australianRelevanceReason": analysis.get("australianRelevanceReason") or "",
