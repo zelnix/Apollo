@@ -121,11 +121,9 @@ export default function GovernmentScamsScreen() {
   const load = () => {
     setLoading(true); setError(false);
     void governmentScams().then((result) => {
-      console.log("[SCAMS DEBUG] API returned alerts:", result.alerts?.length, "emerging:", result.emerging?.length, "pending:", result.pendingCount);
-      if (result.alerts?.length <= 1) console.log("[SCAMS DEBUG] Full response keys:", Object.keys(result), "alerts:", JSON.stringify(result.alerts?.map((a: any) => a.title)));
       setAlerts(result.alerts); setEmerging(result.emerging); setPendingCount(result.pendingCount);
       setCoverage(result.coverage); setLastSourced(result.lastSourcedAt);
-    }).catch((e) => { console.log("[SCAMS DEBUG] Error:", e); setError(true); }).finally(() => setLoading(false));
+    }).catch(() => setError(true)).finally(() => setLoading(false));
   };
   useEffect(load, []);
   const sourcedLabel = useMemo(() => {
