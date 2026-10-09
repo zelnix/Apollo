@@ -78,7 +78,12 @@ async def product_capabilities(owner: str) -> dict[str, Any]:
     for gate_id, (title, implementation_owner, mode) in GATES.items():
         row = by_gate.get(gate_id)
         if not row:
-            state, reason = "unavailable", "no_fresh_device_observation"
+            # On-demand / hybrid gates always accept manual checks even without a fresh device
+            # observation — only purely native automatic gates are truly unavailable when unobserved.
+            if mode == "on_demand" or implementation_owner in ("hybrid", "server"):
+                state, reason = "ready", "manual_checks_available"
+            else:
+                state, reason = "unavailable", "no_fresh_device_observation"
         else:
             raw = str(row.get("state") or "unavailable")
             state = raw if raw in {"running", "ready", "permission_required", "degraded", "unavailable", "offline", "not_applicable"} else "unavailable"
