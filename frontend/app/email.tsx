@@ -104,7 +104,7 @@ export default function CheckEmail() {
     setGmailBusy(true);
     try {
       const result = await connectGmailOAuth(deviceId);
-      if (result === "connected") { setGmailConnected(true); setGmailMonitoring(false); void runProtectionHealthCheck("protection_change"); showToast("Gmail OAuth connected — monitoring stays off until you enable it.", "resting"); }
+      if (result === "connected") { await refreshGmailStatus(); void runProtectionHealthCheck("protection_change"); showToast("Gmail account connected — read-only.", "resting"); }
       else if (result === "denied") showToast("Gmail connection was cancelled.", "neutral");
       else if (result === "error") showToast("Couldn't connect Gmail right now.", "growling");
     } catch (e) { showToast(e instanceof Error ? e.message : "Couldn't connect Gmail right now.", "growling"); } finally { setGmailBusy(false); }
@@ -261,7 +261,8 @@ export default function CheckEmail() {
                         {scanSummary.flagged ? <Button testID="email-gmail-view-patrol" variant="secondary" label="View in Patrol" onPress={() => router.push("/(tabs)/patrol")} /> : null}
                       </>
                     ) : null}
-                    <Button testID="email-gmail-connect-another" variant="secondary" icon={gmailBusy ? <ActivityIndicator color={colors.brand} /> : <Mail size={18} color={colors.onSurface} />} label={gmailBusy ? "Opening Google…" : "Connect another account"} onPress={() => void connectGmail()} disabled={gmailBusy || !deviceId} />
+                    <Button testID="email-gmail-connect-another" variant="secondary" icon={gmailBusy ? <ActivityIndicator color={colors.brand} /> : <Mail size={18} color={colors.onSurface} />} label={gmailBusy ? "Opening Google…" : `Connect another Gmail account`} onPress={() => void connectGmail()} disabled={gmailBusy || !deviceId} />
+                    <Body style={{ fontSize: 13 }}>Each Google account needs its own read-only consent. Tap above to add the next one.</Body>
                     <Button testID="email-gmail-disconnect" variant="ghost" label="Disconnect all accounts" onPress={() => void disconnectGmail()} disabled={scanBusy || gmailBusy} />
                   </>
                 ) : (
