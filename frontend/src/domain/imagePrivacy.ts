@@ -61,8 +61,7 @@ export interface ScreeningResult {
 export type SubmissionChoice =
   | { type: "text_only"; redactedText: string }
   | { type: "sanitised_image"; imageUri: string; redactedText: string }
-  | { type: "withheld" }
-  | { type: "manual_crop"; croppedImageUri: string };
+  | { type: "withheld" };
 
 // ── Image Processing (native-dependent) ──────────────────────────────────────
 
@@ -184,8 +183,9 @@ export async function screenImage(
   const hasCredentials = sensitiveRegions.some((r) => r.sensitiveType === "credential");
   const hasPII = sensitiveRegions.some((r) => r.sensitiveType === "pii" || r.sensitiveType === "financial" || r.sensitiveType === "medical");
 
-  // Step 4: Redact text
-  const redactedText = hasCredentials ? redactAllSensitive(allText) : (hasPII ? redactText(allText) : allText);
+  // Step 4: Redact text — always redact ALL detected sensitive content (credentials + PII).
+  // Previous bug: hasPII without hasCredentials called credential-only redactText().
+  const redactedText = (hasCredentials || hasPII) ? redactAllSensitive(allText) : allText;
 
   // Step 5: Message screenshots → text-only (image never leaves device)
   if (purpose === "message_screenshot") {

@@ -336,13 +336,11 @@ async def ingest_file(owner: str, case: dict, meta_in: dict, data: bytes, *, evi
 
     # ── Receipt-to-upload byte binding ──
     # Compute SHA-256 of the received bytes and compare against the client-declared digest.
-    # This binds the approval to the exact bytes received. Trust boundary: the backend
-    # verifies the bytes match what was approved but relies on the client assertion that
-    # on-device screening was correctly performed (client_assertion trust boundary).
+    # Every approved image MUST include a valid digest. Missing digest = rejected.
     import hashlib as _hl
     received_digest = _hl.sha256(data).hexdigest()
     declared_digest = meta_in.get("sanitizationDigest", "")
-    digest_match = declared_digest and received_digest == declared_digest
+    digest_match = bool(declared_digest) and received_digest == declared_digest
     digest_binding = {
         "receivedBytesDigest": received_digest,
         "declaredApprovedDigest": declared_digest,
@@ -350,14 +348,19 @@ async def ingest_file(owner: str, case: dict, meta_in: dict, data: bytes, *, evi
         "trustBoundary": "client_assertion",
     }
 
-    # D2: Reject when declared digest is present but does not match received bytes.
-    # This prevents a receipt issued for one image from authorising different content.
-    # If no digest was declared (legacy or non-image), proceed without enforcement.
-    if kind == "image" and declared_digest and not digest_match:
-        reason = "image rejected: received bytes do not match the approved digest"
-        description = ("The SHA-256 digest of the received image bytes does not match "
-                       "the digest declared in the sanitization receipt. The image may "
-                       "have been altered after approval. Resubmit through the privacy gate.")
+    # Reject approved images with missing or mismatched digest.
+    # Missing digest: the privacy gate did not bind approval to specific bytes.
+    # Mismatched digest: the received bytes differ from what was approved.
+    if kind == "image" and not digest_match:
+        if not declared_digest:
+            reason = "image rejected: no sanitization digest supplied with approved upload"
+            description = ("Every approved image must include the SHA-256 digest of the "
+                           "bytes approved by the privacy gate. Resubmit through the privacy gate.")
+        else:
+            reason = "image rejected: received bytes do not match the approved digest"
+            description = ("The SHA-256 digest of the received image bytes does not match "
+                           "the digest declared in the sanitization receipt. The image may "
+                           "have been altered after approval. Resubmit through the privacy gate.")
         item = item.model_copy(update={"availability": "purged",
                                        "coverage": Coverage(status="unavailable", unit="bytes", total=len(data), examined=0, reason=reason),
                                        "transformations": [*transformations, Transformation(kind="secret_redaction", description=description)]})
