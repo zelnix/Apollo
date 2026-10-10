@@ -1,4 +1,4 @@
-// Gate 7 — App & Device Engine (on-device). Guard Dog does not judge an app by its name: it watches
+// Gate 7 — App & Device Engine (on-device). Apollo does not judge an app by its name: it watches
 // what the app is allowed to do, where it came from, and what happened around it (Threat Scent).
 // Works from what the user *tells* Apollo plus any Security-SDK findings; never pretends to see more.
 

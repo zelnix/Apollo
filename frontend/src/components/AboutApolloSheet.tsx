@@ -34,10 +34,10 @@ export function AboutApolloSheet({ visible, onClose }: { visible: boolean; onClo
   const s = useStyles();
   return (
     <Sheet visible={visible} onClose={onClose} title="About Apollo" testID="about-apollo-sheet">
-      <Image source={require("../../assets/images/higgins-apollo-full.png")} style={s.hero} contentFit="cover" accessibilityLabel="Apollo the guard dog with Higgins" />
+      <Image source={require("../../assets/images/higgins-apollo-full.png")} style={s.hero} contentFit="cover" accessibilityLabel="Apollo with Higgins" />
       <Text style={s.tagline}>Meet Apollo 🐾</Text>
-      <Text style={s.taglineSub}>Your Cyber Security Guard Dog</Text>
-      <Text style={s.body}>Apollo is your loyal digital guard dog, helping protect you from online scams, suspicious activity and cyber threats.</Text>
+      <Text style={s.taglineSub}>Apollo</Text>
+      <Text style={s.body}>Apollo helps protect you from online scams, suspicious activity and cyber threats.</Text>
 
       <Text style={s.heading}>🛡️ Apollo&apos;s 10 Security Gates</Text>
       <View style={s.gatesWrap}>

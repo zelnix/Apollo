@@ -104,7 +104,7 @@ export function renderSupportSummaryText(s: SupportSummary, reference: string): 
   return [
     `Support Reference: ${reference}`, "",
     "APPLICATION DETAILS",
-    `App: Apollo Cyber Security Guard Dog`,
+    `App: Apollo`,
     `Version: ${s.app.version}`,
     `Build: ${s.app.build}`,
     `Build ID: ${s.app.buildId}`,

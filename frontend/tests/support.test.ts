@@ -39,7 +39,7 @@ test("email body/subject/report share the exact reference and redact raw data", 
   const text = renderSupportSummaryText(summary, reference);
   const html = renderReportHtml(summary, reference);
   for (const out of [body, text, html]) assert.ok(out.includes(reference));
-  assert.ok(body.includes("Apollo Cyber Security Guard Dog"));
+  assert.ok(body.includes("Apollo"));
   // Only status/counts/dates are rendered — no secret-bearing key/value pairs.
   for (const out of [body, html]) assert.doesNotMatch(out, /(password|bearer|authorization)\s*[:=]\s*\S/i);
 });
