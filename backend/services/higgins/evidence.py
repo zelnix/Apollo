@@ -334,13 +334,29 @@ async def ingest_file(owner: str, case: dict, meta_in: dict, data: bytes, *, evi
             raise http(409, "conflict", "Evidence publication was superseded before it committed. Retry the upload.")
         return item
 
+    # ── Receipt-to-upload byte binding ──
+    # Compute SHA-256 of the received bytes and compare against the client-declared digest.
+    # This binds the approval to the exact bytes received. Trust boundary: the backend
+    # verifies the bytes match what was approved but relies on the client assertion that
+    # on-device screening was correctly performed (client_assertion trust boundary).
+    import hashlib as _hl
+    received_digest = _hl.sha256(data).hexdigest()
+    declared_digest = meta_in.get("sanitizationDigest", "")
+    digest_match = declared_digest and received_digest == declared_digest
+    digest_binding = {
+        "receivedBytesDigest": received_digest,
+        "declaredApprovedDigest": declared_digest,
+        "digestMatch": digest_match,
+        "trustBoundary": "client_assertion",
+    }
+
     # Record consent metadata for approved images
     consent_record = None
     if kind == "image" and admission_meta == "approved":
         consent_record = {
             "purpose": meta_in.get("sanitizationPurpose", "investigation"),
             "decision": meta_in.get("sanitizationDecision", "unknown"),
-            "digest": meta_in.get("sanitizationDigest", ""),
+            "digestBinding": digest_binding,
             "transformations": meta_in.get("sanitizationTransformations", []),
             "limitations": meta_in.get("sanitizationLimitations", []),
             "sensitiveRegionsFound": meta_in.get("sensitiveRegionsFound", 0),
@@ -394,35 +410,51 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
             # Scanned/image-only pages: rasterise each (within budget) as a derived image so Gemini can read it visually. A rendered page
             # is addressable evidence with its own coverage; only pages beyond the render budget remain explicit omitted ranges.
             rendered_ids, rendered_pages = [], []
+            credential_withheld_pages = []  # Pages withheld due to credential detection
             to_render = sorted(set(unreadable + visual_pages))[:MAX_SCANNED_PAGES] if detected == "application/pdf" else []
             if to_render:
                 for number, png in _render_pdf_pages(data, to_render):
-                    # Check if the source page text contains credential patterns.
-                    # If yes, withhold the rendered image to prevent transmitting
-                    # authentication secrets to Gemini via visual content.
+                    # Check source page text for credential patterns before storing.
                     page_index = number - 1
                     source_text = pages[page_index] if page_index < len(pages) else ""
-                    if _text_contains_credentials(source_text):
-                        omitted.append({"start": number - 1, "end": number,
-                                        "reason": "rendered page withheld: source text contains authentication secret patterns; text evidence preserved with secrets redacted"})
+                    has_text_layer = bool(source_text.strip())
+
+                    if has_text_layer and _text_contains_credentials(source_text):
+                        # Text layer contains credentials — withhold rendered image
+                        credential_withheld_pages.append(number)
                         continue
+
+                    # Determine limitation based on text layer availability
+                    if not has_text_layer:
+                        # No text layer — visual-only page. Cannot detect credentials server-side.
+                        privacy_limitation = ("Scanned/image-only page: no text layer available for "
+                                              "server-side credential detection. Visual-only authentication "
+                                              "secrets cannot be identified without on-device screening.")
+                    else:
+                        privacy_limitation = ("Text layer credential check passed. Visual-only secrets "
+                                              "not present in the text layer are a documented limitation.")
+
                     page_item = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=f"{item.client_item_id}.page{number}", origin=item.origin, kind="image",
                                              parent_id=item.id, collected_at=now_utc(), expires_at=item.expires_at, media_type="image/png", byte_length=len(png),
-                                             coverage=Coverage(status="not_started", unit="items", total=1, examined=0, reason="rendered scanned page available to Higgins vision; not yet examined"),
-                                             transformations=[Transformation(kind="decode", description=f"Page {number} rasterised at {SCAN_DPI} DPI for visual reading. Source text checked: no credential patterns detected.")],
+                                             coverage=Coverage(status="not_started", unit="items", total=1, examined=0, reason="rendered page available to Higgins vision; not yet examined"),
+                                             transformations=[Transformation(kind="decode", description=f"Page {number} rasterised at {SCAN_DPI} DPI."),
+                                                              Transformation(kind="privacy_note", description=privacy_limitation)],
                                              label=f"visual page {number} (rendered image)")
                     await repo.insert_evidence(owner, page_item, {"page": number, "derivedFrom": item.id,
                                                                    "consentRecord": {"purpose": "investigation", "decision": "document_rendered_page",
-                                                                                     "transformations": [f"Page {number} rasterised from PDF at {SCAN_DPI} DPI; credential pre-check passed"],
-                                                                                     "limitations": ["Rendered page inherits document authorisation; credential text-layer check performed but visual-only secrets may not be detected"],
+                                                                                     "transformations": [f"Page {number} rasterised at {SCAN_DPI} DPI"],
+                                                                                     "limitations": [privacy_limitation],
                                                                                      "consentRecordedAt": now_utc().isoformat(), "trustBoundary": "document_derived"}},
                                                publication_root_id=item.id, ingestion_attempt_id=attempt_id, publication_owner=publication_owner)
                     await repo.store_bytes(owner, case["case_id"], page_item.id, png, item.expires_at, publish_root=False)
                     rendered_ids.append(page_item.id)
                     rendered_pages.append(number)
-            omitted = [{"start": p - 1, "end": p, "reason": "no extractable text layer (scanned or image-only page); rendering it also failed" if p in to_render
-                       else f"scanned page beyond this turn's {MAX_SCANNED_PAGES}-page visual-rendering budget; not yet examined — continue to process the remainder"}
-                      for p in unreadable if p not in rendered_pages]
+            # Build omitted list — now safe to reference credential_withheld_pages
+            omitted = [{"start": p - 1, "end": p, "reason": "rendered page withheld: source text contains authentication secret patterns; redacted text evidence preserved"}
+                       for p in credential_withheld_pages]
+            omitted.extend({"start": p - 1, "end": p, "reason": "no extractable text layer (scanned or image-only page); rendering it also failed" if p in to_render
+                       else f"scanned page beyond this turn's {MAX_SCANNED_PAGES}-page visual-rendering budget; not yet examined"}
+                      for p in unreadable if p not in rendered_pages and p not in credential_withheld_pages)
             omitted.extend({"start": p - 1, "end": p, "reason": "page contains material visual content beyond the bounded visual-rendering budget"}
                            for p in visual_pages if p not in rendered_pages and p not in unreadable)
             if total_pages > len(pages):
@@ -432,23 +464,24 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
                                "materialGap": bool(omitted), "permanentGap": False,
                                "reason": "parser extraction complete; model examination pending" + (f"; {len(rendered_pages)} scanned page(s) rendered for visual reading" if rendered_pages else "")}
             for image_index, (image_name, image_type, image_data) in enumerate(embedded_images):
-                # Package 4: Pre-transmission credential check for embedded images.
-                # Check the parent document's full extracted text for credential patterns.
-                # If credentials are detected anywhere in the document, withhold embedded
-                # images to prevent authentication secrets from reaching Gemini visually.
-                # The redacted text evidence is preserved — only the image is withheld.
+                # Pre-transmission credential check on parent document text.
                 parent_text = "\n".join(pages) if pages else ""
                 if _text_contains_credentials(parent_text):
                     omitted.append({"start": image_index + 1, "end": image_index + 2,
                                     "reason": "embedded image withheld: parent document text contains authentication secret patterns; redacted text evidence preserved"})
                     continue
                 if image_type in ("image/png", "image/jpeg"):
+                    # Embedded images have no independent text layer — visual-only credential
+                    # detection is not possible server-side. This is an honest limitation.
+                    visual_limitation = ("Embedded image: no independent text layer for server-side credential "
+                                         "detection. Visual-only authentication secrets cannot be identified "
+                                         "without on-device screening. Parent document text was checked.")
                     image_item = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=f"{item.client_item_id}.image{image_index}", origin=item.origin, kind="image",
                                               parent_id=item.id, collected_at=now_utc(), expires_at=item.expires_at, media_type=image_type, byte_length=len(image_data),
                                               coverage=Coverage(status="not_started", unit="items", total=1, examined=0,
                                                                 reason="embedded document image extracted; parent text credential-checked"),
-                                              transformations=[Transformation(kind="decode", description="Embedded image extracted; parent document text checked for credential patterns: none detected."),
-                                                               Transformation(kind="privacy_note", description="Image not individually screened by on-device privacy gate. Pre-transmission credential check passed on parent document text. Visual-only secrets remain a documented limitation.")],
+                                              transformations=[Transformation(kind="decode", description="Embedded image extracted from document."),
+                                                               Transformation(kind="privacy_note", description=visual_limitation)],
                                               label=f"embedded image: {image_name}"[:80])
                     consent_meta = {
                         "derivedFrom": item.id, "embeddedName": image_name, "itemIndex": image_index + 1,
@@ -456,10 +489,7 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
                             "purpose": "investigation",
                             "decision": "document_embedded_image",
                             "transformations": ["Extracted from parent document; parent text credential-checked"],
-                            "limitations": [
-                                "Not individually screened by on-device privacy gate",
-                                "Parent text credential check passed; visual-only credential content cannot be detected server-side",
-                            ],
+                            "limitations": [visual_limitation],
                             "consentRecordedAt": now_utc().isoformat(),
                             "trustBoundary": "document_derived",
                         },

@@ -173,10 +173,10 @@ class TestDocumentEmbeddedImages:
             "Embedded images must record 'document_derived' trust boundary"
 
     def test_embedded_images_note_limitations(self):
-        """Embedded images must note they were not individually screened."""
+        """Embedded images must document screening limitation."""
         source = (BACKEND_ROOT / "services" / "higgins" / "evidence.py").read_text()
-        assert "not individually screened" in source.lower() or "inherits document" in source.lower(), \
-            "Embedded images must document that they were not individually screened"
+        assert "no independent text layer" in source.lower() or "visual-only" in source.lower(), \
+            "Embedded images must document visual credential detection limitation"
 
 
 # ── 7. Receipt metadata includes new fields ─────────────────────────────────

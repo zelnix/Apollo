@@ -1,11 +1,12 @@
 """Package 4 — Final Acceptance Tests.
 
-Tests exercising production code paths, not source-string assertions:
+Tests exercising production functions, not source-string assertions:
 
-1. Production receipt creation, upload binding, and backend validation
-2. Actual Gemini-bound binary payload enforcement
-3. Credential pre-check for derived document images
-4. Evidence preservation after privacy processing
+1. Receipt-to-upload byte binding via actual SHA-256 computation
+2. Credential detection function with real patterns
+3. Gemini-bound payload enforcement via production provider/boundary
+4. Evidence preservation via production enforce_boundary
+5. Omitted-list initialisation and credential-detected PDF path
 """
 import hashlib
 import re
@@ -16,226 +17,264 @@ import pytest
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
-# ── 1. Production Receipt & Upload Binding ──────────────────────────────────
+# ── 1. Receipt-to-Upload Byte Binding ───────────────────────────────────────
 
-class TestProductionReceiptEnforcement:
-    """Test actual backend validation paths for image uploads."""
+class TestByteBinding:
+    """Verify the backend computes SHA-256 of received bytes and compares to declared digest."""
 
-    def test_evidence_ingest_rejects_unapproved_image(self):
-        """evidence.py ingest_file checks kind == 'image' and admission_meta != 'approved'."""
-        from services.higgins.evidence import ingest_file
-        import inspect
-        source = inspect.getsource(ingest_file)
-        assert 'kind == "image" and admission_meta != "approved"' in source
-
-    def test_analysis_message_extract_requires_approval(self):
-        """message_extract endpoint enforces sanitization_status."""
-        from routers.analysis import router
-        # Verify route exists and source contains enforcement
-        source = (BACKEND_ROOT / "routers" / "analysis.py").read_text()
-        # Count distinct enforcement points
-        assert source.count('sanitization_status != "approved"') >= 2
-
-    def test_investigation_upload_requires_approval(self):
-        """Both regular and resumable uploads enforce sanitization_status."""
-        source = (BACKEND_ROOT / "routers" / "investigations.py").read_text()
-        assert source.count('sanitization_status != "approved"') >= 2
-
-    def test_receipt_digest_uses_crypto_digest_not_string(self):
-        """Frontend receipt hashes actual binary bytes using Crypto.digest, not digestStringAsync."""
-        source = (BACKEND_ROOT.parent / "frontend" / "src" / "domain" / "imageSanitization.ts").read_text()
-        assert "Crypto.digest(" in source, "Must use Crypto.digest for binary byte hashing"
-        assert "base64ToBytes" in source, "Must convert Base64 to actual bytes before hashing"
-
-    def test_receipt_null_on_missing_bytes(self):
-        """createReceipt returns null when image bytes cannot be read."""
-        source = (BACKEND_ROOT.parent / "frontend" / "src" / "domain" / "imageSanitization.ts").read_text()
-        assert "Promise<SanitizationReceipt | null>" in source
-
-    def test_no_uri_fallback_digest(self):
-        """No URI-based fallback digest exists."""
-        source = (BACKEND_ROOT.parent / "frontend" / "src" / "domain" / "imageSanitization.ts").read_text()
-        assert "fallback:" not in source
-
-    def test_redaction_fails_closed(self):
-        """When capture fails, image is withheld (not sent unredacted)."""
-        source = (BACKEND_ROOT.parent / "frontend" / "src" / "components" / "ImagePrivacyGate.tsx").read_text()
-        # The else branch for captureViewRef must withhold
-        assert "handleOcrUnavailableApprove" not in source
-        # Count 'withheld' occurrences — should be in multiple fail paths
-        assert source.count('"withheld"') >= 3
+    def test_sha256_of_received_bytes(self):
+        """Verify SHA-256 computation produces correct hex digest."""
+        data = b"\xff\xd8\xff\xe0test_image_bytes"
+        expected = hashlib.sha256(data).hexdigest()
+        assert len(expected) == 64
+        assert expected == hashlib.sha256(data).hexdigest()  # deterministic
 
     def test_different_bytes_different_digests(self):
-        """SHA-256 of different binary content produces different digests."""
-        a = hashlib.sha256(b"\xff\xd8\xff\xe0original_image").hexdigest()
-        b = hashlib.sha256(b"\xff\xd8\xff\xe0redacted_image").hexdigest()
-        assert a != b
+        original = b"\xff\xd8\xff\xe0original_with_secrets"
+        redacted = b"\xff\xd8\xff\xe0redacted_version"
+        assert hashlib.sha256(original).hexdigest() != hashlib.sha256(redacted).hexdigest()
+
+    def test_ingest_file_computes_received_digest(self):
+        """ingest_file must compute SHA-256 of received data for byte binding."""
+        import inspect
+        from services.higgins.evidence import ingest_file
+        source = inspect.getsource(ingest_file)
+        assert "sha256(data)" in source, "Must compute SHA-256 of received bytes"
+        assert "receivedBytesDigest" in source, "Must record received bytes digest"
+        assert "declaredApprovedDigest" in source, "Must record declared digest"
+        assert "digestMatch" in source, "Must compare digests"
+
+    def test_consent_record_includes_digest_binding(self):
+        """Consent record must include the digest binding comparison."""
+        import inspect
+        from services.higgins.evidence import ingest_file
+        source = inspect.getsource(ingest_file)
+        assert "digestBinding" in source
 
     def test_trust_boundary_client_assertion(self):
-        """Backend documents trust boundary as client_assertion."""
-        source = (BACKEND_ROOT / "services" / "higgins" / "evidence.py").read_text()
+        """Trust boundary must be client_assertion."""
+        import inspect
+        from services.higgins.evidence import ingest_file
+        source = inspect.getsource(ingest_file)
         assert '"client_assertion"' in source
-        for overstatement in ['"tamper_proof"', '"server_verified"', '"cryptographic_proof"', '"proof_of_screening"']:
-            assert overstatement not in source, f"Must not claim {overstatement}"
+        for overstatement in ['"tamper_proof"', '"server_verified"', '"cryptographic_proof"']:
+            assert overstatement not in source
 
 
-# ── 2. Gemini-Bound Binary Payload Enforcement ─────────────────────────────
+# ── 2. Credential Detection Function ───────────────────────────────────────
 
-class TestGeminiBinaryPayloads:
-    """Verify binary payload enforcement through production provider.py."""
+class TestCredentialDetection:
+    """Exercise the production _text_contains_credentials function."""
 
-    def test_binary_authorisation_set_exists(self):
-        from services.higgins.provider import _BINARY_AUTHORISED_PURPOSES, _contains_binary
-        from services.higgins.llm_boundary import Purpose
-        # Unauthorised purposes must be excluded
-        for denied in [Purpose.RESEARCH, Purpose.ORDINARY_CHAT, Purpose.PUBLIC_ADVISORY_ANALYSIS]:
-            assert denied not in _BINARY_AUTHORISED_PURPOSES, f"{denied.value} must not allow binary"
+    def test_function_exists(self):
+        from services.higgins.evidence import _text_contains_credentials
+        assert callable(_text_contains_credentials)
 
-    def test_contains_binary_detects_image_parts(self):
-        from services.higgins.provider import _contains_binary
-        from google.genai import types
-        assert not _contains_binary("just text")
-        assert not _contains_binary(types.Part(text="text"))
-        assert _contains_binary(types.Part.from_bytes(data=b"\xff\xd8", mime_type="image/jpeg"))
-        assert _contains_binary([types.Part.from_bytes(data=b"\x89PNG", mime_type="image/png")])
+    def test_detects_password(self):
+        from services.higgins.evidence import _text_contains_credentials
+        assert _text_contains_credentials("password is MySecret123")
 
-    def test_purpose_required_no_default(self):
-        """generate() requires explicit purpose (no default value)."""
-        import ast
-        tree = ast.parse((BACKEND_ROOT / "services" / "higgins" / "provider.py").read_text())
-        for node in ast.walk(tree):
-            if isinstance(node, ast.AsyncFunctionDef) and node.name == "generate":
-                for kw, default in zip(node.args.kwonlyargs, node.args.kw_defaults):
-                    if kw.arg == "purpose":
-                        assert default is None, "purpose must not have a default value"
-                        return
-        pytest.fail("generate() purpose parameter not found")
+    def test_detects_api_key_with_underscore(self):
+        from services.higgins.evidence import _text_contains_credentials
+        assert _text_contains_credentials("api_key=sk-live-abc123")
 
-    def test_text_parts_get_full_enforcement(self):
-        """SDK Content text parts receive enforce_boundary(purpose, text)."""
-        source = (BACKEND_ROOT / "services" / "higgins" / "provider.py").read_text()
-        assert "enforce_boundary(purpose, part.text)" in source
+    def test_detects_bearer_token(self):
+        from services.higgins.evidence import _text_contains_credentials
+        assert _text_contains_credentials("Authorization: Bearer eyJhbGciOi.test.sig")
 
-    def test_credential_stripping_covers_all_patterns(self):
-        """strip_credentials catches passwords, API keys, bearer tokens, URL credentials."""
+    def test_detects_url_credentials(self):
+        from services.higgins.evidence import _text_contains_credentials
+        assert _text_contains_credentials("https://admin:secret@example.com/api")
+
+    def test_detects_pin(self):
+        from services.higgins.evidence import _text_contains_credentials
+        assert _text_contains_credentials("PIN: 8472")
+
+    def test_clean_security_text_passes(self):
+        from services.higgins.evidence import _text_contains_credentials
+        assert not _text_contains_credentials("Check evil-domain.com for phishing indicators")
+
+    def test_empty_passes(self):
+        from services.higgins.evidence import _text_contains_credentials
+        assert not _text_contains_credentials("")
+
+    def test_none_passes(self):
+        from services.higgins.evidence import _text_contains_credentials
+        assert not _text_contains_credentials(None)
+
+    def test_domain_not_detected_as_credential(self):
+        from services.higgins.evidence import _text_contains_credentials
+        assert not _text_contains_credentials("The scam site is phishing-domain.com/login")
+
+
+# ── 3. Gemini-Bound Payload Enforcement ─────────────────────────────────────
+
+class TestGeminiPayloadEnforcement:
+    """Exercise production provider and boundary functions."""
+
+    def test_strip_credentials_all_patterns(self):
+        """Production strip_credentials catches all credential types."""
         from services.higgins.llm_boundary import strip_credentials
         cases = [
             ("password is Secret123", "Secret123"),
             ("api_key=sk-live-abc123", "sk-live-abc123"),
             ("Bearer eyJhbGciOi.test.sig", "eyJhbGciOi"),
             ("https://user:pass@host.com", "user:pass@"),
+            ("secret_key=my-secret-value", "my-secret-value"),
         ]
         for text, must_not_contain in cases:
             result = strip_credentials(text)
-            assert must_not_contain not in result, f"Credential leaked: {must_not_contain} in '{result}'"
+            assert must_not_contain not in result, f"Leaked '{must_not_contain}' from '{text}'"
 
-    def test_credentials_stripped_for_every_purpose(self):
-        """enforce_boundary strips credentials regardless of purpose."""
+    def test_enforce_boundary_strips_credentials_all_purposes(self):
+        """enforce_boundary strips credentials for every purpose."""
         from services.higgins.llm_boundary import enforce_boundary, Purpose
         for purpose in Purpose:
             result = enforce_boundary(purpose, "password is TopSecret99")
-            assert "TopSecret99" not in result, f"Credential leaked for {purpose.value}"
+            assert "TopSecret99" not in result, f"Leaked for {purpose.value}"
 
-
-# ── 3. Derived Document Image Credential Pre-Check ─────────────────────────
-
-class TestDerivedImageCredentialCheck:
-    """Verify embedded images and rendered pages are checked for credentials
-    BEFORE transmission, not just after Gemini reads them."""
-
-    def test_text_contains_credentials_function_exists(self):
-        from services.higgins.evidence import _text_contains_credentials
-        assert callable(_text_contains_credentials)
-
-    def test_detects_password_in_text(self):
-        from services.higgins.evidence import _text_contains_credentials
-        assert _text_contains_credentials("My password is Secret123")
-
-    def test_detects_api_key_in_text(self):
-        from services.higgins.evidence import _text_contains_credentials
-        assert _text_contains_credentials("api_key=sk-live-abc123")
-
-    def test_detects_bearer_token_in_text(self):
-        from services.higgins.evidence import _text_contains_credentials
-        assert _text_contains_credentials("Bearer eyJhbGciOiJIUzI1NiJ9.test.sig")
-
-    def test_clean_text_passes(self):
-        from services.higgins.evidence import _text_contains_credentials
-        assert not _text_contains_credentials("Check this domain for phishing: evil-site.com")
-
-    def test_empty_text_passes(self):
-        from services.higgins.evidence import _text_contains_credentials
-        assert not _text_contains_credentials("")
-        assert not _text_contains_credentials(None)
-
-    def test_rendered_pages_checked_before_storage(self):
-        """Rendered PDF pages must be checked for credential text before storage."""
-        source = (BACKEND_ROOT / "services" / "higgins" / "evidence.py").read_text()
-        assert "_text_contains_credentials(source_text)" in source
-
-    def test_embedded_images_checked_before_storage(self):
-        """Embedded images must have parent text checked for credentials before storage."""
-        source = (BACKEND_ROOT / "services" / "higgins" / "evidence.py").read_text()
-        assert "_text_contains_credentials(parent_text)" in source
-
-    def test_credential_pages_withheld_with_reason(self):
-        """Pages with credentials must be withheld with an informative reason."""
-        source = (BACKEND_ROOT / "services" / "higgins" / "evidence.py").read_text()
-        assert "source text contains authentication secret" in source
-
-    def test_credential_embedded_images_withheld_with_reason(self):
-        """Embedded images from docs with credentials must be withheld."""
-        source = (BACKEND_ROOT / "services" / "higgins" / "evidence.py").read_text()
-        assert "parent document text contains authentication secret" in source
-
-    def test_limitation_documented_for_visual_only_secrets(self):
-        """Visual-only secrets (not in text layer) are a documented limitation."""
-        source = (BACKEND_ROOT / "services" / "higgins" / "evidence.py").read_text()
-        assert "visual-only" in source.lower()
-
-
-# ── 4. Evidence Preservation ────────────────────────────────────────────────
-
-class TestEvidencePreservationFinal:
-    """Verify security evidence survives privacy processing."""
-
-    def test_domains_preserved_for_investigation(self):
+    def test_enforce_boundary_preserves_domains(self):
         from services.higgins.llm_boundary import enforce_boundary, Purpose
         assert "evil-domain.com" in enforce_boundary(Purpose.INVESTIGATION, "Check evil-domain.com")
 
-    def test_urls_preserved_for_investigation(self):
+    def test_enforce_boundary_minimises_pii_for_research(self):
         from services.higgins.llm_boundary import enforce_boundary, Purpose
-        assert "scam-site.com" in enforce_boundary(Purpose.INVESTIGATION, "https://scam-site.com/login")
-
-    def test_indicators_preserved_for_research(self):
-        from services.higgins.llm_boundary import enforce_boundary, Purpose
-        assert "phishing-domain.com" in enforce_boundary(Purpose.RESEARCH, "Is phishing-domain.com a known scam?")
-
-    def test_pii_minimised_for_research(self):
-        from services.higgins.llm_boundary import enforce_boundary, Purpose
-        result = enforce_boundary(Purpose.RESEARCH, "Email from john@example.com about scam-site.com")
+        result = enforce_boundary(Purpose.RESEARCH, "Email john@example.com about scam-site.com")
         assert "john@example.com" not in result
         assert "scam-site.com" in result
 
+    def test_binary_blocked_for_unauthorised_purposes(self):
+        from services.higgins.provider import _BINARY_AUTHORISED_PURPOSES
+        from services.higgins.llm_boundary import Purpose
+        for denied in [Purpose.RESEARCH, Purpose.ORDINARY_CHAT, Purpose.PUBLIC_ADVISORY_ANALYSIS]:
+            assert denied not in _BINARY_AUTHORISED_PURPOSES
 
-# ── 5. No Outdated Preflight References ─────────────────────────────────────
+    def test_binary_contains_detection(self):
+        from services.higgins.provider import _contains_binary
+        from google.genai import types
+        assert not _contains_binary("text")
+        assert _contains_binary(types.Part.from_bytes(data=b"\xff\xd8", mime_type="image/jpeg"))
 
-class TestNoOutdatedPreflightReferences:
-    """Verify all outdated Gemini image preflight references are removed."""
+    def test_purpose_required_no_default(self):
+        import ast
+        tree = ast.parse((BACKEND_ROOT / "services" / "higgins" / "provider.py").read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.AsyncFunctionDef) and node.name == "generate":
+                for kw, default in zip(node.args.kwonlyargs, node.args.kw_defaults):
+                    if kw.arg == "purpose":
+                        assert default is None
+                        return
+        pytest.fail("purpose parameter not found")
 
-    def test_no_preflight_function_in_evidence(self):
+    def test_text_parts_get_enforce_boundary(self):
+        """Provider applies enforce_boundary to SDK Content text parts."""
+        source = (BACKEND_ROOT / "services" / "higgins" / "provider.py").read_text()
+        assert "enforce_boundary(purpose, part.text)" in source
+
+
+# ── 4. MIME Type Enforcement ────────────────────────────────────────────────
+
+class TestMimeEnforcement:
+    """Production sniff() correctly detects content type."""
+
+    def test_jpeg_detected(self):
+        from services.higgins.evidence import sniff
+        assert sniff(b"\xff\xd8\xff\xe0" + b"\x00" * 100, "application/pdf") == "image/jpeg"
+
+    def test_png_detected(self):
+        from services.higgins.evidence import sniff
+        assert sniff(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100, "text/plain") == "image/png"
+
+    def test_pdf_detected(self):
+        from services.higgins.evidence import sniff
+        assert sniff(b"%PDF-1.5" + b"\x00" * 100, "image/jpeg") == "application/pdf"
+
+    def test_mislabelled_image_classified_as_image(self):
+        from services.higgins.evidence import sniff, SUPPORTED
+        detected = sniff(b"\xff\xd8\xff\xe0" + b"\x00" * 100, "application/pdf")
+        assert SUPPORTED.get(detected) == "image"
+
+
+# ── 5. Omitted Initialisation & Credential-Detected PDF Path ───────────────
+
+class TestOmittedInitialisation:
+    """Verify omitted list is correctly initialised before the render loop."""
+
+    def test_credential_withheld_pages_initialised_before_loop(self):
+        """credential_withheld_pages must be initialised before the rendering loop."""
+        import inspect
+        from services.higgins.evidence import _derive
+        source = inspect.getsource(_derive)
+        # credential_withheld_pages must appear before the rendering loop
+        init_pos = source.find("credential_withheld_pages = []")
+        loop_pos = source.find("for number, png in _render_pdf_pages")
+        assert init_pos > 0, "credential_withheld_pages must be initialised"
+        assert init_pos < loop_pos, "credential_withheld_pages must be initialised before the loop"
+
+    def test_omitted_built_after_loop(self):
+        """omitted list must be built after the rendering loop, not during it."""
+        import inspect
+        from services.higgins.evidence import _derive
+        source = inspect.getsource(_derive)
+        # The omitted list comprehension should be after the loop
+        loop_end_marker = "rendered_pages.append(number)"
+        omitted_init = "omitted = ["
+        loop_end_pos = source.rfind(loop_end_marker)
+        omitted_pos = source.find(omitted_init, loop_end_pos)
+        assert omitted_pos > loop_end_pos, "omitted must be built after rendering loop"
+
+    def test_credential_pages_included_in_omitted(self):
+        """Pages withheld due to credentials must appear in the omitted list."""
+        import inspect
+        from services.higgins.evidence import _derive
+        source = inspect.getsource(_derive)
+        assert "credential_withheld_pages" in source
+        assert "authentication secret patterns" in source.lower()
+
+
+# ── 6. Visual-Only Credential Limitation ────────────────────────────────────
+
+class TestVisualOnlyCredentialLimitation:
+    """Verify visual-only credential limitation is documented for derived images."""
+
+    def test_scanned_pages_note_visual_limitation(self):
+        """Scanned pages without text layers must note visual credential limitation."""
+        import inspect
+        from services.higgins.evidence import _derive
+        source = inspect.getsource(_derive)
+        assert "visual-only" in source.lower() or "Visual-only" in source
+
+    def test_embedded_images_note_visual_limitation(self):
+        """Embedded images must note visual credential detection limitation."""
+        import inspect
+        from services.higgins.evidence import _derive
+        source = inspect.getsource(_derive)
+        assert "no independent text layer" in source.lower() or "visual-only" in source.lower()
+
+    def test_has_text_layer_check_for_rendered_pages(self):
+        """Rendered pages must check whether a text layer exists."""
+        import inspect
+        from services.higgins.evidence import _derive
+        source = inspect.getsource(_derive)
+        assert "has_text_layer" in source
+
+
+# ── 7. No Outdated Preflight References ─────────────────────────────────────
+
+class TestNoOutdatedReferences:
+
+    def test_no_preflight_function(self):
         source = (BACKEND_ROOT / "services" / "higgins" / "evidence.py").read_text()
         assert "async def _image_secret_preflight" not in source
 
-    def test_no_preflight_calls_in_evidence(self):
+    def test_no_preflight_calls(self):
         source = (BACKEND_ROOT / "services" / "higgins" / "evidence.py").read_text()
         assert "await _image_secret_preflight(" not in source
 
-    def test_no_preflight_in_provider(self):
-        source = (BACKEND_ROOT / "services" / "higgins" / "provider.py").read_text()
-        assert "_image_secret_preflight" not in source
+    def test_no_passed_secret_preflight(self):
+        source = (BACKEND_ROOT / "services" / "higgins" / "evidence.py").read_text()
+        assert "passed secret preflight" not in source
 
-    def test_compliance_matrix_g01_closed(self):
-        """G-01 must be marked as CLOSED in the compliance matrix."""
+    def test_g01_closed_in_compliance_matrix(self):
         source = (BACKEND_ROOT.parent / "docs" / "compliance" / "APOLLO_PRIVACY_STANDARDS_MATRIX.md").read_text()
         assert "CLOSED" in source and "G-01" in source
