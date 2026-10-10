@@ -207,7 +207,7 @@ export function buildProtectionFindings(input: {
       statusLabel: statusLabels[classification],
       whatFound: problem || `Apollo ${classification === "observation" ? "noticed something" : "identified a concern"} via ${gate}.`,
       whatItMeans: whatItMeansLabels[classification],
-      whatToDo: (lead.what_to_do || "").trim() || "Open the investigation to see exactly what to do next.",
+      whatToDo: (lead.what_to_do || "").trim() || "Review this finding. I'll explain what Apollo discovered and whether you need to take action.",
       actionLabel: classification === "blocked_threat" ? "Review block" : "Open investigation",
       route: `/patrol/${encodeURIComponent(lead.event_id)}`,
       firstDetected: new Date(firstDetected).toLocaleString(),
