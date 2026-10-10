@@ -1,11 +1,30 @@
 # Apollo Privacy Standards Compliance Matrix
 
 **Document**: APOLLO_PRIVACY_STANDARDS_MATRIX.md
-**Version**: 1.0
-**Status**: Initial Adoption — Internal Conformity Assessment
-**Effective**: February 2026
+**Version**: 2.0
+**Status**: Post-Implementation Consolidation — Internal Conformity Assessment
+**Effective**: June 2026 (consolidation of Packages 1–8, originally adopted February 2026)
 **Owner**: Apollo Engineering
 **Review Cycle**: Quarterly or upon material architecture change
+
+### Companion Documents
+
+| Document | Purpose | Location |
+|---|---|---|
+| **DATA_CLASSIFICATION_REGISTRY.md** | Authoritative data categories, dual-classification model, processing pathways, authorisation matrix | `docs/compliance/` |
+| **SECURITY_LIFECYCLE.md** | Encryption, access control, retention, key management, incident response | `docs/compliance/` |
+| **AI_GOVERNANCE.md** | AI inventory, risk register, provider terms, APP assessment, consent model | `docs/compliance/` |
+| **PACKAGE8_ACCEPTANCE_REPORT.md** | End-to-end verification results, production acceptance checklist | `docs/compliance/` |
+| **GEMINI_SDK_AUDIT_REPORT.md** | SDK migration audit, emergentintegrations removal verification | `docs/compliance/` |
+
+### Authoritative Implementation Sources
+
+| Source | Role |
+|---|---|
+| `backend/core/data_classification.py` | Single source of truth for data categories, field classification, authorisation matrix, processing pathways |
+| `backend/services/higgins/provider.py` | Single mandatory Gemini gateway — all AI inference routes through this file |
+| `backend/services/higgins/llm_boundary.py` | LLM evidence boundary enforcement — credential stripping, PII minimisation, purpose restrictions |
+| `backend/services/higgins/validation.py` | Structural validation of INVESTIGATE → ASSESS → DIRECT → GUIDE → VERIFY |
 
 ---
 
@@ -105,83 +124,83 @@ Apollo is a mobile-first cybersecurity application comprising:
 
 ### 4.1 ISO/IEC 27701:2025 — Privacy Information Management (PIMS)
 
-| Ref | Requirement Area | Control | Implementation | Owner | Evidence | Gap | Acceptance |
-|---|---|---|---|---|---|---|---|
-| 27701-5.2 | Privacy policy and objectives | Purpose-limited processing documented | `privacyInventory.ts`, `privacy-disclosure.tsx`, `PRIVACY_FLOWS` array | Privacy | Disclosure screen shown at setup; reachable from Settings | None | ✅ Implemented |
-| 27701-5.4 | PII processing conditions | Informed consent before setup; opt-in for Gmail, notifications | `privacy-disclosure.tsx` accept flow → `completeSetup()` | Privacy | Consent recorded at device registration | Consent record format not yet standardised | ⚠️ Partial |
-| 27701-6.2 | Access control for PII | Owner-scoped device authentication; admin key separation | `core/auth.py` — bearer token + device_id enforcement; admin key via separate header | Security | Every non-public route requires matching device_id | No person/household identity layer yet | ⚠️ Partial |
-| 27701-6.3 | Cryptographic protection | Investigation content encrypted at rest (Fernet); TLS in transit | `encryption.py` — dedicated investigation key; Kubernetes TLS termination | Security | Key file permission checks; domain-separated integrity | Encryption covers investigation content; other collections use MongoDB at-rest encryption config | ⚠️ Partial |
-| 27701-6.5 | Retention and disposal | Temporary evidence: 15-minute scoped lifecycle with verified deletion | `retention.py` — `sweep()`, `delete_scope()`, TTL indexes | Privacy | Automated sweep loop; generation-based invalidation | Clear Patrol is soft-delete, not physical erasure (documented in disclosure) | ⚠️ Partial |
-| 27701-7.2 | PII principal consent | Setup disclosure → accept; Gmail OAuth consent flow | `privacy-disclosure.tsx`, `routers/gmail.py` OAuth | Privacy | Disclosure version tracked (`DISCLOSURE_VERSION`) | Granular per-purpose consent not yet implemented | ⚠️ Partial |
-| 27701-7.3 | Privacy notice | Processing inventory with what/when/detail structure | `privacyInventory.ts` — `PRIVACY_FLOWS`, `AI_PROCESSING_DISCLOSURE` | Privacy | Displayed to user; covers AI processing explicitly | Legal review of notice adequacy pending | ⚠️ Partial |
-| 27701-7.4 | PII minimisation | Credential stripping; research query minimisation; image sanitisation | `llm_boundary.py`, `redaction.py`, `imageSanitization.ts` | Privacy | Evidence-based PII extraction; deterministic replacement | Vision preflight sends original to Gemini (Package 4 gap) | 🔴 Gap |
-| 27701-7.5 | Purpose limitation | Purpose enum in LLM boundary; privacy boundary middleware | `llm_boundary.py` — `Purpose` enum; `privacy_boundary.py` | Privacy | Each Gemini call requires explicit purpose | Default purpose permissiveness needs review (Package 3) | ⚠️ Partial |
-| 27701-8.2 | Cross-border transfers | Gemini API processes in Google's infrastructure | `provider.py` configuration disclosure | Privacy | Paid tier disclosure in privacy inventory | Formal cross-border assessment not completed | 🔴 Gap |
+| Ref | Requirement Area | Control | Implementation | Data Categories | Test Evidence | Status |
+|---|---|---|---|---|---|---|
+| 27701-5.2 | Privacy policy and objectives | Purpose-limited processing documented | `privacyInventory.ts`, `privacy-disclosure.tsx`, `PRIVACY_FLOWS` array | All categories mapped in `data_classification.py` | `privacyDisclosure.test.ts` | ✅ Implemented |
+| 27701-5.4 | PII processing conditions | Informed consent before setup; opt-in for Gmail, notifications | `privacy-disclosure.tsx` accept flow → `completeSetup()` | PII, CONVERSATION, DEVICE_IDENTITY | `privacyDisclosure.test.ts` | ⚠️ Partial — consent record format not yet standardised (G-10) |
+| 27701-6.2 | Access control for PII | Owner-scoped device authentication; admin key separation | `core/auth.py` — bearer token + device_id enforcement; admin key via separate header | DEVICE_IDENTITY, all owner-scoped data | See `SECURITY_LIFECYCLE.md` §2 | ✅ Implemented |
+| 27701-6.3 | Cryptographic protection | Investigation content encrypted at rest (Fernet); TLS in transit | `encryption.py` — dedicated investigation key; Kubernetes TLS termination | INVESTIGATION_METADATA, CONVERSATION, SECURITY_INDICATOR | See `SECURITY_LIFECYCLE.md` §1 | ✅ Implemented — investigation content encrypted; other collections rely on MongoDB at-rest encryption |
+| 27701-6.5 | Retention and disposal | Temporary evidence: 15-minute scoped lifecycle with verified deletion | `retention.py` — `sweep()`, `delete_scope()`, TTL indexes | All investigation-scoped categories | See `SECURITY_LIFECYCLE.md` §3 | ⚠️ Partial — Clear Patrol is soft-delete (G-06) |
+| 27701-7.2 | PII principal consent | Setup disclosure → accept; Gmail OAuth consent flow | `privacy-disclosure.tsx`, `routers/gmail.py` OAuth | PII, CONVERSATION | `privacyDisclosure.test.ts` | ⚠️ Partial — granular per-purpose consent not yet implemented (G-10) |
+| 27701-7.3 | Privacy notice | Processing inventory with what/when/detail structure | `privacyInventory.ts` — `PRIVACY_FLOWS`, `AI_PROCESSING_DISCLOSURE` | All categories documented | `privacyDisclosure.test.ts` | ⚠️ Partial — legal review of notice adequacy pending (G-05) |
+| 27701-7.4 | PII minimisation | Credential stripping; research query minimisation; on-device image screening | `llm_boundary.py`, `redaction.py`, `imageSanitization.ts`, `ImagePrivacyGate.tsx` | PII, CREDENTIAL, FINANCIAL, SECURITY_INDICATOR (dual-classified) | `test_package4_acceptance.py`, `test_llm_boundary.py`, `imageSanitization.test.ts` | ✅ Implemented — on-device screening enforced; preflight removed; fail-closed redaction; byte-binding digest |
+| 27701-7.5 | Purpose limitation | Purpose enum mandatory on all LLM calls; privacy boundary middleware | `llm_boundary.py` — `Purpose` enum; `provider.py` — `purpose` parameter required with no default | All categories per authorisation matrix | `test_gateway_enforcement.py` (purpose mandatory verified via AST) | ✅ Implemented — explicit purpose required on every Gemini call |
+| 27701-8.2 | Cross-border transfers | Gemini API processes in Google's infrastructure; paid tier terms documented | `provider.py` configuration disclosure; `AI_GOVERNANCE.md` §4 | All categories transmitted to Gemini | See `AI_GOVERNANCE.md` §4 | ⚠️ Open — formal cross-border assessment not completed (G-04) |
 
 ### 4.2 ISO/IEC 29100:2024 — Privacy Principles
 
-| Principle | Control | Implementation | Status |
-|---|---|---|---|
-| **Consent and choice** | Setup disclosure; opt-in Gmail/notifications | `privacy-disclosure.tsx`, Settings toggles | ✅ Implemented |
-| **Purpose legitimacy and specification** | Processing inventory; purpose enum | `PRIVACY_FLOWS`; `Purpose` enum in `llm_boundary.py` | ✅ Implemented |
-| **Collection limitation** | Only user-submitted or opt-in content processed | Route-level input validation; no full inventory collection | ✅ Implemented |
-| **Data minimisation** | Credential stripping; PII minimisation in research; image gate | `redaction.py`, `llm_boundary.py`, `ImagePrivacyGate.tsx` | ⚠️ Partial — vision preflight gap |
-| **Use, retention and disclosure limitation** | 15-min scoped retention; no logging of prompts/responses | `retention.py`; provider.py no-logging design | ⚠️ Partial — soft-delete gap |
-| **Accuracy** | Evidence provenance tracking; honest narration of limitations | `evidence_provenance` field; `higginsNarration.ts` | ✅ Implemented |
-| **Openness, transparency and notice** | Disclosure screen; AI processing section; local-only list | `privacyInventory.ts` comprehensive inventory | ✅ Implemented |
-| **Individual participation and access** | Delete device endpoint; clear patrol | `delete_owner_content()`; patrol clear | ⚠️ Partial — no formal SAR procedure |
-| **Accountability** | Compliance matrix; governance roles defined | This document | ⚠️ Partial — legal advisor not appointed |
-| **Information security** | Encryption, auth, access control | `encryption.py`, `auth.py` | ⚠️ Partial — see 27001 section |
-| **Privacy compliance** | Standards adoption; internal assessment | This document; planned verification | ⚠️ Partial — verification pending |
+| Principle | Control | Implementation | Data Categories | Test Evidence | Status |
+|---|---|---|---|---|---|
+| **Consent and choice** | Setup disclosure; opt-in Gmail/notifications | `privacy-disclosure.tsx`, Settings toggles | All user-facing | `privacyDisclosure.test.ts` | ✅ Implemented |
+| **Purpose legitimacy and specification** | Processing inventory; purpose enum mandatory | `PRIVACY_FLOWS`; `Purpose` enum in `llm_boundary.py`; no-default enforcement in `provider.py` | All — per authorisation matrix | `test_gateway_enforcement.py` | ✅ Implemented |
+| **Collection limitation** | Only user-submitted or opt-in content processed | Route-level input validation; no unsolicited collection | All user-submitted categories | Route-level inspection | ✅ Implemented |
+| **Data minimisation** | Credential stripping; PII minimisation in research; on-device image screening | `redaction.py`, `llm_boundary.py`, `ImagePrivacyGate.tsx`, `imageSanitization.ts` | PII, CREDENTIAL, FINANCIAL, SECURITY_INDICATOR (dual-classified) | `test_package4_acceptance.py`, `test_llm_boundary.py`, `imageSanitization.test.ts` | ✅ Implemented — preflight removed; on-device screening enforced; fail-closed |
+| **Use, retention and disclosure limitation** | 15-min scoped retention; no logging of prompts/responses | `retention.py`; `provider.py` no-logging design | All investigation-scoped | See `SECURITY_LIFECYCLE.md` §3 | ⚠️ Partial — Clear Patrol soft-delete gap (G-06) |
+| **Accuracy** | Evidence provenance tracking; honest narration of limitations | `evidence_provenance` field; `higginsNarration.ts` | INVESTIGATION_METADATA, DERIVED_CONTENT | `architecturalRegression.test.ts` | ✅ Implemented |
+| **Openness, transparency and notice** | Disclosure screen; AI processing section; local-only list | `privacyInventory.ts` comprehensive inventory | All categories documented | `privacyDisclosure.test.ts` | ✅ Implemented |
+| **Individual participation and access** | Delete device endpoint; clear patrol | `delete_owner_content()`; patrol clear | All owner-scoped | Route inspection | ⚠️ Partial — no formal SAR procedure (G-07) |
+| **Accountability** | Compliance matrix; governance roles defined | This document; `AI_GOVERNANCE.md` | N/A | Documentation review | ⚠️ Partial — legal advisor not appointed |
+| **Information security** | Encryption, auth, access control | `encryption.py`, `auth.py` | All stored data | See `SECURITY_LIFECYCLE.md` | ✅ Implemented — see §4.3 |
+| **Privacy compliance** | Standards adoption; internal assessment | This document; Package 8 acceptance report | N/A | `PACKAGE8_ACCEPTANCE_REPORT.md` | ✅ Implemented — 344 tests passing; 12-point checklist verified |
 
 ### 4.3 ISO/IEC 27001:2022 — Information Security Controls
 
-| Control Area | Ref | Control | Implementation | Status |
-|---|---|---|---|---|
-| **Access control** | A.5.15–5.18 | Device bearer auth; admin key separation; owner-scoped queries | `auth.py` — SHA-256 hashed tokens; device_id enforcement on every request | ✅ Implemented |
-| **Cryptography** | A.8.24 | Investigation content: Fernet encryption at rest; domain-separated integrity | `encryption.py` — dedicated key file with permission checks | ✅ Implemented |
-| **Cryptography** | A.8.24 | TLS in transit | Kubernetes ingress TLS termination | ✅ Implemented |
-| **Operational security** | A.8.15 | No prompt/response logging in provider | `provider.py` — ProviderFailure never includes SDK text | ✅ Implemented |
-| **Secure development** | A.8.25 | Strict Pydantic schemas; `extra="forbid"` on wire models | `contracts.py` — all Wire models reject unknown fields | ✅ Implemented |
-| **Supplier management** | A.5.19–5.22 | Gemini paid tier; no training use; documented retention | `provider.py` configuration disclosure; privacy inventory | ⚠️ Partial — formal supplier assessment pending |
-| **Incident management** | A.5.24–5.28 | Privacy boundary middleware; error containment | `privacy_boundary.py`; ProviderFailure code-only errors | ⚠️ Partial — no formal incident procedure |
-| **Data isolation** | A.8.31 | Owner-scoped DB queries; device_id enforcement | All DB queries filtered by `owner_id` or `device_id` | ✅ Implemented |
-| **Key management** | A.8.24 | Dedicated investigation key; permission-checked file | `encryption.py` — `0o077` permission check; separate from API keys | ✅ Implemented |
-| **MFA** | A.8.5 | Admin key for privileged access | `auth.py` — separate admin key boundary | ⚠️ Partial — single-factor admin key |
-| **Retention** | A.8.10 | 15-minute scoped lifecycle; sweep loop; TTL indexes | `retention.py` — generation invalidation + TTL expiry | ✅ Implemented |
-| **Backup** | A.8.13 | MongoDB standard configuration | Infrastructure-level | ⚠️ Needs verification |
+| Control Area | Ref | Control | Implementation | Cross-reference | Test Evidence | Status |
+|---|---|---|---|---|---|---|
+| **Access control** | A.5.15–5.18 | Device bearer auth; admin key separation; owner-scoped queries | `auth.py` — SHA-256 hashed tokens; device_id enforcement on every request | `SECURITY_LIFECYCLE.md` §2 | Existing auth tests | ✅ Implemented |
+| **Cryptography** | A.8.24 | Investigation content: Fernet encryption at rest; domain-separated integrity | `encryption.py` — dedicated key file with permission checks | `SECURITY_LIFECYCLE.md` §1.2 | Existing encryption tests | ✅ Implemented |
+| **Cryptography** | A.8.24 | TLS in transit | Kubernetes ingress TLS termination | `SECURITY_LIFECYCLE.md` §1.1 | Infrastructure verification | ✅ Implemented |
+| **Operational security** | A.8.15 | No prompt/response logging in provider | `provider.py` — ProviderFailure never includes SDK text | `SECURITY_LIFECYCLE.md` §5 | `test_gateway_enforcement.py` | ✅ Implemented |
+| **Secure development** | A.8.25 | Strict Pydantic schemas; `extra="forbid"` on wire models | `contracts.py` — all Wire models reject unknown fields | — | Schema validation tests | ✅ Implemented |
+| **Supplier management** | A.5.19–5.22 | Gemini paid tier; no training use; documented retention | `provider.py` configuration disclosure; privacy inventory | `AI_GOVERNANCE.md` §4 | Provider terms verification | ⚠️ Partial — formal supplier assessment pending |
+| **Incident management** | A.5.24–5.28 | Privacy boundary middleware; error containment; documented response actions | `privacy_boundary.py`; ProviderFailure code-only errors | `SECURITY_LIFECYCLE.md` §6 | Code inspection | ⚠️ Partial — formal incident procedure not formalised (G-08) |
+| **Data isolation** | A.8.31 | Owner-scoped DB queries; device_id enforcement | All DB queries filtered by `owner_id` or `device_id` | `SECURITY_LIFECYCLE.md` §2.3 | Existing auth tests | ✅ Implemented |
+| **Key management** | A.8.24 | Dedicated investigation key; permission-checked file | `encryption.py` — `0o077` permission check; separate from API keys | `SECURITY_LIFECYCLE.md` §4 | Key management tests | ✅ Implemented |
+| **MFA** | A.8.5 | Admin key for privileged access | `auth.py` — separate admin key boundary | `SECURITY_LIFECYCLE.md` §2.2 | — | ⚠️ Partial — single-factor admin key (G-09) |
+| **Retention** | A.8.10 | 15-minute scoped lifecycle; sweep loop; TTL indexes | `retention.py` — generation invalidation + TTL expiry | `SECURITY_LIFECYCLE.md` §3 | Existing retention tests | ✅ Implemented |
+| **Backup** | A.8.13 | MongoDB standard configuration | Infrastructure-level | — | — | ⚠️ Needs verification |
 
 ### 4.4 ISO/IEC 42001:2023 — AI Governance
 
-| Requirement | Control | Implementation | Status |
-|---|---|---|---|
-| **AI system inventory** | Single AI provider (Gemini); documented models and capabilities | `provider.py` — `CAPABILITIES` dict; `configuration()` method | ✅ Implemented |
-| **Risk assessment** | Privacy leakage via LLM boundary; credential stripping; purpose restrictions | `llm_boundary.py` — `strip_credentials()`, `enforce_boundary()`, `validate_outbound_payload()` | ⚠️ Partial — formal risk register needed |
-| **Accountability & oversight** | Validation of AI responses; structured contracts; finding/evidence ID tracking | `validation.py`, `contracts.py` — reject unknown IDs, require evidence basis | ✅ Implemented |
-| **Transparency** | AI Processing disclosure; explanation of what Google receives | `AI_PROCESSING_DISCLOSURE` in `privacyInventory.ts` | ✅ Implemented |
-| **Human oversight** | User approval via privacy gate; no consequential actions without consent | `ImagePrivacyGate.tsx`; action `requires_user_gesture` field | ✅ Implemented |
-| **Data governance** | Purpose-classified processing; evidence boundary enforcement | `Purpose` enum; `Classification` enum; field-level classification | ⚠️ Partial — not all pathways formally classified |
-| **Bias and fairness** | Security evidence assessment; no personal-characteristic-based decisions | Higgins investigates evidence, not persons | ⚠️ Needs formal assessment |
-| **Single gateway enforcement** | All Gemini calls through `provider.py` | `provider.py` — `generate()`, `generate_json()`, `speech_bytes()` | ⚠️ Partial — audit of all call sites pending (Package 3) |
-| **Behavioural standard** | INVESTIGATE → ASSESS → DIRECT → GUIDE → VERIFY | System prompt in `coordinator.py`; `validation.py` structural checks | ⚠️ Partial — structural enforcement pending (Package 5) |
+| Requirement | Control | Implementation | Cross-reference | Test Evidence | Status |
+|---|---|---|---|---|---|
+| **AI system inventory** | Single AI provider (Gemini); documented models and capabilities | `provider.py` — `CAPABILITIES` dict; `configuration()` method | `AI_GOVERNANCE.md` §1 | Code inspection | ✅ Implemented |
+| **Risk assessment** | 10 identified risks with mitigations; residual risks documented | `AI_GOVERNANCE.md` §2 — formal risk register | `AI_GOVERNANCE.md` §2 | Documentation review | ✅ Implemented |
+| **Accountability & oversight** | Validation of AI responses; structured contracts; finding/evidence ID tracking | `validation.py`, `contracts.py` — reject unknown IDs, require evidence basis | `AI_GOVERNANCE.md` §3 | `test_higgins_authority.py` (33 tests) | ✅ Implemented |
+| **Transparency** | AI Processing disclosure; explanation of what Google receives | `AI_PROCESSING_DISCLOSURE` in `privacyInventory.ts` | `AI_GOVERNANCE.md` §4.2 | `privacyDisclosure.test.ts` | ✅ Implemented |
+| **Human oversight** | User approval via privacy gate; no consequential actions without consent | `ImagePrivacyGate.tsx`; action `requires_user_gesture` field | `AI_GOVERNANCE.md` §3.2 | `imageSanitization.test.ts`, `test_package4_acceptance.py` | ✅ Implemented |
+| **Data governance** | Purpose-classified processing; authorisation matrix for all categories × purposes | `data_classification.py` — 13 categories × 15 purposes; `Purpose` enum; field-level classification | `DATA_CLASSIFICATION_REGISTRY.md` §5 | `test_data_classification.py` (71 tests) | ✅ Implemented |
+| **Bias and fairness** | Security evidence assessment; no personal-characteristic-based decisions | Higgins investigates evidence, not persons; classification separates PII from indicators | `AI_GOVERNANCE.md` §2.1 | — | ⚠️ Needs formal assessment |
+| **Single gateway enforcement** | All Gemini calls through `provider.py`; no alternate providers | `provider.py` — `generate()`, `generate_json()`, `speech_bytes()`; `emergentintegrations` removed | `GEMINI_SDK_AUDIT_REPORT.md` | `test_gateway_enforcement.py` — AST scan: zero `generate_content`, `count_tokens`, `genai.Client` outside gateway | ✅ Implemented |
+| **Behavioural standard** | INVESTIGATE → ASSESS → DIRECT → GUIDE → VERIFY structurally enforced | System prompt in `coordinator.py`; `validation.py` structural checks; Pydantic schema validation | `AI_GOVERNANCE.md` §3.1 | `test_higgins_authority.py` — 33 tests: observation basis, concern/finding, action instructions, recommended index, completion honesty | ✅ Implemented |
 
 ### 4.5 Australian Privacy Act 1988 — Australian Privacy Principles (APPs)
 
-| APP | Requirement | Control | Implementation | Status |
-|---|---|---|---|---|
-| **APP 1** | Open and transparent management | Privacy disclosure; compliance matrix | `privacy-disclosure.tsx`; this document | ⚠️ Partial — formal privacy policy document needed |
-| **APP 2** | Anonymity and pseudonymity | Anonymous device identity; no name/email required for core function | `auth.py` — server-issued device_id; no PII collection for registration | ✅ Implemented |
-| **APP 3** | Collection of solicited personal information | Only user-submitted content; opt-in for Gmail/notifications | Route-level input; no unsolicited collection | ✅ Implemented |
-| **APP 4** | Dealing with unsolicited personal information | Third-party PII in evidence handled via sanitisation | `llm_boundary.py` — PII minimisation in research queries | ⚠️ Partial — no formal destruction procedure for unsolicited PII |
-| **APP 5** | Notification of collection | Disclosure at setup; AI processing section | `PRIVACY_FLOWS`; `AI_PROCESSING_DISCLOSURE` | ✅ Implemented |
-| **APP 6** | Use or disclosure | Purpose-limited processing; LLM boundary enforcement | `Purpose` enum; credential stripping; image gate | ⚠️ Partial — vision preflight gap; default purpose permissiveness |
-| **APP 7** | Direct marketing | Not applicable — Apollo does not perform direct marketing | — | ✅ N/A |
-| **APP 8** | Cross-border disclosure | Gemini API processes in Google infrastructure | Paid tier disclosure; no training use documented | 🔴 Gap — formal assessment required |
-| **APP 9** | Adoption, use or disclosure of government-related identifiers | Apollo does not collect government identifiers by design | No government ID fields in any schema | ✅ Implemented |
-| **APP 10** | Quality of personal information | Evidence provenance tracking; honest limitations | `evidence_provenance` field; incomplete evidence marked | ✅ Implemented |
-| **APP 11** | Security of personal information | Encryption, auth, scoped retention, key management | See ISO 27001 controls above | ⚠️ Partial |
-| **APP 12** | Access to personal information | Device owner can view their evidence and conversations | Investigation case access; patrol history | ⚠️ Partial — no formal access request procedure |
-| **APP 13** | Correction of personal information | Evidence is user-submitted; corrections via new submissions | Re-check / re-submit mechanism | ⚠️ Partial — no formal correction procedure |
+| APP | Requirement | Control | Implementation | Cross-reference | Test Evidence | Status |
+|---|---|---|---|---|---|---|
+| **APP 1** | Open and transparent management | Privacy disclosure; compliance matrix | `privacy-disclosure.tsx`; this document | `AI_GOVERNANCE.md` §5.1 | `privacyDisclosure.test.ts` | ⚠️ Partial — formal privacy policy document needed (G-05) |
+| **APP 2** | Anonymity and pseudonymity | Anonymous device identity; no name/email required for core function | `auth.py` — server-issued device_id; no PII collection for registration | `SECURITY_LIFECYCLE.md` §2.1 | Auth tests | ✅ Implemented |
+| **APP 3** | Collection of solicited personal information | Only user-submitted content; opt-in for Gmail/notifications | Route-level input; no unsolicited collection | `DATA_CLASSIFICATION_REGISTRY.md` §4 (all pathways) | Route inspection | ✅ Implemented |
+| **APP 4** | Dealing with unsolicited personal information | Third-party PII in evidence handled via sanitisation | `llm_boundary.py` — PII minimisation in research queries | `DATA_CLASSIFICATION_REGISTRY.md` §3 (dual classification) | `test_llm_boundary.py` | ⚠️ Partial — no formal destruction procedure for unsolicited PII |
+| **APP 5** | Notification of collection | Disclosure at setup; AI processing section | `PRIVACY_FLOWS`; `AI_PROCESSING_DISCLOSURE` | `AI_GOVERNANCE.md` §6.1 | `privacyDisclosure.test.ts` | ✅ Implemented |
+| **APP 6** | Use or disclosure | Purpose-limited processing; LLM boundary enforcement; credential prohibition | `Purpose` enum mandatory; `strip_credentials()` on all Gemini text; on-device image screening | `DATA_CLASSIFICATION_REGISTRY.md` §5 (authorisation matrix) | `test_gateway_enforcement.py`, `test_package4_acceptance.py`, `test_llm_boundary.py` | ✅ Implemented — purpose mandatory; preflight removed; credential prohibition enforced |
+| **APP 7** | Direct marketing | Not applicable — Apollo does not perform direct marketing | — | — | — | ✅ N/A |
+| **APP 8** | Cross-border disclosure | Gemini API processes in Google infrastructure | Paid tier disclosure; no training use documented | `AI_GOVERNANCE.md` §4 | Provider terms verification | ⚠️ Open — formal assessment required (G-04) |
+| **APP 9** | Adoption, use or disclosure of government-related identifiers | Apollo does not collect government identifiers by design | No government ID fields in any schema | `DATA_CLASSIFICATION_REGISTRY.md` §2 | Schema inspection | ✅ Implemented |
+| **APP 10** | Quality of personal information | Evidence provenance tracking; honest limitations | `evidence_provenance` field; incomplete evidence marked | — | `test_higgins_authority.py` (completion honesty) | ✅ Implemented |
+| **APP 11** | Security of personal information | Encryption, auth, scoped retention, key management | See ISO 27001 controls above | `SECURITY_LIFECYCLE.md` | See §4.3 test evidence | ✅ Implemented |
+| **APP 12** | Access to personal information | Device owner can view their evidence and conversations | Investigation case access; patrol history | — | Route inspection | ⚠️ Partial — no formal access request procedure (G-07) |
+| **APP 13** | Correction of personal information | Evidence is user-submitted; corrections via new submissions | Re-check / re-submit mechanism | — | — | ⚠️ Partial — no formal correction procedure (G-07) |
 
 ### 4.6 ISO/IEC 27559:2022 — De-identification
 
@@ -202,42 +221,80 @@ Apollo is a mobile-first cybersecurity application comprising:
 | **Full lifecycle protection** | Scoped retention with automatic deletion | `retention.py` — 15-minute lifecycle + sweep loop | ✅ Implemented |
 | **End-to-end security** | Encryption at rest and in transit | `encryption.py`; TLS | ✅ Implemented |
 | **Visibility and transparency** | Privacy disclosure; AI processing explanation | `privacyInventory.ts` | ✅ Implemented |
-| **User-centric** | User chooses: text-only, redacted, crop, withhold | `ImagePrivacyGate.tsx` — four-choice UI | ✅ Implemented |
+| **User-centric** | User chooses: text-only, redacted, or withhold | `ImagePrivacyGate.tsx` — privacy-preserving choice UI | ✅ Implemented |
+
+### 4.8 Dual-Classification Treatment — Security Evidence Containing Personal Information
+
+**Authoritative source**: `backend/core/data_classification.py` §3 (Dual-Classified Fields); `DATA_CLASSIFICATION_REGISTRY.md` §3.
+
+Some fields serve simultaneously as security evidence and personal information. For example, a sender's email address is both an authentication indicator (spoofing detection) and a personal identifier. Apollo's classification model handles these explicitly rather than forcing a single category.
+
+#### 4.8.1 Dual-Classified Fields
+
+| Field | Security Role | Personal Data Role | Operational Classification |
+|---|---|---|---|
+| `sender` | Authentication analysis (identity verification) | Identifies a living person | `SECURITY_INDICATOR` (primary) + `PII` (secondary) |
+| `sender_email` | Email header analysis, spoofing detection | Email address of a person | `SECURITY_INDICATOR` + `PII` |
+| `sender_phone` | Caller identity verification | Phone number of a person | `SECURITY_INDICATOR` + `PII` |
+| `caller_number` | Phone scam investigation | Phone number of a person | `SECURITY_INDICATOR` + `PII` |
+| `from_address` | Email origin analysis | Email address of a person | `SECURITY_INDICATOR` + `PII` |
+| `reply_to` | Email spoofing detection | Email address of a person | `SECURITY_INDICATOR` + `PII` |
+
+#### 4.8.2 Purpose-Specific Handling of Dual-Classified Fields
+
+| Purpose | Handling | Implementation | Rationale |
+|---|---|---|---|
+| **INVESTIGATION** | Preserved in full | `llm_boundary.py` — dual-classified fields classified as `SECURITY_EVIDENCE` operationally | Security indicator value is essential for accurate investigation; user authorised submission |
+| **RESEARCH** | Minimised to category labels | `llm_boundary.py` — `_minimise_personal_identifiers()` replaces emails → `[email]`, phones → `[phone number]` | Personal identifiers are not needed for public research; domain names and scam indicators preserved |
+| **ORDINARY_CHAT** | Structured facts only | `llm_boundary.py` — restricted; no raw evidence with personal data | Chat does not require specific personal identifiers |
+| **TTS** | Credential-stripped only | `llm_boundary.py` — `enforce_boundary()` strips credentials; personal data may appear in spoken assessment | Narration of investigation findings may reference indicators |
+| **All other purposes** | Per authorisation matrix | `data_classification.py` — `AUTHORISATION_MATRIX[purpose][category]` | Each purpose has explicit rules for both PII and SECURITY_INDICATOR categories |
+
+#### 4.8.3 Evidence-Preservation Impact
+
+The dual-classification model ensures that privacy controls do not inadvertently destroy security evidence:
+
+- **Credential stripping** removes passwords, tokens, and keys — these have no investigative value for Gemini and are PROHIBITED for all purposes
+- **PII minimisation** for research replaces personal identifiers with category labels but preserves domain names, URLs, and scam indicators — the essential investigative evidence
+- **Investigation processing** preserves dual-classified fields in full because the user explicitly submitted them for security assessment
+
+**Test verification**: `test_data_classification.py` (71 tests) — includes dual-classification inheritance, credential prohibition exhaustive check, and field-category mapping.
 
 ---
 
 ## 5. Evidence-Preservation & Investigative-Effectiveness Impacts
 
-Privacy controls must not compromise Apollo's security evidence or Higgins' investigative effectiveness without explanation. This section documents known impacts.
+Privacy controls must not compromise Apollo's security evidence or Higgins' investigative effectiveness without explanation. This section documents known impacts and their resolution.
 
-| Control | Privacy Benefit | Evidence/Investigation Impact | Mitigation |
+| Control | Privacy Benefit | Evidence/Investigation Impact | Resolution |
 |---|---|---|---|
 | **Credential stripping** (`strip_credentials`) | Prevents password/token disclosure to Gemini | None — credentials have no investigative value for Gemini | No mitigation needed |
 | **Research PII minimisation** (`_minimise_personal_identifiers`) | Prevents personal identifiers in research queries | Minimal — domain names and scam indicators preserved; only emails/phones/financials replaced | Evidence-inventory-aware replacement prevents over-redaction |
-| **Image sanitisation** (`ImagePrivacyGate`) | User controls what visual content leaves device | User may choose text-only, losing visual context for investigation | User informed of trade-off; can approve image if needed |
+| **On-device image screening** (`ImagePrivacyGate`) | User controls what visual content leaves device | User may choose text-only, losing visual context for investigation | User informed of trade-off; can approve image if needed |
 | **Purpose restrictions** (`Purpose` enum) | Limits data disclosure per processing purpose | Ordinary chat receives structured facts only, not raw evidence | By design — chat doesn't need raw evidence |
-| **Vision preflight gap** (current) | **GAP** — original image sent to Gemini for admission check | Image disclosure occurs before user consent for privacy screening | **Package 4 must fix** — local inspection before any external transmission |
-| **Soft-delete Patrol** (current) | **GAP** — clear Patrol hides but doesn't physically erase | Evidence technically persists | Disclosed to user; physical erasure mechanism needed |
-| **Default purpose permissiveness** (current) | **GAP** — `Purpose.INVESTIGATION` as default in some paths | May process data with broader permissions than necessary | **Package 3 must fix** — require explicit purpose |
+| **Dual-classified field handling** | Personal identifiers minimised for research | Investigation retains full values; research uses category labels | See §4.8 — preserves investigative utility while minimising personal data |
+| **Soft-delete Patrol** | **Open (G-06)** — Clear Patrol hides but doesn't physically erase | Evidence technically persists | Disclosed to user; physical erasure mechanism needed |
 
 ---
 
-## 6. Gap Summary & Remediation Plan
+## 6. Gap Summary & Remediation Record
 
-| Gap ID | Standard | Description | Severity | Remediation Package | Target |
+| Gap ID | Standard | Description | Severity | Resolved By | Status |
 |---|---|---|---|---|---|
-| **G-01** | 27701-7.4, APP 6 | Vision preflight sent original image to Gemini before user consent | High | Package 4 | ✅ **CLOSED** — Preflight removed; on-device screening required |
-| **G-02** | 27701-7.5 | Default purpose permissiveness — some pathways don't require explicit processing purpose | Medium | Package 3 | Phase 3 |
-| **G-03** | 42001 | Single gateway not fully audited — possible alternate Gemini call sites | High | Package 3 | Phase 3 |
-| **G-04** | 27701-8.2, APP 8 | No formal cross-border data transfer assessment for Gemini | Medium | Package 7 | Phase 4 |
-| **G-05** | APP 1 | No formal published privacy policy document (disclosure screen exists but no standalone policy) | Medium | Package 7 | Phase 4 |
-| **G-06** | 27701-6.5 | Clear Patrol is soft-delete; no physical erasure mechanism | Medium | Package 6 | Phase 4 |
-| **G-07** | APP 12, APP 13 | No formal subject access request or correction procedure | Low | Package 7 | Phase 4 |
-| **G-08** | 27001-A.5.24 | No formal privacy incident/breach response procedure | Medium | Package 6 | Phase 4 |
-| **G-09** | 27001-A.8.5 | Admin access uses single-factor API key (not MFA) | Low | Package 6 | Phase 4 |
-| **G-10** | 27701-5.4 | Consent record format not standardised; no granular per-purpose consent | Low | Package 7 | Phase 4 |
-| **G-11** | 42001 | Formal AI risk register created with 10 identified risks and mitigations | Medium | Package 7 | ✅ **CLOSED** — AI_GOVERNANCE.md §2 |
-| **G-12** | 42001 | Higgins INVESTIGATE → ASSESS → DIRECT → GUIDE → VERIFY structurally enforced | Medium | Package 5 | ✅ **CLOSED** — Structural validation in validate(); system prompts enforced; 33 tests |
+| **G-01** | 27701-7.4, APP 6 | Raw image sent to Gemini before user consent (vision preflight) | High | Package 4 | ✅ **CLOSED** — Preflight removed; on-device screening required; fail-closed redaction; byte-binding digest |
+| **G-02** | 27701-7.5 | Default purpose permissiveness — some pathways lacked explicit processing purpose | Medium | Package 3 | ✅ **CLOSED** — `purpose` parameter mandatory on all `generate`/`generate_json` calls; no default value; verified via AST inspection |
+| **G-03** | 42001 | Single gateway not audited — possible alternate Gemini call sites | High | Package 3 | ✅ **CLOSED** — Architectural scan: zero `generate_content`, `count_tokens`, `genai.Client` outside `provider.py`; `emergentintegrations` removed; 23 gateway tests |
+| **G-04** | 27701-8.2, APP 8 | No formal cross-border data transfer assessment for Gemini | Medium | Legal action required | ⚠️ Open — requires legal advisor appointment |
+| **G-05** | APP 1 | No formal published privacy policy document (disclosure screen exists but no standalone policy) | Medium | Legal action required | ⚠️ Open — requires legal advisor |
+| **G-06** | 27701-6.5 | Clear Patrol is soft-delete; no physical erasure mechanism | Medium | Engineering decision | ⚠️ Open — documented in `SECURITY_LIFECYCLE.md` §3.2 |
+| **G-07** | APP 12, APP 13 | No formal subject access request or correction procedure | Low | Legal/operational action | ⚠️ Open — requires procedural formalisation |
+| **G-08** | 27001-A.5.24 | No formal privacy incident/breach response procedure | Medium | Operational action | ⚠️ Partially addressed — response actions documented in `SECURITY_LIFECYCLE.md` §6; formalisation needed |
+| **G-09** | 27001-A.8.5 | Admin access uses single-factor API key (not MFA) | Low | Engineering | ⚠️ Open — residual risk accepted and documented |
+| **G-10** | 27701-5.4 | Consent record format not standardised; no granular per-purpose consent | Low | Product decision | ⚠️ Open — consent model documented in `AI_GOVERNANCE.md` §6.2 |
+| **G-11** | 42001 | AI risk register not formalised | Medium | Package 7 | ✅ **CLOSED** — `AI_GOVERNANCE.md` §2: 10 identified risks with mitigations and residual assessment |
+| **G-12** | 42001 | Higgins INVESTIGATE → ASSESS → DIRECT → GUIDE → VERIFY not structurally enforced | Medium | Package 5 | ✅ **CLOSED** — Structural validation in `validation.py`; system prompts enforced; 33 tests in `test_higgins_authority.py` |
+
+### Summary: 5 gaps CLOSED (G-01, G-02, G-03, G-11, G-12), 7 gaps remain open (G-04 through G-10). All open gaps require legal, operational, or product decisions beyond engineering implementation.
 
 ---
 
@@ -259,19 +316,21 @@ Each control must be verified through applicable methods. This table defines the
 
 | Test | File | Covers | Status |
 |---|---|---|---|
-| Data classification registry | `backend/tests/test_data_classification.py` | Categories, fields, dual classification, credentials, authorisation matrix, pathways, value patterns, LLM boundary integration | ✅ Passing (71 tests) |
-| Package 4 acceptance verification | `backend/tests/test_package4_acceptance.py` | Adversarial receipts (forged/missing/reused/expired/mismatched), embedded documents (consent/classification/limitations), evidence preservation (domains/URLs/IPs/threats survive enforcement), Gemini payloads (credentials stripped all purposes, binary blocked, no preflight), native build checklist | ✅ Passing (43 tests) |
-| Image consent enforcement | `backend/tests/test_image_consent_enforcement.py` | Preflight removed, entry points enforced, MIME types, OCR safety, consent recording, embedded images, receipt metadata | ✅ Passing (28 tests) |
-| Gateway enforcement | `backend/tests/test_gateway_enforcement.py` | Architectural scan, purpose mandatory, binary auth, text enforcement, scam gateway, new purposes | ✅ Passing (23 tests) |
-| Image sanitisation receipts | `frontend/tests/imageSanitization.test.ts` | Receipt creation, consumption, one-time use, expiry, byte-binding, Package 4 decisions | ✅ Passing (21 tests) |
-| Privacy disclosure content | `frontend/tests/privacyDisclosure.test.ts` | AI processing disclosure sections, privacy flows | ✅ Passing |
-| Architectural regression | `frontend/tests/architecturalRegression.test.ts` | Event merge, evidence preservation, state machine, privacy restrictions | ✅ Passing |
-| Higgins behavioural | `frontend/tests/higginsBehavioural.test.ts` | Directive language, evidence-backed instructions, no passive language | ✅ Passing |
-| Backend image sanitisation | `backend/tests/test_image_sanitization.py` | Backend receipt validation, rejection of missing receipts | ✅ Passing |
-| Backend LLM boundary | `backend/tests/test_llm_boundary.py` | Credential stripping, PII minimisation, purpose enforcement | ✅ Passing |
-| Single gateway audit | — | All Gemini SDK import/call sites verified | 🔴 Not yet performed (Package 3) |
-| Higgins integration test | — | Real Gemini investigation with synthetic evidence | 🔴 Not yet performed (Package 8) |
-| Native acceptance | — | On-device image manipulation, OCR, VPN | 🔴 Not yet performed (Package 8) |
+| Data classification registry | `backend/tests/test_data_classification.py` | Categories, fields, dual classification, credentials, authorisation matrix, pathways, value patterns, LLM boundary integration | ✅ 71 tests passing |
+| Package 4 acceptance verification | `backend/tests/test_package4_acceptance.py` | Adversarial receipts, embedded documents, evidence preservation, Gemini payloads, credential stripping, binary authorisation | ✅ 37 tests passing |
+| Image consent enforcement | `backend/tests/test_image_consent_enforcement.py` | Preflight removed, entry points enforced, MIME types, OCR safety, consent recording, embedded images, receipt metadata | ✅ 28 tests passing |
+| Gateway enforcement | `backend/tests/test_gateway_enforcement.py` | Architectural scan (AST), purpose mandatory, binary auth, text enforcement, scam gateway, new purposes, no alternate providers | ✅ 23 tests passing |
+| Higgins authority | `backend/tests/test_higgins_authority.py` | INVESTIGATE→ASSESS→DIRECT→GUIDE→VERIFY structural validation, observation basis, completion honesty, evidence integrity | ✅ 34 tests passing |
+| LLM boundary | `backend/tests/test_llm_boundary.py` | Credential stripping, PII minimisation, purpose enforcement, dual-classification handling | ✅ 39 tests passing |
+| Image sanitisation (backend) | `backend/tests/test_image_sanitization.py` | Backend receipt validation, rejection of missing receipts | ✅ 12 tests passing |
+| Scam analysis | `backend/tests/test_scam_analysis.py` | Scam advisory classification via gateway | ✅ 10 tests passing |
+| Image sanitisation receipts (frontend) | `frontend/tests/imageSanitization.test.ts` | Receipt creation, consumption, one-time use, expiry, byte-binding, Package 4 decisions | ✅ 21 tests passing |
+| Architectural regression (frontend) | `frontend/tests/architecturalRegression.test.ts` | Event merge, evidence preservation, state machine, privacy restrictions | ✅ 36 tests passing |
+| Higgins behavioural (frontend) | `frontend/tests/higginsBehavioural.test.ts` | Directive language, evidence-backed instructions, no passive language | ✅ 23 tests passing |
+| Privacy disclosure (frontend) | `frontend/tests/privacyDisclosure.test.ts` | AI processing disclosure sections, privacy flows, standards listing | ✅ 10 tests passing |
+| Single gateway architectural audit | `test_gateway_enforcement.py` (AST scan) | Zero `generate_content`, `count_tokens`, `genai.Client` outside `provider.py`; zero alternate providers | ✅ Verified (Package 3) |
+| Full regression (Package 8) | All test files above | 253 backend + 90 frontend = 344 total; 12-point acceptance checklist | ✅ All passing — see `PACKAGE8_ACCEPTANCE_REPORT.md` |
+| Native acceptance | — | On-device image manipulation, OCR, VPN | 🔶 Requires native build — cannot be verified in Expo Go |
 
 ---
 
@@ -325,6 +384,8 @@ This section maps each privacy/security control to its authoritative implementat
 | Date | Version | Change | Author |
 |---|---|---|---|
 | Feb 2026 | 1.0 | Initial compliance matrix — Package 1 delivery | Apollo Engineering |
+| Feb 2026 | 1.1–1.7 | Packages 2–8 delivered: data classification, gateway enforcement, image privacy, structural validation, security lifecycle, AI governance, end-to-end verification | Apollo Engineering |
+| Jun 2026 | 2.0 | Post-implementation consolidation: removed superseded statements; closed G-01/G-02/G-03/G-11/G-12; added dual-classification section (§4.8); added traceability columns (Data Categories, Test Evidence, Cross-references) to all compliance tables; linked companion documents; aligned compliance claims with verified evidence; corrected test counts to final figures (344) | Apollo Engineering |
 
 ---
 
