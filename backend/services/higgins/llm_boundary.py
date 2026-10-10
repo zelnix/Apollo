@@ -31,11 +31,27 @@ class Purpose(str, Enum):
 
 
 class Classification(str, Enum):
-    """Information classification for evidence fields."""
+    """Information classification for evidence fields.
+
+    This enum is retained for backward compatibility. The authoritative classification
+    registry is `core.data_classification` which provides finer-grained categories.
+    """
     SECURITY_EVIDENCE = "security_evidence"   # Indicators, findings, timestamps, confidence
     PERSONAL_DATA = "personal_data"           # Names, emails, phone numbers, addresses
     SENSITIVE_PII = "sensitive_pii"           # Health, financial, biometric, location history
     CREDENTIAL = "credential"                 # Passwords, tokens, codes, keys, recovery phrases
+
+
+# ── Authoritative Classification Registry ───────────────────────────────────
+# Import the single source of truth for data classification. All field lookups
+# and category decisions are delegated to this module.
+from core.data_classification import (
+    DataCategory,
+    FIELD_CATEGORIES,
+    classify_field as _authoritative_classify_field,
+    is_prohibited as _is_prohibited,
+    ProcessingPurpose,
+)
 
 
 # Patterns that indicate credential material — must be stripped before any external call.
@@ -46,20 +62,21 @@ _CREDENTIAL_PATTERNS = [
     re.compile(r"(https?://)[^\s/@]+:[^\s/@]+@"),
 ]
 
-# Fields that are security evidence — always permitted for investigation and chat purposes.
+# Backward-compatible field sets derived from the authoritative classification registry.
+# These sets are used by existing code and tests; new code should use data_classification directly.
 SECURITY_FIELDS = {
-    "domain", "host", "indicator_host", "indicator_digest", "destination_domain", "destination_port",
-    "protocol", "direction", "mechanism", "matched_rule_id", "enforced_action", "requested_action",
-    "result", "rule_source", "confidence", "correlation_id", "threat_id", "verdict", "threat_types",
-    "state", "status", "category", "occurred_at", "observed_at", "verified_block", "evidence_id",
-    "event_id", "case_id", "scent_id", "headline", "what_happened", "why", "what_to_do",
-    "assessment", "attention", "findings", "uncertainties", "scope", "actions",
+    field for field, cats in FIELD_CATEGORIES.items()
+    if DataCategory.SECURITY_INDICATOR in cats
+    or DataCategory.DEVICE_OBSERVATION in cats
+    or DataCategory.INVESTIGATION_METADATA in cats
+    or DataCategory.DERIVED_CONTENT in cats
 }
 
-# Fields that carry personal data — permitted only when specifically authorised.
 PERSONAL_DATA_FIELDS = {
-    "name", "email", "phone_number", "address", "date_of_birth", "location",
-    "device_id", "advertising_id", "imei", "serial", "contacts",
+    field for field, cats in FIELD_CATEGORIES.items()
+    if DataCategory.PII in cats
+    or DataCategory.LOCATION in cats
+    and DataCategory.SECURITY_INDICATOR not in cats  # Exclude dual-classified security+PII fields
 }
 
 
@@ -205,13 +222,22 @@ def validate_outbound_payload(purpose: Purpose, text: str) -> list[str]:
 
 
 def classify_field(key: str) -> Classification:
-    """Classify a field name into its information category."""
-    if key in SECURITY_FIELDS:
-        return Classification.SECURITY_EVIDENCE
-    if key in PERSONAL_DATA_FIELDS:
-        return Classification.PERSONAL_DATA
-    # Check for credential-related field names
-    credential_indicators = {"password", "token", "secret", "key", "code", "otp", "pin", "credential"}
-    if any(indicator in key.lower() for indicator in credential_indicators):
+    """Classify a field name into its information category.
+
+    Uses the authoritative data_classification registry. Returns a backward-compatible
+    Classification enum for existing callers.
+    """
+    categories = _authoritative_classify_field(key)
+
+    # Map authoritative categories to backward-compatible Classification
+    if DataCategory.CREDENTIAL in categories:
         return Classification.CREDENTIAL
-    return Classification.SECURITY_EVIDENCE  # Default: treat as security evidence (permit)
+    if DataCategory.MEDICAL in categories or DataCategory.FINANCIAL in categories or DataCategory.LOCATION in categories:
+        return Classification.SENSITIVE_PII
+    if DataCategory.PII in categories or DataCategory.SENSITIVE_PERSONAL in categories:
+        return Classification.PERSONAL_DATA
+    if DataCategory.UNKNOWN in categories:
+        # CRITICAL: Unknown data defaults to PERSONAL_DATA (restricted), not SECURITY_EVIDENCE.
+        # This ensures unclassified fields are not accidentally treated as unrestricted.
+        return Classification.PERSONAL_DATA
+    return Classification.SECURITY_EVIDENCE

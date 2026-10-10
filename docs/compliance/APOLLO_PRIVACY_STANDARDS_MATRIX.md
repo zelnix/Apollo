@@ -259,6 +259,7 @@ Each control must be verified through applicable methods. This table defines the
 
 | Test | File | Covers | Status |
 |---|---|---|---|
+| Data classification registry | `backend/tests/test_data_classification.py` | Categories, fields, dual classification, credentials, authorisation matrix, pathways, value patterns, LLM boundary integration | ✅ Passing (71 tests) |
 | Image sanitisation receipts | `frontend/tests/imageSanitization.test.ts` | Receipt creation, consumption, one-time use, expiry | ✅ Passing |
 | Privacy disclosure content | `frontend/tests/privacyDisclosure.test.ts` | AI processing disclosure sections, privacy flows | ✅ Passing |
 | Architectural regression | `frontend/tests/architecturalRegression.test.ts` | Event merge, evidence preservation, state machine, privacy restrictions | ✅ Passing |
@@ -300,6 +301,7 @@ This section maps each privacy/security control to its authoritative implementat
 |---|---|---|
 | `services/higgins/provider.py` | Single Gemini gateway | All AI inference through one authoritative pathway |
 | `services/higgins/llm_boundary.py` | LLM evidence boundary | Credential stripping, PII minimisation, purpose enforcement |
+| `core/data_classification.py` | Authoritative data classification | Single source of truth for data categories, field classification, authorisation matrix, processing pathways |
 | `services/higgins/coordinator.py` | Investigation coordinator | Higgins INVESTIGATE → ASSESS → DIRECT → GUIDE → VERIFY |
 | `services/higgins/contracts.py` | Wire contracts | Strict Pydantic schemas for all investigation data |
 | `services/higgins/validation.py` | Response validation | Structural validation of Gemini responses |
@@ -327,8 +329,8 @@ This section maps each privacy/security control to its authoritative implementat
 
 | Package | Status | Verification | Tests | Limitations | Compliance Matrix Changes | Acceptance |
 |---|---|---|---|---|---|---|
-| **Package 1** | Implemented | Code inspection, documentation review | N/A (documentation) | Legal advisor not yet appointed; cross-border assessment pending | Initial matrix created | Requested |
-| Package 2 | Not started | — | — | — | — | — |
+| **Package 1** | Implemented | Code inspection, documentation review | N/A (documentation) | Legal advisor not yet appointed; cross-border assessment pending | Initial matrix created | ✅ Accepted |
+| **Package 2** | Implemented | Code inspection, automated tests, documentation review | 71 new + 50 existing = 121 tests passing | Vision preflight gap (P4); gateway audit (P3); cross-border (P7) | Unknown default fixed; authorisation matrix added; 4 gaps resolved | Requested |
 | Package 3 | Not started | — | — | — | — | — |
 | Package 4 | Not started | — | — | — | — | — |
 | Package 5 | Not started | — | — | — | — | — |
