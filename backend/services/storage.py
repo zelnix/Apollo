@@ -61,7 +61,3 @@ async def delete_object(path: str) -> bool:
         return True
     except Exception:  # noqa: BLE001
         return False
-
-
-def voice_note_path(guardian_device_id: str, note_id: str, ext: str) -> str:
-    return f"apollo-v1/family-voice/{guardian_device_id}/{note_id}.{ext}"

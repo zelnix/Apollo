@@ -14,7 +14,6 @@ import { Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Body, Button, Card, Pill } from "@/src/components/ui";
-import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
 import type { ActionLink, CheckItem, CheckResultModel } from "@/src/domain/checkResult";
 import { STATUS_LABEL, STATUS_TONE } from "@/src/domain/checkResult";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -108,10 +107,7 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose 
           <Text style={s.headline} testID="check-result-headline">{result.headline}</Text>
 
           <View style={{ gap: spacing.xs }}>
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm }}>
-              <Text style={s.sectionLabel}>WHY ACTION WAS TAKEN</Text>
-              <HigginsSpeakButton compact text={spokenText} testID="check-result-hear-higgins" />
-            </View>
+            <Text style={s.sectionLabel}>WHY ACTION WAS TAKEN</Text>
             <Text style={s.higginsText} testID="check-result-higgins">{result.higginsSays}</Text>
           </View>
 

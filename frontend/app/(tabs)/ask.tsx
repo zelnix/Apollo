@@ -25,7 +25,6 @@ import { rememberCaseForEvent } from "@/src/investigation/caseIndex";
 import { useProtectionHealth } from "@/src/protection/healthStore";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
-import { stopHiggins } from "@/src/voice/higgins";
 
 const WELCOME = "Hello! I'm Higgins.\n\nI'm here to help you understand Apollo, explain security alerts, and answer your cyber-safety questions.\n\nWhat can I help you with today?";
 const STARTERS = ["Why is Apollo barking?", "Is my device protected?", "Explain a scam warning."];
@@ -168,14 +167,14 @@ export default function Ask() {
     const id = params.handoffId ? String(params.handoffId) : ""; if (!id || id === seenRoute.current || !deviceId) return; seenRoute.current = id;
     const transfer = takeHandoff(id); const context = transfer?.context ?? (params.context ? parseHigginsIssueContext(String(params.context)) : null); router.setParams({ handoffId: "", context: "", prompt: "" });
     if (!context) { setRouteError("Apollo could not prepare this issue for Higgins. Return to the result and try again."); return; }
-    const question = transfer?.question ?? redactUserSecrets(String(params.prompt ?? "")).trim(); setActiveContext(context); setInvestigationMode(true); stopHiggins();
+    const question = transfer?.question ?? redactUserSecrets(String(params.prompt ?? "")).trim(); setActiveContext(context); setInvestigationMode(true);
     if (context.case_id) { void attach(context.case_id).then((opened) => { if (opened && question) void ask(question); }); return; }
     startInvestigation(question, context);
   }, [params.handoffId, params.context, params.prompt, deviceId, router, attach, ask, startInvestigation]);
 
-  const deleteInvestigation = async () => { stopHiggins(); clearHandoffTransfers(); setActiveContext(null); setRouteError(null); setInvestigationMode(false); await remove(); };
+  const deleteInvestigation = async () => { clearHandoffTransfers(); setActiveContext(null); setRouteError(null); setInvestigationMode(false); await remove(); };
   const clearChat = async () => { if (!deviceId || chatBusy) return; await Promise.all([clearHigginsHistory(deviceId), clearLocalChat(), clearStarterMemory()]); setChatMessages([]); setStarters([]); setLastAction(null); setChatError(null); conversationId.current = Crypto.randomUUID(); };
-  const newQuestion = () => { if (busy) return; stopHiggins(); setActiveContext(null); setInvestigationMode(false); void remove(); };
+  const newQuestion = () => { if (busy) return; setActiveContext(null); setInvestigationMode(false); void remove(); };
   const caseStatus = state.phase === "answered" ? "Higgins has finished this investigation." : state.phase === "waiting_user" ? "Higgins needs one answer from you" : state.phase === "failed" ? "Investigation incomplete — Retry available" : state.phase === "expired" ? "Temporary investigation content expired" : caseBusy ? "Higgins is investigating…" : "Investigation content expires within 15 minutes";
   const showWelcome = !investigationMode && chatMessages.length === 0;
   const welcomeStarters = useMemo(() => [...new Set([...starters, ...STARTERS])].slice(0, 4), [starters]);

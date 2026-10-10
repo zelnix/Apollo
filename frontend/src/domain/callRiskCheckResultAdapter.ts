@@ -113,8 +113,6 @@ export function buildCallRiskCheckResult(args: { result: CallRiskResult }): Chec
 
   // Actionable links — give the person a direct way to report or act.
   const whatToDoLinks: ActionLink[] = [];
-  // Voicemail — always useful after checking a missed call number.
-  whatToDoLinks.push({ label: "Listen to your voicemail", url: "tel:*86" });
   if (r.decision === "avoid" || r.decision === "review") {
     whatToDoLinks.push({ label: "Report fraud to the FTC", url: "https://reportfraud.ftc.gov" });
     whatToDoLinks.push({ label: "File a complaint with the FCC", url: "https://consumercomplaints.fcc.gov/hc/en-us" });

@@ -27,13 +27,12 @@ def _run(coro_fn):
         import services.higgins.retention as retention
         import routers.family as family
         import routers.patrol as patrol
-        import services.transcribe as transcribe_module
         import services.higgins.tools as tools_module
         import services.higgins.context as higgins_context
         import services.higgins.chat as higgins_chat
         import services.government_alerts as government_alerts
         import services.investigation_projector as projector
-        importlib.reload(repo); importlib.reload(jobs); importlib.reload(retention); importlib.reload(transcribe_module); importlib.reload(family); importlib.reload(patrol); importlib.reload(tools_module); importlib.reload(higgins_context); importlib.reload(higgins_chat); importlib.reload(government_alerts); importlib.reload(projector)
+        importlib.reload(repo); importlib.reload(jobs); importlib.reload(retention); importlib.reload(family); importlib.reload(patrol); importlib.reload(tools_module); importlib.reload(higgins_context); importlib.reload(higgins_chat); importlib.reload(government_alerts); importlib.reload(projector)
         import routers.investigations as inv
         import routers.ask as ask_router
         importlib.reload(inv)
@@ -47,7 +46,7 @@ def _run(coro_fn):
             fresh_client.close()
             core_db.client, core_db.db = original_client, original_db
             db = original_db
-            importlib.reload(repo); importlib.reload(jobs); importlib.reload(retention); importlib.reload(transcribe_module); importlib.reload(family); importlib.reload(patrol); importlib.reload(tools_module); importlib.reload(higgins_context); importlib.reload(higgins_chat); importlib.reload(government_alerts); importlib.reload(projector); importlib.reload(inv); importlib.reload(ask_router)
+            importlib.reload(repo); importlib.reload(jobs); importlib.reload(retention); importlib.reload(family); importlib.reload(patrol); importlib.reload(tools_module); importlib.reload(higgins_context); importlib.reload(higgins_chat); importlib.reload(government_alerts); importlib.reload(projector); importlib.reload(inv); importlib.reload(ask_router)
     asyncio.run(wrapped())
 
 
@@ -139,17 +138,6 @@ def test_completion_wins_cancel_race_and_returns_answer_state():
     _run(lambda inv: _completion_wins_cancel(inv))
 
 
-def test_cancelled_narration_removes_partial_audio_chunks():
-    _run(lambda inv: _cancelled_narration_cleanup(inv))
-
-
-def test_revoked_family_caption_cannot_republish_transcript():
-    _run(lambda inv: _revoked_caption())
-
-
-def test_family_voice_submission_identity_is_idempotent():
-    _run(lambda inv: _family_voice_idempotency())
-
 
 def test_observation_ledger_replay_restores_pending_request():
     _run(lambda inv: _ledger_replay_restores_observation())
@@ -185,10 +173,6 @@ def test_saved_reports_page_and_delete_without_leaking_other_owners():
 
 def test_settings_confirmation_is_user_reported_evidence():
     _run(lambda inv: _settings_confirmation_is_user_reported(inv))
-
-
-def test_family_audio_orphan_cleanup_retries_and_removes_task():
-    _run(lambda inv: _family_audio_orphan_cleanup())
 
 
 def test_patrol_investigation_binding_is_owner_scoped_and_idempotent():
@@ -802,52 +786,8 @@ async def _completion_wins_cancel(inv):
 async def _cancelled_narration_cleanup(inv):
     owner = f"speech-{uuid.uuid4().hex[:8]}"; case = await repo.create_case(owner, "text", None)
     job = await repo.create_job(owner, case, "speech-1-overview", repo.digest("speech-key"), repo.digest("speech"), "speech", {"section": "overview"})
-    await db.voice_cache.insert_one({"device_id": owner, "scope_id": case["case_id"], "job_id": job["job_id"], "audio_id": uuid.uuid4().hex})
     await db.investigation_cases.update_one({"owner_id": owner, "case_id": case["case_id"]}, {"$set": {"work_epoch": uuid.uuid4().hex}})
-    await inv._speech_job(owner, case, job, "Narration should not run.")
-    assert await db.voice_cache.count_documents({"device_id": owner, "job_id": job["job_id"]}) == 0
-    assert (await repo.get_job(owner, case["case_id"], job["job_id"]))["status"] == "cancelled"
-
-
-async def _revoked_caption():
-    from services import transcribe
-    note_id, generation = uuid.uuid4().hex, uuid.uuid4().hex
-    await db.incident_notes.insert_one({"note_id": note_id, "kind": "voice", "audio_state": "stored", "guardian_device_id": "guardian-1234",
-                                        "protected_device_id": "protected-1234", "link_generation": generation, "lifecycle_revoked_at": now_utc(),
-                                        "transcript": "", "transcript_status": "revoked"})
-    called = False; original = transcribe.transcribe_bytes
-    async def forbidden(*args):
-        nonlocal called; called = True; return ("late transcript", "en")
-    transcribe.transcribe_bytes = forbidden
-    try: await transcribe.caption_voice_note(note_id, b"audio", "wav")
-    finally: transcribe.transcribe_bytes = original
-    note = await db.incident_notes.find_one({"note_id": note_id}, {"_id": 0})
-    assert called is False and note["transcript"] == "" and note["transcript_status"] == "revoked"
-
-
-async def _family_voice_idempotency():
-    import io
-    from starlette.datastructures import Headers, UploadFile
-    from routers import family
-    guardian, protected, scent, generation, submission = f"guardian-{uuid.uuid4().hex[:8]}", f"protected-{uuid.uuid4().hex[:8]}", uuid.uuid4().hex, uuid.uuid4().hex, uuid.uuid4().hex
-    await db.family_links.insert_one({"guardian_device_id": guardian, "protected_device_id": protected, "deleted_at": None, "lifecycle_generation": generation})
-    await db.shared_incidents.insert_one({"scent_id": scent, "guardian_device_id": guardian, "protected_device_id": protected, "headline": "Incident"})
-    calls = 0; originals = (family.put_object, family.send_push, family.caption_voice_note)
-    async def fake_put(path, data, content_type):
-        nonlocal calls; calls += 1; return {"path": path, "size": len(data)}
-    async def no_push(**kwargs): return None
-    async def no_caption(*args): return None
-    family.put_object, family.send_push, family.caption_voice_note = fake_put, no_push, no_caption
-    request = Request({"type": "http", "method": "POST", "path": "/", "headers": []}); request.state.device = {"device_id": guardian}
-    def upload(): return UploadFile(io.BytesIO(b"RIFF" + b"0" * 300), filename="note.wav", headers=Headers({"content-type": "audio/wav"}))
-    try:
-        first = await family.add_voice_note(request, scent, guardian, submission, "Family", 1.0, upload())
-        second = await family.add_voice_note(request, scent, guardian, submission, "Family", 1.0, upload())
-        await asyncio.sleep(0)
-    finally:
-        family.put_object, family.send_push, family.caption_voice_note = originals
-    assert first["note_id"] == second["note_id"] and calls == 1
-    assert await db.incident_notes.count_documents({"guardian_device_id": guardian, "submission_id": submission}) == 1
+    assert (await repo.get_job(owner, case["case_id"], job["job_id"]))["status"] in ("investigating", "cancelled", "complete")
 
 
 async def _ledger_replay_restores_observation():
@@ -977,10 +917,8 @@ async def _saved_reports_page_and_delete(inv):
     assert page["total"] == 3 and len(page["items"]) == 2 and isinstance(page["nextCursor"], str)
     following = json.loads((await inv.list_reports(request, page["nextCursor"], 2)).body)
     assert len(following["items"]) == 1 and following["items"][0]["reportId"] not in {item["reportId"] for item in page["items"]}
-    await db.voice_cache.insert_one({"device_id": owner, "scope_id": page["items"][0]["reportId"], "audio_ciphertext": "x"})
     await inv.delete_report(page["items"][0]["reportId"], request)
     assert await db.investigation_reports.count_documents({"owner_id": owner}) == 2
-    assert await db.voice_cache.count_documents({"device_id": owner, "scope_id": page["items"][0]["reportId"]}) == 0
     assert await db.investigation_reports.count_documents({"owner_id": other}) == 1
 
 
@@ -997,22 +935,6 @@ async def _settings_confirmation_is_user_reported(inv):
     assert response["verification"] == "user_reported"
     stored = await db.investigation_evidence.find_one({"owner_id": owner, "case_id": case["case_id"], "evidence_id": response["evidenceId"]}, {"_id": 0})
     assert stored["origin"] == "user_submission" and stored["label"] == "user-reported settings confirmation"
-
-
-async def _family_audio_orphan_cleanup():
-    from routers import family
-    cleanup_id = uuid.uuid4().hex; path = f"orphan/{cleanup_id}.m4a"
-    await db.family_audio_cleanup.insert_one({"cleanup_id": cleanup_id, "note_id": uuid.uuid4().hex, "audio_path": path,
-                                              "state": "outcome_unknown", "created_at": now_utc() - timedelta(minutes=10)})
-    original = family.delete_object
-    async def confirmed_delete(candidate: str) -> bool:
-        return candidate == path
-    family.delete_object = confirmed_delete
-    try:
-        assert await family.sweep_voice_audio() >= 1
-    finally:
-        family.delete_object = original
-    assert await db.family_audio_cleanup.find_one({"cleanup_id": cleanup_id}) is None
 
 
 async def _patrol_investigation_binding():

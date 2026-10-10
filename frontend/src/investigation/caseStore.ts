@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError } from "@/src/api/client";
 import { storage } from "@/src/utils/storage";
-import { stopHiggins } from "@/src/voice/higgins";
 import { forgetCase } from "./caseIndex";
 import * as api from "./client";
 import { observe } from "./deviceBroker";
@@ -65,7 +64,7 @@ export function useInvestigation(boundOperationId?: string | null) {
     const gen = generation.current;
     expiryTimer.current = setTimeout(() => {
       if (gen !== generation.current || caseRef.current?.id !== caseData.id) return;
-      stream.current?.abort(); stopHiggins(); pending.current = null; followed.current = null;
+      stream.current?.abort(); pending.current = null; followed.current = null;
       generation.current += 1; caseRef.current = null; expiryTimer.current = null;
       if (operationRef.current) expireOperation(operationRef.current, caseData.id);
       setState({ ...EMPTY, phase: "expired", operationId: operationRef.current,
@@ -107,7 +106,7 @@ export function useInvestigation(boundOperationId?: string | null) {
         void refresh(caseId, gen).then((caseData) => { if (live()) update({ phase: caseData.response ? "answered" : "idle", progress: [] }); }).catch(() => undefined);
       } else if (event.type === "expired") {
         if (operationId) expireOperation(operationId, caseId);
-        stopHiggins(); setState({ ...EMPTY, phase: "expired", operationId, error: "Temporary evidence expired before Higgins finished." });
+        setState({ ...EMPTY, phase: "expired", operationId, error: "Temporary evidence expired before Higgins finished." });
       }
     }, (reason) => {
       if (!live() || reason === "terminal") return;
@@ -257,7 +256,7 @@ export function useInvestigation(boundOperationId?: string | null) {
     const caseData = state.caseData; stream.current?.abort(); pending.current = null;
     if (operationRef.current) cancelManagedOperation(operationRef.current, caseData?.id);
     if (expiryTimer.current) clearTimeout(expiryTimer.current); generation.current += 1; caseRef.current = null; operationRef.current = null;
-    stopHiggins(); setState((previous) => ({ ...EMPTY, undeleted: previous.undeleted }));
+    setState((previous) => ({ ...EMPTY, undeleted: previous.undeleted }));
     if (caseData) { await forgetCase(caseData.id); try { await api.deleteCase(caseData.id); } catch { await rememberDeletion(caseData.id); update({ error: "Local view cleared; server deletion could not be confirmed.", undeleted: caseData.id }); } }
   }, [state.caseData]);
 

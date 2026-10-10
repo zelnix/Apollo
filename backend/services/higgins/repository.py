@@ -24,7 +24,7 @@ from services.higgins.encryption import decrypt, encrypt
 
 CHUNK_BYTES = 1024 * 1024
 CONTENT = ("investigation_evidence", "investigation_content_chunks", "investigation_events", "investigation_turn_commits",
-           "investigation_jobs", "investigation_device_requests", "investigation_settings_plans", "voice_cache", "investigation_uploads", "investigation_upload_chunks")
+           "investigation_jobs", "investigation_device_requests", "investigation_settings_plans", "investigation_uploads", "investigation_upload_chunks")
 
 
 def utc(value: datetime) -> datetime:
@@ -647,9 +647,7 @@ async def revoke(owner: str, case_id: str, status: str) -> Optional[dict]:
 async def run_cleanup(owner: str, case_id: str) -> str:
     try:
         for name in CONTENT:
-            field = "device_id" if name == "voice_cache" else "owner_id"
-            scope = {"scope_id": case_id} if name == "voice_cache" else {"case_id": case_id}
-            await db[name].delete_many({field: owner, **scope})
+            await db[name].delete_many({"owner_id": owner, "case_id": case_id})
         await db.investigation_cases.update_one({"owner_id": owner, "case_id": case_id}, {"$set": {"cleanup_status": "complete", "accepted_commits": [], "pending_device_request_ids": []}})
         await db.investigation_cleanup.update_one({"owner_id": owner, "case_id": case_id, "target_type": "case", "target_id": case_id}, {"$set": {"state": "complete"}})
         return "complete"
@@ -680,6 +678,4 @@ async def sweep() -> None:
     # Revisit completed cleanups: any late writer content for deleted/expired cases is removed again.
     async for gone in db.investigation_cases.find({"retention_class": TEMPORARY_RETENTION, "deleted": True, "cleanup_status": "complete", "updated_at": {"$gte": now - timedelta(hours=1)}}, {"_id": 0, "owner_id": 1, "case_id": 1}):
         for name in CONTENT:
-            field = "device_id" if name == "voice_cache" else "owner_id"
-            scope = {"scope_id": gone["case_id"]} if name == "voice_cache" else {"case_id": gone["case_id"]}
-            await db[name].delete_many({field: gone["owner_id"], **scope})
+            await db[name].delete_many({"owner_id": gone["owner_id"], "case_id": gone["case_id"]})

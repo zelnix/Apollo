@@ -14,7 +14,7 @@ from fastapi import HTTPException
 from core.db import db, now_utc
 from services.higgins.capacity import LIFETIME_SECONDS, TEMPORARY_RETENTION
 
-CONTENT_COLLECTIONS = ("ask_messages", "ask_handoffs", "voice_cache")
+CONTENT_COLLECTIONS = ("ask_messages", "ask_handoffs")
 LEGACY_CONTENT_MIGRATION = "higgins-discard-pre-v1-temporary-content"
 
 
@@ -116,7 +116,6 @@ async def migrate_and_index() -> None:
         await db[name].create_index("expires_at", name="temporary_evidence_expiry_ttl", expireAfterSeconds=0,
                                     partialFilterExpression={"retention_class": TEMPORARY_RETENTION})
         await db[name].create_index([("device_id", 1), ("scope_id", 1)])
-    await db.voice_cache.create_index([("device_id", 1), ("audio_id", 1)], unique=True)
 
 
 async def sweep() -> None:

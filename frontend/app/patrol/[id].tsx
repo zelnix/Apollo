@@ -5,8 +5,6 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { EventActions } from "@/src/components/EventActions";
-import { HigginsReadAloud } from "@/src/components/HigginsReadAloud";
-import { narrateEvent } from "@/src/domain/higginsNarration";
 import { eventHistory, looksLikeInternalCode, sourceLabel } from "@/src/domain/messageVoice";
 import { hasLocalEvidence } from "@/src/domain/higginsNarration";
 import { Body, Button, Card, Pill, toneColor } from "@/src/components/ui";
@@ -107,7 +105,6 @@ export default function EventDetail() {
             <Text style={s.big} testID="event-what-to-do">{shownWhatToDo}</Text>
           </Card>
 
-          <Card style={{ gap: spacing.sm }} testID="event-read-card"><HigginsReadAloud chunks={narrateEvent({ ...event, headline: shownTitle, what_happened: shownWhatHappened ?? event.what_happened, what_to_do: shownWhatToDo ?? event.what_to_do })} testID="event-read" /></Card>
           <Card style={{ gap: spacing.sm }} testID="event-history"><Text style={s.sub}>Status history</Text>{eventHistory(event, timeline.map((r) => ({ occurredAt: r.occurredAt, effectiveState: r.effectiveState, summary: r.summary, revision: r.revision }))).map((entry, i) => (
             <View key={i} style={s.bullet} testID={`event-history-${i}`}><View style={[s.dot, { backgroundColor: toneColor(colors, event.state) }]} /><View style={{ flex: 1 }}><Body>{entry.text}</Body><Text style={s.meta}>{new Date(entry.at).toLocaleString()}</Text></View></View>
           ))}</Card>

@@ -29,9 +29,9 @@ from services.higgins import provider
 from services.higgins import repository as repo
 from services.higgins import report_store
 from services.higgins import tools as toolbox
-from services.higgins.capacity import ITEMS, SPEECH_SEGMENT_CHARACTERS, TEMPORARY_RETENTION, TEXT, policy
+from services.higgins.capacity import ITEMS, TEMPORARY_RETENTION, TEXT, policy
 from services.higgins.contracts import (CreateCase, CreateUpload, DeviceProfile, DeviceResult, EvidenceSubmission, ExpectedObservation, ExpectedRevision,
-                                        RecheckRequest, RecheckResult, ReportRequest, SettingsPlan, SettingsPlanRequest, SpeechRequest, Submission, SubmitTurn,
+                                        RecheckRequest, RecheckResult, ReportRequest, SettingsPlan, SettingsPlanRequest, Submission, SubmitTurn,
                                         UUID_PATTERN, UploadMetadata, Wire)
 from services.higgins.encryption import cipher, decrypt, encrypt
 from services.higgins.repository import http
@@ -81,7 +81,6 @@ async def capabilities():
               "documentPages": {"value": ev.MAX_PAGES, "unit": "pages", "purpose": "supported document budget", "overflow": "later pages recorded as omitted"},
               "lifetimeSeconds": {"value": policy()["lifetimeSeconds"], "unit": "seconds", "purpose": "temporary content ceiling; never extended", "overflow": "410"}}
     return JSONResponse({"schemaVersion": 1, "provider": "gemini", "modalities": [modality("text", provider.TEXT_MODEL, "text"), modality("vision", provider.VISION_MODEL, "vision"),
-                         modality("transcription", provider.TRANSCRIPTION_MODEL, "audio_input"), modality("speech", provider.SPEECH_MODEL, "speech"),
                          modality("research", provider.TEXT_MODEL, "search")], "policyVersion": policy()["version"], "bounds": bounds, "integrations": integrations,
                          "models": config["models"], "researchCoordinator": "shared_case_engine"}, headers=NO_STORE)
 
@@ -601,7 +600,6 @@ async def cancel_job(case_id: str, job_id: str, body: ExpectedRevision, request:
         outcome = "completed" if current_job["status"] in ("complete", "completed") else "failed" if current_job["status"] == "failed" else "superseded"
         return JSONResponse({"status": current_job["status"], "outcome": outcome, "cleanupStatus": "not_required", "cancelled": False,
                              "caseRevision": current_case["revision"], "responseRevision": current_case.get("response_revision")}, status_code=200, headers=NO_STORE)
-    await db.voice_cache.delete_many({"device_id": owner, "scope_id": case_id, "job_id": job_id})
     await repo.emit(owner, case_id, job_id, "cancelled", {"cleanupStatus": "complete"}, updated["revision"], repo.utc(case["expires_at"]))
     return JSONResponse({"status": "cancelled", "outcome": "cancelled", "cleanupStatus": "complete", "cancelled": True,
                          "caseRevision": updated["revision"], "responseRevision": updated.get("response_revision")}, status_code=202, headers=NO_STORE)
@@ -905,90 +903,6 @@ async def confirm_settings_plan(case_id: str, plan_id: str, request: Request, co
                          "verification": "user_reported", "explanation": "Recorded as your report; Apollo did not independently observe this setting."}, headers=NO_STORE)
 
 
-# ------------------------------------------------------------------ speech
-def _segments(text: str) -> list[str]:
-    text = re.sub(r"[*_`#>\[\]()]+", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    sentences = re.split(r"(?<=[.!?])\s+", text)
-    segments, current = [], ""
-    for sentence in sentences:
-        if len(current) + len(sentence) + 1 > SPEECH_SEGMENT_CHARACTERS and current:
-            segments.append(current)
-            current = ""
-        current = f"{current} {sentence}".strip()
-    if current:
-        segments.append(current)
-    return segments
-
-
-async def _speech_job(owner: str, case: dict, job: dict, text: str) -> None:
-    audio_ids = []
-    async def purge_partial() -> None:
-        await db.voice_cache.delete_many({"device_id": owner, "scope_id": case["case_id"], "job_id": job["job_id"]})
-    try:
-        await repo.set_job(owner, job["job_id"], None, {"$set": {"status": "investigating", "audio_ids": [], "started_at": now_utc()}})
-        for index, segment in enumerate(_segments(text)):
-            fresh = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case["case_id"]}, {"_id": 0, "epoch": 1, "work_epoch": 1, "deleted": 1, "expires_at": 1})
-            if not fresh or fresh["deleted"] or fresh["epoch"] != job["epoch"] or fresh.get("work_epoch", fresh["epoch"]) != job.get("work_epoch", job["epoch"]) or repo.utc(fresh["expires_at"]) <= now_utc():
-                await purge_partial()
-                await repo.set_job(owner, job["job_id"], None, {"$set": {"status": "cancelled"}})
-                return
-            await repo.emit(owner, case["case_id"], job["job_id"], "progress", {"phase": "respond", "message": f"Preparing narration segment {index + 1}."}, case["revision"], repo.utc(case["expires_at"]))
-            audio, _meta = await provider.speech_bytes(segment)
-            after_provider = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case["case_id"]}, {"_id": 0, "epoch": 1, "work_epoch": 1, "deleted": 1, "expires_at": 1})
-            if not after_provider or after_provider["deleted"] or after_provider["epoch"] != job["epoch"] or after_provider.get("work_epoch", after_provider["epoch"]) != job.get("work_epoch", job["epoch"]) or repo.utc(after_provider["expires_at"]) <= now_utc():
-                await purge_partial()
-                await repo.set_job(owner, job["job_id"], None, {"$set": {"status": "cancelled"}})
-                return
-            audio_id = str(uuid.uuid4())
-            await db.voice_cache.insert_one({"device_id": owner, "scope_id": case["case_id"], "job_id": job["job_id"], "audio_id": audio_id, "segment": index,
-                                             "retention_class": TEMPORARY_RETENTION,
-                                             "audio_ciphertext": encrypt(audio), "created_at": now_utc(), "expires_at": repo.utc(case["expires_at"]), "content_version": 1})
-            audio_ids.append(audio_id)
-            await db.investigation_jobs.update_one({"owner_id": owner, "job_id": job["job_id"]}, {"$set": {"audio_ids": audio_ids}})
-        final_case = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case["case_id"]}, {"_id": 0, "epoch": 1, "work_epoch": 1, "deleted": 1})
-        if not final_case or final_case["deleted"] or final_case["epoch"] != job["epoch"] or final_case.get("work_epoch", final_case["epoch"]) != job.get("work_epoch", job["epoch"]):
-            await purge_partial(); await repo.set_job(owner, job["job_id"], None, {"$set": {"status": "cancelled", "audio_ids": []}}); return
-        await repo.set_job(owner, job["job_id"], None, {"$set": {"status": "complete"}})
-        await repo.emit(owner, case["case_id"], job["job_id"], "completed", {"turnId": job["turn_id"], "responseRevision": case.get("response_revision"), "providerComplete": True,
-                                                                             "completion": "complete", "caseStatus": case["status"], "cleanupStatus": "not_due", "audioIds": audio_ids}, case["revision"], repo.utc(case["expires_at"]))
-    except provider.ProviderFailure as exc:
-        await purge_partial()
-        failure = {"code": exc.code, "message": f"Narration stopped at segment {len(audio_ids) + 1}. Partial audio was removed; retry starts the narration again.", "retryable": exc.retryable, "retryAfterSeconds": None, "missingEvidenceIds": []}
-        await repo.set_job(owner, job["job_id"], None, {"$set": {"status": "failed", "failure": failure, "audio_ids": []}})
-        await repo.emit(owner, case["case_id"], job["job_id"], "failed", failure, case["revision"], repo.utc(case["expires_at"]))
-    except Exception as exc:  # noqa: BLE001 - lifecycle cleanup owns unexpected narration failures too
-        await purge_partial()
-        failure = {"code": "narration_failed", "message": "Narration stopped unexpectedly. Partial audio was removed; retry starts again.",
-                   "retryable": True, "retryAfterSeconds": None, "missingEvidenceIds": [], "failureType": type(exc).__name__}
-        await repo.set_job(owner, job["job_id"], None, {"$set": {"status": "failed", "failure": failure, "audio_ids": []}})
-        await repo.emit(owner, case["case_id"], job["job_id"], "failed", failure, case["revision"], repo.utc(case["expires_at"]))
-
-
-@router.post("/investigations/{case_id}/speech", status_code=202)
-async def speech(case_id: str, body: SpeechRequest, request: Request):
-    owner = owner_of(request)
-    case = await repo.get_case(owner, case_id)
-    if not case.get("response_ciphertext") or case.get("response_revision") != body.response_revision:
-        raise http(409, "conflict", "That response revision is not the current accepted answer.")
-    response = repo.dec_json(case["response_ciphertext"])
-    text = response["overview"] if body.section == "overview" else response["explanationMarkdown"]
-    job = await repo.create_job(owner, case, f"speech-{body.response_revision}-{body.section}", repo.digest(f"speech:{uuid.uuid4()}"), repo.digest(text), "speech", {"section": body.section})
-    task = asyncio.create_task(_speech_job(owner, case, {**job, "status": "investigating"}, text))
-    jobs._tasks.add(task)
-    task.add_done_callback(jobs._tasks.discard)
-    return JSONResponse({"job": repo.job_view(job).wire(), "segments": len(_segments(text))}, status_code=202, headers=NO_STORE)
-
-
-@router.get("/investigations/{case_id}/speech/{audio_id}")
-async def speech_audio(case_id: str, audio_id: str, request: Request):
-    owner = owner_of(request)
-    await repo.get_case(owner, case_id)
-    doc = await db.voice_cache.find_one({"device_id": owner, "scope_id": case_id, "audio_id": audio_id, "expires_at": {"$gt": now_utc()}}, {"_id": 0})
-    if not doc:
-        raise http(410, "evidence_expired", "This temporary audio has expired or was deleted.")
-    return Response(decrypt(doc["audio_ciphertext"]), media_type="audio/wav", headers=NO_STORE)
-
 
 # ------------------------------------------------------------------ saved reports
 @router.post("/investigations/{case_id}/reports", status_code=201)
@@ -1041,6 +955,5 @@ async def delete_report(report_id: str, request: Request):
     owner = owner_of(request)
     if not await report_store.delete(owner, report_id, database=db):
         raise http(404, "not_found", "Unknown report.")
-    await db.voice_cache.delete_many({"device_id": owner, "scope_id": report_id})
     await db.investigation_scopes.delete_many({"owner_id": owner, "scope_id": report_id})
     return Response(status_code=204, headers=NO_STORE)

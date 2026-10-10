@@ -10,7 +10,6 @@ import type { ApolloState } from "@/src/domain/types";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 import { storage } from "@/src/utils/storage";
-import { getHigginsAuto, speakHiggins } from "@/src/voice/higgins";
 
 const K_DAY = "apollo.higgins.greeted";
 
@@ -40,9 +39,8 @@ export function HigginsGreeting({ state }: { state: ApolloState | "lost" }) {
     void storage.getItem<string | null>(K_DAY, null).then((last) => {
       if (last === today) return;
       setVisible(true);
-      void getHigginsAuto().then((on) => { if (on) void speakHiggins(greeting.text, deviceId).catch(() => undefined); });
     });
-  }, [ready, today, heroCoversWarning, greeting.text, deviceId]);
+  }, [ready, today, heroCoversWarning]);
 
   const dismiss = () => { setVisible(false); void storage.setItem(K_DAY, today); };
   if (!visible || heroCoversWarning) return null;

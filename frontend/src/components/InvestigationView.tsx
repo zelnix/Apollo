@@ -3,7 +3,6 @@ import * as WebBrowser from "expo-web-browser";
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
-import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
 import { Body, Button, Card, Pill, type Tone } from "@/src/components/ui";
 import { assessmentLabel, attentionLabel, investigationHistory, scrubMessage } from "@/src/domain/messageVoice";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -81,7 +80,6 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
         <Pill tone="neutral" label={assessmentLabel(response.assessment)} testID="inv-assessment" /></View>
       <Text style={s.text} testID="inv-overview">{scrubMessage(response.overview)}</Text>
       {response.attentionReason ? <Text style={s.muted}>Why: {scrubMessage(response.attentionReason)}</Text> : null}
-      <HigginsSpeakButton text={expanded ? plain(response.explanationMarkdown) : response.overview} compact testID="inv-hear" scopeId={caseData?.id} />
       <Button testID="inv-expand" variant="ghost" label={expanded ? "Hide full explanation" : "Show full explanation"} onPress={() => setExpanded((v) => !v)} />
       {expanded ? <View style={{ gap: spacing.sm }} testID="inv-explanation">
         <Text style={s.text}>{plain(response.explanationMarkdown)}</Text>

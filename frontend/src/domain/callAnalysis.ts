@@ -1,6 +1,6 @@
 // Gate 4 — Phone Call Protection. Call Risk Engine + Scam/Social-Engineering rules (C01–C20).
 // Works from what the user *selects* during a live call (no audio, no covert recording) plus an
-// optional voicemail/transcript and the claimed identity. Unknown number ≠ scam; caller ID ≠ proof.
+// optional typed description and the claimed identity. Unknown number ≠ scam; caller ID ≠ proof.
 
 import { extractSignals } from "./messageAnalysis.ts";
 import type { ApolloState } from "./types";
@@ -47,14 +47,14 @@ export function analyseCall(input: CallInput): CallAnalysis {
   // A transcript can reveal who the caller claims to be when the user didn't pick.
   const inferred: Partial<Record<NonNullable<typeof sig>["brandKind"] & string, CallClaim>> = { bank: "bank", government: "government", tech: "techsupport", telco: "telco", courier: "business", toll: "business", marketplace: "business" };
   const claim: CallClaim = input.claim !== "unknown" ? input.claim : (sig?.brandKind && inferred[sig.brandKind]) || (sig?.familyClaim ? "family" : sig?.guaranteedReturns ? "investment" : "unknown");
-  // Fold transcript signals into asks so voicemail/transcripts drive the same rules.
+  // Fold description signals into asks so typed descriptions drive the same rules.
   if (sig) {
     if (sig.codeRequest) asks.add("code"); if (sig.giftCards) asks.add("giftcards"); if (sig.remoteAccess) asks.add("remote"); if (sig.crypto) asks.add("crypto");
     if (sig.moneyRequest || (sig.paymentRequest && sig.threat)) asks.add("transfer"); if (sig.identityRequest) asks.add("bankdetails");
   }
   const brand = input.brandName ?? sig?.claimedBrand ?? null;
   const who = brand ?? CLAIM_LABEL[claim];
-  const basis = ["What you reported the caller asked for", ...(text ? ["The voicemail / transcript you shared"] : []), ...(input.number ? ["Caller number (reputation not available on this build)"] : []), "Recent Apollo events (Threat Scent)"];
+  const basis = ["What you reported the caller asked for", ...(text ? ["What you described the caller said"] : []), ...(input.number ? ["Caller number (reputation not available on this build)"] : []), "Recent Apollo events (Threat Scent)"];
   const base = { claimedBrand: brand, requestedActions: [...asks], basis, verifyCaller: VERIFY[claim] };
   const R = (scenario: string, title: string, state: ApolloState, verdict: string, why: string[], recommendation: string): CallAnalysis => ({ ...base, scenario, title, state, verdict, why, recommendation });
   const urgencyWhy = sig?.urgency || sig?.threat ? [`It uses pressure: ${sig?.threat ? "threats or penalties" : "urgency"}.`] : [];

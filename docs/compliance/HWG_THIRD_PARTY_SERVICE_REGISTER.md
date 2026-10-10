@@ -36,7 +36,7 @@ Apollo uses external services only where needed to provide security investigatio
 
 | Service | Purpose | Information Potentially Shared | Privacy Controls Applied | Configuration Evidence |
 |---|---|---|---|---|
-| **Google Gemini** | Higgins AI investigations, explanations, research and supported voice functions | Privacy-processed investigation evidence, approved content, security indicators and minimised research queries | Single gateway (`provider.py`); credential stripping; PII minimisation for research; purpose-based authorisation; binary content authorisation; no prompt/response logging | `GEMINI_API_KEY` configured; paid API tier; `google-genai` SDK |
+| **Google Gemini** | Higgins AI investigations, explanations and research | Privacy-processed investigation evidence, approved content, security indicators and minimised research queries | Single gateway (`provider.py`); credential stripping; PII minimisation for research; purpose-based authorisation; binary content authorisation; no prompt/response logging | `GEMINI_API_KEY` configured; paid API tier; `google-genai` SDK |
 | **Google Safe Browsing** | Detect known unsafe websites | Sanitised website addresses and domains | URL sanitisation removes credentials, fragments and secret query parameters before lookup | `SAFE_BROWSING_API_KEY` configured |
 | **IPQualityScore** | Phone-number fraud and reputation checking | Phone number being checked | Only the phone number submitted for the specific check is transmitted | `IPQS_API_KEY` configured |
 | **Expo Push Notifications, Google FCM and Apple APNs** | Deliver security and family alerts, where enabled | Push delivery tokens and notification content | Minimal notification content; delivery tokens managed by Expo relay | `EXPO_PUSH_ACCESS_TOKEN` configured; `EXPO_PUSH_ENABLED=true` |
@@ -62,7 +62,7 @@ These integrations exist in code but are not active in the current deployment. T
 | Service | Purpose | Information Potentially Shared | Activation Requirement |
 |---|---|---|---|
 | **Have I Been Pwned (HIBP)** | Check whether an email address appears in known data breaches (replaces XposedOrNot when configured) | Email address submitted for the breach check | `HIBP_API_KEY` must be configured |
-| **S3-compatible storage provider** | Store optional family voice messages | Audio files and associated storage metadata | `FAMILY_STORAGE_BUCKET`, `FAMILY_STORAGE_ACCESS_KEY_ID` and `FAMILY_STORAGE_SECRET_ACCESS_KEY` must be configured |
+| **S3-compatible storage provider** | Store optional family shared content | Files and associated storage metadata | `FAMILY_STORAGE_BUCKET`, `FAMILY_STORAGE_ACCESS_KEY_ID` and `FAMILY_STORAGE_SECRET_ACCESS_KEY` must be configured |
 
 ---
 

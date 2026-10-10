@@ -56,7 +56,6 @@ module.exports = {
         ITSAppUsesNonExemptEncryption: false,
         NSUserNotificationsUsageDescription: "Receive important threat and family alerts",
         NSLocationWhenInUseUsageDescription: "Check whether your Wi-Fi connection is secured",
-        NSMicrophoneUsageDescription: "Record reassurance notes for trusted family",
       },
       entitlements: {
         "com.apple.developer.networking.wifi-info": true,
@@ -83,7 +82,6 @@ module.exports = {
         "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
         "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.INTERNET",
-        "android.permission.RECORD_AUDIO",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.CAMERA",

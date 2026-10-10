@@ -31,14 +31,12 @@ LIFETIME_SECONDS = 15 * 60  # hard ceiling; never extended by retries
 TEMPORARY_RETENTION = "apollo_15_minute_temporary"
 WORK_SECONDS = 120
 CALL_SECONDS = 50
-SPEECH_SEGMENT_CHARACTERS = 1200  # segments are queued in full, never discarded
 
 
 def policy() -> dict:
     return {"version": POLICY_VERSION, "bounds": {k: asdict(v) for k, v in
             {"text": TEXT, "items": ITEMS, "output": OUTPUT, "schemaReserve": SCHEMA_RESERVE}.items()},
-            "lifetimeSeconds": LIFETIME_SECONDS, "workSeconds": WORK_SECONDS,
-            "speechSegmentCharacters": SPEECH_SEGMENT_CHARACTERS}
+            "lifetimeSeconds": LIFETIME_SECONDS, "workSeconds": WORK_SECONDS}
 
 
 def bounded_analysis(function):

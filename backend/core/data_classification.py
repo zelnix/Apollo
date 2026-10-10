@@ -102,10 +102,8 @@ class ProcessingPurpose(str, Enum):
     INVESTIGATION = "investigation"       # Authorised security investigation
     ORDINARY_CHAT = "ordinary_chat"       # General Higgins conversation
     RESEARCH = "research"                 # Public source research
-    TTS = "tts"                           # Text-to-speech synthesis
     VISION_PREFLIGHT = "vision_preflight" # Image admission screening (secret detection)
     TOKEN_COUNT = "token_count"           # Token budget check
-    TRANSCRIPTION = "transcription"       # Audio-to-text conversion
     REPUTATION_LOOKUP = "reputation"      # External reputation/intel check
     BREACH_CHECK = "breach_check"         # Breach exposure lookup
     FAMILY_SHARING = "family_sharing"     # Alert/incident sharing with guardians
@@ -198,21 +196,6 @@ AUTHORISATION_MATRIX: dict[ProcessingPurpose, dict[DataCategory, AuthorisationEn
         DataCategory.CONVERSATION:           (ProtectionLevel.PROHIBITED, "Never included in research queries"),
         DataCategory.DERIVED_CONTENT:        (ProtectionLevel.CONTROLLED, "Research context from prior results only"),
         DataCategory.UNKNOWN:                (ProtectionLevel.RESTRICTED, "Must be classified before inclusion"),
-    },
-    ProcessingPurpose.TTS: {
-        DataCategory.PII:                    (ProtectionLevel.CONTROLLED, "Only what is already in the displayed Higgins response"),
-        DataCategory.MEDICAL:                (ProtectionLevel.RESTRICTED, "Only if already in displayed response"),
-        DataCategory.FINANCIAL:              (ProtectionLevel.RESTRICTED, "Only if already in displayed response"),
-        DataCategory.LOCATION:               (ProtectionLevel.RESTRICTED, "Only if already in displayed response"),
-        DataCategory.SENSITIVE_PERSONAL:     (ProtectionLevel.RESTRICTED, "Only if already in displayed response"),
-        DataCategory.CREDENTIAL:             (ProtectionLevel.PROHIBITED, "NEVER in TTS — stripped before synthesis"),
-        DataCategory.SECURITY_INDICATOR:     (ProtectionLevel.PERMITTED, "Domain names and threat descriptions read aloud"),
-        DataCategory.DEVICE_OBSERVATION:     (ProtectionLevel.CONTROLLED, "Apollo state descriptions read aloud"),
-        DataCategory.INVESTIGATION_METADATA: (ProtectionLevel.RESTRICTED, "Not read aloud"),
-        DataCategory.DEVICE_IDENTITY:        (ProtectionLevel.PROHIBITED, "Never read aloud"),
-        DataCategory.CONVERSATION:           (ProtectionLevel.CONTROLLED, "Displayed response text only"),
-        DataCategory.DERIVED_CONTENT:        (ProtectionLevel.PERMITTED, "Higgins response text read aloud"),
-        DataCategory.UNKNOWN:                (ProtectionLevel.RESTRICTED, "Must be classified before synthesis"),
     },
     ProcessingPurpose.VISION_PREFLIGHT: {
         DataCategory.PII:                    (ProtectionLevel.RESTRICTED, "Image may contain PII — user must approve via privacy gate"),
@@ -861,34 +844,6 @@ PROCESSING_PATHWAYS: tuple[ProcessingPathway, ...] = (
         ),
     ),
     ProcessingPathway(
-        pathway_id="PW-08",
-        name="Text-to-Speech",
-        description="Higgins response text synthesised as speech via Gemini TTS",
-        source="Displayed Higgins response",
-        destination="Backend → Gemini TTS",
-        purpose=ProcessingPurpose.TTS,
-        data_categories=frozenset({
-            DataCategory.DERIVED_CONTENT, DataCategory.SECURITY_INDICATOR,
-        }),
-        transformations=(
-            "Credential stripping (enforce_boundary + validate_outbound_payload)",
-            "Double-check: strip_credentials on any violation",
-        ),
-        prohibited_disclosures=(
-            "Any credential material in spoken text",
-            "Raw personal data not already in the displayed response",
-        ),
-        evidence_preservation=(
-            "Domain names and threat descriptions preserved in speech",
-        ),
-        authorisation_required="User taps read-aloud or enables automatic read-aloud",
-        implementation_files=(
-            "services/higgins/provider.py (speech_bytes)",
-            "routers/voice.py",
-            "services/higgins/llm_boundary.py",
-        ),
-    ),
-    ProcessingPathway(
         pathway_id="PW-09",
         name="Reputation Lookup",
         description="URL/domain/phone checked against configured reputation services",
@@ -970,33 +925,6 @@ PROCESSING_PATHWAYS: tuple[ProcessingPathway, ...] = (
         implementation_files=(
             "routers/family.py",
             "routers/push.py",
-        ),
-    ),
-    ProcessingPathway(
-        pathway_id="PW-12",
-        name="Voice Transcription",
-        description="Audio recording transcribed via Gemini for voice notes",
-        source="Family voice note (user-recorded)",
-        destination="Backend → S3 storage → Gemini transcription",
-        purpose=ProcessingPurpose.TRANSCRIPTION,
-        data_categories=frozenset({
-            DataCategory.CONVERSATION, DataCategory.PII,
-        }),
-        transformations=(
-            "Secret redaction on transcribed text (redact_user_secrets)",
-            "Link generation check (family pairing must be active)",
-        ),
-        prohibited_disclosures=(
-            "Passwords or codes spoken in the recording",
-        ),
-        evidence_preservation=(
-            "Transcript text (redacted), language detection",
-        ),
-        authorisation_required="User explicitly records and sends voice note",
-        implementation_files=(
-            "services/transcribe.py",
-            "routers/family.py (add_voice_note)",
-            "services/storage.py",
         ),
     ),
     ProcessingPathway(

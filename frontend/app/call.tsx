@@ -1,6 +1,6 @@
 // Gate 4 — Check This Call. Designed for use under pressure during a live call: big buttons, short
 // answers, "Hang Up & Verify" first. No audio is recorded; analysis is from what the user selects
-// (plus an optional voicemail/transcript they paste).
+// (plus an optional typed description they provide).
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import X from "lucide-react-native/icons/x";
 import React, { useEffect, useState } from "react";
@@ -183,11 +183,11 @@ export default function CheckCall() {
           ))}
         </View>
         <Button testID="call-check" label="Check with Apollo" onPress={() => void run()} disabled={asks.length === 0} />
-        <Button testID="call-more-toggle" variant="ghost" label={more ? "Hide extra details" : "Add caller number or voicemail text (optional)"} onPress={() => setMore((m) => !m)} />
+        <Button testID="call-more-toggle" variant="ghost" label={more ? "Hide extra details" : "Add caller number or description (optional)"} onPress={() => setMore((m) => !m)} />
         {more ? (
           <>
             <TextInput testID="call-number" style={s.input} value={number} onChangeText={setNumber} placeholder="Caller number (optional)" placeholderTextColor={colors.muted} keyboardType="phone-pad" />
-            <TextInput testID="call-transcript" style={[s.input, { minHeight: 100, textAlignVertical: "top" }]} value={transcript} onChangeText={setTranscript} placeholder="Paste a voicemail transcript or what the caller said (optional)" placeholderTextColor={colors.muted} multiline />
+            <TextInput testID="call-transcript" style={[s.input, { minHeight: 100, textAlignVertical: "top" }]} value={transcript} onChangeText={setTranscript} placeholder="Type what the caller said (optional)" placeholderTextColor={colors.muted} multiline />
           </>
         ) : null}
         <Text style={s.small}>Apollo does not listen to or record calls. It works from what you select here, any text you paste, and your recent Apollo events.</Text>

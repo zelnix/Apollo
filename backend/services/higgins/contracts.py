@@ -425,11 +425,6 @@ class RecheckRequest(Wire):
     device_result_ids: list[str]
 
 
-class SpeechRequest(Wire):
-    response_revision: int
-    section: Literal["overview", "explanation"]
-
-
 class ReportRequest(Wire):
     response_revision: int
 

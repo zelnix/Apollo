@@ -7,7 +7,6 @@ import { useState } from "react";
 import { LayoutAnimation, Linking, Pressable, Text, View } from "react-native";
 
 import { Body, Button, Card, Pill, SectionTitle, toneColor, toneTint } from "@/src/components/ui";
-import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
 import type { InvestigationFinding, InvestigationResult } from "@/src/domain/investigation";
 import { INVESTIGATION_ACTION_LABEL } from "@/src/domain/investigationActions";
 import type { ApolloState } from "@/src/domain/types";
@@ -80,9 +79,6 @@ export function MessageAssessmentResult({ assessment, state, onPrimaryAction, su
       <Text testID={`${prefix}-submitted-text`} style={s.submittedText}>{submittedText}</Text>
     </View> : null}
     {assessment.higgins.exact_response ? <View testID={testIDPrefix === 'message' ? 'higgins-core-result' : testIDPrefix === 'link' ? 'link-higgins-core-result' : `${prefix}-higgins-core-result`} style={{ gap: spacing.sm }}>
-      <View style={[s.row, { justifyContent: "space-between" }]}>
-        <HigginsSpeakButton compact text={assessment.higgins.exact_response} testID={`${prefix}-hear-higgins`} />
-      </View>
       <Text testID={`${prefix}-exact-response`} style={s.higgins}>{assessment.higgins.exact_response}</Text>
     </View> : null}
     <View style={{ gap: spacing.md }}><SectionTitle>What Apollo found</SectionTitle>

@@ -177,9 +177,6 @@ class TestCredentialProhibition:
     def test_credential_prohibited_for_research(self):
         assert is_prohibited(ProcessingPurpose.RESEARCH, DataCategory.CREDENTIAL)
 
-    def test_credential_prohibited_for_tts(self):
-        assert is_prohibited(ProcessingPurpose.TTS, DataCategory.CREDENTIAL)
-
     def test_credential_prohibited_for_vision(self):
         assert is_prohibited(ProcessingPurpose.VISION_PREFLIGHT, DataCategory.CREDENTIAL)
 
@@ -251,10 +248,6 @@ class TestSecurityEvidencePreservation:
     def test_security_indicators_permitted_for_research(self):
         """Research must preserve domain names and scam identifiers."""
         assert is_permitted(ProcessingPurpose.RESEARCH, DataCategory.SECURITY_INDICATOR)
-
-    def test_security_indicators_permitted_for_tts(self):
-        """TTS reads domain names and threat descriptions aloud."""
-        assert is_permitted(ProcessingPurpose.TTS, DataCategory.SECURITY_INDICATOR)
 
 
 # ── 7. PII minimisation for research ───────────────────────────────────────

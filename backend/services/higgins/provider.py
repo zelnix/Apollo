@@ -6,10 +6,8 @@ Public research must be called with an explicitly minimised query, never a priva
 from __future__ import annotations
 
 import asyncio
-import io
 import json
 import os
-import wave
 from dataclasses import dataclass
 from typing import Any
 
@@ -24,9 +22,6 @@ from services.higgins.llm_boundary import Purpose, enforce_boundary, strip_crede
 load_dotenv()
 TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-3-flash-preview")
 VISION_MODEL = os.getenv("GEMINI_VISION_MODEL", TEXT_MODEL)
-TRANSCRIPTION_MODEL = os.getenv("GEMINI_TRANSCRIPTION_MODEL", TEXT_MODEL)
-SPEECH_MODEL = os.getenv("GEMINI_SPEECH_MODEL", "gemini-3.1-flash-tts-preview")
-SPEECH_VOICE = os.getenv("GEMINI_SPEECH_VOICE", "Gacrux")
 RECOVERY_MODEL = os.getenv("GEMINI_RECOVERY_MODEL", "")
 ADVISORY_MODEL = os.getenv("GEMINI_ADVISORY_MODEL", "gemini-3.1-pro-preview")
 _TEXT_CAPS = {"text", "vision", "audio_input", "functions", "search", "json"}
@@ -36,9 +31,6 @@ CAPABILITIES = {
     "gemini-2.5-flash": _TEXT_CAPS,
     "gemini-2.5-pro": _TEXT_CAPS,
     "gemini-3.1-pro-preview": _TEXT_CAPS,
-    "gemini-3.1-flash-tts-preview": {"speech"},
-    "gemini-2.5-flash-preview-tts": {"speech"},
-    "gemini-2.5-pro-preview-tts": {"speech"},
 }
 _client: genai.Client | None = None
 _model_limits: dict[str, tuple[int, int]] = {}
@@ -101,8 +93,6 @@ _BINARY_AUTHORISED_PURPOSES = frozenset({
     Purpose.VISION_PREFLIGHT,           # Image admission check (the screening mechanism itself)
     Purpose.PAGE_SIGNAL_EXTRACTION,     # Privacy-gated screenshot → signal extraction
     Purpose.INVESTIGATION,              # Owner-authorised investigation evidence
-    Purpose.TRANSCRIPTION,              # Audio-to-text for voice notes
-    Purpose.TTS,                        # Speech synthesis (output contains audio)
 })
 
 
@@ -122,7 +112,7 @@ def _contains_binary(contents: Any) -> bool:
 async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
                    capability: str = "text", json_output: bool = False,
                    tools: list[types.Tool] | None = None, timeout: float = CALL_SECONDS,
-                   speech: bool = False, response_schema: Any | None = None,
+                   response_schema: Any | None = None,
                    purpose: Purpose) -> GeminiResult:
     """Single authoritative Gemini gateway. Every AI inference request MUST use this function.
 
@@ -164,30 +154,24 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
         response_mime_type="application/json" if json_output else None,
         response_schema=response_schema,
         tools=tools, automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True))
-    if speech:
-        config.system_instruction = None
-        config.response_modalities = ["AUDIO"]
-        config.speech_config = types.SpeechConfig(voice_config=types.VoiceConfig(
-            prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=SPEECH_VOICE)))
     input_count = None
     async def invoke():
         nonlocal input_count
-        if not speech:
-            if model not in _model_limits:
-                info = await client().aio.models.get(model=model)
-                if not info.input_token_limit or not info.output_token_limit:
-                    raise ProviderFailure('provider_configuration')
-                _model_limits[model] = (info.input_token_limit, info.output_token_limit)
-            input_limit, output_limit = _model_limits[model]
-            config.max_output_tokens = min(OUTPUT.value, output_limit)
-            # Developer API rejects CountTokensConfig.system_instruction/tools (Vertex-only).
-            # Tokenise their complete text as a surrogate Part, with an explicit wrapper reserve.
-            schemas = json.dumps([tool.model_dump(mode='json', exclude_none=True) for tool in tools or []])
-            count_contents = [types.Part(text=(system or '') + '\n' + schemas), *(contents if isinstance(contents, list) else [contents])]
-            counted = await client().aio.models.count_tokens(model=model, contents=count_contents)
-            input_count = counted.total_tokens
-            if input_count is None or input_count + config.max_output_tokens + SCHEMA_RESERVE.value > input_limit:
-                raise ProviderFailure('budget_exhausted')
+        if model not in _model_limits:
+            info = await client().aio.models.get(model=model)
+            if not info.input_token_limit or not info.output_token_limit:
+                raise ProviderFailure('provider_configuration')
+            _model_limits[model] = (info.input_token_limit, info.output_token_limit)
+        input_limit, output_limit = _model_limits[model]
+        config.max_output_tokens = min(OUTPUT.value, output_limit)
+        # Developer API rejects CountTokensConfig.system_instruction/tools (Vertex-only).
+        # Tokenise their complete text as a surrogate Part, with an explicit wrapper reserve.
+        schemas = json.dumps([tool.model_dump(mode='json', exclude_none=True) for tool in tools or []])
+        count_contents = [types.Part(text=(system or '') + '\n' + schemas), *(contents if isinstance(contents, list) else [contents])]
+        counted = await client().aio.models.count_tokens(model=model, contents=count_contents)
+        input_count = counted.total_tokens
+        if input_count is None or input_count + config.max_output_tokens + SCHEMA_RESERVE.value > input_limit:
+            raise ProviderFailure('budget_exhausted')
         return await client().aio.models.generate_content(model=model, contents=contents, config=config)
     try:
         response = await asyncio.wait_for(invoke(), timeout=timeout)
@@ -214,7 +198,7 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
         raise ProviderFailure("incomplete_output", finish_reason=finish)
     usage = response.usage_metadata.model_dump(mode='json', exclude_none=True) if response.usage_metadata else {}
     usage['admission_input_tokens'] = input_count
-    usage['admission_method'] = 'complete content plus system/schema surrogate; wrapper reserve' if not speech else 'bounded speech segment'
+    usage['admission_method'] = 'complete content plus system/schema surrogate; wrapper reserve'
     return GeminiResult(text, candidate.content, finish, usage,
                         candidate.grounding_metadata.model_dump(mode="json", exclude_none=True) if candidate.grounding_metadata else None, model)
 
@@ -224,36 +208,9 @@ async def generate_json(system: str, prompt: Any, **kwargs: Any) -> tuple[dict, 
     return result.object(), result.metadata
 
 
-async def speech_bytes(text: str) -> tuple[bytes, dict]:
-    # TTS boundary: strip credentials and validate the outbound text before sending to Gemini.
-    # The text is the displayed Higgins response — already privacy-processed by the response
-    # generation pipeline. This boundary provides a final safety check.
-    clean_text = enforce_boundary(Purpose.TTS, text)
-    # Validate no credential material survives in the outbound TTS payload.
-    violations = validate_outbound_payload(Purpose.TTS, clean_text)
-    if violations:
-        import logging
-        logging.getLogger("higgins.tts").warning("TTS boundary violation: %s — stripping further", violations)
-        clean_text = strip_credentials(clean_text)
-    prompt = ("Synthesize speech. Read only the transcript, exactly, with no added words. "
-              "Voice: Higgins, a mature English gentleman; courteous, warm and unhurried.\n\nTRANSCRIPT:\n" + clean_text)
-    result = await generate("", prompt, model=SPEECH_MODEL, capability="speech", speech=True, purpose=Purpose.TTS)
-    pcm = b"".join(p.inline_data.data for p in result.content.parts or []
-                   if p.inline_data and p.inline_data.data and (p.inline_data.mime_type or "").startswith("audio/"))
-    if not pcm:
-        raise ProviderFailure("incomplete_output")
-    with io.BytesIO() as output:
-        with wave.open(output, "wb") as audio:
-            audio.setnchannels(1)
-            audio.setsampwidth(2)
-            audio.setframerate(24000)
-            audio.writeframes(pcm)
-        return output.getvalue(), result.metadata
-
-
 def configuration() -> dict:
-    models = {"investigation": TEXT_MODEL, "vision": VISION_MODEL, "transcription": TRANSCRIPTION_MODEL,
-              "speech": SPEECH_MODEL, "recovery": RECOVERY_MODEL or None}
+    models = {"investigation": TEXT_MODEL, "vision": VISION_MODEL,
+              "recovery": RECOVERY_MODEL or None}
     return {"provider": "Gemini", "sdk": "google-genai", "keyConfigured": bool(GEMINI_API_KEY),
             "models": models, "capabilities": {m: sorted(CAPABILITIES.get(m, set())) for m in models.values() if m},
             "accountAccess": "Apollo-managed paid API tier (not the user's personal Google account)",

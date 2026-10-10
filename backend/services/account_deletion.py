@@ -31,7 +31,6 @@ CATEGORIES: dict[str, dict[str, Any]] = {
             ("higgins_context", ["owner_id"]),
             ("ask_messages", ["device_id"]),
             ("ask_handoffs", ["device_id"]),
-            ("voice_cache", ["device_id"]),
         ],
     },
     "investigations": {

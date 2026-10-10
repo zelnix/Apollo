@@ -77,13 +77,13 @@ export function buildCallCheckResult(args: {
       : "No caller number was supplied.",
   });
 
-  // Voicemail / transcript analysis
+  // What the caller said
   if (transcript.trim()) {
     items.push({
       id: "call:transcript",
-      name: "Voicemail / transcript",
+      name: "What the caller said",
       status: a.state === "barking" || a.state === "growling" ? "concern" : "clear",
-      finding: "A transcript or voicemail was provided and analysed for scam patterns.",
+      finding: "What the caller said was analysed for scam patterns.",
       raw: { excerpt: transcript.slice(0, 500) },
     });
   }
@@ -125,7 +125,7 @@ export function buildCallCheckResult(args: {
   evidence.push({ label: "Claims to be", value: a.claimedBrand ?? CLAIM_LABEL["unknown"] });
   evidence.push({ label: "Scenario", value: `${a.scenario} — ${a.title}` });
   evidence.push({ label: "Basis", value: a.basis.join("; ") });
-  if (transcript.trim()) evidence.push({ label: "Transcript supplied", value: "Yes" });
+  if (transcript.trim()) evidence.push({ label: "Description supplied", value: "Yes" });
   evidence.push({ label: "Verify independently", value: a.verifyCaller });
   if (event) {
     evidence.push({ label: "Event id", value: `${event.event_id.slice(0, 8)}…` });

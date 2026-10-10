@@ -31,7 +31,7 @@ PUBLIC_PATHS = {"/api/health", "/api/intel/status", "/api/devices/register", "/a
 #     routers/gmail.py) — never from anything the caller supplies directly.
 # NOTE on naming: `user_id` in /register-push is the DEVICE identity today. Device auth proves which device is calling;
 # a person/household layer (one person, several devices) can sit above it later without changing this contract.
-PUBLIC_PREFIXES = ("/api/family/confirm/", "/api/family/voice-play/")  # family playback retains its separate ticket boundary
+PUBLIC_PREFIXES = ("/api/family/confirm/",)  # public confirm path for guardian email links
 
 
 def hash_token(raw: str) -> str:

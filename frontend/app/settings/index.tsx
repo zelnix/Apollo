@@ -2,7 +2,7 @@ import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import X from "lucide-react-native/icons/x";
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -16,7 +16,6 @@ import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { minimiseApp } from "@/src/utils/minimise";
 import { goBackOrHome } from "@/src/utils/navigation";
-import { getHigginsAuto, setHigginsAuto, useHiggins } from "@/src/voice/higgins";
 
 const ALERT_LABEL: Record<NotificationStatus, string> = { granted: "Allowed", denied: "Not allowed", undetermined: "Not decided", blocked: "Blocked in Settings", unsupported: "Not available here" };
 // The voluntary "Support Apollo" contribution card stays feature-gated until the approved copy and real
@@ -39,11 +38,9 @@ const useStyles = makeStyles((c) => ({
 
 export default function SettingsScreen() {
   const s = useStyles(); const insets = useSafeAreaInsets(); const router = useRouter(); const { colors } = useTheme();
-  const { deviceId, trust, revokeTrust, clearPatrol, notificationStatus, enableNotifications, quietHours, quietNow, setQuietHours, lowPower, setLowPower, showToast } = useApollo();
-  const [higginsAuto, setHigginsAutoState] = useState(false); const [confirmClear, setConfirmClear] = useState(false); const [preview, setPreview] = useState(false);
+  const { trust, revokeTrust, clearPatrol, notificationStatus, enableNotifications, quietHours, quietNow, setQuietHours, lowPower, setLowPower, showToast } = useApollo();
+  const [confirmClear, setConfirmClear] = useState(false); const [preview, setPreview] = useState(false);
   const [showTrust, setShowTrust] = useState(false); const [showShare, setShowShare] = useState(false); const [showAbout, setShowAbout] = useState(false);
-  useEffect(() => { void getHigginsAuto().then(setHigginsAutoState); }, []);
-  const higgins = useHiggins(deviceId);
 
   const NavRow = ({ label, hint, onPress, testID, first }: { label: string; hint?: string; onPress: () => void; testID: string; first?: boolean }) => (
     <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={[s.rowItem, !first && s.divider]}>
@@ -79,8 +76,6 @@ export default function SettingsScreen() {
           <View style={[s.rowItem, s.divider]}><View style={{ flex: 1 }}><Text style={s.rowLabel}>Preview an alert</Text></View><Button testID="settings-alert-preview" variant="ghost" label="Preview" onPress={() => setPreview(true)} /></View>
           <SwitchRow label="Quiet hours" hint="Silence non-urgent reminders at night. Urgent threat and family alerts still appear." value={quietHours.enabled} onValueChange={(value) => void setQuietHours({ ...quietHours, enabled: value })} testID="settings-quiet-switch" />
           {quietHours.enabled ? <View style={{ gap: spacing.sm, paddingBottom: spacing.sm }}><View style={{ flexDirection: "row", gap: spacing.md }}><TimeStepper testID="settings-quiet-start" label="From" minutes={quietHours.start_minutes} onChange={(minutes) => void setQuietHours({ ...quietHours, start_minutes: minutes })} /><TimeStepper testID="settings-quiet-end" label="Until" minutes={quietHours.end_minutes} onChange={(minutes) => void setQuietHours({ ...quietHours, end_minutes: minutes })} /></View><Pill tone={quietNow ? "unknown" : "resting"} label={quietNow ? "Quiet hours are active" : "Quiet hours are not active now"} testID="settings-quiet-now" /></View> : null}
-          <SwitchRow label="Higgins reads urgent explanations aloud" hint="Written guidance stays available when audio is off." value={higginsAuto} onValueChange={(value) => { setHigginsAutoState(value); void setHigginsAuto(value); }} testID="settings-higgins-auto" />
-          <View style={[s.rowItem, s.divider]}><View style={{ flex: 1 }}><Text style={s.rowLabel}>Hear a sample</Text></View><Button testID="settings-higgins-sample" variant="ghost" label={higgins.busy ? "Preparing…" : higgins.speaking ? "Stop" : "Play"} onPress={() => void higgins.speak("Higgins here. I will explain what Apollo found and what you can do next.").catch(() => showToast("Audio isn't available right now.", "neutral"))} /></View>
         </Card>
       </View>
 

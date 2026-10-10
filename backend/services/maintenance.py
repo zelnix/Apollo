@@ -15,7 +15,6 @@ from datetime import timedelta
 
 from core.config import logger
 from core.db import db, now_utc
-from routers.family import sweep_voice_audio
 from services.investigation_projector import project_committed_cases
 from services.higgins import jobs, repository
 from services.higgins.retention import sweep as sweep_temporary_content
@@ -39,14 +38,12 @@ def maintenance_steps() -> tuple[MaintenanceStep, ...]:
         ("job_and_device_inbox_recovery", jobs.recover),
         ("investigation_patrol_projection", project_committed_cases),
         ("health_check_recovery", recover_health_checks),
-        ("family_audio", sweep_voice_audio),
     )
 
 
 async def ensure_indexes() -> None:
     await db.worker_heartbeats.create_index([("worker", 1), ("instance_id", 1)], unique=True)
     await db.worker_heartbeats.create_index("last_heartbeat_at")
-    await db.family_audio_cleanup.create_index([("state", 1), ("created_at", 1)])
     await db.investigation_reports.create_index([("owner_id", 1), ("saved_at", -1)])
 
 

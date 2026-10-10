@@ -118,17 +118,17 @@ export const CAPABILITY_DATA_USE = [
     capability: 'Family support',
     local: 'You choose names, contacts and what to share with paired family members.',
     backend: 'Chosen names, contact details, alerts, weekly counts and replies are stored on Apollo\u2019s backend and shared with paired guardians.',
-    thirdParty: 'Email delivery service sends invitations and authorised automatic security alerts to confirmed guardians. Push services deliver alerts. Object storage holds voice notes you send.',
-    shared: 'Names, contact details, alert content, voice messages you choose to send',
+    thirdParty: 'Email delivery service sends invitations and authorised automatic security alerts to confirmed guardians. Push services deliver alerts.',
+    shared: 'Names, contact details, alert content, text messages you choose to send',
     necessary: 'Family pairing requires sharing chosen information with paired members and using delivery services for invitations and alerts.',
     activation: 'Manual: when you pair, invite, share an incident or send a note',
     withheld: 'Full investigation evidence; family members receive alert summaries, not raw evidence',
   },
   {
-    capability: 'Ask Higgins (chat) and Hear Higgins (voice)',
+    capability: 'Ask Higgins (text chat)',
     local: 'Questions are composed on your device.',
     backend: 'Questions and requested speech are sent to Apollo\u2019s backend using the owner-managed key. Personal identifiers in research queries are minimised within Apollo\u2019s backend before transmission to Gemini.',
-    thirdParty: 'Google Gemini receives the privacy-processed query for AI response. TTS service generates speech when requested.',
+    thirdParty: 'Google Gemini receives the privacy-processed query for AI response.',
     shared: 'Privacy-processed question or speech request',
     necessary: 'AI responses and speech generation require transmitting your query to the AI provider.',
     activation: 'Manual: when you send a question, tap read-aloud, or enable automatic read-aloud',
@@ -145,7 +145,7 @@ export const PRIVACY_FLOWS = [
   { what: 'Minimal Patrol summaries and packet evidence', when: 'After checks and native observations; retried until acknowledged', detail: 'Apollo stores category, state, timestamps, opaque event IDs and website domain. Packet evidence adds mechanism, protocol, rule ID, port and observed action. No caller numbers, app/process attribution or raw message narratives. Clear Patrol currently hides server rows (soft deletion), not physical erasure. Pending uploads are shown in Patrol.' },
   { what: 'Device and notification settings', when: 'Setup, heartbeat, notification enablement and settings changes', detail: 'A server-issued random device ID, platform/app version, coarse UTC offset and quiet-hour preferences go to Apollo. Push delivery tokens go to the managed relay and Apple/Google delivery services. Disable notifications in Settings to stop notifications; this is not data erasure.' },
   { what: 'Ask Higgins and Hear Higgins', when: 'When you send a question, tap read-aloud, or explicitly enable automatic read-aloud', detail: 'Questions and requested speech go to Higgins using the owner-managed key; do not paste private messages or secrets. Automatic event context is replaced with a generic summary. Apollo retains conversation history and temporary cached speech under the stated case lifecycle. Turning off read-aloud stops future automatic speech requests. Personal identifiers in research queries are minimised within Apollo\u2019s backend before reaching Google Gemini.' },
-  { what: 'Optional family support', when: 'You pair, invite, share an incident, reply or explicitly send a note', detail: 'Chosen names, contact details, minimal alerts, weekly counts and replies go to Apollo and paired guardians. Invitations use an email delivery service; confirmed guardians also receive authorised automatic security alerts via email when Apollo is barking or biting. Alerts use the push relay. Voice notes you explicitly send use owner-managed object storage and Higgins captioning, with retention and unlink cleanup. Remove a pairing to stop future sharing; it does not erase prior deliveries.' },
+  { what: 'Optional family support', when: 'You pair, invite, share an incident, reply or send a text note', detail: 'Chosen names, contact details, minimal alerts, weekly counts and replies go to Apollo and paired guardians. Invitations use an email delivery service; confirmed guardians also receive authorised automatic security alerts via email when Apollo is barking or biting. Alerts use the push relay. Remove a pairing to stop future sharing; it does not erase prior deliveries.' },
   { what: 'App reputation checks', when: 'You manually check an app', detail: 'The supplied app/developer names, source, permission labels and website hosts go to Apollo and optionally Higgins for explanation, not your full app inventory. Do not enter personal content in app-name fields.' },
   { what: 'Optional Gmail investigation', when: 'Only after you connect Gmail with Google OAuth and start a scan or monitor', detail: "Apollo uses Gmail read-only OAuth access. Apollo never asks for or stores a mailbox username or password. Disconnect removes Apollo's stored OAuth connection; revoke provider access as an additional control. Raw message content is not copied into Patrol. Email attachment hashes are checked against VirusTotal for known malware; file content is never sent." },
 ];
@@ -196,7 +196,7 @@ export const THIRD_PARTY_SERVICES_DISCLOSURE = {
   title: 'Third-party services',
   intro: 'Apollo is a brand of Harmony Wellness Group (HWG), which is accountable for the selection, configuration and oversight of the external services Apollo uses. Apollo uses external services only where needed to provide security investigations, reputation checks, communications, storage or supporting functionality.',
   services: [
-    { name: 'Google Gemini', purpose: 'AI-powered security investigations, explanations, research and voice functions', shared: 'Privacy-processed investigation evidence, approved content, security indicators and minimised research queries. Authentication secrets are never sent.' },
+    { name: 'Google Gemini', purpose: 'AI-powered security investigations, explanations and research', shared: 'Privacy-processed investigation evidence, approved content, security indicators and minimised research queries. Authentication secrets are never sent.' },
     { name: 'Google Safe Browsing', purpose: 'Detect known unsafe websites', shared: 'Sanitised website addresses and domains. Credentials and secret query values are removed before lookup.' },
     { name: 'Google Gmail', purpose: 'Optional read-only email checking', shared: 'Google OAuth authorisation and access to email information within the approved read-only scope. Only active when you connect Gmail.' },
     { name: 'VirusTotal', purpose: 'Email attachment malware scanning', shared: 'SHA-256 file hashes only. File content is never sent. Active when Gmail monitoring is connected.' },
@@ -216,7 +216,7 @@ export const THIRD_PARTY_REGISTER = {
   accountable: 'Harmony Wellness Group (HWG)',
   intro: 'Harmony Wellness Group is accountable for the selection, configuration and oversight of the external services Apollo uses. This register reflects the verified deployment configuration.',
   active: [
-    { name: 'Google Gemini', purpose: 'AI-powered security investigations, explanations, research and voice', shared: 'Privacy-processed investigation evidence, approved content, security indicators and minimised research queries. Authentication secrets are never sent.', controls: 'Single gateway; credential stripping; PII minimisation; purpose-based authorisation' },
+    { name: 'Google Gemini', purpose: 'AI-powered security investigations, explanations and research', shared: 'Privacy-processed investigation evidence, approved content, security indicators and minimised research queries. Authentication secrets are never sent.', controls: 'Single gateway; credential stripping; PII minimisation; purpose-based authorisation' },
     { name: 'Google Safe Browsing', purpose: 'Detect known unsafe websites', shared: 'Sanitised website addresses and domains', controls: 'URL sanitisation removes credentials and secret parameters' },
     { name: 'IPQualityScore', purpose: 'Phone-number fraud and reputation checking', shared: 'The phone number being checked', controls: 'Single-field transmission' },
     { name: 'VirusTotal', purpose: 'Email attachment malware scanning (hash-only)', shared: 'SHA-256 file hashes only; file content never sent', controls: 'Hash-only mode; free tier rate-limited' },
@@ -232,7 +232,7 @@ export const THIRD_PARTY_REGISTER = {
   ],
   unconfigured: [
     { name: 'Have I Been Pwned', purpose: 'Breach checking (replaces XposedOrNot when configured)', activation: 'Requires HIBP API key' },
-    { name: 'S3-compatible storage', purpose: 'Family voice messages', activation: 'Requires storage credentials' },
+    { name: 'S3-compatible storage', purpose: 'Family shared content', activation: 'Requires storage credentials' },
   ],
 };
 

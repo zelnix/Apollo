@@ -17,7 +17,6 @@ import type { GatePresentation } from "@/src/domain/gates";
 import { STATE_LABEL, STATE_MEANING, type ApolloState, type Capability } from "@/src/domain/types";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { HigginsChecks } from "@/src/components/HigginsChecks";
-import { HigginsSpeakButton } from "@/src/components/HigginsSpeakButton";
 import { higginsPermissionNote, recommendedChecks } from "@/src/domain/higginsChecks";
 import { Sheet } from "./Sheet";
 import { Body, Button, DevTag, Pill, toneColor, toneWash } from "./ui";
@@ -150,11 +149,6 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
   const checks = sniffing ? [] : recommendedChecks(resolution);
   const askedAt = useMemo(() => new Date(new Date().setHours(0, 0, 0, 0)).toISOString(), []);
   const permissionNote = higginsPermissionNote(capabilities);
-  const spokenText = `${title}. ${voice.spoken} ${permissionNote ?? ""}`.trim();
-
-  const onHearHiggins = () => {
-    if (checks.length) setChecklistOpen(true);
-  };
 
   return (
     <View style={[s.hero, { backgroundColor: toneWash(colors, tone) }]} testID="apollo-hero">
@@ -199,7 +193,6 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
             ) : null}
           </View>
         )}
-        <View style={[s.row, { alignItems: "center" }]}><HigginsSpeakButton small text={spokenText} testID="hero-hear-higgins" onPress={onHearHiggins} /></View>
         <View style={s.row}>
           {resolution.recovering ? <Pill tone="growling" label="Awaiting fresh check" testID="recovering-pill" /> : null}
           {resolution.recovering && resolution.drivingEvent?.state === "biting" && resolution.drivingEvent.verified_block ? <Pill tone="resting" label="Threat contained" testID="contained-pill" /> : null}

@@ -170,8 +170,6 @@ class TestBinaryContentAuthorisation:
         assert Purpose.VISION_PREFLIGHT in _BINARY_AUTHORISED_PURPOSES
         assert Purpose.PAGE_SIGNAL_EXTRACTION in _BINARY_AUTHORISED_PURPOSES
         assert Purpose.INVESTIGATION in _BINARY_AUTHORISED_PURPOSES
-        assert Purpose.TRANSCRIPTION in _BINARY_AUTHORISED_PURPOSES
-        assert Purpose.TTS in _BINARY_AUTHORISED_PURPOSES
         # These purposes MUST NOT allow binary
         assert Purpose.RESEARCH not in _BINARY_AUTHORISED_PURPOSES
         assert Purpose.ORDINARY_CHAT not in _BINARY_AUTHORISED_PURPOSES

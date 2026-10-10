@@ -3,9 +3,9 @@
 import { getNativeModule } from "./nativeBridge";
 
 export type CallCapabilityStatus = "supported" | "permission_required" | "unsupported";
-export interface CallProtectionCapabilities { callerIdentification: CallCapabilityStatus; callScreening: CallCapabilityStatus; numberReputation: CallCapabilityStatus; voicemailTranscript: CallCapabilityStatus; liveTranscript: CallCapabilityStatus }
+export interface CallProtectionCapabilities { callerIdentification: CallCapabilityStatus; callScreening: CallCapabilityStatus; numberReputation: CallCapabilityStatus }
 export interface SdkCallFinding { eventType: "phone_call"; status: "low_risk" | "suspicious" | "high_risk"; riskScore: number; confidence: "low" | "medium" | "high"; threatType: string | null; callerReputation: "unknown" | "trusted" | "reported"; claimedOrganisation: string | null; requestedAction: string | null; relatedThreatScent: string | null; recommendedDogState: "resting" | "ears_up" | "growling" | "barking"; recommendedAction: string }
-const UNSUPPORTED: CallProtectionCapabilities = { callerIdentification: "unsupported", callScreening: "unsupported", numberReputation: "unsupported", voicemailTranscript: "unsupported", liveTranscript: "unsupported" };
+const UNSUPPORTED: CallProtectionCapabilities = { callerIdentification: "unsupported", callScreening: "unsupported", numberReputation: "unsupported" };
 async function call<T>(fn: (() => Promise<string>) | undefined, fallback: T): Promise<T> { if (!fn) return fallback; try { return JSON.parse(await fn()) as T; } catch { return fallback; } }
 export const CallSdk = {
   getCallProtectionCapabilities: () => { const m = getNativeModule(); return call<CallProtectionCapabilities>(m ? () => m.getCallProtectionCapabilities() : undefined, UNSUPPORTED); },

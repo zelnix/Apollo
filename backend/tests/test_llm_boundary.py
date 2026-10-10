@@ -98,12 +98,6 @@ class TestPurposeBasedBoundary:
         assert "john@example.com" not in result
         assert "[email]" in result
 
-    def test_tts_strips_credentials(self):
-        text = "Your new password is TempPass123. The site was blocked."
-        result = enforce_boundary(Purpose.TTS, text)
-        assert "TempPass123" not in result
-        assert "blocked" in result
-
 
 class TestValidation:
     """Validate that outbound payloads are checked before external calls."""

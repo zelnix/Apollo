@@ -21,12 +21,11 @@ import { Sheet } from "@/src/components/Sheet";
 import { ScreenshotPermissionSheet } from "@/src/components/ScreenshotPermissionSheet";
 import { ImagePrivacyGate, type GateResult } from "@/src/components/ImagePrivacyGate";
 import { screenImage, type ScreeningResult } from "@/src/domain/imagePrivacy";
-import { getHigginsAuto, speakHiggins } from "@/src/voice/higgins";
 import { Body, Button, Pill, Card, toneColor } from "@/src/components/ui";
 import { buildLinkCheckResult } from "@/src/domain/linkCheckResultAdapter";
 import { verifyWebsite } from "@/src/domain/brand";
 import { analysePage, type PageAnalysis, type PageSignals } from "@/src/domain/pageAnalysis";
-import { STATE_LABEL, STATE_NAME, type PatrolEvent } from "@/src/domain/types";
+import { STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { saveCheck } from "@/src/store/savedCheckStore";
 import { useApollo, type CheckOutcome } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -155,12 +154,6 @@ export default function CheckLink() {
     setBusy(true); setOutcome(null);
     try { setOutcome(await checkLink(value)); } finally { setBusy(false); }
   }, [checkLink]);
-
-  // Higgins speaks up unprompted when Apollo barks or guards — only if the person asked for that in Settings.
-  useEffect(() => {
-    if (!outcome || !state || (state !== "barking" && state !== "biting")) return;
-    void getHigginsAuto().then((on) => { if (on) void speakHiggins(`${STATE_LABEL[state]}. ${outcome.decision.headline} What to do: ${outcome.decision.what_to_do}`, deviceId).catch(() => undefined); });
-  }, [outcome]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Shared / deep-linked / clipboard links run automatically once setup is complete.
   useEffect(() => {

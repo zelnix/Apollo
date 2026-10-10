@@ -39,7 +39,7 @@ from services.higgins import context as higgins_context
 from services import capability_registry, government_alerts, learning
 from services import gmail as gmail_service
 from services import family_assist
-from routers import admin, analysis, ask, call, devices, family, family_assist as family_assist_router, family_weekly, gmail, health, intel, investigations, learning as learning_router, learning_admin, patrol, product, push, voice
+from routers import admin, analysis, ask, call, devices, family, family_assist as family_assist_router, family_weekly, gmail, health, intel, investigations, learning as learning_router, learning_admin, patrol, product, push
 from routers.family_weekly import weekly_checkin_loop
 
 SEED_BLOCKLIST = [
@@ -202,7 +202,7 @@ async def deployment_health():
 
 
 # Every device-facing router is mounted under /api behind the device bearer gate (public paths are listed in core.auth).
-for r in (health, devices, intel, patrol, investigations, ask, learning_router, product, family, family_assist_router, family_weekly, voice, push, analysis, gmail, call):
+for r in (health, devices, intel, patrol, investigations, ask, learning_router, product, family, family_assist_router, family_weekly, push, analysis, gmail, call):
     app.include_router(r.router, prefix="/api", dependencies=[Depends(enforce_device_auth)])
 app.include_router(family_assist_router.ws_router, prefix="/api")
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_admin_key)])
