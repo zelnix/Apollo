@@ -237,12 +237,13 @@ export function buildHomeVoice(input: {
     }
     // No genuinely affected automatic capabilities — the "visibility lost" is because capabilities
     // are unsupported on this platform or not yet set up, not because something that was running
-    // has degraded. Don't alarm the user about this.
-    const text = "Apollo's automatic protections are limited on this device. Some require setup and some aren't available on this platform. Open Protection Details and I'll guide you through what's available.";
+    // has degraded. Route to the Protection tab where coverage information lives, NOT to
+    // Protection Details (which would be empty and confusing).
+    const text = "Apollo's automatic protections are limited on this device. Some require setup and some aren't available on this platform. Open Protection to see what's active and what's available.";
     return {
       text,
-      ctaLabel: "View Protection Details",
-      ctaRoute: "/protection-details",
+      ctaLabel: "View Protection",
+      ctaRoute: "/(tabs)/protection",
       spoken: "Apollo's automatic protections are limited on this device. I'll guide you through what's available.",
     };
   }

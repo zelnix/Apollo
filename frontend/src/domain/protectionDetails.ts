@@ -245,23 +245,33 @@ export function buildProtectionFindings(input: {
   }
 
   // ── 3) Capabilities with genuine protection failures ──
-  // Only report capabilities that represent ACTUAL failures of automatic protection that was
-  // previously running, or permissions that block an automatic protection from operating.
-  // Normal manual-check readiness ("available"), optional feature availability ("not set up"),
-  // and limited coverage that isn't a failure are NOT findings — they belong on the Protection tab.
+  // Only report capabilities where PREVIOUSLY RUNNING automatic protection has genuinely degraded.
+  // Optional setup (never-activated), normal manual-check readiness, platform limitations, and
+  // user-choice "off" states are NOT security incidents — they belong on the Protection tab.
+  const CAP_TO_GATE_ID: Record<string, string> = {
+    site_guard: "site", connection_guard: "network", message_guard: "text",
+  };
   for (const c of input.capabilities) {
     if (c.status === "active" || c.status === "coming_later") continue;
     if (c.status === "unsupported") continue;
-    // "available" is normal readiness — not a finding.
     if (c.status === "available") continue;
     const meta = CAPABILITY_META[c.id];
     if (!meta) continue;
     if (seenGates.has(meta.gate)) continue;
-    // Only automatic protections that need a permission to resume are genuine infrastructure findings.
-    // Manual checks that need a permission are optional setup, not security incidents.
-    if (c.status === "permission_required" && meta.kind === "manual") continue;
-    // "inactive" for manual checks is not a security incident either.
-    if (c.status === "inactive" && meta.kind === "manual") continue;
+    // Manual checks are never security incidents for permission or inactive states.
+    if (meta.kind === "manual") continue;
+    // For automatic capabilities: check the corresponding gate's state to distinguish
+    // "was running and broke" (interrupted) from "was never activated" (permission_needed,
+    // not_activated, off_by_choice, setup_needed) or ordinary platform limitation.
+    const gateId = CAP_TO_GATE_ID[c.id];
+    const correspondingGate = gateId ? input.gates.find((g) => g.id === gateId) : undefined;
+    if (correspondingGate) {
+      const autoState = correspondingGate.capability.automatic?.state;
+      // Optional setup / never-activated / user choice — not a security incident.
+      if (autoState === "not_activated" || autoState === "off_by_choice"
+        || autoState === "setup_needed" || autoState === "permission_needed"
+        || autoState === "unsupported") continue;
+    }
     const whatToDo = c.status === "permission_required"
       ? `Open ${meta.gate} to grant the permission so Apollo can resume this protection.`
       : `Open ${meta.gate} to see what's needed next.`;
@@ -269,7 +279,7 @@ export function buildProtectionFindings(input: {
       id: `cap:${c.id}`,
       gate: meta.gate,
       kind: meta.kind,
-      kindLabel: meta.kind === "manual" ? "Manual check" : "Automatic protection",
+      kindLabel: "Automatic protection",
       tone: c.status === "permission_required" ? "limited" : "unverified",
       statusLabel: c.status === "permission_required" ? "Permission needed" : "Limited coverage",
       whatFound: c.detail,
@@ -283,16 +293,18 @@ export function buildProtectionFindings(input: {
   }
 
   // ── 4) Gates with genuine automatic protection failures ──
-  // Only gates where automatic protection has degraded or cannot be verified are findings.
-  // "Limited" means an automatic protection IS running but with reduced scope — this is a genuine
-  // finding. "Unverified" means Apollo can't confirm it's running — also genuine.
-  // Purely manual gates and optional-setup states are NOT findings.
+  // Only gates where automatic protection has DEGRADED from a previously running state.
+  // "Limited" (running but reduced scope) and "Unverified" (was running, can't confirm) are genuine.
+  // Purely manual gates, never-activated gates, and user-choice-off gates are NOT findings.
   for (const g of input.gates) {
     if (seenGates.has(g.title)) continue;
     if (g.tone !== "limited" && g.tone !== "unverified") continue;
-    // Skip gates that are purely manual — limited/unverified for a manual check is informational.
     const kind = gateKind(g);
     if (kind === "manual") continue;
+    // Never-activated or user-choice gates: not a degradation.
+    const autoState = g.capability.automatic?.state;
+    if (autoState === "not_activated" || autoState === "off_by_choice"
+      || autoState === "setup_needed" || autoState === "permission_needed") continue;
     findings.push({
       id: `gate:${g.id}`,
       gate: g.title,

@@ -49,9 +49,10 @@ describe("AI processing disclosure", () => {
       (s) => s.heading === "Data retention"
     );
     assert.ok(retentionSection, "Missing 'Data retention' section");
+    // The disclosure accurately states Google's paid API data handling policy.
     assert.ok(
-      retentionSection.text.includes("not used to train models"),
-      "Must state data is not used for training"
+      retentionSection.text.includes("not used for model training"),
+      "Must state data is not used for model training"
     );
     assert.ok(
       retentionSection.text.includes("15 minutes"),
