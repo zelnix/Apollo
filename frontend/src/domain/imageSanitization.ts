@@ -47,11 +47,11 @@ const receipts = new Map<string, SanitizationReceipt>();
 
 /**
  * Compute SHA-256 digest of actual image bytes from a file URI.
- * Falls back to URI-based digest if file reading fails (e.g. web preview).
+ * If the bytes cannot be read, returns null — the receipt must not be created
+ * for image decisions when byte content cannot be verified.
  */
-async function digestImageBytes(imageUri: string): Promise<string> {
+async function digestImageBytes(imageUri: string): Promise<string | null> {
   try {
-    // Read the actual file bytes and hash them
     const base64 = await FileSystem.readAsStringAsync(imageUri, {
       encoding: FileSystem.EncodingType.Base64,
     });
@@ -60,12 +60,9 @@ async function digestImageBytes(imageUri: string): Promise<string> {
       base64,
     );
   } catch {
-    // Fallback for environments where file reading is unavailable (web preview)
-    // The digest still binds to the URI + decision, but cannot verify byte content
-    return await Crypto.digestStringAsync(
-      Crypto.CryptoDigestAlgorithm.SHA256,
-      `fallback:${imageUri}:${Date.now()}`,
-    );
+    // Cannot read file bytes — no valid digest possible.
+    // Caller must handle this by withholding the image.
+    return null;
   }
 }
 
@@ -73,6 +70,7 @@ async function digestImageBytes(imageUri: string): Promise<string> {
  *
  * For image decisions (sanitised_image, manual_crop, no_sensitive):
  *   The digest is computed from the actual transformed image bytes.
+ *   If bytes cannot be read, returns null — the image must be withheld.
  *
  * For non-image decisions (text_only, withheld):
  *   The digest is computed from the decision string (no image bytes involved).
@@ -87,7 +85,7 @@ export async function createReceipt(
     transformations?: string[];
     limitations?: string[];
   },
-): Promise<SanitizationReceipt> {
+): Promise<SanitizationReceipt | null> {
   const receiptId = Crypto.randomUUID();
 
   // Compute digest based on what will actually be transmitted
@@ -100,7 +98,13 @@ export async function createReceipt(
     );
   } else {
     // Image bytes will be transmitted — digest the actual transformed bytes
-    imageDigest = await digestImageBytes(imageUri);
+    const digest = await digestImageBytes(imageUri);
+    if (digest === null) {
+      // Cannot read file bytes — receipt creation fails.
+      // The caller must withhold the image.
+      return null;
+    }
+    imageDigest = digest;
   }
 
   const receipt: SanitizationReceipt = {

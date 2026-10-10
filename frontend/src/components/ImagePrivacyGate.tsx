@@ -305,6 +305,31 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
           limitations,
         },
       );
+
+      if (receipt === null) {
+        // Receipt creation failed (could not read image bytes for digest).
+        // Fail closed: withhold the image, preserve text if available.
+        const fallbackReceipt = await createReceipt(
+          null,
+          "withheld",
+          screening.sensitiveRegions.length,
+          0,
+          {
+            purpose: "investigation",
+            transformations: [],
+            limitations: ["Image byte digest could not be computed; image withheld"],
+          },
+        );
+        onComplete({
+          decision: "withheld",
+          receipt: fallbackReceipt!,
+          imageUri: null,
+          text,
+          screening,
+        });
+        return;
+      }
+
       onComplete({
         decision,
         receipt,
@@ -348,15 +373,19 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
         });
         await emitResult("sanitised_image", uri, screening.extractedText);
       } else {
-        // Fallback: if capture view isn't available, use the stripped image
-        // (this should not happen in normal flow)
-        await emitResult("sanitised_image", screening.strippedImageUri, screening.extractedText);
+        // Fail closed: redaction capture is unavailable — withhold the image
+        // and preserve available safe evidence (extracted text).
+        await emitResult("withheld", null, screening.extractedText, [
+          "Redaction capture unavailable; image withheld to prevent unredacted transmission",
+        ]);
       }
     } catch {
       // If redaction fails, withhold the image for safety
       setBusy(false);
       setBusyLabel("");
-      await emitResult("withheld", null, screening.extractedText);
+      await emitResult("withheld", null, screening.extractedText, [
+        "Redaction failed; image withheld to prevent unredacted transmission",
+      ]);
     } finally {
       setBusy(false);
     }

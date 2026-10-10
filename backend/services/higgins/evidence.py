@@ -384,9 +384,15 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
                     page_item = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=f"{item.client_item_id}.page{number}", origin=item.origin, kind="image",
                                              parent_id=item.id, collected_at=now_utc(), expires_at=item.expires_at, media_type="image/png", byte_length=len(png),
                                              coverage=Coverage(status="not_started", unit="items", total=1, examined=0, reason="rendered scanned page available to Higgins vision; not yet examined"),
-                                             transformations=[Transformation(kind="decode", description=f"Page {number} contains visual material or lacks a text layer; rasterised at {SCAN_DPI} DPI for visual reading.")],
+                                             transformations=[Transformation(kind="decode", description=f"Page {number} contains visual material or lacks a text layer; rasterised at {SCAN_DPI} DPI for visual reading."),
+                                                              Transformation(kind="privacy_note", description="Rendered PDF page inherits document investigation authorisation. Authentication secrets prohibition applies: Gemini gateway strips credential patterns from any text extracted during examination.")],
                                              label=f"visual page {number} (rendered image)")
-                    await repo.insert_evidence(owner, page_item, {"page": number, "derivedFrom": item.id}, publication_root_id=item.id, ingestion_attempt_id=attempt_id, publication_owner=publication_owner)
+                    await repo.insert_evidence(owner, page_item, {"page": number, "derivedFrom": item.id,
+                                                                   "consentRecord": {"purpose": "investigation", "decision": "document_rendered_page",
+                                                                                     "transformations": [f"Page {number} rasterised from PDF at {SCAN_DPI} DPI"],
+                                                                                     "limitations": ["Rendered page image inherits document authorisation; visual credential content may be present"],
+                                                                                     "consentRecordedAt": now_utc().isoformat(), "trustBoundary": "document_derived"}},
+                                               publication_root_id=item.id, ingestion_attempt_id=attempt_id, publication_owner=publication_owner)
                     await repo.store_bytes(owner, case["case_id"], page_item.id, png, item.expires_at, publish_root=False)
                     rendered_ids.append(page_item.id)
                     rendered_pages.append(number)
@@ -402,17 +408,21 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
                                "materialGap": bool(omitted), "permanentGap": False,
                                "reason": "parser extraction complete; model examination pending" + (f"; {len(rendered_pages)} scanned page(s) rendered for visual reading" if rendered_pages else "")}
             for image_index, (image_name, image_type, image_data) in enumerate(embedded_images):
-                # Package 4: Embedded document images are treated as derived content.
-                # They inherit the document's investigation authorisation but are recorded
-                # with a limitation noting they were not individually screened by the
-                # on-device privacy gate. Only supported image types are stored.
+                # Package 4: Embedded document images inherit document investigation authorisation.
+                # Content safeguards:
+                # - Authentication secrets prohibition applies via the Gemini gateway (Package 3)
+                # - Embedded images are not individually screened by the on-device privacy gate
+                # - This is an honest limitation recorded in the consent record
+                # - Gemini gateway's binary authorisation permits INVESTIGATION purpose
+                # - Text extracted from these images during Gemini examination is subject to
+                #   enforce_boundary(Purpose.INVESTIGATION, ...) which strips credentials
                 if image_type in ("image/png", "image/jpeg"):
                     image_item = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=f"{item.client_item_id}.image{image_index}", origin=item.origin, kind="image",
                                               parent_id=item.id, collected_at=now_utc(), expires_at=item.expires_at, media_type=image_type, byte_length=len(image_data),
                                               coverage=Coverage(status="not_started", unit="items", total=1, examined=0,
                                                                 reason="embedded document image extracted; inherits document investigation authorisation"),
                                               transformations=[Transformation(kind="decode", description="Embedded image extracted from document without recompression."),
-                                                               Transformation(kind="privacy_note", description="Embedded image inherits document-level investigation authorisation; not individually screened by on-device privacy gate.")],
+                                                               Transformation(kind="privacy_note", description="Embedded image inherits document-level investigation authorisation; not individually screened by on-device privacy gate. Authentication secrets prohibition enforced by Gemini gateway on all text extracted during examination.")],
                                               label=f"embedded image: {image_name}"[:80])
                     consent_meta = {
                         "derivedFrom": item.id, "embeddedName": image_name, "itemIndex": image_index + 1,
@@ -420,7 +430,10 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
                             "purpose": "investigation",
                             "decision": "document_embedded_image",
                             "transformations": ["Extracted from parent document"],
-                            "limitations": ["Not individually screened by on-device privacy gate; inherits document authorisation"],
+                            "limitations": [
+                                "Not individually screened by on-device privacy gate; inherits document authorisation",
+                                "Authentication secrets prohibition enforced by Gemini gateway during examination",
+                            ],
                             "consentRecordedAt": now_utc().isoformat(),
                             "trustBoundary": "document_derived",
                         },

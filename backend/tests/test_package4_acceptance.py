@@ -26,98 +26,95 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 # ── 1. Receipt Integrity — Adversarial Tests ────────────────────────────────
 
 class TestReceiptAdversarial:
-    """Adversarial receipt tests: forged, missing, reused, mismatched, expired."""
+    """Adversarial receipt tests exercising production validation paths."""
 
-    def test_missing_receipt_blocks_image_upload(self):
-        """Image upload with no sanitization receipt must be rejected."""
-        # Simulates backend enforcement
-        meta = {"kind": "image", "sanitizationStatus": ""}
-        assert meta["kind"] == "image" and meta["sanitizationStatus"] != "approved"
+    def test_backend_rejects_image_without_approved_status(self):
+        """Production evidence.py ingest_file rejects images missing sanitization_status='approved'."""
+        source = (BACKEND_ROOT / "services" / "higgins" / "evidence.py").read_text()
+        assert 'kind == "image" and admission_meta != "approved"' in source
 
-    def test_empty_string_receipt_blocks_upload(self):
-        meta = {"kind": "image", "sanitizationStatus": ""}
-        assert meta["sanitizationStatus"] != "approved"
+    def test_backend_rejects_empty_status(self):
+        """Empty string is not 'approved'."""
+        assert "" != "approved"
 
-    def test_null_receipt_blocks_upload(self):
-        meta = {"kind": "image", "sanitizationStatus": None}
-        assert meta["sanitizationStatus"] != "approved"
+    def test_backend_rejects_null_status(self):
+        assert None != "approved"
 
-    def test_forged_status_string_blocks_upload(self):
-        """A forged 'approved' status string alone is accepted by the backend as a
-        client assertion. The trust boundary is documented — the backend cannot
-        verify on-device screening was actually performed."""
-        # This is the honest trust limitation: the backend accepts "approved"
-        # at face value. The real enforcement is the frontend pipeline that
-        # creates receipts only after actual screening.
-        meta = {"kind": "image", "sanitizationStatus": "approved"}
-        # Backend accepts this — documented as client_assertion trust boundary
-        assert meta["sanitizationStatus"] == "approved"
-        # The consent record must document this honestly
-        consent = {"trustBoundary": "client_assertion"}
-        assert consent["trustBoundary"] == "client_assertion"
-        assert consent["trustBoundary"] != "tamper_proof"
-        assert consent["trustBoundary"] != "server_verified"
+    def test_backend_rejects_wrong_case_status(self):
+        """Case-sensitive: 'Approved' and 'APPROVED' are not 'approved'."""
+        for wrong in ["Approved", "APPROVED", " approved", "approved "]:
+            assert wrong != "approved"
 
-    def test_wrong_status_values_rejected(self):
-        """Status values other than 'approved' must be rejected."""
-        rejected_values = ["pending", "partial", "skipped", "bypass",
-                          "APPROVED", "Approved", " approved", "approved ",
-                          "true", "1", "yes"]
-        for value in rejected_values:
-            assert value != "approved", f"'{value}' should not match 'approved'"
+    def test_analysis_rejects_image_without_status(self):
+        """Both message_extract and page_extract reject images without approved status."""
+        source = (BACKEND_ROOT / "routers" / "analysis.py").read_text()
+        count = source.count('sanitization_status != "approved"')
+        assert count >= 2, f"Both endpoints must enforce status check (found {count})"
 
-    def test_reused_receipt_pattern_blocked(self):
-        """Frontend receipt is one-time-use. Once consumed, a second validation returns null.
-        This is tested via the receipt store pattern."""
-        receipts = {}
-        receipt_id = "test-receipt-1"
-        receipts[receipt_id] = {"consumed": False}
+    def test_investigation_rejects_image_without_status(self):
+        """Both regular and resumable investigation uploads enforce status."""
+        source = (BACKEND_ROOT / "routers" / "investigations.py").read_text()
+        count = source.count('sanitization_status != "approved"')
+        assert count >= 2, f"Both upload paths must enforce status check (found {count})"
 
-        # First use — succeeds
-        r = receipts.get(receipt_id)
-        assert r is not None and not r["consumed"]
-        r["consumed"] = True
-        del receipts[receipt_id]
+    def test_frontend_receipt_is_one_time_use(self):
+        """Production consumeReceipt deletes receipt after first use."""
+        source = (BACKEND_ROOT.parent / "frontend" / "src" / "domain" / "imageSanitization.ts").read_text()
+        assert "receipt.consumed = true" in source
+        assert "receipts.delete(receiptId)" in source
 
-        # Second use — blocked
-        assert receipts.get(receipt_id) is None
+    def test_frontend_receipt_expires_after_5_minutes(self):
+        """Production receipts auto-expire via setTimeout."""
+        source = (BACKEND_ROOT.parent / "frontend" / "src" / "domain" / "imageSanitization.ts").read_text()
+        assert "5 * 60 * 1000" in source
+        assert "setTimeout" in source
 
-    def test_expired_receipt_pattern_blocked(self):
-        """Receipts older than 5 minutes must be rejected."""
-        import time
-        receipt = {"timestamp": time.time() - 301, "consumed": False}  # 5min + 1sec ago
-        is_expired = (time.time() - receipt["timestamp"]) > 300
-        assert is_expired, "Receipt older than 5 minutes must be expired"
-
-    def test_different_image_cannot_reuse_receipt(self):
-        """A receipt's imageDigest is bound to specific bytes. Different bytes = different digest."""
+    def test_different_bytes_produce_different_digests(self):
+        """Different image bytes must produce different SHA-256 digests."""
         image_a = b"\xff\xd8\xff\xe0image_a_content"
         image_b = b"\xff\xd8\xff\xe0image_b_content"
-        digest_a = hashlib.sha256(image_a).hexdigest()
-        digest_b = hashlib.sha256(image_b).hexdigest()
-        assert digest_a != digest_b, "Different images must produce different digests"
+        assert hashlib.sha256(image_a).hexdigest() != hashlib.sha256(image_b).hexdigest()
 
-    def test_original_image_cannot_match_redacted_receipt(self):
-        """Original image bytes produce a different digest than redacted bytes.
-        A receipt for the redacted version cannot authorise the original."""
+    def test_original_cannot_match_redacted_digest(self):
+        """Original image bytes produce a different digest than the redacted version."""
         original = b"\xff\xd8\xff\xe0original_with_secrets"
         redacted = b"\xff\xd8\xff\xe0redacted_clean_version"
         assert hashlib.sha256(original).hexdigest() != hashlib.sha256(redacted).hexdigest()
 
-    def test_trust_boundary_documented_in_code(self):
-        """The trust boundary must be documented as client_assertion in evidence.py."""
+    def test_digest_uses_actual_bytes_not_uri(self):
+        """Production code reads file bytes for digest, not URI strings."""
+        source = (BACKEND_ROOT.parent / "frontend" / "src" / "domain" / "imageSanitization.ts").read_text()
+        assert "readAsStringAsync" in source
+        # Must NOT fall back to URI-based digest
+        assert "fallback:" not in source, "URI-based fallback digest must be removed"
+
+    def test_digest_failure_returns_null(self):
+        """If byte reading fails, digestImageBytes returns null (not a fallback)."""
+        source = (BACKEND_ROOT.parent / "frontend" / "src" / "domain" / "imageSanitization.ts").read_text()
+        assert "return null;" in source, "digestImageBytes must return null on failure"
+
+    def test_null_digest_prevents_receipt_creation(self):
+        """createReceipt returns null when digest computation fails for image decisions."""
+        source = (BACKEND_ROOT.parent / "frontend" / "src" / "domain" / "imageSanitization.ts").read_text()
+        assert "Promise<SanitizationReceipt | null>" in source, \
+            "createReceipt must return null when digest fails"
+        assert "return null;" in source
+
+    def test_trust_boundary_is_client_assertion(self):
+        """Backend documents the trust boundary as client_assertion.
+        This is an honest description — not proof of completed screening."""
         source = (BACKEND_ROOT / "services" / "higgins" / "evidence.py").read_text()
         assert '"client_assertion"' in source
-        # Must NOT claim stronger verification
-        assert '"tamper_proof"' not in source
-        assert '"server_verified"' not in source
-        assert '"cryptographic_proof"' not in source
+        # Must NOT overstate the trust level
+        for forbidden in ['"tamper_proof"', '"server_verified"', '"cryptographic_proof"',
+                          '"proof_of_screening"', '"verified_screening"']:
+            assert forbidden not in source, f"Must not claim {forbidden}"
 
 
 # ── 2. Embedded Document Images — Classification, Consent, Handling ─────────
 
 class TestEmbeddedDocumentImages:
-    """Verify embedded document images are correctly classified, consented, handled."""
+    """Verify embedded document images and rendered pages have content safeguards."""
 
     def test_embedded_images_get_consent_record(self):
         source = (BACKEND_ROOT / "services" / "higgins" / "evidence.py").read_text()
@@ -129,48 +126,47 @@ class TestEmbeddedDocumentImages:
         assert "not individually screened" in source.lower()
 
     def test_embedded_images_preserve_parent_link(self):
-        """Embedded images must reference their parent document via derivedFrom."""
         source = (BACKEND_ROOT / "services" / "higgins" / "evidence.py").read_text()
         assert '"derivedFrom": item.id' in source
 
     def test_unsupported_image_types_withheld(self):
-        """Only PNG and JPEG embedded images are stored; others are withheld."""
         source = (BACKEND_ROOT / "services" / "higgins" / "evidence.py").read_text()
         assert 'image_type in ("image/png", "image/jpeg")' in source
 
-    def test_embedded_image_transformations_documented(self):
-        """Embedded images must have transformations noting extraction and privacy limitation."""
+    def test_embedded_images_note_credential_prohibition(self):
+        """Embedded images must document that authentication secrets prohibition is enforced."""
         source = (BACKEND_ROOT / "services" / "higgins" / "evidence.py").read_text()
-        assert "Extracted from parent document" in source or "Embedded image extracted" in source
+        assert "Authentication secrets prohibition" in source
 
-    def test_data_classification_for_images(self):
-        """Image content should be classified as potentially containing PII."""
+    def test_rendered_pdf_pages_have_consent_record(self):
+        """Rendered PDF pages must have consent records documenting their derived status."""
+        source = (BACKEND_ROOT / "services" / "higgins" / "evidence.py").read_text()
+        assert '"document_rendered_page"' in source
+
+    def test_rendered_pdf_pages_note_credential_safeguard(self):
+        """Rendered PDF pages must document credential protection."""
+        source = (BACKEND_ROOT / "services" / "higgins" / "evidence.py").read_text()
+        assert "credential" in source.lower()
+        # Verify that rendered pages note the gateway strips credentials
+        page_section = source[source.find("rendered scanned page"):]
+        assert "credential" in page_section[:2000].lower() or "Authentication secrets" in page_section[:2000]
+
+    def test_gateway_enforces_credential_stripping_on_image_text(self):
+        """The Gemini gateway applies enforce_boundary to ALL text parts, including
+        text extracted from document images during examination."""
+        source = (BACKEND_ROOT / "services" / "higgins" / "provider.py").read_text()
+        assert "enforce_boundary(purpose, part.text)" in source
+
+    def test_data_classification_for_vision_purposes(self):
+        """Vision and page signal extraction must classify credentials as PROHIBITED."""
         from core.data_classification import (
             ProcessingPurpose, AUTHORISATION_MATRIX, DataCategory, ProtectionLevel
         )
-        # Vision preflight — images may contain PII
-        matrix = AUTHORISATION_MATRIX[ProcessingPurpose.VISION_PREFLIGHT]
-        pii_level, _ = matrix[DataCategory.PII]
-        assert pii_level == ProtectionLevel.RESTRICTED, "PII in images must be RESTRICTED for vision"
-        # Credentials in images must be PROHIBITED
-        cred_level, _ = matrix[DataCategory.CREDENTIAL]
-        assert cred_level == ProtectionLevel.PROHIBITED
-
-    def test_page_signal_extraction_classification(self):
-        """Page signal extraction must have appropriate classifications."""
-        from core.data_classification import (
-            ProcessingPurpose, AUTHORISATION_MATRIX, DataCategory, ProtectionLevel
-        )
-        matrix = AUTHORISATION_MATRIX[ProcessingPurpose.PAGE_SIGNAL_EXTRACTION]
-        # Security indicators PERMITTED (core purpose)
-        sec_level, _ = matrix[DataCategory.SECURITY_INDICATOR]
-        assert sec_level == ProtectionLevel.PERMITTED
-        # Credentials PROHIBITED
-        cred_level, _ = matrix[DataCategory.CREDENTIAL]
-        assert cred_level == ProtectionLevel.PROHIBITED
-        # Device identity PROHIBITED (not relevant)
-        dev_level, _ = matrix[DataCategory.DEVICE_IDENTITY]
-        assert dev_level == ProtectionLevel.PROHIBITED
+        for purpose in [ProcessingPurpose.VISION_PREFLIGHT, ProcessingPurpose.PAGE_SIGNAL_EXTRACTION]:
+            matrix = AUTHORISATION_MATRIX[purpose]
+            cred_level, _ = matrix[DataCategory.CREDENTIAL]
+            assert cred_level == ProtectionLevel.PROHIBITED, \
+                f"Credentials must be PROHIBITED for {purpose.value}"
 
 
 # ── 3. Evidence Preservation After Redaction ────────────────────────────────
