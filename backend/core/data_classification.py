@@ -103,7 +103,7 @@ class ProcessingPurpose(str, Enum):
     ORDINARY_CHAT = "ordinary_chat"       # General Higgins conversation
     RESEARCH = "research"                 # Public source research
     TTS = "tts"                           # Text-to-speech synthesis
-    VISION_PREFLIGHT = "vision_preflight" # Image admission screening
+    VISION_PREFLIGHT = "vision_preflight" # Image admission screening (secret detection)
     TOKEN_COUNT = "token_count"           # Token budget check
     TRANSCRIPTION = "transcription"       # Audio-to-text conversion
     REPUTATION_LOOKUP = "reputation"      # External reputation/intel check
@@ -111,6 +111,8 @@ class ProcessingPurpose(str, Enum):
     FAMILY_SHARING = "family_sharing"     # Alert/incident sharing with guardians
     DEVICE_REGISTRATION = "device_reg"    # Device setup and heartbeat
     NOTIFICATION = "notification"         # Push notification delivery
+    PAGE_SIGNAL_EXTRACTION = "page_signal_extraction"  # Screenshot → security signal extraction (multimodal, privacy-gated)
+    PUBLIC_ADVISORY_ANALYSIS = "public_advisory_analysis"  # Government scam advisory classification
 
 
 # ── Protection Level Assignments ────────────────────────────────────────────
@@ -271,6 +273,36 @@ AUTHORISATION_MATRIX: dict[ProcessingPurpose, dict[DataCategory, AuthorisationEn
         DataCategory.CONVERSATION:           (ProtectionLevel.CONTROLLED, "Explicit user-initiated notes and replies only"),
         DataCategory.DERIVED_CONTENT:        (ProtectionLevel.CONTROLLED, "Incident summaries shared with guardian"),
         DataCategory.UNKNOWN:                (ProtectionLevel.PROHIBITED, "Must be classified before sharing"),
+    },
+    ProcessingPurpose.PAGE_SIGNAL_EXTRACTION: {
+        DataCategory.PII:                    (ProtectionLevel.CONTROLLED, "PII visible in screenshots subject to privacy gate; minimised where not security-relevant"),
+        DataCategory.MEDICAL:                (ProtectionLevel.RESTRICTED, "Medical content in screenshots requires explicit user approval via privacy gate"),
+        DataCategory.FINANCIAL:              (ProtectionLevel.CONTROLLED, "Financial indicators (payment page type) extracted; card numbers not extracted from images"),
+        DataCategory.LOCATION:               (ProtectionLevel.RESTRICTED, "Location in screenshots requires explicit user approval"),
+        DataCategory.SENSITIVE_PERSONAL:     (ProtectionLevel.RESTRICTED, "Sensitive content requires privacy gate approval"),
+        DataCategory.CREDENTIAL:             (ProtectionLevel.PROHIBITED, "Credentials visible in screenshots must be redacted before transmission"),
+        DataCategory.SECURITY_INDICATOR:     (ProtectionLevel.PERMITTED, "Page type, claimed brand, URLs, form types, urgency text — core security signals"),
+        DataCategory.DEVICE_OBSERVATION:     (ProtectionLevel.CONTROLLED, "Screenshot context: URL hint only"),
+        DataCategory.INVESTIGATION_METADATA: (ProtectionLevel.RESTRICTED, "Not included in page signal extraction"),
+        DataCategory.DEVICE_IDENTITY:        (ProtectionLevel.PROHIBITED, "Not included in page signal extraction"),
+        DataCategory.CONVERSATION:           (ProtectionLevel.PROHIBITED, "Not included in page signal extraction"),
+        DataCategory.DERIVED_CONTENT:        (ProtectionLevel.CONTROLLED, "Prior assessment context may accompany"),
+        DataCategory.UNKNOWN:                (ProtectionLevel.RESTRICTED, "Must pass privacy gate before extraction"),
+    },
+    ProcessingPurpose.PUBLIC_ADVISORY_ANALYSIS: {
+        DataCategory.PII:                    (ProtectionLevel.CONTROLLED, "Third-party PII in government advisories minimised; scam identifiers preserved"),
+        DataCategory.MEDICAL:                (ProtectionLevel.RESTRICTED, "Medical references in advisories: category labels only"),
+        DataCategory.FINANCIAL:              (ProtectionLevel.CONTROLLED, "Financial scam patterns preserved; victim account details minimised"),
+        DataCategory.LOCATION:               (ProtectionLevel.CONTROLLED, "Geographic scam targeting regions preserved; personal locations minimised"),
+        DataCategory.SENSITIVE_PERSONAL:     (ProtectionLevel.RESTRICTED, "Sensitive references minimised"),
+        DataCategory.CREDENTIAL:             (ProtectionLevel.PROHIBITED, "NEVER transmitted — credential examples in advisories are stripped"),
+        DataCategory.SECURITY_INDICATOR:     (ProtectionLevel.PERMITTED, "Scam domains, phone numbers, techniques, patterns — core intelligence"),
+        DataCategory.DEVICE_OBSERVATION:     (ProtectionLevel.PROHIBITED, "Not relevant to advisory analysis"),
+        DataCategory.INVESTIGATION_METADATA: (ProtectionLevel.PROHIBITED, "Not relevant to advisory analysis"),
+        DataCategory.DEVICE_IDENTITY:        (ProtectionLevel.PROHIBITED, "Not included in advisory analysis"),
+        DataCategory.CONVERSATION:           (ProtectionLevel.PROHIBITED, "Not included in advisory analysis"),
+        DataCategory.DERIVED_CONTENT:        (ProtectionLevel.CONTROLLED, "Prior classification results available for context"),
+        DataCategory.UNKNOWN:                (ProtectionLevel.RESTRICTED, "Must be classified before advisory analysis"),
     },
 }
 

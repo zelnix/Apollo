@@ -28,12 +28,14 @@ TRANSCRIPTION_MODEL = os.getenv("GEMINI_TRANSCRIPTION_MODEL", TEXT_MODEL)
 SPEECH_MODEL = os.getenv("GEMINI_SPEECH_MODEL", "gemini-3.1-flash-tts-preview")
 SPEECH_VOICE = os.getenv("GEMINI_SPEECH_VOICE", "Gacrux")
 RECOVERY_MODEL = os.getenv("GEMINI_RECOVERY_MODEL", "")
+ADVISORY_MODEL = os.getenv("GEMINI_ADVISORY_MODEL", "gemini-3.1-pro-preview")
 _TEXT_CAPS = {"text", "vision", "audio_input", "functions", "search", "json"}
 # Register exact documented capabilities. Unknown selections fail closed, not by name heuristics.
 CAPABILITIES = {
     "gemini-3-flash-preview": _TEXT_CAPS,
     "gemini-2.5-flash": _TEXT_CAPS,
     "gemini-2.5-pro": _TEXT_CAPS,
+    "gemini-3.1-pro-preview": _TEXT_CAPS,
     "gemini-3.1-flash-tts-preview": {"speech"},
     "gemini-2.5-flash-preview-tts": {"speech"},
     "gemini-2.5-pro-preview-tts": {"speech"},
@@ -89,21 +91,62 @@ class GeminiResult:
         return value
 
 
+import logging as _logging
+
+_gateway_log = _logging.getLogger("apollo.gateway")
+
+# Purposes that are authorised for binary (image/audio) content transmission.
+# All other purposes MUST NOT send binary to Gemini.
+_BINARY_AUTHORISED_PURPOSES = frozenset({
+    Purpose.VISION_PREFLIGHT,           # Image admission check (the screening mechanism itself)
+    Purpose.PAGE_SIGNAL_EXTRACTION,     # Privacy-gated screenshot → signal extraction
+    Purpose.INVESTIGATION,              # Owner-authorised investigation evidence
+    Purpose.TRANSCRIPTION,              # Audio-to-text for voice notes
+    Purpose.TTS,                        # Speech synthesis (output contains audio)
+})
+
+
+def _contains_binary(contents: Any) -> bool:
+    """Check whether contents include binary (non-text) parts."""
+    if isinstance(contents, (str, bytes)):
+        return isinstance(contents, bytes)
+    if isinstance(contents, types.Part):
+        return bool(contents.inline_data)
+    if isinstance(contents, types.Content):
+        return any(_contains_binary(p) for p in (contents.parts or []))
+    if isinstance(contents, list):
+        return any(_contains_binary(item) for item in contents)
+    return False
+
+
 async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
                    capability: str = "text", json_output: bool = False,
                    tools: list[types.Tool] | None = None, timeout: float = CALL_SECONDS,
                    speech: bool = False, response_schema: Any | None = None,
-                   purpose: Purpose = Purpose.INVESTIGATION) -> GeminiResult:
+                   purpose: Purpose) -> GeminiResult:
+    """Single authoritative Gemini gateway. Every AI inference request MUST use this function.
+
+    `purpose` is REQUIRED — no default. Every caller must explicitly declare their processing
+    purpose so the correct privacy controls are applied. A missing purpose produces a TypeError.
+    """
     if os.getenv("APOLLO_FORBID_PROVIDER_CALLS") == "1":
         raise AssertionError("Live Gemini/provider calls are prohibited in bounded tests")
     require_capability(model, capability)
+
+    # ── Binary content authorisation: verify purpose permits binary ──
+    has_binary = _contains_binary(contents)
+    if has_binary and purpose not in _BINARY_AUTHORISED_PURPOSES:
+        raise ProviderFailure("privacy_violation",
+                              retryable=False)
+
+    if has_binary:
+        _gateway_log.info("gateway_binary: purpose=%s model=%s capability=%s", purpose.value, model, capability)
 
     # ── LLM Evidence Boundary: enforce before any external call ──
     # Strip credentials from the system prompt.
     if system:
         system = strip_credentials(system)
-    # Enforce boundary on text contents (string prompts). Structured Content objects
-    # have their text parts cleaned; binary parts (images) pass through for vision purposes.
+    # Enforce boundary on all text contents with purpose-specific controls.
     if isinstance(contents, str):
         contents = enforce_boundary(purpose, contents)
     elif isinstance(contents, list):
@@ -111,7 +154,10 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
             if isinstance(content_item, types.Content) and content_item.parts:
                 for part in content_item.parts:
                     if part.text:
-                        part._raw_part.text = strip_credentials(part.text)
+                        # Full purpose-aware enforcement on every text part, not just credential stripping.
+                        part._raw_part.text = enforce_boundary(purpose, part.text)
+            elif isinstance(content_item, types.Part) and content_item.text:
+                content_item._raw_part.text = enforce_boundary(purpose, content_item.text)
 
     config = types.GenerateContentConfig(
         system_instruction=system or None, max_output_tokens=OUTPUT.value,

@@ -2342,4 +2342,46 @@ agent_communication:
   - agent: "main"
     message: "Package 2 implemented. (1) Created backend/core/data_classification.py — single authoritative classification registry with 13 data categories, 8 processing purposes, 104-entry authorisation matrix, 80+ field classifications, 15 processing pathways. (2) Updated llm_boundary.py to use authoritative registry — SECURITY_FIELDS and PERSONAL_DATA_FIELDS derived from registry, classify_field delegates to registry, unknown defaults changed to RESTRICTED. (3) Created backend/tests/test_data_classification.py — 71 tests. (4) Created docs/compliance/DATA_CLASSIFICATION_REGISTRY.md. (5) Updated APOLLO_PRIVACY_STANDARDS_MATRIX.md with Package 2 delivery. Total: 121 backend tests passing (71 new + 38 llm_boundary + 12 image_sanitization). No regressions. Please test."
   - agent: "testing"
-    message: "Package 2 VERIFICATION COMPLETE ✅. All acceptance criteria met. TESTS: (1) test_data_classification.py: 71/71 PASSED covering all requirements. (2) test_llm_boundary.py: 38/38 PASSED (no regressions). (3) test_image_sanitization.py: 12/12 PASSED (no regressions). Total: 121/121 backend tests passing. CODE VERIFICATION: (1) DataCategory: 13 values ✅. (2) ProtectionLevel: 4 values ✅. (3) ProcessingPurpose: 12 values ✅. (4) CATEGORY_PROTECTION: all 13 categories covered ✅. (5) AUTHORISATION_MATRIX: 8 purposes × 13 categories = 104 entries, all complete ✅. (6) FIELD_CATEGORIES: 104 fields (exceeds 80+) ✅. (7) PROCESSING_PATHWAYS: 15 pathways ✅. (8) CRITICAL: Unknown data defaults to RESTRICTED ✅. (9) CRITICAL: CREDENTIAL PROHIBITED for ALL purposes ✅. (10) Dual-classified fields (sender, sender_email, caller_number) have both SECURITY_INDICATOR and PII ✅. (11) llm_boundary.py: SECURITY_FIELDS and PERSONAL_DATA_FIELDS derived from FIELD_CATEGORIES ✅. (12) classify_field delegates to _authoritative_classify_field ✅. (13) Unknown fields return Classification.PERSONAL_DATA (not SECURITY_EVIDENCE) ✅. DOCUMENTATION: DATA_CLASSIFICATION_REGISTRY.md and APOLLO_PRIVACY_STANDARDS_MATRIX.md complete ✅. BACKEND HEALTH: /api/health returns 200 OK ✅. NO ISSUES FOUND. Package 2 delivery acceptance criteria fully met. Ready for main agent to summarise and finish."
+    message: "Package 2 VERIFICATION COMPLETE. All acceptance criteria met."
+
+## 2026-02 Package 3 — Single Gemini Gateway & Privacy Enforcement + Emergent LLM Removal
+
+backend:
+  - task: "Package 3 — Single gateway enforcement + emergentintegrations removal"
+    implemented: true
+    working: true
+    file: "backend/services/higgins/provider.py, backend/services/higgins/llm_boundary.py, backend/services/scam_analysis.py, backend/core/data_classification.py, backend/requirements.txt, backend/.env"
+    priority: "P0"
+    needs_retesting: false
+    status_history:
+      - agent: "main"
+        comment: "PHASE 1: Comprehensive Gemini SDK audit completed. Found 1 alternate pathway (scam_analysis via emergentintegrations), 2 missing purpose params, silently permissive default, binary bypass gap, text enforcement gap. PHASE 2: All findings corrected. (1) F1-FIXED: scam_analysis.py now uses provider.py gateway with purpose=PUBLIC_ADVISORY_ANALYSIS and GEMINI_API_KEY. emergentintegrations removed from requirements.txt. EMERGENT_LLM_KEY removed from .env. (2) F2-FIXED: generate() purpose parameter now REQUIRED (no default). (3) F3-FIXED: analysis.py page_extract uses purpose=PAGE_SIGNAL_EXTRACTION. (4) F4-FIXED: analysis.py page_crawl uses purpose=INVESTIGATION. (5) F5-FIXED: SDK Content text parts get full enforce_boundary(purpose, text) not just strip_credentials(). (6) F6-FIXED: Binary content blocked for unauthorised purposes via _BINARY_AUTHORISED_PURPOSES check. (7) F7-FIXED: 23 architectural enforcement tests in test_gateway_enforcement.py. New purposes: PAGE_SIGNAL_EXTRACTION, PUBLIC_ADVISORY_ANALYSIS, TRANSCRIPTION added to Purpose enum and authorisation matrix. gemini-3.1-pro-preview registered in CAPABILITIES. Total: 154 tests passing (23 gateway + 71 classification + 38 llm_boundary + 12 image_sanitization + 10 scam_analysis)."
+      - agent: "testing"
+        working: true
+        comment: "PACKAGE 3 VERIFICATION COMPLETE — ALL ACCEPTANCE CRITERIA MET. (1) Gateway enforcement tests: 23/23 PASSED ✅ covering architectural scanning, purpose mandatory, binary content authorisation, text enforcement, scam analysis gateway routing, new purpose authorisation, provider configuration. (2) Regression tests: 131/131 PASSED ✅ (71 data_classification + 38 llm_boundary + 12 image_sanitization + 10 scam_analysis) with zero regressions. (3) Emergent LLM removal verified: emergentintegrations NOT in requirements.txt ✅, EMERGENT_LLM_KEY NOT in .env ✅, NO Python files import emergentintegrations (excluding test file) ✅. (4) Scam analysis gateway routing verified: uses provider.generate_json ✅, purpose=PUBLIC_ADVISORY_ANALYSIS ✅, GEMINI_API_KEY via provider.py ✅. (5) Single gateway enforcement verified: generate() purpose parameter REQUIRED (no default) ✅, _BINARY_AUTHORISED_PURPOSES defined ✅, _contains_binary function exists ✅, ADVISORY_MODEL defined ✅, gemini-3.1-pro-preview in CAPABILITIES ✅. (6) Analysis.py purposes verified: page_extract uses Purpose.PAGE_SIGNAL_EXTRACTION ✅, page_crawl uses Purpose.INVESTIGATION ✅. (7) Text enforcement verified: SDK Content text parts get full enforce_boundary(purpose, text) ✅. (8) New purposes verified: PAGE_SIGNAL_EXTRACTION, PUBLIC_ADVISORY_ANALYSIS, TRANSCRIPTION in Purpose enum ✅, all three in AUTHORISATION_MATRIX ✅. (9) Backend health: 200 OK with correct schema ✅. (10) Documentation verified: GEMINI_SDK_AUDIT_REPORT.md exists with Phase 2 resolution status ✅, APOLLO_PRIVACY_STANDARDS_MATRIX.md shows Package 3 status ✅. NO MAJOR ISSUES FOUND. Package 3 delivery acceptance criteria fully met."
+
+  - task: "Package 3 — Tests"
+    implemented: true
+    working: true
+    file: "backend/tests/test_gateway_enforcement.py"
+    priority: "P0"
+    needs_retesting: false
+    status_history:
+      - agent: "main"
+        comment: "23 tests in 7 test classes: (1) TestArchitecturalEnforcement — no direct generate_content/count_tokens outside provider.py, no genai.Client instantiation, no alternate LLM providers, all generate calls have purpose=. (2) TestPurposeMandatory — generate() AST-verified requires purpose (no default), generate_json passes kwargs. (3) TestBinaryContentAuthorisation — _contains_binary detects inline_data, authorised purposes correct. (4) TestTextEnforcement — credentials stripped, research minimises PII, advisory minimises PII, investigation preserves indicators, credentials stripped for ALL purposes. (5) TestScamAnalysisGateway — imports provider, no emergentintegrations, advisory model registered. (6) TestNewPurposeAuthorisation — PAGE_SIGNAL_EXTRACTION and PUBLIC_ADVISORY_ANALYSIS in matrix with correct levels. (7) TestProviderConfiguration — advisory model defined, has text capability, purpose enum complete."
+      - agent: "testing"
+        working: true
+        comment: "All 23 gateway enforcement tests PASSED. Verified: (1) No direct SDK calls outside provider.py ✅ (2) Purpose parameter mandatory (no default) ✅ (3) Binary content authorisation working ✅ (4) Text enforcement with full enforce_boundary() ✅ (5) Scam analysis routes through gateway ✅ (6) New purposes in authorisation matrix ✅ (7) Provider configuration correct ✅. All architectural enforcement requirements met."
+
+test_plan:
+  current_focus:
+    - "Package 3: Single Gemini Gateway Enforcement + Emergent LLM Removal"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Package 3 + P0 Emergent LLM Removal implemented. All code changes, tests, and documentation complete. (1) emergentintegrations fully removed from Apollo (requirements.txt, .env, scam_analysis.py). (2) Single gateway enforced: purpose required (no default), binary auth check, full text enforcement. (3) 23 architectural tests prove no bypass. (4) Scam analysis preserved: routes through provider.py with GEMINI_API_KEY and gemini-3.1-pro-preview. (5) 154 backend tests passing. Please verify."
+  - agent: "testing"
+    message: "Package 3 VERIFICATION COMPLETE — ALL ACCEPTANCE CRITERIA MET. Tested all 7 verification categories from review request: (1) Gateway enforcement tests: 23/23 PASSED. (2) Regression tests: 131/131 PASSED (zero regressions). (3) Emergent LLM removal: VERIFIED (not in requirements.txt, .env, no imports). (4) Single gateway enforcement: VERIFIED (purpose required, binary auth, text enforcement, ADVISORY_MODEL, gemini-3.1-pro-preview). (5) New purposes: VERIFIED (PAGE_SIGNAL_EXTRACTION, PUBLIC_ADVISORY_ANALYSIS, TRANSCRIPTION in enum and matrix). (6) Backend health: 200 OK. (7) Documentation: VERIFIED (audit report Phase 2 complete, compliance matrix updated). NO MAJOR ISSUES. Ready for main agent to summarise and finish."

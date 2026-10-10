@@ -20,6 +20,7 @@ from services.breach_check import active_provider, scan_email, source_label
 from services.webcrawl import CrawlBlocked, fetch_page
 from services.investigation import InvestigationResult, extract_message_screenshot, investigate_message, purpose_limited_url
 from services.higgins.provider import ProviderFailure, VISION_MODEL, generate_json
+from services.higgins.llm_boundary import Purpose
 from services.higgins.capacity import TEXT, ITEMS, bounded_analysis
 
 router = APIRouter()
@@ -233,7 +234,7 @@ async def page_extract(device_id: str = Form(min_length=8, max_length=64), url_h
             processed = rendered.getvalue()
         data, provider_metadata = await generate_json(PAGE_EXTRACT_PROMPT,
             [types.Part.from_bytes(data=processed, mime_type="image/jpeg"), types.Part(text=f"Extract page observations.{hint}")],
-            model=VISION_MODEL, capability="vision")
+            model=VISION_MODEL, capability="vision", purpose=Purpose.PAGE_SIGNAL_EXTRACTION)
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
@@ -326,7 +327,7 @@ async def page_crawl(body: PageCrawlIn):
                f"Form field types present: {', '.join(page.forms) or 'none'}\nButton/submit labels: {', '.join(page.buttons) or 'none'}\n"
                f"Outbound link hostnames sample: {', '.join(page.links_sample) or 'none'}\nFinal address after redirects: {page.final_url}")
     try:
-        data, provider_metadata = await generate_json(PAGE_CRAWL_EXTRACT_PROMPT, content)
+        data, provider_metadata = await generate_json(PAGE_CRAWL_EXTRACT_PROMPT, content, purpose=Purpose.INVESTIGATION)
     except Exception as exc:  # noqa: BLE001
         logger.warning("page crawl-extract failed: %s", type(exc).__name__)
         return {"error": "extract_failed", "detail": CRAWL_ERROR_DETAIL["extract_failed"], "signals": None, "higgins_note": None, "final_url": page.final_url, "gemini_used": False}

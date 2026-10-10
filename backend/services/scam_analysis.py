@@ -25,7 +25,7 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 logger = logging.getLogger("apollo")
 
 ANALYSIS_VERSION = 5
-MODEL = ("gemini", "gemini-3.1-pro-preview")
+# Model is now configured via GEMINI_ADVISORY_MODEL env var in provider.py
 _MAX_ARTICLE_CHARS = 14000
 
 TIERS = {"specific_scam", "emerging_pattern", "general_education"}
@@ -208,18 +208,28 @@ def _parse_json(text: str) -> dict | None:
 
 
 async def _run_model(prompt: str) -> dict | None:
-    key = os.environ.get("EMERGENT_LLM_KEY")
-    if not key:
-        logger.warning("scam_analysis: EMERGENT_LLM_KEY missing")
-        return None
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
-    chat = LlmChat(api_key=key, session_id="scam-analysis", system_message=SYSTEM).with_model(*MODEL)
+    """Route through Apollo's single authoritative Gemini gateway (provider.py).
+
+    Uses the owner-managed GEMINI_API_KEY via provider.generate_json with explicit
+    purpose=PUBLIC_ADVISORY_ANALYSIS. Privacy boundary enforcement (credential stripping,
+    third-party PII controls) is applied by the gateway before transmission.
+    """
+    from services.higgins.provider import ProviderFailure, generate_json, ADVISORY_MODEL
+    from services.higgins.llm_boundary import Purpose
     try:
-        reply = await chat.send_message(UserMessage(text=prompt))
+        result, _metadata = await generate_json(
+            SYSTEM, prompt,
+            model=ADVISORY_MODEL,
+            capability="text",
+            purpose=Purpose.PUBLIC_ADVISORY_ANALYSIS,
+        )
+        return result
+    except ProviderFailure as exc:
+        logger.warning("scam_analysis: provider call failed (%s)", exc.code)
+        return None
     except Exception as exc:  # noqa: BLE001 — provider/transport errors leave the item unanalysed for retry
         logger.warning("scam_analysis: model call failed (%s)", type(exc).__name__)
         return None
-    return _parse_json(reply if isinstance(reply, str) else str(reply))
 
 
 async def analyze_item(item: dict) -> dict | None:

@@ -26,8 +26,11 @@ class Purpose(str, Enum):
     INVESTIGATION = "investigation"           # Authorised evidence for the case
     RESEARCH = "research"                     # Minimal public identifiers only
     TTS = "tts"                               # Displayed text only, no evidence
-    VISION_PREFLIGHT = "vision_preflight"     # Image admission check
+    VISION_PREFLIGHT = "vision_preflight"     # Image admission check (secret detection)
     TOKEN_COUNT = "token_count"               # Same as the associated purpose
+    PAGE_SIGNAL_EXTRACTION = "page_signal_extraction"  # Screenshot → security signal extraction (multimodal)
+    PUBLIC_ADVISORY_ANALYSIS = "public_advisory_analysis"  # Government scam advisory classification
+    TRANSCRIPTION = "transcription"           # Audio-to-text conversion
 
 
 class Classification(str, Enum):
@@ -109,10 +112,11 @@ def enforce_boundary(purpose: Purpose, payload: Any, *, evidence_pii: set[str] |
 
 
 def _enforce_text(purpose: Purpose, text: str, *, evidence_pii: set[str] | None = None) -> str:
-    """Strip credentials from all text. For research, also minimise personal identifiers."""
+    """Strip credentials from all text. For research and advisory analysis, also minimise personal identifiers."""
     cleaned = strip_credentials(text)
-    if purpose == Purpose.RESEARCH:
-        # Research queries should contain only public identifiers, not personal data.
+    if purpose in (Purpose.RESEARCH, Purpose.PUBLIC_ADVISORY_ANALYSIS):
+        # Research and advisory queries should contain only public identifiers, not personal data.
+        # Public advisories may contain third-party PII (victim details, witness names).
         # Uses evidence-inventory-aware minimisation when available (deterministic, not heuristic).
         cleaned = _minimise_personal_identifiers(cleaned, evidence_pii=evidence_pii)
     if purpose == Purpose.TTS:

@@ -330,8 +330,8 @@ This section maps each privacy/security control to its authoritative implementat
 | Package | Status | Verification | Tests | Limitations | Compliance Matrix Changes | Acceptance |
 |---|---|---|---|---|---|---|
 | **Package 1** | Implemented | Code inspection, documentation review | N/A (documentation) | Legal advisor not yet appointed; cross-border assessment pending | Initial matrix created | ✅ Accepted |
-| **Package 2** | Implemented | Code inspection, automated tests, documentation review | 71 new + 50 existing = 121 tests passing | Vision preflight gap (P4); gateway audit (P3); cross-border (P7) | Unknown default fixed; authorisation matrix added; 4 gaps resolved | Requested |
-| Package 3 | Not started | — | — | — | — | — |
+| **Package 2** | Implemented | Code inspection, automated tests, documentation review | 71 new + 50 existing = 121 tests passing | Vision preflight gap (P4); gateway audit (P3); cross-border (P7) | Unknown default fixed; authorisation matrix added; 4 gaps resolved | ✅ Accepted |
+| **Package 3** | Implemented | Architectural scan, SDK-boundary tests, regression tests | 23 new gateway tests + 154 total passing | Full multimodal minimisation (P4) | Single gateway enforced; emergentintegrations removed; purpose mandatory; binary auth added | Requested |
 | Package 4 | Not started | — | — | — | — | — |
 | Package 5 | Not started | — | — | — | — | — |
 | Package 6 | Not started | — | — | — | — | — |
