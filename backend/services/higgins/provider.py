@@ -179,8 +179,16 @@ async def generate_json(system: str, prompt: Any, **kwargs: Any) -> tuple[dict, 
 
 
 async def speech_bytes(text: str) -> tuple[bytes, dict]:
-    # TTS boundary: strip credentials from the read-aloud text before sending to Gemini.
+    # TTS boundary: strip credentials and validate the outbound text before sending to Gemini.
+    # The text is the displayed Higgins response — already privacy-processed by the response
+    # generation pipeline. This boundary provides a final safety check.
     clean_text = enforce_boundary(Purpose.TTS, text)
+    # Validate no credential material survives in the outbound TTS payload.
+    violations = validate_outbound_payload(Purpose.TTS, clean_text)
+    if violations:
+        import logging
+        logging.getLogger("higgins.tts").warning("TTS boundary violation: %s — stripping further", violations)
+        clean_text = strip_credentials(clean_text)
     prompt = ("Synthesize speech. Read only the transcript, exactly, with no added words. "
               "Voice: Higgins, a mature English gentleman; courteous, warm and unhurried.\n\nTRANSCRIPT:\n" + clean_text)
     result = await generate("", prompt, model=SPEECH_MODEL, capability="speech", speech=True, purpose=Purpose.TTS)

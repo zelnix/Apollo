@@ -92,7 +92,7 @@ export function buildHomeAttention(input: { gates: GatePresentation[]; events: P
   for (const e of activeAttention) {
     const gate = gateForCategory(e.category);
     const problem = (e.what_happened || e.headline || "").trim();
-    const higgins = (e.what_to_do || "").trim() || "Open the investigation to see exactly what to do next.";
+    const higgins = (e.what_to_do || "").trim() || "Open it and I'll tell you exactly what to do.";
     // Build an evidence-specific title rather than generic "Email Gate looks suspicious".
     const specificLabel = describeEventBrief(e);
     const title = e.state === "barking"

@@ -742,7 +742,17 @@ async def read_text(owner: str, case_id: str, evidence_id: str, start: Optional[
 
 async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[types.Part], list[dict], list[tuple[str, int, int, int]]]:
     """Inline short text and images; long text is summarised by inventory and read by range via tools.
-    Returns pending examination marks (evidence_id, start, end, total) to apply only after Gemini succeeds."""
+    Returns pending examination marks (evidence_id, start, end, total) to apply only after Gemini succeeds.
+
+    Privacy: This function assembles evidence for INVESTIGATION purpose only.
+    - Text content is credential-stripped by the provider boundary before the Gemini call.
+    - Images are included only if they passed the secret preflight during ingestion (the
+      ingestion layer rejects images that fail preflight). The original image is necessary
+      for the model to assess visual evidence (phishing pages, app screenshots, etc.).
+    - Images that contain sensitive personal content beyond credentials (e.g., ID cards)
+      cannot be automatically minimised without destroying the evidence. The person authorised
+      the investigation by submitting the evidence; Gemini receives it for the authorised case.
+    """
     parts, inventory, marks = [], [], []
     for row in rows:
         entry = {"evidenceId": row["evidence_id"], "kind": row["kind"], "origin": row["origin"], "label": row.get("label", ""), "parentId": row.get("parent_id"),
@@ -763,9 +773,15 @@ async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[ty
                 entry["note"] = f"{len(text)} characters total; only the first 2000 are inline. Use read_evidence with ranges/pages to examine the rest before concluding."
                 marks.append((row["evidence_id"], 0, 2000, len(text)))
         elif row["kind"] == "image":
+            # Image evidence: the person submitted this image for investigation. It passed
+            # the secret preflight during ingestion. The transformations field records what
+            # processing occurred (e.g., "redacted_transcription" if secrets were found and
+            # the original was withheld). Only images with availability=="available" reach here.
+            transformations = row.get("transformations", [])
             data = await repo.read_bytes(owner, case["case_id"], row["evidence_id"])
             parts.append(types.Part.from_bytes(data=data, mime_type=row["media_type"]))
-            entry["note"] = "original image supplied inline (previous part)"
+            preflight_note = "original image (passed secret preflight)" if "redacted_transcription" not in transformations else "redacted transcription (original withheld)"
+            entry["note"] = f"{preflight_note} supplied inline (previous part)"
             marks.append((row["evidence_id"], 0, len(data), len(data)))
         inventory.append(entry)
     return parts, inventory, marks
