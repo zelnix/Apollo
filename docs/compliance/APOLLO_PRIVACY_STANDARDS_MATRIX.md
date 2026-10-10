@@ -58,6 +58,22 @@ Apollo formally adopts the following recognised standards as the basis for its p
 
 ## 2. Scope & Applicability
 
+### 2.1 Governing Principle — Transparent Data Use and Necessary Sharing
+
+Apollo must clearly explain what information it examines on the user's device, what information is transmitted to Apollo's supporting services, and what information is shared with third-party providers.
+
+Apollo processes information locally wherever practical while using secure external services when necessary to deliver effective scam protection, threat detection, reputation checking and investigations.
+
+Personal information may be shared with an authorised service provider when necessary to perform a specific function, appropriately authorised and legally permitted.
+
+Apollo must minimise unnecessary disclosure without removing material security evidence or impairing the protection service.
+
+> **Protect the person. Preserve the evidence. Share only what is necessary.**
+
+Harmony Wellness Group remains accountable for Apollo's information handling and third-party arrangements.
+
+### 2.2 Application Scope
+
 ### 2.1 System Boundary
 
 Apollo is a mobile-first cybersecurity application comprising:
