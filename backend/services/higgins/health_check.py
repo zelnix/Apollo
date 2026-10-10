@@ -66,7 +66,7 @@ async def investigate() -> dict:
         raise HealthFailure("provider_not_configured")
     try:
         result = await provider.generate(SYSTEM, [types.Content(role="user", parts=[types.Part(text=PROMPT)])],
-                                         json_output=True, capability="json", model=provider.TEXT_MODEL)
+                                         json_output=True, capability="json", model=provider.TEXT_MODEL, purpose=provider.Purpose.INVESTIGATION)
     except provider.ProviderFailure as exc:
         code = "provider_timeout" if exc.code in ("timeout", "budget_exhausted") else "provider_unavailable"
         raise HealthFailure(code) from None

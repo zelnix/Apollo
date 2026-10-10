@@ -11,19 +11,19 @@ const ev = (o: Partial<PatrolEvent>): PatrolEvent => ({ event_id: "e1", device_i
 test("event narration goes state → what → why (ordinals) → what to do", () => {
   const c = narrateEvent(ev({}));
   assert.deepEqual(c.map((x) => x.id), ["state", "what", "why", "todo"]);
-  assert.match(c[0].text, /^Higgins here\. Apollo is growling\./);
+  assert.match(c[0].text, /^Higgins here\. Apollo found something\. Apollo is growling\./);
   assert.match(c[2].text, /first, Link is not on CommBank's official domain\. second, Urgent wording\./);
-  assert.match(c[3].text, /^What to do: Don't tap the link\./);
+  assert.match(c[3].text, /^Here's what to do: Don't tap the link\./);
 });
 test("handled / contained events get a closing line", () => {
   assert.match(narrateEvent(ev({ status: "resolved" })).at(-1)!.text, /handled/);
-  assert.match(narrateEvent(ev({ status: "resolved", state: "biting", verified_block: true })).at(-1)!.text, /blocked and is contained/);
+  assert.match(narrateEvent(ev({ status: "resolved", state: "biting", verified_block: true })).at(-1)!.text, /blocked and contained/);
 });
 test("incident narration: summary, events in order, plan steps with ticks", () => {
   const plan = buildIncidentPlan([ev({ event_id: "e1", scent_id: "s" }), ev({ event_id: "e2", scent_id: "s", category: "account", state: "barking", headline: "Account: Login prompt", occurred_at: "2026-06-01T09:16:00Z", why: ["You told Apollo: entered a password."] })]);
   const c = narrateIncident(plan, { [plan.steps[0].id]: true });
   assert.equal(c[0].id, "summary"); assert.match(c[0].text, /Apollo connected 2 events/);
-  assert.match(c[1].text, /^It began, at .*message: CommBank SMS/); assert.match(c[2].text, /^Finally, at .*account/);
+  assert.match(c[1].text, /^It started, at .*message: CommBank SMS/); assert.match(c[2].text, /^The latest, at .*account/);
   const steps = c.filter((x) => x.id.startsWith("step-"));
   assert.equal(steps.length, plan.steps.length); assert.match(steps[0].text, /^Step 1, already done: /); assert.match(steps[1].text, /^Step 2: /);
   assert.equal(c.at(-1)!.id, "end");

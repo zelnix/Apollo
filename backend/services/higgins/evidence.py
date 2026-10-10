@@ -360,7 +360,7 @@ async def _image_secret_preflight(data: bytes, media_type: str) -> dict:
                                'replaced", "visualDescription": "layout, app/window, sender/recipient chrome, images or icons, without any secret", '
                                '"transcriptionComplete": true|false}')]
     try:
-        result, _ = await provider.generate_json("Return only the JSON object.", prompt, capability="vision")
+        result, _ = await provider.generate_json("Return only the JSON object.", prompt, capability="vision", purpose=provider.Purpose.VISION_PREFLIGHT)
     except Exception as exc:  # noqa: BLE001
         return {"status": f"unavailable:{type(exc).__name__}", "containsSecret": None, "secretKinds": [], "redactedText": "", "visualDescription": "", "transcriptionComplete": None}
     contains = result.get("containsSecret") if isinstance(result, dict) else None

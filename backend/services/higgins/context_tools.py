@@ -60,17 +60,36 @@ async def patrol(owner: str, *, one: bool = False) -> dict:
     rows = [row for row in await patrol_records.current(owner, limit + 5) if row["category"] != "system"][:limit]
     items = []
     for row in rows:
-        # Detect projected records: if the headline or summary contains known server-projection
-        # patterns, mark the record as having limited evidence so the LLM does not fabricate
-        # explanations from placeholder text. The real evidence is only on the originating device.
+        # Structural evidence classification: use the explicit evidence_provenance field from
+        # patrol_records, falling back to content inspection only when the field is absent.
+        provenance = row.get("evidence_provenance", "")
+        is_projected = provenance == "server_projected" or (not provenance and not (row.get("summary") or "").strip())
+
+        # Provide structured security facts even for projected records — category, state,
+        # block status, timestamps — so Higgins can make informed assessments without fabricating
+        # explanations from placeholder text.
+        effective_state = row["effectiveState"]
+        has_block = row.get("observedBlockReference") is not None
+        scenario_ctx = row.get("scenarioContext") or {}
+
+        structured_facts = {
+            "category": row["category"],
+            "effectiveState": effective_state,
+            "verifiedBlock": has_block,
+            "indicatorHost": scenario_ctx.get("indicatorHost"),
+            "claimedBrand": scenario_ctx.get("claimedBrand"),
+            "occurredAt": row["occurredAt"].isoformat() if hasattr(row["occurredAt"], "isoformat") else str(row["occurredAt"]),
+        }
+
         summary_text = row.get("summary") or ""
-        is_projected = not summary_text.strip() or row.get("evidence_provenance") == "server_projected"
         items.append({
             "recordId": row["recordId"], "logicalIssueKey": row["logicalIssueKey"], "category": row["category"],
-            "effectiveState": row["effectiveState"], "effectiveReason": row["effectiveReason"],
+            "effectiveState": effective_state, "effectiveReason": row["effectiveReason"],
             "headline": redact_investigation_secrets(row["headline"])[:200],
             "summary": redact_investigation_secrets(summary_text)[:400] if not is_projected else "Detailed evidence is only available on the originating device.",
             "evidence_availability": "full" if not is_projected else "limited_to_originating_device",
+            "evidence_provenance": provenance or ("local_device" if not is_projected else "server_projected"),
+            "structuredFacts": structured_facts,
             "occurredAt": row["occurredAt"].isoformat() if hasattr(row["occurredAt"], "isoformat") else str(row["occurredAt"]),
             "observedBlockReference": row.get("observedBlockReference"),
         })

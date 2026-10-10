@@ -1999,3 +1999,68 @@ agent_communication:
   - agent: "testing"
     message: "Apollo Protection Messaging QA — Round 2 testing COMPLETE. All 5 targeted fixes verified: (Fix 1) evidence_provenance field replaces regex matching - isProjectedContent() deleted, structural field in place. (Fix 2) Backend lifecycle persistence - resolved_at preserved during replay, tested with POST/PATCH/POST sequence. (Fix 3) Merge function extracted to eventMerge.ts - mergeLocalAndRemoteEvents() is pure, testable, and used in production. (Fix 4) Threat-first terminology - blocked_threat/confirmed_concern/possible_concern/observation classifications in place, countDistinctFindings() exported. (Fix 5) Evidence-based reopening - requires new evidence_id, tested in architectural regression suite. Frontend tests: 32/32 architectural regression passed, 547/547 full suite passed, TypeScript clean. Backend tests: 3/3 passed (health, resolution persistence, architecture verification). No issues found."
 
+
+
+## 2026-10-10 Higgins Behavioural Overhaul + LLM Privacy Boundary
+
+backend:
+  - task: "Higgins Operating Standard: INVESTIGATE → ASSESS → DIRECT → GUIDE → VERIFY across all system prompts"
+    implemented: true
+    working: true
+    file: "backend/core/config.py, backend/services/higgins/chat.py, backend/services/higgins/coordinator.py"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        comment: "HIGGINS_VOICE rewritten from passive butler persona to authoritative cybersecurity expert. Chat system prompt now enforces INVESTIGATE → ASSESS → DIRECT → GUIDE → VERIFY. Coordinator investigation prompt restructured with explicit INVESTIGATE/ASSESS/DIRECT/GUIDE/VERIFY sections. All passive language patterns eliminated ('you may want to', 'consider reviewing', etc.). Decisive, calm, protective communication rules established."
+  - task: "LLM Evidence Boundary: single enforcement point before every Gemini call"
+    implemented: true
+    working: true
+    file: "backend/services/higgins/llm_boundary.py, backend/services/higgins/provider.py"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        comment: "New llm_boundary.py: purpose-based classification (ORDINARY_CHAT, INVESTIGATION, RESEARCH, TTS, VISION_PREFLIGHT), field-level permit/deny, credential stripping, personal data minimisation for research. Integrated into provider.py generate() — every external call (inference, token counting, research, TTS) passes through the boundary. 22/22 backend boundary tests pass. Evidence is NOT stripped from investigations — only credentials and unnecessary personal data."
+  - task: "Patrol records evidence_provenance exposure"
+    implemented: true
+    working: true
+    file: "backend/services/patrol_records.py, backend/services/higgins/context_tools.py"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        comment: "patrol_records._wire() now exposes evidence_provenance as a top-level field. context_tools.patrol() provides structuredFacts (category, effectiveState, verifiedBlock, indicatorHost, claimedBrand, occurredAt) for all records — even server-projected ones — so Higgins can make informed assessments without fabricating from placeholder text."
+
+frontend:
+  - task: "Higgins narration: directive language, expert guidance"
+    implemented: true
+    working: true
+    file: "frontend/src/domain/higginsNarration.ts, frontend/src/domain/higginsHomeVoice.ts"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        comment: "higginsNarration.ts: 'Here's what Apollo found', 'Here's what to do', 'This matters because', 'Follow my lead'. higginsHomeVoice.ts: All states rewritten with directive language — 'Open it and I'll tell you exactly what to do', 'I'll walk you through each one'. No passive phrases survive. 23/23 new behavioural tests + 572/572 full frontend suite pass."
+
+  - task: "Round 3 test fixture fix (architecturalRegression.test.ts)"
+    implemented: true
+    working: true
+    file: "frontend/tests/architecturalRegression.test.ts"
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - agent: "main"
+        comment: "Fixed test 8 reopen fixture: used snake_case observed_at (matching production merge code) instead of camelCase observedAt. All 34 architectural regression tests now pass."
+
+test_plan:
+  current_focus:
+    - "Higgins behavioural overhaul: directive language, expert guidance, LLM boundary"
+    - "Verify no regressions in existing functionality"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Higgins Behavioural Overhaul + LLM Privacy Boundary implemented. BACKEND: (1) HIGGINS_VOICE rewritten from butler to cybersecurity expert. (2) Chat and coordinator system prompts enforce INVESTIGATE→ASSESS→DIRECT→GUIDE→VERIFY. (3) New llm_boundary.py enforces purpose-based privacy before every Gemini call. (4) patrol_records exposes evidence_provenance + context_tools provides structuredFacts. FRONTEND: (5) higginsNarration.ts uses directive language ('Here's what to do', 'Follow my lead'). (6) higginsHomeVoice.ts all states rewritten with expert direction. (7) Round 3 test fixture fixed. TESTS: 572/572 frontend pass (including 23 new behavioural + 34 architectural regression), 22/22 backend boundary tests pass. 483/500 backend tests pass (17 pre-existing failures: Gemini unavailable, rate limits, environment-dependent). Please verify: (A) System prompts produce authoritative guidance not passive advice. (B) LLM boundary strips credentials from outbound payloads. (C) Evidence provenance flows correctly through context_tools. Credentials in /app/memory/test_credentials.md."

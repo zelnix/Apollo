@@ -19,6 +19,7 @@ from google.genai import types
 
 from core.config import GEMINI_API_KEY
 from services.higgins.capacity import CALL_SECONDS, OUTPUT, SCHEMA_RESERVE
+from services.higgins.llm_boundary import Purpose, enforce_boundary, strip_credentials, validate_outbound_payload
 
 load_dotenv()
 TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-3-flash-preview")
@@ -91,10 +92,27 @@ class GeminiResult:
 async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
                    capability: str = "text", json_output: bool = False,
                    tools: list[types.Tool] | None = None, timeout: float = CALL_SECONDS,
-                   speech: bool = False, response_schema: Any | None = None) -> GeminiResult:
+                   speech: bool = False, response_schema: Any | None = None,
+                   purpose: Purpose = Purpose.INVESTIGATION) -> GeminiResult:
     if os.getenv("APOLLO_FORBID_PROVIDER_CALLS") == "1":
         raise AssertionError("Live Gemini/provider calls are prohibited in bounded tests")
     require_capability(model, capability)
+
+    # ── LLM Evidence Boundary: enforce before any external call ──
+    # Strip credentials from the system prompt.
+    if system:
+        system = strip_credentials(system)
+    # Enforce boundary on text contents (string prompts). Structured Content objects
+    # have their text parts cleaned; binary parts (images) pass through for vision purposes.
+    if isinstance(contents, str):
+        contents = enforce_boundary(purpose, contents)
+    elif isinstance(contents, list):
+        for content_item in contents:
+            if isinstance(content_item, types.Content) and content_item.parts:
+                for part in content_item.parts:
+                    if part.text:
+                        part._raw_part.text = strip_credentials(part.text)
+
     config = types.GenerateContentConfig(
         system_instruction=system or None, max_output_tokens=OUTPUT.value,
         response_mime_type="application/json" if json_output else None,
@@ -161,9 +179,11 @@ async def generate_json(system: str, prompt: Any, **kwargs: Any) -> tuple[dict, 
 
 
 async def speech_bytes(text: str) -> tuple[bytes, dict]:
+    # TTS boundary: strip credentials from the read-aloud text before sending to Gemini.
+    clean_text = enforce_boundary(Purpose.TTS, text)
     prompt = ("Synthesize speech. Read only the transcript, exactly, with no added words. "
-              "Voice: Higgins, a mature English gentleman; courteous, warm and unhurried.\n\nTRANSCRIPT:\n" + text)
-    result = await generate("", prompt, model=SPEECH_MODEL, capability="speech", speech=True)
+              "Voice: Higgins, a mature English gentleman; courteous, warm and unhurried.\n\nTRANSCRIPT:\n" + clean_text)
+    result = await generate("", prompt, model=SPEECH_MODEL, capability="speech", speech=True, purpose=Purpose.TTS)
     pcm = b"".join(p.inline_data.data for p in result.content.parts or []
                    if p.inline_data and p.inline_data.data and (p.inline_data.mime_type or "").startswith("audio/"))
     if not pcm:

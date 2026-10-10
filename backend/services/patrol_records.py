@@ -46,6 +46,14 @@ def _effective(event: PatrolEventIn, verified: bool) -> tuple[str, str]:
 
 
 def _wire(row: dict[str, Any]) -> dict[str, Any]:
+    # Derive evidence_provenance from the stored event data: if the event has local evidence
+    # (non-empty summary and not a server projection), mark it as full. Otherwise, limited.
+    event_data = row.get("event") or {}
+    stored_provenance = event_data.get("evidence_provenance")
+    has_substantive_summary = bool(row.get("summary") and row["summary"].strip())
+    evidence_provenance = stored_provenance if stored_provenance else (
+        "local_device" if has_substantive_summary and row.get("source_type") != "server_projected" else "server_projected"
+    )
     return {
         "recordId": row["record_id"], "logicalIssueKey": row["logical_issue_key"], "revision": row["revision"],
         "supersedes": row.get("supersedes"), "sourceEventId": row["source_event_id"], "sourceType": row["source_type"],
@@ -56,6 +64,7 @@ def _wire(row: dict[str, Any]) -> dict[str, Any]:
         "freshness": row["freshness"], "outageContext": row.get("outage_context"), "resolution": row.get("resolution"),
         "duplicateOf": row.get("duplicate_of"), "duplicateReason": row.get("duplicate_reason"),
         "occurredAt": row["occurred_at"], "updatedAt": row["created_at"], "event": row["event"],
+        "evidence_provenance": evidence_provenance,
     }
 
 

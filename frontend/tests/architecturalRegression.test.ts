@@ -365,11 +365,12 @@ describe("8. Missing, stale or contradictory evidence cannot create false threat
   it("mergeLocalAndRemoteEvents clears resolved_at when genuinely reopening", () => {
     const local = makeEvent({
       event_id: "x", status: "resolved", resolved_at: "2026-01-01T00:00:00Z",
-      enforcement_evidence: { evidence_id: "old" } as any,
+      enforcement_evidence: { evidence_id: "old", observed_at: "2025-12-31T23:00:00Z" } as any,
     });
     const remote = makeServerEvent({
       event_id: "x", status: "active",
-      enforcement_evidence: { evidence_id: "genuinely-new" } as any,
+      // New evidence observed AFTER the resolution — this is a genuine reopen.
+      enforcement_evidence: { evidence_id: "genuinely-new", observed_at: "2026-01-02T12:00:00Z" } as any,
     });
     const { events } = mergeLocalAndRemoteEvents([local], [remote]);
     const m = events.find((e) => e.event_id === "x")!;

@@ -4,6 +4,10 @@
 // driving event (scam text, malicious email, insecure connection, device setting change, verified
 // block, etc.). Never claims Apollo blocked a threat without `verified_block` + supporting evidence.
 //
+// OPERATING STANDARD: Higgins is an authoritative cybersecurity expert.
+// INVESTIGATE → ASSESS → DIRECT → GUIDE → VERIFY.
+// Every actionable finding produces a specific instruction, not a vague suggestion.
+//
 // Pure, unit-testable: no React, no navigation.
 
 import type { AttentionItem } from "./homeAttention";
@@ -86,10 +90,10 @@ export function buildHomeVoice(input: {
 
   if (state === "resting") {
     return {
-      text: "Apollo is patrolling and all is well. The protections he can confirm are running, and no concern turned up in the checks that completed.",
+      text: "Apollo is patrolling and all is clear. Every protection he can confirm is running, and nothing concerning turned up in the latest checks. No action needed right now.",
       ctaLabel: "View Protection Details",
       ctaRoute: "/protection-details",
-      spoken: "Apollo is patrolling and all is well. The protections he can confirm are running, and no concern turned up.",
+      spoken: "Apollo is patrolling and all is clear. No action needed right now.",
     };
   }
 
@@ -105,8 +109,8 @@ export function buildHomeVoice(input: {
       // Don't narrate server-projected text as if it's real evidence.
       const subject = hasLocalEvidence(drivingEvent) ? rawSubject : "";
       const text = state === "ears_up"
-        ? `Apollo ${verb} — something in ${gateName}${subject ? ` caught his attention: ${subject}` : " caught his attention"}. He's looking at it more closely. I'll let you know what he finds.`
-        : `Apollo ${verb} — he's investigating ${gateName}${subject ? `: ${subject}` : ""}. I'll let you know what he finds, and you can watch along if you'd like.`;
+        ? `Apollo ${verb} — something in ${gateName}${subject ? ` caught his attention: ${subject}` : " caught his attention"}. He's looking at it. I'll tell you exactly what to do once he's finished.`
+        : `Apollo ${verb} — he's investigating ${gateName}${subject ? `: ${subject}` : ""}. I'll tell you exactly what to do once he's finished.`;
       return {
         text,
         ctaLabel: "View what Apollo is checking",
@@ -116,13 +120,13 @@ export function buildHomeVoice(input: {
     }
     return {
       text: state === "ears_up"
-        ? "Apollo has his ears up — something in a recent check caught his attention and he's taking a closer look. Open Protection Details and I'll show you what he's looking at."
-        : "Apollo is sniffing — he's running his current checks across the Gates to see if anything needs your attention. Open Protection Details and I'll show you what he's looking at.",
+        ? "Apollo has his ears up — something in a recent check caught his attention. Open Protection Details and I'll show you what he's found."
+        : "Apollo is sniffing — running his checks across the Gates. Open Protection Details and I'll show you the current status.",
       ctaLabel: "View what Apollo is checking",
       ctaRoute: "/protection-details",
       spoken: state === "ears_up"
-        ? "Apollo has his ears up — something caught his attention and he's taking a closer look."
-        : "Apollo is sniffing — he's running his current checks across the Gates.",
+        ? "Apollo has his ears up — something caught his attention. I'll tell you what to do."
+        : "Apollo is sniffing — running his checks across the Gates.",
     };
   }
 
@@ -134,12 +138,12 @@ export function buildHomeVoice(input: {
     const rawWhat = (drivingEvent.what_happened || drivingEvent.headline || "").trim();
     const what = hasLocalEvidence(drivingEvent) ? rawWhat : "a threat";
     const gateName = GATE_FOR_CATEGORY[drivingEvent.category] ?? "a protection check";
-    const text = `Apollo is biting — ${gateName} blocked ${what} The device's own evidence is on the investigation page. Let me show you exactly what Apollo stopped and why.`;
+    const text = `Apollo blocked ${what} through ${gateName}. The threat is contained. Open the investigation to see exactly what Apollo stopped and why.`;
     return {
       text,
       ctaLabel: "View what Apollo blocked",
       ctaRoute: `/patrol/${encodeURIComponent(drivingEvent.event_id)}`,
-      spoken: `Apollo blocked ${what}`,
+      spoken: `Apollo blocked ${what}. The threat is contained.`,
     };
   }
 
@@ -148,7 +152,7 @@ export function buildHomeVoice(input: {
   if (effectiveCount > 1) {
     const descriptions = attention.map((a) => (a.problem || a.gate).trim()).filter(Boolean);
     const verb = verbForState(state);
-    const text = `Apollo is ${state === "barking" ? "barking" : "growling"} — ${verb} ${effectiveCount} ${effectiveCount === 1 ? "finding" : "findings"} that ${effectiveCount === 1 ? "needs" : "need"} attention. View Protection Details for what Apollo found and what to do.`;
+    const text = `Apollo ${verb} ${effectiveCount} findings that need attention. Open Protection Details — I'll walk you through each one and tell you exactly what to do.`;
     return {
       text,
       ctaLabel: "View Protection Details",
@@ -163,23 +167,23 @@ export function buildHomeVoice(input: {
   if (primary) {
     const gate = primary.gate;
     const problem = (primary.problem || "").trim();
-    // Build a concise, non-repetitive opener from the state + real evidence.
+    // Build a concise, directive opener from the state + real evidence.
     let opener: string;
     if (state === "barking") {
       opener = problem
-        ? `Apollo is barking — ${problem} and needs your decision`
-        : `Apollo is barking — something in ${gate} needs your decision`;
+        ? `Apollo found ${problem} — this needs your action now`
+        : `Apollo found something in ${gate} that needs your action now`;
     } else if (state === "biting") {
       opener = problem
         ? `Apollo blocked a threat — ${problem}`
         : `Apollo blocked a threat in ${gate}`;
     } else {
-      // Growling / ears_up — describe what Apollo found without repeating "suspicious".
+      // Growling / ears_up — describe what Apollo found with clear direction.
       opener = problem
-        ? `Apollo is growling — he flagged ${problem}`
-        : `Apollo is growling about something in ${gate}`;
+        ? `Apollo flagged ${problem}`
+        : `Apollo flagged something in ${gate}`;
     }
-    const text = `${opener}. Let me show you what Apollo found and what we can do about it.`;
+    const text = `${opener}. Open it and I'll tell you exactly what to do.`;
     return {
       text,
       ctaLabel: primary.kind === "event" ? "View what Apollo found" : `View ${gate} issue`,
@@ -195,8 +199,8 @@ export function buildHomeVoice(input: {
     const problem = hasLocalEvidence(drivingEvent) ? rawProblem : "";
     const verb = state === "barking" ? "barking" : "growling";
     const text = problem
-      ? `Apollo is ${verb} — he flagged ${problem}. Let me show you what Apollo found and what we can do about it.`
-      : `Apollo is ${verb} about a security concern. Let me show you what Apollo found and what we can do about it.`;
+      ? `Apollo is ${verb} — he flagged ${problem}. Open it and I'll tell you exactly what to do.`
+      : `Apollo is ${verb} about a security concern. Open it and I'll walk you through what's happening.`;
     return {
       text,
       ctaLabel: "View what Apollo found",
@@ -210,8 +214,8 @@ export function buildHomeVoice(input: {
     const affected = affectedCapabilities(capabilities);
     const names = joinNames(affected.map((c) => CAPABILITY_LABEL[c.id] ?? c.title));
     const text = names
-      ? `Apollo is growling because he can't confirm that all his protections are running right now. ${names} may have limited coverage. That doesn't mean Apollo has found a threat. Let me show you what Apollo found and what we can do about it.`
-      : "Apollo is growling because he can't confirm that his protections are running right now. That doesn't mean he has found a threat. Let me show you what Apollo found and what we can do about it.";
+      ? `Apollo can't confirm that ${names} ${affected.length === 1 ? "is" : "are"} running right now. This doesn't mean there's a threat, but we should check. Open Protection Details and I'll guide you through restoring coverage.`
+      : "Apollo can't confirm his protections are running right now. This doesn't mean there's a threat, but we should check. Open Protection Details and I'll guide you through it.";
     return {
       text,
       ctaLabel: "View Protection Details",
@@ -223,17 +227,17 @@ export function buildHomeVoice(input: {
   // 5) Recovering — no active event, waiting on a fresh verification check.
   if (resolution.recovering) {
     return {
-      text: "Apollo is staying cautious after a recent alert. He won't settle back to patrol until a fresh check confirms things are clear. Let me show you the checks to run.",
+      text: "Apollo is staying cautious after a recent alert. He needs a fresh check to confirm things are clear. Open Protection Details — I'll show you which checks to run.",
       ctaLabel: "View Protection Details",
       ctaRoute: "/protection-details",
-      spoken: "Apollo is staying cautious after a recent alert and is waiting for a fresh check.",
+      spoken: "Apollo is staying cautious after a recent alert. Open Protection Details to run the needed checks.",
     };
   }
 
   // 6) Fallback — generic warning without a specific driver. Use the honest resolution reason.
   const reason = (resolution.reason || "").trim();
   return {
-    text: `Apollo is ${state === "barking" ? "barking" : "growling"} and I want to walk you through what's going on. ${reason} Let me show you what Apollo found and what we can do about it.`,
+    text: `Apollo is ${state === "barking" ? "barking" : "growling"}. ${reason} Open Protection Details — I'll walk you through what's happening and what to do.`,
     ctaLabel: "View Protection Details",
     ctaRoute: resolution.reasonRoute || "/protection-details",
     spoken: `Apollo is ${state === "barking" ? "barking" : "growling"}. ${reason}`,
