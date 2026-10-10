@@ -70,3 +70,67 @@ export const THIRD_PARTY_SERVICES_DISCLOSURE = {
   footer: 'Optional integrations operate only when you enable the relevant feature. Apollo applies purpose-based privacy controls to all information sent to external services. Personal information unrelated to the investigation is minimised or withheld.',
   changes: 'Harmony Wellness Group may add, remove or replace third-party services to improve security, privacy, reliability or functionality. New or replacement services remain subject to Apollo\u2019s privacy and security controls. Where changes materially affect the handling of personal information, updated disclosures will be provided and additional consent obtained where legally required.',
 };
+
+export const THIRD_PARTY_REGISTER = {
+  title: 'HWG Third-Party Service Register',
+  accountable: 'Harmony Wellness Group (HWG)',
+  intro: 'Harmony Wellness Group is accountable for the selection, configuration and oversight of the external services Apollo uses. This register reflects the verified deployment configuration.',
+  active: [
+    { name: 'Google Gemini', purpose: 'AI-powered security investigations, explanations, research and voice', shared: 'Privacy-processed investigation evidence, approved content, security indicators and minimised research queries. Authentication secrets are never sent.', controls: 'Single gateway; credential stripping; PII minimisation; purpose-based authorisation' },
+    { name: 'Google Safe Browsing', purpose: 'Detect known unsafe websites', shared: 'Sanitised website addresses and domains', controls: 'URL sanitisation removes credentials and secret parameters' },
+    { name: 'IPQualityScore', purpose: 'Phone-number fraud and reputation checking', shared: 'Only the phone number being checked', controls: 'Single-field transmission' },
+    { name: 'Push notifications (Expo, FCM, APNs)', purpose: 'Deliver security and family alerts', shared: 'Push delivery tokens and notification content', controls: 'Minimal notification content' },
+    { name: 'Emergent-managed email delivery', purpose: 'Family invitations and service emails', shared: 'Recipient email, subject and content', controls: 'Only triggered by explicit user actions' },
+    { name: 'MongoDB hosting provider', purpose: 'Store authorised application records', shared: 'Records permitted by retention controls', controls: 'Owner-scoped access; Fernet encryption; 15-minute scoped retention' },
+  ],
+  optional: [
+    { name: 'Google Gmail', purpose: 'Optional read-only email checking', shared: 'OAuth authorisation and email within read-only scope', activation: 'User connects Gmail via OAuth in Settings' },
+    { name: 'XposedOrNot', purpose: 'Check if an email appears in known breaches', shared: 'Email address submitted for the check', activation: 'Free API; default breach provider' },
+    { name: 'IANA / RDAP registries', purpose: 'Domain registration research', shared: 'Domain name being investigated', activation: 'Public registries; no credentials required' },
+    { name: 'Public websites', purpose: 'Investigation of submitted websites', shared: 'Requested website access', activation: 'Triggered by user-submitted URL investigation' },
+  ],
+  unconfigured: [
+    { name: 'Have I Been Pwned', purpose: 'Breach checking (replaces XposedOrNot when configured)', activation: 'Requires HIBP API key' },
+    { name: 'S3-compatible storage', purpose: 'Family voice messages', activation: 'Requires storage credentials' },
+  ],
+};
+
+export const COMPLIANCE_MATRIX_DISCLOSURE = {
+  title: 'Apollo Compliance Matrix',
+  version: '3.0',
+  effective: 'June 2026',
+  framework: 'Application technical compliance is assessed independently from operational and legal assurance. Passing code tests establishes application compliance. It does not automatically establish full ISO management-system conformity.',
+  standards: [
+    { name: 'ISO/IEC 27701:2025', role: 'Privacy Information Management' },
+    { name: 'ISO/IEC 29100:2024', role: 'Privacy principles and definitions' },
+    { name: 'ISO/IEC 27001:2022', role: 'Information security controls' },
+    { name: 'ISO/IEC 42001:2023', role: 'AI governance and accountability' },
+    { name: 'Australian Privacy Act 1988', role: 'Australian Privacy Principles (APPs)' },
+    { name: 'ISO/IEC 27559:2022', role: 'De-identification framework' },
+    { name: 'ISO 31700-1:2023', role: 'Privacy-by-design' },
+  ],
+  appControls: [
+    { control: 'Privacy by default', detail: 'Local-first processing, minimum collection, automatic withholding', status: 'implemented' as const },
+    { control: 'Personal information protection', detail: 'Identification, classification and redaction of unnecessary personal data', status: 'implemented' as const },
+    { control: 'Credential protection', detail: 'Prevent passwords, tokens and authentication codes from reaching Gemini', status: 'implemented' as const },
+    { control: 'Purpose limitation', detail: 'Restrict information to each service according to its authorised purpose', status: 'implemented' as const },
+    { control: 'Security evidence preservation', detail: 'Preserve sender details, URLs, scam wording and essential indicators', status: 'implemented' as const },
+    { control: 'Image privacy', detail: 'On-device screening, consent decisions and receipt validation', status: 'implemented' as const },
+    { control: 'Encryption', detail: 'Protect information transmitted and stored by application components', status: 'implemented' as const },
+    { control: 'Access control', detail: 'Authenticate devices, isolate records and protect administrative endpoints', status: 'implemented' as const },
+    { control: 'Retention and deletion', detail: 'Enforce temporary retention, expiry and deletion of application-managed records', status: 'implemented' as const },
+    { control: 'Investigative integrity', detail: 'Validate evidence references, recommendations, uncertainty and completion claims', status: 'implemented' as const },
+    { control: 'User choice and consent', detail: 'Privacy notices, permission controls and approval before relevant disclosure', status: 'implemented' as const },
+    { control: 'Technical auditability', detail: 'Privacy-safe records of relevant processing and security decisions', status: 'implemented' as const },
+  ],
+  operationalItems: [
+    { requirement: 'Formal privacy policy', appDoes: 'Display notices, obtain acknowledgements, offer privacy controls', outsideApp: 'Determine and approve legally adequate policy wording' },
+    { requirement: 'Cross-border disclosure', appDoes: 'Minimise and authorise data leaving the device', outsideApp: 'Assess overseas processing and applicable legal obligations' },
+    { requirement: 'Supplier management', appDoes: 'Restrict Gemini requests through an audited gateway', outsideApp: 'Evaluate supplier commitments and contractual terms' },
+    { requirement: 'Incident response', appDoes: 'Detect incidents, record evidence, revoke access, delete data', outsideApp: 'Assign responsibilities, evaluate breaches, handle notifications' },
+    { requirement: 'Bias and fairness', appDoes: 'Implement evidence-based decisions, run fairness regression tests', outsideApp: 'Approve the assessment and periodically review outcomes' },
+    { requirement: 'Formal access and correction', appDoes: 'Provide access, correction and deletion capabilities', outsideApp: 'Handle formal requests, identity verification and exceptions' },
+    { requirement: 'Organisational accountability', appDoes: 'Produce audit evidence and compliance reports', outsideApp: 'Assign accountable people and maintain governance' },
+  ],
+  testSummary: '344 tests passing (254 backend + 90 frontend). 12-point acceptance checklist verified.',
+};
