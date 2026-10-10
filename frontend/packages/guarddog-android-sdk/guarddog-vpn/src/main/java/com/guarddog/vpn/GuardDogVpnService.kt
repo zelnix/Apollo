@@ -42,6 +42,10 @@ object GuardDogVpnRuntime {
      * by the bridge from its own durable store, re-hydrated each session. Never null: the default
      * is the no-op store, so a bridge that never touches this behaves exactly as if it didn't exist. */
     @Volatile var websiteGateOverrideStore: WebsiteGateOverrideStore = NoWebsiteGateOverrides
+    /** DNS threat observation listener — fires when a DNS query for a hostname matching an active
+     * BLOCK rule is answered with a sinkhole address. This is a DETECTION callback, never enforcement.
+     * Wired by the production runtime; defaults to null (no observations recorded). */
+    @Volatile var dnsThreatObservedListener: DnsThreatObservedListener? = null
     /** True only while a live TUN session actually constructed the DNS gateway pipeline (see
      * [GuardDogVpnService.establish]) -- the truthful "is Website Gate currently enforcing" signal
      * the bridge reports, never assumed merely because [websiteGateRouteConfig]/[websiteGateEngine]
@@ -150,6 +154,7 @@ class GuardDogVpnService : VpnService() {
             val bindingStore = SinkholeBindingStore(
                 websiteGateEngine, websiteGateConfig.sinkholePool, GuardDogVpnRuntime.websiteGateBindingLifetimeMillis, SystemClock,
                 GuardDogVpnRuntime.websiteGateOverrideStore,
+                GuardDogVpnRuntime.dnsThreatObservedListener,
             )
             val upstream = GuardDogVpnRuntime.upstreamDnsResolverIpv4
             val forwarder: UpstreamDnsForwarder = if (upstream != null) {
@@ -242,6 +247,7 @@ class GuardDogVpnService : VpnService() {
             val bindingStore = SinkholeBindingStore(
                 websiteGateEngine, websiteGateConfig.sinkholePool, GuardDogVpnRuntime.websiteGateBindingLifetimeMillis, SystemClock,
                 GuardDogVpnRuntime.websiteGateOverrideStore,
+                GuardDogVpnRuntime.dnsThreatObservedListener,
             )
             val upstream = GuardDogVpnRuntime.upstreamDnsResolverIpv4
             val forwarder: UpstreamDnsForwarder = if (upstream != null) {

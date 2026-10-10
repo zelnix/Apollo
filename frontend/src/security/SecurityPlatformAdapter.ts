@@ -139,4 +139,12 @@ export interface SecurityPlatformAdapter {
   getDeviceSecuritySignals?(): Promise<DeviceSignals>;
   /** Optional two-phase acknowledgement for adapters with a durable native evidence inbox. */
   acknowledgeEnforcementEvidence?(evidenceIds: string[]): Promise<void>;
+  /** DNS threat observations from the native DNS gateway. Separate from enforcement evidence. */
+  getDnsThreatObservations?(): Promise<import("@/src/domain/types").DnsThreatObservation[]>;
+  /** Acknowledge processed DNS threat observations — removes them from the native inbox. */
+  acknowledgeDnsThreatObservations?(ids: string[]): Promise<void>;
+  /** Private DNS / DoH gap detection. Reports whether Apollo's DNS gateway is bypassed. */
+  getPrivateDnsStatus?(): Promise<import("@/src/domain/types").PrivateDnsStatus>;
+  /** Trigger an urgent rule bundle refresh (from Link Gate intelligence). */
+  triggerUrgentRuleRefresh?(): Promise<void>;
 }

@@ -2751,3 +2751,86 @@ agent_communication:
     message: "NAMING CONSISTENCY + EARS UP → SNIFFING RENAME VERIFICATION COMPLETE (2026-10-10). ✅ P1 BACKEND API TESTS (2/2 PASSED): (1) GET /api/health returns 200 OK with correct schema (schemaVersion:1, status:ok, service:apollo-v1). (2) POST /api/devices/register returns 201 with device_id and device_token. Backend APIs unchanged by naming consistency changes (purely frontend presentation updates). ✅ GATE → CAPABILITY NAMING (CODE VERIFIED): All user-facing Gate terminology replaced with plain English names. TITLE map: link='Link checking', text='Message screening', email='Email monitoring', device='Device monitoring'. GATE_FOR_CATEGORY and GATE_LABEL_BY_ID updated. Check result adapters updated (linkCheckResultAdapter gate='Link checking', messageCheckResultAdapter gate='Message screening'). Setup gates: 'Step X of Y', 'X of Y protections active'. Settings: 'View all protections'. About Apollo: 'Apollo's 10 Protections'. Guard/Gates screen: title='Protection', section='Your protections'. Support summary: 'Website protection'. Security adapters updated. TECHNICAL_GATE_NAME preserves 'Site Gate', 'Link Gate' for expandable detail. Internal GateId type unchanged ('site', 'link', 'text', 'call', 'email'). Route paths unchanged (/check, /message, /email, /device, /gates). ✅ EARS UP → SNIFFING RENAME (CODE VERIFIED): STATE_NAME[ears_up]='Sniffing'. STATE_LABEL[ears_up]='Apollo is sniffing something'. Internal state key 'ears_up' unchanged. Onboarding screen uses internal 'ears_up' key, displays via STATE_NAME/STATE_LABEL. Higgins greeting updated. Local alerts notification title updated. Home voice updated. ✅ LIMITATIONS: Cannot test UI visually without browser automation. Cannot verify onboarding screen state cards display, navigation flows, or interactive elements without running the app. However, all code changes verified correct via comprehensive file inspection. NO MAJOR ISSUES FOUND. All acceptance criteria met at code level. Backend APIs working correctly with no regressions."
   - agent: "testing"
     message: "NAMING CONSISTENCY + EARS UP → SNIFFING RENAME - VISUAL FRONTEND VERIFICATION COMPLETE (2026-10-10). Executed comprehensive browser automation tests in mobile dimensions (390x844) covering all 5 test scenarios from review request. ✅ TEST 1 - ONBOARDING SCREEN STATE LABELS (PASSED): Onboarding screen visible with state explanation cards. 'Sniffing' pill present and visible. 'Ears Up' count = 0 (not found anywhere). 'Apollo is sniffing something' text visible. All 5 state pills present: Patrolling, Sniffing, Growling, Barking, Biting. Screenshot: test1_onboarding_states.png. ✅ TEST 2 - SETUP GATES FLOW (PASSED): Completed onboarding flow (Continue → Privacy disclosure → 'I understand — set up Apollo'). Setup screen shows 'Step 1 of 1' (NOT 'Gate 1 of 1'). Setup title: 'Connect your email accounts?' (plain English, not 'Email Gate'). Recap screen shows '0 of 1 protection active' (NOT 'Gates on'). Note text mentions 'Protection or Settings' (NOT 'Gates'). Screenshots: test2_setup_gates.png, test2_setup_recap.png. ✅ TEST 3 - GUARD/PROTECTION SCREEN (PASSED): Navigated to /gates?__apollo_test_setup=1. Page header contains 'Protection' (NOT 'Gates'). Section heading 'Your protections' present (NOT 'Your Gates'). Capability names show 'Website protection', 'Link checking' (NOT 'Site Gate', 'Link Gate'). Screenshot: test3_gates_screen.png. ✅ TEST 4 - SETTINGS SCREEN (PASSED): Navigated to /settings?__apollo_test_setup=1. 'View all protections' visible (NOT 'View Gates'). Settings mentions 'protection' terminology throughout. No 'Gates' terminology found. Screenshot: test4_settings_screen.png. ✅ TEST 5 - SCREEN TITLES VIA DIRECT NAVIGATION (PASSED): /check screen: 'Link checking/Check' present, 'Link Gate' NOT found. /message screen: 'Message screening/Check a message' present, 'Text Gate' NOT found. /device screen: 'Device monitoring/Check my device' present, 'Device Gate' NOT found. Screenshots: test5_check_screen.png, test5_message_screen.png, test5_device_screen.png. ✅ SUMMARY: All 5 test scenarios PASSED. Visual verification confirms: (1) Onboarding shows 'Sniffing' pill and label (NOT 'Ears Up'). (2) Setup flow uses 'Step X of Y' and 'protections' (NOT 'Gate X of Y'). (3) Protection screen uses new terminology throughout. (4) Settings shows 'View all protections'. (5) Individual screens use plain English names. NO MAJOR ISSUES FOUND. All acceptance criteria fully met with visual evidence."
+
+
+## Apollo Site Gate Protection Improvements — Verification (2026-10-10)
+
+backend:
+  - task: "Backend API health endpoint"
+    implemented: true
+    working: true
+    file: "backend/routers/health.py"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "VERIFIED: GET https://redaction-pipeline.preview.emergentagent.com/api/health returns 200 OK with correct schema: {schemaVersion:1, status:'ok', service:'apollo-v1', checkedAt:'2026-10-10T14:41:14.563174+00:00'}. All health check fields present and correct."
+
+  - task: "Backend device registration endpoint"
+    implemented: true
+    working: true
+    file: "backend/routers/devices.py"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "VERIFIED: POST https://redaction-pipeline.preview.emergentagent.com/api/devices/register returns 201 with device_id, device_token, token_expires_at, and registered:true. Device registration working correctly with required fields: platform, adapter_mode, app_version, tz_offset_minutes, locale."
+
+frontend:
+  - task: "Frontend loads without JavaScript errors"
+    implemented: true
+    working: true
+    file: "frontend/app"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "VERIFIED: Frontend loads at https://redaction-pipeline.preview.emergentagent.com/ with 200 OK status. HTML structure correct with Expo Router entry bundle loading."
+
+  - task: "TypeScript type safety - new DNS threat and Private DNS types"
+    implemented: true
+    working: false
+    file: "frontend/src/domain/types.ts, frontend/src/security/nativeBridge.ts"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "testing"
+        working: false
+        comment: "PARTIAL: New TypeScript types exist and are correctly defined: (1) DnsThreatObservation interface at types.ts:224 with all required fields (observationId, hostname, ruleId, rulesetId, observedAt, decision, sinkholeIpv4, coverageScope, evidenceType). (2) PrivateDnsStatus interface at types.ts:240 with all required fields (privateDnsActive, privateDnsServer, bypassLevel, chromeDoH, explanation). (3) evidence_provenance union at types.ts:127 includes 'dns_observation'. (4) SecurityPlatformAdapter optional methods at SecurityPlatformAdapter.ts:143-149 (getDnsThreatObservations, acknowledgeDnsThreatObservations, getPrivateDnsStatus, triggerUrgentRuleRefresh). (5) WebSecurityAdapter and DesktopSecurityAdapter stubs return empty arrays/unobservable status as expected. CRITICAL ISSUE: TypeScript compilation FAILS because ApolloSecurityNativeModule interface in nativeBridge.ts is MISSING the new method declarations. GuardDogProductionSecurityAdapter.ts calls mod().getGuardDogDnsThreatObservations(), mod().acknowledgeGuardDogDnsThreatObservations(), mod().getGuardDogPrivateDnsStatus(), and mod().triggerGuardDogUrgentRefresh() but these methods are NOT declared in the ApolloSecurityNativeModule interface (lines 7-105 in nativeBridge.ts). TypeScript errors: 'Property getGuardDogDnsThreatObservations does not exist on type ApolloSecurityNativeModule' (and 3 similar errors). MUST ADD these 4 method declarations to nativeBridge.ts interface before types will compile."
+
+  - task: "Native Kotlin code verification - DNS threat detection pipeline"
+    implemented: true
+    working: "NA"
+    file: "frontend/packages/guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/SinkholeBindingStore.kt, frontend/modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/*.kt"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: "NA"
+        comment: "CODE REVIEW VERIFIED (cannot execute native code in web environment): (1) SinkholeBindingStore.kt has DnsThreatObservedListener callback interface at line 16 with onDnsThreatObserved(observation: DnsThreatObservation) method. Constructor accepts onThreatObserved parameter at line 34. (2) ApolloDnsThreatInbox.kt exists with all required methods: append() at line 23, records() at line 52, acknowledge() at line 57, status() at line 75. (3) ApolloGuardDogProductionRuntime.kt has dnsThreatInbox field at line 80, privateDnsStatus() method at line 262, triggerUrgentRefresh() method at line 290. (4) ApolloSecurityModule.kt exposes getGuardDogDnsThreatObservations at line 54, getGuardDogPrivateDnsStatus at line 58, triggerGuardDogUrgentRefresh at line 61. (5) Refresh interval is 2 HOURS (not 6) confirmed at line 306: PeriodicWorkRequestBuilder<ApolloGuardDogRefreshWorker>(2, TimeUnit.HOURS). All Kotlin source files exist with correct structure and method signatures. Native code cannot be executed in this environment - this is expected and correct per review request."
+
+  - task: "Frontend integration - DNS threat and Private DNS UI integration"
+    implemented: true
+    working: "NA"
+    file: "frontend/src/security/guarddog/GuardDogProductionSecurityAdapter.ts, frontend/src/domain/protectionTruth.ts, frontend/src/domain/gates.ts, frontend/src/domain/protectionDetails.ts, frontend/src/domain/higginsHomeVoice.ts, frontend/src/domain/protectionTimeline.ts"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: "NA"
+        comment: "CODE REVIEW VERIFIED: (1) GuardDogProductionSecurityAdapter.ts has getDnsThreatObservations() returning DnsThreatObservation[], getPrivateDnsStatus() returning PrivateDnsStatus, triggerUrgentRuleRefresh() - all with proper error handling and fallbacks. (2) protectionTruth.ts accepts optional privateDns parameter at line 13, generates DNS warning text when bypassLevel is 'confirmed' at lines 17-19. (3) gates.ts has privateDns in GatesInput interface at line 25, checks privateDnsBypass at line 78, includes Private DNS limitation text in capability at line 81. (4) protectionDetails.ts has Private DNS gap detection section at lines 330-344 with whatFound and whatToDo explanations. (5) higginsHomeVoice.ts has DNS observation explanation at lines 209-217 with detection-focused language (never claims block). (6) protectionTimeline.ts has 'DNS threat detected' title for dns_observation events at line 144. All frontend integration points exist and are correctly implemented. Cannot test UI without native build - this is expected per review request."
+
+test_plan:
+  current_focus:
+    - "Fix TypeScript compilation errors - add missing native module method declarations"
+    - "Verify types compile after fix"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "testing"
+    message: "Apollo Site Gate Protection Improvements verification PARTIALLY COMPLETE. BACKEND TESTS (2/2 PASSED): ✅ Health endpoint returns 200 OK with correct schema. ✅ Device registration returns 201 with device_id and token. FRONTEND TESTS (3/5 PASSED, 1 BLOCKED): ✅ Frontend loads with 200 OK. ✅ Native Kotlin code verified via code review - all files exist with correct structure (SinkholeBindingStore.kt, ApolloDnsThreatInbox.kt, ApolloGuardDogProductionRuntime.kt, ApolloSecurityModule.kt). Refresh interval confirmed as 2 hours (not 6). ✅ Frontend integration verified via code review - all UI integration points exist (protectionTruth.ts, gates.ts, protectionDetails.ts, higginsHomeVoice.ts, protectionTimeline.ts). ❌ CRITICAL BLOCKING ISSUE: TypeScript compilation FAILS. ApolloSecurityNativeModule interface in nativeBridge.ts is MISSING 4 method declarations: getGuardDogDnsThreatObservations(), acknowledgeGuardDogDnsThreatObservations(), getGuardDogPrivateDnsStatus(), triggerGuardDogUrgentRefresh(). GuardDogProductionSecurityAdapter.ts calls these methods but they don't exist in the interface type definition. TypeScript compiler errors at lines 78, 82, 88, 94 in GuardDogProductionSecurityAdapter.ts. LIMITATION: Cannot test native functionality in web environment - this is expected and correct per review request. Native code verification done via source code inspection only. Web/Desktop adapters correctly return empty arrays/stubs as specified."

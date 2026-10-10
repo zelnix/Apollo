@@ -144,6 +144,12 @@ class DesktopSecurityAdapterImpl implements SecurityPlatformAdapter {
       antivirusEnabled: audit ? audit.antivirusEnabled : null,
     };
   }
+  async getDnsThreatObservations(): Promise<import("@/src/domain/types").DnsThreatObservation[]> { return []; }
+  async acknowledgeDnsThreatObservations(): Promise<void> { /* no-op on desktop */ }
+  async getPrivateDnsStatus(): Promise<import("@/src/domain/types").PrivateDnsStatus> {
+    return { privateDnsActive: false, privateDnsServer: null, bypassLevel: "unobservable", chromeDoH: "unobservable", explanation: "DNS gap detection is not available on desktop." };
+  }
+  async triggerUrgentRuleRefresh(): Promise<void> { /* no-op on desktop */ }
 }
 
 export const DesktopSecurityAdapter: SecurityPlatformAdapter = new DesktopSecurityAdapterImpl();

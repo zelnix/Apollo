@@ -29,7 +29,7 @@ import { analyseUrlLocally } from "@/src/domain/risk";
 import { STATE_RANK } from "@/src/domain/stateMachine";
 import { findScentFor } from "@/src/domain/threatScent";
 import { canTransition, resolveApolloState, type StateResolution } from "@/src/domain/stateMachine";
-import type { ApolloState, Capability, Decision, DomainInfo, IntelResult, LocalAnalysis, PatrolEvent, PatrolRecord } from "@/src/domain/types";
+import type { ApolloState, Capability, Decision, DomainInfo, IntelResult, LocalAnalysis, PatrolEvent, PatrolRecord, PrivateDnsStatus } from "@/src/domain/types";
 import { patrolRecordToEvent } from "@/src/domain/patrolRecords";
 import { IS_PREVIEW_HARNESS, securityAdapter } from "@/src/security/securityAdapter";
 import { primeDeviceFacts } from "@/src/investigation/deviceBroker";
@@ -160,6 +160,8 @@ interface ApolloContextValue {
   setQuietHours(next: QuietHours): Promise<void>;
   lowPower: boolean;
   setLowPower(on: boolean): Promise<void>;
+  /** Private DNS / DoH gap detection. null when not determined (web/non-native). */
+  privateDnsStatus: PrivateDnsStatus | null;
   storage: { getItem(key: string, fallback: string | null): Promise<string | null>; setItem(key: string, value: string): Promise<boolean> };
 }
 
@@ -231,6 +233,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   // Quiet hours (local + synced to backend so growling pushes are held) and battery saver.
   const [quietHours, setQuietHoursState] = useState<QuietHours>(DEFAULT_QUIET);
   const [lowPower, setLowPowerState] = useState(false);
+  const [privateDnsStatus, setPrivateDnsStatus] = useState<PrivateDnsStatus | null>(null);
   useEffect(() => {
     void storage.getItem<string | null>(K.quiet, null).then((raw) => { if (raw) { const parsed = safeParse<QuietHours | null>(raw, null, K.quiet, (v) => typeof v === "object" && v !== null && !Array.isArray(v)); if (parsed) setQuietHoursState({ ...DEFAULT_QUIET, ...parsed }); } });
     void storage.getItem<boolean>(K.lowPower, false).then((v) => setLowPowerState(!!v));
@@ -280,6 +283,10 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       if (generation !== probeGeneration.current) return null;
       const observed = freshObservation(status) ? status : unavailableObservation(status);
       setCapabilities(caps); setProtection(observed); setPermissions(perms); setNetwork(net);
+      // ── Private DNS gap detection ──────────────────────────────────────────
+      if (securityAdapter.getPrivateDnsStatus) {
+        securityAdapter.getPrivateDnsStatus().then(setPrivateDnsStatus).catch(() => setPrivateDnsStatus(null));
+      }
       const verified = freshObservation(status) ? status.lastVerified : null;
       setLastVerifiedAt(verified);
       await storage.setItem(K.verified, verified);
@@ -299,6 +306,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         void syncEventRef.current?.(ev);
       } else if (!a.state) lastConnectionKey.current = a.key;
       await syncEnforcementEvidence(evidence).catch(deliveryFailure);
+      await syncDnsThreatObservations().catch(deliveryFailure);
       return observed;
     } catch {
       if (generation === probeGeneration.current) { setProtection(p => unavailableObservation(p)); setLastVerifiedAt(null); setCapabilities([]); }
@@ -393,6 +401,50 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     await storage.setItem(K.seenEvidence, JSON.stringify(retainedSeen));
     await securityAdapter.acknowledgeEnforcementEvidence?.(retainedSeen);
   }, [showToast, persistEvents]);
+
+  // ── DNS Threat Observation sync (Growling only — never Biting) ──────────
+  // Polls native DNS threat observations from a SEPARATE inbox (ApolloDnsThreatInbox).
+  // These represent genuine DNS-level detections: Apollo redirected a DNS query for a
+  // known-dangerous hostname to a sinkhole. This is a DETECTION, not enforcement.
+  const seenDnsObsRef = useRef<Set<string> | null>(null);
+  const syncDnsThreatObservations = useCallback(async () => {
+    if (!securityAdapter.getDnsThreatObservations) return;
+    try {
+      const observations = await securityAdapter.getDnsThreatObservations();
+      if (!observations.length) return;
+      if (!seenDnsObsRef.current) {
+        const raw = await storage.getItem<string | null>("apollo:seen_dns_observations", null);
+        seenDnsObsRef.current = new Set(raw ? safeParse<string[]>(raw, [], "seen_dns_observations", Array.isArray) : []);
+      }
+      const seen = seenDnsObsRef.current;
+      const fresh = observations.filter((o) => !seen.has(o.observationId));
+      const ackIds: string[] = [];
+      for (const obs of fresh) {
+        const domain = obs.hostname;
+        const ev: PatrolEvent = {
+          event_id: `dns-obs-${obs.observationId}`, device_id: deviceIdRef.current ?? "local", category: "website",
+          state: "growling", status: "active",
+          headline: `Apollo detected a known threat: ${domain}`,
+          what_happened: `Apollo's website protection observed a DNS query for ${domain}, which matches a known threat in Apollo's active rules. The DNS answer was redirected to prevent the connection.`,
+          why: ["Apollo's DNS gateway intercepted the query before the browser received a real address.", "This is a detection — Apollo redirected the DNS answer, but has not yet confirmed whether a real connection attempt followed."],
+          what_to_do: "Do not visit this website. If you opened it from a message or link, treat that source as suspicious.",
+          indicator_host: domain, indicator_digest: null,
+          verified_block: false, evidence_provenance: "dns_observation",
+          adapter_label: securityAdapter.label, occurred_at: obs.observedAt, resolved_at: null, trust_allowed: false, background: true,
+        };
+        await persistEvents([ev, ...eventsRef.current.filter(x => x.event_id !== ev.event_id)]);
+        await syncEventRef.current?.(ev);
+        seen.add(obs.observationId); ackIds.push(obs.observationId);
+        showToast(`Apollo detected a known threat: ${domain}`, "growling");
+      }
+      if (ackIds.length) {
+        const retainedSeen = [...seen].slice(-2048);
+        await storage.setItem("apollo:seen_dns_observations", JSON.stringify(retainedSeen));
+        await securityAdapter.acknowledgeDnsThreatObservations?.(ackIds);
+      }
+    } catch { /* non-critical — periodic poll will retry */ }
+  }, [showToast, persistEvents]);
+
   const lastConnectionKey = useRef<string | null>(null);
   const deviceIdRef = useRef<string | null>(null);
   useEffect(() => { deviceIdRef.current = deviceId; }, [deviceId]);
@@ -1080,6 +1132,11 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     };
     if (isEvent || decision.state === "resting") await upsertEvent(ev); // resting checks are still traceable in Patrol
     void markCheckDone("link");
+    // When Link Gate confirms a malicious domain, trigger an urgent rule refresh so Site Gate
+    // can pick up any new rules derived from this intelligence as soon as possible.
+    if (intel?.verdict === "malicious" && securityAdapter.triggerUrgentRuleRefresh) {
+      securityAdapter.triggerUrgentRuleRefresh().catch(() => { /* non-critical — periodic refresh continues */ });
+    }
     return { submissionId: ev?.event_id ?? Crypto.randomUUID(), local, intel, intelError, decision, assessment, investigationError, event: ev };
   }, [deviceId, trust, upsertEvent]);
 
@@ -1200,6 +1257,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   const value: ApolloContextValue = {
     ready, setupDone, deviceId, identityReset, reRegisterDevice, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label, isMock: IS_PREVIEW_HARNESS,
+    privateDnsStatus,
     refreshing, refresh, verifyNow, lastVerifiedAt, toggleProtection, requestPermission, enableSiteProtection, events, trust, resolution, checkLink, blockEvent, trustEvent, resolveEvent, revokeTrust, clearPatrol, requestDataDeletion, trustedSsids, trustNetwork, forgetNetwork, toast, showToast, checkMessage, scanGmailInbox, recordRecovery, upsertEvent, recordPageAnalysis, checkCall, checkNumberRisk,
     notificationStatus, enableNotifications, quietHours, quietNow, setQuietHours, lowPower, setLowPower, storage,
   };

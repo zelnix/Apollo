@@ -204,7 +204,20 @@ export function buildHomeVoice(input: {
     };
   }
 
-  // 3b) A driving event exists (e.g. growling scam text) but didn't surface as a dedicated attention
+  // 3b) DNS threat observation — Apollo observed and redirected a DNS query for a known threat.
+  //     This is a DETECTION explanation, not enforcement. Never claim a block.
+  if (drivingEvent?.evidence_provenance === "dns_observation" && drivingEvent.indicator_host) {
+    const domain = drivingEvent.indicator_host;
+    const text = `Apollo detected a known threat — a DNS query for "${domain}" was intercepted and redirected before the browser could connect. This is a detection, not a confirmed block. Do not visit this website. If you received it in a message, treat that source as suspicious.`;
+    return {
+      text,
+      ctaLabel: "View what Apollo detected",
+      ctaRoute: `/patrol/${encodeURIComponent(drivingEvent.event_id)}`,
+      spoken: `Apollo detected a known threat. A DNS query for ${domain} was intercepted.`,
+    };
+  }
+
+  // 3c) A driving event exists (e.g. growling scam text) but didn't surface as a dedicated attention
   //     item — build the paragraph from it directly rather than falling to a generic reason.
   if (drivingEvent) {
     const rawProblem = (drivingEvent.what_happened || drivingEvent.headline || "").trim();

@@ -139,7 +139,12 @@ export function buildTodayTimeline(input: {
       } else if (e.state === "ears_up") {
         title = `${shortSubject} — sniffing`;
       } else if (e.state === "growling") {
-        title = `${shortSubject} — flagged a concern`;
+        // DNS threat observations get a distinct title.
+        if (e.evidence_provenance === "dns_observation") {
+          title = `${shortSubject} — DNS threat detected`;
+        } else {
+          title = `${shortSubject} — flagged a concern`;
+        }
       } else if (e.state === "barking") {
         title = `${shortSubject} — needs your decision`;
       } else {

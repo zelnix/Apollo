@@ -109,6 +109,8 @@ export function buildProtectionFindings(input: {
   gates: GatePresentation[];
   attention: AttentionItem[];
   events: PatrolEvent[];
+  /** Private DNS status — when bypassLevel is "confirmed", emit a protection gap finding. */
+  privateDnsStatus?: import("./types").PrivateDnsStatus | null;
 }): ProtectionFinding[] {
   const findings: ProtectionFinding[] = [];
   const seenGates = new Set<string>();
@@ -323,6 +325,26 @@ export function buildProtectionFindings(input: {
       findingType: "infrastructure",
     });
     seenGates.add(g.title);
+  }
+
+  // ── 5) Private DNS protection gap ──
+  // When Android's Private DNS is confirmed active, Apollo's DNS gateway is completely bypassed.
+  // This is an infrastructure finding — not a threat — with one clear action.
+  if (input.privateDnsStatus?.bypassLevel === "confirmed") {
+    const server = input.privateDnsStatus.privateDnsServer;
+    findings.push({
+      id: "gap:private-dns",
+      gate: "Website protection",
+      kind: "automatic",
+      kindLabel: "Automatic protection",
+      tone: "limited",
+      statusLabel: "Reduced DNS coverage",
+      whatFound: `Your device's Private DNS${server ? ` (${server})` : ""} routes all DNS queries through an encrypted channel that Apollo cannot inspect. Website protection based on DNS inspection is bypassed.`,
+      whatItMeans: "Apollo cannot observe which websites this device requests through DNS. Existing rule-bundle filtering and manual link checks remain available, but automatic DNS-level threat detection is inactive.",
+      whatToDo: "Turn off Private DNS: go to Settings → Network & internet → Private DNS → Off. This restores Apollo's DNS visibility without affecting your browsing.",
+      actionLabel: "Open device settings",
+      findingType: "infrastructure",
+    });
   }
 
   return findings;

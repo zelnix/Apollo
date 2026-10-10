@@ -124,7 +124,7 @@ export interface PatrolEvent {
    *  - "local_device": created on this device with real, detailed findings.
    *  - "server_projected": came from the server's privacy-projected summary.
    *  - "incomplete": data is missing, unverifiable, or was downgraded by an enforcement truth gate. */
-  evidence_provenance?: "local_device" | "server_projected" | "incomplete";
+  evidence_provenance?: "local_device" | "server_projected" | "incomplete" | "dns_observation";
   adapter_label: string;
   occurred_at: string;
   resolved_at: string | null;
@@ -209,4 +209,43 @@ export interface Decision {
   confidence: "low" | "medium" | "high";
   /** Gate 3: organisation the destination claims/looks like (Brand & Impersonation engine). */
   claimed_brand?: string | null;
+}
+
+// ── DNS Threat Observation (separate from enforcement evidence) ──────────
+
+/**
+ * A genuine DNS-level threat observation — produced when a DNS query for a hostname
+ * matching an active BLOCK rule is intercepted and answered with a sinkhole address.
+ *
+ * This is a DETECTION, not enforcement. The observation MUST NOT claim a block occurred.
+ * It says: "Apollo observed a DNS query for a known-dangerous hostname and redirected
+ * the answer to a sinkhole."
+ */
+export interface DnsThreatObservation {
+  observationId: string;
+  hostname: string;
+  ruleId: string | null;
+  rulesetId: string | null;
+  observedAt: string;
+  decision: "block";
+  sinkholeIpv4: string | null;
+  coverageScope: string;
+  evidenceType: "dns_observation";
+}
+
+/**
+ * Private DNS / DoH gap detection status. Identifies when Apollo's website protection
+ * is reduced because DNS queries bypass the virtual DNS gateway.
+ */
+export interface PrivateDnsStatus {
+  /** True if Android's Private DNS is active (DoT to an encrypted provider). */
+  privateDnsActive: boolean;
+  /** The configured Private DNS server name (e.g. "dns.google"), or null for "Automatic". */
+  privateDnsServer: string | null;
+  /** "confirmed" = Private DNS is on (verified), "none" = off, "unobservable" = cannot determine. */
+  bypassLevel: "confirmed" | "none" | "unobservable";
+  /** Chrome DoH is always "unobservable" — no Android API exposes Chrome's internal DNS config. */
+  chromeDoH: "unobservable";
+  /** Plain-English explanation for Higgins / protection details. */
+  explanation: string;
 }

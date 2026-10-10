@@ -23,6 +23,7 @@ import com.guarddog.core.rules.RuleBundle
 import com.guarddog.core.rules.ValidationResult
 import com.guarddog.vpn.BindingResult
 import com.guarddog.vpn.ControlledEndpointResolver
+import com.guarddog.vpn.DnsThreatObservedListener
 import com.guarddog.vpn.GuardDogVpnRuntime
 import com.guarddog.vpn.GuardDogVpnService
 import com.guarddog.vpn.MutableWebsiteGateOverrideStore
@@ -30,6 +31,8 @@ import com.guarddog.vpn.RecoveryInspector
 import com.guarddog.vpn.VpnConfig
 import com.guarddog.vpn.VpnStateRepository
 import com.guarddog.vpn.WebsiteGateAddressing
+import android.net.ConnectivityManager
+import android.net.LinkProperties
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -74,6 +77,7 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
   private val inbox = BoundedEvidenceInbox(256, SharedPreferencesEvidencePersistence(prefs)) {
     runCatching { JSONObject(it).optString("evidenceId").takeIf(String::isNotBlank) }.getOrNull()
   }
+  private val dnsThreatInbox = ApolloDnsThreatInbox(context.getSharedPreferences("apollo_dns_threat_observations", Context.MODE_PRIVATE))
   private val pending = ConcurrentHashMap<String, ProductionPendingEvidence>()
   private var config: ProductionRuntimeConfig? = prefs.getString("config", null)?.let { runCatching { ProductionRuntimeConfig.parse(it) }.getOrNull() }
   private var engine: GuardDogSDKEngine? = null
@@ -186,6 +190,9 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
     GuardDogVpnRuntime.websiteGateEngine = activeEngine; GuardDogVpnRuntime.websiteGateRouteConfig = WebsiteGateAddressing.defaultRouteConfig()
     GuardDogVpnRuntime.upstreamDnsResolverIpv4 = upstream; GuardDogVpnRuntime.websiteGateBindingLifetimeMillis = 30_000L
     GuardDogVpnRuntime.websiteGateOverrideStore = websiteGateOverrides
+    GuardDogVpnRuntime.dnsThreatObservedListener = DnsThreatObservedListener { observation ->
+      try { dnsThreatInbox.append(observation) } catch (_: Throwable) { dnsThreatInbox.reportFailure("DNS threat observation persistence failed") }
+    }
     check(prefs.edit().putBoolean("requested", true).putString("since", prefs.getString("since", null) ?: Instant.now().toString()).commit())
     context.startForegroundService(Intent(context, GuardDogVpnService::class.java).setAction(GuardDogVpnService.ACTION_START))
     if (!transitions.await(8_000) { actualOperational() }) { context.startService(Intent(context, GuardDogVpnService::class.java).setAction(GuardDogVpnService.ACTION_STOP)); error("Production GuardDog start timed out") }
@@ -229,7 +236,10 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
       .put("websiteGateConfigured", GuardDogVpnRuntime.websiteGateRouteConfig != null).put("dnsGatewayActive", GuardDogVpnRuntime.websiteGateActive)
       .put("upstreamDnsResolverIpv4", GuardDogVpnRuntime.upstreamDnsResolverIpv4 ?: JSONObject.NULL)
       .put("evidencePending", inboxState.pending).put("evidenceCapacity", inboxState.capacity).put("evidenceOverflow", inboxState.overflow)
-      .put("evidencePersistenceError", inboxState.error ?: JSONObject.NULL).toString()
+      .put("evidencePersistenceError", inboxState.error ?: JSONObject.NULL)
+      .put("dnsThreatObservations", dnsThreatInbox.status().let { JSONObject().put("pending", it.pending).put("capacity", it.capacity).put("error", it.error ?: JSONObject.NULL) })
+      .put("privateDns", privateDnsStatus())
+      .toString()
   }
 
   fun capabilities(): String = JSONArray().put(JSONObject().put("id", "site_guard").put("title", "GuardDog production Website Gate")
@@ -240,6 +250,50 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
     else JSONObject().put("supported", true).put("verdict", result.verdict).put("reasons", JSONArray()).put("sanitizedUrl", result.sanitizedUrl).put("host", result.host).put("ruleId", result.ruleId ?: JSONObject.NULL).toString() }
   fun evidence(): String = "[${inbox.records().filter { runCatching { ApolloGuardDogEvidenceCorrelator.contractValid(jsonObject(JSONObject(it))) }.getOrDefault(false) }.joinToString(",")}]"
   fun acknowledgeEvidence(raw: String): String { val ids = JSONArray(raw); val count = inbox.acknowledge((0 until ids.length()).map { ids.getString(it) }.toSet()); return JSONObject().put("acknowledged", count).put("pending", inbox.status().pending).toString() }
+
+  // ── DNS Threat Observations (separate from enforcement evidence) ──────────
+  fun dnsThreatObservations(): String = dnsThreatInbox.records()
+  fun acknowledgeDnsThreatObservations(raw: String): String {
+    val ids = JSONArray(raw); val count = dnsThreatInbox.acknowledge((0 until ids.length()).map { ids.getString(it) }.toSet())
+    return JSONObject().put("acknowledged", count).put("pending", dnsThreatInbox.status().pending).toString()
+  }
+
+  // ── Private DNS / DoH Gap Detection ──────────────────────────────────────
+  fun privateDnsStatus(): JSONObject {
+    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+    val activeNetwork = cm?.activeNetwork
+    val linkProps: LinkProperties? = if (activeNetwork != null) cm.getLinkProperties(activeNetwork) else null
+    val privateDnsActive = linkProps?.isPrivateDnsActive ?: false
+    val privateDnsServer = linkProps?.privateDnsServerName
+    // Distinguish confirmed bypass from possible bypass:
+    // - privateDnsActive == true && server != null → confirmed bypass (user-configured DoT provider)
+    // - privateDnsActive == true && server == null → confirmed bypass (Android "Automatic" mode)
+    // - privateDnsActive == false → Private DNS off; Apollo's DNS gateway is active
+    // Chrome's internal DoH is unobservable (no API) — report as "possible"
+    val bypassLevel = when {
+      privateDnsActive && privateDnsServer != null -> "confirmed"
+      privateDnsActive -> "confirmed"
+      else -> "none"
+    }
+    return JSONObject()
+      .put("privateDnsActive", privateDnsActive)
+      .put("privateDnsServer", privateDnsServer ?: JSONObject.NULL)
+      .put("bypassLevel", bypassLevel)
+      .put("chromeDoH", "unobservable")
+      .put("explanation", when (bypassLevel) {
+        "confirmed" -> "Your device's Private DNS setting sends all DNS queries through an encrypted channel that Apollo cannot inspect. Website protection is reduced to rule-bundle filtering only."
+        else -> "Apollo's DNS gateway is active and inspecting plaintext DNS queries."
+      })
+  }
+
+  // ── Urgent rule refresh ──────────────────────────────────────────────────
+  fun triggerUrgentRefresh(): String {
+    val work = OneTimeWorkRequestBuilder<ApolloGuardDogRefreshWorker>()
+      .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()).build()
+    WorkManager.getInstance(context).enqueueUniqueWork("apollo-guarddog-urgent-refresh", ExistingWorkPolicy.REPLACE, work)
+    return JSONObject().put("triggered", true).put("type", "urgent").toString()
+  }
+
   fun recovery(): String { val result = RecoveryInspector.inspect(context, state); return JSONObject().put("lifecycle", result.lifecycle).put("tunOpen", result.tunOpen).put("selectiveRouteActive", result.selectiveRouteActive).put("vpnTransportPresent", result.vpnTransportPresent).put("routeCidr", result.routeCidr ?: JSONObject.NULL).put("dropReporterAttached", result.dropReporterAttached).put("recovered", result.recovered).toString() }
 
   private fun fetch(rawUrl: String): String { val connection = URL(rawUrl).openConnection() as HttpURLConnection; connection.connectTimeout = 15_000; connection.readTimeout = 20_000; connection.instanceFollowRedirects = false
@@ -249,12 +303,12 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
       return bytes.toString(Charsets.UTF_8)
     } finally { connection.disconnect() } }
   private fun scheduleExpiry(at: Instant) { val delay = Duration.between(Instant.now(), at).toMillis().coerceAtLeast(0); val work = OneTimeWorkRequestBuilder<ApolloGuardDogExpiryWorker>().setInitialDelay(delay, TimeUnit.MILLISECONDS).build(); WorkManager.getInstance(context).enqueueUniqueWork("apollo-guarddog-production-expiry", ExistingWorkPolicy.REPLACE, work) }
-  private fun scheduleRefresh() { val work = PeriodicWorkRequestBuilder<ApolloGuardDogRefreshWorker>(6, TimeUnit.HOURS)
+  private fun scheduleRefresh() { val work = PeriodicWorkRequestBuilder<ApolloGuardDogRefreshWorker>(2, TimeUnit.HOURS)
       .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()).build()
     WorkManager.getInstance(context).enqueueUniquePeriodicWork("apollo-guarddog-production-refresh", ExistingPeriodicWorkPolicy.UPDATE, work) }
   private fun requireProductionEnabled() { check(ApolloGuardDogProductionOwner.isEligible(context)) { "Production GuardDog authority is disabled in this build" } }
   private fun detachRuntime() { GuardDogVpnRuntime.reporter = null; GuardDogVpnRuntime.config = null; GuardDogVpnRuntime.websiteGateEngine = null
-    GuardDogVpnRuntime.websiteGateRouteConfig = null; GuardDogVpnRuntime.upstreamDnsResolverIpv4 = null }
+    GuardDogVpnRuntime.websiteGateRouteConfig = null; GuardDogVpnRuntime.upstreamDnsResolverIpv4 = null; GuardDogVpnRuntime.dnsThreatObservedListener = null }
   private fun onNetworkDnsChanged(upstream: String?) {
     if (upstream == observedUpstreamDns) return
     observedUpstreamDns = upstream

@@ -3,24 +3,27 @@ package com.guarddog.vpn
 import com.guarddog.core.GuardDogSDKEngine
 import com.guarddog.core.WebsiteGateAuthorization
 import com.guarddog.core.clock.Clock
+import com.guarddog.core.events.DnsThreatObservation
+import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+
+/**
+ * Callback interface for DNS threat observations. Invoked when a DNS query for a hostname
+ * matching an active BLOCK rule is successfully answered with a sinkhole address.
+ * This is a DETECTION callback — it must never claim enforcement occurred.
+ */
+fun interface DnsThreatObservedListener {
+    fun onDnsThreatObserved(observation: DnsThreatObservation)
+}
 
 /**
  * Gate Guard M2 Website Gate: owns the fixed, pre-provisioned sinkhole pool on the adapter side and
  * arms short-lived `WebsiteGateBinding`s in [engine] from real DNS observations only.
  *
- * Never itself produces evidence or emits anything: arming a binding is authorization input (see
- * `GuardDogSDKEngine.authorizeWebsiteGateTarget`), not enforcement. A null return here means the
- * engine rejected the arming (no accepted M2 bundle, host not matched, rule action isn't `block`,
- * etc.) -- the caller must then fail open and forward the query upstream untouched.
- *
- * Assignment is per-host sticky (a still-blocked host reuses its previously assigned sinkhole IP
- * instead of needlessly rotating) with a free-slot-preferring round robin fallback. Disclosed
- * limitation: with a pool this small, two DIFFERENT hosts blocked at the same moment can
- * momentarily contend for the same slot; the short TTL bounds the window, and worst case is a
- * mis-attributed (not a missed or over-claimed) block -- the core invariant that DNS alone never
- * blocks, and only a real dropped packet against a live binding does, is unaffected either way.
+ * Arming a binding is authorization input (see `GuardDogSDKEngine.authorizeWebsiteGateTarget`),
+ * not enforcement. When a binding IS armed, this store fires [onThreatObserved] to record the
+ * genuine DNS-level observation separately from any subsequent packet-drop enforcement evidence.
  */
 class SinkholeBindingStore(
     private val engine: GuardDogSDKEngine,
@@ -28,6 +31,10 @@ class SinkholeBindingStore(
     private val bindingLifetimeMillis: Long,
     private val clock: Clock,
     private val overrideStore: WebsiteGateOverrideStore = NoWebsiteGateOverrides,
+    private val onThreatObserved: DnsThreatObservedListener? = null,
+    /** Deduplication window in millis — repeated observations for the same hostname within this
+     *  window fire the listener only once. Default: 5 minutes. */
+    private val observationDedupeWindowMillis: Long = 300_000L,
 ) {
     init {
         require(sinkholePool.isNotEmpty()) { "sinkhole pool must not be empty" }
@@ -36,6 +43,8 @@ class SinkholeBindingStore(
 
     private val hostToIp = ConcurrentHashMap<String, String>()
     private val nextIndex = AtomicInteger(0)
+    /** Per-hostname deduplication: tracks the last observation timestamp to avoid flooding. */
+    private val lastObservedAt = ConcurrentHashMap<String, Long>()
 
     /** Arms (or refreshes) a binding for [host]. Returns the sinkhole IPv4 to answer the DNS query
      * with, or null if [engine] rejected the arming (or a local user ALLOW override is present --
@@ -52,10 +61,34 @@ class SinkholeBindingStore(
         return when (val result = engine.authorizeWebsiteGateTarget(host, candidateIp, expiresAt)) {
             is WebsiteGateAuthorization.Bound -> {
                 hostToIp[host] = result.binding.sinkholeIpv4
+                emitObservation(host, result.binding.sinkholeIpv4, result.binding.ruleId, result.binding.rulesetId, now)
                 result.binding.sinkholeIpv4
             }
             is WebsiteGateAuthorization.Rejected -> null
         }
+    }
+
+    /** Fires the DnsThreatObservedListener (if set) for a successful BLOCK arming, with deduplication. */
+    private fun emitObservation(host: String, sinkholeIpv4: String, ruleId: String?, rulesetId: String?, nowMillis: Long) {
+        val listener = onThreatObserved ?: return
+        val last = lastObservedAt[host]
+        if (last != null && nowMillis - last < observationDedupeWindowMillis) return
+        lastObservedAt[host] = nowMillis
+        pruneObservationHistory(nowMillis)
+        val observation = DnsThreatObservation(
+            observationId = "dns-obs-${host}-${nowMillis}",
+            hostname = host,
+            ruleId = ruleId,
+            rulesetId = rulesetId,
+            observedAt = Instant.ofEpochMilli(nowMillis).toString(),
+            sinkholeIpv4 = sinkholeIpv4,
+        )
+        try { listener.onDnsThreatObserved(observation) } catch (_: Throwable) { /* never crash the DNS handler for an observation failure */ }
+    }
+
+    private fun pruneObservationHistory(now: Long) {
+        val it = lastObservedAt.entries.iterator()
+        while (it.hasNext()) if (now - it.next().value >= observationDedupeWindowMillis * 2) it.remove()
     }
 
     /** Prefers a slot with no live (or already-expired) binding at all; refuses to overwrite a live

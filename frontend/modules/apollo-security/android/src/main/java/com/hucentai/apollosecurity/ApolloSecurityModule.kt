@@ -50,6 +50,16 @@ class ApolloSecurityModule : Module() {
     Function("acknowledgeGuardDogProductionEvidence") { ids: String -> guardDogProduction().acknowledgeEvidence(ids) }
     Function("getGuardDogProductionRecovery") { guardDogProduction().recovery() }
 
+    // ── DNS Threat Observations (separate pipeline from enforcement evidence) ──
+    Function("getGuardDogDnsThreatObservations") { guardDogProduction().dnsThreatObservations() }
+    Function("acknowledgeGuardDogDnsThreatObservations") { ids: String -> guardDogProduction().acknowledgeDnsThreatObservations(ids) }
+
+    // ── Private DNS / DoH gap detection ──────────────────────────────────────
+    Function("getGuardDogPrivateDnsStatus") { guardDogProduction().privateDnsStatus().toString() }
+
+    // ── Urgent rule refresh (from Link Gate intelligence trigger) ─────────────
+    Function("triggerGuardDogUrgentRefresh") { guardDogProduction().triggerUrgentRefresh() }
+
     // ── Production-dedicated OS observation methods ─────────────────────────
     // These provide the same OS-level facts as the legacy bridge functions but
     // derive VPN state from the GuardDog production runtime, never from

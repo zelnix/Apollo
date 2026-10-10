@@ -110,6 +110,12 @@ class WebSecurityAdapterImpl implements SecurityPlatformAdapter {
 
   async getPlatformCapabilityProfile(): Promise<PlatformCapabilityProfile> { return PLATFORM_CAPABILITY_BASELINES.web; }
   async getEnforcementEvidence(): Promise<EnforcementEvidence[]> { return []; }
+  async getDnsThreatObservations(): Promise<import("@/src/domain/types").DnsThreatObservation[]> { return []; }
+  async acknowledgeDnsThreatObservations(): Promise<void> { /* no-op on web */ }
+  async getPrivateDnsStatus(): Promise<import("@/src/domain/types").PrivateDnsStatus> {
+    return { privateDnsActive: false, privateDnsServer: null, bypassLevel: "unobservable", chromeDoH: "unobservable", explanation: "DNS gap detection is not available in the browser." };
+  }
+  async triggerUrgentRuleRefresh(): Promise<void> { /* no-op on web */ }
 }
 
 export const WebSecurityAdapter: SecurityPlatformAdapter = new WebSecurityAdapterImpl();

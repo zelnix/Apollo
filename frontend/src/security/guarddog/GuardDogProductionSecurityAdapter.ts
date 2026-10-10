@@ -1,4 +1,5 @@
 import type { Capability } from "@/src/domain/types";
+import type { DnsThreatObservation, PrivateDnsStatus } from "@/src/domain/types";
 import type { EnforcementEvidence, PlatformCapabilityProfile } from "@/src/security/PlatformCapabilityProfile";
 import type { BlockResult, NetworkStatus, NativeUrlAnalysis, ProtectionPermission, ProtectionStatus, SecurityPlatformAdapter } from "@/src/security/SecurityPlatformAdapter";
 import { getNativeModule, NativeModuleUnavailable } from "@/src/security/nativeBridge";
@@ -70,5 +71,27 @@ export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapte
   async acknowledgeEnforcementEvidence(evidenceIds: string[]) {
     const result = await this.json<{ persistenceError?: string | null }>(this.mod().acknowledgeGuardDogProductionEvidence(JSON.stringify(evidenceIds)));
     if (result.persistenceError) throw new Error(result.persistenceError);
+  }
+
+  // ── DNS Threat Observations (separate from enforcement evidence) ──────────
+  async getDnsThreatObservations(): Promise<DnsThreatObservation[]> {
+    try { await this.ensureConfigured(); return JSON.parse(this.mod().getGuardDogDnsThreatObservations()); }
+    catch { return []; }
+  }
+  async acknowledgeDnsThreatObservations(ids: string[]): Promise<void> {
+    try { this.mod().acknowledgeGuardDogDnsThreatObservations(JSON.stringify(ids)); }
+    catch { /* non-critical */ }
+  }
+
+  // ── Private DNS / DoH gap detection ──────────────────────────────────────
+  async getPrivateDnsStatus(): Promise<PrivateDnsStatus> {
+    try { await this.ensureConfigured(); return JSON.parse(this.mod().getGuardDogPrivateDnsStatus()); }
+    catch { return { privateDnsActive: false, privateDnsServer: null, bypassLevel: "unobservable", chromeDoH: "unobservable", explanation: "Unable to determine Private DNS status." }; }
+  }
+
+  // ── Urgent rule refresh trigger (from Link Gate intelligence) ─────────────
+  async triggerUrgentRuleRefresh(): Promise<void> {
+    try { this.mod().triggerGuardDogUrgentRefresh(); }
+    catch { /* non-critical — periodic refresh continues */ }
   }
 }

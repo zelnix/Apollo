@@ -35,6 +35,13 @@ export interface ApolloSecurityNativeModule {
   getGuardDogProductionEvidence(): string;
   acknowledgeGuardDogProductionEvidence(idsJson: string): string;
   getGuardDogProductionRecovery(): string;
+  // DNS Threat Observations (separate pipeline from enforcement evidence)
+  getGuardDogDnsThreatObservations(): string;
+  acknowledgeGuardDogDnsThreatObservations(idsJson: string): string;
+  // Private DNS / DoH gap detection
+  getGuardDogPrivateDnsStatus(): string;
+  // Urgent rule refresh trigger (from Link Gate intelligence)
+  triggerGuardDogUrgentRefresh(): string;
   getGuardDogProductionNetworkStatus(): Promise<string>;
   getGuardDogProductionProtectionPermissions(): Promise<string>;
   requestGuardDogProductionProtectionPermission(id: string): Promise<string>;
