@@ -340,6 +340,4 @@ This section maps each privacy/security control to its authoritative implementat
 | **Package 6** | Implemented | Code inspection, documentation | N/A (documentation + existing controls verified) | G-06 soft-delete, G-08 incident formalisation, G-09 admin MFA remain open | Encryption, access control, retention, key management, audit, incident response documented | Requested |
 | **Package 7** | Implemented | Provider inspection, disclosure verification, documentation | N/A (governance + legal documentation) | G-04, G-05, G-07, G-10 require legal/formal action | AI inventory, risk register, provider terms, APP assessment, consent model, change governance; G-11 CLOSED | Requested |
 | **Package 8** | Implemented | Full regression (344 tests), code inspection, functional verification | 253 backend + 90 frontend = 344 all passing | Client-assertion trust; visual-only credentials; native build needed | Production acceptance report; 12-point checklist all passing; no confirmed defects | Requested |
-| Package 6 | Not started | — | — | — | — | — |
-| Package 7 | Not started | — | — | — | — | — |
-| Package 8 | Not started | — | — | — | — | — |
+
