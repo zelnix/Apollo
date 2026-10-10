@@ -140,9 +140,9 @@ async def _scan_attachments_vt(device_id: str, message: dict, provider: str) -> 
                     )
                 # "clean" and "error" results are not added as findings (clean is good news, error is non-actionable)
             except Exception as exc:
-                logger.info("VT scan failed for attachment %s: %s", att.get("filename", "?"), type(exc).__name__)
+                logger.info("VT scan failed for an attachment: %s", type(exc).__name__)
     except Exception as exc:
-        logger.info("VT attachment scanning failed for message %s: %s", message_id, type(exc).__name__)
+        logger.info("VT attachment scanning failed for a monitored message: %s", type(exc).__name__)
     return findings
 
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)

@@ -30,6 +30,13 @@ MAX_RETRIES = 2                  # retry up to 2 more times on transient failure
 RETRY_BACKOFF = 1.0              # seconds; doubled each retry
 
 
+def _mask_phone(e164: str) -> str:
+    """Mask all but the last 3 digits for operational logs. '+61412345678' → '+61*****678'."""
+    if len(e164) <= 4:
+        return "***"
+    return e164[:3] + "*" * (len(e164) - 6) + e164[-3:]
+
+
 def _higgins(decision: str, data: dict) -> dict:
     score = data.get("fraud_score")
     if decision == "avoid":
@@ -92,7 +99,7 @@ async def _query_ipqs(phone_e164: str) -> dict:
                 logger.warning("IPQS attempt %d/%d failed (%s), retrying in %.1fs", attempt + 1, 1 + MAX_RETRIES, exc, wait)
                 await asyncio.sleep(wait)
             else:
-                logger.error("IPQS all %d attempts failed for %s: %s", 1 + MAX_RETRIES, phone_e164, exc)
+                logger.error("IPQS all %d attempts failed for %s: %s", 1 + MAX_RETRIES, _mask_phone(phone_e164), type(exc).__name__)
         except httpx.HTTPStatusError as exc:
             last_exc = exc
             if resp.status_code >= 500 and attempt < MAX_RETRIES:
@@ -131,7 +138,7 @@ async def check_phone_risk(raw_number: str, country: Optional[str], *, persist_c
         stale = await db.phone_risk_cache.find_one({"phone_e164": phone}) if persist_cache else None
         if stale:
             rc = PhoneRiskCache.from_mongo(stale)
-            logger.warning("IPQS failed for %s — returning stale cache (checked_at=%s)", phone, rc.checked_at)
+            logger.warning("IPQS failed for %s — returning stale cache (checked_at=%s)", _mask_phone(phone), rc.checked_at)
             return CallRiskResponse(
                 number=phone, valid=rc.valid, active=rc.active, fraud_score=rc.fraud_score, recent_abuse=rc.recent_abuse,
                 risky=rc.risky, voip=rc.voip, line_type=rc.line_type, carrier=rc.carrier, country=rc.country,
@@ -140,7 +147,7 @@ async def check_phone_risk(raw_number: str, country: Optional[str], *, persist_c
             )
         # No cache at all — return an honest "unknown" result rather than crashing with 503.
         # This lets the UI show "couldn't check" with a retry option instead of a hard error.
-        logger.error("IPQS failed for %s — no cache available, returning unknown", phone)
+        logger.error("IPQS failed for %s — no cache available, returning unknown", _mask_phone(phone))
         data_unknown: dict = {"fraud_score": None}
         return CallRiskResponse(
             number=phone, decision="allow", cached=False, checked_at=ts, source="not_configured",

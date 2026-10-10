@@ -143,11 +143,20 @@ def combine(sources: list[IntelSource]) -> tuple[Verdict, list[str], str]:
 
 
 async def expand_redirects(url: str, max_hops: int = 5) -> list[str]:
-    """Follow HTTP redirects without downloading bodies. Returns the URL chain (first → final)."""
-    chain = [url]
+    """Follow HTTP redirects without downloading bodies. Returns the URL chain (first → final).
+
+    Privacy: every URL (initial and each redirect destination) is sanitised before any
+    outbound request is made, preventing PII or credentials embedded in URLs from leaking
+    to remote servers during redirect expansion."""
+    # Sanitise the initial URL before the first outbound request.
+    try:
+        sanitised_initial, _ = sanitize_url(url)
+    except HTTPException:
+        return [url]  # non-http or unparseable — return as-is for the caller to handle
+    chain = [sanitised_initial]
     try:
         async with asyncio.timeout(12):
-            cur = url
+            cur = sanitised_initial
             for _ in range(min(max_hops, 5)):
                 async with public_stream("HEAD", cur) as resp:
                     status, loc = resp.status_code, resp.headers.get("location")
@@ -157,7 +166,12 @@ async def expand_redirects(url: str, max_hops: int = 5) -> list[str]:
                         status, loc = resp.status_code, resp.headers.get("location")
                 if status not in REDIRECTS or not loc:
                     break
-                nxt = str(httpx.URL(cur).join(loc))
+                raw_nxt = str(httpx.URL(cur).join(loc))
+                # Sanitise every redirect destination before following it.
+                try:
+                    nxt, _ = sanitize_url(raw_nxt)
+                except HTTPException:
+                    break  # non-http redirect target — stop the chain safely
                 if nxt in chain:
                     break
                 chain.append(nxt)
