@@ -137,6 +137,7 @@ module.exports = {
       ["expo-image-picker", { photosPermission: "Pick a screenshot of a message for Apollo to check", cameraPermission: false, microphonePermission: false }],
       ["expo-audio", { microphonePermission: false }],
       ["expo-build-properties", { android: { minSdkVersion: 26 }, ios: { deploymentTarget: "16.4" } }],
+      "expo-ocr-kit",
     ],
 
     // ── Updates (EAS Update) ─────────────────────────────────────────────

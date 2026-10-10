@@ -168,6 +168,10 @@ class PatrolEventIn(BaseModel):
     adapter_label: str = Field(max_length=64)
     occurred_at: datetime
     resolved_at: Optional[datetime] = None
+    # Set when genuinely new detection evidence arrives for this event (not enforcement — detection).
+    # Used by the client merge to distinguish fresh detection from stale server state.
+    # Only the backend may set this; it is never accepted from client submissions.
+    detection_updated_at: Optional[datetime] = None
     # True when the native Site Guard raised this while the app was closed → owner gets a push.
     background: bool = False
     # Gate 2 (messages): extracted security signals only — never the conversation.

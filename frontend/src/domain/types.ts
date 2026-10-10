@@ -128,6 +128,9 @@ export interface PatrolEvent {
   adapter_label: string;
   occurred_at: string;
   resolved_at: string | null;
+  /** Set by the server when genuinely new detection evidence arrives for a previously resolved event.
+   *  Used by the merge to distinguish fresh detection from stale server state. The client never sets this. */
+  detection_updated_at?: string | null;
   /** Set by the native Site Guard when the block happened with the app closed → backend pushes an alert to this device. */
   background?: boolean;
   /** Gate 2 (messages): extracted security signals only — never the conversation. */

@@ -377,6 +377,40 @@ describe("8. Missing, stale or contradictory evidence cannot create false threat
     assert.equal(m.resolved_at, null, "resolved_at cleared on genuine reopen — no contradictory timestamps");
   });
 
+  it("mergeLocalAndRemoteEvents reopens on detection-only evidence without enforcement", () => {
+    const local = makeEvent({
+      event_id: "det-1", status: "resolved", resolved_at: "2026-01-01T00:00:00Z",
+      enforcement_evidence: null as any,
+    });
+    const remote = makeServerEvent({
+      event_id: "det-1", status: "active",
+      // New detection evidence: server found fresh indicators after the resolution.
+      detection_updated_at: "2026-01-02T08:00:00Z",
+      enforcement_evidence: null as any,
+    });
+    const { events } = mergeLocalAndRemoteEvents([local], [remote]);
+    const m = events.find((e) => e.event_id === "det-1")!;
+    assert.equal(m.resolved_at, null, "resolved_at cleared on detection-only reopen");
+    assert.equal(m.status, "active", "status reopened by detection evidence");
+  });
+
+  it("mergeLocalAndRemoteEvents preserves resolution when detection evidence is stale", () => {
+    const local = makeEvent({
+      event_id: "det-2", status: "resolved", resolved_at: "2026-01-10T00:00:00Z",
+      enforcement_evidence: null as any,
+    });
+    const remote = makeServerEvent({
+      event_id: "det-2", status: "active",
+      // Detection evidence is BEFORE the resolution — stale, not new.
+      detection_updated_at: "2026-01-05T00:00:00Z",
+      enforcement_evidence: null as any,
+    });
+    const { events } = mergeLocalAndRemoteEvents([local], [remote]);
+    const m = events.find((e) => e.event_id === "det-2")!;
+    assert.equal(m.status, "resolved", "resolution preserved when detection is stale");
+    assert.ok(m.resolved_at, "resolved_at preserved");
+  });
+
   it("resolveApolloState with only resolved events does not bark", () => {
     const resolved = makeEvent({ status: "resolved", resolved_at: new Date().toISOString() });
     const resolution = resolveApolloState({ events: [resolved], visibility: "full", lastVerifiedAt: new Date().toISOString() });

@@ -44,10 +44,17 @@ export function mergeLocalAndRemoteEvents(
 
       // Lifecycle guard: local resolution is preserved unless genuinely new evidence exists.
       const localResolved = local.status === "resolved" || local.status === "trusted" || !!local.resolved_at;
-      // New evidence must satisfy ALL of:
-      // 1. Different evidence_id (not a replay of the same enforcement receipt)
-      // 2. Observed AFTER the handling time (not a delayed delivery of older evidence)
-      // 3. Correctly associated with this event (evidence_id must be present)
+      // Reopening requires genuinely new evidence observed AFTER the resolution time.
+      // Two pathways:
+      //
+      // Pathway 1 — Enforcement: Different evidence_id with observed_at > resolved_at
+      // (a fresh native block was observed for this event).
+      //
+      // Pathway 2 — Detection: The server sets detection_updated_at > resolved_at
+      // (genuinely new detection evidence — new scan, new indicator, new threat intelligence —
+      // without requiring a native block).
+      //
+      // Without either, the local resolution is preserved.
       const localEvidenceId = local.enforcement_evidence?.evidence_id;
       const remoteEvidenceId = remote.enforcement_evidence?.evidence_id;
       const remoteObservedAt = remote.enforcement_evidence?.observed_at;
@@ -56,7 +63,15 @@ export function mergeLocalAndRemoteEvents(
       const isObservedAfterHandling = !!remoteObservedAt && !!localResolvedAt
         && Date.parse(remoteObservedAt) > Date.parse(localResolvedAt);
       const hasNewEnforcementEvidence = isDifferentEvidence && isObservedAfterHandling;
-      const preserveResolution = localResolved && !hasNewEnforcementEvidence;
+
+      // Pathway 2: detection-only reopening
+      const detectionUpdated = remote.detection_updated_at;
+      const isDetectionAfterHandling = !!detectionUpdated && !!localResolvedAt
+        && Date.parse(detectionUpdated) > Date.parse(localResolvedAt);
+      const hasNewDetectionEvidence = isDetectionAfterHandling;
+
+      const hasNewEvidence = hasNewEnforcementEvidence || hasNewDetectionEvidence;
+      const preserveResolution = localResolved && !hasNewEvidence;
 
       merged.push({
         ...local,
@@ -77,7 +92,7 @@ export function mergeLocalAndRemoteEvents(
         // Lifecycle: preserve local resolution unless genuinely new evidence.
         status: preserveResolution ? local.status : remote.status,
         state: preserveResolution ? local.state : (STATE_RANK[remote.state] > STATE_RANK[local.state] ? remote.state : local.state),
-        resolved_at: preserveResolution ? local.resolved_at : (hasNewEnforcementEvidence ? null : (remote.resolved_at ?? local.resolved_at)),
+        resolved_at: preserveResolution ? local.resolved_at : (hasNewEvidence ? null : (remote.resolved_at ?? local.resolved_at)),
         verified_block: remote.verified_block || local.verified_block,
         enforcement_evidence: remote.enforcement_evidence ?? local.enforcement_evidence,
         supporting_references: (local.supporting_references?.length ? local.supporting_references : remote.supporting_references),
