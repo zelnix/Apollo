@@ -496,11 +496,11 @@ def classify_value_patterns(text: str) -> frozenset[DataCategory]:
 
     # Credential patterns (passwords, tokens, etc.)
     if re.search(
-        r"(?i)\b(password|passcode|p\.?i\.?n\.?|otp|one[- ]?time[- ]?code|"
-        r"verification[- ]?code|security[- ]?code|recovery[- ]?code|"
-        r"recovery[- ]?phrase|seed[- ]?phrase|private[- ]?key|secret[- ]?key|"
-        r"api[- ]?key|access[- ]?token|refresh[- ]?token|session[- ]?token|"
-        r"bearer[- ]?token)\b\s*(?:is|was|:|=)\s*[^\s]{3,}",
+        r"(?i)\b(password|passcode|p\.?i\.?n\.?|otp|one[- _]?time[- _]?code|"
+        r"verification[- _]?code|security[- _]?code|recovery[- _]?code|"
+        r"recovery[- _]?phrase|seed[- _]?phrase|private[- _]?key|secret[- _]?key|"
+        r"api[- _]?key|access[- _]?token|refresh[- _]?token|session[- _]?token|"
+        r"bearer[- _]?token)\b\s*(?:is|was|:|=)\s*[^\s]{3,}",
         text,
     ):
         categories.add(DataCategory.CREDENTIAL)

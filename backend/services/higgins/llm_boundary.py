@@ -59,7 +59,7 @@ from core.data_classification import (
 
 # Patterns that indicate credential material — must be stripped before any external call.
 _CREDENTIAL_PATTERNS = [
-    re.compile(r"(?i)\b(password|passcode|p\.?i\.?n\.?|otp|one[- ]?time[- ]?code|verification[- ]?code|security[- ]?code|recovery[- ]?code|recovery[- ]?phrase|seed[- ]?phrase|private[- ]?key|secret[- ]?key|api[- ]?key|access[- ]?token|refresh[- ]?token|session[- ]?token|bearer[- ]?token)\b\s*(?:is|was|:|=)\s*[^\s]{3,}"),
+    re.compile(r"(?i)\b(password|passcode|p\.?i\.?n\.?|otp|one[- _]?time[- _]?code|verification[- _]?code|security[- _]?code|recovery[- _]?code|recovery[- _]?phrase|seed[- _]?phrase|private[- _]?key|secret[- _]?key|api[- _]?key|access[- _]?token|refresh[- _]?token|session[- _]?token|bearer[- _]?token)\b\s*(?:is|was|:|=)\s*[^\s]{3,}"),
     re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+"),
     re.compile(r"(?i)([?&](?:(?:access|refresh|auth|api)[_-]?)?(?:token|password|secret|key|code|session|signature)=)[^\s&#\"']+"),
     re.compile(r"(https?://)[^\s/@]+:[^\s/@]+@"),
@@ -85,8 +85,14 @@ PERSONAL_DATA_FIELDS = {
 
 def strip_credentials(text: str) -> str:
     """Remove all credential patterns from text. Uses the existing redaction infrastructure
-    plus additional patterns for embedded secrets."""
-    return redact_investigation_secrets(text)
+    plus the comprehensive _CREDENTIAL_PATTERNS for API keys, tokens, and bearer auth."""
+    # First pass: the investigation redaction (passwords, PINs, OTPs, codes)
+    result = redact_investigation_secrets(text)
+    # Second pass: additional credential patterns not covered by the base redaction
+    # (api_key=, secret_key=, access_token=, private_key=, etc.)
+    for pattern in _CREDENTIAL_PATTERNS:
+        result = pattern.sub("[credential redacted]", result)
+    return result
 
 
 def enforce_boundary(purpose: Purpose, payload: Any, *, evidence_pii: set[str] | None = None) -> Any:
