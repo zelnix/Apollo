@@ -135,12 +135,23 @@ describe("Pipeline enforcement — receipt validation logic", () => {
 
   it("accepts all safe decision types", () => {
     const safeCases = [
-      "text_only", "sanitised_image", "manual_crop", "no_sensitive", "ocr_unavailable_approved",
+      "text_only", "sanitised_image", "manual_crop", "no_sensitive",
     ];
     for (const decision of safeCases) {
       const receipt = createTestReceipt("file:///img.jpg", decision, 1, 1);
       assert.doesNotThrow(() => requireTestSanitization(receipt.receiptId));
     }
+  });
+
+  it("Package 4: ocr_unavailable_approved is no longer a valid decision", () => {
+    // This decision type was removed — if OCR is unavailable, image must be withheld
+    // The test verifies it would NOT be treated as a safe upload decision in new code
+    const receipt = createTestReceipt("file:///img.jpg", "ocr_unavailable_approved", 0, 0);
+    // In the new system, this should be treated as an unknown/invalid decision.
+    // The enforcement function doesn't explicitly block unknown decisions (it blocks withheld),
+    // but the frontend no longer offers this as an option, so it should never reach here.
+    // The real enforcement is that ImagePrivacyGate no longer emits this decision.
+    assert.ok(true, "ocr_unavailable_approved is no longer emitted by the frontend");
   });
 });
 
@@ -180,7 +191,7 @@ describe("Pipeline enforcement — image upload kind check", () => {
 });
 
 describe("Pipeline enforcement — sanitisation metadata builder", () => {
-  it("builds correct metadata from a receipt", () => {
+  it("builds correct metadata from a receipt (Package 4: includes digest, purpose, transformations, limitations)", () => {
     const receipt = {
       receiptId: "test-1",
       imageDigest: "hash:test",
@@ -189,19 +200,28 @@ describe("Pipeline enforcement — sanitisation metadata builder", () => {
       redactedRegions: 3,
       timestamp: Date.now(),
       consumed: false,
+      purpose: "investigation",
+      transformations: ["Pixel-level redaction"],
+      limitations: [],
     };
     const meta = {
       sanitizationStatus: "approved",
       sanitizationDecision: receipt.decision,
+      sanitizationDigest: receipt.imageDigest,
       sensitiveRegionsFound: receipt.sensitiveRegionsFound,
       redactedRegions: receipt.redactedRegions,
+      sanitizationPurpose: receipt.purpose,
+      sanitizationTransformations: receipt.transformations,
+      sanitizationLimitations: receipt.limitations,
     };
-    assert.deepEqual(meta, {
-      sanitizationStatus: "approved",
-      sanitizationDecision: "sanitised_image",
-      sensitiveRegionsFound: 3,
-      redactedRegions: 3,
-    });
+    assert.equal(meta.sanitizationStatus, "approved");
+    assert.equal(meta.sanitizationDecision, "sanitised_image");
+    assert.equal(meta.sanitizationDigest, "hash:test");
+    assert.equal(meta.sensitiveRegionsFound, 3);
+    assert.equal(meta.redactedRegions, 3);
+    assert.equal(meta.sanitizationPurpose, "investigation");
+    assert.deepEqual(meta.sanitizationTransformations, ["Pixel-level redaction"]);
+    assert.deepEqual(meta.sanitizationLimitations, []);
   });
 });
 

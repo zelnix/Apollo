@@ -226,7 +226,7 @@ Privacy controls must not compromise Apollo's security evidence or Higgins' inve
 
 | Gap ID | Standard | Description | Severity | Remediation Package | Target |
 |---|---|---|---|---|---|
-| **G-01** | 27701-7.4, APP 6 | Vision preflight sends original image to Gemini before user consent | High | Package 4 | Phase 3 |
+| **G-01** | 27701-7.4, APP 6 | Vision preflight sent original image to Gemini before user consent | High | Package 4 | ✅ **CLOSED** — Preflight removed; on-device screening required |
 | **G-02** | 27701-7.5 | Default purpose permissiveness — some pathways don't require explicit processing purpose | Medium | Package 3 | Phase 3 |
 | **G-03** | 42001 | Single gateway not fully audited — possible alternate Gemini call sites | High | Package 3 | Phase 3 |
 | **G-04** | 27701-8.2, APP 8 | No formal cross-border data transfer assessment for Gemini | Medium | Package 7 | Phase 4 |
@@ -331,8 +331,8 @@ This section maps each privacy/security control to its authoritative implementat
 |---|---|---|---|---|---|---|
 | **Package 1** | Implemented | Code inspection, documentation review | N/A (documentation) | Legal advisor not yet appointed; cross-border assessment pending | Initial matrix created | ✅ Accepted |
 | **Package 2** | Implemented | Code inspection, automated tests, documentation review | 71 new + 50 existing = 121 tests passing | Vision preflight gap (P4); gateway audit (P3); cross-border (P7) | Unknown default fixed; authorisation matrix added; 4 gaps resolved | ✅ Accepted |
-| **Package 3** | Implemented | Architectural scan, SDK-boundary tests, regression tests | 23 new gateway tests + 154 total passing | Full multimodal minimisation (P4) | Single gateway enforced; emergentintegrations removed; purpose mandatory; binary auth added | Requested |
-| Package 4 | Not started | — | — | — | — | — |
+| **Package 3** | Implemented | Architectural scan, SDK-boundary tests, regression tests | 23 new gateway tests + 154 total passing | Full multimodal minimisation (P4) | Single gateway enforced; emergentintegrations removed; purpose mandatory; binary auth added | ✅ Accepted |
+| **Package 4** | Implemented | Image pathway tests, consent tests, MIME enforcement, regression | 28 new tests + 182 total passing | On-device screening is client-asserted (not tamper-proof server verification) | G-01 closed; preflight removed; receipts byte-bound; consent recorded; embedded images controlled | Requested |
 | Package 5 | Not started | — | — | — | — | — |
 | Package 6 | Not started | — | — | — | — | — |
 | Package 7 | Not started | — | — | — | — | — |

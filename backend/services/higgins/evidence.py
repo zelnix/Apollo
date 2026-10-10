@@ -298,45 +298,43 @@ async def ingest_file(owner: str, case: dict, meta_in: dict, data: bytes, *, evi
                         parent_id=meta_in.get("parentId"), collected_at=now_utc(), expires_at=expires, media_type=detected, byte_length=len(data),
                         coverage=Coverage(status="not_started", unit="bytes", total=len(data), examined=0), transformations=transformations,
                         label=f"{kind}: {re.sub(r'[^A-Za-z0-9._ -]', '_', meta_in['filename'])[:60]}")
-    admission = await _image_secret_preflight(data, detected) if kind == "image" else None
-    if admission and admission["status"] != "clear":
-        # Ephemeral admission (S06/R03). Two distinct outcomes, never conflated:
-        #  - secret_detected: the original is withheld; the preflight's FULL transcription with only the secrets replaced by [REDACTED]
-        #    plus a visual description are retained as derived text with explicit coverage, so non-secret evidence is not lost.
-        #  - unavailable: the check could not run/validate, so no unchecked original is stored; the person is told to resubmit.
-        detected_secret = admission["status"] == "secret_detected"
-        reason = ("original image withheld: it shows an authentication secret" if detected_secret
-                  else "original image not stored: the secret check was unavailable, so admission could not be decided")
-        description = ("The screenshot shows a password, one-time code, card number or similar secret. The original image was not stored; its visible text "
-                       "was transcribed with each secret replaced by [REDACTED] and a description of the visual layout was kept."
-                       if detected_secret else f"The image could not be checked for secrets before storage ({admission['status']}), so it was not kept. Submit it again; if it keeps failing, describe what it shows.")
-        item = item.model_copy(update={"availability": "purged", "coverage": Coverage(status="unavailable", unit="bytes", total=len(data), examined=0, reason=reason),
+    admission_meta = meta_in.get("sanitizationStatus")
+    # ── Package 4: No raw image sent to Gemini for screening. ──
+    # Privacy screening happens on-device (ImagePrivacyGate) BEFORE network transmission.
+    # The backend validates that the client asserts screening was done.
+    # If no sanitization status, withhold the image and explain.
+    if kind == "image" and admission_meta != "approved":
+        reason = "original image not stored: no on-device privacy screening confirmation received"
+        description = ("This image was not accompanied by a privacy gate approval. "
+                       "All images must pass through on-device screening before transmission. "
+                       "Resubmit the image through Apollo's privacy gate.")
+        item = item.model_copy(update={"availability": "purged",
+                                       "coverage": Coverage(status="unavailable", unit="bytes", total=len(data), examined=0, reason=reason),
                                        "transformations": [*transformations, Transformation(kind="secret_redaction", description=description)]})
         await repo.insert_evidence(owner, item, {"filename": meta_in["filename"], "declaredMediaType": meta_in["mediaType"], "detectedMediaType": detected,
-                                                 "secretPreflight": admission, "contentDigest": content_digest},
+                                                 "contentDigest": content_digest},
                                    publication_root_id=item.id, ingestion_attempt_id=attempt_id, publication_owner=publication_owner)
-        if detected_secret:
-            text = redact_investigation_secrets(
-                f"VISIBLE TEXT (verbatim, secrets replaced by [REDACTED]):\n{admission['redactedText']}\n\nVISUAL DESCRIPTION:\n{admission['visualDescription']}\n\n"
-                f"REDACTED ITEMS: {', '.join(admission['secretKinds']) or 'unspecified'}.")
-            incomplete = not admission["transcriptionComplete"]
-            transcription_gap_reason = None if admission["transcriptionComplete"] else "the provider reported its full transcription as incomplete"
-            derived = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=f"{item.client_item_id}.redacted", origin="apollo_inference", kind="text",
-                                   parent_id=item.id, collected_at=now_utc(), expires_at=expires, media_type="text/plain", byte_length=len(text.encode("utf-8")),
-                                   coverage=Coverage(status="not_started", unit="characters", total=len(text), examined=0,
-                                                     material_gap=incomplete, permanent_gap=incomplete, reason=transcription_gap_reason),
-                                   transformations=[Transformation(kind="secret_redaction", description="Targeted redaction by the Higgins preflight: only secret values were replaced; other visible text is verbatim.")],
-                                   label="redacted transcription of the withheld screenshot")
-            await repo.insert_evidence(owner, derived, {"derivedFrom": item.id}, publication_root_id=item.id, ingestion_attempt_id=attempt_id, publication_owner=publication_owner)
-            await repo.store_bytes(owner, case["case_id"], derived.id, text.encode("utf-8"), expires, publish_root=False)
-            await repo.update_evidence(owner, case["case_id"], item.id, {"$set": {"related_evidence_ids": [derived.id]}}, attempt_id=attempt_id)
-            await register_clues(owner, case, derived, text, publication_root_id=item.id, ingestion_attempt_id=attempt_id, publication_owner=publication_owner)
         if not await repo.publish_evidence_root(owner, case["case_id"], item.id, attempt_id, publication_owner=publication_owner):
             await repo.discard_incomplete_ingestion(owner, case["case_id"], item.id, attempt_id=attempt_id, publication_owner=publication_owner)
             raise http(409, "conflict", "Evidence publication was superseded before it committed. Retry the upload.")
         return item
+
+    # Record consent metadata for approved images
+    consent_record = None
+    if kind == "image" and admission_meta == "approved":
+        consent_record = {
+            "purpose": meta_in.get("sanitizationPurpose", "investigation"),
+            "decision": meta_in.get("sanitizationDecision", "unknown"),
+            "digest": meta_in.get("sanitizationDigest", ""),
+            "transformations": meta_in.get("sanitizationTransformations", []),
+            "limitations": meta_in.get("sanitizationLimitations", []),
+            "sensitiveRegionsFound": meta_in.get("sensitiveRegionsFound", 0),
+            "redactedRegions": meta_in.get("redactedRegions", 0),
+            "consentRecordedAt": now_utc().isoformat(),
+            "trustBoundary": "client_assertion",
+        }
     await repo.insert_evidence(owner, item, {"filename": meta_in["filename"], "declaredMediaType": meta_in["mediaType"], "detectedMediaType": detected,
-                                             "contentDigest": content_digest, **({"secretPreflight": admission} if admission else {})},
+                                             "contentDigest": content_digest, **({"consentRecord": consent_record} if consent_record else {})},
                                publication_root_id=item.id, ingestion_attempt_id=attempt_id, publication_owner=publication_owner)
     await repo.store_bytes(owner, case["case_id"], item.id, data, expires, publish_root=False)
     await _derive(owner, case, item, data, detected, attempt_id, publication_owner)
@@ -346,35 +344,10 @@ async def ingest_file(owner: str, case: dict, meta_in: dict, data: bytes, *, evi
     return item
 
 
-async def _image_secret_preflight(data: bytes, media_type: str) -> dict:
-    """Gemini-only visual admission check with STRICT response validation. Outcomes: `clear` (store original), `secret_detected`
-    (withhold original; keep targeted-redacted transcription), `unavailable` (check failed or response malformed: no unchecked original
-    is stored, and the person is told the check was unavailable — NOT that a secret was found)."""
-    from services.higgins import provider
-    from google.genai import types as gtypes
-    prompt = [gtypes.Part.from_bytes(data=data, mime_type=media_type),
-              gtypes.Part(text="You are an admission filter for screenshots. Decide whether the image VISIBLY shows an authentication secret: password, PIN, "
-                               "one-time code, recovery code, full card number, CVV, private key or session token. Then transcribe ALL visible text verbatim, "
-                               "replacing ONLY each secret value with [REDACTED] (keep sender names, amounts, links, phone numbers, dates, instructions exactly). "
-                               'Answer JSON only: {"containsSecret": true|false, "secretKinds": ["..."], "redactedText": "verbatim transcription with secrets '
-                               'replaced", "visualDescription": "layout, app/window, sender/recipient chrome, images or icons, without any secret", '
-                               '"transcriptionComplete": true|false}')]
-    try:
-        result, _ = await provider.generate_json("Return only the JSON object.", prompt, capability="vision", purpose=provider.Purpose.VISION_PREFLIGHT)
-    except Exception as exc:  # noqa: BLE001
-        return {"status": f"unavailable:{type(exc).__name__}", "containsSecret": None, "secretKinds": [], "redactedText": "", "visualDescription": "", "transcriptionComplete": None}
-    contains = result.get("containsSecret") if isinstance(result, dict) else None
-    if not isinstance(contains, bool):  # a missing/ambiguous verdict is NOT "no secret"; it is an unavailable check
-        return {"status": "unavailable:invalid_response", "containsSecret": None, "secretKinds": [], "redactedText": "", "visualDescription": "", "transcriptionComplete": None}
-    kinds = [str(k) for k in (result.get("secretKinds") or []) if isinstance(k, (str, int))]
-    redacted_text_raw = str(result.get("redactedText") or "")
-    redacted_text = redacted_text_raw
-    visual = str(result.get("visualDescription") or "")
-    complete = result.get("transcriptionComplete") if isinstance(result.get("transcriptionComplete"), bool) else None
-    if contains and not redacted_text.strip() and not visual.strip():  # detected a secret but produced no usable redacted content: cannot admit anything
-        return {"status": "unavailable:no_redacted_content", "containsSecret": True, "secretKinds": kinds, "redactedText": "", "visualDescription": "", "transcriptionComplete": None, "transcriptionTruncated": False}
-    return {"status": "secret_detected" if contains else "clear", "containsSecret": contains, "secretKinds": kinds, "redactedText": redacted_text,
-            "visualDescription": visual, "transcriptionComplete": complete, "transcriptionTruncated": False}
+# ── _image_secret_preflight REMOVED (Package 4) ──
+# Raw images are no longer sent to Gemini for secret detection.
+# Privacy screening happens on-device (ImagePrivacyGate) BEFORE network transmission.
+# The backend validates client-supplied sanitization assertions.
 
 
 async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detected: str, attempt_id: str, publication_owner: Optional[dict] = None) -> None:
@@ -429,17 +402,34 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
                                "materialGap": bool(omitted), "permanentGap": False,
                                "reason": "parser extraction complete; model examination pending" + (f"; {len(rendered_pages)} scanned page(s) rendered for visual reading" if rendered_pages else "")}
             for image_index, (image_name, image_type, image_data) in enumerate(embedded_images):
-                admission = await _image_secret_preflight(image_data, image_type) if image_type in ("image/png", "image/jpeg") else {"status": "unavailable:unsupported_image"}
-                if admission.get("status") == "clear":
+                # Package 4: Embedded document images are treated as derived content.
+                # They inherit the document's investigation authorisation but are recorded
+                # with a limitation noting they were not individually screened by the
+                # on-device privacy gate. Only supported image types are stored.
+                if image_type in ("image/png", "image/jpeg"):
                     image_item = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=f"{item.client_item_id}.image{image_index}", origin=item.origin, kind="image",
                                               parent_id=item.id, collected_at=now_utc(), expires_at=item.expires_at, media_type=image_type, byte_length=len(image_data),
-                                              coverage=Coverage(status="not_started", unit="items", total=1, examined=0, reason="embedded document image available; not yet examined"),
-                                              transformations=[Transformation(kind="decode", description="Embedded DOCX image extracted without recompression.")], label=f"embedded image: {image_name}"[:80])
-                    await repo.insert_evidence(owner, image_item, {"derivedFrom": item.id, "embeddedName": image_name, "itemIndex": image_index + 1}, publication_root_id=item.id, ingestion_attempt_id=attempt_id, publication_owner=publication_owner)
+                                              coverage=Coverage(status="not_started", unit="items", total=1, examined=0,
+                                                                reason="embedded document image extracted; inherits document investigation authorisation"),
+                                              transformations=[Transformation(kind="decode", description="Embedded image extracted from document without recompression."),
+                                                               Transformation(kind="privacy_note", description="Embedded image inherits document-level investigation authorisation; not individually screened by on-device privacy gate.")],
+                                              label=f"embedded image: {image_name}"[:80])
+                    consent_meta = {
+                        "derivedFrom": item.id, "embeddedName": image_name, "itemIndex": image_index + 1,
+                        "consentRecord": {
+                            "purpose": "investigation",
+                            "decision": "document_embedded_image",
+                            "transformations": ["Extracted from parent document"],
+                            "limitations": ["Not individually screened by on-device privacy gate; inherits document authorisation"],
+                            "consentRecordedAt": now_utc().isoformat(),
+                            "trustBoundary": "document_derived",
+                        },
+                    }
+                    await repo.insert_evidence(owner, image_item, consent_meta, publication_root_id=item.id, ingestion_attempt_id=attempt_id, publication_owner=publication_owner)
                     await repo.store_bytes(owner, case["case_id"], image_item.id, image_data, item.expires_at, publish_root=False)
                     rendered_ids.append(image_item.id)
                 else:
-                    omitted.append({"start": image_index + 1, "end": image_index + 2, "reason": "embedded image withheld because secret-safe visual admission was not available"})
+                    omitted.append({"start": image_index + 1, "end": image_index + 2, "reason": f"embedded image of unsupported type ({image_type}) withheld"})
                     await repo.db.investigation_content_chunks.delete_many({"owner_id": owner, "case_id": case["case_id"], "evidence_id": item.id})
             omitted.extend({"start": 1 + len(embedded_images) + index, "end": 2 + len(embedded_images) + index,
                             "reason": "embedded drawing object could not be decoded as text or image"} for index in range(unresolved_drawings))

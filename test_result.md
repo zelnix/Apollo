@@ -2382,6 +2382,35 @@ test_plan:
 
 agent_communication:
   - agent: "main"
-    message: "Package 3 + P0 Emergent LLM Removal implemented. All code changes, tests, and documentation complete. (1) emergentintegrations fully removed from Apollo (requirements.txt, .env, scam_analysis.py). (2) Single gateway enforced: purpose required (no default), binary auth check, full text enforcement. (3) 23 architectural tests prove no bypass. (4) Scam analysis preserved: routes through provider.py with GEMINI_API_KEY and gemini-3.1-pro-preview. (5) 154 backend tests passing. Please verify."
+    message: "Package 3 + P0 Emergent LLM Removal implemented and verified."
   - agent: "testing"
-    message: "Package 3 VERIFICATION COMPLETE — ALL ACCEPTANCE CRITERIA MET. Tested all 7 verification categories from review request: (1) Gateway enforcement tests: 23/23 PASSED. (2) Regression tests: 131/131 PASSED (zero regressions). (3) Emergent LLM removal: VERIFIED (not in requirements.txt, .env, no imports). (4) Single gateway enforcement: VERIFIED (purpose required, binary auth, text enforcement, ADVISORY_MODEL, gemini-3.1-pro-preview). (5) New purposes: VERIFIED (PAGE_SIGNAL_EXTRACTION, PUBLIC_ADVISORY_ANALYSIS, TRANSCRIPTION in enum and matrix). (6) Backend health: 200 OK. (7) Documentation: VERIFIED (audit report Phase 2 complete, compliance matrix updated). NO MAJOR ISSUES. Ready for main agent to summarise and finish."
+    message: "Package 3 VERIFICATION COMPLETE — ALL ACCEPTANCE CRITERIA MET."
+
+## 2026-02 Package 4 — Image, Document & Consent Protection
+
+backend:
+  - task: "Package 4 — Remove raw-image Gemini preflight, strengthen receipts, consent recording"
+    implemented: true
+    working: true
+    file: "backend/services/higgins/evidence.py, frontend/src/domain/imageSanitization.ts, frontend/src/components/ImagePrivacyGate.tsx"
+    priority: "P0"
+    needs_retesting: false
+    status_history:
+      - agent: "main"
+        comment: "Package 4 implemented. (1) G-01 CLOSED: _image_secret_preflight removed from evidence.py — raw images are no longer sent to Gemini for screening. (2) Receipt digest now bound to actual transformed image bytes via FileSystem.readAsStringAsync + SHA-256. (3) ocr_unavailable_approved decision REMOVED — if OCR unavailable, image is withheld (text-only offered if text available). (4) Consent recording: ConsentRecord with purpose, decision, digest, transformations, limitations, timestamp, trustBoundary='client_assertion'. (5) Embedded document images: inherit document authorisation with limitations noted, consent recorded with trustBoundary='document_derived'. (6) MIME type enforcement: sniff() detects actual content regardless of declared type. (7) Trust boundary documented honestly as client_assertion. (8) All image entry points (investigation evidence, resumable upload, message extract, page extract) enforce sanitization_status='approved'. (9) 28 new tests in test_image_consent_enforcement.py. Total: 182 backend tests passing. Frontend: imageSanitization 21/21, architecturalRegression 36/36, higginsBehavioural 23/23, privacyDisclosure 10/10 — all passing."
+      - agent: "testing"
+        working: true
+        comment: "PACKAGE 4 VERIFICATION COMPLETE — ALL ACCEPTANCE CRITERIA MET. (1) Package 4 tests: 28/28 PASSED ✅ covering preflight removal, image entry point enforcement, MIME type enforcement, OCR unavailable safety, consent recording, document embedded images, receipt metadata, binary authorisation. (2) Full backend regression: 182/182 PASSED ✅ (28 image_consent + 23 gateway + 71 data_classification + 38 llm_boundary + 12 image_sanitization + 10 scam_analysis). (3) Frontend test regression: imageSanitization 21/21 PASSED ✅, architecturalRegression 36/36 PASSED ✅, higginsBehavioural 23/23 PASSED ✅, privacyDisclosure 10/10 PASSED ✅. (4) G-01 CLOSURE VERIFIED: _image_secret_preflight function does NOT exist in /app/backend/services/higgins/evidence.py (only comment at line 347 documenting removal) ✅. grep -rn '_image_secret_preflight' in backend production code returns NO MATCHES ✅. (5) ocr_unavailable_approved REMOVAL VERIFIED: does NOT appear in /app/frontend/src/domain/imageSanitization.ts ✅, does NOT appear in /app/frontend/src/components/ImagePrivacyGate.tsx ✅. (6) handleOcrUnavailableApprove REMOVAL VERIFIED: does NOT appear in ImagePrivacyGate.tsx ✅. Only handleOcrUnavailableWithhold exists (safe fallback) ✅. (7) CONSENT RECORDING VERIFIED: evidence.py creates consentRecord for approved images with all required fields: purpose, decision, digest, transformations, limitations, sensitiveRegionsFound, redactedRegions, consentRecordedAt, trustBoundary ✅. trustBoundary='client_assertion' for approved images (lines 324-335) ✅, trustBoundary='document_derived' for embedded images (lines 419-426) ✅. (8) RECEIPT BYTE-BINDING VERIFIED: imageSanitization.ts digestImageBytes() function (line 52) uses FileSystem.readAsStringAsync() to read actual image bytes and hash with SHA-256 ✅. Receipt includes sanitizationDigest in metadata (line 168) ✅. (9) Backend health: curl http://localhost:8001/api/health returns 200 OK with correct schema (schemaVersion:1, status:ok, service:apollo-v1) ✅. NO MAJOR ISSUES FOUND. All Package 4 acceptance criteria fully met."
+
+test_plan:
+  current_focus:
+    - "Package 4: Image, Document & Consent Protection - COMPLETE"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Package 4 implemented. (1) G-01 CLOSED: _image_secret_preflight removed. (2) Receipt bound to actual bytes. (3) ocr_unavailable_approved removed. (4) Consent recording with honest trust boundary. (5) Embedded images handled with limitations. (6) MIME enforcement via sniff(). (7) 28 new backend tests + 182 total passing. Frontend tests all passing. Please verify."
+  - agent: "testing"
+    message: "Package 4 VERIFICATION COMPLETE — ALL ACCEPTANCE CRITERIA MET. Backend tests: 182/182 PASSED (28 Package 4 + 154 regression). Frontend tests: 90/90 PASSED (21 imageSanitization + 36 architecturalRegression + 23 higginsBehavioural + 10 privacyDisclosure). Critical verifications: (1) G-01 closure: _image_secret_preflight does NOT exist in production code ✅ (2) ocr_unavailable_approved removed from frontend ✅ (3) handleOcrUnavailableApprove removed, only handleOcrUnavailableWithhold exists ✅ (4) Consent recording with all required fields and honest trust boundary (client_assertion/document_derived) ✅ (5) Receipt byte-binding via FileSystem.readAsStringAsync + SHA-256 ✅ (6) Backend health 200 OK ✅. NO MAJOR ISSUES. Ready for main agent to summarise and finish."

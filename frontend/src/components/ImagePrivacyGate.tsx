@@ -276,12 +276,34 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
       decision: SanitizationDecision,
       imageUri: string | null,
       text: string | null,
+      extraLimitations?: string[],
     ) => {
+      const transformations: string[] = [];
+      const limitations: string[] = [...(extraLimitations ?? [])];
+
+      if (decision === "sanitised_image") {
+        transformations.push("Pixel-level redaction of sensitive regions");
+        transformations.push(`${screening.sensitiveRegions.length} region(s) blacked out`);
+      } else if (decision === "manual_crop") {
+        transformations.push("User-selected manual crop");
+        limitations.push("Cropped content outside the selection is not available for analysis");
+      } else if (decision === "text_only") {
+        transformations.push("Image withheld; extracted text used instead");
+        limitations.push("Visual layout and non-text elements are not available for analysis");
+      } else if (decision === "no_sensitive") {
+        transformations.push("Metadata stripped; no sensitive content detected");
+      }
+
       const receipt = await createReceipt(
-        imageUri ?? screening.strippedImageUri ?? "",
+        imageUri,
         decision,
         screening.sensitiveRegions.length,
         decision === "sanitised_image" ? screening.sensitiveRegions.length : 0,
+        {
+          purpose: "investigation",
+          transformations,
+          limitations,
+        },
       );
       onComplete({
         decision,
@@ -377,18 +399,12 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
     }
   }, [screening, emitResult]);
 
-  const handleOcrUnavailableApprove = useCallback(async () => {
-    setBusy(true);
-    setBusyLabel("Preparing image\u2026");
-    try {
-      await emitResult(
-        "ocr_unavailable_approved",
-        screening.strippedImageUri,
-        screening.extractedText,
-      );
-    } finally {
-      setBusy(false);
-    }
+  const handleOcrUnavailableWithhold = useCallback(async () => {
+    // OCR unavailable: image cannot be screened locally.
+    // Withhold the image and explain the limitation.
+    await emitResult("withheld", null, screening.extractedText, [
+      "On-device text recognition unavailable; image withheld because it could not be screened for sensitive content",
+    ]);
   }, [screening, emitResult]);
 
   // ── Preview dimensions (fit image within 300px height) ─────────────────
@@ -472,8 +488,11 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
               <View style={s.summaryCard}>
                 <Text style={s.summaryTitle}>Text recognition unavailable</Text>
                 <Text style={s.summaryText}>
-                  On-device OCR requires a native build. You can type the text
-                  manually, approve the metadata-stripped image, or withhold it.
+                  On-device screening requires a native build. The image cannot be
+                  checked for sensitive content, so it will not be transmitted.
+                  {screening.extractedText.length > 0
+                    ? " You can send the extracted text instead."
+                    : " Type the text manually or withhold it."}
                 </Text>
               </View>
             ) : (
@@ -499,29 +518,23 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
               {/* Different button sets based on screening status */}
               {screening.status === "ocr_unavailable" ? (
                 <>
-                  <Button
-                    label="Approve stripped image"
-                    variant="secondary"
-                    onPress={handleOcrUnavailableApprove}
-                    disabled={busy}
-                    testID="gate-ocr-approve"
-                    accessibilityHint="Send the image with metadata removed but without text screening"
-                  />
-                  <Button
-                    label="Crop manually"
-                    variant="secondary"
-                    onPress={handleManualCrop}
-                    disabled={busy}
-                    testID="gate-manual-crop"
-                    accessibilityHint="Open crop editor to remove sensitive areas"
-                  />
+                  {screening.extractedText.length > 0 && (
+                    <Button
+                      label="Send text only"
+                      variant="primary"
+                      onPress={handleTextOnly}
+                      disabled={busy}
+                      testID="gate-text-only"
+                      accessibilityHint="Send only the extracted text; the image stays on your device"
+                    />
+                  )}
                   <Button
                     label="Withhold image"
                     variant="ghost"
-                    onPress={handleWithhold}
+                    onPress={handleOcrUnavailableWithhold}
                     disabled={busy}
                     testID="gate-withhold"
-                    accessibilityHint="Do not send the image"
+                    accessibilityHint="Do not send the image — screening is unavailable"
                   />
                 </>
               ) : hasSensitive ? (
