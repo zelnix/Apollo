@@ -22,7 +22,7 @@ export const DEFAULT_TIMEOUT_MS = 20000;
 /** Endpoints that legitimately take longer (vision/LLM second opinions, TTS, redirect expansion). */
 const LONG_TIMEOUT_MS = 135000; // interim alignment while analysis routes migrate to asynchronous jobs
 const ASK_STREAM_TIMEOUT_MS = 135000; // compatibility transport: server's absolute work budget + transport margin
-const LONG_PATHS = ["/message/extract", "/message/analyse", "/link/investigate", "/page/extract", "/page/crawl", "/voice/speak", "/app/analyse", "/account/analyse", "/account/monitor/scan", "/intel/check", "/ask/", "/gmail/scan"];
+const LONG_PATHS = ["/message/extract", "/message/analyse", "/link/investigate", "/page/extract", "/page/crawl", "/voice/speak", "/app/analyse", "/account/analyse", "/account/monitor/scan", "/intel/check", "/ask/", "/gmail/scan", "/vision/investigate"];
 export function timeoutFor(path: string): number { return LONG_PATHS.some((p) => path.startsWith(p)) ? LONG_TIMEOUT_MS : DEFAULT_TIMEOUT_MS; }
 
 /** Bearer credential for every call. Fails closed: with no identity the request is not sent. */
@@ -85,11 +85,13 @@ export function apiPost<T>(path: string, endpoint: EgressEndpoint, body: Record<
 }
 /** Multipart upload (voice notes). Text fields go through the egress allow-list like any JSON body; the file is appended
  *  in the runtime's own shape (web needs a real Blob, native needs { uri, name, type }). Content-Type is left to the runtime. */
-export async function apiUpload<T>(path: string, endpoint: EgressEndpoint, fields: Record<string, string>, file: { uri: string; name: string; type: string }) {
+export async function apiUpload<T>(path: string, endpoint: EgressEndpoint, fields: Record<string, string>, file: { uri: string; name: string; type: string } | null) {
   const form = new FormData();
   for (const [k, v] of Object.entries(enforceEgress(endpoint, fields))) form.append(k, String(v));
-  if (Platform.OS === "web") form.append("file", await (await fetch(file.uri)).blob(), file.name);
-  else form.append("file", file as unknown as Blob);
+  if (file && file.uri) {
+    if (Platform.OS === "web") form.append("file", await (await fetch(file.uri)).blob(), file.name);
+    else form.append("file", file as unknown as Blob);
+  }
   const auth = await authHeaders();
   const res = await fetchWithBudget(`${API_BASE}${path}`, { method: "POST", body: form, headers: auth }, LONG_TIMEOUT_MS);
   if (!res.ok) {

@@ -636,3 +636,400 @@ async def account_monitor_scan(body: MonitorScanIn):
     return MonitorScanOut(provider=provider, source_label=source_label(provider),
                           checked_at=datetime.now(timezone.utc).isoformat(),
                           results=results)
+
+
+# --------------------------------------------------------------------------- Vision Gate
+# Photograph/upload → visual recognition + indicator extraction → existing gate routing.
+# Reuses PAGE_EXTRACT_PROMPT-style vision, plus existing link/message/account engines.
+# --------------------------------------------------------------------------- 
+
+VISION_INVESTIGATE_PROMPT = """You are analysing a photograph or uploaded image for a consumer security app called Apollo.
+The user showed Apollo something suspicious. Your job is to describe what you see and extract security-relevant indicators.
+
+Return ONLY JSON:
+{"image_type": "<letter|notice|sms|email|website|app_screen|qr_code|advertisement|invoice|login_screen|security_warning|delivery_notice|payment_request|other>",
+ "description": "<2-3 sentences describing what appears to be in the image, written for a worried non-technical person>",
+ "claimed_brand": "<organisation/brand the content presents as (logo, name, letterhead), else empty>",
+ "urls": ["<any URLs, web addresses or domains visible in the image>"],
+ "phone_numbers": ["<any phone numbers visible>"],
+ "email_addresses": ["<any email addresses visible>"],
+ "qr_code_present": <true|false>,
+ "asks_user_to": ["<any of: visit_url, call_number, send_money, provide_credentials, install_app, download_file, scan_qr, reply_message, open_attachment, provide_personal_info, make_payment, transfer_funds>"],
+ "urgency_or_threat_text": "<short quote of urgent/threatening wording if present, else empty>",
+ "payment_details": {"present": <true|false>, "method": "<bank transfer|card|crypto|gift card|other|empty>", "changed_details_warning": <true if payment details appear modified or different from expected>},
+ "suspicious_indicators": ["<list specific observations that could indicate a scam or security threat — e.g. 'sender address doesn't match claimed brand', 'unusual payment method requested', 'urgency pressure tactics'>"],
+ "legitimate_indicators": ["<list specific observations that suggest legitimacy — e.g. 'official letterhead matches known format', 'ABN number present'>"],
+ "text_content": "<key text visible in the image, up to 200 words>",
+ "confidence": "<high|medium|low> — how clearly you can read and interpret the content"}
+
+Rules:
+- Report ONLY what you actually see. Never fabricate or guess content.
+- If text is partially readable, say so. Do not complete words or numbers you cannot read.
+- Extract ALL visible URLs, phone numbers and email addresses exactly as printed.
+- Note visual quality issues (blurry, partial, dark) that limit interpretation.
+- Do not declare verdicts. Apollo's security engines will investigate the extracted indicators.
+- Your observations are INPUT to Apollo's investigation, not the final assessment."""
+
+
+class VisionInvestigateOut(BaseModel):
+    """Unified vision investigation result: what was seen, checked, found, and what couldn't be verified."""
+    # What Apollo recognised
+    image_type: str = ""
+    description: str = ""
+    claimed_brand: str = ""
+    confidence: str = "low"
+    # Extracted indicators
+    urls_found: list[str] = Field(default_factory=list)
+    phone_numbers_found: list[str] = Field(default_factory=list)
+    email_addresses_found: list[str] = Field(default_factory=list)
+    qr_code_present: bool = False
+    asks_user_to: list[str] = Field(default_factory=list)
+    suspicious_indicators: list[str] = Field(default_factory=list)
+    legitimate_indicators: list[str] = Field(default_factory=list)
+    payment_details: Optional[dict[str, Any]] = None
+    text_content: str = ""
+    # What Apollo checked (investigations that ran)
+    checks_performed: list[dict[str, Any]] = Field(default_factory=list)
+    # What Apollo found
+    findings: list[dict[str, Any]] = Field(default_factory=list)
+    # What Apollo couldn't verify
+    limitations: list[str] = Field(default_factory=list)
+    # Higgins recommendation
+    higgins: dict[str, Any] = Field(default_factory=dict)
+    # Processing metadata
+    gemini_used: bool = False
+    processing: dict[str, Any] = Field(default_factory=dict)
+
+
+@router.post("/vision/investigate", response_model=VisionInvestigateOut)
+@bounded_analysis
+async def vision_investigate(
+    device_id: str = Form(min_length=8, max_length=64),
+    extracted_text: str = Form(default=""),
+    sanitization_status: str = Form(default=""),
+    sanitization_receipt_id: str = Form(default=""),
+    sanitization_digest: str = Form(default=""),
+    file: Optional[UploadFile] = File(default=None),
+):
+    """Vision Gate investigation: photograph/upload → visual recognition → gate routing.
+    
+    Accepts either:
+    - A privacy-screened image (with sanitisation receipt) for Gemini visual analysis
+    - Extracted text only (from on-device OCR, image withheld)
+    - Both image and text
+    
+    Routes extracted indicators to existing security engines and combines results.
+    """
+    del device_id  # anonymous device authorises this disclosed assessment
+
+    vision_data: dict[str, Any] = {}
+    provider_metadata: dict[str, Any] = {}
+    gemini_used = False
+    limitations: list[str] = []
+
+    # ── Step 1: Visual analysis via Gemini (if image provided with valid receipt) ──
+    if file and file.content_type in {"image/png", "image/jpeg", "image/webp"}:
+        if sanitization_status != "approved":
+            if file: await file.close()
+            raise HTTPException(422, "Image uploads must pass through the on-device privacy gate.")
+        if not sanitization_receipt_id or len(sanitization_receipt_id) < 8:
+            if file: await file.close()
+            raise HTTPException(422, "Missing or invalid sanitisation receipt.")
+        if not sanitization_digest or len(sanitization_digest) < 16:
+            if file: await file.close()
+            raise HTTPException(422, "Missing or invalid sanitisation digest.")
+        if not GEMINI_API_KEY:
+            limitations.append("Visual analysis is not configured. Using text extraction only.")
+        else:
+            try:
+                raw_image = await file.read(6_000_001)
+                if len(raw_image) > 6_000_000:
+                    raise HTTPException(413, "Image is larger than 6 MB.")
+                from PIL import Image as PILImage
+                with PILImage.open(io.BytesIO(raw_image)) as image:
+                    image.load()
+                    if image.width * image.height > 24_000_000:
+                        raise HTTPException(413, "Image dimensions are too large.")
+                    image.thumbnail((2048, 2048))
+                    rendered = io.BytesIO()
+                    image.convert("RGB").save(rendered, format="JPEG", quality=90, optimize=True)
+                    processed = rendered.getvalue()
+                parts = [
+                    types.Part.from_bytes(data=processed, mime_type="image/jpeg"),
+                    types.Part(text="Analyse this image for security indicators. The user showed Apollo something they find suspicious."),
+                ]
+                if extracted_text:
+                    parts.append(types.Part(text=f"On-device OCR also extracted this text: {extracted_text[:2000]}"))
+                vision_data, provider_metadata = await generate_json(
+                    VISION_INVESTIGATE_PROMPT, parts,
+                    model=VISION_MODEL, capability="vision",
+                    purpose=Purpose.VISION_INVESTIGATION,
+                )
+                gemini_used = True
+            except HTTPException:
+                raise
+            except ProviderFailure as exc:
+                limitations.append(f"Visual analysis unavailable ({exc.code}). Using text extraction only.")
+            except Exception as exc:
+                logger.warning("vision investigate failed: %s", type(exc).__name__)
+                limitations.append("Visual analysis failed. Using text extraction only.")
+            finally:
+                raw_image = b""
+                processed = b"" if "processed" in locals() else b""
+                if file: await file.close()
+    elif file:
+        await file.close()
+
+    # ── Step 2: Extract indicators from vision data + OCR text ──
+    def s_(k: str, n: int = 500) -> str:
+        return str(vision_data.get(k) or "")[:n]
+    def l_(k: str) -> list[str]:
+        v = vision_data.get(k) or []
+        return [str(x)[:500] for x in v][:20] if isinstance(v, list) else []
+    def b_(k: str) -> bool:
+        return bool(vision_data.get(k)) and str(vision_data.get(k)).lower() not in ("false", "0", "")
+
+    image_type = s_("image_type", 40)
+    description = s_("description", 500)
+    claimed_brand = s_("claimed_brand", 60)
+    confidence = s_("confidence", 10) or "low"
+    
+    # Combine URLs from vision + OCR text
+    urls_from_vision = l_("urls")
+    urls_from_text = _extract_urls(extracted_text) if extracted_text else []
+    all_urls = list(dict.fromkeys(urls_from_vision + urls_from_text))[:10]
+
+    phone_numbers = l_("phone_numbers")
+    email_addresses = l_("email_addresses")
+    qr_code_present = b_("qr_code_present")
+    asks_user_to = l_("asks_user_to")
+    suspicious_indicators = l_("suspicious_indicators")
+    legitimate_indicators = l_("legitimate_indicators")
+    text_content = s_("text_content", 500) or extracted_text[:500]
+    
+    payment_raw = vision_data.get("payment_details")
+    payment_details = None
+    if isinstance(payment_raw, dict) and payment_raw.get("present"):
+        payment_details = {
+            "present": True,
+            "method": str(payment_raw.get("method", ""))[:40],
+            "changed_details_warning": bool(payment_raw.get("changed_details_warning")),
+        }
+
+    # ── Step 3: Route indicators to existing security engines ──
+    checks_performed: list[dict[str, Any]] = []
+    findings: list[dict[str, Any]] = []
+
+    # 3a) Check URLs via Link Gate
+    if all_urls:
+        for raw_url in all_urls[:5]:
+            try:
+                normalized, host = sanitize_url(raw_url if raw_url.startswith("http") else f"https://{raw_url}")
+                intel_result = await assess_indicator("url", normalized, True)
+                checks_performed.append({"gate": "Link Gate", "type": "url", "indicator": normalized, "host": host})
+                findings.append({
+                    "gate": "Link Gate",
+                    "type": "url",
+                    "indicator": normalized,
+                    "host": host,
+                    "verdict": intel_result.verdict,
+                    "threat_types": intel_result.threat_types,
+                    "coverage": intel_result.coverage,
+                    "redirect_chain": intel_result.redirect_chain,
+                    "final_url": intel_result.final_url,
+                })
+            except Exception:
+                limitations.append(f"Could not check URL: {raw_url[:80]}")
+
+    # 3b) Check email addresses via Account Gate
+    if email_addresses:
+        for email in email_addresses[:3]:
+            email_clean = email.strip().lower()
+            if re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email_clean):
+                checks_performed.append({"gate": "Account Gate", "type": "email", "indicator": email_clean})
+                # Note: we check if breach lookup is configured
+                if HIBP_API_KEY:
+                    try:
+                        from services.breach_check import scan_email
+                        outcome = await scan_email(email_clean)
+                        findings.append({
+                            "gate": "Account Gate",
+                            "type": "email_breach",
+                            "indicator": email_clean,
+                            "status": outcome["status"],
+                            "detail": outcome["detail"],
+                        })
+                    except Exception:
+                        limitations.append(f"Could not check email breach status: {email_clean[:40]}")
+                else:
+                    findings.append({
+                        "gate": "Account Gate",
+                        "type": "email_breach",
+                        "indicator": email_clean,
+                        "status": "not_configured",
+                        "detail": "Breach lookup is not configured.",
+                    })
+
+    # 3c) Phone numbers noted for Call Gate (no automated calling)
+    if phone_numbers:
+        for phone in phone_numbers[:3]:
+            checks_performed.append({"gate": "Call Gate", "type": "phone", "indicator": phone})
+            findings.append({
+                "gate": "Call Gate",
+                "type": "phone_noted",
+                "indicator": phone,
+                "detail": "Phone number extracted. Apollo does not call numbers automatically.",
+            })
+
+    # 3d) Text content analysis via Text Gate (if substantial text found)
+    text_for_analysis = text_content or extracted_text
+    if text_for_analysis and len(text_for_analysis) > 20:
+        try:
+            assessment = await investigate_message(
+                sender="", text=text_for_analysis[:3000],
+                urls=all_urls[:5],
+                claimed_brand=claimed_brand or None,
+                local_state=ApolloState(state="growling"),
+                url_context=[],
+                use_model=bool(GEMINI_API_KEY),
+                locale=None,
+            )
+            checks_performed.append({"gate": "Text Gate", "type": "message_analysis"})
+            findings.append({
+                "gate": "Text Gate",
+                "type": "message_analysis",
+                "assessment": assessment.model_dump() if hasattr(assessment, "model_dump") else {},
+            })
+        except Exception:
+            limitations.append("Text analysis did not complete.")
+
+    if not gemini_used and not extracted_text:
+        limitations.append("No image or text was available for analysis.")
+    if not all_urls and not email_addresses and not phone_numbers and not text_for_analysis:
+        limitations.append("No security indicators were extracted from this image.")
+
+    # ── Step 4: Build Higgins recommendation ──
+    higgins = _build_vision_higgins(
+        image_type=image_type, description=description,
+        claimed_brand=claimed_brand, confidence=confidence,
+        findings=findings, suspicious_indicators=suspicious_indicators,
+        legitimate_indicators=legitimate_indicators,
+        limitations=limitations, asks_user_to=asks_user_to,
+        payment_details=payment_details,
+    )
+
+    return VisionInvestigateOut(
+        image_type=image_type, description=description,
+        claimed_brand=claimed_brand, confidence=confidence,
+        urls_found=all_urls, phone_numbers_found=phone_numbers,
+        email_addresses_found=email_addresses,
+        qr_code_present=qr_code_present,
+        asks_user_to=asks_user_to,
+        suspicious_indicators=suspicious_indicators,
+        legitimate_indicators=legitimate_indicators,
+        payment_details=payment_details,
+        text_content=text_content,
+        checks_performed=checks_performed,
+        findings=findings,
+        limitations=limitations,
+        higgins=higgins,
+        gemini_used=gemini_used,
+        processing={"raw_retained_by_apollo": False, **provider_metadata},
+    )
+
+
+# ── Vision helpers ──
+
+_URL_PATTERN = re.compile(r"https?://[^\s<>\"']+|(?:www\.)[^\s<>\"']+|[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}(?:/[^\s<>\"']*)?")
+
+def _extract_urls(text: str) -> list[str]:
+    """Extract URL-like strings from OCR text."""
+    return list(dict.fromkeys(_URL_PATTERN.findall(text)))[:10]
+
+
+def _build_vision_higgins(
+    image_type: str, description: str, claimed_brand: str, confidence: str,
+    findings: list, suspicious_indicators: list, legitimate_indicators: list,
+    limitations: list, asks_user_to: list, payment_details: Optional[dict],
+) -> dict[str, Any]:
+    """Build a Higgins recommendation from vision investigation results."""
+    
+    # Determine threat level from findings
+    has_malicious_url = any(
+        f.get("verdict") in ("malicious", "suspicious") 
+        for f in findings if f.get("type") == "url"
+    )
+    has_breach = any(
+        f.get("status") == "found" 
+        for f in findings if f.get("type") == "email_breach"
+    )
+    has_payment_change = bool(payment_details and payment_details.get("changed_details_warning"))
+    has_urgency = bool(asks_user_to and any(a in asks_user_to for a in [
+        "send_money", "provide_credentials", "transfer_funds", "make_payment",
+    ]))
+    
+    # Count suspicious vs legitimate
+    susp_count = len(suspicious_indicators)
+    legit_count = len(legitimate_indicators)
+    
+    # Build headline
+    if has_malicious_url:
+        headline = "Apollo found a dangerous link in this image."
+        severity = "high"
+    elif has_payment_change:
+        headline = "Payment details in this image may have been altered."
+        severity = "high"
+    elif has_breach and has_urgency:
+        headline = "This appears to be a targeted message using real breach data."
+        severity = "high"
+    elif susp_count > 0 and susp_count > legit_count:
+        headline = f"Apollo found {susp_count} suspicious {'indicator' if susp_count == 1 else 'indicators'} in this image."
+        severity = "medium"
+    elif has_urgency:
+        headline = "This content is pressuring you to act quickly."
+        severity = "medium"
+    elif susp_count > 0:
+        headline = "Some elements need caution, but nothing conclusive was found."
+        severity = "low"
+    else:
+        headline = "Apollo didn't find clear security threats, but couldn't verify everything."
+        severity = "low"
+    
+    # Build explanation
+    parts: list[str] = []
+    if description:
+        parts.append(description)
+    if has_malicious_url:
+        bad_urls = [f.get("indicator", "") for f in findings if f.get("verdict") in ("malicious", "suspicious") and f.get("type") == "url"]
+        if bad_urls:
+            parts.append(f"The link {bad_urls[0]} was flagged as {'malicious' if any(f.get('verdict') == 'malicious' for f in findings) else 'suspicious'} by Apollo's threat intelligence.")
+    if has_payment_change:
+        parts.append("Payment details appear to have been changed — this is a common tactic in invoice fraud.")
+    if claimed_brand and susp_count > 0:
+        parts.append(f"The content claims to be from {claimed_brand}. Verify through the official channel, not through this image.")
+    
+    # Build recommendation
+    if has_malicious_url or has_payment_change:
+        action = "Do not use any links, phone numbers or payment details from this image. Verify through the official website or app."
+    elif severity == "medium":
+        action = "Don't act on this immediately. Verify the sender and any requests through official channels."
+    elif susp_count > 0:
+        action = "If you weren't expecting this, verify it through the official source before taking any action."
+    else:
+        action = "Apollo checked what it could. If something still feels wrong, don't act on it without verifying through official channels."
+    
+    # Limitations disclaimer
+    if confidence == "low":
+        parts.append("The image was difficult to read clearly, so Apollo's analysis may be incomplete.")
+    if limitations:
+        parts.append(f"Apollo could not verify {len(limitations)} {'aspect' if len(limitations) == 1 else 'aspects'} of this content.")
+    
+    parts.append("AI visual interpretation alone is not proof. Apollo's investigation is based on what it could extract and verify.")
+    
+    return {
+        "headline": headline,
+        "severity": severity,
+        "explanation": " ".join(parts),
+        "action": action,
+        "checks_summary": f"Apollo performed {len([c for c in findings if c.get('gate')])} security checks on indicators found in this image.",
+    }

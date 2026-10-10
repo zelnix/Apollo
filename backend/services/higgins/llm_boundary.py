@@ -29,6 +29,7 @@ class Purpose(str, Enum):
     TOKEN_COUNT = "token_count"               # Same as the associated purpose
     PAGE_SIGNAL_EXTRACTION = "page_signal_extraction"  # Screenshot → security signal extraction (multimodal)
     PUBLIC_ADVISORY_ANALYSIS = "public_advisory_analysis"  # Government scam advisory classification
+    VISION_INVESTIGATION = "vision_investigation"  # Vision Gate: photograph/upload → indicator extraction + routing
 
 
 class Classification(str, Enum):

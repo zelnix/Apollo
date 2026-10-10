@@ -2,7 +2,7 @@ import type { CheckItRoute } from "./checkIt";
 
 export type ApolloDestination = "link_gate" | "text_gate" | "file_gate" | "app_gate" | "device_gate" | "account_gate" | "network_gate" | "email_gate" | "call_gate" | "site_gate" | "patrol" | "saved_reports" | "higgins_case" | "check_it";
 
-export type ApolloRoute = CheckItRoute | "/gates" | "/(tabs)/guard" | "/(tabs)/protection" | "/(tabs)/patrol" | "/(tabs)/check-it" | "/higgins/scams" | "/saved-reports" | "/(tabs)/ask";
+export type ApolloRoute = CheckItRoute | "/gates" | "/(tabs)/guard" | "/(tabs)/protection" | "/(tabs)/patrol" | "/(tabs)/check-it" | "/higgins/scams" | "/saved-reports" | "/(tabs)/ask" | "/vision";
 
 export interface AppDestinationAction {
   kind: "app_destination";

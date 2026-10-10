@@ -4,7 +4,7 @@
 import type { ApolloState } from "@/src/domain/types";
 import { storage } from "@/src/utils/storage";
 
-export type CheckGate = "call" | "text" | "message" | "app" | "network" | "device" | "account" | "email" | "link";
+export type CheckGate = "call" | "text" | "message" | "app" | "network" | "device" | "account" | "email" | "link" | "vision";
 
 export interface CheckHistoryEntry { at: string; state: ApolloState; summary: string }
 
