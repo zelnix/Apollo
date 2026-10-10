@@ -27,7 +27,7 @@ load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 BASE_URL = (
     os.environ.get("EXPO_BACKEND_URL")
     or os.environ.get("EXPO_PUBLIC_BACKEND_URL")
-    or "https://higgins-refine.preview.emergentagent.com"
+    or "https://redaction-pipeline.preview.emergentagent.com"
 ).rstrip("/")
 MONGO_URL = os.environ["MONGO_URL"]
 DB_NAME = os.environ["DB_NAME"]

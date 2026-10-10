@@ -12,7 +12,7 @@
 
 import type { AttentionItem } from "./homeAttention";
 import type { GatePresentation } from "./gates";
-import { hasLocalEvidence } from "./higginsNarration";
+import { hasLocalEvidence } from "./higginsNarration.ts";
 import type { StateResolution } from "./stateMachine";
 import type { Capability } from "./types";
 

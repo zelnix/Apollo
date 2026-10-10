@@ -6,7 +6,7 @@ import uuid
 
 from playwright.async_api import async_playwright
 
-BASE = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://higgins-refine.preview.emergentagent.com").rstrip("/")
+BASE = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://redaction-pipeline.preview.emergentagent.com").rstrip("/")
 
 
 async def onboard(page):

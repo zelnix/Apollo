@@ -12,7 +12,7 @@
  * 4. Events from other devices (no local version) take server data as-is.
  */
 import type { PatrolEvent } from "./types";
-import { STATE_RANK } from "./stateMachine";
+import { STATE_RANK } from "./stateMachine.ts";
 
 export interface MergeResult {
   events: PatrolEvent[];

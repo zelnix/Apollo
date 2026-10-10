@@ -4,9 +4,9 @@ Generated without Playwright or runtime scenario automation from the current Rea
 
 ## Public downloads
 
-- Gallery: `https://higgins-refine.preview.emergentagent.com/apollo-media-kit/`
-- Complete ZIP: `https://higgins-refine.preview.emergentagent.com/apollo-media-kit/apollo-media-kit.zip`
-- Machine-readable manifest: `https://higgins-refine.preview.emergentagent.com/apollo-media-kit/manifest.json`
+- Gallery: `https://redaction-pipeline.preview.emergentagent.com/apollo-media-kit/`
+- Complete ZIP: `https://redaction-pipeline.preview.emergentagent.com/apollo-media-kit/apollo-media-kit.zip`
+- Machine-readable manifest: `https://redaction-pipeline.preview.emergentagent.com/apollo-media-kit/manifest.json`
 
 ## Inventory
 

@@ -148,7 +148,7 @@ agent_communication:
 - Published six transparent Apollo mascot loops and six full-screen state demonstration GIFs for resting, sniffing/loading, growling/warning, barking/danger, biting/blocked and success.
 - Validation: all 28 PNGs decode; all 12 GIFs animate; transparent loops contain transparency; UI demos preserve a 1,320 ms loop; manifest has 40 unique paths; ZIP integrity passes.
 - Public HTTP checks passed for gallery, ZIP, representative PNG and representative GIF.
-- Gallery: `https://higgins-refine.preview.emergentagent.com/apollo-media-kit/`
+- Gallery: `https://redaction-pipeline.preview.emergentagent.com/apollo-media-kit/`
 
 ## 2026-09-23 Gmail production OAuth readiness
 
@@ -1226,7 +1226,7 @@ frontend:
     status_history:
       - agent: "testing"
         working: true
-        comment: "Iteration 79 verified frontend changes. TypeScript compilation passes with exit 0. Egress contract correctly defines push_register endpoint with allowed keys: platform, provider, projectId, device_token. registerRemotePush() function implemented in src/push/notifications.ts and called in ApolloContext on device identity establish (line 449) and setup completion (line 495). Frontend accessible at https://higgins-refine.preview.emergentagent.com with 200 status. No EgressViolation errors in frontend logs. All three modified files verified: privacy.ts (egress endpoint added), notifications.ts (registerRemotePush function), ApolloContext.tsx (calls registerRemotePush on deviceId change and after setup)."
+        comment: "Iteration 79 verified frontend changes. TypeScript compilation passes with exit 0. Egress contract correctly defines push_register endpoint with allowed keys: platform, provider, projectId, device_token. registerRemotePush() function implemented in src/push/notifications.ts and called in ApolloContext on device identity establish (line 449) and setup completion (line 495). Frontend accessible at https://redaction-pipeline.preview.emergentagent.com with 200 status. No EgressViolation errors in frontend logs. All three modified files verified: privacy.ts (egress endpoint added), notifications.ts (registerRemotePush function), ApolloContext.tsx (calls registerRemotePush on deviceId change and after setup)."
 
 test_plan:
   current_focus:
@@ -1543,7 +1543,7 @@ frontend:
     status_history:
       - agent: "testing"
         working: true
-        comment: "Iteration 82 - Frontend preview loads successfully at https://higgins-refine.preview.emergentagent.com/ with HTTP 200 status. Verified via curl."
+        comment: "Iteration 82 - Frontend preview loads successfully at https://redaction-pipeline.preview.emergentagent.com/ with HTTP 200 status. Verified via curl."
   
   - task: "Settings page Call Guard section"
     implemented: true
@@ -1870,7 +1870,7 @@ frontend:
     status_history:
       - agent: "testing"
         working: true
-        comment: "Frontend loads successfully at https://higgins-refine.preview.emergentagent.com/ with HTTP 200 status. No startup errors detected."
+        comment: "Frontend loads successfully at https://redaction-pipeline.preview.emergentagent.com/ with HTTP 200 status. No startup errors detected."
 
 metadata:
   created_by: "testing_agent"
@@ -2220,7 +2220,7 @@ frontend:
         comment: "privacyInventory.ts: Added AI_PROCESSING_DISCLOSURE object with 5 sections: (1) 'Where your data goes' - explains paid Gemini API tier managed by Apollo, not user's personal Google account. (2) 'What Google receives' - only approved content through privacy gate: sanitised text, redacted images, minimal research queries. Credentials never transmitted. (3) 'Data retention' - paid API tier data not used for training, request-scoped copies closed immediately, never beyond 15 minutes. (4) 'Research queries' - outbound queries minimised, personal identifiers replaced with category labels, domain names preserved. (5) 'On-device screening' - every image passes through privacy gate, user chooses: text only, redacted image, crop, or withhold. privacy-disclosure.tsx: AI disclosure section rendered between 'What Apollo does not retain' and 'Where data goes' sections."
       - agent: "testing"
         working: true
-        comment: "VERIFIED: Frontend tests PASS. node --test tests/privacyDisclosure.test.ts → 10 passed (AI disclosure content validation: title, 5 sections, paid API tier, what Google receives, data retention, research query minimisation, on-device screening). Full frontend test suite: node --test tests/*.test.ts tests/*.test.cjs → 594 passed, 2 failed (pre-existing: architecturalRegression.test.ts, higginsBehavioural.test.ts due to missing modules - documented as expected in review request). Web preview: https://higgins-refine.preview.emergentagent.com/privacy-disclosure loads successfully (200 OK). Code inspection confirms: (1) AI_PROCESSING_DISCLOSURE has 5 sections with required content. (2) privacy-disclosure.tsx renders AI disclosure section. (3) All required terms present: paid API tier, not user's Google account, not used for training, 15 minutes, research query minimisation, on-device screening. All acceptance criteria met."
+        comment: "VERIFIED: Frontend tests PASS. node --test tests/privacyDisclosure.test.ts → 10 passed (AI disclosure content validation: title, 5 sections, paid API tier, what Google receives, data retention, research query minimisation, on-device screening). Full frontend test suite: node --test tests/*.test.ts tests/*.test.cjs → 594 passed, 2 failed (pre-existing: architecturalRegression.test.ts, higginsBehavioural.test.ts due to missing modules - documented as expected in review request). Web preview: https://redaction-pipeline.preview.emergentagent.com/privacy-disclosure loads successfully (200 OK). Code inspection confirms: (1) AI_PROCESSING_DISCLOSURE has 5 sections with required content. (2) privacy-disclosure.tsx renders AI disclosure section. (3) All required terms present: paid API tier, not user's Google account, not used for training, 15 minutes, research query minimisation, on-device screening. All acceptance criteria met."
 
 test_plan:
   current_focus:
@@ -2234,4 +2234,44 @@ agent_communication:
   - agent: "main"
     message: "P1 (Research Query Minimization) + P2 (Gemini API Terms Clarification) implemented. BACKEND P1: (1) llm_boundary.py: 2-layer PII minimization (deterministic patterns + evidence-inventory-aware). (2) extract_evidence_pii() extracts known PII from evidence. (3) tools.py _grounded() pre-sanitises research queries with evidence PII. (4) No broad name regex - deterministic only. BACKEND P2: (5) provider.py configuration() returns clear retention terms (paid API, no training, 15 min). FRONTEND P2: (6) privacyInventory.ts AI_PROCESSING_DISCLOSURE with 5 sections. (7) privacy-disclosure.tsx renders AI disclosure. TESTS: Backend 38/38 llm_boundary tests pass, 63/63 full backend tests pass (1 skipped). Frontend 10/10 privacy disclosure tests pass, 594/594 full suite pass (2 pre-existing failures). Web preview loads. Please verify: (A) Research queries are minimised with evidence-aware PII protection. (B) Privacy disclosure clearly explains AI processing and retention. (C) No regressions in existing functionality."
   - agent: "testing"
-    message: "P1 (Research Query Minimization) + P2 (Gemini API Terms Clarification) VERIFIED. BACKEND TESTS: (1) pytest tests/test_llm_boundary.py → 38 passed (includes 16 new tests for evidence PII extraction, evidence-aware minimisation, financial identifiers, inventory-aware name redaction, domain preservation). (2) Full backend suite → 63 passed, 1 skipped. (3) Code inspection confirms 2-layer PII protection: deterministic patterns (financial, phone, email) + evidence-inventory-aware replacement. (4) tools.py _grounded() extracts evidence PII and pre-sanitises queries. (5) provider.py configuration() returns retention terms with 'Paid Gemini API', 'not used for model training', '15 minutes'. FRONTEND TESTS: (6) node --test tests/privacyDisclosure.test.ts → 10 passed (AI disclosure validation). (7) Full frontend suite → 594 passed, 2 failed (pre-existing, documented). (8) Web preview https://higgins-refine.preview.emergentagent.com/privacy-disclosure loads (200 OK). (9) Code inspection confirms AI_PROCESSING_DISCLOSURE has 5 sections with all required content. NO MAJOR ISSUES FOUND. All acceptance criteria met. Ready for main agent to summarise and finish."
+    message: "P1 (Research Query Minimization) + P2 (Gemini API Terms Clarification) VERIFIED. BACKEND TESTS: (1) pytest tests/test_llm_boundary.py → 38 passed (includes 16 new tests for evidence PII extraction, evidence-aware minimisation, financial identifiers, inventory-aware name redaction, domain preservation). (2) Full backend suite → 63 passed, 1 skipped. (3) Code inspection confirms 2-layer PII protection: deterministic patterns (financial, phone, email) + evidence-inventory-aware replacement. (4) tools.py _grounded() extracts evidence PII and pre-sanitises queries. (5) provider.py configuration() returns retention terms with 'Paid Gemini API', 'not used for model training', '15 minutes'. FRONTEND TESTS: (6) node --test tests/privacyDisclosure.test.ts → 10 passed (AI disclosure validation). (7) Full frontend suite → 594 passed, 2 failed (pre-existing, documented). (8) Web preview https://redaction-pipeline.preview.emergentagent.com/privacy-disclosure loads (200 OK). (9) Code inspection confirms AI_PROCESSING_DISCLOSURE has 5 sections with all required content. NO MAJOR ISSUES FOUND. All acceptance criteria met. Ready for main agent to summarise and finish."
+
+## 2026-02 Package 1 — Standards Adoption & Compliance Matrix + Frontend Test Fixes
+
+frontend:
+  - task: "Fix 2 pre-existing failing frontend tests (architecturalRegression.test.ts, higginsBehavioural.test.ts)"
+    implemented: true
+    working: true
+    file: "frontend/src/domain/protectionDetails.ts, frontend/src/domain/higginsHomeVoice.ts, frontend/src/domain/eventMerge.ts"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "main"
+        comment: "ROOT CAUSE: Node.js ESM with --experimental-strip-types requires .ts extensions in imports. Three domain files used bare specifiers (./stateMachine, ./higginsNarration) without .ts extension. import type statements are stripped by the compiler and don't trigger resolution, but value imports (STATE_RANK, hasLocalEvidence) do. FIX: Added .ts extension to 3 value imports in protectionDetails.ts, higginsHomeVoice.ts, eventMerge.ts. All 36+23=59 tests now pass. Metro bundler handles both patterns so no frontend build impact."
+
+  - task: "Package 1 — Standards Adoption & Compliance Matrix"
+    implemented: true
+    working: true
+    file: "docs/compliance/APOLLO_PRIVACY_STANDARDS_MATRIX.md"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "main"
+        comment: "Created comprehensive compliance matrix document at docs/compliance/APOLLO_PRIVACY_STANDARDS_MATRIX.md. Contents: (1) Standards Adoption Register — ISO 27701:2025, ISO 29100:2024, ISO 27001:2022, ISO 42001:2023, Australian Privacy Act 1988, ISO 27559:2022, ISO 31700-1:2023. (2) Scope & Applicability — system boundary, data subjects, processing activities, jurisdictions. (3) Governance & Responsibilities — roles, approval requirements. (4) Requirements-to-Controls Mapping — 7 sections covering all adopted standards with implementation files, owners, verification, gaps, acceptance status. (5) Evidence-Preservation & Investigative-Effectiveness Impacts — documents how each privacy control affects security evidence and Higgins' capabilities. (6) Gap Summary — 12 identified gaps with severity, remediation package, target phase. (7) Verification Requirements — methods, test evidence register. (8) Implementation File Registry — frontend and backend control files mapped. (9) Package Delivery Record tracking."
+      - agent: "testing"
+        working: true
+        comment: "VERIFIED: Package 1 delivery complete. (1) FRONTEND TEST FIXES: architecturalRegression.test.ts 36/36 PASS, higginsBehavioural.test.ts 23/23 PASS. Import fix verified in 3 files (protectionDetails.ts line 10, higginsHomeVoice.ts line 15, eventMerge.ts line 15) - all now use .ts extensions. (2) RELATED TESTS: imageSanitization.test.ts 20/20 PASS, privacyDisclosure.test.ts 10/10 PASS - no regressions. (3) BACKEND PRIVACY TESTS: test_image_sanitization.py + test_llm_boundary.py → 50/50 PASS. (4) COMPLIANCE MATRIX: docs/compliance/APOLLO_PRIVACY_STANDARDS_MATRIX.md exists with all required sections: Standards Adoption Register (7 standards), Scope & Applicability, Governance & Responsibilities, Requirements-to-Controls Mapping (ISO 27701, ISO 29100, ISO 27001, ISO 42001, Australian Privacy Act APPs, ISO 27559, ISO 31700-1), Evidence-Preservation impacts, Gap Summary (12 gaps), Verification Requirements, Implementation File Registry (29 files), Package Delivery Record. (5) IMPLEMENTATION FILES: All 29 files referenced in matrix verified to exist on disk (14 frontend + 15 backend). All acceptance criteria met."
+
+test_plan:
+  current_focus:
+    - "Package 1: Standards Adoption & Compliance Matrix - document verification"
+    - "Frontend test fix verification"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Package 1 implemented. (1) Fixed 2 pre-existing frontend test failures by adding .ts extensions to 3 bare value imports in domain files. All 59 previously failing tests now pass. (2) Created docs/compliance/APOLLO_PRIVACY_STANDARDS_MATRIX.md — comprehensive compliance matrix covering 7 adopted standards, 7 requirements-to-controls mapping sections, 12 identified gaps with remediation plan, evidence-preservation impact assessment, verification requirements, and implementation file registry. Backend tests: 50/50 pass (image_sanitization + llm_boundary). Frontend tests: architecturalRegression 36/36, higginsBehavioural 23/23, imageSanitization + privacyDisclosure all passing. Please test to verify."
+  - agent: "testing"
+    message: "Package 1 VERIFIED AND COMPLETE. All tests pass, compliance matrix meets specification, all implementation files exist. (1) Frontend test fixes: 36+23=59 tests now passing (was failing). Import fixes verified in 3 files with .ts extensions. (2) Related tests: imageSanitization 20/20, privacyDisclosure 10/10 - no regressions. (3) Backend privacy tests: 50/50 passing. (4) Compliance matrix: All required sections present, 7 standards documented, 12 gaps identified with remediation plan, 29 implementation files mapped and verified to exist. (5) Code changes: 3 import fixes confirmed at correct line numbers. NO ISSUES FOUND. Package 1 delivery acceptance criteria fully met. Ready for main agent to summarise and finish."

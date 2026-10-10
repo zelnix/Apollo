@@ -9,7 +9,7 @@ import sys
 import requests
 
 # Backend URL from environment
-BACKEND_URL = os.getenv("REACT_APP_BACKEND_URL", "https://higgins-refine.preview.emergentagent.com")
+BACKEND_URL = os.getenv("REACT_APP_BACKEND_URL", "https://redaction-pipeline.preview.emergentagent.com")
 API_BASE = f"{BACKEND_URL}/api"
 
 def register_device():

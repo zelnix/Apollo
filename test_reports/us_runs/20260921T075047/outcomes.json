@@ -1,6 +1,6 @@
 {
   "run": "20260921T075047",
-  "base": "https://higgins-refine.preview.emergentagent.com",
+  "base": "https://redaction-pipeline.preview.emergentagent.com",
   "provider": "gemini (owner key)",
   "mocked": false,
   "scenarios": [

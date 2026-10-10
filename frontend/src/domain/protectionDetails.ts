@@ -7,7 +7,7 @@
 import type { AttentionItem } from "./homeAttention";
 import type { GatePresentation } from "./gates";
 import type { Capability, EventCategory, PatrolEvent } from "./types";
-import { STATE_RANK } from "./stateMachine";
+import { STATE_RANK } from "./stateMachine.ts";
 
 /** A finding to render on the Protection Details screen. */
 export interface ProtectionFinding {
