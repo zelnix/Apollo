@@ -52,3 +52,20 @@ export const PRIVACY_STANDARDS_DISCLOSURE = {
     { name: 'ISO 31700-1:2023', role: 'Privacy-by-design requirements' },
   ],
 };
+
+export const THIRD_PARTY_SERVICES_DISCLOSURE = {
+  title: 'Third-party services',
+  intro: 'Apollo is a brand of Harmony Wellness Group (HWG), which is accountable for the selection, configuration and oversight of the external services Apollo uses. Apollo uses external services only where needed to provide security investigations, reputation checks, communications, storage or supporting functionality.',
+  services: [
+    { name: 'Google Gemini', purpose: 'AI-powered security investigations, explanations, research and voice functions', shared: 'Privacy-processed investigation evidence, approved content, security indicators and minimised research queries. Authentication secrets are never sent.' },
+    { name: 'Google Safe Browsing', purpose: 'Detect known unsafe websites', shared: 'Sanitised website addresses and domains. Credentials and secret query values are removed before lookup.' },
+    { name: 'Google Gmail', purpose: 'Optional read-only email checking', shared: 'Google OAuth authorisation and access to email information within the approved read-only scope. Only active when you connect Gmail.' },
+    { name: 'XposedOrNot / Have I Been Pwned', purpose: 'Check whether an email appears in known data breaches', shared: 'Only the email address submitted for the specific breach check.' },
+    { name: 'IPQualityScore', purpose: 'Phone-number fraud and reputation checking', shared: 'Only the phone number being checked.' },
+    { name: 'Push notifications (Expo, Google FCM, Apple APNs)', purpose: 'Deliver security and family alerts', shared: 'Push delivery tokens and notification content. Only active when you enable notifications.' },
+    { name: 'Emergent-managed email delivery', purpose: 'Family invitations, notifications and service emails', shared: 'Recipient email address, subject and email content. Only triggered by your explicit actions.' },
+    { name: 'Database hosting provider', purpose: 'Store authorised application and investigation records', shared: 'Records permitted by Apollo\u2019s storage and retention controls.' },
+    { name: 'Domain registries and public websites', purpose: 'Domain registration research and website investigation', shared: 'Domain lookup requests and requested website access for URLs you submit.' },
+  ],
+  footer: 'Optional integrations operate only when you enable the relevant feature. Apollo applies purpose-based privacy controls to all information sent to external services. Personal information unrelated to the investigation is minimised or withheld.',
+};

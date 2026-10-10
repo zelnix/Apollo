@@ -12,7 +12,7 @@ import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
-import { PRIVACY_FLOWS, LOCAL_ONLY_CONTENT, AI_PROCESSING_DISCLOSURE, PRIVACY_STANDARDS_DISCLOSURE } from '@/src/domain/privacyInventory';
+import { PRIVACY_FLOWS, LOCAL_ONLY_CONTENT, AI_PROCESSING_DISCLOSURE, PRIVACY_STANDARDS_DISCLOSURE, THIRD_PARTY_SERVICES_DISCLOSURE } from '@/src/domain/privacyInventory';
 
 export const DISCLOSURE_VERSION = "purpose-limited-v2";
 
@@ -112,6 +112,21 @@ export default function PrivacyDisclosure() {
                 <Body>{std.role}</Body>
               </View>
             ))}
+          </Card>
+        </View>
+
+        <View>
+          <SectionTitle>{THIRD_PARTY_SERVICES_DISCLOSURE.title}</SectionTitle>
+          <Card testID="disclosure-third-party" style={{ gap: spacing.md }}>
+            <Body>{THIRD_PARTY_SERVICES_DISCLOSURE.intro}</Body>
+            {THIRD_PARTY_SERVICES_DISCLOSURE.services.map((svc, i) => (
+              <View key={svc.name} style={s.item} testID={`disclosure-svc-${i}`}>
+                <Text style={s.what}>{svc.name}</Text>
+                <Text style={s.when}>{svc.purpose}</Text>
+                <Body>{svc.shared}</Body>
+              </View>
+            ))}
+            <Body>{THIRD_PARTY_SERVICES_DISCLOSURE.footer}</Body>
           </Card>
         </View>
 

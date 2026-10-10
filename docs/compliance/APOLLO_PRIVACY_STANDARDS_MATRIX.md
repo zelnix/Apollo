@@ -4,6 +4,8 @@
 **Version**: 2.0
 **Status**: Post-Implementation Consolidation — Internal Conformity Assessment
 **Effective**: June 2026 (consolidation of Packages 1–8, originally adopted February 2026)
+**App**: Apollo Scam Guard (Apollo)
+**Accountable Organisation**: Harmony Wellness Group (HWG)
 **Owner**: Apollo Engineering
 **Review Cycle**: Quarterly or upon material architecture change
 
@@ -16,6 +18,7 @@
 | **AI_GOVERNANCE.md** | AI inventory, risk register, provider terms, APP assessment, consent model | `docs/compliance/` |
 | **PACKAGE8_ACCEPTANCE_REPORT.md** | End-to-end verification results, production acceptance checklist | `docs/compliance/` |
 | **GEMINI_SDK_AUDIT_REPORT.md** | SDK migration audit, emergentintegrations removal verification | `docs/compliance/` |
+| **HWG_THIRD_PARTY_SERVICE_REGISTER.md** | Verified third-party service register with active, optional and unconfigured status | `docs/compliance/` |
 
 ### Authoritative Implementation Sources
 
@@ -100,11 +103,14 @@ Apollo is a mobile-first cybersecurity application comprising:
 
 ## 3. Governance & Responsibilities
 
+Harmony Wellness Group (HWG) is the accountable organisation for Apollo Scam Guard.
+
 | Role | Responsibility | Current Assignment |
 |---|---|---|
 | **Privacy Owner** | Standards adoption, compliance matrix maintenance, gap resolution | Apollo Engineering Lead |
 | **Security Owner** | ISO 27001 controls, encryption, access control, incident response | Apollo Engineering Lead |
 | **AI Governance Owner** | ISO 42001 controls, Gemini gateway oversight, Higgins behaviour | Apollo Engineering Lead |
+| **Third-Party Service Owner** | Service selection, configuration, data-sharing oversight | Harmony Wellness Group |
 | **Legal Advisor** | Privacy Act compliance, APP assessment, cross-border obligations | To be appointed / external review required |
 | **Data Protection Contact** | User enquiries, access requests, complaint handling | To be defined |
 
@@ -285,6 +291,36 @@ Privacy controls must not compromise Apollo's security evidence or Higgins' inve
 
 ---
 
+## 6. Third-Party Services and Data Sharing
+
+**App**: Apollo Scam Guard (Apollo)
+**Accountable Organisation**: Harmony Wellness Group (HWG)
+
+Harmony Wellness Group is accountable for Apollo's use of third-party services, including their selection, configuration, data-sharing arrangements and oversight.
+
+Apollo uses external services only where needed to provide security investigations, reputation checks, communications, storage or supporting functionality.
+
+The authoritative register of all third-party services, including their operational status (active, optional, unconfigured), information shared, privacy controls applied, and verification evidence is maintained in:
+
+> **`docs/compliance/HWG_THIRD_PARTY_SERVICE_REGISTER.md`**
+
+### Privacy and Security Requirements
+
+- Apollo applies its purpose-based privacy controls to information sent to external services.
+- Authentication secrets must not be sent to Gemini.
+- Personal information unrelated to the investigation should be minimised or withheld.
+- Material security evidence must be preserved where necessary for accurate investigation.
+- Information sharing, provider access and retention must follow the applicable controls and authorisations.
+- Third-party involvement must be disclosed clearly and accurately.
+
+### Accountability
+
+Harmony Wellness Group remains accountable for Apollo's third-party service arrangements.
+
+The exact infrastructure providers, active integrations and applicable privacy documentation must be maintained in Harmony Wellness Group's third-party service register.
+
+---
+
 ## 7. Verification Requirements
 
 Each control must be verified through applicable methods. This table defines the verification approach.
@@ -373,5 +409,6 @@ This section maps each privacy/security control to its authoritative implementat
 | Feb 2026 | 1.0 | Initial compliance matrix — Package 1 delivery | Apollo Engineering |
 | Feb 2026 | 1.1–1.7 | Packages 2–8 delivered: data classification, gateway enforcement, image privacy, structural validation, security lifecycle, AI governance, end-to-end verification | Apollo Engineering |
 | Jun 2026 | 2.0 | Post-implementation consolidation: removed superseded statements; all 12 gaps CLOSED (G-01–G-12); added dual-classification section (§4.8); added traceability columns (Data Categories, Test Evidence, Cross-references) to all compliance tables; linked companion documents; aligned compliance claims with verified evidence; corrected test counts to final figures (344) | Apollo Engineering |
+| Jun 2026 | 2.1 | Identified Harmony Wellness Group as accountable organisation; created HWG Third-Party Service Register with active/optional/unconfigured status verified against deployment; added Third-Party Services section to Privacy Disclosure screen; §6 references standalone register; §3 adds Third-Party Service Owner role | Apollo Engineering |
 
 
