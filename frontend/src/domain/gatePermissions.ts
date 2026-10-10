@@ -39,7 +39,7 @@ export const GATE_PERMISSIONS: Record<GatePermId, GatePermCopy> = {
     id: "email", title: "Email Gate",
     short: "Checks a connected mailbox for phishing, impersonation and dangerous links.",
     why: "Connect Gmail with read-only access. Apollo never sends email on your behalf, and you can disconnect anytime.",
-    enableLabel: "Connect Email Gate", pendingLabel: "Not connected", route: "/email",
+    enableLabel: "Connect your email accounts", pendingLabel: "Not connected", route: "/email",
   },
 };
 

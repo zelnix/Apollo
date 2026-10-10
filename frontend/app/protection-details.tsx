@@ -108,9 +108,9 @@ export default function ProtectionDetailsScreen() {
   const info = {
     title: "About Protection Details",
     body: [
-      "This screen shows findings that need your attention first, then protection activity (verified blocks), then gate infrastructure.",
+      "This screen shows genuine findings that need your attention: active threats, verified blocks and protection failures.",
       "Apollo does the security work. Higgins is the one voice explaining what Apollo found, what it means and what to do.",
-      "Manual checks (like Link Gate) are called out separately — they are tools you can use, not continuous background protection.",
+      "Normal capability availability and optional setup are shown on the Protection tab, not here.",
     ],
   };
 
@@ -262,7 +262,7 @@ export default function ProtectionDetailsScreen() {
         {findings.length === 0 ? (
           <Card testID="protection-details-empty" style={{ gap: spacing.sm }}>
             <Text style={s.emptyTitle}>Nothing to flag right now</Text>
-            <Body>Apollo isn&apos;t reporting any active threats or affected Gates at the moment. Your automatic protection is running, and manual checks are available on the Check tab whenever you need them.</Body>
+            <Body>Apollo isn&apos;t reporting any active threats or protection failures at the moment. Your automatic protection status and manual checks are shown on the Protection tab.</Body>
           </Card>
         ) : null}
 

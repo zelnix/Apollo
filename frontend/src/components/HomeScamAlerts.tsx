@@ -134,7 +134,7 @@ export function HomeScamAlerts() {
             </View>
           </View>
         ))}
-        <Button testID="home-view-all-scams" label="View all scam alerts" variant="secondary" onPress={() => router.push("/(tabs)/scams")} />
+        <Button testID="home-view-all-scams" label="View all scam alerts" variant="secondary" onPress={() => router.push("/higgins/scams")} />
       </Card>
     </View>
   );

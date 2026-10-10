@@ -244,28 +244,34 @@ export function buildProtectionFindings(input: {
     // Skip event-type attention items — they're already grouped above as threats.
   }
 
-  // ── 3) Capabilities that aren't currently 'active' ──
+  // ── 3) Capabilities with genuine protection failures ──
+  // Only report capabilities that represent ACTUAL failures of automatic protection that was
+  // previously running, or permissions that block an automatic protection from operating.
+  // Normal manual-check readiness ("available"), optional feature availability ("not set up"),
+  // and limited coverage that isn't a failure are NOT findings — they belong on the Protection tab.
   for (const c of input.capabilities) {
     if (c.status === "active" || c.status === "coming_later") continue;
     if (c.status === "unsupported") continue;
+    // "available" is normal readiness — not a finding.
+    if (c.status === "available") continue;
     const meta = CAPABILITY_META[c.id];
     if (!meta) continue;
     if (seenGates.has(meta.gate)) continue;
+    // Only automatic protections that need a permission to resume are genuine infrastructure findings.
+    // Manual checks that need a permission are optional setup, not security incidents.
+    if (c.status === "permission_required" && meta.kind === "manual") continue;
+    // "inactive" for manual checks is not a security incident either.
+    if (c.status === "inactive" && meta.kind === "manual") continue;
     const whatToDo = c.status === "permission_required"
       ? `Open ${meta.gate} to grant the permission so Apollo can resume this protection.`
-      : c.status === "available"
-        ? `Open ${meta.gate} when you want to use this check.`
-        : `Open ${meta.gate} to see what's needed next.`;
+      : `Open ${meta.gate} to see what's needed next.`;
     findings.push({
       id: `cap:${c.id}`,
       gate: meta.gate,
       kind: meta.kind,
       kindLabel: meta.kind === "manual" ? "Manual check" : "Automatic protection",
-      tone: c.status === "permission_required" ? "limited" : c.status === "available" ? "neutral" : "unverified",
-      statusLabel: c.status === "permission_required" ? "Permission needed"
-        : c.status === "available" ? "Ready when you need it"
-        : c.status === "inactive" ? "Limited coverage"
-        : "Status unknown",
+      tone: c.status === "permission_required" ? "limited" : "unverified",
+      statusLabel: c.status === "permission_required" ? "Permission needed" : "Limited coverage",
       whatFound: c.detail,
       whatItMeans: capabilityMeaning(c, meta.kind),
       whatToDo,
@@ -276,16 +282,22 @@ export function buildProtectionFindings(input: {
     seenGates.add(meta.gate);
   }
 
-  // ── 4) Gates with limited / unable-to-verify tone ──
+  // ── 4) Gates with genuine automatic protection failures ──
+  // Only gates where automatic protection has degraded or cannot be verified are findings.
+  // "Limited" means an automatic protection IS running but with reduced scope — this is a genuine
+  // finding. "Unverified" means Apollo can't confirm it's running — also genuine.
+  // Purely manual gates and optional-setup states are NOT findings.
   for (const g of input.gates) {
     if (seenGates.has(g.title)) continue;
     if (g.tone !== "limited" && g.tone !== "unverified") continue;
+    // Skip gates that are purely manual — limited/unverified for a manual check is informational.
     const kind = gateKind(g);
+    if (kind === "manual") continue;
     findings.push({
       id: `gate:${g.id}`,
       gate: g.title,
       kind,
-      kindLabel: kind === "manual" ? "Manual check" : "Automatic protection",
+      kindLabel: "Automatic protection",
       tone: g.tone,
       statusLabel: g.tone === "limited" ? "Limited coverage" : "Unable to verify",
       whatFound: g.currentHelp,
