@@ -127,6 +127,7 @@ export default function PrivacyDisclosure() {
               </View>
             ))}
             <Body>{THIRD_PARTY_SERVICES_DISCLOSURE.footer}</Body>
+            <Body>{THIRD_PARTY_SERVICES_DISCLOSURE.changes}</Body>
           </Card>
         </View>
 

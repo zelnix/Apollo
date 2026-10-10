@@ -101,112 +101,159 @@ Apollo is a mobile-first cybersecurity application comprising:
 
 ---
 
-## 3. Governance & Responsibilities
+## 3. Governance and Accountability
 
-Harmony Wellness Group (HWG) is the accountable organisation for Apollo Scam Guard.
+**Accountable Organisation**: Harmony Wellness Group (HWG)
+
+Harmony Wellness Group is responsible for Apollo's overall privacy, cybersecurity, information security, AI governance, regulatory obligations and third-party service arrangements.
+
+Apollo Scam Guard is responsible for implementing and enforcing the applicable technical controls within the application and its supporting services.
+
+Application compliance is assessed against functionality, security controls, privacy protections and verifiable implementation evidence.
+
+Organisational, legal, contractual and governance responsibilities remain under Harmony Wellness Group's accountability and are not presented as application feature requirements unless they require technical implementation.
+
+### 3.1 Compliance Assessment Framework
+
+Apollo maintains two distinct compliance records:
+
+- **Apollo Application Technical Compliance** — controls the software implements, with evidence and a pass/fail or N/A assessment.
+- **Apollo Operational & Legal Compliance** — contracts, privacy-law applicability, supplier assurance, policies, appointments and external infrastructure responsibilities.
+
+These are cross-referenced but neither prevents the other from being completed.
+
+> **Assessment Rule**: If a requirement can be implemented, enforced and verified through Apollo's software, it belongs to the application's technical compliance assessment. If a requirement involves contracts, legal determinations, organisational appointments, independent assessments or external infrastructure, it belongs to the operational compliance assessment.
+
+Each requirement is assessed independently on three dimensions:
+
+| Assessment | Available Statuses |
+|---|---|
+| **Applicability to Apollo** | Applicable / Not applicable |
+| **Application implementation** | ✅ Implemented / ⚠️ Partially implemented / ❌ Not implemented / — N/A |
+| **Operational or legal assurance** | ✅ Completed / ⚠️ Outstanding / — N/A |
+
+Passing code tests establishes application technical compliance. It does not automatically establish full ISO management-system conformity or compliance with every Australian Privacy Principle. ISO/IEC 27701 and ISO/IEC 42001 are management-system standards addressing organisational governance as well as technical controls.
+
+### 3.2 Governance Roles
 
 | Role | Responsibility | Current Assignment |
 |---|---|---|
-| **Privacy Owner** | Standards adoption, compliance matrix maintenance, gap resolution | Apollo Engineering Lead |
+| **Privacy Owner** | Standards adoption, compliance matrix maintenance | Apollo Engineering Lead |
 | **Security Owner** | ISO 27001 controls, encryption, access control, incident response | Apollo Engineering Lead |
 | **AI Governance Owner** | ISO 42001 controls, Gemini gateway oversight, Higgins behaviour | Apollo Engineering Lead |
 | **Third-Party Service Owner** | Service selection, configuration, data-sharing oversight | Harmony Wellness Group |
 | **Legal Advisor** | Privacy Act compliance, APP assessment, cross-border obligations | To be appointed / external review required |
 | **Data Protection Contact** | User enquiries, access requests, complaint handling | To be defined |
 
-### Governance Approvals Required
+### 3.3 Governance Approvals Required
 
 | Decision | Approver | Status |
 |---|---|---|
 | Standards adoption scope | Privacy Owner | Approved (this document) |
 | New external data processing pathway | Privacy Owner + Security Owner | Required per Package 3 |
 | Gemini model or provider change | AI Governance Owner | Required per Package 7 |
-| Cross-border data transfer assessment | Legal Advisor | Pending — requires appointment |
+| Cross-border data transfer assessment | Legal Advisor | Outstanding — requires appointment |
 | Independent certification decision | All owners | Not yet scheduled |
 
 ---
 
 ## 4. Compliance Matrix — Requirements to Controls
 
+Each requirement is assessed on three independent dimensions as defined in §3.1.
+
 ### 4.1 ISO/IEC 27701:2025 — Privacy Information Management (PIMS)
 
-| Ref | Requirement Area | Control | Implementation | Data Categories | Test Evidence | Status |
-|---|---|---|---|---|---|---|
-| 27701-5.2 | Privacy policy and objectives | Purpose-limited processing documented | `privacyInventory.ts`, `privacy-disclosure.tsx`, `PRIVACY_FLOWS` array | All categories mapped in `data_classification.py` | `privacyDisclosure.test.ts` | ✅ Implemented |
-| 27701-5.4 | PII processing conditions | Informed consent before setup; opt-in for Gmail, notifications | `privacy-disclosure.tsx` accept flow → `completeSetup()` | PII, CONVERSATION, DEVICE_IDENTITY | `privacyDisclosure.test.ts` | ✅ Implemented — consent model accepted; documented in `AI_GOVERNANCE.md` §6.2 |
-| 27701-6.2 | Access control for PII | Owner-scoped device authentication; admin key separation | `core/auth.py` — bearer token + device_id enforcement; admin key via separate header | DEVICE_IDENTITY, all owner-scoped data | See `SECURITY_LIFECYCLE.md` §2 | ✅ Implemented |
-| 27701-6.3 | Cryptographic protection | Investigation content encrypted at rest (Fernet); TLS in transit | `encryption.py` — dedicated investigation key; Kubernetes TLS termination | INVESTIGATION_METADATA, CONVERSATION, SECURITY_INDICATOR | See `SECURITY_LIFECYCLE.md` §1 | ✅ Implemented — investigation content encrypted; other collections rely on MongoDB at-rest encryption |
-| 27701-6.5 | Retention and disposal | Temporary evidence: 15-minute scoped lifecycle with verified deletion | `retention.py` — `sweep()`, `delete_scope()`, TTL indexes | All investigation-scoped categories | See `SECURITY_LIFECYCLE.md` §3 | ✅ Implemented — soft-delete accepted with documented disclosure; investigation content physically deleted via 15-minute scoped retention |
-| 27701-7.2 | PII principal consent | Setup disclosure → accept; Gmail OAuth consent flow | `privacy-disclosure.tsx`, `routers/gmail.py` OAuth | PII, CONVERSATION | `privacyDisclosure.test.ts` | ✅ Implemented — consent model accepted; setup disclosure covers all processing purposes |
-| 27701-7.3 | Privacy notice | Processing inventory with what/when/detail structure | `privacyInventory.ts` — `PRIVACY_FLOWS`, `AI_PROCESSING_DISCLOSURE` | All categories documented | `privacyDisclosure.test.ts` | ✅ Implemented — privacy disclosure screen and compliance matrix accepted as operative documentation |
-| 27701-7.4 | PII minimisation | Credential stripping; research query minimisation; on-device image screening | `llm_boundary.py`, `redaction.py`, `imageSanitization.ts`, `ImagePrivacyGate.tsx` | PII, CREDENTIAL, FINANCIAL, SECURITY_INDICATOR (dual-classified) | `test_package4_acceptance.py`, `test_llm_boundary.py`, `imageSanitization.test.ts` | ✅ Implemented — on-device screening enforced; preflight removed; fail-closed redaction; byte-binding digest |
-| 27701-7.5 | Purpose limitation | Purpose enum mandatory on all LLM calls; privacy boundary middleware | `llm_boundary.py` — `Purpose` enum; `provider.py` — `purpose` parameter required with no default | All categories per authorisation matrix | `test_gateway_enforcement.py` (purpose mandatory verified via AST) | ✅ Implemented — explicit purpose required on every Gemini call |
-| 27701-8.2 | Cross-border transfers | Gemini API processes in Google's infrastructure; paid tier terms documented | `provider.py` configuration disclosure; `AI_GOVERNANCE.md` §4 | Authorised categories only (CREDENTIAL prohibited) | See `AI_GOVERNANCE.md` §4 | ✅ Implemented — paid tier terms verified; processing location disclosed; accepted |
+| Ref | Requirement | Applicability | App Control | Operational Assurance |
+|---|---|---|---|---|
+| 27701-5.2 | Privacy policy and objectives | Applicable | ✅ Implemented — purpose-limited processing documented in `privacyInventory.ts` and `privacy-disclosure.tsx` | — N/A |
+| 27701-5.4 | PII processing conditions | Applicable | ✅ Implemented — informed consent before setup; opt-in for Gmail, notifications | ⚠️ Outstanding — consent format standardisation is a legal/product decision |
+| 27701-6.2 | Access control for PII | Applicable | ✅ Implemented — owner-scoped device auth; admin key separation | — N/A |
+| 27701-6.3 | Cryptographic protection | Applicable | ✅ Implemented — Fernet encryption at rest; TLS in transit | — N/A |
+| 27701-6.5 | Retention and disposal | Applicable | ✅ Implemented — 15-minute scoped lifecycle; sweep and TTL deletion | — N/A |
+| 27701-7.2 | PII principal consent | Applicable | ✅ Implemented — setup disclosure; Gmail OAuth consent | ⚠️ Outstanding — granular per-purpose consent is a product/legal decision |
+| 27701-7.3 | Privacy notice | Applicable | ✅ Implemented — processing inventory with what/when/detail structure | ⚠️ Outstanding — legal adequacy review of notice wording |
+| 27701-7.4 | PII minimisation | Applicable | ✅ Implemented — credential stripping; research minimisation; on-device image screening; fail-closed redaction | — N/A |
+| 27701-7.5 | Purpose limitation | Applicable | ✅ Implemented — purpose enum mandatory on every Gemini call; no default | — N/A |
+| 27701-8.2 | Cross-border transfers | Applicable | ✅ Implemented — minimisation applied; credential prohibition enforced; paid tier terms documented | ⚠️ Outstanding — formal cross-border transfer assessment requires legal advisor |
 
 ### 4.2 ISO/IEC 29100:2024 — Privacy Principles
 
-| Principle | Control | Implementation | Data Categories | Test Evidence | Status |
-|---|---|---|---|---|---|
-| **Consent and choice** | Setup disclosure; opt-in Gmail/notifications | `privacy-disclosure.tsx`, Settings toggles | All user-facing | `privacyDisclosure.test.ts` | ✅ Implemented |
-| **Purpose legitimacy and specification** | Processing inventory; purpose enum mandatory | `PRIVACY_FLOWS`; `Purpose` enum in `llm_boundary.py`; no-default enforcement in `provider.py` | All — per authorisation matrix | `test_gateway_enforcement.py` | ✅ Implemented |
-| **Collection limitation** | Only user-submitted or opt-in content processed | Route-level input validation; no unsolicited collection | All user-submitted categories | Route-level inspection | ✅ Implemented |
-| **Data minimisation** | Credential stripping; PII minimisation in research; on-device image screening | `redaction.py`, `llm_boundary.py`, `ImagePrivacyGate.tsx`, `imageSanitization.ts` | PII, CREDENTIAL, FINANCIAL, SECURITY_INDICATOR (dual-classified) | `test_package4_acceptance.py`, `test_llm_boundary.py`, `imageSanitization.test.ts` | ✅ Implemented — preflight removed; on-device screening enforced; fail-closed |
-| **Use, retention and disclosure limitation** | 15-min scoped retention; no logging of prompts/responses | `retention.py`; `provider.py` no-logging design | All investigation-scoped | See `SECURITY_LIFECYCLE.md` §3 | ✅ Implemented — soft-delete accepted with documented disclosure; investigation content physically deleted via scoped retention |
-| **Accuracy** | Evidence provenance tracking; honest narration of limitations | `evidence_provenance` field; `higginsNarration.ts` | INVESTIGATION_METADATA, DERIVED_CONTENT | `architecturalRegression.test.ts` | ✅ Implemented |
-| **Openness, transparency and notice** | Disclosure screen; AI processing section; local-only list | `privacyInventory.ts` comprehensive inventory | All categories documented | `privacyDisclosure.test.ts` | ✅ Implemented |
-| **Individual participation and access** | Delete device endpoint; clear patrol | `delete_owner_content()`; patrol clear | All owner-scoped | Route inspection | ✅ Implemented — device owner has direct access; re-submit mechanism accepted |
-| **Accountability** | Compliance matrix; governance roles defined | This document; `AI_GOVERNANCE.md` | N/A | Documentation review | ✅ Implemented — governance documentation complete; legal advisor appointment is an organisational action, not a code matter |
-| **Information security** | Encryption, auth, access control | `encryption.py`, `auth.py` | All stored data | See `SECURITY_LIFECYCLE.md` | ✅ Implemented — see §4.3 |
-| **Privacy compliance** | Standards adoption; internal assessment | This document; Package 8 acceptance report | N/A | `PACKAGE8_ACCEPTANCE_REPORT.md` | ✅ Implemented — 344 tests passing; 12-point checklist verified |
+| Principle | Applicability | App Control | Operational Assurance |
+|---|---|---|---|
+| **Consent and choice** | Applicable | ✅ Implemented — setup disclosure; opt-in Gmail/notifications | — N/A |
+| **Purpose legitimacy and specification** | Applicable | ✅ Implemented — processing inventory; purpose enum mandatory | — N/A |
+| **Collection limitation** | Applicable | ✅ Implemented — only user-submitted or opt-in content | — N/A |
+| **Data minimisation** | Applicable | ✅ Implemented — credential stripping; PII minimisation; on-device screening; fail-closed | — N/A |
+| **Use, retention and disclosure limitation** | Applicable | ✅ Implemented — 15-min scoped retention; no prompt/response logging | — N/A |
+| **Accuracy** | Applicable | ✅ Implemented — evidence provenance; honest limitation narration | — N/A |
+| **Openness, transparency and notice** | Applicable | ✅ Implemented — disclosure screen; AI processing section; third-party services | — N/A |
+| **Individual participation and access** | Applicable | ✅ Implemented — delete endpoint; clear patrol; device owner access | ⚠️ Outstanding — formal SAR procedure is an organisational responsibility |
+| **Accountability** | Applicable | ✅ Implemented — compliance matrix; governance documentation; audit evidence | ⚠️ Outstanding — legal advisor appointment is an organisational responsibility |
+| **Information security** | Applicable | ✅ Implemented — see §4.3 | — N/A |
+| **Privacy compliance** | Applicable | ✅ Implemented — 344 tests passing; 12-point acceptance checklist | — N/A |
 
 ### 4.3 ISO/IEC 27001:2022 — Information Security Controls
 
-| Control Area | Ref | Control | Implementation | Cross-reference | Test Evidence | Status |
-|---|---|---|---|---|---|---|
-| **Access control** | A.5.15–5.18 | Device bearer auth; admin key separation; owner-scoped queries | `auth.py` — SHA-256 hashed tokens; device_id enforcement on every request | `SECURITY_LIFECYCLE.md` §2 | Existing auth tests | ✅ Implemented |
-| **Cryptography** | A.8.24 | Investigation content: Fernet encryption at rest; domain-separated integrity | `encryption.py` — dedicated key file with permission checks | `SECURITY_LIFECYCLE.md` §1.2 | Existing encryption tests | ✅ Implemented |
-| **Cryptography** | A.8.24 | TLS in transit | Kubernetes ingress TLS termination | `SECURITY_LIFECYCLE.md` §1.1 | Infrastructure verification | ✅ Implemented |
-| **Operational security** | A.8.15 | No prompt/response logging in provider | `provider.py` — ProviderFailure never includes SDK text | `SECURITY_LIFECYCLE.md` §5 | `test_gateway_enforcement.py` | ✅ Implemented |
-| **Secure development** | A.8.25 | Strict Pydantic schemas; `extra="forbid"` on wire models | `contracts.py` — all Wire models reject unknown fields | — | Schema validation tests | ✅ Implemented |
-| **Supplier management** | A.5.19–5.22 | Gemini paid tier; no training use; documented retention | `provider.py` configuration disclosure; privacy inventory | `AI_GOVERNANCE.md` §4 | Provider terms verification | ✅ Implemented — provider terms, data flow, and retention documented in code; formal procurement assessment is an organisational action, not a code matter |
-| **Incident management** | A.5.24–5.28 | Privacy boundary middleware; error containment; documented response actions | `privacy_boundary.py`; ProviderFailure code-only errors | `SECURITY_LIFECYCLE.md` §6 | Code inspection | ✅ Implemented — response actions documented in `SECURITY_LIFECYCLE.md` §6; containment mechanisms accepted |
-| **Data isolation** | A.8.31 | Owner-scoped DB queries; device_id enforcement | All DB queries filtered by `owner_id` or `device_id` | `SECURITY_LIFECYCLE.md` §2.3 | Existing auth tests | ✅ Implemented |
-| **Key management** | A.8.24 | Dedicated investigation key; permission-checked file | `encryption.py` — `0o077` permission check; separate from API keys | `SECURITY_LIFECYCLE.md` §4 | Key management tests | ✅ Implemented |
-| **MFA** | A.8.5 | Admin key for privileged access | `auth.py` — separate admin key boundary | `SECURITY_LIFECYCLE.md` §2.2 | — | ✅ Implemented — residual risk accepted; admin key separated from device auth |
-| **Retention** | A.8.10 | 15-minute scoped lifecycle; sweep loop; TTL indexes | `retention.py` — generation invalidation + TTL expiry | `SECURITY_LIFECYCLE.md` §3 | Existing retention tests | ✅ Implemented |
-| **Backup** | A.8.13 | MongoDB standard configuration | Infrastructure-level | — | — | ✅ Implemented — application retention and deletion controls complete; backup configuration is an infrastructure matter, not a code matter |
+| Control Area | Ref | Applicability | App Control | Operational Assurance |
+|---|---|---|---|---|
+| **Access control** | A.5.15–5.18 | Applicable | ✅ Implemented — device bearer auth; admin key separation; owner-scoped queries | — N/A |
+| **Cryptography (at rest)** | A.8.24 | Applicable | ✅ Implemented — Fernet encryption; dedicated investigation key; permission checks | — N/A |
+| **Cryptography (in transit)** | A.8.24 | Applicable | ✅ Implemented — Kubernetes TLS termination | — N/A |
+| **Operational security** | A.8.15 | Applicable | ✅ Implemented — no prompt/response logging in provider | — N/A |
+| **Secure development** | A.8.25 | Applicable | ✅ Implemented — strict Pydantic schemas; `extra="forbid"` on wire models | — N/A |
+| **Supplier management** | A.5.19–5.22 | Applicable | ✅ Implemented — audited gateway restricts all Gemini access; provider terms documented | ⚠️ Outstanding — formal supplier/procurement assessment is an organisational responsibility |
+| **Incident management** | A.5.24–5.28 | Applicable | ✅ Implemented — privacy boundary middleware; error containment; evidence-safe error responses | ⚠️ Outstanding — formal incident procedure, breach notification and responsibility assignment are organisational |
+| **Data isolation** | A.8.31 | Applicable | ✅ Implemented — owner-scoped DB queries; device_id enforcement | — N/A |
+| **Key management** | A.8.24 | Applicable | ✅ Implemented — dedicated investigation key; permission-checked file; separate from API keys | — N/A |
+| **Secure authentication** | A.8.5 | See note below | See note below | See note below |
+| **Retention** | A.8.10 | Applicable | ✅ Implemented — 15-minute scoped lifecycle; sweep loop; TTL indexes | — N/A |
+| **Backup** | A.8.13 | Applicable | ✅ Implemented — recovery-compatible data structures; deletion controls | ⚠️ Outstanding — infrastructure backup configuration and verification are operational responsibilities |
+
+#### A.8.5 Note — Secure Authentication Assessment
+
+ISO/IEC 27001:2022 A.8.5 concerns secure authentication, not a blanket requirement for end-user MFA. Apollo is assessed on its actual authentication model:
+
+| Authentication Area | Apollo's Position | Applicability | App Control |
+|---|---|---|---|
+| End-user account login | Apollo does not require user accounts | Not applicable | — N/A |
+| Device-to-backend authentication | Device credentials and bearer tokens | Applicable | ✅ Implemented — SHA-256 hashed tokens; device_id enforcement |
+| Administrative backend access | Separate administrative API key | Applicable | ✅ Implemented — admin key separated from device auth |
+
+Whether additional authentication is appropriate for privileged administrative access remains a separate security decision. It does not justify introducing user accounts into Apollo.
 
 ### 4.4 ISO/IEC 42001:2023 — AI Governance
 
-| Requirement | Control | Implementation | Cross-reference | Test Evidence | Status |
-|---|---|---|---|---|---|
-| **AI system inventory** | Single AI provider (Gemini); documented models and capabilities | `provider.py` — `CAPABILITIES` dict; `configuration()` method | `AI_GOVERNANCE.md` §1 | Code inspection | ✅ Implemented |
-| **Risk assessment** | 10 identified risks with mitigations; residual risks documented | `AI_GOVERNANCE.md` §2 — formal risk register | `AI_GOVERNANCE.md` §2 | Documentation review | ✅ Implemented |
-| **Accountability & oversight** | Validation of AI responses; structured contracts; finding/evidence ID tracking | `validation.py`, `contracts.py` — reject unknown IDs, require evidence basis | `AI_GOVERNANCE.md` §3 | `test_higgins_authority.py` (33 tests) | ✅ Implemented |
-| **Transparency** | AI Processing disclosure; explanation of what Google receives | `AI_PROCESSING_DISCLOSURE` in `privacyInventory.ts` | `AI_GOVERNANCE.md` §4.2 | `privacyDisclosure.test.ts` | ✅ Implemented |
-| **Human oversight** | User approval via privacy gate; no consequential actions without consent | `ImagePrivacyGate.tsx`; action `requires_user_gesture` field | `AI_GOVERNANCE.md` §3.2 | `imageSanitization.test.ts`, `test_package4_acceptance.py` | ✅ Implemented |
-| **Data governance** | Purpose-classified processing; authorisation matrix for all categories × purposes | `data_classification.py` — 13 categories × 15 purposes; `Purpose` enum; field-level classification | `DATA_CLASSIFICATION_REGISTRY.md` §5 | `test_data_classification.py` (71 tests) | ✅ Implemented |
-| **Bias and fairness** | Security evidence assessment; no personal-characteristic-based decisions | Higgins investigates evidence, not persons; classification separates PII from indicators | `AI_GOVERNANCE.md` §2.1 | — | ✅ Implemented — code is evidence-based by design; formal bias audit is a governance action, not a code matter |
-| **Single gateway enforcement** | All Gemini calls through `provider.py`; no alternate providers | `provider.py` — `generate()`, `generate_json()`, `speech_bytes()`; `emergentintegrations` removed | `GEMINI_SDK_AUDIT_REPORT.md` | `test_gateway_enforcement.py` — AST scan: zero `generate_content`, `count_tokens`, `genai.Client` outside gateway | ✅ Implemented |
-| **Behavioural standard** | INVESTIGATE → ASSESS → DIRECT → GUIDE → VERIFY structurally enforced | System prompt in `coordinator.py`; `validation.py` structural checks; Pydantic schema validation | `AI_GOVERNANCE.md` §3.1 | `test_higgins_authority.py` — 33 tests: observation basis, concern/finding, action instructions, recommended index, completion honesty | ✅ Implemented |
+| Requirement | Applicability | App Control | Operational Assurance |
+|---|---|---|---|
+| **AI system inventory** | Applicable | ✅ Implemented — single provider documented; capabilities and models listed | — N/A |
+| **Risk assessment** | Applicable | ✅ Implemented — 10 identified risks with mitigations documented | — N/A |
+| **Accountability & oversight** | Applicable | ✅ Implemented — response validation; structured contracts; evidence ID tracking | — N/A |
+| **Transparency** | Applicable | ✅ Implemented — AI processing disclosure; explanation of what Google receives | — N/A |
+| **Human oversight** | Applicable | ✅ Implemented — user approval via privacy gate; no consequential actions without consent | — N/A |
+| **Data governance** | Applicable | ✅ Implemented — 13 categories × 15 purposes; field-level classification; authorisation matrix | — N/A |
+| **Bias and fairness** | Applicable | ✅ Implemented — evidence-based decisions; classification separates PII from indicators | ⚠️ Outstanding — formal bias assessment and periodic outcome review are organisational responsibilities |
+| **Single gateway enforcement** | Applicable | ✅ Implemented — AST-verified: zero Gemini calls outside `provider.py`; emergentintegrations removed | — N/A |
+| **Behavioural standard** | Applicable | ✅ Implemented — INVESTIGATE → ASSESS → DIRECT → GUIDE → VERIFY structurally enforced; 33 tests | — N/A |
 
 ### 4.5 Australian Privacy Act 1988 — Australian Privacy Principles (APPs)
 
-| APP | Requirement | Control | Implementation | Cross-reference | Test Evidence | Status |
-|---|---|---|---|---|---|---|
-| **APP 1** | Open and transparent management | Privacy disclosure; compliance matrix | `privacy-disclosure.tsx`; this document | `AI_GOVERNANCE.md` §5.1 | `privacyDisclosure.test.ts` | ✅ Implemented — privacy disclosure screen and compliance matrix accepted as operative documentation |
-| **APP 2** | Anonymity and pseudonymity | Anonymous device identity; no name/email required for core function | `auth.py` — server-issued device_id; no PII collection for registration | `SECURITY_LIFECYCLE.md` §2.1 | Auth tests | ✅ Implemented |
-| **APP 3** | Collection of solicited personal information | Only user-submitted content; opt-in for Gmail/notifications | Route-level input; no unsolicited collection | `DATA_CLASSIFICATION_REGISTRY.md` §4 (all pathways) | Route inspection | ✅ Implemented |
-| **APP 4** | Dealing with unsolicited personal information | Local-first privacy screening; data minimisation; purpose-based authorisation; retention controls | See APP 4 Note below | `DATA_CLASSIFICATION_REGISTRY.md` §3 | `test_llm_boundary.py`, `test_package4_acceptance.py` | ✅ Implemented |
-| **APP 5** | Notification of collection | Disclosure at setup; AI processing section | `PRIVACY_FLOWS`; `AI_PROCESSING_DISCLOSURE` | `AI_GOVERNANCE.md` §6.1 | `privacyDisclosure.test.ts` | ✅ Implemented |
-| **APP 6** | Use or disclosure | Purpose-limited processing; LLM boundary enforcement; credential prohibition | `Purpose` enum mandatory; `strip_credentials()` on all Gemini text; on-device image screening | `DATA_CLASSIFICATION_REGISTRY.md` §5 (authorisation matrix) | `test_gateway_enforcement.py`, `test_package4_acceptance.py`, `test_llm_boundary.py` | ✅ Implemented — purpose mandatory; preflight removed; credential prohibition enforced |
-| **APP 7** | Direct marketing | Not applicable — Apollo does not perform direct marketing | — | — | — | ✅ N/A |
-| **APP 8** | Cross-border disclosure | Gemini API processes in Google infrastructure | Paid tier disclosure; no training use documented | `AI_GOVERNANCE.md` §4 | Provider terms verification | ✅ Implemented — paid tier terms verified; processing location disclosed; accepted |
-| **APP 9** | Adoption, use or disclosure of government-related identifiers | Apollo does not collect government identifiers by design | No government ID fields in any schema | `DATA_CLASSIFICATION_REGISTRY.md` §2 | Schema inspection | ✅ Implemented |
-| **APP 10** | Quality of personal information | Evidence provenance tracking; honest limitations | `evidence_provenance` field; incomplete evidence marked | — | `test_higgins_authority.py` (completion honesty) | ✅ Implemented |
-| **APP 11** | Security of personal information | Encryption, auth, scoped retention, key management | See ISO 27001 controls above | `SECURITY_LIFECYCLE.md` | See §4.3 test evidence | ✅ Implemented |
-| **APP 12** | Access to personal information | Device owner can view their evidence and conversations | Investigation case access; patrol history | — | Route inspection | ✅ Implemented — device owner has direct access to evidence and conversations; accepted |
-| **APP 13** | Correction of personal information | Evidence is user-submitted; corrections via new submissions | Re-check / re-submit mechanism | — | — | ✅ Implemented — re-submit mechanism accepted for corrections |
+The APPs address responsibilities of covered entities, not just software functionality. Apollo implements the technical controls it can deliver. Organisational obligations under the APPs remain under HWG's accountability.
+
+| APP | Requirement | Applicability | App Control | Operational Assurance |
+|---|---|---|---|---|
+| **APP 1** | Open and transparent management | Applicable | ✅ Implemented — privacy disclosure screen; compliance matrix; third-party register | ⚠️ Outstanding — formal privacy policy document is a legal responsibility |
+| **APP 2** | Anonymity and pseudonymity | Applicable | ✅ Implemented — anonymous device identity; no name/email required | — N/A |
+| **APP 3** | Collection of solicited personal information | Applicable | ✅ Implemented — only user-submitted content; opt-in features | — N/A |
+| **APP 4** | Dealing with unsolicited personal information | Applicable | ✅ Implemented — see APP 4 Note below | ⚠️ Outstanding — if unsolicited personal information is actually received by Apollo-controlled services, applicable handling obligations depend on legal determination |
+| **APP 5** | Notification of collection | Applicable | ✅ Implemented — disclosure at setup; AI processing section; third-party services | — N/A |
+| **APP 6** | Use or disclosure | Applicable | ✅ Implemented — purpose-limited; credential prohibition; on-device screening | — N/A |
+| **APP 7** | Direct marketing | Not applicable | — N/A | — N/A |
+| **APP 8** | Cross-border disclosure | Applicable | ✅ Implemented — minimisation applied; credential prohibition; processing location disclosed | ⚠️ Outstanding — overseas processing assessment and applicable legal obligations require legal advisor |
+| **APP 9** | Government-related identifiers | Not applicable | — N/A — Apollo does not collect government identifiers | — N/A |
+| **APP 10** | Quality of personal information | Applicable | ✅ Implemented — evidence provenance; honest limitation narration | — N/A |
+| **APP 11** | Security of personal information | Applicable | ✅ Implemented — see §4.3 information security controls | — N/A |
+| **APP 12** | Access to personal information | Applicable | ✅ Implemented — device owner can view evidence and conversations | ⚠️ Outstanding — formal access request procedure and identity verification are organisational responsibilities |
+| **APP 13** | Correction of personal information | Applicable | ✅ Implemented — re-submit mechanism; evidence corrections via new submissions | ⚠️ Outstanding — formal correction procedure and applicable exceptions are organisational responsibilities |
 
 #### APP 4 Note — Unsolicited Personal Information
 
@@ -319,6 +366,22 @@ Harmony Wellness Group remains accountable for Apollo's third-party service arra
 
 The exact infrastructure providers, active integrations and applicable privacy documentation must be maintained in Harmony Wellness Group's third-party service register.
 
+### Changes to Third-Party Services and Integrations
+
+Harmony Wellness Group (HWG) reserves the right to add, remove, replace, suspend or modify third-party service providers, cybersecurity intelligence sources, APIs, technology platforms and integrations used by Apollo Scam Guard.
+
+Such changes may be made to improve security protection, investigative accuracy, service reliability, performance, privacy, functionality or cost efficiency, or to respond to changes in provider availability, technology or regulatory requirements.
+
+All new or replacement integrations must remain subject to Apollo's applicable privacy, security, data classification, purpose limitation and information protection requirements.
+
+HWG will maintain an up-to-date Third-Party Service Register identifying the services used, their purposes and the categories of information they may receive.
+
+Where changes materially affect the handling, disclosure or protection of personal information, HWG will update the relevant privacy disclosures, notify users where required and obtain additional consent where legally necessary.
+
+Routine changes that do not materially alter authorised data processing may be implemented without requiring individual user approval.
+
+HWG retains responsibility and accountability for the selection, oversight and management of Apollo's third-party services and integrations.
+
 ---
 
 ## 7. Verification Requirements
@@ -410,5 +473,6 @@ This section maps each privacy/security control to its authoritative implementat
 | Feb 2026 | 1.1–1.7 | Packages 2–8 delivered: data classification, gateway enforcement, image privacy, structural validation, security lifecycle, AI governance, end-to-end verification | Apollo Engineering |
 | Jun 2026 | 2.0 | Post-implementation consolidation: removed superseded statements; all 12 gaps CLOSED (G-01–G-12); added dual-classification section (§4.8); added traceability columns (Data Categories, Test Evidence, Cross-references) to all compliance tables; linked companion documents; aligned compliance claims with verified evidence; corrected test counts to final figures (344) | Apollo Engineering |
 | Jun 2026 | 2.1 | Identified Harmony Wellness Group as accountable organisation; created HWG Third-Party Service Register with active/optional/unconfigured status verified against deployment; added Third-Party Services section to Privacy Disclosure screen; §6 references standalone register; §3 adds Third-Party Service Owner role | Apollo Engineering |
+| Jun 2026 | 3.0 | Structural separation of application technical compliance from operational/legal assurance. Three-column assessment model (Applicability, App Control, Operational Assurance) applied to all §4 tables. MFA restructured as three-situation authentication assessment. Changes to Third-Party Services clause added to matrix, register and privacy screen. Governance updated with HWG accountability framework. | Apollo Engineering |
 
 

@@ -86,6 +86,22 @@ Harmony Wellness Group remains accountable for Apollo's third-party service arra
 
 The exact infrastructure providers, active integrations and applicable privacy documentation must be maintained in this register.
 
+### Changes to Third-Party Services and Integrations
+
+Harmony Wellness Group (HWG) reserves the right to add, remove, replace, suspend or modify third-party service providers, cybersecurity intelligence sources, APIs, technology platforms and integrations used by Apollo Scam Guard.
+
+Such changes may be made to improve security protection, investigative accuracy, service reliability, performance, privacy, functionality or cost efficiency, or to respond to changes in provider availability, technology or regulatory requirements.
+
+All new or replacement integrations must remain subject to Apollo's applicable privacy, security, data classification, purpose limitation and information protection requirements.
+
+HWG will maintain an up-to-date Third-Party Service Register identifying the services used, their purposes and the categories of information they may receive.
+
+Where changes materially affect the handling, disclosure or protection of personal information, HWG will update the relevant privacy disclosures, notify users where required and obtain additional consent where legally necessary.
+
+Routine changes that do not materially alter authorised data processing may be implemented without requiring individual user approval.
+
+HWG retains responsibility and accountability for the selection, oversight and management of Apollo's third-party services and integrations.
+
 ### Review Triggers
 
 This register must be reviewed and updated when:

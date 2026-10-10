@@ -68,4 +68,5 @@ export const THIRD_PARTY_SERVICES_DISCLOSURE = {
     { name: 'Domain registries and public websites', purpose: 'Domain registration research and website investigation', shared: 'Domain lookup requests and requested website access for URLs you submit.' },
   ],
   footer: 'Optional integrations operate only when you enable the relevant feature. Apollo applies purpose-based privacy controls to all information sent to external services. Personal information unrelated to the investigation is minimised or withheld.',
+  changes: 'Harmony Wellness Group may add, remove or replace third-party services to improve security, privacy, reliability or functionality. New or replacement services remain subject to Apollo\u2019s privacy and security controls. Where changes materially affect the handling of personal information, updated disclosures will be provided and additional consent obtained where legally required.',
 };
