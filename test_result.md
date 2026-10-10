@@ -2441,6 +2441,38 @@ agent_communication:
   - agent: "main"
     message: "Package 4 acceptance verification. 43 new tests + credential stripping fix. Git SHA: e0e709d. 225 backend + 90 frontend = 315 tests passing. Please verify all 5 acceptance areas."
   - agent: "testing"
+    message: "Package 4 VERIFICATION COMPLETE — All tests pass."
+
+## 2026-02 Package 4 Source Corrections
+
+backend:
+  - task: "Package 4 — Source corrections: fail-closed, strict digest, production tests, document safeguards"
+    implemented: true
+    working: true
+    file: "frontend/src/components/ImagePrivacyGate.tsx, frontend/src/domain/imageSanitization.ts, backend/services/higgins/evidence.py, backend/tests/test_package4_acceptance.py"
+    priority: "P0"
+    needs_retesting: false
+    status_history:
+      - agent: "main"
+        comment: "4 corrections applied per review: (1) Redaction fails closed — captureViewRef unavailable → withhold image with limitation. (2) digestImageBytes returns null on failure, createReceipt returns null, ImagePrivacyGate withholds on null receipt. No URI-based fallback. (3) Receipt tests use production validation paths (evidence.py, analysis.py, investigations.py checks). Trust boundary = client_assertion. (4) Rendered PDF pages and embedded images have consent records with credential prohibition noted. Git SHA: bb82d20 (corrections), b9f3aa9 (matrix). 231 backend + 90 frontend = 321 tests."
+      - agent: "testing"
+        working: true
+        comment: "VERIFIED (2026-10-10). All 4 source corrections confirmed via grep + pytest. Correction 1: Redaction fails closed to 'withheld' (no strippedImageUri fallback). Correction 2: Strict byte digest returns null on failure (no URI fallback). Correction 3: Production receipt tests 14/14 passed (TestReceiptAdversarial). Correction 4: Document image safeguards 9/9 passed (TestEmbeddedDocumentImages), consent records + credential prohibition confirmed. Full regression: 231 backend + 90 frontend = 321 tests passed. Git commits bb82d20 and b9f3aa9 verified. NO FAILURES."
+
+test_plan:
+  current_focus:
+    - "Package 4 Source Corrections verification"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Package 4 source corrections complete. 4 corrections: (1) fail-closed redaction, (2) strict byte digest (no fallback), (3) production receipt tests, (4) document image safeguards. Git SHA: bb82d20. 231 backend + 90 frontend = 321 passing. Please verify."
+  - agent: "testing"
     message: "Package 4 VERIFICATION COMPLETE — ALL ACCEPTANCE CRITERIA MET. Backend tests: 182/182 PASSED (28 Package 4 + 154 regression). Frontend tests: 90/90 PASSED (21 imageSanitization + 36 architecturalRegression + 23 higginsBehavioural + 10 privacyDisclosure). Critical verifications: (1) G-01 closure: _image_secret_preflight does NOT exist in production code ✅ (2) ocr_unavailable_approved removed from frontend ✅ (3) handleOcrUnavailableApprove removed, only handleOcrUnavailableWithhold exists ✅ (4) Consent recording with all required fields and honest trust boundary (client_assertion/document_derived) ✅ (5) Receipt byte-binding via FileSystem.readAsStringAsync + SHA-256 ✅ (6) Backend health 200 OK ✅. NO MAJOR ISSUES. Ready for main agent to summarise and finish."
   - agent: "testing"
     message: "PACKAGE 4 ACCEPTANCE VERIFICATION COMPLETE (2026-10-10). Executed all 5 acceptance areas as specified in review request: (1) Receipt integrity adversarial tests: 10/10 PASSED. (2) Embedded document images: 7/7 PASSED. (3) Evidence preservation after redaction: 11/11 PASSED. (4) Gemini-bound payload verification: 10/10 PASSED. (5) Full backend regression: 225/225 PASSED. (6) Frontend regression: 90/90 PASSED. (7) Git commit e0e709d verified. (8) Backend health 200 OK. TOTAL: 315 tests passing, 0 failures. All acceptance criteria met."
+
+  - agent: "testing"
+    message: "PACKAGE 4 SOURCE CORRECTIONS VERIFICATION COMPLETE (2026-10-10). Executed targeted regression on 4 corrections as specified: ✅ CORRECTION 1 (Redaction fails closed): grep confirms NO 'sanitised_image.*strippedImageUri' pattern in ImagePrivacyGate.tsx (exit 1 = not found). grep confirms 'withheld' appears 10 times in else branches when captureViewRef unavailable (lines 52, 54, 291, 314, 320, 324, 378, 379, 386, 387, 411, 418, 434, 435). ✅ CORRECTION 2 (Strict byte digest): grep confirms NO 'fallback:' in imageSanitization.ts (exit 1 = not found). grep confirms 'return null' appears 4 times (lines 65, 105, 131, 134). grep confirms 'Promise<string | null>' and 'Promise<SanitizationReceipt | null>' signatures (lines 53, 88). ✅ CORRECTION 3 (Production receipt tests): pytest tests/test_package4_acceptance.py::TestReceiptAdversarial passed 14/14 tests using production code paths (evidence.py, analysis.py, investigations.py). ✅ CORRECTION 4 (Document image safeguards): pytest tests/test_package4_acceptance.py::TestEmbeddedDocumentImages passed 9/9 tests. grep confirms 'document_rendered_page' consent in evidence.py (line 391). grep confirms 'Authentication secrets prohibition' safeguard notes in evidence.py (lines 388, 413, 425, 435). ✅ FULL REGRESSION: Backend 231/231 PASSED (test_package4_acceptance.py + test_image_consent_enforcement.py + test_gateway_enforcement.py + test_data_classification.py + test_llm_boundary.py + test_image_sanitization.py + test_scam_analysis.py). Frontend 90/90 PASSED (imageSanitization.test.ts 21/21 + architecturalRegression.test.ts 36/36 + higginsBehavioural.test.ts 23/23 + privacyDisclosure.test.ts 10/10). ✅ GIT COMMITS: bb82d20 and b9f3aa9 verified in git log. TOTAL: 321 tests passing (231 backend + 90 frontend), 0 failures. All 4 source corrections verified. All acceptance criteria met."
