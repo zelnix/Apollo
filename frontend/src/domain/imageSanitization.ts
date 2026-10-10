@@ -3,15 +3,16 @@
  * the privacy gate before transmission.
  *
  * Package 4 requirements:
- * - Receipt digest is bound to the ACTUAL TRANSFORMED BYTES selected for upload
+ * - Receipt digest is SHA-256 of the ACTUAL BINARY BYTES selected for upload
  * - One-time-use, 5-minute expiry, cancellation safeguards preserved
  * - Withheld images are blocked at the pipeline level
  * - Receipt cannot authorise a different image, an original, or altered content
+ * - Missing bytes reject approval (no fallback digest)
  *
- * Trust boundary: The receipt is client-side proof. The backend validates the
- * client-supplied assertions (sanitizationStatus, decision, digest) but cannot
- * independently verify that on-device screening was correctly performed.
- * This is documented honestly — not described as tamper-proof server verification.
+ * Trust boundary: The receipt is a client-side approval assertion. The backend
+ * validates client-supplied metadata (sanitizationStatus, decision, digest) but
+ * cannot independently verify that on-device screening was correctly performed.
+ * This is an honest architectural limitation, not proof of completed screening.
  */
 
 import * as Crypto from "expo-crypto";
@@ -26,7 +27,7 @@ export type SanitizationDecision =
 
 export interface SanitizationReceipt {
   receiptId: string;
-  /** SHA-256 digest of the actual transformed image bytes selected for upload.
+  /** SHA-256 hex digest of the actual binary image bytes selected for upload.
    *  For text_only/withheld: digest of the decision string (no image bytes). */
   imageDigest: string;
   decision: SanitizationDecision;
@@ -42,38 +43,61 @@ export interface SanitizationReceipt {
   limitations: string[];
 }
 
-/** In-memory receipt store. Receipts never persist to disk — they are ephemeral proof. */
+/** In-memory receipt store. Receipts never persist to disk. */
 const receipts = new Map<string, SanitizationReceipt>();
+
+/** Decode Base64 to actual binary bytes. */
+function base64ToBytes(base64: string): Uint8Array {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+/** Convert ArrayBuffer to hex string. */
+function bufferToHex(buffer: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 /**
  * Compute SHA-256 digest of actual image bytes from a file URI.
- * If the bytes cannot be read, returns null — the receipt must not be created
- * for image decisions when byte content cannot be verified.
+ * Hashes the raw binary content (not its Base64 representation).
+ * Returns null if bytes cannot be read — the image must be withheld.
  */
-async function digestImageBytes(imageUri: string): Promise<string | null> {
+async function digestImageBytes(
+  imageUri: string,
+): Promise<{ digest: string; base64: string } | null> {
   try {
     const base64 = await FileSystem.readAsStringAsync(imageUri, {
       encoding: FileSystem.EncodingType.Base64,
     });
-    return await Crypto.digestStringAsync(
+    if (!base64 || base64.length === 0) {
+      return null;
+    }
+    const bytes = base64ToBytes(base64);
+    const hashBuffer = await Crypto.digest(
       Crypto.CryptoDigestAlgorithm.SHA256,
-      base64,
+      bytes as unknown as ArrayBuffer,
     );
+    return { digest: bufferToHex(hashBuffer), base64 };
   } catch {
-    // Cannot read file bytes — no valid digest possible.
-    // Caller must handle this by withholding the image.
     return null;
   }
 }
 
-/** Create a sanitization receipt after the user makes a decision in the privacy gate.
+/**
+ * Create a sanitization receipt after the user makes a decision in the privacy gate.
  *
  * For image decisions (sanitised_image, manual_crop, no_sensitive):
- *   The digest is computed from the actual transformed image bytes.
- *   If bytes cannot be read, returns null — the image must be withheld.
+ *   The digest is SHA-256 of the actual transformed binary bytes.
+ *   Returns null if bytes cannot be read — the image must be withheld.
  *
  * For non-image decisions (text_only, withheld):
- *   The digest is computed from the decision string (no image bytes involved).
+ *   The digest is SHA-256 of the decision string (no image bytes involved).
  */
 export async function createReceipt(
   imageUri: string | null,
@@ -88,23 +112,18 @@ export async function createReceipt(
 ): Promise<SanitizationReceipt | null> {
   const receiptId = Crypto.randomUUID();
 
-  // Compute digest based on what will actually be transmitted
   let imageDigest: string;
   if (decision === "text_only" || decision === "withheld" || !imageUri) {
-    // No image bytes will be transmitted — digest the decision itself
     imageDigest = await Crypto.digestStringAsync(
       Crypto.CryptoDigestAlgorithm.SHA256,
       `no-image:${decision}:${receiptId}`,
     );
   } else {
-    // Image bytes will be transmitted — digest the actual transformed bytes
-    const digest = await digestImageBytes(imageUri);
-    if (digest === null) {
-      // Cannot read file bytes — receipt creation fails.
-      // The caller must withhold the image.
+    const result = await digestImageBytes(imageUri);
+    if (result === null) {
       return null;
     }
-    imageDigest = digest;
+    imageDigest = result.digest;
   }
 
   const receipt: SanitizationReceipt = {
@@ -120,7 +139,6 @@ export async function createReceipt(
     limitations: options?.limitations ?? [],
   };
   receipts.set(receiptId, receipt);
-  // Auto-expire after 5 minutes
   setTimeout(() => receipts.delete(receiptId), 5 * 60 * 1000);
   return receipt;
 }
@@ -141,9 +159,6 @@ export function consumeReceipt(receiptId: string): SanitizationReceipt | null {
 /**
  * Pipeline enforcement: require a valid sanitization receipt before any image upload.
  * Throws if the receipt is missing, invalid, expired, or already used.
- *
- * Call this in every image upload pathway (`uploadFileEvidence`, `uploadFileEvidenceResumable`,
- * `apiUpload` for screenshot endpoints).
  */
 export function requireImageSanitization(receiptId: string | undefined): SanitizationReceipt {
   if (!receiptId) {

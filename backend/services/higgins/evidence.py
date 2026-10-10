@@ -33,6 +33,21 @@ PHONE_RE = re.compile(r"(?<![\w@.])(?:\+?\d[\d\s().-]{7,}\d)(?![\w@])")
 MAX_CLUES = 64
 
 
+
+def _text_contains_credentials(text: str) -> bool:
+    """Check whether text contains authentication secret patterns.
+    Used to prevent document-derived images from pages containing credentials
+    from being transmitted to Gemini."""
+    if not text:
+        return False
+    from services.higgins.llm_boundary import _CREDENTIAL_PATTERNS
+    for pattern in _CREDENTIAL_PATTERNS:
+        if pattern.search(text):
+            return True
+    return False
+
+
+
 def text_input_digest(kind: str, value: str) -> str:
     clean, _ = _redact(value)
     return repo.digest(f"{kind}\0{clean}")
@@ -344,10 +359,11 @@ async def ingest_file(owner: str, case: dict, meta_in: dict, data: bytes, *, evi
     return item
 
 
-# ── _image_secret_preflight REMOVED (Package 4) ──
-# Raw images are no longer sent to Gemini for secret detection.
-# Privacy screening happens on-device (ImagePrivacyGate) BEFORE network transmission.
+# ── Package 4: On-device privacy screening replaces Gemini preflight ──
+# Raw images are never sent to Gemini for screening. All privacy screening
+# happens on the device (ImagePrivacyGate) before network transmission.
 # The backend validates client-supplied sanitization assertions.
+# Derived document images undergo pre-transmission credential text-layer checks.
 
 
 async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detected: str, attempt_id: str, publication_owner: Optional[dict] = None) -> None:
@@ -381,16 +397,24 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
             to_render = sorted(set(unreadable + visual_pages))[:MAX_SCANNED_PAGES] if detected == "application/pdf" else []
             if to_render:
                 for number, png in _render_pdf_pages(data, to_render):
+                    # Check if the source page text contains credential patterns.
+                    # If yes, withhold the rendered image to prevent transmitting
+                    # authentication secrets to Gemini via visual content.
+                    page_index = number - 1
+                    source_text = pages[page_index] if page_index < len(pages) else ""
+                    if _text_contains_credentials(source_text):
+                        omitted.append({"start": number - 1, "end": number,
+                                        "reason": "rendered page withheld: source text contains authentication secret patterns; text evidence preserved with secrets redacted"})
+                        continue
                     page_item = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=f"{item.client_item_id}.page{number}", origin=item.origin, kind="image",
                                              parent_id=item.id, collected_at=now_utc(), expires_at=item.expires_at, media_type="image/png", byte_length=len(png),
                                              coverage=Coverage(status="not_started", unit="items", total=1, examined=0, reason="rendered scanned page available to Higgins vision; not yet examined"),
-                                             transformations=[Transformation(kind="decode", description=f"Page {number} contains visual material or lacks a text layer; rasterised at {SCAN_DPI} DPI for visual reading."),
-                                                              Transformation(kind="privacy_note", description="Rendered PDF page inherits document investigation authorisation. Authentication secrets prohibition applies: Gemini gateway strips credential patterns from any text extracted during examination.")],
+                                             transformations=[Transformation(kind="decode", description=f"Page {number} rasterised at {SCAN_DPI} DPI for visual reading. Source text checked: no credential patterns detected.")],
                                              label=f"visual page {number} (rendered image)")
                     await repo.insert_evidence(owner, page_item, {"page": number, "derivedFrom": item.id,
                                                                    "consentRecord": {"purpose": "investigation", "decision": "document_rendered_page",
-                                                                                     "transformations": [f"Page {number} rasterised from PDF at {SCAN_DPI} DPI"],
-                                                                                     "limitations": ["Rendered page image inherits document authorisation; visual credential content may be present"],
+                                                                                     "transformations": [f"Page {number} rasterised from PDF at {SCAN_DPI} DPI; credential pre-check passed"],
+                                                                                     "limitations": ["Rendered page inherits document authorisation; credential text-layer check performed but visual-only secrets may not be detected"],
                                                                                      "consentRecordedAt": now_utc().isoformat(), "trustBoundary": "document_derived"}},
                                                publication_root_id=item.id, ingestion_attempt_id=attempt_id, publication_owner=publication_owner)
                     await repo.store_bytes(owner, case["case_id"], page_item.id, png, item.expires_at, publish_root=False)
@@ -408,31 +432,33 @@ async def _derive(owner: str, case: dict, item: EvidenceItem, data: bytes, detec
                                "materialGap": bool(omitted), "permanentGap": False,
                                "reason": "parser extraction complete; model examination pending" + (f"; {len(rendered_pages)} scanned page(s) rendered for visual reading" if rendered_pages else "")}
             for image_index, (image_name, image_type, image_data) in enumerate(embedded_images):
-                # Package 4: Embedded document images inherit document investigation authorisation.
-                # Content safeguards:
-                # - Authentication secrets prohibition applies via the Gemini gateway (Package 3)
-                # - Embedded images are not individually screened by the on-device privacy gate
-                # - This is an honest limitation recorded in the consent record
-                # - Gemini gateway's binary authorisation permits INVESTIGATION purpose
-                # - Text extracted from these images during Gemini examination is subject to
-                #   enforce_boundary(Purpose.INVESTIGATION, ...) which strips credentials
+                # Package 4: Pre-transmission credential check for embedded images.
+                # Check the parent document's full extracted text for credential patterns.
+                # If credentials are detected anywhere in the document, withhold embedded
+                # images to prevent authentication secrets from reaching Gemini visually.
+                # The redacted text evidence is preserved — only the image is withheld.
+                parent_text = "\n".join(pages) if pages else ""
+                if _text_contains_credentials(parent_text):
+                    omitted.append({"start": image_index + 1, "end": image_index + 2,
+                                    "reason": "embedded image withheld: parent document text contains authentication secret patterns; redacted text evidence preserved"})
+                    continue
                 if image_type in ("image/png", "image/jpeg"):
                     image_item = EvidenceItem(id=str(uuid.uuid4()), case_id=case["case_id"], client_item_id=f"{item.client_item_id}.image{image_index}", origin=item.origin, kind="image",
                                               parent_id=item.id, collected_at=now_utc(), expires_at=item.expires_at, media_type=image_type, byte_length=len(image_data),
                                               coverage=Coverage(status="not_started", unit="items", total=1, examined=0,
-                                                                reason="embedded document image extracted; inherits document investigation authorisation"),
-                                              transformations=[Transformation(kind="decode", description="Embedded image extracted from document without recompression."),
-                                                               Transformation(kind="privacy_note", description="Embedded image inherits document-level investigation authorisation; not individually screened by on-device privacy gate. Authentication secrets prohibition enforced by Gemini gateway on all text extracted during examination.")],
+                                                                reason="embedded document image extracted; parent text credential-checked"),
+                                              transformations=[Transformation(kind="decode", description="Embedded image extracted; parent document text checked for credential patterns: none detected."),
+                                                               Transformation(kind="privacy_note", description="Image not individually screened by on-device privacy gate. Pre-transmission credential check passed on parent document text. Visual-only secrets remain a documented limitation.")],
                                               label=f"embedded image: {image_name}"[:80])
                     consent_meta = {
                         "derivedFrom": item.id, "embeddedName": image_name, "itemIndex": image_index + 1,
                         "consentRecord": {
                             "purpose": "investigation",
                             "decision": "document_embedded_image",
-                            "transformations": ["Extracted from parent document"],
+                            "transformations": ["Extracted from parent document; parent text credential-checked"],
                             "limitations": [
-                                "Not individually screened by on-device privacy gate; inherits document authorisation",
-                                "Authentication secrets prohibition enforced by Gemini gateway during examination",
+                                "Not individually screened by on-device privacy gate",
+                                "Parent text credential check passed; visual-only credential content cannot be detected server-side",
                             ],
                             "consentRecordedAt": now_utc().isoformat(),
                             "trustBoundary": "document_derived",
@@ -749,19 +775,19 @@ async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[ty
 
     Privacy: This function assembles evidence for INVESTIGATION purpose only.
     - Text content is credential-stripped by the provider boundary before the Gemini call.
-    - Images are included only if they passed the secret preflight during ingestion (the
-      ingestion layer rejects images that fail preflight). The original image is necessary
-      for the model to assess visual evidence (phishing pages, app screenshots, etc.).
-    - Images that contain sensitive personal content beyond credentials (e.g., ID cards)
-      cannot be automatically minimised without destroying the evidence. The person authorised
-      the investigation by submitting the evidence; Gemini receives it for the authorised case.
+    - Images are included only if they passed the on-device privacy gate (sanitization_status='approved')
+      or the pre-transmission credential text-layer check (for document-derived images).
+    - The Gemini gateway applies enforce_boundary(Purpose.INVESTIGATION, ...) to all text parts.
+    - Images containing visual-only credential content are a documented limitation.
+    - The person authorised the investigation by submitting the evidence; Gemini receives it
+      for the authorised case through the single privacy-enforced gateway.
     """
     parts, inventory, marks = [], [], []
     for row in rows:
         entry = {"evidenceId": row["evidence_id"], "kind": row["kind"], "origin": row["origin"], "label": row.get("label", ""), "parentId": row.get("parent_id"),
                  "availability": row["availability"], "coverage": row["coverage"], "simulation": row.get("simulation"), "transformations": row.get("transformations", [])}
         if row.get("clue_inventory"):
-            entry["clueInventory"] = row["clue_inventory"]  # explicit deferred count/offsets: a budget cutoff is never "all clues investigated"
+            entry["clueInventory"] = row["clue_inventory"]
         if row["availability"] != "available":
             inventory.append(entry)
             continue
@@ -776,15 +802,12 @@ async def model_parts(owner: str, case: dict, rows: list[dict]) -> tuple[list[ty
                 entry["note"] = f"{len(text)} characters total; only the first 2000 are inline. Use read_evidence with ranges/pages to examine the rest before concluding."
                 marks.append((row["evidence_id"], 0, 2000, len(text)))
         elif row["kind"] == "image":
-            # Image evidence: the person submitted this image for investigation. It passed
-            # the secret preflight during ingestion. The transformations field records what
-            # processing occurred (e.g., "redacted_transcription" if secrets were found and
-            # the original was withheld). Only images with availability=="available" reach here.
+            # Image evidence: passed on-device privacy gate or document-derived credential check.
+            # Only images with availability=="available" reach here.
             transformations = row.get("transformations", [])
             data = await repo.read_bytes(owner, case["case_id"], row["evidence_id"])
             parts.append(types.Part.from_bytes(data=data, mime_type=row["media_type"]))
-            preflight_note = "original image (passed secret preflight)" if "redacted_transcription" not in transformations else "redacted transcription (original withheld)"
-            entry["note"] = f"{preflight_note} supplied inline (previous part)"
+            entry["note"] = "approved image supplied inline (previous part)"
             marks.append((row["evidence_id"], 0, len(data), len(data)))
         inventory.append(entry)
     return parts, inventory, marks
