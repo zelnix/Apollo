@@ -205,26 +205,23 @@ export async function screenImage(
     };
   }
 
-  // Step 6: Investigation evidence — redact image if needed
-  let sanitisedUri: string | null = stripped.uri;
-  if (sensitiveRegions.length > 0) {
-    sanitisedUri = await redactImageRegions(stripped.uri, regions, { width: stripped.width, height: stripped.height });
-  }
-
+  // Step 6: Investigation evidence — detection only; pixel-level redaction is
+  // performed by ImagePrivacyGate using react-native-view-shot when the user
+  // chooses "Send redacted image". This function only detects and reports.
   const summaryParts: string[] = [];
-  if (hasCredentials) summaryParts.push("credentials detected and removed");
+  if (hasCredentials) summaryParts.push("credentials detected — redaction recommended");
   if (hasPII) summaryParts.push("personal information detected — review the preview");
   if (summaryParts.length === 0) summaryParts.push("no sensitive content detected");
 
   const textOnly = !hasVisuallySignificantContent(regions);
 
   return {
-    status: sanitisedUri ? "screened" : "withheld",
+    status: sensitiveRegions.length > 0 ? "screened" : "screened",
     extractedText: redactedText, rawTextLocal: allText,
     sensitiveRegions, allRegions: regions,
-    sanitisedImageUri: sanitisedUri, strippedImageUri: stripped.uri,
+    sanitisedImageUri: null, strippedImageUri: stripped.uri,
     hasRedactions: sensitiveRegions.length > 0,
-    screeningSummary: `${summaryParts.join("; ")}. Metadata stripped. ${sanitisedUri ? "Review the sanitised image before sending." : "The image has been withheld. You can send the extracted text or crop manually."}`,
+    screeningSummary: `${summaryParts.join("; ")}. Metadata stripped. Review the image in the privacy gate before sending.`,
     textOnlySuitable: textOnly,
     dimensions: { width: stripped.width, height: stripped.height },
   };

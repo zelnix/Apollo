@@ -77,9 +77,16 @@ class TestMessageAnalyse:
 
 class TestMessageExtract:
     def test_screenshot_upload_rejects_non_image(self):
-        r = requests.post(f"{API}/message/extract", data={"device_id": "gate2test0001"},
+        r = requests.post(f"{API}/message/extract", data={"device_id": "gate2test0001", "sanitization_status": "approved"},
                           files={"file": ("message.txt", b"not an image", "text/plain")}, timeout=15)
         assert r.status_code == 415, r.text
+
+    def test_screenshot_upload_rejects_missing_sanitization(self):
+        """Backend pipeline enforcement: image uploads without sanitization_status are rejected."""
+        r = requests.post(f"{API}/message/extract", data={"device_id": "gate2test0001"},
+                          files={"file": ("message.png", b"fake-png", "image/png")}, timeout=15)
+        assert r.status_code == 422, r.text
+        assert "privacy gate" in r.json().get("detail", "").lower(), r.text
 
     @pytest.mark.credentialed_integration
     def test_realistic_screenshot_is_extracted_request_scoped(self):
@@ -91,7 +98,7 @@ class TestMessageExtract:
         draw.text((55, 150), "A $4,820 payment was detected.", fill="black")
         draw.text((55, 230), "Visit commbank-secure-verify.xyz now", fill="black")
         buf = io.BytesIO(); image.save(buf, format="PNG")
-        r = requests.post(f"{API}/message/extract", data={"device_id": "gate2test0001"},
+        r = requests.post(f"{API}/message/extract", data={"device_id": "gate2test0001", "sanitization_status": "approved"},
                           files={"file": ("message.png", buf.getvalue(), "image/png")}, timeout=90)
         assert r.status_code == 200, r.text
         data = r.json()

@@ -19,6 +19,8 @@ import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { Sheet } from "@/src/components/Sheet";
 import { ScreenshotPermissionSheet } from "@/src/components/ScreenshotPermissionSheet";
+import { ImagePrivacyGate, type GateResult } from "@/src/components/ImagePrivacyGate";
+import { screenImage, type ScreeningResult } from "@/src/domain/imagePrivacy";
 import { getHigginsAuto, speakHiggins } from "@/src/voice/higgins";
 import { Body, Button, Pill, Card, toneColor } from "@/src/components/ui";
 import { buildLinkCheckResult } from "@/src/domain/linkCheckResultAdapter";
@@ -70,6 +72,10 @@ export default function CheckLink() {
   const [pageError, setPageError] = useState<string | null>(null);
   const [pageHigginsNote, setPageHigginsNote] = useState<string | null>(null);
   const [pageScreenshotUri, setPageScreenshotUri] = useState<string | null>(null);
+  // ── Privacy Gate state for page screenshots ──
+  const [pageGateScreening, setPageGateScreening] = useState<ScreeningResult | null>(null);
+  const [pendingPageScreenshot, setPendingPageScreenshot] = useState<{ uri: string; name: string; type: string } | null>(null);
+
   const applyPageSignals = async (signals: PageSignals, note: string | null) => {
     const analysis = analysePage(signals, input);
     setPage(analysis); setPageHigginsNote(note); setPageEvent(await recordPageAnalysis(analysis, pageEvent));
@@ -82,10 +88,40 @@ export default function CheckLink() {
       if (picked.canceled) return;
       const asset = picked.assets[0];
       setPageScreenshotUri(asset.uri);
-      const signals = await apiUpload<PageSignals>("/page/extract", "page_extract", { device_id: deviceId, url_hint: input.trim() },
-        { uri: asset.uri, name: asset.fileName ?? "page-screenshot.jpg", type: asset.mimeType ?? "image/jpeg" });
+      // ── On-device privacy screening before any transmission ──
+      const screening = await screenImage(asset.uri, "investigation_evidence");
+      setPageGateScreening(screening);
+      setPendingPageScreenshot({ uri: asset.uri, name: asset.fileName ?? "page-screenshot.jpg", type: asset.mimeType ?? "image/jpeg" });
+    } catch (error) { setPageError(error instanceof Error ? error.message : "Could not screen that screenshot."); }
+  };
+
+  const handlePageGateComplete = async (result: GateResult) => {
+    setPageGateScreening(null);
+    const file = pendingPageScreenshot;
+    setPendingPageScreenshot(null);
+    if (result.decision === "withheld") {
+      setPageScreenshotUri(null);
+      return;
+    }
+    if (result.decision === "text_only" && result.text) {
+      // Text-only: cannot run visual page analysis without an image
+      setPageError("Page analysis requires the screenshot image. Choose 'Send redacted image' or crop manually.");
+      return;
+    }
+    if (!deviceId || !file) return;
+    try {
+      const uploadUri = result.imageUri ?? file.uri;
+      const signals = await apiUpload<PageSignals>("/page/extract", "page_extract",
+        { device_id: deviceId, url_hint: input.trim(), sanitization_status: "approved" },
+        { uri: uploadUri, name: file.name, type: file.type });
       await applyPageSignals(signals, "Higgins extracted visible page signals; Apollo's local rules made the assessment.");
     } catch (error) { setPageError(error instanceof Error ? error.message : "Could not assess that screenshot."); }
+  };
+
+  const handlePageGateCancel = () => {
+    setPageGateScreening(null);
+    setPendingPageScreenshot(null);
+    setPageScreenshotUri(null);
   };
   const photoAccess = useScreenshotAccess(launchPagePicker);
   // Gate 3 Phase C: Apollo fetches the page itself (SSRF-safe, backend-only) instead of a screenshot.
@@ -290,6 +326,16 @@ export default function CheckLink() {
 
       <ScreenshotPermissionSheet prefix="check" visible={!!photoAccess.permission} canAskAgain={photoAccess.permission?.canAskAgain ?? true}
         checking={photoAccess.checking} onContinue={() => void photoAccess.continueAccess()} onClose={photoAccess.close} />
+
+      {/* ── Image Privacy Gate — screens every screenshot before transmission ── */}
+      {pageGateScreening && (
+        <ImagePrivacyGate
+          visible={!!pageGateScreening}
+          screening={pageGateScreening}
+          onComplete={(r) => void handlePageGateComplete(r)}
+          onCancel={handlePageGateCancel}
+        />
+      )}
     </View>
   );
 }

@@ -5,6 +5,7 @@ import { Platform } from "react-native";
 import { API_BASE, ApiError, apiDelete, apiGet, apiPost } from "@/src/api/client";
 import { getDeviceToken } from "@/src/auth/deviceIdentity";
 import { enforceEgress } from "@/src/domain/privacy";
+import { requireImageSanitization, sanitizationMetadata } from "@/src/domain/imageSanitization";
 import type { CreateCase, DeviceProfile, DeviceResult, EvidenceItem, InvestigationCase, InvestigationEvent, Job, SourceReference, TurnCommit } from "./types";
 
 async function postWithKey<T>(path: string, body: Record<string, unknown>, key: string, signal?: AbortSignal): Promise<T> {
@@ -60,12 +61,19 @@ export function addSubmissionEvidence(caseId: string, expectedRevision: number, 
   }, item.clientItemId, signal);
 }
 
-/** Multipart file evidence (single shot, no resume): kept only for callers that accept an all-or-nothing upload. */
-export async function uploadFileEvidence(caseId: string, expectedRevision: number, file: { uri: string; name: string; mediaType: string }, kind: "image" | "document" | "audio" | "attachment") {
+/** Multipart file evidence (single shot, no resume): kept only for callers that accept an all-or-nothing upload.
+ *  PIPELINE ENFORCEMENT: image uploads MUST provide a valid sanitizationReceiptId from the ImagePrivacyGate. */
+export async function uploadFileEvidence(caseId: string, expectedRevision: number, file: { uri: string; name: string; mediaType: string }, kind: "image" | "document" | "audio" | "attachment", sanitizationReceiptId?: string) {
+  // ── Image egress enforcement: no image leaves without a sanitization receipt ──
+  let sanitizationMeta: Record<string, unknown> = {};
+  if (kind === "image") {
+    const receipt = requireImageSanitization(sanitizationReceiptId);
+    sanitizationMeta = sanitizationMetadata(receipt);
+  }
   const token = await getDeviceToken();
   if (!token) throw new ApiError(401, "Apollo hasn't registered this device yet.");
   const form = new FormData();
-  form.append("metadata", JSON.stringify({ expectedRevision, clientItemId: Crypto.randomUUID(), parentId: null, kind, filename: file.name, mediaType: file.mediaType }));
+  form.append("metadata", JSON.stringify({ expectedRevision, clientItemId: Crypto.randomUUID(), parentId: null, kind, filename: file.name, mediaType: file.mediaType, ...sanitizationMeta }));
   if (Platform.OS === "web") form.append("file", await (await fetch(file.uri)).blob(), file.name);
   else form.append("file", { uri: file.uri, name: file.name, type: file.mediaType } as unknown as Blob);
   const res = await fetch(`${API_BASE}/investigations/${caseId}/evidence`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form });
@@ -91,8 +99,15 @@ export function createFileUploadHandle(caseExpiresAt: string): FileUploadHandle 
     clientItemId: Crypto.randomUUID(), declaredBytes: null, bytes: null, nextChunk: 0, expiresAt: caseExpiresAt };
 }
 
-export function createUpload(caseId: string, body: { expectedRevision: number; clientItemId: string; parentId: string | null; kind: "image" | "document" | "audio" | "attachment"; filename: string; mediaType: string; declaredBytes: number }, key: string, signal?: AbortSignal) {
-  return postWithKey<{ uploadId: string; chunkBytes: number; expiresAt: string; evidenceRootId: string; replayed: boolean }>(`/investigations/${caseId}/uploads`, body as unknown as Record<string, unknown>, key, signal);
+export function createUpload(caseId: string, body: { expectedRevision: number; clientItemId: string; parentId: string | null; kind: "image" | "document" | "audio" | "attachment"; filename: string; mediaType: string; declaredBytes: number; sanitizationReceiptId?: string }, key: string, signal?: AbortSignal) {
+  // ── Image egress enforcement on resumable uploads ──
+  let sanitizationMeta: Record<string, unknown> = {};
+  if (body.kind === "image") {
+    const receipt = requireImageSanitization(body.sanitizationReceiptId);
+    sanitizationMeta = sanitizationMetadata(receipt);
+  }
+  const { sanitizationReceiptId: _ignored, ...rest } = body;
+  return postWithKey<{ uploadId: string; chunkBytes: number; expiresAt: string; evidenceRootId: string; replayed: boolean }>(`/investigations/${caseId}/uploads`, { ...rest, ...sanitizationMeta } as unknown as Record<string, unknown>, key, signal);
 }
 
 async function putChunk(caseId: string, uploadId: string, index: number, chunk: Uint8Array, signal?: AbortSignal): Promise<void> {
@@ -116,11 +131,12 @@ export function completeUpload(caseId: string, uploadId: string, expectedRevisio
 /** Reads the file once (or reuses the reserved handle's already-read bytes), uploads it chunk by chunk
  * through the resumable endpoints, and finalises. `onHandle` is invoked before I/O, after session replay and after
  * every chunk so the caller can retain the handle for a retry; nothing here ever touches the source file's URI
- * after the initial read, and finalisation is the ONLY point at which the evidence becomes durably published. */
+ * after the initial read, and finalisation is the ONLY point at which the evidence becomes durably published.
+ * PIPELINE ENFORCEMENT: image uploads MUST provide a valid sanitizationReceiptId. */
 export async function uploadFileEvidenceResumable(
   caseId: string, expectedRevision: number, file: { uri: string; name: string; mediaType: string }, kind: "image" | "document" | "audio" | "attachment",
   reserved: FileUploadHandle, onHandle: (handle: FileUploadHandle) => void,
-  signal?: AbortSignal,
+  signal?: AbortSignal, sanitizationReceiptId?: string,
 ): Promise<{ evidence: EvidenceItem; caseRevision: number }> {
   let handle = reserved;
   onHandle(handle);
@@ -133,7 +149,7 @@ export async function uploadFileEvidenceResumable(
   }
   if (!handle.uploadId) {
     const created = await createUpload(caseId, { expectedRevision, clientItemId: handle.clientItemId, parentId: null, kind,
-      filename: file.name, mediaType: file.mediaType, declaredBytes: handle.declaredBytes! }, handle.createRequestKey, signal);
+      filename: file.name, mediaType: file.mediaType, declaredBytes: handle.declaredBytes!, sanitizationReceiptId }, handle.createRequestKey, signal);
     handle = { ...handle, uploadId: created.uploadId, evidenceRootId: created.evidenceRootId, expiresAt: created.expiresAt };
     onHandle(handle);
   }

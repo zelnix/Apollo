@@ -29,9 +29,9 @@ const ALLOWED_KEYS: Record<EgressEndpoint, Set<string>> = {
   push_register: new Set(["platform", "provider", "projectId", "device_token"]),
   // Gate 2: message text + URLs leave the device only when the user taps "Check message" (shown as "Shared with Apollo for analysis").
   message_check: new Set(["device_id", "sender", "text", "urls", "local_state", "scenario", "signals", "claimed_brand", "second_opinion"]),
-  message_extract: new Set(["device_id"]),
+  message_extract: new Set(["device_id", "sanitization_status"]),
   link_investigation: new Set(["device_id", "url", "local_state", "local_findings", "claimed_brand"]),
-  page_extract: new Set(["device_id", "url_hint"]),
+  page_extract: new Set(["device_id", "url_hint", "sanitization_status"]),
   // Gate 3 Phase C: only the link itself — Apollo fetches that page server-side and discards the
   // raw content once turned into short signals (see routers/analysis.py page_crawl, services/webcrawl.py).
   page_crawl: new Set(["device_id", "url"]),

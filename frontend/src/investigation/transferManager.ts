@@ -31,6 +31,8 @@ export interface ManagedOperation {
   generation: number;
   controller: AbortController;
   running: Promise<ManagedOperation> | null;
+  /** Sanitization receipt IDs for image files — keyed by file index. Pipeline enforcement. */
+  sanitizationReceipts: Map<number, string>;
 }
 
 const operations = new Map<string, ManagedOperation>();
@@ -134,7 +136,8 @@ async function runCreate(record: ManagedOperation): Promise<ManagedOperation> {
       handle = next;
       publish(record, { handle: next, fileIndex: index, phase: next.bytes ? "uploading" : "reading", error: null });
     };
-    const result = await api.uploadFileEvidenceResumable(caseId, record.revision, file, kind, handle, reserve, record.controller.signal);
+    const result = await api.uploadFileEvidenceResumable(caseId, record.revision, file, kind, handle, reserve, record.controller.signal,
+      kind === "image" ? record.sanitizationReceipts.get(index) : undefined);
     assertLive(record, generation);
     await disposePickerCopy(file.uri, true);
     publish(record, { revision: result.caseRevision, fileIndex: index + 1,
@@ -198,7 +201,7 @@ export function startManagedOperation(operationId: string, input: Omit<CreateCas
   const record: ManagedOperation = { operationId, submissionId: operationId, caseId: null, kind: "create", input, files: [...files], fileIndex: 0, handle: null,
     revision: 0, evidenceIndex: 0, evidenceIds: [], turn: { turnId: Crypto.randomUUID(), key: Crypto.randomUUID(), message: input.question },
     phase: "reserved", error: null, caseData: null, job: null, expiresAt: new Date(Date.now() + LOCAL_OPERATION_LIFETIME_MS).toISOString(),
-    generation: 1, controller: new AbortController(), running: null };
+    generation: 1, controller: new AbortController(), running: null, sanitizationReceipts: new Map() };
   operations.set(operationId, record);
   scheduleExpiry(record);
   notify(record);
@@ -212,7 +215,7 @@ export function appendManagedOperation(operationId: string, caseData: Investigat
   const record: ManagedOperation = { operationId, submissionId: operationId, caseId: caseData.id, kind: "append", input, files: [], fileIndex: 0, handle: null,
     revision: 0, evidenceIndex: 0, evidenceIds: [], turn: { turnId: Crypto.randomUUID(), key: Crypto.randomUUID(), message: input.question },
     phase: "reserved", error: null, caseData, job: null, expiresAt: caseData.expiresAt, generation: 1,
-    controller: new AbortController(), running: null };
+    controller: new AbortController(), running: null, sanitizationReceipts: new Map() };
   operations.set(operationId, record);
   operationPairs.set(pairKey(operationId, caseData.id), operationId);
   scheduleExpiry(record);

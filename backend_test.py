@@ -1,199 +1,234 @@
-#!/usr/bin/env python3
 """
-Backend test for Apollo Protection Messaging QA — Round 2
-Tests the 5 targeted fixes:
-1. evidence_provenance field (structural, not regex)
-2. Backend lifecycle persistence (resolved_at preservation)
-3. Merge function extraction (frontend - not tested here)
-4. Threat-first reporting terminology (frontend - not tested here)
-5. Evidence-based reopening (requires new evidence_id)
+Backend API tests for Image Privacy Gate + Pipeline Enforcement
+
+Tests the critical backend enforcement:
+1. POST /api/message/extract WITHOUT sanitization_status → 422 with "privacy gate" error
+2. POST /api/message/extract WITH sanitization_status=approved and non-image → 415
+3. POST /api/page/extract WITHOUT sanitization_status → 422 with "privacy gate" error
+4. POST /api/page/extract WITH sanitization_status=approved and non-image → 415
 """
-import asyncio
+import io
+import os
 import sys
-import uuid
-from datetime import datetime, timezone
+from PIL import Image
+import requests
 
-import httpx
+# Backend URL from environment
+BACKEND_URL = os.getenv("REACT_APP_BACKEND_URL", "http://localhost:8001")
+API_BASE = f"{BACKEND_URL}/api"
 
-# Use the public backend URL
-BACKEND_URL = "https://higgins-refine.preview.emergentagent.com/api"
-REGISTER_URL = f"{BACKEND_URL}/devices/register"
+def create_test_image():
+    """Create a simple test PNG image in memory."""
+    img = Image.new('RGB', (100, 100), color='red')
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    buf.seek(0)
+    return buf
 
-def now_iso():
-    return datetime.now(timezone.utc).isoformat()
+def create_test_text_file():
+    """Create a simple text file in memory."""
+    return io.BytesIO(b"This is a text file, not an image")
 
-async def test_resolution_persistence():
-    """
-    Test Fix 2: Backend lifecycle persistence
-    POST /api/patrol/events upsert now checks: if existing event has resolved_at 
-    and incoming POST does not, the resolution is preserved (prevents delivery 
-    queue replay from un-resolving)
-    """
-    print("\n=== Test: Resolution Persistence (Fix 2) ===")
-    
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        # Step 1: Register a device to get auth token
-        register_resp = await client.post(
-            REGISTER_URL,
-            json={
-                "platform": "android",
-                "adapter_mode": "mock",
-                "app_version": "1.0.0",
-                "tz_offset_minutes": 600,
-                "locale": "en-AU"
-            }
-        )
-        if register_resp.status_code != 201:
-            print(f"❌ Device registration failed: {register_resp.status_code} {register_resp.text}")
-            return False
-        
-        reg_data = register_resp.json()
-        device_id = reg_data["device_id"]
-        token = reg_data["device_token"]
-        headers = {"Authorization": f"Bearer {token}"}
-        print(f"✓ Device registered: {device_id}")
-        
-        # Step 2: Create a patrol event
-        event_id = f"evt-{uuid.uuid4().hex[:16]}"
-        event_data = {
-            "event_id": event_id,
-            "device_id": device_id,
-            "category": "message",
-            "state": "growling",
-            "occurred_at": now_iso(),
-            "headline": "Suspicious message detected",
-            "what_happened": "A message with suspicious links was detected",
-            "why": ["The link leads to a known phishing site"],
-            "what_to_do": "Do not click the link",
-            "indicator_host": "evil.example.com",
-            "scenario": "M01",
-            "background": False,
-            "status": "active",
-            "adapter_label": "mock"
+def register_device():
+    """Register a test device and return device_id and token."""
+    response = requests.post(
+        f"{API_BASE}/devices/register",
+        json={
+            "platform": "web",
+            "adapter_mode": "mock",
+            "app_version": "test-1.0.0"
         }
-        
-        create_resp = await client.post(
-            f"{BACKEND_URL}/patrol/events",
-            headers=headers,
-            json=event_data
-        )
-        if create_resp.status_code != 200:
-            print(f"❌ Event creation failed: {create_resp.status_code} {create_resp.text}")
+    )
+    if response.status_code not in [200, 201]:
+        print(f"❌ Device registration failed: {response.status_code} {response.text}")
+        sys.exit(1)
+    
+    data = response.json()
+    # Handle both camelCase and snake_case response formats
+    device_id = data.get("deviceId") or data.get("device_id")
+    token = data.get("token") or data.get("device_token")
+    return device_id, token
+
+def test_message_extract_without_sanitization(device_id, token):
+    """Test 1: POST /api/message/extract WITHOUT sanitization_status → 422"""
+    print("\n🧪 Test 1: POST /api/message/extract WITHOUT sanitization_status")
+    
+    img_buf = create_test_image()
+    
+    response = requests.post(
+        f"{API_BASE}/message/extract",
+        headers={"Authorization": f"Bearer {token}"},
+        files={"file": ("screenshot.png", img_buf, "image/png")},
+        data={"device_id": device_id}
+        # NOTE: sanitization_status is intentionally missing
+    )
+    
+    if response.status_code == 422:
+        error_text = response.text.lower()
+        if "privacy gate" in error_text or "sanitization" in error_text:
+            print(f"✅ PASS: Got 422 with privacy gate error")
+            print(f"   Response: {response.text[:200]}")
+            return True
+        else:
+            print(f"❌ FAIL: Got 422 but wrong error message: {response.text}")
             return False
-        
-        created_event = create_resp.json()
-        print(f"✓ Event created: {event_id}, status={created_event['status']}")
-        
-        # Step 3: Resolve the event via PATCH
-        resolved_at_time = now_iso()
-        patch_resp = await client.patch(
-            f"{BACKEND_URL}/patrol/events/{event_id}?device_id={device_id}",
-            headers=headers,
-            json={"status": "resolved", "resolved_at": resolved_at_time}
-        )
-        if patch_resp.status_code != 200:
-            print(f"❌ Event resolution failed: {patch_resp.status_code} {patch_resp.text}")
-            return False
-        
-        resolved_event = patch_resp.json()
-        resolved_at = resolved_event.get("resolved_at")
-        print(f"✓ Event resolved: resolved_at={resolved_at}")
-        
-        # Check that resolved_at is set
-        if not resolved_at:
-            print("❌ resolved_at not set after PATCH")
-            return False
-        
-        # Step 4: POST the same event again (simulating delivery queue replay)
-        # This should NOT un-resolve the event
-        replay_data = event_data.copy()
-        replay_data["status"] = "active"  # Older status
-        replay_data["what_happened"] = "Updated message text"  # Some change
-        
-        replay_resp = await client.post(
-            f"{BACKEND_URL}/patrol/events",
-            headers=headers,
-            json=replay_data
-        )
-        if replay_resp.status_code != 200:
-            print(f"❌ Event replay failed: {replay_resp.status_code} {replay_resp.text}")
-            return False
-        
-        replayed_event = replay_resp.json()
-        print(f"✓ Event replayed: status={replayed_event['status']}, resolved_at={replayed_event.get('resolved_at')}")
-        
-        # Verify resolution is preserved
-        if replayed_event["status"] != "resolved":
-            print(f"❌ FAIL: Event status changed from 'resolved' to '{replayed_event['status']}'")
-            return False
-        
-        if replayed_event.get("resolved_at") != resolved_at:
-            print(f"❌ FAIL: resolved_at changed from {resolved_at} to {replayed_event.get('resolved_at')}")
-            return False
-        
-        print("✅ PASS: Resolution preserved during replay (Fix 2 verified)")
+    else:
+        print(f"❌ FAIL: Expected 422, got {response.status_code}")
+        print(f"   Response: {response.text[:200]}")
+        return False
+
+def test_message_extract_with_sanitization_non_image(device_id, token):
+    """Test 2: POST /api/message/extract WITH sanitization_status=approved and non-image → 415"""
+    print("\n🧪 Test 2: POST /api/message/extract WITH sanitization_status=approved and non-image file")
+    
+    text_buf = create_test_text_file()
+    
+    response = requests.post(
+        f"{API_BASE}/message/extract",
+        headers={"Authorization": f"Bearer {token}"},
+        files={"file": ("document.txt", text_buf, "text/plain")},
+        data={
+            "device_id": device_id,
+            "sanitization_status": "approved"
+        }
+    )
+    
+    if response.status_code == 415:
+        print(f"✅ PASS: Got 415 Unsupported Media Type for non-image")
+        print(f"   Response: {response.text[:200]}")
         return True
+    else:
+        print(f"❌ FAIL: Expected 415, got {response.status_code}")
+        print(f"   Response: {response.text[:200]}")
+        return False
 
-
-async def test_evidence_based_reopening():
-    """
-    Test Fix 5: Evidence-based reopening
-    Note: The primary reopening logic is in the frontend merge function (eventMerge.ts).
-    Backend preserves resolution (tested in Fix 2). Frontend tests cover the evidence_id logic.
-    """
-    print("\n=== Test: Evidence-Based Reopening (Fix 5) ===")
-    print("✓ Evidence-based reopening is primarily tested in frontend architecturalRegression.test.ts")
-    print("✓ Backend resolution persistence verified in Fix 2 test above")
-    print("✓ Frontend merge function (eventMerge.ts) handles evidence_id comparison")
-    print("✅ PASS: Evidence-based reopening architecture verified")
-    return True
-
-
-async def test_backend_health():
-    """Basic health check"""
-    print("\n=== Test: Backend Health ===")
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        try:
-            resp = await client.get(f"{BACKEND_URL}/health")
-            if resp.status_code == 200:
-                data = resp.json()
-                print(f"✓ Backend healthy: {data}")
-                return True
-            else:
-                print(f"❌ Backend health check failed: {resp.status_code}")
-                return False
-        except Exception as e:
-            print(f"❌ Backend health check error: {e}")
+def test_page_extract_without_sanitization(device_id, token):
+    """Test 3: POST /api/page/extract WITHOUT sanitization_status → 422"""
+    print("\n🧪 Test 3: POST /api/page/extract WITHOUT sanitization_status")
+    
+    img_buf = create_test_image()
+    
+    response = requests.post(
+        f"{API_BASE}/page/extract",
+        headers={"Authorization": f"Bearer {token}"},
+        files={"file": ("page.png", img_buf, "image/png")},
+        data={"device_id": device_id}
+        # NOTE: sanitization_status is intentionally missing
+    )
+    
+    if response.status_code == 422:
+        error_text = response.text.lower()
+        if "privacy gate" in error_text or "sanitization" in error_text:
+            print(f"✅ PASS: Got 422 with privacy gate error")
+            print(f"   Response: {response.text[:200]}")
+            return True
+        else:
+            print(f"❌ FAIL: Got 422 but wrong error message: {response.text}")
             return False
+    else:
+        print(f"❌ FAIL: Expected 422, got {response.status_code}")
+        print(f"   Response: {response.text[:200]}")
+        return False
 
-
-async def main():
-    print("=" * 70)
-    print("Apollo Protection Messaging QA — Round 2 Backend Tests")
-    print("=" * 70)
+def test_page_extract_with_sanitization_non_image(device_id, token):
+    """Test 4: POST /api/page/extract WITH sanitization_status=approved and non-image → 415"""
+    print("\n🧪 Test 4: POST /api/page/extract WITH sanitization_status=approved and non-image file")
     
+    text_buf = create_test_text_file()
+    
+    response = requests.post(
+        f"{API_BASE}/page/extract",
+        headers={"Authorization": f"Bearer {token}"},
+        files={"file": ("page.txt", text_buf, "text/plain")},
+        data={
+            "device_id": device_id,
+            "sanitization_status": "approved"
+        }
+    )
+    
+    if response.status_code == 415:
+        print(f"✅ PASS: Got 415 Unsupported Media Type for non-image")
+        print(f"   Response: {response.text[:200]}")
+        return True
+    else:
+        print(f"❌ FAIL: Expected 415, got {response.status_code}")
+        print(f"   Response: {response.text[:200]}")
+        return False
+
+def test_message_extract_with_approved_image(device_id, token):
+    """Bonus Test: POST /api/message/extract WITH sanitization_status=approved and valid image → should work"""
+    print("\n🧪 Bonus Test: POST /api/message/extract WITH sanitization_status=approved and valid image")
+    
+    img_buf = create_test_image()
+    
+    response = requests.post(
+        f"{API_BASE}/message/extract",
+        headers={"Authorization": f"Bearer {token}"},
+        files={"file": ("screenshot.png", img_buf, "image/png")},
+        data={
+            "device_id": device_id,
+            "sanitization_status": "approved"
+        }
+    )
+    
+    # Should return 200 or 503 (if Gemini not configured), but NOT 422
+    if response.status_code in [200, 503]:
+        print(f"✅ PASS: Approved image accepted (status {response.status_code})")
+        return True
+    elif response.status_code == 422:
+        print(f"❌ FAIL: Approved image was rejected with 422")
+        print(f"   Response: {response.text[:200]}")
+        return False
+    else:
+        print(f"⚠️  WARN: Unexpected status {response.status_code}")
+        print(f"   Response: {response.text[:200]}")
+        return True  # Not a failure of the privacy gate
+
+def main():
+    print("=" * 80)
+    print("Backend API Tests: Image Privacy Gate + Pipeline Enforcement")
+    print("=" * 80)
+    print(f"Backend URL: {BACKEND_URL}")
+    print(f"API Base: {API_BASE}")
+    
+    # Register device
+    print("\n📱 Registering test device...")
+    device_id, token = register_device()
+    print(f"✅ Device registered: {device_id[:20]}...")
+    
+    # Run tests
     results = []
+    results.append(("Test 1: message/extract without sanitization", 
+                   test_message_extract_without_sanitization(device_id, token)))
+    results.append(("Test 2: message/extract with sanitization + non-image", 
+                   test_message_extract_with_sanitization_non_image(device_id, token)))
+    results.append(("Test 3: page/extract without sanitization", 
+                   test_page_extract_without_sanitization(device_id, token)))
+    results.append(("Test 4: page/extract with sanitization + non-image", 
+                   test_page_extract_with_sanitization_non_image(device_id, token)))
+    results.append(("Bonus: message/extract with approved image", 
+                   test_message_extract_with_approved_image(device_id, token)))
     
-    # Test 1: Backend health
-    results.append(await test_backend_health())
+    # Summary
+    print("\n" + "=" * 80)
+    print("TEST SUMMARY")
+    print("=" * 80)
     
-    # Test 2: Resolution persistence (Fix 2)
-    results.append(await test_resolution_persistence())
+    passed = sum(1 for _, result in results if result)
+    total = len(results)
     
-    # Test 3: Evidence-based reopening (Fix 5)
-    results.append(await test_evidence_based_reopening())
+    for name, result in results:
+        status = "✅ PASS" if result else "❌ FAIL"
+        print(f"{status}: {name}")
     
-    print("\n" + "=" * 70)
-    print(f"RESULTS: {sum(results)}/{len(results)} tests passed")
-    print("=" * 70)
+    print(f"\nTotal: {passed}/{total} tests passed")
     
-    if all(results):
-        print("\n✅ ALL BACKEND TESTS PASSED")
+    if passed == total:
+        print("\n🎉 All backend API tests PASSED!")
         return 0
     else:
-        print("\n❌ SOME TESTS FAILED")
+        print(f"\n⚠️  {total - passed} test(s) FAILED")
         return 1
 
-
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main()))
+    sys.exit(main())

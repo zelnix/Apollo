@@ -13,11 +13,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CheckResultScreen } from "@/src/components/CheckResultScreen";
 import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { ScreenshotPermissionSheet } from "@/src/components/ScreenshotPermissionSheet";
+import { ImagePrivacyGate, type GateResult } from "@/src/components/ImagePrivacyGate";
 import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card } from "@/src/components/ui";
 import { STATE_LABEL, STATE_MEANING, STATE_NAME } from "@/src/domain/types";
 import { buildMessageCheckResult } from "@/src/domain/messageCheckResultAdapter";
 import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
+import { screenImage, type ScreeningResult } from "@/src/domain/imagePrivacy";
 import { type MessageOutcome, useApollo } from "@/src/store/ApolloContext";
 import { CheckHistoryCard } from "@/src/components/CheckHistoryCard";
 import { recordCheck } from "@/src/store/checkHistoryStore";
@@ -89,12 +91,24 @@ export default function CheckMessage() {
     if (!deviceId) throw new Error("Apollo is still preparing this device.");
     setBusy("reading"); setError(null); setResult(null); setScreenshotUri(uri);
     try {
-      const extracted = await apiUpload<{ sender: string; text: string; urls: string[] }>("/message/extract", "message_extract",
-        { device_id: deviceId }, { uri, name, type });
-      const combined = [extracted.text, ...extracted.urls.filter((url) => !extracted.text.includes(url))].filter(Boolean).join("\n");
-      setSender(extracted.sender); setText(combined);
-      await run(combined, extracted.sender);
-    } finally { setBusy("idle"); }
+      // ── On-device privacy screening before any transmission ──
+      const screening = await screenImage(uri, "message_screenshot");
+      if (screening.status === "text_only" && screening.extractedText.trim()) {
+        // Text extracted locally with OCR — use it directly, image never leaves device
+        const combined = screening.extractedText;
+        setText(combined);
+        setBusy("idle");
+        await run(combined, sender);
+        return;
+      }
+      // Show the privacy gate for user approval
+      setGateScreening(screening);
+      setPendingScreenshot({ uri, name, type });
+      setBusy("idle");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not screen that screenshot.");
+      setBusy("idle");
+    }
   };
   const launchScreenshotPicker = async () => {
     try {
@@ -120,6 +134,46 @@ export default function CheckMessage() {
   }, [sharedImage, deviceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [historyKey, setHistoryKey] = useState(0);
+  // ── Privacy Gate state ──
+  const [gateScreening, setGateScreening] = useState<ScreeningResult | null>(null);
+  const [pendingScreenshot, setPendingScreenshot] = useState<{ uri: string; name: string; type: string } | null>(null);
+
+  const handleGateComplete = async (result: GateResult) => {
+    setGateScreening(null);
+    const file = pendingScreenshot;
+    setPendingScreenshot(null);
+    if (result.decision === "withheld") {
+      setScreenshotUri(null);
+      return;
+    }
+    if (result.decision === "text_only" && result.text) {
+      // Text-only: image stays on device
+      setText(result.text);
+      await run(result.text, sender);
+      return;
+    }
+    // Image approved (sanitised, cropped, or no-sensitive) — upload to backend
+    if (!deviceId || !file) return;
+    setBusy("reading"); setError(null);
+    try {
+      const uploadUri = result.imageUri ?? file.uri;
+      const extracted = await apiUpload<{ sender: string; text: string; urls: string[] }>("/message/extract", "message_extract",
+        { device_id: deviceId, sanitization_status: "approved" },
+        { uri: uploadUri, name: file.name, type: file.type });
+      const combined = [extracted.text, ...extracted.urls.filter((url) => !extracted.text.includes(url))].filter(Boolean).join("\n");
+      setSender(extracted.sender); setText(combined);
+      await run(combined, extracted.sender);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not read that screenshot.");
+    } finally { setBusy("idle"); }
+  };
+
+  const handleGateCancel = () => {
+    setGateScreening(null);
+    setPendingScreenshot(null);
+    setScreenshotUri(null);
+  };
+
   useEffect(() => { if (result?.analysis) { void recordCheck("message", { at: new Date().toISOString(), state: result.analysis.state, summary: result.analysis.scenarioTitle }); setHistoryKey((k) => k + 1); } }, [result]);
 
   if (ready && !setupDone) return <Redirect href="/" />;
@@ -209,6 +263,16 @@ export default function CheckMessage() {
 
       <ScreenshotPermissionSheet prefix="message" visible={!!photoAccess.permission} canAskAgain={photoAccess.permission?.canAskAgain ?? true}
         checking={photoAccess.checking} onContinue={() => void photoAccess.continueAccess()} onClose={photoAccess.close} />
+
+      {/* ── Image Privacy Gate — screens every screenshot before transmission ── */}
+      {gateScreening && (
+        <ImagePrivacyGate
+          visible={!!gateScreening}
+          screening={gateScreening}
+          onComplete={(r) => void handleGateComplete(r)}
+          onCancel={handleGateCancel}
+        />
+      )}
 
     </View>
   );

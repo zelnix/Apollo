@@ -384,6 +384,12 @@ class UploadMetadata(Wire):
     kind: Literal["image", "document", "audio", "attachment"]
     filename: str = Field(min_length=1, max_length=255)
     media_type: str = Field(min_length=3, max_length=120)
+    # Pipeline enforcement: image uploads MUST include sanitization_status = "approved"
+    # from the on-device privacy gate. Backend rejects image uploads without it.
+    sanitization_status: Optional[str] = None
+    sanitization_decision: Optional[str] = None
+    sensitive_regions_found: Optional[int] = None
+    redacted_regions: Optional[int] = None
 
 
 class CreateUpload(UploadMetadata):

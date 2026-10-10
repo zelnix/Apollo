@@ -75,6 +75,6 @@ async def test_screenshot_upload_is_closed_after_success(monkeypatch):
                 "processing": {"raw_retained_by_apollo": False}}
 
     monkeypatch.setattr(analysis, "extract_message_screenshot", fake_extract)
-    response = await analysis.message_extract(device_id="purpose-test", file=file)
+    response = await analysis.message_extract(device_id="purpose-test", sanitization_status="approved", file=file)
     assert response["processing"]["raw_retained_by_apollo"] is False
     assert file.file.closed

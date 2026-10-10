@@ -176,6 +176,11 @@ async def add_evidence(case_id: str, request: Request, file: Optional[UploadFile
             meta = UploadMetadata.model_validate_json(metadata or "")
         except ValidationError as exc:
             raise http(422, "invalid_input", "Multipart metadata did not match UploadMetadata.") from exc
+        # ── Backend pipeline enforcement: image uploads MUST include sanitization_status ──
+        if meta.kind == "image" and meta.sanitization_status != "approved":
+            raise http(422, "sanitization_required",
+                       "Image uploads must pass through the on-device privacy gate. "
+                       "Include sanitizationStatus='approved' in the upload metadata.")
         _revision_check(case, meta.expected_revision)
         data = await file.read(ev.MAX_FILE_BYTES + 1)
         if len(data) > ev.MAX_FILE_BYTES:
@@ -233,6 +238,11 @@ async def list_sources(case_id: str, request: Request, cursor: Optional[str] = N
 async def create_upload(case_id: str, body: CreateUpload, request: Request):
     owner = owner_of(request)
     case = await repo.get_case(owner, case_id, for_mutation=True)
+    # ── Backend pipeline enforcement: image uploads MUST include sanitization_status ──
+    if body.kind == "image" and body.sanitization_status != "approved":
+        raise http(422, "sanitization_required",
+                   "Image uploads must pass through the on-device privacy gate. "
+                   "Include sanitizationStatus='approved' in the upload metadata.")
     if body.declared_bytes > ev.MAX_FILE_BYTES:
         raise http(413, "budget_exhausted", f"Files above {ev.MAX_FILE_BYTES // (1024 * 1024)} MiB are not accepted.")
     immutable = body.wire(); immutable.pop("expectedRevision", None)

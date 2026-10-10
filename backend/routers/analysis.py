@@ -140,9 +140,15 @@ async def link_investigate(body: LinkInvestigateIn, request: Request):
 
 @router.post("/message/extract")
 @bounded_analysis
-async def message_extract(device_id: str = Form(min_length=8, max_length=64), file: UploadFile = File(...)):
+async def message_extract(device_id: str = Form(min_length=8, max_length=64),
+                          sanitization_status: str = Form(default=""),
+                          file: UploadFile = File(...)):
     """Request-scoped screenshot OCR. Upload spooling is closed/deleted in every exit path."""
     del device_id  # anonymous device authorises this one disclosed assessment; never persisted here
+    # ── Backend pipeline enforcement: screenshot uploads MUST pass on-device privacy gate ──
+    if sanitization_status != "approved":
+        await file.close()
+        raise HTTPException(422, "Screenshot uploads must pass through the on-device privacy gate.")
     if file.content_type not in {"image/png", "image/jpeg", "image/webp"}:
         await file.close()
         raise HTTPException(415, "Choose a PNG, JPEG or WebP screenshot.")
@@ -203,8 +209,13 @@ Never guess. If unreadable, use empty values."""
 @router.post("/page/extract")
 @bounded_analysis
 async def page_extract(device_id: str = Form(min_length=8, max_length=64), url_hint: str = Form(default="", max_length=2048),
+                       sanitization_status: str = Form(default=""),
                        file: UploadFile = File(...)):
     del device_id
+    # ── Backend pipeline enforcement: page screenshot uploads MUST pass on-device privacy gate ──
+    if sanitization_status != "approved":
+        await file.close()
+        raise HTTPException(422, "Screenshot uploads must pass through the on-device privacy gate.")
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=503, detail="Screenshot reading is not configured")
     if file.content_type not in {"image/png", "image/jpeg", "image/webp"}:

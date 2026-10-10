@@ -35,9 +35,17 @@ def api():
 
 
 def test_page_extract_rejects_invalid_image_without_persisting_it(api):
-    r = api.post(f"{BASE_URL}/api/page/extract", data={"device_id": "gate3page0001"},
+    r = api.post(f"{BASE_URL}/api/page/extract", data={"device_id": "gate3page0001", "sanitization_status": "approved"},
                  files={"file": ("page.txt", b"not an image", "text/plain")}, timeout=15)
     assert r.status_code == 415, r.text
+
+
+def test_page_extract_rejects_missing_sanitization(api):
+    """Backend pipeline enforcement: page screenshot uploads without sanitization_status are rejected."""
+    r = api.post(f"{BASE_URL}/api/page/extract", data={"device_id": "gate3page0001"},
+                 files={"file": ("page.png", b"fake-png", "image/png")}, timeout=15)
+    assert r.status_code == 422, r.text
+    assert "privacy gate" in r.json().get("detail", "").lower(), r.text
 
 
 def test_page_extract_schema_rejects_too_short_image(api):
