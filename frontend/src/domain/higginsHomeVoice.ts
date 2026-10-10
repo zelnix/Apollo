@@ -47,11 +47,23 @@ export function joinNames(names: string[]): string {
   return `${unique.slice(0, -1).join(", ")} and ${unique[unique.length - 1]}`;
 }
 
-/** Capabilities that aren't actively running right now (excluding ones that explicitly aren't on this
- *  platform at all). These are the "may have limited coverage" set surfaced to the person. */
+/** Capability IDs that represent genuinely automatic protection (continuous background monitoring
+ *  or enforcement). Manual-only checks (link, known_threats, share_intake, app) don't "run" in the
+ *  background, so they should never appear as "Apollo can't confirm X is running." */
+const AUTOMATIC_CAPABILITY_IDS = new Set<string>([
+  "site_guard", "connection_guard", "message_guard",
+]);
+
+/** Capabilities where automatic protection has GENUINELY degraded — not merely optional setup,
+ *  normal manual-check readiness, or unsupported platform features.
+ *  - "available" = the check is ready when you need it (not a failure)
+ *  - Manual-only capabilities never "run" continuously, so can't "fail to run"
+ *  - "unsupported" = platform limitation (not a failure of something that was working) */
 export function affectedCapabilities(capabilities: Capability[]): Capability[] {
   return capabilities.filter(
-    (c) => c.status !== "active" && c.status !== "coming_later" && c.status !== "unsupported",
+    (c) => c.status !== "active" && c.status !== "coming_later" && c.status !== "unsupported"
+      && c.status !== "available"
+      && AUTOMATIC_CAPABILITY_IDS.has(c.id),
   );
 }
 
@@ -210,17 +222,28 @@ export function buildHomeVoice(input: {
   }
 
   // 4) Visibility lost — Apollo can't confirm protection is running right now.
+  //    Only name GENUINELY affected automatic capabilities — not optional setup or unsupported features.
   if (resolution.visibilityLost) {
     const affected = affectedCapabilities(capabilities);
     const names = joinNames(affected.map((c) => CAPABILITY_LABEL[c.id] ?? c.title));
-    const text = names
-      ? `Apollo can't confirm that ${names} ${affected.length === 1 ? "is" : "are"} running right now. This doesn't mean there's a threat, but we should check. Open Protection Details and I'll guide you through restoring coverage.`
-      : "Apollo can't confirm his protections are running right now. This doesn't mean there's a threat, but we should check. Open Protection Details and I'll guide you through it.";
+    if (names) {
+      const text = `Apollo can't confirm that ${names} ${affected.length === 1 ? "is" : "are"} running right now. This doesn't mean there's a threat, but we should check. Open Protection Details and I'll guide you through restoring coverage.`;
+      return {
+        text,
+        ctaLabel: "View Protection Details",
+        ctaRoute: "/protection-details",
+        spoken: text,
+      };
+    }
+    // No genuinely affected automatic capabilities — the "visibility lost" is because capabilities
+    // are unsupported on this platform or not yet set up, not because something that was running
+    // has degraded. Don't alarm the user about this.
+    const text = "Apollo's automatic protections are limited on this device. Some require setup and some aren't available on this platform. Open Protection Details and I'll guide you through what's available.";
     return {
       text,
       ctaLabel: "View Protection Details",
       ctaRoute: "/protection-details",
-      spoken: text,
+      spoken: "Apollo's automatic protections are limited on this device. I'll guide you through what's available.",
     };
   }
 

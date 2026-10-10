@@ -2502,3 +2502,112 @@ agent_communication:
 
   - agent: "testing"
     message: "PACKAGE 4 SOURCE CORRECTIONS VERIFICATION COMPLETE (2026-10-10). Executed targeted regression on 4 corrections as specified: ✅ CORRECTION 1 (Redaction fails closed): grep confirms NO 'sanitised_image.*strippedImageUri' pattern in ImagePrivacyGate.tsx (exit 1 = not found). grep confirms 'withheld' appears 10 times in else branches when captureViewRef unavailable (lines 52, 54, 291, 314, 320, 324, 378, 379, 386, 387, 411, 418, 434, 435). ✅ CORRECTION 2 (Strict byte digest): grep confirms NO 'fallback:' in imageSanitization.ts (exit 1 = not found). grep confirms 'return null' appears 4 times (lines 65, 105, 131, 134). grep confirms 'Promise<string | null>' and 'Promise<SanitizationReceipt | null>' signatures (lines 53, 88). ✅ CORRECTION 3 (Production receipt tests): pytest tests/test_package4_acceptance.py::TestReceiptAdversarial passed 14/14 tests using production code paths (evidence.py, analysis.py, investigations.py). ✅ CORRECTION 4 (Document image safeguards): pytest tests/test_package4_acceptance.py::TestEmbeddedDocumentImages passed 9/9 tests. grep confirms 'document_rendered_page' consent in evidence.py (line 391). grep confirms 'Authentication secrets prohibition' safeguard notes in evidence.py (lines 388, 413, 425, 435). ✅ FULL REGRESSION: Backend 231/231 PASSED (test_package4_acceptance.py + test_image_consent_enforcement.py + test_gateway_enforcement.py + test_data_classification.py + test_llm_boundary.py + test_image_sanitization.py + test_scam_analysis.py). Frontend 90/90 PASSED (imageSanitization.test.ts 21/21 + architecturalRegression.test.ts 36/36 + higginsBehavioural.test.ts 23/23 + privacyDisclosure.test.ts 10/10). ✅ GIT COMMITS: bb82d20 and b9f3aa9 verified in git log. TOTAL: 321 tests passing (231 backend + 90 frontend), 0 failures. All 4 source corrections verified. All acceptance criteria met."
+
+
+## 2026-10-10 Invisible Gates UX Restructure — Phase 2
+
+frontend:
+  - task: "5-tab navigation restructure: Home → Protection → Check → Patrol → Higgins"
+    implemented: true
+    working: true
+    file: "frontend/app/(tabs)/_layout.tsx, frontend/app/(tabs)/protection.tsx"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Phase 1: Tab layout restructured with correct order and icons (ShieldCheck for Protection). iOS native tabs (NativeTabs) and standard Tabs both updated. Old Scams tab hidden (href: null), accessible via /higgins/scams. Guard tab hidden but routable for backwards compatibility."
+  - task: "Protection tab with 5 areas and individual capability coverage"
+    implemented: true
+    working: true
+    file: "frontend/app/(tabs)/protection.tsx, frontend/src/domain/protectionAreas.ts"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Phase 1+2: protectionAreas.ts maps 10 Gates → 5 areas (presentation groups only). Each area shows individual capability lines with per-gate status pills. Expandable 'How Apollo protects you' sections now show actual Gate names (e.g. 'Site Gate — Website filtering'). Area-level summary never says 'Watching' unless ALL automatics in the area are watching. Phase 2: Added gateName field to ProtectionAreaCapability; expanded section shows 'Gate Name — Friendly Label' + mode + help text."
+  - task: "Protection Details shows genuine findings only"
+    implemented: true
+    working: true
+    file: "frontend/src/domain/protectionDetails.ts"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Phase 1: Section 3 now skips 'available' status (manual readiness), skips manual gates with permission_required or inactive. Section 4 skips purely manual gates. Phase 2: No additional changes needed — verified clean in screenshot."
+  - task: "CoverageCard uses area-based attention counts"
+    implemented: true
+    working: true
+    file: "frontend/src/components/CoverageCard.tsx"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Phase 2: Changed from counting individual capabilities (totalAttention) to counting areas with at least one attention capability (areasWithAttention). Display now correctly says 'N areas need attention' instead of potentially inflated capability counts."
+  - task: "Protection tab summary uses area-based attention counts"
+    implemented: true
+    working: true
+    file: "frontend/app/(tabs)/protection.tsx"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Phase 2: Summary header now uses areasWithAttention (areas.filter(a => a.attentionCount > 0).length) instead of raw capability sum."
+  - task: "Optional never-activated automatics don't create false warnings"
+    implemented: true
+    working: true
+    file: "frontend/src/domain/higginsHomeVoice.ts"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Phase 2: affectedCapabilities() now filters to only AUTOMATIC_CAPABILITY_IDS (site_guard, connection_guard, message_guard) and excludes 'available' status. Manual-only capabilities (link_guard, known_threats, share_intake, app_guard) never appear as 'Apollo can't confirm X is running'. When no genuinely affected automatics exist, visibility-lost message says 'Apollo's automatic protections are limited on this device' instead of the misleading 'can't confirm protections are running'."
+  - task: "Check tab renamed to Check with View Protection link"
+    implemented: true
+    working: true
+    file: "frontend/app/(tabs)/check-it.tsx"
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Phase 1: Tab title 'Check It' → 'Check'. 'View Gates' card → 'View Protection' linking to /(tabs)/protection. Info body updated."
+  - task: "Email setup label: Connect your email accounts"
+    implemented: true
+    working: true
+    file: "frontend/src/domain/gatePermissions.ts"
+    priority: "low"
+    needs_retesting: false
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Phase 1: enableLabel changed from 'Connect Email Gate' to 'Connect your email accounts'."
+
+test_plan:
+  current_focus:
+    - "Full regression: 5-tab navigation renders correctly"
+    - "Protection tab: 5 areas with individual capability coverage, expandable Gate names"
+    - "Protection Details: no routine manual-readiness findings"
+    - "Home hero: no false warnings for optional/unsupported capabilities"
+    - "CoverageCard: area-based attention count"
+    - "Check tab: View Protection link works"
+    - "Patrol: unchanged functionality"
+    - "Higgins: unchanged functionality"
+    - "Deep links: /gates, /higgins/scams, /protection-details all accessible"
+    - "QR scanning route preserved (Expo Go: camera mocked)"
+  stuck_tasks: []
+  test_all: true
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "INVISIBLE GATES UX RESTRUCTURE Phase 2 complete. Please run a FULL FRONTEND REGRESSION covering: (1) 5-tab nav order: Home → Protection → Check → Patrol → Higgins with correct icons/labels. (2) Protection tab: 5 area cards, expandable details showing real Gate names like 'Site Gate — Website filtering'. (3) Protection Details: no 'Ready when you need it' findings. (4) Home hero: no false 'can't confirm protections' for unsupported/optional capabilities. (5) CoverageCard: area-based attention counts. (6) Check tab: renamed to 'Check', 'View Protection' link to Protection tab. (7) Patrol: unchanged. (8) Higgins: unchanged, last tab. (9) Deep links: /gates, /higgins/scams, /protection-details all routable. (10) Scams accessible from Home and /higgins/scams route. ONBOARDING BYPASS: append ?__apollo_test_setup=1 to any tab URL. NO AUTH NEEDED — device auto-registers. Backend is at localhost:8001; frontend at localhost:3000. NO BACKEND CHANGES were made — only frontend. Pre-existing backend test failures (test_register_push_placeholder, test_gmail_cursor) are unrelated."
+
+agent_communication:
+  - agent: "testing"
+    message: "INVISIBLE GATES UX RESTRUCTURE Phase 2 — Testing Report (2026-10-10). BACKEND HEALTH (P1): ✅ VERIFIED - curl http://localhost:8001/api/health returns 200 OK with correct schema (schemaVersion:1, status:ok, service:apollo-v1). FRONTEND COMPILATION: ✅ VERIFIED - TypeScript compilation passes with no errors (npx tsc --noEmit exit 0). ESLint passes on key files: _layout.tsx, protection.tsx, protectionAreas.ts, CoverageCard.tsx. FRONTEND TESTS: ✅ protectionTimeline.test.ts 6/6 PASSED, protectionTruth.test.ts 5/5 PASSED. ❌ phase2Navigation.test.ts 3/4 PASSED, 1 FAILED - Test 'P2.1 exposes the exact root tab order' is OUTDATED and checks for OLD tab order (home, ask, check-it, scams, patrol) but NEW implementation has (home, protection, check-it, patrol, ask). CODE VERIFICATION: ✅ Verified _layout.tsx line 17 comment confirms new tab order: 'Home → Protection → Check → Patrol → Higgins'. ✅ Verified actual tab implementation matches review request: 5 visible tabs with correct testIDs (tab-home, tab-protection, tab-check, tab-patrol, tab-ask) and labels. ✅ Verified hidden tabs: guard and scams (href: null) still routable. LIMITATION: Cannot perform visual UI testing (tab icons, colors, expandable sections, deep links, onboarding bypass) without browser automation or native device. RECOMMENDATION: Main agent should update phase2Navigation.test.ts to match new tab order OR create new test file for UX restructure validation. All 10 test areas from review request are FRONTEND-ONLY and require visual/browser testing which is outside testing agent scope."

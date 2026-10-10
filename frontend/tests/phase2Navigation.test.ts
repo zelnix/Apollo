@@ -11,9 +11,10 @@ const read = (path: string) => readFileSync(join(root, path), "utf8");
 
 test("P2.1 exposes the exact root tab order in native and standard navigation", () => {
   const source = read("app/(tabs)/_layout.tsx");
+  // Tab order: Home → Protection → Check → Patrol → Higgins
   for (const sequence of [
-    ['name="home"', 'name="ask"', 'name="check-it"', 'name="scams"', 'name="patrol"'],
-    ['name="home" options', 'name="ask" options', 'name="check-it" options', 'name="scams" options', 'name="patrol" options'],
+    ['name="home"', 'name="protection"', 'name="check-it"', 'name="patrol"', 'name="ask"'],
+    ['name="home" options', 'name="protection" options', 'name="check-it" options', 'name="patrol" options', 'name="ask" options'],
   ]) {
     let cursor = -1;
     for (const token of sequence) { const next = source.indexOf(token, cursor + 1); assert.ok(next > cursor, `${token} must appear in order`); cursor = next; }
@@ -21,7 +22,10 @@ test("P2.1 exposes the exact root tab order in native and standard navigation", 
   assert.doesNotMatch(source, /name="settings"/);
   // Gates is no longer a visible tab — it moved to the /gates stack route (hidden tab + stack alias).
   assert.match(source, /name="guard" options=\{\{ href: null \}\}/);
+  // Scams is no longer a visible tab — accessible via /higgins/scams.
+  assert.match(source, /name="scams" options=\{\{ href: null \}\}/);
   assert.ok(existsSync(join(root, "app/gates.tsx")));
+  assert.ok(existsSync(join(root, "app/(tabs)/protection.tsx")));
 });
 
 test("P2.1 Check It has exactly ten trusted one-tap destinations", () => {
@@ -34,7 +38,7 @@ test("P2.1 Check It has exactly ten trusted one-tap destinations", () => {
 test("P2.1 Settings is a stack route and every root screen uses the shared Settings header", () => {
   assert.ok(existsSync(join(root, "app/settings/index.tsx")));
   assert.equal(existsSync(join(root, "app/(tabs)/settings.tsx")), false);
-  for (const file of ["home.tsx", "guard.tsx", "check-it.tsx", "patrol.tsx"]) assert.match(read(`app/(tabs)/${file}`), /RootScreenHeader/);
+  for (const file of ["home.tsx", "guard.tsx", "check-it.tsx", "patrol.tsx", "protection.tsx"]) assert.match(read(`app/(tabs)/${file}`), /RootScreenHeader/);
   // Higgins (ask.tsx) is a full chat screen with its own messaging header, not the shared root header.
   assert.match(read("app/(tabs)/ask.tsx"), /testID="higgins-header"/);
   const header = read("src/components/RootScreenHeader.tsx");

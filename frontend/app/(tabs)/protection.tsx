@@ -73,6 +73,7 @@ const useStyles = makeStyles((c) => ({
   gateDetail: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg, gap: spacing.md, borderTopWidth: 1, borderTopColor: c.divider },
   gateBox: { gap: 4 },
   gateName: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.onSurface },
+  gateMode: { fontFamily: fonts.text, fontSize: 12, color: c.muted },
   gateDesc: { fontFamily: fonts.text, fontSize: 12, lineHeight: 17, color: c.onSurfaceSecondary },
   limitation: { fontFamily: fonts.text, fontSize: 12, lineHeight: 17, color: c.growlingText },
 }));
@@ -154,7 +155,8 @@ function AreaCard({ area }: { area: ProtectionArea }) {
         <View style={s.gateDetail} testID={`protection-area-${area.id}-detail`}>
           {area.capabilities.map((cap) => (
             <View key={cap.gateId} style={s.gateBox}>
-              <Text style={s.gateName}>{cap.label} ({cap.mode === "automatic" ? "automatic protection" : "manual check"})</Text>
+              <Text style={s.gateName}>{cap.gateName} — {cap.label}</Text>
+              <Text style={s.gateMode}>{cap.mode === "automatic" ? "Automatic protection" : "Manual check"}</Text>
               <Text style={s.gateDesc}>{cap.currentHelp}</Text>
               {cap.limitation ? <Text style={s.limitation}>{cap.limitation}</Text> : null}
             </View>
@@ -179,17 +181,17 @@ export default function ProtectionScreen() {
 
   const totalWatching = areas.reduce((sum, a) => sum + a.watchingCount, 0);
   const totalAutomatic = areas.reduce((sum, a) => sum + a.automaticCount, 0);
-  const totalAttention = areas.reduce((sum, a) => sum + a.attentionCount, 0);
+  const areasWithAttention = areas.filter((a) => a.attentionCount > 0).length;
 
-  const summaryTitle = totalAttention > 0
-    ? `${totalAttention} ${totalAttention === 1 ? "capability needs" : "capabilities need"} attention`
+  const summaryTitle = areasWithAttention > 0
+    ? `${areasWithAttention} ${areasWithAttention === 1 ? "area needs" : "areas need"} attention`
     : totalWatching > 0
       ? `${totalWatching} of ${totalAutomatic} automatic protections watching`
       : health.checking
         ? "Checking your protection"
         : "Your protection overview";
 
-  const summaryBody = totalAttention > 0
+  const summaryBody = areasWithAttention > 0
     ? "Some protections need your action. Review the areas below."
     : totalWatching === totalAutomatic && totalAutomatic > 0
       ? "All automatic protections are running. Manual checks are available."
@@ -220,7 +222,7 @@ export default function ProtectionScreen() {
         {/* Summary card */}
         <Card style={s.summaryCard} testID="protection-summary">
           <View style={s.summaryRow}>
-            <Shield size={28} color={totalAttention > 0 ? colors.barking : colors.resting} />
+            <Shield size={28} color={areasWithAttention > 0 ? colors.barking : colors.resting} />
             <View style={s.summaryText}>
               <Text style={s.summaryTitle} testID="protection-summary-title">{summaryTitle}</Text>
               <Text style={s.summaryBody} testID="protection-summary-body">{summaryBody}</Text>

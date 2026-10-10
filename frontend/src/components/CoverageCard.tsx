@@ -35,7 +35,7 @@ export function CoverageCard() {
   if (health.checking) return null;
 
   const totalWatching = areas.reduce((sum, a) => sum + a.watchingCount, 0);
-  const totalAttention = areas.reduce((sum, a) => sum + a.attentionCount, 0);
+  const areasWithAttention = areas.filter((a) => a.attentionCount > 0).length;
 
   return (
     <Pressable
@@ -51,8 +51,8 @@ export function CoverageCard() {
           <Text style={s.title}>Your protection</Text>
         </View>
         <Text style={s.count} testID="home-coverage-count">
-          {totalAttention > 0
-            ? `${totalAttention} ${totalAttention === 1 ? "area needs" : "areas need"} attention`
+          {areasWithAttention > 0
+            ? `${areasWithAttention} ${areasWithAttention === 1 ? "area needs" : "areas need"} attention`
             : totalWatching > 0
               ? `${totalWatching} automatic ${totalWatching === 1 ? "protection" : "protections"} watching`
               : "Protection status"}
