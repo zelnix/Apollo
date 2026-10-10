@@ -232,11 +232,22 @@ class TestGuideRecommended:
 class TestVerifyCompletion:
 
     def test_complete_with_unexamined_evidence_rejected(self):
+        """Case 1: Gaps NOT in remainingEvidenceIds — completion='complete' rejected."""
         data = _base_response(completion="complete", remainingEvidenceIds=[])
         _, errors = validate(data, revision=1, evidence_ids=EVIDENCE, source_ids=SOURCES,
                               capability_ids=CAPS, pending_question=None, provider_complete=True,
                               material_gaps={"ev-2"})
         assert any("complete" in e and "unexamined" in e for e in errors)
+
+    def test_complete_with_listed_gaps_also_rejected(self):
+        """Case 2: Gaps listed in remainingEvidenceIds but completion still 'complete' — rejected.
+        Material unexamined evidence blocks 'complete' regardless of listing."""
+        data = _base_response(completion="complete", remainingEvidenceIds=["ev-2"])
+        _, errors = validate(data, revision=1, evidence_ids=EVIDENCE, source_ids=SOURCES,
+                              capability_ids=CAPS, pending_question=None, provider_complete=True,
+                              material_gaps={"ev-2"})
+        assert any("complete" in e for e in errors), \
+            "completion='complete' must be rejected even when gaps are in remainingEvidenceIds"
 
     def test_partial_with_remaining_evidence_passes(self):
         data = _base_response(completion="partial", remainingEvidenceIds=["ev-2"])

@@ -81,9 +81,14 @@ def validate(data: dict, *, revision: int, evidence_ids: set[str], source_ids: s
         errors.append("completion 'waiting_user' requires a question")
     if model.question and model.completion != "waiting_user":
         errors.append("a question requires completion 'waiting_user'")
-    unlisted_gaps = sorted((material_gaps or set()) - set(model.remaining_evidence_ids))
-    if model.completion == "complete" and unlisted_gaps:
-        errors.append(f"completion 'complete' is not supported: evidence {unlisted_gaps[:4]} has unexamined material content. Read it with read_evidence, or set completion 'partial' and list it in remainingEvidenceIds")
+    # Material unexamined evidence blocks 'complete' whether or not it appears in remainingEvidenceIds.
+    if model.completion == "complete" and material_gaps:
+        listed = set(model.remaining_evidence_ids)
+        unlisted = sorted(material_gaps - listed)
+        if unlisted:
+            errors.append(f"completion 'complete' is not supported: evidence {unlisted[:4]} has unexamined material content. Read it with read_evidence, or set completion 'partial' and list it in remainingEvidenceIds")
+        else:
+            errors.append(f"completion 'complete' is not supported: evidence listed in remainingEvidenceIds {sorted(material_gaps)[:4]} still has unexamined material content. Set completion 'partial'")
 
     if errors:
         return None, errors

@@ -257,18 +257,25 @@ def classify_field(key: str) -> Classification:
 
     Uses the authoritative data_classification registry. Returns a backward-compatible
     Classification enum for existing callers.
+
+    Dual-classified fields (both SECURITY_INDICATOR and PII, e.g. sender, caller_number)
+    return SECURITY_EVIDENCE — the security indicator role takes operational precedence.
+    The field remains classified as also containing personal data in the authoritative
+    registry (data_classification.py) for compliance and consent purposes.
     """
     categories = _authoritative_classify_field(key)
 
     # Map authoritative categories to backward-compatible Classification
     if DataCategory.CREDENTIAL in categories:
         return Classification.CREDENTIAL
+    # Dual-classified: security indicator + personal data → security evidence wins operationally
+    if DataCategory.SECURITY_INDICATOR in categories:
+        return Classification.SECURITY_EVIDENCE
     if DataCategory.MEDICAL in categories or DataCategory.FINANCIAL in categories or DataCategory.LOCATION in categories:
         return Classification.SENSITIVE_PII
     if DataCategory.PII in categories or DataCategory.SENSITIVE_PERSONAL in categories:
         return Classification.PERSONAL_DATA
     if DataCategory.UNKNOWN in categories:
         # CRITICAL: Unknown data defaults to PERSONAL_DATA (restricted), not SECURITY_EVIDENCE.
-        # This ensures unclassified fields are not accidentally treated as unrestricted.
         return Classification.PERSONAL_DATA
     return Classification.SECURITY_EVIDENCE
