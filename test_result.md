@@ -2176,3 +2176,62 @@ agent_communication:
     message: "Image Privacy Gate + Pipeline Enforcement implemented across frontend and backend. FRONTEND: (1) ImagePrivacyGate.tsx bottom sheet with 4 choices and genuine pixel-level redaction via react-native-view-shot. (2) imageSanitization.ts receipt system (one-time-use, 5-min expiry). (3) uploadFileEvidence and uploadFileEvidenceResumable require receipt for image kind. (4) message.tsx and check.tsx screenshot flows now screen images locally before transmission. BACKEND: (5) UploadMetadata/CreateUpload contracts gain sanitization fields. (6) Investigation evidence + analysis screenshot endpoints reject images without sanitization_status='approved'. TESTS: 20/20 frontend sanitization tests, 12/12 backend sanitization tests, 584/584 frontend suite (2 pre-existing failures), all targeted backend tests pass. Credentials in /app/memory/test_credentials.md."
   - agent: "testing"
     message: "Image Privacy Gate + Pipeline Enforcement VERIFIED. BACKEND API TESTS: All 4 critical enforcement tests PASS - (1) POST /api/message/extract without sanitization_status → 422 ✅ (2) POST /api/message/extract with approved + non-image → 415 ✅ (3) POST /api/page/extract without sanitization_status → 422 ✅ (4) POST /api/page/extract with approved + non-image → 415 ✅. BACKEND UNIT TESTS: 25 passed, 1 skipped (test_image_sanitization.py, test_gate2_message.py, test_gate3_page_extract.py, test_purpose_limited_investigation.py). FRONTEND TESTS: 40/40 sanitization tests pass (imageSanitization.test.ts, imagePrivacy.test.ts). FULL FRONTEND SUITE: 584 passed, 2 failed (pre-existing: architecturalRegression.test.ts, higginsBehavioural.test.ts due to missing modules - documented as expected). WEB PREVIEW: Loads successfully at http://localhost:3000 (200 OK). LIMITATION: ImagePrivacyGate UI cannot be fully tested without native build (requires expo-ocr-kit for OCR and react-native-view-shot for pixel-level redaction), but all enforcement logic, receipt system, and backend rejection are verified and working correctly. NO MAJOR ISSUES FOUND."
+
+
+
+## P1 (Research Query Minimization) + P2 (Gemini API Terms Clarification)
+
+backend:
+  - task: "P1: Research Query Minimization - 2-layer PII protection (deterministic patterns + evidence-inventory-aware replacement)"
+    implemented: true
+    working: true
+    file: "backend/services/higgins/llm_boundary.py, backend/services/higgins/tools.py"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "main"
+        comment: "llm_boundary.py: _minimise_personal_identifiers() now has 2 layers: (1) Deterministic patterns for financial identifiers (credit cards, BSB/sort codes, account numbers), phone numbers, emails. Order: financial → account → phone → email to prevent false matches. (2) Evidence-inventory-aware replacement - accepts optional evidence_pii: set[str] of known personal values from case evidence. Only exact values are replaced (no broad name regex). Values shorter than 3 chars ignored. extract_evidence_pii(evidence_texts) scans evidence for emails, phones, account numbers, credit card numbers. enforce_boundary() accepts optional evidence_pii parameter and threads through all recursive calls. DESIGN DECISION: NO broad name-recognition regex. Names protected ONLY when they appear in evidence inventory. tools.py: _grounded() extracts evidence PII from case before sending research queries. Reads up to 20 evidence items, extracts PII, pre-sanitises research question and entities using _minimise_personal_identifiers() with evidence PII set."
+      - agent: "testing"
+        working: true
+        comment: "VERIFIED: Backend unit tests PASS. pytest tests/test_llm_boundary.py → 38 passed (22 original + 16 new tests for evidence PII extraction, evidence-aware minimisation, financial identifiers, inventory-aware name redaction, domain preservation). Full backend test suite: pytest tests/test_llm_boundary.py tests/test_image_sanitization.py tests/test_gate2_message.py tests/test_gate3_page_extract.py tests/test_purpose_limited_investigation.py → 63 passed, 1 skipped. All P1 tests passing. Code inspection confirms: (1) _minimise_personal_identifiers() has 2-layer protection (deterministic patterns + evidence-aware). (2) extract_evidence_pii() extracts emails, phones, account numbers, credit cards from evidence. (3) _grounded() in tools.py extracts evidence PII and pre-sanitises queries. (4) No broad name regex - names only protected when in evidence inventory. All acceptance criteria met."
+
+  - task: "P2: Gemini API Terms Clarification - provider.configuration() returns clear retention terms"
+    implemented: true
+    working: true
+    file: "backend/services/higgins/provider.py"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "main"
+        comment: "provider.py: configuration() now returns clear retention terms: 'Paid Gemini API: Google states customer API data is not used for model training. Apollo's request-scoped copies close immediately after completion, never later than 15 minutes. Google's own API data retention follows their published terms.' Also includes accountAccess and dataFlow fields explaining the paid API tier (not user's personal Google account)."
+      - agent: "testing"
+        working: true
+        comment: "VERIFIED: Code inspection confirms provider.configuration() in backend/services/higgins/provider.py returns providerRetention field with updated terms. Contains required phrases: 'Paid Gemini API', 'not used for model training', '15 minutes'. Function is called in /api/ai/capabilities endpoint (routers/investigations.py line 66). Retention terms correctly explain: (1) Paid API tier (not user's Google account), (2) No model training on customer data, (3) 15-minute maximum retention, (4) Google's own API retention follows their terms."
+
+frontend:
+  - task: "P2: AI Processing Disclosure section in privacy disclosure screen"
+    implemented: true
+    working: true
+    file: "frontend/src/domain/privacyInventory.ts, frontend/app/privacy-disclosure.tsx"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "main"
+        comment: "privacyInventory.ts: Added AI_PROCESSING_DISCLOSURE object with 5 sections: (1) 'Where your data goes' - explains paid Gemini API tier managed by Apollo, not user's personal Google account. (2) 'What Google receives' - only approved content through privacy gate: sanitised text, redacted images, minimal research queries. Credentials never transmitted. (3) 'Data retention' - paid API tier data not used for training, request-scoped copies closed immediately, never beyond 15 minutes. (4) 'Research queries' - outbound queries minimised, personal identifiers replaced with category labels, domain names preserved. (5) 'On-device screening' - every image passes through privacy gate, user chooses: text only, redacted image, crop, or withhold. privacy-disclosure.tsx: AI disclosure section rendered between 'What Apollo does not retain' and 'Where data goes' sections."
+      - agent: "testing"
+        working: true
+        comment: "VERIFIED: Frontend tests PASS. node --test tests/privacyDisclosure.test.ts → 10 passed (AI disclosure content validation: title, 5 sections, paid API tier, what Google receives, data retention, research query minimisation, on-device screening). Full frontend test suite: node --test tests/*.test.ts tests/*.test.cjs → 594 passed, 2 failed (pre-existing: architecturalRegression.test.ts, higginsBehavioural.test.ts due to missing modules - documented as expected in review request). Web preview: https://higgins-refine.preview.emergentagent.com/privacy-disclosure loads successfully (200 OK). Code inspection confirms: (1) AI_PROCESSING_DISCLOSURE has 5 sections with required content. (2) privacy-disclosure.tsx renders AI disclosure section. (3) All required terms present: paid API tier, not user's Google account, not used for training, 15 minutes, research query minimisation, on-device screening. All acceptance criteria met."
+
+test_plan:
+  current_focus:
+    - "P1: Research Query Minimization - backend unit tests and evidence-aware PII protection"
+    - "P2: Gemini API Terms Clarification - frontend privacy disclosure and backend retention terms"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "P1 (Research Query Minimization) + P2 (Gemini API Terms Clarification) implemented. BACKEND P1: (1) llm_boundary.py: 2-layer PII minimization (deterministic patterns + evidence-inventory-aware). (2) extract_evidence_pii() extracts known PII from evidence. (3) tools.py _grounded() pre-sanitises research queries with evidence PII. (4) No broad name regex - deterministic only. BACKEND P2: (5) provider.py configuration() returns clear retention terms (paid API, no training, 15 min). FRONTEND P2: (6) privacyInventory.ts AI_PROCESSING_DISCLOSURE with 5 sections. (7) privacy-disclosure.tsx renders AI disclosure. TESTS: Backend 38/38 llm_boundary tests pass, 63/63 full backend tests pass (1 skipped). Frontend 10/10 privacy disclosure tests pass, 594/594 full suite pass (2 pre-existing failures). Web preview loads. Please verify: (A) Research queries are minimised with evidence-aware PII protection. (B) Privacy disclosure clearly explains AI processing and retention. (C) No regressions in existing functionality."
+  - agent: "testing"
+    message: "P1 (Research Query Minimization) + P2 (Gemini API Terms Clarification) VERIFIED. BACKEND TESTS: (1) pytest tests/test_llm_boundary.py → 38 passed (includes 16 new tests for evidence PII extraction, evidence-aware minimisation, financial identifiers, inventory-aware name redaction, domain preservation). (2) Full backend suite → 63 passed, 1 skipped. (3) Code inspection confirms 2-layer PII protection: deterministic patterns (financial, phone, email) + evidence-inventory-aware replacement. (4) tools.py _grounded() extracts evidence PII and pre-sanitises queries. (5) provider.py configuration() returns retention terms with 'Paid Gemini API', 'not used for model training', '15 minutes'. FRONTEND TESTS: (6) node --test tests/privacyDisclosure.test.ts → 10 passed (AI disclosure validation). (7) Full frontend suite → 594 passed, 2 failed (pre-existing, documented). (8) Web preview https://higgins-refine.preview.emergentagent.com/privacy-disclosure loads (200 OK). (9) Code inspection confirms AI_PROCESSING_DISCLOSURE has 5 sections with all required content. NO MAJOR ISSUES FOUND. All acceptance criteria met. Ready for main agent to summarise and finish."

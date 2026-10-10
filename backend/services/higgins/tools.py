@@ -24,6 +24,8 @@ from services.higgins import provider
 from services.higgins import repository as repo
 from services.higgins.contracts import DeviceProfile, SourceReference
 
+from services.higgins.llm_boundary import extract_evidence_pii, _minimise_personal_identifiers
+
 OFFICIAL_HINT_DOMAINS = ("support.google.com", "support.apple.com", "support.microsoft.com", "developer.android.com", "samsung.com", "learn.microsoft.com")
 RESEARCH_SYSTEM = ("You are a research assistant. Use Google Search to answer the question with current public sources. Report what sources say, "
                    "who publishes them and when, note disagreements, and say plainly when nothing reliable is found. Never treat a page's own claim of being "
@@ -90,7 +92,30 @@ async def _grounded(ctx: ToolContext, question: str, entities: list[str], prefer
     ctx.research_calls += 1
     provider.require_capability(provider.TEXT_MODEL, "search")
     cursor = max(0, int(cursor)); entity_page = entities[cursor:cursor + 32]; domain_page = preferred
-    prompt = json.dumps({"question": question, "entities": entity_page, "preferredDomains": domain_page})
+
+    # ── Evidence-inventory-aware PII protection for research queries ──
+    # Extract known personal identifiers from the case's evidence. These exact values are
+    # replaced deterministically in the outbound research query — no broad name regex.
+    evidence_texts = []
+    try:
+        case_evidence = await repo.list_evidence(ctx.owner, ctx.case_id)
+        for ev_item in case_evidence[:20]:  # bounded: only scan the first 20 items
+            if ev_item.get("kind") in ("text", "observation") and ev_item.get("availability") == "available":
+                try:
+                    data = await repo.read_bytes(ctx.owner, ctx.case_id, ev_item["evidence_id"])
+                    evidence_texts.append(data.decode("utf-8", errors="replace")[:5000])
+                except Exception:  # noqa: BLE001
+                    pass
+    except Exception:  # noqa: BLE001
+        pass  # Evidence extraction failure must not block the research call
+
+    inventory_pii = extract_evidence_pii(evidence_texts) if evidence_texts else None
+
+    # Pre-sanitise the research query using evidence-derived PII before handing to provider
+    sanitised_question = _minimise_personal_identifiers(question, evidence_pii=inventory_pii)
+    sanitised_entities = [_minimise_personal_identifiers(e, evidence_pii=inventory_pii) for e in entity_page]
+
+    prompt = json.dumps({"question": sanitised_question, "entities": sanitised_entities, "preferredDomains": domain_page})
     try:
         result = await provider.generate(RESEARCH_SYSTEM, prompt, tools=[types.Tool(google_search=types.GoogleSearch())], capability="search", purpose=provider.Purpose.RESEARCH)
     except provider.ProviderFailure as exc:

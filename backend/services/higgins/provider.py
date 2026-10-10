@@ -210,4 +210,8 @@ def configuration() -> dict:
               "speech": SPEECH_MODEL, "recovery": RECOVERY_MODEL or None}
     return {"provider": "Gemini", "sdk": "google-genai", "keyConfigured": bool(GEMINI_API_KEY),
             "models": models, "capabilities": {m: sorted(CAPABILITIES.get(m, set())) for m in models.values() if m},
-            "accountAccess": "requires live verification", "providerRetention": "Owner must verify Google account data settings"}
+            "accountAccess": "Apollo-managed paid API tier (not the user's personal Google account)",
+            "providerRetention": "Paid Gemini API: Google states customer API data is not used for model training. "
+                                 "Apollo's request-scoped copies close immediately after completion, never later than 15 minutes. "
+                                 "Google's own API data retention follows their published terms.",
+            "dataFlow": "Device -> Apollo service -> Google Gemini paid API. No user Google account involved."}

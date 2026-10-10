@@ -12,7 +12,7 @@ import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
-import { PRIVACY_FLOWS, LOCAL_ONLY_CONTENT } from '@/src/domain/privacyInventory';
+import { PRIVACY_FLOWS, LOCAL_ONLY_CONTENT, AI_PROCESSING_DISCLOSURE } from '@/src/domain/privacyInventory';
 
 export const DISCLOSURE_VERSION = "purpose-limited-v2";
 
@@ -87,6 +87,18 @@ export default function PrivacyDisclosure() {
           <Card testID="disclosure-never" style={{ gap: spacing.sm }}>
             {NEVER_LEAVES.map((line) => <Body key={line}>• {line}</Body>)}
             <Pill tone="resting" label="Enforced in code: an allow-list blocks anything else" />
+          </Card>
+        </View>
+
+        <View>
+          <SectionTitle>{AI_PROCESSING_DISCLOSURE.title}</SectionTitle>
+          <Card testID="disclosure-ai-processing" style={{ gap: spacing.md }}>
+            {AI_PROCESSING_DISCLOSURE.sections.map((section, i) => (
+              <View key={section.heading} style={s.item} testID={`disclosure-ai-${i}`}>
+                <Text style={s.what}>{section.heading}</Text>
+                <Body>{section.text}</Body>
+              </View>
+            ))}
           </Card>
         </View>
 

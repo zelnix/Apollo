@@ -8,6 +8,33 @@ export const PRIVACY_FLOWS = [
   { what: 'Ask Higgins and Hear Higgins', when: 'When you send a question, tap read-aloud, or explicitly enable automatic read-aloud', detail: 'Questions and requested speech go to Higgins using the owner-managed key; do not paste private messages or secrets. Automatic event context is replaced with a generic summary. Apollo retains conversation history and temporary cached speech under the stated case lifecycle. Turning off read-aloud stops future automatic speech requests.' },
   { what: 'Optional family support', when: 'You pair, invite, share an incident, reply or explicitly send a note', detail: 'Chosen names, contact details, minimal alerts, weekly counts and replies go to Apollo and paired guardians. Invitations use an email delivery service; alerts use the push relay. Voice notes you explicitly send use owner-managed object storage and Higgins captioning, with retention and unlink cleanup. Remove a pairing to stop future sharing; it does not erase prior deliveries.' },
   { what: 'App reputation checks', when: 'You manually check an app', detail: 'The supplied app/developer names, source, permission labels and website hosts go to Apollo and optionally Higgins for explanation, not your full app inventory. Do not enter personal content in app-name fields.' },
-  { what: 'Optional Gmail investigation', when: 'Only after you connect Gmail with Google OAuth and start a scan or monitor', detail: 'Apollo uses Gmail read-only OAuth access. Apollo never asks for or stores a mailbox username or password. Disconnect removes Apollo’s stored OAuth connection; revoke provider access as an additional control. Raw message content is not copied into Patrol.' },
+  { what: 'Optional Gmail investigation', when: 'Only after you connect Gmail with Google OAuth and start a scan or monitor', detail: "Apollo uses Gmail read-only OAuth access. Apollo never asks for or stores a mailbox username or password. Disconnect removes Apollo's stored OAuth connection; revoke provider access as an additional control. Raw message content is not copied into Patrol." },
 ];
+
+export const AI_PROCESSING_DISCLOSURE = {
+  title: 'How AI investigation works',
+  sections: [
+    {
+      heading: 'Where your data goes',
+      text: "When you approve content for AI investigation, Apollo transmits it through its own service to Google Gemini. This uses a paid API tier managed by Apollo \u2014 it is not your personal Google account and does not connect to any Google account you own.",
+    },
+    {
+      heading: 'What Google receives',
+      text: 'Only the content you explicitly approve through the privacy gate: sanitised text from messages or screenshots, redacted images (with sensitive regions blacked out), and minimal research queries. Credentials, passwords, and raw screenshots that fail the privacy gate are never transmitted.',
+    },
+    {
+      heading: 'Data retention',
+      text: "Under the paid Gemini API tier, Google states that customer data sent via the API is not used to train models. Request-scoped processing copies on Apollo's side are closed immediately after completion and never retained beyond 15 minutes. Google's own API data retention follows their published API terms; Apollo does not control the provider's retention schedule.",
+    },
+    {
+      heading: 'Research queries',
+      text: 'When Higgins researches a domain, phone number, or scam report, the outbound query is minimised. Personal identifiers detected in your evidence (emails, phone numbers, account numbers) are replaced with category labels before leaving the device. Domain names and scam indicators are preserved because they are essential for the investigation.',
+    },
+    {
+      heading: 'On-device screening',
+      text: "Every image passes through Apollo's on-device privacy gate before transmission. You choose: send extracted text only (image never leaves your device), send a redacted image (sensitive areas blacked out), crop manually, or withhold entirely. No image bypasses this gate \u2014 it is enforced in both the app and the server.",
+    },
+  ],
+};
+
 export const LOCAL_ONLY_CONTENT = ['Passwords, verification codes and sensitive URL tokens', 'Full messages, screenshots and files after their submitted assessment completes', 'Browsing history, precise location, IMEI, serial number and advertising ID'];
