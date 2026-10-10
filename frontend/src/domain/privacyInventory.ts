@@ -32,9 +32,23 @@ export const AI_PROCESSING_DISCLOSURE = {
     },
     {
       heading: 'On-device screening',
-      text: "Every image passes through Apollo's on-device privacy gate before transmission. You choose: send extracted text only (image never leaves your device), send a redacted image (sensitive areas blacked out), crop manually, or withhold entirely. No image bypasses this gate \u2014 it is enforced in both the app and the server.",
+      text: "Every image passes through Apollo's on-device privacy gate before transmission. You choose: send extracted text only (image never leaves your device), send a redacted image (sensitive areas blacked out), or withhold entirely. No image bypasses this gate \u2014 it is enforced in both the app and the server.",
     },
   ],
 };
 
 export const LOCAL_ONLY_CONTENT = ['Passwords, verification codes and sensitive URL tokens', 'Full messages, screenshots and files after their submitted assessment completes', 'Browsing history, precise location, IMEI, serial number and advertising ID'];
+
+export const PRIVACY_STANDARDS_DISCLOSURE = {
+  title: 'Privacy standards',
+  intro: "Apollo's privacy and security controls are designed to conform with the following recognised international standards. Adoption means Apollo maps its controls against these standards through internal conformity assessment. Independent certification is not currently claimed.",
+  standards: [
+    { name: 'ISO/IEC 27701:2025', role: 'Privacy Information Management System (PIMS)' },
+    { name: 'ISO/IEC 29100:2024', role: 'Privacy terminology, definitions and principles' },
+    { name: 'ISO/IEC 27001:2022', role: 'Information security management and controls' },
+    { name: 'ISO/IEC 42001:2023', role: 'AI governance and accountability' },
+    { name: 'Australian Privacy Act 1988', role: 'Applicable Australian legal requirements and Privacy Principles (APPs)' },
+    { name: 'ISO/IEC 27559:2022', role: 'De-identification framework for personal data minimisation' },
+    { name: 'ISO 31700-1:2023', role: 'Privacy-by-design requirements' },
+  ],
+};
