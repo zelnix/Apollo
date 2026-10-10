@@ -237,7 +237,7 @@ Privacy controls must not compromise Apollo's security evidence or Higgins' inve
 | **G-09** | 27001-A.8.5 | Admin access uses single-factor API key (not MFA) | Low | Package 6 | Phase 4 |
 | **G-10** | 27701-5.4 | Consent record format not standardised; no granular per-purpose consent | Low | Package 7 | Phase 4 |
 | **G-11** | 42001 | Formal AI risk register not maintained | Medium | Package 7 | Phase 4 |
-| **G-12** | 42001 | Higgins INVESTIGATE → ASSESS → DIRECT → GUIDE → VERIFY not structurally enforced beyond prompts | Medium | Package 5 | Phase 3 |
+| **G-12** | 42001 | Higgins INVESTIGATE → ASSESS → DIRECT → GUIDE → VERIFY structurally enforced | Medium | Package 5 | ✅ **CLOSED** — Structural validation in validate(); system prompts enforced; 33 tests |
 
 ---
 
@@ -336,7 +336,8 @@ This section maps each privacy/security control to its authoritative implementat
 | **Package 2** | Implemented | Code inspection, automated tests, documentation review | 71 new + 50 existing = 121 tests passing | Vision preflight gap (P4); gateway audit (P3); cross-border (P7) | Unknown default fixed; authorisation matrix added; 4 gaps resolved | ✅ Accepted |
 | **Package 3** | Implemented | Architectural scan, SDK-boundary tests, regression tests | 23 new gateway tests + 154 total passing | Full multimodal minimisation (P4) | Single gateway enforced; emergentintegrations removed; purpose mandatory; binary auth added | ✅ Accepted |
 | **Package 4** | Implemented | Image pathway tests, consent tests, MIME enforcement, adversarial receipts, production path validation, regression | 49 acceptance + 28 consent = 77 new tests; 321 total passing | On-device screening is client-asserted; native build verification pending | G-01 closed; preflight removed; fail-closed redaction; strict byte digest; consent recorded; embedded images safeguarded; credential prohibition enforced via gateway | Requested |
-| Package 5 | Not started | — | — | — | — | — |
+| **Package 5** | Implemented | Structural validation tests, system prompt verification, evidence integrity | 33 new authority tests; 252 privacy/authority tests passing | Real Gemini integration tests deferred to Package 8 | Validation extended for ASSESS/DIRECT/GUIDE; fabricated observations rejected; empty instructions rejected; recommended action required | Requested |
+| Package 6 | Not started | — | — | — | — | — |
 | Package 6 | Not started | — | — | — | — | — |
 | Package 7 | Not started | — | — | — | — | — |
 | Package 8 | Not started | — | — | — | — | — |

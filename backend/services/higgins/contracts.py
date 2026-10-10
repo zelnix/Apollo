@@ -65,7 +65,7 @@ class Simulation(Wire):
 
 
 class Transformation(Wire):
-    kind: Literal["secret_redaction", "ocr", "decode", "chunk", "normalise"]
+    kind: Literal["secret_redaction", "ocr", "decode", "chunk", "normalise", "privacy_note"]
     description: str
     source_start: Optional[int] = None
     source_end: Optional[int] = None

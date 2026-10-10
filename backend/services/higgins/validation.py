@@ -1,6 +1,15 @@
 """Interface validation of Gemini's structured response (spec §7/§9): references, actions, completion.
 
+Package 5 extends validation with INVESTIGATE → ASSESS → DIRECT → GUIDE → VERIFY structural enforcement.
+
 No keyword/style filters. Violations are returned to the model for one targeted repair.
+
+Structural rules:
+- INVESTIGATE: Findings must reference registered evidence/source IDs; observation basis requires evidence
+- ASSESS: Assessment must be supported by findings when concern is found
+- DIRECT: Action-needed/urgent attention requires at least one action with a non-empty instruction
+- GUIDE: When actions exist, recommendedActionIndex must be set; instructions must be actionable
+- VERIFY: Completion 'complete' requires all material evidence examined; fabricated evidence rejected
 """
 from __future__ import annotations
 
@@ -23,6 +32,8 @@ def validate(data: dict, *, revision: int, evidence_ids: set[str], source_ids: s
         return None, [f"schema: {e['loc']} {e['msg']}" for e in exc.errors()[:8]]
     if not provider_complete:
         errors.append("provider finish was not normal termination; the response is incomplete")
+
+    # ── INVESTIGATE: evidence and source reference integrity ──
     for idx, finding in enumerate(model.findings):
         unknown = [e for e in finding.evidence_ids if e not in evidence_ids] + [s for s in finding.source_ids if s not in source_ids]
         if unknown:
@@ -35,6 +46,14 @@ def validate(data: dict, *, revision: int, evidence_ids: set[str], source_ids: s
     unknown_remaining = [e for e in model.remaining_evidence_ids if e not in evidence_ids]
     if unknown_remaining:
         errors.append(f"remainingEvidenceIds contains unknown ids {unknown_remaining[:3]}")
+
+    # ── ASSESS: assessment must be supported by findings ──
+    if model.assessment == "concern_found" and not model.findings:
+        errors.append("assessment 'concern_found' requires at least one finding; add the finding that supports the concern")
+    if model.assessment == "no_concern_found_within_scope" and model.attention in ("action_needed", "urgent"):
+        errors.append("assessment 'no_concern_found_within_scope' is contradicted by attention 'action_needed'/'urgent'; reconcile the assessment with the attention level")
+
+    # ── DIRECT: actionable concerns must have specific instructions ──
     for idx, action in enumerate(model.actions):
         if action.kind in CAPABILITY_ACTIONS and (not action.capability_id or action.capability_id not in capability_ids):
             errors.append(f"actions[{idx}] kind '{action.kind}' needs a capabilityId advertised by the device profile {sorted(capability_ids)[:6]}; otherwise use kind 'instruction'")
@@ -42,8 +61,22 @@ def validate(data: dict, *, revision: int, evidence_ids: set[str], source_ids: s
             errors.append(f"actions[{idx}] open_verified_source must cite registered sourceIds")
         if action.kind == "open_verified_source" and not action.source_ids:
             errors.append(f"actions[{idx}] open_verified_source requires a sourceId")
+        if not action.instruction or not action.instruction.strip():
+            errors.append(f"actions[{idx}] must have a non-empty instruction explaining what the person does")
+        if not action.label or not action.label.strip():
+            errors.append(f"actions[{idx}] must have a non-empty label for the action button")
+    if model.attention in ("action_needed", "urgent") and not model.actions:
+        errors.append("attention 'action_needed'/'urgent' requires at least one action telling the person what to do; add an action or lower the attention level")
+    if model.attention in ("action_needed", "urgent") and not model.attention_reason:
+        errors.append("attention 'action_needed'/'urgent' requires attentionReason tied to findings")
+
+    # ── GUIDE: when actions exist, recommended index must be set ──
     if model.recommended_action_index is not None and not (0 <= model.recommended_action_index < len(model.actions)):
         errors.append("recommendedActionIndex is out of range")
+    if model.actions and model.recommended_action_index is None:
+        errors.append("actions are present but recommendedActionIndex is not set; set it to the index of the primary instruction")
+
+    # ── VERIFY: completion must match examination state ──
     if model.completion == "waiting_user" and not (model.question or pending_question):
         errors.append("completion 'waiting_user' requires a question")
     if model.question and model.completion != "waiting_user":
@@ -51,10 +84,11 @@ def validate(data: dict, *, revision: int, evidence_ids: set[str], source_ids: s
     unlisted_gaps = sorted((material_gaps or set()) - set(model.remaining_evidence_ids))
     if model.completion == "complete" and unlisted_gaps:
         errors.append(f"completion 'complete' is not supported: evidence {unlisted_gaps[:4]} has unexamined material content. Read it with read_evidence, or set completion 'partial' and list it in remainingEvidenceIds")
-    if model.attention in ("action_needed", "urgent") and not model.attention_reason:
-        errors.append("attention 'action_needed'/'urgent' requires attentionReason tied to findings")
+
     if errors:
         return None, errors
+
+    # ── Construct validated response ──
     actions = [ActionProposal(id=str(uuid.uuid4()), kind=a.kind, label=a.label[:120], instruction=a.instruction, capability_id=a.capability_id,
                               execution_descriptor_id=None, requires_user_gesture=a.kind != "instruction", source_ids=a.source_ids,
                               desired_field=a.desired_field, desired_value=a.desired_value) for a in model.actions]
