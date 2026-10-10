@@ -191,7 +191,7 @@ Apollo is a mobile-first cybersecurity application comprising:
 | **APP 1** | Open and transparent management | Privacy disclosure; compliance matrix | `privacy-disclosure.tsx`; this document | `AI_GOVERNANCE.md` §5.1 | `privacyDisclosure.test.ts` | ✅ Implemented — privacy disclosure screen and compliance matrix accepted as operative documentation |
 | **APP 2** | Anonymity and pseudonymity | Anonymous device identity; no name/email required for core function | `auth.py` — server-issued device_id; no PII collection for registration | `SECURITY_LIFECYCLE.md` §2.1 | Auth tests | ✅ Implemented |
 | **APP 3** | Collection of solicited personal information | Only user-submitted content; opt-in for Gmail/notifications | Route-level input; no unsolicited collection | `DATA_CLASSIFICATION_REGISTRY.md` §4 (all pathways) | Route inspection | ✅ Implemented |
-| **APP 4** | Dealing with unsolicited personal information | Third-party PII in evidence handled via sanitisation | `llm_boundary.py` — PII minimisation in research queries | `DATA_CLASSIFICATION_REGISTRY.md` §3 (dual classification) | `test_llm_boundary.py` | ✅ Implemented — PII minimisation, encryption at rest, and 15-minute scoped retention provide automatic destruction of all evidence including unsolicited PII |
+| **APP 4** | Dealing with unsolicited personal information | Local-first privacy screening; data minimisation; purpose-based authorisation; retention controls | See APP 4 Note below | `DATA_CLASSIFICATION_REGISTRY.md` §3 | `test_llm_boundary.py`, `test_package4_acceptance.py` | ✅ Implemented |
 | **APP 5** | Notification of collection | Disclosure at setup; AI processing section | `PRIVACY_FLOWS`; `AI_PROCESSING_DISCLOSURE` | `AI_GOVERNANCE.md` §6.1 | `privacyDisclosure.test.ts` | ✅ Implemented |
 | **APP 6** | Use or disclosure | Purpose-limited processing; LLM boundary enforcement; credential prohibition | `Purpose` enum mandatory; `strip_credentials()` on all Gemini text; on-device image screening | `DATA_CLASSIFICATION_REGISTRY.md` §5 (authorisation matrix) | `test_gateway_enforcement.py`, `test_package4_acceptance.py`, `test_llm_boundary.py` | ✅ Implemented — purpose mandatory; preflight removed; credential prohibition enforced |
 | **APP 7** | Direct marketing | Not applicable — Apollo does not perform direct marketing | — | — | — | ✅ N/A |
@@ -201,6 +201,14 @@ Apollo is a mobile-first cybersecurity application comprising:
 | **APP 11** | Security of personal information | Encryption, auth, scoped retention, key management | See ISO 27001 controls above | `SECURITY_LIFECYCLE.md` | See §4.3 test evidence | ✅ Implemented |
 | **APP 12** | Access to personal information | Device owner can view their evidence and conversations | Investigation case access; patrol history | — | Route inspection | ✅ Implemented — device owner has direct access to evidence and conversations; accepted |
 | **APP 13** | Correction of personal information | Evidence is user-submitted; corrections via new submissions | Re-check / re-submit mechanism | — | — | ✅ Implemented — re-submit mechanism accepted for corrections |
+
+#### APP 4 Note — Unsolicited Personal Information
+
+Apollo does not request personal information as a prerequisite for security investigations. Personal information may incidentally appear in user-provided or device-observed security evidence.
+
+Apollo applies local-first privacy screening, data minimisation, purpose-based authorisation and retention controls to protect this information and prevent unnecessary external disclosure.
+
+Where unsolicited personal information is actually received by Apollo-controlled services, applicable APP 4 handling requirements are considered using the existing privacy and retention framework.
 
 ### 4.6 ISO/IEC 27559:2022 — De-identification
 
