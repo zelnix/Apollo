@@ -163,7 +163,7 @@ export const AI_PROCESSING_DISCLOSURE = {
     },
     {
       heading: 'Data retention',
-      text: "Under the paid Gemini API tier, Google states that customer data sent via the API is not used to train models. Request-scoped processing copies on Apollo's side are closed immediately after completion and never retained beyond 15 minutes. Google's own API data retention follows their published API terms; Apollo does not control the provider's retention schedule.",
+      text: "Apollo uses the paid Gemini API tier. According to Google's published API terms, customer data sent via the paid API is not used for model training. Request-scoped processing copies on Apollo's side are closed immediately after completion and never retained beyond 15 minutes. Google's own data retention and processing practices are governed by their published API terms, which Apollo does not control or independently verify.",
     },
     {
       heading: 'Research queries',

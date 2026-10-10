@@ -2,13 +2,12 @@
  * ImagePrivacyGate — on-device image screening UI
  *
  * Bottom sheet that shows a preview of the image with detected sensitive regions
- * highlighted, and offers the user four choices:
+ * redacted (black boxes), and offers the user three choices:
  *
  * 1. Send Text Only — extracted text is used; the image never leaves the device.
  * 2. Send Sanitised Image — sensitive regions are blacked out with pixel-level
  *    redaction; the redacted image is transmitted.
- * 3. Crop Manually — the user crops the image to remove sensitive content.
- * 4. Withhold — nothing is sent.
+ * 3. Withhold — nothing is sent.
  *
  * Returns a `GateResult` with the sanitised content and a `SanitizationReceipt`
  * that is required by the upload pipeline.
@@ -17,6 +16,10 @@
  * react-native-view-shot to capture the image with black rectangles overlaid
  * on every sensitive region. This is NOT cropping — it preserves the overall
  * image layout while removing specific sensitive areas.
+ *
+ * PRIVACY: The preview shows the actual redacted result (black boxes) so the
+ * user sees exactly what will leave the device. The original image URI is never
+ * exposed to any upload pathway.
  */
 
 import React, { useCallback, useRef, useState } from "react";
@@ -213,13 +216,6 @@ const useStyles = makeStyles((c) => ({
   redactionBox: {
     position: "absolute",
     backgroundColor: "#000000",
-  },
-  cropInstructions: {
-    fontFamily: fonts.text,
-    fontSize: 13,
-    color: c.onSurfaceSecondary,
-    fontStyle: "italic",
-    textAlign: "center",
   },
 }));
 
@@ -440,7 +436,7 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
               { paddingBottom: insets.bottom + spacing.xl },
             ]}
           >
-            {/* Image preview with sensitive region highlights */}
+            {/* Image preview — shows REDACTED version when sensitive regions exist */}
             <View style={[s.previewContainer, { alignSelf: "center" }]}>
               <View style={{ width: constrainedWidth, height: constrainedHeight }}>
                 {screening.strippedImageUri && (
@@ -453,7 +449,7 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
                     resizeMode="contain"
                   />
                 )}
-                {/* Red dashed overlay on each sensitive region */}
+                {/* Show actual black redaction boxes (what will be sent), not just highlights */}
                 {screening.sensitiveRegions.map((region, idx) => {
                   const scaled = scaleRegion(
                     region,
@@ -463,11 +459,16 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
                     constrainedHeight,
                   );
                   return (
-                    <View key={`region-${idx}`} style={[s.regionOverlay, scaled]}>
-                      <View style={s.regionLabel}>
-                        <Text style={s.regionLabelText}>
-                          {regionTypeLabel(region.sensitiveType)}
-                        </Text>
+                    <View key={`region-${idx}`}>
+                      {/* Black redaction box — the actual result the recipient will see */}
+                      <View style={[{ position: "absolute", backgroundColor: "#000000", borderRadius: 2 }, scaled]} />
+                      {/* Label above the redacted area */}
+                      <View style={[s.regionOverlay, { ...scaled, borderStyle: undefined, borderWidth: 0 }]}>
+                        <View style={s.regionLabel}>
+                          <Text style={s.regionLabelText}>
+                            {regionTypeLabel(region.sensitiveType)}
+                          </Text>
+                        </View>
                       </View>
                     </View>
                   );
@@ -506,11 +507,11 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
               </View>
             )}
 
-            {/* Extracted text preview (when available) */}
+            {/* Extracted text preview — shows exactly what will be sent */}
             {screening.extractedText.length > 0 && (
               <View style={s.summaryCard}>
-                <Text style={s.summaryTitle}>Extracted text</Text>
-                <Text style={s.summaryText} numberOfLines={6}>
+                <Text style={s.summaryTitle}>Text that will be sent</Text>
+                <Text style={s.summaryText} numberOfLines={8}>
                   {screening.extractedText}
                 </Text>
               </View>

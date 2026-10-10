@@ -108,11 +108,16 @@ export default function CheckLink() {
       return;
     }
     if (!deviceId || !file) return;
+    if (!result.imageUri) {
+      // PRIVACY FAIL-CLOSED: no sanitised image available — block transmission entirely
+      setPageError("Privacy screening did not produce a sanitised image. The original cannot be sent.");
+      setPageScreenshotUri(null);
+      return;
+    }
     try {
-      const uploadUri = result.imageUri ?? file.uri;
       const signals = await apiUpload<PageSignals>("/page/extract", "page_extract",
-        { device_id: deviceId, url_hint: input.trim(), sanitization_status: "approved" },
-        { uri: uploadUri, name: file.name, type: file.type });
+        { device_id: deviceId, url_hint: input.trim(), sanitization_status: "approved", sanitization_receipt_id: result.receipt?.receiptId ?? "", sanitization_digest: result.receipt?.imageDigest ?? "" },
+        { uri: result.imageUri, name: file.name, type: file.type });
       await applyPageSignals(signals, "Higgins extracted visible page signals; Apollo's local rules made the assessment.");
     } catch (error) { setPageError(error instanceof Error ? error.message : "Could not assess that screenshot."); }
   };

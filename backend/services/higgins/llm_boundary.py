@@ -189,6 +189,16 @@ def _minimise_personal_identifiers(text: str, evidence_pii: set[str] | None = No
     text = re.sub(r"(?i)(?:BSB|sort\s*code|routing)[:\s]*\d{3}[- ]?\d{3}", "[financial identifier]", text)
     # Account numbers preceded by context keywords
     text = re.sub(r"(?i)(?:account|acct|a/c)[:\s#]*\d{4,12}", "[account number]", text)
+    # Australian Tax File Number (TFN): 8-9 digits, often with spaces, preceded by context
+    text = re.sub(r"(?i)(?:TFN|tax\s*file)[:\s]*\d{3}\s*\d{3}\s*\d{2,3}", "[tax identifier]", text)
+    # Australian Medicare number: 10-11 digits, often formatted 1234 56789 0 / 1
+    text = re.sub(r"(?i)(?:medicare)[:\s#]*\d{4}\s*\d{5}\s*\d{1,2}(?:\s*/\s*\d)?", "[medicare number]", text)
+    # Australian Business Number (ABN): 11 digits preceded by context
+    text = re.sub(r"(?i)(?:ABN)[:\s]*\d{2}\s*\d{3}\s*\d{3}\s*\d{3}", "[business number]", text)
+    # Passport numbers preceded by context
+    text = re.sub(r"(?i)(?:passport)[:\s#]*[A-Z]{1,2}\d{6,9}", "[passport number]", text)
+    # National Insurance / SSN preceded by context
+    text = re.sub(r"(?i)(?:SSN|social\s*security|NI\s*number)[:\s]*[\dA-Z]{6,11}", "[government identifier]", text)
     # Phone numbers (but not port numbers, IDs, years, or short numeric sequences).
     # Requires at least 8 digits total. The negative lookbehind/lookahead prevents matching
     # numbers embedded in larger numeric contexts. Dots in domains are excluded.

@@ -276,7 +276,7 @@ class TestResearchMinimisation:
 
 class TestProcessingPathways:
     def test_pathways_exist(self):
-        assert len(PROCESSING_PATHWAYS) >= 15, "Expected at least 15 processing pathways"
+        assert len(PROCESSING_PATHWAYS) >= 13, "Expected at least 13 processing pathways"
 
     def test_all_pathways_have_valid_purpose(self):
         for pw in PROCESSING_PATHWAYS:

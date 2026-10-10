@@ -175,11 +175,16 @@ async def add_evidence(case_id: str, request: Request, file: Optional[UploadFile
             meta = UploadMetadata.model_validate_json(metadata or "")
         except ValidationError as exc:
             raise http(422, "invalid_input", "Multipart metadata did not match UploadMetadata.") from exc
-        # ── Backend pipeline enforcement: image uploads MUST include sanitization_status ──
+        # ── Backend pipeline enforcement: image uploads MUST include valid sanitisation receipt ──
         if meta.kind == "image" and meta.sanitization_status != "approved":
             raise http(422, "sanitization_required",
                        "Image uploads must pass through the on-device privacy gate. "
                        "Include sanitizationStatus='approved' in the upload metadata.")
+        if meta.kind == "image":
+            if not meta.sanitization_receipt_id or len(meta.sanitization_receipt_id) < 8:
+                raise http(422, "sanitization_required", "Missing or invalid sanitisation receipt ID. Image rejected.")
+            if not meta.sanitization_digest or len(meta.sanitization_digest) < 16:
+                raise http(422, "sanitization_required", "Missing or invalid sanitisation digest. Image rejected.")
         _revision_check(case, meta.expected_revision)
         data = await file.read(ev.MAX_FILE_BYTES + 1)
         if len(data) > ev.MAX_FILE_BYTES:

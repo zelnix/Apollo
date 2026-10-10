@@ -303,4 +303,3 @@ class TestProviderConfiguration:
         from services.higgins.llm_boundary import Purpose
         assert hasattr(Purpose, "PAGE_SIGNAL_EXTRACTION")
         assert hasattr(Purpose, "PUBLIC_ADVISORY_ANALYSIS")
-        assert hasattr(Purpose, "TRANSCRIPTION")

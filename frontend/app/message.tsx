@@ -93,15 +93,8 @@ export default function CheckMessage() {
     try {
       // ── On-device privacy screening before any transmission ──
       const screening = await screenImage(uri, "message_screenshot");
-      if (screening.status === "text_only" && screening.extractedText.trim()) {
-        // Text extracted locally with OCR — use it directly, image never leaves device
-        const combined = screening.extractedText;
-        setText(combined);
-        setBusy("idle");
-        await run(combined, sender);
-        return;
-      }
-      // Show the privacy gate for user approval
+      // All screening outcomes must pass through the privacy gate for user review
+      // — even text_only results, so the user sees and approves what will be sent
       setGateScreening(screening);
       setPendingScreenshot({ uri, name, type });
       setBusy("idle");
@@ -147,19 +140,25 @@ export default function CheckMessage() {
       return;
     }
     if (result.decision === "text_only" && result.text) {
-      // Text-only: image stays on device
+      // Text-only: image stays on device, only approved sanitised text is used
       setText(result.text);
       await run(result.text, sender);
       return;
     }
-    // Image approved (sanitised, cropped, or no-sensitive) — upload to backend
+    // Image approved — only the sanitised image is permitted; original never leaves device
     if (!deviceId || !file) return;
+    if (!result.imageUri) {
+      // PRIVACY FAIL-CLOSED: no sanitised image available — block transmission entirely
+      setError("Privacy screening did not produce a sanitised image. The original cannot be sent.");
+      setScreenshotUri(null);
+      setBusy("idle");
+      return;
+    }
     setBusy("reading"); setError(null);
     try {
-      const uploadUri = result.imageUri ?? file.uri;
       const extracted = await apiUpload<{ sender: string; text: string; urls: string[] }>("/message/extract", "message_extract",
-        { device_id: deviceId, sanitization_status: "approved" },
-        { uri: uploadUri, name: file.name, type: file.type });
+        { device_id: deviceId, sanitization_status: "approved", sanitization_receipt_id: result.receipt?.receiptId ?? "", sanitization_digest: result.receipt?.imageDigest ?? "" },
+        { uri: result.imageUri, name: file.name, type: file.type });
       const combined = [extracted.text, ...extracted.urls.filter((url) => !extracted.text.includes(url))].filter(Boolean).join("\n");
       setSender(extracted.sender); setText(combined);
       await run(combined, extracted.sender);

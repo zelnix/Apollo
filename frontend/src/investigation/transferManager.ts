@@ -71,6 +71,14 @@ function requireOperation(operationId: string, caseId?: string | null): ManagedO
   return record;
 }
 
+/** Set a sanitisation receipt for a specific file index within an operation.
+ * Must be called before the file is uploaded. */
+export function setSanitizationReceipt(operationId: string, fileIndex: number, receiptId: string): void {
+  const record = operations.get(operationId);
+  if (record) record.sanitizationReceipts.set(fileIndex, receiptId);
+}
+
+
 function releaseFiles(record: ManagedOperation) {
   record.controller.abort();
   if (record.handle) record.handle = { ...record.handle, bytes: null };

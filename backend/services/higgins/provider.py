@@ -214,7 +214,8 @@ def configuration() -> dict:
     return {"provider": "Gemini", "sdk": "google-genai", "keyConfigured": bool(GEMINI_API_KEY),
             "models": models, "capabilities": {m: sorted(CAPABILITIES.get(m, set())) for m in models.values() if m},
             "accountAccess": "Apollo-managed paid API tier (not the user's personal Google account)",
-            "providerRetention": "Paid Gemini API: Google states customer API data is not used for model training. "
-                                 "Apollo's request-scoped copies close immediately after completion, never later than 15 minutes. "
-                                 "Google's own API data retention follows their published terms.",
+            "providerRetention": "Apollo uses the paid Gemini API tier. "
+                                 "According to Google's published API terms, customer data sent via the paid API is not used for model training. "
+                                 "Apollo's request-scoped processing copies are closed immediately after completion and never retained beyond 15 minutes. "
+                                 "Google's own data retention and processing practices are governed by their published API terms, which Apollo does not control or independently verify.",
             "dataFlow": "Device -> Apollo service -> Google Gemini paid API. No user Google account involved."}
