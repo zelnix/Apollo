@@ -57,7 +57,7 @@ export function GateNudge() {
   if (justSnoozed) {
     return (
       <Card style={{ gap: spacing.sm, borderColor: colors.navyBorder }} testID="gate-nudge-snoozed">
-        <Body testID="gate-nudge-snoozed-line">Okay — we&apos;ll remind you in a few days. You can turn this on anytime from Settings or the Gate screen.</Body>
+        <Body testID="gate-nudge-snoozed-line">Okay — we&apos;ll remind you in a few days. You can turn this on anytime from Protection or Settings.</Body>
       </Card>
     );
   }
@@ -70,7 +70,7 @@ export function GateNudge() {
     try {
       if (pendingId === "site") {
         const granted = await enableSiteProtection();
-        showToast(granted ? "Site Gate is on." : "Site Gate needs VPN permission. Your other protection stays active.", granted ? "resting" : "growling");
+        showToast(granted ? "Website protection is on." : "Website protection needs VPN permission. Your other protection stays active.", granted ? "resting" : "growling");
       } else if (copy.route) {
         router.push(copy.route as never);
       }

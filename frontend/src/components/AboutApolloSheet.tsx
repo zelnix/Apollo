@@ -7,7 +7,7 @@ import { Text, View } from "react-native";
 import { fonts, makeStyles, radius, spacing } from "@/src/theme";
 import { Sheet } from "./Sheet";
 
-const GATES = ["Site", "Link", "Text", "Call", "Email", "File", "App", "Device", "Internet", "Account"];
+const GATES = ["Website", "Link", "Message", "Call", "Email", "File", "App", "Device", "Internet", "Account"];
 
 const useStyles = makeStyles((c) => ({
   hero: { width: "100%", aspectRatio: 900 / 1124, borderRadius: radius.lg, backgroundColor: c.navyTint, marginBottom: spacing.xs },
@@ -39,18 +39,18 @@ export function AboutApolloSheet({ visible, onClose }: { visible: boolean; onClo
       <Text style={s.taglineSub}>Apollo</Text>
       <Text style={s.body}>Apollo helps protect you from online scams, suspicious activity and cyber threats.</Text>
 
-      <Text style={s.heading}>🛡️ Apollo&apos;s 10 Security Gates</Text>
+      <Text style={s.heading}>🛡️ Apollo&apos;s 10 Protections</Text>
       <View style={s.gatesWrap}>
         {GATES.map((g) => <View key={g} style={s.gateChip}><Text style={s.gateChipText}>{g}</Text></View>)}
       </View>
-      <Text style={[s.body, { marginTop: spacing.sm }]}>Each Gate helps protect a different part of your digital life, with automatic protection or manual checks depending on your device and its capabilities.</Text>
+      <Text style={[s.body, { marginTop: spacing.sm }]}>Each protection helps guard a different part of your digital life, with automatic monitoring or manual checks depending on your device and its capabilities.</Text>
 
       <Text style={s.heading}>🚨 Scam Alerts &amp; Education</Text>
       <Text style={s.body}>Stay informed about emerging scams and learn how to recognise warning signs, avoid common tricks and protect yourself and your family.</Text>
 
       <Text style={s.heading}>💬 Social Media &amp; Messaging Protection</Text>
       <Text style={s.body}>Apollo helps protect you from online scams, phishing links and known malicious websites encountered through social media and messaging platforms, including Facebook, Instagram, TikTok, X, Messenger, WhatsApp, Snapchat and others.</Text>
-      <Text style={[s.body, { marginTop: spacing.sm }]}>Protection is provided through Apollo&apos;s existing security Gates, depending on your device and its capabilities.</Text>
+      <Text style={[s.body, { marginTop: spacing.sm }]}>Protection is provided through Apollo&apos;s existing security capabilities, depending on your device and its capabilities.</Text>
 
       <Text style={s.heading}>👨‍💼 Meet Higgins</Text>
       <View style={s.higginsRow}>

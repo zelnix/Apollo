@@ -10,9 +10,9 @@ import { isActive } from "./stateMachine.ts";
 export interface AttentionItem {
   id: string;
   kind: "gate" | "event";
-  /** Names the affected gate, e.g. "Internet Gate". */
+  /** Names the affected protection, e.g. "Internet monitoring". */
   gate: string;
-  /** Short heading, e.g. "Internet Gate needs attention". */
+  /** Short heading, e.g. "Internet monitoring needs attention". */
   title: string;
   /** The specific problem, from real gate/event data. */
   problem: string;
@@ -26,14 +26,14 @@ export interface AttentionItem {
 
 // Which gate a Patrol event belongs to (for naming the affected gate on Home).
 const GATE_FOR_CATEGORY: Record<EventCategory, string> = {
-  link: "Link Gate", website: "Site Gate", known_threat: "Site Gate", protection: "Site Gate",
-  connection: "Internet Gate", system: "Device Gate", device: "Device Gate", message: "Text Gate",
-  call: "Call Gate", app: "App Gate", account: "Account Gate", email: "Email Gate", file: "File Gate",
+  link: "Link checking", website: "Website protection", known_threat: "Website protection", protection: "Website protection",
+  connection: "Internet monitoring", system: "Device monitoring", device: "Device monitoring", message: "Message screening",
+  call: "Call screening", app: "App checking", account: "Account alerts", email: "Email monitoring", file: "File checking",
   family: "Family alert",
 };
 const gateForCategory = (c: EventCategory | string) => GATE_FOR_CATEGORY[c as EventCategory] ?? "a security check";
 
-/** Short event description using real evidence — avoids generic "Email Gate". */
+/** Short event description using real evidence — avoids generic "Email monitoring". */
 function describeEventBrief(e: PatrolEvent): string {
   const cat = e.category;
   const indicator = e.indicator_host || "";
@@ -67,7 +67,7 @@ export function buildHomeAttention(input: { gates: GatePresentation[]; events: P
   for (const g of input.gates) {
     if (g.tone !== "action") continue;
     const limitation = g.capability.automatic?.limitation;
-    const higgins = limitation ?? (g.primaryAction ? `${g.primaryAction.label} to restore protection.` : "Open the gate to restore protection.");
+    const higgins = limitation ?? (g.primaryAction ? `${g.primaryAction.label} to restore protection.` : "Open the protection to restore coverage.");
     items.push({
       id: `gate:${g.id}`,
       kind: "gate",
@@ -75,7 +75,7 @@ export function buildHomeAttention(input: { gates: GatePresentation[]; events: P
       title: `${g.title} needs attention`,
       problem: g.currentHelp,
       higgins,
-      actionLabel: g.primaryAction?.label ?? "Open gate",
+      actionLabel: g.primaryAction?.label ?? "Open protection",
       route: GATE_ROUTE[g.id] ?? "/gates",
     });
   }

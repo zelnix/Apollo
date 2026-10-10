@@ -257,7 +257,7 @@ export default function ProtectionScreen() {
         {/* Access to full Gates view (secondary) */}
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="View all Gates"
+          accessibilityLabel="View all protection details"
           testID="protection-view-gates"
           onPress={() => router.push("/gates")}
           style={({ pressed }) => [{ opacity: pressed ? 0.78 : 1 }]}
@@ -267,8 +267,8 @@ export default function ProtectionScreen() {
               <ShieldCheck size={20} color={colors.brand} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[s.areaTitle, { fontSize: 15 }]}>View all Gates</Text>
-              <Text style={s.areaDesc}>See every Gate, their current status, health log and technical detail.</Text>
+              <Text style={[s.areaTitle, { fontSize: 15 }]}>Technical protection details</Text>
+              <Text style={s.areaDesc}>See every protection, its current status, health log and technical detail.</Text>
             </View>
           </Card>
         </Pressable>

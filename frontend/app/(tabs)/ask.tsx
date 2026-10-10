@@ -28,7 +28,7 @@ import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 const WELCOME = "Hello! I'm Higgins.\n\nI'm here to help you understand Apollo, explain security alerts, and answer your cyber-safety questions.\n\nWhat can I help you with today?";
 const STARTERS = ["Why is Apollo barking?", "Is my device protected?", "Explain a scam warning."];
-const ABOUT = "Higgins is Apollo’s trusted handler. He can explain Apollo's protection statuses and warnings, answer general cyber-safety questions, interpret recent Apollo information when it's actually available, explain what you should do next, and point you to the right Check, Gates or app screen.\n\nHiggins can't inspect links, files or your device, run a scan, verify protection, or start an investigation on his own — Apollo does that. Apollo acts; Higgins interprets.\n\nChatting uses redacted, recent Apollo context and never includes secrets.";
+const ABOUT = "Higgins is Apollo’s trusted handler. He can explain Apollo's protection statuses and warnings, answer general cyber-safety questions, interpret recent Apollo information when it's actually available, explain what you should do next, and point you to the right check or protection screen.\n\nHiggins can't inspect links, files or your device, run a scan, verify protection, or start an investigation on his own — Apollo does that. Apollo acts; Higgins interprets.\n\nChatting uses redacted, recent Apollo context and never includes secrets.";
 
 const formatTime = (iso: string) => { try { return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
 

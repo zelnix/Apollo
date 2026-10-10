@@ -186,7 +186,7 @@ export default function CheckMessage() {
     const msgActions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];
     msgActions.push({ testID: "message-verify-sender", variant: "secondary", label: "Show me how to check the sender", onPress: () => setVerify(true) });
     if (a.signals.loginRequest || a.signals.codeRequest || /password|sign[- ]?in|login|account/i.test(text)) {
-      msgActions.push({ testID: "message-check-account", variant: "secondary", label: "It's about my account \u2014 open Account Gate", onPress: () => router.push({ pathname: "/account", params: { text, scent: result.event?.scent_id ?? result.event?.event_id ?? "" } }) });
+      msgActions.push({ testID: "message-check-account", variant: "secondary", label: "It's about my account \u2014 check account alert", onPress: () => router.push({ pathname: "/account", params: { text, scent: result.event?.scent_id ?? result.event?.event_id ?? "" } }) });
     }
     a.signals.urls.forEach((u, i) => {
       const r = result.urls.find((x) => x.url.replace(/\/$/, "").includes(u.replace(/^https?:\/\//i, "").replace(/\/$/, "")));
@@ -229,9 +229,9 @@ export default function CheckMessage() {
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>{params.source === "email" ? "Email Gate" : "Text Gate"}</Text>
+        <Text style={s.title}>{params.source === "email" ? "Email monitoring" : "Message screening"}</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <InfoButton info={{ title: params.source === "email" ? "About Email Gate" : "About Text Gate", body: ["Paste any message and Apollo will investigate it using local scam detection, link and public evidence checks, and Higgins's explanation.", "Apollo checks claimed identity, pressure tactics, embedded links and sender reputation. Raw content is discarded after the assessment."] }} testID="message-info" />
+          <InfoButton info={{ title: params.source === "email" ? "About email monitoring" : "About message screening", body: ["Paste any message and Apollo will investigate it using local scam detection, link and public evidence checks, and Higgins's explanation.", "Apollo checks claimed identity, pressure tactics, embedded links and sender reputation. Raw content is discarded after the assessment."] }} testID="message-info" />
           <Pressable testID="message-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
         </View>
       </View>

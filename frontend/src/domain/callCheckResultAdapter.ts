@@ -133,7 +133,7 @@ export function buildCallCheckResult(args: {
 
   return {
     id: event?.event_id ?? `call-${Date.now().toString(36)}`,
-    gate: "Call Gate",
+    gate: "Call screening",
     checkType: "Call check",
     subject,
     headline: a.verdict,

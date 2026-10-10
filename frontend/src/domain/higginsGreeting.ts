@@ -22,11 +22,11 @@ const OPENERS: Record<TimeOfDay, string[]> = {
 const STATE_LINES: Record<ApolloState | "lost", string[]> = {
   sniffing: ["Apollo is having a sniff about; I shall report presently.", "Apollo is nose-down on something — do give him a moment."],
   resting: ["Apollo is patrolling and all is quiet. Nothing requires your attention.", "Apollo reports a quiet watch. Carry on with your day.", "All is well on Apollo's rounds. I shall let you know if that changes."],
-  ears_up: ["Apollo's ears are up over something from earlier. Not alarming, but worth a glance when you have a moment.", "Apollo noticed a familiar pattern. A careful look would be prudent, though there's no cause for fuss."],
+  ears_up: ["Apollo is sniffing at something from earlier. Not alarming, but worth a glance when you have a moment.", "Apollo noticed a familiar pattern. A careful look would be prudent, though there's no cause for fuss."],
   growling: ["Apollo is growling at something from earlier. I'd suggest a look before you go on.", "Apollo has his hackles up — nothing confirmed, but do have a look at Patrol."],
   barking: ["I'm afraid Apollo is barking. There's a matter that needs your decision — Patrol will show you exactly what.", "Apollo is barking, and rightly so. Do attend to Patrol before anything else this morning."],
   biting: ["Apollo confirmed and blocked one threat. That block does not cover every other risk; review Patrol if you had already entered details.", "Apollo has confirmed a protective block. Review the event if you had already called, clicked or shared information."],
-  lost: ["Apollo can't confirm some protection at the moment. Open Gates to see what needs attention.", "Apollo's current protection status is incomplete. Check Gates for the exact missing step."],
+  lost: ["Apollo can't confirm some protection at the moment. Open Protection to see what needs attention.", "Apollo's current protection status is incomplete. Check Protection for the exact missing step."],
 };
 
 export interface Greeting { text: string; tone: ApolloState | "lost" }

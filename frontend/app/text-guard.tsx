@@ -144,9 +144,9 @@ export default function TextGuard() {
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>Text Gate</Text>
+        <Text style={s.title}>Message screening</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <InfoButton info={{ title: "About Text Gate", body: ["Apollo investigates pasted texts and chosen screenshots using local scam detection, link and public evidence checks, and Higgins's explanation.", "On Android, Apollo can also automatically scan new text-message notifications from your chosen messaging app as they arrive. Apollo never reads your SMS inbox or message history.", "Raw content is discarded after the assessment; provider-side retention follows the configured Higgins policy."] }} testID="textguard-info" />
+          <InfoButton info={{ title: "About message screening", body: ["Apollo investigates pasted texts and chosen screenshots using local scam detection, link and public evidence checks, and Higgins's explanation.", "On Android, Apollo can also automatically scan new text-message notifications from your chosen messaging app as they arrive. Apollo never reads your SMS inbox or message history.", "Raw content is discarded after the assessment; provider-side retention follows the configured Higgins policy."] }} testID="textguard-info" />
           <Pressable testID="textguard-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
         </View>
       </View>

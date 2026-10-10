@@ -115,7 +115,7 @@ export function buildMessageCheckResult(args: {
 
   return {
     id: event?.event_id ?? `msg-${Date.now().toString(36)}`,
-    gate: "Text Gate",
+    gate: "Message screening",
     checkType: "Message check",
     subject,
     headline: explanation?.summary ?? a.scenarioTitle,

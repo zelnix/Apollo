@@ -110,7 +110,7 @@ export function buildFileCheckResult(args: {
 
   return {
     id: submissionId,
-    gate: "File Gate",
+    gate: "File checking",
     checkType: "File check",
     subject,
     headline: a.verdict,

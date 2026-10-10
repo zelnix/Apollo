@@ -32,13 +32,13 @@ class WebSecurityAdapterImpl implements SecurityPlatformAdapter {
 
   async getCapabilities(): Promise<Capability[]> {
     return [
-      { id: "link_guard", title: "Link Gate", status: "available", detail: "Checks links you paste into Apollo; it is a manual check." },
+      { id: "link_guard", title: "Link checking", status: "available", detail: "Checks links you paste into Apollo; it is a manual check." },
       { id: "known_threats", title: "Known Threat Lookup", status: "available", detail: "Privacy-preserving reputation checks using the link only." },
-      { id: "site_guard", title: "Site Gate", status: "unsupported", detail: "A browser cannot run a website filter for this device. Install the Apollo app to enable Site Gate." },
-      { id: "connection_guard", title: "Internet Gate", status: "unsupported", detail: "Browsers do not expose Wi‑Fi security or captive-portal details. Network details you describe can still be investigated." },
+      { id: "site_guard", title: "Website protection", status: "unsupported", detail: "A browser cannot run a website filter for this device. Install the Apollo app to enable website protection." },
+      { id: "connection_guard", title: "Internet monitoring", status: "unsupported", detail: "Browsers do not expose Wi‑Fi security or captive-portal details. Network details you describe can still be investigated." },
       { id: "share_intake", title: "Share to Apollo", status: "coming_later", detail: "Sharing from other apps needs the installed Apollo app. In the browser, use the Shared-with-Apollo screen via the apollo://share link." },
-      { id: "message_guard", title: "Text Gate", status: "available", detail: "Checks texts and chats you paste or screenshot into Apollo. Automatic access is never assumed." },
-      { id: "app_guard", title: "App Gate", status: "available", detail: "Checks an app or device concern from the details you provide; the browser cannot read installed apps." },
+      { id: "message_guard", title: "Message screening", status: "available", detail: "Checks texts and chats you paste or screenshot into Apollo. Automatic access is never assumed." },
+      { id: "app_guard", title: "App checking", status: "available", detail: "Checks an app or device concern from the details you provide; the browser cannot read installed apps." },
     ];
   }
 

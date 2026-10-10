@@ -123,7 +123,7 @@ export default function CheckEmail() {
     if (!deviceId) return;
     const enabled = !gmailMonitoring;
     await apiPost("/gmail/monitoring", "gmail_monitor", { device_id: deviceId, enabled });
-    setGmailMonitoring(enabled); await runProtectionHealthCheck("protection_change"); showToast(enabled ? "Ongoing Gmail assessment enabled. Gates will show On after the first successful monitor check." : "Ongoing Gmail assessment stopped.", enabled ? "resting" : "neutral");
+    setGmailMonitoring(enabled); await runProtectionHealthCheck("protection_change"); showToast(enabled ? "Ongoing Gmail assessment enabled. Protection will show Active after the first successful monitor check." : "Ongoing Gmail assessment stopped.", enabled ? "resting" : "neutral");
   };
 
   const scanInbox = async () => {
@@ -177,7 +177,7 @@ export default function CheckEmail() {
     const askPrompt = `About the email I just checked (from ${model.subject}). ${model.headline} Can you walk me through what Apollo found and what I should do?`;
     const emailActions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];
     if (a.handoff.account) {
-      emailActions.push({ testID: "email-check-account", variant: a.state === "barking" ? "secondary" : "secondary", label: "It's about my account \u2014 Account Gate", onPress: () => router.push({ pathname: "/account", params: { text: `${a.parsed.subject ?? ""}\n${a.parsed.body}`.trim().slice(0, 3000), scent } }) });
+      emailActions.push({ testID: "email-check-account", variant: a.state === "barking" ? "secondary" : "secondary", label: "It's about my account \u2014 check account alert", onPress: () => router.push({ pathname: "/account", params: { text: `${a.parsed.subject ?? ""}\n${a.parsed.body}`.trim().slice(0, 3000), scent } }) });
     }
     emailActions.push({ testID: "email-verify-sender", variant: "secondary", label: "Show me how to check the sender", onPress: () => setVerify(true) });
     a.urls.forEach((u, i) => {
@@ -219,9 +219,9 @@ export default function CheckEmail() {
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>Email Gate</Text>
+        <Text style={s.title}>Email monitoring</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <InfoButton info={{ title: "About Email Gate", body: ["Paste a forwarded email (headers included if possible) or fill in the sender, subject and body. Apollo analyses the email for scam indicators, phishing patterns and suspicious links.", "Apollo checks sender reputation, authentication headers (SPF/DKIM/DMARC), embedded links and content patterns. Raw content is discarded after the assessment."] }} testID="email-info" />
+          <InfoButton info={{ title: "About email monitoring", body: ["Paste a forwarded email (headers included if possible) or fill in the sender, subject and body. Apollo analyses the email for scam indicators, phishing patterns and suspicious links.", "Apollo checks sender reputation, authentication headers (SPF/DKIM/DMARC), embedded links and content patterns. Raw content is discarded after the assessment."] }} testID="email-info" />
           <Pressable testID="email-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
         </View>
       </View>
@@ -255,7 +255,7 @@ export default function CheckEmail() {
                     })}
                     <Button testID="email-gmail-scan" label={scanBusy ? "Assessing recent Gmail…" : "Assess recent Gmail (all accounts)"} icon={scanBusy ? <ActivityIndicator color={colors.onBrandPrimary} /> : undefined} onPress={() => void scanInbox()} disabled={scanBusy || gmailBusy} />
                     <Button testID="email-gmail-monitoring" variant="secondary" label={gmailMonitoring ? "Stop ongoing Gmail monitoring" : "Enable ongoing Gmail monitoring"} onPress={() => void toggleGmailMonitoring()} disabled={scanBusy || gmailBusy} />
-                    <Body testID="email-gmail-monitoring-status">{gmailMonitoring ? "Monitoring requested for every connected account. Gates shows Active only after a fresh successful monitor check." : "Ongoing monitoring is off."}</Body>
+                    <Body testID="email-gmail-monitoring-status">{gmailMonitoring ? "Monitoring requested for every connected account. Protection shows Active only after a fresh successful monitor check." : "Ongoing monitoring is off."}</Body>
                     {scanSummary ? (
                       <>
                         <Body testID="email-gmail-scan-summary">{scanSummary.text}</Body>

@@ -61,7 +61,7 @@ export default function SettingsScreen() {
 
       <View><SectionTitle>Protection &amp; permissions</SectionTitle>
         <Card testID="settings-protection">
-          <NavRow first label="View Gates" hint="View all Apollo Gates, their protection status, coverage and available setup." onPress={() => router.push("/gates")} testID="settings-view-gates" />
+          <NavRow first label="View all protections" hint="View all Apollo protections, their status, coverage and available setup." onPress={() => router.push("/gates")} testID="settings-view-gates" />
         </Card>
       </View>
 
@@ -81,7 +81,7 @@ export default function SettingsScreen() {
 
       <View><SectionTitle>App preferences</SectionTitle>
         <Card testID="settings-preferences">
-          <SwitchRow first label="Battery saver" hint="Reduces animation and checks status less often. It does not change the protection status in Gates." value={lowPower} onValueChange={(value) => void setLowPower(value)} testID="settings-lowpower-switch" />
+          <SwitchRow first label="Battery saver" hint="Reduces animation and checks status less often. It does not change the protection status." value={lowPower} onValueChange={(value) => void setLowPower(value)} testID="settings-lowpower-switch" />
           <NavRow label="Minimise Apollo" hint="Move Apollo to the background" onPress={() => void minimiseApp(showToast)} testID="settings-minimise" />
         </Card>
       </View>
@@ -114,7 +114,7 @@ export default function SettingsScreen() {
             <View style={{ flex: 1 }}><Text style={s.rowLabel}>How to share into Apollo</Text></View><ChevronRight size={20} color={colors.muted} />
           </Pressable>
           {showShare ? <Body testID="settings-share-help" style={{ paddingBottom: spacing.sm }}>Use Share in Messages, Mail or your browser, then choose Apollo. Apollo always waits for you to confirm before it checks anything you share.</Body> : null}
-          <NavRow label="About Apollo" hint="Meet Apollo and Higgins, the 10 Gates, privacy and more" onPress={() => setShowAbout(true)} testID="settings-about-apollo" />
+          <NavRow label="About Apollo" hint="Meet Apollo and Higgins, your protections, privacy and more" onPress={() => setShowAbout(true)} testID="settings-about-apollo" />
         </Card>
       </View>
 

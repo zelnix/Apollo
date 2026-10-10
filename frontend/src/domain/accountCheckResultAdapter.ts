@@ -99,7 +99,7 @@ export function buildAccountCheckResult(args: {
 
   return {
     id: event?.event_id ?? `account-${Date.now().toString(36)}`,
-    gate: "Account Gate",
+    gate: "Account alerts",
     checkType: "Account alert check",
     subject,
     headline: a.title,

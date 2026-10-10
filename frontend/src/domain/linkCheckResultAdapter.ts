@@ -198,7 +198,7 @@ export function buildLinkCheckResult(args: {
 
   return {
     id: outcome.submissionId,
-    gate: "Link Gate",
+    gate: "Link checking",
     checkType: "Link check",
     subject,
     headline,

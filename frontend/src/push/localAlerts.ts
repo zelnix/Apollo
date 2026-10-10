@@ -15,7 +15,7 @@ export function eventLocalAlert(event: PatrolEvent): LocalAlert | null {
     return { title: "Apollo is biting", body: event.headline, channel: "threats", actionUrl };
   }
   if (event.state === "barking") return { title: "Apollo is barking", body: event.headline, channel: "threats", actionUrl };
-  if (event.state === "growling" || event.state === "ears_up") return { title: "Apollo is growling", body: event.headline, channel: "growling", actionUrl };
+  if (event.state === "growling" || event.state === "ears_up") return { title: "Apollo is sniffing something", body: event.headline, channel: "growling", actionUrl };
   return null;
 }
 
@@ -26,7 +26,7 @@ export function protectionLocalAlert(previous: ProtectionStatus, observed: Prote
     title: "Apollo protection restored", body: "The device has confirmed protection is running again.", channel: "default", actionUrl: "/(tabs)/guard?gate=site",
   };
   if (observed.requested && !observed.operational) return {
-    title: "Higgins: Protection needs attention", body: observed.degradedReason ?? "Apollo could not confirm website protection is running. Open the Site Gate to review it.", channel: "threats", actionUrl: "/(tabs)/guard?gate=site",
+    title: "Higgins: Protection needs attention", body: observed.degradedReason ?? "Apollo could not confirm website protection is running. Open Protection to review it.", channel: "threats", actionUrl: "/(tabs)/guard?gate=site",
   };
   return null;
 }

@@ -52,10 +52,10 @@ export function buildProtectionRows(
   if (p && p.enforcementMethod === "dns_filter") rows.push({ label: "DNS protection", state: p.operational ? "Active" : "Warning", detail: "Apollo filters DNS lookups against its threat list." });
   else rows.push({ label: "DNS protection", state: p ? (p.enforcementMethod === "packet_filter" ? "Active" : "Unsupported on this device") : "Status unavailable", detail: p?.enforcementMethod === "packet_filter" ? "Covered within packet filtering." : "DNS-level filtering isn't the enforcement method here." });
 
-  // Website Gate (Site Guard).
-  if (!p) rows.push({ label: "Website Gate", state: "Status unavailable", detail: "Could not read Site Guard state." });
-  else if (p.enforcementMethod === "none") rows.push({ label: "Website Gate", state: "Unsupported on this device", detail: p.coverage });
-  else rows.push({ label: "Website Gate", state: p.operational ? "Active" : "Warning", detail: p.coverage });
+  // Website protection (Site Guard).
+  if (!p) rows.push({ label: "Website protection", state: "Status unavailable", detail: "Could not read Site Guard state." });
+  else if (p.enforcementMethod === "none") rows.push({ label: "Website protection", state: "Unsupported on this device", detail: p.coverage });
+  else rows.push({ label: "Website protection", state: p.operational ? "Active" : "Warning", detail: p.coverage });
 
   // Google Safe Browsing.
   rows.push({ label: "Google Safe Browsing", state: intel.safeBrowsing === "ok" ? "Available" : intel.safeBrowsing === "not_configured" ? "Not running" : "Status unavailable", detail: intel.safeBrowsing === "ok" ? "Submitted links are checked against Google's threat lists." : "Not configured for a live check." });

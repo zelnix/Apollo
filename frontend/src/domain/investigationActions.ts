@@ -5,7 +5,7 @@ export type InvestigationActionKind = HigginsAssessment["action_kind"];
 export const INVESTIGATION_ACTION_LABEL: Record<InvestigationActionKind, string> = {
   verify_officially: "Show me how to check",
   call_known_number: "Show me how to call safely",
-  check_account: "Open Account Gate",
+  check_account: "Check account alert",
   avoid_and_delete: "Clear submitted copy",
   review: "Show what to review",
 };

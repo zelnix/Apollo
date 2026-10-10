@@ -15,7 +15,7 @@ export interface TimelineEntry {
   id: string;
   kind: TimelineKind;
   tone: TimelineTone;
-  /** Short title, e.g. "Site Gate — Watching confirmed" or "Scam text flagged". */
+  /** Short title, e.g. "Website protection — Watching confirmed" or "Scam text flagged". */
   title: string;
   /** One-line plain-English summary. */
   summary: string;
@@ -28,15 +28,15 @@ export interface TimelineEntry {
 }
 
 const GATE_FOR_CATEGORY: Record<string, string> = {
-  link: "Link Gate", website: "Site Gate", known_threat: "Site Gate", protection: "Site Gate",
-  connection: "Internet Gate", system: "Device Gate", device: "Device Gate", message: "Text Gate",
-  call: "Call Gate", app: "App Gate", account: "Account Gate", email: "Email Gate", file: "File Gate",
+  link: "Link checking", website: "Website protection", known_threat: "Website protection", protection: "Website protection",
+  connection: "Internet monitoring", system: "Device monitoring", device: "Device monitoring", message: "Message screening",
+  call: "Call screening", app: "App checking", account: "Account alerts", email: "Email monitoring", file: "File checking",
   family: "Family alert",
 };
 
 const GATE_LABEL_BY_ID: Record<string, string> = {
-  site: "Site Gate", link: "Link Gate", text: "Text Gate", call: "Call Gate", network: "Internet Gate",
-  account: "Account Gate", email: "Email Gate", file: "File Gate", app: "App Gate", device: "Device Gate",
+  site: "Website protection", link: "Link checking", text: "Message screening", call: "Call screening", network: "Internet monitoring",
+  account: "Account alerts", email: "Email monitoring", file: "File checking", app: "App checking", device: "Device monitoring",
 };
 
 /** Build a short, specific description of the event instead of the generic gate name.
@@ -137,7 +137,7 @@ export function buildTodayTimeline(input: {
       } else if (e.state === "sniffing") {
         kind = "investigating"; title = `${shortSubject} — investigating`;
       } else if (e.state === "ears_up") {
-        title = `${shortSubject} — ears up`;
+        title = `${shortSubject} — sniffing`;
       } else if (e.state === "growling") {
         title = `${shortSubject} — flagged a concern`;
       } else if (e.state === "barking") {

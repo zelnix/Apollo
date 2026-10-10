@@ -7,7 +7,7 @@ const TITLES: Record<(typeof IDS)[number], string> = { site: "Site protection", 
 
 let snapshot: ProtectionHealthSnapshot = {
   revision: 0, checkedAt: null, trigger: null, checking: false, capabilities: [], protection: null, permissions: [], network: null,
-  gates: IDS.map((id) => ({ id, title: TITLES[id], purpose: "Apollo is preparing this Gate.", currentHelp: "Checking current status.", statusLabel: "Check in progress", tone: "neutral", capability: { automatic: { kind: id === "site" ? "enforcement" : "event_driven", state: "checking" }, onDemand: id === "site" ? undefined : { state: "ready", action: { id: "open_check_it", label: "Open Check It" } } } })),
+  gates: IDS.map((id) => ({ id, title: TITLES[id], purpose: "Apollo is preparing this protection.", currentHelp: "Checking current status.", statusLabel: "Check in progress", tone: "neutral", capability: { automatic: { kind: id === "site" ? "enforcement" : "event_driven", state: "checking" }, onDemand: id === "site" ? undefined : { state: "ready", action: { id: "open_check_it", label: "Open Check It" } } } })),
 };
 const listeners = new Set<() => void>();
 

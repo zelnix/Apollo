@@ -233,9 +233,9 @@ export default function CheckApp() {
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>App Gate</Text>
+        <Text style={s.title}>App checking</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <InfoButton info={{ title: "About App Gate", body: ["Enter any app name and Apollo will research its safety, permissions, publisher reputation and known issues.", "Apollo checks app store listings, publisher history, permission requests and community reports. This is a research check — Apollo does not scan installed apps directly."] }} testID="app-info" />
+          <InfoButton info={{ title: "About app checking", body: ["Enter any app name and Apollo will research its safety, permissions, publisher reputation and known issues.", "Apollo checks app store listings, publisher history, permission requests and community reports. This is a research check — Apollo does not scan installed apps directly."] }} testID="app-info" />
           <Pressable testID="app-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
         </View>
       </View>

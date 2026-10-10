@@ -89,7 +89,7 @@ export function buildDeviceCheckResult(args: {
 
   return {
     id: submissionId,
-    gate: "Device Gate",
+    gate: "Device monitoring",
     checkType: "Device security review",
     subject: r.osLabel,
     headline: r.overallLabel,

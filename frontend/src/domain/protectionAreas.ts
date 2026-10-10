@@ -14,7 +14,7 @@ export interface ProtectionAreaCapability {
   gateId: GateId;
   /** User-facing name for this capability (e.g. "Website filtering", "Link checking"). */
   label: string;
-  /** The Gate's actual internal name (e.g. "Site Gate", "Link Gate"). Shown secondarily
+  /** The protection's technical internal name (e.g. "Site Gate", "Link Gate"). Shown secondarily
    *  inside the expandable "How Apollo protects you" details. */
   gateName: string;
   /** Whether this is automatic background protection or a manual check. */
@@ -116,11 +116,17 @@ function gateMode(gate: GatePresentation): "automatic" | "manual" {
   return "automatic";
 }
 
+/** Original technical Gate names — shown ONLY inside the expandable "How Apollo protects you" detail. */
+const TECHNICAL_GATE_NAME: Record<GateId, string> = {
+  site: "Site Gate", link: "Link Gate", text: "Text Gate", call: "Call Gate", network: "Internet Gate",
+  account: "Account Gate", email: "Email Gate", file: "File Gate", app: "App Gate", device: "Device Gate",
+};
+
 function buildCapability(gate: GatePresentation): ProtectionAreaCapability {
   return {
     gateId: gate.id,
     label: CAPABILITY_LABELS[gate.id],
-    gateName: gate.title,
+    gateName: TECHNICAL_GATE_NAME[gate.id],
     mode: gateMode(gate),
     statusLabel: gate.statusLabel,
     tone: gate.tone,

@@ -187,9 +187,9 @@ export default function CheckDevice() {
         setChangeLog(merged);
       }
       void markCheckDone("device");
-      if (notify) showToast("Device Gate checked the signals this platform exposes.", "neutral");
+      if (notify) showToast("Device monitoring checked the signals this platform exposes.", "neutral");
     } catch {
-      if (notify) showToast("Device Gate couldn't refresh every signal. The visible limits are listed below.", "growling");
+      if (notify) showToast("Device monitoring couldn't refresh every signal. The visible limits are listed below.", "growling");
     } finally { setChecking(false); setCheckSequence((value) => value + 1); }
   }, [platform, hostKind, showToast, verifyNow, protection?.running, storage]);
   useEffect(() => { void refreshDevice(false); }, [refreshDevice]);
@@ -289,9 +289,9 @@ export default function CheckDevice() {
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>Device Gate</Text>
+        <Text style={s.title}>Device monitoring</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <InfoButton info={{ title: "About Device Gate", body: ["Apollo checks your device's security settings — screen lock, biometrics, OS updates, developer options, unknown sources and more.", "These checks run locally on your device. Apollo reports what it can observe and explains what each setting means for your safety."] }} testID="device-info" />
+          <InfoButton info={{ title: "About device monitoring", body: ["Apollo checks your device's security settings — screen lock, biometrics, OS updates, developer options, unknown sources and more.", "These checks run locally on your device. Apollo reports what it can observe and explains what each setting means for your safety."] }} testID="device-info" />
           <Pressable testID="device-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
         </View>
       </View>

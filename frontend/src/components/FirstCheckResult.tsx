@@ -49,7 +49,7 @@ export function FirstCheckResult({ report, changes, headlineOverride, kind, auto
     uncertainty: report.unavailable,
     confirmed_protective_actions: [],
     user_reported_actions: [],
-    available_actions: [{ label: "Open Device Gate", instruction: "Open Device Gate to review settings, permissions and Apollo's protection health in detail." }],
+    available_actions: [{ label: "Open Device monitoring", instruction: "Open Device monitoring to review settings, permissions and Apollo's protection health in detail." }],
     original_evidence: [{ kind: "text", value: `${copy.headline}\n\n${report.checks.map((c) => `[${c.result}] ${c.title}: ${c.explanation}`).join("\n")}`, label: "Higgins First Check findings (no raw app or certificate data)" }],
   }), [report, copy, kind]);
 

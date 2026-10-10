@@ -9,11 +9,11 @@ export type CheckId = "link" | "message" | "file" | "app" | "device" | "account"
 export const CHECKS: Record<CheckId, { label: string; actionLabel: string; purpose: string; route: string }> = {
   link: { label: "Check a link", actionLabel: "Check a link", purpose: "See where the link leads before opening it.", route: "/check" },
   message: { label: "Check a message", actionLabel: "Check a message", purpose: "Paste, share or add a screenshot of the message.", route: "/message" },
-  file: { label: "File Gate", actionLabel: "Open File Gate", purpose: "Choose or share the file you want Apollo to examine.", route: "/file" },
+  file: { label: "Check a file", actionLabel: "Check a file", purpose: "Choose or share the file you want Apollo to examine.", route: "/file" },
   app: { label: "Check an app", actionLabel: "Check an app", purpose: "Review the app's source, access and available device facts.", route: "/app-check" },
-  device: { label: "Device Gate", actionLabel: "Open Device Gate", purpose: "Check important protection, permission and device changes.", route: "/device" },
-  account: { label: "Account Gate", actionLabel: "Open Account Gate", purpose: "Review the account warning without sharing a password or code.", route: "/account" },
-  network: { label: "Internet Gate", actionLabel: "Open Internet Gate", purpose: "Review the connection facts this device can see.", route: "/network" },
+  device: { label: "Check my device", actionLabel: "Check my device", purpose: "Check important protection, permission and device changes.", route: "/device" },
+  account: { label: "Check an account alert", actionLabel: "Check an account alert", purpose: "Review the account warning without sharing a password or code.", route: "/account" },
+  network: { label: "Check this network", actionLabel: "Check this network", purpose: "Review the connection facts this device can see.", route: "/network" },
 };
 
 const IDS = Object.keys(CHECKS) as CheckId[];
@@ -72,8 +72,8 @@ export function checksSpoken(checks: CheckId[]): string {
 export function higginsPermissionNote(capabilities: Capability[]): string | null {
   const gaps = capabilities.filter((c) => c.status === "permission_required");
   if (!gaps.length) return null;
-  const first = gaps[0].title.replace(/ Guard$/i, " Gate");
-  return `Apollo needs your permission for ${first}. Open that Gate and choose its setup action. Apollo will check the result when you return.${gaps.length > 1 ? " Other items will remain listed in Gates." : ""}`;
+  const first = gaps[0].title.replace(/ Guard$/i, "");
+  return `Apollo needs your permission for ${first}. Open it and choose the setup action. Apollo will check the result when you return.${gaps.length > 1 ? " Other items are available in Protection." : ""}`;
 }
 // --- Follow-up: a day later, Higgins gently notices what is still waiting ------------------------------------------
 export interface Suggestion { messageId: string; askedAt: string; checks: CheckId[]; snoozedUntil?: string }

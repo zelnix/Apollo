@@ -36,7 +36,7 @@ const PURPOSE: Record<GateId, string> = {
   app: "Checks whether an app's source, permissions and behaviour give you a reason to be cautious—even if it has not been used recently.",
   device: "Checks whether important protections and permissions are working and looks for changes that may need your attention.",
 };
-const TITLE: Record<GateId, string> = { site: "Site Gate", link: "Link Gate", text: "Text Gate", call: "Call Gate", network: "Internet Gate", account: "Account Gate", email: "Email Gate", file: "File Gate", app: "App Gate", device: "Device Gate" };
+const TITLE: Record<GateId, string> = { site: "Website protection", link: "Link checking", text: "Message screening", call: "Call screening", network: "Internet monitoring", account: "Account alerts", email: "Email monitoring", file: "File checking", app: "App checking", device: "Device monitoring" };
 const cap = (items: Capability[], id: string) => items.find((item) => item.id === id);
 const action = (id: UserAction["id"], label: string): UserAction => ({ id, label });
 const onDemand = (id: UserAction["id"], label: string, state: OnDemandCapabilityState = "ready") => ({ state, action: action(id, label) });
@@ -76,9 +76,9 @@ export function buildGatesOverview(input: GatesInput): GatesOverview {
   const siteUnsupported = siteCapability?.status === "unsupported" || (input.platform === "web" && input.protection?.enforcementMethod === "simulated");
   const siteState: AutomaticCapabilityState = input.checking || !input.protection ? "checking" : siteUnsupported ? "unsupported" : input.protection.operational && siteFresh && siteCapability?.status === "active" ? "running" : !(input.protection.requested || input.desiredSiteOn) ? "off_by_choice" : sitePermission ? "permission_needed" : input.protection.operational && siteCapability?.status === "active" ? "temporarily_unavailable" : "interrupted";
   const site = presentation({ id: "site", title: TITLE.site, purpose: PURPOSE.site,
-    currentHelp: siteState === "running" ? "Apollo is filtering supported website traffic." : siteState === "interrupted" ? "Website protection was on but has stopped — it is not filtering right now." : siteState === "permission_needed" ? "Site Gate needs VPN permission to filter website traffic. Your other protection is still active — grant it whenever you're ready." : siteState === "off_by_choice" ? "Website protection is off. You can still check suspicious links." : siteState === "checking" ? "Apollo is checking website protection." : "Apollo cannot confirm website protection right now.",
-    capability: { automatic: { kind: "enforcement", state: siteState, lastObservedAt: input.protection?.checkedAt ?? undefined, limitation: siteState === "interrupted" ? "Website protection was on but is not operating. Open Site Gate to restart it." : siteState === "permission_needed" ? "Grant the VPN permission to turn Site Gate on. Your other protection stays active." : siteState === "temporarily_unavailable" ? "Apollo will keep checking in the background." : undefined }, onDemand: onDemand("check_link", "Check a suspicious link") },
-    primaryAction: siteState === "running" ? action("check_link", "Check a suspicious link") : action("restore_site", siteState === "permission_needed" ? "Grant VPN permission" : "Turn on Site Gate") });
+    currentHelp: siteState === "running" ? "Apollo is filtering supported website traffic." : siteState === "interrupted" ? "Website protection was on but has stopped — it is not filtering right now." : siteState === "permission_needed" ? "Website protection needs VPN permission to filter traffic. Your other protection is still active — grant it whenever you're ready." : siteState === "off_by_choice" ? "Website protection is off. You can still check suspicious links." : siteState === "checking" ? "Apollo is checking website protection." : "Apollo cannot confirm website protection right now.",
+    capability: { automatic: { kind: "enforcement", state: siteState, lastObservedAt: input.protection?.checkedAt ?? undefined, limitation: siteState === "interrupted" ? "Website protection was on but is not operating. Open it to restart." : siteState === "permission_needed" ? "Grant the VPN permission to enable website protection. Your other protection stays active." : siteState === "temporarily_unavailable" ? "Apollo will keep checking in the background." : undefined }, onDemand: onDemand("check_link", "Check a suspicious link") },
+    primaryAction: siteState === "running" ? action("check_link", "Check a suspicious link") : action("restore_site", siteState === "permission_needed" ? "Grant VPN permission" : "Turn on website protection") });
 
   // B4: Text Gate status — distinguish background processing from merely having notification access.
   // On Android, "smsFiltering: supported" means notification access is granted but NOT that background
@@ -123,12 +123,12 @@ export function buildGatesOverview(input: GatesInput): GatesOverview {
   const networkLimitation = networkState === "permission_needed"
     ? "Allow network information to receive automatic warnings."
     : networkState === "running" && !vpnActive
-      ? "Apollo checks the connection on every app open and network change. Turn on Site Gate for continuous background watching."
+      ? "Apollo checks the connection on every app open and network change. Turn on website protection for continuous background watching."
       : networkState === "temporarily_unavailable"
         ? "Apollo cannot observe the current connection yet."
         : undefined;
   const network = presentation({ id: "network", title: TITLE.network, purpose: PURPOSE.network,
-    currentHelp: networkState === "running" ? (vpnActive ? "Apollo is watching this connection, with continuous background filtering through Site Gate." : "Apollo is watching this connection and re-checks on every app open and network change.") : networkState === "permission_needed" ? "Allow network information so Apollo can watch this connection." : "You can run a current network check now.",
+    currentHelp: networkState === "running" ? (vpnActive ? "Apollo is watching this connection, with continuous background filtering through website protection." : "Apollo is watching this connection and re-checks on every app open and network change.") : networkState === "permission_needed" ? "Allow network information so Apollo can watch this connection." : "You can run a current network check now.",
     capability: { automatic: { kind: "monitoring", state: networkState, lastObservedAt: networkObserved, limitation: networkLimitation, coverageLimited: networkState === "running" && !vpnActive }, onDemand: onDemand("check_network", "Check this network") },
     primaryAction: action("check_network", "Check this network") });
 
@@ -141,13 +141,13 @@ export function buildGatesOverview(input: GatesInput): GatesOverview {
   // never "Needs your attention"/barking (standing message requirement).
   const emailState: AutomaticCapabilityState = email?.checking ? "checking" : email && !email.configured ? "unsupported" : !email?.connected ? "not_activated" : !email.monitoringRequested ? "off_by_choice" : retrievalFresh && assessmentFresh ? "running" : retrievalFresh ? "checking" : "temporarily_unavailable";
   const emailLimitation = emailState === "not_activated" ? "Optional: connect a read-only mailbox for automatic checking. You can check any email manually right now." : emailState === "temporarily_unavailable" ? "Mailbox monitoring has no recent successful check." : emailState === "checking" ? "Messages are being retrieved but no assessment has completed yet." : undefined;
-  const emailGate = presentation({ id: "email", title: TITLE.email, purpose: PURPOSE.email, currentHelp: emailState === "running" ? "Apollo is watching the connected mailbox and assessments are completing." : emailState === "checking" ? "Apollo is retrieving messages. Assessment results are pending." : emailState === "not_activated" ? "Email Gate isn't connected. You can check any email now, or connect a mailbox for automatic help." : "You can paste, share or scan an email now.", capability: { automatic: { kind: "monitoring", state: emailState, lastObservedAt: email?.lastAssessmentAt ?? email?.lastSuccessAt ?? email?.lastCheckedAt ?? undefined, limitation: emailLimitation }, onDemand: onDemand("open_email", "Check an email") }, primaryAction: action("open_email", "Check an email") });
+  const emailGate = presentation({ id: "email", title: TITLE.email, purpose: PURPOSE.email, currentHelp: emailState === "running" ? "Apollo is watching the connected mailbox and assessments are completing." : emailState === "checking" ? "Apollo is retrieving messages. Assessment results are pending." : emailState === "not_activated" ? "Email monitoring isn't connected. You can check any email now, or connect a mailbox for automatic help." : "You can paste, share or scan an email now.", capability: { automatic: { kind: "monitoring", state: emailState, lastObservedAt: email?.lastAssessmentAt ?? email?.lastSuccessAt ?? email?.lastCheckedAt ?? undefined, limitation: emailLimitation }, onDemand: onDemand("open_email", "Check an email") }, primaryAction: action("open_email", "Check an email") });
 
   // Event-driven gates that respond to user actions (link, account) are always "ready" when online
   // but are NOT continuously monitoring — they should not claim "Watching". Only gates with a real
   // background monitoring loop or enforcement mechanism should report "running".
   const linkAuto: GatePresentation["capability"]["automatic"] = { kind: "event_driven", state: input.online === false ? "temporarily_unavailable" : "running", manualOnly: true, lastObservedAt: observedNow, limitation: input.online === false ? "Online reputation and public research are unavailable." : "Link checking responds when triggered — no continuous background monitoring." };
-  const link = simple("link", input.online === false ? "On-device link checks remain ready; online checks are unavailable." : "Apollo checks links when triggered by a Gate or when you submit one.", "check_link", "Check a link", linkAuto);
+  const link = simple("link", input.online === false ? "On-device link checks remain ready; online checks are unavailable." : "Apollo checks links when triggered by another protection or when you submit one.", "check_link", "Check a link", linkAuto);
   // Gate 8 — Account alerts. Event-driven (responds when triggered). The core check ("Check an
   // account alert" — analysing a login/MFA/reset/breach warning) always works and needs no backend
   // key, so the gate is never "unavailable". The optional live breach-list lookup (HIBP) is an extra:
@@ -171,7 +171,7 @@ export function buildGatesOverview(input: GatesInput): GatesOverview {
   const attentionNames = attentionGates.map((g) => g.title.replace(/ Gate$/, "")).join(" and ");
   // A gate awaiting optional setup/permission is NOT an alarm. Only a verified problem (tone "action")
   // counts as "needs your attention"; Apollo never barks about optional setup.
-  const summary = input.checking ? "Checking your protection" : (attentionGates.length > 0 && working > 0) ? "Protection active — reduced coverage" : attentionGates.length ? `${attentionNames} ${attentionGates.length === 1 ? "needs" : "need"} your attention` : `${working} ${working === 1 ? "Gate is" : "Gates are"} helping automatically`;
+  const summary = input.checking ? "Checking your protection" : (attentionGates.length > 0 && working > 0) ? "Protection active — reduced coverage" : attentionGates.length ? `${attentionNames} ${attentionGates.length === 1 ? "needs" : "need"} your attention` : `${working} ${working === 1 ? "protection is" : "protections are"} helping automatically`;
   return { summary, higgins: primary ? `${primary.title} needs your attention. ${primary.currentHelp}` : "Apollo watches what this device allows. You can also ask it to check anything you are unsure about.", primary, gates };
 }
 

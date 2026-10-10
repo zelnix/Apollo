@@ -49,10 +49,10 @@ export interface EvidenceRow {
 export interface CheckResultModel {
   /** Internal id — stable across navigation / history. */
   id: string;
-  /** Which Apollo Gate performed the check. */
+  /** Which Apollo protection performed the check. */
   gate:
-    | "Link Gate" | "Site Gate" | "Text Gate" | "Call Gate" | "Internet Gate"
-    | "App Gate" | "Device Gate" | "Email Gate" | "File Gate" | "Account Gate"
+    | "Link checking" | "Website protection" | "Message screening" | "Call screening" | "Internet monitoring"
+    | "App checking" | "Device monitoring" | "Email monitoring" | "File checking" | "Account alerts"
     | "Device Re-check";
   /** Short label for the KIND of check, e.g. "Link check", "Message check". */
   checkType: string;

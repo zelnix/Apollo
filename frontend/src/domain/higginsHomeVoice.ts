@@ -29,13 +29,13 @@ export interface HomeVoice {
 
 /** Human label for every Capability id, used when assembling the dynamic affected-gate list. */
 const CAPABILITY_LABEL: Record<Capability["id"], string> = {
-  link_guard: "Link Gate",
-  site_guard: "Site Gate",
-  connection_guard: "Internet Gate",
+  link_guard: "Link checking",
+  site_guard: "Website protection",
+  connection_guard: "Internet monitoring",
   known_threats: "Known Threat Lookup",
   share_intake: "Share to Apollo",
-  message_guard: "Text Gate",
-  app_guard: "App Gate",
+  message_guard: "Message screening",
+  app_guard: "App checking",
 };
 
 /** Join a list of names in plain English: ["A", "B", "C"] → "A, B and C". */
@@ -132,13 +132,13 @@ export function buildHomeVoice(input: {
     }
     return {
       text: state === "ears_up"
-        ? "Apollo has his ears up — something in a recent check caught his attention. Open Protection Details and I'll show you what he's found."
-        : "Apollo is sniffing — running his checks across the Gates. Open Protection Details and I'll show you the current status.",
+        ? "Apollo is sniffing something — something in a recent check caught his attention. Open Protection Details and I'll show you what he's found."
+        : "Apollo is sniffing — running his checks across your protections. Open Protection Details and I'll show you the current status.",
       ctaLabel: "View what Apollo is checking",
       ctaRoute: "/protection-details",
       spoken: state === "ears_up"
-        ? "Apollo has his ears up — something caught his attention. I'll tell you what to do."
-        : "Apollo is sniffing — running his checks across the Gates.",
+        ? "Apollo is sniffing something — something caught his attention. I'll tell you what to do."
+        : "Apollo is sniffing — running his checks across your protections.",
     };
   }
 
@@ -270,8 +270,8 @@ export function buildHomeVoice(input: {
 
 /** Mapping from a PatrolEvent category to a human gate name. Mirrors homeAttention. */
 const GATE_FOR_CATEGORY: Record<string, string> = {
-  link: "Link Gate", website: "Site Gate", known_threat: "Site Gate", protection: "Site Gate",
-  connection: "Internet Gate", system: "Device Gate", device: "Device Gate", message: "Text Gate",
-  call: "Call Gate", app: "App Gate", account: "Account Gate", email: "Email Gate", file: "File Gate",
+  link: "Link checking", website: "Website protection", known_threat: "Website protection", protection: "Website protection",
+  connection: "Internet monitoring", system: "Device monitoring", device: "Device monitoring", message: "Message screening",
+  call: "Call screening", app: "App checking", account: "Account alerts", email: "Email monitoring", file: "File checking",
   family: "Family alert",
 };

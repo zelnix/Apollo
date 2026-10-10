@@ -9,7 +9,7 @@ type ProductionStatus = ProtectionStatus & { ruleExpiresAt?: string | null; prod
 
 export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapter {
   readonly kind = "android" as const;
-  readonly label = "GuardDog production Website Gate";
+  readonly label = "GuardDog production website protection";
   private configured: Promise<void> | null = null;
   private refreshedAt = 0;
   private mod() { const module = getNativeModule(); if (!module) throw new NativeModuleUnavailable("Android GuardDog production runtime"); return module; }
@@ -37,7 +37,7 @@ export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapte
     }
   }
   async getCapabilities(): Promise<Capability[]> { try { await this.refreshIfDue(); return this.json<Capability[]>(this.mod().getGuardDogProductionCapabilities()); }
-    catch { return [{ id: "site_guard", title: "Site Gate", status: "permission_required", detail: "Production protection is inactive because its rules are missing, invalid or expired." }]; } }
+    catch { return [{ id: "site_guard", title: "Website protection", status: "permission_required", detail: "Production protection is inactive because its rules are missing, invalid or expired." }]; } }
   async getProtectionStatus(): Promise<ProtectionStatus> { try { await this.refreshIfDue(); return this.json<ProtectionStatus>(this.mod().getGuardDogProductionStatus()); }
     catch (error) { const checkedAt = new Date().toISOString(); return { running: false, requested: true, operational: false, enforcementMethod: "none", coverage: "Production protection is inactive. Apollo did not fall back to a legacy or test engine.", coverageScope: [], lastVerified: null, degradedReason: error instanceof Error ? error.message : "Production rules are unavailable.", visibility: "none", since: null, adapterLabel: this.label, checkedAt }; } }
   async analyseURL(url: string) { await this.ensureConfigured(); return this.json<NativeUrlAnalysis>(this.mod().analyzeGuardDogProductionUrl(url)); }

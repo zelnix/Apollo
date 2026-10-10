@@ -99,7 +99,7 @@ export default function CheckCall() {
       actions.push({ testID: "call-check-app", variant: "ghost", label: "They asked me to install an app — check it", onPress: () => router.push({ pathname: "/app-check", params: { scent: result.event?.scent_id ?? result.event?.event_id ?? "" } }) });
     }
     if (result.event && (a.requestedActions.includes("code") || a.requestedActions.includes("password"))) {
-      actions.push({ testID: "call-check-account", variant: "ghost", label: "They asked for a code or password — Account Gate", onPress: () => router.push({ pathname: "/account", params: { scent: result.event?.scent_id ?? result.event?.event_id ?? "" } }) });
+      actions.push({ testID: "call-check-account", variant: "ghost", label: "They asked for a code or password — check account alert", onPress: () => router.push({ pathname: "/account", params: { scent: result.event?.scent_id ?? result.event?.event_id ?? "" } }) });
     }
     if (result.event) {
       actions.push({ testID: "call-mark-safe", variant: "ghost", label: "Mark as handled", onPress: () => { void resolveEvent(result.event!); showToast("Marked as handled. This does not verify the caller.", "neutral"); goBackOrHome(router); } });
@@ -135,9 +135,9 @@ export default function CheckCall() {
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>Call Gate</Text>
+        <Text style={s.title}>Call screening</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <InfoButton info={{ title: "About Call Gate", body: ["This screen is designed for use during a live call. Big buttons and short answers help you make decisions under pressure.", "Tell Apollo what the caller is asking you to do and it will assess the risk. No audio is recorded — Apollo analyses only what you select or type."] }} testID="call-info" />
+          <InfoButton info={{ title: "About call screening", body: ["This screen is designed for use during a live call. Big buttons and short answers help you make decisions under pressure.", "Tell Apollo what the caller is asking you to do and it will assess the risk. No audio is recorded — Apollo analyses only what you select or type."] }} testID="call-info" />
           <Pressable testID="call-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
         </View>
       </View>

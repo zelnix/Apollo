@@ -147,9 +147,9 @@ export default function CheckNetwork() {
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>Internet Gate</Text>
+        <Text style={s.title}>Internet monitoring</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <InfoButton info={{ title: "About Internet Gate", body: ["Apollo monitors your network connection for DNS hijacking, insecure Wi-Fi and known malicious infrastructure.", "On Android with VPN protection enabled, Apollo can inspect DNS queries in real time. On all platforms, Apollo checks your current connection details and warns about known risks."] }} testID="network-info" />
+          <InfoButton info={{ title: "About internet monitoring", body: ["Apollo monitors your network connection for DNS hijacking, insecure Wi-Fi and known malicious infrastructure.", "On Android with VPN protection enabled, Apollo can inspect DNS queries in real time. On all platforms, Apollo checks your current connection details and warns about known risks."] }} testID="network-info" />
           <Pressable testID="network-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
         </View>
       </View>

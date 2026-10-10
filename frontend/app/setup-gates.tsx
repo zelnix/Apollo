@@ -141,7 +141,7 @@ export default function SetupGates() {
       if (granted) { await storage.setItem(gateSnoozeKey(current), ""); showToast(`${copy.title} is on.`, "resting"); }
       else { await snooze(current); showToast(`${copy.title} isn't on yet — you can enable it anytime. We'll remind you in a few days.`, "neutral"); }
     } catch {
-      showToast("That didn't open. You can enable this Gate later from its screen.", "growling");
+      showToast("That didn't open. You can enable this later from Protection or Settings.", "growling");
       await snooze(current);
     } finally {
       setBusy(false);
@@ -161,7 +161,7 @@ export default function SetupGates() {
             <ApolloLogo size={72} />
             <Text style={s.eyebrow}>You&apos;re set up</Text>
             <Text style={s.title} testID="setup-gates-recap-title">{onCount === recap.length ? "Apollo is fully on" : "Protection active — reduced coverage"}</Text>
-            <Text style={s.progress} testID="setup-gates-recap-count">{onCount} of {recap.length} Gates on</Text>
+            <Text style={s.progress} testID="setup-gates-recap-count">{onCount} of {recap.length} {recap.length === 1 ? "protection" : "protections"} active</Text>
           </View>
           <Card style={{ gap: spacing.sm }} testID="setup-gates-recap-list">
             {recap.map((r) => (
@@ -171,7 +171,7 @@ export default function SetupGates() {
               </View>
             ))}
           </Card>
-          {onCount < recap.length ? <Body style={{ color: colors.muted }}>You can turn on anything marked pending anytime from its Gate screen or Settings.</Body> : null}
+          {onCount < recap.length ? <Body style={{ color: colors.muted }}>You can enable anything marked pending anytime from Protection or Settings.</Body> : null}
         </View>
         <View style={[s.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
           <Button testID="setup-gates-recap-done" label="Go to Apollo" onPress={goHome} icon={<ShieldCheck size={18} color={colors.onBrandPrimary} />} />
@@ -191,7 +191,7 @@ export default function SetupGates() {
         <View style={{ gap: spacing.sm }}>
           <ApolloLogo size={72} />
           <Text style={s.eyebrow}>Finish setting up</Text>
-          <Text style={s.progress} testID="setup-gates-progress">Gate {idx + 1} of {steps.length}</Text>
+          <Text style={s.progress} testID="setup-gates-progress">Step {idx + 1} of {steps.length}</Text>
         </View>
         <Text style={s.title} testID="setup-gates-title">{copy.enableLabel}?</Text>
         <Card style={{ gap: spacing.sm }} testID={`setup-gates-card-${current}`}>
@@ -204,7 +204,7 @@ export default function SetupGates() {
       <View style={[s.footer, { paddingBottom: insets.bottom + spacing.lg }]}>
         <Button testID="setup-gates-enable" label={busy ? "Opening…" : copy.enableLabel} onPress={() => void enable()} disabled={busy} icon={busy ? <ActivityIndicator color={colors.onBrandPrimary} /> : <ShieldCheck size={18} color={colors.onBrandPrimary} />} />
         <Button testID="setup-gates-not-now" variant="ghost" label="Not now" onPress={() => void notNow()} disabled={busy} />
-        <Text style={s.note}>Skipping keeps Apollo active with reduced coverage — you can turn any Gate on later.</Text>
+        <Text style={s.note}>Skipping keeps Apollo active with reduced coverage — you can enable any of these later.</Text>
         {steps.length - idx > 1 ? <Button testID="setup-gates-skip-rest" variant="ghost" label="Skip the rest for now" onPress={() => void skipRest()} disabled={busy} /> : null}
       </View>
     </View>

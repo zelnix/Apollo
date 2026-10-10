@@ -12,7 +12,7 @@ import { STATE_RANK } from "./stateMachine.ts";
 /** A finding to render on the Protection Details screen. */
 export interface ProtectionFinding {
   id: string;
-  /** Gate name, e.g. "Site Gate". */
+  /** Protection name, e.g. "Website protection". */
   gate: string;
   /** For threat-first reporting: the threat headline (distinct from the gate). */
   threatTitle?: string;
@@ -45,13 +45,13 @@ export interface ProtectionFinding {
 
 /** Capability id → gate title / kind. Mirrors the ApolloHero's affected-capability list. */
 const CAPABILITY_META: Record<Capability["id"], { gate: string; kind: ProtectionFinding["kind"]; route: string }> = {
-  link_guard:       { gate: "Link Gate",           kind: "manual",    route: "/check" },
-  site_guard:       { gate: "Site Gate",           kind: "automatic", route: "/(tabs)/guard?gate=site" },
-  connection_guard: { gate: "Internet Gate",       kind: "automatic", route: "/network" },
+  link_guard:       { gate: "Link checking",       kind: "manual",    route: "/check" },
+  site_guard:       { gate: "Website protection",  kind: "automatic", route: "/(tabs)/guard?gate=site" },
+  connection_guard: { gate: "Internet monitoring",  kind: "automatic", route: "/network" },
   known_threats:    { gate: "Known Threat Lookup", kind: "manual",    route: "/check" },
   share_intake:     { gate: "Share to Apollo",     kind: "manual",    route: "/(tabs)/check-it" },
-  message_guard:    { gate: "Text Gate",           kind: "automatic", route: "/text-guard" },
-  app_guard:        { gate: "App Gate",            kind: "manual",    route: "/app-check" },
+  message_guard:    { gate: "Message screening",   kind: "automatic", route: "/text-guard" },
+  app_guard:        { gate: "App checking",        kind: "manual",    route: "/app-check" },
 };
 
 const GATE_ROUTE_BY_ID: Record<GatePresentation["id"], string> = {
@@ -61,9 +61,9 @@ const GATE_ROUTE_BY_ID: Record<GatePresentation["id"], string> = {
 
 /** Which gate a Patrol event belongs to (for naming the affected gate on the threat card). */
 const GATE_FOR_CATEGORY: Record<string, string> = {
-  link: "Link Gate", website: "Site Gate", known_threat: "Site Gate", protection: "Site Gate",
-  connection: "Internet Gate", system: "Device Gate", device: "Device Gate", message: "Text Gate",
-  call: "Call Gate", app: "App Gate", account: "Account Gate", email: "Email Gate", file: "File Gate",
+  link: "Link checking", website: "Website protection", known_threat: "Website protection", protection: "Website protection",
+  connection: "Internet monitoring", system: "Device monitoring", device: "Device monitoring", message: "Message screening",
+  call: "Call screening", app: "App checking", account: "Account alerts", email: "Email monitoring", file: "File checking",
   family: "Family alert",
 };
 

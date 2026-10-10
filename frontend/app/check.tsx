@@ -261,9 +261,9 @@ export default function CheckLink() {
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-          <Text style={s.title}>Link Gate</Text>
+          <Text style={s.title}>Link checking</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <InfoButton info={{ title: "About Link Gate", body: ["Paste or share any URL and Apollo will inspect the destination page, check it against known threat databases, and have Higgins explain the result.", "Apollo checks domain reputation, SSL certificates, redirect chains and page content. The link is visited in a sandboxed environment — your device never loads the page directly."] }} testID="check-info" />
+          <InfoButton info={{ title: "About link checking", body: ["Paste or share any URL and Apollo will inspect the destination page, check it against known threat databases, and have Higgins explain the result.", "Apollo checks domain reputation, SSL certificates, redirect chains and page content. The link is visited in a sandboxed environment — your device never loads the page directly."] }} testID="check-info" />
           <Pressable testID="check-close" accessibilityRole="button" accessibilityLabel="Close" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
         </View>
       </View>

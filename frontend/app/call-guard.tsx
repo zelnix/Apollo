@@ -152,9 +152,9 @@ export default function CallGuard() {
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>Call Gate</Text>
+        <Text style={s.title}>Call screening</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <InfoButton info={{ title: "About Call Gate", body: ["Check any phone number before you answer or call back. Apollo queries a trusted reputation service and Higgins explains the result.", "On Android, Apollo can automatically screen incoming calls and reject numbers on your personal block list. On iOS, your block list is shared with the system Phone app.", "Reputation is supporting evidence only — it does not authenticate the caller or establish their location."] }} testID="callguard-info" />
+          <InfoButton info={{ title: "About call screening", body: ["Check any phone number before you answer or call back. Apollo queries a trusted reputation service and Higgins explains the result.", "On Android, Apollo can automatically screen incoming calls and reject numbers on your personal block list. On iOS, your block list is shared with the system Phone app.", "Reputation is supporting evidence only — it does not authenticate the caller or establish their location."] }} testID="callguard-info" />
           <Pressable testID="callguard-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
         </View>
       </View>

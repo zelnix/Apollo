@@ -19,7 +19,7 @@ import type { GateHealthRecord } from "@/src/protection/healthTypes";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
-const GATES_INFO = { title: "About Gates", body: ["Your protection. Apollo watches what this device allows and shows you what's working and anything that needs you.", "To check something yourself, use Check It."] };
+const GATES_INFO = { title: "How Apollo protects you", body: ["Apollo watches what this device allows and shows you what's working and anything that needs you.", "To check something yourself, use Check It."] };
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -48,7 +48,7 @@ function HealthCard({ record, highlighted, log }: { record: GateHealthRecord; hi
       setEnablingSite(true);
       try {
         const granted = await enableSiteProtection();
-        showToast(granted ? "Site Gate is on." : "Site Gate needs VPN permission. Your other protection stays active.", granted ? "resting" : "growling");
+        showToast(granted ? "Website protection is on." : "Website protection needs VPN permission. Your other protection stays active.", granted ? "resting" : "growling");
       } catch {
         showToast("Android could not open the VPN permission screen. Try again shortly.", "growling");
       } finally { setEnablingSite(false); }
@@ -64,7 +64,7 @@ function HealthCard({ record, highlighted, log }: { record: GateHealthRecord; hi
   return <Card testID={`gate-health-${record.id}`} style={[s.card, highlighted ? { borderColor: colors.gold, borderWidth: 2 } : null]}>
     {highlighted ? <Pill tone="ears_up" label="Opened from your alert" testID={`gate-health-${record.id}-focused`} /> : null}
     <View style={s.row}><Text testID={`gate-health-${record.id}-title`} style={s.name}>{record.title}</Text><Pill testID={`gate-health-${record.id}-state`} tone={gateTone(record.tone)} label={record.statusLabel} /></View>
-    <View><Text style={s.question}>What this Gate helps with</Text><Body testID={`gate-health-${record.id}-purpose`}>{record.purpose}</Body></View>
+    <View><Text style={s.question}>What this protects</Text><Body testID={`gate-health-${record.id}-purpose`}>{record.purpose}</Body></View>
     <View><Text style={s.question}>What Apollo is doing now</Text><Body testID={`gate-health-${record.id}-current`}>{record.currentHelp}</Body></View>
     {notWatching && record.capability.automatic?.limitation ? <View style={[s.attention, needsUser ? null : { backgroundColor: colors.navyTint }]} testID={`gate-health-${record.id}-attention`}><Text style={s.question}>{explainHeading}</Text><Body>{record.capability.automatic.limitation}</Body></View> : null}
     {notWatching && record.primaryAction ? <Button testID={`gate-health-${record.id}-action`} variant={needsUser ? "primary" : "secondary"} label={isRestoreSite && enablingSite ? "Turning on…" : record.primaryAction.label} disabled={isRestoreSite && enablingSite} onPress={() => void act(record.primaryAction!)} /> : null}
@@ -96,13 +96,13 @@ export default function GuardScreen() {
   const acctStatus = deriveGateState({ monitoredCount: acctEmails, lastScan: acctScan, lastCheckedAt: acctCheckedAt, checking: false });
   const active = health.gates.filter((gate) => gate.capability.automatic?.state === "running" && !gate.capability.automatic?.manualOnly).length;
   const attentionGates = health.gates.filter((gate) => gate.tone === "action");
-  const attentionNames = attentionGates.map((g) => g.title.replace(/ Gate$/, "")).join(" and ");
+  const attentionNames = attentionGates.map((g) => g.title).join(" and ");
   const reducedCoverage = attentionGates.length > 0 && active > 0;
-  const summaryTitle = reducedCoverage ? "Protection active — reduced coverage" : attentionGates.length ? `${attentionNames} ${attentionGates.length === 1 ? "needs" : "need"} your attention` : `${active} ${active === 1 ? "Gate is" : "Gates are"} helping automatically`;
+  const summaryTitle = reducedCoverage ? "Protection active — reduced coverage" : attentionGates.length ? `${attentionNames} ${attentionGates.length === 1 ? "needs" : "need"} your attention` : `${active} ${active === 1 ? "protection is" : "protections are"} helping automatically`;
   return <View style={s.root} testID="gates-screen">
     {isGatesRoute
-      ? <ChildScreenHeader title="Gates" testID="gates-header" info={GATES_INFO} />
-      : <View style={{ paddingTop: insets.top + spacing.md }}><RootScreenHeader title="Gates" testID="gates-header" info={GATES_INFO} /></View>}
+      ? <ChildScreenHeader title="Protection" testID="gates-header" info={GATES_INFO} />
+      : <View style={{ paddingTop: insets.top + spacing.md }}><RootScreenHeader title="Protection" testID="gates-header" info={GATES_INFO} /></View>}
     <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 110 }]}>
       <Text style={s.title} testID="gates-title">Your protection</Text>
       <Card testID="gates-summary-card">
@@ -111,7 +111,7 @@ export default function GuardScreen() {
             <Body testID="gates-summary-time">{health.checking ? "Checking current device status…" : health.checkedAt ? "Status checked from current device signals." : "Status will appear after the first device check."}</Body></View>
         </View>
       </Card>
-      <View testID="gates-capability-section" style={{ gap: spacing.md }}><SectionTitle>Your Gates</SectionTitle>{health.gates.map((record) => <HealthCard key={record.id} record={record} highlighted={record.id === gateParam} log={healthLog[record.id]} />)}</View>
+      <View testID="gates-capability-section" style={{ gap: spacing.md }}><SectionTitle>Your protections</SectionTitle>{health.gates.map((record) => <HealthCard key={record.id} record={record} highlighted={record.id === gateParam} log={healthLog[record.id]} />)}</View>
       <View testID="gates-account-section" style={{ gap: spacing.md }}>
         <SectionTitle>Account exposure</SectionTitle>
         <Card testID="gates-account-card" style={{ gap: spacing.sm, borderColor: toneColor(colors, acctStatus.tone) }}>

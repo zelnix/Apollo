@@ -136,7 +136,7 @@ export function buildCallRiskCheckResult(args: { result: CallRiskResult }): Chec
 
   return {
     id: `callrisk-${Date.now().toString(36)}`,
-    gate: "Call Gate",
+    gate: "Call screening",
     checkType: "Caller reputation check",
     subject: displayNumber,
     headline: r.higgins.headline,

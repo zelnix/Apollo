@@ -187,9 +187,9 @@ export default function CheckAccount() {
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>Account Gate</Text>
+        <Text style={s.title}>Account alerts</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <InfoButton info={{ title: "About Account Gate", body: ["Received an unexpected security alert from a service? Paste or describe the alert and Apollo will investigate whether it's genuine or a phishing attempt.", "Apollo checks the claimed sender, alert language, embedded links and known phishing patterns. This does not access your accounts — it analyses the alert itself."] }} testID="account-info" />
+          <InfoButton info={{ title: "About account alerts", body: ["Received an unexpected security alert from a service? Paste or describe the alert and Apollo will investigate whether it's genuine or a phishing attempt.", "Apollo checks the claimed sender, alert language, embedded links and known phishing patterns. This does not access your accounts — it analyses the alert itself."] }} testID="account-info" />
           <Pressable testID="account-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
         </View>
       </View>

@@ -144,7 +144,7 @@ export function buildNetworkCheckResult(args: {
 
   return {
     id: submissionId,
-    gate: "Internet Gate",
+    gate: "Internet monitoring",
     checkType: "Network check",
     subject,
     headline: a.title,

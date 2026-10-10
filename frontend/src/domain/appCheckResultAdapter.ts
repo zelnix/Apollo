@@ -116,7 +116,7 @@ export function buildAppCheckResult(args: {
 
   return {
     id: submissionId,
-    gate: "App Gate",
+    gate: "App checking",
     checkType: "App check",
     subject,
     headline: a.title,
