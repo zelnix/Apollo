@@ -260,7 +260,10 @@ Each control must be verified through applicable methods. This table defines the
 | Test | File | Covers | Status |
 |---|---|---|---|
 | Data classification registry | `backend/tests/test_data_classification.py` | Categories, fields, dual classification, credentials, authorisation matrix, pathways, value patterns, LLM boundary integration | ✅ Passing (71 tests) |
-| Image sanitisation receipts | `frontend/tests/imageSanitization.test.ts` | Receipt creation, consumption, one-time use, expiry | ✅ Passing |
+| Package 4 acceptance verification | `backend/tests/test_package4_acceptance.py` | Adversarial receipts (forged/missing/reused/expired/mismatched), embedded documents (consent/classification/limitations), evidence preservation (domains/URLs/IPs/threats survive enforcement), Gemini payloads (credentials stripped all purposes, binary blocked, no preflight), native build checklist | ✅ Passing (43 tests) |
+| Image consent enforcement | `backend/tests/test_image_consent_enforcement.py` | Preflight removed, entry points enforced, MIME types, OCR safety, consent recording, embedded images, receipt metadata | ✅ Passing (28 tests) |
+| Gateway enforcement | `backend/tests/test_gateway_enforcement.py` | Architectural scan, purpose mandatory, binary auth, text enforcement, scam gateway, new purposes | ✅ Passing (23 tests) |
+| Image sanitisation receipts | `frontend/tests/imageSanitization.test.ts` | Receipt creation, consumption, one-time use, expiry, byte-binding, Package 4 decisions | ✅ Passing (21 tests) |
 | Privacy disclosure content | `frontend/tests/privacyDisclosure.test.ts` | AI processing disclosure sections, privacy flows | ✅ Passing |
 | Architectural regression | `frontend/tests/architecturalRegression.test.ts` | Event merge, evidence preservation, state machine, privacy restrictions | ✅ Passing |
 | Higgins behavioural | `frontend/tests/higginsBehavioural.test.ts` | Directive language, evidence-backed instructions, no passive language | ✅ Passing |

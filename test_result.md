@@ -2413,4 +2413,34 @@ agent_communication:
   - agent: "main"
     message: "Package 4 implemented. (1) G-01 CLOSED: _image_secret_preflight removed. (2) Receipt bound to actual bytes. (3) ocr_unavailable_approved removed. (4) Consent recording with honest trust boundary. (5) Embedded images handled with limitations. (6) MIME enforcement via sniff(). (7) 28 new backend tests + 182 total passing. Frontend tests all passing. Please verify."
   - agent: "testing"
+    message: "Package 4 VERIFICATION COMPLETE — All tests pass."
+
+## 2026-02 Package 4 Acceptance Verification
+
+backend:
+  - task: "Package 4 — Acceptance verification: adversarial receipts, Gemini payload tests, credential fix, evidence preservation"
+    implemented: true
+    working: true
+    file: "backend/tests/test_package4_acceptance.py, backend/services/higgins/llm_boundary.py, backend/core/data_classification.py"
+    priority: "P0"
+    needs_retesting: false
+    status_history:
+      - agent: "main"
+        comment: "Package 4 acceptance verification complete. (1) 43 new acceptance tests in test_package4_acceptance.py covering: adversarial receipt integrity (forged, missing, reused, expired, mismatched, trust boundary honest), embedded document images (classification, consent, limitations, parent link), evidence preservation (domains, URLs, IPs, threat descriptions survive enforcement, research minimises PII but preserves indicators), Gemini-bound payloads (credentials stripped for ALL purposes including api_key=, no unscreened images, binary blocked for unauthorised purposes, all generate calls have purpose). (2) BUGFIX: strip_credentials() now applies _CREDENTIAL_PATTERNS in addition to base redaction — fixes api_key=, secret_key=, access_token= etc. not being stripped. (3) Credential regex updated: [- ] → [- _] to match underscored variants. (4) Git commit SHA: e0e709d. (5) Total: 225 backend tests passing + 90 frontend tests passing = 315 total. (6) Remaining limitation: Native Android build testing required for actual on-device privacy gate verification — this cannot be performed in the development environment."
+      - agent: "testing"
+        comment: "PACKAGE 4 ACCEPTANCE VERIFICATION COMPLETE — ALL 5 ACCEPTANCE AREAS PASSED. (1) Receipt Integrity (Adversarial Tests): 10/10 PASSED ✅ — forged, missing, reused, expired, mismatched receipts all blocked; trust boundary documented. (2) Embedded Document Images: 7/7 PASSED ✅ — consent record, screening limitation noted, parent link, unsupported types withheld, classifications correct. (3) Evidence Preservation After Redaction: 11/11 PASSED ✅ — domains, URLs, IPs, threat descriptions survive enforce_boundary; research minimises PII but preserves indicators. (4) Gemini-bound Payload Verification: 10/10 PASSED ✅ — credentials stripped for ALL purposes (including api_key=), binary blocked for unauthorised purposes, no preflight function, all generate calls have purpose, text parts get full enforcement. (5) Full Backend Regression: 225/225 PASSED ✅ (test_package4_acceptance.py + test_image_consent_enforcement.py + test_gateway_enforcement.py + test_data_classification.py + test_llm_boundary.py + test_image_sanitization.py + test_scam_analysis.py). (6) Frontend Regression: 90/90 PASSED ✅ — imageSanitization.test.ts 21/21, architecturalRegression.test.ts 36/36, higginsBehavioural.test.ts 23/23, privacyDisclosure.test.ts 10/10. (7) Git Commit Verification: SHA e0e709d exists with correct message ✅. (8) Backend Health: curl http://localhost:8001/api/health returns 200 OK with correct schema (schemaVersion:1, status:ok, service:apollo-v1) ✅. TOTAL: 315 tests passing (225 backend + 90 frontend). NO FAILURES. All Package 4 acceptance criteria fully met."
+
+test_plan:
+  current_focus:
+    - "Package 4 Acceptance Verification - COMPLETE"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Package 4 acceptance verification. 43 new tests + credential stripping fix. Git SHA: e0e709d. 225 backend + 90 frontend = 315 tests passing. Please verify all 5 acceptance areas."
+  - agent: "testing"
     message: "Package 4 VERIFICATION COMPLETE — ALL ACCEPTANCE CRITERIA MET. Backend tests: 182/182 PASSED (28 Package 4 + 154 regression). Frontend tests: 90/90 PASSED (21 imageSanitization + 36 architecturalRegression + 23 higginsBehavioural + 10 privacyDisclosure). Critical verifications: (1) G-01 closure: _image_secret_preflight does NOT exist in production code ✅ (2) ocr_unavailable_approved removed from frontend ✅ (3) handleOcrUnavailableApprove removed, only handleOcrUnavailableWithhold exists ✅ (4) Consent recording with all required fields and honest trust boundary (client_assertion/document_derived) ✅ (5) Receipt byte-binding via FileSystem.readAsStringAsync + SHA-256 ✅ (6) Backend health 200 OK ✅. NO MAJOR ISSUES. Ready for main agent to summarise and finish."
+  - agent: "testing"
+    message: "PACKAGE 4 ACCEPTANCE VERIFICATION COMPLETE (2026-10-10). Executed all 5 acceptance areas as specified in review request: (1) Receipt integrity adversarial tests: 10/10 PASSED. (2) Embedded document images: 7/7 PASSED. (3) Evidence preservation after redaction: 11/11 PASSED. (4) Gemini-bound payload verification: 10/10 PASSED. (5) Full backend regression: 225/225 PASSED. (6) Frontend regression: 90/90 PASSED. (7) Git commit e0e709d verified. (8) Backend health 200 OK. TOTAL: 315 tests passing, 0 failures. All acceptance criteria met."
