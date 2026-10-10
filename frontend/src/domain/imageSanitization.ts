@@ -21,7 +21,6 @@ import * as FileSystem from "expo-file-system";
 export type SanitizationDecision =
   | "text_only"       // Image never transmitted; extracted text used instead
   | "sanitised_image" // Pixel-level redacted image transmitted
-  | "manual_crop"     // User-cropped image transmitted
   | "withheld"        // Nothing transmitted
   | "no_sensitive";   // No sensitive content detected; metadata-stripped image approved
 

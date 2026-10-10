@@ -350,6 +350,25 @@ async def ingest_file(owner: str, case: dict, meta_in: dict, data: bytes, *, evi
         "trustBoundary": "client_assertion",
     }
 
+    # D2: Reject when declared digest is present but does not match received bytes.
+    # This prevents a receipt issued for one image from authorising different content.
+    # If no digest was declared (legacy or non-image), proceed without enforcement.
+    if kind == "image" and declared_digest and not digest_match:
+        reason = "image rejected: received bytes do not match the approved digest"
+        description = ("The SHA-256 digest of the received image bytes does not match "
+                       "the digest declared in the sanitization receipt. The image may "
+                       "have been altered after approval. Resubmit through the privacy gate.")
+        item = item.model_copy(update={"availability": "purged",
+                                       "coverage": Coverage(status="unavailable", unit="bytes", total=len(data), examined=0, reason=reason),
+                                       "transformations": [*transformations, Transformation(kind="secret_redaction", description=description)]})
+        await repo.insert_evidence(owner, item, {"filename": meta_in["filename"], "declaredMediaType": meta_in["mediaType"], "detectedMediaType": detected,
+                                                 "contentDigest": content_digest, "digestBinding": digest_binding},
+                                   publication_root_id=item.id, ingestion_attempt_id=attempt_id, publication_owner=publication_owner)
+        if not await repo.publish_evidence_root(owner, case["case_id"], item.id, attempt_id, publication_owner=publication_owner):
+            await repo.discard_incomplete_ingestion(owner, case["case_id"], item.id, attempt_id=attempt_id, publication_owner=publication_owner)
+            raise http(409, "conflict", "Evidence publication was superseded before it committed. Retry the upload.")
+        return item
+
     # Record consent metadata for approved images
     consent_record = None
     if kind == "image" and admission_meta == "approved":

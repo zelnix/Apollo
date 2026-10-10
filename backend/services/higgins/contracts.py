@@ -388,8 +388,12 @@ class UploadMetadata(Wire):
     # from the on-device privacy gate. Backend rejects image uploads without it.
     sanitization_status: Optional[str] = None
     sanitization_decision: Optional[str] = None
+    sanitization_digest: Optional[str] = None
     sensitive_regions_found: Optional[int] = None
     redacted_regions: Optional[int] = None
+    sanitization_purpose: Optional[str] = None
+    sanitization_transformations: list[str] = Field(default_factory=list)
+    sanitization_limitations: list[str] = Field(default_factory=list)
 
 
 class CreateUpload(UploadMetadata):

@@ -284,9 +284,6 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
       if (decision === "sanitised_image") {
         transformations.push("Pixel-level redaction of sensitive regions");
         transformations.push(`${screening.sensitiveRegions.length} region(s) blacked out`);
-      } else if (decision === "manual_crop") {
-        transformations.push("User-selected manual crop");
-        limitations.push("Cropped content outside the selection is not available for analysis");
       } else if (decision === "text_only") {
         transformations.push("Image withheld; extracted text used instead");
         limitations.push("Visual layout and non-text elements are not available for analysis");
@@ -390,29 +387,6 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
       setBusy(false);
     }
   }, [screening, hasSensitive, emitResult]);
-
-  const handleManualCrop = useCallback(async () => {
-    setBusy(true);
-    setBusyLabel("Opening crop editor\u2026");
-    try {
-      if (!screening.strippedImageUri) {
-        throw new Error("No image available for cropping.");
-      }
-      // Use expo-image-manipulator's interactive crop
-      // On native, this opens a crop UI; on web it does a basic crop
-      const result = await ImageManipulator.manipulateAsync(
-        screening.strippedImageUri,
-        [], // User has already seen the preview; they can manually specify crop
-        { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG },
-      );
-      await emitResult("manual_crop", result.uri, screening.extractedText);
-    } catch {
-      setBusy(false);
-      await emitResult("withheld", null, screening.extractedText);
-    } finally {
-      setBusy(false);
-    }
-  }, [screening, emitResult]);
 
   const handleWithhold = useCallback(async () => {
     await emitResult("withheld", null, null);
@@ -583,14 +557,6 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
                     disabled={busy}
                     testID="gate-sanitised"
                     accessibilityHint="Black out sensitive areas and send the redacted image"
-                  />
-                  <Button
-                    label="Crop manually"
-                    variant="secondary"
-                    onPress={handleManualCrop}
-                    disabled={busy}
-                    testID="gate-manual-crop"
-                    accessibilityHint="Open crop editor to remove sensitive areas yourself"
                   />
                   <Button
                     label="Withhold image"

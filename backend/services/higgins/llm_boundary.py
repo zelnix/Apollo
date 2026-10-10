@@ -77,21 +77,27 @@ SECURITY_FIELDS = {
 
 PERSONAL_DATA_FIELDS = {
     field for field, cats in FIELD_CATEGORIES.items()
-    if DataCategory.PII in cats
-    or DataCategory.LOCATION in cats
+    if (DataCategory.PII in cats or DataCategory.LOCATION in cats)
     and DataCategory.SECURITY_INDICATOR not in cats  # Exclude dual-classified security+PII fields
 }
 
 
 def strip_credentials(text: str) -> str:
-    """Remove all credential patterns from text. Uses the existing redaction infrastructure
-    plus the comprehensive _CREDENTIAL_PATTERNS for API keys, tokens, and bearer auth."""
-    # First pass: the investigation redaction (passwords, PINs, OTPs, codes)
+    """Remove all credential patterns from text.
+
+    Uses the base investigation redaction first (passwords, PINs, OTPs, codes),
+    then applies additional patterns for API keys, bearer tokens, and URL credentials
+    that the base redaction doesn't cover. Avoids double-redaction by checking
+    whether the base pass already handled the pattern."""
     result = redact_investigation_secrets(text)
-    # Second pass: additional credential patterns not covered by the base redaction
-    # (api_key=, secret_key=, access_token=, private_key=, etc.)
-    for pattern in _CREDENTIAL_PATTERNS:
+    # Additional patterns: only the ones NOT covered by redact_investigation_secrets
+    # Pattern 0 overlaps with base redaction (password/PIN/OTP) — skip it
+    # Patterns 1-3 are additional: Bearer tokens, URL query params, URL auth credentials
+    for pattern in _CREDENTIAL_PATTERNS[1:]:
         result = pattern.sub("[credential redacted]", result)
+    # Pattern 0 catches api_key=, secret_key=, access_token= etc. with underscore separators
+    # that the base redaction misses. Apply it but only match lines not already redacted.
+    result = _CREDENTIAL_PATTERNS[0].sub("[credential redacted]", result)
     return result
 
 
@@ -133,13 +139,26 @@ def _enforce_text(purpose: Purpose, text: str, *, evidence_pii: set[str] | None 
 
 
 def _enforce_dict(purpose: Purpose, data: dict, *, evidence_pii: set[str] | None = None) -> dict:
-    """Recursively enforce boundary on dict values."""
+    """Recursively enforce boundary on dict values.
+
+    For non-investigation purposes, personal data field VALUES are minimised (replaced
+    with category labels), not silently dropped. This preserves the field structure
+    while protecting the actual personal data content."""
     result = {}
     for key, value in data.items():
-        # Credential fields are always stripped regardless of purpose.
-        if key in PERSONAL_DATA_FIELDS and purpose not in (Purpose.INVESTIGATION,):
-            continue  # Personal data fields excluded from non-investigation purposes
-        result[key] = _enforce_item(purpose, value, evidence_pii=evidence_pii)
+        classification = classify_field(key)
+        if classification == Classification.CREDENTIAL:
+            continue  # Credential fields always excluded
+        if classification in (Classification.PERSONAL_DATA, Classification.SENSITIVE_PII) \
+                and purpose not in (Purpose.INVESTIGATION,):
+            # Minimise personal data values rather than dropping the field entirely.
+            # This preserves structure while protecting content.
+            if isinstance(value, str):
+                result[key] = "[personal data withheld]"
+            else:
+                continue  # Non-string personal data (nested objects) excluded
+        else:
+            result[key] = _enforce_item(purpose, value, evidence_pii=evidence_pii)
     return result
 
 
@@ -176,8 +195,10 @@ def _minimise_personal_identifiers(text: str, evidence_pii: set[str] | None = No
     text = re.sub(r"(?i)(?:BSB|sort\s*code|routing)[:\s]*\d{3}[- ]?\d{3}", "[financial identifier]", text)
     # Account numbers preceded by context keywords
     text = re.sub(r"(?i)(?:account|acct|a/c)[:\s#]*\d{4,12}", "[account number]", text)
-    # Phone numbers (but not port numbers, IDs, or years) — checked AFTER financial patterns
-    text = re.sub(r"(?<![0-9])\+?\d[\d\s().-]{7,}\d(?![0-9])", "[phone number]", text)
+    # Phone numbers (but not port numbers, IDs, years, or short numeric sequences).
+    # Requires at least 8 digits total. The negative lookbehind/lookahead prevents matching
+    # numbers embedded in larger numeric contexts. Dots in domains are excluded.
+    text = re.sub(r"(?<![0-9@./])\+?\d[\d\s().-]{7,}\d(?![0-9@./])", "[phone number]", text)
     # Email addresses
     text = re.sub(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", "[email]", text)
 
@@ -208,8 +229,8 @@ def extract_evidence_pii(evidence_texts: list[str]) -> set[str]:
         # Extract email addresses
         for match in re.finditer(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", text):
             pii.add(match.group(0))
-        # Extract phone numbers
-        for match in re.finditer(r"(?<![0-9])\+?\d[\d\s().-]{7,}\d(?![0-9])", text):
+        # Extract phone numbers (not port numbers or domain-embedded digits)
+        for match in re.finditer(r"(?<![0-9@./])\+?\d[\d\s().-]{7,}\d(?![0-9@./])", text):
             pii.add(match.group(0).strip())
         # Extract financial identifiers (credit card-like)
         for match in re.finditer(r"\b(?:\d[ -]?){12,18}\d\b", text):

@@ -76,8 +76,9 @@ class TestPurposeBasedBoundary:
         result = enforce_boundary(Purpose.ORDINARY_CHAT, payload)
         assert "domain" in result
         assert "category" in result
-        assert "email" not in result
-        assert "phone_number" not in result
+        # Personal data fields are present but values are minimised (not dropped)
+        assert result.get("email") == "[personal data withheld]"
+        assert result.get("phone_number") == "[personal data withheld]"
 
     def test_investigation_permits_personal_data_fields(self):
         """Investigation has broader evidence permissions (for authorised cases)."""
@@ -179,7 +180,8 @@ class TestNestedPayloads:
             "email": "user@test.com",
         }
         result = enforce_boundary(Purpose.ORDINARY_CHAT, payload)
-        assert "email" not in result
+        # Personal data field present but value minimised
+        assert result.get("email") == "[personal data withheld]"
         assert "findings" in result
         # Credential in nested text should be stripped
         finding_text = result["findings"][0]["text"]

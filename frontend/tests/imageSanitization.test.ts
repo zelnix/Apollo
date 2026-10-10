@@ -135,7 +135,7 @@ describe("Pipeline enforcement — receipt validation logic", () => {
 
   it("accepts all safe decision types", () => {
     const safeCases = [
-      "text_only", "sanitised_image", "manual_crop", "no_sensitive",
+      "text_only", "sanitised_image", "no_sensitive",
     ];
     for (const decision of safeCases) {
       const receipt = createTestReceipt("file:///img.jpg", decision, 1, 1);
