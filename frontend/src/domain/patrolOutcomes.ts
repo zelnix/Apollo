@@ -20,6 +20,9 @@ export function isConsumerPatrolEvent(event: PatrolEvent): boolean {
   if (event.category === "system") return false;
   if (event.category === "protection" && (COMMAND_TEXT.test(event.headline) || COMMAND_TEXT.test(event.what_happened))) return false;
   if (COMMAND_TEXT.test(event.headline) && !event.verified_block) return false;
+  // Retrofit: exclude records classified as protection issues from the Threats feed
+  const rc = event.patrol_record?.recordClass;
+  if (rc === "protection_issue" || rc === "reduced_protection") return false;
   return !!event.headline.trim() && !!event.what_happened.trim();
 }
 const category = (event: PatrolEvent): PatrolCategory => event.investigation_case_id ? "investigation" : event.category === "website" || event.category === "known_threat" || event.category === "protection" ? "site" : event.category === "message" ? "text" : event.category === "connection" ? "network" : event.category === "system" ? "device" : event.category;

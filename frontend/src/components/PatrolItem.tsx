@@ -5,15 +5,25 @@ import { Pressable, Text, View } from "react-native";
 
 import type { PatrolCategory, PatrolOutcome } from "@/src/domain/patrolOutcomes";
 import { matchesPatrolFilter } from "@/src/domain/patrolOutcomes";
+import type { RecordClass } from "@/src/domain/types";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
-import { Pill, toneColor } from "./ui";
+import { Pill, toneColor, type Tone } from "./ui";
 
 // Short gate/app label so each entry names where the finding came from.
 const GATE_LABEL: Record<PatrolCategory, string> = {
   site: "Site", link: "Link", text: "Text", call: "Call", file: "File", app: "App",
   network: "Internet", account: "Account", email: "Email", device: "Device",
   investigation: "Higgins", family: "Family",
+};
+
+// Record class → user-friendly badge label + tone
+const CLASS_BADGE: Partial<Record<RecordClass, { label: string; tone: Tone }>> = {
+  threat_stopped: { label: "Threat stopped", tone: "biting" },
+  protection_issue: { label: "Protection", tone: "neutral" },
+  reduced_protection: { label: "Reduced", tone: "ears_up" },
+  diagnostic_result: { label: "Diagnostic", tone: "neutral" },
+  unverifiable_legacy: { label: "Legacy", tone: "neutral" },
 };
 
 const useStyles = makeStyles((c) => ({
@@ -46,6 +56,9 @@ export function PatrolItem({ outcome, isLast }: { outcome: PatrolOutcome; isLast
   const advice = (outcome.event.what_to_do ?? "").trim();
   const open = () => router.push({ pathname: "/patrol/[id]", params: { id: outcome.event.event_id } });
 
+  const rc = outcome.event.patrol_record?.recordClass;
+  const classBadge = rc ? CLASS_BADGE[rc] : undefined;
+
   return (
     <View style={s.row}>
       <View style={s.rail}>
@@ -65,6 +78,7 @@ export function PatrolItem({ outcome, isLast }: { outcome: PatrolOutcome; isLast
             {gate ? <Pill tone="neutral" label={gate} /> : null}
             <Pill tone={outcome.state} label={outcome.result} testID={`patrol-outcome-${outcome.event.event_id}-status`} />
             {needsYou ? <Pill tone="barking" label="Needs you" testID={`patrol-outcome-${outcome.event.event_id}-needsyou`} /> : null}
+            {classBadge ? <Pill tone={classBadge.tone} label={classBadge.label} /> : null}
           </View>
           <Text style={s.time}>{time}</Text>
         </View>

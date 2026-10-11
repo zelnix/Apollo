@@ -11,6 +11,7 @@ from typing import Any
 from core.config import URL_HMAC_SECRET
 from core.db import db, now_utc
 from core.models import PatrolEventIn
+from services.record_classification import classify_record, generate_higgins_briefing
 
 DISPLAY = {"resting": "resolved", "ears_up": "monitoring", "growling": "warning", "barking": "danger", "biting": "blocked", "sniffing": "monitoring"}
 
@@ -65,6 +66,10 @@ def _wire(row: dict[str, Any]) -> dict[str, Any]:
         "duplicateOf": row.get("duplicate_of"), "duplicateReason": row.get("duplicate_reason"),
         "occurredAt": row["occurred_at"], "updatedAt": row["created_at"], "event": row["event"],
         "evidence_provenance": evidence_provenance,
+        # Retrofit fields — classification, Higgins briefing, reassessment metadata
+        "recordClass": row.get("record_class"),
+        "higginsBriefing": row.get("higgins_briefing"),
+        "reassessment": row.get("reassessment"),
     }
 
 
@@ -95,6 +100,11 @@ async def append(event: PatrolEventIn, verified: bool) -> dict[str, Any]:
         "duplicate_reason": "same_issue_and_payload_within_24h" if duplicate and duplicate.get("source_event_id") != event.event_id else None,
         "occurred_at": event.occurred_at, "created_at": now_utc(), "event": {**event.model_dump(mode="json"), "verified_block": verified},
     }
+    # Classify new records at write time
+    record_class = classify_record(row)
+    row["record_class"] = record_class
+    row["higgins_briefing"] = generate_higgins_briefing(row, record_class)
+    row["higgins_briefing"]["generated_at"] = now_utc().isoformat()
     try:
         await db.patrol_records.insert_one(dict(row))
     except Exception:

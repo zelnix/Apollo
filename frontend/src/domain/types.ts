@@ -91,6 +91,28 @@ export type EventCategory = "link" | "website" | "connection" | "known_threat" |
 export type EventStatus = "active" | "trusted" | "blocked" | "resolved";
 export type PatrolDisplayState = "safe" | "monitoring" | "warning" | "danger" | "blocked" | "resolved" | "unknown";
 
+/** Record classification — separates threats from protection health */
+export type RecordClass = "security_threat" | "threat_stopped" | "protection_issue" | "reduced_protection" | "diagnostic_result" | "informational" | "resolved" | "unverifiable_legacy";
+
+export interface HigginsBriefing {
+  investigated: string;
+  established: string;
+  evidence_points: string[];
+  meaning: string;
+  action: string | null;
+  record_class: RecordClass;
+  generated_at: string | null;
+  version: string;
+}
+
+export interface Reassessment {
+  original_class: RecordClass | null;
+  new_class: RecordClass;
+  reassessed_at: string;
+  reason: string;
+  version: string;
+}
+
 export interface PatrolRecord {
   recordId: string; logicalIssueKey: string; revision: number; supersedes: string | null; sourceEventId: string; sourceType: string;
   category: string; headline: string; summary: string; rawState: string; effectiveState: PatrolDisplayState; effectiveReason: string;
@@ -99,6 +121,12 @@ export interface PatrolRecord {
   freshness: { observedAt: string; projectedAt: string; status: string }; outageContext: Record<string, unknown> | null;
   resolution: { status: string; resolvedAt: string | null } | null; duplicateOf: string | null; duplicateReason: string | null;
   occurredAt: string; updatedAt: string; event: PatrolEvent;
+  /** Retrofit: approved record classification */
+  recordClass?: RecordClass | null;
+  /** Retrofit: Higgins briefing for this record */
+  higginsBriefing?: HigginsBriefing | null;
+  /** Retrofit: reassessment metadata — tracks migration provenance */
+  reassessment?: Reassessment | null;
 }
 
 export interface PatrolEvent {

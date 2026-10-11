@@ -323,3 +323,23 @@ async def admin_threat_indicator_stats():
         "approaching_expiry_6h": approaching_expiry,
         "recent_revalidations": recent_logs,
     }
+
+
+
+# --------------------------------------------------------------------------- Retrofit migration
+@router.post("/retrofit/run")
+async def run_retrofit(request: Request, dry_run: bool = Query(default=False), x_admin_actor: Optional[str] = Header(default=None)):
+    """Run the historical record retrofit migration. Idempotent — safe to rerun."""
+    from scripts.retrofit_historical_records import run_migration
+    await audit(request, "retrofit_run", "patrol_records", {"dry_run": dry_run}, x_admin_actor)
+    report = await run_migration(dry_run=dry_run)
+    return report
+
+
+@router.get("/retrofit/status")
+async def retrofit_status():
+    """Get the latest migration report."""
+    report = await db.migration_reports.find_one({"migration_id": "retrofit_v1"}, {"_id": 0})
+    if not report:
+        return {"status": "not_run", "message": "No retrofit migration has been executed yet."}
+    return {"status": "completed", "report": report}
