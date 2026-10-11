@@ -5,12 +5,12 @@ import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Gate Guard M2 Website Gate: a user's local, on-device decision about a specific host,
- * independent of the signed rule bundle.
+ * independent of the HTTPS-authenticated rule bundle.
  *
  * ALLOW is deliberately the ONLY override this phase supports: it can only PREVENT a sinkhole
  * arming that the rule bundle would otherwise trigger for that host (see [SinkholeBindingStore.arm]) --
  * it can never, by itself, arm a binding or produce a THREAT_BLOCKED. There is intentionally no
- * BLOCK override: only the signed, verified rule authority chain
+ * BLOCK override: only the validated rule authority chain
  * (`GuardDogSDKEngine.authorizeWebsiteGateTarget`) may ever arm a binding that can lead to
  * enforcement evidence. This keeps local overrides safe to expose to the user as fully reversible
  * and auditable, with zero risk of fabricating evidence or bypassing the rule authority chain.

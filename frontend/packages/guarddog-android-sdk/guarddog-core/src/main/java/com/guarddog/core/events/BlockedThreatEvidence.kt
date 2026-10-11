@@ -4,7 +4,7 @@ package com.guarddog.core.events
  * Evidence that a real packet was observed on the TUN interface and dropped.
  * Produced exclusively by the VPN enforcement layer (PacketDropReporter).
  *
- * Audit chain: signed rule -> /32 route -> packet observation -> drop -> evidence -> SecurityEvent
+ * Audit chain: validated rule -> /32 route -> packet observation -> drop -> evidence -> SecurityEvent
  */
 data class BlockedThreatEvidence(
     val enforcementEvidenceId: String,

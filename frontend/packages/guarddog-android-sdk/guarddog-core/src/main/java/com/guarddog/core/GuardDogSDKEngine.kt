@@ -52,7 +52,7 @@ sealed class WebsiteGateAuthorization {
  * arrives through [ProtectionRuntimeStateProvider]; enforcement evidence arrives
  * through [ProtectionEnforcementReporter]. The engine is the ONLY producer of
  * THREAT_BLOCKED, and it only does so from [BlockedThreatEvidence] whose destination
- * equals the currently authorized target (signed rule + verified resolution).
+ * equals the currently authorized target (validated rule + verified resolution).
  */
 class GuardDogSDKEngine(
     private val validator: RuleBundleValidator,

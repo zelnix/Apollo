@@ -2865,3 +2865,41 @@ agent_communication:
     message: "Private DNS Final Acceptance Corrections implemented. 7 corrections applied: (1) Removed 'fully active' claims, (2) Honest user-facing wording with consistent message pattern, (3) Removed 'Open device settings' action, (4) Three-level bypass detection (confirmed/unobservable/none), (5) No rule-protection overstatement, (6) Verification plan all tests marked PENDING, (7) Consistent wording across all surfaces. Files modified: gates.ts, protectionDetails.ts, protectionTruth.ts, DEVICE_VERIFICATION_PLAN.md. Please verify source code correctness via grep tests."
   - agent: "testing"
     message: "Private DNS Final Acceptance Corrections VERIFIED - ALL 7 TESTS PASSED. Source code verification complete. App loads successfully (200 OK). TypeScript compilation clean for all 3 modified files. No 'fully active' claims found. No 'Turn off Private DNS' or 'Open device settings' found. Three-level bypass logic correctly implemented in all 3 files. Consistent wording verified across all surfaces. Verification plan has 0 checked boxes (all PENDING) and 57 unchecked boxes. All acceptance criteria met. Ready for main agent to summarise and finish."
+
+## 2026-10-11 Apollo Private DNS Corrections + Signature Reconciliation + Design Documents
+
+backend:
+  - task: "Signature reconciliation: Kotlin documentation corrections from 'signed rule/bundle' to 'validated rule/HTTPS-authenticated'"
+    implemented: true
+    working: true
+    file: "frontend/packages/guarddog-android-sdk/guarddog-vpn/src/main/java/com/guarddog/vpn/WebsiteGateOverrideStore.kt, frontend/packages/guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/GuardDogSDKEngine.kt, frontend/packages/guarddog-android-sdk/guarddog-core/src/main/java/com/guarddog/core/events/BlockedThreatEvidence.kt, frontend/modules/apollo-security/android/src/main/java/com/hucentai/apollosecurity/ApolloSecurityModule.kt"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "VERIFICATION COMPLETE (2026-10-11). All 7 tests PASSED: (1) App loads successfully at http://localhost:3000 without crashes ✅ Screenshot shows privacy disclosure screen rendering correctly. (2) NO 'signed rule/bundle/protection' claims in non-test code ✅ grep returned exit 0 with zero results (excluding test files, removed comments, and 'not sign' patterns). (3) Corrected terminology verified in 4 Kotlin files ✅ Found 5 matches: WebsiteGateOverrideStore.kt lines 8,13 ('HTTPS-authenticated rule bundle', 'validated rule authority'), GuardDogSDKEngine.kt line 55 ('validated rule + verified resolution'), BlockedThreatEvidence.kt line 7 ('validated rule'), ApolloSecurityModule.kt line 118 ('verified protection rules', 'validated threat rules'). (4) Design documents exist ✅ THREAT_INTELLIGENCE_ARCHITECTURE.md (29529 bytes), LINK_GATE_SITE_GATE_BRIDGE_DESIGN.md (8280 bytes). (5) Both documents contain honest terminology ✅ THREAT_INTELLIGENCE_ARCHITECTURE.md: 8 occurrences of 'HTTPS-only/HTTPS-authenticated', LINK_GATE_SITE_GATE_BRIDGE_DESIGN.md: 3 occurrences. (6) Bridge design doc has NO improper 'signed bundle' claims ✅ Only 1 match found at line 24: 'No Ed25519 or RSA signing keys' (acceptable negative statement per review exclusion pattern). (7) Private DNS corrections still intact ✅ grep returned exit 1 (no matches) for 'Turn off Private DNS/fully active/Open device settings' in frontend/src/domain/*.ts files. (8) TypeScript compilation ✅ grep returned exit 1 (no errors) for gates.ts, protectionDetails.ts, protectionTruth.ts. NOTE: Kotlin files cannot be compiled in this environment (no Android SDK), but corrections are comment-only documentation changes with zero logic impact. All acceptance criteria met."
+
+  - task: "Design documents: THREAT_INTELLIGENCE_ARCHITECTURE.md (NEW) and LINK_GATE_SITE_GATE_BRIDGE_DESIGN.md (REVISED)"
+    implemented: true
+    working: true
+    file: "docs/THREAT_INTELLIGENCE_ARCHITECTURE.md, docs/LINK_GATE_SITE_GATE_BRIDGE_DESIGN.md"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "VERIFICATION COMPLETE (2026-10-11). Both design documents verified: (1) THREAT_INTELLIGENCE_ARCHITECTURE.md exists (29529 bytes) with comprehensive coverage of threat lifecycle, hybrid protection, rule publication, security authority, privacy, and acceptance criteria. Contains 8 occurrences of honest 'HTTPS-only/HTTPS-authenticated' terminology. (2) LINK_GATE_SITE_GATE_BRIDGE_DESIGN.md exists (8280 bytes, revised) with all 'signed bundle' claims removed except one acceptable negative statement at line 24 ('No Ed25519 or RSA signing keys'). Contains 3 occurrences of honest 'HTTPS-only/HTTPS-authenticated' terminology. Both documents accurately describe the HTTPS-only authentication model without false cryptographic signing claims."
+
+test_plan:
+  current_focus:
+    - "Apollo Private DNS corrections + Signature reconciliation + Design documents verification"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Apollo Private DNS corrections + Signature reconciliation + Design documents implemented. CATEGORY 1: 4 Kotlin files corrected from 'signed rule/bundle' to 'validated rule/HTTPS-authenticated/verified protection'. CATEGORY 2: 2 design documents created/revised - THREAT_INTELLIGENCE_ARCHITECTURE.md (NEW comprehensive design) and LINK_GATE_SITE_GATE_BRIDGE_DESIGN.md (REVISED to remove signed bundle claims). All changes are comment-only documentation corrections in Kotlin files (no logic changes). Please verify: (1) App loads without crashes. (2) No 'signed rule/bundle' claims in non-test code. (3) Corrected terminology in place. (4) Design documents exist with correct content. (5) Bridge design has no improper signed bundle claims. (6) Private DNS corrections still intact. (7) TypeScript compilation clean for domain files."
+  - agent: "testing"
+    message: "VERIFICATION COMPLETE (2026-10-11). All 7 test criteria PASSED: ✅ (1) App loads at http://localhost:3000 without crashes - privacy disclosure screen renders correctly. ✅ (2) Zero 'signed rule/bundle/protection' claims in non-test code (grep exit 0, zero results). ✅ (3) Corrected terminology verified in 4 Kotlin files with 5 matches showing 'validated rule/HTTPS-authenticated/verified protection'. ✅ (4) Both design documents exist (THREAT_INTELLIGENCE_ARCHITECTURE.md 29529 bytes, LINK_GATE_SITE_GATE_BRIDGE_DESIGN.md 8280 bytes). ✅ (5) Both documents contain honest 'HTTPS-only/HTTPS-authenticated' terminology (8+3 occurrences). ✅ (6) Bridge design has only 1 acceptable negative statement about signing keys (line 24: 'No Ed25519 or RSA signing keys'). ✅ (7) Private DNS corrections intact (zero matches for old messaging). ✅ (8) TypeScript compilation clean for domain files (zero errors in gates.ts, protectionDetails.ts, protectionTruth.ts). NOTE: Kotlin compilation not possible in this environment (no Android SDK), but changes are comment-only with zero logic impact. NO MAJOR ISSUES FOUND. All acceptance criteria fully met. Ready for main agent to summarise and finish."

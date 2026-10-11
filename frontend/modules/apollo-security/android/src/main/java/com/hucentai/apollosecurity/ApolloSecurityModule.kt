@@ -115,7 +115,7 @@ class ApolloSecurityModule : Module() {
       }
       val listener = ApolloSmsListenerService.isEnabled(ctx)
       JSONArray().apply {
-        put(perm("vpn_config", "Local VPN (selective packet filter)", vpn, true, "Lets Apollo enforce signed protection rules by selectively filtering network packets on this device. Only traffic matching verified threat rules is affected.", observedAt, enabled = vpn == "granted"))
+        put(perm("vpn_config", "Local VPN (selective packet filter)", vpn, true, "Lets Apollo enforce verified protection rules by selectively filtering network packets on this device. Only traffic matching validated threat rules is affected.", observedAt, enabled = vpn == "granted"))
         put(perm("notifications", "Notifications", notificationsState, notificationsState != "denied" || android.os.Build.VERSION.SDK_INT < 33, "Lets Apollo tell you when it barks.", observedAt, enabled = notificationsEnabled && postGranted))
         put(perm("network_filter", "Notification access (Text Gate)", if (listener) "granted" else "undetermined", true, "Lets Apollo read message notifications you allow so Text Gate can warn you. Apollo never reads SMS directly.", observedAt, enabled = listener))
         put(perm("accessibility", "Accessibility service", "not_applicable", false, "Apollo does not use an accessibility service.", observedAt, enabled = null, unavailableReason = "not_implemented"))
