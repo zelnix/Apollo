@@ -203,7 +203,7 @@ export default function Home() {
                 <ShieldCheck size={16} color="#FFFFFF" fill={statusColor} style={s.heroShield} />
                 <Text style={[s.heroStatusText, { color: colors[`${state}Text` as keyof typeof colors] as string || colors.restingText }]}>{stateLabel}</Text>
               </View>
-              <Text style={s.heroExplanation} numberOfLines={3}>{voice.text}</Text>
+              <Text style={s.heroExplanation} numberOfLines={5}>{voice.text}</Text>
             </View>
           </View>
         </Pressable>
