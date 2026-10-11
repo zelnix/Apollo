@@ -37,13 +37,14 @@ const STATE_GIF: Partial<Record<ApolloState, { src: number; label: string }>> = 
   biting:   { src: require("@/assets/images/apollo-barking.gif"),     label: "Apollo blocked a threat" },
 };
 const FALLBACK_IMAGE = require("@/assets/images/logo.png");
+const HERO_BG_IMAGE = require("@/assets/images/hero-bg-patrolling.webp");
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   scroll: { paddingBottom: spacing["3xl"] },
 
   // ── Branded header ──
-  header: { paddingHorizontal: spacing.xl, paddingBottom: spacing.md },
+  header: { paddingHorizontal: spacing.xl, paddingBottom: spacing.sm },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   brandTitle: { fontFamily: fonts.displayBold, fontSize: 22, color: c.onSurface, letterSpacing: -0.3 },
   brandSubtitle: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary, marginTop: 1 },
@@ -52,23 +53,24 @@ const useStyles = makeStyles((c) => ({
   // ── Hero status card ──
   heroCard: {
     marginHorizontal: spacing.xl, borderRadius: radius.lg, overflow: "hidden",
-    backgroundColor: "#E8F5EE", // soft green wash
-    padding: spacing.xl, gap: spacing.md, minHeight: 180,
+    minHeight: 160,
+  },
+  heroBgImage: { width: "100%", height: "100%" },
+  heroOverlay: {
+    padding: spacing.xl, gap: spacing.md, flexDirection: "row",
+    alignItems: "flex-start",
   },
   heroInner: { flexDirection: "row", gap: spacing.lg, alignItems: "flex-start" },
   heroImageWrap: { width: 90, height: 90, borderRadius: 45, borderWidth: 2, borderColor: c.gold, overflow: "hidden", backgroundColor: c.surfaceSecondary },
   heroImage: { width: 90, height: 90 },
-  heroContent: { flex: 1, gap: spacing.xs },
+  heroContent: { flex: 1, gap: spacing.xs, paddingRight: 80 },
   heroStatusRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  heroStatusDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: c.resting },
+  heroShield: { marginRight: 2 },
   heroStatusText: { fontFamily: fonts.displayBold, fontSize: 17, color: "#1B6B47" },
   heroExplanation: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurface },
-  heroMeta: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: spacing.xs },
-  heroMetaText: { fontFamily: fonts.display, fontSize: 10, color: c.onSurfaceSecondary, letterSpacing: 1.5, textTransform: "uppercase" },
-  heroPaw: { fontFamily: fonts.display, fontSize: 12, color: c.gold },
 
   // ── Two side-by-side cards ──
-  twoCards: { flexDirection: "row", gap: spacing.md, paddingHorizontal: spacing.xl, marginTop: spacing.xl },
+  twoCards: { flexDirection: "row", gap: spacing.md, paddingHorizontal: spacing.xl, marginTop: spacing.md },
   halfCard: {
     flex: 1, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm,
     borderWidth: 1,
@@ -83,7 +85,7 @@ const useStyles = makeStyles((c) => ({
   halfCardBtnText: { fontFamily: fonts.textSemibold, fontSize: 12 },
 
   // ── Section headers ──
-  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.xl, marginTop: spacing.xl, marginBottom: spacing.md },
+  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.xl, marginTop: spacing.md, marginBottom: spacing.sm },
   sectionTitle: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface },
   sectionLink: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.brand },
 
@@ -120,11 +122,6 @@ const useStyles = makeStyles((c) => ({
   findingLink: { fontFamily: fonts.textSemibold, fontSize: 12, color: c.brand },
 }));
 
-// Map Apollo state to hero card background + status colors
-const HERO_BG: Record<string, string> = {
-  resting: "#E8F5EE", sniffing: "#EDF2F7", ears_up: "#FDF5E3",
-  growling: "#FEF0E0", barking: "#FDECEB", biting: "#FDECEB",
-};
 
 export default function Home() {
   const s = useStyles();
@@ -156,7 +153,6 @@ export default function Home() {
 
   const state = resolution.state;
   const stateLabel = STATE_LABEL[state] ?? "Apollo is Patrolling";
-  const heroBg = HERO_BG[state] ?? HERO_BG.resting;
   const statusColor = toneColor(colors, state);
   const gif = STATE_GIF[state];
 
@@ -183,9 +179,15 @@ export default function Home() {
           accessibilityRole="button"
           accessibilityLabel={stateLabel}
           onPress={() => voice.ctaRoute ? router.push(voice.ctaRoute as any) : null}
-          style={[s.heroCard, { backgroundColor: heroBg }]}
+          style={s.heroCard}
         >
-          <View style={s.heroInner}>
+          <Image
+            source={HERO_BG_IMAGE}
+            style={s.heroBgImage}
+            contentFit="cover"
+            testID="home-hero-bg"
+          />
+          <View style={[s.heroOverlay, { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }]}>
             <View style={s.heroImageWrap}>
               <Image
                 source={gif ? gif.src : FALLBACK_IMAGE}
@@ -198,15 +200,11 @@ export default function Home() {
             </View>
             <View style={s.heroContent}>
               <View style={s.heroStatusRow}>
-                <View style={[s.heroStatusDot, { backgroundColor: statusColor }]} />
+                <ShieldCheck size={16} color="#FFFFFF" fill={statusColor} style={s.heroShield} />
                 <Text style={[s.heroStatusText, { color: colors[`${state}Text` as keyof typeof colors] as string || colors.restingText }]}>{stateLabel}</Text>
               </View>
-              <Text style={s.heroExplanation} numberOfLines={4}>{voice.text}</Text>
+              <Text style={s.heroExplanation} numberOfLines={3}>{voice.text}</Text>
             </View>
-          </View>
-          <View style={s.heroMeta}>
-            <Text style={s.heroMetaText}>Always watching for you</Text>
-            <Text style={s.heroPaw}>Apollo 🐾</Text>
           </View>
         </Pressable>
 
@@ -281,14 +279,14 @@ export default function Home() {
         ) : null}
 
         {/* ── Recent Activity ── */}
-        {recentEvent ? (
-          <View>
-            <View style={s.sectionHeader}>
-              <Text style={s.sectionTitle}>Recent activity</Text>
-              <Pressable onPress={() => router.push("/(tabs)/patrol")} hitSlop={8}>
-                <Text style={s.sectionLink}>View all</Text>
-              </Pressable>
-            </View>
+        <View>
+          <View style={s.sectionHeader}>
+            <Text style={s.sectionTitle}>Recent activity</Text>
+            <Pressable onPress={() => router.push("/(tabs)/patrol")} hitSlop={8}>
+              <Text style={s.sectionLink}>View all</Text>
+            </Pressable>
+          </View>
+          {recentEvent ? (
             <Pressable
               testID="home-recent-activity"
               accessibilityRole="button"
@@ -299,17 +297,27 @@ export default function Home() {
                 <MessageSquare size={16} color={colors.onSurfaceSecondary} />
               </View>
               <View style={s.activityContent}>
-                <Text style={s.activityText} numberOfLines={2}>{recentEvent.headline || "Apollo recorded activity"}</Text>
+                <Text style={s.activityText} numberOfLines={1}>{recentEvent.headline || "Apollo recorded activity"}</Text>
                 <Text style={s.activitySub} numberOfLines={1}>{recentEvent.what_happened || "Tap to see details."}</Text>
               </View>
               <Text style={s.activityTime}>{timeAgo(recentEvent.occurred_at)}</Text>
               <ChevronRight size={16} color={colors.onSurfaceSecondary} />
             </Pressable>
-          </View>
-        ) : null}
+          ) : (
+            <View style={s.activityCard} testID="home-no-recent-activity">
+              <View style={s.activityIconWrap}>
+                <ShieldCheck size={16} color={colors.resting} />
+              </View>
+              <View style={s.activityContent}>
+                <Text style={s.activityText}>No recent activity</Text>
+                <Text style={s.activitySub}>Apollo is patrolling quietly. Nothing to report.</Text>
+              </View>
+            </View>
+          )}
+        </View>
 
         {/* ── Utility banners (compact) ── */}
-        <View style={{ paddingHorizontal: spacing.xl, gap: spacing.md, marginTop: spacing.xl }}>
+        <View style={{ paddingHorizontal: spacing.xl, gap: spacing.sm, marginTop: spacing.md }}>
           {identityReset ? (
             <Card style={{ gap: spacing.sm, borderColor: colors.barking }} testID="identity-reset-card">
               <Text style={{ fontFamily: fonts.displayBold, fontSize: 15, color: colors.brand }}>Apollo needs to re-register this phone</Text>
@@ -324,7 +332,7 @@ export default function Home() {
 
         {/* Threat Scent clusters */}
         {scents.length ? (
-          <View style={{ paddingHorizontal: spacing.xl, marginTop: spacing.xl }}>
+          <View style={{ paddingHorizontal: spacing.xl, marginTop: spacing.md }}>
             <View style={s.sectionHeader}>
               <Text style={s.sectionTitle}>Connected events</Text>
             </View>
