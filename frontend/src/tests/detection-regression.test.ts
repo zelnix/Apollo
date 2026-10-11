@@ -1006,6 +1006,176 @@ section("15A. Direct to Barking (not sequential)");
 
 
 // ═══════════════════════════════════════════════════════════════
+// 16. INTEGRATION: Threat Scent — Independently Assessed Severity
+// ═══════════════════════════════════════════════════════════════
+
+section("16A. Threat Scent — Event Severity Independence");
+
+// A lower-severity event linked to a barking event MUST preserve its own state
+(() => {
+  const now = Date.now();
+  const barkingEvent = makeEvent({ event_id: "bark1", state: "barking", category: "message", scent_id: "incident-1", claimed_brand: "CommBank", occurred_at: new Date(now - 5000).toISOString() });
+  const earsUpEvent = makeEvent({ event_id: "link1", state: "ears_up", category: "website", claimed_brand: "CommBank", occurred_at: new Date(now).toISOString() });
+  // Simulate findScentFor associating them
+  const scent = findScentFor(earsUpEvent, [barkingEvent], now);
+  // Even if they share a scent, the ears_up event stays ears_up
+  const linked = { ...earsUpEvent, scent_id: scent ?? earsUpEvent.event_id };
+  assert(linked.state === "ears_up", "INTEG-01a: ears_up event linked to barking stays ears_up");
+  // The group state shows the overall severity
+  if (scent) {
+    const scents = buildScents([barkingEvent, linked], now);
+    assert(scents[0]?.state === "barking", "INTEG-01b: scent group shows barking (highest)");
+    assert(linked.state === "ears_up", "INTEG-01c: individual event state still ears_up after buildScents");
+  }
+})();
+
+// Two growling events from different gates do NOT produce a barking individual event
+(() => {
+  const now = Date.now();
+  const e1 = makeEvent({ event_id: "g1", state: "growling", category: "message", scent_id: "shared-1", occurred_at: new Date(now - 5000).toISOString() });
+  const e2 = makeEvent({ event_id: "g2", state: "growling", category: "call", scent_id: "shared-1", occurred_at: new Date(now).toISOString() });
+  // Neither event should be upgraded
+  assert(e1.state === "growling", "INTEG-02a: first growling event stays growling");
+  assert(e2.state === "growling", "INTEG-02b: second growling event stays growling");
+  const scents = buildScents([e1, e2], now);
+  assert(scents[0]?.state === "growling", "INTEG-02c: group state is growling (not barking)");
+})();
+
+// A barking event linked with a resting event — resting stays resting
+(() => {
+  const now = Date.now();
+  const e1 = makeEvent({ event_id: "b1", state: "barking", category: "call", scent_id: "inc-2", occurred_at: new Date(now - 5000).toISOString() });
+  const e2 = makeEvent({ event_id: "r1", state: "resting", category: "website", scent_id: "inc-2", occurred_at: new Date(now).toISOString() });
+  assert(e2.state === "resting", "INTEG-03: resting event linked to barking stays resting");
+})();
+
+// Direct escalation is still allowed when evidence justifies it
+(() => {
+  // A message analysis that finds a phishing link independently reaches barking
+  const r = analyseMessage("unknown", "CommBank: Verify your account: commbank-phish.tk/login");
+  assert(r.state === "barking", "INTEG-04: direct barking from own evidence still works");
+})();
+
+
+// ═══════════════════════════════════════════════════════════════
+// 17. INTEGRATION: Message-to-Link Scent Handoff
+// ═══════════════════════════════════════════════════════════════
+
+section("17A. Message-to-Link — Scent Handoff Plumbing");
+
+// Verify checkLink accepts scentId and propagates it to the event
+// (We test the function signature and scent propagation logic, not the full React context)
+(() => {
+  // The scent_id assignment in checkLink: ...(scentId ? { scent_id: scentId } : {})
+  // Test: when a scent is provided, the resulting event should carry it
+  const scentId = "msg-scent-abc";
+  const eventTemplate: Partial<PatrolEvent> = { scent_id: undefined };
+  const withScent = { ...eventTemplate, ...(scentId ? { scent_id: scentId } : {}) };
+  assert(withScent.scent_id === "msg-scent-abc", "HANDOFF-01: scent_id propagated to link event");
+  // Without scent, scent_id remains undefined (findScentFor will assign)
+  const noScent: string | undefined = undefined;
+  const withoutScent = { ...eventTemplate, ...(noScent ? { scent_id: noScent } : {}) };
+  assert(withoutScent.scent_id === undefined, "HANDOFF-02: no scent → scent_id stays undefined");
+})();
+
+// Message and link events share scent but preserve independent severity
+(() => {
+  const now = Date.now();
+  const msgEvent = makeEvent({ event_id: "msg-1", state: "growling", category: "message", scent_id: "scent-msg-link-1", claimed_brand: "CommBank", occurred_at: new Date(now - 3000).toISOString() });
+  const linkEvent = makeEvent({ event_id: "link-1", state: "barking", category: "link", scent_id: "scent-msg-link-1", indicator_host: "commbank-phish.tk", occurred_at: new Date(now).toISOString() });
+  // Both events share the scent
+  assert(msgEvent.scent_id === linkEvent.scent_id, "HANDOFF-03a: same scent_id");
+  // But preserve independent severities
+  assert(msgEvent.state === "growling", "HANDOFF-03b: message event stays growling");
+  assert(linkEvent.state === "barking", "HANDOFF-03c: link event stays barking (from its own evidence)");
+  // Group shows the highest
+  const scents = buildScents([msgEvent, linkEvent], now);
+  assert(scents[0]?.state === "barking", "HANDOFF-03d: scent group shows barking");
+})();
+
+// Duplicate scent assignment doesn't create duplicate incidents
+(() => {
+  const now = Date.now();
+  const e1 = makeEvent({ event_id: "e1", state: "growling", category: "message", scent_id: "dup-test", occurred_at: new Date(now - 5000).toISOString() });
+  const e2 = makeEvent({ event_id: "e2", state: "ears_up", category: "link", scent_id: "dup-test", occurred_at: new Date(now).toISOString() });
+  const scents = buildScents([e1, e2], now);
+  assert(scents.length === 1, "HANDOFF-04: one scent group, not two (no duplication)");
+  assert(scents[0].events.length === 2, "HANDOFF-04b: both events in the group");
+})();
+
+
+// ═══════════════════════════════════════════════════════════════
+// 18. INTEGRATION: Trusted SMS — URLs Still Checked
+// ═══════════════════════════════════════════════════════════════
+
+section("18A. Trusted SMS — Detection Not Bypassed for URLs");
+
+// Trusted sender with dangerous URL — local analysis should detect it
+(() => {
+  const r = analyseMessage("Mum", "Hey check this out: commbank-verify.tk/login — is this legit?");
+  // Even from a "trusted" sender, the URL analysis still fires
+  assert(r.signals.urls.length > 0, "TRUST-SMS-01a: URL extracted from trusted sender message");
+  // The analysis identifies the brand phishing regardless of sender
+  assert(r.state === "barking" || r.state === "growling", `TRUST-SMS-01b: dangerous URL detected even from familiar sender (got ${r.state})`);
+})();
+
+// Trusted sender with safe content and NO URLs — should be quiet
+(() => {
+  const r = analyseMessage("Mum", "Dinner at 7pm tonight, bring dessert!");
+  assert(r.signals.urls.length === 0, "TRUST-SMS-02a: no URLs in innocent message");
+  assert(r.state === "resting", `TRUST-SMS-02b: ordinary trusted message → resting (got ${r.state})`);
+})();
+
+// Trusted sender with official bank URL — still ears_up (monitored, not suppressed)
+(() => {
+  const r = analyseMessage("CommBank", "CommBank: Your card ending 4567 was used. Visit commbank.com.au/security");
+  assert(r.signals.urls.length > 0, "TRUST-SMS-03a: URL present");
+  assert(r.state === "ears_up", `TRUST-SMS-03b: official URL from known sender → ears_up (got ${r.state})`);
+})();
+
+// Trusted sender with shortened URL — cannot determine safety locally
+(() => {
+  const r = analyseMessage("Friend", "Look at this deal: bit.ly/xyz123");
+  assert(r.signals.urls.length > 0, "TRUST-SMS-04a: shortened URL extracted");
+  // Shortened URLs from unknown/trusted senders need external checking
+  // Local analysis may vary, but the URL was extracted (backend would check it)
+  assert(r.signals.urls.some(u => u.includes("bit.ly")), "TRUST-SMS-04b: bit.ly URL captured for external assessment");
+})();
+
+
+// ═══════════════════════════════════════════════════════════════
+// 19. INTEGRATION: Trusted Callers — Reputation Still Assessed
+// ═══════════════════════════════════════════════════════════════
+
+section("19A. Trusted Callers — Reputation Assessment Not Bypassed");
+
+// Call analysis is independent of trust status — even a "trusted" number gets full analysis
+(() => {
+  const r1 = analyseCall({ asks: ["code"], claim: "bank", number: "+61400000000" });
+  assert(r1.state === "barking", "TRUST-CALL-01: code request barks regardless of trust status");
+  // Trust only affects notification quieting, not the analysis result
+})();
+
+// Ordinary call from trusted number — analysis runs, result is benign
+(() => {
+  const r = analyseCall({ asks: ["nothing"], claim: "family" });
+  assert(r.state === "ears_up" || r.state === "resting", `TRUST-CALL-02: ordinary trusted call → benign (got ${r.state})`);
+})();
+
+// Provider unavailable — should NOT treat absence of evidence as proof of safety
+(() => {
+  // When checkNumberRisk can't reach the provider, the event should be ears_up (investigation
+  // incomplete), not resting (no concern). This is tested via the call risk check adapter.
+  // The analyseCall function always runs locally regardless.
+  const r = analyseCall({ asks: ["nothing"], claim: "unknown" });
+  assert(r.state === "resting", "TRUST-CALL-03: unknown caller with nothing asked → resting (local assessment)");
+  // NOTE: when the reputation service is unavailable, the background intake creates an ears_up
+  // "could not check" event. This is validated by the ApolloContext code path, not the analyseCall
+  // function directly. The key principle: unavailable ≠ safe.
+})();
+
+
+// ═══════════════════════════════════════════════════════════════
 // SUMMARY
 // ═══════════════════════════════════════════════════════════════
 

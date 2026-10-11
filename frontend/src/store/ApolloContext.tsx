@@ -692,21 +692,14 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   const upsertEvent = useCallback(async (input: PatrolEvent) => {
     // Threat Scent: link this event to related recent events (same brand/host within 30 min).
-    // Cross-gate correlation adds context, but escalation requires that the linked events
-    // provide genuinely higher-severity evidence — not just that they exist from a different category.
+    // Cross-gate correlation associates findings into the same incident for display purposes,
+    // but each event preserves its own independently assessed severity. The overall incident
+    // status is derived at display time by buildScents(), not by upgrading individual events.
     let e = normalizeHistoricalEvent({ ...input, evidence_provenance: input.evidence_provenance ?? "local_device" });
     const events = eventsRef.current;
     if (e.state !== "resting" && !events.some((x) => x.event_id === e.event_id)) {
       const scent = findScentFor(e, events) ?? e.event_id;
       e = { ...e, scent_id: e.scent_id ?? scent };
-      const linked = events.filter((x) => x.scent_id === scent && x.category !== e.category && x.state !== "resting");
-      // Only escalate to barking when at least one linked event is ALREADY barking or biting —
-      // that is genuinely new evidence (another gate confirmed a serious threat for the same scent).
-      // Two growling events from different gates do not independently justify barking.
-      const linkedMaxBarking = linked.some((x) => STATE_RANK[x.state] >= STATE_RANK.barking);
-      if (linkedMaxBarking && STATE_RANK[e.state] < STATE_RANK.barking) {
-        e = { ...e, state: "barking", why: [...e.why, "Connected to a confirmed threat from another detection area."], what_to_do: `${e.what_to_do} Don't provide passwords, verification codes or transfer money.` };
-      }
     }
     const next = [e, ...events.filter((x) => x.event_id !== e.event_id)];
     await persistEvents(next);
@@ -814,12 +807,15 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           if (senderTrusted) {
             // Still analyse the message content for evidence.
             const quickAnalysis = analyseMessage(sender, text);
-            if (quickAnalysis.state === "resting" || quickAnalysis.state === "ears_up") {
-              // Low/no concern from a trusted sender — acknowledge quietly without Patrol event.
+            const hasUrls = quickAnalysis.signals.urls.length > 0;
+            if (!hasUrls && (quickAnalysis.state === "resting" || quickAnalysis.state === "ears_up")) {
+              // Low/no concern from a trusted sender AND no URLs to check against external
+              // threat intelligence — acknowledge quietly without Patrol event.
               await MessagingSdk.acknowledgeMessageSecurityEvents([id]);
               continue;
             }
-            // Trusted sender but significant evidence (growling/barking) — fall through to full investigation.
+            // Trusted sender but contains URLs (need external reputation check) or significant
+            // local evidence (growling/barking) — fall through to full backend investigation.
           }
           await apiPost("/investigations/background/text", "investigation", {
             submissionId: id, sourceKey: typeof item.sourceKey === "string" ? item.sourceKey : id,
@@ -953,18 +949,29 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         for (const item of items) {
           if (cancelled) break;
           if (!item?.number) continue;
-          // Trusted callers: stay quiet — acknowledge (clear from queue) without an assessment or event.
-          if (await isTrustedCaller(item.number)) { acknowledged.push(item.number); continue; }
+          // Trusted callers: run the reputation check but suppress routine notification.
+          // Trust influences alert quieting, not detection bypass. If fresh evidence is
+          // concerning, the event is created normally; only benign results stay quiet.
+          const callerTrusted = await isTrustedCaller(item.number);
           try {
-            await checkNumberRisk(item.number);
+            const riskResult = await checkNumberRisk(item.number);
             acknowledged.push(item.number);
+            // If the caller is trusted AND the result is benign (allow), the reputation was
+            // assessed but no notification is needed — quiet handling honoured.
+            if (callerTrusted && riskResult && riskResult.decision === "allow") {
+              continue; // Quiet — trust honoured, but reputation was still assessed.
+            }
           } catch {
             // Retry once after a short delay before giving up
             try {
               await new Promise((r) => setTimeout(r, 2000));
-              await checkNumberRisk(item.number);
+              const retryResult = await checkNumberRisk(item.number);
               acknowledged.push(item.number);
+              if (callerTrusted && retryResult && retryResult.decision === "allow") continue;
             } catch {
+              // For trusted callers, if reputation service is unavailable, acknowledge quietly.
+              // Creating a "could not check" event for a trusted caller is unnecessary noise.
+              if (callerTrusted) { acknowledged.push(item.number); continue; }
               failed.push(item.number);
               // Dedup-safe minimal event so the user knows a call was seen but not assessed.
               const current = eventsRef.current;

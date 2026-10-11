@@ -143,7 +143,7 @@ export default function CheckLink() {
   const sendFeedback = async (kind: "false_positive" | "override", ev: { event_id: string; state: string; indicator_host: string | null }, sources: string[]) => {
     await apiPost("/feedback", "feedback", { device_id: deviceId, event_id: ev.event_id, kind, state: ev.state, host: ev.indicator_host, sources, note: "" });
   };
-  const params = useLocalSearchParams<{ url?: string; source?: string; sharedIntakeId?: string }>();
+  const params = useLocalSearchParams<{ url?: string; source?: string; sharedIntakeId?: string; scent?: string }>();
   const shared = getShareIntake(params.sharedIntakeId);
   const sharedUrl = shared?.webUrl || extractUrl(shared?.text) || params.url || "";
   const [input, setInput] = useState(String(sharedUrl));
@@ -157,7 +157,7 @@ export default function CheckLink() {
   const run = useCallback(async (value: string) => {
     if (!value.trim()) return;
     setBusy(true); setOutcome(null);
-    try { setOutcome(await checkLink(value)); } finally { setBusy(false); }
+    try { setOutcome(await checkLink(value, params.scent || undefined)); } finally { setBusy(false); }
   }, [checkLink]);
 
   // Shared / deep-linked / clipboard links run automatically once setup is complete.

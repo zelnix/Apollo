@@ -191,7 +191,7 @@ export default function CheckMessage() {
     a.signals.urls.forEach((u, i) => {
       const r = result.urls.find((x) => x.url.replace(/\/$/, "").includes(u.replace(/^https?:\/\//i, "").replace(/\/$/, "")));
       const label = r?.verdict === "malicious" ? `\u26a0 ${u.length > 35 ? u.slice(0, 35) + "\u2026" : u}` : `Check: ${u.length > 35 ? u.slice(0, 35) + "\u2026" : u}`;
-      msgActions.push({ testID: `message-check-link-${i}`, variant: r?.verdict === "malicious" ? "secondary" : "ghost", label, onPress: () => router.push({ pathname: "/check", params: { url: u.startsWith("http") ? u : `https://${u}`, source: "message" } }) });
+      msgActions.push({ testID: `message-check-link-${i}`, variant: r?.verdict === "malicious" ? "secondary" : "ghost", label, onPress: () => router.push({ pathname: "/check", params: { url: u.startsWith("http") ? u : `https://${u}`, source: "message", scent: result.event?.scent_id ?? result.event?.event_id ?? "" } }) });
     });
     if (result.event) {
       msgActions.push({ testID: "message-mark-safe", variant: "ghost", label: "Mark as handled", onPress: () => { void resolveEvent(result.event!); showToast("Marked as handled.", "neutral"); goBackOrHome(router); } });
