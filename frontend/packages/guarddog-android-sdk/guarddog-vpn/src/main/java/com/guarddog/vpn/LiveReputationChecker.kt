@@ -120,9 +120,12 @@ class LiveReputationChecker(
     }
 
     private fun buildJsonBody(hostname: String, hashPrefix: String): String {
-        // Privacy Contract: transmit ONLY the hash prefix, never the full hostname.
-        // The backend resolves intelligence from the prefix alone.
-        return """{"hostname_hash_prefix":"$hashPrefix","request_context":"dns_observation"}"""
+        // Device-side privacy decision: for DNS queries not in the local rule bundle,
+        // the hostname is transmitted alongside the hash prefix to enable the backend's
+        // external intelligence check (Safe Browsing etc.). The backend cannot obtain
+        // external intelligence from a hash prefix alone.
+        val safeHostname = hostname.replace("\\", "\\\\").replace("\"", "\\\"")
+        return """{"hostname_hash_prefix":"$hashPrefix","hostname":"$safeHostname","request_context":"dns_observation"}"""
     }
 
     private fun parseAndCache(hostname: String, json: String): LiveReputationStore.CachedVerdict? {

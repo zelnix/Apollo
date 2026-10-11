@@ -74,14 +74,31 @@ async def dns_reputation_check(req: DnsReputationRequest):
     local rule bundle. The bounded hold principle applies: the native layer
     should wait for this response (up to ~3 seconds) before forwarding DNS.
     
-    Privacy Contract: Only the hash prefix is processed. The full hostname
-    field is accepted for backward compatibility but NEVER used for lookups.
-    This endpoint does NOT authorise native blocking. It returns intelligence
-    that the device can act upon within its existing authorisation framework.
+    Intelligence paths:
+    - Hostname provided: full external intelligence check (Safe Browsing etc.)
+    - Hash prefix only: local threat indicator check (limited coverage)
+    
+    When external intelligence confirms a hostname as malicious, a threat
+    indicator is created so subsequent rule bundles include the hostname.
     """
     ts = now_utc()
     
-    # Privacy Contract: process ONLY the hash prefix, never the full hostname.
+    # If the device provided the full hostname, use full external intelligence
+    if req.hostname:
+        hostname = req.hostname.strip().lower().rstrip(".")
+        if not hostname or len(hostname) < 3:
+            raise HTTPException(status_code=422, detail="Invalid hostname")
+        
+        result = await _check_hostname_reputation(hostname, ts)
+        
+        # When external intelligence confirms malicious: create a threat indicator
+        # so the next rule bundle generation includes this hostname for long-term blocking.
+        if result.verdict == "malicious" and not result.in_active_bundle:
+            await _create_threat_indicator(hostname, result.threat_types, result.source, ts)
+        
+        return result
+    
+    # Hash-prefix only: check against known threat indicators (limited coverage)
     prefix = req.hostname_hash_prefix.lower()
     return await _check_hash_prefix(prefix, ts)
 
@@ -188,3 +205,27 @@ async def _check_hash_prefix(prefix: str, ts) -> DnsReputationResponse:
         investigation_complete=True,
         limitation="Hash prefix checked against known indicators only. No external lookup performed. Send full hostname for complete check.",
     )
+
+
+
+async def _create_threat_indicator(hostname: str, threat_types: list[str], source: str, ts):
+    """Create a threat indicator for a newly discovered malicious hostname.
+    
+    This ensures the next rule bundle generation includes this hostname,
+    providing long-term blocking authority for the native side.
+    """
+    existing = await db.threat_indicators.find_one({"hostname": hostname, "status": "active"})
+    if existing:
+        return  # Already tracked
+    
+    indicator = {
+        "hostname": hostname,
+        "threat_types": threat_types,
+        "source": source,
+        "status": "active",
+        "discovered_via": "live_dns_check",
+        "created_at": ts,
+        "evidence_expiry_deadline": ts + timedelta(hours=24),
+    }
+    await db.threat_indicators.insert_one(indicator)
+    logger.info("threat_indicator_created hostname=%s source=%s via=live_dns_check", hostname, source)

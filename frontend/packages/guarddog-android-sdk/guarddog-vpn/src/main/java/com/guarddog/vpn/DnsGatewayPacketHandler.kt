@@ -18,8 +18,9 @@ import com.guarddog.core.net.HostCanonicalizer
  * Stage 3 — Live Reputation (additive, opt-in): When [liveChecker] is wired in, hostnames not in
  * the local rule bundle trigger a bounded live reputation check BEFORE DNS is forwarded upstream.
  * Protection Before Speed: the DNS handler holds for up to ~3 seconds while intelligence is
- * gathered. If the verdict is "malicious", NXDOMAIN is synthesized to prevent access. If "clean",
- * unknown, or timed out, DNS is forwarded normally (fail open).
+ * gathered. If the verdict is "malicious", the binding store blocks via [armByLiveVerdict] —
+ * the backend has already created a threat indicator, so the next rule refresh will provide static
+ * authority. If "clean", unknown, or timed out, DNS is forwarded normally (fail open).
  */
 class DnsGatewayPacketHandler(
     private val bindingStore: SinkholeBindingStore,
@@ -92,11 +93,13 @@ class DnsGatewayPacketHandler(
         return if (verdict != null) {
             when (verdict.verdict) {
                 "malicious" -> {
-                    // Protection Before Speed: live check identified this hostname as malicious.
-                    // Route through the blocking-authorisation framework (bindingStore.arm)
-                    // instead of directly synthesising NXDOMAIN — the live reputation verdict
-                    // is advisory; only rule-bundle authorisation may produce a block.
+                    // Protection Before Speed: live check confirmed this hostname as malicious.
+                    // First try rule-bundle authorization (static rules). If the hostname is not
+                    // in the bundle yet (newly discovered), use armByLiveVerdict — the backend has
+                    // created a threat indicator and the next bundle refresh will include the rule.
+                    // This provides immediate blocking for the current DNS query.
                     val sinkholeIpv4 = bindingStore.arm(hostname)
+                        ?: bindingStore.armByLiveVerdict(hostname)
                     if (sinkholeIpv4 != null) {
                         notifyCompleted(hostname, verdict.verdict, verdict.confidence, blocked = true)
                         when (dnsQuery.qtype) {
@@ -104,8 +107,7 @@ class DnsGatewayPacketHandler(
                             else -> DnsResponseSynthesizer.synthesizeNxDomain(queryPacket, dnsQuery)
                         }
                     } else {
-                        // Blocking authorisation not granted (host not in active rule bundle).
-                        // The live verdict is recorded but the DNS is forwarded — fail open.
+                        // User ALLOW override present or sinkhole pool exhausted — forward.
                         notifyCompleted(hostname, verdict.verdict, verdict.confidence, blocked = false)
                         forward(queryPacket, rawBuffer, udpRange)
                     }
