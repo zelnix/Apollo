@@ -111,10 +111,12 @@ export function resolveApolloState(input: StateInput): StateResolution {
   }
 
   // Genuine visibility loss: the platform CAN enforce but protection cannot be verified right now.
+  // This is a PROTECTION STATUS issue, not a security threat — Apollo stays resting.
+  // The visibilityLost flag allows downstream messaging to explain reduced protection.
   if (visibilityLost) return {
-    state: "growling",
+    state: "resting",
     reason: input.visibility === 'none' ? 'Protection is unavailable or unverified.' : 'Protection observation has expired.',
-    reasonRoute: input.visibility === 'none' ? '/(tabs)/patrol' : '/(tabs)/guard',
+    reasonRoute: '/(tabs)/protection',
     recovering: false, visibilityLost: true, platformLimited: false, drivingEvent: null,
   };
 
@@ -128,9 +130,10 @@ export function resolveApolloState(input: StateInput): StateResolution {
     const withinCooldown = now - resolvedAt < RECOVERY_COOLDOWN_MS;
     const verifiedAfterResolve = verifiedAt > resolvedAt;
     if (withinCooldown || !verifiedAfterResolve) {
-      // Hold at growling (lowest alert) rather than snapping back to resting.
+      // Recovery period: the threat is resolved, so Apollo rests. The recovering flag
+      // allows Higgins to mention the recent resolution without changing threat state.
       return {
-        state: "growling",
+        state: "resting",
         reason: "A recent event was resolved. Apollo is waiting for a fresh check before returning to patrol.",
         recovering: true,
         visibilityLost: false,
@@ -141,7 +144,8 @@ export function resolveApolloState(input: StateInput): StateResolution {
   }
 
   if (!verificationFresh) {
-    return { state: "growling", reason: "Apollo has not verified protection recently. A fresh check is needed.", recovering: true, visibilityLost: false, platformLimited: false, drivingEvent: null };
+    // Stale verification is a protection-health condition, not a security threat.
+    return { state: "resting", reason: "Apollo has not verified protection recently. A fresh check is needed.", recovering: true, visibilityLost: false, platformLimited: false, drivingEvent: null };
   }
   return {
     state: "resting",

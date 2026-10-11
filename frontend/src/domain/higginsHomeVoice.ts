@@ -24,6 +24,10 @@ export interface HomeVoice {
   ctaRoute?: string;
   /** Spoken version — identical to text; kept separate so screens can extend if needed. */
   spoken: string;
+  /** Protection status indicator — independent of threat state (PRD Section 6). */
+  protectionStatus?: "watching" | "reduced" | "action_needed";
+  /** Higgins' explanation of protection issues — shown separately from the threat assessment. */
+  protectionGuidance?: string;
 }
 
 /** Human label for every Capability id, used when assembling the dynamic affected-gate list. */
@@ -116,12 +120,17 @@ export function buildHomeVoice(input: {
   });
 
   // ── Resting: the resolver produces scenario-specific messaging ──
+  // The state machine now returns resting for all non-threat cases, including
+  // visibility loss, recovery, and gate failures. These are communicated through
+  // separate protectionStatus and protectionGuidance fields.
   if (state === "resting" || (resolution.platformLimited && homeStatus.behavior === "resting")) {
     return {
       text: homeStatus.explanation,
       ctaLabel: homeStatus.primaryAction?.label ?? "View protection coverage",
       ctaRoute: homeStatus.primaryAction?.route ?? "/(tabs)/protection",
       spoken: homeStatus.explanation,
+      protectionStatus: homeStatus.protectionStatus,
+      protectionGuidance: homeStatus.protectionGuidance,
     };
   }
 

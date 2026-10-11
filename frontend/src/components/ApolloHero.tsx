@@ -49,6 +49,12 @@ const useStyles = makeStyles((c) => ({
   reason: { fontFamily: fonts.textMedium, fontSize: 14, lineHeight: 20, color: c.onSurface, textAlign: "center" },
   reasonLink: { fontFamily: fonts.displayBold, fontSize: 14, lineHeight: 20, color: c.onSurface, textAlign: "center" },
   higginsPara: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurface, textAlign: "left" },
+  protectionStatusRow: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 4 },
+  protectionDot: { width: 8, height: 8, borderRadius: 4 },
+  protectionLabel: { fontFamily: fonts.textSemibold, fontSize: 13, lineHeight: 18 },
+  protectionGuidanceBox: { width: "100%", backgroundColor: c.surfaceSecondary, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  protectionGuidanceLabel: { fontFamily: fonts.textSemibold, fontSize: 11, letterSpacing: 0.4, color: c.muted, marginBottom: 2 },
+  protectionGuidanceText: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurface },
   problemBox: { width: "100%", gap: 3, backgroundColor: c.surfaceSecondary, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, padding: spacing.md },
   problemLabel: { fontFamily: fonts.textSemibold, fontSize: 11, letterSpacing: 0.4, color: c.muted },
   problemTitle: { fontFamily: fonts.displayBold, fontSize: 15, lineHeight: 20, color: c.onSurface, textAlign: "center" },
@@ -176,6 +182,22 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
         {state === "resting" ? (
           <View style={{ width: "100%", gap: spacing.sm, alignItems: "stretch" }}>
             <Text style={s.higginsPara} testID="apollo-state-meaning">{voice.text}</Text>
+            {/* Protection status indicator — independent of threat state (PRD Section 6) */}
+            {voice.protectionStatus && voice.protectionStatus !== "watching" ? (
+              <View style={s.protectionStatusRow} testID="apollo-protection-status">
+                <View style={[s.protectionDot, { backgroundColor: voice.protectionStatus === "action_needed" ? colors.error : colors.warning }]} />
+                <Text style={[s.protectionLabel, { color: voice.protectionStatus === "action_needed" ? colors.error : colors.warning }]}>
+                  {voice.protectionStatus === "action_needed" ? "Action needed" : "Reduced protection"}
+                </Text>
+              </View>
+            ) : null}
+            {/* Higgins guidance about protection issues — separate from the threat assessment */}
+            {voice.protectionGuidance ? (
+              <View style={s.protectionGuidanceBox} testID="apollo-protection-guidance">
+                <Text style={s.protectionGuidanceLabel}>HIGGINS</Text>
+                <Text style={s.protectionGuidanceText}>{voice.protectionGuidance}</Text>
+              </View>
+            ) : null}
             {voice.ctaRoute ? (
               <Button
                 testID="apollo-view-details"
@@ -198,7 +220,7 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
           </View>
         )}
         <View style={s.row}>
-          {resolution.recovering ? <Pill tone="growling" label="Awaiting fresh check" testID="recovering-pill" /> : null}
+          {resolution.recovering ? <Pill tone="resting" label="Recent alert resolved" testID="recovering-pill" /> : null}
           {resolution.recovering && resolution.drivingEvent?.state === "biting" && resolution.drivingEvent.verified_block ? <Pill tone="resting" label="Threat contained" testID="contained-pill" /> : null}
           {quietNow ? <Pill tone="unknown" label="Quiet hours" testID="quiet-pill" /> : null}
           {!animate ? <Pill tone="unknown" label="Battery saver" testID="lowpower-pill" /> : null}

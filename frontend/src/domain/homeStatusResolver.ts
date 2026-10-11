@@ -92,6 +92,10 @@ export interface HomeStatus {
   primaryAction?: { label: string; route: string };
   /** Secondary coverage note for the resting state (doesn't imply universal safety). */
   coverageNote?: string;
+  /** Protection status indicator — independent of threat state. */
+  protectionStatus?: "watching" | "reduced" | "action_needed";
+  /** Higgins' guidance about protection issues — separate from threat assessment. */
+  protectionGuidance?: string;
   /** The three independent pillars. */
   threat: ThreatStatus;
   coverage: ProtectionCoverage;
@@ -317,11 +321,14 @@ function joinNames(names: string[]): string {
   return `${unique.slice(0, -1).join(", ")} and ${unique[unique.length - 1]}`;
 }
 
+/** Approved threat-clear message — always used when Apollo has no active security threat. */
+const NO_THREAT_MESSAGE = "No security threats currently detected within Apollo's current protection capability.";
+
 function buildRestingMessage(coverage: ProtectionCoverage, actions: UserActions): { explanation: string; primaryAction?: HomeStatus["primaryAction"]; coverageNote?: string } {
   // Scenario A: No known threat, optional setup available.
   if (!coverage.platformLimited && actions.level === "optional_setup" && coverage.failedCount === 0) {
     return {
-      explanation: "No suspicious activity has been detected in the areas Apollo can currently monitor. There are a few more protections you can set up if you'd like.",
+      explanation: `${NO_THREAT_MESSAGE} There are a few more protections you can set up if you'd like.`,
       primaryAction: actions.primaryAction ? { label: "Complete protection setup", route: actions.primaryAction.route } : undefined,
     };
   }
@@ -329,7 +336,7 @@ function buildRestingMessage(coverage: ProtectionCoverage, actions: UserActions)
   // Scenario B: No known threat, platform limitations.
   if (coverage.platformLimited) {
     return {
-      explanation: "Apollo is watching the areas this device allows it to protect. Some features aren't supported on this device, but there's nothing you need to set up for those features.",
+      explanation: `${NO_THREAT_MESSAGE} Some protections are not available on this device.`,
       primaryAction: { label: "View protection coverage", route: "/(tabs)/protection" },
       coverageNote: "Platform-limited: not all protections are available on this device.",
     };
@@ -338,7 +345,7 @@ function buildRestingMessage(coverage: ProtectionCoverage, actions: UserActions)
   // Full coverage, no issues — all automatic protections verified.
   if (coverage.overall === "full" && actions.level === "none") {
     return {
-      explanation: "No suspicious activity has been detected. Your available protections are running and Apollo will let you know if anything needs attention.",
+      explanation: `${NO_THREAT_MESSAGE} Your available protections are running and Apollo will let you know if anything needs attention.`,
     };
   }
 
@@ -351,13 +358,13 @@ function buildRestingMessage(coverage: ProtectionCoverage, actions: UserActions)
       ? `${joinNames(runningNames)} ${runningNames.length === 1 ? "is" : "are"} running.`
       : "Your available protections are running.";
     return {
-      explanation: `No suspicious activity has been detected. ${note} Manual security checks are ready when you need them.`,
+      explanation: `${NO_THREAT_MESSAGE} ${note}`,
     };
   }
 
   // No automatic protections running at all (but manual checks work).
   return {
-    explanation: "No suspicious activity has been detected. Manual security checks are ready when you need them. Open Protection to see what's available.",
+    explanation: `${NO_THREAT_MESSAGE} Manual security checks are ready when you need them.`,
     primaryAction: { label: "View protection", route: "/(tabs)/protection" },
   };
 }
@@ -381,6 +388,76 @@ function buildCoverageUnverifiedMessage(coverage: ProtectionCoverage): { explana
   };
 }
 
+// ─── Protection Presentation (independent of threat state) ──────────────────
+
+function deriveProtectionPresentation(
+  resolution: StateResolution,
+  coverage: ProtectionCoverage,
+  attention: AttentionItem[],
+): { protectionStatus?: HomeStatus["protectionStatus"]; protectionGuidance?: string; coverageNote?: string } {
+
+  const gateIssues = attention.filter((a) => a.kind === "gate");
+
+  // Critical repair: a gate that should be running has stopped.
+  if (coverage.failedCount > 0) {
+    const failedItem = coverage.items.find((i) => i.state === "temporarily_unavailable");
+    const failedName = failedItem?.name ?? "Protection";
+    const detail = failedItem?.detail;
+    const guidance = detail
+      ? `${failedName} isn't working as expected. ${detail}`
+      : `${failedName} isn't working as expected. I'm checking why and whether there's anything you need to do.`;
+    return { protectionStatus: "action_needed", protectionGuidance: guidance };
+  }
+
+  // Visibility lost (protection can't be verified) — not a threat.
+  if (resolution.visibilityLost && !coverage.platformLimited) {
+    const failedItems = coverage.items.filter((i) => i.state === "temporarily_unavailable" || i.state === "active_unverified");
+    const failedNames = failedItems.map((i) => i.name);
+    if (failedNames.length > 0) {
+      const names = joinNames(failedNames);
+      return {
+        protectionStatus: "reduced",
+        protectionGuidance: `Apollo can't currently confirm whether ${names} ${failedNames.length === 1 ? "is" : "are"} working. This doesn't mean there's a threat, but let's check ${failedNames.length === 1 ? "its" : "their"} status.`,
+      };
+    }
+    return {
+      protectionStatus: "reduced",
+      protectionGuidance: "Apollo can't currently confirm whether protection is working. This doesn't mean there's a threat.",
+    };
+  }
+
+  // Recovery period — Apollo is waiting for a fresh check after a recent event.
+  if (resolution.recovering) {
+    return {
+      protectionStatus: "reduced",
+      protectionGuidance: "Apollo resolved a recent alert and is waiting for a fresh check to confirm things are clear.",
+    };
+  }
+
+  // Gate issues without failures (e.g. permission needed).
+  if (gateIssues.length > 0) {
+    const gateNames = Array.from(new Set(gateIssues.map((g) => g.gate).filter(Boolean)));
+    const names = joinNames(gateNames);
+    return {
+      protectionStatus: "action_needed",
+      protectionGuidance: `${names} ${gateIssues.length === 1 ? "needs" : "need"} attention. I'll show you what needs fixing.`,
+    };
+  }
+
+  // All protections running normally.
+  if (coverage.overall === "full") {
+    return { protectionStatus: "watching" };
+  }
+
+  // Platform limited — no action needed for unsupported features.
+  if (coverage.platformLimited) {
+    return { protectionStatus: "watching", coverageNote: "Some protections are not available on this device." };
+  }
+
+  // Partial or unknown — not a problem unless something failed.
+  return {};
+}
+
 // ─── Main Resolver ──────────────────────────────────────────────────────────
 
 export function resolveHomeStatus(input: HomeResolverInput): HomeStatus {
@@ -391,38 +468,35 @@ export function resolveHomeStatus(input: HomeResolverInput): HomeStatus {
   const coverage = deriveCoverage(gates, capabilities, platformCanEnforce);
   const actions = deriveUserActions(attention, coverage, threat);
 
-  // ── Resolution Priority (PRD Section 5) ──
-  // 1. Active threat requiring immediate action
-  // 2. Critical protection failures requiring repair
-  // 3. Suspicious unresolved activity
-  // 4. Recently verified block (protection event)
-  // 5. Optional setup and platform limitations (separate from threat)
-  // 6. Resting with limitations disclosed
-  // 7. Unknown states never silently healthy
+  // Derive protection presentation — always independent of threat state.
+  const protectionPresentation = deriveProtectionPresentation(resolution, coverage, attention);
 
+  // ── Behavior is driven ONLY by threat state (PRD Section 3) ──
+  // Protection problems never independently change Apollo's threat behavior.
   let behavior: ApolloState = resolution.state;
   let headline: string;
   let explanation: string;
   let primaryAction: HomeStatus["primaryAction"] | undefined;
-  let coverageNote: string | undefined;
+  let coverageNote: string | undefined = protectionPresentation.coverageNote;
 
-  // ── Priority 1 & 4: Event-driven states (biting, barking, growling with events) ──
-  // These are already correctly resolved by the state machine.
+  // ── Event-driven threat states ──
   if (threat.level === "blocked" && resolution.state === "biting") {
     // Scenario E: Threat successfully blocked.
     const what = threat.summary || "a threat";
     headline = "Apollo is biting";
     explanation = `Apollo blocked ${what}. This connection was stopped.`;
     primaryAction = { label: "See what Apollo stopped", route: actions.primaryAction?.route ?? "/protection-details" };
+
   } else if (threat.level === "confirmed") {
-    // Priority 1: Active threat requiring immediate action.
+    // Active threat requiring immediate action.
     headline = "Apollo is barking";
     explanation = threat.summary
       ? `Apollo found ${threat.summary}. This needs your attention now.`
       : "Apollo found something that needs your attention now.";
     primaryAction = actions.primaryAction ? { label: actions.primaryAction.title, route: actions.primaryAction.route } : undefined;
+
   } else if (threat.level === "suspicious") {
-    // Priority 3: Suspicious unresolved activity — Scenario C.
+    // Suspicious unresolved activity.
     headline = resolution.state === "ears_up" ? "Apollo is sniffing something" : "Apollo is growling";
     explanation = threat.summary
       ? `Apollo spotted ${threat.summary}. I'm checking what it means and whether you need to do anything.`
@@ -431,69 +505,47 @@ export function resolveHomeStatus(input: HomeResolverInput): HomeStatus {
       ? { label: "View suspicious activity", route: `/patrol/${encodeURIComponent(threat.drivingEvent.event_id)}` }
       : { label: "View what Apollo found", route: "/protection-details" };
 
-  // ── Priority 2: Critical protection failures (no threat, but protection broken) ──
-  } else if (actions.level === "critical_repair" && coverage.failedCount > 0) {
-    // Scenario D: Critical protection failure.
-    const failedItem = coverage.items.find((i) => i.state === "temporarily_unavailable");
-    const failedName = failedItem?.name ?? "Protection";
-    behavior = "barking";
-    headline = "Apollo is barking";
-    explanation = `${failedName} has stopped working. Some activity may no longer be checked. I'll help you turn it back on.`;
-    primaryAction = actions.primaryAction ? { label: `Restore ${failedName.toLowerCase()}`, route: actions.primaryAction.route } : { label: "View protection", route: "/protection-details" };
-
-  // ── visibilityLost without driving event — coverage concern, not a threat ──
-  } else if (resolution.visibilityLost && !coverage.platformLimited) {
-    // Scenario F: Coverage cannot be verified (genuine verification failure).
-    behavior = "growling";
-    headline = "Apollo is growling";
-    const msg = buildCoverageUnverifiedMessage(coverage);
-    explanation = msg.explanation;
-    primaryAction = msg.primaryAction;
-
-  // ── Recovery period (awaiting fresh check after resolved event) ──
-  } else if (resolution.recovering) {
-    behavior = "growling";
-    headline = "Apollo is growling";
-    explanation = "Apollo is staying cautious after a recent alert. He needs a fresh check to confirm things are clear.";
-    primaryAction = { label: "View protection details", route: "/protection-details" };
-
-  // ── Multiple attention items (findings > 1) — classify and explain ──
-  } else if ((findingCount ?? 0) > 1 && attention.length > 0) {
-    headline = `Apollo is ${resolution.state === "barking" ? "barking" : "growling"}`;
-
-    const threatEvents = attention.filter((a) => a.kind === "event");
-    const gateIssues = attention.filter((a) => a.kind === "gate");
-    const primary = attention[0];
-
-    if (threatEvents.length > 0 && gateIssues.length === 0) {
-      const primaryProblem = (primary.problem || "").trim();
-      const areasSet = new Set(threatEvents.map((e) => e.gate).filter(Boolean));
-      const areas = Array.from(areasSet);
-      const areasPhrase = areas.length > 0 ? ` across ${joinNames(areas)}` : "";
-      explanation = primaryProblem
-        ? `Apollo has spotted ${primaryProblem}${(findingCount ?? 0) > 1 ? `, along with ${(findingCount ?? 0) - 1} other findings${areasPhrase}` : ""}. I'll walk you through each one.`
-        : `Apollo has spotted suspicious activity${areasPhrase}. I'll show you what he noticed and what to do next.`;
-      primaryAction = { label: "View what Apollo found", route: primary.route || "/protection-details" };
-    } else if (gateIssues.length > 0 && threatEvents.length === 0) {
-      const gateNames = Array.from(new Set(gateIssues.map((g) => g.gate).filter(Boolean)));
-      explanation = `Apollo needs a little attention. ${joinNames(gateNames)} ${gateIssues.length === 1 ? "needs" : "need"} to be checked. I'll show you what needs fixing.`;
-      primaryAction = { label: "View Protection Details", route: "/protection-details" };
-    } else {
-      const primaryProblem = (primary.problem || "").trim();
-      explanation = primaryProblem
-        ? `Apollo spotted ${primaryProblem}. There are also ${gateIssues.length} protection ${gateIssues.length === 1 ? "area" : "areas"} that need attention.`
-        : `Apollo has flagged ${findingCount} items that need attention — a mix of suspicious findings and protection settings.`;
-      primaryAction = { label: "View what Apollo found", route: primary.route || "/protection-details" };
-    }
-
-  // ── Priority 5 & 6: Resting states ──
+  // ── No active threat: Apollo rests ──
+  // Protection issues are shown via protectionStatus and protectionGuidance,
+  // never by changing Apollo's behavior to growling or barking.
   } else {
     behavior = "resting";
     headline = "Apollo is Patrolling";
-    const msg = buildRestingMessage(coverage, actions);
-    explanation = msg.explanation;
-    primaryAction = msg.primaryAction;
-    coverageNote = msg.coverageNote;
+
+    // Check if there are active security findings (event attention items, not gate issues).
+    const threatAttention = attention.filter((a) => a.kind === "event");
+    const securityFindingCount = threatAttention.length;
+
+    if (securityFindingCount > 1) {
+      // Multiple security findings still active but at low severity (ears_up or stale).
+      const primary = threatAttention[0];
+      const primaryProblem = (primary.problem || "").trim();
+      const gateNames = Array.from(new Set(threatAttention.map((e) => e.gate).filter(Boolean)));
+      const areasPhrase = gateNames.length > 0 ? ` across ${joinNames(gateNames)}` : "";
+      explanation = primaryProblem
+        ? `${NO_THREAT_MESSAGE} Apollo noted ${primaryProblem}, along with ${securityFindingCount - 1} other ${securityFindingCount === 2 ? "finding" : "findings"}${areasPhrase} worth reviewing.`
+        : `${NO_THREAT_MESSAGE} Apollo noted ${securityFindingCount} findings${areasPhrase} worth reviewing.`;
+      primaryAction = { label: "View what Apollo noted", route: primary.route || "/protection-details" };
+    } else if (securityFindingCount === 1) {
+      const primary = threatAttention[0];
+      const primaryProblem = (primary.problem || "").trim();
+      explanation = primaryProblem
+        ? `${NO_THREAT_MESSAGE} Apollo noted ${primaryProblem} — worth a look when you have a moment.`
+        : `${NO_THREAT_MESSAGE} Apollo noted something worth a look.`;
+      primaryAction = { label: "View what Apollo noted", route: primary.route || "/protection-details" };
+    } else {
+      // No security findings — pure resting state with protection context.
+      const msg = buildRestingMessage(coverage, actions);
+      explanation = msg.explanation;
+      primaryAction = msg.primaryAction;
+      coverageNote = msg.coverageNote ?? coverageNote;
+    }
+
+    // If there's a protection issue that needs action, it takes priority for primaryAction
+    // (but only when there are no active threat findings).
+    if (securityFindingCount === 0 && protectionPresentation.protectionStatus === "action_needed" && actions.primaryAction) {
+      primaryAction = { label: actions.primaryAction.title, route: actions.primaryAction.route };
+    }
   }
 
   return {
@@ -502,6 +554,8 @@ export function resolveHomeStatus(input: HomeResolverInput): HomeStatus {
     explanation,
     primaryAction,
     coverageNote,
+    protectionStatus: protectionPresentation.protectionStatus,
+    protectionGuidance: protectionPresentation.protectionGuidance,
     threat,
     coverage,
     actions,
