@@ -209,6 +209,40 @@ async def seed_catalogue_sources_feeds() -> dict[str, int]:
     return await import_package({"sources": package.get("sources", []), "feeds": package.get("feeds", [])}, "system:seed")
 
 
+async def seed_learning_articles() -> dict[str, int]:
+    """Idempotently seed starter Learn with Higgins articles, transitioning them through
+    the workflow to 'published' status. Safe to rerun — skips articles that already exist."""
+    import json
+    from pathlib import Path
+    path = Path(__file__).resolve().parent.parent / "content" / "learning_seed_articles.json"
+    try:
+        package = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {"articles_seeded": 0, "articles_published": 0, "articles_skipped": 0}
+
+    articles = package.get("articles", [])
+    seeded = 0; published = 0; skipped = 0
+    for raw in articles:
+        slug = _slug(str(raw.get("slug") or raw.get("title") or ""))
+        existing = await db.learning_articles.find_one({"slug": slug}, {"_id": 0})
+        if existing:
+            skipped += 1
+            continue
+        # Upsert as draft
+        await upsert_article(raw, "system:seed_articles")
+        seeded += 1
+        # Transition through workflow: draft → in_review → approved → published
+        try:
+            await transition(slug, "in_review", "system:seed_articles")
+            await transition(slug, "approved", "system:seed_articles")
+            await transition(slug, "published", "system:seed_articles")
+            published += 1
+        except (LookupError, ValueError):
+            pass  # Article stays as draft if quality checks don't pass
+    return {"articles_seeded": seeded, "articles_published": published, "articles_skipped": skipped}
+
+
+
 async def import_package(payload: dict[str, Any], actor: str) -> dict[str, int]:
     source_count = feed_count = article_count = 0
     for raw in payload.get("sources", []):

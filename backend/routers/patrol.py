@@ -284,21 +284,46 @@ async def revoke_trust(trust_id: str, device_id: str = Query(min_length=8, max_l
 
 
 
-# --------------------------------------------------------------------------- Retrofit (user-facing)
-@router.post("/retrofit/run")
-async def user_retrofit_run():
-    """Run the historical record retrofit migration. Idempotent — safe to rerun.
-    This is the user-facing endpoint (no admin key required).
+# --------------------------------------------------------------------------- New Enhancements (user-facing)
+@router.post("/enhancements/run")
+async def user_enhancements_run():
+    """Run all new enhancements: retrofit past reports + seed Learn with Higgins articles.
+    Idempotent — safe to rerun. This is the user-facing endpoint (no admin key required).
     """
     from scripts.retrofit_historical_records import run_migration
-    report = await run_migration(dry_run=False)
-    return report
+    from services.learning import seed_catalogue_sources_feeds, seed_learning_articles
+
+    # 1. Retrofit past investigation reports
+    retrofit_report = await run_migration(dry_run=False)
+
+    # 2. Seed sources/feeds catalogue (needed before articles)
+    catalogue = await seed_catalogue_sources_feeds()
+
+    # 3. Seed Learn with Higgins articles
+    articles = await seed_learning_articles()
+
+    return {
+        **(retrofit_report or {}),
+        "learning_catalogue": catalogue,
+        "learning_articles": articles,
+    }
 
 
-@router.get("/retrofit/status")
-async def user_retrofit_status():
-    """Get the latest migration report (user-facing)."""
+@router.get("/enhancements/status")
+async def user_enhancements_status():
+    """Get the latest enhancement run status (user-facing)."""
     report = await db.migration_reports.find_one({"migration_id": "retrofit_v1"}, {"_id": 0})
     if not report:
         return {"status": "not_run"}
     return {"status": "completed", "report": report}
+
+
+# Keep old endpoints as aliases for backwards compatibility
+@router.post("/retrofit/run")
+async def user_retrofit_run():
+    return await user_enhancements_run()
+
+
+@router.get("/retrofit/status")
+async def user_retrofit_status():
+    return await user_enhancements_status()

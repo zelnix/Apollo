@@ -28,7 +28,7 @@ export default function TabsLayout() {
         <NativeTabs.Trigger name="home"><NativeTabs.Trigger.Icon sf="house.fill" /><NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label></NativeTabs.Trigger>
         <NativeTabs.Trigger name="patrol"><NativeTabs.Trigger.Icon sf="exclamationmark.shield.fill" /><NativeTabs.Trigger.Label>Threats</NativeTabs.Trigger.Label></NativeTabs.Trigger>
         <NativeTabs.Trigger name="check-it"><NativeTabs.Trigger.Icon sf="square.grid.2x2.fill" /><NativeTabs.Trigger.Label>Check</NativeTabs.Trigger.Label></NativeTabs.Trigger>
-        <NativeTabs.Trigger name="scams"><NativeTabs.Trigger.Icon sf="megaphone.fill" /><NativeTabs.Trigger.Label>Scam Alerts</NativeTabs.Trigger.Label></NativeTabs.Trigger>
+        <NativeTabs.Trigger name="scams"><NativeTabs.Trigger.Icon sf="megaphone.fill" /><NativeTabs.Trigger.Label>Alerts</NativeTabs.Trigger.Label></NativeTabs.Trigger>
         <NativeTabs.Trigger name="ask"><NativeTabs.Trigger.Icon sf="bubble.left.fill" /><NativeTabs.Trigger.Label>Higgins</NativeTabs.Trigger.Label></NativeTabs.Trigger>
       </NativeTabs>
     );
@@ -57,7 +57,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="home" options={{ title: "Home", tabBarButtonTestID: "tab-home", tabBarIcon: tabIcon(Home), tabBarLabel: tabLabel("Home") }} />
       <Tabs.Screen name="patrol" options={{ title: "Threats", tabBarButtonTestID: "tab-threats", tabBarIcon: tabIcon(ShieldExclamation), tabBarLabel: tabLabel("Threats") }} />
       <Tabs.Screen name="check-it" options={{ title: "Check", tabBarButtonTestID: "tab-check", tabBarIcon: tabIcon(Squares2x2), tabBarLabel: tabLabel("Check") }} />
-      <Tabs.Screen name="scams" options={{ title: "Scam Alerts", tabBarButtonTestID: "tab-scams", tabBarIcon: tabIcon(Megaphone), tabBarLabel: tabLabel("Scam Alerts") }} />
+      <Tabs.Screen name="scams" options={{ title: "Alerts", tabBarButtonTestID: "tab-scams", tabBarIcon: tabIcon(Megaphone), tabBarLabel: tabLabel("Alerts") }} />
       <Tabs.Screen name="ask" options={{ title: "Higgins", tabBarButtonTestID: "tab-ask", tabBarIcon: tabIcon(ChatBubbleLeftRight), tabBarLabel: tabLabel("Higgins") }} />
       {/* Hidden tabs — still routable for deep links and backwards compatibility */}
       <Tabs.Screen name="guard" options={{ href: null }} />

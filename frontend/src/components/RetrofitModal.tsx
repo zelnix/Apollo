@@ -25,6 +25,8 @@ interface RetrofitReport {
   legacy_marked?: number;
   by_class?: Record<string, number>;
   completed_at?: string;
+  learning_catalogue?: { sources?: number; feeds?: number; articles?: number };
+  learning_articles?: { articles_seeded?: number; articles_published?: number; articles_skipped?: number };
 }
 
 type Phase = "confirm" | "running" | "done" | "error" | "already_done";
@@ -48,7 +50,7 @@ async function markRetrofitDone(): Promise<void> {
   }
 }
 
-/** Build a Higgins-style report narrative from the migration stats. */
+/** Build a Higgins-style report narrative from the enhancement stats. */
 function buildHigginsReport(report: RetrofitReport): string {
   const lines: string[] = [];
 
@@ -58,41 +60,49 @@ function buildHigginsReport(report: RetrofitReport): string {
   const briefings = report.briefings_generated ?? 0;
   const dupes = report.duplicates_marked ?? 0;
   const legacy = report.legacy_marked ?? 0;
+  const articlesPublished = report.learning_articles?.articles_published ?? 0;
+  const articlesSkipped = report.learning_articles?.articles_skipped ?? 0;
 
-  if (reviewed === 0) {
-    lines.push("I checked your investigation records. Everything is already up to date — no changes were needed.");
+  const nothingRetrofitted = reviewed === 0;
+  const nothingLearning = articlesPublished === 0 && articlesSkipped === 0;
+
+  if (nothingRetrofitted && nothingLearning) {
+    lines.push("I checked everything. All enhancements are already applied — no changes were needed.");
     return lines.join("\n\n");
   }
 
-  lines.push(`I've reviewed ${reviewed} investigation record${reviewed !== 1 ? "s" : ""} and applied the latest classification standards.`);
+  // ── Investigation retrofit report ──
+  if (reviewed > 0) {
+    lines.push(`I've reviewed ${reviewed} investigation record${reviewed !== 1 ? "s" : ""} and applied the latest classification standards.`);
 
-  if (classified > 0 || reclassified > 0) {
-    const parts: string[] = [];
-    if (classified > 0) parts.push(`${classified} newly classified`);
-    if (reclassified > 0) parts.push(`${reclassified} reclassified with updated evidence standards`);
-    lines.push(`Records updated: ${parts.join(", ")}.`);
+    if (classified > 0 || reclassified > 0) {
+      const parts: string[] = [];
+      if (classified > 0) parts.push(`${classified} newly classified`);
+      if (reclassified > 0) parts.push(`${reclassified} reclassified with updated evidence standards`);
+      lines.push(`Records updated: ${parts.join(", ")}.`);
+    }
+
+    if (briefings > 0) {
+      lines.push(`I wrote ${briefings} new investigation briefing${briefings !== 1 ? "s" : ""} so you can understand what happened in each case.`);
+    }
+
+    if (dupes > 0) {
+      lines.push(`${dupes} duplicate presentation record${dupes !== 1 ? "s were" : " was"} consolidated. The original evidence is preserved.`);
+    }
+
+    if (legacy > 0) {
+      lines.push(`${legacy} older record${legacy !== 1 ? "s" : ""} couldn't be fully verified with current standards — they're marked as legacy but still visible.`);
+    }
   }
 
-  if (briefings > 0) {
-    lines.push(`I wrote ${briefings} new investigation briefing${briefings !== 1 ? "s" : ""} so you can understand what happened in each case.`);
+  // ── Learn with Higgins articles ──
+  if (articlesPublished > 0) {
+    lines.push(`I've published ${articlesPublished} new Learn with Higgins article${articlesPublished !== 1 ? "s" : ""} — practical scam-safety guidance based on official Australian sources.`);
+  } else if (articlesSkipped > 0) {
+    lines.push("All Learn with Higgins articles are already up to date.");
   }
 
-  if (dupes > 0) {
-    lines.push(`${dupes} duplicate presentation record${dupes !== 1 ? "s were" : " was"} consolidated. The original evidence is preserved.`);
-  }
-
-  if (legacy > 0) {
-    lines.push(`${legacy} older record${legacy !== 1 ? "s" : ""} couldn't be fully verified with current standards — they're marked as legacy but still visible.`);
-  }
-
-  if (report.by_class && Object.keys(report.by_class).length > 0) {
-    const classSummary = Object.entries(report.by_class)
-      .map(([cls, count]) => `${cls.replace(/_/g, " ")}: ${count}`)
-      .join(", ");
-    lines.push(`Classification breakdown: ${classSummary}.`);
-  }
-
-  lines.push("Your investigation history is now using the latest reporting format. Everything is in order.");
+  lines.push("All enhancements have been applied. Everything is in order.");
 
   return lines.join("\n\n");
 }
@@ -107,7 +117,7 @@ export function RetrofitModal({ visible, onClose, auto = false }: { visible: boo
   const runRetrofit = useCallback(async () => {
     try {
       setPhase("running");
-      const result = await apiPostEmpty<RetrofitReport>("/retrofit/run", "retrofit-run-v1");
+      const result = await apiPostEmpty<RetrofitReport>("/enhancements/run", "enhancements-run-v1");
       setReport(result);
       await markRetrofitDone();
       setPhase("done");
@@ -134,7 +144,7 @@ export function RetrofitModal({ visible, onClose, auto = false }: { visible: boo
             return;
           }
         }
-        const status = await apiGet<{ status: string; report?: RetrofitReport }>("/retrofit/status");
+        const status = await apiGet<{ status: string; report?: RetrofitReport }>("/enhancements/status");
         if (status.status === "completed" && auto) {
           await markRetrofitDone();
           setPhase("already_done");
