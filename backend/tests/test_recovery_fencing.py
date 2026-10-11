@@ -980,7 +980,7 @@ async def _gmail_shared_cursor():
     await db.gmail_connections.insert_one({"device_id": owner, "monitoring_enabled": True})
     cursors, modes = [], []
     original_scan, original_submit = mailbox_monitor.gmail.scan_inbox_page, mailbox_monitor._submit_shared_case
-    async def fake_scan(device_id, cursor=None, limit=15):
+    async def fake_scan(device_id, cursor=None, limit=15, email=None):
         cursors.append(cursor)
         return ([{"id": f"message-{len(cursors)}", "from": "sender", "subject": "subject", "body": "body", "links": []}], "next-token" if cursor is None else None)
     async def fake_submit(provider, device_id, message, mode):
