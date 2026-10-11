@@ -165,6 +165,31 @@ async def get_storage_info(request: Request):
     }, headers=NO_STORE)
 
 
+@router.get("/investigations/{case_id}/export/pdf")
+async def export_investigation_pdf(case_id: str, request: Request):
+    """Generate and return a branded Apollo investigation PDF.
+    The PDF includes the full Magnum DI investigation, Higgins explanation,
+    Evidentiary Chain metadata, sources, and retention information."""
+    from services.higgins.pdf_export import generate_pdf
+    owner = owner_of(request)
+    case_doc = await repo.get_case(owner, case_id)
+    case_wire = (await repo.case_view(case_doc)).wire()
+    evidence_rows = await repo.list_evidence(owner, case_id)
+    evidence_wire = [repo.evidence_view(r).wire() for r in evidence_rows]
+    subject = (case_wire.get("response") or {}).get("subject", "Investigation")
+    pdf_bytes = generate_pdf(case_wire, evidence_wire, subject=subject)
+    safe_subject = re.sub(r'[^\w\s-]', '', subject)[:40].strip().replace(" ", "_") or "report"
+    filename = f"Apollo_{safe_subject}_{case_id[:8]}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(len(pdf_bytes)),
+            **NO_STORE,
+        })
+
+
 @router.get("/investigations/{case_id}")
 async def get_case(case_id: str, request: Request):
     case = await repo.get_case(owner_of(request), case_id)

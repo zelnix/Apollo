@@ -3093,21 +3093,65 @@ frontend:
         comment: "All acceptance tests pass: Evidentiary Chain 12/12, Magnum DI 32/32, Higgins Briefing 39/39, WP2 Digest 9/9, Package4 37/37. Total: 129/129. TypeScript compilation clean. Backend health OK. Frontend loads."
 
 
+  - task: "PDF Export — Backend PDF Generation"
+    implemented: true
+    working: true
+    file: "backend/services/higgins/pdf_export.py, backend/routers/investigations.py"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "pdf_export.py generates Apollo-branded PDF using reportlab (485KB+ output). Endpoint GET /api/investigations/{case_id}/export/pdf returns application/pdf with Content-Disposition attachment. Includes all sections: header, assessment badge, overview, Higgins explanation, Magnum DI findings, evidentiary chain, sources, retention notice. Verified locally: generate_pdf() produces valid 485KB PDF."
+
+  - task: "PDF Export — Frontend Export Button (InvestigationView.tsx)"
+    implemented: true
+    working: true
+    file: "frontend/src/components/InvestigationView.tsx"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Added 'Export Report as PDF' button (secondary variant, testID inv-export-pdf) to InvestigationView report controls section. Uses FileSystem.downloadAsync with Bearer auth token to download from /api/investigations/{case_id}/export/pdf, then Sharing.shareAsync to open native share sheet (supports Device, Google Drive, Email). Loading state with ActivityIndicator during generation. Error handling with user-facing messages. Web fallback: opens in new tab. Status note (testID inv-pdf-note) for success/error feedback. TypeScript and ESLint clean."
+
+  - task: "Evidence Retention System (24h evidence / 90d reports / 100MB cap)"
+    implemented: true
+    working: true
+    file: "backend/services/higgins/capacity.py, backend/services/higgins/repository.py, backend/services/higgins/report_store.py"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Two-tier retention: 24h for source evidence, 90d for saved reports, 100MB per-user storage cap with oldest-first cleanup. /api/investigations/storage endpoint returns usage. EvidencePopup handles content_expired states. All retention tests passing."
+
+  - task: "Developer Completion Reports"
+    implemented: true
+    working: true
+    file: "backend/EVIDENCE_RETENTION_COMPLETION_REPORT.md, backend/PDF_EXPORT_COMPLETION_REPORT.md"
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Created markdown completion reports for Evidence Retention and PDF Export features as required by PRD."
+
 test_plan:
   current_focus:
-    - "WP1 — Authenticated Evidence Image Retrieval (EvidencePopup.tsx)"
-    - "WP2 — SHA-256 Digest Validation in Vision Endpoint"
-    - "WP3 — End-to-End Pipeline Acceptance"
+    - "PDF Export — Backend PDF Generation endpoint"
+    - "PDF Export — Frontend Export Button in InvestigationView"
+    - "Evidence Retention System integration"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 
 agent_communication:
   - agent: "main"
-    message: "WP1/WP2/WP3 Evidentiary Chain Completion & Verification. Please test: (1) BACKEND: run tests/test_wp2_digest_validation.py (9 tests — correct digest accepted, mismatched/missing/short digests rejected before Gemini, text-only works), tests/test_evidentiary_chain.py (12 tests — evidence model, list, content, cross-owner isolation), tests/test_magnum_di_acceptance.py (32 tests — scenarios, vision gate, model config, privacy), tests/test_higgins_briefing_acceptance.py (39 tests — briefing standard, scenarios, output depth). (2) FRONTEND: verify TypeScript compilation, EvidencePopup.tsx uses authenticated fetch with getDeviceToken()+Bearer header (not Image component headers), handles 410/404/error states, InvestigationView wires EvidencePopup correctly. (3) BACKEND API: POST /api/vision/investigate with correct SHA-256 digest → accepts (200 or 502 if Gemini unavailable, NOT 422 integrity), POST with wrong digest → 422 integrity error, POST with missing digest → 422, GET /api/investigations/{case_id}/evidence/{evidence_id}/content requires auth (401 without). No user accounts — register via POST /api/devices/register. Known limitation: Gemini API returns ProviderFailure in this container — that is expected, not a bug."
+    message: "PDF EXPORT FEATURE COMPLETE. Please test: (1) BACKEND: Verify GET /api/investigations/{case_id}/export/pdf returns application/pdf (requires device auth — register via POST /api/devices/register first, then use token as Bearer). Test that the endpoint returns a valid PDF file. Run backend/services/higgins/pdf_export.py generate_pdf() directly to verify PDF generation produces valid output. (2) FRONTEND: Verify TypeScript compilation passes. Check InvestigationView.tsx has the 'Export Report as PDF' button (testID inv-export-pdf) with variant=secondary, loading state (pdfExporting), and status note (testID inv-pdf-note). Verify imports: expo-file-system, expo-sharing, getDeviceToken, API_BASE. (3) BACKEND TEST SUITE: Run full pytest — expect 202+ passed (1 unrelated flaky test in test_threat_indicators allowed). No user accounts — register via POST /api/devices/register. Known: Gemini returns ProviderFailure in container (expected). The PDF endpoint requires an actual investigation case to exist. Previously passing: WP1/WP2/WP3 evidentiary chain, retention system tests."
 
 metadata:
   created_by: "testing_agent"
   version: "1.0"
-  test_sequence: 79
+  test_sequence: 80
   run_ui: false

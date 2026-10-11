@@ -1,8 +1,12 @@
 // Shared investigation view: faithful Higgins overview, expandable full explanation, findings, sources, coverage, question, actions, Retry/Cancel.
+import * as FileSystem from "expo-file-system";
+import * as Sharing from "expo-sharing";
 import * as WebBrowser from "expo-web-browser";
-import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import React, { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, Platform, Pressable, Text, View } from "react-native";
 
+import { API_BASE } from "@/src/api/client";
+import { getDeviceToken } from "@/src/auth/deviceIdentity";
 import { Body, Button, Card, Pill, type Tone } from "@/src/components/ui";
 import { EvidencePopup } from "@/src/components/EvidencePopup";
 import { assessmentLabel, attentionLabel, investigationHistory, scrubMessage } from "@/src/domain/messageVoice";
@@ -60,6 +64,51 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
   const [evidencePopupVisible, setEvidencePopupVisible] = useState(false);
   const [focusEvidenceId, setFocusEvidenceId] = useState<string | null>(null);
   const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>([]);
+  const [pdfExporting, setPdfExporting] = useState(false);
+  const [pdfNote, setPdfNote] = useState<string | null>(null);
+
+  const exportPdf = useCallback(async () => {
+    if (!caseData) return;
+    setPdfExporting(true);
+    setPdfNote(null);
+    try {
+      const token = await getDeviceToken();
+      if (!token) {
+        setPdfNote("Device not registered. Please restart Apollo.");
+        return;
+      }
+      const url = `${API_BASE}/investigations/${caseData.id}/export/pdf`;
+      const filename = `Apollo_Report_${caseData.id.slice(0, 8)}.pdf`;
+      const fileUri = `${FileSystem.cacheDirectory}${filename}`;
+      const download = await FileSystem.downloadAsync(url, fileUri, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (download.status !== 200) {
+        setPdfNote("Could not generate the PDF. Please try again.");
+        return;
+      }
+      const sharingAvailable = await Sharing.isAvailableAsync();
+      if (sharingAvailable) {
+        await Sharing.shareAsync(download.uri, {
+          mimeType: "application/pdf",
+          dialogTitle: "Export Apollo Investigation Report",
+          UTI: "com.adobe.pdf",
+        });
+        setPdfNote("PDF exported successfully.");
+      } else if (Platform.OS === "web") {
+        // Web fallback: open in a new tab
+        window.open(download.uri, "_blank");
+        setPdfNote("PDF opened in a new tab.");
+      } else {
+        setPdfNote("Sharing is not available on this device.");
+      }
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "PDF export failed.";
+      setPdfNote(message);
+    } finally {
+      setPdfExporting(false);
+    }
+  }, [caseData]);
   useEffect(() => {
     if (!state.caseData) { setReports([]); setReportNext(null); return; }
     void investigationApi.listReports().then((result) => { setReports(result.items); setReportNext(result.nextCursor); }).catch(() => setReportNote("Saved reports could not be loaded."));
@@ -136,6 +185,11 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
       {failedRecheck ? <Button testID="inv-recheck-retry" variant="ghost" label="Retry the fresh check" onPress={() => { setFailedRecheck(false); void retryFailedAttempt(); }} /> : null}
       {caseData ? <View style={{ gap: spacing.xs }} testID="inv-report-controls">
         <Button testID="inv-view-evidence" variant="ghost" label={`View Evidence (${evidenceItems.length})`} onPress={() => { setFocusEvidenceId(null); setEvidencePopupVisible(true); }} />
+        <Button testID="inv-export-pdf" variant="secondary" disabled={pdfExporting}
+          label={pdfExporting ? "Generating PDF…" : "Export Report as PDF"}
+          icon={pdfExporting ? <ActivityIndicator size="small" color={colors.brand} /> : undefined}
+          onPress={exportPdf} />
+        {pdfNote ? <Text style={s.muted} testID="inv-pdf-note">{pdfNote}</Text> : null}
         <Button testID="inv-report-save" variant="ghost" label="Save a redacted report" onPress={() => {
           void investigationApi.saveReport(caseData.id, response.revision).then(({ reportId }) => investigationApi.listReports().then((result) => {
             setReports(result.items); setReportNext(result.nextCursor); setReportNote(`Saved report ${reportId.slice(0, 8)}. Temporary evidence is not copied into it.`);
