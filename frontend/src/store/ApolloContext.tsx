@@ -42,7 +42,7 @@ import { patrolDelivery, deliveryFailure } from './patrolDelivery';
 import { toPatrolEnforcementEvidence } from "@/src/domain/enforcementEvidenceSync";
 import { getNotificationStatus, requestNotificationPermission, scheduleLocalAlert, registerRemotePush, type NotificationStatus } from "@/src/push/notifications";
 import { eventLocalAlert, protectionLocalAlert } from "@/src/push/localAlerts";
-import { completedCheckAlert, protectionUpdateAlert, recoveryAlert } from "@/src/push/protectionAlerts";
+import { completedCheckAlert, protectionUpdateAlert } from "@/src/push/protectionAlerts";
 import { MessagingSdk } from "@/src/security/messagingSdk";
 import { CallSdk } from "@/src/security/callSdk";
 import { storage } from "@/src/utils/storage";
@@ -621,9 +621,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     if (previous) {
       const alert = protectionLocalAlert(previous, protection);
       if (alert) void scheduleLocalAlert(alert).catch(() => undefined);
-      // Defect 7: Wire recovery notification from protectionAlerts
-      const recAlert = recoveryAlert(previous, protection);
-      if (recAlert) void scheduleLocalAlert(recAlert).catch(() => undefined);
+      // Note: recoveryAlert from protectionAlerts.ts is NOT dispatched here to avoid
+      // duplicate notifications — protectionLocalAlert already handles recovery.
     }
   }, [ready, protection]);
 

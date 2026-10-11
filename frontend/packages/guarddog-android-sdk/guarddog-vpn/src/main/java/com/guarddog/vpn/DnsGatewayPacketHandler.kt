@@ -99,17 +99,20 @@ class DnsGatewayPacketHandler(
             when (verdict.verdict) {
                 "malicious" -> {
                     // Protection Before Speed: live check confirmed this hostname as malicious.
-                    // The backend has created a threat indicator. Try rule-bundle authorization first
-                    // (static rules). If the hostname is not in the bundle yet, trigger a rule
-                    // refresh so the updated bundle (which now includes the indicator) is installed,
-                    // then re-attempt arm() through the trusted enforcement path.
+                    // The backend has created a threat indicator. Try rule-bundle authorization
+                    // first (static rules). If the hostname is not in the bundle yet, trigger a
+                    // hot rule refresh on a SEPARATE thread (avoids deadlocking the DNS thread
+                    // or triggering a VPN stop/restart) with a bounded wait, then re-attempt
+                    // arm() through the trusted enforcement path.
                     var sinkholeIpv4 = bindingStore.arm(hostname)
                     if (sinkholeIpv4 == null && ruleRefresher != null) {
-                        // Rule refresh: fetches the updated bundle from the backend. The backend
-                        // created the threat indicator during the same live check, so /api/guarddog/rules
-                        // now includes a blocking rule for this hostname.
-                        try { ruleRefresher.run() } catch (_: Throwable) { /* non-fatal */ }
-                        sinkholeIpv4 = bindingStore.arm(hostname)
+                        val refreshThread = Thread(ruleRefresher, "live-rep-refresh")
+                        refreshThread.isDaemon = true
+                        refreshThread.start()
+                        refreshThread.join(2_500)  // Bounded: 2.5 seconds max
+                        if (!refreshThread.isAlive) {
+                            sinkholeIpv4 = bindingStore.arm(hostname)
+                        }
                     }
                     if (sinkholeIpv4 != null) {
                         notifyCompleted(hostname, verdict.verdict, verdict.confidence, blocked = true)
@@ -118,7 +121,8 @@ class DnsGatewayPacketHandler(
                             else -> DnsResponseSynthesizer.synthesizeNxDomain(queryPacket, dnsQuery)
                         }
                     } else {
-                        // Rule refresh failed or hostname still not authorised — forward.
+                        // Refresh timed out, failed, or hostname still not authorised — forward.
+                        // The user is notified via the "threat detected" observation.
                         notifyCompleted(hostname, verdict.verdict, verdict.confidence, blocked = false)
                         forward(queryPacket, rawBuffer, udpRange)
                     }

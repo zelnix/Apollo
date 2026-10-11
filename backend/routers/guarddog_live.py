@@ -33,15 +33,20 @@ router = APIRouter(prefix="/api/guarddog", tags=["guarddog-live"])
 class DnsReputationRequest(BaseModel):
     """Privacy-preserving DNS reputation check.
     
-    The device sends a hash prefix of the hostname, not the full hostname.
-    For unknown hostnames not in the local rule bundle, the device may also
-    send the full hostname for a direct check — this is a device-side privacy
-    decision controlled by the native code.
+    The device sends a hash prefix of the observed DNS hostname. For unknown hostnames
+    not in the local rule bundle, the device may also send the bare hostname to enable
+    external intelligence (Safe Browsing etc.) — this is a device-side privacy decision.
+    
+    Privacy requirements:
+    - Only bare hostnames are accepted (e.g. "example.com"), never full URLs or paths.
+    - The hostname is used solely for reputation lookup; it is not logged or retained
+      beyond the threat indicator (if one is created for a confirmed threat).
+    - This is a hostname-level DNS reputation check, not a full URL or website inspection.
     """
     hostname_hash_prefix: str = Field(min_length=4, max_length=16,
         description="First N hex chars of SHA-256(lowercase hostname)")
     hostname: Optional[str] = Field(default=None, max_length=253,
-        description="Full hostname (optional — enables direct external lookup)")
+        description="Bare hostname only (no paths, no query strings) — enables external intelligence")
     request_context: str = Field(default="dns_observation",
         description="Why this check was requested: dns_observation, link_tap, etc.")
 

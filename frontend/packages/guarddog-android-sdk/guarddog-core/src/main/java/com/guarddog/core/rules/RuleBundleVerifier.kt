@@ -24,6 +24,8 @@ enum class RejectionReason {
     VERSION_CONFLICT,
     /** Stage 4: The Ed25519 signature is invalid — bundle was tampered with. */
     SIGNATURE_INVALID,
+    /** Stage 4: Signing key is configured but the bundle has no signature — possible signature-stripping attack. */
+    SIGNATURE_MISSING,
 }
 
 /**
@@ -58,13 +60,13 @@ class RuleBundleValidator(
                     return ValidationResult.Rejected(RejectionReason.SIGNATURE_INVALID)
                 }
                 is Ed25519BundleVerifier.VerifyResult.Unsigned -> {
-                    // Bundle has no signature — in strict mode this could be rejected,
-                    // but for backward compatibility we accept it (HTTPS-only auth).
-                    // Future: when all production bundles are signed, reject unsigned.
-                    signatureVerified = false
+                    // Signing key is configured but the bundle carries no signature.
+                    // Reject to prevent signature-stripping attacks.
+                    return ValidationResult.Rejected(RejectionReason.SIGNATURE_MISSING)
                 }
                 is Ed25519BundleVerifier.VerifyResult.Unavailable -> {
-                    // Ed25519 not available on this device — gracefully degrade to HTTPS-only.
+                    // Ed25519 not available on this Android version (API 26–32).
+                    // Gracefully degrade to HTTPS-only authentication.
                     signatureVerified = false
                 }
             }

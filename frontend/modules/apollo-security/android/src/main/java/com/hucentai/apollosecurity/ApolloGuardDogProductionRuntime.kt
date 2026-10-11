@@ -71,6 +71,22 @@ private data class ProductionPendingEvidence(val evidence: BlockedThreatEvidence
  * Rules are authenticated via HTTPS + Ed25519 cryptographic signature (Stage 4).
  */
 internal class ApolloGuardDogProductionRuntime(private val context: Context) {
+
+  companion object {
+    /**
+     * Pinned Ed25519 signing public key (base64-encoded, 32 bytes raw).
+     *
+     * Trust model: this key is embedded at build time. The backend signs rule bundles
+     * with the corresponding private key. A downloaded key from the same server CANNOT
+     * silently replace this pinned key — key rotation requires an app update.
+     *
+     * On Android 8–12 (API 26–32), java.security.Signature("Ed25519") is not available.
+     * The native verifier returns Unavailable; the bundle is accepted without signature
+     * verification, relying on the HTTPS TLS connection for authentication. On API 33+,
+     * full Ed25519 verification is enforced.
+     */
+    const val PINNED_SIGNING_PUBLIC_KEY = "tu+b28Kvrl7a0JYcgBLyn7XxSDzLkfhdBROHZq+4k5Q="
+  }
   private val transitions = ApolloEnforcementTransitions.coordinator
   private val state = VpnStateRepository.shared
   private val prefs = context.getSharedPreferences("apollo_guarddog_production", Context.MODE_PRIVATE)
@@ -105,18 +121,6 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
   }
   private fun deviceToken(): String? = prefs.getString("device_bearer_token", null)
 
-  // ── Stage 4: Ed25519 signing public key (fetched from backend, persisted for offline verification) ──
-  private fun signingPublicKey(): String? = prefs.getString("signing_public_key_b64", null)
-  private fun fetchAndPersistSigningPublicKey(backendBaseUrl: String) {
-    try {
-      val raw = fetch("$backendBaseUrl/api/guarddog/rules/public-key")
-      val json = JSONObject(raw)
-      val key = json.getString("public_key")
-      check(key.length in 40..60) { "Ed25519 public key has unexpected length" }
-      prefs.edit().putString("signing_public_key_b64", key).apply()
-    } catch (_: Throwable) { /* Non-fatal: signature verification will use cached key or be skipped */ }
-  }
-
   /** Derive the backend base URL from the configured rule bundle URL. */
   private fun backendBaseUrl(): String? {
     val cfg = config ?: return null
@@ -135,18 +139,50 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
   /** Fetch the latest rules from the authenticated HTTPS backend and validate them. */
   fun refreshRules(): String {
     val active = checkNotNull(config) { "Production GuardDog is not configured" }
-    // Stage 4: Fetch/refresh the Ed25519 signing public key alongside rules
-    backendBaseUrl()?.let { fetchAndPersistSigningPublicKey(it) }
     val rawBundle = fetch(active.ruleBundleUrl)
     return transitions.serialized { acceptBundleLocked(rawBundle) }
+  }
+
+  /**
+   * Hot-refresh: fetch and apply the latest rules WITHOUT stopping/restarting the active VPN.
+   *
+   * Used by the DNS handler's rule refresher when a live reputation check discovers a new
+   * malicious hostname. The backend has created a threat indicator, so the updated bundle
+   * now includes a blocking rule for that hostname.
+   *
+   * This method:
+   * - Does NOT acquire the transitions lock (avoids deadlock with the VPN's DNS thread)
+   * - Does NOT stop/restart the VPN (avoids killing the calling DNS handler)
+   * - Validates the bundle (Ed25519 signature, schema, version) identically to [refreshRules]
+   * - Applies the new rules to the running engine's @Volatile acceptedBundle fields
+   * - Subsequent arm() calls see the updated rules immediately
+   *
+   * Returns true if the rules were successfully applied, false otherwise.
+   */
+  fun hotRefreshRules(): Boolean {
+    val active = config ?: return false
+    val activeEngine = engine ?: return false
+    val rawBundle: String
+    try { rawBundle = fetch(active.ruleBundleUrl) } catch (_: Throwable) { return false }
+    val validator = RuleBundleValidator(ApolloBundleVersionStore(context, "production:v2"), SystemClock, PINNED_SIGNING_PUBLIC_KEY)
+    val staged = validator.validate(rawBundle)
+    if (staged is ValidationResult.Rejected) return false
+    val bundle = (staged as ValidationResult.Accepted).bundle
+    if (bundle.rulesetId != active.rulesetId) return false
+    // Hot-apply: update the engine's @Volatile rule stores. No clearAuthorization/clearBindings
+    // because we're adding rules (not removing). Active sinkhole bindings remain valid.
+    if (activeEngine.acceptRuleBundle(rawBundle) is ValidationResult.Rejected) return false
+    activeEngine.acceptWebsiteGateRuleBundle(rawBundle)
+    persistBundle(rawBundle, bundle.bundleVersion)
+    acceptedBundleExpiresAt = Instant.parse(bundle.expiresAt)
+    return true
   }
 
   fun acceptBundle(raw: String): String = transitions.serialized { acceptBundleLocked(raw) }
   private fun acceptBundleLocked(raw: String): String {
     val activeConfig = checkNotNull(config)
-    // Stage 4: Validate bundle with Ed25519 signature verification when a public key is available.
-    val pubKey = signingPublicKey()
-    val validator = RuleBundleValidator(ApolloBundleVersionStore(context, "production:v2"), SystemClock, pubKey)
+    // Stage 4: Validate bundle with Ed25519 signature verification using the pinned public key.
+    val validator = RuleBundleValidator(ApolloBundleVersionStore(context, "production:v2"), SystemClock, PINNED_SIGNING_PUBLIC_KEY)
     val staged = validator.validate(raw)
     if (staged is ValidationResult.Rejected) return JSONObject().put("accepted", false).put("reason", staged.reason.name).toString()
     val bundle = (staged as ValidationResult.Accepted).bundle
@@ -175,8 +211,7 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
   }
 
   private fun rebuildEngine(): GuardDogSDKEngine {
-    val pubKey = signingPublicKey()
-    val validator = RuleBundleValidator(ApolloBundleVersionStore(context, "production:v2"), SystemClock, pubKey)
+    val validator = RuleBundleValidator(ApolloBundleVersionStore(context, "production:v2"), SystemClock, PINNED_SIGNING_PUBLIC_KEY)
     val rebuilt = GuardDogSDKEngine(validator, state, SystemClock)
     rebuilt.addEventListener { event ->
       try {
@@ -224,10 +259,10 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
     GuardDogVpnRuntime.liveReputationBackendUrl = liveBackend
     GuardDogVpnRuntime.liveReputationAuthToken = deviceToken()
     // Stage 3: Rule refresher — invoked by the DNS handler when a live check discovers a new
-    // malicious hostname. The backend will have created a threat indicator during the live check,
-    // so refreshing rules installs the blocking rule through the trusted authorisation path.
+    // malicious hostname. Uses hotRefreshRules() to apply the updated bundle without stopping
+    // the VPN — avoids deadlocking the DNS processing thread.
     GuardDogVpnRuntime.liveReputationRuleRefresher = Runnable {
-      try { refreshRules() } catch (_: Throwable) { /* non-fatal: arm() will fail and DNS is forwarded */ }
+      try { hotRefreshRules() } catch (_: Throwable) { /* fail-open: arm() will fail and DNS is forwarded */ }
     }
     GuardDogVpnRuntime.dnsThreatObservedListener = DnsThreatObservedListener { observation ->
       try { dnsThreatInbox.append(observation) } catch (_: Throwable) { dnsThreatInbox.reportFailure("DNS threat observation persistence failed") }

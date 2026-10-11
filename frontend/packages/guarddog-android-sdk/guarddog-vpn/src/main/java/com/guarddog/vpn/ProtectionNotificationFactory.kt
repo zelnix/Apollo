@@ -82,7 +82,9 @@ object ProtectionNotificationFactory {
             .build()
     }
 
-    /** Build a transient notification for a completed live check that blocked a malicious site. */
+    /** Build a transient notification for a completed live check that prevented DNS access
+     *  to a malicious site. This is DNS-level PREVENTION (sinkhole response issued), NOT a
+     *  verified connection block — Apollo has no native evidence of a dropped TCP/TLS packet. */
     fun buildLiveCheckBlocked(context: Context, hostname: String): Notification {
         val contentIntent = PendingIntent.getActivity(
             context, 3,
@@ -94,8 +96,8 @@ object ProtectionNotificationFactory {
         )
         val displayHost = truncateHost(hostname)
         return Notification.Builder(context, LIVE_CHECK_CHANNEL_ID)
-            .setContentTitle("Apollo blocked an unsafe website")
-            .setContentText("$displayHost was identified as dangerous and has been blocked.")
+            .setContentTitle("Apollo detected a dangerous website")
+            .setContentText("DNS access to $displayHost has been prevented.")
             .setSmallIcon(android.R.drawable.ic_lock_lock)
             .setContentIntent(contentIntent)
             .setOngoing(false)
