@@ -3,7 +3,7 @@ set -euo pipefail
 
 : "${AWS_PROFILE:?Set a temporary read-only AWS profile}"
 : "${AWS_REGION:=us-west-2}"
-: "${GUARDDOG_CONTROLLED_HOST:=blocktest.btciq.app}"
+: "${GUARDDOG_CONTROLLED_HOST:=apolloverify.harmonywellnessgroup.com.au}"
 : "${GUARDDOG_CONTROLLED_IPV4:=52.25.179.131}"
 : "${GUARDDOG_ROUTE53_ZONE_ID:?Set the authoritative Route 53 hosted-zone ID}"
 : "${GUARDDOG_EVIDENCE_DIR:?Set an external non-repository evidence directory}"

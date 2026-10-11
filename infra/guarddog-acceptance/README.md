@@ -24,7 +24,7 @@ address in `endpoint.env.example` is documentation-only TEST-NET and is rejected
 ## Current AWS target status
 
 - Saved source commit containing the five candidate corrections: `f19c23e`.
-- `blocktest.btciq.app` resolves to the single IPv4 `52.25.179.131`, which AWS publishes as EC2 in
+- `apolloverify.harmonywellnessgroup.com.au` resolves to the single IPv4 `52.25.179.131`, which AWS publishes as EC2 in
   `us-west-2`. TLS 1.3 is valid for the hostname through 2026-12-14.
 - The existing root page is HTTP 200, but `/apollo-guarddog-acceptance/v1` is currently HTTP 404.
   Therefore endpoint verification and host-scoped signing remain blocked.

@@ -27,11 +27,11 @@ class SelectiveRouteInstallerTest {
     }
 
     /**
-     * Frozen M1 acceptance constants (blocktest.btciq.app → 52.25.179.131, offline — the binding result is injected, no DNS):
+     * Frozen M1 acceptance constants (apolloverify.harmonywellnessgroup.com.au → 52.25.179.131, offline — the binding result is injected, no DNS):
      * the installed route set must be exactly [52.25.179.131/32] and IPv6 must be explicitly allowed to bypass, never routed into the TUN.
      */
     @Test fun frozenM1EndpointRoutesExactlyTheDedicatedSlash32AndBypassesIpv6() {
-        val frozen = VpnConfig("blocktest.btciq.app", "52.25.179.131", "https://blocktest.btciq.app/", "gd-m1-controlled-block")
+        val frozen = VpnConfig("apolloverify.harmonywellnessgroup.com.au", "52.25.179.131", "https://apolloverify.harmonywellnessgroup.com.au/", "gd-m1-controlled-block")
         val binding = ControlledEndpointResolver(frozen) { listOf("52.25.179.131") }.verifyBinding()
         assertIs<BindingResult.Match>(binding)
         val spec = SelectiveRouteInstaller.buildSpec(frozen, binding.ipv4)

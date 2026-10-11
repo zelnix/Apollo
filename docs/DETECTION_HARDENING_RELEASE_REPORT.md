@@ -321,7 +321,7 @@ Passing tests must not be reported as a measured scam-detection accuracy percent
 
 | # | Issue | Status | Notes |
 |---|-------|--------|-------|
-| 1 | `apolloverify.harmonywellnessgroup.com.au` in production | **Resolved** | Replaced with `blocktest.btciq.app` across backend, EAS config, and tests |
+| 1 | Test hostname in production code | **Resolved** | Removed from production code, backend, and build config. Acceptance infra uses `apolloverify.harmonywellnessgroup.com.au` |
 | 2 | Android/iOS/TypeScript message detection consistency (Gap #5) | **Partially addressed** | TypeScript rules hardened; native detection rules require native code review |
 | 3 | Native background SMS/call interception validation | **Not tested** | Requires physical device with native build |
 | 4 | VPN enforcement (Biting) | **Not tested** | Out of scope for this release |
@@ -361,7 +361,7 @@ Passing tests must not be reported as a measured scam-detection accuracy percent
 | 8 | Numerical scores overriding evidence | Fixed: evidence gate in appAnalysis.ts; courier/government scam URL escalation |
 | 9 | Legitimate wallet connections producing Barking | Verified: already fixed (W12) in prior round |
 | 10 | Normal certificates causing severe alerts | Fixed: D03 considers managementExpected context |
-| 11 | Hardcoded test hostnames | Resolved: `apolloverify.harmonywellnessgroup.com.au` replaced with `blocktest.btciq.app`; KNOWN_TEST_HOSTS are Google's official test pages |
+| 11 | Hardcoded test hostnames | Resolved: test hostname removed from production code; acceptance infra retained under `infra/guarddog-acceptance/` with `apolloverify.harmonywellnessgroup.com.au` |
 | 12 | Stale Barking degrading | By design: hero degrades, Patrol preserves. Documented as intended |
 | 13 | Confidence derived solely from status | Fixed: all 5 result adapters now derive confidence from evidence quality |
 | 14 | False positives without reassessment | Addressed: tests validate both positive and negative scenarios |
