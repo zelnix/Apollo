@@ -265,7 +265,7 @@ export default function Patrol() {
   return (
     <View style={s.root}>
       <View style={{ paddingTop: insets.top + spacing.md }}>
-        <RootScreenHeader title="Apollo's Patrol" testID="patrol-header" info={{ title: "About Apollo's Patrol", body: ["Patrol is a plain-English record of what Apollo noticed while it was watching — checks that completed and anything that needed attention.", "It holds no browsing history or message content. Clear it anytime in Settings → Privacy & data."] }} rightAccessory={
+        <RootScreenHeader title="Threats" testID="patrol-header" info={{ title: "About Threats", body: ["Threats is a plain-English record of what Apollo noticed while it was watching — investigations, checks that completed and anything that needed attention.", "It holds no browsing history or message content. Clear it anytime in Settings → Privacy & data."] }} rightAccessory={
           <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}>
             <Pill tone="neutral" label={`${outcomes.length} outcomes`} testID="patrol-count" />
             <Pressable testID="patrol-saved-reports-button" accessibilityRole="button" accessibilityLabel="Open saved reports" onPress={() => router.push("/saved-reports")} style={s.iconBtn}><Library size={20} color={colors.onSurface} /></Pressable>
@@ -293,8 +293,8 @@ export default function Patrol() {
         renderItem={renderItem}
         ListEmptyComponent={
           <Card testID="patrol-empty" style={{ gap: spacing.sm }}>
-            <Text style={s.emptyTitle}>{filters.length === 0 ? "No Patrol activity yet." : "Nothing matches the filters you chose."}</Text>
-            {filters.length === 0 ? <Body>Apollo adds items here as things happen.</Body> : null}
+            <Text style={s.emptyTitle}>{filters.length === 0 ? "No threat activity yet." : "Nothing matches the filters you chose."}</Text>
+            {filters.length === 0 ? <Body>Apollo adds items here when it detects threats or completes investigations.</Body> : null}
           </Card>
         }
       />

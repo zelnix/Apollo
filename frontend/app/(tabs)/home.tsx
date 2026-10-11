@@ -11,7 +11,7 @@ import { HigginsFollowUp } from "@/src/components/HigginsFollowUp";
 import { ClipboardLinkBanner } from "@/src/components/ClipboardLinkBanner";
 import { ServiceBanner } from "@/src/components/ServiceBanner";
 import { CoverageCard } from "@/src/components/CoverageCard";
-import { HomeScamAlerts } from "@/src/components/HomeScamAlerts";
+import { PriorityScamNotice } from "@/src/components/PriorityScamNotice";
 import { LatestActivityRow } from "@/src/components/LatestActivityRow";
 import { DailyActivityCard } from "@/src/components/DailyActivityCard";
 import { RecoveryBanner, useRecoveryTracker } from "@/src/components/RecoveryBanner";
@@ -64,7 +64,7 @@ export default function Home() {
         <RootScreenHeader title="Home" testID="home-header" rightAccessory={isMock ? <DevTag label="Preview" testID="home-mock-pill" /> : null} />
       </View>
       <ScrollView contentContainerStyle={s.content} testID="home-scroll">
-        {/* 1. Apollo's current status — small emblem, one short Higgins paragraph (gate names
+        {/* 1. Apollo's current threat status — small emblem, one short Higgins paragraph (gate names
          *    dynamically generated), and ONE primary action (View Protection Details or the
          *    specific issue). Details live on the next screen. */}
         <ApolloHero resolution={resolution} adapterLabel={adapterLabel} isMock={isMock} capabilities={capabilities} animate={!lowPower} quietNow={quietNow} sniffing={refreshing} attention={attention} gates={health.gates} findingCount={findingCount} />
@@ -72,7 +72,27 @@ export default function Home() {
         {/* Improvement 5: Recovery banner — shows when protection was interrupted and is now restored. */}
         <RecoveryBanner recovery={recovery} onDismiss={dismissRecovery} testID="home-recovery-banner" />
 
-        {/* Improvement 1: Latest meaningful security activity with real timestamp. */}
+        {/* 2. Protection Status — always visible, opens Protection screen. */}
+        <CoverageCard />
+
+        {/* 3. Learn with Higgins — always visible, opens the learning experience. */}
+        <Pressable testID="home-learn-higgins" accessibilityRole="button" accessibilityLabel="Learn with Higgins" accessibilityHint="Open Apollo's scam-safety guidance library" onPress={() => router.push("/higgins/learning")} style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]}>
+          <Card style={s.learnCard}>
+            <View style={s.learnIcon}><GraduationCap size={23} color={colors.brand} /></View>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={s.learnTitle}>Learn with Higgins</Text>
+              <Text style={s.learnBody}>Plain-English guidance on how common scams work and how to stay safe.</Text>
+            </View>
+          </Card>
+        </Pressable>
+
+        {/* 4. Conditional priority Scam Alert notice — only shows if a credible high-priority
+         *    external alert exists. Does NOT change Apollo's state. */}
+        <PriorityScamNotice />
+
+        {/* 5. Other genuinely useful Home content. */}
+
+        {/* Latest meaningful security activity with real timestamp. */}
         {events.length > 0 ? (
           <LatestActivityRow events={events} testID="home-latest-activity" />
         ) : null}
@@ -88,27 +108,6 @@ export default function Home() {
         <ServiceBanner />
         <HigginsFollowUp />
         <ClipboardLinkBanner />
-
-        {/* 2. Coverage at a glance — every gate verifiably Watching, shown once. */}
-        <CoverageCard />
-
-        {/* 2b. Latest official scam alerts — awareness only, separate from Gate coverage. */}
-        <HomeScamAlerts />
-
-        {/* 2c. Learn with Higgins — plain-English scam-safety guidance library. */}
-        <Pressable testID="home-learn-higgins" accessibilityRole="button" accessibilityLabel="Learn with Higgins" accessibilityHint="Open Apollo's scam-safety guidance library" onPress={() => router.push("/higgins/learning")} style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]}>
-          <Card style={s.learnCard}>
-            <View style={s.learnIcon}><GraduationCap size={23} color={colors.brand} /></View>
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text style={s.learnTitle}>Learn with Higgins</Text>
-              <Text style={s.learnBody}>Plain-English guidance on how common scams work and how to stay safe.</Text>
-            </View>
-          </Card>
-        </Pressable>
-
-
-        {/* 3. "Needs your attention" removed — the Protection Details screen is now the single
-         *    place for per-gate findings and actions. Home stays short and simple. */}
 
         {/* Compact background-protection indicator. */}
         {protection?.operational ? (
@@ -136,12 +135,10 @@ export default function Home() {
           </View>
         ) : null}
 
-        {/* Improvement 2: Apollo's Day on Patrol — daily activity summary. */}
+        {/* Apollo's Day on Patrol — daily activity summary. */}
         {events.length > 0 ? (
           <DailyActivityCard events={events} testID="home-daily-activity" />
         ) : null}
-
-        {/* Recent patrol removed from Home — the full activity feed lives on the Patrol tab. */}
       </ScrollView>
     </View>
   );
