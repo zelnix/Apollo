@@ -289,7 +289,7 @@ export default function Home() {
           <View>
             <View style={s.sectionHeader}>
               <Text style={s.sectionTitle}>Important for you</Text>
-              <Pressable onPress={() => router.push("/(tabs)/patrol")} hitSlop={8}>
+              <Pressable onPress={() => router.push({ pathname: "/(tabs)/patrol", params: { filter: "needs_you" } })} hitSlop={8}>
                 <Text style={s.sectionLink}>View all</Text>
               </Pressable>
             </View>

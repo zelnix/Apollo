@@ -2,8 +2,8 @@ import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import FileDown from "lucide-react-native/icons/file-down";
 import Library from "lucide-react-native/icons/library";
-import { useRouter } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FlatList, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -200,9 +200,17 @@ export default function Patrol() {
   const insets = useSafeAreaInsets();
   const { events, deviceId, showToast } = useApollo();
   const router = useRouter();
+  const params = useLocalSearchParams<{ filter?: string }>();
   const [filters, setFilters] = useState<string[]>([]);
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
+
+  // Apply initial filter from URL params (e.g. navigated from Home "View all")
+  useEffect(() => {
+    if (params.filter) {
+      setFilters(params.filter.split(",").filter(Boolean));
+    }
+  }, [params.filter]);
 
   const onExport = async () => {
     if (outcomes.length === 0) { showToast("Nothing to export yet.", "neutral"); return; }
