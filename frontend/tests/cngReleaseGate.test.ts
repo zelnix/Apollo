@@ -19,9 +19,6 @@ test("CNG: production env has required GuardDog variables and no stale signing k
   const env = readFileSync(envPath, "utf8");
   for (const key of [
     "EXPO_PUBLIC_GUARDDOG_RULE_BUNDLE_URL",
-    "EXPO_PUBLIC_GUARDDOG_CONTROLLED_HOST",
-    "EXPO_PUBLIC_GUARDDOG_CONTROLLED_IPV4",
-    "EXPO_PUBLIC_GUARDDOG_CONTROLLED_URL",
     "EXPO_PUBLIC_GUARDDOG_RULESET_ID",
   ]) {
     assert.ok(env.includes(key), `.env.production must include ${key}`);

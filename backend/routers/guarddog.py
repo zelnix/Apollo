@@ -4,7 +4,7 @@ Authentication: HTTPS + Ed25519 cryptographic signing (Stage 4).
 Bundle versioning: immutable, complete, monotonically versioned. Each version is a full snapshot.
 Publication ≠ installation: this endpoint generates bundles; device pull/validation is separate.
 
-The controlled-verification rule is permanently included for physical-device testing.
+The rule bundle is generated dynamically from active threat indicators in the database.
 Active, non-expired ThreatIndicator entries with external provenance are included as BLOCK rules.
 
 Signing: Each bundle is signed with Ed25519. The 'signature' field is added to the response
@@ -23,15 +23,6 @@ from core.db import db, now_utc
 from services.rule_signing import get_public_key_b64, is_signing_enabled, sign_bundle
 
 router = APIRouter(prefix="/api/guarddog", tags=["guarddog"])
-
-# ── Controlled verification rule (permanent, not from threat intelligence) ────
-CONTROLLED_VERIFICATION_RULE = {
-    "ruleId": "prod-controlled-verify-v1",
-    "host": "blocktest.btciq.app",
-    "action": "block",
-    "matchType": "exact",
-    "category": "controlled-verification",
-}
 
 # ── Bundle version tracking ───────────────────────────────────────────────────
 # We store the current published bundle in db.rule_bundle_state so that:
@@ -88,7 +79,7 @@ async def _get_or_publish_bundle() -> dict:
     """
     # Get current active rules
     indicator_rules = await _get_active_indicator_rules()
-    all_rules = [CONTROLLED_VERIFICATION_RULE] + indicator_rules
+    all_rules = indicator_rules
     content_hash = _compute_content_hash(all_rules)
     
     # Check if we already published a bundle with this exact content
@@ -152,9 +143,8 @@ async def _get_or_publish_bundle() -> dict:
 async def get_rules():
     """Serve the current production rule bundle.
 
-    Generated dynamically from:
-    1. The permanent controlled-verification rule (for physical-device testing)
-    2. Active, non-expired ThreatIndicator entries with external provenance
+    Generated dynamically from active, non-expired ThreatIndicator entries
+    with external provenance.
 
     Authentication: HTTPS + Ed25519 signature (Stage 4).
     The 'signature' field contains the base64-encoded Ed25519 signature of the

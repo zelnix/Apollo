@@ -173,8 +173,8 @@ describe("3. Repeated blocks retain enforcement evidence without duplicate threa
   it("events for the same indicator_host within 24h are correlated", () => {
     const now = Date.now();
     const events = [
-      makeBlockEvent({ event_id: "b1", indicator_host: "blocktest.btciq.app", scent_id: undefined, occurred_at: new Date(now).toISOString() }),
-      makeBlockEvent({ event_id: "b2", indicator_host: "blocktest.btciq.app", scent_id: undefined, occurred_at: new Date(now - 3600_000).toISOString() }),
+      makeBlockEvent({ event_id: "b1", indicator_host: "verified-threat.example.net", scent_id: undefined, occurred_at: new Date(now).toISOString() }),
+      makeBlockEvent({ event_id: "b2", indicator_host: "verified-threat.example.net", scent_id: undefined, occurred_at: new Date(now - 3600_000).toISOString() }),
     ];
     assert.equal(countDistinctFindings(events), 0, "Verified blocks are not counted as findings requiring attention");
   });
