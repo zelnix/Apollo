@@ -231,11 +231,13 @@ function scaleRegion(
 ): { left: number; top: number; width: number; height: number } {
   const scaleX = displayWidth / imgWidth;
   const scaleY = displayHeight / imgHeight;
+  // Defence-in-depth: guard against undefined frame (OCR field name mismatch).
+  const frame = region.frame ?? { x: 0, y: 0, width: 0, height: 0 };
   return {
-    left: region.frame.x * scaleX,
-    top: region.frame.y * scaleY,
-    width: region.frame.width * scaleX,
-    height: region.frame.height * scaleY,
+    left: frame.x * scaleX,
+    top: frame.y * scaleY,
+    width: frame.width * scaleX,
+    height: frame.height * scaleY,
   };
 }
 
@@ -650,20 +652,23 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
               }}
               resizeMode="stretch"
             />
-            {screening.sensitiveRegions.map((region, idx) => (
-              <View
-                key={`redact-${idx}`}
-                style={[
-                  s.redactionBox,
-                  {
-                    left: region.frame.x,
-                    top: region.frame.y,
-                    width: region.frame.width,
-                    height: region.frame.height,
-                  },
-                ]}
-              />
-            ))}
+            {screening.sensitiveRegions.map((region, idx) => {
+              const frame = region.frame ?? { x: 0, y: 0, width: 0, height: 0 };
+              return (
+                <View
+                  key={`redact-${idx}`}
+                  style={[
+                    s.redactionBox,
+                    {
+                      left: frame.x,
+                      top: frame.y,
+                      width: frame.width,
+                      height: frame.height,
+                    },
+                  ]}
+                />
+              );
+            })}
           </View>
         </View>
       )}

@@ -86,7 +86,12 @@ export async function extractTextLocally(imageUri: string): Promise<TextRegion[]
     const OcrKit = require("expo-ocr-kit");
     const result = await OcrKit.recognizeText(imageUri);
     if (!result || !result.blocks) return null;
-    return classifyRegions(result.blocks);
+    // Normalise: the native module returns 'boundingBox' but classifyRegions expects 'frame'.
+    const normalizedBlocks = result.blocks.map((block: { text: string; boundingBox?: { x: number; y: number; width: number; height: number }; frame?: { x: number; y: number; width: number; height: number } }) => ({
+      text: block.text ?? "",
+      frame: block.frame ?? block.boundingBox ?? { x: 0, y: 0, width: 0, height: 0 },
+    }));
+    return classifyRegions(normalizedBlocks);
   } catch {
     return null; // OCR native module not available
   }
