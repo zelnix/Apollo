@@ -27,7 +27,7 @@ import { analyseFile, realTypeFromBytes } from "../domain/fileAnalysis";
 import { analyseAccountAlert, inspectAccountEvidence } from "../domain/accountAnalysis";
 import { analyseNetwork, ssidMatches } from "../domain/networkAnalysis";
 import { findScentFor, buildScents, SCENT_WINDOW_MS } from "../domain/threatScent";
-import { resolveApolloState, canTransition, STATE_RANK, EVENT_BARKING_FRESHNESS_MS, VERIFICATION_FRESHNESS_MS, RECOVERY_COOLDOWN_MS } from "../domain/stateMachine";
+import { resolveApolloState, canTransition, STATE_RANK, VERIFICATION_FRESHNESS_MS, RECOVERY_COOLDOWN_MS } from "../domain/stateMachine";
 import { mergeLocalAndRemoteEvents } from "../domain/eventMerge";
 import { buildEmailCheckResult } from "../domain/emailCheckResultAdapter";
 import { buildCallCheckResult } from "../domain/callCheckResultAdapter";
@@ -706,14 +706,13 @@ section("10A. State Machine Resolution");
   assert(r.drivingEvent?.event_id === "e1", "SM-01b: driving event is the barking event");
 })();
 
-// Stale barking event (>4h) → growling on hero (Gap #12)
+// Stale barking event — genuinely unresolved threats stay barking regardless of age (corrected behavior)
 (() => {
   const now = Date.now();
-  const e = makeEvent({ event_id: "e1", state: "barking", occurred_at: new Date(now - EVENT_BARKING_FRESHNESS_MS - 60000).toISOString() });
+  const e = makeEvent({ event_id: "e1", state: "barking", occurred_at: new Date(now - 5 * 60 * 60 * 1000).toISOString() });
   const r = resolveApolloState({ events: [e], visibility: "full", lastVerifiedAt: new Date(now - 1000).toISOString(), now });
-  assert(r.state === "growling", `SM-02: stale barking → growling on hero (got ${r.state})`);
-  // BUT the event itself still shows barking in Patrol
-  assert(e.state === "barking", "SM-02b: patrol event still barking");
+  assert(r.state === "barking", `SM-02: unresolved barking stays barking regardless of age (got ${r.state})`);
+  assert(r.drivingEvent?.event_id === "e1", "SM-02b: driving event preserved");
 })();
 
 // No events + fresh verification → resting
@@ -723,28 +722,31 @@ section("10A. State Machine Resolution");
   assert(r.state === "resting", `SM-03: no events + fresh verification → resting (got ${r.state})`);
 })();
 
-// No events + stale verification → growling
+// No events + stale verification → resting (protection-health issue, NOT a security threat)
+// Corrected per PRD: "Do not escalate Apollo's threat state merely because a Gate is not operating."
 (() => {
   const now = Date.now();
   const r = resolveApolloState({ events: [], visibility: "full", lastVerifiedAt: new Date(now - VERIFICATION_FRESHNESS_MS - 60000).toISOString(), now });
-  assert(r.state === "growling", `SM-04: stale verification → growling (got ${r.state})`);
+  assert(r.state === "resting", `SM-04: stale verification → resting (protection issue, not threat) (got ${r.state})`);
 })();
 
-// Visibility none → growling
+// Visibility none → resting (protection-health issue, NOT a security threat)
+// Corrected per PRD: "Gate unavailable → Reduced protection. None independently qualifies as evidence of a security threat."
 (() => {
   const now = Date.now();
   const r = resolveApolloState({ events: [], visibility: "none", lastVerifiedAt: new Date(now - 1000).toISOString(), now });
-  assert(r.state === "growling", `SM-05: visibility none → growling (got ${r.state})`);
+  assert(r.state === "resting", `SM-05: visibility none → resting (protection issue) (got ${r.state})`);
+  assert(r.visibilityLost === true, "SM-05b: visibilityLost flag set for protection health");
 })();
 
-// Recovery cooldown after resolved event
+// Recovery cooldown after resolved event → resting (resolved, no active threat)
+// Corrected per PRD: "Resolved incident → No indefinite Growling."
 (() => {
   const now = Date.now();
   const e = makeEvent({ event_id: "e1", state: "growling", occurred_at: new Date(now - 300000).toISOString(), status: "resolved" as any });
   (e as any).resolved_at = new Date(now - 30000).toISOString();
   const r = resolveApolloState({ events: [e], visibility: "full", lastVerifiedAt: new Date(now - 1000).toISOString(), now });
-  assert(r.state === "growling", `SM-06: recovery cooldown → growling (got ${r.state})`);
-  assert(r.recovering === true, "SM-06b: recovering flag is true");
+  assert(r.state === "resting", `SM-06: resolved event → resting (got ${r.state})`);
 })();
 
 // canTransition: escalation always allowed, biting requires verified block

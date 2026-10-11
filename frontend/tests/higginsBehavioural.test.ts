@@ -167,9 +167,10 @@ describe("3. Each step has one clear action and relevant navigation", () => {
         { gate: "Site Gate", problem: "suspicious page", kind: "event", route: "/patrol/e1" },
         { gate: "Text Gate", problem: "scam message", kind: "event", route: "/patrol/e2" },
       ] as any,
-      gates: [], capabilities: [], findingCount: 2,
+      gates: [], capabilities: [],
     });
-    assert.equal(voice.ctaRoute, "/protection-details", "Multiple findings → Protection Details");
+    // Multiple findings → links to the most urgent investigation, not generic Protection Details
+    assert.ok(voice.ctaRoute.startsWith("/patrol/"), "Multiple findings → most urgent investigation");
     assertNoPassiveLanguage(voice.text, "home voice multiple findings");
   });
 });

@@ -63,7 +63,12 @@ const GATE_ROUTE: Record<string, string> = {
 export function buildHomeAttention(input: { gates: GatePresentation[]; events: PatrolEvent[] }): AttentionItem[] {
   const items: AttentionItem[] = [];
 
-  // 1) Gates in a verified "Action needed" state (e.g. Site Gate protection was on but stopped).
+  // Gate issues are protection-health concerns — they belong in the Protection Status card,
+  // NOT mixed into the security findings list. We include them in the full attention list
+  // only for backwards compatibility, but callers should use buildSecurityFindings() and
+  // buildProtectionIssues() for proper separation.
+
+  // 1) Gates in a verified "Action needed" state (protection-health issue).
   for (const g of input.gates) {
     if (g.tone !== "action") continue;
     const limitation = g.capability.automatic?.limitation;
@@ -114,4 +119,16 @@ export function buildHomeAttention(input: { gates: GatePresentation[]; events: P
   }
 
   return items;
+}
+
+/** Security findings only — active events with evidence-backed concerns.
+ *  These belong on Home (prioritised) and in Threats → Investigations. */
+export function buildSecurityFindings(input: { gates: GatePresentation[]; events: PatrolEvent[] }): AttentionItem[] {
+  return buildHomeAttention(input).filter((a) => a.kind === "event");
+}
+
+/** Protection-health issues only — gate failures, disabled protections, setup needs.
+ *  These belong in the Protection Status card and Protection screen, NOT in threat alerts. */
+export function buildProtectionIssues(input: { gates: GatePresentation[]; events: PatrolEvent[] }): AttentionItem[] {
+  return buildHomeAttention(input).filter((a) => a.kind === "gate");
 }

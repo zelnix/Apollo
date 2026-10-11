@@ -67,14 +67,12 @@ const useStyles = makeStyles((c) => ({
 
 const ease = Easing.inOut(Easing.ease);
 
-export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = [], animate = true, quietNow = false, sniffing = false, attention = [], gates = [], findingCount = 0 }: {
+export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = [], animate = true, quietNow = false, sniffing = false, attention = [], gates = [] }: {
   resolution: StateResolution; adapterLabel: string; isMock: boolean; animate?: boolean; quietNow?: boolean;
   capabilities?: Capability[];
   sniffing?: boolean;
   attention?: AttentionItem[];
   gates?: GatePresentation[];
-  /** Distinct unresolved findings count (observations + concerns + blocked) — same number as Protection Details. */
-  findingCount?: number;
 }) {
   const s = useStyles();
   const { colors } = useTheme();
@@ -149,8 +147,8 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
   // specific investigation / gate) has the full detail. Benign states (resting / sniffing) still get
   // a line of voice so the person always sees Higgins.
   const voice = useMemo(
-    () => buildHomeVoice({ resolution, attention, gates, capabilities, findingCount }),
-    [resolution, attention, gates, capabilities, findingCount],
+    () => buildHomeVoice({ resolution, attention, gates, capabilities }),
+    [resolution, attention, gates, capabilities],
   );
   const checks = sniffing ? [] : recommendedChecks(resolution);
   const askedAt = useMemo(() => new Date(new Date().setHours(0, 0, 0, 0)).toISOString(), []);

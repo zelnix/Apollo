@@ -88,22 +88,22 @@ function verbForState(state: StateResolution["state"]): string {
  *
  *  Priority (highest first):
  *   1. Verified block (biting) → confirm what Apollo blocked, link to the investigation.
- *   2. Multiple active concerns (gates stopped + events across gates) → name every affected gate,
- *      send the person to Protection Details.
- *   3. One specific active concern (event or gate) → name the gate + link to the issue.
- *   4. Visibility lost (protection unverified) → name the affected gates + link to Protection Details.
- *   5. Recovering (awaiting a fresh check) → ask for a check + link to Protection Details.
- *   6. Patrolling / Sniffing → simple meaning line.
+ *   2. One specific high-priority concern → name the concern, link to the investigation.
+ *   3. Two current concerns → name both specifically.
+ *   4. Three+ current concerns → name the most important, summarise to Threats.
+ *   5. Visibility lost (protection unverified) → explain, link to Protection.
+ *   6. Patrolling / Sniffing → calm status line.
+ *
+ *  NEVER: count-driven messaging ("N findings"), generic directions, or
+ *  conflation of gate-health with security threats.
  */
 export function buildHomeVoice(input: {
   resolution: StateResolution;
   attention: AttentionItem[];
   gates: GatePresentation[];
   capabilities: Capability[];
-  /** Distinct finding count from countDistinctFindings — must match Protection Details. */
-  findingCount?: number;
 }): HomeVoice {
-  const { resolution, attention, gates, capabilities, findingCount } = input;
+  const { resolution, attention, gates, capabilities } = input;
   const state = resolution.state;
 
   // Derive platformCanEnforce from capabilities (same logic as ApolloContext).
@@ -115,28 +115,30 @@ export function buildHomeVoice(input: {
     attention,
     gates,
     capabilities,
-    findingCount,
+    findingCount: 0, // Not used for count-driven messaging
     platformCanEnforce,
   });
 
+  // Separate security findings from protection issues — never conflate.
+  const securityFindings = attention.filter((a) => a.kind === "event");
+  const protectionIssues = attention.filter((a) => a.kind === "gate");
+
   // ── Resting: the resolver produces scenario-specific messaging ──
-  // The state machine now returns resting for all non-threat cases, including
-  // visibility loss, recovery, and gate failures. These are communicated through
-  // separate protectionStatus and protectionGuidance fields.
   if (state === "resting" || (resolution.platformLimited && homeStatus.behavior === "resting")) {
+    // Use approved wording when no security threat
+    const restingText = homeStatus.explanation ||
+      "No security threats currently detected within Apollo's current protection capability.";
     return {
-      text: homeStatus.explanation,
-      ctaLabel: homeStatus.primaryAction?.label ?? "View protection coverage",
+      text: restingText,
+      ctaLabel: homeStatus.primaryAction?.label ?? "View protection",
       ctaRoute: homeStatus.primaryAction?.route ?? "/(tabs)/protection",
-      spoken: homeStatus.explanation,
+      spoken: restingText,
       protectionStatus: homeStatus.protectionStatus,
       protectionGuidance: homeStatus.protectionGuidance,
     };
   }
 
   if (state === "sniffing" || state === "ears_up") {
-    // Sniffing / Ears Up: Higgins explains what Apollo is INVESTIGATING right now. If there's a
-    // specific driving event (an active investigation), name it; otherwise describe the general sweep.
     const drivingEvent = resolution.drivingEvent;
     const verb = state === "ears_up" ? "has his ears up" : "is sniffing";
     if (drivingEvent) {
@@ -155,20 +157,19 @@ export function buildHomeVoice(input: {
     }
     return {
       text: state === "ears_up"
-        ? "Apollo is sniffing something — something in a recent check caught his attention. Open Protection Details and I'll show you what he's found."
-        : "Apollo is sniffing — running his checks across your protections. Open Protection Details and I'll show you the current status.",
+        ? "Apollo has noticed something — something in a recent check caught his attention. I'll show you what he's found."
+        : "Apollo is sniffing — running his checks across your protections.",
       ctaLabel: "View what Apollo is checking",
-      ctaRoute: "/protection-details",
+      ctaRoute: "/(tabs)/patrol",
       spoken: state === "ears_up"
-        ? "Apollo is sniffing something — something caught his attention. I'll tell you what to do."
+        ? "Apollo has noticed something — something caught his attention. I'll tell you what to do."
         : "Apollo is sniffing — running his checks across your protections.",
     };
   }
 
   const drivingEvent = resolution.drivingEvent;
 
-  // 1) Biting — Apollo blocked something. Only when the driving event carries a verified_block flag
-  //    with supporting evidence (per standing rule — never claim a block without evidence).
+  // 1) Biting — Apollo blocked something. Only when the driving event carries a verified_block flag.
   if (state === "biting" && drivingEvent?.verified_block) {
     const rawWhat = (drivingEvent.what_happened || drivingEvent.headline || "").trim();
     const what = hasLocalEvidence(drivingEvent) ? rawWhat : "a threat";
@@ -182,87 +183,64 @@ export function buildHomeVoice(input: {
     };
   }
 
-  // 2) Multiple active concerns — classify and explain, not just count.
-  //    Higgins names the most important concern, distinguishes threats from protection issues,
-  //    and never describes setup tasks as security threats.
-  const effectiveCount = findingCount ?? attention.length;
-  if (effectiveCount > 1 && attention.length > 0) {
-    const threatEvents = attention.filter((a) => a.kind === "event");
-    const gateIssues = attention.filter((a) => a.kind === "gate");
-    const primary = attention[0]; // Already priority-sorted by buildHomeAttention
+  // 2) Security findings — prioritise by severity, explain specifically, never count-driven.
+  if (securityFindings.length > 0) {
+    const primary = securityFindings[0]; // Already priority-sorted by buildHomeAttention
+    const primaryProblem = (primary.problem || "").trim();
 
-    let text: string;
-    let ctaLabel: string;
-    let ctaRoute: string;
-
-    if (threatEvents.length > 0 && gateIssues.length === 0) {
-      // All findings are active security events (suspicious/blocked activity).
-      // Group by gate category to give a sense of what they concern.
-      const gateNames = Array.from(new Set(threatEvents.map((e) => e.gate).filter(Boolean)));
-      const areasPhrase = gateNames.length > 0 ? ` across ${joinNames(gateNames)}` : "";
-      const primaryProblem = (primary.problem || "").trim();
-
-      if (primaryProblem) {
-        const rest = effectiveCount - 1;
-        text = `Apollo has spotted ${primaryProblem}${rest > 0 ? `, along with ${rest} other ${rest === 1 ? "finding" : "findings"}${areasPhrase}` : ""}. I'll walk you through each one, starting with the most urgent.`;
-      } else {
-        text = `Apollo has spotted suspicious activity${areasPhrase} — ${effectiveCount} findings need checking. I'll show you what he noticed and what to do next.`;
-      }
-      ctaLabel = "View what Apollo found";
-      ctaRoute = primary.route || "/protection-details";
-
-    } else if (gateIssues.length > 0 && threatEvents.length === 0) {
-      // All findings are protection/gate issues (protection stopped, needs setup).
-      const gateNames = Array.from(new Set(gateIssues.map((g) => g.gate).filter(Boolean)));
-      const names = joinNames(gateNames);
-      text = `Apollo needs a little attention. ${names} ${gateIssues.length === 1 ? "needs" : "need"} to be checked. I'll show you what needs fixing, one step at a time.`;
-      ctaLabel = "View Protection Details";
-      ctaRoute = "/protection-details";
-
-    } else {
-      // Mix of threats and protection issues — name the most important concern first.
-      const primaryProblem = (primary.problem || "").trim();
-      if (primary.kind === "event" && primaryProblem) {
-        text = `Apollo spotted ${primaryProblem}. There ${gateIssues.length === 1 ? "is" : "are"} also ${gateIssues.length} protection ${gateIssues.length === 1 ? "area" : "areas"} that ${gateIssues.length === 1 ? "needs" : "need"} attention. Let's start with what Apollo found.`;
-        ctaLabel = "View what Apollo found";
-        ctaRoute = primary.route;
-      } else {
-        const gateNames = Array.from(new Set(gateIssues.map((g) => g.gate).filter(Boolean)));
-        const names = joinNames(gateNames);
-        text = `${names} ${gateIssues.length === 1 ? "needs" : "need"} attention, and Apollo has also flagged ${threatEvents.length} suspicious ${threatEvents.length === 1 ? "finding" : "findings"}. I'll walk you through everything, starting with the most important.`;
-        ctaLabel = "View Protection Details";
-        ctaRoute = "/protection-details";
-      }
+    if (securityFindings.length === 1) {
+      // One specific concern — name it, explain it, link directly to the investigation.
+      const opener = state === "barking"
+        ? (primaryProblem ? `Apollo found ${primaryProblem} — this needs your action now` : `Apollo found something in ${primary.gate} that needs your action now`)
+        : (primaryProblem ? `Apollo flagged ${primaryProblem}` : `Apollo flagged something in ${primary.gate}`);
+      const text = `${opener}. Open it and I'll tell you exactly what to do.`;
+      return {
+        text,
+        ctaLabel: "View what Apollo found",
+        ctaRoute: primary.route,
+        spoken: text,
+      };
     }
 
-    return { text, ctaLabel, ctaRoute, spoken: text };
-  }
-
-  // 3) Exactly one specific active concern.
-  const primary = attention[0] ?? null;
-  if (primary) {
-    const gate = primary.gate;
-    const problem = (primary.problem || "").trim();
-    let opener: string;
-    if (state === "barking") {
-      opener = problem
-        ? `Apollo found ${problem} — this needs your action now`
-        : `Apollo found something in ${gate} that needs your action now`;
-    } else if (state === "biting") {
-      opener = problem
-        ? `Apollo blocked a threat — ${problem}`
-        : `Apollo blocked a threat in ${gate}`;
-    } else {
-      opener = problem
-        ? `Apollo flagged ${problem}`
-        : `Apollo flagged something in ${gate}`;
+    if (securityFindings.length === 2) {
+      // Two specific concerns — name both, link to the most urgent.
+      const second = securityFindings[1];
+      const secondBrief = (second.problem || second.title || "").trim();
+      const text = primaryProblem
+        ? `Apollo flagged ${primaryProblem}. There's also a concern about ${secondBrief || second.gate}. I'll walk you through both, starting with the most urgent.`
+        : `Apollo has flagged concerns in ${primary.gate} and ${second.gate}. I'll walk you through both.`;
+      return {
+        text,
+        ctaLabel: "View what Apollo found",
+        ctaRoute: primary.route,
+        spoken: text,
+      };
     }
-    const text = `${opener}. Open it and I'll tell you exactly what to do.`;
+
+    // Three or more — name the most important, direct to Threats for the rest.
+    const text = primaryProblem
+      ? `Apollo flagged ${primaryProblem}, along with other concerns. Let's start with the most urgent — I'll walk you through everything in Threats.`
+      : `Apollo has flagged several security concerns. Let's start with the most urgent.`;
     return {
       text,
-      ctaLabel: primary.kind === "event" ? "View what Apollo found" : `View ${gate} issue`,
+      ctaLabel: "View in Threats",
       ctaRoute: primary.route,
       spoken: text,
+    };
+  }
+
+  // 3) Only gate/protection issues, no security findings — these are protection health, not threats.
+  if (protectionIssues.length > 0) {
+    const gateNames = Array.from(new Set(protectionIssues.map((g) => g.gate).filter(Boolean)));
+    const names = joinNames(gateNames);
+    const text = `${names} ${protectionIssues.length === 1 ? "needs" : "need"} attention to keep your protection running properly. This isn't a security threat — it's about maintaining Apollo's coverage.`;
+    return {
+      text,
+      ctaLabel: "View protection",
+      ctaRoute: "/(tabs)/protection",
+      spoken: text,
+      protectionStatus: "action_needed",
+      protectionGuidance: `${names} ${protectionIssues.length === 1 ? "requires" : "require"} attention.`,
     };
   }
 
@@ -294,14 +272,12 @@ export function buildHomeVoice(input: {
     };
   }
 
-  // 4) Visibility lost — use resolver's evidence-based messaging instead of generic fallback.
-  //    Only name GENUINELY affected automatic capabilities — not optional setup or unsupported features.
+  // 4) Visibility lost — use resolver's evidence-based messaging.
   if (resolution.visibilityLost) {
-    // Delegate to the resolver which produces Scenario D/F messaging.
     return {
       text: homeStatus.explanation,
       ctaLabel: homeStatus.primaryAction?.label ?? "Check protection",
-      ctaRoute: homeStatus.primaryAction?.route ?? "/protection-details",
+      ctaRoute: homeStatus.primaryAction?.route ?? "/(tabs)/protection",
       spoken: homeStatus.explanation,
     };
   }
@@ -309,18 +285,18 @@ export function buildHomeVoice(input: {
   // 5) Recovering — no active event, waiting on a fresh verification check.
   if (resolution.recovering) {
     return {
-      text: "Apollo is staying cautious after a recent alert. He needs a fresh check to confirm things are clear. Open Protection Details — I'll show you which checks to run.",
-      ctaLabel: "View Protection Details",
-      ctaRoute: "/protection-details",
-      spoken: "Apollo is staying cautious after a recent alert. Open Protection Details to run the needed checks.",
+      text: "Apollo is staying cautious after a recent alert. He needs a fresh check to confirm things are clear.",
+      ctaLabel: "View protection",
+      ctaRoute: "/(tabs)/protection",
+      spoken: "Apollo is staying cautious after a recent alert.",
     };
   }
 
   // 6) Fallback — use resolver's evidence-based messaging.
   return {
     text: homeStatus.explanation,
-    ctaLabel: homeStatus.primaryAction?.label ?? "View Protection Details",
-    ctaRoute: homeStatus.primaryAction?.route ?? "/protection-details",
+    ctaLabel: homeStatus.primaryAction?.label ?? "View protection",
+    ctaRoute: homeStatus.primaryAction?.route ?? "/(tabs)/protection",
     spoken: homeStatus.explanation,
   };
 }

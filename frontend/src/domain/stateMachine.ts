@@ -15,12 +15,6 @@ const capitalise = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 export const VERIFICATION_FRESHNESS_MS = 10 * 60 * 1000;
 /** After an event resolves, Apollo stays alert until a fresh verification lands. */
 export const RECOVERY_COOLDOWN_MS = 2 * 60 * 1000;
-/** Events older than this no longer drive the hero to barking by themselves.
- *  They remain visible in Patrol and still count as active — but the Home hero
- *  won't bark about something the person likely already knows about and hasn't
- *  acted on. Prevents the confusing case where Coverage-at-a-glance is all green
- *  but Apollo is barking about stale findings. */
-export const EVENT_BARKING_FRESHNESS_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 export interface StateInput {
   events: PatrolEvent[];
@@ -70,20 +64,14 @@ export function resolveApolloState(input: StateInput): StateResolution {
     return { state: "biting", reason: "Apollo verified and blocked a threat.", recovering: false, visibilityLost: false, platformLimited: false, drivingEvent: biting };
   }
 
-  // Barking — only RECENT events drive the hero to bark. Older unresolved events degrade to
-  // growling so the Home hero matches the Coverage-at-a-glance reality. Events remain in Patrol.
-  const recentBarking = active
-    .filter((e) => e.state === "barking" && (now - Date.parse(e.occurred_at)) < EVENT_BARKING_FRESHNESS_MS)
+  // Barking — a confirmed threat requires the user's action. No time-based downgrade:
+  // a genuinely unresolved threat stays barking until resolved, regardless of age.
+  // Only active (unresolved) barking events with real evidence qualify.
+  const barking = active
+    .filter((e) => e.state === "barking")
     .sort(byNewest)[0];
-  if (recentBarking) {
-    return { state: "barking", reason: `${capitalise(areaLabel(recentBarking.category))} needs your decision.`, reasonRoute: `/patrol/${encodeURIComponent(recentBarking.event_id)}`, recovering: false, visibilityLost, platformLimited: !platformCanEnforce, drivingEvent: recentBarking };
-  }
-
-  // Stale barking events (older than freshness window) degrade to growling — still worth a look,
-  // but no longer an emergency that makes Apollo bark on the Home screen.
-  const staleBarking = active.filter((e) => e.state === "barking").sort(byNewest)[0];
-  if (staleBarking) {
-    return { state: "growling", reason: `${capitalise(areaLabel(staleBarking.category))} has an older finding that still needs a look.`, reasonRoute: `/patrol/${encodeURIComponent(staleBarking.event_id)}`, recovering: false, visibilityLost, platformLimited: !platformCanEnforce, drivingEvent: staleBarking };
+  if (barking) {
+    return { state: "barking", reason: `${capitalise(areaLabel(barking.category))} needs your decision.`, reasonRoute: `/patrol/${encodeURIComponent(barking.event_id)}`, recovering: false, visibilityLost, platformLimited: !platformCanEnforce, drivingEvent: barking };
   }
 
   const growling = active.filter((e) => e.state === "growling").sort(byNewest)[0];

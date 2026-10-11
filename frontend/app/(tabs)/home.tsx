@@ -18,7 +18,6 @@ import { RecoveryBanner, useRecoveryTracker } from "@/src/components/RecoveryBan
 import { Body, Button, Card, DevTag, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { buildScents } from "@/src/domain/threatScent";
 import { buildHomeAttention } from "@/src/domain/homeAttention";
-import { countDistinctFindings } from "@/src/domain/protectionDetails";
 import { STATE_NAME } from "@/src/domain/types";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
@@ -56,7 +55,6 @@ export default function Home() {
     [health.checking, health.gates, events],
   );
   const scents = buildScents(events);
-  const findingCount = React.useMemo(() => countDistinctFindings(events), [events]);
 
   return (
     <View style={s.root}>
@@ -67,7 +65,7 @@ export default function Home() {
         {/* 1. Apollo's current threat status — small emblem, one short Higgins paragraph (gate names
          *    dynamically generated), and ONE primary action (View Protection Details or the
          *    specific issue). Details live on the next screen. */}
-        <ApolloHero resolution={resolution} adapterLabel={adapterLabel} isMock={isMock} capabilities={capabilities} animate={!lowPower} quietNow={quietNow} sniffing={refreshing} attention={attention} gates={health.gates} findingCount={findingCount} />
+        <ApolloHero resolution={resolution} adapterLabel={adapterLabel} isMock={isMock} capabilities={capabilities} animate={!lowPower} quietNow={quietNow} sniffing={refreshing} attention={attention} gates={health.gates} />
 
         {/* Improvement 5: Recovery banner — shows when protection was interrupted and is now restored. */}
         <RecoveryBanner recovery={recovery} onDismiss={dismissRecovery} testID="home-recovery-banner" />

@@ -84,8 +84,8 @@ export default function ProtectionDetailsScreen() {
   );
   const findingCount = useMemo(() => countDistinctFindings(events), [events]);
   const voice = useMemo(
-    () => buildHomeVoice({ resolution, attention, gates: health.gates, capabilities, findingCount }),
-    [resolution, attention, health.gates, capabilities, findingCount],
+    () => buildHomeVoice({ resolution, attention, gates: health.gates, capabilities }),
+    [resolution, attention, health.gates, capabilities],
   );
 
   // "What Apollo has done today" — loaded from the on-device Gate Health Log + today's patrol events.
