@@ -39,6 +39,16 @@ const STATE_GIF: Partial<Record<ApolloState, { src: number; label: string }>> = 
 const FALLBACK_IMAGE = require("@/assets/images/logo.png");
 const HERO_BG_IMAGE = require("@/assets/images/hero-bg-patrolling.webp");
 
+/** State-based hero card background landscapes */
+const STATE_BG: Record<string, any> = {
+  resting:  require("@/assets/images/hero-bg-patrolling.webp"),
+  sniffing: require("@/assets/images/hero-bg-sniffing.webp"),
+  ears_up:  require("@/assets/images/hero-bg-sniffing.webp"),
+  growling: require("@/assets/images/hero-bg-growling.webp"),
+  barking:  require("@/assets/images/hero-bg-barking.webp"),
+  biting:   require("@/assets/images/hero-bg-biting.webp"),
+};
+
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   scroll: { paddingBottom: spacing["3xl"] },
@@ -156,6 +166,7 @@ export default function Home() {
   const stateLabel = STATE_LABEL[state] ?? "Apollo is Patrolling";
   const statusColor = toneColor(colors, state);
   const gif = STATE_GIF[state];
+  const heroBg = STATE_BG[state] ?? STATE_BG.resting;
 
   return (
     <View style={s.root}>
@@ -183,7 +194,7 @@ export default function Home() {
           style={s.heroCard}
         >
           <Image
-            source={HERO_BG_IMAGE}
+            source={heroBg}
             style={s.heroBgImage}
             contentFit="cover"
             testID="home-hero-bg"
