@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import asyncio
 import io
+import json
 import re
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 
@@ -22,6 +24,7 @@ from services.investigation import InvestigationResult, extract_message_screensh
 from services.higgins.provider import ProviderFailure, VISION_MODEL, generate_json
 from services.higgins.llm_boundary import Purpose
 from services.higgins.capacity import TEXT, ITEMS, bounded_analysis
+from services.higgins import evidence as ev, repository as invest_repo, jobs as invest_jobs
 
 router = APIRouter()
 
@@ -696,6 +699,8 @@ class VisionInvestigateOut(BaseModel):
     limitations: list[str] = Field(default_factory=list)
     # Higgins recommendation
     higgins: dict[str, Any] = Field(default_factory=dict)
+    # Magnum DI investigation (coordinator case, runs async)
+    investigation_case_id: Optional[str] = None
     # Processing metadata
     gemini_used: bool = False
     processing: dict[str, Any] = Field(default_factory=dict)
@@ -728,8 +733,9 @@ async def vision_investigate(
     limitations: list[str] = []
 
     # ── Step 1: Visual analysis via Gemini (if image provided with valid receipt) ──
+    APPROVED_STATUSES = {"approved", "sanitised_image", "no_sensitive"}
     if file and file.content_type in {"image/png", "image/jpeg", "image/webp"}:
-        if sanitization_status != "approved":
+        if sanitization_status not in APPROVED_STATUSES:
             if file: await file.close()
             raise HTTPException(422, "Image uploads must pass through the on-device privacy gate.")
         if not sanitization_receipt_id or len(sanitization_receipt_id) < 8:
@@ -918,6 +924,68 @@ async def vision_investigate(
         payment_details=payment_details,
     )
 
+    # ── Step 4: Optionally create a Magnum DI investigation case ──────────────
+    # When the vision analysis found substantial investigatable content (URLs, claims,
+    # payment details, brand claims), create a coordinator case for async research and
+    # corroboration. The immediate vision result is returned; the investigation enriches
+    # the findings asynchronously via the existing case-polling flow.
+    investigation_case_id = None
+    try:
+        has_urls = len(all_urls) > 0
+        has_claims = bool(claimed_brand) or bool(payment_details)
+        has_suspicious = len(suspicious_indicators) > 0
+        if has_urls or has_claims or has_suspicious:
+            # Build the investigation question from extracted evidence
+            inv_parts = [f"Investigate this {image_type or 'image'}"]
+            if claimed_brand:
+                inv_parts.append(f"claiming to be from {claimed_brand}")
+            inv_parts.append(".")
+            if text_content:
+                inv_parts.append(f"\n\nExtracted text:\n{text_content[:4000]}")
+            if asks_user_to:
+                inv_parts.append(f"\n\nIt asks the user to: {', '.join(asks_user_to[:10])}")
+            if suspicious_indicators:
+                inv_parts.append(f"\n\nSuspicious indicators: {'; '.join(suspicious_indicators[:10])}")
+            if legitimate_indicators:
+                inv_parts.append(f"\n\nLegitimate indicators: {'; '.join(legitimate_indicators[:10])}")
+            if findings:
+                summary = "; ".join(f.get("summary", f.get("finding", "")) for f in findings[:10])
+                inv_parts.append(f"\n\nSecurity check findings: {summary}")
+            inv_question = " ".join(inv_parts[:2]) + "".join(inv_parts[2:])
+
+            # Create submissions from extracted evidence
+            submissions: list[dict] = []
+            for i, u in enumerate(all_urls[:5]):
+                submissions.append({"client_item_id": f"vision-url-{i}", "kind": "url", "value": u, "label": "URL from image"})
+            if text_content:
+                submissions.append({"client_item_id": "vision-text", "kind": "text", "value": text_content[:8000], "label": "Text extracted from image"})
+
+            owner = device_id
+            case = await invest_repo.create_case(owner, "vision", None)
+            case_id = case["case_id"]
+            for sub in submissions:
+                if sub["kind"] == "url":
+                    await ev.ingest_url(owner, case, sub["client_item_id"], sub["value"], label=sub.get("label", ""))
+                else:
+                    await ev.ingest_text(owner, case, sub["client_item_id"], sub["value"], label=sub.get("label", "submitted text"))
+            for idx, finding in enumerate(findings):
+                await ev.ingest_text(owner, case, f"vision-finding-{idx}",
+                                     finding.get("summary", finding.get("finding", str(finding))),
+                                     label="Vision analysis finding")
+            # Submit the investigation turn via the repo + jobs pattern
+            turn_id = str(uuid.uuid4())
+            key_digest = invest_repo.digest(f"{owner}:turn:vision-{case_id}")
+            payload = {"message": inv_question, "answerToQuestionId": None, "evidenceIds": [], "turnId": turn_id}
+            payload_digest = invest_repo.digest(json.dumps(payload, sort_keys=True))
+            job = await invest_repo.create_job(owner, case, turn_id, key_digest, payload_digest, "turn", payload)
+            await invest_repo.cas(owner, case_id, {"revision": case["revision"], "active_job_id": None},
+                                  {"$set": {"status": "queued", "active_job_id": job["job_id"], "active_turn_id": turn_id}})
+            invest_jobs.launch(owner, case_id, job["job_id"])
+            investigation_case_id = case_id
+    except Exception as exc:
+        logger.warning("vision: coordinator case creation failed (non-blocking): %s", type(exc).__name__)
+        limitations.append("Extended investigation could not be started. Findings are based on local analysis only.")
+
     return VisionInvestigateOut(
         image_type=image_type, description=description,
         claimed_brand=claimed_brand, confidence=confidence,
@@ -933,6 +1001,7 @@ async def vision_investigate(
         findings=findings,
         limitations=limitations,
         higgins=higgins,
+        investigation_case_id=investigation_case_id,
         gemini_used=gemini_used,
         processing={"raw_retained_by_apollo": False, **provider_metadata},
     )

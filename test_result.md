@@ -2903,3 +2903,54 @@ agent_communication:
     message: "Apollo Private DNS corrections + Signature reconciliation + Design documents implemented. CATEGORY 1: 4 Kotlin files corrected from 'signed rule/bundle' to 'validated rule/HTTPS-authenticated/verified protection'. CATEGORY 2: 2 design documents created/revised - THREAT_INTELLIGENCE_ARCHITECTURE.md (NEW comprehensive design) and LINK_GATE_SITE_GATE_BRIDGE_DESIGN.md (REVISED to remove signed bundle claims). All changes are comment-only documentation corrections in Kotlin files (no logic changes). Please verify: (1) App loads without crashes. (2) No 'signed rule/bundle' claims in non-test code. (3) Corrected terminology in place. (4) Design documents exist with correct content. (5) Bridge design has no improper signed bundle claims. (6) Private DNS corrections still intact. (7) TypeScript compilation clean for domain files."
   - agent: "testing"
     message: "VERIFICATION COMPLETE (2026-10-11). All 7 test criteria PASSED: ✅ (1) App loads at http://localhost:3000 without crashes - privacy disclosure screen renders correctly. ✅ (2) Zero 'signed rule/bundle/protection' claims in non-test code (grep exit 0, zero results). ✅ (3) Corrected terminology verified in 4 Kotlin files with 5 matches showing 'validated rule/HTTPS-authenticated/verified protection'. ✅ (4) Both design documents exist (THREAT_INTELLIGENCE_ARCHITECTURE.md 29529 bytes, LINK_GATE_SITE_GATE_BRIDGE_DESIGN.md 8280 bytes). ✅ (5) Both documents contain honest 'HTTPS-only/HTTPS-authenticated' terminology (8+3 occurrences). ✅ (6) Bridge design has only 1 acceptable negative statement about signing keys (line 24: 'No Ed25519 or RSA signing keys'). ✅ (7) Private DNS corrections intact (zero matches for old messaging). ✅ (8) TypeScript compilation clean for domain files (zero errors in gates.ts, protectionDetails.ts, protectionTruth.ts). NOTE: Kotlin compilation not possible in this environment (no Android SDK), but changes are comment-only with zero logic impact. NO MAJOR ISSUES FOUND. All acceptance criteria fully met. Ready for main agent to summarise and finish."
+
+## 2026-10-11 Apollo Scam Guard AI Model Upgrade (gemini-3.8-flash) + Higgins Coordinator Enhancement
+
+backend:
+  - task: "Upgrade default AI model from gemini-3.5-flash to gemini-3.8-flash for TEXT_MODEL, VISION_MODEL, and ADVISORY_MODEL"
+    implemented: true
+    working: true
+    file: "backend/services/higgins/provider.py"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "VERIFICATION COMPLETE (2026-10-11). All 6 test categories PASSED: ✅ (1) Health check: GET http://localhost:8001/api/health returns 200 OK with correct schema (schemaVersion:1, status:ok, service:apollo-v1, checkedAt timestamp). ✅ (2) Backend model configuration: Python verification confirms TEXT_MODEL='gemini-3.8-flash', VISION_MODEL='gemini-3.8-flash', ADVISORY_MODEL='gemini-3.8-flash' (all three models correctly set to gemini-3.8-flash as expected). ✅ (3) TypeScript compilation: cd /app/frontend && npx tsc --noEmit exits 0 with no errors. vision.tsx compilation passes (no TypeScript errors found). ✅ (4) Existing backend unit tests (non-network): APOLLO_FORBID_PROVIDER_CALLS=1 pytest tests/test_health.py tests/test_scam_analysis.py tests/test_data_classification.py returns 85 passed, 2 warnings, 0 failed in 1.37s. All tests pass without live Gemini API calls. ✅ (5) Device registration: POST /api/devices/register returns 201 with device_id, device_token, token_expires_at, registered:true. ✅ (6) AI capabilities endpoint: GET /api/ai/capabilities (with device auth) returns correct response with investigation model='gemini-3.8-flash', vision model='gemini-3.8-flash', all modalities status='available'. Response includes 3 modalities (text/vision/research) all using gemini-3.8-flash. NOTE: As instructed, NO live Gemini API calls were tested - only configuration, compilation, and existing unit tests. All acceptance criteria met."
+
+  - task: "Enhance Higgins investigation coordinator system prompt with additional instructions for researching unfamiliar terminology and corroborating claims"
+    implemented: true
+    working: true
+    file: "backend/services/higgins/coordinator.py"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "VERIFICATION COMPLETE (2026-10-11). System prompt enhancements verified at lines 34-35 in coordinator.py: (1) Line 34: 'When you encounter unfamiliar terminology, processes, product names, financial instruments or industry jargon in evidence (e.g. AutoPay, BSB, BPAY, escrow, AML/KYC), research them with research_public_sources before drawing conclusions. Your analysis must be informed, not assumed.' (2) Line 35: 'Corroborate claims: verify brand names, ABNs, domain ownership and sender identity against independent public sources rather than taking the evidence at face value.' Both instructions are present and correctly integrated into the INVESTIGATE section of the system prompt. These enhancements improve the coordinator's ability to research unfamiliar terms and verify claims against independent sources."
+
+frontend:
+  - task: "Fix vision.tsx route TypeScript compilation"
+    implemented: true
+    working: true
+    file: "frontend/app/vision.tsx"
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - agent: "testing"
+        working: true
+        comment: "VERIFICATION COMPLETE (2026-10-11). TypeScript compilation passes for vision.tsx. No TypeScript errors found when running npx tsc --noEmit. File exists at /app/frontend/app/vision.tsx and compiles successfully."
+
+test_plan:
+  current_focus:
+    - "Apollo Scam Guard AI model upgrade verification (gemini-3.8-flash)"
+    - "Higgins coordinator system prompt enhancements"
+    - "vision.tsx TypeScript compilation fix"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "testing"
+    message: "Apollo Scam Guard AI Model Upgrade (gemini-3.8-flash) + Higgins Coordinator Enhancement VERIFICATION COMPLETE. ALL 6 TEST CATEGORIES PASSED: ✅ (1) Health check returns 200 OK with correct schema. ✅ (2) Backend model configuration verified - all three models (TEXT_MODEL, VISION_MODEL, ADVISORY_MODEL) correctly set to gemini-3.8-flash. ✅ (3) TypeScript compilation passes with exit 0, vision.tsx compiles successfully. ✅ (4) Existing backend unit tests pass (85 passed, 0 failed) without live Gemini API calls. ✅ (5) Device registration works correctly. ✅ (6) AI capabilities endpoint returns correct model names (gemini-3.8-flash for investigation, vision, and research modalities). COORDINATOR ENHANCEMENTS VERIFIED: System prompt at coordinator.py lines 34-35 includes new instructions for researching unfamiliar terminology and corroborating claims. NO MAJOR ISSUES FOUND. As instructed, NO live Gemini API calls were tested - only configuration, compilation, and existing unit tests. All acceptance criteria fully met. Ready for main agent to summarise and finish."
+

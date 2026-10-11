@@ -20,13 +20,15 @@ from services.higgins.capacity import CALL_SECONDS, OUTPUT, SCHEMA_RESERVE
 from services.higgins.llm_boundary import Purpose, enforce_boundary, strip_credentials, validate_outbound_payload
 
 load_dotenv()
-TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-3-flash-preview")
+TEXT_MODEL = os.getenv("GEMINI_TEXT_MODEL", "gemini-3.8-flash")
 VISION_MODEL = os.getenv("GEMINI_VISION_MODEL", TEXT_MODEL)
 RECOVERY_MODEL = os.getenv("GEMINI_RECOVERY_MODEL", "")
-ADVISORY_MODEL = os.getenv("GEMINI_ADVISORY_MODEL", "gemini-3.1-pro-preview")
+ADVISORY_MODEL = os.getenv("GEMINI_ADVISORY_MODEL", TEXT_MODEL)  # Consolidated: advisory uses Flash
 _TEXT_CAPS = {"text", "vision", "audio_input", "functions", "search", "json"}
 # Register exact documented capabilities. Unknown selections fail closed, not by name heuristics.
 CAPABILITIES = {
+    "gemini-3.5-flash": _TEXT_CAPS,
+    "gemini-3.8-flash": _TEXT_CAPS,
     "gemini-3-flash-preview": _TEXT_CAPS,
     "gemini-2.5-flash": _TEXT_CAPS,
     "gemini-2.5-pro": _TEXT_CAPS,

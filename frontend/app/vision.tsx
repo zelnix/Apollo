@@ -49,6 +49,7 @@ interface VisionResult {
   findings: { gate: string; type: string; verdict?: string; indicator?: string; detail?: string; threat_types?: string[]; status?: string; assessment?: Record<string, unknown> }[];
   limitations: string[];
   higgins: { headline: string; severity: string; explanation: string; action: string; checks_summary: string };
+  investigation_case_id?: string | null;
   gemini_used: boolean;
 }
 
@@ -534,6 +535,22 @@ export default function VisionScreen() {
                     <Text style={[s.findingDetail, { flex: 1 }]}>{indicator}</Text>
                   </View>
                 ))}
+              </View>
+            ) : null}
+
+            {/* Magnum DI investigation — linked to coordinator case */}
+            {result.investigation_case_id ? (
+              <View style={s.resultSection} testID="vision-investigation">
+                <Text style={s.sectionTitle}>Extended investigation</Text>
+                <Text style={s.sectionBody}>
+                  Apollo has started a deeper investigation using public sources and security databases. This runs in the background and may take a moment. Results will appear in your Patrol activity.
+                </Text>
+                <Button
+                  testID="vision-view-investigation"
+                  label="View patrol activity"
+                  variant="ghost"
+                  onPress={() => router.push("/(tabs)/patrol")}
+                />
               </View>
             ) : null}
 
