@@ -7,6 +7,7 @@ import React, { useCallback, useMemo, useState } from "react";
 import { FlatList, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import AlertTriangle from "lucide-react-native/icons/triangle-alert";
 import { PatrolItem } from "@/src/components/PatrolItem";
 import { RootScreenHeader } from "@/src/components/RootScreenHeader";
 import { MultiSelectFilter } from "@/src/components/MultiSelectFilter";
@@ -54,6 +55,21 @@ const useStyles = makeStyles((c) => ({
   groupTotal: { fontFamily: fonts.displayBold, fontSize: 14, color: c.onSurfaceSecondary },
   // Month header — slightly more prominent
   monthHeader: { borderLeftWidth: 3, borderLeftColor: c.gold },
+  // ── Needs-you action cards ──
+  needsYouCard: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    backgroundColor: c.surfaceSecondary, borderRadius: radius.md,
+    borderWidth: 1, borderColor: c.barkingTint, borderLeftWidth: 3, borderLeftColor: c.barking,
+    padding: spacing.lg, marginBottom: spacing.sm,
+  },
+  needsYouIcon: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: c.barkingTint,
+    alignItems: "center", justifyContent: "center",
+  },
+  needsYouContent: { flex: 1, gap: 2 },
+  needsYouTitle: { fontFamily: fonts.displayBold, fontSize: 14, color: c.onSurface },
+  needsYouSummary: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurfaceSecondary },
+  needsYouAction: { fontFamily: fonts.textSemibold, fontSize: 12, color: c.barking, marginTop: 2 },
 }));
 
 // ── Date helpers ─────────────────────────────────────────────────────────────
@@ -285,9 +301,42 @@ export default function Patrol() {
           <View style={{ gap: spacing.md }}>
             {/* Daily activity summary — evidence of Apollo's work today */}
             <DailyActivityCard events={events} testID="patrol-daily-activity" />
-            <Card testID="patrol-summary" style={s.summaryCard}>
-              <Text style={s.summaryText} testID="patrol-summary-text">{patrolConsumerSummary(outcomes)}</Text>
-            </Card>
+            {/* Actionable items that need user attention */}
+            {(() => {
+              const needsYouItems = outcomes.filter((o) => matchesPatrolFilter(o, "needs_you"));
+              if (needsYouItems.length === 0) {
+                return (
+                  <Card testID="patrol-summary" style={s.summaryCard}>
+                    <Text style={s.summaryText} testID="patrol-summary-text">{patrolConsumerSummary(outcomes)}</Text>
+                  </Card>
+                );
+              }
+              return (
+                <View testID="patrol-needs-you-section">
+                  <Text style={[s.summaryText, { marginBottom: spacing.sm }]}>{needsYouItems.length === 1 ? "1 thing needs your attention" : `${needsYouItems.length} things need your attention`}</Text>
+                  {needsYouItems.map((item) => (
+                    <Pressable
+                      key={item.outcomeId}
+                      testID={`patrol-needs-${item.outcomeId}`}
+                      accessibilityRole="button"
+                      accessibilityLabel={item.title}
+                      onPress={() => router.push(`/patrol/${encodeURIComponent(item.event.event_id)}` as any)}
+                      style={s.needsYouCard}
+                    >
+                      <View style={s.needsYouIcon}>
+                        <AlertTriangle size={16} color={colors.barking} />
+                      </View>
+                      <View style={s.needsYouContent}>
+                        <Text style={s.needsYouTitle} numberOfLines={2}>{item.title}</Text>
+                        <Text style={s.needsYouSummary} numberOfLines={2}>{item.summary}</Text>
+                        {item.primaryAction ? <Text style={s.needsYouAction}>{item.primaryAction.label}</Text> : null}
+                      </View>
+                      <ChevronRight size={16} color={colors.barking} />
+                    </Pressable>
+                  ))}
+                </View>
+              );
+            })()}
           </View>
         }
         renderItem={renderItem}
