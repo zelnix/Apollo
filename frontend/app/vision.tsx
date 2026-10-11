@@ -167,28 +167,38 @@ export default function VisionScreen() {
   // ── Image capture / pick ──
 
   const takePhoto = useCallback(async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") return;
-    const picked = await ImagePicker.launchCameraAsync({
-      mediaTypes: ["images"],
-      allowsEditing: false,
-      quality: 0.9,
-    });
-    if (!picked.canceled && picked.assets?.[0]?.uri) {
-      await screenAndShow(picked.assets[0].uri);
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== "granted") return;
+      const picked = await ImagePicker.launchCameraAsync({
+        mediaTypes: ["images"],
+        allowsEditing: false,
+        quality: 0.9,
+      });
+      if (!picked.canceled && picked.assets?.[0]?.uri) {
+        await screenAndShow(picked.assets[0].uri);
+      }
+    } catch {
+      setError("Camera is not available right now. Please try again.");
+      setStage("error");
     }
   }, [screenAndShow]);
 
   const pickImage = useCallback(async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") return;
-    const picked = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: false,
-      quality: 0.9,
-    });
-    if (!picked.canceled && picked.assets?.[0]?.uri) {
-      await screenAndShow(picked.assets[0].uri);
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") return;
+      const picked = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: false,
+        quality: 0.9,
+      });
+      if (!picked.canceled && picked.assets?.[0]?.uri) {
+        await screenAndShow(picked.assets[0].uri);
+      }
+    } catch {
+      setError("Could not open photo library. Please try again.");
+      setStage("error");
     }
   }, [screenAndShow]);
 

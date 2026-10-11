@@ -341,6 +341,10 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
     setBusyLabel("Preparing text\u2026");
     try {
       await emitResult("text_only", null, screening.extractedText);
+    } catch {
+      await emitResult("withheld", null, screening.extractedText, [
+        "Text preparation failed; image withheld",
+      ]);
     } finally {
       setBusy(false);
     }
@@ -395,6 +399,10 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
     setBusyLabel("Preparing image\u2026");
     try {
       await emitResult("no_sensitive", screening.strippedImageUri, screening.extractedText);
+    } catch {
+      await emitResult("withheld", null, screening.extractedText, [
+        "Image preparation failed; image withheld",
+      ]);
     } finally {
       setBusy(false);
     }
@@ -448,10 +456,10 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
                       width: constrainedWidth,
                       height: constrainedHeight,
                     }}
-                    resizeMode="contain"
+                    resizeMode="stretch"
                   />
                 )}
-                {/* Show actual black redaction boxes (what will be sent), not just highlights */}
+                {/* Redaction overlays — positioned absolutely relative to the image container */}
                 {screening.sensitiveRegions.map((region, idx) => {
                   const scaled = scaleRegion(
                     region,
@@ -461,10 +469,10 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
                     constrainedHeight,
                   );
                   return (
-                    <View key={`region-${idx}`}>
+                    <React.Fragment key={`region-${idx}`}>
                       {/* Black redaction box — the actual result the recipient will see */}
-                      <View style={[{ position: "absolute", backgroundColor: "#000000", borderRadius: 2 }, scaled]} />
-                      {/* Label above the redacted area */}
+                      <View style={[s.redactionBox, { borderRadius: 2 }, scaled]} />
+                      {/* Label at the region position */}
                       <View style={[s.regionOverlay, { ...scaled, borderStyle: undefined, borderWidth: 0 }]}>
                         <View style={s.regionLabel}>
                           <Text style={s.regionLabelText}>
@@ -472,7 +480,7 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
                           </Text>
                         </View>
                       </View>
-                    </View>
+                    </React.Fragment>
                   );
                 })}
               </View>
