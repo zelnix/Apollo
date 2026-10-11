@@ -169,13 +169,22 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
           </Animated.View>
         </View>
         <Text style={s.label} testID="apollo-state-label">{title}</Text>
-        {/* Patrolling is the only "all is well" state — show the simple meaning. For every other
-         *  state (sniffing / ears_up / growling / barking / biting) Higgins speaks ONE short
-         *  paragraph (gate names assembled from the real affected set) and the card offers ONE
-         *  primary action — the Protection Details screen for broad concerns, or the specific
-         *  investigation / gate for a specific issue. */}
+        {/* Patrolling is the only "all is well" state — show the Higgins explanation from the
+         *  resolver (which is scenario-specific: full coverage, partial coverage, platform limited,
+         *  optional setup available). For every other state Higgins speaks ONE short paragraph and
+         *  the card offers ONE primary action. */}
         {state === "resting" ? (
-          <Text style={s.meaning} testID="apollo-state-meaning">{meaning}</Text>
+          <View style={{ width: "100%", gap: spacing.sm, alignItems: "stretch" }}>
+            <Text style={s.higginsPara} testID="apollo-state-meaning">{voice.text}</Text>
+            {voice.ctaRoute ? (
+              <Button
+                testID="apollo-view-details"
+                variant="ghost"
+                label={voice.ctaLabel}
+                onPress={() => router.push(voice.ctaRoute as never)}
+              />
+            ) : null}
+          </View>
         ) : (
           <View style={{ width: "100%", gap: spacing.sm, alignItems: "stretch" }}>
             <Text style={s.higginsPara} testID="apollo-higgins-paragraph">{voice.text}</Text>

@@ -1289,7 +1289,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   }, [requestDataDeletion]);
 
   const visibility = useMemo(() => visibilityFrom(capabilities, freshObservation(protection)), [capabilities, protection, tick]); // eslint-disable-line react-hooks/exhaustive-deps
-  const resolution = useMemo(() => resolveApolloState({ events, visibility, lastVerifiedAt, now: Date.now() }), [events, visibility, lastVerifiedAt, tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const platformCanEnforce = useMemo(() => capabilities.some((c) => c.id === "site_guard" && c.status !== "unsupported"), [capabilities]);
+  const resolution = useMemo(() => resolveApolloState({ events, visibility, lastVerifiedAt, platformCanEnforce, now: Date.now() }), [events, visibility, lastVerifiedAt, platformCanEnforce, tick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const value: ApolloContextValue = {
     ready, setupDone, deviceId, identityReset, reRegisterDevice, completeSetup, capabilities, protection, permissions, network, adapterLabel: securityAdapter.label, isMock: IS_PREVIEW_HARNESS,

@@ -4,10 +4,9 @@ import * as Sharing from "expo-sharing";
 import * as WebBrowser from "expo-web-browser";
 import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, Text, View } from "react-native";
-
+import { Body, Button, Card, Pill, type Tone } from "@/src/components/ui";
 import { API_BASE } from "@/src/api/client";
 import { getDeviceToken } from "@/src/auth/deviceIdentity";
-import { Body, Button, Card, Pill, type Tone } from "@/src/components/ui";
 import { EvidencePopup } from "@/src/components/EvidencePopup";
 import { assessmentLabel, attentionLabel, investigationHistory, scrubMessage } from "@/src/domain/messageVoice";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -68,7 +67,8 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
   const [pdfNote, setPdfNote] = useState<string | null>(null);
 
   const exportPdf = useCallback(async () => {
-    if (!caseData) return;
+    const currentCase = state.caseData;
+    if (!currentCase) return;
     setPdfExporting(true);
     setPdfNote(null);
     try {
@@ -77,28 +77,29 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
         setPdfNote("Device not registered. Please restart Apollo.");
         return;
       }
-      const url = `${API_BASE}/investigations/${caseData.id}/export/pdf`;
-      const filename = `Apollo_Report_${caseData.id.slice(0, 8)}.pdf`;
-      const fileUri = `${FileSystem.cacheDirectory}${filename}`;
-      const download = await FileSystem.downloadAsync(url, fileUri, {
+      const url = `${API_BASE}/investigations/${currentCase.id}/export/pdf`;
+      const filename = `Apollo_Report_${currentCase.id.slice(0, 8)}.pdf`;
+
+      // Use new expo-file-system v57 API: DownloadTask + Paths.cache
+      const destination = new FileSystem.File(FileSystem.Paths.cache, filename);
+      const task = new FileSystem.DownloadTask(url, destination, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (download.status !== 200) {
+      const file = await task.downloadAsync();
+      if (!file) {
         setPdfNote("Could not generate the PDF. Please try again.");
         return;
       }
       const sharingAvailable = await Sharing.isAvailableAsync();
       if (sharingAvailable) {
-        await Sharing.shareAsync(download.uri, {
+        await Sharing.shareAsync(file.uri, {
           mimeType: "application/pdf",
           dialogTitle: "Export Apollo Investigation Report",
           UTI: "com.adobe.pdf",
         });
         setPdfNote("PDF exported successfully.");
       } else if (Platform.OS === "web") {
-        // Web fallback: open in a new tab
-        window.open(download.uri, "_blank");
-        setPdfNote("PDF opened in a new tab.");
+        setPdfNote("PDF download is not available in the web preview. Use the Expo Go app on a device.");
       } else {
         setPdfNote("Sharing is not available on this device.");
       }
@@ -108,7 +109,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
     } finally {
       setPdfExporting(false);
     }
-  }, [caseData]);
+  }, [state.caseData]);
   useEffect(() => {
     if (!state.caseData) { setReports([]); setReportNext(null); return; }
     void investigationApi.listReports().then((result) => { setReports(result.items); setReportNext(result.nextCursor); }).catch(() => setReportNote("Saved reports could not be loaded."));

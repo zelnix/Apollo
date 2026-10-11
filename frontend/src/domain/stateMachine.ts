@@ -26,6 +26,10 @@ export interface StateInput {
   events: PatrolEvent[];
   visibility: Visibility;
   lastVerifiedAt: string | null;
+  /** True when the platform genuinely supports enforcement (VPN/DNS filtering).
+   *  When false and visibility is "none", it's a platform limitation, not visibility loss.
+   *  Defaults to true when not specified (backward-compatible). */
+  platformCanEnforce?: boolean;
   now?: number;
 }
 
@@ -39,6 +43,9 @@ export interface StateResolution {
   recovering: boolean;
   /** True when Patrolling cannot be shown truthfully because visibility is lost. */
   visibilityLost: boolean;
+  /** True when the platform fundamentally cannot run enforcement (web preview, unsupported OS).
+   *  Platform limitations are informational — never treated as failures or threats. */
+  platformLimited: boolean;
   drivingEvent: PatrolEvent | null;
 }
 
@@ -52,6 +59,7 @@ export function resolveApolloState(input: StateInput): StateResolution {
   const verifiedAt = input.lastVerifiedAt ? Date.parse(input.lastVerifiedAt) : 0;
   const verificationFresh = verifiedAt > 0 && verifiedAt <= now && now - verifiedAt <= VERIFICATION_FRESHNESS_MS;
   const visibilityLost = input.visibility === 'none' || !verificationFresh;
+  const platformCanEnforce = input.platformCanEnforce !== false; // default true for backward compat
 
   // ── Event-driven escalation always takes priority over visibility status ──
 
@@ -59,7 +67,7 @@ export function resolveApolloState(input: StateInput): StateResolution {
   const biting = active.find((e) => e.state === "biting" && e.verified_block && eventHasPacketProof(e) &&
     Date.parse(e.occurred_at) <= now && now - Date.parse(e.occurred_at) < RECOVERY_COOLDOWN_MS);
   if (biting) {
-    return { state: "biting", reason: "Apollo verified and blocked a threat.", recovering: false, visibilityLost: false, drivingEvent: biting };
+    return { state: "biting", reason: "Apollo verified and blocked a threat.", recovering: false, visibilityLost: false, platformLimited: false, drivingEvent: biting };
   }
 
   // Barking — only RECENT events drive the hero to bark. Older unresolved events degrade to
@@ -68,32 +76,46 @@ export function resolveApolloState(input: StateInput): StateResolution {
     .filter((e) => e.state === "barking" && (now - Date.parse(e.occurred_at)) < EVENT_BARKING_FRESHNESS_MS)
     .sort(byNewest)[0];
   if (recentBarking) {
-    return { state: "barking", reason: `${capitalise(areaLabel(recentBarking.category))} needs your decision.`, reasonRoute: `/patrol/${encodeURIComponent(recentBarking.event_id)}`, recovering: false, visibilityLost, drivingEvent: recentBarking };
+    return { state: "barking", reason: `${capitalise(areaLabel(recentBarking.category))} needs your decision.`, reasonRoute: `/patrol/${encodeURIComponent(recentBarking.event_id)}`, recovering: false, visibilityLost, platformLimited: !platformCanEnforce, drivingEvent: recentBarking };
   }
 
   // Stale barking events (older than freshness window) degrade to growling — still worth a look,
   // but no longer an emergency that makes Apollo bark on the Home screen.
   const staleBarking = active.filter((e) => e.state === "barking").sort(byNewest)[0];
   if (staleBarking) {
-    return { state: "growling", reason: `${capitalise(areaLabel(staleBarking.category))} has an older finding that still needs a look.`, reasonRoute: `/patrol/${encodeURIComponent(staleBarking.event_id)}`, recovering: false, visibilityLost, drivingEvent: staleBarking };
+    return { state: "growling", reason: `${capitalise(areaLabel(staleBarking.category))} has an older finding that still needs a look.`, reasonRoute: `/patrol/${encodeURIComponent(staleBarking.event_id)}`, recovering: false, visibilityLost, platformLimited: !platformCanEnforce, drivingEvent: staleBarking };
   }
 
   const growling = active.filter((e) => e.state === "growling").sort(byNewest)[0];
   if (growling) {
-    return { state: "growling", reason: `${capitalise(areaLabel(growling.category))} looks suspicious and isn't confirmed yet.`, reasonRoute: `/patrol/${encodeURIComponent(growling.event_id)}`, recovering: false, visibilityLost, drivingEvent: growling };
+    return { state: "growling", reason: `${capitalise(areaLabel(growling.category))} looks suspicious and isn't confirmed yet.`, reasonRoute: `/patrol/${encodeURIComponent(growling.event_id)}`, recovering: false, visibilityLost, platformLimited: !platformCanEnforce, drivingEvent: growling };
   }
   const earsUp = active.filter((e) => e.state === "ears_up").sort(byNewest)[0];
   if (earsUp) {
-    return { state: "ears_up", reason: `${capitalise(areaLabel(earsUp.category))} is worth a careful look.`, reasonRoute: `/patrol/${encodeURIComponent(earsUp.event_id)}`, recovering: false, visibilityLost, drivingEvent: earsUp };
+    return { state: "ears_up", reason: `${capitalise(areaLabel(earsUp.category))} is worth a careful look.`, reasonRoute: `/patrol/${encodeURIComponent(earsUp.event_id)}`, recovering: false, visibilityLost, platformLimited: !platformCanEnforce, drivingEvent: earsUp };
   }
 
   // ── No active events driving escalation — check visibility, then recovery ──
 
+  // Platform limitation: the device simply cannot run enforcement (web preview, unsupported OS).
+  // This is NOT visibility loss — it's a platform characteristic. Apollo should rest, not growl.
+  if (visibilityLost && !platformCanEnforce) {
+    return {
+      state: "resting",
+      reason: "Apollo is watching the areas this device allows. Some features are not supported on this device.",
+      recovering: false,
+      visibilityLost: false,
+      platformLimited: true,
+      drivingEvent: null,
+    };
+  }
+
+  // Genuine visibility loss: the platform CAN enforce but protection cannot be verified right now.
   if (visibilityLost) return {
     state: "growling",
     reason: input.visibility === 'none' ? 'Protection is unavailable or unverified.' : 'Protection observation has expired.',
     reasonRoute: input.visibility === 'none' ? '/(tabs)/patrol' : '/(tabs)/guard',
-    recovering: false, visibilityLost: true, drivingEvent: null,
+    recovering: false, visibilityLost: true, platformLimited: false, drivingEvent: null,
   };
 
   // No active events. Recovery rules apply.
@@ -112,19 +134,21 @@ export function resolveApolloState(input: StateInput): StateResolution {
         reason: "A recent event was resolved. Apollo is waiting for a fresh check before returning to patrol.",
         recovering: true,
         visibilityLost: false,
+        platformLimited: false,
         drivingEvent: recentlyResolved,
       };
     }
   }
 
   if (!verificationFresh) {
-    return { state: "growling", reason: "Apollo has not verified protection recently. A fresh check is needed.", recovering: true, visibilityLost: false, drivingEvent: null };
+    return { state: "growling", reason: "Apollo has not verified protection recently. A fresh check is needed.", recovering: true, visibilityLost: false, platformLimited: false, drivingEvent: null };
   }
   return {
     state: "resting",
     reason: input.visibility === "limited" ? "Protection observed within its limited coverage. Earlier incidents remain in Patrol." : "Protection was freshly observed. Earlier incidents remain in Patrol.",
     recovering: false,
     visibilityLost: false,
+    platformLimited: false,
     drivingEvent: null,
   };
 }

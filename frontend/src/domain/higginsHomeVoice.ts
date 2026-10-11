@@ -1,8 +1,6 @@
 // Higgins-led Home voice. Produces ONE short paragraph that interprets Apollo's current behaviour
-// (sniffing / patrolling / growling / barking / biting) using REAL data — affected gate names come
-// from live capability + gate state + active patrol events, specific concerns come from the active
-// driving event (scam text, malicious email, insecure connection, device setting change, verified
-// block, etc.). Never claims Apollo blocked a threat without `verified_block` + supporting evidence.
+// using REAL data — three independent conditions (threat status, protection coverage, user actions)
+// are assessed separately and never conflated.
 //
 // OPERATING STANDARD: Higgins is an authoritative cybersecurity expert.
 // INVESTIGATE → ASSESS → DIRECT → GUIDE → VERIFY.
@@ -13,6 +11,7 @@
 import type { AttentionItem } from "./homeAttention";
 import type { GatePresentation } from "./gates";
 import { hasLocalEvidence } from "./higginsNarration.ts";
+import { resolveHomeStatus, type HomeResolverInput } from "./homeStatusResolver";
 import type { StateResolution } from "./stateMachine";
 import type { Capability } from "./types";
 
@@ -80,6 +79,9 @@ function verbForState(state: StateResolution["state"]): string {
 }
 
 /** Build the short paragraph + CTA for the Home card.
+ *  Uses the central Home Status Resolver to separate threat status, protection coverage,
+ *  and user actions — then produces Higgins' interpretation as one natural paragraph.
+ *
  *  Priority (highest first):
  *   1. Verified block (biting) → confirm what Apollo blocked, link to the investigation.
  *   2. Multiple active concerns (gates stopped + events across gates) → name every affected gate,
@@ -100,46 +102,37 @@ export function buildHomeVoice(input: {
   const { resolution, attention, gates, capabilities, findingCount } = input;
   const state = resolution.state;
 
-  if (state === "resting") {
-    // Improvement 1: Evidence-backed protection status. The resting message now reflects the
-    // actual count of running automatic protections and honest limitations.
-    const runningGates = gates.filter((g) => g.capability.automatic?.state === "running" && !g.capability.automatic?.manualOnly);
-    const hasWebsiteProtection = runningGates.some((g) => g.id === "site");
-    const affected = affectedCapabilities(capabilities);
+  // Derive platformCanEnforce from capabilities (same logic as ApolloContext).
+  const platformCanEnforce = capabilities.some((c) => c.id === "site_guard" && c.status !== "unsupported");
 
-    let text: string;
-    if (affected.length > 0 && hasWebsiteProtection) {
-      // Limited coverage — some capabilities degraded but website protection is running.
-      text = "Apollo is on patrol. Your available website protection is running, but some protections cannot be checked automatically on this device. I'll let you know if anything needs attention.";
-    } else if (affected.length > 0) {
-      // More significantly limited — website protection may not be running.
-      text = "Apollo is working, but some website connections cannot be checked automatically on this device. Open Protection to see what's active and what's available.";
-    } else if (runningGates.length > 0) {
-      // Full coverage — all automatic protections confirmed running.
-      text = "Apollo is on patrol. Your available website protection is running, and I'll let you know if anything needs attention.";
-    } else {
-      // No automatic protections running — honest about what we can confirm.
-      text = "Apollo is on patrol. Manual security checks are ready when you need them. Open Protection to see what's available.";
-    }
+  // Run the three-pillar resolver to get the evidence-based status.
+  const homeStatus = resolveHomeStatus({
+    resolution,
+    attention,
+    gates,
+    capabilities,
+    findingCount,
+    platformCanEnforce,
+  });
 
+  // ── Resting: the resolver produces scenario-specific messaging ──
+  if (state === "resting" || (resolution.platformLimited && homeStatus.behavior === "resting")) {
     return {
-      text,
-      ctaLabel: "View Protection Details",
-      ctaRoute: "/protection-details",
-      spoken: "Apollo is on patrol and all is clear. No action needed right now.",
+      text: homeStatus.explanation,
+      ctaLabel: homeStatus.primaryAction?.label ?? "View protection coverage",
+      ctaRoute: homeStatus.primaryAction?.route ?? "/(tabs)/protection",
+      spoken: homeStatus.explanation,
     };
   }
 
   if (state === "sniffing" || state === "ears_up") {
     // Sniffing / Ears Up: Higgins explains what Apollo is INVESTIGATING right now. If there's a
     // specific driving event (an active investigation), name it; otherwise describe the general sweep.
-    // Ears Up is the "something caught my eye" variant of sniffing — no decision needed yet.
     const drivingEvent = resolution.drivingEvent;
     const verb = state === "ears_up" ? "has his ears up" : "is sniffing";
     if (drivingEvent) {
       const gateName = GATE_FOR_CATEGORY[drivingEvent.category] ?? "a security check";
       const rawSubject = (drivingEvent.headline || drivingEvent.what_happened || "").trim();
-      // Don't narrate server-projected text as if it's real evidence.
       const subject = hasLocalEvidence(drivingEvent) ? rawSubject : "";
       const text = state === "ears_up"
         ? `Apollo ${verb} — something in ${gateName}${subject ? ` caught his attention: ${subject}` : " caught his attention"}. He's looking at it. I'll tell you exactly what to do once he's finished.`
@@ -183,7 +176,6 @@ export function buildHomeVoice(input: {
   // 2) Multiple active concerns — use the distinct finding count (aligned with Protection Details).
   const effectiveCount = findingCount ?? attention.length;
   if (effectiveCount > 1) {
-    const descriptions = attention.map((a) => (a.problem || a.gate).trim()).filter(Boolean);
     const verb = verbForState(state);
     const text = `Apollo ${verb} ${effectiveCount} findings that need attention. Open Protection Details — I'll walk you through each one and tell you exactly what to do.`;
     return {
@@ -194,13 +186,11 @@ export function buildHomeVoice(input: {
     };
   }
 
-  // 3) Exactly one specific active concern (an event like a scam text / malicious email / insecure
-  //    network / device setting change, or a stopped gate). One short Higgins paragraph pointing to it.
+  // 3) Exactly one specific active concern.
   const primary = attention[0] ?? null;
   if (primary) {
     const gate = primary.gate;
     const problem = (primary.problem || "").trim();
-    // Build a concise, directive opener from the state + real evidence.
     let opener: string;
     if (state === "barking") {
       opener = problem
@@ -211,7 +201,6 @@ export function buildHomeVoice(input: {
         ? `Apollo blocked a threat — ${problem}`
         : `Apollo blocked a threat in ${gate}`;
     } else {
-      // Growling / ears_up — describe what Apollo found with clear direction.
       opener = problem
         ? `Apollo flagged ${problem}`
         : `Apollo flagged something in ${gate}`;
@@ -225,8 +214,7 @@ export function buildHomeVoice(input: {
     };
   }
 
-  // 3b) DNS threat observation — Apollo observed and redirected a DNS query for a known threat.
-  //     This is a DETECTION explanation, not enforcement. Never claim a block.
+  // 3b) DNS threat observation.
   if (drivingEvent?.evidence_provenance === "dns_observation" && drivingEvent.indicator_host) {
     const domain = drivingEvent.indicator_host;
     const text = `Apollo detected a known threat — a DNS query for "${domain}" was intercepted and redirected before the browser could connect. This is a detection, not a confirmed block. Do not visit this website. If you received it in a message, treat that source as suspicious.`;
@@ -238,8 +226,7 @@ export function buildHomeVoice(input: {
     };
   }
 
-  // 3c) A driving event exists (e.g. growling scam text) but didn't surface as a dedicated attention
-  //     item — build the paragraph from it directly rather than falling to a generic reason.
+  // 3c) A driving event exists but didn't surface as a dedicated attention item.
   if (drivingEvent) {
     const rawProblem = (drivingEvent.what_happened || drivingEvent.headline || "").trim();
     const problem = hasLocalEvidence(drivingEvent) ? rawProblem : "";
@@ -255,30 +242,15 @@ export function buildHomeVoice(input: {
     };
   }
 
-  // 4) Visibility lost — Apollo can't confirm protection is running right now.
+  // 4) Visibility lost — use resolver's evidence-based messaging instead of generic fallback.
   //    Only name GENUINELY affected automatic capabilities — not optional setup or unsupported features.
   if (resolution.visibilityLost) {
-    const affected = affectedCapabilities(capabilities);
-    const names = joinNames(affected.map((c) => CAPABILITY_LABEL[c.id] ?? c.title));
-    if (names) {
-      const text = `Apollo can't confirm that ${names} ${affected.length === 1 ? "is" : "are"} running right now. This doesn't mean there's a threat, but we should check. Open Protection Details and I'll guide you through restoring coverage.`;
-      return {
-        text,
-        ctaLabel: "View Protection Details",
-        ctaRoute: "/protection-details",
-        spoken: text,
-      };
-    }
-    // No genuinely affected automatic capabilities — the "visibility lost" is because capabilities
-    // are unsupported on this platform or not yet set up, not because something that was running
-    // has degraded. Route to the Protection tab where coverage information lives, NOT to
-    // Protection Details (which would be empty and confusing).
-    const text = "Apollo's automatic protections are limited on this device. Some require setup and some aren't available on this platform. Open Protection to see what's active and what's available.";
+    // Delegate to the resolver which produces Scenario D/F messaging.
     return {
-      text,
-      ctaLabel: "View Protection",
-      ctaRoute: "/(tabs)/protection",
-      spoken: "Apollo's automatic protections are limited on this device. I'll guide you through what's available.",
+      text: homeStatus.explanation,
+      ctaLabel: homeStatus.primaryAction?.label ?? "Check protection",
+      ctaRoute: homeStatus.primaryAction?.route ?? "/protection-details",
+      spoken: homeStatus.explanation,
     };
   }
 
@@ -292,13 +264,12 @@ export function buildHomeVoice(input: {
     };
   }
 
-  // 6) Fallback — generic warning without a specific driver. Use the honest resolution reason.
-  const reason = (resolution.reason || "").trim();
+  // 6) Fallback — use resolver's evidence-based messaging.
   return {
-    text: `Apollo is ${state === "barking" ? "barking" : "growling"}. ${reason} Open Protection Details — I'll walk you through what's happening and what to do.`,
-    ctaLabel: "View Protection Details",
-    ctaRoute: resolution.reasonRoute || "/protection-details",
-    spoken: `Apollo is ${state === "barking" ? "barking" : "growling"}. ${reason}`,
+    text: homeStatus.explanation,
+    ctaLabel: homeStatus.primaryAction?.label ?? "View Protection Details",
+    ctaRoute: homeStatus.primaryAction?.route ?? "/protection-details",
+    spoken: homeStatus.explanation,
   };
 }
 
