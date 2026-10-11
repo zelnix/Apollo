@@ -15,9 +15,16 @@ function toneForState(state: string): CheckResultModel["tone"] {
   return "neutral";
 }
 
-function confidenceForState(state: string): CheckResultModel["confidence"] {
-  if (state === "barking" || state === "biting") return "High";
-  if (state === "growling") return "Medium";
+/** Derive confidence from evidence quality, not just the final state.
+ *  High: strong direct evidence (very_high/high takeover risk combined with user-didn't-initiate,
+ *  suspicious URLs in the alert). Medium: elevated takeover risk or user is unsure.
+ *  Low: user initiated the action, or low assessed risk. */
+function confidenceFromEvidence(a: AccountAnalysis, initiated: boolean | null): CheckResultModel["confidence"] {
+  const highRisk = a.takeoverRisk === "very_high" || a.takeoverRisk === "high";
+  const hasSuspiciousUrls = a.suspiciousUrls.length > 0;
+  if (highRisk && initiated === false) return "High";
+  if (hasSuspiciousUrls && initiated === false) return "High";
+  if (highRisk || a.takeoverRisk === "elevated" || hasSuspiciousUrls) return "Medium";
   return "Low";
 }
 
@@ -106,7 +113,7 @@ export function buildAccountCheckResult(args: {
     higginsSays,
     tone: toneForState(a.state),
     items,
-    confidence: confidenceForState(a.state),
+    confidence: confidenceFromEvidence(a, initiated),
     whatToDo,
     whatToDoLinks: whatToDoLinks.length ? whatToDoLinks : undefined,
     evidence,

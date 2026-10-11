@@ -61,7 +61,9 @@ const BRANDS: { re: RegExp; name: string; kind: MessageSignals["brandKind"] }[] 
   { re: /\banz\b/i, name: "ANZ", kind: "bank" },
   { re: /\bnab\b|\bnational australia bank\b/i, name: "NAB", kind: "bank" },
   { re: /\bpaypal\b/i, name: "PayPal", kind: "bank" },
-  { re: /\bmacquarie\b|\bbendigo bank\b|\bing\b|\bsuncorp\b|\bbank\b/i, name: "your bank", kind: "bank" },
+  { re: /\bmacquarie\b/i, name: "Macquarie", kind: "bank" },
+  { re: /\bbendigo\s?bank\b/i, name: "Bendigo Bank", kind: "bank" },
+  { re: /\bing\b|\bsuncorp\b|\bbank\b/i, name: "your bank", kind: "bank" },
   { re: /\bauspost\b|\baustralia post\b|\bstartrack\b/i, name: "Australia Post", kind: "courier" },
   { re: /\bdhl\b|\bfedex\b|\bups\b|\btoll\b(?=.*(parcel|deliver))|\bcourier\b|\bparcel\b|\bpackage\b|\bdelivery\b/i, name: "a delivery company", kind: "courier" },
   { re: /\blinkt\b|\be-?toll\b|\btoll\s?(road|payment|notice|charge)\b|\bcitylink\b|\beastlink\b/i, name: "a toll operator", kind: "toll" },
@@ -210,7 +212,10 @@ function scenarioFor(s: MessageSignals): { scenario: Scenario; title: string; st
     const linkWhy = s.urls.length
       ? (courierLinksOfficial ? "The link matches a known courier domain, but Apollo cannot verify who sent the message." : "The link leads to a domain that is not a known official courier website.")
       : "Real couriers don't text payment links.";
-    return { scenario: "M01", title: "Parcel delivery scam", state: s.paymentRequest || s.urls.length ? "growling" : "ears_up", verdict: "This looks like a parcel-delivery scam.",
+    // Evidence-based escalation: brand claim + non-official URL = strong phishing evidence → barking.
+    const courierUrlNonOfficial = s.urls.length > 0 && !courierLinksOfficial;
+    const courierState: ApolloState = (s.paymentRequest || courierUrlNonOfficial) ? "barking" : s.urls.length ? "growling" : "ears_up";
+    return { scenario: "M01", title: "Parcel delivery scam", state: courierState, verdict: "This looks like a parcel-delivery scam.",
       why: ["It claims to be from a delivery company.", s.smallPayment || s.paymentRequest ? "It asks for an unexpected (often small) payment." : "It asks you to act on a parcel you may not be expecting.", linkWhy],
       rec: "Don't use the link. Track any parcel through the courier's official app or website.", verify: VERIFY.courier };
   }
@@ -222,8 +227,14 @@ function scenarioFor(s: MessageSignals): { scenario: Scenario; title: string; st
     const govUrlWhy = s.urls.length
       ? ((urlsOfficial || urlsGovOfficial) ? "The link appears to match an official government domain, but Apollo cannot verify who sent the message." : "The link leads to a domain that is not an official government address.")
       : "Agencies don't do this by text.";
-    // If URLs all check out as official AND there's no identity/payment request, reduce to ears_up.
+    // Evidence-based escalation:
+    // - Direct identity/payment request → barking (strong deceptive ask)
+    // - Non-official URLs present → barking (brand claim + non-official URL = strong phishing evidence)
+    // - Official URLs, no pressure → ears_up (could be legitimate, monitor)
+    // - Else → growling (credible suspicion, insufficient for barking)
+    const urlsAreNonOfficial = s.urls.length > 0 && !(urlsOfficial || urlsGovOfficial);
     const govState = (s.identityRequest || s.paymentRequest) ? "barking" as ApolloState
+      : urlsAreNonOfficial ? "barking" as ApolloState
       : (s.urls.length && (urlsOfficial || urlsGovOfficial) && !s.threat && !s.urgency) ? "ears_up" as ApolloState : "growling" as ApolloState;
     return { scenario: "M04", title: "Government / tax impersonation", state: govState, verdict: govState === "ears_up" ? "This message claims to be from a government agency. The link matches an official domain, but Apollo cannot verify the sender." : "This looks like a government impersonation scam.",
       why: ["It claims to be a government agency.", s.paymentRequest ? "It demands a payment." : s.identityRequest ? "It asks for identity details." : s.urls.length ? govUrlWhy : "It offers a refund to get you to click.", govUrlWhy],

@@ -30,9 +30,16 @@ function toneForState(state: string): CheckResultModel["tone"] {
   return "neutral";
 }
 
-function confidenceForState(state: string): CheckResultModel["confidence"] {
-  if (state === "barking" || state === "biting") return "High";
-  if (state === "growling") return "Medium";
+/** Derive confidence from the evidence quality of the call analysis, not just the final state.
+ *  High: strong direct indicators (known scam asks like remote access + transfer, multiple
+ *  high-risk requested actions). Medium: credible circumstantial signals (single suspicious ask,
+ *  claimed identity with urgency). Low: limited evidence or ordinary call. */
+function confidenceFromEvidence(a: CallAnalysis): CheckResultModel["confidence"] {
+  const HIGH_RISK_ASKS: CallAsk[] = ["transfer", "remote", "giftcards", "crypto", "screen", "bankdetails"];
+  const dangerousAsks = a.requestedActions.filter((ask) => HIGH_RISK_ASKS.includes(ask));
+  if (dangerousAsks.length >= 2) return "High";
+  if (dangerousAsks.length === 1 && a.claimedBrand) return "High";
+  if (dangerousAsks.length === 1 || a.requestedActions.includes("code") || a.requestedActions.includes("password")) return "Medium";
   return "Low";
 }
 
@@ -140,7 +147,7 @@ export function buildCallCheckResult(args: {
     higginsSays,
     tone: toneForState(a.state),
     items,
-    confidence: confidenceForState(a.state),
+    confidence: confidenceFromEvidence(a),
     whatToDo,
     whatToDoLinks: whatToDoLinks.length ? whatToDoLinks : undefined,
     evidence,

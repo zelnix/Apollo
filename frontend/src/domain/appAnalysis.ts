@@ -122,7 +122,17 @@ export function analyseApp(input: AppInput): AppAnalysis {
   if (net && net.unknownHosts >= 5) score += 10;
   if (ctx.intentional) score -= 20;
   score = Math.max(0, Math.min(100, score));
-  const byScore: ApolloState = score >= 70 ? "barking" : score >= 40 ? "growling" : score >= 15 ? "ears_up" : "resting";
+  // Evidence-quality gate (aligned with risk.ts MF-1 deception gate): accumulated low-weight
+  // structural signals (source uncertainty + unexpected permissions) alone cannot reach barking.
+  // Barking requires at least one STRONG contextual indicator — a caller/message prompt, brand
+  // impersonation on a sideloaded app, a confirmed malicious network connection, or an active
+  // remote-access session. Without strong context, cap at growling regardless of score.
+  const hasStrongContext = !!(ctx.promptedByCaller || scentCall || ctx.promptedByMessageOrSite ||
+    (offStore && scentWebOrFile) || (brand && offStore) || (looksUpdate && offStore) ||
+    (remoteCapable && !ctx.intentional) || net?.blockedMalicious || ctx.accessGrantedNow);
+  const byScore: ApolloState = hasStrongContext
+    ? (score >= 70 ? "barking" : score >= 40 ? "growling" : score >= 15 ? "ears_up" : "resting")
+    : (score >= 70 ? "growling" : score >= 40 ? "growling" : score >= 15 ? "ears_up" : "resting");
 
   const technical = [`Name: ${name}`, input.developer ? `Developer: ${input.developer}` : "Developer: not provided", `Source: ${APP_SOURCES.find((s) => s.id === input.source)?.label}`, `Claimed purpose: ${APP_PURPOSES.find((p) => p.id === input.purpose)?.label}`,
     `Permissions: ${perms.length ? perms.map((p) => PERMISSION_INFO[p].label).join(", ") : "none selected"}`, `Unexpected for purpose: ${unexpected.length ? unexpected.map((n) => n.label).join(", ") : "none"}`,

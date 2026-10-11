@@ -15,9 +15,16 @@ function toneForState(state: string): CheckResultModel["tone"] {
   return "neutral";
 }
 
-function confidenceForState(state: string): CheckResultModel["confidence"] {
-  if (state === "barking" || state === "biting") return "High";
-  if (state === "growling") return "Medium";
+/** Derive confidence from evidence quality, not just the final state.
+ *  High: strong direct evidence — scenario A01 (remote during call), A16 (remote during bank call),
+ *  brand impersonation on sideloaded app (A03), or confirmed malicious connections (A14).
+ *  Medium: credible circumstantial signals — remote capability, sideloaded with unexpected permissions.
+ *  Low: limited evidence, official-store app with no strong concerns. */
+function confidenceFromEvidence(a: AppAnalysis): CheckResultModel["confidence"] {
+  const highScenarios = ["A01", "A16", "A03", "A03b", "A14", "A01b"];
+  if (highScenarios.includes(a.scenario) || (a.remoteCapable && a.state === "barking")) return "High";
+  const medScenarios = ["A02", "A04", "A05", "A06", "A07", "A08", "A09", "A10", "A15", "A19"];
+  if (medScenarios.includes(a.scenario) || a.remoteCapable || a.riskScore >= 50) return "Medium";
   return "Low";
 }
 
@@ -123,7 +130,7 @@ export function buildAppCheckResult(args: {
     higginsSays,
     tone: toneForState(a.state),
     items,
-    confidence: confidenceForState(a.state),
+    confidence: confidenceFromEvidence(a),
     whatToDo,
     whatToDoLinks: whatToDoLinks.length ? whatToDoLinks : undefined,
     evidence,

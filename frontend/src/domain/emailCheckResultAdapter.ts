@@ -15,9 +15,17 @@ function toneForState(state: string): CheckResultModel["tone"] {
   return "neutral";
 }
 
-function confidenceForState(state: string): CheckResultModel["confidence"] {
-  if (state === "barking" || state === "biting") return "High";
-  if (state === "growling") return "Medium";
+/** Derive confidence from evidence quality, not just the final state.
+ *  High: strong direct evidence (confirmed dangerous links, known phishing domain, sender mismatch
+ *  combined with deceptive content). Medium: credible circumstantial signals (unfamiliar sender with
+ *  urgency, lookalike URLs, risky attachments). Low: limited evidence, incomplete checks, or the
+ *  analysis is clean with no strong negative signals to be confident about either way. */
+function confidenceFromEvidence(a: EmailAnalysis, urlResults: { verdict: string }[]): CheckResultModel["confidence"] {
+  const hasDangerousLink = urlResults.some((r) => r.verdict === "malicious");
+  const hasSenderMismatch = /E01|E07/.test(a.scenario);
+  const hasDeceptiveContent = a.signals.urgency && (a.signals.loginRequest || a.signals.paymentRequest || a.signals.codeRequest);
+  if (hasDangerousLink || (hasSenderMismatch && hasDeceptiveContent)) return "High";
+  if (hasSenderMismatch || a.lookalikeUrls.length > 0 || a.riskyAttachments.length > 0 || hasDeceptiveContent) return "Medium";
   return "Low";
 }
 
@@ -37,18 +45,20 @@ export function buildEmailCheckResult(args: {
 
   const items: CheckItem[] = [];
 
-  // Sender domain check
+  // Sender domain check — Gap #6: matching a configured domain confirms the sending
+  // infrastructure but Apollo cannot verify SPF/DKIM/DMARC from pasted text alone. Mark as
+  // "incomplete" even for official domains to avoid implying full authentication.
   if (a.senderDomain) {
     const isOfficial = a.scenario === "E11";
     const isMismatch = /E01|E07/.test(a.scenario);
     items.push({
       id: "email:sender",
       name: "Sender domain",
-      status: isMismatch ? "concern" : isOfficial ? "clear" : "incomplete",
+      status: isMismatch ? "concern" : "incomplete",
       finding: isMismatch
         ? `Sent from ${a.senderDomain}, which is NOT ${a.claimedBrand}'s official domain.`
         : isOfficial
-          ? `Sent from ${a.senderDomain} — an official domain for ${a.claimedBrand}. This confirms the sending infrastructure, not the email's content.`
+          ? `Sent from ${a.senderDomain} — a known domain for ${a.claimedBrand}. Apollo matched the domain name only; email authentication (SPF/DKIM) cannot be verified from pasted text.`
           : `Sent from ${a.senderDomain}. Apollo could not match this to a configured known domain.`,
     });
   } else {
@@ -151,7 +161,7 @@ export function buildEmailCheckResult(args: {
     higginsSays,
     tone: toneForState(a.state),
     items,
-    confidence: confidenceForState(a.state),
+    confidence: confidenceFromEvidence(a, urlResults),
     whatToDo: whatToDo !== "Nothing to do." ? whatToDo : undefined,
     whatToDoLinks: whatToDoLinks.length ? whatToDoLinks : undefined,
     evidence,

@@ -16,6 +16,7 @@ export interface EmailAnalysis {
 /** Official sending domains per brand family (suffix-matched). Anything else claiming the brand is suspect. */
 const OFFICIAL: { re: RegExp; domains: string[] }[] = [
   { re: /commbank|commonwealth\s?bank|netbank|\bcba\b/i, domains: ["commbank.com.au", "cba.com.au"] }, { re: /westpac/i, domains: ["westpac.com.au"] }, { re: /\banz\b/i, domains: ["anz.com", "anz.com.au"] }, { re: /\bnab\b|national australia bank/i, domains: ["nab.com.au"] },
+  { re: /macquarie/i, domains: ["macquarie.com.au", "macquarie.com"] }, { re: /bendigo\s?bank/i, domains: ["bendigobank.com.au"] },
   { re: /paypal/i, domains: ["paypal.com", "paypal.com.au"] }, { re: /auspost|australia post/i, domains: ["auspost.com.au"] }, { re: /linkt/i, domains: ["linkt.com.au"] },
   { re: /\bato\b|tax office/i, domains: ["ato.gov.au"] }, { re: /mygov|services australia|centrelink|medicare/i, domains: ["my.gov.au", "servicesaustralia.gov.au"] },
   { re: /telstra/i, domains: ["telstra.com", "telstra.com.au"] }, { re: /optus/i, domains: ["optus.com.au"] }, { re: /microsoft|outlook|office ?365/i, domains: ["microsoft.com", "microsoftonline.com", "outlook.com", "office.com", "live.com"] },
@@ -58,7 +59,11 @@ export function analyseEmail(raw: string, fields: { from?: string; subject?: str
   const senderDomain = domainOf(parsed.fromAddress);
   const replyToDomain = domainOf(parsed.replyTo);
   const claimText = `${parsed.fromName ?? ""} ${parsed.subject ?? ""} ${sig.claimedBrand ?? ""}`;
-  const official = OFFICIAL.find((o) => o.re.test(claimText)) ?? (sig.claimedBrand ? OFFICIAL.find((o) => o.re.test(sig.claimedBrand!)) : undefined);
+  const official = OFFICIAL.find((o) => o.re.test(claimText)) ?? (sig.claimedBrand ? OFFICIAL.find((o) => o.re.test(sig.claimedBrand!)) : undefined)
+    // Gap #6: also match when the sender domain itself is in an OFFICIAL entry — but NOT for
+    // freemail domains (gmail.com, outlook.com, etc.) since personal accounts on those platforms
+    // are not official brand communications from Google/Microsoft.
+    ?? (senderDomain && !FREEMAIL.test(senderDomain) ? OFFICIAL.find((o) => o.domains.some((d) => isSuffixOf(senderDomain, d))) : undefined);
   const senderMatchesConfiguredDomain = OFFICIAL.some((o) => !!senderDomain && o.domains.some((domain) => isSuffixOf(senderDomain, domain)));
   const brand = sig.claimedBrand ?? (official ? (parsed.fromName ?? "this organisation") : null);
   const senderOfficial = !!(senderDomain && official && official.domains.some((d) => isSuffixOf(senderDomain, d)));

@@ -16,9 +16,15 @@ function toneForState(state: string): CheckResultModel["tone"] {
   return "neutral";
 }
 
-function confidenceForState(state: string): CheckResultModel["confidence"] {
-  if (state === "barking") return "High";
-  if (state === "growling") return "Medium";
+/** Derive confidence from evidence quality, not just the final state.
+ *  High: strong direct evidence — disguised file type (F01), APK with brand impersonation (F02),
+ *  executable from unexpected source (F13). Medium: credible circumstantial signals — executable,
+ *  configuration profile, certificate, or embedded URLs. Low: normal file type with limited inspection. */
+function confidenceFromEvidence(a: FileAnalysis): CheckResultModel["confidence"] {
+  const highScenarios = ["F01", "F02", "F13"];
+  if (highScenarios.includes(a.scenario)) return "High";
+  const isExecutable = a.realType === "exe" || a.realType === "script" || a.realType === "apk";
+  if (isExecutable || a.realType === "profile" || a.realType === "certificate" || a.urls.length > 0) return "Medium";
   return "Low";
 }
 
@@ -117,7 +123,7 @@ export function buildFileCheckResult(args: {
     higginsSays,
     tone: toneForState(a.state),
     items,
-    confidence: confidenceForState(a.state),
+    confidence: confidenceFromEvidence(a),
     whatToDo,
     whatToDoLinks: whatToDoLinks.length ? whatToDoLinks : undefined,
     evidence,

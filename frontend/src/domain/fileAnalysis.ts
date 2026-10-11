@@ -66,7 +66,7 @@ export function analyseFile(f: FileInput): FileAnalysis {
   const claimedType = ext ? ext.toUpperCase() : "no extension";
   const urls = Array.from(new Set(((f.textSample ?? "").match(URL_RE) ?? []).map((u) => u.replace(/[.,;:)]+$/, "")))).slice(0, 10);
   const technical = [`Name: ${name}`, `Extension: ${claimedType}`, `Real type (signature/MIME): ${real}`, f.mime ? `MIME: ${f.mime}` : "", f.size ? `Size: ${Math.round(f.size / 1024)} KB` : "", rtl ? "Contains right-to-left override characters" : "", urls.length ? `Embedded links: ${urls.length}` : ""].filter(Boolean);
-  const unexpected = f.source === "unknown" || f.source === "message" || f.source === "nearby";
+  const unexpected = f.source === "unknown" || f.source === "message" || f.source === "nearby" || f.source === "email";
   const sourceEvidence = f.source === "cloud" ? "Being hosted on Google Drive or another cloud service does not verify the file, its contents or its sender." : null;
   const inspected = !!f.headBytes && f.headBytes.length >= 4 && !f.inspectionError;
   technical.push(inspected ? 'Inspected signature and at most 200,000 bytes of a plain-text sample. No archive extraction or malware scan.' : `File contents not inspected. ${f.inspectionError ?? 'Only the supplied name and context were available.'}`);
