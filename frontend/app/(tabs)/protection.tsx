@@ -22,6 +22,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { RootScreenHeader } from "@/src/components/RootScreenHeader";
 import { Card, Pill } from "@/src/components/ui";
 import { buildProtectionAreas, type ProtectionArea, type ProtectionAreaCapability, type ProtectionAreaId } from "@/src/domain/protectionAreas";
+import { buildProtectionExplanation } from "@/src/domain/protectionExplainer";
 import { gateTone } from "@/src/domain/gates";
 import { useProtectionHealth } from "@/src/protection/healthStore";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
@@ -191,13 +192,8 @@ export default function ProtectionScreen() {
         ? "Checking your protection"
         : "Your protection overview";
 
-  const summaryBody = areasWithAttention > 0
-    ? "Some protections need your action. Review the areas below."
-    : totalWatching === totalAutomatic && totalAutomatic > 0
-      ? "All automatic protections are running. Manual checks are available."
-      : health.checking
-        ? "Apollo is checking the current state of your device protection."
-        : "Review each area to see what's active and what's available.";
+  // Improvement 4: Higgins-style contextual explanation of protection
+  const higginsExplanation = useMemo(() => buildProtectionExplanation(areas), [areas]);
 
   return (
     <View style={s.root} testID="protection-screen">
@@ -219,13 +215,13 @@ export default function ProtectionScreen() {
         testID="protection-scroll"
         contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 110 }]}
       >
-        {/* Summary card */}
+        {/* Summary card — Improvement 4: Higgins explanation of protection status */}
         <Card style={s.summaryCard} testID="protection-summary">
           <View style={s.summaryRow}>
             <Shield size={28} color={areasWithAttention > 0 ? colors.barking : colors.resting} />
             <View style={s.summaryText}>
               <Text style={s.summaryTitle} testID="protection-summary-title">{summaryTitle}</Text>
-              <Text style={s.summaryBody} testID="protection-summary-body">{summaryBody}</Text>
+              <Text style={s.summaryBody} testID="protection-summary-body">{higginsExplanation}</Text>
             </View>
           </View>
         </Card>

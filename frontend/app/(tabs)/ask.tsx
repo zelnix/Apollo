@@ -24,6 +24,7 @@ import { createCaseInput } from "@/src/investigation/fromContext";
 import { rememberCaseForEvent } from "@/src/investigation/caseIndex";
 import { useProtectionHealth } from "@/src/protection/healthStore";
 import { useApollo } from "@/src/store/ApolloContext";
+import { buildDailyActivity } from "@/src/domain/dailyActivity";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 const WELCOME = "Hello! I'm Higgins.\n\nI'm here to help you understand Apollo, explain security alerts, and answer your cyber-safety questions.\n\nWhat can I help you with today?";
@@ -74,7 +75,7 @@ const useStyles = makeStyles((c) => ({
 }));
 
 export default function Ask() {
-  const s = useStyles(); const { colors } = useTheme(); const insets = useSafeAreaInsets(); const router = useRouter(); const { deviceId, isMock } = useApollo(); const health = useProtectionHealth();
+  const s = useStyles(); const { colors } = useTheme(); const insets = useSafeAreaInsets(); const router = useRouter(); const { deviceId, isMock, events } = useApollo(); const health = useProtectionHealth();
   const params = useLocalSearchParams<{ context?: string; prompt?: string; autoSend?: string; handoffId?: string; operationId?: string; resumeCaseId?: string; scamTitle?: string; scamSource?: string; scamUrl?: string; scamSummary?: string }>();
   const { state, start, ask, retry, cancel, remove, attach, retryDelete } = useInvestigation(params.operationId ? String(params.operationId) : null);
   const [text, setText] = useState(""); const [activeContext, setActiveContext] = useState<HigginsIssueContext | null>(null); const [investigationMode, setInvestigationMode] = useState(false);
@@ -100,8 +101,15 @@ export default function Ask() {
     if (!deviceId || health.checking || !health.checkedAt || contextRecorded.current === health.checkedAt) return;
     contextRecorded.current = health.checkedAt;
     const on = health.gates.filter((gate) => gate.capability.automatic?.state === "running" && !gate.capability.automatic?.manualOnly).length; const attention = health.gates.filter((gate) => gate.tone === "action").map((gate) => gate.title);
-    void rememberHigginsContext({ category: "protection_state", provenance: "device_observation", observedAt: health.checkedAt, summary: `${on} automatic protections are on.${attention.length ? ` Needs attention: ${attention.join(", ")}.` : ""}` }).catch(() => undefined);
-  }, [deviceId, health]);
+
+    // Improvement 6: Enrich Higgins context with daily activity for natural conversation
+    const dailyActivity = buildDailyActivity(events);
+    const activitySuffix = dailyActivity.eventCount > 0
+      ? ` Today: ${dailyActivity.summary}`
+      : " No significant activity recorded today.";
+
+    void rememberHigginsContext({ category: "protection_state", provenance: "device_observation", observedAt: health.checkedAt, summary: `${on} automatic protections are on.${attention.length ? ` Needs attention: ${attention.join(", ")}.` : ""}${activitySuffix}` }).catch(() => undefined);
+  }, [deviceId, health, events]);
 
   const scrollToEnd = useCallback((force = false) => { if (force || stick.current) requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true })); }, []);
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => { const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent; stick.current = contentOffset.y + layoutMeasurement.height >= contentSize.height - 140; };

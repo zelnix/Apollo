@@ -4,7 +4,7 @@
 // All data must come from real execution records. No simulated activity.
 // Pure, unit-testable: no React, no navigation.
 
-import type { PatrolEvent } from "./patrolRecords";
+import type { PatrolEvent } from "./types";
 
 export interface DailyActivity {
   /** Total significant events today */
@@ -38,7 +38,7 @@ export function buildDailyActivity(events: PatrolEvent[]): DailyActivity {
   const todayMs = todayStart.getTime();
 
   const todayEvents = events.filter((e) => {
-    const ts = e.created_at ? new Date(e.created_at).getTime() : 0;
+    const ts = e.occurred_at ? new Date(e.occurred_at).getTime() : 0;
     return ts >= todayMs;
   });
 
@@ -52,7 +52,7 @@ export function buildDailyActivity(events: PatrolEvent[]): DailyActivity {
   let actionNeeded = false;
 
   for (const ev of todayEvents) {
-    const ts = ev.created_at ?? ev.updated_at;
+    const ts = ev.occurred_at;
     if (ts && (!lastActivityAt || ts > lastActivityAt)) {
       lastActivityAt = ts;
     }

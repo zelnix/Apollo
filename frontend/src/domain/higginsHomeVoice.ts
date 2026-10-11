@@ -101,11 +101,32 @@ export function buildHomeVoice(input: {
   const state = resolution.state;
 
   if (state === "resting") {
+    // Improvement 1: Evidence-backed protection status. The resting message now reflects the
+    // actual count of running automatic protections and honest limitations.
+    const runningGates = gates.filter((g) => g.capability.automatic?.state === "running" && !g.capability.automatic?.manualOnly);
+    const hasWebsiteProtection = runningGates.some((g) => g.id === "site");
+    const affected = affectedCapabilities(capabilities);
+
+    let text: string;
+    if (affected.length > 0 && hasWebsiteProtection) {
+      // Limited coverage — some capabilities degraded but website protection is running.
+      text = "Apollo is on patrol. Your available website protection is running, but some protections cannot be checked automatically on this device. I'll let you know if anything needs attention.";
+    } else if (affected.length > 0) {
+      // More significantly limited — website protection may not be running.
+      text = "Apollo is working, but some website connections cannot be checked automatically on this device. Open Protection to see what's active and what's available.";
+    } else if (runningGates.length > 0) {
+      // Full coverage — all automatic protections confirmed running.
+      text = "Apollo is on patrol. Your available website protection is running, and I'll let you know if anything needs attention.";
+    } else {
+      // No automatic protections running — honest about what we can confirm.
+      text = "Apollo is on patrol. Manual security checks are ready when you need them. Open Protection to see what's available.";
+    }
+
     return {
-      text: "Apollo is patrolling and all is clear. Every protection he can confirm is running, and nothing concerning turned up in the latest checks. No action needed right now.",
+      text,
       ctaLabel: "View Protection Details",
       ctaRoute: "/protection-details",
-      spoken: "Apollo is patrolling and all is clear. No action needed right now.",
+      spoken: "Apollo is on patrol and all is clear. No action needed right now.",
     };
   }
 

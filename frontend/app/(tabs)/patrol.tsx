@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PatrolItem } from "@/src/components/PatrolItem";
 import { RootScreenHeader } from "@/src/components/RootScreenHeader";
 import { MultiSelectFilter } from "@/src/components/MultiSelectFilter";
+import { DailyActivityCard } from "@/src/components/DailyActivityCard";
 import { Body, Card, Pill } from "@/src/components/ui";
 import { matchesPatrolFilter, patrolConsumerSummary, projectPatrolOutcomes, type PatrolFilter, type PatrolOutcome } from "@/src/domain/patrolOutcomes";
 import { useApollo } from "@/src/store/ApolloContext";
@@ -91,9 +92,13 @@ export default function Patrol() {
         contentContainerStyle={s.list}
         testID="patrol-list"
         ListHeaderComponent={
-          <Card testID="patrol-summary" style={s.summaryCard}>
-            <Text style={s.summaryText} testID="patrol-summary-text">{patrolConsumerSummary(outcomes)}</Text>
-          </Card>
+          <View style={{ gap: spacing.md }}>
+            {/* Improvement 2: Daily activity summary — evidence of Apollo's work today */}
+            <DailyActivityCard events={events} testID="patrol-daily-activity" />
+            <Card testID="patrol-summary" style={s.summaryCard}>
+              <Text style={s.summaryText} testID="patrol-summary-text">{patrolConsumerSummary(outcomes)}</Text>
+            </Card>
+          </View>
         }
         renderItem={({ item }) => item.type === "day" ? <Text style={s.day}>{item.label}</Text> : <PatrolItem outcome={item.outcome} isLast={item.isLast} />}
         ListEmptyComponent={

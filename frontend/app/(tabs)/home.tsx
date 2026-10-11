@@ -12,6 +12,9 @@ import { ClipboardLinkBanner } from "@/src/components/ClipboardLinkBanner";
 import { ServiceBanner } from "@/src/components/ServiceBanner";
 import { CoverageCard } from "@/src/components/CoverageCard";
 import { HomeScamAlerts } from "@/src/components/HomeScamAlerts";
+import { LatestActivityRow } from "@/src/components/LatestActivityRow";
+import { DailyActivityCard } from "@/src/components/DailyActivityCard";
+import { RecoveryBanner, useRecoveryTracker } from "@/src/components/RecoveryBanner";
 import { Body, Button, Card, DevTag, Pill, SectionTitle, toneColor } from "@/src/components/ui";
 import { buildScents } from "@/src/domain/threatScent";
 import { buildHomeAttention } from "@/src/domain/homeAttention";
@@ -45,6 +48,7 @@ export default function Home() {
   const router = useRouter();
   const { resolution, capabilities, protection, adapterLabel, isMock, refreshing, events, lowPower, quietNow, showToast, identityReset, reRegisterDevice } = useApollo();
   const health = useProtectionHealth();
+  const { recovery, dismiss: dismissRecovery } = useRecoveryTracker(protection?.operational);
 
   // Specific, real issues that need the person — computed once from live gate + event data.
   const attention = React.useMemo(
@@ -64,6 +68,14 @@ export default function Home() {
          *    dynamically generated), and ONE primary action (View Protection Details or the
          *    specific issue). Details live on the next screen. */}
         <ApolloHero resolution={resolution} adapterLabel={adapterLabel} isMock={isMock} capabilities={capabilities} animate={!lowPower} quietNow={quietNow} sniffing={refreshing} attention={attention} gates={health.gates} findingCount={findingCount} />
+
+        {/* Improvement 5: Recovery banner — shows when protection was interrupted and is now restored. */}
+        <RecoveryBanner recovery={recovery} onDismiss={dismissRecovery} testID="home-recovery-banner" />
+
+        {/* Improvement 1: Latest meaningful security activity with real timestamp. */}
+        {events.length > 0 ? (
+          <LatestActivityRow events={events} testID="home-latest-activity" />
+        ) : null}
 
         {identityReset ? (
           <Card style={{ gap: spacing.sm, borderColor: colors.barking }} testID="identity-reset-card">
@@ -122,6 +134,11 @@ export default function Home() {
               </Pressable>
             ))}
           </View>
+        ) : null}
+
+        {/* Improvement 2: Apollo's Day on Patrol — daily activity summary. */}
+        {events.length > 0 ? (
+          <DailyActivityCard events={events} testID="home-daily-activity" />
         ) : null}
 
         {/* Recent patrol removed from Home — the full activity feed lives on the Patrol tab. */}
