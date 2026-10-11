@@ -53,9 +53,9 @@ const useStyles = makeStyles((c) => ({
   // ── Hero status card ──
   heroCard: {
     marginHorizontal: spacing.xl, borderRadius: radius.lg, overflow: "hidden",
-    minHeight: 160,
+    minHeight: 160, backgroundColor: "#E8F5EE",
   },
-  heroBgImage: { width: "100%", height: "100%" },
+  heroBgImage: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
   heroOverlay: {
     padding: spacing.xl, gap: spacing.md, flexDirection: "row",
     alignItems: "flex-start",
@@ -63,7 +63,7 @@ const useStyles = makeStyles((c) => ({
   heroInner: { flexDirection: "row", gap: spacing.lg, alignItems: "flex-start" },
   heroImageWrap: { width: 90, height: 90, borderRadius: 45, borderWidth: 2, borderColor: c.gold, overflow: "hidden", backgroundColor: c.surfaceSecondary },
   heroImage: { width: 90, height: 90 },
-  heroContent: { flex: 1, gap: spacing.xs, paddingRight: 80 },
+  heroContent: { flex: 1, gap: spacing.xs, paddingRight: 60 },
   heroStatusRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   heroShield: { marginRight: 2 },
   heroStatusText: { fontFamily: fonts.displayBold, fontSize: 17, color: "#1B6B47" },
@@ -187,7 +187,7 @@ export default function Home() {
             contentFit="cover"
             testID="home-hero-bg"
           />
-          <View style={[s.heroOverlay, { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }]}>
+          <View style={s.heroOverlay}>
             <View style={s.heroImageWrap}>
               <Image
                 source={gif ? gif.src : FALLBACK_IMAGE}
