@@ -13,7 +13,7 @@ Before running any test, confirm:
 - [ ] APK is built from the latest source including all Phase 1-4 changes
 - [ ] Apollo is installed and the VPN is connected (foreground notification visible)
 - [ ] Website Gate is active (`websiteGateActive: true` in protection status)
-- [ ] Android Private DNS is OFF (Settings → Network & internet → Private DNS → Off)
+- [ ] Record Android Private DNS status (Settings → Network & internet → Private DNS)
 - [ ] Chrome Secure DNS is set to default (not overridden)
 - [ ] Patrol tab is visible and empty or contains only prior events
 - [ ] Record the active rule bundle version from protection status
@@ -108,27 +108,32 @@ Before running any test, confirm:
 
 ---
 
-## Test 5: Private DNS — Reduced Visibility Reported
+## Test 5: Private DNS — Limitation Reported Without User Action Required
 
 **Target:** Turn on Private DNS and check Apollo's response.
-**Purpose:** Confirm Private DNS bypass detection works.
+**Purpose:** Confirm Private DNS detection works and Apollo explains the limitation without asking the user to disable it.
 
 **Steps:**
 1. Go to Android Settings → Network & internet → Private DNS → Automatic
 2. Return to Apollo → wait for next health check (or pull-to-refresh on Home)
 3. Check Protection Details
+4. Review Higgins messaging and Site Gate limitation text
 
 **Expected:**
 - [x] Protection status reports `privateDnsActive: true`
-- [x] Site Gate shows limitation: "Private DNS is on — Apollo cannot inspect DNS queries..."
+- [x] Site Gate shows limitation explaining encrypted DNS reduces automatic checks, without suggesting the user change settings
 - [x] Protection Details shows a "Reduced DNS coverage" finding
-- [x] The finding includes action: "Turn off Private DNS"
+- [x] The finding says "No action needed" — does NOT ask the user to turn off Private DNS
 - [x] Higgins explains the reduced protection in plain English
-- [x] masterCopy shows: "Protection active — reduced DNS coverage"
+- [x] masterCopy shows: "Protection active" with explanation that some checks are limited
+- [x] All messaging emphasises what IS still working (link checking, threat rules, other protections)
 
-**Cleanup:** Turn Private DNS back OFF after this test.
+**Then test with Private DNS OFF:**
+1. Go to Android Settings → Network & internet → Private DNS → Off
+2. Return to Apollo → wait for next health check
+3. Confirm the limitation finding disappears and full DNS coverage is reported
 
-**Evidence:** Screenshots of Protection Details + Higgins message + Site Gate limitation text
+**Evidence:** Screenshots of Protection Details + Higgins message + Site Gate limitation text (both Private DNS ON and OFF)
 
 ---
 

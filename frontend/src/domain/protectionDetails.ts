@@ -339,9 +339,9 @@ export function buildProtectionFindings(input: {
       kindLabel: "Automatic protection",
       tone: "limited",
       statusLabel: "Reduced DNS coverage",
-      whatFound: `Your device's Private DNS${server ? ` (${server})` : ""} routes all DNS queries through an encrypted channel that Apollo cannot inspect. Website protection based on DNS inspection is bypassed.`,
-      whatItMeans: "Apollo cannot observe which websites this device requests through DNS. Existing rule-bundle filtering and manual link checks remain available, but automatic DNS-level threat detection is inactive.",
-      whatToDo: "Turn off Private DNS: go to Settings → Network & internet → Private DNS → Off. This restores Apollo's DNS visibility without affecting your browsing.",
+      whatFound: `This device uses encrypted DNS${server ? ` (${server})` : ""}, which sends website requests through a private channel that Apollo cannot inspect. Some automatic website checks are not available.`,
+      whatItMeans: "Apollo cannot automatically check which websites this device requests through DNS. Link checking, threat rules and all other protections remain fully active.",
+      whatToDo: "No action needed. Apollo is still protecting you with link checking, threat rules and every other active protection. Automatic DNS-based website checks are the only capability affected.",
       actionLabel: "Open device settings",
       findingType: "infrastructure",
     });
