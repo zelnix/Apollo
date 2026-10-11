@@ -89,7 +89,7 @@ class EvidenceItem(Wire):
     collected_at: datetime
     observed_at: Optional[datetime] = None
     expires_at: datetime
-    availability: Literal["available", "unavailable", "permission_required", "purged"] = "available"
+    availability: Literal["available", "unavailable", "permission_required", "purged", "content_expired"] = "available"
     media_type: Optional[str] = None
     byte_length: Optional[int] = None
     integrity_hash: Optional[str] = None  # SHA-256 of the investigated evidence bytes
@@ -173,6 +173,7 @@ class Inventory(Wire):
     partial: int = 0
     unavailable: int = 0
     purged: int = 0
+    content_expired: int = 0
 
 
 class InvestigationCase(Wire):
@@ -184,6 +185,10 @@ class InvestigationCase(Wire):
     created_at: datetime
     updated_at: datetime
     expires_at: datetime
+    evidence_expires_at: Optional[datetime] = None  # 24h from first evidence acquisition
+    report_expires_at: Optional[datetime] = None  # 90 days from completion
+    retention_class: str = ""
+    report_byte_size: int = 0
     response: Optional[HigginsResponse] = None
     active_job_id: Optional[str] = None
     pending_device_request_ids: list[str] = Field(default_factory=list)

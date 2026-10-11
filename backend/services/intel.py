@@ -198,11 +198,10 @@ async def run_intel_check(indicator_type: str, value: str) -> IntelCheckResponse
                 verdict=rc.verdict, threat_types=rc.threat_types, sources=[IntelSource(**s) for s in rc.sources],
                 indicator_digest=dg, checked_at=rc.checked_at, cached=True, coverage=rc.coverage,  # type: ignore[arg-type]
             )
-    # ── External intelligence sources only ──
-    # Apollo's internal blocklist is disabled as an independent verdict source (product decision).
-    # Only external specialist providers participate in the verdict.
+    # ── Intelligence sources: Apollo blocklist + external providers ──
+    bl_source = await blocklist_check(host)
     sb_source, sb_expiry = await safe_browsing_lookup(url if indicator_type == "url" else f"http://{host}/")
-    sources = [sb_source]
+    sources = [bl_source, sb_source]
     verdict, threats, coverage = combine(sources)
     expires = sb_expiry or (ts + timedelta(minutes=5 if verdict != "unknown" else 1))
     record = ReputationCache(

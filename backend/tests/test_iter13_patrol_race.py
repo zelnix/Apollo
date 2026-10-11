@@ -69,7 +69,7 @@ async def test_concurrent_upsert_same_event_id():
     events = [e for e in r.json() if e["event_id"] == EVENT_ID]
     assert len(events) == 1, f"expected 1 event, got {len(events)}: {events}"
     # The race remains one row, while the privacy boundary strips both raw competing narratives.
-    assert events[0]["headline"] == "Apollo recorded a known_threat check"
+    assert events[0]["headline"] == "Apollo flagged a known threat for review"
     assert "Headline" not in events[0]["headline"]
 
 
@@ -93,7 +93,7 @@ def test_sequential_upsert_updates_fields():
     lst = requests.get(f"{API}/patrol/events", params={"device_id": seq_device}, timeout=10).json()
     match = [e for e in lst if e["event_id"] == seq_event_id]
     assert len(match) == 1
-    assert match[0]["headline"] == "Apollo recorded a known_threat check"
+    assert match[0]["headline"] == "Apollo flagged a known threat for review"
     assert match[0]["state"] == "growling"  # permitted structured fields still update
 
 

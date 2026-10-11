@@ -55,10 +55,10 @@ def test_oauth_state_is_hashed_and_consumed_atomically():
 
 @pytest.mark.asyncio
 async def test_unreadable_refresh_grant_is_deleted_without_retry_loop(monkeypatch):
-    async def connection(_device_id): return {"refresh_token_enc": "not-a-fernet-token"}
+    async def connection(_device_id, email=None): return {"refresh_token_enc": "not-a-fernet-token"}
     collection = SimpleNamespace(delete_one=AsyncMock())
     monkeypatch.setattr(gmail, "get_connection", connection)
     monkeypatch.setattr(gmail, "db", SimpleNamespace(gmail_connections=collection))
     with pytest.raises(HTTPException, match="reconnect"):
         await gmail._access_token_for("device-a")
-    collection.delete_one.assert_awaited_once_with({"device_id": "device-a"})
+    collection.delete_one.assert_awaited_once_with({"device_id": "device-a", "email": None})

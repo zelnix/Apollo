@@ -35,7 +35,10 @@ def api():
 
 
 def test_page_extract_rejects_invalid_image_without_persisting_it(api):
-    r = api.post(f"{BASE_URL}/api/page/extract", data={"device_id": "gate3page0001", "sanitization_status": "approved"},
+    r = api.post(f"{BASE_URL}/api/page/extract",
+                 data={"device_id": "gate3page0001", "sanitization_status": "approved",
+                       "sanitization_receipt_id": "00000000-0000-0000-0000-000000000000",
+                       "sanitization_digest": "a" * 64},
                  files={"file": ("page.txt", b"not an image", "text/plain")}, timeout=15)
     assert r.status_code == 415, r.text
 

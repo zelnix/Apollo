@@ -75,6 +75,12 @@ async def test_screenshot_upload_is_closed_after_success(monkeypatch):
                 "processing": {"raw_retained_by_apollo": False}}
 
     monkeypatch.setattr(analysis, "extract_message_screenshot", fake_extract)
-    response = await analysis.message_extract(device_id="purpose-test", sanitization_status="approved", file=file)
+    import hashlib
+    image_bytes = raw.getvalue()
+    digest = hashlib.sha256(image_bytes).hexdigest()
+    response = await analysis.message_extract(
+        device_id="purpose-test", sanitization_status="approved",
+        sanitization_receipt_id="00000000-0000-0000-0000-000000000000",
+        sanitization_digest=digest, file=file)
     assert response["processing"]["raw_retained_by_apollo"] is False
     assert file.file.closed

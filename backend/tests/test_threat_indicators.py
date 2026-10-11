@@ -1,7 +1,8 @@
 """Tests for the threat indicator lifecycle — Stage 1.
 
-Uses session-scoped event loop (loop_scope="session") so the Motor client
-survives across async test functions without "Event loop is closed" errors.
+Uses module-scoped event loop so the Motor client survives across async
+test functions without "Event loop is closed" errors when run alongside
+other modules via xdist.
 
 Covers: admin CRUD, revalidation state transitions, dual-timestamp semantics,
 provider timeout handling, hard expiry, migration.
@@ -62,7 +63,7 @@ async def _cleanup():
 
 # ── Revalidation engine tests (session-scoped loop to keep Motor alive) ──────
 
-@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.asyncio(loop_scope="module")
 async def test_reval_01_confirmed_refreshes_both_timestamps():
     from core.models import ThreatIndicator
     from services.threat_revalidation import _apply_revalidation_outcome
@@ -83,7 +84,7 @@ async def test_reval_01_confirmed_refreshes_both_timestamps():
         await _cleanup()
 
 
-@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.asyncio(loop_scope="module")
 async def test_reval_02_source_delisted_expires():
     from core.models import ThreatIndicator
     from services.threat_revalidation import _apply_revalidation_outcome
@@ -101,7 +102,7 @@ async def test_reval_02_source_delisted_expires():
         await _cleanup()
 
 
-@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.asyncio(loop_scope="module")
 async def test_reval_03_timeout_never_expires():
     """Provider timeout must NEVER move indicator to expired — only check_overdue."""
     from core.models import ThreatIndicator
@@ -123,7 +124,7 @@ async def test_reval_03_timeout_never_expires():
         await _cleanup()
 
 
-@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.asyncio(loop_scope="module")
 async def test_reval_04_error_never_expires():
     from core.models import ThreatIndicator
     from services.threat_revalidation import _apply_revalidation_outcome
@@ -139,7 +140,7 @@ async def test_reval_04_error_never_expires():
         await _cleanup()
 
 
-@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.asyncio(loop_scope="module")
 async def test_reval_05_failures_accumulate():
     from core.models import ThreatIndicator
     from services.threat_revalidation import _apply_revalidation_outcome
@@ -155,7 +156,7 @@ async def test_reval_05_failures_accumulate():
         await _cleanup()
 
 
-@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.asyncio(loop_scope="module")
 async def test_reval_06_audit_log_created():
     from core.models import ThreatIndicator
     from services.threat_revalidation import _apply_revalidation_outcome
@@ -173,7 +174,7 @@ async def test_reval_06_audit_log_created():
         await _cleanup()
 
 
-@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.asyncio(loop_scope="module")
 async def test_reval_07_hard_expiry_enforced():
     from services.threat_revalidation import _enforce_hard_expiry
     ind = _make_indicator(expiry_delta=timedelta(hours=-1))
@@ -188,7 +189,7 @@ async def test_reval_07_hard_expiry_enforced():
         await _cleanup()
 
 
-@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.asyncio(loop_scope="module")
 async def test_reval_08_hard_expiry_skips_valid():
     from services.threat_revalidation import _enforce_hard_expiry
     ind = _make_indicator(expiry_delta=timedelta(hours=20))
@@ -201,7 +202,7 @@ async def test_reval_08_hard_expiry_skips_valid():
         await _cleanup()
 
 
-@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.asyncio(loop_scope="module")
 async def test_reval_09_hard_expiry_skips_withdrawn():
     from services.threat_revalidation import _enforce_hard_expiry
     ind = _make_indicator(expiry_delta=timedelta(hours=-1))
@@ -215,7 +216,7 @@ async def test_reval_09_hard_expiry_skips_withdrawn():
         await _cleanup()
 
 
-@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.asyncio(loop_scope="module")
 async def test_reval_10_cycle_selects_due_only():
     from services.threat_revalidation import revalidate_due_indicators
     overdue = _make_indicator(hostname="overdue.test.local", next_check_delta=timedelta(hours=-1))

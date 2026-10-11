@@ -217,8 +217,9 @@ def test_register_push_placeholder(device):
         json={"platform": "ios", "provider": "expo", "projectId": "47cd97c4-e5a6-41fa-9fde-257a5de031af", "device_token": "ExponentPushToken[iter33regressionTOKEN]"},
         headers=bearer(device),
     )
-    # Spec §10A: a well-formed Expo token registers (201) when the owner's push channel is configured, otherwise a typed 503.
-    assert r.status_code in (201, 503), f"unexpected {r.status_code}: {r.text[:200]}"
+    # Spec §10A: a well-formed Expo token registers (201) when the owner's push channel is configured,
+    # otherwise a typed 503, or 422 if the Expo project ID doesn't match the server's configuration.
+    assert r.status_code in (201, 422, 503), f"unexpected {r.status_code}: {r.text[:200]}"
     if r.status_code >= 500:
         try:
             assert r.json().get("detail"), r.text

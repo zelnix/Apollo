@@ -19,7 +19,7 @@ class Bound:
     overflow: str
 
 
-POLICY_VERSION = "2026-09-21.1"
+POLICY_VERSION = "2026-10-11.1"
 TEXT = Bound(int(os.getenv("HIGGINS_MAX_TEXT_CHARACTERS", "262144")), "characters",
              "Bound transport allocation before provider token admission", "reject explicitly; never slice")
 ITEMS = Bound(int(os.getenv("HIGGINS_MAX_ITEMS", "256")), "items",
@@ -27,10 +27,20 @@ ITEMS = Bound(int(os.getenv("HIGGINS_MAX_ITEMS", "256")), "items",
 OUTPUT = Bound(int(os.getenv("HIGGINS_OUTPUT_TOKENS", "16384")), "tokens",
                "Reserve response and reasoning within the provider's output limit", "non-STOP output is incomplete")
 SCHEMA_RESERVE = Bound(1024, "tokens", "Conservative role/tool-wrapper overhead not exposed by Developer API token counting", "reject; do not trim context")
-LIFETIME_SECONDS = 15 * 60  # hard ceiling; never extended by retries
+LIFETIME_SECONDS = 15 * 60  # hard ceiling for active-investigation work; never extended by retries
 TEMPORARY_RETENTION = "apollo_15_minute_temporary"
 WORK_SECONDS = 120
 CALL_SECONDS = 50
+
+# ── Two-Tier Retention Policy ──────────────────────────────────────────
+# Source evidence content (images, files, screenshots): delete within 24 hours of acquisition.
+EVIDENCE_RETENTION_SECONDS = int(os.getenv("EVIDENCE_RETENTION_SECONDS", str(24 * 3600)))  # 24 hours
+# Saved Magnum DI investigations & Higgins reports: up to 90 days from completion.
+REPORT_RETENTION_SECONDS = int(os.getenv("REPORT_RETENTION_SECONDS", str(90 * 24 * 3600)))  # 90 days
+# Per-user/device saved-report storage allowance.
+REPORT_STORAGE_LIMIT_BYTES = int(os.getenv("REPORT_STORAGE_LIMIT_BYTES", str(100 * 1024 * 1024)))  # 100 MB
+# Retention class for promoted (completed) investigations.
+SAVED_RETENTION = "apollo_saved_report"
 
 
 def policy() -> dict:

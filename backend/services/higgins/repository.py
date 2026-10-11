@@ -17,7 +17,10 @@ from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError, OperationFailure
 
 from core.db import db, now_utc
-from services.higgins.capacity import LIFETIME_SECONDS, TEMPORARY_RETENTION, WORK_SECONDS
+from services.higgins.capacity import (
+    LIFETIME_SECONDS, TEMPORARY_RETENTION, WORK_SECONDS,
+    EVIDENCE_RETENTION_SECONDS, REPORT_RETENTION_SECONDS, REPORT_STORAGE_LIMIT_BYTES, SAVED_RETENTION,
+)
 from services.higgins.contracts import (Coverage, EvidenceItem, EvidenceProvenance, Failure, HigginsResponse, Inventory, InvestigationCase, Job,
                                         SourceReference, TurnCommit, failure_body)
 from services.higgins.encryption import decrypt, encrypt
@@ -173,10 +176,16 @@ async def get_case(owner: str, case_id: str, *, for_mutation: bool = False) -> d
     if not doc:
         raise http(404, "not_found", "No investigation with that reference belongs to this device.")
     if doc["deleted"] or doc["status"] == "expired":
-        raise http(410, "evidence_expired", "This temporary investigation has been deleted or expired. Start a new check with the required evidence.")
+        raise http(410, "evidence_expired", "This investigation has been deleted or has expired. Start a new check with the required evidence.")
+    # Check if the case has expired by time
     if utc(doc["expires_at"]) <= now_utc():
-        await expire_case(owner, case_id)
-        raise http(410, "evidence_expired", "The temporary investigation content expired at its original deadline. Submit the evidence again for a new check.")
+        # For saved reports: expire and report it clearly
+        if doc.get("retention_class") == SAVED_RETENTION:
+            await expire_case(owner, case_id)
+            raise http(410, "report_expired", "This saved investigation has reached its 90-day retention limit and has been automatically removed.")
+        else:
+            await expire_case(owner, case_id)
+            raise http(410, "evidence_expired", "The temporary investigation content expired at its original deadline. Submit the evidence again for a new check.")
     if for_mutation and doc["status"] in ("cancelled",):
         raise http(409, "conflict", "This investigation was cancelled. Start a new check.")
     return doc
@@ -199,9 +208,12 @@ async def inventory(owner: str, case_id: str) -> Inventory:
     for row in await list_evidence(owner, case_id):
         counts.total += 1
         status = row.get("coverage", {}).get("status")
-        if row.get("availability") == "purged":
+        availability = row.get("availability", "available")
+        if availability == "purged":
             counts.purged += 1
-        elif row.get("availability") != "available" or status == "unavailable":
+        elif availability == "content_expired":
+            counts.content_expired += 1
+        elif availability != "available" or status == "unavailable":
             counts.unavailable += 1
         elif status == "examined":
             counts.examined += 1
@@ -214,6 +226,10 @@ async def case_view(doc: dict) -> InvestigationCase:
     response = HigginsResponse.model_validate(dec_json(doc["response_ciphertext"])) if doc.get("response_ciphertext") else None
     return InvestigationCase(id=doc["case_id"], revision=doc["revision"], gates=doc["gates"], status=doc["status"], created_at=utc(doc["created_at"]),
                              updated_at=utc(doc["updated_at"]), expires_at=utc(doc["expires_at"]), response=response, active_job_id=doc.get("active_job_id"),
+                             evidence_expires_at=utc(doc["evidence_expires_at"]) if doc.get("evidence_expires_at") else None,
+                             report_expires_at=utc(doc["report_expires_at"]) if doc.get("report_expires_at") else None,
+                             retention_class=doc.get("retention_class", ""),
+                             report_byte_size=doc.get("report_byte_size", 0),
                              pending_device_request_ids=doc.get("pending_device_request_ids", []), inventory=await inventory(doc["owner_id"], doc["case_id"]),
                              cleanup_status=doc.get("cleanup_status", "not_due"))
 
@@ -426,12 +442,27 @@ def evidence_view(row: dict) -> EvidenceItem:
                         label=row.get("label", ""))
 
 
-async def get_evidence(owner: str, case_id: str, evidence_id: str) -> dict:
+async def get_evidence(owner: str, case_id: str, evidence_id: str, *, content_required: bool = True) -> dict:
     row = await db.investigation_evidence.find_one({"owner_id": owner, "case_id": case_id, "evidence_id": evidence_id}, {"_id": 0})
     if not row:
         raise http(404, "not_found", "Unknown evidence reference for this investigation.")
-    if row["availability"] == "purged" or utc(row["expires_at"]) <= now_utc():
+    availability = row.get("availability", "available")
+    expired_by_time = utc(row["expires_at"]) <= now_utc() if row.get("expires_at") else False
+    if availability == "purged":
         raise http(410, "evidence_expired", "The temporary copy of that item has been deleted. Select it again to continue checking its contents.", missing=[evidence_id])
+    # Auto-transition: if evidence time-expired but not yet marked, update availability
+    if expired_by_time and availability not in ("content_expired", "purged"):
+        await db.investigation_evidence.update_one(
+            {"owner_id": owner, "case_id": case_id, "evidence_id": evidence_id, "availability": {"$nin": ["purged", "content_expired"]}},
+            {"$set": {"availability": "content_expired"}})
+        row["availability"] = "content_expired"
+    # If content is required (e.g. for byte serving) and it's expired, raise 410
+    if content_required and row["availability"] == "content_expired":
+        raise http(410, "evidence_content_expired",
+                   "This evidence was automatically deleted after 24 hours to protect your privacy. "
+                   "The investigation findings remain available in your saved report.",
+                   missing=[evidence_id])
+    # Existing publication verification
     owner_ref = row.get("publication_owner")
     if owner_ref:
         authority = await db.investigation_uploads.find_one(
@@ -522,6 +553,170 @@ async def load_bytes(owner: str, case_id: str, evidence_id: str) -> bytes:
 async def purge_evidence_content(owner: str, case_id: str, evidence_id: str) -> None:
     await db.investigation_content_chunks.delete_many({"owner_id": owner, "case_id": case_id, "evidence_id": evidence_id})
     await update_evidence(owner, case_id, evidence_id, {"$set": {"availability": "purged"}, "$unset": {"meta_ciphertext": ""}})
+
+
+# ── Two-Tier Retention: promotion, evidence sweep, storage enforcement ──
+
+async def promote_to_saved(owner: str, case_id: str) -> None:
+    """Promote a completed investigation from the 15-minute work window to
+    the 90-day saved-report retention policy. Called after the response is stored."""
+    now = now_utc()
+    report_expires = now + timedelta(seconds=REPORT_RETENTION_SECONDS)
+    evidence_expires = now + timedelta(seconds=EVIDENCE_RETENTION_SECONDS)
+    # Calculate report_byte_size: response ciphertext + sources + evidence metadata
+    case_doc = await db.investigation_cases.find_one({"owner_id": owner, "case_id": case_id},
+                                                      {"_id": 0, "response_ciphertext": 1, "sources_ciphertext": 1})
+    byte_size = 0
+    if case_doc:
+        byte_size += len((case_doc.get("response_ciphertext") or "").encode("utf-8"))
+        byte_size += len((case_doc.get("sources_ciphertext") or "").encode("utf-8"))
+    await db.investigation_cases.update_one(
+        {"owner_id": owner, "case_id": case_id},
+        {"$set": {
+            "retention_class": SAVED_RETENTION,
+            "expires_at": report_expires,
+            "report_expires_at": report_expires,
+            "evidence_expires_at": evidence_expires,
+            "report_byte_size": byte_size,
+            "updated_at": now,
+        }})
+    # Update evidence items: set 24h expiry from collected_at
+    async for ev_row in db.investigation_evidence.find(
+        {"owner_id": owner, "case_id": case_id, "availability": {"$nin": ["purged", "content_expired"]}},
+        {"_id": 0, "evidence_id": 1, "collected_at": 1, "expires_at": 1}
+    ):
+        collected = utc(ev_row.get("collected_at", now))
+        ev_expires = collected + timedelta(seconds=EVIDENCE_RETENTION_SECONDS)
+        await db.investigation_evidence.update_one(
+            {"owner_id": owner, "case_id": case_id, "evidence_id": ev_row["evidence_id"]},
+            {"$set": {"expires_at": ev_expires}})
+        # Update content chunks to match
+        await db.investigation_content_chunks.update_many(
+            {"owner_id": owner, "case_id": case_id, "evidence_id": ev_row["evidence_id"]},
+            {"$set": {"expires_at": ev_expires}})
+    # Enforce storage limit after promotion
+    await enforce_storage_limit(owner)
+
+
+async def report_storage_used(owner: str) -> int:
+    """Total saved-report byte_size for an owner across all saved investigations."""
+    pipeline = [
+        {"$match": {"owner_id": owner, "retention_class": SAVED_RETENTION, "deleted": {"$ne": True}}},
+        {"$group": {"_id": None, "total": {"$sum": "$report_byte_size"}}}
+    ]
+    result = await db.investigation_cases.aggregate(pipeline).to_list(1)
+    return result[0]["total"] if result else 0
+
+
+async def enforce_storage_limit(owner: str) -> int:
+    """Delete oldest saved reports until storage is within the 100MB limit.
+    Returns number of reports deleted."""
+    total = await report_storage_used(owner)
+    if total <= REPORT_STORAGE_LIMIT_BYTES:
+        return 0
+    deleted = 0
+    # Find saved reports ordered by oldest first
+    async for doc in db.investigation_cases.find(
+        {"owner_id": owner, "retention_class": SAVED_RETENTION, "deleted": {"$ne": True}},
+        {"_id": 0, "owner_id": 1, "case_id": 1, "report_byte_size": 1, "created_at": 1}
+    ).sort("created_at", 1):
+        if total <= REPORT_STORAGE_LIMIT_BYTES:
+            break
+        total -= doc.get("report_byte_size", 0)
+        await expire_case(owner, doc["case_id"])
+        deleted += 1
+    return deleted
+
+
+async def sweep_evidence_content() -> int:
+    """Delete evidence content (chunks) that have exceeded the 24h retention period.
+    Preserves evidence metadata rows for the saved report."""
+    now = now_utc()
+    expired_count = 0
+    # Find evidence items whose content has expired but hasn't been cleaned yet
+    async for row in db.investigation_evidence.find(
+        {"expires_at": {"$lte": now}, "availability": {"$nin": ["purged", "content_expired"]}},
+        {"_id": 0, "owner_id": 1, "case_id": 1, "evidence_id": 1}
+    ).limit(500):
+        # Delete content chunks
+        await db.investigation_content_chunks.delete_many(
+            {"owner_id": row["owner_id"], "case_id": row["case_id"], "evidence_id": row["evidence_id"]})
+        # Mark evidence as content_expired (metadata preserved)
+        await db.investigation_evidence.update_one(
+            {"owner_id": row["owner_id"], "case_id": row["case_id"], "evidence_id": row["evidence_id"]},
+            {"$set": {"availability": "content_expired"}, "$unset": {"meta_ciphertext": ""}})
+        expired_count += 1
+    return expired_count
+
+
+async def sweep_expired_reports() -> int:
+    """Delete saved reports that have exceeded the 90-day retention period."""
+    now = now_utc()
+    count = 0
+    async for doc in db.investigation_cases.find(
+        {"retention_class": SAVED_RETENTION, "report_expires_at": {"$lte": now}, "deleted": {"$ne": True}},
+        {"_id": 0, "owner_id": 1, "case_id": 1}
+    ).limit(100):
+        await expire_case(doc["owner_id"], doc["case_id"])
+        count += 1
+    # Also sweep saved reports from investigation_reports collection
+    await db.investigation_reports.delete_many({"expires_at": {"$lte": now}})
+    return count
+
+
+async def check_storage_before_save(owner: str, new_report_size: int) -> dict:
+    """Check if a new report can fit within the storage allowance.
+    Returns {"allowed": True/False, "used": int, "limit": int, "message": str}."""
+    used = await report_storage_used(owner)
+    if new_report_size > REPORT_STORAGE_LIMIT_BYTES:
+        return {"allowed": False, "used": used, "limit": REPORT_STORAGE_LIMIT_BYTES,
+                "message": f"This report ({new_report_size // 1024}KB) exceeds the {REPORT_STORAGE_LIMIT_BYTES // (1024*1024)}MB storage allowance. "
+                           "It cannot be saved without exceeding the limit."}
+    return {"allowed": True, "used": used, "limit": REPORT_STORAGE_LIMIT_BYTES, "message": ""}
+
+
+async def migrate_legacy_retention() -> int:
+    """One-time migration: promote existing completed temporary cases to the saved-report policy.
+    Called on startup. Does NOT delete any data — only extends retention."""
+    now = now_utc()
+    migrated = 0
+    async for doc in db.investigation_cases.find(
+        {"retention_class": TEMPORARY_RETENTION, "response_ciphertext": {"$exists": True, "$ne": None}, "deleted": {"$ne": True}},
+        {"_id": 0, "owner_id": 1, "case_id": 1, "created_at": 1}
+    ):
+        report_expires = utc(doc.get("created_at", now)) + timedelta(seconds=REPORT_RETENTION_SECONDS)
+        evidence_expires = utc(doc.get("created_at", now)) + timedelta(seconds=EVIDENCE_RETENTION_SECONDS)
+        byte_size = 0
+        full = await db.investigation_cases.find_one({"owner_id": doc["owner_id"], "case_id": doc["case_id"]},
+                                                     {"_id": 0, "response_ciphertext": 1, "sources_ciphertext": 1})
+        if full:
+            byte_size += len((full.get("response_ciphertext") or "").encode("utf-8"))
+            byte_size += len((full.get("sources_ciphertext") or "").encode("utf-8"))
+        await db.investigation_cases.update_one(
+            {"owner_id": doc["owner_id"], "case_id": doc["case_id"]},
+            {"$set": {
+                "retention_class": SAVED_RETENTION,
+                "expires_at": report_expires,
+                "report_expires_at": report_expires,
+                "evidence_expires_at": evidence_expires,
+                "report_byte_size": byte_size,
+            }})
+        # Update evidence expiry based on created_at
+        async for ev_row in db.investigation_evidence.find(
+            {"owner_id": doc["owner_id"], "case_id": doc["case_id"]},
+            {"_id": 0, "evidence_id": 1, "collected_at": 1}
+        ):
+            collected = utc(ev_row.get("collected_at", doc.get("created_at", now)))
+            ev_exp = collected + timedelta(seconds=EVIDENCE_RETENTION_SECONDS)
+            await db.investigation_evidence.update_one(
+                {"owner_id": doc["owner_id"], "case_id": doc["case_id"], "evidence_id": ev_row["evidence_id"]},
+                {"$set": {"expires_at": ev_exp}})
+            await db.investigation_content_chunks.update_many(
+                {"owner_id": doc["owner_id"], "case_id": doc["case_id"], "evidence_id": ev_row["evidence_id"]},
+                {"$set": {"expires_at": ev_exp}})
+        migrated += 1
+    return migrated
+
 
 
 # ------------------------------------------------------------------ jobs / events
@@ -680,17 +875,27 @@ async def expire_case(owner: str, case_id: str) -> None:
 
 async def sweep() -> None:
     now = now_utc()
-    # Automatic expiry is restricted to cases explicitly created under the fixed temporary-evidence policy.
+    # ── Phase 1: Evidence content cleanup (24-hour retention) ──
+    await sweep_evidence_content()
+    # ── Phase 2: Temporary cases (15-minute work window, never promoted) ──
     async for doc in db.investigation_cases.find({"retention_class": TEMPORARY_RETENTION, "expires_at": {"$lte": now}, "cleanup_status": {"$in": ["not_due"]}}, {"_id": 0, "owner_id": 1, "case_id": 1}):
         await expire_case(doc["owner_id"], doc["case_id"])
+    # ── Phase 3: Expired saved reports (90-day retention) ──
+    await sweep_expired_reports()
+    # ── Phase 4: Retry pending cleanups ──
     async for task in db.investigation_cleanup.find({"state": "pending", "next_attempt_at": {"$lte": now}}, {"_id": 0}):
         await run_cleanup(task["owner_id"], task["case_id"])
-    # Unreferenced bundles older than a work slice are reclaimed; every referenced bundle is excluded.
+    # ── Phase 5: Unreferenced bundles ──
     async for stale in db.investigation_turn_commits.find({"committed_at": {"$lte": now - timedelta(seconds=WORK_SECONDS)}}, {"_id": 0, "owner_id": 1, "case_id": 1, "commit_id": 1}):
         case = await db.investigation_cases.find_one({"owner_id": stale["owner_id"], "case_id": stale["case_id"], "accepted_commits.commit_id": stale["commit_id"]}, {"_id": 1})
         if not case:
             await db.investigation_turn_commits.delete_one({"owner_id": stale["owner_id"], "case_id": stale["case_id"], "commit_id": stale["commit_id"]})
-    # Revisit completed cleanups: any late writer content for deleted/expired cases is removed again.
-    async for gone in db.investigation_cases.find({"retention_class": TEMPORARY_RETENTION, "deleted": True, "cleanup_status": "complete", "updated_at": {"$gte": now - timedelta(hours=1)}}, {"_id": 0, "owner_id": 1, "case_id": 1}):
+    # ── Phase 6: Late-writer cleanup ──
+    async for gone in db.investigation_cases.find({"deleted": True, "cleanup_status": "complete", "updated_at": {"$gte": now - timedelta(hours=1)}}, {"_id": 0, "owner_id": 1, "case_id": 1}):
         for name in CONTENT:
             await db[name].delete_many({"owner_id": gone["owner_id"], "case_id": gone["case_id"]})
+    # ── Phase 7: Per-owner storage enforcement ──
+    # Find owners with saved reports and check limits
+    owners = await db.investigation_cases.distinct("owner_id", {"retention_class": SAVED_RETENTION, "deleted": {"$ne": True}})
+    for owner in (owners or []):
+        await enforce_storage_limit(owner)

@@ -149,6 +149,22 @@ async def background_text_intake(body: BackgroundTextIn, request: Request):
                          "acceptedAt": now_utc().isoformat()}, status_code=202, headers=NO_STORE)
 
 
+@router.get("/investigations/storage")
+async def get_storage_info(request: Request):
+    """Return the user's saved-report storage usage and limit."""
+    owner = owner_of(request)
+    used = await repo.report_storage_used(owner)
+    from services.higgins.capacity import REPORT_STORAGE_LIMIT_BYTES, EVIDENCE_RETENTION_SECONDS, REPORT_RETENTION_SECONDS
+    return JSONResponse({
+        "usedBytes": used,
+        "limitBytes": REPORT_STORAGE_LIMIT_BYTES,
+        "usedMB": round(used / (1024 * 1024), 2),
+        "limitMB": REPORT_STORAGE_LIMIT_BYTES // (1024 * 1024),
+        "evidenceRetentionHours": EVIDENCE_RETENTION_SECONDS // 3600,
+        "reportRetentionDays": REPORT_RETENTION_SECONDS // (24 * 3600),
+    }, headers=NO_STORE)
+
+
 @router.get("/investigations/{case_id}")
 async def get_case(case_id: str, request: Request):
     case = await repo.get_case(owner_of(request), case_id)
@@ -230,25 +246,28 @@ async def list_evidence(case_id: str, request: Request, cursor: Optional[str] = 
 
 @router.get("/investigations/{case_id}/evidence/{evidence_id}")
 async def get_single_evidence(case_id: str, evidence_id: str, request: Request):
-    """Return a single evidence item's metadata."""
+    """Return a single evidence item's metadata. Available even after evidence content expires."""
     owner = owner_of(request)
     await repo.get_case(owner, case_id)
-    row = await repo.get_evidence(owner, case_id, evidence_id)
+    row = await repo.get_evidence(owner, case_id, evidence_id, content_required=False)
     return JSONResponse({"evidence": repo.evidence_view(row).wire()}, headers=NO_STORE)
 
 
 @router.get("/investigations/{case_id}/evidence/{evidence_id}/content")
 async def get_evidence_content(case_id: str, evidence_id: str, request: Request):
     """Serve the retained evidence bytes (images, files, text content).
-    Returns the actual investigated version of the evidence for the Evidentiary Chain popup."""
+    Returns the actual investigated version of the evidence for the Evidentiary Chain popup.
+    Returns 410 if the 24-hour evidence retention period has expired."""
     owner = owner_of(request)
     await repo.get_case(owner, case_id)
-    row = await repo.get_evidence(owner, case_id, evidence_id)
+    row = await repo.get_evidence(owner, case_id, evidence_id, content_required=True)
     media_type = row.get("media_type", "application/octet-stream")
     try:
         data = await repo.read_bytes(owner, case_id, evidence_id)
     except Exception:
-        raise repo.http(410, "evidence_expired", "The evidence content is no longer available.")
+        raise repo.http(410, "evidence_content_expired",
+                        "This evidence was automatically deleted after 24 hours to protect your privacy. "
+                        "The investigation findings remain available in your saved report.")
     return Response(content=data, media_type=media_type, headers={**NO_STORE, "Content-Length": str(len(data))})
 
 
@@ -987,3 +1006,5 @@ async def delete_report(report_id: str, request: Request):
         raise http(404, "not_found", "Unknown report.")
     await db.investigation_scopes.delete_many({"owner_id": owner, "scope_id": report_id})
     return Response(status_code=204, headers=NO_STORE)
+
+

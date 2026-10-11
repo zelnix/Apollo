@@ -376,4 +376,10 @@ async def run_turn(owner: str, case: dict, job: dict, progress) -> Outcome:
     updated = await repo.accept_turn(owner, case, job, commit, commit_id, status, response.attention, response.question.wire() if response.question else None)
     if not updated:
         return Outcome("superseded")
+    # Promote completed investigations to the saved-report retention policy (24h evidence / 90-day report)
+    if status in ("complete", "partial"):
+        try:
+            await repo.promote_to_saved(owner, case["case_id"])
+        except Exception:
+            pass  # Non-fatal: the investigation is still saved, just not promoted yet
     return Outcome("committed", commit=commit, case=updated)

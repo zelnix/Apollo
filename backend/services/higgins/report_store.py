@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from core.db import db, now_utc
 from core.redaction import redact_investigation_secrets
 from services.higgins import repository as repo
+from services.higgins.capacity import REPORT_RETENTION_SECONDS, REPORT_STORAGE_LIMIT_BYTES
 
 
 class _Strict(BaseModel):
@@ -67,7 +68,10 @@ def build_report(response: dict, *, case_id: str, gates: list[str], revision: in
                     for s in sources if s["id"] in cited],
         "historical": not health_check,
         "retentionNotice": ("Synthetic system check; the server deletes its temporary report immediately."
-                            if health_check else "This saved snapshot remains until you delete it. It does not update with live protection status."),
+                            if health_check else
+                            "This investigation is saved for up to 90 days. "
+                            "Source evidence (images, files) is automatically deleted after 24 hours to protect your privacy. "
+                            "The investigation findings and Evidentiary Chain metadata remain available."),
     }
     return SavedReport.model_validate(record).model_dump(mode="json")
 
@@ -87,12 +91,17 @@ async def write(owner: str, report: dict, *, health_check: bool = False, expires
     if health_check and expires_at is None:
         raise ValueError("disposable_report_requires_expiry")
     valid = SavedReport.model_validate(report).model_dump(mode="json")
+    encrypted = repo.enc_json(valid)
+    byte_size = len(encrypted.encode("utf-8"))
     document = {"owner_id": owner, "report_id": valid["reportId"],
-                "report_ciphertext": repo.enc_json(valid), "saved_at": now_utc()}
+                "report_ciphertext": encrypted, "saved_at": now_utc(), "byte_size": byte_size}
     if health_check:
         document["expires_at"] = expires_at
         document["health_check"] = True
         document["check_id"] = valid["caseId"].removeprefix("health-")
+    else:
+        # Saved reports: 90-day retention
+        document["expires_at"] = now_utc() + timedelta(seconds=REPORT_RETENTION_SECONDS)
     await _collection(health_check, database).insert_one(document)
 
 

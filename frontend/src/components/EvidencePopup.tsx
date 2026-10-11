@@ -104,7 +104,13 @@ export function EvidencePopup({ visible, onClose, caseId, focusEvidenceId, items
     setImageLoading(false);
     setTextContent(null);
 
-    if (item.availability !== "available") return;
+    if (item.availability !== "available" && item.availability !== "content_expired") return;
+    // If content has expired, don't try to load — show the expiry message immediately
+    if (item.availability === "content_expired") {
+      if (item.kind === "image") { setImageError("expired"); }
+      else { setTextContent(null); }
+      return;
+    }
 
     if (item.kind === "image") {
       // Fetch image bytes with auth token, convert to base64 data URI
@@ -213,8 +219,21 @@ export function EvidencePopup({ visible, onClose, caseId, focusEvidenceId, items
                 </View>
               ) : null}
 
-              {/* Unavailable evidence */}
-              {selected.availability !== "available" ? (
+              {/* Unavailable or expired evidence */}
+              {selected.availability === "content_expired" ? (
+                <View style={[s.unavailable, { backgroundColor: colors.surfaceTertiary }]}>
+                  <Text style={[s.unavailableText, { fontFamily: fonts.textMedium }]}>Evidence Content Expired</Text>
+                  <Text style={[s.unavailableText, { marginTop: spacing.xs }]}>
+                    This evidence was automatically deleted after 24 hours to protect your privacy.
+                    The investigation findings remain available in your saved report.
+                  </Text>
+                  {selected.collectedAt ? (
+                    <Text style={[s.unavailableText, { marginTop: spacing.xs, fontSize: 12 }]}>
+                      Acquired: {formatDate(selected.collectedAt)} · Expired: {formatDate(selected.expiresAt)}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : selected.availability !== "available" ? (
                 <View style={s.unavailable}>
                   <Text style={s.unavailableText}>
                     {selected.availability === "purged" ? "This evidence has been securely deleted after the retention period."
@@ -238,7 +257,9 @@ export function EvidencePopup({ visible, onClose, caseId, focusEvidenceId, items
               {selected.provenance?.acquisitionMethod ? (
                 <MetaRow label="Method" value={selected.provenance.acquisitionMethod.replace(/_/g, " ")} s={s} />
               ) : null}
-              <MetaRow label="Collected" value={formatDate(selected.expiresAt)} s={s} />
+              <MetaRow label="Collected" value={selected.collectedAt ? formatDate(selected.collectedAt) : formatDate(selected.expiresAt)} s={s} />
+              {selected.expiresAt ? <MetaRow label="Content expires" value={formatDate(selected.expiresAt)} s={s} /> : null}
+              {selected.availability === "content_expired" ? <MetaRow label="Status" value="Content deleted (24h privacy retention)" s={s} /> : null}
               {selected.mediaType ? <MetaRow label="Media type" value={selected.mediaType} s={s} /> : null}
               {selected.byteLength ? <MetaRow label="Size" value={formatBytes(selected.byteLength)} s={s} /> : null}
 

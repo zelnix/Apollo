@@ -63,6 +63,14 @@ async def lifespan(_: FastAPI):
         pass
     await capability_registry.ensure_indexes()
     await investigation_repository.backfill_work_epochs()
+    # Migrate legacy 15-minute temporary cases to the two-tier retention policy
+    try:
+        migrated = await investigation_repository.migrate_legacy_retention()
+        if migrated:
+            from core.config import logger
+            logger.info("retention_migration_complete", count=migrated)
+    except Exception:  # noqa: BLE001 — migration must never block startup
+        pass
     await ensure_maintenance_indexes()
     await ensure_mailbox_monitor_indexes()
     await push.ensure_indexes()

@@ -27,7 +27,7 @@ async def test_enabled_mailbox_monitor_is_shared_summary_only_and_idempotent(mon
     await fresh_db.gmail_connections.insert_one({"device_id": device_id, "monitoring_enabled": True,
                                            "refresh_token_enc": "test-only", "created_at": now_utc(), "updated_at": now_utc()})
 
-    async def fake_scan(current_device: str, _cursor=None):
+    async def fake_scan(current_device: str, _cursor=None, email=None):
         messages = [{"id": message_id, "from": "alerts@example.test", "subject": "Review sign-in",
                      "body": f"Use {raw_secret} only if you requested it.", "links": []}] if current_device == device_id else []
         return messages, None

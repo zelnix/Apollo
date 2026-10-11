@@ -77,7 +77,10 @@ class TestMessageAnalyse:
 
 class TestMessageExtract:
     def test_screenshot_upload_rejects_non_image(self):
-        r = requests.post(f"{API}/message/extract", data={"device_id": "gate2test0001", "sanitization_status": "approved"},
+        r = requests.post(f"{API}/message/extract",
+                          data={"device_id": "gate2test0001", "sanitization_status": "approved",
+                                "sanitization_receipt_id": "00000000-0000-0000-0000-000000000000",
+                                "sanitization_digest": "a" * 64},
                           files={"file": ("message.txt", b"not an image", "text/plain")}, timeout=15)
         assert r.status_code == 415, r.text
 

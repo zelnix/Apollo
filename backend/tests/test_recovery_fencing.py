@@ -245,23 +245,18 @@ def test_government_alert_parser_accepts_only_allowlisted_official_links():
 
 
 @pytest.mark.asyncio
-async def test_image_secret_preflight_preserves_complete_provider_transcription(monkeypatch):
-    """Provider output is admitted whole; there is no silent post-provider 60k clipping boundary."""
+async def test_image_secret_preflight_replaced_by_ondevice_privacy_gate():
+    """Package 4: _image_secret_preflight was removed; all privacy screening now happens
+    on-device via ImagePrivacyGate before network transmission. The backend validates
+    client-supplied sanitization assertions instead of running Gemini preflight."""
     from services.higgins import evidence as ev
-    from services.higgins import provider
-
-    long_text = "A" * 70_000
-
-    async def fake_generate_json(_system, _prompt, capability="vision"):
-        return {"containsSecret": True, "secretKinds": ["password"], "redactedText": long_text,
-                "visualDescription": "a login screen", "transcriptionComplete": True}, None
-
-    monkeypatch.setattr(provider, "generate_json", fake_generate_json)
-    admission = await ev._image_secret_preflight(b"fake-image-bytes", "image/png")
-    assert admission["status"] == "secret_detected"
-    assert admission["transcriptionComplete"] is True
-    assert admission["transcriptionTruncated"] is False
-    assert len(admission["redactedText"]) == 70_000
+    # Confirm the old function no longer exists (product decision: on-device screening only)
+    assert not hasattr(ev, "_image_secret_preflight"), \
+        "_image_secret_preflight should have been removed by Package 4 (on-device privacy screening)"
+    # Confirm the replacement comment exists in the source
+    import inspect
+    source = inspect.getsource(ev)
+    assert "On-device privacy screening replaces Gemini preflight" in source
 
 
 async def _upload_takeover_race():
