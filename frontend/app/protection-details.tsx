@@ -124,11 +124,6 @@ export default function ProtectionDetailsScreen() {
         {/* Higgins' short interpretation — the same voice shown on Home, repeated here for context. */}
         <Card style={{ gap: spacing.sm }} testID="protection-details-voice">
           <Text style={s.intro}>{voice.text}</Text>
-          {findingCount > 0 ? (
-            <Text style={[s.intro, { fontFamily: fonts.textSemibold }]} testID="protection-finding-count">
-              {findingCount === 1 ? "1 finding" : `${findingCount} findings`} requiring attention
-            </Text>
-          ) : null}
         </Card>
 
         {/* ── FINDINGS: Active concerns requiring attention ── */}

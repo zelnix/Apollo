@@ -188,11 +188,6 @@ export function ApolloHero({ resolution, adapterLabel, isMock, capabilities = []
         ) : (
           <View style={{ width: "100%", gap: spacing.sm, alignItems: "stretch" }}>
             <Text style={s.higginsPara} testID="apollo-higgins-paragraph">{voice.text}</Text>
-            {findingCount > 0 ? (
-              <Text style={[s.higginsPara, { fontFamily: fonts.textSemibold }]} testID="apollo-finding-count">
-                {findingCount === 1 ? "1 finding" : `${findingCount} findings`} requiring attention
-              </Text>
-            ) : null}
             {voice.ctaRoute ? (
               <Button
                 testID="apollo-view-details"

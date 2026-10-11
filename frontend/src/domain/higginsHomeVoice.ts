@@ -173,17 +173,60 @@ export function buildHomeVoice(input: {
     };
   }
 
-  // 2) Multiple active concerns — use the distinct finding count (aligned with Protection Details).
+  // 2) Multiple active concerns — classify and explain, not just count.
+  //    Higgins names the most important concern, distinguishes threats from protection issues,
+  //    and never describes setup tasks as security threats.
   const effectiveCount = findingCount ?? attention.length;
-  if (effectiveCount > 1) {
-    const verb = verbForState(state);
-    const text = `Apollo ${verb} ${effectiveCount} findings that need attention. Open Protection Details — I'll walk you through each one and tell you exactly what to do.`;
-    return {
-      text,
-      ctaLabel: "View Protection Details",
-      ctaRoute: "/protection-details",
-      spoken: text,
-    };
+  if (effectiveCount > 1 && attention.length > 0) {
+    const threatEvents = attention.filter((a) => a.kind === "event");
+    const gateIssues = attention.filter((a) => a.kind === "gate");
+    const primary = attention[0]; // Already priority-sorted by buildHomeAttention
+
+    let text: string;
+    let ctaLabel: string;
+    let ctaRoute: string;
+
+    if (threatEvents.length > 0 && gateIssues.length === 0) {
+      // All findings are active security events (suspicious/blocked activity).
+      // Group by gate category to give a sense of what they concern.
+      const gateNames = Array.from(new Set(threatEvents.map((e) => e.gate).filter(Boolean)));
+      const areasPhrase = gateNames.length > 0 ? ` across ${joinNames(gateNames)}` : "";
+      const primaryProblem = (primary.problem || "").trim();
+
+      if (primaryProblem) {
+        const rest = effectiveCount - 1;
+        text = `Apollo has spotted ${primaryProblem}${rest > 0 ? `, along with ${rest} other ${rest === 1 ? "finding" : "findings"}${areasPhrase}` : ""}. I'll walk you through each one, starting with the most urgent.`;
+      } else {
+        text = `Apollo has spotted suspicious activity${areasPhrase} — ${effectiveCount} findings need checking. I'll show you what he noticed and what to do next.`;
+      }
+      ctaLabel = "View what Apollo found";
+      ctaRoute = primary.route || "/protection-details";
+
+    } else if (gateIssues.length > 0 && threatEvents.length === 0) {
+      // All findings are protection/gate issues (protection stopped, needs setup).
+      const gateNames = Array.from(new Set(gateIssues.map((g) => g.gate).filter(Boolean)));
+      const names = joinNames(gateNames);
+      text = `Apollo needs a little attention. ${names} ${gateIssues.length === 1 ? "needs" : "need"} to be checked. I'll show you what needs fixing, one step at a time.`;
+      ctaLabel = "View Protection Details";
+      ctaRoute = "/protection-details";
+
+    } else {
+      // Mix of threats and protection issues — name the most important concern first.
+      const primaryProblem = (primary.problem || "").trim();
+      if (primary.kind === "event" && primaryProblem) {
+        text = `Apollo spotted ${primaryProblem}. There ${gateIssues.length === 1 ? "is" : "are"} also ${gateIssues.length} protection ${gateIssues.length === 1 ? "area" : "areas"} that ${gateIssues.length === 1 ? "needs" : "need"} attention. Let's start with what Apollo found.`;
+        ctaLabel = "View what Apollo found";
+        ctaRoute = primary.route;
+      } else {
+        const gateNames = Array.from(new Set(gateIssues.map((g) => g.gate).filter(Boolean)));
+        const names = joinNames(gateNames);
+        text = `${names} ${gateIssues.length === 1 ? "needs" : "need"} attention, and Apollo has also flagged ${threatEvents.length} suspicious ${threatEvents.length === 1 ? "finding" : "findings"}. I'll walk you through everything, starting with the most important.`;
+        ctaLabel = "View Protection Details";
+        ctaRoute = "/protection-details";
+      }
+    }
+
+    return { text, ctaLabel, ctaRoute, spoken: text };
   }
 
   // 3) Exactly one specific active concern.

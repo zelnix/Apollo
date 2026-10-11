@@ -457,11 +457,34 @@ export function resolveHomeStatus(input: HomeResolverInput): HomeStatus {
     explanation = "Apollo is staying cautious after a recent alert. He needs a fresh check to confirm things are clear.";
     primaryAction = { label: "View protection details", route: "/protection-details" };
 
-  // ── Multiple attention items (findings > 1) ──
+  // ── Multiple attention items (findings > 1) — classify and explain ──
   } else if ((findingCount ?? 0) > 1 && attention.length > 0) {
     headline = `Apollo is ${resolution.state === "barking" ? "barking" : "growling"}`;
-    explanation = `Apollo found ${findingCount} findings that need attention. Open Protection Details — I'll walk you through each one.`;
-    primaryAction = { label: "View protection details", route: "/protection-details" };
+
+    const threatEvents = attention.filter((a) => a.kind === "event");
+    const gateIssues = attention.filter((a) => a.kind === "gate");
+    const primary = attention[0];
+
+    if (threatEvents.length > 0 && gateIssues.length === 0) {
+      const primaryProblem = (primary.problem || "").trim();
+      const areasSet = new Set(threatEvents.map((e) => e.gate).filter(Boolean));
+      const areas = Array.from(areasSet);
+      const areasPhrase = areas.length > 0 ? ` across ${joinNames(areas)}` : "";
+      explanation = primaryProblem
+        ? `Apollo has spotted ${primaryProblem}${(findingCount ?? 0) > 1 ? `, along with ${(findingCount ?? 0) - 1} other findings${areasPhrase}` : ""}. I'll walk you through each one.`
+        : `Apollo has spotted suspicious activity${areasPhrase}. I'll show you what he noticed and what to do next.`;
+      primaryAction = { label: "View what Apollo found", route: primary.route || "/protection-details" };
+    } else if (gateIssues.length > 0 && threatEvents.length === 0) {
+      const gateNames = Array.from(new Set(gateIssues.map((g) => g.gate).filter(Boolean)));
+      explanation = `Apollo needs a little attention. ${joinNames(gateNames)} ${gateIssues.length === 1 ? "needs" : "need"} to be checked. I'll show you what needs fixing.`;
+      primaryAction = { label: "View Protection Details", route: "/protection-details" };
+    } else {
+      const primaryProblem = (primary.problem || "").trim();
+      explanation = primaryProblem
+        ? `Apollo spotted ${primaryProblem}. There are also ${gateIssues.length} protection ${gateIssues.length === 1 ? "area" : "areas"} that need attention.`
+        : `Apollo has flagged ${findingCount} items that need attention — a mix of suspicious findings and protection settings.`;
+      primaryAction = { label: "View what Apollo found", route: primary.route || "/protection-details" };
+    }
 
   // ── Priority 5 & 6: Resting states ──
   } else {
