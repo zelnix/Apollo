@@ -43,12 +43,11 @@ from services.threat_revalidation import ensure_indexes as ensure_threat_indexes
 from routers import admin, analysis, ask, call, devices, family, family_assist as family_assist_router, family_weekly, gmail, health, intel, investigations, learning as learning_router, learning_admin, patrol, product, push
 from routers.family_weekly import weekly_checkin_loop
 
-SEED_BLOCKLIST = [
-    ("testsafebrowsing.appspot.com", "SOCIAL_ENGINEERING", "Google Safe Browsing public test pages"),
-    ("malware.testing.google.test", "MALWARE", "Google malware test domain"),
-    ("phishing.apollo.test", "SOCIAL_ENGINEERING", "Apollo internal phishing test domain"),
-    ("malware.apollo.test", "MALWARE", "Apollo internal malware test domain"),
-]
+# ── Blocklist disabled (product decision: Apollo does not maintain an independent threat catalogue) ──
+# SEED_BLOCKLIST population stopped. Historical data preserved in db.blocklist.
+# External intelligence providers (Safe Browsing etc.) remain the authoritative verdict sources.
+# The controlled native verification rule (apolloverify.harmonywellnessgroup.com.au) is preserved
+# in the static rule bundle — it is not part of the blocklist.
 
 
 @asynccontextmanager
@@ -71,11 +70,10 @@ async def lifespan(_: FastAPI):
     await push.ensure_indexes()
     await family_assist.ensure_indexes()
     await ensure_threat_indexes()
-    # Migrate legacy BlocklistEntry records to ThreatIndicator (idempotent, skips duplicates)
-    try:
-        await migrate_blocklist_entries()
-    except Exception:  # noqa: BLE001 — migration must never block startup
-        pass
+    # Caller reputation freshness index
+    await db.caller_id_numbers.create_index("evidence_expires_at")
+    # Legacy blocklist migration disabled (product decision: no independent Apollo threat catalogue).
+    # Historical blocklist data and ThreatIndicator records preserved for audit.
     await db.devices.create_index("device_id", unique=True)
     await db.devices.create_index("token_hash", unique=True, partialFilterExpression={"token_hash": {"$type": "string"}})
     await db.reputation_cache.create_index("indicator_digest", unique=True)
@@ -134,15 +132,13 @@ async def lifespan(_: FastAPI):
     await db.trust_entries.create_index("trust_id", unique=True)
     await db.ask_messages.create_index([("device_id", 1), ("created_at", 1)])
     await db.ask_handoffs.create_index([("device_id", 1), ("handoff_id", 1)], unique=True)
-    await db.blocklist.create_index("host", unique=True)
+    await db.blocklist.create_index("host", unique=True)  # Preserved for historical data; no longer seeded
     await db.admin_audit.create_index([("at", -1)])
     await db.incident_notes.create_index("note_id")
     await db.family_audio_cleanup.create_index("cleanup_id", unique=True)
     await db.incident_notes.create_index([("guardian_device_id", 1), ("protected_device_id", 1), ("submission_id", 1)], unique=True,
                                          partialFilterExpression={"submission_id": {"$type": "string"}})
-    for host, threat, reason in SEED_BLOCKLIST:
-        entry = BlocklistEntry(host=host, threat_type=threat, reason=reason, added_at=now_utc())
-        await db.blocklist.update_one({"host": host}, {"$setOnInsert": entry.to_mongo()}, upsert=True)
+    # SEED_BLOCKLIST population disabled — no new entries written to db.blocklist
     loop_task = asyncio.create_task(weekly_checkin_loop())
     mailbox_task = asyncio.create_task(supervise_mailbox_monitor(), name="apollo-mailbox-supervisor")
     async def government_alert_loop():
@@ -218,6 +214,10 @@ app.include_router(learning_admin.router, prefix="/api/admin", tags=["learning-a
 # GuardDog production trust endpoints (unauthenticated — public trust artifacts and controlled verification).
 from routers import guarddog as guarddog_router
 app.include_router(guarddog_router.router)
+
+# GuardDog live reputation (device-authenticated — Site Gate DNS checks).
+from routers import guarddog_live
+app.include_router(guarddog_live.router, dependencies=[Depends(enforce_device_auth)])
 
 # CORS is not authentication (bearer tokens do that). The web preview is same-origin (/api on the same host), and native
 # apps don't use CORS, so only explicitly configured browser origins are allowed (add the admin console's origin here).

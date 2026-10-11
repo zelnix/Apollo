@@ -1,6 +1,8 @@
 package com.guarddog.vpn
 
+import android.app.NotificationManager
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.VpnService
@@ -51,6 +53,26 @@ object GuardDogVpnRuntime {
      * the bridge reports, never assumed merely because [websiteGateRouteConfig]/[websiteGateEngine]
      * happen to be configured. */
     @Volatile var websiteGateActive: Boolean = false
+        internal set
+
+    // --- Stage 3: Live Reputation (additive, opt-in). Setting [liveReputationBackendUrl] to a
+    // non-null value enables the bounded live reputation check for unknown DNS hostnames.
+    // Leaving it null (the default) means live checks are fully disabled and the DNS pipeline
+    // behaves exactly as it did before this feature. ---
+    /** Backend base URL for live reputation checks (e.g. "https://api.example.com").
+     * The checker appends "/api/guarddog/dns-check". Null = live checks disabled. */
+    @Volatile var liveReputationBackendUrl: String? = null
+    /** Bounded hold timeout in milliseconds for live reputation checks. Default: 3 seconds
+     * (Protection Before Speed). */
+    @Volatile var liveReputationHoldTimeoutMs: Long = 3000
+    /** True only while live reputation checking is active in the current TUN session. */
+    @Volatile var liveReputationActive: Boolean = false
+        internal set
+    /** The shared LiveReputationStore for the current session; null when inactive. */
+    @Volatile var liveReputationStore: LiveReputationStore? = null
+        internal set
+    /** The shared LiveReputationChecker for the current session; null when inactive. */
+    @Volatile var liveReputationChecker: LiveReputationChecker? = null
         internal set
 }
 
@@ -162,7 +184,12 @@ class GuardDogVpnService : VpnService() {
             } else {
                 UpstreamDnsForwarder { _, _, _ -> null } // no upstream configured: fail open by silence
             }
-            DnsGatewayPacketHandler(bindingStore, forwarder) { reason -> Log.d(TAG, "DNS gateway pass-through: $reason") }
+            DnsGatewayPacketHandler(
+                bindingStore, forwarder,
+                onUnsupported = { reason -> Log.d(TAG, "DNS gateway pass-through: $reason") },
+                liveChecker = buildLiveReputationChecker(),
+                liveCheckNotifier = buildLiveCheckNotifier(),
+            )
         } else {
             null
         }
@@ -200,10 +227,11 @@ class GuardDogVpnService : VpnService() {
         // Truthful signal for the bridge: only true because this exact session actually built the
         // DNS gateway pipeline above, never merely because config/engine happen to be set.
         GuardDogVpnRuntime.websiteGateActive = dnsGateway != null
+        GuardDogVpnRuntime.liveReputationActive = dnsGateway != null && GuardDogVpnRuntime.liveReputationChecker != null
         val running = VpnLifecycleState.Running(System.currentTimeMillis(), spec.routes[0].cidr)
         state.transition(running)
         startForegroundCompat(ProtectionNotificationFactory.build(this, running))
-        Log.i(TAG, "Selective route installed: ${spec.routes.map { it.cidr }} (dnsGateway=${dnsGateway != null})")
+        Log.i(TAG, "Selective route installed: ${spec.routes.map { it.cidr }} (dnsGateway=${dnsGateway != null}, liveReputation=${GuardDogVpnRuntime.liveReputationActive})")
     }
 
     /**
@@ -255,7 +283,12 @@ class GuardDogVpnService : VpnService() {
             } else {
                 UpstreamDnsForwarder { _, _, _ -> null }
             }
-            DnsGatewayPacketHandler(bindingStore, forwarder) { reason -> Log.d(TAG, "DNS gateway pass-through: $reason") }
+            DnsGatewayPacketHandler(
+                bindingStore, forwarder,
+                onUnsupported = { reason -> Log.d(TAG, "DNS gateway pass-through: $reason") },
+                liveChecker = buildLiveReputationChecker(),
+                liveCheckNotifier = buildLiveCheckNotifier(),
+            )
         } else {
             null
         }
@@ -278,10 +311,11 @@ class GuardDogVpnService : VpnService() {
         }.also { it.start() }
         GuardDogVpnRuntime.activeSession = session
         GuardDogVpnRuntime.websiteGateActive = dnsGateway != null
+        GuardDogVpnRuntime.liveReputationActive = dnsGateway != null && GuardDogVpnRuntime.liveReputationChecker != null
         val running = VpnLifecycleState.Running(System.currentTimeMillis(), spec.routes[0].cidr)
         state.transition(running)
         startForegroundCompat(ProtectionNotificationFactory.build(this, running))
-        Log.i(TAG, "Website Gate-only protection started (BlockTest unavailable): ${spec.routes.map { it.cidr }} (dnsGateway=${dnsGateway != null})")
+        Log.i(TAG, "Website Gate-only protection started (BlockTest unavailable): ${spec.routes.map { it.cidr }} (dnsGateway=${dnsGateway != null}, liveReputation=${GuardDogVpnRuntime.liveReputationActive})")
     }
 
     override fun onRevoke() {
@@ -331,6 +365,11 @@ class GuardDogVpnService : VpnService() {
 
     /** Retain and correctly close the ParcelFileDescriptor; stop the reader thread (idempotent). */
     private fun cleanup() {
+        // Shut down live reputation checker if active (releases its executor threads).
+        GuardDogVpnRuntime.liveReputationChecker?.shutdown()
+        GuardDogVpnRuntime.liveReputationChecker = null
+        GuardDogVpnRuntime.liveReputationStore = null
+        GuardDogVpnRuntime.liveReputationActive = false
         session?.close()
         session = null
         GuardDogVpnRuntime.dropReporter = null
@@ -343,6 +382,90 @@ class GuardDogVpnService : VpnService() {
             startForeground(ProtectionNotificationFactory.NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED)
         } else {
             startForeground(ProtectionNotificationFactory.NOTIFICATION_ID, notification)
+        }
+    }
+
+    // ── Stage 3: Live Reputation helper factories ────────────────────────────
+
+    /**
+     * Builds and caches the [LiveReputationChecker] if a backend URL is configured.
+     * Returns null (disabling live checks) if no backend URL is set.
+     * The store and checker are retained in [GuardDogVpnRuntime] for the session lifetime.
+     */
+    private fun buildLiveReputationChecker(): LiveReputationChecker? {
+        val backendUrl = GuardDogVpnRuntime.liveReputationBackendUrl ?: return null
+        // Re-use existing instances within the same session if already built (both establish paths
+        // call this, and cleanup() nulls them out between sessions).
+        GuardDogVpnRuntime.liveReputationChecker?.let { return it }
+        val store = LiveReputationStore()
+        val checker = LiveReputationChecker(
+            store = store,
+            backendBaseUrl = backendUrl,
+            holdTimeoutMs = GuardDogVpnRuntime.liveReputationHoldTimeoutMs,
+        )
+        GuardDogVpnRuntime.liveReputationStore = store
+        GuardDogVpnRuntime.liveReputationChecker = checker
+        Log.i(TAG, "Live reputation checker enabled (backend=$backendUrl, holdTimeout=${GuardDogVpnRuntime.liveReputationHoldTimeoutMs}ms)")
+        return checker
+    }
+
+    /**
+     * Builds a [LiveCheckNotifier] that shows transient Android notifications during
+     * bounded live reputation checks. Rate-limited to avoid flooding the notification shade.
+     */
+    private fun buildLiveCheckNotifier(): LiveCheckNotifier? {
+        if (GuardDogVpnRuntime.liveReputationBackendUrl == null) return null
+        val context: Context = this
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        // Rate limiter: at most one "checking" notification per 10 seconds to avoid flooding.
+        var lastNotificationTime = 0L
+        val minNotificationIntervalMs = 10_000L
+
+        return LiveCheckNotifier { hostname, event ->
+            when (event) {
+                is LiveCheckEvent.CheckStarted -> {
+                    val now = System.currentTimeMillis()
+                    if (now - lastNotificationTime >= minNotificationIntervalMs) {
+                        lastNotificationTime = now
+                        try {
+                            notificationManager.notify(
+                                ProtectionNotificationFactory.LIVE_CHECK_NOTIFICATION_ID,
+                                ProtectionNotificationFactory.buildLiveCheckStarted(context, hostname),
+                            )
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Failed to show live check notification: ${e.message}")
+                        }
+                    }
+                }
+                is LiveCheckEvent.CheckCompleted -> {
+                    try {
+                        if (event.blocked) {
+                            // Show blocked notification (stays longer, more prominent)
+                            notificationManager.notify(
+                                ProtectionNotificationFactory.LIVE_CHECK_NOTIFICATION_ID,
+                                ProtectionNotificationFactory.buildLiveCheckBlocked(context, hostname),
+                            )
+                        } else if (event.verdict == "clean") {
+                            // Brief "looks safe" confirmation
+                            notificationManager.notify(
+                                ProtectionNotificationFactory.LIVE_CHECK_NOTIFICATION_ID,
+                                ProtectionNotificationFactory.buildLiveCheckClean(context, hostname),
+                            )
+                        } else {
+                            // Unknown/unavailable — dismiss the "checking" notification silently
+                            notificationManager.cancel(ProtectionNotificationFactory.LIVE_CHECK_NOTIFICATION_ID)
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to update live check notification: ${e.message}")
+                    }
+                }
+                is LiveCheckEvent.CheckTimedOut -> {
+                    // Timeout — dismiss the "checking" notification. Don't claim anything.
+                    try {
+                        notificationManager.cancel(ProtectionNotificationFactory.LIVE_CHECK_NOTIFICATION_ID)
+                    } catch (_: Exception) {}
+                }
+            }
         }
     }
 

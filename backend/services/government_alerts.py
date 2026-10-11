@@ -29,6 +29,10 @@ async def ensure_indexes() -> None:
     await db.learning_feed_items.create_index("fingerprint", unique=True)
     await db.learning_feed_items.create_index("expires_at", expireAfterSeconds=0)
     await db.learning_feed_state.create_index("feed_id", unique=True)
+    # Cleanup indexes for accumulating temporary records (§5 freshness correction)
+    await db.learning_candidates.create_index("fingerprint", unique=True)
+    await db.learning_candidates.create_index("created_at")  # For periodic cleanup
+    await db.learning_feed_runs.create_index("started_at")   # For periodic cleanup
 
 
 async def refresh_all() -> None:
@@ -40,7 +44,34 @@ async def refresh_all() -> None:
         pass
 
 
-RECENCY_CUTOFF = timedelta(days=455)  # ~15 months: a specific alert older than this is not "recent"
+async def cleanup_stale_records() -> dict:
+    """Remove accumulating temporary records that are no longer needed.
+    
+    - learning_candidates older than 120 days: intermediate ingestion records
+    - learning_feed_runs older than 30 days: historical refresh run logs
+    
+    Feed items themselves are cleaned by MongoDB's TTL index (expires_at).
+    Published educational content is NOT affected.
+    """
+    cutoff_candidates = now_utc() - timedelta(days=120)
+    cutoff_runs = now_utc() - timedelta(days=30)
+    
+    candidates_removed = (await db.learning_candidates.delete_many(
+        {"created_at": {"$lt": cutoff_candidates}}
+    )).deleted_count
+    
+    runs_removed = (await db.learning_feed_runs.delete_many(
+        {"started_at": {"$lt": cutoff_runs}}
+    )).deleted_count
+    
+    return {"candidates_removed": candidates_removed, "runs_removed": runs_removed}
+
+
+RECENCY_CUTOFF = timedelta(days=180)  # 6 months: a specific alert older than this is not "recent".
+# Rationale: scam campaigns evolve. Intelligence older than 6 months is unlikely to represent
+# the current form of a campaign. Officially confirmed ongoing threats should be re-published
+# by their source within this window; re-appearance in the feed triggers a fresh check.
+# Previously 455 days — reduced per intelligence freshness review (§5).
 
 
 def _parse_reported(value: str | None) -> datetime | None:

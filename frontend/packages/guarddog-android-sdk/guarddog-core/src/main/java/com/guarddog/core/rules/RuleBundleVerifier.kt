@@ -5,11 +5,11 @@ import com.guarddog.core.clock.SystemClock
 import java.time.Instant
 
 /**
- * Validation result for a rule bundle received over authenticated HTTPS.
- * No cryptographic verification — the transport layer (TLS + baked-in URL) provides authentication.
+ * Validation result for a rule bundle.
+ * Stage 4: Now includes Ed25519 signature verification as the first check.
  */
 sealed class ValidationResult {
-    data class Accepted(val bundle: RuleBundle) : ValidationResult()
+    data class Accepted(val bundle: RuleBundle, val signatureVerified: Boolean = false) : ValidationResult()
     data class Rejected(val reason: RejectionReason) : ValidationResult()
 }
 
@@ -22,22 +22,55 @@ enum class RejectionReason {
     NOT_YET_VALID,
     ROLLBACK,
     VERSION_CONFLICT,
+    /** Stage 4: The Ed25519 signature is invalid — bundle was tampered with. */
+    SIGNATURE_INVALID,
 }
 
 /**
- * Validates rule bundles delivered over authenticated HTTPS. Enforces:
+ * Validates rule bundles. Enforces:
+ * - Ed25519 signature verification (Stage 4, when a public key is configured)
  * - Strict JSON schema (no unknown keys via kotlinx.serialization strict mode)
  * - Non-empty rules with valid action/matchType
  * - Temporal validity (issuedAt in past, expiresAt in future)
  * - Version rollback protection (bundleVersion must be >= last accepted)
  * - Version conflict detection (same version must have identical rulesetId)
+ *
+ * Signature verification is the FIRST check — if it fails, no further validation is performed.
+ * If no public key is configured (null), signature verification is skipped (HTTPS-only mode).
  */
 class RuleBundleValidator(
     private val versionStore: BundleVersionStore,
     private val clock: Clock = SystemClock,
+    /** Base64-encoded raw Ed25519 public key (32 bytes) for signature verification.
+     * Null = signature verification disabled (HTTPS-only authentication). */
+    private val signingPublicKeyB64: String? = null,
 ) {
     fun validate(rawJson: String): ValidationResult {
-        // 1. Parse
+        // ── Stage 4: Signature verification (FIRST, before any parsing) ──
+        var signatureVerified = false
+        if (signingPublicKeyB64 != null) {
+            when (val sigResult = Ed25519BundleVerifier.verify(rawJson, signingPublicKeyB64)) {
+                is Ed25519BundleVerifier.VerifyResult.Valid -> {
+                    signatureVerified = true
+                }
+                is Ed25519BundleVerifier.VerifyResult.Invalid -> {
+                    // Tampered or forged bundle — reject immediately
+                    return ValidationResult.Rejected(RejectionReason.SIGNATURE_INVALID)
+                }
+                is Ed25519BundleVerifier.VerifyResult.Unsigned -> {
+                    // Bundle has no signature — in strict mode this could be rejected,
+                    // but for backward compatibility we accept it (HTTPS-only auth).
+                    // Future: when all production bundles are signed, reject unsigned.
+                    signatureVerified = false
+                }
+                is Ed25519BundleVerifier.VerifyResult.Unavailable -> {
+                    // Ed25519 not available on this device — gracefully degrade to HTTPS-only.
+                    signatureVerified = false
+                }
+            }
+        }
+
+        // ── 1. Parse ──
         val bundle: RuleBundle
         try {
             bundle = BundleJson.decodeFromString(RuleBundle.serializer(), rawJson)
@@ -45,12 +78,12 @@ class RuleBundleValidator(
             return ValidationResult.Rejected(RejectionReason.INVALID_JSON)
         }
 
-        // 2. Schema checks — only the current "2.0" schema is accepted.
+        // ── 2. Schema checks — only the current "2.0" schema is accepted. ──
         if (bundle.schemaVersion != "2.0" || bundle.rulesetId.isBlank() || bundle.bundleVersion < 1) {
             return ValidationResult.Rejected(RejectionReason.INVALID_SCHEMA)
         }
 
-        // 3. Rules validation
+        // ── 3. Rules validation ──
         if (bundle.payload.rules.isEmpty()) {
             return ValidationResult.Rejected(RejectionReason.EMPTY_RULES)
         }
@@ -60,7 +93,7 @@ class RuleBundleValidator(
             }
         }
 
-        // 4. Temporal validity
+        // ── 4. Temporal validity ──
         val now = Instant.ofEpochMilli(clock.nowEpochMillis())
         val issued: Instant
         val expires: Instant
@@ -73,9 +106,7 @@ class RuleBundleValidator(
         if (issued.isAfter(now)) return ValidationResult.Rejected(RejectionReason.NOT_YET_VALID)
         if (!expires.isAfter(now)) return ValidationResult.Rejected(RejectionReason.EXPIRED)
 
-        // 5. Rollback protection
-        // Same-version identity uses the SHA-256 of CANONICAL content (parse → re-serialize)
-        // to ensure formatting differences in the raw transport JSON don't cause false conflicts.
+        // ── 5. Rollback protection ──
         val canonicalJson = BundleJson.encodeToString(RuleBundle.serializer(), bundle)
         val highest = versionStore.highestAccepted(bundle.rulesetId)
         if (highest != null) {
@@ -90,11 +121,11 @@ class RuleBundleValidator(
             }
         }
 
-        // 6. Record accepted version
+        // ── 6. Record accepted version ──
         val contentHash = sha256Hex(canonicalJson)
         versionStore.recordAccepted(bundle.rulesetId, bundle.bundleVersion, contentHash)
 
-        return ValidationResult.Accepted(bundle)
+        return ValidationResult.Accepted(bundle, signatureVerified = signatureVerified)
     }
 
     companion object {

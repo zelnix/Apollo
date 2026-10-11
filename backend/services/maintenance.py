@@ -20,6 +20,8 @@ from services.higgins import jobs, repository
 from services.higgins.retention import sweep as sweep_temporary_content
 from services.system_health_jobs import recover_stale as recover_health_checks
 from services.threat_revalidation import revalidate_due_indicators
+from services.government_alerts import cleanup_stale_records as cleanup_alert_records
+from services.caller_id_db import cleanup_expired_reputation
 
 WORKER_NAME = "apollo-maintenance"
 WORKER_INTERVAL_SECONDS = 20
@@ -40,6 +42,8 @@ def maintenance_steps() -> tuple[MaintenanceStep, ...]:
         ("investigation_patrol_projection", project_committed_cases),
         ("health_check_recovery", recover_health_checks),
         ("threat_revalidation", revalidate_due_indicators),
+        ("alert_record_cleanup", cleanup_alert_records),
+        ("caller_reputation_cleanup", cleanup_expired_reputation),
     )
 
 

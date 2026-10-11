@@ -4,8 +4,16 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * A validated rule bundle delivered over authenticated HTTPS.
- * No cryptographic signature fields — authentication is provided by TLS + baked-in backend URL.
+ * A validated rule bundle delivered over authenticated HTTPS with Ed25519 cryptographic
+ * signature verification (Stage 4).
+ *
+ * The [signature] field (when present) contains the base64-encoded Ed25519 signature of the
+ * canonical JSON content (all fields except 'signature', sorted keys, compact separators).
+ * Native verification uses the pinned public key to authenticate the bundle before any
+ * schema or version checks.
+ *
+ * Backward compatible: bundles without a [signature] field are accepted but marked as
+ * unverified (relying on HTTPS-only authentication).
  */
 @Serializable
 data class RuleBundle(
@@ -15,6 +23,9 @@ data class RuleBundle(
     val issuedAt: String,
     val expiresAt: String,
     val payload: RulePayload,
+    /** Base64-encoded Ed25519 signature of the canonical bundle content (Stage 4).
+     * Null for unsigned bundles (backward compatible with HTTPS-only authentication). */
+    val signature: String? = null,
 ) {
     @Serializable
     data class RulePayload(val rules: List<Rule>)

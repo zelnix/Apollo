@@ -77,7 +77,7 @@ class DnsGatewayPacketHandlerTest {
         val store = SinkholeBindingStore(engine, pool, 5_000, clock)
         val unsupported = mutableListOf<String>()
         val forwarder = UpstreamDnsForwarder { _, _, _ -> forwarderResponse }
-        return DnsGatewayPacketHandler(store, forwarder) { reason -> unsupported.add(reason) } to unsupported
+        return DnsGatewayPacketHandler(store, forwarder, onUnsupported = { reason -> unsupported.add(reason) }) to unsupported
     }
 
     @Test fun blockedHostGetsASinkholeAnswerNeverTheRealAddress() {

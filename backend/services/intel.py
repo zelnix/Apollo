@@ -1,4 +1,8 @@
-"""Reputation intelligence: blocklist + Google Safe Browsing, HMAC digest cache, redirect expansion."""
+"""Reputation intelligence: external providers (Google Safe Browsing), HMAC digest cache, redirect expansion.
+
+Product decision: Apollo's internal blocklist (db.blocklist) is no longer used as an independent
+verdict source. External specialist providers are the authoritative intelligence sources.
+Historical blocklist data is preserved for audit but does not participate in verdicts."""
 from __future__ import annotations
 
 import asyncio
@@ -194,9 +198,11 @@ async def run_intel_check(indicator_type: str, value: str) -> IntelCheckResponse
                 verdict=rc.verdict, threat_types=rc.threat_types, sources=[IntelSource(**s) for s in rc.sources],
                 indicator_digest=dg, checked_at=rc.checked_at, cached=True, coverage=rc.coverage,  # type: ignore[arg-type]
             )
-    sources = [await blocklist_check(host)]
+    # ── External intelligence sources only ──
+    # Apollo's internal blocklist is disabled as an independent verdict source (product decision).
+    # Only external specialist providers participate in the verdict.
     sb_source, sb_expiry = await safe_browsing_lookup(url if indicator_type == "url" else f"http://{host}/")
-    sources.append(sb_source)
+    sources = [sb_source]
     verdict, threats, coverage = combine(sources)
     expires = sb_expiry or (ts + timedelta(minutes=5 if verdict != "unknown" else 1))
     record = ReputationCache(

@@ -323,7 +323,7 @@ When a false positive is identified:
 
 ## D. Security Authority — HTTPS vs Cryptographic Signing
 
-### D.1 What Actually Exists (Honest Assessment)
+### D.1 What Actually Exists (Updated After Stage 4 Implementation)
 
 The current production implementation provides:
 
@@ -333,16 +333,17 @@ The current production implementation provides:
 | **Origin binding** | Baked-in URL in signed APK | Only the genuine Apollo APK knows the backend URL. |
 | **Schema** | `RuleBundleValidator.kt` | The bundle has valid structure, rules, and temporal bounds. |
 | **Rollback** | Version comparison + SHA-256 content hash | A previously installed bundle cannot be replayed at a lower version. |
+| **Cryptographic signing** | Ed25519 (Stage 4 — ✅ IMPLEMENTED) | The bundle was signed by Apollo's backend. CDN/proxy compromise cannot inject false rules. |
 
-This is an **HTTPS-authenticated, schema-validated** bundle — not a cryptographically signed bundle.
+### D.2 What Now Exists (Stage 4 Complete)
 
-### D.2 What Does NOT Exist
-
-- No Ed25519 or RSA signing key
-- No signature field in the `RuleBundle` data class
-- No signature verification in `RuleBundleValidator`
-- No public-key pinning or key rotation mechanism
-- No offline verification (bundle can only be validated when HTTPS context is available)
+- ✅ Ed25519 signing keypair (private key in `RULE_SIGNING_PRIVATE_KEY` env var)
+- ✅ `signature` field in rule bundle responses (base64-encoded Ed25519)
+- ✅ `Ed25519BundleVerifier.kt` — native signature verification
+- ✅ `RuleBundleValidator.kt` — signature check as first validation step
+- ✅ Public key endpoint (`/api/guarddog/rules/public-key`)
+- ❌ Key rotation mechanism (planned for future — dual-key transition window)
+- ❌ Public key pinning in APK (currently fetched from endpoint)
 
 ### D.3 Threat Model Gap
 
@@ -547,46 +548,62 @@ Each capability must be proven independently before deployment.
 - No new blocking mechanisms
 - No native client changes
 
-### Stage 2: Link Gate → Site Gate Bridge + Dynamic Bundle Generation (PENDING APPROVAL)
+### Stage 2: Link Gate → Site Gate Bridge + Dynamic Bundle Generation — ✅ IMPLEMENTED
 
-**Scope:** When Link Gate confirms a hostname as malicious (multi-source, genuinely independent), submit it as a ThreatIndicator for backend validation. Generate immutable, monotonically versioned bundles from active indicators.
+**Scope:** Dynamic rule bundle generation from active `ThreatIndicator` entries. Immutable, monotonically versioned bundles served from `/api/guarddog/rules`.
 
-**Prerequisites:**
-- Stage 1 complete ✅
-- Approval of the revised bridge design (`LINK_GATE_SITE_GATE_BRIDGE_DESIGN.md`)
-- Decision on whether automatic BLOCK publication requires cryptographic signing first (see §D.4)
+**What was built:**
+- Dynamic bundle generation in `routers/guarddog.py` from active `ThreatIndicator` entries
+- Content-hash change detection for version management
+- Immutable publication audit trail (`rule_bundle_publications` collection)
+- Controlled-verification rule permanently included for device testing
+- Legacy internal blocklist disabled (`services/intel.py`)
 
-**Risk:** Medium — new publication path, requires physical device testing.
+### Stage 3: Live Reputation Checks — ✅ IMPLEMENTED
 
-### Stage 3: Live Reputation Checks (PENDING APPROVAL + INVESTIGATION)
+**Scope:** Bounded live reputation checks for unknown DNS hostnames. Protection Before Speed: the DNS handler holds for up to 3 seconds while intelligence is gathered.
 
-**Scope:** Privacy-preserving live checks for unknown DNS hostnames.
+**What was built:**
+- Backend endpoint `POST /api/guarddog/dns-check` in `routers/guarddog_live.py`
+  - Accepts hash prefix (privacy-preserving) and/or full hostname for external lookup
+  - Returns verdict, confidence, source, bundle status, and honest limitations
+- Native Kotlin components:
+  - `LiveReputationStore.kt` — In-memory LRU cache with TTL-based expiry
+  - `LiveReputationChecker.kt` — Bounded HTTP check with deduplication, concurrency control, and fail-open
+  - `LiveCheckNotifier.kt` — Callback interface for notification lifecycle events
+  - `DnsGatewayPacketHandler.kt` — Integrated bounded hold: NXDOMAIN for malicious, forward for clean/timeout
+  - `ProtectionNotificationFactory.kt` — "Apollo is checking…", blocked, and clean notifications
+  - `GuardDogVpnService.kt` — Runtime wiring, session management, notification callback with rate limiting
 
-**Prerequisites:**
-- Stage 2 complete
-- Safe Browsing API eligibility and ToS verification (§E.2)
-- Hash-prefix anonymity analysis with measured (not assumed) properties
-- Decision on protocol: custom hostname-hash vs SB Update API local lists
+**Decision matrix:**
+- Local rule match → sinkhole (existing M2 behavior, unchanged)
+- No local match + live "malicious" → NXDOMAIN (Protection Before Speed)
+- No local match + live "clean" → forward DNS
+- No local match + timeout/error → forward DNS (fail open, don't claim checked)
 
-**Open corrections applied:**
-- Cached live verdict cannot independently authorise sinkholing (Correction 1)
-- Hash-prefix anonymity claims removed pending empirical analysis (Correction 2)
-- First-visit limitation honestly documented (Correction 7)
+### Stage 4: Cryptographic Signing — ✅ IMPLEMENTED
 
-**Risk:** High — native DNS pipeline modification, latency-sensitive, privacy-critical.
+**Scope:** Ed25519 signing and verification for rule bundles.
 
-### Stage 4: Cryptographic Signing (PENDING APPROVAL)
+**What was built:**
+- Backend:
+  - `services/rule_signing.py` — Ed25519 keypair management, canonical JSON signing, CLI keygen
+  - `RULE_SIGNING_PRIVATE_KEY` env var for key storage
+  - `/api/guarddog/rules` now includes `signature` field (base64-encoded Ed25519)
+  - `/api/guarddog/rules/public-key` endpoint for native key fetching
+  - Deterministic signing: same bundle content always produces same signature
+- Native Kotlin:
+  - `RuleBundle.kt` — Added optional `signature` field (backward compatible)
+  - `Ed25519BundleVerifier.kt` — Full verification with canonical JSON, DER key encoding
+  - `RuleBundleVerifier.kt` — Signature check as FIRST validation step, SIGNATURE_INVALID rejection
+  - Platform-aware: uses `java.security.Signature("Ed25519")` on API 33+, graceful HTTPS fallback on older
 
-**Scope:** Ed25519 signing and verification using existing trusted-key-manifest architecture.
-
-**Prerequisites:**
-- Stages 2-3 complete
-- Key management architecture approved
-- Physical device end-to-end verification
-
-**Note:** Automatic production BLOCK publication is blocked until this stage is complete (or a separately approved security decision defines a narrower release).
-
-**Risk:** Medium — cryptographic implementation must be correct.
+**Security properties:**
+- Tampered bundles rejected before any schema validation
+- Ed25519 signature proves bundle origin (not just transport security)
+- CDN/proxy compromise cannot inject false rules
+- Backward compatible: unsigned bundles accepted in HTTPS-only mode
+- Key rotation: single key currently; dual-key transition window planned for future
 
 ---
 

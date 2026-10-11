@@ -109,11 +109,11 @@ async def _revalidate_against_safe_browsing(hostname: str) -> RevalidationOutcom
 
 
 async def _revalidate_against_blocklist(hostname: str) -> RevalidationOutcome:
-    """Re-check against Apollo's managed blocklist."""
-    entry = await db.blocklist.find_one({"host": hostname, "deleted_at": None})
-    if entry:
-        return "confirmed"
-    return "source_delisted"
+    """Legacy Apollo blocklist check — DISABLED as independent verdict source.
+    Product decision: Apollo does not maintain its own threat catalogue.
+    Indicators sourced from 'apollo_blocklist' or 'migration' are not revalidated
+    against the internal list. They expire naturally via evidence_expiry_deadline."""
+    return "source_unavailable"
 
 
 async def _revalidate_indicator(indicator: ThreatIndicator) -> RevalidationOutcome:
