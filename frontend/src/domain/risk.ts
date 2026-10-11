@@ -1,5 +1,10 @@
 // Local, deterministic URL/domain analysis. Runs fully on-device.
 // Produces plain-language signals. It never makes network calls.
+//
+// Every signal is classified as either DECEPTION (evidence of intent to deceive)
+// or STRUCTURAL (unusual infrastructure without inherent deception evidence).
+// Only scores containing at least one DECEPTION signal may reach the "malicious"
+// level. Structural signals alone cap at "suspicious" (growling).
 
 import type { LocalAnalysis, RiskLevel, RiskSignal } from "./types";
 
@@ -64,7 +69,7 @@ export function analyseUrlLocally(raw: string): LocalAnalysis {
   if (SHORTENERS.has(regDomain)) add("shortener", 20, "This is a shortened link, so the real destination is hidden.");
   if (labels.length >= 5) add("deep_subdomains", 15, "The address has many nested parts, which is unusual for legitimate sites.");
   if (hostLower.length > 45) add("long_host", 10, "The web address is unusually long.");
-  if ((hostLower.match(/-/g) ?? []).length >= 3) add("many_hyphens", 12, "The address contains many hyphens, often seen in look-alike domains.");
+  if ((hostLower.match(/-/g) ?? []).length >= 3 && !hostLower.includes("xn--")) add("many_hyphens", 12, "The address contains many hyphens, often seen in look-alike domains.");
   if (/%[0-9a-f]{2}/i.test(u.hostname) || (path.match(/%[0-9a-f]{2}/gi) ?? []).length > 6) add("encoded_chars", 10, "Parts of the link are encoded, which can hide where it goes.");
   if (normalizedUrl.length > 200) add("long_url", 8, "The link is very long.");
 
@@ -82,9 +87,17 @@ export function analyseUrlLocally(raw: string): LocalAnalysis {
   const brandInPath = BRANDS.map((b) => b.replace(/\s/g, "")).find((b) => b.length >= 4 && path.includes(b));
   if (!brandInHost && brandInPath && (isIp || SUSPICIOUS_TLDS.has(tld) || SHORTENERS.has(regDomain))) add("brand_in_path", 25, `The link mentions "${brandInPath}" but points somewhere unrelated.`);
   const credWord = CRED_WORDS.find((w) => hostLower.includes(w) || path.includes(w));
-  if (credWord && (lookalike || brandInPath || SUSPICIOUS_TLDS.has(tld) || labels.length >= 5 || isIp)) add("credential_lure", 20, `Words like "${credWord}" combined with other signals suggest a login or payment lure.`);
+  // MF-2: removed isIp from the trigger conditions. IP-based phishing with a brand is already
+  // caught by brand_in_path (line above). Bare IP + credential word alone is not phishing evidence
+  // and causes false barking on router admin pages (e.g. http://192.168.1.1/login).
+  if (credWord && (lookalike || brandInPath || SUSPICIOUS_TLDS.has(tld) || labels.length >= 5)) add("credential_lure", 20, `Words like "${credWord}" combined with other signals suggest a login or payment lure.`);
   else if (credWord && !brandInHost) add("credential_word", 6, `The link mentions "${credWord}". On its own this is normal.`);
 
   const score = Math.min(100, signals.reduce((s, sig) => s + sig.weight, 0));
-  return { input: raw, normalizedUrl, host: hostLower, valid: true, score, level: levelFor(score), signals };
+  // MF-1: deception-signal gate. Only scores containing at least one DECEPTION signal may reach
+  // "malicious". Structural signals alone cap at "suspicious" (growling) regardless of sum.
+  const DECEPTION_CODES = new Set(["brand_lookalike", "brand_in_path", "credentials_in_url", "credential_lure", "known_test_threat"]);
+  const hasDeception = signals.some((s) => DECEPTION_CODES.has(s.code));
+  const level = hasDeception ? levelFor(score) : (score >= 70 ? "suspicious" as RiskLevel : levelFor(score));
+  return { input: raw, normalizedUrl, host: hostLower, valid: true, score, level, signals };
 }

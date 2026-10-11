@@ -68,10 +68,23 @@ export function analysePage(p: PageSignals, urlHint?: string | null): PageAnalys
       why: ["A web page says your device is infected — browsers can't scan your phone, so this is theatre.", p.os_or_security_branding ? `It borrows ${p.os_or_security_branding} branding.` : "It imitates a system alert.", asks.has("download") || asks.has("install") ? "It wants you to download or install something." : (p.urgency_or_threat_text ? `It pressures you: "${p.urgency_or_threat_text}"` : "It uses urgency.")],
       recommendation: "Do not call the number or install anything it recommends. Close the tab — nothing on your phone has changed." };
   }
-  if (p.wallet_connect_request || asks.has("wallet_connect") || p.page_type === "wallet") {
+  // W12: Wallet/crypto page. A wallet-connect or transaction-approval REQUEST is concerning.
+  // But page_type === "wallet" alone (e.g., a legitimate exchange dashboard) is not evidence of
+  // fraud — require either an active wallet-connect request, urgency, brand mismatch, or a
+  // concerning action before barking.
+  if (p.wallet_connect_request || asks.has("wallet_connect")) {
     return { ...base, scenario: "W12", title: "Crypto wallet access request", state: "barking", verdict: "This website is asking for access to your crypto wallet.",
       why: ["It asks you to connect a wallet or approve a transaction.", mismatch || !brand?.isOfficial ? `${host ?? "The site"} isn't a wallet or exchange Apollo recognises as official.` : "Unsolicited wallet requests are how drainers work.", urgent ? `It pressures you: "${p.urgency_or_threat_text}"` : "Approving gives the site permission to move your funds."],
       recommendation: "Don't connect or approve anything. Apollo has no evidence funds were taken — if you already approved, revoke the permission from your wallet app now." };
+  }
+  if (p.page_type === "wallet") {
+    // Wallet page without an active connect/approve request. Growling if there are concerning
+    // signals (brand mismatch, urgency), otherwise ears_up for awareness.
+    const walletConcerning = mismatch || urgent || asks.has("permission");
+    return { ...base, scenario: "W12", title: "Crypto wallet page", state: walletConcerning ? "growling" : "ears_up",
+      verdict: walletConcerning ? "This wallet page has some concerning signals." : "This appears to be a cryptocurrency page. Be careful what you approve.",
+      why: [mismatch ? `It presents as ${claimed} but the address doesn't match.` : (host ? `Website: ${host}.` : "The address isn't visible."), urgent ? `It pressures you: "${p.urgency_or_threat_text}"` : "Check you navigated here intentionally.", "Never approve transactions you didn't initiate yourself."],
+      recommendation: "Only connect your wallet on sites you navigated to yourself. Review any approval carefully before signing." };
   }
   if (p.captcha_instructions || (p.page_type === "captcha" && (asks.has("download") || asks.has("install") || asks.has("permission")))) {
     return { ...base, scenario: "W18", title: "Fake 'verify you are human' step", state: asks.has("download") || asks.has("install") || /paste|run|command|terminal|powershell/i.test(p.captcha_instructions) ? "barking" : "growling", verdict: "A real CAPTCHA never asks you to download, install or paste anything.",

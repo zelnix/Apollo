@@ -129,7 +129,7 @@ interface ApolloContextValue {
   events: PatrolEvent[];
   trust: TrustEntry[];
   resolution: StateResolution;
-  checkLink(input: string): Promise<CheckOutcome>;
+  checkLink(input: string, scentId?: string): Promise<CheckOutcome>;
   checkMessage(sender: string, text: string): Promise<MessageOutcome>;
   /** Gmail read-only connection (Gate 1 add-on): fetches recent inbox messages via the backend
    * (never stored server-side), runs each through the same on-device email engine as the paste
@@ -692,15 +692,20 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   const upsertEvent = useCallback(async (input: PatrolEvent) => {
     // Threat Scent: link this event to related recent events (same brand/host within 30 min).
-    // When two different gates are involved (e.g. message → link), the sequence escalates to barking.
+    // Cross-gate correlation adds context, but escalation requires that the linked events
+    // provide genuinely higher-severity evidence — not just that they exist from a different category.
     let e = normalizeHistoricalEvent({ ...input, evidence_provenance: input.evidence_provenance ?? "local_device" });
     const events = eventsRef.current;
     if (e.state !== "resting" && !events.some((x) => x.event_id === e.event_id)) {
       const scent = findScentFor(e, events) ?? e.event_id;
       e = { ...e, scent_id: e.scent_id ?? scent };
       const linked = events.filter((x) => x.scent_id === scent && x.category !== e.category && x.state !== "resting");
-      if (linked.length && STATE_RANK[e.state] < STATE_RANK.barking) {
-        e = { ...e, state: "barking", why: [...e.why, "Connected to an earlier event about the same organisation or website."], what_to_do: `${e.what_to_do} Don't provide passwords, verification codes or transfer money.` };
+      // Only escalate to barking when at least one linked event is ALREADY barking or biting —
+      // that is genuinely new evidence (another gate confirmed a serious threat for the same scent).
+      // Two growling events from different gates do not independently justify barking.
+      const linkedMaxBarking = linked.some((x) => STATE_RANK[x.state] >= STATE_RANK.barking);
+      if (linkedMaxBarking && STATE_RANK[e.state] < STATE_RANK.barking) {
+        e = { ...e, state: "barking", why: [...e.why, "Connected to a confirmed threat from another detection area."], what_to_do: `${e.what_to_do} Don't provide passwords, verification codes or transfer money.` };
       }
     }
     const next = [e, ...events.filter((x) => x.event_id !== e.event_id)];
@@ -801,8 +806,21 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           const text = typeof item?.text === "string" ? item.text : "";
           if (!id || !text.trim()) continue;
           const sender = typeof item.sender === "string" ? item.sender : "";
-          // Trusted senders: stay quiet — acknowledge without assessing or raising a Patrol item.
-          if (sender && await isTrustedCaller(sender)) { await MessagingSdk.acknowledgeMessageSecurityEvents([id]); continue; }
+          // Trusted senders: always run the analysis — trust influences notification quieting, not
+          // detection suppression. If a trusted sender's message contains barking-level evidence
+          // (e.g., spoofed number), create a Patrol event anyway. Only acknowledge silently when the
+          // analysis shows no concern or low concern (resting/ears_up).
+          const senderTrusted = !!(sender && await isTrustedCaller(sender));
+          if (senderTrusted) {
+            // Still analyse the message content for evidence.
+            const quickAnalysis = analyseMessage(sender, text);
+            if (quickAnalysis.state === "resting" || quickAnalysis.state === "ears_up") {
+              // Low/no concern from a trusted sender — acknowledge quietly without Patrol event.
+              await MessagingSdk.acknowledgeMessageSecurityEvents([id]);
+              continue;
+            }
+            // Trusted sender but significant evidence (growling/barking) — fall through to full investigation.
+          }
           await apiPost("/investigations/background/text", "investigation", {
             submissionId: id, sourceKey: typeof item.sourceKey === "string" ? item.sourceKey : id,
             revisionDigest: typeof item.revisionDigest === "string" ? item.revisionDigest : id,
@@ -1094,7 +1112,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     return granted;
   }, [refresh]);
 
-  const checkLink = useCallback(async (input: string): Promise<CheckOutcome> => {
+  const checkLink = useCallback(async (input: string, scentId?: string): Promise<CheckOutcome> => {
     const local = analyseUrlLocally(input);
     if (!local.valid || !local.normalizedUrl || !local.host) {
       const decision: Decision = { state: "growling", headline: "That doesn't look like a web link", what_happened: "Apollo could not read this as a web address.", why: ["Only http and https links can be checked."], what_to_do: "Paste the full link, including the website name.", action_required: false, trust_allowed: false, block_offered: false, confidence: "low" };
@@ -1136,6 +1154,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       indicator_host: intel?.final_url ? (intel.redirect_chain?.[intel.redirect_chain.length - 1] ?? local.host) : local.host, indicator_digest: digest, local_indicator: indicator, verified_block: false, adapter_label: securityAdapter.label,
       occurred_at: new Date().toISOString(), resolved_at: decision.state === "resting" ? new Date().toISOString() : null, trust_allowed: decision.trust_allowed,
       claimed_brand: decision.claimed_brand ?? null,
+      // Scent handoff: when checkLink is invoked from a message flow, the caller provides the
+      // message event's scent_id so that findScentFor can discover the correlation.
+      ...(scentId ? { scent_id: scentId } : {}),
       supporting_references: assessment?.sources.filter((source) => source.url).map((source) => ({ label: source.label, url: source.url! })).slice(0, 6),
     };
     if (isEvent || decision.state === "resting") await upsertEvent(ev); // resting checks are still traceable in Patrol

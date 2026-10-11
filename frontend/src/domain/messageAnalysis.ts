@@ -4,6 +4,7 @@
 // a verdict downward from "barking" or upward past what the evidence supports.
 
 import type { ApolloState } from "./types";
+import { OFFICIAL_DOMAINS, registrableDomain as brandRegistrableDomain } from "./brand";
 
 export type Scenario = "M01" | "M02" | "M03" | "M04" | "M05" | "M06" | "M07" | "M08" | "M09" | "M10" | "M11" | "M12" | "M13" | "M14" | "M15" | "M16";
 
@@ -133,6 +134,28 @@ function scenarioFor(s: MessageSignals): { scenario: Scenario; title: string; st
     try { const host = new URL(raw.startsWith("http") ? raw : `https://${raw}`).hostname.toLowerCase(); return courierHosts.some((domain) => host === domain || host.endsWith(`.${domain}`)); }
     catch { return false; }
   });
+
+  // MF-3 + MF-4: Check whether ALL URLs in the message resolve to the claimed brand's official
+  // domains. Used by M02/M01/M04 to avoid asserting "the link is not official" when it actually is.
+  // IMPORTANT: An official-looking URL does NOT authenticate the sender — trust only influences
+  // the url-related `why` text and reduces urgency, NOT the identity verification.
+  const allUrlsOfficialForBrand = (brandName: string | null): boolean => {
+    if (!brandName || !s.urls.length) return false;
+    const record = OFFICIAL_DOMAINS.find((b) => b.name.toLowerCase() === brandName.toLowerCase());
+    if (!record) return false;
+    return s.urls.every((raw) => {
+      try {
+        const host = new URL(raw.startsWith("http") ? raw : `https://${raw}`).hostname.toLowerCase();
+        return record.official.some((d) => host === d || host.endsWith(`.${d}`));
+      } catch { return false; }
+    });
+  };
+  const urlsOfficial = allUrlsOfficialForBrand(s.claimedBrand);
+  // For government messages, also accept any .gov.au domain as consistent with a government claim.
+  const urlsGovOfficial = s.brandKind === "government" && s.urls.length > 0 && s.urls.every((raw) => {
+    try { const host = new URL(raw.startsWith("http") ? raw : `https://${raw}`).hostname.toLowerCase(); return host.endsWith(".gov.au") || host === "gov.au"; }
+    catch { return false; }
+  });
   if (s.callbackRequest && s.allegedCharge) return { scenario: "M16", title: "Alleged-charge callback trap", state: "barking",
     verdict: "This message tries to make you call a supplied number about an alleged charge.",
     why: [s.claimedBrand ? `It claims to be ${s.claimedBrand} and names a charge or transaction.` : "It alleges a charge or transaction.",
@@ -152,9 +175,27 @@ function scenarioFor(s: MessageSignals): { scenario: Scenario; title: string; st
   if (s.advanceFee || (s.fakePayment && s.paymentRequest && !s.brandKind)) return { scenario: "M12", title: "Fake payment / refund", state: "barking", verdict: "You're being asked to pay to 'receive' money — that's the scam.",
     why: ["It says money is waiting for you.", "It asks for a fee before you can get it.", "Real payments never need a fee to release them."],
     rec: "Don't pay anything. Check your real bank or payment app for the money — if it isn't there, it isn't real.", verify: VERIFY[s.brandKind ?? "marketplace"] };
-  if (s.brandKind === "bank" && (s.loginRequest || s.identityRequest || s.urls.length)) return { scenario: "M02", title: "Bank fraud message", state: "barking", verdict: `This message appears to impersonate ${brand}.`,
-    why: [`It claims to be ${brand}.`, s.threat || s.urgency ? "It uses fear and urgency about your account or money." : "It asks you to act on your account.", s.urls.length ? "The link does not lead to the bank's official website." : "It asks for details a bank already has."],
-    rec: "Don't enter your password or verification code. Open your bank's app yourself to check.", verify: VERIFY.bank };
+  // MF-3: When URLs are the ONLY trigger (no loginRequest/identityRequest), check whether they
+  // all resolve to the claimed brand's official domains. An official-looking URL does not
+  // authenticate the sender, so the message still deserves attention (ears_up), not dismissal.
+  // MF-4: The why text now states only what the code actually verified.
+  if (s.brandKind === "bank" && (s.loginRequest || s.identityRequest || s.urls.length)) {
+    const urlOnly = !s.loginRequest && !s.identityRequest && s.urls.length > 0;
+    if (urlOnly && urlsOfficial) {
+      // All URLs match the brand's official domains. Still flag as ears_up because Apollo cannot
+      // verify who actually sent this message — only that the links appear to match.
+      return { scenario: "M02", title: "Bank notification to verify", state: "ears_up",
+        verdict: `This message claims to be from ${brand}. The link appears to match ${brand}'s official website, but Apollo cannot verify who sent the message.`,
+        why: [`It claims to be ${brand}.`, `The link destination matches ${brand}'s known official domain.`, "Apollo cannot verify the SMS sender. Open your bank's app independently to check."],
+        rec: "Don't use the link in the message. Open your bank's official app yourself to check for any notices.", verify: VERIFY.bank };
+    }
+    const urlWhy = s.urls.length
+      ? (urlOnly && !urlsOfficial ? `The link leads to a domain that is not one of ${brand}'s official websites.` : "It asks you to act on your account via a link.")
+      : "It asks for details a bank already has.";
+    return { scenario: "M02", title: "Bank fraud message", state: "barking", verdict: `This message appears to impersonate ${brand}.`,
+      why: [`It claims to be ${brand}.`, s.threat || s.urgency ? "It uses fear and urgency about your account or money." : "It asks you to act on your account.", urlWhy],
+      rec: "Don't enter your password or verification code. Open your bank's app yourself to check.", verify: VERIFY.bank };
+  }
   if (s.extortion) return { scenario: "M14", title: "Threat / extortion", state: s.crypto || s.paymentRequest ? "barking" : "growling", verdict: "This is an extortion attempt. A claim is not evidence.",
     why: ["It claims to have hacked or recorded you.", s.crypto ? "It demands payment in cryptocurrency." : "It demands payment to stay quiet.", "These are sent in bulk; the claim is almost always false."],
     rec: "Don't pay and don't reply. Apollo sees no evidence your device is compromised from this message alone — change reused passwords if you're worried.", verify: VERIFY.none };
@@ -164,15 +205,30 @@ function scenarioFor(s: MessageSignals): { scenario: Scenario; title: string; st
   if (courierLinksOfficial && !s.paymentRequest && !s.loginRequest && !s.identityRequest && !s.threat) return { scenario: "M15", title: "Delivery notification to verify", state: "ears_up", verdict: "The visible tracking link matches a configured courier domain, but the message sender is not authenticated.",
     why: ["The destination matches a configured official courier domain.", "A visible domain match supports the claim but does not prove who sent the message.", "No payment, login, identity or threat request was found."],
     rec: "Prefer the courier's official app or type its known address yourself. Use the message link only if you independently expected this delivery.", verify: VERIFY.courier };
-  if (s.brandKind === "courier") return { scenario: "M01", title: "Parcel delivery scam", state: s.paymentRequest || s.urls.length ? "growling" : "ears_up", verdict: "This looks like a parcel-delivery scam.",
-    why: ["It claims to be from a delivery company.", s.smallPayment || s.paymentRequest ? "It asks for an unexpected (often small) payment." : "It asks you to act on a parcel you may not be expecting.", s.urls.length ? "The link does not belong to the company being claimed." : "Real couriers don't text payment links."],
-    rec: "Don't use the link. Track any parcel through the courier's official app or website.", verify: VERIFY.courier };
+  if (s.brandKind === "courier") {
+    // MF-4: Only assert link destination when actually checked.
+    const linkWhy = s.urls.length
+      ? (courierLinksOfficial ? "The link matches a known courier domain, but Apollo cannot verify who sent the message." : "The link leads to a domain that is not a known official courier website.")
+      : "Real couriers don't text payment links.";
+    return { scenario: "M01", title: "Parcel delivery scam", state: s.paymentRequest || s.urls.length ? "growling" : "ears_up", verdict: "This looks like a parcel-delivery scam.",
+      why: ["It claims to be from a delivery company.", s.smallPayment || s.paymentRequest ? "It asks for an unexpected (often small) payment." : "It asks you to act on a parcel you may not be expecting.", linkWhy],
+      rec: "Don't use the link. Track any parcel through the courier's official app or website.", verify: VERIFY.courier };
+  }
   if (s.brandKind === "toll") return { scenario: "M03", title: "Toll / road payment scam", state: "growling", verdict: "This looks like a toll-payment scam.",
     why: ["It claims to be a toll or road operator.", s.threat ? "It threatens penalties to hurry you." : "It asks for a payment you weren't expecting.", s.urls.length ? "Payment is via a link, not the official app." : "Toll operators don't chase payment by text link."],
     rec: "Don't pay via the link. Check your toll account in the official app yourself.", verify: VERIFY.toll };
-  if (s.brandKind === "government") return { scenario: "M04", title: "Government / tax impersonation", state: s.identityRequest || s.paymentRequest ? "barking" : "growling", verdict: "This looks like a government impersonation scam.",
-    why: ["It claims to be a government agency.", s.paymentRequest ? "It demands a payment." : s.identityRequest ? "It asks for identity details." : "It offers a refund to get you to click.", s.urls.length ? "The link is not an official government address." : "Agencies don't do this by text."],
-    rec: "Don't click or reply. Log in to myGov or the agency's website yourself to check for real notices.", verify: VERIFY.government };
+  if (s.brandKind === "government") {
+    // MF-3/MF-4: Check government URLs against .gov.au and official brand domains.
+    const govUrlWhy = s.urls.length
+      ? ((urlsOfficial || urlsGovOfficial) ? "The link appears to match an official government domain, but Apollo cannot verify who sent the message." : "The link leads to a domain that is not an official government address.")
+      : "Agencies don't do this by text.";
+    // If URLs all check out as official AND there's no identity/payment request, reduce to ears_up.
+    const govState = (s.identityRequest || s.paymentRequest) ? "barking" as ApolloState
+      : (s.urls.length && (urlsOfficial || urlsGovOfficial) && !s.threat && !s.urgency) ? "ears_up" as ApolloState : "growling" as ApolloState;
+    return { scenario: "M04", title: "Government / tax impersonation", state: govState, verdict: govState === "ears_up" ? "This message claims to be from a government agency. The link matches an official domain, but Apollo cannot verify the sender." : "This looks like a government impersonation scam.",
+      why: ["It claims to be a government agency.", s.paymentRequest ? "It demands a payment." : s.identityRequest ? "It asks for identity details." : s.urls.length ? govUrlWhy : "It offers a refund to get you to click.", govUrlWhy],
+      rec: "Don't click or reply. Log in to myGov or the agency's website yourself to check for real notices.", verify: VERIFY.government };
+  }
   if (s.guaranteedReturns || (s.crypto && (s.moneyRequest || s.paymentRequest))) return { scenario: "M08", title: "Investment / crypto scam", state: "growling", verdict: "This looks like an investment scam.",
     why: ["It offers guaranteed or unrealistic returns.", "It wasn't something you asked for.", s.crypto ? "It involves cryptocurrency, which can't be reversed." : "It rushes you to commit money."],
     rec: "Don't send money. Guaranteed returns don't exist — check any adviser on the ASIC register yourself.", verify: VERIFY.none };
