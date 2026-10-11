@@ -126,7 +126,7 @@ export function PriorityScamNotice({ compact = false }: { compact?: boolean } = 
         <View style={s.compactContent}>
           <Text style={s.compactTitle}>{priorityAlert.title}</Text>
           <Text style={s.compactSub} numberOfLines={1}>
-            {priorityAlert.severity === "EXTREME" ? "Extreme" : "High priority"} · {priorityAlert.source}
+            {priorityAlert.severity === "EXTREME" ? "Extreme" : "High priority"} · {priorityAlert.source} · {priorityAlert.dateLabel}
           </Text>
         </View>
         <Text style={s.compactLink}>View details</Text>
