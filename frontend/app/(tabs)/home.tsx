@@ -6,7 +6,7 @@ import MessageSquare from "lucide-react-native/icons/message-square";
 import Settings from "lucide-react-native/icons/settings";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
 import React from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
 import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -140,6 +140,8 @@ export default function Home() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { width: screenW } = useWindowDimensions();
+  const compact = screenW < 380;
   const { resolution, capabilities, protection, adapterLabel, isMock, refreshing, events, lowPower, quietNow, showToast, identityReset, reRegisterDevice, refresh } = useApollo();
   const health = useProtectionHealth();
   const { recovery, dismiss: dismissRecovery } = useRecoveryTracker(protection?.operational);
@@ -187,10 +189,10 @@ export default function Home() {
   return (
     <View style={s.root}>
       {/* ── Branded Header ── */}
-      <View style={[s.header, { paddingTop: insets.top + spacing.md }]}>
+      <View style={[s.header, compact && { paddingHorizontal: spacing.lg }, { paddingTop: insets.top + spacing.md }]}>
         <View style={s.headerRow}>
           <View>
-            <Text style={s.brandTitle} testID="home-brand-title">Apollo Scam Guard</Text>
+            <Text style={[s.brandTitle, compact && { fontSize: 19 }]} testID="home-brand-title">Apollo Scam Guard</Text>
             <Text style={s.brandSubtitle}>Safer People. Safer Tomorrows.</Text>
           </View>
           {isMock ? <DevTag label="Preview" testID="home-mock-pill" /> : null}
@@ -207,7 +209,7 @@ export default function Home() {
           accessibilityRole="button"
           accessibilityLabel={stateLabel}
           onPress={() => voice.ctaRoute ? router.push(voice.ctaRoute as any) : null}
-          style={s.heroCard}
+          style={[s.heroCard, compact && { marginHorizontal: spacing.lg }]}
         >
           <Image
             source={heroBg}
@@ -215,23 +217,23 @@ export default function Home() {
             contentFit="cover"
             testID="home-hero-bg"
           />
-          <View style={s.heroOverlay}>
-            <View style={s.heroImageWrap}>
+          <View style={[s.heroOverlay, compact && { padding: spacing.lg }]}>
+            <View style={[s.heroImageWrap, compact && { width: 68, height: 68, borderRadius: 34 }]}>
               <Image
                 source={gif ? gif.src : FALLBACK_IMAGE}
-                style={s.heroImage}
+                style={[s.heroImage, compact && { width: 68, height: 68 }]}
                 contentFit="cover"
                 autoplay
                 accessibilityLabel={gif?.label ?? "Apollo"}
                 testID="home-hero-gif"
               />
             </View>
-            <View style={s.heroContent}>
+            <View style={[s.heroContent, compact && { paddingRight: 30 }]}>
               <View style={s.heroStatusRow}>
-                <ShieldCheck size={16} color="#FFFFFF" fill={statusColor} style={s.heroShield} />
-                <Text style={[s.heroStatusText, { color: colors[`${state}Text` as keyof typeof colors] as string || colors.restingText }]}>{stateLabel}</Text>
+                <ShieldCheck size={compact ? 14 : 16} color="#FFFFFF" fill={statusColor} style={s.heroShield} />
+                <Text style={[s.heroStatusText, compact && { fontSize: 15 }, { color: colors[`${state}Text` as keyof typeof colors] as string || colors.restingText }]}>{stateLabel}</Text>
               </View>
-              <Text style={s.heroExplanation} numberOfLines={5}>{voice.text}</Text>
+              <Text style={[s.heroExplanation, compact && { fontSize: 13, lineHeight: 18 }]} numberOfLines={5}>{voice.text}</Text>
             </View>
           </View>
         </Pressable>
@@ -242,24 +244,24 @@ export default function Home() {
         </View>
 
         {/* ── Two Side-by-Side Cards ── */}
-        <View style={s.twoCards}>
+        <View style={[s.twoCards, compact && { gap: spacing.sm, paddingHorizontal: spacing.lg }]}>
           {/* Protection Status Card */}
           <Pressable
             testID="home-protection-card"
             accessibilityRole="button"
             accessibilityLabel="Protection Status"
             onPress={() => router.push("/(tabs)/protection")}
-            style={({ pressed }) => [s.halfCard, { backgroundColor: "rgba(22,34,53,0.04)", borderColor: "rgba(22,34,53,0.12)", opacity: pressed ? 0.85 : 1 }]}
+            style={({ pressed }) => [s.halfCard, compact && { padding: spacing.md }, { backgroundColor: "rgba(22,34,53,0.04)", borderColor: "rgba(22,34,53,0.12)", opacity: pressed ? 0.85 : 1 }]}
           >
             <View style={s.halfCardTitleRow}>
-              <View style={[s.halfCardIconWrap, { backgroundColor: "rgba(22,34,53,0.10)" }]}>
-                <ShieldCheck size={16} color={colors.brand} />
+              <View style={[s.halfCardIconWrap, compact && { width: 28, height: 28, borderRadius: 14 }, { backgroundColor: "rgba(22,34,53,0.10)" }]}>
+                <ShieldCheck size={compact ? 14 : 16} color={colors.brand} />
               </View>
-              <Text style={s.halfCardTitle}>Protection Status</Text>
+              <Text style={[s.halfCardTitle, compact && { fontSize: 13 }]}>Protection</Text>
             </View>
-            <Text style={s.halfCardDesc} numberOfLines={3}>See what Apollo is protecting. Gate health, limitations and action needed.</Text>
+            <Text style={[s.halfCardDesc, compact && { fontSize: 11 }]} numberOfLines={3}>Gate health, limitations and action needed.</Text>
             <View style={[s.halfCardBtn, { backgroundColor: colors.brand }]}>
-              <Text style={[s.halfCardBtnText, { color: colors.onBrand }]}>View Protection</Text>
+              <Text style={[s.halfCardBtnText, compact && { fontSize: 11 }, { color: colors.onBrand }]}>View</Text>
             </View>
           </Pressable>
 
@@ -269,17 +271,17 @@ export default function Home() {
             accessibilityRole="button"
             accessibilityLabel="Learn with Higgins"
             onPress={() => router.push("/higgins/learning")}
-            style={({ pressed }) => [s.halfCard, { backgroundColor: "rgba(201,163,74,0.06)", borderColor: "rgba(201,163,74,0.20)", opacity: pressed ? 0.85 : 1 }]}
+            style={({ pressed }) => [s.halfCard, compact && { padding: spacing.md }, { backgroundColor: "rgba(201,163,74,0.06)", borderColor: "rgba(201,163,74,0.20)", opacity: pressed ? 0.85 : 1 }]}
           >
             <View style={s.halfCardTitleRow}>
-              <View style={[s.halfCardIconWrap, { backgroundColor: colors.goldTint }]}>
-                <GraduationCap size={16} color={colors.gold} />
+              <View style={[s.halfCardIconWrap, compact && { width: 28, height: 28, borderRadius: 14 }, { backgroundColor: colors.goldTint }]}>
+                <GraduationCap size={compact ? 14 : 16} color={colors.gold} />
               </View>
-              <Text style={s.halfCardTitle}>Learn with Higgins</Text>
+              <Text style={[s.halfCardTitle, compact && { fontSize: 13 }]}>Learn</Text>
             </View>
-            <Text style={s.halfCardDesc} numberOfLines={3}>Friendly, practical lessons about scams, cyber security and staying safer online.</Text>
+            <Text style={[s.halfCardDesc, compact && { fontSize: 11 }]} numberOfLines={3}>Practical scam-safety lessons from Higgins.</Text>
             <View style={[s.halfCardBtn, { backgroundColor: colors.gold }]}>
-              <Text style={[s.halfCardBtnText, { color: "#FFFFFF" }]}>Start Learning</Text>
+              <Text style={[s.halfCardBtnText, compact && { fontSize: 11 }, { color: "#FFFFFF" }]}>Start</Text>
             </View>
           </Pressable>
         </View>
@@ -287,8 +289,8 @@ export default function Home() {
         {/* ── Important For You ── */}
         {(securityFindings.length > 0 || true) ? (
           <View>
-            <View style={s.sectionHeader}>
-              <Text style={s.sectionTitle}>Important for you</Text>
+            <View style={[s.sectionHeader, compact && { paddingHorizontal: spacing.lg }]}>
+              <Text style={[s.sectionTitle, compact && { fontSize: 15 }]}>Important for you</Text>
               <Pressable onPress={() => router.push({ pathname: "/(tabs)/patrol", params: { filter: "needs_you" } })} hitSlop={8}>
                 <Text style={s.sectionLink}>View all</Text>
               </Pressable>
@@ -296,12 +298,12 @@ export default function Home() {
             {/* Priority Scam Alert — compact summary with link */}
             <PriorityScamNotice compact />
             {securityFindings.slice(0, 2).map((finding) => (
-              <Pressable key={finding.id} testID={`home-finding-${finding.id}`} onPress={() => router.push(finding.route as any)} style={[s.activityCard, { marginBottom: spacing.sm }]}>
-                <View style={[s.activityIconWrap, { backgroundColor: colors.barkingTint }]}>
-                  <MessageSquare size={16} color={colors.barking} />
+              <Pressable key={finding.id} testID={`home-finding-${finding.id}`} onPress={() => router.push(finding.route as any)} style={[s.activityCard, compact && { marginHorizontal: spacing.lg, padding: spacing.md }, { marginBottom: spacing.sm }]}>
+                <View style={[s.activityIconWrap, compact && { width: 32, height: 32, borderRadius: 16 }, { backgroundColor: colors.barkingTint }]}>
+                  <MessageSquare size={compact ? 14 : 16} color={colors.barking} />
                 </View>
                 <View style={s.activityContent}>
-                  <Text style={s.activityText}>{finding.title}</Text>
+                  <Text style={[s.activityText, compact && { fontSize: 13 }]}>{finding.title}</Text>
                 </View>
                 <Text style={s.findingLink}>View details</Text>
                 <ChevronRight size={14} color={colors.brand} />
@@ -312,8 +314,8 @@ export default function Home() {
 
         {/* ── Recent Activity ── */}
         <View>
-          <View style={s.sectionHeader}>
-            <Text style={s.sectionTitle}>Recent activity</Text>
+          <View style={[s.sectionHeader, compact && { paddingHorizontal: spacing.lg }]}>
+            <Text style={[s.sectionTitle, compact && { fontSize: 15 }]}>Recent activity</Text>
             <Pressable onPress={() => router.push("/(tabs)/patrol")} hitSlop={8}>
               <Text style={s.sectionLink}>View all</Text>
             </Pressable>
@@ -323,7 +325,7 @@ export default function Home() {
               testID="home-recent-activity"
               accessibilityRole="button"
               onPress={() => router.push(`/patrol/${encodeURIComponent(recentEvent.event_id)}` as any)}
-              style={s.activityCard}
+              style={[s.activityCard, compact && { marginHorizontal: spacing.lg, padding: spacing.md }]}
             >
               <View style={s.activityIconWrap}>
                 <MessageSquare size={16} color={colors.onSurfaceSecondary} />
