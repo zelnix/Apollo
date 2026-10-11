@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import GraduationCap from "lucide-react-native/icons/graduation-cap";
 import Megaphone from "lucide-react-native/icons/megaphone";
@@ -140,9 +140,16 @@ export default function Home() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { resolution, capabilities, protection, adapterLabel, isMock, refreshing, events, lowPower, quietNow, showToast, identityReset, reRegisterDevice } = useApollo();
+  const { resolution, capabilities, protection, adapterLabel, isMock, refreshing, events, lowPower, quietNow, showToast, identityReset, reRegisterDevice, refresh } = useApollo();
   const health = useProtectionHealth();
   const { recovery, dismiss: dismissRecovery } = useRecoveryTracker(protection?.operational);
+
+  // ── Refresh data whenever Home regains focus (e.g. after handling an item) ──
+  useFocusEffect(
+    React.useCallback(() => {
+      void refresh(0);
+    }, [refresh])
+  );
 
   // ── Auto-retrofit on first load ──
   const [showRetrofit, setShowRetrofit] = React.useState(false);
