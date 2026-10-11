@@ -27,6 +27,7 @@ export interface ApolloSecurityNativeModule {
   getGuardDogProductionCapabilities(): string;
   getGuardDogProductionStatus(): string;
   configureGuardDogProduction(configJson: string): string;
+  setGuardDogDeviceToken(token: string): string;
   acceptGuardDogProductionRuleBundle(bundleJson: string): string;
   refreshGuardDogProductionRules(): Promise<string>;
   startGuardDogProduction(): Promise<string>;

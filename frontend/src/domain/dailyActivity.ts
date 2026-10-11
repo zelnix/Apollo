@@ -69,9 +69,13 @@ export function buildDailyActivity(events: PatrolEvent[]): DailyActivity {
       threatsDetected++;
     } else if (ev.state === "growling" || ev.state === "barking" || ev.state === "biting") {
       threatsDetected++;
-    } else {
+    } else if (ev.state === "resting" || ev.state === "ears_up") {
+      // Only count events that represent completed checks (resting = no concerns,
+      // ears_up = minor alert). Do NOT count "sniffing" (in-progress) or unclassified
+      // events as completed security checks.
       checksCompleted++;
     }
+    // "sniffing" and other unclassified states are not completed checks — skip them.
 
     // Check if user action is needed
     if (ev.state === "barking" || ev.state === "growling") {

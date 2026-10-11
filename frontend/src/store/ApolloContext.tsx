@@ -42,6 +42,7 @@ import { patrolDelivery, deliveryFailure } from './patrolDelivery';
 import { toPatrolEnforcementEvidence } from "@/src/domain/enforcementEvidenceSync";
 import { getNotificationStatus, requestNotificationPermission, scheduleLocalAlert, registerRemotePush, type NotificationStatus } from "@/src/push/notifications";
 import { eventLocalAlert, protectionLocalAlert } from "@/src/push/localAlerts";
+import { completedCheckAlert, protectionUpdateAlert, recoveryAlert } from "@/src/push/protectionAlerts";
 import { MessagingSdk } from "@/src/security/messagingSdk";
 import { CallSdk } from "@/src/security/callSdk";
 import { storage } from "@/src/utils/storage";
@@ -602,6 +603,11 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       if (previous === event.state || !Number.isFinite(age) || age < 0 || age > 120_000) continue;
       const alert = eventLocalAlert(event);
       if (alert && (alert.channel !== "growling" || !isQuietNow(quietRef.current))) void scheduleLocalAlert(alert).catch(() => undefined);
+      // Defect 7: Wire protection-work notification builders (completed checks, protection updates)
+      const checkAlert = completedCheckAlert(event);
+      if (checkAlert && (checkAlert.channel !== "growling" || !isQuietNow(quietRef.current))) void scheduleLocalAlert(checkAlert).catch(() => undefined);
+      const updateAlert = protectionUpdateAlert(event);
+      if (updateAlert && (updateAlert.channel !== "growling" || !isQuietNow(quietRef.current))) void scheduleLocalAlert(updateAlert).catch(() => undefined);
     }
     if (alertedStates.current.size > 2048) alertedStates.current = new Map(events.slice(0, 2048).map((event) => [event.event_id, event.state]));
   }, [ready, events]);
@@ -615,6 +621,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     if (previous) {
       const alert = protectionLocalAlert(previous, protection);
       if (alert) void scheduleLocalAlert(alert).catch(() => undefined);
+      // Defect 7: Wire recovery notification from protectionAlerts
+      const recAlert = recoveryAlert(previous, protection);
+      if (recAlert) void scheduleLocalAlert(recAlert).catch(() => undefined);
     }
   }, [ready, protection]);
 

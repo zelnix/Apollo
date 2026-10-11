@@ -92,11 +92,23 @@ class DnsGatewayPacketHandler(
         return if (verdict != null) {
             when (verdict.verdict) {
                 "malicious" -> {
-                    // Protection Before Speed: block access to known-malicious hostname.
-                    // Synthesize NXDOMAIN — the user's browser will show a "can't reach site" error
-                    // instead of loading a dangerous page.
-                    notifyCompleted(hostname, verdict.verdict, verdict.confidence, blocked = true)
-                    DnsResponseSynthesizer.synthesizeNxDomain(queryPacket, dnsQuery)
+                    // Protection Before Speed: live check identified this hostname as malicious.
+                    // Route through the blocking-authorisation framework (bindingStore.arm)
+                    // instead of directly synthesising NXDOMAIN — the live reputation verdict
+                    // is advisory; only rule-bundle authorisation may produce a block.
+                    val sinkholeIpv4 = bindingStore.arm(hostname)
+                    if (sinkholeIpv4 != null) {
+                        notifyCompleted(hostname, verdict.verdict, verdict.confidence, blocked = true)
+                        when (dnsQuery.qtype) {
+                            DnsQueryParser.TYPE_A -> DnsResponseSynthesizer.synthesizeSinkholeAnswer(queryPacket, dnsQuery, sinkholeIpv4)
+                            else -> DnsResponseSynthesizer.synthesizeNxDomain(queryPacket, dnsQuery)
+                        }
+                    } else {
+                        // Blocking authorisation not granted (host not in active rule bundle).
+                        // The live verdict is recorded but the DNS is forwarded — fail open.
+                        notifyCompleted(hostname, verdict.verdict, verdict.confidence, blocked = false)
+                        forward(queryPacket, rawBuffer, udpRange)
+                    }
                 }
                 else -> {
                     // "clean", "unknown", "unavailable" — forward DNS normally.

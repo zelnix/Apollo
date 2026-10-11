@@ -23,6 +23,7 @@ import java.util.concurrent.*
 class LiveReputationChecker(
     private val store: LiveReputationStore,
     private val backendBaseUrl: String,
+    private val authToken: String? = null,
     private val holdTimeoutMs: Long = 3000,  // Protection Before Speed: 3 second hold
     private val maxConcurrent: Int = 4,
     private val cleanCacheDurationMs: Long = 5 * 60 * 1000,  // 5 min for clean results
@@ -87,14 +88,14 @@ class LiveReputationChecker(
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
+            if (authToken != null) {
+                conn.setRequestProperty("Authorization", "Bearer $authToken")
+            }
             conn.connectTimeout = 2500
             conn.readTimeout = 2500
             conn.doOutput = true
 
-            // Send both the privacy-preserving hash prefix (required) and the full hostname
-            // (optional, enables direct external lookup like Safe Browsing).
-            // The device-side privacy decision: we send the full hostname for unknown DNS
-            // queries to enable the backend's direct external intelligence check.
+            // Privacy Contract: send only the hash prefix for privacy-preserving lookup.
             val body = buildJsonBody(hostname, hashPrefix)
             conn.outputStream.use { it.write(body.toByteArray()) }
 
@@ -119,10 +120,9 @@ class LiveReputationChecker(
     }
 
     private fun buildJsonBody(hostname: String, hashPrefix: String): String {
-        // Minimal JSON — no external library dependency in the SDK.
-        // Escapes hostname to prevent JSON injection.
-        val safeHostname = hostname.replace("\\", "\\\\").replace("\"", "\\\"")
-        return """{"hostname_hash_prefix":"$hashPrefix","hostname":"$safeHostname","request_context":"dns_observation"}"""
+        // Privacy Contract: transmit ONLY the hash prefix, never the full hostname.
+        // The backend resolves intelligence from the prefix alone.
+        return """{"hostname_hash_prefix":"$hashPrefix","request_context":"dns_observation"}"""
     }
 
     private fun parseAndCache(hostname: String, json: String): LiveReputationStore.CachedVerdict? {

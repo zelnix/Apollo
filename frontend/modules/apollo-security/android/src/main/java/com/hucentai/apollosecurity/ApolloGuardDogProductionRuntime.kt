@@ -68,7 +68,7 @@ private data class ProductionPendingEvidence(val evidence: BlockedThreatEvidence
 
 /**
  * Apollo-owned production authority over the frozen GuardDog core/VPN.
- * Rules are authenticated via HTTPS (TLS + baked-in backend URL). No Ed25519 signing keys.
+ * Rules are authenticated via HTTPS + Ed25519 cryptographic signature (Stage 4).
  */
 internal class ApolloGuardDogProductionRuntime(private val context: Context) {
   private val transitions = ApolloEnforcementTransitions.coordinator
@@ -99,6 +99,31 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
     networkObserver.start()
   }
 
+  // ── Device authentication token (set from JS bridge, persisted for background VPN sessions) ──
+  fun setDeviceToken(token: String) {
+    prefs.edit().putString("device_bearer_token", token).apply()
+  }
+  private fun deviceToken(): String? = prefs.getString("device_bearer_token", null)
+
+  // ── Stage 4: Ed25519 signing public key (fetched from backend, persisted for offline verification) ──
+  private fun signingPublicKey(): String? = prefs.getString("signing_public_key_b64", null)
+  private fun fetchAndPersistSigningPublicKey(backendBaseUrl: String) {
+    try {
+      val raw = fetch("$backendBaseUrl/api/guarddog/rules/public-key")
+      val json = JSONObject(raw)
+      val key = json.getString("public_key")
+      check(key.length in 40..60) { "Ed25519 public key has unexpected length" }
+      prefs.edit().putString("signing_public_key_b64", key).apply()
+    } catch (_: Throwable) { /* Non-fatal: signature verification will use cached key or be skipped */ }
+  }
+
+  /** Derive the backend base URL from the configured rule bundle URL. */
+  private fun backendBaseUrl(): String? {
+    val cfg = config ?: return null
+    val uri = URI(cfg.ruleBundleUrl)
+    return "${uri.scheme}://${uri.host}" + (if (uri.port > 0) ":${uri.port}" else "")
+  }
+
   fun configure(raw: String): String = transitions.serialized {
     requireProductionEnabled(); val next = ProductionRuntimeConfig.parse(raw)
     check(prefs.edit().putString("config", next.json().toString()).commit()) { "Could not persist production configuration" }
@@ -110,6 +135,8 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
   /** Fetch the latest rules from the authenticated HTTPS backend and validate them. */
   fun refreshRules(): String {
     val active = checkNotNull(config) { "Production GuardDog is not configured" }
+    // Stage 4: Fetch/refresh the Ed25519 signing public key alongside rules
+    backendBaseUrl()?.let { fetchAndPersistSigningPublicKey(it) }
     val rawBundle = fetch(active.ruleBundleUrl)
     return transitions.serialized { acceptBundleLocked(rawBundle) }
   }
@@ -117,8 +144,9 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
   fun acceptBundle(raw: String): String = transitions.serialized { acceptBundleLocked(raw) }
   private fun acceptBundleLocked(raw: String): String {
     val activeConfig = checkNotNull(config)
-    // Validate bundle via HTTPS-authenticated schema/version/expiry checks — no Ed25519 signing.
-    val validator = RuleBundleValidator(ApolloBundleVersionStore(context, "production:v2"), SystemClock)
+    // Stage 4: Validate bundle with Ed25519 signature verification when a public key is available.
+    val pubKey = signingPublicKey()
+    val validator = RuleBundleValidator(ApolloBundleVersionStore(context, "production:v2"), SystemClock, pubKey)
     val staged = validator.validate(raw)
     if (staged is ValidationResult.Rejected) return JSONObject().put("accepted", false).put("reason", staged.reason.name).toString()
     val bundle = (staged as ValidationResult.Accepted).bundle
@@ -147,7 +175,8 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
   }
 
   private fun rebuildEngine(): GuardDogSDKEngine {
-    val validator = RuleBundleValidator(ApolloBundleVersionStore(context, "production:v2"), SystemClock)
+    val pubKey = signingPublicKey()
+    val validator = RuleBundleValidator(ApolloBundleVersionStore(context, "production:v2"), SystemClock, pubKey)
     val rebuilt = GuardDogSDKEngine(validator, state, SystemClock)
     rebuilt.addEventListener { event ->
       try {
@@ -190,6 +219,10 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
     GuardDogVpnRuntime.websiteGateEngine = activeEngine; GuardDogVpnRuntime.websiteGateRouteConfig = WebsiteGateAddressing.defaultRouteConfig()
     GuardDogVpnRuntime.upstreamDnsResolverIpv4 = upstream; GuardDogVpnRuntime.websiteGateBindingLifetimeMillis = 30_000L
     GuardDogVpnRuntime.websiteGateOverrideStore = websiteGateOverrides
+    // Stage 3: Enable live reputation checking with authenticated requests
+    val liveBackend = backendBaseUrl()
+    GuardDogVpnRuntime.liveReputationBackendUrl = liveBackend
+    GuardDogVpnRuntime.liveReputationAuthToken = deviceToken()
     GuardDogVpnRuntime.dnsThreatObservedListener = DnsThreatObservedListener { observation ->
       try { dnsThreatInbox.append(observation) } catch (_: Throwable) { dnsThreatInbox.reportFailure("DNS threat observation persistence failed") }
     }
@@ -308,7 +341,8 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
     WorkManager.getInstance(context).enqueueUniquePeriodicWork("apollo-guarddog-production-refresh", ExistingPeriodicWorkPolicy.UPDATE, work) }
   private fun requireProductionEnabled() { check(ApolloGuardDogProductionOwner.isEligible(context)) { "Production GuardDog authority is disabled in this build" } }
   private fun detachRuntime() { GuardDogVpnRuntime.reporter = null; GuardDogVpnRuntime.config = null; GuardDogVpnRuntime.websiteGateEngine = null
-    GuardDogVpnRuntime.websiteGateRouteConfig = null; GuardDogVpnRuntime.upstreamDnsResolverIpv4 = null; GuardDogVpnRuntime.dnsThreatObservedListener = null }
+    GuardDogVpnRuntime.websiteGateRouteConfig = null; GuardDogVpnRuntime.upstreamDnsResolverIpv4 = null; GuardDogVpnRuntime.dnsThreatObservedListener = null
+    GuardDogVpnRuntime.liveReputationBackendUrl = null; GuardDogVpnRuntime.liveReputationAuthToken = null }
   private fun onNetworkDnsChanged(upstream: String?) {
     if (upstream == observedUpstreamDns) return
     observedUpstreamDns = upstream

@@ -3,6 +3,7 @@ import type { DnsThreatObservation, PrivateDnsStatus } from "@/src/domain/types"
 import type { EnforcementEvidence, PlatformCapabilityProfile } from "@/src/security/PlatformCapabilityProfile";
 import type { BlockResult, NetworkStatus, NativeUrlAnalysis, ProtectionPermission, ProtectionStatus, SecurityPlatformAdapter } from "@/src/security/SecurityPlatformAdapter";
 import { getNativeModule, NativeModuleUnavailable } from "@/src/security/nativeBridge";
+import { getDeviceToken } from "@/src/auth/deviceIdentity";
 import { parseGuardDogEvidence } from "./GuardDogEvidenceBoundary";
 import { getGuardDogProductionConfig } from "./GuardDogProductionConfig";
 
@@ -18,6 +19,8 @@ export class GuardDogProductionSecurityAdapter implements SecurityPlatformAdapte
   private ensureConfigured(): Promise<void> {
     if (!this.configured) this.configured = (async () => {
       this.mod().configureGuardDogProduction(JSON.stringify(getGuardDogProductionConfig()));
+      // Pass the device bearer token to the native runtime for authenticated live reputation requests.
+      try { const token = await getDeviceToken(); if (token) this.mod().setGuardDogDeviceToken(token); } catch { /* non-fatal */ }
       try { await this.mod().refreshGuardDogProductionRules(); this.refreshedAt = Date.now(); }
       catch (refreshError) {
         // Offline fallback: if rules are still locally valid, don't throw.

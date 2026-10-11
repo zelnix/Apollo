@@ -41,6 +41,7 @@ class ApolloSecurityModule : Module() {
     Function("getGuardDogProductionCapabilities") { guardDogProduction().capabilities() }
     Function("getGuardDogProductionStatus") { guardDogProduction().status() }
     Function("configureGuardDogProduction") { json: String -> guardDogProduction().configure(json) }
+    Function("setGuardDogDeviceToken") { token: String -> guardDogProduction().setDeviceToken(token) }
     Function("acceptGuardDogProductionRuleBundle") { json: String -> guardDogProduction().acceptBundle(json) }
     AsyncFunction("refreshGuardDogProductionRules") { guardDogProduction().refreshRules() }
     AsyncFunction("startGuardDogProduction") { guardDogProduction().start() }

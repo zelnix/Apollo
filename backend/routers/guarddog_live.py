@@ -74,20 +74,14 @@ async def dns_reputation_check(req: DnsReputationRequest):
     local rule bundle. The bounded hold principle applies: the native layer
     should wait for this response (up to ~3 seconds) before forwarding DNS.
     
+    Privacy Contract: Only the hash prefix is processed. The full hostname
+    field is accepted for backward compatibility but NEVER used for lookups.
     This endpoint does NOT authorise native blocking. It returns intelligence
     that the device can act upon within its existing authorisation framework.
     """
     ts = now_utc()
     
-    # If full hostname provided, do a direct external check
-    if req.hostname:
-        hostname = req.hostname.strip().lower().rstrip(".")
-        if not hostname or len(hostname) < 3:
-            raise HTTPException(status_code=422, detail="Invalid hostname")
-        
-        return await _check_hostname_reputation(hostname, ts)
-    
-    # Hash-prefix only: check against known threat indicators
+    # Privacy Contract: process ONLY the hash prefix, never the full hostname.
     prefix = req.hostname_hash_prefix.lower()
     return await _check_hash_prefix(prefix, ts)
 

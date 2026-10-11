@@ -50,7 +50,7 @@ data class RuleBundle(
 }
 
 internal val BundleJson = Json {
-    ignoreUnknownKeys = false
+    ignoreUnknownKeys = true   // Backend may include extra fields (source, evidenceExpires) — accept gracefully
     isLenient = false
     coerceInputValues = false
     explicitNulls = false

@@ -62,6 +62,9 @@ object GuardDogVpnRuntime {
     /** Backend base URL for live reputation checks (e.g. "https://api.example.com").
      * The checker appends "/api/guarddog/dns-check". Null = live checks disabled. */
     @Volatile var liveReputationBackendUrl: String? = null
+    /** Device bearer token for authenticated live reputation requests.
+     * Null = requests are sent without authentication (will fail with 401). */
+    @Volatile var liveReputationAuthToken: String? = null
     /** Bounded hold timeout in milliseconds for live reputation checks. Default: 3 seconds
      * (Protection Before Speed). */
     @Volatile var liveReputationHoldTimeoutMs: Long = 3000
@@ -401,6 +404,7 @@ class GuardDogVpnService : VpnService() {
         val checker = LiveReputationChecker(
             store = store,
             backendBaseUrl = backendUrl,
+            authToken = GuardDogVpnRuntime.liveReputationAuthToken,
             holdTimeoutMs = GuardDogVpnRuntime.liveReputationHoldTimeoutMs,
         )
         GuardDogVpnRuntime.liveReputationStore = store
