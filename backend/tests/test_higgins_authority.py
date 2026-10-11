@@ -329,11 +329,11 @@ class TestSystemPromptStandard:
 
     def test_chat_system_prompt(self):
         from services.higgins.chat import SYSTEM
-        assert "INVESTIGATE" in SYSTEM
-        assert "ASSESS" in SYSTEM
-        assert "DIRECT" in SYSTEM
-        assert "GUIDE" in SYSTEM
-        assert "VERIFY" in SYSTEM
+        # Chat must have clear role boundaries and guidance capability
+        assert "APOLLO DETECTS" in SYSTEM
+        assert "HIGGINS EXPLAINS" in SYSTEM
+        assert "ordinary chat" in SYSTEM.lower()
+        assert "cannot start an investigation" in SYSTEM or "cannot browse" in SYSTEM
 
     def test_coordinator_prohibits_fabrication(self):
         from services.higgins.coordinator import SYSTEM
@@ -341,7 +341,9 @@ class TestSystemPromptStandard:
 
     def test_coordinator_requires_directive_language(self):
         from services.higgins.coordinator import SYSTEM
-        assert "you may want to" in SYSTEM.lower() or "Never use vague" in SYSTEM
+        # The coordinator must require evidence-specific explanations and proportionate guidance
+        assert "make the security judgement yourself" in SYSTEM.lower() or "Make the security judgement yourself" in SYSTEM
+        assert "EVIDENCE-SPECIFIC" in SYSTEM or "evidence-specific" in SYSTEM.lower()
 
     def test_chat_read_only_restrictions(self):
         from services.higgins.chat import SYSTEM

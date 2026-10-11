@@ -24,7 +24,7 @@ TEXT = Bound(int(os.getenv("HIGGINS_MAX_TEXT_CHARACTERS", "262144")), "character
              "Bound transport allocation before provider token admission", "reject explicitly; never slice")
 ITEMS = Bound(int(os.getenv("HIGGINS_MAX_ITEMS", "256")), "items",
               "Bound one request's inventory; additional batches require continuation", "reject explicitly; never slice")
-OUTPUT = Bound(int(os.getenv("HIGGINS_OUTPUT_TOKENS", "8192")), "tokens",
+OUTPUT = Bound(int(os.getenv("HIGGINS_OUTPUT_TOKENS", "16384")), "tokens",
                "Reserve response and reasoning within the provider's output limit", "non-STOP output is incomplete")
 SCHEMA_RESERVE = Bound(1024, "tokens", "Conservative role/tool-wrapper overhead not exposed by Developer API token counting", "reject; do not trim context")
 LIFETIME_SECONDS = 15 * 60  # hard ceiling; never extended by retries

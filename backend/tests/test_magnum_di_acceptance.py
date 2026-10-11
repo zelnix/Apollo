@@ -174,7 +174,9 @@ class TestHigginsVoice:
 
     def test_voice_prohibits_passive_language(self):
         from core.config import HIGGINS_VOICE
-        assert "you may want to" in HIGGINS_VOICE.lower(), "Missing prohibition on passive language"
+        # The updated voice no longer lists specific banned phrases but instead requires
+        # decisive proportionate guidance — check for that standard
+        assert "make the judgement yourself" in HIGGINS_VOICE.lower() or "Do not leave the person" in HIGGINS_VOICE
 
 
 # ------------------------------------------------------------------ 10 acceptance scenarios

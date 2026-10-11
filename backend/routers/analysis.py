@@ -1022,7 +1022,10 @@ def _build_vision_higgins(
     findings: list, suspicious_indicators: list, legitimate_indicators: list,
     limitations: list, asks_user_to: list, payment_details: Optional[dict],
 ) -> dict[str, Any]:
-    """Build a Higgins recommendation from vision investigation results."""
+    """Build a Higgins recommendation from vision investigation results.
+    
+    Uses actual identities, indicators and evidence rather than generic warnings.
+    """
     
     # Determine threat level from findings
     has_malicious_url = any(
@@ -1042,59 +1045,77 @@ def _build_vision_higgins(
     susp_count = len(suspicious_indicators)
     legit_count = len(legitimate_indicators)
     
-    # Build headline
+    # Build evidence-specific headline using actual details
     if has_malicious_url:
-        headline = "Apollo found a dangerous link in this image."
+        bad_urls = [f.get("indicator", "") for f in findings if f.get("verdict") in ("malicious", "suspicious") and f.get("type") == "url"]
+        if bad_urls and bad_urls[0]:
+            headline = f"The link {bad_urls[0]} was flagged as dangerous by Apollo's threat intelligence."
+        else:
+            headline = "A link in this image was flagged as dangerous by Apollo's threat intelligence."
         severity = "high"
     elif has_payment_change:
-        headline = "Payment details in this image may have been altered."
+        headline = "The payment details in this image appear to have been changed — a common tactic in invoice fraud."
         severity = "high"
     elif has_breach and has_urgency:
-        headline = "This appears to be a targeted message using real breach data."
+        headline = "This appears to be a targeted message using real breach data to pressure you into action."
         severity = "high"
-    elif susp_count > 0 and susp_count > legit_count:
-        headline = f"Apollo found {susp_count} suspicious {'indicator' if susp_count == 1 else 'indicators'} in this image."
+    elif claimed_brand and susp_count > 0 and susp_count > legit_count:
+        headline = f"This content claims to be from {claimed_brand}, but Magnum DI found {susp_count} concern{'s' if susp_count > 1 else ''} that warrant{'s' if susp_count == 1 else ''} investigation."
         severity = "medium"
     elif has_urgency:
-        headline = "This content is pressuring you to act quickly."
+        headline = "This content is pressuring you to act quickly — a technique commonly used in scams."
         severity = "medium"
     elif susp_count > 0:
-        headline = "Some elements need caution, but nothing conclusive was found."
+        headline = "Some elements need a closer look, but nothing conclusive was found."
+        severity = "low"
+    elif legit_count > 0:
+        headline = "Apollo checked what it could and found no clear security concerns."
         severity = "low"
     else:
-        headline = "Apollo didn't find clear security threats, but couldn't verify everything."
+        headline = "Apollo checked the available indicators but couldn't verify everything in this image."
         severity = "low"
     
-    # Build explanation
+    # Build evidence-specific explanation using actual findings
     parts: list[str] = []
     if description:
         parts.append(description)
+    
+    # Specific evidence from findings
     if has_malicious_url:
         bad_urls = [f.get("indicator", "") for f in findings if f.get("verdict") in ("malicious", "suspicious") and f.get("type") == "url"]
-        if bad_urls:
-            parts.append(f"The link {bad_urls[0]} was flagged as {'malicious' if any(f.get('verdict') == 'malicious' for f in findings) else 'suspicious'} by Apollo's threat intelligence.")
+        is_malicious = any(f.get("verdict") == "malicious" for f in findings)
+        if bad_urls and bad_urls[0]:
+            parts.append(f"The link {bad_urls[0]} was identified as {'malicious' if is_malicious else 'suspicious'} by Apollo's threat intelligence. Do not visit it or enter any information.")
     if has_payment_change:
-        parts.append("Payment details appear to have been changed — this is a common tactic in invoice fraud.")
+        method = payment_details.get("method", "unknown") if payment_details else "unknown"
+        parts.append(f"The payment details (method: {method}) appear to have been changed. In invoice fraud, scammers intercept legitimate invoices and substitute their own bank details. Always verify changed payment instructions through a known, independent contact method.")
     if claimed_brand and susp_count > 0:
-        parts.append(f"The content claims to be from {claimed_brand}. Verify through the official channel, not through this image.")
+        parts.append(f"The content presents itself as {claimed_brand}. Verify any requests directly through {claimed_brand}'s official website or app — not through links, numbers or details in this image.")
     
-    # Build recommendation
+    # Legitimate findings
+    if legit_count > 0 and susp_count == 0:
+        parts.append(f"Apollo identified {legit_count} indicator{'s' if legit_count > 1 else ''} consistent with a legitimate communication.")
+    
+    # Build proportionate recommendation
     if has_malicious_url or has_payment_change:
-        action = "Do not use any links, phone numbers or payment details from this image. Verify through the official website or app."
+        action = "Do not use any links, phone numbers or payment details from this image. Verify through the official website or app using a known address."
+    elif severity == "medium" and claimed_brand:
+        action = f"Don't act on this immediately. Contact {claimed_brand} directly through their official website or app to verify."
     elif severity == "medium":
         action = "Don't act on this immediately. Verify the sender and any requests through official channels."
     elif susp_count > 0:
         action = "If you weren't expecting this, verify it through the official source before taking any action."
     else:
-        action = "Apollo checked what it could. If something still feels wrong, don't act on it without verifying through official channels."
+        action = "No immediate action needed. If something still feels wrong, verify through official channels before acting."
     
-    # Limitations disclaimer
+    # Limitations — honest about what couldn't be checked
     if confidence == "low":
-        parts.append("The image was difficult to read clearly, so Apollo's analysis may be incomplete.")
+        parts.append("The image was difficult to read clearly, which may limit the accuracy of this analysis.")
     if limitations:
-        parts.append(f"Apollo could not verify {len(limitations)} {'aspect' if len(limitations) == 1 else 'aspects'} of this content.")
+        limit_text = ", ".join(limitations[:3])
+        parts.append(f"Apollo could not verify: {limit_text}.")
     
-    parts.append("AI visual interpretation alone is not proof. Apollo's investigation is based on what it could extract and verify.")
+    parts.append("This is an initial visual assessment. For a thorough investigation, Magnum DI can examine the evidence in more depth.")
     
     return {
         "headline": headline,
