@@ -1,44 +1,130 @@
 import { useRouter } from "expo-router";
-import BatteryCharging from "lucide-react-native/icons/battery-charging";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
 import GraduationCap from "lucide-react-native/icons/graduation-cap";
+import Megaphone from "lucide-react-native/icons/megaphone";
+import MessageSquare from "lucide-react-native/icons/message-square";
+import Settings from "lucide-react-native/icons/settings";
+import ShieldCheck from "lucide-react-native/icons/shield-check";
 import React from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
+import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { ApolloHero } from "@/src/components/ApolloHero";
-import { RootScreenHeader } from "@/src/components/RootScreenHeader";
+import { PriorityScamNotice } from "@/src/components/PriorityScamNotice";
+import { RecoveryBanner, useRecoveryTracker } from "@/src/components/RecoveryBanner";
+import { ServiceBanner } from "@/src/components/ServiceBanner";
 import { HigginsFollowUp } from "@/src/components/HigginsFollowUp";
 import { ClipboardLinkBanner } from "@/src/components/ClipboardLinkBanner";
-import { ServiceBanner } from "@/src/components/ServiceBanner";
-import { CoverageCard } from "@/src/components/CoverageCard";
-import { PriorityScamNotice } from "@/src/components/PriorityScamNotice";
-import { LatestActivityRow } from "@/src/components/LatestActivityRow";
-import { DailyActivityCard } from "@/src/components/DailyActivityCard";
-import { RecoveryBanner, useRecoveryTracker } from "@/src/components/RecoveryBanner";
-import { Body, Button, Card, DevTag, Pill, SectionTitle, toneColor } from "@/src/components/ui";
+import { Body, Button, Card, DevTag, Pill, toneColor } from "@/src/components/ui";
+import { buildHomeAttention, buildSecurityFindings } from "@/src/domain/homeAttention";
+import { buildHomeVoice } from "@/src/domain/higginsHomeVoice";
 import { buildScents } from "@/src/domain/threatScent";
-import { buildHomeAttention } from "@/src/domain/homeAttention";
-import { STATE_NAME } from "@/src/domain/types";
+import { isConsumerPatrolEvent, projectPatrolOutcomes } from "@/src/domain/patrolOutcomes";
+import { STATE_NAME, STATE_LABEL } from "@/src/domain/types";
 import { useApollo } from "@/src/store/ApolloContext";
-import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
+import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { minimiseApp } from "@/src/utils/minimise";
 import { useProtectionHealth } from "@/src/protection/healthStore";
+import type { ApolloState } from "@/src/domain/types";
+
+/** Apollo is an animated character — one state → one GIF.  Matches ApolloHero.tsx. */
+const STATE_GIF: Partial<Record<ApolloState, { src: number; label: string }>> = {
+  resting:  { src: require("@/assets/images/apollo-patrolling.gif"), label: "Apollo patrolling" },
+  sniffing: { src: require("@/assets/images/apollo-sniffing.gif"),   label: "Apollo sniffing" },
+  ears_up:  { src: require("@/assets/images/apollo-sniffing.gif"),   label: "Apollo has his ears up" },
+  growling: { src: require("@/assets/images/apollo-growling.gif"),    label: "Apollo growling" },
+  barking:  { src: require("@/assets/images/apollo-barking.gif"),     label: "Apollo barking" },
+  biting:   { src: require("@/assets/images/apollo-barking.gif"),     label: "Apollo blocked a threat" },
+};
+const FALLBACK_IMAGE = require("@/assets/images/logo.png");
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
-  content: { paddingHorizontal: spacing.xl, gap: spacing.xl, paddingBottom: spacing["3xl"] },
-  cardIconWell: { width: 30, height: 30, borderRadius: 15, backgroundColor: c.navyTint, alignItems: "center", justifyContent: "center" },
-  cardTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.brand },
-  // Learn with Higgins card.
-  learnCard: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  learnIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: c.navyTint, alignItems: "center", justifyContent: "center" },
-  learnTitle: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface },
-  learnBody: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurfaceSecondary },
-  // Compact single-line background indicator (replaces the bulky wrapping card).
-  bgRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  bgText: { flex: 1, fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary },
-  bgMinimise: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.brand, minHeight: 32, paddingVertical: 6 },
+  scroll: { paddingBottom: spacing["3xl"] },
+
+  // ── Branded header ──
+  header: { paddingHorizontal: spacing.xl, paddingBottom: spacing.md },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  brandTitle: { fontFamily: fonts.displayBold, fontSize: 22, color: c.onSurface, letterSpacing: -0.3 },
+  brandSubtitle: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary, marginTop: 1 },
+  settingsBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center" },
+
+  // ── Hero status card ──
+  heroCard: {
+    marginHorizontal: spacing.xl, borderRadius: radius.lg, overflow: "hidden",
+    backgroundColor: "#E8F5EE", // soft green wash
+    padding: spacing.xl, gap: spacing.md, minHeight: 180,
+  },
+  heroInner: { flexDirection: "row", gap: spacing.lg, alignItems: "flex-start" },
+  heroImageWrap: { width: 90, height: 90, borderRadius: 45, borderWidth: 2, borderColor: c.gold, overflow: "hidden", backgroundColor: c.surfaceSecondary },
+  heroImage: { width: 90, height: 90 },
+  heroContent: { flex: 1, gap: spacing.xs },
+  heroStatusRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  heroStatusDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: c.resting },
+  heroStatusText: { fontFamily: fonts.displayBold, fontSize: 17, color: "#1B6B47" },
+  heroExplanation: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurface },
+  heroMeta: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: spacing.xs },
+  heroMetaText: { fontFamily: fonts.display, fontSize: 10, color: c.onSurfaceSecondary, letterSpacing: 1.5, textTransform: "uppercase" },
+  heroPaw: { fontFamily: fonts.display, fontSize: 12, color: c.gold },
+
+  // ── Two side-by-side cards ──
+  twoCards: { flexDirection: "row", gap: spacing.md, paddingHorizontal: spacing.xl, marginTop: spacing.xl },
+  halfCard: {
+    flex: 1, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm,
+    borderWidth: 1,
+  },
+  halfCardIconWrap: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  halfCardTitle: { fontFamily: fonts.displayBold, fontSize: 14, color: c.onSurface },
+  halfCardDesc: { fontFamily: fonts.text, fontSize: 12, lineHeight: 17, color: c.onSurfaceSecondary },
+  halfCardBtn: {
+    borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.md,
+    alignItems: "center", justifyContent: "center", marginTop: spacing.xs,
+  },
+  halfCardBtnText: { fontFamily: fonts.textSemibold, fontSize: 12 },
+
+  // ── Section headers ──
+  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.xl, marginTop: spacing.xl, marginBottom: spacing.md },
+  sectionTitle: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface },
+  sectionLink: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.brand },
+
+  // ── Priority alert card ──
+  alertCard: {
+    marginHorizontal: spacing.xl, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm,
+    backgroundColor: "rgba(217,83,79,0.06)", borderWidth: 1, borderColor: "rgba(217,83,79,0.18)",
+  },
+  alertTop: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  alertIconWrap: { width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(217,83,79,0.14)", alignItems: "center", justifyContent: "center" },
+  alertBadge: { backgroundColor: "rgba(217,83,79,0.14)", borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+  alertBadgeText: { fontFamily: fonts.textSemibold, fontSize: 10, color: c.barking, letterSpacing: 0.5, textTransform: "uppercase" },
+  alertTime: { fontFamily: fonts.text, fontSize: 11, color: c.onSurfaceSecondary, marginLeft: "auto" },
+  alertTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface },
+  alertDesc: { fontFamily: fonts.text, fontSize: 13, lineHeight: 19, color: c.onSurfaceSecondary },
+  alertBtn: {
+    borderRadius: radius.sm, borderWidth: 1, borderColor: c.barking,
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.lg,
+    alignItems: "center", alignSelf: "flex-start", marginTop: spacing.xs,
+  },
+  alertBtnText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.barking },
+
+  // ── Activity row ──
+  activityCard: {
+    marginHorizontal: spacing.xl, borderRadius: radius.lg, padding: spacing.lg,
+    backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border,
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+  },
+  activityIconWrap: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center" },
+  activityContent: { flex: 1, gap: 2 },
+  activityText: { fontFamily: fonts.textMedium, fontSize: 14, color: c.onSurface },
+  activitySub: { fontFamily: fonts.text, fontSize: 12, color: c.onSurfaceSecondary },
+  activityTime: { fontFamily: fonts.text, fontSize: 11, color: c.onSurfaceSecondary },
+  findingLink: { fontFamily: fonts.textSemibold, fontSize: 12, color: c.brand },
 }));
+
+// Map Apollo state to hero card background + status colors
+const HERO_BG: Record<string, string> = {
+  resting: "#E8F5EE", sniffing: "#EDF2F7", ears_up: "#FDF5E3",
+  growling: "#FEF0E0", barking: "#FDECEB", biting: "#FDECEB",
+};
 
 export default function Home() {
   const s = useStyles();
@@ -49,95 +135,227 @@ export default function Home() {
   const health = useProtectionHealth();
   const { recovery, dismiss: dismissRecovery } = useRecoveryTracker(protection?.operational);
 
-  // Specific, real issues that need the person — computed once from live gate + event data.
   const attention = React.useMemo(
     () => (health.checking ? [] : buildHomeAttention({ gates: health.gates, events })),
     [health.checking, health.gates, events],
   );
+
+  const voice = React.useMemo(
+    () => buildHomeVoice({ resolution, attention, gates: health.gates, capabilities }),
+    [resolution, attention, health.gates, capabilities],
+  );
+
+  const securityFindings = React.useMemo(() => buildSecurityFindings({ gates: health.gates, events }), [health.gates, events]);
   const scents = buildScents(events);
+
+  // Most recent consumer event for the "Recent activity" section
+  const recentEvent = React.useMemo(() => {
+    const consumer = events.filter(isConsumerPatrolEvent);
+    return consumer.length > 0 ? consumer[0] : null;
+  }, [events]);
+
+  const state = resolution.state;
+  const stateLabel = STATE_LABEL[state] ?? "Apollo is Patrolling";
+  const heroBg = HERO_BG[state] ?? HERO_BG.resting;
+  const statusColor = toneColor(colors, state);
+  const gif = STATE_GIF[state];
 
   return (
     <View style={s.root}>
-      <View style={{ paddingTop: insets.top + spacing.md }}>
-        <RootScreenHeader title="Home" testID="home-header" rightAccessory={isMock ? <DevTag label="Preview" testID="home-mock-pill" /> : null} />
+      {/* ── Branded Header ── */}
+      <View style={[s.header, { paddingTop: insets.top + spacing.md }]}>
+        <View style={s.headerRow}>
+          <View>
+            <Text style={s.brandTitle} testID="home-brand-title">Apollo Scam Guard</Text>
+            <Text style={s.brandSubtitle}>Safer People. Safer Tomorrows.</Text>
+          </View>
+          {isMock ? <DevTag label="Preview" testID="home-mock-pill" /> : null}
+          <Pressable testID="home-settings" accessibilityRole="button" accessibilityLabel="Settings" onPress={() => router.push("/settings")} style={s.settingsBtn}>
+            <Settings size={20} color={colors.onSurfaceSecondary} />
+          </Pressable>
+        </View>
       </View>
-      <ScrollView contentContainerStyle={s.content} testID="home-scroll">
-        {/* 1. Apollo's current threat status — small emblem, one short Higgins paragraph (gate names
-         *    dynamically generated), and ONE primary action (View Protection Details or the
-         *    specific issue). Details live on the next screen. */}
-        <ApolloHero resolution={resolution} adapterLabel={adapterLabel} isMock={isMock} capabilities={capabilities} animate={!lowPower} quietNow={quietNow} sniffing={refreshing} attention={attention} gates={health.gates} />
 
-        {/* Improvement 5: Recovery banner — shows when protection was interrupted and is now restored. */}
-        <RecoveryBanner recovery={recovery} onDismiss={dismissRecovery} testID="home-recovery-banner" />
-
-        {/* 2. Protection Status — always visible, opens Protection screen. */}
-        <CoverageCard />
-
-        {/* 3. Learn with Higgins — always visible, opens the learning experience. */}
-        <Pressable testID="home-learn-higgins" accessibilityRole="button" accessibilityLabel="Learn with Higgins" accessibilityHint="Open Apollo's scam-safety guidance library" onPress={() => router.push("/higgins/learning")} style={({ pressed }) => [{ opacity: pressed ? 0.8 : 1 }]}>
-          <Card style={s.learnCard}>
-            <View style={s.learnIcon}><GraduationCap size={23} color={colors.brand} /></View>
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text style={s.learnTitle}>Learn with Higgins</Text>
-              <Text style={s.learnBody}>Plain-English guidance on how common scams work and how to stay safe.</Text>
+      <ScrollView contentContainerStyle={s.scroll} testID="home-scroll" showsVerticalScrollIndicator={false}>
+        {/* ── Hero Status Card ── */}
+        <Pressable
+          testID="home-hero-card"
+          accessibilityRole="button"
+          accessibilityLabel={stateLabel}
+          onPress={() => voice.ctaRoute ? router.push(voice.ctaRoute as any) : null}
+          style={[s.heroCard, { backgroundColor: heroBg }]}
+        >
+          <View style={s.heroInner}>
+            <View style={s.heroImageWrap}>
+              <Image
+                source={gif ? gif.src : FALLBACK_IMAGE}
+                style={s.heroImage}
+                contentFit="cover"
+                autoplay
+                accessibilityLabel={gif?.label ?? "Apollo"}
+                testID="home-hero-gif"
+              />
             </View>
-          </Card>
+            <View style={s.heroContent}>
+              <View style={s.heroStatusRow}>
+                <View style={[s.heroStatusDot, { backgroundColor: statusColor }]} />
+                <Text style={[s.heroStatusText, { color: colors[`${state}Text` as keyof typeof colors] as string || colors.restingText }]}>{stateLabel}</Text>
+              </View>
+              <Text style={s.heroExplanation} numberOfLines={4}>{voice.text}</Text>
+            </View>
+          </View>
+          <View style={s.heroMeta}>
+            <Text style={s.heroMetaText}>Always watching for you</Text>
+            <Text style={s.heroPaw}>Apollo 🐾</Text>
+          </View>
         </Pressable>
 
-        {/* 4. Conditional priority Scam Alert notice — only shows if a credible high-priority
-         *    external alert exists. Does NOT change Apollo's state. */}
-        <PriorityScamNotice />
+        {/* Recovery banner */}
+        <View style={{ paddingHorizontal: spacing.xl, marginTop: spacing.sm }}>
+          <RecoveryBanner recovery={recovery} onDismiss={dismissRecovery} testID="home-recovery-banner" />
+        </View>
 
-        {/* 5. Other genuinely useful Home content. */}
+        {/* ── Two Side-by-Side Cards ── */}
+        <View style={s.twoCards}>
+          {/* Protection Status Card */}
+          <Pressable
+            testID="home-protection-card"
+            accessibilityRole="button"
+            accessibilityLabel="Protection Status"
+            onPress={() => router.push("/(tabs)/protection")}
+            style={({ pressed }) => [s.halfCard, { backgroundColor: "rgba(22,34,53,0.04)", borderColor: "rgba(22,34,53,0.12)", opacity: pressed ? 0.85 : 1 }]}
+          >
+            <View style={[s.halfCardIconWrap, { backgroundColor: "rgba(22,34,53,0.10)" }]}>
+              <ShieldCheck size={20} color={colors.brand} />
+            </View>
+            <Text style={s.halfCardTitle}>Protection Status</Text>
+            <Text style={s.halfCardDesc} numberOfLines={3}>See what Apollo is protecting. Gate health, limitations and action needed.</Text>
+            <View style={[s.halfCardBtn, { backgroundColor: colors.brand }]}>
+              <Text style={[s.halfCardBtnText, { color: colors.onBrand }]}>View Protection</Text>
+            </View>
+          </Pressable>
 
-        {/* Latest meaningful security activity with real timestamp. */}
-        {events.length > 0 ? (
-          <LatestActivityRow events={events} testID="home-latest-activity" />
-        ) : null}
+          {/* Learn with Higgins Card */}
+          <Pressable
+            testID="home-learn-card"
+            accessibilityRole="button"
+            accessibilityLabel="Learn with Higgins"
+            onPress={() => router.push("/higgins/learning")}
+            style={({ pressed }) => [s.halfCard, { backgroundColor: "rgba(201,163,74,0.06)", borderColor: "rgba(201,163,74,0.20)", opacity: pressed ? 0.85 : 1 }]}
+          >
+            <View style={[s.halfCardIconWrap, { backgroundColor: colors.goldTint }]}>
+              <GraduationCap size={20} color={colors.gold} />
+            </View>
+            <Text style={s.halfCardTitle}>Learn with Higgins</Text>
+            <Text style={s.halfCardDesc} numberOfLines={3}>Friendly, practical lessons about scams, cyber security and staying safer online.</Text>
+            <View style={[s.halfCardBtn, { backgroundColor: colors.gold }]}>
+              <Text style={[s.halfCardBtnText, { color: "#FFFFFF" }]}>Start Learning</Text>
+            </View>
+          </Pressable>
+        </View>
 
-        {identityReset ? (
-          <Card style={{ gap: spacing.sm, borderColor: colors.barking }} testID="identity-reset-card">
-            <Text style={s.cardTitle}>Apollo needs to re-register this phone</Text>
-            <Body testID="identity-reset-why">{identityReset}</Body>
-            <Body>Your on-phone Patrol history is untouched. Family pairings and shared incidents were tied to the old identity — after re-registering, pair with family again. Nothing is sent to Apollo&apos;s servers until you do.</Body>
-            <Button testID="identity-reset-register" label="Register this phone again" onPress={() => void reRegisterDevice().catch((e: Error) => showToast(e.message, "barking"))} />
-          </Card>
-        ) : null}
-        <ServiceBanner />
-        <HigginsFollowUp />
-        <ClipboardLinkBanner />
-
-        {/* Compact background-protection indicator. */}
-        {protection?.operational ? (
-          <View style={s.bgRow} testID="home-background-row">
-            <BatteryCharging size={16} color={colors.resting} />
-            <Text style={s.bgText} numberOfLines={1}>Apollo is protecting in the background.</Text>
-            <Pressable testID="home-minimise" accessibilityRole="button" hitSlop={8} onPress={() => void minimiseApp(showToast)}>
-              <Text style={s.bgMinimise}>Minimise</Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        {scents.length ? (
+        {/* ── Important For You ── */}
+        {(securityFindings.length > 0 || true) ? (
           <View>
-            <SectionTitle>Connected events (Threat Scent)</SectionTitle>
-            {scents.slice(0, 2).map((sc) => (
-              <Pressable key={sc.scent_id} testID={`home-scent-${sc.scent_id}`} accessibilityRole="button" onPress={() => router.push({ pathname: "/patrol/scent/[id]", params: { id: sc.scent_id } })}>
-                <Card style={{ gap: spacing.xs, borderColor: toneColor(colors, sc.state) }}>
-                  <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center", flexWrap: "wrap" }}><Pill tone={sc.state} label={STATE_NAME[sc.state]} />{sc.brand ? <Pill tone="neutral" label={sc.brand} /> : null}<Pill tone="neutral" label={`${sc.events.length} events`} /></View>
-                  <Body>{sc.summary}</Body>
-                  <Body>Tap to see the timeline and one Stay With Me plan for the whole incident.</Body>
-                </Card>
+            <View style={s.sectionHeader}>
+              <Text style={s.sectionTitle}>Important for you</Text>
+              <Pressable onPress={() => router.push("/(tabs)/patrol")} hitSlop={8}>
+                <Text style={s.sectionLink}>View all</Text>
+              </Pressable>
+            </View>
+            {/* Priority Scam Alert — compact summary with link */}
+            <PriorityScamNotice compact />
+            {securityFindings.slice(0, 2).map((finding) => (
+              <Pressable key={finding.id} testID={`home-finding-${finding.id}`} onPress={() => router.push(finding.route as any)} style={[s.activityCard, { marginBottom: spacing.sm }]}>
+                <View style={[s.activityIconWrap, { backgroundColor: colors.barkingTint }]}>
+                  <MessageSquare size={16} color={colors.barking} />
+                </View>
+                <View style={s.activityContent}>
+                  <Text style={s.activityText} numberOfLines={1}>{finding.title}</Text>
+                </View>
+                <Text style={s.findingLink}>View details</Text>
+                <ChevronRight size={14} color={colors.brand} />
               </Pressable>
             ))}
           </View>
         ) : null}
 
-        {/* Apollo's Day on Patrol — daily activity summary. */}
-        {events.length > 0 ? (
-          <DailyActivityCard events={events} testID="home-daily-activity" />
+        {/* ── Recent Activity ── */}
+        {recentEvent ? (
+          <View>
+            <View style={s.sectionHeader}>
+              <Text style={s.sectionTitle}>Recent activity</Text>
+              <Pressable onPress={() => router.push("/(tabs)/patrol")} hitSlop={8}>
+                <Text style={s.sectionLink}>View all</Text>
+              </Pressable>
+            </View>
+            <Pressable
+              testID="home-recent-activity"
+              accessibilityRole="button"
+              onPress={() => router.push(`/patrol/${encodeURIComponent(recentEvent.event_id)}` as any)}
+              style={s.activityCard}
+            >
+              <View style={s.activityIconWrap}>
+                <MessageSquare size={16} color={colors.onSurfaceSecondary} />
+              </View>
+              <View style={s.activityContent}>
+                <Text style={s.activityText} numberOfLines={2}>{recentEvent.headline || "Apollo recorded activity"}</Text>
+                <Text style={s.activitySub} numberOfLines={1}>{recentEvent.what_happened || "Tap to see details."}</Text>
+              </View>
+              <Text style={s.activityTime}>{timeAgo(recentEvent.occurred_at)}</Text>
+              <ChevronRight size={16} color={colors.onSurfaceSecondary} />
+            </Pressable>
+          </View>
+        ) : null}
+
+        {/* ── Utility banners (compact) ── */}
+        <View style={{ paddingHorizontal: spacing.xl, gap: spacing.md, marginTop: spacing.xl }}>
+          {identityReset ? (
+            <Card style={{ gap: spacing.sm, borderColor: colors.barking }} testID="identity-reset-card">
+              <Text style={{ fontFamily: fonts.displayBold, fontSize: 15, color: colors.brand }}>Apollo needs to re-register this phone</Text>
+              <Body testID="identity-reset-why">{identityReset}</Body>
+              <Button testID="identity-reset-register" label="Register this phone again" onPress={() => void reRegisterDevice().catch((e: Error) => showToast(e.message, "barking"))} />
+            </Card>
+          ) : null}
+          <ServiceBanner />
+          <HigginsFollowUp />
+          <ClipboardLinkBanner />
+        </View>
+
+        {/* Threat Scent clusters */}
+        {scents.length ? (
+          <View style={{ paddingHorizontal: spacing.xl, marginTop: spacing.xl }}>
+            <View style={s.sectionHeader}>
+              <Text style={s.sectionTitle}>Connected events</Text>
+            </View>
+            {scents.slice(0, 2).map((sc) => (
+              <Pressable key={sc.scent_id} testID={`home-scent-${sc.scent_id}`} accessibilityRole="button" onPress={() => router.push({ pathname: "/patrol/scent/[id]", params: { id: sc.scent_id } })}>
+                <Card style={{ gap: spacing.xs, borderColor: toneColor(colors, sc.state), marginBottom: spacing.sm }}>
+                  <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center", flexWrap: "wrap" }}>
+                    <Pill tone={sc.state} label={STATE_NAME[sc.state]} />
+                    {sc.brand ? <Pill tone="neutral" label={sc.brand} /> : null}
+                    <Pill tone="neutral" label={`${sc.events.length} events`} />
+                  </View>
+                  <Body>{sc.summary}</Body>
+                </Card>
+              </Pressable>
+            ))}
+          </View>
         ) : null}
       </ScrollView>
     </View>
   );
+}
+
+/** Simple relative time label */
+function timeAgo(iso: string): string {
+  const diff = Date.now() - Date.parse(iso);
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "1 day ago";
+  return `${days} days ago`;
 }

@@ -10,7 +10,7 @@ import { Pressable, Text, View } from "react-native";
 
 import { Body, Button, Card, Pill, type Tone } from "@/src/components/ui";
 import { governmentScams, type GovernmentAlert } from "@/src/higgins/hubClient";
-import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
+import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 const SEVERITY_TONE: Record<GovernmentAlert["severity"], Tone> = { EXTREME: "barking", HIGH: "growling", MODERATE: "ears_up", LOW: "neutral" };
 
@@ -25,6 +25,18 @@ const useStyles = makeStyles((c) => ({
   higginsMessage: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurface },
   meta: { fontFamily: fonts.text, fontSize: 12, color: c.onSurfaceSecondary },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" },
+  // ── Compact mode (Home) ──
+  compactCard: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    marginHorizontal: spacing.xl, marginBottom: spacing.sm,
+    borderRadius: radius.md, padding: spacing.md,
+    backgroundColor: c.surfaceSecondary, borderWidth: 1, borderColor: c.border,
+  },
+  compactIconWrap: { width: 32, height: 32, borderRadius: 16, backgroundColor: c.growlingTint, alignItems: "center", justifyContent: "center" },
+  compactContent: { flex: 1, gap: 1 },
+  compactTitle: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.onSurface },
+  compactSub: { fontFamily: fonts.text, fontSize: 12, color: c.onSurfaceSecondary },
+  compactLink: { fontFamily: fonts.textSemibold, fontSize: 12, color: c.brand },
 }));
 
 /** Deduplicate alerts by normalised title — keep the most recently updated per campaign. */
@@ -70,7 +82,7 @@ function higginsMessage(alert: GovernmentAlert): string {
   return `There's an important new warning about ${alert.title.toLowerCase()}. ${alert.summary || ""} You don't need to do anything unless you've received something suspicious. Tap below to read the full warning.`.trim();
 }
 
-export function PriorityScamNotice() {
+export function PriorityScamNotice({ compact = false }: { compact?: boolean } = {}) {
   const s = useStyles();
   const { colors } = useTheme();
   const [items, setItems] = useState<GovernmentAlert[]>([]);
@@ -99,6 +111,30 @@ export function PriorityScamNotice() {
 
   if (!priorityAlert) return null;
 
+  /* ── Compact mode: short summary row with "View details" link ── */
+  if (compact) {
+    return (
+      <Pressable
+        testID="home-priority-scam-compact"
+        accessibilityRole="button"
+        onPress={() => void Linking.openURL(priorityAlert.url)}
+        style={s.compactCard}
+      >
+        <View style={s.compactIconWrap}>
+          <TriangleAlert size={16} color={colors.growling} />
+        </View>
+        <View style={s.compactContent}>
+          <Text style={s.compactTitle} numberOfLines={1}>{priorityAlert.title}</Text>
+          <Text style={s.compactSub} numberOfLines={1}>
+            {priorityAlert.severity === "EXTREME" ? "Extreme" : "High priority"} · {priorityAlert.source}
+          </Text>
+        </View>
+        <Text style={s.compactLink}>View details</Text>
+      </Pressable>
+    );
+  }
+
+  /* ── Full mode (used on dedicated screens) ── */
   return (
     <Card style={s.card} testID="home-priority-scam-notice">
       <View style={s.header}>
