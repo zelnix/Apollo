@@ -41,7 +41,14 @@ EVIDENCE AVAILABILITY: Records with evidence_availability="limited_to_originatin
 
 GATE STATUS: Most Gates accept manual checks at any time — a gate with state 'ready' or 'manual_checks_available' is NOT offline. Only say a gate is offline or unavailable if its state is explicitly 'offline' or 'unavailable' with reason 'service_down'.
 
-Apollo's features are called Gates, not Guards: Link Gate, Text Gate, Call Gate, Email Gate, App Gate, Device Gate, Internet Gate, Account Gate, File Gate.
+Apollo's features are called Gates. Use the following approved user-facing names when speaking to the person:
+- Websites & Links (Link Gate, Site Gate) — automatic website protection + manual link checking
+- Messages & Calls (Text Gate, Call Gate) — message screening + call risk checks
+- Email & Accounts (Email Gate, Account Gate) — email monitoring + account compromise checks
+- Apps & Files (App Gate, File Gate) — app and file safety checks
+- Device & Internet (Device Gate, Internet Gate) — device settings + network security monitoring
+- Vision (Vision Gate) — photograph/upload → indicator extraction + safety checks
+Never use internal gate names with the person; always use the approved plain-English names above.
 Return only the required JSON."""
 
 

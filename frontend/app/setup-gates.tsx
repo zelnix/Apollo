@@ -160,8 +160,8 @@ export default function SetupGates() {
           <View style={{ gap: spacing.sm }}>
             <ApolloLogo size={72} />
             <Text style={s.eyebrow}>You&apos;re set up</Text>
-            <Text style={s.title} testID="setup-gates-recap-title">{onCount === recap.length ? "Apollo is fully on" : "Protection active — reduced coverage"}</Text>
-            <Text style={s.progress} testID="setup-gates-recap-count">{onCount} of {recap.length} {recap.length === 1 ? "protection" : "protections"} active</Text>
+            <Text style={s.title} testID="setup-gates-recap-title">{onCount === recap.length ? "Apollo is ready" : "Setup complete — some protections pending"}</Text>
+            <Text style={s.progress} testID="setup-gates-recap-count">{onCount} of {recap.length} {recap.length === 1 ? "protection" : "protections"} enabled</Text>
           </View>
           <Card style={{ gap: spacing.sm }} testID="setup-gates-recap-list">
             {recap.map((r) => (

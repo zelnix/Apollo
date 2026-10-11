@@ -20,11 +20,13 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-nati
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiUpload } from "@/src/api/client";
-import { getDeviceToken } from "@/src/auth/deviceIdentity";
+import { getDeviceIdentity } from "@/src/auth/deviceIdentity";
 import { ImagePrivacyGate, type GateResult } from "@/src/components/ImagePrivacyGate";
 import { screenImage, type ScreeningResult } from "@/src/domain/imagePrivacy";
 import { Body, Button, Card, Pill } from "@/src/components/ui";
 import { recordCheck } from "@/src/store/checkHistoryStore";
+import { useApollo } from "@/src/store/ApolloContext";
+import type { ApolloState, PatrolEvent } from "@/src/domain/types";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
 // ── Types ──
@@ -51,6 +53,47 @@ interface VisionResult {
 }
 
 type VisionStage = "pick" | "screening" | "investigating" | "result" | "error";
+
+// ── Fix 6: Gate-to-plain-English capability name translation ──
+// Uses the approved user-facing capability names from the protection areas.
+const GATE_DISPLAY_NAME: Record<string, string> = {
+  "Link Gate": "Websites & Links",
+  "Site Gate": "Websites & Links",
+  "Text Gate": "Messages & Calls",
+  "Call Gate": "Messages & Calls",
+  "Email Gate": "Email & Accounts",
+  "Account Gate": "Email & Accounts",
+  "App Gate": "Apps & Files",
+  "File Gate": "Apps & Files",
+  "Device Gate": "Device & Internet",
+  "Internet Gate": "Device & Internet",
+  "Vision Gate": "Vision",
+  // Also handle lowercase or code-style names from backend
+  "link_gate": "Websites & Links",
+  "site_gate": "Websites & Links",
+  "text_gate": "Messages & Calls",
+  "call_gate": "Messages & Calls",
+  "email_gate": "Email & Accounts",
+  "account_gate": "Email & Accounts",
+  "app_gate": "Apps & Files",
+  "file_gate": "Apps & Files",
+  "device_gate": "Device & Internet",
+  "internet_gate": "Device & Internet",
+  "vision_gate": "Vision",
+};
+
+function translateGateName(rawGate: string): string {
+  return GATE_DISPLAY_NAME[rawGate] ?? rawGate.replace(/_/g, " ");
+}
+
+// ── Fix 4: Map severity to the correct ApolloState string ──
+function severityToState(severity: string | undefined): ApolloState {
+  switch (severity) {
+    case "high": return "barking";
+    case "medium": return "growling";
+    default: return "resting";
+  }
+}
 
 // ── Styles ──
 
@@ -91,6 +134,7 @@ export default function VisionScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { upsertEvent } = useApollo();
 
   const [stage, setStage] = useState<VisionStage>("pick");
   const [showPrivacyGate, setShowPrivacyGate] = useState(false);
@@ -147,6 +191,48 @@ export default function VisionScreen() {
     }
   }, [screenAndShow]);
 
+  // ── Fix 7: Create a Patrol event from the Vision investigation result ──
+
+  const createPatrolEvent = useCallback(async (res: VisionResult, mode: "image" | "text_only"): Promise<void> => {
+    const state = severityToState(res.higgins?.severity);
+    const threatIndicators = res.findings.filter(
+      (f) => f.verdict === "malicious" || f.verdict === "suspicious",
+    );
+    const now = new Date().toISOString();
+    const indicatorHost = threatIndicators.find((f) => f.indicator)?.indicator ?? null;
+
+    const event: PatrolEvent = {
+      event_id: `vision_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      device_id: "local",
+      category: "protection",
+      state,
+      status: threatIndicators.length > 0 ? "active" : "resolved",
+      headline: res.higgins?.headline || "Visual investigation",
+      what_happened: res.higgins?.explanation || res.description || "Apollo investigated an image you showed it.",
+      why: res.suspicious_indicators.length > 0 ? res.suspicious_indicators : [],
+      what_to_do: res.higgins?.action || "No action required.",
+      indicator_host: indicatorHost,
+      indicator_digest: null,
+      verified_block: false,
+      evidence_provenance: "local_device",
+      adapter_label: mode === "text_only" ? "Vision (text)" : "Vision",
+      occurred_at: now,
+      resolved_at: threatIndicators.length > 0 ? null : now,
+      background: false,
+      claimed_brand: res.claimed_brand || null,
+      trust_allowed: false,
+    };
+
+    await upsertEvent(event);
+
+    // Also record in check history (fix 4: state is a plain string)
+    void recordCheck("vision", {
+      at: now,
+      state,
+      summary: res.higgins?.headline || (mode === "text_only" ? "Visual investigation (text only)" : "Visual investigation"),
+    });
+  }, [upsertEvent]);
+
   // ── Privacy Gate complete → investigate ──
 
   const onGateComplete = useCallback(async (gateResult: GateResult) => {
@@ -163,21 +249,26 @@ export default function VisionScreen() {
     setProgressMessage("Apollo is investigating...");
 
     try {
-      const deviceToken = await getDeviceToken();
-      if (!deviceToken) throw new Error("Device not registered");
+      // Fix 3: Use the actual device ID, not the bearer token
+      const identity = await getDeviceIdentity();
+      if (!identity) throw new Error("Device not registered");
 
-      const hasImage = gateResult.decision === "approved" && gateResult.imageUri;
+      // Fix 1: Align with SanitizationDecision contract
+      // "sanitised_image" = redacted image approved, "no_sensitive" = unredacted image approved
+      const hasImage =
+        (gateResult.decision === "sanitised_image" || gateResult.decision === "no_sensitive") &&
+        gateResult.imageUri;
       const extractedText = gateResult.text || "";
 
       if (hasImage) {
         // Send privacy-screened image + text to backend
         setProgressMessage("Checking for security indicators...");
         const fields: Record<string, string> = {
-          device_id: deviceToken,
+          device_id: identity.deviceId,                                     // Fix 3: actual device ID
           extracted_text: extractedText,
-          sanitization_status: "approved",
-          sanitization_receipt_id: gateResult.receipt?.id || "",
-          sanitization_digest: gateResult.receipt?.digest || "",
+          sanitization_status: gateResult.decision,                         // Fix 1: actual decision value
+          sanitization_receipt_id: gateResult.receipt?.receiptId || "",      // Fix 2: correct field name
+          sanitization_digest: gateResult.receipt?.imageDigest || "",        // Fix 2: correct field name
         };
         const response = await apiUpload<VisionResult>(
           "/vision/investigate",
@@ -187,17 +278,13 @@ export default function VisionScreen() {
         );
         setResult(response);
         setStage("result");
-        // Record in check history
-        void recordCheck("vision", {
-          at: new Date().toISOString(),
-          state: { state: response.higgins?.severity === "high" ? "barking" : response.higgins?.severity === "medium" ? "growling" : "resting" },
-          summary: response.higgins?.headline || "Visual investigation",
-        });
+        // Fix 7: Create Patrol event from investigation result
+        void createPatrolEvent(response, "image");
       } else {
         // Text-only mode (image withheld, OCR text approved)
         setProgressMessage("Checking extracted text for security indicators...");
         const fields: Record<string, string> = {
-          device_id: deviceToken,
+          device_id: identity.deviceId,                                     // Fix 3: actual device ID
           extracted_text: extractedText,
           sanitization_status: "text_only",
         };
@@ -210,18 +297,14 @@ export default function VisionScreen() {
         );
         setResult(response);
         setStage("result");
-        // Record in check history
-        void recordCheck("vision", {
-          at: new Date().toISOString(),
-          state: { state: response.higgins?.severity === "high" ? "barking" : response.higgins?.severity === "medium" ? "growling" : "resting" },
-          summary: response.higgins?.headline || "Visual investigation (text only)",
-        });
+        // Fix 7: Create Patrol event from investigation result
+        void createPatrolEvent(response, "text_only");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Investigation failed. Please try again.");
       setStage("error");
     }
-  }, []);
+  }, [createPatrolEvent]);
 
   const onGateCancel = useCallback(() => {
     setShowPrivacyGate(false);
@@ -237,7 +320,7 @@ export default function VisionScreen() {
     setError(null);
   }, []);
 
-  // ── Severity color ──
+  // ── Severity color ── (Fix 5: use existing theme colors only)
   const severityColor = useMemo(() => {
     if (!result) return colors.brand;
     switch (result.higgins?.severity) {
@@ -251,8 +334,8 @@ export default function VisionScreen() {
     if (!result) return colors.border;
     switch (result.higgins?.severity) {
       case "high": return colors.barkingTint;
-      case "medium": return colors.growlingBorder;
-      default: return colors.restingBorder;
+      case "medium": return colors.growlingTint;     // Fix: growlingBorder doesn't exist → growlingTint
+      default: return colors.restingTint;             // Fix: restingBorder doesn't exist → restingTint
     }
   }, [result, colors]);
 
@@ -399,7 +482,7 @@ export default function VisionScreen() {
               </View>
             </View>
 
-            {/* What Apollo checked */}
+            {/* What Apollo checked — Fix 6: use plain-English capability names */}
             {result.checks_performed.length > 0 ? (
               <View style={s.resultSection} testID="vision-checked">
                 <Text style={s.sectionTitle}>What Apollo checked</Text>
@@ -407,7 +490,7 @@ export default function VisionScreen() {
                   <View key={`check-${i}`} style={s.findingRow}>
                     <CircleCheckBig size={16} color={colors.resting} />
                     <View style={{ flex: 1 }}>
-                      <Text style={s.findingLabel}>{check.gate}: {check.type.replace(/_/g, " ")}</Text>
+                      <Text style={s.findingLabel}>{translateGateName(check.gate)}: {check.type.replace(/_/g, " ")}</Text>
                       {check.indicator ? <Text style={s.findingDetail}>{check.indicator}</Text> : null}
                     </View>
                   </View>
@@ -415,7 +498,7 @@ export default function VisionScreen() {
               </View>
             ) : null}
 
-            {/* What Apollo found */}
+            {/* What Apollo found — Fix 6: use plain-English capability names */}
             {result.findings.length > 0 ? (
               <View style={s.resultSection} testID="vision-findings">
                 <Text style={s.sectionTitle}>What Apollo found</Text>
@@ -426,7 +509,7 @@ export default function VisionScreen() {
                       {isThreat ? <TriangleAlert size={16} color={colors.barking} /> : <Info size={16} color={colors.muted} />}
                       <View style={{ flex: 1 }}>
                         <Text style={[s.findingLabel, isThreat ? { color: colors.barking } : undefined]}>
-                          {finding.gate}: {finding.type.replace(/_/g, " ")}
+                          {translateGateName(finding.gate)}: {finding.type.replace(/_/g, " ")}
                         </Text>
                         {finding.verdict ? <Text style={s.findingDetail}>Verdict: {finding.verdict}</Text> : null}
                         {finding.detail ? <Text style={s.findingDetail}>{finding.detail}</Text> : null}

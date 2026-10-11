@@ -826,9 +826,9 @@ async def vision_investigate(
             try:
                 normalized, host = sanitize_url(raw_url if raw_url.startswith("http") else f"https://{raw_url}")
                 intel_result = await assess_indicator("url", normalized, True)
-                checks_performed.append({"gate": "Link Gate", "type": "url", "indicator": normalized, "host": host})
+                checks_performed.append({"gate": "Websites & Links", "type": "url", "indicator": normalized, "host": host})
                 findings.append({
-                    "gate": "Link Gate",
+                    "gate": "Websites & Links",
                     "type": "url",
                     "indicator": normalized,
                     "host": host,
@@ -846,14 +846,14 @@ async def vision_investigate(
         for email in email_addresses[:3]:
             email_clean = email.strip().lower()
             if re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email_clean):
-                checks_performed.append({"gate": "Account Gate", "type": "email", "indicator": email_clean})
+                checks_performed.append({"gate": "Email & Accounts", "type": "email", "indicator": email_clean})
                 # Note: we check if breach lookup is configured
                 if HIBP_API_KEY:
                     try:
                         from services.breach_check import scan_email
                         outcome = await scan_email(email_clean)
                         findings.append({
-                            "gate": "Account Gate",
+                            "gate": "Email & Accounts",
                             "type": "email_breach",
                             "indicator": email_clean,
                             "status": outcome["status"],
@@ -873,9 +873,9 @@ async def vision_investigate(
     # 3c) Phone numbers noted for Call Gate (no automated calling)
     if phone_numbers:
         for phone in phone_numbers[:3]:
-            checks_performed.append({"gate": "Call Gate", "type": "phone", "indicator": phone})
+            checks_performed.append({"gate": "Messages & Calls", "type": "phone", "indicator": phone})
             findings.append({
-                "gate": "Call Gate",
+                "gate": "Messages & Calls",
                 "type": "phone_noted",
                 "indicator": phone,
                 "detail": "Phone number extracted. Apollo does not call numbers automatically.",
@@ -889,14 +889,14 @@ async def vision_investigate(
                 sender="", text=text_for_analysis[:3000],
                 urls=all_urls[:5],
                 claimed_brand=claimed_brand or None,
-                local_state=ApolloState(state="growling"),
+                local_state="growling",
                 url_context=[],
                 use_model=bool(GEMINI_API_KEY),
                 locale=None,
             )
-            checks_performed.append({"gate": "Text Gate", "type": "message_analysis"})
+            checks_performed.append({"gate": "Messages & Calls", "type": "message_analysis"})
             findings.append({
-                "gate": "Text Gate",
+                "gate": "Messages & Calls",
                 "type": "message_analysis",
                 "assessment": assessment.model_dump() if hasattr(assessment, "model_dump") else {},
             })
