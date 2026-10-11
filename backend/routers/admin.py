@@ -11,7 +11,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator
 
 from core.db import db, now_utc
-from core.models import BlocklistEntry
+from core.models import BlocklistEntry, ThreatIndicatorIn, ThreatIndicatorWithdrawIn, ThreatIndicator
 from routers.intel import intel_status
 from services.patrol_policy import revalidate_stored_patrol
 
@@ -150,3 +150,176 @@ async def admin_revoke_device(device_id: str, request: Request, actor: Optional[
         raise HTTPException(status_code=404, detail="Unknown or already revoked device.")
     await audit(request, "device.revoke", device_id, None, actor)
     return Response(status_code=204)
+
+
+
+# --------------------------------------------------------------------------- Threat indicators
+# Stage 1: threat-intelligence lifecycle foundation. Full provenance, verification
+# timestamps, revalidation scheduling, expiry, withdrawal records, audit trail.
+# Current production rule delivery (/api/guarddog/rules) is UNCHANGED.
+
+def _ti_row(d: dict[str, Any]) -> dict[str, Any]:
+    """Project a threat indicator for the admin API — never expose _id."""
+    out = {k: d.get(k) for k in (
+        "indicator_id", "hostname", "scope", "source", "source_reference",
+        "original_evidence", "original_scope", "status", "review_status",
+        "first_seen_at", "last_verified_at", "next_scheduled_check",
+        "evidence_expiry_deadline", "verification_count",
+        "last_revalidation_outcome", "last_revalidation_at",
+        "consecutive_check_failures", "added_at", "updated_at",
+        "withdrawn_at", "withdrawal_reason", "added_by",
+    )}
+    return out
+
+
+@router.get("/threat-indicators")
+async def admin_list_threat_indicators(
+    status: Optional[str] = None,
+    source: Optional[str] = None,
+    hostname: Optional[str] = None,
+    include_withdrawn: bool = False,
+    limit: int = Query(default=200, le=2000),
+):
+    q: dict[str, Any] = {}
+    if status:
+        q["status"] = status
+    elif not include_withdrawn:
+        q["status"] = {"$ne": "withdrawn"}
+    if source:
+        q["source"] = source
+    if hostname:
+        q["hostname"] = hostname.strip().lower()
+    rows = await db.threat_indicators.find(q, {"_id": 0}).sort("updated_at", -1).to_list(limit)
+    return {"indicators": [_ti_row(r) for r in rows], "total": len(rows)}
+
+
+@router.get("/threat-indicators/{indicator_id}")
+async def admin_get_threat_indicator(indicator_id: str):
+    doc = await db.threat_indicators.find_one({"indicator_id": indicator_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Unknown threat indicator.")
+    # Include revalidation history
+    logs = await db.threat_revalidation_log.find(
+        {"indicator_id": indicator_id}, {"_id": 0}
+    ).sort("attempted_at", -1).to_list(50)
+    return {"indicator": _ti_row(doc), "revalidation_history": logs}
+
+
+@router.post("/threat-indicators", status_code=201)
+async def admin_add_threat_indicator(
+    body: ThreatIndicatorIn,
+    request: Request,
+    actor: Optional[str] = Header(default=None, alias="X-Admin-Actor"),
+):
+    """Add a new threat indicator with full provenance. Does NOT modify the production rule bundle."""
+    import re as _re
+    hostname = body.hostname.strip().lower().rstrip(".")
+    if not _re.fullmatch(r"[a-z0-9-]+(\.[a-z0-9-]+)+", hostname):
+        raise HTTPException(status_code=422, detail="hostname must be a bare domain name")
+
+    # Check for duplicates
+    existing = await db.threat_indicators.find_one({
+        "hostname": hostname, "status": {"$in": ["active", "check_overdue", "pending_review"]}
+    })
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Active indicator already exists: {existing['indicator_id']}"
+        )
+
+    from services.threat_revalidation import check_interval_for, expiry_deadline_for
+
+    ts = now_utc()
+    indicator_id = f"ti-{secrets.token_hex(8)}"
+    indicator = ThreatIndicator(
+        indicator_id=indicator_id,
+        hostname=hostname,
+        scope="hostname",
+        source=body.source,
+        source_reference=body.source_reference,
+        original_evidence=body.original_evidence,
+        original_scope=body.original_scope,
+        first_seen_at=ts,
+        last_verified_at=ts,
+        next_scheduled_check=ts + check_interval_for(body.source),
+        evidence_expiry_deadline=ts + expiry_deadline_for(body.source),
+        verification_count=1,
+        status="active",
+        review_status=body.review_status,
+        added_at=ts,
+        updated_at=ts,
+        added_by=f"admin:{(actor or 'console').strip()[:80]}",
+    )
+    await db.threat_indicators.insert_one(indicator.to_mongo())
+    await audit(request, "threat_indicator.add", hostname, {
+        "indicator_id": indicator_id, "source": body.source,
+        "original_scope": body.original_scope, "reason": body.reason,
+    }, actor)
+    return _ti_row(indicator.to_mongo() | {"indicator_id": indicator_id})
+
+
+@router.post("/threat-indicators/{indicator_id}/withdraw", status_code=200)
+async def admin_withdraw_threat_indicator(
+    indicator_id: str,
+    body: ThreatIndicatorWithdrawIn,
+    request: Request,
+    actor: Optional[str] = Header(default=None, alias="X-Admin-Actor"),
+):
+    """Withdraw a threat indicator. Records the reason and audit trail."""
+    doc = await db.threat_indicators.find_one({"indicator_id": indicator_id})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Unknown threat indicator.")
+    if doc.get("status") == "withdrawn":
+        raise HTTPException(status_code=409, detail="Indicator is already withdrawn.")
+
+    ts = now_utc()
+    await db.threat_indicators.update_one(
+        {"indicator_id": indicator_id},
+        {"$set": {
+            "status": "withdrawn",
+            "withdrawn_at": ts,
+            "withdrawal_reason": body.reason,
+            "updated_at": ts,
+        }},
+    )
+    # Invalidate reputation cache for this hostname
+    from services.intel import digest
+    hostname = doc.get("hostname", "")
+    if hostname:
+        dg = digest(hostname)
+        await db.reputation_cache.delete_many({"indicator_digest": dg})
+
+    await audit(request, "threat_indicator.withdraw", indicator_id, {
+        "hostname": hostname, "reason": body.reason, "detail": body.detail,
+    }, actor)
+    return {"indicator_id": indicator_id, "status": "withdrawn", "withdrawn_at": ts.isoformat()}
+
+
+@router.get("/threat-indicators/stats/summary")
+async def admin_threat_indicator_stats():
+    """Summary statistics for the threat indicator lifecycle."""
+    ts = now_utc()
+    pipeline = [
+        {"$group": {"_id": "$status", "count": {"$sum": 1}}},
+    ]
+    by_status = {r["_id"]: r["count"] async for r in db.threat_indicators.aggregate(pipeline)}
+
+    overdue_count = await db.threat_indicators.count_documents({
+        "status": {"$in": ["active", "check_overdue"]},
+        "next_scheduled_check": {"$lte": ts},
+    })
+    approaching_expiry = await db.threat_indicators.count_documents({
+        "status": {"$in": ["active", "check_overdue"]},
+        "evidence_expiry_deadline": {"$lte": ts + timedelta(hours=6)},
+    })
+    recent_logs = await db.threat_revalidation_log.find(
+        {}, {"_id": 0}
+    ).sort("attempted_at", -1).to_list(10)
+
+    return {
+        "by_status": by_status,
+        "total_active": by_status.get("active", 0) + by_status.get("check_overdue", 0),
+        "checks_overdue": overdue_count,
+        "approaching_expiry_6h": approaching_expiry,
+        "recent_revalidations": recent_logs,
+    }

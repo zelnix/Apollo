@@ -112,6 +112,88 @@ class BlocklistEntry(BaseDocument):
     deleted_at: Optional[datetime] = None
 
 
+# --------------------------------------------------------------------------- Threat intelligence lifecycle
+# ThreatIndicator is the successor to BlocklistEntry for native rule-bundle inclusion.
+# It tracks full provenance, independent verification timestamps, and withdrawal records.
+# Two temporal boundaries (corrected design):
+#   next_scheduled_check — when the source should be re-queried (soft; missing it does not expire)
+#   evidence_expiry_deadline — hard limit; indicator MUST be excluded if not re-verified by this time
+
+ThreatIndicatorStatus = Literal["active", "check_overdue", "expired", "withdrawn", "pending_review"]
+ThreatIndicatorReviewStatus = Literal["auto_verified", "manually_reviewed", "pending_human_review", "legacy_migrated"]
+ThreatIndicatorScope = Literal["hostname"]
+OriginalEvidenceScope = Literal["url", "hostname"]
+WithdrawalReason = Literal["source_delisted", "false_positive_confirmed", "expired_unverified", "admin_manual", "superseded"]
+RevalidationOutcome = Literal["confirmed", "source_delisted", "source_timeout", "source_error", "source_unavailable"]
+
+
+class ThreatIndicator(BaseDocument):
+    """A single threat indicator with full lifecycle metadata."""
+    # Identity
+    indicator_id: str                    # Unique, immutable, e.g. "ti-<hex>"
+    hostname: str                        # The blocked hostname (never a full URL path)
+    scope: ThreatIndicatorScope = "hostname"  # Always hostname for native rules
+
+    # Source provenance
+    source: str                          # e.g. "google_safe_browsing", "apollo_manual", "phishtank"
+    source_reference: Optional[str] = None  # External ID or URL from the source
+    original_evidence: str               # What the source actually reported
+    original_scope: OriginalEvidenceScope  # hostname or url — url findings are NOT auto-promoted
+
+    # Verification — dual-timestamp design
+    first_seen_at: datetime              # When Apollo first observed this indicator
+    last_verified_at: datetime           # When the indicator was last confirmed by the source
+    next_scheduled_check: datetime       # Soft: when to re-query the source
+    evidence_expiry_deadline: datetime   # Hard: indicator excluded from active use if exceeded
+    verification_count: int = 1          # How many times successfully re-verified
+    last_revalidation_outcome: Optional[RevalidationOutcome] = None
+    last_revalidation_at: Optional[datetime] = None
+    consecutive_check_failures: int = 0  # Provider timeouts/errors without success
+
+    # Status
+    status: ThreatIndicatorStatus = "active"
+    review_status: ThreatIndicatorReviewStatus = "auto_verified"
+
+    # Lifecycle
+    added_at: datetime
+    updated_at: datetime
+    withdrawn_at: Optional[datetime] = None
+    withdrawal_reason: Optional[WithdrawalReason] = None
+    added_by: str = "system"             # "system", "admin:<actor>", "migration"
+
+
+class ThreatIndicatorIn(BaseModel):
+    """Admin input for creating a threat indicator."""
+    hostname: str = Field(min_length=3, max_length=253)
+    source: str = Field(min_length=1, max_length=100)
+    source_reference: Optional[str] = Field(default=None, max_length=500)
+    original_evidence: str = Field(min_length=1, max_length=2000)
+    original_scope: OriginalEvidenceScope = "hostname"
+    threat_type: str = Field(default="SOCIAL_ENGINEERING", max_length=100)
+    reason: str = Field(min_length=3, max_length=500)
+    review_status: ThreatIndicatorReviewStatus = "manually_reviewed"
+
+
+class ThreatIndicatorWithdrawIn(BaseModel):
+    """Admin input for withdrawing a threat indicator."""
+    reason: WithdrawalReason = "admin_manual"
+    detail: str = Field(default="", max_length=500)
+
+
+class ThreatRevalidationLog(BaseDocument):
+    """Immutable audit record for each revalidation attempt."""
+    indicator_id: str
+    hostname: str
+    attempted_at: datetime
+    source: str
+    outcome: RevalidationOutcome
+    source_response_summary: str = ""    # Brief, redacted summary of what the source returned
+    previous_status: ThreatIndicatorStatus
+    new_status: ThreatIndicatorStatus
+    next_scheduled_check: Optional[datetime] = None
+    evidence_expiry_deadline: Optional[datetime] = None
+
+
 # --------------------------------------------------------------------------- Enforcement evidence
 # Cross-Platform Architecture Directive — mirrors frontend/src/security/PlatformCapabilityProfile.ts
 # EnforcementEvidence field-for-field (flattened; destination/attribution are nested there, flat here

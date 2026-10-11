@@ -93,18 +93,31 @@ class ThreatIndicator(BaseDocument):
 
 **Enforcement:** An indicator whose `verification_deadline` has passed and whose re-verification has failed is moved to `status: "expired"`. Expired indicators are **excluded** from the next published rule bundle. They are never silently relabelled as current.
 
-### A.3 Scheduled Revalidation
+### A.3 Scheduled Revalidation (Corrected Dual-Timestamp Design)
 
-A new backend periodic task (using the existing `maintenance_worker` pattern):
+**Implementation: See `/app/backend/services/threat_revalidation.py` (Stage 1 — now implemented).**
+
+Two distinct temporal boundaries:
+- `next_scheduled_check` — **soft** boundary: when to re-query the source. Missing it flags the indicator as `check_overdue` but does NOT expire it.
+- `evidence_expiry_deadline` — **hard** boundary: if exceeded without successful re-verification, the indicator is force-expired and excluded from active use.
+
+A provider timeout is NOT evidence of delisting. On timeout or error:
+- `consecutive_check_failures` increments
+- `next_scheduled_check` resets to a backoff retry time
+- `evidence_expiry_deadline` is NOT extended (the countdown continues)
+- Status becomes `check_overdue` (NOT `expired`)
+- Only an explicit "not found" / "clear" response from the source constitutes delisting evidence
 
 ```
 threat_revalidation_loop:
-  - Runs every 2 hours
-  - Selects indicators where verification_deadline < now AND status == "active"
+  - Runs every maintenance cycle (currently ~2 hours)
+  - Selects indicators where next_scheduled_check <= now AND status in [active, check_overdue]
   - For each: re-queries the original source
-  - If still listed: updates last_verified_at and extends verification_deadline
-  - If no longer listed: sets status to "expired", records withdrawal_reason = "source_delisted"
-  - Logs every decision with timestamp and source response
+  - If confirmed: refreshes both timestamps, resets failure count, status → active
+  - If source_delisted: status → expired, withdrawal_reason → source_delisted
+  - If timeout/error: increments failures, schedules retry with backoff, does NOT expire
+  - After individual checks: enforces hard evidence_expiry_deadline on all indicators
+  - Logs every decision with timestamp and source response in immutable audit log
 ```
 
 ### A.4 No Hostname-Wide Blocking from Path-Only Evidence
@@ -157,14 +170,28 @@ This prevents a single compromised page on an otherwise-legitimate shared hostin
 
 **Problem:** Sending raw hostnames to the backend exposes the user's complete browsing history.
 
-**Solution: Hash-prefix matching (modelled on Safe Browsing v4 Update API)**
+**Proposed approach: Hash-prefix matching (inspired by Safe Browsing v4 Update API pattern)**
 
-1. Device computes `SHA-256(canonical_hostname)` and sends the first **4 bytes** (32-bit prefix) to the backend
-2. Backend returns all known-threat indicators whose hostname hash shares that prefix (typically 0-3 results for a 4-byte prefix)
+> ⚠️ **Important distinctions:**
+> - Apollo would use `SHA-256(canonical_hostname)`, not Google Safe Browsing's URL-hash canonicalisation
+> - These are different protocols with different hash inputs, prefix sizes, and database contents
+> - The anonymity properties differ: Apollo's hostname-only hashing has a smaller input space than URL hashing, making prefix collisions less diverse. The actual anonymity set depends on the threat database size and hash prefix length, which must be measured empirically rather than assumed
+> - Hostname inference may be feasible for popular domains if the threat database is small
+> - A 4-byte prefix against a small threat database may not provide meaningful anonymity if only 0-1 indicators share most prefixes
+> - Google Safe Browsing's Update API has specific licensing, attribution, caching, and rate-limit requirements that must be verified before use (see §E.2)
+
+1. Device computes `SHA-256(canonical_hostname)` and sends the first **N bytes** (prefix length TBD based on empirical anonymity analysis) to the backend
+2. Backend returns all known-threat indicators whose hostname hash shares that prefix
 3. Device compares full hashes locally to determine if there's an actual match
-4. The backend never learns which specific hostname the user visited — it only sees a prefix shared by ~65,000 possible hostnames (for a 200K-hostname threat database)
+4. The backend sees only a hash prefix, not the complete hostname — but the actual anonymity depends on database size and prefix length
 
 **Caching:** Negative results (prefix has no matches) are cached on-device for 30 minutes. Positive prefix matches are cached for 5 minutes.
+
+**Open questions requiring investigation before implementation:**
+- What prefix length provides meaningful anonymity given Apollo's expected threat database size?
+- Is the hostname-only input space large enough for hash-prefix anonymity to be effective?
+- Does Google Safe Browsing's Update API v4 ToS permit this use case, and what are the attribution/caching requirements?
+- Should Apollo use the Safe Browsing Update API's local list approach instead of a custom protocol?
 
 ### B.3 Latency and Concurrency
 
@@ -179,16 +206,23 @@ This prevents a single compromised page on an otherwise-legitimate shared hostin
 
 ### B.4 Decision Matrix
 
+> ⚠️ **Correction: No cached live verdict may independently authorise native sinkholing.**
+> The existing native authorisation chain requires a rule-bundle match to arm a sinkhole binding.
+> A cached live reputation verdict is advisory — it may produce warnings but never enforcement.
+
 | Local Rule | Live Check | Action | Evidence |
 |-----------|-----------|--------|----------|
 | BLOCK match | (skipped) | Sinkhole immediately | dns_observation (growling) → packet drop (biting) |
 | ALLOW match | (skipped) | Forward immediately | None |
-| No match | Cached "malicious" | Sinkhole | dns_observation (growling) → packet drop (biting) |
+| No match | Cached "malicious" | **Warning only** — forward DNS, display advisory | dns_observation (growling) — NOT biting. No packet drop. |
 | No match | Cached "clean" | Forward | None |
 | No match | Timeout/offline | **Forward** (fail open) | None — never block without evidence |
-| No match | Live "malicious" | **Warning only** (first observation) | dns_observation (growling) — NOT biting until confirmed by rule bundle |
+| No match | Live "malicious" (new) | **Warning only** — forward DNS, display advisory, submit for expedited review | dns_observation (growling) — NOT biting until confirmed by rule bundle |
 
-**Critical constraint:** A live reputation check returning "malicious" for a hostname NOT in the rule bundle produces a **warning** (growling), not an enforcement block (biting). The warning is surfaced to the user and the hostname is submitted for expedited review and potential inclusion in the next rule bundle. Only rule-bundle matches produce enforcement evidence.
+**Critical constraints:**
+1. A live reputation check returning "malicious" for a hostname NOT in the rule bundle produces a **warning** (growling), not an enforcement block (biting). The warning is surfaced to the user and the hostname is submitted for expedited review and potential inclusion in the next rule bundle. Only rule-bundle matches produce enforcement evidence.
+2. A cached "malicious" verdict from a previous live check also produces **only a warning**. It does not independently authorise sinkholing. The existing native authorisation and packet-drop evidence requirements are preserved exactly as implemented.
+3. **First-visit gap (honest limitation):** The asynchronous DNS reputation lookup allows the original DNS request to proceed to the upstream resolver while the live check runs in parallel. This means the very first visit to an unknown phishing site will NOT be blocked — the page may load before the live check completes. This design does NOT prevent the first unknown phishing page from loading. Protection begins on the second and subsequent visits (cached result) or after the hostname is added to the rule bundle.
 
 ### B.5 What This Design Does NOT Do
 
@@ -202,25 +236,30 @@ This prevents a single compromised page on an otherwise-legitimate shared hostin
 
 ## C. Rule Publication and Revocation
 
-### C.1 Dynamic Rule Bundle Generation
+### C.1 Dynamic Rule Bundle Generation (Stage 1: Static Bundle Unchanged)
 
-Replace the static Python dict with a database-driven bundle generator:
+> **Stage 1 status:** The production `/api/guarddog/rules` endpoint still serves the static bundle. Dynamic generation from the `ThreatIndicator` collection is proposed for Stage 2 (pending approval).
+
+When approved, dynamic generation must produce:
+- **Immutable, complete bundles** — each version is a full snapshot, not a delta. Deterministic content for a given set of active indicators.
+- **Monotonically versioned** — `bundleVersion` strictly increases. No gaps, no reuse of version numbers.
+- **Temporally bounded** — `issuedAt` and `expiresAt` are deterministic per publish event.
+- **Publication ≠ installation** — "published" means the backend has generated and made available a new version. "Installed" means a specific device has fetched, validated, and activated it. These are separate events with separate timestamps.
 
 ```python
+# PROPOSED (not yet implemented — Stage 2)
 @router.get("/guarddog/rules")
 async def get_rules():
     """Serve the current production rule bundle.
-    
-    Generated from active, verified ThreatIndicators — not a static dict.
+    Generated from active, verified ThreatIndicators.
     Authentication: HTTPS-only (TLS + baked-in URL in signed APK).
     """
     indicators = await db.threat_indicators.find({
         "status": "active",
-        "verification_deadline": {"$gt": now_utc()},
-        "published_in_bundle_version": {"$ne": None},
+        "evidence_expiry_deadline": {"$gt": now_utc()},
     }).to_list(10000)
     
-    bundle = build_rule_bundle(indicators, current_version)
+    bundle = build_rule_bundle(indicators, next_version)
     return bundle
 ```
 
@@ -255,24 +294,30 @@ Device validates: schema, version, temporal, rollback
 
 When a false positive is identified:
 
-1. Admin calls `DELETE /api/admin/threat-indicators/{indicator_id}` or `POST /api/admin/threat-indicators/{indicator_id}/withdraw`
-2. Indicator status → `"withdrawn"`, withdrawal recorded
-3. New bundle version published **immediately** (within 30 seconds)
+1. Admin calls `POST /api/admin/threat-indicators/{indicator_id}/withdraw` (Stage 1 — **implemented**)
+2. Indicator status → `"withdrawn"`, withdrawal recorded with reason and timestamp
+3. New bundle version published **immediately** (within 30 seconds) — Stage 2
 4. All devices with `triggerUrgentRuleRefresh()` capability receive the corrected bundle on next check
-5. Reputation cache entries for the affected hostname are invalidated
-6. Urgent refresh **reports back** whether a new bundle version was actually installed (not just requested)
+5. Reputation cache entries for the affected hostname are invalidated (Stage 1 — **implemented**)
+6. Urgent refresh **reports back** whether a new bundle version was actually installed, not just requested
+
+**Offline and delayed devices:**
+- Devices that are offline, on limited connectivity, or unable to refresh will continue enforcing the false-positive rule until they successfully pull the corrected bundle.
+- The bundle's `expiresAt` provides a hard upper bound: once the existing bundle expires, the device must fetch a new one before resuming enforcement. An expired bundle's rules are not enforced.
+- There is no mechanism to push a revocation to an individual offline device. Revocation depends on the device's next successful pull.
+- This is an accepted limitation. The design does not claim instant revocation for all devices — only that the corrected bundle is available for immediate pull and that bundle expiry provides a time-bounded worst case.
 
 ### C.4 What Cannot Authorise a Block
 
 | Source | Can It Create a Native BLOCK Rule? | Why |
 |--------|-----------------------------------|-----|
-| Single Safe Browsing URL-path match | **No** | URL-path evidence, not hostname-wide |
-| Single blocklist entry without verification | **No** | Requires at least one external source confirmation |
-| AI/Gemini assessment only | **No** | LLM assessments are advisory, never authoritative |
-| Client-side submission without backend validation | **No** | Untrusted client data |
+| Single Safe Browsing URL-path match | **No** | URL-path evidence, not hostname-wide. Original scope must be preserved. |
+| Single blocklist entry without independent verification | **No** | Requires at least one genuinely independent external source confirmation. Two services querying the same upstream (e.g., both using SB) count as one source. |
+| AI/Gemini assessment only | **No** | LLM assessments are advisory, never authoritative for blocking |
+| Client-side submission without backend validation | **No** | Untrusted client data — backend must independently verify |
 | User feedback ("missed_threat") | **No** | Queued for human review, never auto-blocks |
-| Multiple independent sources confirming hostname | **Yes**, after backend validation | Sufficient evidence for hostname-wide block |
-| Admin manual addition with recorded reason | **Yes** | Human-reviewed, auditable |
+| Multiple genuinely independent sources confirming hostname | **Yes**, after backend validation | Sufficient evidence for hostname-wide block. Sources must be operationally independent (not derived from the same upstream feed). |
+| Admin manual addition with recorded reason | **Yes** | Human-reviewed, auditable, with source provenance recorded |
 
 ---
 
@@ -314,16 +359,24 @@ The current HTTPS-only model is vulnerable to:
 
 **This is a staged proposal — not implemented until approved.**
 
-**Stage 1 (current):** HTTPS-only. Document this honestly everywhere. Remove "signed" claims from all design docs.
+**Stage 1 (current):** HTTPS-only. Document this honestly everywhere. Remove "signed" claims from all design docs. ✅ **Done.**
 
 **Stage 2 (future, if approved):**
 1. Generate an Ed25519 signing keypair. Private key stored in a separate secrets manager (not in the application database).
 2. Add `signature: string` field to `RuleBundle` data class.
 3. Backend signs the canonical JSON of each published bundle.
 4. `RuleBundleValidator.kt` verifies the signature against a pinned public key before any schema or version checks.
-5. Key rotation: support two public keys simultaneously (current + next) with a transition window.
+5. Key rotation: support two public keys simultaneously (current + next) with a transition window, managed through Apollo's existing trusted-key-manifest architecture.
 
-**Stage 2 is not claimed as existing. It is a future improvement.**
+**Prerequisite for automatic BLOCK publication:** Dynamic rule bundle generation (Stage 2 of §G) must NOT automatically publish BLOCK rules to production devices until:
+- Ed25519 signing is implemented and verified on both backend and native client
+- Key management uses the existing trusted-key-manifest infrastructure
+- Device acceptance of signed bundles has been demonstrated end-to-end on physical devices
+- OR a separately approved security decision explicitly defines a narrower release scope with documented risk acceptance
+
+This constraint exists because HTTPS-only authentication does not provide the same tamper-evidence guarantees as cryptographic signing. A compromised CDN or backend database could inject false rules. Automatic BLOCK publication amplifies the impact of such a compromise.
+
+**Stage 2 is not claimed as existing. It is a future improvement with prerequisites.**
 
 ### D.5 Corrections to Existing Documentation
 
@@ -348,26 +401,40 @@ The bridge design doc (`LINK_GATE_SITE_GATE_BRIDGE_DESIGN.md`) must be updated t
 
 **Recommendation:** Hash-prefix for live checks. On-device rule bundle for known threats. No complete URLs sent to backend.
 
-### E.2 Provider Compliance
+### E.2 Provider Compliance (Unverified — Requires Investigation Before Implementation)
+
+> ⚠️ **The following requirements have NOT been verified against current Google Safe Browsing API terms.** Before selecting any live reputation protocol, the following must be independently confirmed:
 
 If using Google Safe Browsing Update API (v4) for on-device hash lists:
-- Must display Safe Browsing attribution per Terms of Service
-- Must respect cache durations returned by the API
-- Must not use the API for purposes other than user protection
-- Rate limits: 25,000 requests per API key per day (Update API)
+- Must display Safe Browsing attribution per Terms of Service — verify current attribution requirements
+- Must respect cache durations returned by the API — verify minimum cache durations
+- Must not use the API for purposes other than user protection — verify this use case qualifies
+- Rate limits: verify current limits for the Update API (previously 25,000 requests/key/day)
+- Canonicalisation: Safe Browsing uses a specific URL canonicalisation algorithm. Apollo's hostname-only hashing is NOT the same protocol and may not be compatible with SB's hash databases
+- Verify whether Apollo's proposed hostname-hash-prefix protocol can legally/technically use SB data, or whether a different approach (e.g., SB's native Update API with local list synchronisation) is required
 
-### E.3 Private DNS Compatibility
+### E.3 Private DNS Compatibility (Unresolved Engineering Requirement)
 
-This design does **not** require users to disable Private DNS. The coverage matrix:
+> ⚠️ **Encrypted-DNS compatibility remains an unresolved engineering requirement.**
+
+This design does **not** require users to disable Private DNS. However, when Private DNS is active, Apollo's VPN DNS gateway is bypassed entirely. The current coverage reality:
 
 | Configuration | Local Rules | Live Reputation | DNS Observation | Enforcement |
 |--------------|------------|----------------|----------------|-------------|
-| Private DNS OFF | ✅ Full | ✅ Full | ✅ Full | ✅ Full |
-| Private DNS Automatic | ⚠️ Depends | ⚠️ Depends | ⚠️ Depends | ⚠️ Depends |
+| Private DNS OFF | ✅ Full | ✅ Full (proposed) | ✅ Full | ✅ Full |
+| Private DNS Automatic | ⚠️ Depends on carrier | ⚠️ Depends | ⚠️ Depends | ⚠️ Depends |
 | Private DNS ON (provider) | ❌ DNS bypassed | ❌ DNS bypassed | ❌ DNS bypassed | ❌ DNS bypassed |
 | Chrome Secure DNS | ❌ Chrome DNS bypassed | ❌ Chrome bypassed | ❌ Chrome bypassed | ❌ Chrome bypassed |
 
-When DNS inspection is unavailable, Apollo honestly reports the limitation (per the Private DNS corrections already applied). Link checking, manual investigation, and all non-DNS protections continue operating where supported.
+When DNS inspection is unavailable, Apollo honestly reports the limitation (per the Private DNS corrections already applied). Link checking, manual investigation, and non-DNS protections continue operating where supported.
+
+**This is an accepted limitation, not a solved problem.** Possible future approaches include:
+- Android Accessibility Service integration (high-permission, significant privacy implications)
+- Local HTTP proxy for browser traffic (complex, may not work with HTTPS)
+- Integration with browser extensions where available
+- VPN-layer TLS SNI inspection (limited to SNI-exposing connections)
+
+None of these have been evaluated or proposed for implementation. The honest answer is: when Private DNS is enabled, Apollo cannot automatically check websites through DNS inspection, and no currently designed solution changes this.
 
 ### E.4 Higgins User Experience
 
@@ -462,66 +529,80 @@ Each capability must be proven independently before deployment.
 
 ## G. Staged Implementation Plan
 
-### Stage 1: Threat Intelligence Lifecycle (Backend Only)
+### Stage 1: Threat Intelligence Lifecycle (Backend Only) — ✅ IMPLEMENTED
 
-**Scope:** Extend `BlocklistEntry` to `ThreatIndicator`, implement revalidation loop, implement dynamic bundle generation.
+**Scope:** `ThreatIndicator` model with full provenance, dual-timestamp verification, revalidation scheduling, hard expiry, withdrawal, admin CRUD with audit trail.
 
-**Changes:**
-- New `ThreatIndicator` model in `core/models.py`
-- Migration script to convert existing blocklist entries
-- `threat_revalidation_loop` in maintenance worker
-- Dynamic `/api/guarddog/rules` endpoint (replaces static dict)
-- Admin endpoints for indicator management
+**What was built:**
+- `ThreatIndicator` model in `core/models.py` with corrected dual-timestamp design
+- `ThreatRevalidationLog` immutable audit model
+- `services/threat_revalidation.py` — revalidation engine, hard expiry enforcement, migration
+- Admin endpoints in `routers/admin.py`: list, get, add, withdraw, stats
+- Wired into maintenance loop in `services/maintenance.py`
+- Index creation and migration in `server.py` lifespan
+- 14 passing tests in `tests/test_threat_indicators.py`
 
-**Risk:** Low — backend-only, no native changes required.
+**What was NOT changed:**
+- `/api/guarddog/rules` still serves the static production bundle — unchanged
+- No new blocking mechanisms
+- No native client changes
 
-### Stage 2: Link Gate → Site Gate Bridge (Backend + JS)
+### Stage 2: Link Gate → Site Gate Bridge + Dynamic Bundle Generation (PENDING APPROVAL)
 
-**Scope:** When Link Gate confirms a hostname as malicious (multi-source), submit it as a ThreatIndicator for backend validation and expedited publication.
+**Scope:** When Link Gate confirms a hostname as malicious (multi-source, genuinely independent), submit it as a ThreatIndicator for backend validation. Generate immutable, monotonically versioned bundles from active indicators.
 
-**Changes:**
-- `POST /api/threat-indicators/submit` endpoint with full validation
-- JS-layer submission logic in `GuardDogProductionSecurityAdapter.ts`
-- Urgent refresh reporting (was new version installed? what version?)
+**Prerequisites:**
+- Stage 1 complete ✅
+- Approval of the revised bridge design (`LINK_GATE_SITE_GATE_BRIDGE_DESIGN.md`)
+- Decision on whether automatic BLOCK publication requires cryptographic signing first (see §D.4)
 
-**Risk:** Medium — new publication path, requires testing.
+**Risk:** Medium — new publication path, requires physical device testing.
 
-### Stage 3: Hash-Prefix Live Reputation (Backend + Native)
+### Stage 3: Live Reputation Checks (PENDING APPROVAL + INVESTIGATION)
 
 **Scope:** Privacy-preserving live checks for unknown DNS hostnames.
 
-**Changes:**
-- `POST /api/intel/dns-check` hash-prefix endpoint
-- Native `DnsGatewayPacketHandler` modification to trigger async checks
-- On-device hash-prefix cache
-- Warning-only enforcement for live findings
+**Prerequisites:**
+- Stage 2 complete
+- Safe Browsing API eligibility and ToS verification (§E.2)
+- Hash-prefix anonymity analysis with measured (not assumed) properties
+- Decision on protocol: custom hostname-hash vs SB Update API local lists
 
-**Risk:** High — native DNS pipeline modification, latency-sensitive.
+**Open corrections applied:**
+- Cached live verdict cannot independently authorise sinkholing (Correction 1)
+- Hash-prefix anonymity claims removed pending empirical analysis (Correction 2)
+- First-visit limitation honestly documented (Correction 7)
 
-### Stage 4: Cryptographic Signing (Future, If Approved)
+**Risk:** High — native DNS pipeline modification, latency-sensitive, privacy-critical.
 
-**Scope:** Ed25519 signing and verification.
+### Stage 4: Cryptographic Signing (PENDING APPROVAL)
 
-**Changes:**
-- Key generation and secrets management
-- Backend signing at bundle publication
-- `RuleBundleValidator.kt` signature verification
-- Key rotation mechanism
+**Scope:** Ed25519 signing and verification using existing trusted-key-manifest architecture.
+
+**Prerequisites:**
+- Stages 2-3 complete
+- Key management architecture approved
+- Physical device end-to-end verification
+
+**Note:** Automatic production BLOCK publication is blocked until this stage is complete (or a separately approved security decision defines a narrower release).
 
 **Risk:** Medium — cryptographic implementation must be correct.
 
 ---
 
-## H. Documentation Corrections Required
+## H. Documentation Corrections Applied
 
-Before implementation, these existing documents must be corrected:
+1. **`LINK_GATE_SITE_GATE_BRIDGE_DESIGN.md`** — ✅ All "signed bundle" claims removed. Replaced with "HTTPS-authenticated bundle". Cryptographic signing noted as future improvement.
 
-1. **`LINK_GATE_SITE_GATE_BRIDGE_DESIGN.md`** — Remove all "signed bundle" claims. Replace with "HTTPS-authenticated bundle". Note cryptographic signing as a future improvement.
+2. **`SITE_GATE_INVESTIGATION_REPORT.md`** — Existing document; notes the static 1-rule bundle. No further changes needed.
 
-2. **`SITE_GATE_INVESTIGATION_REPORT.md`** — Add a section noting that the rule bundle is currently static with 1 rule and no automated threat-intelligence connection.
+3. **All Kotlin code comments** referencing "signed rules" — ✅ Corrected to "validated rules" / "HTTPS-authenticated rules" in `WebsiteGateOverrideStore.kt`, `GuardDogSDKEngine.kt`, `BlockedThreatEvidence.kt`, `ApolloSecurityModule.kt`.
 
-3. **All code comments** referencing "signed rules" — Update to "HTTPS-authenticated rules".
+4. **Private DNS user-facing messaging** — ✅ All "Turn off Private DNS" / "fully active" claims removed. Honest limitation reporting in place.
+
+5. **DEVICE_VERIFICATION_PLAN.md** — ✅ All tests marked PENDING. Expanded to cover Private DNS Off/Automatic/Provider/Chrome Secure DNS configurations.
 
 ---
 
-*This document is a design proposal. No implementation has been started. All stages require explicit approval before proceeding. The acceptance criteria in §F must each be independently demonstrated.*
+*This document was initially created as a design proposal. Stage 1 has been implemented and tested (14/14 tests passing). Stages 2-4 remain proposals awaiting approval. All corrections from the architecture review have been applied to this document.*
+

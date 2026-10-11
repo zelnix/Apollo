@@ -39,6 +39,7 @@ from services.higgins import context as higgins_context
 from services import capability_registry, government_alerts, learning
 from services import gmail as gmail_service
 from services import family_assist
+from services.threat_revalidation import ensure_indexes as ensure_threat_indexes, migrate_blocklist_entries
 from routers import admin, analysis, ask, call, devices, family, family_assist as family_assist_router, family_weekly, gmail, health, intel, investigations, learning as learning_router, learning_admin, patrol, product, push
 from routers.family_weekly import weekly_checkin_loop
 
@@ -69,6 +70,12 @@ async def lifespan(_: FastAPI):
     await ensure_mailbox_monitor_indexes()
     await push.ensure_indexes()
     await family_assist.ensure_indexes()
+    await ensure_threat_indexes()
+    # Migrate legacy BlocklistEntry records to ThreatIndicator (idempotent, skips duplicates)
+    try:
+        await migrate_blocklist_entries()
+    except Exception:  # noqa: BLE001 — migration must never block startup
+        pass
     await db.devices.create_index("device_id", unique=True)
     await db.devices.create_index("token_hash", unique=True, partialFilterExpression={"token_hash": {"$type": "string"}})
     await db.reputation_cache.create_index("indicator_digest", unique=True)
