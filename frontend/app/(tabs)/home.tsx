@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { PriorityScamNotice } from "@/src/components/PriorityScamNotice";
 import { RecoveryBanner, useRecoveryTracker } from "@/src/components/RecoveryBanner";
+import { RetrofitModal, hasRetrofitRun } from "@/src/components/RetrofitModal";
 import { ServiceBanner } from "@/src/components/ServiceBanner";
 import { HigginsFollowUp } from "@/src/components/HigginsFollowUp";
 import { ClipboardLinkBanner } from "@/src/components/ClipboardLinkBanner";
@@ -142,6 +143,14 @@ export default function Home() {
   const { resolution, capabilities, protection, adapterLabel, isMock, refreshing, events, lowPower, quietNow, showToast, identityReset, reRegisterDevice } = useApollo();
   const health = useProtectionHealth();
   const { recovery, dismiss: dismissRecovery } = useRecoveryTracker(protection?.operational);
+
+  // ── Auto-retrofit on first load ──
+  const [showRetrofit, setShowRetrofit] = React.useState(false);
+  React.useEffect(() => {
+    hasRetrofitRun().then((done) => {
+      if (!done) setShowRetrofit(true);
+    });
+  }, []);
 
   const attention = React.useMemo(
     () => (health.checking ? [] : buildHomeAttention({ gates: health.gates, events })),
@@ -367,6 +376,7 @@ export default function Home() {
           </View>
         ) : null}
       </ScrollView>
+      <RetrofitModal visible={showRetrofit} onClose={() => setShowRetrofit(false)} auto />
     </View>
   );
 }

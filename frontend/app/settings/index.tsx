@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AlertPreviewSheet } from "@/src/components/AlertPreviewSheet";
 import { AboutApolloSheet } from "@/src/components/AboutApolloSheet";
+import { RetrofitModal } from "@/src/components/RetrofitModal";
 import { Sheet } from "@/src/components/Sheet";
 import { TimeStepper } from "@/src/components/TimeStepper";
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
@@ -41,6 +42,7 @@ export default function SettingsScreen() {
   const { trust, revokeTrust, clearPatrol, notificationStatus, enableNotifications, quietHours, quietNow, setQuietHours, lowPower, setLowPower, showToast } = useApollo();
   const [confirmClear, setConfirmClear] = useState(false); const [preview, setPreview] = useState(false);
   const [showTrust, setShowTrust] = useState(false); const [showShare, setShowShare] = useState(false); const [showAbout, setShowAbout] = useState(false);
+  const [showRetrofit, setShowRetrofit] = useState(false);
 
   const NavRow = ({ label, hint, onPress, testID, first }: { label: string; hint?: string; onPress: () => void; testID: string; first?: boolean }) => (
     <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={[s.rowItem, !first && s.divider]}>
@@ -82,6 +84,7 @@ export default function SettingsScreen() {
       <View><SectionTitle>App preferences</SectionTitle>
         <Card testID="settings-preferences">
           <SwitchRow first label="Battery saver" hint="Reduces animation and checks status less often. It does not change the protection status." value={lowPower} onValueChange={(value) => void setLowPower(value)} testID="settings-lowpower-switch" />
+          <NavRow label="Update investigation reports" hint="Apply the latest reporting format to all past investigations" onPress={() => setShowRetrofit(true)} testID="settings-retrofit" />
           <NavRow label="Minimise Apollo" hint="Move Apollo to the background" onPress={() => void minimiseApp(showToast)} testID="settings-minimise" />
         </Card>
       </View>
@@ -124,6 +127,7 @@ export default function SettingsScreen() {
     </ScrollView>
     <AlertPreviewSheet visible={preview} onClose={() => setPreview(false)} />
     <AboutApolloSheet visible={showAbout} onClose={() => setShowAbout(false)} />
+    <RetrofitModal visible={showRetrofit} onClose={() => setShowRetrofit(false)} />
     <Sheet visible={confirmClear} onClose={() => setConfirmClear(false)} title="Clear Patrol history?" testID="clear-sheet"><Body>This hides Patrol items on this device and asks the service to hide synced summaries. Trusted links are kept.</Body><Button testID="clear-confirm" variant="danger" label="Clear history" onPress={() => { setConfirmClear(false); void clearPatrol(); }} /><Button testID="clear-cancel" variant="ghost" label="Keep history" onPress={() => setConfirmClear(false)} /></Sheet>
   </View>;
 }

@@ -281,3 +281,24 @@ async def revoke_trust(trust_id: str, device_id: str = Query(min_length=8, max_l
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Trust entry not found")
     return {"revoked": True}
+
+
+
+# --------------------------------------------------------------------------- Retrofit (user-facing)
+@router.post("/retrofit/run")
+async def user_retrofit_run():
+    """Run the historical record retrofit migration. Idempotent — safe to rerun.
+    This is the user-facing endpoint (no admin key required).
+    """
+    from scripts.retrofit_historical_records import run_migration
+    report = await run_migration(dry_run=False)
+    return report
+
+
+@router.get("/retrofit/status")
+async def user_retrofit_status():
+    """Get the latest migration report (user-facing)."""
+    report = await db.migration_reports.find_one({"migration_id": "retrofit_v1"}, {"_id": 0})
+    if not report:
+        return {"status": "not_run"}
+    return {"status": "completed", "report": report}

@@ -2,7 +2,6 @@
 
 import React from "react";
 import { Modal, Pressable, ScrollView, Text, View } from "react-native";
-import Animated, { FadeIn, SlideInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { fonts, makeStyles, radius, spacing } from "@/src/theme";
@@ -19,15 +18,15 @@ export function Sheet({ visible, onClose, title, children, testID }: { visible: 
   const s = useStyles();
   const insets = useSafeAreaInsets();
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      <Animated.View entering={FadeIn} style={s.backdrop}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={s.backdrop}>
         <Pressable style={{ flex: 1 }} onPress={onClose} testID="sheet-backdrop" accessibilityLabel="Close" />
-        <Animated.View entering={SlideInDown} style={s.sheet} testID={testID}>
+        <View style={s.sheet} testID={testID}>
           <View style={s.handle} />
           <Text style={s.title}>{title}</Text>
           <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]}>{children}</ScrollView>
-        </Animated.View>
-      </Animated.View>
+        </View>
+      </View>
     </Modal>
   );
 }
