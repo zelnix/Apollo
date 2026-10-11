@@ -140,8 +140,8 @@ async def test_12_consistent_standards():
     no_briefing = await db.patrol_records.count_documents({"higgins_briefing": {"$exists": False}})
     assert no_briefing == 0, f"Found {no_briefing} records without briefings"
     # All briefings should have the required version field
-    wrong_version = await db.patrol_records.count_documents({"higgins_briefing.version": {"$ne": "briefing_v1"}})
-    assert wrong_version == 0, f"Found {wrong_version} briefings with wrong version"
+    wrong_version = await db.patrol_records.count_documents({"higgins_briefing.version": {"$nin": ["briefing_v1", "briefing_v2"]}})
+    assert wrong_version == 0, f"Found {wrong_version} briefings with unrecognised version"
     print(f"  ✓ AT12: All records classified, briefed, and versioned consistently")
 
 

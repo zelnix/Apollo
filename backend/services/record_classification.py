@@ -55,6 +55,7 @@ def classify_record(record: dict[str, Any]) -> RecordClass:
     """
     category = record.get("category", "")
     raw_state = record.get("raw_state", "resting")
+    effective_state = record.get("effective_state", "")
     source_type = record.get("source_type", "device_assessment")
     resolution = record.get("resolution") or {}
     resolution_status = resolution.get("status", "")
@@ -62,6 +63,8 @@ def classify_record(record: dict[str, Any]) -> RecordClass:
     has_enforcement = bool(record.get("observed_block_reference"))
     event = record.get("event") or {}
     verified_block = event.get("verified_block", False)
+    headline = record.get("headline", "")
+    summary = record.get("summary", "")
 
     # 1. Already resolved — keep as resolved regardless of original classification.
     if resolution_status in ("resolved", "trusted"):
@@ -70,6 +73,10 @@ def classify_record(record: dict[str, Any]) -> RecordClass:
     # 2. Verified enforcement → threat_stopped.
     if raw_state in STOPPED_STATES and verified_block and has_enforcement:
         return "threat_stopped"
+
+    # 2b. Biting without verified block — claimed enforcement but not confirmed.
+    if raw_state in STOPPED_STATES and not verified_block:
+        return "protection_issue"
 
     # 3. Protection / system categories are NEVER security threats.
     if category in PROTECTION_CATEGORIES:
@@ -94,17 +101,12 @@ def classify_record(record: dict[str, Any]) -> RecordClass:
             return "security_threat"
         if raw_state == "resting":
             return "resolved"
-        if raw_state == "ears_up":
-            return "informational"
-        if raw_state == "sniffing":
+        if raw_state in ("ears_up", "sniffing"):
             return "informational"
         return "informational"
 
     # 6. Enforcement events without verification.
     if source_type == "device_enforcement":
-        if raw_state in STOPPED_STATES and not verified_block:
-            # Claimed block but not verified — protection issue, not a confirmed stop.
-            return "protection_issue"
         if raw_state in THREAT_STATES:
             return "security_threat"
         return "informational"
@@ -113,9 +115,7 @@ def classify_record(record: dict[str, Any]) -> RecordClass:
     if category in THREAT_CATEGORIES:
         if raw_state in THREAT_STATES:
             return "security_threat"
-        if raw_state == "ears_up":
-            return "informational"
-        if raw_state == "sniffing":
+        if raw_state in ("ears_up", "sniffing"):
             return "informational"
         return "informational"
 
@@ -124,7 +124,7 @@ def classify_record(record: dict[str, Any]) -> RecordClass:
         return "informational"
 
     # 9. Fallback: if we truly can't determine, mark as unverifiable legacy.
-    if not record.get("headline") and not record.get("summary"):
+    if not headline and not summary:
         return "unverifiable_legacy"
 
     return "informational"
@@ -185,12 +185,13 @@ def generate_higgins_briefing(record: dict[str, Any], record_class: RecordClass)
     """Generate a concise Higgins briefing for a historical record.
 
     Structure:
-      1. What was investigated
-      2. What was established
-      3. Key evidence
-      4. What it means for the user
+      1. What was investigated — conversational, not report-style
+      2. What was established — uses actual record data
+      3. Key evidence — bullet points from the record
+      4. What it means for the user — reassuring, plain English
       5. Action (only if needed)
 
+    Higgins speaks naturally, briefly and in plain English.
     Never invents evidence. Uses only what's in the record.
     """
     headline = record.get("headline", "")
@@ -199,63 +200,84 @@ def generate_higgins_briefing(record: dict[str, Any], record_class: RecordClass)
     event = record.get("event") or {}
     what_to_do = event.get("what_to_do", "")
     why = event.get("why", [])
-    occurred_at = record.get("occurred_at", "")
     has_investigation = bool(record.get("investigation_case_id"))
+    cat_label = _category_label(category)
+    scenario = (record.get("scenario_context") or {})
+    brand = scenario.get("claimedBrand", "")
+    host = scenario.get("indicatorHost", "")
 
-    # 1. What was investigated
+    # Build a natural context phrase from available data
+    subject = brand or host or cat_label
+    if brand and host:
+        subject = f"{brand} ({host})"
+
+    # 1. What was investigated — conversational
     if has_investigation:
-        investigated = f"Magnum DI conducted an investigation into a {_category_label(category)} concern."
+        investigated = f"Magnum DI looked into a {cat_label} concern{f' involving {subject}' if subject != cat_label else ''}."
     elif record_class == "diagnostic_result":
-        investigated = f"A device diagnostic was performed for the {_category_label(category)} area."
+        investigated = f"Apollo ran a {cat_label} check on your device."
     elif record_class == "protection_issue":
-        investigated = f"Apollo identified a protection configuration issue affecting {_category_label(category)}."
+        investigated = f"Apollo noticed a problem with your {cat_label}."
     elif record_class == "threat_stopped":
-        investigated = f"Apollo's protection system intercepted a {_category_label(category)} threat."
-    else:
-        investigated = f"Apollo recorded an observation about {_category_label(category)}."
-
-    # 2. What was established
-    if record_class == "security_threat":
-        established = summary or headline or "A security concern was identified that may need your attention."
-    elif record_class == "threat_stopped":
-        established = summary or headline or "The threat was successfully blocked by Apollo's protection."
-    elif record_class == "protection_issue":
-        established = summary or headline or "A protection feature is not working as expected. This is not a security attack."
+        investigated = f"Apollo's protection blocked a {cat_label} threat{f' from {subject}' if subject != cat_label else ''}."
     elif record_class == "resolved":
-        established = summary or headline or "This matter has been resolved."
-    elif record_class == "diagnostic_result":
-        established = summary or headline or "The diagnostic completed."
-    elif record_class == "unverifiable_legacy":
-        established = summary or headline or "This is a historical record with limited evidence available."
+        investigated = f"Apollo previously flagged a {cat_label} concern{f' involving {subject}' if subject != cat_label else ''} — it's now resolved."
     else:
-        established = summary or headline or "No significant security concern was found."
+        investigated = f"Apollo noticed something about {cat_label}{f' involving {subject}' if subject != cat_label else ''}."
 
-    # 3. Key evidence
-    evidence_points = []
+    # 2. What was established — use real data
+    if record_class == "security_threat":
+        established = summary or headline or "Something here looks concerning and may need your attention."
+    elif record_class == "threat_stopped":
+        established = summary or headline or "The threat was blocked before it could cause harm."
+    elif record_class == "protection_issue":
+        established = (
+            (summary or headline or "A protection feature isn't working as expected.")
+            + " This isn't a security attack — it's about keeping your protection running properly."
+        )
+    elif record_class == "resolved":
+        established = summary or headline or "This concern has been handled and no further action is needed."
+    elif record_class == "diagnostic_result":
+        established = summary or headline or "The check completed and the results are available below."
+    elif record_class == "unverifiable_legacy":
+        established = (summary or headline or "This is an older record.") + " The original details are limited, so take this as historical context."
+    elif record_class == "reduced_protection":
+        established = summary or headline or "Your protection is running but at a reduced level."
+    else:
+        established = summary or headline or "Nothing needed your attention."
+
+    # 3. Key evidence — from why array or summary
+    evidence_points: list[str] = []
     if why:
         evidence_points = [str(w) for w in why[:4]]
-    elif summary:
+    elif summary and summary != established:
         evidence_points = [summary[:200]]
 
-    # 4. What it means
+    # 4. What it means — warm, reassuring, plain English
     if record_class == "security_threat":
-        meaning = "This requires your attention. Review the details and follow the recommended action."
+        meaning = "This needs your attention — have a look at the details and follow the recommended steps."
     elif record_class == "threat_stopped":
-        meaning = "Apollo handled this automatically. No action is needed from you."
+        meaning = "Apollo took care of this for you. Nothing more is needed on your part."
     elif record_class == "protection_issue":
-        meaning = "Your device isn't under attack — a protection feature needs attention to work properly."
+        meaning = "You're not under attack. A protection feature just needs a bit of attention to keep working properly."
     elif record_class == "resolved":
-        meaning = "This has been handled. It's kept in your history for reference."
+        meaning = "All sorted. This is kept in your history so you can look back if you ever need to."
+    elif record_class == "reduced_protection":
+        meaning = "Your protection is still working but could be better. When you have a moment, it's worth checking."
     elif record_class == "unverifiable_legacy":
-        meaning = "This is an older record. The original details are limited, so treat it as historical context."
+        meaning = "This is from an earlier time and we don't have all the details. Treat it as background information."
+    elif record_class == "diagnostic_result":
+        meaning = "This was a routine check. No action needed unless the results flag something specific."
     else:
-        meaning = "No action is needed. This is recorded for your awareness."
+        meaning = "Nothing to worry about — this is just recorded for your awareness."
 
-    # 5. Action
+    # 5. Action — only when genuinely needed
     action = None
     if record_class == "security_threat" and what_to_do:
         action = what_to_do
     elif record_class == "protection_issue" and what_to_do:
+        action = what_to_do
+    elif record_class == "reduced_protection" and what_to_do:
         action = what_to_do
 
     return {
@@ -266,7 +288,7 @@ def generate_higgins_briefing(record: dict[str, Any], record_class: RecordClass)
         "action": action,
         "record_class": record_class,
         "generated_at": None,  # Set by caller
-        "version": "briefing_v1",
+        "version": "briefing_v2",
     }
 
 

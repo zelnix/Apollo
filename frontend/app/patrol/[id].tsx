@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { ClassBadge, classBorderColor } from "@/src/components/ClassBadge";
 import { EventActions } from "@/src/components/EventActions";
 import { eventHistory, looksLikeInternalCode, sourceLabel } from "@/src/domain/messageVoice";
 import { hasLocalEvidence } from "@/src/domain/higginsNarration";
@@ -15,17 +16,6 @@ import { projectPatrolOutcomes } from "@/src/domain/patrolOutcomes";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
-
-const CLASS_LABEL: Partial<Record<RecordClass, string>> = {
-  security_threat: "Security threat",
-  threat_stopped: "Threat stopped",
-  protection_issue: "Protection issue",
-  reduced_protection: "Reduced protection",
-  diagnostic_result: "Diagnostic",
-  informational: "Informational",
-  resolved: "Resolved",
-  unverifiable_legacy: "Legacy record",
-};
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -74,11 +64,10 @@ export default function EventDetail() {
       ) : (
         <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="event-scroll">
           {focus ? <Card testID="event-from-alert" style={{ gap: 4, borderColor: toneColor(colors, event.state) }}><Text style={s.sub}>Opened from your Apollo alert</Text><Body>Here&apos;s exactly what Apollo flagged. The details below are this specific finding.</Body></Card> : null}
-          <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}>
+          <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap", alignItems: "center" }}>
             <Pill tone={outcome?.state ?? event.state} label={outcome?.result ?? STATE_LABEL[event.state]} testID="event-state-pill" />
             {event.verified_block ? <Pill tone={event.resolved_at ? "resting" : "biting"} label={event.resolved_at ? "Threat contained" : "Block verified"} testID="event-verified-pill" /> : null}
-            {event.patrol_record?.recordClass ? <Pill tone="neutral" label={CLASS_LABEL[event.patrol_record.recordClass] ?? event.patrol_record.recordClass} testID="event-class-pill" /> : null}
-            {event.patrol_record?.recordClass === "unverifiable_legacy" ? <Pill tone="neutral" label="Limited evidence" /> : null}
+            {event.patrol_record?.recordClass ? <ClassBadge recordClass={event.patrol_record.recordClass} testID="event-class-badge" /> : null}
             {isMock ? <Pill tone="unknown" label={event.adapter_label} /> : null}
           </View>
           <Body>{outcome?.resultBasis ?? STATE_MEANING[event.state]}</Body>
@@ -86,17 +75,35 @@ export default function EventDetail() {
           {/* ── Higgins Briefing (Retrofit) ── */}
           {event.patrol_record?.higginsBriefing ? (() => {
             const b: HigginsBriefing = event.patrol_record.higginsBriefing;
+            const borderColor = classBorderColor(colors, b.record_class) ?? toneColor(colors, event.state);
             return (
-              <Card style={{ gap: spacing.sm, borderColor: toneColor(colors, event.state) }} testID="event-higgins-briefing">
-                <Text style={s.sub}>Higgins&apos; briefing</Text>
-                <Text style={s.big}>{b.investigated}</Text>
-                <Text style={[s.big, { fontFamily: fonts.text }]}>{b.established}</Text>
-                {b.evidence_points.length > 0 ? b.evidence_points.map((ep, i) => (
-                  <View key={i} style={s.bullet}><View style={[s.dot, { backgroundColor: toneColor(colors, event.state) }]} /><Body style={{ flex: 1 }}>{ep}</Body></View>
-                )) : null}
-                <Body>{b.meaning}</Body>
-                {b.action ? <Text style={[s.big, { fontFamily: fonts.textSemibold }]} testID="event-briefing-action">{b.action}</Text> : null}
-                {event.patrol_record.reassessment ? <Text style={s.meta} testID="event-reassessment-date">Reassessed {new Date(event.patrol_record.reassessment.reassessed_at).toLocaleDateString()}</Text> : null}
+              <Card style={{ gap: spacing.md, borderLeftWidth: 3, borderLeftColor: borderColor }} testID="event-higgins-briefing">
+                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                  <Text style={[s.sub, { fontSize: 14, letterSpacing: 0 }]}>Higgins&apos; briefing</Text>
+                  {event.patrol_record?.reassessment ? (
+                    <Text style={[s.meta, { fontSize: 10 }]} testID="event-reassessment-date">
+                      Updated {new Date(event.patrol_record.reassessment.reassessed_at).toLocaleDateString([], { month: "short", year: "numeric" })}
+                    </Text>
+                  ) : null}
+                </View>
+                <Text style={[s.big, { lineHeight: 22 }]}>{b.investigated}</Text>
+                <Text style={[s.big, { fontFamily: fonts.text, lineHeight: 22 }]}>{b.established}</Text>
+                {b.evidence_points.length > 0 ? (
+                  <View style={{ gap: spacing.xs }}>
+                    {b.evidence_points.map((ep, i) => (
+                      <View key={i} style={s.bullet}>
+                        <View style={[s.dot, { backgroundColor: borderColor, marginTop: 6 }]} />
+                        <Body style={{ flex: 1 }}>{ep}</Body>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+                <Text style={{ fontFamily: fonts.textSemibold, fontSize: 14, lineHeight: 20, color: colors.onSurface }}>{b.meaning}</Text>
+                {b.action ? (
+                  <View style={{ backgroundColor: colors.surfaceTertiary, borderRadius: radius.sm, padding: spacing.md }}>
+                    <Text style={{ fontFamily: fonts.textSemibold, fontSize: 14, color: colors.onSurface }} testID="event-briefing-action">{b.action}</Text>
+                  </View>
+                ) : null}
               </Card>
             );
           })() : null}
