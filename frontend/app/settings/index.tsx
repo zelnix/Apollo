@@ -84,7 +84,7 @@ export default function SettingsScreen() {
       <View><SectionTitle>App preferences</SectionTitle>
         <Card testID="settings-preferences">
           <SwitchRow first label="Battery saver" hint="Reduces animation and checks status less often. It does not change the protection status." value={lowPower} onValueChange={(value) => void setLowPower(value)} testID="settings-lowpower-switch" />
-          <NavRow label="Update investigation reports" hint="Apply the latest reporting format to all past investigations" onPress={() => setShowRetrofit(true)} testID="settings-retrofit" />
+          <NavRow label="Retrofit new enhancements" hint="Apply the latest reporting format to all past investigations" onPress={() => setShowRetrofit(true)} testID="settings-retrofit" />
           <NavRow label="Minimise Apollo" hint="Move Apollo to the background" onPress={() => void minimiseApp(showToast)} testID="settings-minimise" />
         </Card>
       </View>

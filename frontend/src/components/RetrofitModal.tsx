@@ -27,7 +27,7 @@ interface RetrofitReport {
   completed_at?: string;
 }
 
-type Phase = "loading" | "running" | "done" | "error" | "already_done";
+type Phase = "confirm" | "running" | "done" | "error" | "already_done";
 
 /** Check if retrofit has already been run (stored locally). */
 export async function hasRetrofitRun(): Promise<boolean> {
@@ -100,7 +100,7 @@ function buildHigginsReport(report: RetrofitReport): string {
 export function RetrofitModal({ visible, onClose, auto = false }: { visible: boolean; onClose: () => void; auto?: boolean }) {
   const s = useStyles();
   const { colors } = useTheme();
-  const [phase, setPhase] = useState<Phase>("loading");
+  const [phase, setPhase] = useState<Phase>("confirm");
   const [report, setReport] = useState<RetrofitReport | null>(null);
   const [error, setError] = useState<string>("");
 
@@ -121,14 +121,12 @@ export function RetrofitModal({ visible, onClose, auto = false }: { visible: boo
     if (!visible) return;
 
     // Reset state when modal opens
-    setPhase("loading");
     setReport(null);
     setError("");
 
-    // Check status first
+    // Check if already done
     (async () => {
       try {
-        // If auto-trigger, check if already done locally
         if (auto) {
           const done = await hasRetrofitRun();
           if (done) {
@@ -136,22 +134,19 @@ export function RetrofitModal({ visible, onClose, auto = false }: { visible: boo
             return;
           }
         }
-        // Check server status
         const status = await apiGet<{ status: string; report?: RetrofitReport }>("/retrofit/status");
         if (status.status === "completed" && auto) {
-          // Already run on server, mark locally and skip
           await markRetrofitDone();
           setPhase("already_done");
           return;
         }
-        // Run the retrofit
-        await runRetrofit();
+        // Show the confirmation screen
+        setPhase("confirm");
       } catch {
-        // Status check failed — try running anyway
-        await runRetrofit();
+        setPhase("confirm");
       }
     })();
-  }, [visible, auto, runRetrofit]);
+  }, [visible, auto]);
 
   // If auto mode and already done, close silently
   useEffect(() => {
@@ -160,7 +155,6 @@ export function RetrofitModal({ visible, onClose, auto = false }: { visible: boo
     }
   }, [phase, auto, onClose]);
 
-  // Don't render the modal if it shouldn't be visible or if auto-dismissed
   if (!visible || (phase === "already_done" && auto)) return null;
 
   return (
@@ -173,8 +167,61 @@ export function RetrofitModal({ visible, onClose, auto = false }: { visible: boo
     >
       <View style={s.overlay}>
         <View style={s.card}>
+          {/* Confirm phase — explain enhancements, user taps to start */}
+          {phase === "confirm" ? (
+            <ScrollView style={s.reportScroll} contentContainerStyle={s.reportContent}>
+              <View style={s.reportHeader}>
+                <View style={s.reportIconWrap}>
+                  <ShieldCheck size={24} color="#FFFFFF" fill={colors.brand} />
+                </View>
+                <Text style={s.reportTitle}>Retrofit new enhancements</Text>
+              </View>
+              <Text style={s.loadingDesc}>
+                Apollo has new enhancements ready to apply to your investigation history. Here's what will be updated:
+              </Text>
+              <View style={s.enhancementList}>
+                <View style={s.enhancementItem}>
+                  <Text style={s.enhancementBullet}>•</Text>
+                  <Text style={s.enhancementText}>Evidence-based classification — every past investigation gets reclassified using the latest approved standards</Text>
+                </View>
+                <View style={s.enhancementItem}>
+                  <Text style={s.enhancementBullet}>•</Text>
+                  <Text style={s.enhancementText}>Higgins briefings — new investigation summaries written for each case so you can understand what happened</Text>
+                </View>
+                <View style={s.enhancementItem}>
+                  <Text style={s.enhancementBullet}>•</Text>
+                  <Text style={s.enhancementText}>Duplicate consolidation — repeated presentation records are merged while preserving all original evidence</Text>
+                </View>
+                <View style={s.enhancementItem}>
+                  <Text style={s.enhancementBullet}>•</Text>
+                  <Text style={s.enhancementText}>Legacy marking — older records that can't be fully verified are clearly labelled</Text>
+                </View>
+              </View>
+              <Text style={s.enhancementNote}>
+                This is safe to run and won't delete any of your data. Original evidence is always preserved.
+              </Text>
+              <Pressable
+                testID="retrofit-start"
+                style={[s.okButton, { backgroundColor: colors.brand }]}
+                onPress={() => void runRetrofit()}
+                accessibilityRole="button"
+                accessibilityLabel="Start retrofit"
+              >
+                <Text style={s.okButtonText}>Start retrofit</Text>
+              </Pressable>
+              <Pressable
+                testID="retrofit-cancel"
+                style={s.cancelButton}
+                onPress={onClose}
+                accessibilityRole="button"
+              >
+                <Text style={[s.cancelButtonText, { color: colors.onSurfaceSecondary }]}>Not now</Text>
+              </Pressable>
+            </ScrollView>
+          ) : null}
+
           {/* Running phase */}
-          {(phase === "loading" || phase === "running") ? (
+          {phase === "running" ? (
             <View style={s.loadingWrap}>
               <ActivityIndicator size="large" color={colors.brand} />
               <Text style={s.loadingTitle}>Retrofitting new enhancements</Text>
@@ -305,5 +352,26 @@ const useStyles = makeStyles((c) => ({
   },
   okButtonText: {
     fontFamily: fonts.displayBold, fontSize: 16, color: "#FFFFFF",
+  },
+  cancelButton: {
+    paddingVertical: spacing.md, alignItems: "center",
+  },
+  cancelButtonText: {
+    fontFamily: fonts.textMedium, fontSize: 15,
+  },
+  enhancementList: {
+    gap: spacing.sm,
+  },
+  enhancementItem: {
+    flexDirection: "row", gap: spacing.sm, alignItems: "flex-start",
+  },
+  enhancementBullet: {
+    fontFamily: fonts.displayBold, fontSize: 15, color: c.brand, marginTop: 1,
+  },
+  enhancementText: {
+    fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurface, flex: 1,
+  },
+  enhancementNote: {
+    fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurfaceSecondary, fontStyle: "italic",
   },
 }));
