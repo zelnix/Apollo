@@ -245,7 +245,7 @@ export default function ProtectionScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[s.areaTitle, { fontSize: 15 }]}>Protection Details</Text>
-              <Text style={s.areaDesc}>Active findings, verified blocks and today&apos;s protection timeline.</Text>
+              <Text style={s.areaDesc}>Gate status, health logs and today&apos;s protection timeline.</Text>
             </View>
           </Card>
         </Pressable>
