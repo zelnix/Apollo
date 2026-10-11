@@ -78,6 +78,8 @@ export function EvidencePopup({ visible, onClose, caseId, focusEvidenceId, items
   const [items, setItems] = useState<EvidenceItem[]>(propItems || []);
   const [loading, setLoading] = useState(!propItems);
   const [imageUri, setImageUri] = useState<string | null>(null);
+  const [imageLoading, setImageLoading] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
   const [textContent, setTextContent] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(focusEvidenceId);
 
@@ -92,28 +94,58 @@ export function EvidencePopup({ visible, onClose, caseId, focusEvidenceId, items
       .catch(() => setLoading(false));
   }, [visible, caseId, propItems]);
 
-  // Load content for selected evidence item
+  // Load content for selected evidence item with proper authentication
   useEffect(() => {
     if (!selectedId || !visible) return;
     const item = items.find((i) => i.id === selectedId);
     if (!item) return;
     setImageUri(null);
+    setImageError(null);
+    setImageLoading(false);
     setTextContent(null);
-    if (item.kind === "image" && item.availability === "available") {
-      // Build authenticated URL for image
-      getDeviceToken().then((token) => {
-        if (!token) return;
-        const url = `${API_BASE}/investigations/${caseId}/evidence/${item.id}/content`;
-        // For React Native Image, we use the URL directly; fetch with headers for web
-        setImageUri(url);
+
+    if (item.availability !== "available") return;
+
+    if (item.kind === "image") {
+      // Fetch image bytes with auth token, convert to base64 data URI
+      setImageLoading(true);
+      getDeviceToken().then(async (token) => {
+        if (!token) { setImageError("Authentication required"); setImageLoading(false); return; }
+        try {
+          const res = await fetch(`${API_BASE}/investigations/${caseId}/evidence/${item.id}/content`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (!res.ok) {
+            if (res.status === 410) { setImageError("This evidence has expired and is no longer available."); }
+            else if (res.status === 404) { setImageError("Evidence not found. It may belong to a different investigation."); }
+            else { setImageError(`Could not load evidence image (${res.status}).`); }
+            setImageLoading(false);
+            return;
+          }
+          const blob = await res.blob();
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const dataUri = reader.result as string;
+            setImageUri(dataUri);
+            setImageLoading(false);
+          };
+          reader.onerror = () => { setImageError("Failed to process the evidence image."); setImageLoading(false); };
+          reader.readAsDataURL(blob);
+        } catch (err) {
+          setImageError("Could not connect to load evidence. Check your connection.");
+          setImageLoading(false);
+        }
       });
-    } else if ((item.kind === "text" || item.kind === "url") && item.availability === "available") {
+    } else if (item.kind === "text" || item.kind === "url") {
       getDeviceToken().then((token) => {
         if (!token) return;
         fetch(`${API_BASE}/investigations/${caseId}/evidence/${item.id}/content`, {
           headers: { Authorization: `Bearer ${token}` },
         })
-          .then((r) => r.text())
+          .then((r) => {
+            if (!r.ok) throw new Error(`${r.status}`);
+            return r.text();
+          })
           .then((text) => setTextContent(text))
           .catch(() => setTextContent("[Content could not be loaded]"));
       });
@@ -157,10 +189,20 @@ export function EvidencePopup({ visible, onClose, caseId, focusEvidenceId, items
               </View>
               {selected.label ? <Text style={s.textContent}>{selected.label}</Text> : null}
 
-              {/* Image evidence */}
-              {selected.kind === "image" && imageUri ? (
+              {/* Image evidence — authenticated fetch → base64 data URI */}
+              {selected.kind === "image" && imageLoading ? (
+                <View style={[s.imageContainer, { padding: spacing.xl }]}>
+                  <ActivityIndicator color={colors.gold} size="large" />
+                  <Body style={{ marginTop: spacing.sm }}>Loading evidence image…</Body>
+                </View>
+              ) : selected.kind === "image" && imageError ? (
+                <View style={[s.unavailable, { backgroundColor: colors.surfaceTertiary }]}>
+                  <Text style={s.unavailableText}>{imageError}</Text>
+                </View>
+              ) : selected.kind === "image" && imageUri ? (
                 <View style={s.imageContainer}>
-                  <Image source={{ uri: imageUri, headers: {} }} style={s.evidenceImage} resizeMode="contain" testID="evidence-image" />
+                  <Image source={{ uri: imageUri }} style={s.evidenceImage} resizeMode="contain" testID="evidence-image"
+                    accessibilityLabel={`Evidence ${selected.displayId || selected.id}: ${selected.label || "Investigated image"}`} />
                 </View>
               ) : null}
 

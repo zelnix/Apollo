@@ -755,6 +755,22 @@ async def vision_investigate(
                 raw_image = await file.read(6_000_001)
                 if len(raw_image) > 6_000_000:
                     raise HTTPException(413, "Image is larger than 6 MB.")
+
+                # ── WP2: Receipt-to-upload byte binding ──
+                # Compute SHA-256 of the RAW uploaded bytes and compare against
+                # the client-declared digest from the on-device privacy gate.
+                # This validates that the received bytes are exactly what was
+                # approved by the privacy screening, before any server-side
+                # resizing or re-encoding.
+                raw_upload_digest = hashlib.sha256(raw_image).hexdigest()
+                if raw_upload_digest != sanitization_digest:
+                    raise HTTPException(
+                        422,
+                        f"Image integrity check failed. The uploaded bytes (SHA-256: {raw_upload_digest[:16]}…) "
+                        f"do not match the digest declared by the privacy gate ({sanitization_digest[:16]}…). "
+                        f"The image may have been altered after approval. Resubmit through Apollo's privacy gate."
+                    )
+
                 from PIL import Image as PILImage
                 with PILImage.open(io.BytesIO(raw_image)) as image:
                     image.load()
@@ -764,6 +780,11 @@ async def vision_investigate(
                     rendered = io.BytesIO()
                     image.convert("RGB").save(rendered, format="JPEG", quality=90, optimize=True)
                     processed = rendered.getvalue()
+
+                # Record both the raw upload digest and the processed image digest
+                _raw_upload_digest = raw_upload_digest
+                _processed_digest = hashlib.sha256(processed).hexdigest()
+
                 parts = [
                     types.Part.from_bytes(data=processed, mime_type="image/jpeg"),
                     types.Part(text="Analyse this image for security indicators. The user showed Apollo something they find suspicious."),
@@ -787,6 +808,8 @@ async def vision_investigate(
                 # Preserve redacted image bytes for evidentiary chain before wiping
                 _redacted_image_bytes = processed if "processed" in locals() else b""
                 _redacted_image_hash = hashlib.sha256(_redacted_image_bytes).hexdigest() if _redacted_image_bytes else None
+                _raw_upload_digest = _raw_upload_digest if "_raw_upload_digest" in dir() else None
+                _processed_digest = _processed_digest if "_processed_digest" in dir() else None
                 raw_image = b""
                 processed = b"" if "processed" in locals() else b""
                 if file: await file.close()
@@ -975,6 +998,17 @@ async def vision_investigate(
             if _redacted_image_bytes:
                 from services.higgins.contracts import EvidenceProvenance, Transformation, Coverage
                 img_evidence_id = f"vision-image-{case_id[:8]}"
+
+                # Build transformation history: privacy screening → server-side processing
+                transformations = [
+                    Transformation(kind="privacy_screening", description="On-device privacy screening applied before submission"),
+                ]
+                if _raw_upload_digest and _processed_digest and _raw_upload_digest != _processed_digest:
+                    transformations.append(
+                        Transformation(kind="image_resize",
+                                       description=f"Server-side resize to max 2048px and JPEG re-encode (original upload SHA-256: {_raw_upload_digest[:16]}…)")
+                    )
+
                 img_item = EvidenceItem(
                     id=img_evidence_id, case_id=case_id, client_item_id=img_evidence_id,
                     display_id="E-001", origin="user_submission", kind="image",
@@ -986,12 +1020,17 @@ async def vision_investigate(
                         source_description="User-submitted image after on-device privacy screening and redaction",
                     ),
                     coverage=Coverage(status="not_started", unit="bytes", total=len(_redacted_image_bytes), examined=0),
-                    transformations=[
-                        Transformation(kind="privacy_screening", description="On-device privacy screening applied before submission"),
-                    ],
+                    transformations=transformations,
                     label="Privacy-screened image (investigated version)",
                 )
-                await invest_repo.insert_evidence(owner, img_item, {"contentDigest": _redacted_image_hash})
+                evidence_meta = {
+                    "contentDigest": _redacted_image_hash,
+                    "rawUploadDigest": _raw_upload_digest,
+                    "processedDigest": _processed_digest,
+                    "sanitizationReceiptId": sanitization_receipt_id,
+                    "digestMatch": True,  # Already validated above — mismatch rejects before reaching here
+                }
+                await invest_repo.insert_evidence(owner, img_item, evidence_meta)
                 await invest_repo.store_bytes(owner, case_id, img_evidence_id,
                                               _redacted_image_bytes, img_item.expires_at)
                 _redacted_image_bytes = b""  # Release memory after storage

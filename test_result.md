@@ -3058,16 +3058,53 @@ frontend:
         working: true
         comment: "VERIFIED: TypeScript compilation passed with exit code 0 ✓. Command: cd /app/frontend && npx tsc --noEmit. NO ERRORS. NO WARNINGS. All TypeScript files compile successfully ✓."
 
+
+  - task: "WP1 — Authenticated Evidence Image Retrieval (EvidencePopup.tsx)"
+    implemented: true
+    working: true
+    file: "frontend/src/components/EvidencePopup.tsx"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "EvidencePopup fetches image evidence via getDeviceToken() + fetch() with Authorization Bearer header → blob → base64 data URI. Handles loading, error (401/404/410), and unavailable states. TypeScript, ESLint pass. Integration with InvestigationView verified."
+
+  - task: "WP2 — SHA-256 Digest Validation in Vision Endpoint"
+    implemented: true
+    working: true
+    file: "backend/routers/analysis.py, backend/tests/test_wp2_digest_validation.py"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "Vision /api/vision/investigate computes hashlib.sha256(raw_image).hexdigest() and compares to sanitization_digest before any processing. Mismatches → 422 before Gemini. Records rawUploadDigest, processedDigest, transformation history. test_wp2_digest_validation.py 9/9 PASSED (digest accepted, mismatch rejected, missing rejected, short rejected, unapproved rejected, missing receipt rejected, rejected never processed, text-only fallback, evidence metadata)."
+
+  - task: "WP3 — End-to-End Pipeline Acceptance (Vision → Magnum DI → Higgins → Evidentiary Chain)"
+    implemented: true
+    working: true
+    file: "tests/test_evidentiary_chain.py, tests/test_magnum_di_acceptance.py, tests/test_higgins_briefing_acceptance.py, tests/test_wp2_digest_validation.py"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        working: true
+        comment: "All acceptance tests pass: Evidentiary Chain 12/12, Magnum DI 32/32, Higgins Briefing 39/39, WP2 Digest 9/9, Package4 37/37. Total: 129/129. TypeScript compilation clean. Backend health OK. Frontend loads."
+
+
 test_plan:
   current_focus:
-    - "Magnum DI Universal Investigation Implementation - COMPLETE"
+    - "WP1 — Authenticated Evidence Image Retrieval (EvidencePopup.tsx)"
+    - "WP2 — SHA-256 Digest Validation in Vision Endpoint"
+    - "WP3 — End-to-End Pipeline Acceptance"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 
 agent_communication:
-  - agent: "testing"
-    message: "MAGNUM DI UNIVERSAL INVESTIGATION IMPLEMENTATION - COMPREHENSIVE TESTING COMPLETE. All acceptance criteria met. BACKEND TESTS: (1) Full Magnum DI acceptance suite: 32/32 PASSED ✓ (2) Regression test suite: 47/47 PASSED ✓ (3) Backend health: 200 OK ✓ (4) Model configuration: All models gemini-3.8-flash ✓ (5) Vision gate contract: Case created successfully with vision gate ✓. FRONTEND TESTS: (6) TypeScript compilation: PASSED (exit 0) ✓ (7) Vision.tsx navigation fix verified ✓. CODE VERIFICATION: (8) device_id preservation fix confirmed (analysis.py line 728-729) ✓ (9) 'vision' gate valid in contracts.py ✓ (10) Coordinator prompt contains complete 8-step Magnum DI framework ✓ (11) Higgins voice updated with role separation ✓. TOTAL: 79 tests passing (32 Magnum DI acceptance + 47 regression), 0 failures. NO MAJOR ISSUES FOUND. All changes verified and working correctly. Ready for main agent to summarise and finish."
+  - agent: "main"
+    message: "WP1/WP2/WP3 Evidentiary Chain Completion & Verification. Please test: (1) BACKEND: run tests/test_wp2_digest_validation.py (9 tests — correct digest accepted, mismatched/missing/short digests rejected before Gemini, text-only works), tests/test_evidentiary_chain.py (12 tests — evidence model, list, content, cross-owner isolation), tests/test_magnum_di_acceptance.py (32 tests — scenarios, vision gate, model config, privacy), tests/test_higgins_briefing_acceptance.py (39 tests — briefing standard, scenarios, output depth). (2) FRONTEND: verify TypeScript compilation, EvidencePopup.tsx uses authenticated fetch with getDeviceToken()+Bearer header (not Image component headers), handles 410/404/error states, InvestigationView wires EvidencePopup correctly. (3) BACKEND API: POST /api/vision/investigate with correct SHA-256 digest → accepts (200 or 502 if Gemini unavailable, NOT 422 integrity), POST with wrong digest → 422 integrity error, POST with missing digest → 422, GET /api/investigations/{case_id}/evidence/{evidence_id}/content requires auth (401 without). No user accounts — register via POST /api/devices/register. Known limitation: Gemini API returns ProviderFailure in this container — that is expected, not a bug."
 
 metadata:
   created_by: "testing_agent"
