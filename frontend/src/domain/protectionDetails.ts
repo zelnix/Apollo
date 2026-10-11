@@ -329,7 +329,8 @@ export function buildProtectionFindings(input: {
 
   // ── 5) Private DNS protection gap ──
   // When Android's Private DNS is confirmed active, Apollo's DNS gateway is completely bypassed.
-  // This is an infrastructure finding — not a threat — with one clear action.
+  // When status is unobservable, Apollo cannot confirm whether DNS inspection is operating.
+  // In either case: report honestly, never overstate remaining protection, never ask the user to change settings.
   if (input.privateDnsStatus?.bypassLevel === "confirmed") {
     const server = input.privateDnsStatus.privateDnsServer;
     findings.push({
@@ -339,10 +340,22 @@ export function buildProtectionFindings(input: {
       kindLabel: "Automatic protection",
       tone: "limited",
       statusLabel: "Reduced DNS coverage",
-      whatFound: `This device uses encrypted DNS${server ? ` (${server})` : ""}, which sends website requests through a private channel that Apollo cannot inspect. Some automatic website checks are not available.`,
-      whatItMeans: "Apollo cannot automatically check which websites this device requests through DNS. Link checking, threat rules and all other protections remain fully active.",
-      whatToDo: "No action needed. Apollo is still protecting you with link checking, threat rules and every other active protection. Automatic DNS-based website checks are the only capability affected.",
-      actionLabel: "Open device settings",
+      whatFound: `This device uses encrypted DNS${server ? ` (${server})` : ""}, which sends website requests through a private channel that Apollo cannot inspect. Automatic website checks that depend on DNS inspection are not available.`,
+      whatItMeans: "Apollo cannot automatically check which websites this device requests through DNS. This does not affect protections that do not depend on DNS inspection, but it does mean automatic DNS-level threat detection is inactive.",
+      whatToDo: "No action is needed. You don't need to change any settings. Other available protections continue working where supported.",
+      findingType: "infrastructure",
+    });
+  } else if (input.privateDnsStatus?.bypassLevel === "unobservable") {
+    findings.push({
+      id: "gap:private-dns-unknown",
+      gate: "Website protection",
+      kind: "automatic",
+      kindLabel: "Automatic protection",
+      tone: "unverified",
+      statusLabel: "DNS status unknown",
+      whatFound: "Apollo could not determine this device's DNS configuration. Some automatic website checks may not be operating.",
+      whatItMeans: "Without confirming the DNS configuration, Apollo cannot verify whether automatic DNS-level website checks are active.",
+      whatToDo: "No action is needed. Apollo will keep checking. If DNS status becomes available, this finding will update automatically.",
       findingType: "infrastructure",
     });
   }
