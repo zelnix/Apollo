@@ -86,6 +86,7 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
      * full Ed25519 verification is enforced.
      */
     const val PINNED_SIGNING_PUBLIC_KEY = "tu+b28Kvrl7a0JYcgBLyn7XxSDzLkfhdBROHZq+4k5Q="
+    const val LABEL = "GuardDog production Website Gate"
   }
   private val transitions = ApolloEnforcementTransitions.coordinator
   private val state = VpnStateRepository.shared
@@ -394,7 +395,6 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
   fun resumeRequested(): String = transitions.serialized { if (prefs.getBoolean("requested", false)) startLocked() else statusLocked() }
   private fun jsonObject(body: JSONObject): Map<String, Any?> = body.keys().asSequence().associateWith { key -> jsonValue(body.get(key)) }
   private fun jsonValue(value: Any?): Any? = when (value) { is JSONObject -> jsonObject(value); is JSONArray -> (0 until value.length()).map { jsonValue(value.get(it)) }; JSONObject.NULL -> null; else -> value }
-  companion object { const val LABEL = "GuardDog production Website Gate" }
 }
 
 class ApolloGuardDogExpiryWorker(context: Context, params: WorkerParameters) : Worker(context, params) {

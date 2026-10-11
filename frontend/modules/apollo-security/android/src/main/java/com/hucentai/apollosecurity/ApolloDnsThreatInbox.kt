@@ -23,8 +23,11 @@ internal class ApolloDnsThreatInbox(
     fun append(observation: DnsThreatObservation): Boolean {
         val records = safeLoad()
         // Deduplicate by observationId.
-        if (records.any { it.optString("observationId") == observation.observationId }) return true
-        if (records.size() >= capacity) {
+        val alreadyExists = (0 until records.length()).any { i ->
+            records.getJSONObject(i).optString("observationId") == observation.observationId
+        }
+        if (alreadyExists) return true
+        if (records.length() >= capacity) {
             lastError = "DNS threat observation inbox is full; a new observation was not persisted"
             return false
         }
