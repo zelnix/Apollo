@@ -75,8 +75,9 @@ const useStyles = makeStyles((c) => ({
     flex: 1, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm,
     borderWidth: 1,
   },
-  halfCardIconWrap: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
-  halfCardTitle: { fontFamily: fonts.displayBold, fontSize: 14, color: c.onSurface },
+  halfCardIconWrap: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  halfCardTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  halfCardTitle: { fontFamily: fonts.displayBold, fontSize: 14, color: c.onSurface, flex: 1 },
   halfCardDesc: { fontFamily: fonts.text, fontSize: 12, lineHeight: 17, color: c.onSurfaceSecondary },
   halfCardBtn: {
     borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.md,
@@ -223,10 +224,12 @@ export default function Home() {
             onPress={() => router.push("/(tabs)/protection")}
             style={({ pressed }) => [s.halfCard, { backgroundColor: "rgba(22,34,53,0.04)", borderColor: "rgba(22,34,53,0.12)", opacity: pressed ? 0.85 : 1 }]}
           >
-            <View style={[s.halfCardIconWrap, { backgroundColor: "rgba(22,34,53,0.10)" }]}>
-              <ShieldCheck size={20} color={colors.brand} />
+            <View style={s.halfCardTitleRow}>
+              <View style={[s.halfCardIconWrap, { backgroundColor: "rgba(22,34,53,0.10)" }]}>
+                <ShieldCheck size={16} color={colors.brand} />
+              </View>
+              <Text style={s.halfCardTitle}>Protection Status</Text>
             </View>
-            <Text style={s.halfCardTitle}>Protection Status</Text>
             <Text style={s.halfCardDesc} numberOfLines={3}>See what Apollo is protecting. Gate health, limitations and action needed.</Text>
             <View style={[s.halfCardBtn, { backgroundColor: colors.brand }]}>
               <Text style={[s.halfCardBtnText, { color: colors.onBrand }]}>View Protection</Text>
@@ -241,10 +244,12 @@ export default function Home() {
             onPress={() => router.push("/higgins/learning")}
             style={({ pressed }) => [s.halfCard, { backgroundColor: "rgba(201,163,74,0.06)", borderColor: "rgba(201,163,74,0.20)", opacity: pressed ? 0.85 : 1 }]}
           >
-            <View style={[s.halfCardIconWrap, { backgroundColor: colors.goldTint }]}>
-              <GraduationCap size={20} color={colors.gold} />
+            <View style={s.halfCardTitleRow}>
+              <View style={[s.halfCardIconWrap, { backgroundColor: colors.goldTint }]}>
+                <GraduationCap size={16} color={colors.gold} />
+              </View>
+              <Text style={s.halfCardTitle}>Learn with Higgins</Text>
             </View>
-            <Text style={s.halfCardTitle}>Learn with Higgins</Text>
             <Text style={s.halfCardDesc} numberOfLines={3}>Friendly, practical lessons about scams, cyber security and staying safer online.</Text>
             <View style={[s.halfCardBtn, { backgroundColor: colors.gold }]}>
               <Text style={[s.halfCardBtnText, { color: "#FFFFFF" }]}>Start Learning</Text>
@@ -269,7 +274,7 @@ export default function Home() {
                   <MessageSquare size={16} color={colors.barking} />
                 </View>
                 <View style={s.activityContent}>
-                  <Text style={s.activityText} numberOfLines={1}>{finding.title}</Text>
+                  <Text style={s.activityText}>{finding.title}</Text>
                 </View>
                 <Text style={s.findingLink}>View details</Text>
                 <ChevronRight size={14} color={colors.brand} />

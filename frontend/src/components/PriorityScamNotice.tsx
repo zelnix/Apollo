@@ -124,7 +124,7 @@ export function PriorityScamNotice({ compact = false }: { compact?: boolean } = 
           <TriangleAlert size={16} color={colors.growling} />
         </View>
         <View style={s.compactContent}>
-          <Text style={s.compactTitle} numberOfLines={1}>{priorityAlert.title}</Text>
+          <Text style={s.compactTitle}>{priorityAlert.title}</Text>
           <Text style={s.compactSub} numberOfLines={1}>
             {priorityAlert.severity === "EXTREME" ? "Extreme" : "High priority"} · {priorityAlert.source}
           </Text>
