@@ -228,6 +228,31 @@ async def list_evidence(case_id: str, request: Request, cursor: Optional[str] = 
     return JSONResponse({"items": [repo.evidence_view(r).wire() for r in page], "nextCursor": str(start + 100) if len(rows) > start + 100 else None, "total": len(rows)}, headers=NO_STORE)
 
 
+@router.get("/investigations/{case_id}/evidence/{evidence_id}")
+async def get_single_evidence(case_id: str, evidence_id: str, request: Request):
+    """Return a single evidence item's metadata."""
+    owner = owner_of(request)
+    await repo.get_case(owner, case_id)
+    row = await repo.get_evidence(owner, case_id, evidence_id)
+    return JSONResponse({"evidence": repo.evidence_view(row).wire()}, headers=NO_STORE)
+
+
+@router.get("/investigations/{case_id}/evidence/{evidence_id}/content")
+async def get_evidence_content(case_id: str, evidence_id: str, request: Request):
+    """Serve the retained evidence bytes (images, files, text content).
+    Returns the actual investigated version of the evidence for the Evidentiary Chain popup."""
+    owner = owner_of(request)
+    await repo.get_case(owner, case_id)
+    row = await repo.get_evidence(owner, case_id, evidence_id)
+    media_type = row.get("media_type", "application/octet-stream")
+    try:
+        data = await repo.read_bytes(owner, case_id, evidence_id)
+    except Exception:
+        raise repo.http(410, "evidence_expired", "The evidence content is no longer available.")
+    return Response(content=data, media_type=media_type, headers={**NO_STORE, "Content-Length": str(len(data))})
+
+
+
 @router.get("/investigations/{case_id}/sources")
 async def list_sources(case_id: str, request: Request, cursor: Optional[str] = None):
     owner = owner_of(request)

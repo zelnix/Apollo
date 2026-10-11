@@ -4,11 +4,12 @@ import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 
 import { Body, Button, Card, Pill, type Tone } from "@/src/components/ui";
+import { EvidencePopup } from "@/src/components/EvidencePopup";
 import { assessmentLabel, attentionLabel, investigationHistory, scrubMessage } from "@/src/domain/messageVoice";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import type { CaseState } from "@/src/investigation/caseStore";
 import * as investigationApi from "@/src/investigation/client";
-import type { ActionProposal, Attention, SourceReference } from "@/src/investigation/types";
+import type { ActionProposal, Attention, EvidenceItem, SourceReference } from "@/src/investigation/types";
 import { isExecutable, runAction, type ActionOutcome } from "@/src/settings/actions";
 import { onRecheck, retryFailedAttempt } from "@/src/settings/recheck";
 
@@ -56,9 +57,14 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
     setConfirmablePlanId(o.plan?.outcome === "cannot_observe" ? o.attempt.planId : null);
   }), [state.caseData]);
   const [failedRecheck, setFailedRecheck] = useState(false);
+  const [evidencePopupVisible, setEvidencePopupVisible] = useState(false);
+  const [focusEvidenceId, setFocusEvidenceId] = useState<string | null>(null);
+  const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>([]);
   useEffect(() => {
     if (!state.caseData) { setReports([]); setReportNext(null); return; }
     void investigationApi.listReports().then((result) => { setReports(result.items); setReportNext(result.nextCursor); }).catch(() => setReportNote("Saved reports could not be loaded."));
+    // Pre-load evidence items for the popup
+    void investigationApi.listEvidence(state.caseData.id).then((result) => setEvidenceItems(result.items)).catch(() => {});
   }, [state.caseData]);
 
   const { phase, response, sources, turns, caseData, progress, failure, error, question } = state;
@@ -84,7 +90,20 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
       {expanded ? <View style={{ gap: spacing.sm }} testID="inv-explanation">
         <Text style={s.text}>{plain(response.explanationMarkdown)}</Text>
         {response.findings.length ? <Text style={s.heading}>What this rests on</Text> : null}
-        {response.findings.map((f) => <Text key={f.id} style={s.muted} testID={`inv-finding-${f.id}`}>{f.basis === "observation" ? "Observed" : f.basis === "user_report" ? "You reported" : "Higgins infers"} ({f.confidence}): {scrubMessage(f.text)}</Text>)}
+        {response.findings.map((f) => <View key={f.id} style={{ gap: 2 }}>
+          <Text style={s.muted} testID={`inv-finding-${f.id}`}>{f.basis === "observation" ? "Observed" : f.basis === "user_report" ? "You reported" : "Higgins infers"} ({f.confidence}): {scrubMessage(f.text)}</Text>
+          {f.evidenceIds && f.evidenceIds.length > 0 ? (
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs }}>
+              {f.evidenceIds.map((evId) => {
+                const evItem = evidenceItems.find((e) => e.id === evId);
+                const displayLabel = evItem?.displayId || evId.slice(0, 8);
+                return <Pressable key={evId} onPress={() => { setFocusEvidenceId(evId); setEvidencePopupVisible(true); }} testID={`inv-finding-evidence-${evId}`}>
+                  <Text style={[s.link, { fontSize: 12 }]}>View Evidence · {displayLabel}</Text>
+                </Pressable>;
+              })}
+            </View>
+          ) : null}
+        </View>)}
         {response.uncertainties.length ? <Text style={s.heading}>Still uncertain</Text> : null}
         {response.uncertainties.map((u, i) => <Text key={i} style={s.muted}>• {scrubMessage(u)}</Text>)}
         {response.scope ? <Text style={s.muted}>Scope: {scrubMessage(response.scope)}</Text> : null}
@@ -116,6 +135,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
       }} /> : null}
       {failedRecheck ? <Button testID="inv-recheck-retry" variant="ghost" label="Retry the fresh check" onPress={() => { setFailedRecheck(false); void retryFailedAttempt(); }} /> : null}
       {caseData ? <View style={{ gap: spacing.xs }} testID="inv-report-controls">
+        <Button testID="inv-view-evidence" variant="ghost" label={`View Evidence (${evidenceItems.length})`} onPress={() => { setFocusEvidenceId(null); setEvidencePopupVisible(true); }} />
         <Button testID="inv-report-save" variant="ghost" label="Save a redacted report" onPress={() => {
           void investigationApi.saveReport(caseData.id, response.revision).then(({ reportId }) => investigationApi.listReports().then((result) => {
             setReports(result.items); setReportNext(result.nextCursor); setReportNote(`Saved report ${reportId.slice(0, 8)}. Temporary evidence is not copied into it.`);
@@ -145,5 +165,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
     {state.notice ? <Card style={s.card} testID="inv-lifecycle-notice"><Body>{state.notice}</Body></Card> : null}
     {error && (phase === "failed" || phase === "expired") ? <Card style={s.card} testID="inv-error"><Text style={[s.text, { color: colors.barkingText }]}>{error}</Text>
       {phase === "failed" && caseData ? <Button testID="inv-retry" label="Retry this turn" onPress={onRetry} /> : null}</Card> : null}
+    {caseData ? <EvidencePopup visible={evidencePopupVisible} onClose={() => setEvidencePopupVisible(false)}
+      caseId={caseData.id} focusEvidenceId={focusEvidenceId} items={evidenceItems} /> : null}
   </View>;
 }

@@ -18,7 +18,7 @@ from pymongo.errors import DuplicateKeyError, OperationFailure
 
 from core.db import db, now_utc
 from services.higgins.capacity import LIFETIME_SECONDS, TEMPORARY_RETENTION, WORK_SECONDS
-from services.higgins.contracts import (Coverage, EvidenceItem, Failure, HigginsResponse, Inventory, InvestigationCase, Job,
+from services.higgins.contracts import (Coverage, EvidenceItem, EvidenceProvenance, Failure, HigginsResponse, Inventory, InvestigationCase, Job,
                                         SourceReference, TurnCommit, failure_body)
 from services.higgins.encryption import decrypt, encrypt
 
@@ -254,10 +254,13 @@ async def insert_evidence(
 ) -> None:
     epoch = await assert_live(owner, item.case_id)
     root_id = publication_root_id or item.id
-    doc = {"epoch": epoch, "owner_id": owner, "case_id": item.case_id, "evidence_id": item.id, "client_item_id": item.client_item_id, "origin": item.origin,
+    doc = {"epoch": epoch, "owner_id": owner, "case_id": item.case_id, "evidence_id": item.id, "client_item_id": item.client_item_id,
+           "display_id": item.display_id, "origin": item.origin,
            "kind": item.kind, "parent_id": item.parent_id, "related_evidence_ids": item.related_evidence_ids, "collected_at": item.collected_at,
            "observed_at": item.observed_at, "expires_at": item.expires_at, "availability": item.availability, "media_type": item.media_type,
-           "byte_length": item.byte_length, "coverage": item.coverage.wire(), "simulation": item.simulation.wire() if item.simulation else None,
+           "byte_length": item.byte_length, "integrity_hash": item.integrity_hash,
+           "provenance": item.provenance.wire() if item.provenance else None,
+           "coverage": item.coverage.wire(), "simulation": item.simulation.wire() if item.simulation else None,
            "transformations": [t.wire() for t in item.transformations], "label": item.label, "meta_ciphertext": enc_json(meta),
            "publication_root_id": root_id, "publication_state": "staging", "ingestion_attempt_id": ingestion_attempt_id or root_id,
            **({"publication_owner": publication_owner} if publication_owner else {})}
@@ -410,10 +413,15 @@ async def sweep_tombstones() -> int:
 
 
 def evidence_view(row: dict) -> EvidenceItem:
-    return EvidenceItem(id=row["evidence_id"], case_id=row["case_id"], client_item_id=row["client_item_id"], origin=row["origin"], kind=row["kind"],
+    prov = row.get("provenance")
+    return EvidenceItem(id=row["evidence_id"], case_id=row["case_id"], client_item_id=row["client_item_id"],
+                        display_id=row.get("display_id", ""),
+                        origin=row["origin"], kind=row["kind"],
                         parent_id=row.get("parent_id"), related_evidence_ids=row.get("related_evidence_ids", []), collected_at=utc(row["collected_at"]),
                         observed_at=utc(row["observed_at"]) if row.get("observed_at") else None, expires_at=utc(row["expires_at"]),
                         availability=row["availability"], media_type=row.get("media_type"), byte_length=row.get("byte_length"),
+                        integrity_hash=row.get("integrity_hash"),
+                        provenance=EvidenceProvenance.model_validate(prov) if prov else None,
                         coverage=Coverage.model_validate(row["coverage"]), simulation=row.get("simulation"), transformations=row.get("transformations", []),
                         label=row.get("label", ""))
 
@@ -447,7 +455,14 @@ async def get_evidence(owner: str, case_id: str, evidence_id: str) -> dict:
 
 
 async def list_evidence(owner: str, case_id: str) -> list[dict]:
-    return await _published_rows(owner, case_id)
+    rows = await _published_rows(owner, case_id)
+    # Auto-assign display_id (E-001, E-002, ...) for evidence without one
+    counter = 1
+    for row in rows:
+        if not row.get("display_id"):
+            row["display_id"] = f"E-{counter:03d}"
+        counter += 1
+    return rows
 
 
 async def evidence_meta(row: dict) -> dict:

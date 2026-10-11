@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import io
 import json
 import re
@@ -25,6 +26,8 @@ from services.higgins.provider import ProviderFailure, VISION_MODEL, generate_js
 from services.higgins.llm_boundary import Purpose
 from services.higgins.capacity import TEXT, ITEMS, bounded_analysis
 from services.higgins import evidence as ev, repository as invest_repo, jobs as invest_jobs
+from services.higgins.contracts import EvidenceItem, EvidenceProvenance, Transformation, Coverage
+from core.db import now_utc
 
 router = APIRouter()
 
@@ -781,6 +784,9 @@ async def vision_investigate(
                 logger.warning("vision investigate failed: %s", type(exc).__name__)
                 limitations.append("Visual analysis failed. Using text extraction only.")
             finally:
+                # Preserve redacted image bytes for evidentiary chain before wiping
+                _redacted_image_bytes = processed if "processed" in locals() else b""
+                _redacted_image_hash = hashlib.sha256(_redacted_image_bytes).hexdigest() if _redacted_image_bytes else None
                 raw_image = b""
                 processed = b"" if "processed" in locals() else b""
                 if file: await file.close()
@@ -964,6 +970,34 @@ async def vision_investigate(
             owner = _owner_id
             case = await invest_repo.create_case(owner, "vision", None)
             case_id = case["case_id"]
+
+            # Store the redacted image as the primary evidence item with integrity hash
+            if _redacted_image_bytes:
+                from services.higgins.contracts import EvidenceProvenance, Transformation, Coverage
+                img_evidence_id = f"vision-image-{case_id[:8]}"
+                img_item = EvidenceItem(
+                    id=img_evidence_id, case_id=case_id, client_item_id=img_evidence_id,
+                    display_id="E-001", origin="user_submission", kind="image",
+                    collected_at=now_utc(), expires_at=invest_repo.utc(case["expires_at"]),
+                    media_type="image/jpeg", byte_length=len(_redacted_image_bytes),
+                    integrity_hash=_redacted_image_hash,
+                    provenance=EvidenceProvenance(
+                        acquisition_method="vision_screening",
+                        source_description="User-submitted image after on-device privacy screening and redaction",
+                    ),
+                    coverage=Coverage(status="not_started", unit="bytes", total=len(_redacted_image_bytes), examined=0),
+                    transformations=[
+                        Transformation(kind="privacy_screening", description="On-device privacy screening applied before submission"),
+                    ],
+                    label="Privacy-screened image (investigated version)",
+                )
+                await invest_repo.insert_evidence(owner, img_item, {"contentDigest": _redacted_image_hash})
+                await invest_repo.store_bytes(owner, case_id, img_evidence_id,
+                                              _redacted_image_bytes, img_item.expires_at)
+                _redacted_image_bytes = b""  # Release memory after storage
+
+            # Ingest extracted text and URL evidence
+            evidence_counter = 2  # E-001 is the image
             for sub in submissions:
                 if sub["kind"] == "url":
                     await ev.ingest_url(owner, case, sub["client_item_id"], sub["value"], label=sub.get("label", ""))

@@ -26,6 +26,9 @@ export function getJob(caseId: string, jobId: string) { return apiGet<{ job: Job
 export function listTurns(caseId: string) { return apiGet<{ items: TurnCommit[]; total: number }>(`/investigations/${caseId}/turns`); }
 export function listSources(caseId: string) { return apiGet<{ items: SourceReference[]; total: number }>(`/investigations/${caseId}/sources`); }
 export function listEvidence(caseId: string) { return apiGet<{ items: EvidenceItem[]; total: number }>(`/investigations/${caseId}/evidence`); }
+export function getEvidence(caseId: string, evidenceId: string) { return apiGet<{ evidence: EvidenceItem }>(`/investigations/${caseId}/evidence/${evidenceId}`); }
+/** Returns the URL for fetching evidence content bytes (images, files). Must be fetched with auth headers. */
+export function evidenceContentUrl(caseId: string, evidenceId: string) { return `${API_BASE}/investigations/${caseId}/evidence/${evidenceId}/content`; }
 export function deleteCase(caseId: string) { return apiDelete<void>(`/investigations/${caseId}`); }
 export function submitTurn(caseId: string, body: { expectedRevision: number; turnId: string; message: string; answerToQuestionId: string | null; evidenceIds: string[] }, key: string, signal?: AbortSignal) {
   return postWithKey<{ job: Job; caseRevision: number }>(`/investigations/${caseId}/turns`, body, key, signal);

@@ -65,16 +65,23 @@ class Simulation(Wire):
 
 
 class Transformation(Wire):
-    kind: Literal["secret_redaction", "ocr", "decode", "chunk", "normalise", "privacy_note"]
+    kind: Literal["secret_redaction", "ocr", "decode", "chunk", "normalise", "privacy_note", "privacy_screening", "image_resize"]
     description: str
     source_start: Optional[int] = None
     source_end: Optional[int] = None
+
+
+class EvidenceProvenance(Wire):
+    acquisition_method: Literal["user_upload", "user_text", "device_observation", "external_fetch", "vision_screening", "ocr_extraction", "derived"] = "user_text"
+    source_description: str = ""
+    original_filename: Optional[str] = None
 
 
 class EvidenceItem(Wire):
     id: str
     case_id: str
     client_item_id: str
+    display_id: str = ""  # Human-readable: "E-001", "E-002"
     origin: Origin
     kind: EvidenceKind
     parent_id: Optional[str] = None
@@ -85,6 +92,8 @@ class EvidenceItem(Wire):
     availability: Literal["available", "unavailable", "permission_required", "purged"] = "available"
     media_type: Optional[str] = None
     byte_length: Optional[int] = None
+    integrity_hash: Optional[str] = None  # SHA-256 of the investigated evidence bytes
+    provenance: Optional[EvidenceProvenance] = None
     coverage: Coverage = Field(default_factory=Coverage)
     simulation: Optional[Simulation] = None
     transformations: list[Transformation] = Field(default_factory=list)
