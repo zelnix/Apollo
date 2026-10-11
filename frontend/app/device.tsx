@@ -6,7 +6,7 @@ import ShieldCheck from "lucide-react-native/icons/shield-check";
 import RefreshCw from "lucide-react-native/icons/refresh-cw";
 import X from "lucide-react-native/icons/x";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppState, Platform, Pressable, ScrollView, Switch, Text, View } from "react-native";
+import { AppState, ActivityIndicator, Platform, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { markCheckDone } from "@/src/store/checkCompletion";
@@ -167,8 +167,14 @@ export default function CheckDevice() {
   const [logReviewOnly, setLogReviewOnly] = useState(false);
   const [settingsGuidance, setSettingsGuidance] = useState<string | null>(null);
   const [checkSequence, setCheckSequence] = useState(0);
+  // ── Recheck investigation state ──
+  type RecheckPhase = "idle" | "investigating" | "briefing";
+  const [recheckPhase, setRecheckPhase] = useState<RecheckPhase>("idle");
+  const [briefing, setBriefing] = useState<{ headline: string; findings: string[]; action: string | null; overall: string } | null>(null);
+
   const refreshDevice = useCallback(async (notify = false) => {
     setChecking(true);
+    if (notify) setRecheckPhase("investigating");
     try {
       const collectSignals = hostKind && securityAdapter.getDeviceSecuritySignals ? securityAdapter.getDeviceSecuritySignals() : AppDeviceSdk.getDeviceSecuritySignals(platform);
       const [nextSignals, recent, previousRaw] = await Promise.all([collectSignals, AppDeviceSdk.getRecentAppSecurityEvents(), storage.getItem<string | null>(DEVICE_SNAPSHOT_KEY, null), verifyNow()]);
@@ -187,9 +193,11 @@ export default function CheckDevice() {
         setChangeLog(merged);
       }
       void markCheckDone("device");
-      if (notify) showToast("Device monitoring checked the signals this platform exposes.", "neutral");
     } catch {
-      if (notify) showToast("Device monitoring couldn't refresh every signal. The visible limits are listed below.", "growling");
+      if (notify) {
+        setBriefing({ headline: "Device check incomplete", findings: ["Apollo couldn't read every signal this time. The visible limits are listed below."], action: null, overall: "limited" });
+        setRecheckPhase("briefing");
+      }
     } finally { setChecking(false); setCheckSequence((value) => value + 1); }
   }, [platform, hostKind, showToast, verifyNow, protection?.running, storage]);
   useEffect(() => { void refreshDevice(false); }, [refreshDevice]);
@@ -205,6 +213,64 @@ export default function CheckDevice() {
   const reviewPlatform: ReviewPlatform | null = hostKind ?? (platform === "web" ? null : platform);
   const review = useMemo(() => reviewPlatform ? runDeviceReview({ platform: reviewPlatform, signals, self, protection: context.protection }) : null, [reviewPlatform, signals, self, context.protection]);
   const reviewGroups = useMemo(() => review ? groupByCategory(review) : [], [review]);
+
+  // ── Build Higgins' investigation briefing after a user-initiated recheck ──
+  useEffect(() => {
+    if (recheckPhase !== "investigating" || checking) return;
+    // Check just completed — build the briefing from the review results.
+    const findings: string[] = [];
+    let actionItem: string | null = null;
+    let overallLabel = "clear";
+
+    if (review) {
+      const actionResults = review.results.filter((r) => r.outcome === "action");
+      const reviewResults = review.results.filter((r) => r.outcome === "review");
+      const checkedResults = review.results.filter((r) => r.outcome === "checked");
+      const manualResults = review.results.filter((r) => r.outcome === "manual" || r.outcome === "unavailable");
+
+      if (checkedResults.length > 0) {
+        findings.push(`${checkedResults.length} ${checkedResults.length === 1 ? "setting is" : "settings are"} correctly configured.`);
+      }
+      if (actionResults.length > 0) {
+        overallLabel = "action";
+        for (const r of actionResults) findings.push(`${r.title} needs attention — ${r.risk || "action required"}.`);
+        actionItem = actionResults[0].settings ?? actionResults[0].risk ?? `${actionResults[0].title} needs to be fixed.`;
+      }
+      if (reviewResults.length > 0) {
+        if (overallLabel === "clear") overallLabel = "review";
+        for (const r of reviewResults) findings.push(`${r.title} could be improved — ${r.risk || "worth reviewing"}.`);
+        if (!actionItem) actionItem = reviewResults[0].settings ?? reviewResults[0].risk ?? `Review ${reviewResults[0].title}.`;
+      }
+      if (manualResults.length > 0) {
+        findings.push(`${manualResults.length} ${manualResults.length === 1 ? "setting" : "settings"} could not be determined — Higgins can help you check ${manualResults.length === 1 ? "it" : "them"} manually.`);
+      }
+    } else {
+      // No review available (web or unsupported platform).
+      const actionFindings = result.findings.filter((f) => f.severity === "high");
+      const reviewFindings = result.findings.filter((f) => f.severity === "review");
+      if (actionFindings.length > 0) {
+        overallLabel = "action";
+        for (const f of actionFindings) findings.push(`${f.title}: ${f.plain}`);
+        actionItem = actionFindings[0].action;
+      }
+      if (reviewFindings.length > 0) {
+        if (overallLabel === "clear") overallLabel = "review";
+        for (const f of reviewFindings) findings.push(`${f.title}: ${f.plain}`);
+        if (!actionItem) actionItem = reviewFindings[0].action;
+      }
+      if (!findings.length) findings.push("No concerns were identified within what this platform allows Apollo to check.");
+    }
+
+    const headline = overallLabel === "clear"
+      ? "Your device looks good"
+      : overallLabel === "action"
+        ? `${review ? review.results.filter((r) => r.outcome === "action").length : result.findings.filter((f) => f.severity === "high").length} ${overallLabel === "action" ? "item" : "items"} need${overallLabel === "action" ? "s" : ""} your attention`
+        : "A few settings are worth reviewing";
+
+    setBriefing({ headline, findings, action: actionItem, overall: overallLabel });
+    setRecheckPhase("briefing");
+  }, [recheckPhase, checking, review, result]);
+
   const openCheck = (r: CheckResult) => {
     if (!r.settings) return;
     if (hostKind) void openDesktopSettings(desktopReviewTarget(r.id)).catch(() => setSettingsGuidance(`${r.title}: ${r.settings}`));
@@ -297,6 +363,38 @@ export default function CheckDevice() {
       </View>
       <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="device-scroll">
         <Text style={s.subtitle}>Checks your device security settings, app permissions and Apollo protection health.</Text>
+
+        {/* ── Recheck: Investigation in progress ── */}
+        {recheckPhase === "investigating" ? (
+          <Card testID="device-investigating" style={{ gap: spacing.md, borderColor: colors.brandPrimary }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+              <ActivityIndicator size="small" color={colors.brandPrimary} />
+              <Text style={[s.statusTitle, { flex: 1 }]}>Checking device</Text>
+            </View>
+            <Body>Magnum DI is reviewing your device settings, permissions and Apollo protection health. This takes a moment.</Body>
+          </Card>
+        ) : null}
+
+        {/* ── Recheck: Higgins' investigation briefing ── */}
+        {recheckPhase === "briefing" && briefing ? (
+          <Card testID="device-briefing" style={{ gap: spacing.sm, borderColor: briefing.overall === "clear" ? colors.resting : briefing.overall === "action" ? colors.growling : colors.warning }}>
+            <SectionTitle>Higgins</SectionTitle>
+            <Text style={s.statusTitle} testID="device-briefing-headline">{briefing.headline}</Text>
+            {briefing.findings.map((f, i) => (
+              <View key={i} style={{ flexDirection: "row", gap: spacing.xs, alignItems: "flex-start" }}>
+                <Text style={[s.why, { lineHeight: 22 }]}>{"\u2022"}</Text>
+                <Text style={[s.why, { flex: 1, lineHeight: 22 }]}>{f}</Text>
+              </View>
+            ))}
+            {briefing.action ? (
+              <Body testID="device-briefing-action">{briefing.overall === "action" ? `I'd start with this: ${briefing.action}` : `Worth reviewing: ${briefing.action}`}</Body>
+            ) : (
+              <Body testID="device-briefing-action">No action needed right now. Apollo will keep watching.</Body>
+            )}
+            <Button testID="device-briefing-view-full" variant="ghost" label="View full device review" onPress={() => { setRecheckPhase("idle"); }} />
+          </Card>
+        ) : null}
+
         <Card testID="device-status" style={{ borderColor: toneColor(colors, review ? overallState(review.overall) : result.state), gap: spacing.sm }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}><ShieldCheck size={22} color={toneColor(colors, review ? overallState(review.overall) : result.state)} /><Pill tone={review ? overallState(review.overall) : result.state} label={review ? review.overallLabel : STATE_NAME[result.state]} testID="device-state" /></View>
           <Text style={s.statusTitle} testID="device-status-title">{review ? review.overallLabel : meta.title}</Text>
@@ -391,7 +489,7 @@ export default function CheckDevice() {
           <SectionTitle>Higgins</SectionTitle>
           <Body testID="device-higgins-explanation">{firstAction ? `${firstAction.title} is the first item to review. ${firstAction.action}` : "Apollo did not identify a meaningful concern within the signals this platform exposes. The visibility limits below still apply."}</Body>
           {firstAction ? <Button testID="device-higgins-open-settings" label={platform === "web" ? "Show relevant Settings steps" : "Open relevant Settings"} onPress={() => open(firstAction)} /> : null}
-          <Button testID="device-higgins-recheck" variant="secondary" icon={<RefreshCw size={17} color={colors.brand} />} label={checking ? "Checking again\u2026" : "I changed it \u2014 check again"} onPress={() => void refreshDevice(true)} disabled={checking} />
+          <Button testID="device-higgins-recheck" variant="secondary" icon={<RefreshCw size={17} color={colors.brand} />} label={recheckPhase === "investigating" ? "Checking device\u2026" : "Recheck device"} onPress={() => void refreshDevice(true)} disabled={recheckPhase === "investigating"} />
           <Button testID="device-ask-higgins" variant="ghost" label="Ask Higgins about my device" onPress={() => router.push({ pathname: "/(tabs)/ask", params: { prompt: review ? `My device security review says: ${review.summary} What should I do first?` : `My device assessment says: ${result.summary} How do I keep my phone secure?` } })} />
           <Body testID="device-higgins-tampering-rule">Apollo reports suspected tampering only when a specific high-confidence configuration or permission change was observed. A stopped service or missing permission alone is a protection gap, not proof of tampering.</Body>
         </Card>
