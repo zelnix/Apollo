@@ -319,11 +319,12 @@ class TestEvidenceIntegrity:
 # ── 7. System Prompt Verification ───────────────────────────────────────────
 
 class TestSystemPromptStandard:
-    """Verify system prompts contain the INVESTIGATE → ASSESS → DIRECT → GUIDE → VERIFY standard."""
+    """Verify system prompts contain the Magnum DI universal investigation framework."""
 
     def test_coordinator_system_prompt(self):
         from services.higgins.coordinator import SYSTEM
-        for section in ["INVESTIGATE:", "ASSESS:", "DIRECT:", "GUIDE:", "VERIFY:"]:
+        # Magnum DI 8-step framework + VERIFY
+        for section in ["SOURCE", "IDENTITY", "PURPOSE", "SCAM MECHANISM", "RESEARCH", "CORROBORATION", "ASSESSMENT", "GUIDANCE", "VERIFY:"]:
             assert section in SYSTEM, f"Coordinator system prompt must contain {section}"
 
     def test_chat_system_prompt(self):

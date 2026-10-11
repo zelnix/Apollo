@@ -725,6 +725,7 @@ async def vision_investigate(
     
     Routes extracted indicators to existing security engines and combines results.
     """
+    _owner_id = device_id  # Preserve for coordinator case creation below
     del device_id  # anonymous device authorises this disclosed assessment
 
     vision_data: dict[str, Any] = {}
@@ -960,7 +961,7 @@ async def vision_investigate(
             if text_content:
                 submissions.append({"client_item_id": "vision-text", "kind": "text", "value": text_content[:8000], "label": "Text extracted from image"})
 
-            owner = device_id
+            owner = _owner_id
             case = await invest_repo.create_case(owner, "vision", None)
             case_id = case["case_id"]
             for sub in submissions:

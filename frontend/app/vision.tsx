@@ -543,13 +543,13 @@ export default function VisionScreen() {
               <View style={s.resultSection} testID="vision-investigation">
                 <Text style={s.sectionTitle}>Extended investigation</Text>
                 <Text style={s.sectionBody}>
-                  Apollo has started a deeper investigation using public sources and security databases. This runs in the background and may take a moment. Results will appear in your Patrol activity.
+                  Apollo has started a deeper investigation using public sources and security databases. This runs in the background and may take a moment.
                 </Text>
                 <Button
                   testID="vision-view-investigation"
-                  label="View patrol activity"
+                  label="Open in Higgins"
                   variant="ghost"
-                  onPress={() => router.push("/(tabs)/patrol")}
+                  onPress={() => router.push({ pathname: "/(tabs)/ask", params: { resumeCaseId: result.investigation_case_id! } })}
                 />
               </View>
             ) : null}

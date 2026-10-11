@@ -11,7 +11,7 @@ from typing import Any, Literal, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
 
-Gate = Literal["site", "link", "text", "call", "network", "account", "email", "app", "file", "device"]
+Gate = Literal["site", "link", "text", "call", "network", "account", "email", "app", "file", "device", "vision"]
 CaseStatus = Literal["queued", "investigating", "waiting_device", "waiting_user", "retry_wait", "partial", "complete", "failed", "cancelled", "expired"]
 Origin = Literal["user_submission", "device_observation", "external_source", "apollo_inference"]
 CoverageStatus = Literal["not_started", "partial", "examined", "unavailable", "out_of_scope"]
