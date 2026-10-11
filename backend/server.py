@@ -46,7 +46,7 @@ from routers.family_weekly import weekly_checkin_loop
 # ── Blocklist disabled (product decision: Apollo does not maintain an independent threat catalogue) ──
 # SEED_BLOCKLIST population stopped. Historical data preserved in db.blocklist.
 # External intelligence providers (Safe Browsing etc.) remain the authoritative verdict sources.
-# The controlled native verification rule (apolloverify.harmonywellnessgroup.com.au) is preserved
+# The controlled native verification rule (blocktest.btciq.app) is preserved
 # in the static rule bundle — it is not part of the blocklist.
 
 

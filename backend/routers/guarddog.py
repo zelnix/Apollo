@@ -27,7 +27,7 @@ router = APIRouter(prefix="/api/guarddog", tags=["guarddog"])
 # ── Controlled verification rule (permanent, not from threat intelligence) ────
 CONTROLLED_VERIFICATION_RULE = {
     "ruleId": "prod-controlled-verify-v1",
-    "host": "apolloverify.harmonywellnessgroup.com.au",
+    "host": "blocktest.btciq.app",
     "action": "block",
     "matchType": "exact",
     "category": "controlled-verification",
