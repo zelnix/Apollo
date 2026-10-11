@@ -223,6 +223,12 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
     val liveBackend = backendBaseUrl()
     GuardDogVpnRuntime.liveReputationBackendUrl = liveBackend
     GuardDogVpnRuntime.liveReputationAuthToken = deviceToken()
+    // Stage 3: Rule refresher — invoked by the DNS handler when a live check discovers a new
+    // malicious hostname. The backend will have created a threat indicator during the live check,
+    // so refreshing rules installs the blocking rule through the trusted authorisation path.
+    GuardDogVpnRuntime.liveReputationRuleRefresher = Runnable {
+      try { refreshRules() } catch (_: Throwable) { /* non-fatal: arm() will fail and DNS is forwarded */ }
+    }
     GuardDogVpnRuntime.dnsThreatObservedListener = DnsThreatObservedListener { observation ->
       try { dnsThreatInbox.append(observation) } catch (_: Throwable) { dnsThreatInbox.reportFailure("DNS threat observation persistence failed") }
     }
@@ -342,7 +348,7 @@ internal class ApolloGuardDogProductionRuntime(private val context: Context) {
   private fun requireProductionEnabled() { check(ApolloGuardDogProductionOwner.isEligible(context)) { "Production GuardDog authority is disabled in this build" } }
   private fun detachRuntime() { GuardDogVpnRuntime.reporter = null; GuardDogVpnRuntime.config = null; GuardDogVpnRuntime.websiteGateEngine = null
     GuardDogVpnRuntime.websiteGateRouteConfig = null; GuardDogVpnRuntime.upstreamDnsResolverIpv4 = null; GuardDogVpnRuntime.dnsThreatObservedListener = null
-    GuardDogVpnRuntime.liveReputationBackendUrl = null; GuardDogVpnRuntime.liveReputationAuthToken = null }
+    GuardDogVpnRuntime.liveReputationBackendUrl = null; GuardDogVpnRuntime.liveReputationAuthToken = null; GuardDogVpnRuntime.liveReputationRuleRefresher = null }
   private fun onNetworkDnsChanged(upstream: String?) {
     if (upstream == observedUpstreamDns) return
     observedUpstreamDns = upstream

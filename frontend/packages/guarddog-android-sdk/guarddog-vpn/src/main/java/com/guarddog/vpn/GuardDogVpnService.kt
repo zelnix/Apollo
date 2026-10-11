@@ -68,6 +68,11 @@ object GuardDogVpnRuntime {
     /** Bounded hold timeout in milliseconds for live reputation checks. Default: 3 seconds
      * (Protection Before Speed). */
     @Volatile var liveReputationHoldTimeoutMs: Long = 3000
+    /** Callback that refreshes the rule bundle from the backend. Invoked by the DNS handler
+     * when a live check returns "malicious" for a hostname not in the current bundle. The
+     * backend will have created a threat indicator, so the refreshed bundle includes the rule.
+     * Null = no refresh available; the DNS handler forwards instead. */
+    @Volatile var liveReputationRuleRefresher: Runnable? = null
     /** True only while live reputation checking is active in the current TUN session. */
     @Volatile var liveReputationActive: Boolean = false
         internal set
@@ -192,6 +197,7 @@ class GuardDogVpnService : VpnService() {
                 onUnsupported = { reason -> Log.d(TAG, "DNS gateway pass-through: $reason") },
                 liveChecker = buildLiveReputationChecker(),
                 liveCheckNotifier = buildLiveCheckNotifier(),
+                ruleRefresher = GuardDogVpnRuntime.liveReputationRuleRefresher,
             )
         } else {
             null
@@ -291,6 +297,7 @@ class GuardDogVpnService : VpnService() {
                 onUnsupported = { reason -> Log.d(TAG, "DNS gateway pass-through: $reason") },
                 liveChecker = buildLiveReputationChecker(),
                 liveCheckNotifier = buildLiveCheckNotifier(),
+                ruleRefresher = GuardDogVpnRuntime.liveReputationRuleRefresher,
             )
         } else {
             null

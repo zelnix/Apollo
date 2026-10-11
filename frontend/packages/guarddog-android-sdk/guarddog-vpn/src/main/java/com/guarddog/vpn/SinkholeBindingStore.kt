@@ -68,29 +68,6 @@ class SinkholeBindingStore(
         }
     }
 
-    /**
-     * Arms a sinkhole binding for a hostname discovered as malicious by a live reputation check,
-     * even when the hostname is not yet in the installed rule bundle.
-     *
-     * This is the final-opportunity protection path: external intelligence has confirmed the
-     * hostname is dangerous during a bounded DNS hold. A threat indicator has been created on
-     * the backend; the next rule-bundle refresh will include a static rule. This method
-     * provides blocking authority for the CURRENT DNS query before that refresh occurs.
-     *
-     * Returns the sinkhole IPv4, or null if a user ALLOW override is present or the pool is exhausted.
-     */
-    fun armByLiveVerdict(host: String): String? {
-        if (overrideStore.overrideFor(host) == WebsiteGateOverrideDecision.ALLOW) return null
-        val now = clock.nowEpochMillis()
-        val expiresAt = now + bindingLifetimeMillis
-        val sticky = hostToIp[host]?.takeIf { engine.currentWebsiteGateBinding(it)?.host == host }
-        val candidateIp = sticky ?: nextAvailableIp(now, host) ?: return null
-        // Directly create a binding without rule-bundle lookup — the live verdict IS the authority.
-        hostToIp[host] = candidateIp
-        emitObservation(host, candidateIp, "live-reputation", "live", now)
-        return candidateIp
-    }
-
     /** Fires the DnsThreatObservedListener (if set) for a successful BLOCK arming, with deduplication. */
     private fun emitObservation(host: String, sinkholeIpv4: String, ruleId: String?, rulesetId: String?, nowMillis: Long) {
         val listener = onThreatObserved ?: return

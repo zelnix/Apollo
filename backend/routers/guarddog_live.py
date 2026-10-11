@@ -211,15 +211,21 @@ async def _check_hash_prefix(prefix: str, ts) -> DnsReputationResponse:
 async def _create_threat_indicator(hostname: str, threat_types: list[str], source: str, ts):
     """Create a threat indicator for a newly discovered malicious hostname.
     
-    This ensures the next rule bundle generation includes this hostname,
-    providing long-term blocking authority for the native side.
+    This ensures the next rule bundle generation (via /api/guarddog/rules) includes
+    this hostname as a blocking rule, providing long-term native blocking authority.
+    
+    Fields `scope` and `indicator_id` are required by _get_active_indicator_rules().
     """
+    import uuid
     existing = await db.threat_indicators.find_one({"hostname": hostname, "status": "active"})
     if existing:
         return  # Already tracked
     
+    indicator_id = str(uuid.uuid4())
     indicator = {
+        "indicator_id": indicator_id,
         "hostname": hostname,
+        "scope": "hostname",
         "threat_types": threat_types,
         "source": source,
         "status": "active",
@@ -228,4 +234,4 @@ async def _create_threat_indicator(hostname: str, threat_types: list[str], sourc
         "evidence_expiry_deadline": ts + timedelta(hours=24),
     }
     await db.threat_indicators.insert_one(indicator)
-    logger.info("threat_indicator_created hostname=%s source=%s via=live_dns_check", hostname, source)
+    logger.info("threat_indicator_created indicator_id=%s hostname=%s source=%s via=live_dns_check", indicator_id, hostname, source)

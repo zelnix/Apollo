@@ -30,6 +30,11 @@ class DnsGatewayPacketHandler(
     private val liveChecker: LiveReputationChecker? = null,
     /** Stage 3: Optional notification callback for live check lifecycle events. */
     private val liveCheckNotifier: LiveCheckNotifier? = null,
+    /** Stage 3: Callback invoked when a live check returns "malicious" for a hostname not in
+     *  the current rule bundle. The callback should refresh the rule bundle from the backend
+     *  (which now includes the new threat indicator) so that [bindingStore.arm] can authorise
+     *  blocking through the trusted enforcement path. Null = no refresh available. */
+    private val ruleRefresher: Runnable? = null,
 ) {
     /** Returns the raw IPv4/UDP response packet to write back to the TUN, or null to send nothing at all (fail open by silence). */
     fun handle(queryPacket: Ipv4PacketInfo, rawBuffer: ByteArray, length: Int): ByteArray? {
@@ -94,12 +99,18 @@ class DnsGatewayPacketHandler(
             when (verdict.verdict) {
                 "malicious" -> {
                     // Protection Before Speed: live check confirmed this hostname as malicious.
-                    // First try rule-bundle authorization (static rules). If the hostname is not
-                    // in the bundle yet (newly discovered), use armByLiveVerdict — the backend has
-                    // created a threat indicator and the next bundle refresh will include the rule.
-                    // This provides immediate blocking for the current DNS query.
-                    val sinkholeIpv4 = bindingStore.arm(hostname)
-                        ?: bindingStore.armByLiveVerdict(hostname)
+                    // The backend has created a threat indicator. Try rule-bundle authorization first
+                    // (static rules). If the hostname is not in the bundle yet, trigger a rule
+                    // refresh so the updated bundle (which now includes the indicator) is installed,
+                    // then re-attempt arm() through the trusted enforcement path.
+                    var sinkholeIpv4 = bindingStore.arm(hostname)
+                    if (sinkholeIpv4 == null && ruleRefresher != null) {
+                        // Rule refresh: fetches the updated bundle from the backend. The backend
+                        // created the threat indicator during the same live check, so /api/guarddog/rules
+                        // now includes a blocking rule for this hostname.
+                        try { ruleRefresher.run() } catch (_: Throwable) { /* non-fatal */ }
+                        sinkholeIpv4 = bindingStore.arm(hostname)
+                    }
                     if (sinkholeIpv4 != null) {
                         notifyCompleted(hostname, verdict.verdict, verdict.confidence, blocked = true)
                         when (dnsQuery.qtype) {
@@ -107,7 +118,7 @@ class DnsGatewayPacketHandler(
                             else -> DnsResponseSynthesizer.synthesizeNxDomain(queryPacket, dnsQuery)
                         }
                     } else {
-                        // User ALLOW override present or sinkhole pool exhausted — forward.
+                        // Rule refresh failed or hostname still not authorised — forward.
                         notifyCompleted(hostname, verdict.verdict, verdict.confidence, blocked = false)
                         forward(queryPacket, rawBuffer, udpRange)
                     }
