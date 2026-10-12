@@ -298,15 +298,19 @@ export default function Home() {
             {/* Priority Scam Alert — compact summary with link */}
             <PriorityScamNotice compact />
             {securityFindings.slice(0, 2).map((finding) => (
-              <Pressable key={finding.id} testID={`home-finding-${finding.id}`} onPress={() => router.push(finding.route as any)} style={[s.activityCard, compact && { marginHorizontal: spacing.lg, padding: spacing.md }, { marginBottom: spacing.sm }]}>
-                <View style={[s.activityIconWrap, compact && { width: 32, height: 32, borderRadius: 16 }, { backgroundColor: colors.barkingTint }]}>
-                  <MessageSquare size={compact ? 14 : 16} color={colors.barking} />
+              <Pressable key={finding.id} testID={`home-finding-${finding.id}`} onPress={() => router.push(finding.route as any)} style={[s.activityCard, compact && { marginHorizontal: spacing.lg, padding: spacing.md }, { marginBottom: spacing.sm, flexDirection: "column", alignItems: "stretch" }]}>
+                <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.sm }}>
+                  <View style={[s.activityIconWrap, compact && { width: 32, height: 32, borderRadius: 16 }, { backgroundColor: colors.barkingTint }]}>
+                    <MessageSquare size={compact ? 14 : 16} color={colors.barking} />
+                  </View>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={[s.activityText, compact && { fontSize: 13 }]}>{finding.title}</Text>
+                  </View>
                 </View>
-                <View style={s.activityContent}>
-                  <Text style={[s.activityText, compact && { fontSize: 13 }]}>{finding.title}</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4, marginTop: spacing.sm }}>
+                  <Text style={s.findingLink}>View details</Text>
+                  <ChevronRight size={14} color={colors.brand} />
                 </View>
-                <Text style={s.findingLink}>View details</Text>
-                <ChevronRight size={14} color={colors.brand} />
               </Pressable>
             ))}
           </View>

@@ -5,6 +5,7 @@
 
 import * as Linking from "expo-linking";
 import TriangleAlert from "lucide-react-native/icons/triangle-alert";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 
@@ -118,18 +119,23 @@ export function PriorityScamNotice({ compact = false }: { compact?: boolean } = 
         testID="home-priority-scam-compact"
         accessibilityRole="button"
         onPress={() => void Linking.openURL(priorityAlert.url)}
-        style={s.compactCard}
+        style={[s.compactCard, { flexDirection: "column", alignItems: "stretch" }]}
       >
-        <View style={s.compactIconWrap}>
-          <TriangleAlert size={16} color={colors.growling} />
+        <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.sm }}>
+          <View style={s.compactIconWrap}>
+            <TriangleAlert size={16} color={colors.growling} />
+          </View>
+          <View style={s.compactContent}>
+            <Text style={s.compactTitle}>{priorityAlert.title}</Text>
+            <Text style={s.compactSub} numberOfLines={1}>
+              {priorityAlert.severity === "EXTREME" ? "Extreme" : "High priority"} · {priorityAlert.source} · {priorityAlert.dateLabel}
+            </Text>
+          </View>
         </View>
-        <View style={s.compactContent}>
-          <Text style={s.compactTitle}>{priorityAlert.title}</Text>
-          <Text style={s.compactSub} numberOfLines={1}>
-            {priorityAlert.severity === "EXTREME" ? "Extreme" : "High priority"} · {priorityAlert.source} · {priorityAlert.dateLabel}
-          </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4, marginTop: spacing.sm }}>
+          <Text style={s.compactLink}>View details</Text>
+          <ChevronRight size={14} color={colors.brand} />
         </View>
-        <Text style={s.compactLink}>View details</Text>
       </Pressable>
     );
   }
