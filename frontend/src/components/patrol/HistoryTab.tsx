@@ -217,25 +217,26 @@ function buildTimeline(event: PatrolEvent, revisions: { occurredAt: string; effe
   return entries;
 }
 
-function TimelineIcon({ type, colors }: { type: string; colors: Record<string, string> }) {
+function TimelineIcon({ type }: { type: string; colors: Record<string, string> }) {
+  const fg = "#FFFFFF";
   switch (type) {
-    case "alert": return <CircleAlert size={16} color="#FFFFFF" />;
-    case "search": return <Search size={16} color="#FFFFFF" />;
-    case "document": return <FileText size={16} color="#FFFFFF" />;
-    case "user": return <User size={16} color="#FFFFFF" />;
-    case "resolved": return <CircleCheck size={16} color="#FFFFFF" />;
-    default: return <Info size={16} color="#FFFFFF" />;
+    case "alert": return <CircleAlert size={16} color={fg} />;
+    case "search": return <Search size={16} color={fg} />;
+    case "document": return <FileText size={16} color={fg} />;
+    case "user": return <User size={16} color={fg} />;
+    case "resolved": return <CircleCheck size={16} color={fg} />;
+    default: return <Info size={16} color={fg} />;
   }
 }
 
-function dotColor(type: string, colors: Record<string, string>): string {
+function dotColor(type: string): string {
   switch (type) {
-    case "alert": return colors.barking;
-    case "search": return colors.info;
-    case "document": return colors.info;
-    case "user": return colors.info;
-    case "resolved": return colors.resting;
-    default: return colors.onSurfaceSecondary;
+    case "alert": return "#DC2626";     // red
+    case "search": return "#2563EB";    // blue
+    case "document": return "#7C3AED";  // purple
+    case "user": return "#D97706";      // amber
+    case "resolved": return "#16A34A";  // green
+    default: return "#6B7280";          // grey
   }
 }
 
@@ -283,7 +284,7 @@ export function HistoryTab({
       <Card style={s.timelineCard} testID="history-timeline">
         {entries.map((entry, i) => {
           const isLast = i === entries.length - 1;
-          const bg = dotColor(entry.icon, colors);
+          const bg = dotColor(entry.icon);
 
           return (
             <View key={i} style={s.timelineItem} testID={`history-entry-${i}`}>
