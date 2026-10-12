@@ -15,7 +15,7 @@ import CircleCheckBig from "lucide-react-native/icons/circle-check-big";
 import Info from "lucide-react-native/icons/info";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import Eye from "lucide-react-native/icons/eye";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -312,7 +312,9 @@ export default function VisionScreen() {
         void createPatrolEvent(response, "text_only");
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Investigation failed. Please try again.");
+      const msg = err instanceof Error ? err.message : "Investigation failed. Please try again.";
+      console.warn("[Vision] onGateComplete error:", msg);
+      setError(msg);
       setStage("error");
     }
   }, [createPatrolEvent]);
@@ -322,6 +324,17 @@ export default function VisionScreen() {
     setScreening(null);
     setStage("pick");
   }, []);
+
+  // ── Auto-open Magnum DI investigation when available ──
+  useEffect(() => {
+    if (stage === "result" && result?.investigation_case_id) {
+      // Short delay so the user sees the initial result before navigating
+      const timer = setTimeout(() => {
+        router.push({ pathname: "/(tabs)/ask", params: { resumeCaseId: result.investigation_case_id! } });
+      }, 1200);
+      return () => clearTimeout(timer);
+    }
+  }, [stage, result, router]);
 
   const reset = useCallback(() => {
     setStage("pick");
@@ -548,17 +561,17 @@ export default function VisionScreen() {
               </View>
             ) : null}
 
-            {/* Magnum DI investigation — linked to coordinator case */}
+            {/* Magnum DI investigation — auto-navigating to coordinator case */}
             {result.investigation_case_id ? (
               <View style={s.resultSection} testID="vision-investigation">
-                <Text style={s.sectionTitle}>Extended investigation</Text>
+                <Text style={s.sectionTitle}>Extended investigation started</Text>
                 <Text style={s.sectionBody}>
-                  Apollo has started a deeper investigation using public sources and security databases. This runs in the background and may take a moment.
+                  Apollo has started a Magnum DI investigation using public sources and security databases. Opening Higgins now...
                 </Text>
                 <Button
                   testID="vision-view-investigation"
                   label="Open in Higgins"
-                  variant="ghost"
+                  variant="primary"
                   onPress={() => router.push({ pathname: "/(tabs)/ask", params: { resumeCaseId: result.investigation_case_id! } })}
                 />
               </View>
