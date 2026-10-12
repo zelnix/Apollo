@@ -32,6 +32,7 @@ import { canTransition, resolveApolloState, type StateResolution } from "@/src/d
 import type { ApolloState, Capability, Decision, DomainInfo, IntelResult, LocalAnalysis, PatrolEvent, PatrolRecord, PrivateDnsStatus } from "@/src/domain/types";
 import { patrolRecordToEvent } from "@/src/domain/patrolRecords";
 import { IS_PREVIEW_HARNESS, securityAdapter } from "@/src/security/securityAdapter";
+import { MOCK_THREAT_EVENT } from "@/src/domain/mockThreatPreview";
 import { primeDeviceFacts } from "@/src/investigation/deviceBroker";
 import type { BlockResult, NetworkStatus, ProtectionPermission, ProtectionStatus } from "@/src/security/SecurityPlatformAdapter";
 import { isPacketEvidence as isVerifiedEnforcement, normalizeHistoricalEvent } from '@/src/domain/packetEvidence';
@@ -488,6 +489,8 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           const done = storedDone || shouldBypassSetup(Platform.OS, __DEV__, href);
           setSetupDone(!!done);
           if (ev) { const restored = safeParse<PatrolEvent[]>(ev, [], K.events, Array.isArray).map(normalizeHistoricalEvent); eventsRef.current = restored; alertedStates.current = new Map(restored.map((event) => [event.event_id, event.state])); setEvents(restored); }
+          // Preview harness: seed a mock threat so the 4-tab investigation UI can be exercised.
+          if (IS_PREVIEW_HARNESS && eventsRef.current.length === 0) { const seed = [MOCK_THREAT_EVENT]; eventsRef.current = seed; alertedStates.current = new Map(seed.map((e) => [e.event_id, e.state])); setEvents(seed); }
           if (tr) setTrust(safeParse<TrustEntry[]>(tr, [], K.trust, Array.isArray)); setLastVerifiedAt(null); // persisted observations are never live boot health
           if (done) {
             // Server-issued identity. Legacy (pre-token) installs have none and get a fresh identity — never a claimed one.
