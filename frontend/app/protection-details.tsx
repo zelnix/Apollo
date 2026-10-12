@@ -1,271 +1,1012 @@
-// Protection Details — the dedicated screen reached from the Home card's one primary action.
-// Lists every Gate that is affected right now, showing "What Apollo found", "What it means" and
-// "What to do" from REAL gate + capability + patrol-event data. No new scanning or data layer.
+// Protection Category Details — Screen B.
+// Shows a 3-tab detail view (Overview | Gates | Coverage) for a single
+// protection category, plus a "Related threat cases" navigation area.
 //
-// Design principle: Apollo protects. Higgins explains. Home gives the message. This screen gives
-// the details and actions. Manual checks are clearly distinguished from automatic protection.
+// Reuses the existing Gate architecture, protectionAreas data and
+// healthStore for live status. Does NOT invent new Gates or features.
 
-import { useRouter } from "expo-router";
-import ArrowRight from "lucide-react-native/icons/arrow-right";
-import ChevronDown from "lucide-react-native/icons/chevron-down";
-import ChevronUp from "lucide-react-native/icons/chevron-up";
-import Dot from "lucide-react-native/icons/circle";
-import React, { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import ChevronLeft from "lucide-react-native/icons/chevron-left";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
+import FileText from "lucide-react-native/icons/file-text";
+import Globe from "lucide-react-native/icons/globe";
+import Grid2x2 from "lucide-react-native/icons/grid-2x2";
+import Info from "lucide-react-native/icons/info";
+import Link2 from "lucide-react-native/icons/link-2";
+import Mail from "lucide-react-native/icons/mail";
+import MessageSquare from "lucide-react-native/icons/message-square";
+import Phone from "lucide-react-native/icons/phone";
+import Settings from "lucide-react-native/icons/settings";
+import ShieldCheck from "lucide-react-native/icons/shield-check";
+import Smartphone from "lucide-react-native/icons/smartphone";
+import User from "lucide-react-native/icons/user";
+import Wifi from "lucide-react-native/icons/wifi";
+import React, { useMemo, useState } from "react";
+import {
+  Image,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { ChildScreenHeader } from "@/src/components/ChildScreenHeader";
-import { Body, Card, Pill, toneColor, type Tone } from "@/src/components/ui";
-import { buildHomeAttention } from "@/src/domain/homeAttention";
-import { buildHomeVoice } from "@/src/domain/higginsHomeVoice";
-import { buildProtectionFindings, countDistinctFindings, type ProtectionFinding } from "@/src/domain/protectionDetails";
-import { buildTodayTimeline, quietDayLine, type TimelineEntry, type TimelineTone } from "@/src/domain/protectionTimeline";
-import { useApollo } from "@/src/store/ApolloContext";
+import { InfoButton } from "@/src/components/InfoButton";
+import { Card, Pill } from "@/src/components/ui";
+import {
+  buildProtectionAreas,
+  type ProtectionArea,
+  type ProtectionAreaCapability,
+  type ProtectionAreaId,
+} from "@/src/domain/protectionAreas";
+import { gateTone, type GateId } from "@/src/domain/gates";
+import { CATEGORY_CONTENT } from "@/src/domain/protectionContent";
 import { useProtectionHealth } from "@/src/protection/healthStore";
-import { getGateHealthLog, type GateHealthLog } from "@/src/store/gateHealthLog";
-import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
+import { goBackOrHome } from "@/src/utils/navigation";
+import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
+const higginsAvatar = require("@/assets/images/higgins-avatar.png");
+
+// ── Gate icon mapping ───────────────────────────────────────────────────────
+const GATE_ICONS: Record<
+  GateId,
+  React.ComponentType<{ size?: number; color?: string }>
+> = {
+  site: ShieldCheck,
+  link: Link2,
+  text: MessageSquare,
+  call: Phone,
+  email: Mail,
+  account: User,
+  file: FileText,
+  app: Grid2x2,
+  device: Smartphone,
+  network: Wifi,
+};
+
+// ── Route for tapping a Gate row → navigates to Gate-specific screen ────────
+const GATE_ROUTES: Record<GateId, string> = {
+  site: "/(tabs)/guard?gate=site",
+  link: "/check",
+  text: "/text-guard",
+  call: "/call-guard",
+  email: "/email",
+  account: "/account-monitor",
+  file: "/file",
+  app: "/app-check",
+  device: "/device",
+  network: "/network",
+};
+
+// ── Map gate categories to patrol category filters ──────────────────────────
+const AREA_TO_PATROL_CATEGORIES: Record<ProtectionAreaId, string[]> = {
+  websites_links: ["site", "link"],
+  messages_calls: ["text", "call"],
+  email_accounts: ["email", "account"],
+  apps_files: ["app", "file"],
+  device_internet: ["device", "network"],
+};
+
+// ── Tab types ───────────────────────────────────────────────────────────────
+type DetailTab = "overview" | "gates" | "coverage";
+const TABS: { key: DetailTab; label: string }[] = [
+  { key: "overview", label: "Overview" },
+  { key: "gates", label: "Gates" },
+  { key: "coverage", label: "Coverage" },
+];
+
+// ── Styles ──────────────────────────────────────────────────────────────────
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
-  content: { paddingHorizontal: spacing.xl, gap: spacing.lg, paddingBottom: spacing["3xl"] },
-  intro: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurface },
-  gateTitle: { fontFamily: fonts.displayBold, fontSize: 17, lineHeight: 23, color: c.onSurface },
-  sectionLabel: { fontFamily: fonts.textSemibold, fontSize: 11, letterSpacing: 0.4, color: c.muted, textTransform: "uppercase" },
-  sectionTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface },
-  sectionText: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurface },
-  headerRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" },
-  actionRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingTop: spacing.sm },
-  actionText: { fontFamily: fonts.textSemibold, fontSize: 15, color: c.brand },
-  emptyTitle: { fontFamily: fonts.displayBold, fontSize: 18, color: c.onSurface, textAlign: "center" },
-  // Timeline.
-  tlRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
-  tlDotCol: { width: 20, alignItems: "center", paddingTop: 4 },
-  tlBody: { flex: 1, gap: 2 },
-  tlTitle: { fontFamily: fonts.textSemibold, fontSize: 14, lineHeight: 19, color: c.onSurface },
-  tlSummary: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurfaceSecondary },
-  tlTime: { fontFamily: fonts.text, fontSize: 12, color: c.muted },
-  tlDivider: { height: 1, backgroundColor: c.divider, marginVertical: spacing.sm, marginLeft: 28 },
+
+  // Header
+  headerRow: {
+    paddingHorizontal: spacing.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
+  backBtn: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerTitle: {
+    flex: 1,
+    fontFamily: fonts.displayBold,
+    fontSize: 24,
+    color: c.onSurface,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  headerIconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: c.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: c.border,
+  },
+
+  // Status row
+  statusRow: {
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xs,
+  },
+  descriptionText: {
+    fontFamily: fonts.text,
+    fontSize: 15,
+    lineHeight: 22,
+    color: c.onSurfaceSecondary,
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.md,
+  },
+
+  // Tabs
+  tabBar: {
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xs,
+  },
+  tabContainer: {
+    flexDirection: "row",
+    gap: 4,
+    backgroundColor: c.surfaceTertiary,
+    borderRadius: radius.md,
+    padding: 3,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 44,
+  },
+  tabLabel: {
+    fontFamily: fonts.textSemibold,
+    fontSize: 13,
+  },
+
+  // Content
+  scrollContent: {
+    paddingHorizontal: spacing.xl,
+    gap: spacing.lg,
+    paddingBottom: spacing["3xl"],
+  },
+
+  // Higgins briefing
+  briefingCard: {
+    gap: spacing.md,
+  },
+  briefingHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  briefingAvatarWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    overflow: "hidden",
+    backgroundColor: c.surfaceTertiary,
+    flexShrink: 0,
+  },
+  briefingAvatar: { width: 44, height: 44 },
+  briefingTitleBlock: { flex: 1, gap: 2 },
+  briefingTitle: {
+    fontFamily: fonts.displayBold,
+    fontSize: 17,
+    color: c.onSurface,
+  },
+  briefingSub: {
+    fontFamily: fonts.text,
+    fontSize: 13,
+    color: c.onSurfaceSecondary,
+  },
+  briefingBody: {
+    fontFamily: fonts.text,
+    fontSize: 15,
+    lineHeight: 22,
+    color: c.onSurface,
+  },
+
+  // "What is … Protection?" section
+  sectionTitle: {
+    fontFamily: fonts.displayBold,
+    fontSize: 18,
+    lineHeight: 24,
+    color: c.onSurface,
+  },
+  sectionBody: {
+    fontFamily: fonts.text,
+    fontSize: 15,
+    lineHeight: 22,
+    color: c.onSurfaceSecondary,
+  },
+
+  // How it works card
+  howCard: {
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  howHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  howIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  howTitle: {
+    fontFamily: fonts.displayBold,
+    fontSize: 15,
+    color: c.onSurface,
+  },
+  bullet: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+    paddingLeft: spacing.xs,
+  },
+  bulletDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginTop: 7,
+  },
+  bulletText: {
+    flex: 1,
+    fontFamily: fonts.text,
+    fontSize: 14,
+    lineHeight: 20,
+    color: c.onSurfaceSecondary,
+  },
+
+  // Gate rows
+  gatesSection: {
+    gap: spacing.md,
+  },
+  gatesSectionTitle: {
+    fontFamily: fonts.displayBold,
+    fontSize: 17,
+    lineHeight: 23,
+    color: c.onSurface,
+  },
+  gateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    minHeight: 48,
+  },
+  gateIconWell: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  gateInfo: {
+    flex: 1,
+    flexShrink: 1,
+    gap: 2,
+  },
+  gateName: {
+    fontFamily: fonts.displayBold,
+    fontSize: 14,
+    lineHeight: 19,
+    color: c.onSurface,
+  },
+  gatePurpose: {
+    fontFamily: fonts.text,
+    fontSize: 12,
+    lineHeight: 17,
+    color: c.onSurfaceSecondary,
+  },
+  gateDivider: {
+    height: 1,
+  },
+
+  // Coverage section
+  coverageSection: {
+    gap: spacing.md,
+  },
+  coverageHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  coverageIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  coverageTitle: {
+    fontFamily: fonts.displayBold,
+    fontSize: 16,
+    color: c.onSurface,
+  },
+
+  // Related threats card
+  threatCard: {
+    gap: spacing.md,
+  },
+  threatHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  threatIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  threatTitle: {
+    fontFamily: fonts.displayBold,
+    fontSize: 16,
+    color: c.onSurface,
+  },
+  threatBody: {
+    fontFamily: fonts.text,
+    fontSize: 14,
+    lineHeight: 20,
+    color: c.onSurfaceSecondary,
+  },
+  threatBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderWidth: 1,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    minHeight: 48,
+    gap: spacing.sm,
+  },
+  threatBtnText: {
+    flex: 1,
+    fontFamily: fonts.textSemibold,
+    fontSize: 14,
+    color: c.onSurface,
+  },
+
+  // Bottom Higgins card
+  bottomCard: {
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  bottomTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  bottomAvatarWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    overflow: "hidden",
+    flexShrink: 0,
+  },
+  bottomAvatar: { width: 48, height: 48 },
+  bottomTextBlock: {
+    flex: 1,
+    gap: 2,
+  },
+  bottomTitle: {
+    fontFamily: fonts.displayBold,
+    fontSize: 14,
+    lineHeight: 19,
+    color: c.onSurface,
+  },
+  bottomBody: {
+    fontFamily: fonts.text,
+    fontSize: 13,
+    lineHeight: 18,
+    color: c.onSurfaceSecondary,
+  },
+  learnBtn: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "flex-end",
+    minHeight: 44,
+  },
+  learnBtnText: {
+    fontFamily: fonts.textSemibold,
+    fontSize: 13,
+  },
 }));
 
-const TONE_TO_PILL: Record<ProtectionFinding["tone"], Tone> = {
-  good: "resting",
-  action: "barking",
-  limited: "ears_up",
-  unverified: "ears_up",
-  neutral: "neutral",
-  off: "unknown",
-  unavailable: "unknown",
-};
+// ── Tab Bar ─────────────────────────────────────────────────────────────────
 
-const TIMELINE_TONE_TO_PILL: Record<TimelineTone, Tone> = {
-  resting: "resting",
-  ears_up: "ears_up",
-  growling: "growling",
-  barking: "barking",
-  biting: "biting",
-  neutral: "neutral",
-};
+function ProtectionTabBar({
+  activeTab,
+  onTabChange,
+}: {
+  activeTab: DetailTab;
+  onTabChange: (tab: DetailTab) => void;
+}) {
+  const s = useStyles();
+  const { colors } = useTheme();
+
+  return (
+    <View style={s.tabBar}>
+      <View style={s.tabContainer}>
+        {TABS.map((t) => {
+          const active = t.key === activeTab;
+          return (
+            <Pressable
+              key={t.key}
+              testID={`protection-tab-${t.key}`}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={t.label}
+              onPress={() => onTabChange(t.key)}
+              style={[
+                s.tab,
+                {
+                  backgroundColor: active ? colors.brand : "transparent",
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  s.tabLabel,
+                  {
+                    color: active ? colors.onBrand : colors.onSurfaceSecondary,
+                  },
+                ]}
+              >
+                {t.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+// ── Gate Row ────────────────────────────────────────────────────────────────
+
+function GateRow({
+  cap,
+  isLast,
+}: {
+  cap: ProtectionAreaCapability;
+  isLast: boolean;
+}) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const router = useRouter();
+  const Icon = GATE_ICONS[cap.gateId as GateId] ?? ShieldCheck;
+  const tone = gateTone(cap.tone);
+  const route = GATE_ROUTES[cap.gateId as GateId];
+
+  const content = (
+    <>
+      <View style={s.gateRow}>
+        <View
+          style={[
+            s.gateIconWell,
+            { backgroundColor: colors.surfaceTertiary },
+          ]}
+        >
+          <Icon size={20} color={colors.brand} />
+        </View>
+        <View style={s.gateInfo}>
+          <Text style={s.gateName}>{cap.label}</Text>
+          <Text style={s.gatePurpose} numberOfLines={2}>
+            {cap.currentHelp}
+          </Text>
+        </View>
+        <Pill tone={tone} label={cap.statusLabel} />
+        {route ? (
+          <ChevronRight size={18} color={colors.onSurfaceSecondary} />
+        ) : null}
+      </View>
+      {!isLast ? (
+        <View
+          style={[s.gateDivider, { backgroundColor: colors.divider }]}
+        />
+      ) : null}
+    </>
+  );
+
+  if (route) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${cap.label}: ${cap.statusLabel}`}
+        testID={`gate-row-${cap.gateId}`}
+        onPress={() => router.push(route as never)}
+        style={({ pressed }) => [{ opacity: pressed ? 0.82 : 1 }]}
+      >
+        {content}
+      </Pressable>
+    );
+  }
+  return <View testID={`gate-row-${cap.gateId}`}>{content}</View>;
+}
+
+// ── Overview Tab Content ────────────────────────────────────────────────────
+
+function OverviewContent({ area }: { area: ProtectionArea }) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const content = CATEGORY_CONTENT[area.id];
+
+  return (
+    <View style={{ gap: spacing.lg }}>
+      {/* Higgins briefing */}
+      <Card style={s.briefingCard} testID="protection-detail-briefing">
+        <View style={s.briefingHeader}>
+          <View style={s.briefingAvatarWrap}>
+            <Image source={higginsAvatar} style={s.briefingAvatar} />
+          </View>
+          <View style={s.briefingTitleBlock}>
+            <Text style={s.briefingTitle}>Higgins&apos; briefing</Text>
+            <Text style={s.briefingSub}>In plain English</Text>
+          </View>
+        </View>
+
+        {/* What is [Category] Protection? */}
+        <Text style={s.sectionTitle}>
+          What is {area.title} Protection?
+        </Text>
+        <Text style={s.sectionBody}>{content.whatIsIt}</Text>
+
+        {/* How it works */}
+        <View
+          style={[s.howCard, { backgroundColor: colors.surfaceTertiary }]}
+        >
+          <View style={s.howHeader}>
+            <View
+              style={[
+                s.howIcon,
+                { backgroundColor: "rgba(22,34,53,0.12)" },
+              ]}
+            >
+              <Info size={18} color={colors.brand} />
+            </View>
+            <Text style={s.howTitle}>How it works</Text>
+          </View>
+          {content.howItWorks.map((bullet, i) => (
+            <View key={i} style={s.bullet}>
+              <View
+                style={[
+                  s.bulletDot,
+                  { backgroundColor: colors.brand },
+                ]}
+              />
+              <Text style={s.bulletText}>{bullet}</Text>
+            </View>
+          ))}
+        </View>
+      </Card>
+
+      {/* Gate summary section (within Overview) */}
+      <Card style={s.gatesSection} testID="protection-detail-gates-summary">
+        <Text style={s.gatesSectionTitle}>
+          {area.title.split("&")[0].trim()} protection Gates
+        </Text>
+        {area.capabilities.map((cap, idx) => (
+          <GateRow
+            key={cap.gateId}
+            cap={cap}
+            isLast={idx === area.capabilities.length - 1}
+          />
+        ))}
+      </Card>
+
+      {/* Coverage summary (within Overview) */}
+      <CoverageContent area={area} />
+
+      {/* Related threat cases */}
+      <RelatedThreats area={area} />
+
+      {/* Bottom Higgins card */}
+      <BottomHigginsCard area={area} />
+    </View>
+  );
+}
+
+// ── Gates Tab Content ───────────────────────────────────────────────────────
+
+function GatesContent({ area }: { area: ProtectionArea }) {
+  const s = useStyles();
+
+  return (
+    <View style={{ gap: spacing.lg }}>
+      <Card style={s.gatesSection} testID="protection-detail-gates-full">
+        <Text style={s.gatesSectionTitle}>
+          {area.title} Gates
+        </Text>
+        {area.capabilities.map((cap, idx) => (
+          <GateDetailRow
+            key={cap.gateId}
+            cap={cap}
+            isLast={idx === area.capabilities.length - 1}
+          />
+        ))}
+      </Card>
+    </View>
+  );
+}
+
+/** Expanded gate row for the Gates tab — shows more detail including limitations. */
+function GateDetailRow({
+  cap,
+  isLast,
+}: {
+  cap: ProtectionAreaCapability;
+  isLast: boolean;
+}) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const router = useRouter();
+  const Icon = GATE_ICONS[cap.gateId as GateId] ?? ShieldCheck;
+  const tone = gateTone(cap.tone);
+  const modeLabel = cap.mode === "automatic" ? "Automatic protection" : "Manual check";
+  const route = GATE_ROUTES[cap.gateId as GateId];
+
+  const content = (
+    <>
+      <View style={{ gap: spacing.sm, paddingVertical: spacing.md }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+          <View
+            style={[
+              s.gateIconWell,
+              { backgroundColor: colors.surfaceTertiary },
+            ]}
+          >
+            <Icon size={20} color={colors.brand} />
+          </View>
+          <View style={s.gateInfo}>
+            <Text style={s.gateName}>{cap.label}</Text>
+            <Text
+              style={{
+                fontFamily: fonts.text,
+                fontSize: 12,
+                color: colors.muted,
+              }}
+            >
+              {modeLabel}
+            </Text>
+          </View>
+          <Pill tone={tone} label={cap.statusLabel} />
+          {route ? (
+            <ChevronRight size={18} color={colors.onSurfaceSecondary} />
+          ) : null}
+        </View>
+        <Text style={s.gatePurpose}>{cap.currentHelp}</Text>
+        {cap.limitation ? (
+          <Text
+            style={{
+              fontFamily: fonts.text,
+              fontSize: 13,
+              lineHeight: 18,
+              color: colors.growlingText,
+            }}
+          >
+            {cap.limitation}
+          </Text>
+        ) : null}
+      </View>
+      {!isLast ? (
+        <View
+          style={[s.gateDivider, { backgroundColor: colors.divider }]}
+        />
+      ) : null}
+    </>
+  );
+
+  if (route) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${cap.label}: ${cap.statusLabel}`}
+        testID={`gate-detail-${cap.gateId}`}
+        onPress={() => router.push(route as never)}
+        style={({ pressed }) => [{ opacity: pressed ? 0.82 : 1 }]}
+      >
+        {content}
+      </Pressable>
+    );
+  }
+  return <View testID={`gate-detail-${cap.gateId}`}>{content}</View>;
+}
+
+// ── Coverage Tab / Section ──────────────────────────────────────────────────
+
+function CoverageContent({ area }: { area: ProtectionArea }) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const content = CATEGORY_CONTENT[area.id];
+
+  return (
+    <Card style={s.coverageSection} testID="protection-detail-coverage">
+      <View style={s.coverageHeader}>
+        <View
+          style={[
+            s.coverageIcon,
+            { backgroundColor: colors.surfaceTertiary },
+          ]}
+        >
+          <Globe size={18} color={colors.brand} />
+        </View>
+        <Text style={s.coverageTitle}>Coverage</Text>
+      </View>
+      {content.coverage.map((bullet, i) => (
+        <View key={i} style={s.bullet}>
+          <View
+            style={[s.bulletDot, { backgroundColor: colors.brand }]}
+          />
+          <Text style={s.bulletText}>{bullet}</Text>
+        </View>
+      ))}
+    </Card>
+  );
+}
+
+// ── Related Threats ─────────────────────────────────────────────────────────
+
+function RelatedThreats({ area }: { area: ProtectionArea }) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const router = useRouter();
+  const categories = AREA_TO_PATROL_CATEGORIES[area.id];
+  const categoryLabel = area.title.split("&")[0].trim().toLowerCase();
+
+  return (
+    <Card style={s.threatCard} testID="protection-detail-threats">
+      <View style={s.threatHeader}>
+        <View
+          style={[
+            s.threatIcon,
+            { backgroundColor: colors.surfaceTertiary },
+          ]}
+        >
+          <ShieldCheck size={18} color={colors.brand} />
+        </View>
+        <Text style={s.threatTitle}>Related threat cases</Text>
+      </View>
+      <Text style={s.threatBody}>
+        If Apollo has detected {categoryLabel}-related threats, you can review
+        them here.
+      </Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`View ${categoryLabel}-related threats`}
+        testID="protection-view-threats"
+        onPress={() =>
+          router.push(
+            `/(tabs)/patrol?category=${categories.join(",")}` as never,
+          )
+        }
+        style={({ pressed }) => [
+          s.threatBtn,
+          {
+            borderColor: colors.border,
+            opacity: pressed ? 0.82 : 1,
+          },
+        ]}
+      >
+        <Text style={s.threatBtnText}>
+          View {categoryLabel}-related threats
+        </Text>
+        <ChevronRight size={18} color={colors.onSurfaceSecondary} />
+      </Pressable>
+    </Card>
+  );
+}
+
+// ── Bottom Higgins Card ─────────────────────────────────────────────────────
+
+function BottomHigginsCard({ area }: { area: ProtectionArea }) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const router = useRouter();
+  const content = CATEGORY_CONTENT[area.id];
+
+  return (
+    <View
+      style={[s.bottomCard, { backgroundColor: colors.surfaceTertiary }]}
+      testID="protection-detail-bottom-higgins"
+    >
+      <View style={s.bottomTopRow}>
+        <View style={s.bottomAvatarWrap}>
+          <Image source={higginsAvatar} style={s.bottomAvatar} />
+        </View>
+        <View style={s.bottomTextBlock}>
+          <Text style={s.bottomTitle}>{content.higginsLearnTitle}</Text>
+          <Text style={s.bottomBody}>
+            {content.higginsLearnDescription}
+          </Text>
+        </View>
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Learn with Higgins"
+        testID="protection-learn-with-higgins"
+        onPress={() => router.push("/(tabs)/ask" as never)}
+        style={({ pressed }) => [
+          s.learnBtn,
+          {
+            backgroundColor: colors.gold,
+            opacity: pressed ? 0.82 : 1,
+          },
+        ]}
+      >
+        <Text style={[s.learnBtnText, { color: colors.onBrand }]}>
+          Learn with Higgins
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+// ── Main Screen ─────────────────────────────────────────────────────────────
 
 export default function ProtectionDetailsScreen() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { capabilities, resolution, events } = useApollo();
   const health = useProtectionHealth();
+  const params = useLocalSearchParams<{ category?: string }>();
 
-  const attention = useMemo(
-    () => (health.checking ? [] : buildHomeAttention({ gates: health.gates, events })),
-    [health.checking, health.gates, events],
-  );
-  const findings = useMemo(
-    () => buildProtectionFindings({ capabilities, gates: health.gates, attention, events }),
-    [capabilities, health.gates, attention, events],
-  );
-  const findingCount = useMemo(() => countDistinctFindings(events), [events]);
-  const voice = useMemo(
-    () => buildHomeVoice({ resolution, attention, gates: health.gates, capabilities }),
-    [resolution, attention, health.gates, capabilities],
+  const [activeTab, setActiveTab] = useState<DetailTab>("overview");
+
+  const areas = useMemo(
+    () => (health.checking ? [] : buildProtectionAreas(health.gates)),
+    [health.checking, health.gates],
   );
 
-  // "What Apollo has done today" — loaded from the on-device Gate Health Log + today's patrol events.
-  // Honest: a quiet day shows a reassurance line, not fake activity.
-  const [healthLog, setHealthLog] = useState<GateHealthLog>({});
-  useEffect(() => {
-    let mounted = true;
-    void getGateHealthLog().then((log) => { if (mounted) setHealthLog(log); }).catch(() => undefined);
-    return () => { mounted = false; };
-  }, [health.gates]);
-  const timeline = useMemo(
-    () => buildTodayTimeline({ events, gateHealthLog: healthLog, limit: 12 }),
-    [events, healthLog],
-  );
+  // Find the requested area
+  const categoryId = (params.category ?? "websites_links") as ProtectionAreaId;
+  const area = areas.find((a) => a.id === categoryId);
+  const content = CATEGORY_CONTENT[categoryId];
 
-  const actionFindings = []; // Threat findings removed — belong on Threats tab
-  const protectionActivity = []; // Investigation outcomes removed — belong on Threats tab
-  const infraFindings = findings.filter((f) => f.findingType === "infrastructure");
+  // Loading / not found
+  if (health.checking || !area) {
+    return (
+      <View style={s.root} testID="protection-details-screen">
+        <View style={{ paddingTop: insets.top + spacing.md }}>
+          <View style={s.headerRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+              testID="protection-details-back"
+              onPress={() => goBackOrHome(router)}
+              style={s.backBtn}
+            >
+              <ChevronLeft size={24} color={colors.onSurface} />
+            </Pressable>
+            <Text style={s.headerTitle}>Protection</Text>
+          </View>
+        </View>
+        <View
+          style={{
+            flex: 1,
+            alignItems: "center",
+            justifyContent: "center",
+            paddingHorizontal: spacing.xl,
+          }}
+        >
+          <Text
+            style={{
+              fontFamily: fonts.text,
+              fontSize: 15,
+              color: colors.onSurfaceSecondary,
+              textAlign: "center",
+            }}
+          >
+            {health.checking
+              ? "Checking protection status…"
+              : "Protection category not found."}
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
-  const info = {
-    title: "About Protection Details",
-    body: [
-      "This screen shows the status of Apollo's protection gates: active capabilities, health issues, and anything that needs your attention.",
-      "Threat investigations and security findings are shown on the Threats tab.",
-    ],
-  };
+  const tone = gateTone(area.summaryTone);
 
   return (
     <View style={s.root} testID="protection-details-screen">
-      <ChildScreenHeader title="Protection Details" testID="protection-details-header" info={info} />
+      {/* ── Header ── */}
+      <View style={{ paddingTop: insets.top + spacing.md }}>
+        <View style={s.headerRow}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back to Protection"
+            testID="protection-details-back"
+            onPress={() => goBackOrHome(router)}
+            style={s.backBtn}
+          >
+            <ChevronLeft size={24} color={colors.onSurface} />
+          </Pressable>
+          <Text style={s.headerTitle}>{area.title}</Text>
+          <View style={s.headerActions}>
+            <InfoButton
+              info={{
+                title: `About ${area.title}`,
+                body: [
+                  content.shortDescription,
+                  `This category includes ${area.capabilities.length} protection ${area.capabilities.length === 1 ? "Gate" : "Gates"}.`,
+                  "Tap a Gate row to see its detailed settings and status.",
+                ],
+              }}
+              testID="protection-details-info"
+            />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Settings"
+              testID="protection-details-settings"
+              onPress={() => router.push("/settings" as never)}
+              style={({ pressed }) => [
+                s.headerIconBtn,
+                { opacity: pressed ? 0.75 : 1 },
+              ]}
+            >
+              <Settings size={22} color={colors.onSurface} />
+            </Pressable>
+          </View>
+        </View>
+
+        {/* Status pill */}
+        <View style={s.statusRow}>
+          <Pill tone={tone} label={area.summaryStatus} />
+        </View>
+
+        {/* Short description */}
+        <Text style={s.descriptionText}>{content.shortDescription}</Text>
+
+        {/* Tab bar */}
+        <ProtectionTabBar activeTab={activeTab} onTabChange={setActiveTab} />
+      </View>
+
+      {/* ── Scrollable content ── */}
       <ScrollView
         testID="protection-details-scroll"
-        contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing["3xl"] }]}
+        contentContainerStyle={[
+          s.scrollContent,
+          { paddingBottom: insets.bottom + spacing["3xl"], paddingTop: spacing.lg },
+        ]}
       >
-        {/* Higgins' short interpretation — the same voice shown on Home, repeated here for context. */}
-        <Card style={{ gap: spacing.sm }} testID="protection-details-voice">
-          <Text style={s.intro}>{voice.text}</Text>
-        </Card>
-
-        {/* ── GATE STATUS: Gate status and capability issues ── */}
-        {infraFindings.length > 0 ? (
+        {activeTab === "overview" ? (
+          <OverviewContent area={area} />
+        ) : activeTab === "gates" ? (
+          <GatesContent area={area} />
+        ) : (
           <View style={{ gap: spacing.lg }}>
-            <Text style={s.sectionLabel}>GATE STATUS</Text>
-            {infraFindings.map((f) => (
-              <Card key={f.id} style={{ gap: spacing.sm }} testID={`protection-finding-${f.id}`}>
-                <View style={s.headerRow}>
-                  <Text style={s.gateTitle}>{f.gate}</Text>
-                  <Pill tone={TONE_TO_PILL[f.tone]} label={f.statusLabel} testID={`protection-finding-${f.id}-status`} />
-                  <Pill tone="neutral" label={f.kindLabel} testID={`protection-finding-${f.id}-kind`} />
-                </View>
-                <View style={{ gap: 4 }}>
-                  <Text style={s.sectionLabel}>WHAT APOLLO FOUND</Text>
-                  <Text style={s.sectionText} testID={`protection-finding-${f.id}-found`}>{f.whatFound}</Text>
-                </View>
-                <View style={{ gap: 4 }}>
-                  <Text style={s.sectionLabel}>WHAT IT MEANS</Text>
-                  <Text style={s.sectionText} testID={`protection-finding-${f.id}-means`}>{f.whatItMeans}</Text>
-                </View>
-                <View style={{ gap: 4 }}>
-                  <Text style={s.sectionLabel}>WHAT TO DO</Text>
-                  <Text style={s.sectionText} testID={`protection-finding-${f.id}-do`}>{f.whatToDo}</Text>
-                </View>
-                {f.route && f.actionLabel ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={f.actionLabel}
-                    testID={`protection-finding-${f.id}-action`}
-                    onPress={() => router.push(f.route as never)}
-                    style={({ pressed }) => [s.actionRow, { opacity: pressed ? 0.7 : 1 }]}
-                    hitSlop={8}
-                  >
-                    <Text style={s.actionText}>{f.actionLabel}</Text>
-                    <ArrowRight size={16} color={colors.brand} />
-                  </Pressable>
-                ) : null}
-              </Card>
-            ))}
+            <CoverageContent area={area} />
+            <RelatedThreats area={area} />
+            <BottomHigginsCard area={area} />
           </View>
-        ) : null}
-
-        {/* No gate issues at all */}
-        {infraFindings.length === 0 ? (
-          <Card testID="protection-details-empty" style={{ gap: spacing.sm }}>
-            <Text style={s.emptyTitle}>All gates healthy</Text>
-            <Body>Apollo&apos;s protection gates are all operating normally. Your automatic protection status and manual checks are shown on the Protection tab.</Body>
-          </Card>
-        ) : null}
-
-        {/* What Apollo has done today — split into actionable and rest. */}
-        <TimelineSection timeline={timeline} />
+        )}
       </ScrollView>
-    </View>
-  );
-}
-
-/** Timeline section — shows actionable items first, rest collapsed under "Show more". */
-function TimelineSection({ timeline }: { timeline: TimelineEntry[] }) {
-  const s = useStyles();
-  const { colors } = useTheme();
-  const [showAll, setShowAll] = useState(false);
-
-  const actionable = timeline.filter((e) => e.kind !== "resolved" && e.kind !== "confirmed_watching");
-  const rest = timeline.filter((e) => e.kind === "resolved" || e.kind === "confirmed_watching");
-
-  return (
-    <Card style={{ gap: spacing.sm }} testID="protection-today">
-      <View style={s.headerRow}>
-        <Text style={s.sectionTitle}>What Apollo has done today</Text>
-      </View>
-      {timeline.length === 0 ? (
-        <Body testID="protection-today-empty">{quietDayLine()}</Body>
-      ) : (
-        <View>
-          {actionable.map((entry, i) => (
-            <TimelineRow key={entry.id} entry={entry} showDivider={i > 0} />
-          ))}
-          {rest.length > 0 ? (
-            <View>
-              {actionable.length > 0 ? <View style={s.tlDivider} /> : null}
-              {showAll ? (
-                rest.map((entry, i) => (
-                  <TimelineRow key={entry.id} entry={entry} showDivider={i > 0} />
-                ))
-              ) : null}
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setShowAll((v) => !v)}
-                style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingVertical: spacing.sm, opacity: pressed ? 0.7 : 1 }]}
-                testID="protection-today-show-more"
-              >
-                {showAll
-                  ? <ChevronUp size={16} color={colors.muted} />
-                  : <ChevronDown size={16} color={colors.muted} />}
-                <Text style={{ fontFamily: fonts.textSemibold, fontSize: 13, color: colors.muted }}>
-                  {showAll ? "Show less" : `Show ${rest.length} more`}
-                </Text>
-              </Pressable>
-            </View>
-          ) : null}
-        </View>
-      )}
-    </Card>
-  );
-}
-
-/** One entry in the "What Apollo has done today" timeline. Keeps a small coloured dot per tone,
- *  a title + plain-English summary + the local time label. Tappable when the entry links to an
- *  investigation. */
-function TimelineRow({ entry, showDivider }: { entry: TimelineEntry; showDivider: boolean }) {
-  const s = useStyles();
-  const { colors } = useTheme();
-  const router = useRouter();
-  const tone = TIMELINE_TONE_TO_PILL[entry.tone];
-  const dotColor = toneColor(colors, tone);
-  const content = (
-    <View style={s.tlRow}>
-      <View style={s.tlDotCol}><Dot size={10} color={dotColor} fill={dotColor} /></View>
-      <View style={s.tlBody}>
-        <Text style={s.tlTitle} testID={`protection-today-${entry.id}-title`}>{entry.title}</Text>
-        <Text style={s.tlSummary} numberOfLines={2}>{entry.summary}</Text>
-        <Text style={s.tlTime}>{entry.timeLabel}</Text>
-      </View>
-    </View>
-  );
-  return (
-    <View>
-      {showDivider ? <View style={s.tlDivider} /> : null}
-      {entry.route ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Open ${entry.title}`}
-          testID={`protection-today-${entry.id}`}
-          onPress={() => router.push(entry.route as never)}
-          style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
-        >
-          {content}
-        </Pressable>
-      ) : (
-        <View testID={`protection-today-${entry.id}`}>{content}</View>
-      )}
     </View>
   );
 }

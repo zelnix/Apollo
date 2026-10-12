@@ -200,8 +200,9 @@ export default function Patrol() {
   const insets = useSafeAreaInsets();
   const { events, deviceId, showToast } = useApollo();
   const router = useRouter();
-  const params = useLocalSearchParams<{ filter?: string }>();
+  const params = useLocalSearchParams<{ filter?: string; category?: string }>();
   const [filters, setFilters] = useState<string[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
 
@@ -212,13 +213,26 @@ export default function Patrol() {
     }
   }, [params.filter]);
 
+  // Apply category filter from URL params (e.g. from Protection → View related threats)
+  useEffect(() => {
+    if (params.category) {
+      setCategoryFilter(params.category.split(",").filter(Boolean));
+    } else {
+      setCategoryFilter([]);
+    }
+  }, [params.category]);
+
   const onExport = async () => {
     if (outcomes.length === 0) { showToast("Nothing to export yet.", "neutral"); return; }
     try { const r = await exportPatrolPdf(outcomes.map((outcome) => outcome.event), deviceId); showToast(r === "shared" ? "Patrol PDF ready to share" : "Print dialog opened", "resting"); }
     catch { showToast("Could not create the PDF on this device.", "growling"); }
   };
 
-  const outcomes = projectPatrolOutcomes(events);
+  const allOutcomes = projectPatrolOutcomes(events);
+  // Apply category filter if navigated from Protection → View related threats
+  const outcomes = categoryFilter.length > 0
+    ? allOutcomes.filter((o) => categoryFilter.includes(o.category))
+    : allOutcomes;
   const months = useMemo(() => groupOutcomes(outcomes, filters as PatrolFilter[]), [outcomes, filters]);
   const rows = useMemo(() => buildRows(months, expandedMonths, expandedDays), [months, expandedMonths, expandedDays]);
 
