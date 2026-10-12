@@ -321,22 +321,38 @@ function joinNames(names: string[]): string {
   return `${unique.slice(0, -1).join(", ")} and ${unique[unique.length - 1]}`;
 }
 
-/** Approved threat-clear message — always used when Apollo has no active security threat. */
-const NO_THREAT_MESSAGE = "No security threats currently detected within Apollo's current protection capability.";
+/** Approved threat-clear message — always used when Apollo has no active security threat.
+ *  RELIABILITY FIX: The message now qualifies coverage when call screening is not active. */
+function noThreatMessage(coverage: ProtectionCoverage): string {
+  const callItem = coverage.items.find((i) => i.id === "call");
+  const callNotActive = callItem && callItem.state !== "active_verified" && callItem.state !== "unsupported";
+  if (callNotActive) {
+    return "No security threats currently detected within Apollo's active protections. Automatic call screening is not currently active — incoming calls may not be monitored.";
+  }
+  return "No security threats currently detected within Apollo's current protection capability.";
+}
 
 function buildRestingMessage(coverage: ProtectionCoverage, actions: UserActions): { explanation: string; primaryAction?: HomeStatus["primaryAction"]; coverageNote?: string } {
+  const base = noThreatMessage(coverage);
+
+  // Check if call screening needs attention — provide specific Higgins action.
+  const callItem = coverage.items.find((i) => i.id === "call");
+  const callNeedsSetup = callItem && (callItem.state === "setup_available" || callItem.state === "temporarily_unavailable" || callItem.state === "unknown");
+
   // Scenario A: No known threat, optional setup available.
   if (!coverage.platformLimited && actions.level === "optional_setup" && coverage.failedCount === 0) {
     return {
-      explanation: `${NO_THREAT_MESSAGE} There are a few more protections you can set up if you'd like.`,
-      primaryAction: actions.primaryAction ? { label: "Complete protection setup", route: actions.primaryAction.route } : undefined,
+      explanation: `${base} There are a few more protections you can set up if you'd like.`,
+      primaryAction: callNeedsSetup
+        ? { label: "Set up call screening", route: "/call-guard" }
+        : actions.primaryAction ? { label: "Complete protection setup", route: actions.primaryAction.route } : undefined,
     };
   }
 
   // Scenario B: No known threat, platform limitations.
   if (coverage.platformLimited) {
     return {
-      explanation: `${NO_THREAT_MESSAGE} Some protections are not available on this device.`,
+      explanation: `${base} Some protections are not available on this device.`,
       primaryAction: { label: "View protection coverage", route: "/(tabs)/protection" },
       coverageNote: "Platform-limited: not all protections are available on this device.",
     };
@@ -345,7 +361,7 @@ function buildRestingMessage(coverage: ProtectionCoverage, actions: UserActions)
   // Full coverage, no issues — all automatic protections verified.
   if (coverage.overall === "full" && actions.level === "none") {
     return {
-      explanation: `${NO_THREAT_MESSAGE} Your available protections are running and Apollo will let you know if anything needs attention.`,
+      explanation: `${base} Your available protections are running and Apollo will let you know if anything needs attention.`,
     };
   }
 
@@ -358,13 +374,14 @@ function buildRestingMessage(coverage: ProtectionCoverage, actions: UserActions)
       ? `${joinNames(runningNames)} ${runningNames.length === 1 ? "is" : "are"} running.`
       : "Your available protections are running.";
     return {
-      explanation: `${NO_THREAT_MESSAGE} ${note}`,
+      explanation: `${base} ${note}`,
+      primaryAction: callNeedsSetup ? { label: "Set up call screening", route: "/call-guard" } : undefined,
     };
   }
 
   // No automatic protections running at all (but manual checks work).
   return {
-    explanation: `${NO_THREAT_MESSAGE} Manual security checks are ready when you need them.`,
+    explanation: `${base} Manual security checks are ready when you need them.`,
     primaryAction: { label: "View protection", route: "/(tabs)/protection" },
   };
 }
@@ -522,16 +539,18 @@ export function resolveHomeStatus(input: HomeResolverInput): HomeStatus {
       const primaryProblem = (primary.problem || "").trim();
       const gateNames = Array.from(new Set(threatAttention.map((e) => e.gate).filter(Boolean)));
       const areasPhrase = gateNames.length > 0 ? ` across ${joinNames(gateNames)}` : "";
+      const base = noThreatMessage(coverage);
       explanation = primaryProblem
-        ? `${NO_THREAT_MESSAGE} Apollo noted ${primaryProblem}, along with ${securityFindingCount - 1} other ${securityFindingCount === 2 ? "finding" : "findings"}${areasPhrase} worth reviewing.`
-        : `${NO_THREAT_MESSAGE} Apollo noted ${securityFindingCount} findings${areasPhrase} worth reviewing.`;
+        ? `${base} Apollo noted ${primaryProblem}, along with ${securityFindingCount - 1} other ${securityFindingCount === 2 ? "finding" : "findings"}${areasPhrase} worth reviewing.`
+        : `${base} Apollo noted ${securityFindingCount} findings${areasPhrase} worth reviewing.`;
       primaryAction = { label: "View what Apollo noted", route: primary.route || "/protection-details" };
     } else if (securityFindingCount === 1) {
       const primary = threatAttention[0];
       const primaryProblem = (primary.problem || "").trim();
+      const base = noThreatMessage(coverage);
       explanation = primaryProblem
-        ? `${NO_THREAT_MESSAGE} Apollo noted ${primaryProblem} — worth a look when you have a moment.`
-        : `${NO_THREAT_MESSAGE} Apollo noted something worth a look.`;
+        ? `${base} Apollo noted ${primaryProblem} — worth a look when you have a moment.`
+        : `${base} Apollo noted something worth a look.`;
       primaryAction = { label: "View what Apollo noted", route: primary.route || "/protection-details" };
     } else {
       // No security findings — pure resting state with protection context.

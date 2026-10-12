@@ -94,11 +94,12 @@ export interface MessageExplanation { summary: string; why: string[]; recommenda
 export interface MessageOutcome { submissionId: string; analysis: MessageAnalysis; urls: MessageUrlResult[]; explanation: MessageExplanation | null; assessment: InvestigationResult | null; remoteError: string | null; event: PatrolEvent | null }
 /** Call Guard add-on: mirrors backend CallRiskResponse (routers/call.py). `decision` is heuristic/
  * probabilistic (IPQualityScore) — see services/phonerisk.py's Truth-of-State comment; it alone may
- * only reach "growling"/"barking" in the app, never a verified "biting" block. */
+ * only reach "growling"/"barking" in the app, never a verified "biting" block.
+ * "unknown" means reputation data was genuinely unavailable — not safe, not suspicious. */
 export interface CallRiskResult {
   number: string; valid: boolean | null; active: boolean | null; fraud_score: number | null; recent_abuse: boolean | null;
   risky: boolean | null; voip: boolean | null; line_type: string | null; carrier: string | null; country: string | null;
-  decision: "allow" | "review" | "avoid"; cached: boolean; checked_at: string; source: "ipqualityscore" | "not_configured";
+  decision: "allow" | "review" | "avoid" | "unknown"; cached: boolean; checked_at: string; source: "ipqualityscore" | "not_configured" | "unavailable";
   higgins: { headline: string; found: string; why: string; could_not_establish: string; next_action: string; exact_response: string; warning_only: boolean };
   assessment?: InvestigationResult | null;
 }
@@ -892,9 +893,10 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
     const body: Record<string, unknown> = { device_id: deviceId ?? "local", number };
     if (country) body.country = country;
     const result = await apiPost<CallRiskResult>("/call/risk-check", "call_risk_check", body);
-    if (result.decision !== "allow") {
+    if (result.decision !== "allow" && result.decision !== "unknown") {
       // A2 fix: only "avoid" (high-risk, strong fraud signals) should auto-block by adding to the
       // autoRisky list. "review" (moderate signals, uncertain) should only warn — the person decides.
+      // "unknown" never triggers auto-block or threat warning — it means data was unavailable.
       if (result.decision === "avoid") {
         try { await CallSdk.markNumberRisky(result.number); } catch { /* informational only if native module unavailable */ }
       }
@@ -930,20 +932,71 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
 
   // Call Guard add-on: reads numbers ApolloCallScreeningService saw ringing with no local block/
   // allow/risk signal (non-destructive read — numbers persist in the native queue until individually
-  // acknowledged after successful processing). CallSdk.getPendingCallLookups() returns [] on non-Android.
+  // acknowledged after successful processing).
+  // RELIABILITY FIX (12 Oct 2026): Uses explicit CallLookupResult status to distinguish:
+  //   "ok" with no items → genuinely no pending calls (clean).
+  //   "unavailable"      → native module not loaded (Expo Go / web) — reported to diagnostics.
+  //   "error"            → native failure — reported to diagnostics after persistent failure.
   // Lifecycle:
   //   Success → acknowledgeCallLookups: number removed from queue.
   //   Failure → retryCallLookups: attempts counter incremented. After MAX_RETRY_ATTEMPTS (4),
   //             readPendingLookups auto-purges the entry on the next read.
+  //   "unknown" reputation → number acknowledged (don't re-queue), honest "could not check" event.
   // The user must have enabled automatic call checking (apollo.call.auto_check consent flag).
+  const callPollBusy = useRef(false);
+  const callPollFailureCount = useRef(0);
   useEffect(() => {
     let cancelled = false;
     const poll = async () => {
+      // Overlap guard: prevent concurrent poll operations processing the same queue entry.
+      if (callPollBusy.current) return;
+      callPollBusy.current = true;
       try {
         // Consent gate: only submit numbers automatically when the user has opted in.
         const consent = await storage.getItem("apollo.call.auto_check", null);
         if (consent !== "true") return; // User hasn't enabled automatic number checking
-        const items = await CallSdk.getPendingCallLookups();
+
+        const lookupResult = await CallSdk.getPendingCallLookups();
+
+        // Explicit failure handling — never treat a failed lookup as a verified empty queue.
+        if (lookupResult.status === "unavailable") {
+          // Native module not present — expected on Expo Go / web. Not an error, but not monitoring.
+          // Report once so diagnostics/protection status can reflect this.
+          if (callPollFailureCount.current === 0) {
+            console.info("[Call Guard] Native call module unavailable — call monitoring inactive.", lookupResult.detail);
+          }
+          callPollFailureCount.current = 1; // cap at 1 for "unavailable" (not a transient failure)
+          return;
+        }
+
+        if (lookupResult.status === "error") {
+          callPollFailureCount.current += 1;
+          console.warn(`[Call Guard] Native queue read failed (attempt ${callPollFailureCount.current}):`, lookupResult.detail);
+          // After 3 consecutive failures, create a one-time diagnostic event so the user knows.
+          if (callPollFailureCount.current === 3) {
+            const current = eventsRef.current;
+            if (!current.some((x) => x.category === "call" && x.headline?.includes("call monitoring issue"))) {
+              const ev: PatrolEvent = {
+                event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "call" as const,
+                status: "active" as const, state: "ears_up" as const,
+                indicator_host: null, indicator_digest: null, local_indicator: null,
+                verified_block: false, adapter_label: securityAdapter.label,
+                occurred_at: new Date().toISOString(), resolved_at: null,
+                trust_allowed: false, why: ["Apollo's call monitoring encountered a persistent error reading the native call queue."],
+                headline: "Apollo detected a call monitoring issue",
+                what_happened: `Apollo's automatic call screening encountered repeated failures. ${lookupResult.detail ?? "The native call module may need attention."}`,
+                what_to_do: "Check that Apollo has the call screening role in your phone settings. You can still check numbers manually.",
+              };
+              await persistEvents([ev, ...current]);
+            }
+          }
+          return;
+        }
+
+        // status === "ok" — genuine successful read. Reset failure counter.
+        callPollFailureCount.current = 0;
+        const items = lookupResult.items;
+
         const acknowledged: string[] = [];
         const failed: string[] = [];
         for (const item of items) {
@@ -956,10 +1009,28 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
           try {
             const riskResult = await checkNumberRisk(item.number);
             acknowledged.push(item.number);
-            // If the caller is trusted AND the result is benign (allow), the reputation was
-            // assessed but no notification is needed — quiet handling honoured.
-            if (callerTrusted && riskResult && riskResult.decision === "allow") {
+            // If the caller is trusted AND the result is benign (allow or unknown), the reputation was
+            // assessed (or unavailable) but no notification is needed — quiet handling honoured.
+            if (callerTrusted && riskResult && (riskResult.decision === "allow" || riskResult.decision === "unknown")) {
               continue; // Quiet — trust honoured, but reputation was still assessed.
+            }
+            // Handle "unknown" decision for untrusted callers: create an honest "could not check" event.
+            if (riskResult.decision === "unknown") {
+              const current = eventsRef.current;
+              if (!current.some((x) => x.local_indicator === item.number && x.category === "call")) {
+                const ev: PatrolEvent = {
+                  event_id: Crypto.randomUUID(), device_id: deviceId ?? "local", category: "call" as const,
+                  status: "active" as const, state: "ears_up" as const,
+                  indicator_host: null, indicator_digest: null, local_indicator: item.number,
+                  verified_block: false, adapter_label: securityAdapter.label,
+                  occurred_at: new Date(item.seenAtMs).toISOString(), resolved_at: null,
+                  trust_allowed: false, why: ["Reputation data was unavailable for this number. This does not mean it is safe or dangerous."],
+                  headline: `Call seen: ${item.number} — could not verify`,
+                  what_happened: `A call from ${item.number} was seen but Apollo could not obtain reputation information. The number's safety is unknown.`,
+                  what_to_do: "Tap 'Check this number' to try again, or verify the caller independently before responding.",
+                };
+                await persistEvents([ev, ...current.filter((x) => x.event_id !== ev.event_id)]);
+              }
             }
           } catch {
             // Retry once after a short delay before giving up
@@ -967,7 +1038,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
               await new Promise((r) => setTimeout(r, 2000));
               const retryResult = await checkNumberRisk(item.number);
               acknowledged.push(item.number);
-              if (callerTrusted && retryResult && retryResult.decision === "allow") continue;
+              if (callerTrusted && retryResult && (retryResult.decision === "allow" || retryResult.decision === "unknown")) continue;
             } catch {
               // For trusted callers, if reputation service is unavailable, acknowledge quietly.
               // Creating a "could not check" event for a trusted caller is unnecessary noise.
@@ -997,7 +1068,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
         if (acknowledged.length > 0) await CallSdk.acknowledgeCallLookups(acknowledged);
         // Bump retry counter for failed numbers — auto-purged after MAX_RETRY_ATTEMPTS.
         if (failed.length > 0) await CallSdk.retryCallLookups(failed);
-      } catch { /* native module unavailable — nothing to read */ }
+      } finally {
+        callPollBusy.current = false;
+      }
     };
     void poll();
     const timer = setInterval(() => void poll(), lowPower ? 120000 : 45000);

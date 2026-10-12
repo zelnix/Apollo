@@ -399,9 +399,11 @@ class CallRiskResponse(BaseModel):
     # "avoid" deliberately avoids the word "block": this is a heuristic/probabilistic signal (Truth-
     # of-State) — only the device's OWN CallScreeningService actually rejecting a call, with evidence,
     # may ever produce a "biting"/verified_block PatrolEvent. This field never gates that on its own.
-    decision: Literal["allow", "review", "avoid"]
+    # "unknown" is returned when reputation data is genuinely unavailable — never treat it as "allow"
+    # or "review". It means Apollo could not assess the number, not that it is safe or suspicious.
+    decision: Literal["allow", "review", "avoid", "unknown"]
     cached: bool
     checked_at: datetime
-    source: Literal["ipqualityscore", "not_configured"]
+    source: Literal["ipqualityscore", "not_configured", "unavailable"]
     higgins: dict[str, Any]
     assessment: Optional[dict[str, Any]] = None

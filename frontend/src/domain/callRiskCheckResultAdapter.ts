@@ -7,8 +7,8 @@ interface CallRiskResult {
   number: string; valid: boolean | null; active: boolean | null; fraud_score: number | null;
   recent_abuse: boolean | null; risky: boolean | null; voip: boolean | null;
   line_type: string | null; carrier: string | null; country: string | null;
-  decision: "allow" | "review" | "avoid"; cached: boolean; checked_at: string;
-  source: "ipqualityscore" | "not_configured";
+  decision: "allow" | "review" | "avoid" | "unknown"; cached: boolean; checked_at: string;
+  source: "ipqualityscore" | "not_configured" | "unavailable";
   higgins: { headline: string; found: string; why: string; could_not_establish: string; next_action: string; exact_response: string; warning_only: boolean };
 }
 
@@ -53,8 +53,8 @@ export function buildCallRiskCheckResult(args: { result: CallRiskResult }): Chec
   const displayNumber = formatPhoneDisplay(r.number);
   const displayTime = formatCheckedAt(r.checked_at);
 
-  const tone: CheckResultModel["tone"] = r.decision === "avoid" ? "barking" : r.decision === "review" ? "growling" : "resting";
-  const confidence: CheckResultModel["confidence"] = r.decision === "avoid" ? "High" : r.decision === "review" ? "Medium" : "Low";
+  const tone: CheckResultModel["tone"] = r.decision === "avoid" ? "barking" : r.decision === "review" ? "growling" : r.decision === "unknown" ? "neutral" : "resting";
+  const confidence: CheckResultModel["confidence"] = r.decision === "avoid" ? "High" : r.decision === "review" ? "Medium" : r.decision === "unknown" ? "Low" : "Low";
 
   const items: CheckItem[] = [];
 

@@ -45,6 +45,9 @@ def _higgins(decision: str, data: dict) -> dict:
     elif decision == "review":
         found = "The number has some reputation signals worth checking, but Apollo cannot establish who is calling."
         action = "Let the call go to voicemail, then verify the caller using an independently sourced number."
+    elif decision == "unknown":
+        found = "Apollo could not obtain reputation information for this number. This does not mean the number is safe or dangerous."
+        action = "If the call was unexpected, verify the caller independently before sharing personal information or sending money."
     else:
         found = "The current reputation check did not find strong abuse signals for this number."
         action = "If the call was unexpected, verify the caller independently before sharing information or sending money."
@@ -117,7 +120,7 @@ async def check_phone_risk(raw_number: str, country: Optional[str], *, persist_c
     ts = now_utc()
     if not IPQS_API_KEY:
         data = {"fraud_score": None}
-        return CallRiskResponse(number=phone, decision="allow", cached=False, checked_at=ts, source="not_configured", higgins=_higgins("allow", data))
+        return CallRiskResponse(number=phone, decision="unknown", cached=False, checked_at=ts, source="not_configured", higgins=_higgins("unknown", data))
 
     cached = await db.phone_risk_cache.find_one({"phone_e164": phone}) if persist_cache else None
     if cached:
@@ -147,11 +150,12 @@ async def check_phone_risk(raw_number: str, country: Optional[str], *, persist_c
             )
         # No cache at all — return an honest "unknown" result rather than crashing with 503.
         # This lets the UI show "couldn't check" with a retry option instead of a hard error.
+        # RELIABILITY FIX: Previously returned decision="allow" here which misleadingly implied safety.
         logger.error("IPQS failed for %s — no cache available, returning unknown", _mask_phone(phone))
         data_unknown: dict = {"fraud_score": None}
         return CallRiskResponse(
-            number=phone, decision="allow", cached=False, checked_at=ts, source="not_configured",
-            higgins=_higgins("allow", data_unknown),
+            number=phone, decision="unknown", cached=False, checked_at=ts, source="unavailable",
+            higgins=_higgins("unknown", data_unknown),
         )
 
     record = PhoneRiskCache(
