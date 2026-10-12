@@ -24,7 +24,7 @@ export function Sheet({ visible, onClose, title, children, testID }: { visible: 
         <View style={s.sheet} testID={testID}>
           <View style={s.handle} />
           <Text style={s.title}>{title}</Text>
-          <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]}>{children}</ScrollView>
+          <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} keyboardShouldPersistTaps="handled" nestedScrollEnabled>{children}</ScrollView>
         </View>
       </View>
     </Modal>

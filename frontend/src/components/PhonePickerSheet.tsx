@@ -102,7 +102,7 @@ export function PhonePickerSheet({ visible, mode, onClose, onPickCall, onPickSms
           {(mode === "calls" ? filteredCalls.length : filteredMsgs.length) === 0 ? (
             <Body testID="phone-picker-empty">{(mode === "calls" ? calls.length : messages.length) === 0 ? `No ${mode === "calls" ? "recent calls" : "messages"} found.` : `No ${mode === "calls" ? "callers" : "messages"} match “${query}”.`}</Body>
           ) : (
-            <ScrollView style={{ maxHeight: 380 }} testID="phone-picker-list" keyboardShouldPersistTaps="handled">
+            <ScrollView style={{ maxHeight: 380 }} testID="phone-picker-list" keyboardShouldPersistTaps="handled" nestedScrollEnabled>
               {mode === "calls" ? filteredCalls.map((call, i) => (
                 <Pressable key={`${call.number}-${i}`} testID={`phone-picker-call-${i}`} accessibilityRole="button" onPress={() => { onPickCall?.(call); onClose(); }} style={({ pressed }) => [s.item, { opacity: pressed ? 0.7 : 1 }]}>
                   <View style={{ flex: 1 }}>
