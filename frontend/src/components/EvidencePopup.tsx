@@ -179,7 +179,7 @@ export function EvidencePopup({ visible, onClose, caseId, focusEvidenceId, items
           </View>
         ) : selected ? (
           /* Single evidence item view */
-          <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]}>
+          <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} keyboardShouldPersistTaps="handled">
             {/* Navigation back to list */}
             {items.length > 1 && (
               <Button variant="ghost" label={`← All evidence (${items.length})`}
@@ -291,7 +291,7 @@ export function EvidencePopup({ visible, onClose, caseId, focusEvidenceId, items
           </ScrollView>
         ) : (
           /* Evidence list view */
-          <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]}>
+          <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} keyboardShouldPersistTaps="handled">
             <Text style={s.sectionTitle}>Evidentiary Chain</Text>
             <Text style={s.sectionSubtitle}>{items.length} evidence item{items.length !== 1 ? "s" : ""} in this investigation</Text>
             {items.map((item) => (

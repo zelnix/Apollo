@@ -463,6 +463,7 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
               s.content,
               { paddingBottom: insets.bottom + spacing.xl },
             ]}
+            keyboardShouldPersistTaps="handled"
           >
             {/* Image preview — shows REDACTED version when sensitive regions exist */}
             <View style={[s.previewContainer, { alignSelf: "center" }]}>
