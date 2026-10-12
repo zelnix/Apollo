@@ -1,277 +1,309 @@
 import React from "react";
 import { Text, View } from "react-native";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
+import CircleAlert from "lucide-react-native/icons/circle-alert";
+import FileText from "lucide-react-native/icons/file-text";
+import Info from "lucide-react-native/icons/info";
+import Settings from "lucide-react-native/icons/settings";
 
-import { Body, Card, toneColor } from "@/src/components/ui";
+import { Body, Card, toneText } from "@/src/components/ui";
 import { hasLocalEvidence } from "@/src/domain/higginsNarration";
-import type { PatrolEnforcementEvidence, PatrolEvent, PatrolRecord } from "@/src/domain/types";
+import type { PatrolEvent, PatrolRecord } from "@/src/domain/types";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
   content: { gap: spacing.lg },
-  sub: {
-    fontFamily: fonts.display,
-    fontSize: 13,
-    color: c.onSurfaceSecondary,
-    letterSpacing: 1,
-    textTransform: "uppercase",
+  tabHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    marginBottom: spacing.md,
   },
-  big: {
-    fontFamily: fonts.textMedium,
-    fontSize: 16,
-    lineHeight: 24,
+  iconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tabTitle: {
+    fontFamily: fonts.displayBold,
+    fontSize: 17,
     color: c.onSurface,
   },
-  meta: { fontFamily: fonts.text, fontSize: 13, color: c.muted },
-  evidenceRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    paddingVertical: spacing.xs,
+  tabSubtitle: {
+    fontFamily: fonts.text,
+    fontSize: 13,
+    color: c.onSurfaceSecondary,
   },
-  evidenceLabel: {
+  // Alert banner
+  alertBanner: {
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    flexDirection: "row",
+    gap: spacing.md,
+    alignItems: "flex-start",
+  },
+  alertIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 2,
+  },
+  alertContent: { flex: 1, gap: 4 },
+  alertTitle: {
     fontFamily: fonts.textSemibold,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  alertBody: {
+    fontFamily: fonts.text,
+    fontSize: 13,
+    lineHeight: 19,
+    color: c.onSurfaceSecondary,
+  },
+  // Table
+  tableCard: { gap: 0 },
+  tableTitle: {
+    fontFamily: fonts.displayBold,
+    fontSize: 16,
+    color: c.onSurface,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: c.divider,
+  },
+  tableRow: {
+    flexDirection: "row",
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: c.divider,
+    gap: spacing.md,
+  },
+  tableRowLast: {
+    flexDirection: "row",
+    paddingVertical: spacing.md,
+    gap: spacing.md,
+  },
+  tableLabel: {
+    fontFamily: fonts.textSemibold,
+    fontSize: 13,
+    color: c.onSurface,
+    width: 100,
+  },
+  tableValue: {
+    fontFamily: fonts.text,
     fontSize: 13,
     color: c.onSurfaceSecondary,
     flex: 1,
+    lineHeight: 19,
   },
-  evidenceValue: {
-    fontFamily: fonts.text,
-    fontSize: 13,
-    color: c.onSurface,
-    flex: 2,
-    textAlign: "right",
+  statusBadge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    alignSelf: "flex-start",
   },
-  provenanceBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.sm,
-  },
-  provenanceText: {
+  statusBadgeText: {
     fontFamily: fonts.textSemibold,
     fontSize: 12,
   },
-  provenanceDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+  // Info card
+  infoCard: {
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    flexDirection: "row",
+    gap: spacing.md,
+    alignItems: "flex-start",
   },
-  divider: {
-    height: 1,
-    backgroundColor: c.divider,
-    marginVertical: spacing.xs,
+  infoTitle: {
+    fontFamily: fonts.textSemibold,
+    fontSize: 14,
+    color: c.onSurface,
+    lineHeight: 20,
+  },
+  // Detail row button
+  detailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    padding: spacing.lg,
+  },
+  detailIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  detailContent: { flex: 1 },
+  detailTitle: {
+    fontFamily: fonts.textSemibold,
+    fontSize: 14,
+    color: c.onSurface,
+  },
+  detailSubtitle: {
+    fontFamily: fonts.text,
+    fontSize: 12,
+    color: c.onSurfaceSecondary,
   },
 }));
 
-function provenanceInfo(prov: string | undefined): {
-  label: string;
-  description: string;
-  tone: "resting" | "ears_up" | "unknown";
-} {
+function provenanceLabel(prov: string | undefined): string {
   switch (prov) {
-    case "local_device":
-      return {
-        label: "On-device evidence",
-        description:
-          "This evidence was collected directly on your device with full detail.",
-        tone: "resting",
-      };
-    case "dns_observation":
-      return {
-        label: "DNS observation",
-        description:
-          "Apollo observed a DNS query for this hostname through the device gateway.",
-        tone: "resting",
-      };
-    case "server_projected":
-      return {
-        label: "Server-synced summary",
-        description:
-          "This is a privacy-preserving summary synced from the server. Full detail is on the originating device.",
-        tone: "ears_up",
-      };
-    default:
-      return {
-        label: "Limited evidence",
-        description:
-          "The full evidence for this finding is only available on the device where it happened.",
-        tone: "unknown",
-      };
+    case "local_device": return "Device settings (local)";
+    case "dns_observation": return "DNS observation";
+    case "server_projected": return "Server-synced summary";
+    default: return "Unknown";
   }
 }
 
-function EvidenceRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | null | undefined;
-}) {
-  const s = useStyles();
-  if (!value) return null;
-  return (
-    <View style={s.evidenceRow}>
-      <Text style={s.evidenceLabel}>{label}</Text>
-      <Text style={s.evidenceValue} selectable>
-        {value}
-      </Text>
-    </View>
-  );
-}
-
-function EnforcementEvidenceCard({
-  evidence,
-}: {
-  evidence: PatrolEnforcementEvidence;
-}) {
-  const s = useStyles();
-  return (
-    <Card style={{ gap: spacing.sm }} testID="evidence-enforcement">
-      <Text style={s.sub}>Enforcement record</Text>
-      <EvidenceRow label="Mechanism" value={evidence.mechanism} />
-      <EvidenceRow label="Direction" value={evidence.direction} />
-      <EvidenceRow label="Protocol" value={evidence.protocol} />
-      <EvidenceRow label="Destination" value={evidence.destination_domain || evidence.destination_ip} />
-      {evidence.destination_port ? (
-        <EvidenceRow label="Port" value={String(evidence.destination_port)} />
-      ) : null}
-      <EvidenceRow label="Action taken" value={evidence.enforced_action} />
-      <EvidenceRow label="Result" value={evidence.result} />
-      <EvidenceRow label="Confidence" value={evidence.confidence} />
-      <EvidenceRow label="Platform" value={`${evidence.platform}${evidence.os_version ? " " + evidence.os_version : ""}`} />
-      <Text style={s.meta}>
-        Observed {new Date(evidence.observed_at).toLocaleString()}
-      </Text>
-    </Card>
-  );
+function categoryLabel(cat: string): string {
+  switch (cat) {
+    case "website": return "Website check";
+    case "call": return "Call check";
+    case "message": return "Message check";
+    case "device": return "Device security";
+    default: return "Apollo check";
+  }
 }
 
 export function EvidenceTab({ event }: { event: PatrolEvent }) {
   const s = useStyles();
   const { colors } = useTheme();
   const isLocal = hasLocalEvidence(event);
-  const prov = provenanceInfo(event.evidence_provenance);
   const record: PatrolRecord | undefined = event.patrol_record ?? undefined;
+  const headline = event.headline ?? "Finding detected";
+  const isActive = !event.resolved_at;
 
   return (
     <View style={s.content}>
-      {/* Evidence provenance */}
-      <Card style={{ gap: spacing.md }} testID="evidence-provenance-card">
-        <Text style={s.sub}>Evidence source</Text>
+      {/* Evidence tab card with header */}
+      <Card style={{ gap: spacing.md }} testID="evidence-header-card">
+        <View style={s.tabHeader}>
+          <View style={[s.iconCircle, { backgroundColor: colors.navyDeep }]}>
+            <FileText size={22} color="#FFFFFF" />
+          </View>
+          <View>
+            <Text style={s.tabTitle}>Evidence</Text>
+            <Text style={s.tabSubtitle}>The facts behind this finding</Text>
+          </View>
+        </View>
+
+        <Body>
+          This section shows the actual information Apollo collected for this
+          finding, including device settings and related details.
+        </Body>
+
+        {/* Alert finding */}
         <View
           style={[
-            s.provenanceBadge,
-            { backgroundColor: toneColor(colors, prov.tone) + "18" },
+            s.alertBanner,
+            { backgroundColor: isActive ? colors.barkingTint : colors.restingTint },
           ]}
+          testID="evidence-finding-alert"
         >
-          <View
-            style={[
-              s.provenanceDot,
-              { backgroundColor: toneColor(colors, prov.tone) },
-            ]}
-          />
-          <Text
-            style={[
-              s.provenanceText,
-              { color: toneColor(colors, prov.tone) },
-            ]}
-          >
-            {prov.label}
+          <View style={[s.alertIcon, { backgroundColor: isActive ? colors.barking : colors.resting }]}>
+            <CircleAlert size={16} color="#FFFFFF" />
+          </View>
+          <View style={s.alertContent}>
+            <Text style={[s.alertTitle, { color: isActive ? colors.barkingText : colors.restingText }]}>
+              {headline}
+            </Text>
+            <Text style={s.alertBody}>
+              {record?.effectiveReason ?? event.what_happened ?? ""}
+            </Text>
+          </View>
+        </View>
+      </Card>
+
+      {/* Detected setting table */}
+      <Card style={s.tableCard} testID="evidence-detected-setting">
+        <Text style={s.tableTitle}>Detected setting</Text>
+
+        <View style={s.tableRow}>
+          <Text style={s.tableLabel}>Setting</Text>
+          <Text style={s.tableValue}>{headline}</Text>
+        </View>
+
+        <View style={s.tableRow}>
+          <Text style={s.tableLabel}>Status</Text>
+          <View style={{ flex: 1 }}>
+            <View style={[s.statusBadge, { backgroundColor: isActive ? colors.barkingTint : colors.restingTint }]}>
+              <Text style={[s.statusBadgeText, { color: isActive ? colors.barkingText : colors.restingText }]}>
+                {isActive ? "Active" : "Resolved"}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={s.tableRow}>
+          <Text style={s.tableLabel}>Detected by</Text>
+          <Text style={s.tableValue}>Apollo {categoryLabel(event.category)}</Text>
+        </View>
+
+        <View style={s.tableRow}>
+          <Text style={s.tableLabel}>Date & time</Text>
+          <Text style={s.tableValue}>
+            {new Date(event.occurred_at).toLocaleString([], {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+              second: "2-digit",
+            })}
           </Text>
         </View>
-        <Body>{prov.description}</Body>
+
+        <View style={s.tableRowLast}>
+          <Text style={s.tableLabel}>Source</Text>
+          <Text style={s.tableValue}>{provenanceLabel(event.evidence_provenance)}</Text>
+        </View>
       </Card>
 
-      {/* Recorded indicator */}
-      {isLocal && event.local_indicator ? (
-        <Card style={{ gap: spacing.sm }} testID="evidence-indicator">
-          <Text style={s.sub}>Recorded indicator</Text>
-          <Text style={s.big} selectable>
-            {event.local_indicator}
+      {/* What this means */}
+      <View
+        style={[
+          s.infoCard,
+          { backgroundColor: "rgba(22,34,53,0.06)" },
+        ]}
+        testID="evidence-meaning"
+      >
+        <View style={[s.alertIcon, { backgroundColor: colors.info }]}>
+          <Info size={16} color="#FFFFFF" />
+        </View>
+        <View style={s.alertContent}>
+          <Text style={s.infoTitle}>What this means</Text>
+          <Text style={s.alertBody}>
+            {record?.summary ?? event.what_happened ?? ""}
           </Text>
-          {event.indicator_host ? (
-            <Text style={s.meta}>Host: {event.indicator_host}</Text>
-          ) : null}
-          {event.indicator_digest ? (
-            <Text style={s.meta} selectable>
-              Digest: {event.indicator_digest}
-            </Text>
-          ) : null}
-        </Card>
-      ) : event.indicator_host ? (
-        <Card style={{ gap: spacing.sm }} testID="evidence-host">
-          <Text style={s.sub}>Indicator host</Text>
-          <Text style={s.big} selectable>
-            {event.indicator_host}
-          </Text>
-        </Card>
-      ) : null}
+        </View>
+      </View>
 
-      {/* Enforcement evidence (block records) */}
-      {event.enforcement_evidence ? (
-        <EnforcementEvidenceCard evidence={event.enforcement_evidence} />
-      ) : null}
-
-      {/* Supporting references */}
-      {event.supporting_references && event.supporting_references.length > 0 ? (
-        <Card style={{ gap: spacing.sm }} testID="evidence-references">
-          <Text style={s.sub}>Supporting references</Text>
-          {event.supporting_references.map((ref, i) => (
-            <View key={i} style={{ gap: 2 }}>
-              <Text style={[s.big, { fontSize: 14 }]}>{ref.label}</Text>
-              <Text style={s.meta} selectable>
-                {ref.url}
-              </Text>
-              {i < event.supporting_references!.length - 1 ? (
-                <View style={s.divider} />
-              ) : null}
+      {/* Profile details / Supporting references */}
+      {(event.supporting_references && event.supporting_references.length > 0) ||
+      (isLocal && event.local_indicator) ? (
+        <Card style={{ padding: 0 }} testID="evidence-additional-details">
+          <View style={s.detailRow}>
+            <View style={[s.detailIcon, { backgroundColor: colors.surfaceTertiary }]}>
+              <Settings size={18} color={colors.navyDeep} />
             </View>
-          ))}
+            <View style={s.detailContent}>
+              <Text style={s.detailTitle}>
+                {isLocal ? "Additional details" : "Supporting references"}
+              </Text>
+              <Text style={s.detailSubtitle}>
+                {isLocal
+                  ? "Additional evidence about the detected finding."
+                  : `${event.supporting_references?.length ?? 0} reference(s) available.`}
+              </Text>
+            </View>
+            <ChevronRight size={20} color={colors.onSurfaceSecondary} />
+          </View>
         </Card>
       ) : null}
-
-      {/* Domain / registration info */}
-      {record?.scenarioContext?.indicatorHost ? (
-        <Card style={{ gap: spacing.sm }} testID="evidence-domain-info">
-          <Text style={s.sub}>Domain details</Text>
-          <EvidenceRow label="Host" value={record.scenarioContext.indicatorHost} />
-          {record.freshness ? (
-            <EvidenceRow
-              label="First observed"
-              value={new Date(record.freshness.observedAt).toLocaleString()}
-            />
-          ) : null}
-        </Card>
-      ) : null}
-
-      {/* Timestamps */}
-      <Card style={{ gap: spacing.sm }} testID="evidence-timestamps">
-        <Text style={s.sub}>Timestamps</Text>
-        <EvidenceRow
-          label="Occurred"
-          value={new Date(event.occurred_at).toLocaleString()}
-        />
-        {event.resolved_at ? (
-          <EvidenceRow
-            label="Resolved"
-            value={new Date(event.resolved_at).toLocaleString()}
-          />
-        ) : null}
-        {record?.freshness?.projectedAt ? (
-          <EvidenceRow
-            label="Last projected"
-            value={new Date(record.freshness.projectedAt).toLocaleString()}
-          />
-        ) : null}
-        {record?.updatedAt ? (
-          <EvidenceRow
-            label="Last updated"
-            value={new Date(record.updatedAt).toLocaleString()}
-          />
-        ) : null}
-      </Card>
     </View>
   );
 }

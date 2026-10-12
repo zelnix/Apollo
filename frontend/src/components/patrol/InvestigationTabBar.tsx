@@ -13,23 +13,22 @@ const TAB_META: { key: TabKey; label: string }[] = [
 
 const useStyles = makeStyles((c) => ({
   bar: {
-    flexDirection: "row",
+    flexDirection: "row" as const,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.sm,
     gap: spacing.sm,
   },
   tab: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 10,
     borderRadius: radius.pill,
-    minHeight: 36,
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
   },
   label: {
     fontFamily: fonts.textSemibold,
-    fontSize: 13,
-    letterSpacing: 0.2,
+    fontSize: 14,
+    letterSpacing: 0.1,
   },
 }));
 
@@ -62,7 +61,9 @@ export function InvestigationTabBar({
             style={[
               s.tab,
               {
-                backgroundColor: active ? colors.navyDeep : colors.surfaceTertiary,
+                backgroundColor: active
+                  ? colors.navyDeep
+                  : colors.surfaceTertiary,
               },
             ]}
           >

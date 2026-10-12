@@ -1,72 +1,242 @@
 import React from "react";
-import { Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
+import CircleAlert from "lucide-react-native/icons/circle-alert";
+import CircleCheck from "lucide-react-native/icons/circle-check";
+import Clock from "lucide-react-native/icons/clock";
+import FileText from "lucide-react-native/icons/file-text";
+import Info from "lucide-react-native/icons/info";
+import MessageSquare from "lucide-react-native/icons/message-square";
+import Search from "lucide-react-native/icons/search";
+import User from "lucide-react-native/icons/user";
 
-import { Body, Card, toneColor } from "@/src/components/ui";
+import { Body, Card, toneText } from "@/src/components/ui";
 import { eventHistory, sourceLabel } from "@/src/domain/messageVoice";
 import type { PatrolEvent, PatrolRecord } from "@/src/domain/types";
-import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
+import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 const useStyles = makeStyles((c) => ({
   content: { gap: spacing.lg },
-  sub: {
-    fontFamily: fonts.display,
+  tabHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    marginBottom: spacing.md,
+  },
+  iconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tabTitle: {
+    fontFamily: fonts.displayBold,
+    fontSize: 17,
+    color: c.onSurface,
+  },
+  tabSubtitle: {
+    fontFamily: fonts.text,
     fontSize: 13,
     color: c.onSurfaceSecondary,
-    letterSpacing: 1,
-    textTransform: "uppercase",
   },
-  meta: { fontFamily: fonts.text, fontSize: 13, color: c.muted },
-  // Timeline styles
+  // Timeline
+  timelineCard: { gap: spacing.md },
   timelineItem: {
     flexDirection: "row",
     gap: spacing.md,
-    minHeight: 48,
   },
   timelineTrack: {
     alignItems: "center",
-    width: 20,
+    width: 32,
   },
   timelineDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginTop: 4,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1,
   },
   timelineLine: {
     width: 2,
     flex: 1,
-    marginTop: 4,
+    marginTop: -2,
+    marginBottom: -2,
   },
   timelineContent: {
     flex: 1,
     paddingBottom: spacing.lg,
   },
-  timelineText: {
-    fontFamily: fonts.textMedium,
+  timelineContentLast: {
+    flex: 1,
+    paddingBottom: spacing.sm,
+  },
+  timelineRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+  },
+  timelineTitle: {
+    fontFamily: fonts.textSemibold,
     fontSize: 14,
-    lineHeight: 20,
     color: c.onSurface,
+    lineHeight: 20,
+    flex: 1,
   },
   timelineTime: {
     fontFamily: fonts.text,
-    fontSize: 12,
+    fontSize: 11,
     color: c.muted,
-    marginTop: 2,
+  },
+  timelineBody: {
+    fontFamily: fonts.text,
+    fontSize: 13,
+    lineHeight: 19,
+    color: c.onSurfaceSecondary,
+    marginTop: 4,
+  },
+  // Status badge
+  badge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    alignSelf: "flex-start",
+    marginTop: spacing.sm,
+  },
+  badgeText: {
+    fontFamily: fonts.textSemibold,
+    fontSize: 11,
+  },
+  // Info card
+  infoCard: {
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    flexDirection: "row",
+    gap: spacing.md,
+    alignItems: "flex-start",
+  },
+  infoTitle: {
+    fontFamily: fonts.textSemibold,
+    fontSize: 14,
+    color: c.onSurface,
+    lineHeight: 20,
+  },
+  infoBody: {
+    fontFamily: fonts.text,
+    fontSize: 13,
+    lineHeight: 19,
+    color: c.onSurfaceSecondary,
+  },
+  bullet: {
+    fontFamily: fonts.text,
+    fontSize: 13,
+    lineHeight: 19,
+    color: c.onSurfaceSecondary,
+    paddingLeft: spacing.sm,
+  },
+  // Ask Higgins button
+  askRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    padding: spacing.lg,
+  },
+  askIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  askText: {
+    fontFamily: fonts.textSemibold,
+    fontSize: 14,
+    color: c.onSurface,
+    flex: 1,
   },
 }));
 
-/** Deduplicate history entries — removes adjacent entries with identical text (ignoring timestamps). */
-function deduplicateHistory(
-  entries: { at: string; text: string }[]
-): { at: string; text: string }[] {
-  if (entries.length <= 1) return entries;
-  const result: { at: string; text: string }[] = [entries[0]];
-  for (let i = 1; i < entries.length; i++) {
-    if (entries[i].text !== entries[i - 1].text) {
-      result.push(entries[i]);
-    }
+interface TimelineEntry {
+  title: string;
+  body: string;
+  at: string;
+  icon: "alert" | "search" | "document" | "user" | "resolved";
+  badge?: { label: string; tone: "barking" | "resting" | "ears_up" };
+}
+
+/** Builds a rich timeline from event + revision data. */
+function buildTimeline(event: PatrolEvent, revisions: { occurredAt: string; effectiveState: string; summary: string; revision: number }[]): TimelineEntry[] {
+  const entries: TimelineEntry[] = [];
+
+  // 1. Finding recorded
+  entries.push({
+    title: "Finding recorded",
+    body: event.what_happened ?? "Apollo recorded a finding.",
+    at: event.occurred_at,
+    icon: "alert",
+    badge: event.resolved_at ? undefined : { label: "Needs your attention", tone: "barking" },
+  });
+
+  // 2. Investigation started (if there are revisions or a patrol record)
+  if (event.patrol_record?.recordId) {
+    const investigationStart = revisions.length > 0 ? revisions[0].occurredAt : event.occurred_at;
+    entries.push({
+      title: "Investigation started",
+      body: "Magnum DI began reviewing the finding and related context.",
+      at: investigationStart,
+      icon: "search",
+    });
   }
-  return result;
+
+  // 3. Investigation completed (if patrol record has summary)
+  if (event.patrol_record?.summary) {
+    const completedAt = event.patrol_record.updatedAt ?? event.patrol_record.occurredAt ?? event.occurred_at;
+    entries.push({
+      title: "Investigation completed",
+      body: "The investigation report was added to this record.",
+      at: completedAt,
+      icon: "document",
+    });
+  }
+
+  // 4. Resolved
+  if (event.resolved_at) {
+    entries.push({
+      title: "Marked resolved",
+      body: "This event was marked resolved.",
+      at: event.resolved_at,
+      icon: "resolved",
+      badge: { label: "Resolved", tone: "resting" },
+    });
+  }
+
+  // Sort chronologically
+  entries.sort((a, b) => a.at.localeCompare(b.at));
+  return entries;
+}
+
+function TimelineIcon({ type, colors }: { type: string; colors: Record<string, string> }) {
+  switch (type) {
+    case "alert": return <CircleAlert size={16} color="#FFFFFF" />;
+    case "search": return <Search size={16} color="#FFFFFF" />;
+    case "document": return <FileText size={16} color="#FFFFFF" />;
+    case "user": return <User size={16} color="#FFFFFF" />;
+    case "resolved": return <CircleCheck size={16} color="#FFFFFF" />;
+    default: return <Info size={16} color="#FFFFFF" />;
+  }
+}
+
+function dotColor(type: string, colors: Record<string, string>): string {
+  switch (type) {
+    case "alert": return colors.barking;
+    case "search": return colors.info;
+    case "document": return colors.info;
+    case "user": return colors.info;
+    case "resolved": return colors.resting;
+    default: return colors.onSurfaceSecondary;
+  }
 }
 
 export function HistoryTab({
@@ -81,41 +251,47 @@ export function HistoryTab({
   const s = useStyles();
   const { colors } = useTheme();
 
-  const rawHistory = eventHistory(
-    event,
-    timeline.map((r) => ({
-      occurredAt: r.occurredAt,
-      effectiveState: r.effectiveState,
-      summary: r.summary,
-      revision: r.revision,
-    }))
-  );
-  const history = deduplicateHistory(rawHistory);
+  const revisions = timeline.map((r) => ({
+    occurredAt: r.occurredAt,
+    effectiveState: r.effectiveState,
+    summary: r.summary,
+    revision: r.revision,
+  }));
+  const entries = buildTimeline(event, revisions);
 
   return (
     <View style={s.content}>
-      {/* Timeline */}
-      <Card style={{ gap: spacing.md }} testID="history-timeline">
-        <Text style={s.sub}>Event timeline</Text>
-        {history.map((entry, i) => {
-          const isLast = i === history.length - 1;
-          const isFirst = i === 0;
-          const isResolution =
-            entry.text.toLowerCase().includes("resolved") ||
-            entry.text.toLowerCase().includes("contained");
-          const dotColor = isResolution
-            ? colors.resting
-            : isFirst
-            ? toneColor(colors, event.state)
-            : colors.onSurfaceSecondary;
+      {/* History tab card with header */}
+      <Card style={{ gap: spacing.md }} testID="history-header-card">
+        <View style={s.tabHeader}>
+          <View style={[s.iconCircle, { backgroundColor: colors.navyDeep }]}>
+            <Clock size={22} color="#FFFFFF" />
+          </View>
+          <View>
+            <Text style={s.tabTitle}>History</Text>
+            <Text style={s.tabSubtitle}>The timeline of this finding</Text>
+          </View>
+        </View>
+
+        <Body>
+          This tab shows the key recorded stages of this incident from detection
+          to resolution.
+        </Body>
+      </Card>
+
+      {/* Timeline card */}
+      <Card style={s.timelineCard} testID="history-timeline">
+        {entries.map((entry, i) => {
+          const isLast = i === entries.length - 1;
+          const bg = dotColor(entry.icon, colors);
 
           return (
             <View key={i} style={s.timelineItem} testID={`history-entry-${i}`}>
-              {/* Track (dot + line) */}
+              {/* Track */}
               <View style={s.timelineTrack}>
-                <View
-                  style={[s.timelineDot, { backgroundColor: dotColor }]}
-                />
+                <View style={[s.timelineDot, { backgroundColor: bg }]}>
+                  <TimelineIcon type={entry.icon} colors={colors} />
+                </View>
                 {!isLast ? (
                   <View
                     style={[
@@ -125,13 +301,48 @@ export function HistoryTab({
                   />
                 ) : null}
               </View>
+
               {/* Content */}
-              <View style={s.timelineContent}>
-                <Text style={s.timelineText}>{entry.text}</Text>
-                {entry.at ? (
+              <View style={isLast ? s.timelineContentLast : s.timelineContent}>
+                <View style={s.timelineRow}>
+                  <Text style={s.timelineTitle}>{entry.title}</Text>
                   <Text style={s.timelineTime}>
-                    {new Date(entry.at).toLocaleString()}
+                    {new Date(entry.at).toLocaleString([], {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
                   </Text>
+                </View>
+                <Text style={s.timelineBody}>{entry.body}</Text>
+                {entry.badge ? (
+                  <View
+                    style={[
+                      s.badge,
+                      {
+                        backgroundColor:
+                          entry.badge.tone === "resting"
+                            ? colors.restingTint
+                            : colors.barkingTint,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        s.badgeText,
+                        {
+                          color: toneText(
+                            colors,
+                            entry.badge.tone
+                          ),
+                        },
+                      ]}
+                    >
+                      {entry.badge.label}
+                    </Text>
+                  </View>
                 ) : null}
               </View>
             </View>
@@ -139,31 +350,33 @@ export function HistoryTab({
         })}
       </Card>
 
-      {/* Source & metadata footer */}
-      <Card style={{ gap: spacing.sm }} testID="history-metadata">
-        <Text style={s.sub}>Details</Text>
-        <View style={{ gap: spacing.xs }}>
-          <Text style={s.meta}>
-            {sourceLabel(outcomeSource)}
-          </Text>
-          <Text style={s.meta}>
-            Occurred {new Date(event.occurred_at).toLocaleString()}
-          </Text>
-          {event.resolved_at ? (
-            <Text style={s.meta}>
-              Resolved {new Date(event.resolved_at).toLocaleString()}
-            </Text>
-          ) : null}
-          {event.patrol_record?.recordId ? (
-            <Text style={s.meta} selectable>
-              Record: {event.patrol_record.recordId}
-            </Text>
-          ) : null}
-          {event.patrol_record?.revision != null ? (
-            <Text style={s.meta}>
-              Revision: {event.patrol_record.revision}
-            </Text>
-          ) : null}
+      {/* What this history includes */}
+      <View
+        style={[
+          s.infoCard,
+          { backgroundColor: "rgba(22,34,53,0.06)" },
+        ]}
+        testID="history-info"
+      >
+        <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.info, alignItems: "center", justifyContent: "center", marginTop: 2 }}>
+          <Info size={16} color="#FFFFFF" />
+        </View>
+        <View style={{ flex: 1, gap: spacing.sm }}>
+          <Text style={s.infoTitle}>What this history includes</Text>
+          <Text style={s.bullet}>{"\u2022"} Shows only the significant stages of this incident.</Text>
+          <Text style={s.bullet}>{"\u2022"} Removes duplicate or low-value narrative updates.</Text>
+          <Text style={s.bullet}>{"\u2022"} Sensitive technical details may remain on the originating device and are not always included here.</Text>
+        </View>
+      </View>
+
+      {/* Ask Higgins to explain */}
+      <Card style={{ padding: 0 }} testID="history-ask-higgins">
+        <View style={s.askRow}>
+          <View style={[s.askIcon, { backgroundColor: colors.surfaceTertiary }]}>
+            <MessageSquare size={18} color={colors.navyDeep} />
+          </View>
+          <Text style={s.askText}>Ask Higgins to explain</Text>
+          <ChevronRight size={20} color={colors.onSurfaceSecondary} />
         </View>
       </Card>
     </View>

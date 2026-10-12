@@ -1,41 +1,103 @@
 import React from "react";
-import { Text, View } from "react-native";
+import { Image, Text, View } from "react-native";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
+import CircleCheck from "lucide-react-native/icons/circle-check";
+import Info from "lucide-react-native/icons/info";
+import Settings from "lucide-react-native/icons/settings";
 
-import { ClassBadge, classBorderColor } from "@/src/components/ClassBadge";
 import { EventActions } from "@/src/components/EventActions";
-import { Body, Button, Card, Pill, toneColor } from "@/src/components/ui";
+import { Body, Button, Card, Pill, toneColor, toneTint } from "@/src/components/ui";
 import { looksLikeInternalCode } from "@/src/domain/messageVoice";
-import { STATE_LABEL, STATE_MEANING } from "@/src/domain/types";
 import type { HigginsBriefing, PatrolEvent } from "@/src/domain/types";
 import type { PatrolOutcome } from "@/src/domain/patrolOutcomes";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { useRouter } from "expo-router";
 import { useApollo } from "@/src/store/ApolloContext";
 
+const higginsAvatar = require("@/assets/images/higgins-avatar.png");
+
 const useStyles = makeStyles((c) => ({
   content: { gap: spacing.lg },
-  sub: {
-    fontFamily: fonts.display,
+  // Higgins header row
+  higginsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    marginBottom: spacing.md,
+  },
+  higginsAvatarWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    overflow: "hidden",
+    backgroundColor: c.surfaceTertiary,
+  },
+  higginsAvatar: { width: 48, height: 48 },
+  higginsTitle: {
+    fontFamily: fonts.displayBold,
+    fontSize: 17,
+    color: c.onSurface,
+  },
+  higginsSubtitle: {
+    fontFamily: fonts.text,
     fontSize: 13,
     color: c.onSurfaceSecondary,
-    letterSpacing: 1,
-    textTransform: "uppercase",
   },
-  big: {
-    fontFamily: fonts.textMedium,
-    fontSize: 16,
-    lineHeight: 24,
-    color: c.onSurface,
+  // Alert/info/success banner cards
+  bannerCard: {
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    flexDirection: "row",
+    gap: spacing.md,
+    alignItems: "flex-start",
   },
-  bullet: { flexDirection: "row", gap: spacing.sm, alignItems: "flex-start" },
-  dot: { width: 6, height: 6, borderRadius: 3, marginTop: 8 },
-  meta: { fontFamily: fonts.text, fontSize: 13, color: c.muted },
-  sectionHeader: {
-    fontFamily: fonts.displayBold,
+  bannerIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 2,
+  },
+  bannerContent: { flex: 1, gap: 4 },
+  bannerTitle: {
+    fontFamily: fonts.textSemibold,
     fontSize: 14,
+    lineHeight: 20,
+  },
+  bannerBody: {
+    fontFamily: fonts.text,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: c.divider,
+  },
+  sectionTitle: {
+    fontFamily: fonts.displayBold,
+    fontSize: 17,
     color: c.onSurface,
-    letterSpacing: 0.3,
-    marginBottom: spacing.xs,
+  },
+  footer: {
+    fontFamily: fonts.text,
+    fontSize: 13,
+    color: c.onSurfaceSecondary,
+    textAlign: "center",
+    paddingVertical: spacing.md,
+  },
+  // Briefing text
+  briefingHeadline: {
+    fontFamily: fonts.displayBold,
+    fontSize: 20,
+    color: c.onSurface,
+    lineHeight: 28,
+  },
+  briefingBody: {
+    fontFamily: fonts.text,
+    fontSize: 15,
+    lineHeight: 22,
+    color: c.onSurfaceSecondary,
   },
 }));
 
@@ -56,169 +118,121 @@ export function OverviewTab({
   const { colors } = useTheme();
   const router = useRouter();
   const { events } = useApollo();
-
   const briefing: HigginsBriefing | undefined = event.patrol_record?.higginsBriefing ?? undefined;
-  const borderColor = briefing
-    ? (classBorderColor(colors, briefing.record_class) ?? toneColor(colors, event.state))
-    : toneColor(colors, event.state);
+  const isResolved = !!event.resolved_at;
 
   return (
     <View style={s.content}>
-      {/* Alert banner */}
-      {focusFromAlert ? (
-        <Card
-          testID="event-from-alert"
-          style={{ gap: 4, borderColor: toneColor(colors, event.state) }}
-        >
-          <Text style={s.sub}>Opened from your Apollo alert</Text>
-          <Body>
-            Here&apos;s exactly what Apollo flagged. The details below are this
-            specific finding.
-          </Body>
-        </Card>
-      ) : null}
-
-      {/* Status pills row */}
-      <View
-        style={{
-          flexDirection: "row",
-          gap: spacing.sm,
-          flexWrap: "wrap",
-          alignItems: "center",
-        }}
-      >
-        <Pill
-          tone={outcome?.state ?? event.state}
-          label={outcome?.result ?? STATE_LABEL[event.state]}
-          testID="event-state-pill"
-        />
-        {event.verified_block ? (
-          <Pill
-            tone={event.resolved_at ? "resting" : "biting"}
-            label={event.resolved_at ? "Threat contained" : "Block verified"}
-            testID="event-verified-pill"
-          />
-        ) : null}
-        {event.patrol_record?.recordClass ? (
-          <ClassBadge
-            recordClass={event.patrol_record.recordClass}
-            testID="event-class-badge"
-          />
-        ) : null}
-        {isMock ? <Pill tone="unknown" label={event.adapter_label} /> : null}
-      </View>
-
-      {/* Result basis */}
-      <Body>{outcome?.resultBasis ?? STATE_MEANING[event.state]}</Body>
-
       {/* Higgins Briefing card */}
-      {briefing ? (
-        <Card
-          style={{
-            gap: spacing.md,
-            borderLeftWidth: 3,
-            borderLeftColor: borderColor,
-          }}
-          testID="event-higgins-briefing"
-        >
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: spacing.sm,
-            }}
-          >
-            <Text style={[s.sub, { fontSize: 14, letterSpacing: 0 }]}>
-              Higgins&apos; briefing
-            </Text>
-            {event.patrol_record?.reassessment ? (
-              <Text
-                style={[s.meta, { fontSize: 10 }]}
-                testID="event-reassessment-date"
-              >
-                Updated{" "}
-                {new Date(
-                  event.patrol_record.reassessment.reassessed_at
-                ).toLocaleDateString([], { month: "short", year: "numeric" })}
-              </Text>
-            ) : null}
+      <Card style={{ gap: spacing.md }} testID="event-higgins-briefing">
+        {/* Higgins header */}
+        <View style={s.higginsHeader}>
+          <View style={s.higginsAvatarWrap}>
+            <Image source={higginsAvatar} style={s.higginsAvatar} />
           </View>
-          <Text style={[s.big, { lineHeight: 22 }]}>
-            {briefing.investigated}
+          <View>
+            <Text style={s.higginsTitle}>Higgins&apos; briefing</Text>
+            <Text style={s.higginsSubtitle}>In plain English</Text>
+          </View>
+        </View>
+
+        {/* Headline */}
+        {briefing ? (
+          <>
+            <Text style={s.briefingHeadline}>{briefing.investigated}</Text>
+            <Text style={s.briefingBody}>{briefing.established}</Text>
+            {briefing.meaning && briefing.meaning !== briefing.established ? (
+              <Text style={s.briefingBody}>{briefing.meaning}</Text>
+            ) : null}
+          </>
+        ) : (
+          <Text style={s.briefingBody}>
+            {event.what_happened ?? "No briefing available for this event."}
           </Text>
-          <Text
-            style={[s.big, { fontFamily: fonts.text, lineHeight: 22 }]}
+        )}
+
+        {/* Outcome banner (green for resolved, red for active threat) */}
+        {isResolved ? (
+          <View
+            style={[
+              s.bannerCard,
+              { backgroundColor: colors.restingTint },
+            ]}
           >
-            {briefing.established}
-          </Text>
-          {briefing.evidence_points.length > 0 ? (
-            <View style={{ gap: spacing.xs }}>
-              {briefing.evidence_points.map((ep, i) => (
-                <View key={i} style={s.bullet}>
-                  <View
-                    style={[
-                      s.dot,
-                      { backgroundColor: borderColor, marginTop: 6 },
-                    ]}
-                  />
-                  <Body style={{ flex: 1 }}>{ep}</Body>
-                </View>
-              ))}
+            <View style={[s.bannerIcon, { backgroundColor: colors.resting }]}>
+              <CircleCheck size={16} color="#FFFFFF" />
             </View>
-          ) : null}
-          <Text
-            style={{
-              fontFamily: fonts.textSemibold,
-              fontSize: 14,
-              lineHeight: 20,
-              color: colors.onSurface,
-            }}
-          >
-            {briefing.meaning}
-          </Text>
-          {briefing.action ? (
-            <View
-              style={{
-                backgroundColor: colors.surfaceTertiary,
-                borderRadius: radius.sm,
-                padding: spacing.md,
-              }}
-            >
-              <Text
-                style={{
-                  fontFamily: fonts.textSemibold,
-                  fontSize: 14,
-                  color: colors.onSurface,
-                }}
-                testID="event-briefing-action"
-              >
-                {briefing.action}
+            <View style={s.bannerContent}>
+              <Text style={[s.bannerTitle, { color: colors.restingText }]}>
+                Current outcome: Resolved
+              </Text>
+              <Text style={[s.bannerBody, { color: colors.onSurfaceSecondary }]}>
+                {outcome?.resultBasis ??
+                  `This was marked resolved on ${event.resolved_at ? new Date(event.resolved_at).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" }) : "an earlier date"}.`}
               </Text>
             </View>
-          ) : null}
-        </Card>
-      ) : null}
+          </View>
+        ) : (
+          <View
+            style={[
+              s.bannerCard,
+              { backgroundColor: colors.barkingTint },
+            ]}
+          >
+            <View style={[s.bannerIcon, { backgroundColor: colors.barking }]}>
+              <Info size={16} color="#FFFFFF" />
+            </View>
+            <View style={s.bannerContent}>
+              <Text style={[s.bannerTitle, { color: colors.barkingText }]}>
+                Current outcome: {outcome?.result ?? "Needs attention"}
+              </Text>
+              <Text style={[s.bannerBody, { color: colors.onSurfaceSecondary }]}>
+                {outcome?.resultBasis ?? "This finding has not been resolved yet."}
+              </Text>
+            </View>
+          </View>
+        )}
 
-      {/* What to do */}
-      <Card
-        style={{
-          gap: spacing.sm,
-          borderColor: toneColor(
-            colors,
-            event.state === "biting" && event.resolved_at
-              ? "resting"
-              : event.state
-          ),
-        }}
-      >
-        <Text style={s.sub}>What to do</Text>
-        <Text style={s.big} testID="event-what-to-do">
-          {shownWhatToDo}
-        </Text>
+        {/* Protection status at the time */}
+        {event.patrol_record?.outageContext ? (() => {
+          const ctx = event.patrol_record.outageContext as Record<string, unknown>;
+          const msg = typeof ctx === "string" ? ctx : (ctx.message ?? ctx.summary ?? ctx.description ?? "Apollo's protection was limited at the time of this finding.");
+          return (
+            <View
+              style={[
+                s.bannerCard,
+                { backgroundColor: "rgba(22,34,53,0.06)" },
+              ]}
+            >
+              <View style={[s.bannerIcon, { backgroundColor: colors.info }]}>
+                <Info size={16} color="#FFFFFF" />
+              </View>
+              <View style={s.bannerContent}>
+                <Text style={[s.bannerTitle, { color: colors.onSurface }]}>
+                  Apollo&apos;s protection status at the time
+                </Text>
+                <Text style={[s.bannerBody, { color: colors.onSurfaceSecondary }]}>
+                  {String(msg)}
+                </Text>
+              </View>
+            </View>
+          );
+        })() : null}
       </Card>
 
-      {/* Actions */}
-      <EventActions event={event} />
+      {/* Divider */}
+      <View style={s.divider} />
+
+      {/* Do you need to do anything? */}
+      <Text style={s.sectionTitle}>Do you need to do anything?</Text>
+      <Body>{shownWhatToDo}</Body>
+
+      {/* Action button */}
+      {briefing?.action ? (
+        <EventActions event={event} />
+      ) : (
+        <EventActions event={event} />
+      )}
 
       {/* Connected incident */}
       {event.scent_id &&
@@ -241,6 +255,9 @@ export function OverviewTab({
           />
         </Card>
       ) : null}
+
+      {/* Footer */}
+      <Text style={s.footer}>Together, Apollo and Higgins help you stay safer. \uD83D\uDC99</Text>
     </View>
   );
 }

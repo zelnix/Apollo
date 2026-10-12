@@ -1,94 +1,92 @@
 // Mock patrol event for web preview — lets the 4-tab investigation UI be exercised
-// without a real on-device check. Only injected when IS_PREVIEW_HARNESS is true and
-// the persisted events list is empty. Never shipped to production builds.
+// without a real on-device check. Only injected when running on web and
+// the persisted events list is empty.
 
 import type { PatrolEvent } from "@/src/domain/types";
 
 const now = new Date().toISOString();
-const fiveMinAgo = new Date(Date.now() - 5 * 60_000).toISOString();
+const occurredAt = new Date(Date.now() - 5 * 24 * 60 * 60_000).toISOString();   // 5 days ago
+const investigatedAt = new Date(Date.now() - 5 * 24 * 60 * 60_000 + 35 * 60_000).toISOString(); // 35 min later
+const completedAt = new Date(Date.now() - 5 * 24 * 60 * 60_000 + 75 * 60_000).toISOString(); // 75 min later
+const resolvedAt = new Date(Date.now() - 2 * 24 * 60 * 60_000).toISOString();    // 2 days ago
 
 export const MOCK_THREAT_EVENT: PatrolEvent = {
   event_id: "preview-mock-threat-001",
   device_id: "preview-device",
-  category: "website",
+  category: "device",
   state: "barking",
-  status: "active",
-  headline: "Suspicious phishing website detected",
+  status: "resolved",
+  headline: "Device management profile is active",
   what_happened:
-    "Apollo detected a website at commbank-secure-verify.xyz that impersonates a Commonwealth Bank login page. The domain was registered 3 days ago and the SSL certificate does not match the claimed organization.",
+    "Apollo found that a device management profile is active on this device. This can allow an organisation or application to control certain settings on your device.\n\nThis does not automatically mean your device is compromised, but it can reduce your control and may prevent Apollo from providing some of his automatic protection.",
   why: [
-    "Domain registered only 3 days ago",
-    "Mimics Commonwealth Bank login page",
-    "SSL certificate issued to an unknown entity",
+    "Active device management profile detected",
+    "May reduce your control over the device and prevent some of Apollo's automatic protection",
+    "Management profiles are sometimes used legitimately by organisations",
   ],
   what_to_do:
-    "Do not enter any credentials on this site. Close the browser tab. If you already entered information, change your password at commbank.com.au and contact CommBank on 13 2221.",
-  indicator_host: "commbank-secure-verify.xyz",
-  indicator_digest: "sha256:preview-mock-digest",
-  local_indicator: "https://commbank-secure-verify.xyz/login",
+    "No immediate action is required. If you are unsure about the device management profile, you can review it on this device.",
+  indicator_host: undefined,
+  indicator_digest: undefined,
+  local_indicator: undefined,
   verified_block: false,
   evidence_provenance: "local_device",
   adapter_label: "preview",
-  occurred_at: fiveMinAgo,
-  resolved_at: null,
-  supporting_references: [
-    {
-      label: "ACSC phishing advisory",
-      url: "https://www.cyber.gov.au/protect-yourself/staying-safe-online/phishing",
-    },
-  ],
+  occurred_at: occurredAt,
+  resolved_at: resolvedAt,
+  supporting_references: [],
   patrol_record: {
-    recordId: "preview-rec-001",
-    logicalIssueKey: "website:commbank-secure-verify.xyz:barking",
+    recordId: "PD-2026-10745",
+    logicalIssueKey: "device:management-profile:barking",
     revision: 1,
     supersedes: null,
     sourceEventId: "preview-mock-threat-001",
     sourceType: "on_device",
-    category: "website",
-    headline: "Suspicious phishing website detected",
+    category: "device",
+    headline: "Device management profile is active",
     summary:
-      "This website impersonates Commonwealth Bank and was registered very recently. High confidence phishing attempt.",
+      "The presence of a device management profile is a security risk that warrants your attention, but it does not by itself confirm that your device has been compromised. The profile may be legitimate.",
     rawState: "barking",
     effectiveState: "danger",
     effectiveReason:
-      "Apollo identified this as a phishing attempt targeting your bank credentials.",
+      "A management profile is active on this device. This can allow an organisation or application to control certain device settings.",
     observedBlockReference: null,
     assessmentReference: null,
     investigationCaseId: null,
     scenarioContext: {
-      scenario: "Bank credential phishing",
-      claimedBrand: "Commonwealth Bank",
-      indicatorHost: "commbank-secure-verify.xyz",
+      scenario: "Device management profile",
+      claimedBrand: undefined,
+      indicatorHost: undefined,
     },
     freshness: {
-      observedAt: fiveMinAgo,
+      observedAt: occurredAt,
       projectedAt: now,
       status: "fresh",
     },
-    outageContext: null,
+    outageContext: { message: "The original record also reported that Apollo was not performing his automatic protective duties." } as Record<string, unknown>,
     resolution: null,
     duplicateOf: null,
     duplicateReason: null,
-    occurredAt: fiveMinAgo,
-    updatedAt: now,
+    occurredAt: occurredAt,
+    updatedAt: completedAt,
     recordClass: "security_threat",
     higginsBriefing: {
       investigated:
-        "Higgins investigated a website at commbank-secure-verify.xyz that claimed to be a Commonwealth Bank login page.",
+        "A device management profile is active",
       established:
-        "The domain was registered 3 days ago and does not belong to Commonwealth Bank. The SSL certificate is issued to a different organization. This is a phishing site designed to steal your banking credentials.",
+        "Apollo found that a device management profile is active on this device. This can allow an organisation or application to control certain settings on your device.\n\nThis does not automatically mean your device is compromised, but it can reduce your control and may prevent Apollo from providing some of his automatic protection.",
       evidence_points: [
-        "Domain commbank-secure-verify.xyz registered 3 days ago (newly registered)",
-        "SSL certificate issued to unknown entity, not Commonwealth Bank",
-        "Login form layout identical to the real CommBank page",
-        "URL structure mimics real bank login patterns",
+        "Active device management profile detected",
+        "May reduce device owner control",
+        "Could prevent some of Apollo's automatic protection",
+        "Management profiles are sometimes used legitimately by organisations",
       ],
       meaning:
-        "This is a confirmed phishing attempt. Any credentials entered here will be captured by attackers, not Commonwealth Bank.",
+        "The presence of a device management profile is a security risk that warrants your attention, but it does not by itself confirm that your device has been compromised.",
       action:
-        "Do not enter any information. If you already entered your password, change it immediately at commbank.com.au and contact CommBank on 13 2221.",
+        "Review device management settings to verify the profile is expected.",
       record_class: "security_threat",
-      generated_at: now,
+      generated_at: completedAt,
       version: "1.0",
     },
     reassessment: null,
