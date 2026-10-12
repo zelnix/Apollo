@@ -1,372 +1,723 @@
-import ChevronDown from "lucide-react-native/icons/chevron-down";
+// Threats Screen — Redesigned to match approved mock-up.
+// Shows: header with status indicator, two summary cards, filter chips,
+// Apollo's patrol summary, and flat investigation cards.
+//
+// Reuses existing investigation records, case lifecycle, and navigation.
+
 import ChevronRight from "lucide-react-native/icons/chevron-right";
-import FileDown from "lucide-react-native/icons/file-down";
-import Library from "lucide-react-native/icons/library";
+import CircleCheck from "lucide-react-native/icons/circle-check";
+import Dog from "lucide-react-native/icons/dog";
+import Globe from "lucide-react-native/icons/globe";
+import Grid2x2 from "lucide-react-native/icons/grid-2x2";
+import Mail from "lucide-react-native/icons/mail";
+import MessageSquare from "lucide-react-native/icons/message-square";
+import Phone from "lucide-react-native/icons/phone";
+import Shield from "lucide-react-native/icons/shield";
+import SlidersHorizontal from "lucide-react-native/icons/sliders-horizontal";
+import Smartphone from "lucide-react-native/icons/smartphone";
+import Wifi from "lucide-react-native/icons/wifi";
+import FileText from "lucide-react-native/icons/file-text";
+import User from "lucide-react-native/icons/user";
+import Link2 from "lucide-react-native/icons/link-2";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, Pressable, Text, View } from "react-native";
+import { FlatList, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import AlertTriangle from "lucide-react-native/icons/triangle-alert";
-import { PatrolItem } from "@/src/components/PatrolItem";
-import { RootScreenHeader } from "@/src/components/RootScreenHeader";
-import { MultiSelectFilter } from "@/src/components/MultiSelectFilter";
-import { DailyActivityCard } from "@/src/components/DailyActivityCard";
-import { Body, Card, Pill } from "@/src/components/ui";
-import { matchesPatrolFilter, patrolConsumerSummary, projectPatrolOutcomes, type PatrolCategory, type PatrolFilter, type PatrolOutcome } from "@/src/domain/patrolOutcomes";
+import { Pill } from "@/src/components/ui";
+import {
+  matchesPatrolFilter,
+  projectPatrolOutcomes,
+  type PatrolCategory,
+  type PatrolOutcome,
+} from "@/src/domain/patrolOutcomes";
 import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
-import { exportPatrolPdf } from "@/src/utils/exportPatrol";
 
-// Multi-select options (OR semantics). An empty selection shows all activity.
-const FILTER_OPTIONS: { id: PatrolFilter; label: string }[] = [
-  { id: "needs_you", label: "Needs you" }, { id: "warnings", label: "Warnings" }, { id: "threats_stopped", label: "Threats stopped" }, { id: "resolved", label: "Resolved" },
-];
-
-// Short labels for each patrol category — used in collapsed day/month summaries.
-const CATEGORY_SHORT: Record<PatrolCategory, string> = {
-  site: "Site", link: "Link", text: "Text", call: "Call", file: "File", app: "App",
-  network: "Net", account: "Acct", email: "Email", device: "Device",
-  investigation: "Higgins", family: "Family",
+// ── Gate → friendly protection source label ─────────────────────────────────
+const SOURCE_LABEL: Record<PatrolCategory, string> = {
+  site: "Web protection",
+  link: "Link protection",
+  text: "Message protection",
+  call: "Call protection",
+  file: "File protection",
+  app: "App protection",
+  network: "Internet protection",
+  account: "Account protection",
+  email: "Email protection",
+  device: "Device protection",
+  investigation: "Higgins investigation",
+  family: "Family protection",
 };
 
+// ── Category → icon mapping for investigation cards ─────────────────────────
+const CATEGORY_ICON: Record<
+  PatrolCategory,
+  React.ComponentType<{ size?: number; color?: string }>
+> = {
+  site: Globe,
+  link: Link2,
+  text: MessageSquare,
+  call: Phone,
+  file: FileText,
+  app: Grid2x2,
+  network: Wifi,
+  account: User,
+  email: Mail,
+  device: Smartphone,
+  investigation: Shield,
+  family: User,
+};
+
+// ── Filter chip definitions ─────────────────────────────────────────────────
+type ChipId = "all" | "needs_action" | "handled" | "messages" | "apps";
+const FILTER_CHIPS: { id: ChipId; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "needs_action", label: "Needs action" },
+  { id: "handled", label: "Handled" },
+  { id: "messages", label: "Messages" },
+  { id: "apps", label: "Apps" },
+];
+
+// ── Styles ──────────────────────────────────────────────────────────────────
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
-  filterBar: { height: 56, paddingHorizontal: spacing.xl, justifyContent: "center" },
-  list: { paddingHorizontal: spacing.xl, paddingTop: spacing.sm, paddingBottom: spacing.xl },
-  // Expanded day label (today)
-  day: { fontFamily: fonts.display, fontSize: 13, color: c.onSurfaceSecondary, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: spacing.md, marginTop: spacing.sm },
-  summaryCard: { marginBottom: spacing.md, gap: 2 },
-  summaryText: { fontFamily: fonts.displayBold, fontSize: 18, lineHeight: 24, color: c.onSurface },
-  emptyTitle: { fontFamily: fonts.display, fontSize: 16, color: c.onSurface },
-  iconBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: c.surfaceTertiary },
-  // Collapsed group header (day or month)
-  groupHeader: {
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    backgroundColor: c.surfaceSecondary, borderRadius: radius.md, borderWidth: 1,
-    borderColor: c.border, paddingHorizontal: spacing.lg, paddingVertical: spacing.md,
-    marginTop: spacing.sm, marginBottom: spacing.sm, minHeight: 52,
+
+  // Header
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xs,
   },
-  groupHeaderExpanded: { borderColor: c.navyBorder, marginBottom: spacing.xs },
-  groupLeft: { flex: 1, gap: 2 },
-  groupLabel: { fontFamily: fonts.displayBold, fontSize: 14, color: c.onSurface },
-  groupCounts: { fontFamily: fonts.text, fontSize: 12, color: c.muted, lineHeight: 16 },
-  groupRight: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  groupTotal: { fontFamily: fonts.displayBold, fontSize: 14, color: c.onSurfaceSecondary },
-  // Month header — slightly more prominent
-  monthHeader: { borderLeftWidth: 3, borderLeftColor: c.gold },
-  // ── Needs-you action cards ──
-  needsYouCard: {
-    flexDirection: "row", alignItems: "center", gap: spacing.md,
-    backgroundColor: c.surfaceSecondary, borderRadius: radius.md,
-    borderWidth: 1, borderColor: c.barkingTint, borderLeftWidth: 3, borderLeftColor: c.barking,
-    padding: spacing.lg, marginBottom: spacing.sm,
+  headerTitle: {
+    fontFamily: fonts.displayBold,
+    fontSize: 28,
+    lineHeight: 34,
+    color: c.onSurface,
   },
-  needsYouIcon: {
-    width: 36, height: 36, borderRadius: 18, backgroundColor: c.barkingTint,
-    alignItems: "center", justifyContent: "center",
+  headerSubtitle: {
+    fontFamily: fonts.text,
+    fontSize: 14,
+    lineHeight: 20,
+    color: c.onSurfaceSecondary,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
   },
-  needsYouContent: { flex: 1, gap: 2 },
-  needsYouTitle: { fontFamily: fonts.displayBold, fontSize: 14, color: c.onSurface },
-  needsYouSummary: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurfaceSecondary },
-  needsYouAction: { fontFamily: fonts.textSemibold, fontSize: 12, color: c.barking, marginTop: 2 },
+  statusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusText: {
+    fontFamily: fonts.textSemibold,
+    fontSize: 13,
+  },
+
+  // Summary cards
+  summaryRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  summaryCard: {
+    flex: 1,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: c.border,
+    backgroundColor: c.surfaceSecondary,
+    padding: spacing.sm,
+    gap: spacing.xs,
+  },
+  summaryIconRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  summaryIconWell: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  summaryLabel: {
+    fontFamily: fonts.text,
+    fontSize: 12,
+    lineHeight: 16,
+    color: c.onSurfaceSecondary,
+  },
+  summaryCount: {
+    fontFamily: fonts.displayBold,
+    fontSize: 24,
+    lineHeight: 30,
+    color: c.onSurface,
+  },
+  summarySubtext: {
+    fontFamily: fonts.text,
+    fontSize: 12,
+    lineHeight: 16,
+    color: c.onSurfaceSecondary,
+  },
+
+  // Filter chips
+  filterBar: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xs,
+  },
+  filterChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    marginRight: spacing.sm,
+    minHeight: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterChipLabel: {
+    fontFamily: fonts.textSemibold,
+    fontSize: 13,
+  },
+  filterIconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  // Patrol summary card
+  patrolCard: {
+    marginHorizontal: spacing.lg,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  patrolHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  patrolIconWell: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  patrolTitle: {
+    fontFamily: fonts.displayBold,
+    fontSize: 15,
+    lineHeight: 20,
+    color: c.onSurface,
+  },
+  patrolBody: {
+    fontFamily: fonts.text,
+    fontSize: 14,
+    lineHeight: 20,
+    color: c.onSurfaceSecondary,
+  },
+  patrolTime: {
+    fontFamily: fonts.text,
+    fontSize: 12,
+    lineHeight: 16,
+    color: c.muted,
+  },
+
+  // Section heading
+  sectionHeading: {
+    fontFamily: fonts.displayBold,
+    fontSize: 20,
+    lineHeight: 26,
+    color: c.onSurface,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
+  },
+
+  // Investigation cards
+  caseCard: {
+    marginHorizontal: spacing.lg,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: c.border,
+    backgroundColor: c.surfaceSecondary,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  caseRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    alignItems: "flex-start",
+  },
+  caseIconWell: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    marginTop: 2,
+  },
+  caseContent: {
+    flex: 1,
+    gap: 2,
+  },
+  caseTitleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+  },
+  caseTitle: {
+    flex: 1,
+    fontFamily: fonts.displayBold,
+    fontSize: 15,
+    lineHeight: 20,
+    color: c.onSurface,
+  },
+  caseSource: {
+    fontFamily: fonts.text,
+    fontSize: 12,
+    lineHeight: 17,
+    color: c.onSurfaceSecondary,
+  },
+  caseDate: {
+    fontFamily: fonts.text,
+    fontSize: 12,
+    lineHeight: 17,
+    color: c.muted,
+  },
+  caseSummary: {
+    fontFamily: fonts.text,
+    fontSize: 13,
+    lineHeight: 18,
+    color: c.onSurfaceSecondary,
+    marginTop: 4,
+  },
+  caseChevron: {
+    alignSelf: "center",
+    flexShrink: 0,
+    marginLeft: spacing.xs,
+  },
+
+  // Empty state
+  emptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing["2xl"],
+    gap: spacing.sm,
+  },
+  emptyTitle: {
+    fontFamily: fonts.displayBold,
+    fontSize: 16,
+    color: c.onSurface,
+    textAlign: "center",
+  },
+  emptyBody: {
+    fontFamily: fonts.text,
+    fontSize: 14,
+    lineHeight: 20,
+    color: c.onSurfaceSecondary,
+    textAlign: "center",
+  },
 }));
 
-// ── Date helpers ─────────────────────────────────────────────────────────────
+// ── Helpers ─────────────────────────────────────────────────────────────────
 
-function toDateKey(iso: string) { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
-function toMonthKey(iso: string) { const d = new Date(iso); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; }
-
-const todayKey = () => toDateKey(new Date().toISOString());
-const currentMonthKey = () => toMonthKey(new Date().toISOString());
-
-function dayLabel(iso: string) {
-  const d = new Date(iso); const today = new Date();
-  const y = new Date(); y.setDate(today.getDate() - 1);
-  if (d.toDateString() === today.toDateString()) return "Today";
-  if (d.toDateString() === y.toDateString()) return "Yesterday";
-  return d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+/** Format a date into "Wed 7 Oct 2026 • 21:10" style. */
+function formatCaseDate(iso: string): string {
+  const d = new Date(iso);
+  const day = d.toLocaleDateString([], { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return `${day} • ${time}`;
 }
 
-function monthLabel(monthKey: string) {
-  const [year, month] = monthKey.split("-");
-  const d = new Date(Number(year), Number(month) - 1, 1);
-  return d.toLocaleDateString([], { month: "long", year: "numeric" });
+/** Check if a date falls within the current local calendar week (Mon–Sun). */
+function isThisWeek(iso: string): boolean {
+  const d = new Date(iso);
+  const now = new Date();
+  const dayOfWeek = now.getDay() === 0 ? 6 : now.getDay() - 1; // Mon=0 .. Sun=6
+  const weekStart = new Date(now);
+  weekStart.setDate(now.getDate() - dayOfWeek);
+  weekStart.setHours(0, 0, 0, 0);
+  return d >= weekStart;
 }
 
-/** Compact "3 Site · 2 Call · 1 Device" summary. */
-function categorySummary(counts: Record<string, number>): string {
-  return Object.entries(counts)
-    .sort(([, a], [, b]) => b - a)
-    .map(([cat, n]) => `${n} ${CATEGORY_SHORT[cat as PatrolCategory] ?? cat}`)
-    .join(" · ");
+/** Determine which tone/color to use for the case icon circle. */
+function caseIconTone(outcome: PatrolOutcome): string {
+  if (outcome.state === "resting" || outcome.state === "biting") return "good";
+  if (outcome.state === "barking") return "attention";
+  if (outcome.state === "growling" || outcome.state === "ears_up") return "caution";
+  return "neutral";
 }
 
-// ── Grouping ─────────────────────────────────────────────────────────────────
+// ── Filter Logic ────────────────────────────────────────────────────────────
 
-interface DayGroup { dayKey: string; label: string; outcomes: PatrolOutcome[]; categoryCounts: Record<string, number>; }
-interface MonthGroup { monthKey: string; label: string; isCurrent: boolean; days: DayGroup[]; total: number; categoryCounts: Record<string, number>; }
-
-function groupOutcomes(outcomes: PatrolOutcome[], filters: PatrolFilter[]): MonthGroup[] {
-  const filtered = filters.length === 0
-    ? outcomes
-    : outcomes.filter((o) => filters.some((f) => matchesPatrolFilter(o, f)));
-
-  // Group by day
-  const dayMap = new Map<string, PatrolOutcome[]>();
-  for (const o of filtered) {
-    const dk = toDateKey(o.occurredAt);
-    if (!dayMap.has(dk)) dayMap.set(dk, []);
-    dayMap.get(dk)!.push(o);
+function applyChipFilter(outcomes: PatrolOutcome[], chip: ChipId): PatrolOutcome[] {
+  switch (chip) {
+    case "all":
+      return outcomes;
+    case "needs_action":
+      return outcomes.filter((o) => matchesPatrolFilter(o, "needs_you"));
+    case "handled":
+      return outcomes.filter(
+        (o) => o.state === "resting" || o.event.status === "resolved" || o.event.status === "trusted",
+      );
+    case "messages":
+      return outcomes.filter((o) => o.category === "text" || o.category === "call");
+    case "apps":
+      return outcomes.filter((o) => o.category === "app" || o.category === "file");
+    default:
+      return outcomes;
   }
-
-  // Group days by month
-  const monthMap = new Map<string, DayGroup[]>();
-  const curMonth = currentMonthKey();
-  for (const [dk, items] of dayMap) {
-    const mk = dk.slice(0, 7); // "YYYY-MM"
-    if (!monthMap.has(mk)) monthMap.set(mk, []);
-    const catCounts: Record<string, number> = {};
-    for (const o of items) catCounts[o.category] = (catCounts[o.category] ?? 0) + 1;
-    monthMap.get(mk)!.push({ dayKey: dk, label: dayLabel(items[0].occurredAt), outcomes: items, categoryCounts: catCounts });
-  }
-
-  // Sort months descending, days within month descending
-  const months: MonthGroup[] = [];
-  for (const [mk, days] of monthMap) {
-    days.sort((a, b) => b.dayKey.localeCompare(a.dayKey));
-    const total = days.reduce((sum, d) => sum + d.outcomes.length, 0);
-    const catCounts: Record<string, number> = {};
-    for (const d of days) for (const [c, n] of Object.entries(d.categoryCounts)) catCounts[c] = (catCounts[c] ?? 0) + n;
-    months.push({ monthKey: mk, label: monthLabel(mk), isCurrent: mk === curMonth, days, total, categoryCounts: catCounts });
-  }
-  months.sort((a, b) => b.monthKey.localeCompare(a.monthKey));
-  return months;
 }
 
-// ── Row types for FlatList ──────────────────────────────────────────────────
+// ── Investigation Card ──────────────────────────────────────────────────────
 
-type PatrolRow =
-  | { type: "month"; monthKey: string; label: string; total: number; categoryCounts: Record<string, number>; expanded: boolean; key: string }
-  | { type: "day"; dayKey: string; label: string; total: number; categoryCounts: Record<string, number>; isToday: boolean; expanded: boolean; key: string }
-  | { type: "outcome"; outcome: PatrolOutcome; isLast: boolean; key: string };
+function InvestigationCard({ outcome }: { outcome: PatrolOutcome }) {
+  const s = useStyles();
+  const { colors } = useTheme();
+  const router = useRouter();
+  const Icon = CATEGORY_ICON[outcome.category] ?? Shield;
+  const tone = caseIconTone(outcome);
 
-function buildRows(
-  months: MonthGroup[],
-  expandedMonths: Set<string>,
-  expandedDays: Set<string>,
-): PatrolRow[] {
-  const rows: PatrolRow[] = [];
-  const tdk = todayKey();
+  const iconBg =
+    tone === "good"
+      ? "rgba(79,175,131,0.12)"
+      : tone === "attention"
+        ? "rgba(229,162,26,0.12)"
+        : tone === "caution"
+          ? "rgba(229,162,26,0.08)"
+          : colors.surfaceTertiary;
 
-  for (const month of months) {
-    if (month.isCurrent) {
-      // Current month: show day headers directly (no month wrapper)
-      for (const day of month.days) {
-        const isToday = day.dayKey === tdk;
-        const dayExpanded = isToday || expandedDays.has(day.dayKey);
-        rows.push({ type: "day", dayKey: day.dayKey, label: day.label, total: day.outcomes.length, categoryCounts: day.categoryCounts, isToday, expanded: dayExpanded, key: `day-${day.dayKey}` });
-        if (dayExpanded) {
-          day.outcomes.forEach((outcome, i) => {
-            rows.push({ type: "outcome", outcome, isLast: i === day.outcomes.length - 1, key: outcome.outcomeId });
-          });
-        }
+  const iconColor =
+    tone === "good"
+      ? colors.resting
+      : tone === "attention"
+        ? colors.barking
+        : tone === "caution"
+          ? colors.growling
+          : colors.onSurfaceSecondary;
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={outcome.title}
+      testID={`threat-case-${outcome.event.event_id}`}
+      onPress={() =>
+        router.push({
+          pathname: "/patrol/[id]",
+          params: { id: outcome.event.event_id },
+        })
       }
-    } else {
-      // Past month: show month header
-      const monthExpanded = expandedMonths.has(month.monthKey);
-      rows.push({ type: "month", monthKey: month.monthKey, label: month.label, total: month.total, categoryCounts: month.categoryCounts, expanded: monthExpanded, key: `month-${month.monthKey}` });
-      if (monthExpanded) {
-        for (const day of month.days) {
-          const dayExpanded = expandedDays.has(day.dayKey);
-          rows.push({ type: "day", dayKey: day.dayKey, label: day.label, total: day.outcomes.length, categoryCounts: day.categoryCounts, isToday: false, expanded: dayExpanded, key: `day-${day.dayKey}` });
-          if (dayExpanded) {
-            day.outcomes.forEach((outcome, i) => {
-              rows.push({ type: "outcome", outcome, isLast: i === day.outcomes.length - 1, key: outcome.outcomeId });
-            });
-          }
-        }
-      }
-    }
-  }
-  return rows;
+      style={({ pressed }) => [{ opacity: pressed ? 0.82 : 1 }]}
+    >
+      <View style={s.caseCard}>
+        <View style={s.caseRow}>
+          <View style={[s.caseIconWell, { backgroundColor: iconBg }]}>
+            <Icon size={20} color={iconColor} />
+          </View>
+          <View style={s.caseContent}>
+            <View style={s.caseTitleRow}>
+              <Text style={s.caseTitle} numberOfLines={2}>
+                {outcome.title}
+              </Text>
+              <Pill tone={outcome.state} label={outcome.result} />
+            </View>
+            <Text style={s.caseSource}>
+              Detected through: {SOURCE_LABEL[outcome.category]}
+            </Text>
+            <Text style={s.caseDate}>{formatCaseDate(outcome.occurredAt)}</Text>
+            <Text style={s.caseSummary} numberOfLines={3}>
+              {outcome.summary}
+            </Text>
+          </View>
+          <View style={s.caseChevron}>
+            <ChevronRight size={18} color={colors.onSurfaceSecondary} />
+          </View>
+        </View>
+      </View>
+    </Pressable>
+  );
 }
 
-// ── Component ────────────────────────────────────────────────────────────────
+// ── Main Component ──────────────────────────────────────────────────────────
 
 export default function Patrol() {
   const s = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { events, deviceId, showToast } = useApollo();
-  const router = useRouter();
+  const { events } = useApollo();
   const params = useLocalSearchParams<{ filter?: string; category?: string }>();
-  const [filters, setFilters] = useState<string[]>([]);
-  const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
-  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
-  const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
 
-  // Apply initial filter from URL params (e.g. navigated from Home "View all")
+  const [activeChip, setActiveChip] = useState<ChipId>("all");
+
+  // Apply initial filter from URL params
   useEffect(() => {
-    if (params.filter) {
-      setFilters(params.filter.split(",").filter(Boolean));
-    }
+    if (params.filter === "needs_you") setActiveChip("needs_action");
+    else if (params.filter === "resolved") setActiveChip("handled");
   }, [params.filter]);
 
-  // Apply category filter from URL params (e.g. from Protection → View related threats)
-  useEffect(() => {
+  // Build outcomes
+  const allOutcomes = useMemo(() => projectPatrolOutcomes(events), [events]);
+
+  // Apply category filter from Protection → View related threats
+  const categoryFiltered = useMemo(() => {
     if (params.category) {
-      setCategoryFilter(params.category.split(",").filter(Boolean));
-    } else {
-      setCategoryFilter([]);
+      const cats = params.category.split(",").filter(Boolean);
+      return allOutcomes.filter((o) => cats.includes(o.category));
     }
-  }, [params.category]);
+    return allOutcomes;
+  }, [allOutcomes, params.category]);
 
-  const onExport = async () => {
-    if (outcomes.length === 0) { showToast("Nothing to export yet.", "neutral"); return; }
-    try { const r = await exportPatrolPdf(outcomes.map((outcome) => outcome.event), deviceId); showToast(r === "shared" ? "Patrol PDF ready to share" : "Print dialog opened", "resting"); }
-    catch { showToast("Could not create the PDF on this device.", "growling"); }
-  };
+  // Apply chip filter
+  const filteredOutcomes = useMemo(
+    () => applyChipFilter(categoryFiltered, activeChip),
+    [categoryFiltered, activeChip],
+  );
 
-  const allOutcomes = projectPatrolOutcomes(events);
-  // Apply category filter if navigated from Protection → View related threats
-  const outcomes = categoryFilter.length > 0
-    ? allOutcomes.filter((o) => categoryFilter.includes(o.category))
-    : allOutcomes;
-  const months = useMemo(() => groupOutcomes(outcomes, filters as PatrolFilter[]), [outcomes, filters]);
-  const rows = useMemo(() => buildRows(months, expandedMonths, expandedDays), [months, expandedMonths, expandedDays]);
+  // Counts
+  const openCases = useMemo(
+    () => allOutcomes.filter((o) => matchesPatrolFilter(o, "needs_you")).length,
+    [allOutcomes],
+  );
+  const handledThisWeek = useMemo(
+    () =>
+      allOutcomes.filter(
+        (o) =>
+          (o.state === "resting" || o.event.status === "resolved" || o.event.status === "trusted") &&
+          isThisWeek(o.occurredAt),
+      ).length,
+    [allOutcomes],
+  );
 
-  const toggleMonth = useCallback((mk: string) => {
-    setExpandedMonths((prev) => { const next = new Set(prev); if (next.has(mk)) next.delete(mk); else next.add(mk); return next; });
+  // Status indicator
+  const hasUnresolved = openCases > 0;
+  const statusLabel = hasUnresolved ? "Needs attention" : "All clear today";
+  const statusColor = hasUnresolved ? colors.growling : colors.resting;
+  const statusBorder = hasUnresolved ? "rgba(229,162,26,0.25)" : "rgba(79,175,131,0.25)";
+
+  // Patrol summary
+  const patrolSummary = useMemo(() => {
+    if (openCases > 0) {
+      return `Apollo has ${openCases} open ${openCases === 1 ? "case" : "cases"} that ${openCases === 1 ? "needs" : "need"} your attention. Tap a case below to review it.`;
+    }
+    return "Apollo has been watching quietly today. No unresolved threats need your attention right now.";
+  }, [openCases]);
+
+  const lastUpdated = useMemo(() => {
+    return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }, []);
 
-  const toggleDay = useCallback((dk: string) => {
-    setExpandedDays((prev) => { const next = new Set(prev); if (next.has(dk)) next.delete(dk); else next.add(dk); return next; });
-  }, []);
+  // Empty state messages
+  const emptyTitle = activeChip === "all"
+    ? "No threat investigations yet"
+    : activeChip === "needs_action"
+      ? "No investigations need action"
+      : activeChip === "handled"
+        ? "No handled investigations"
+        : `No ${activeChip} investigations`;
+  const emptyBody = activeChip === "all"
+    ? "Apollo has no threat investigations to show here."
+    : "No investigations match this filter.";
 
-  const renderItem = useCallback(({ item }: { item: PatrolRow }) => {
-    if (item.type === "month") {
-      const Chevron = item.expanded ? ChevronDown : ChevronRight;
-      return (
-        <Pressable
-          testID={`patrol-month-${item.monthKey}`}
-          accessibilityRole="button"
-          accessibilityLabel={`${item.label}, ${item.total} outcomes`}
-          accessibilityState={{ expanded: item.expanded }}
-          onPress={() => toggleMonth(item.monthKey)}
-          style={[s.groupHeader, s.monthHeader, item.expanded && s.groupHeaderExpanded]}
-        >
-          <View style={s.groupLeft}>
-            <Text style={s.groupLabel}>{item.label}</Text>
-            <Text style={s.groupCounts} numberOfLines={2}>{categorySummary(item.categoryCounts)}</Text>
-          </View>
-          <View style={s.groupRight}>
-            <Text style={s.groupTotal}>{item.total}</Text>
-            <Chevron size={18} color={colors.onSurfaceSecondary} />
-          </View>
-        </Pressable>
-      );
-    }
-
-    if (item.type === "day") {
-      // Today: expanded plain header (original style)
-      if (item.isToday) {
-        return <Text style={s.day}>Today</Text>;
-      }
-      // Previous days: collapsible header with category counts
-      const Chevron = item.expanded ? ChevronDown : ChevronRight;
-      return (
-        <Pressable
-          testID={`patrol-day-${item.dayKey}`}
-          accessibilityRole="button"
-          accessibilityLabel={`${item.label}, ${item.total} outcomes`}
-          accessibilityState={{ expanded: item.expanded }}
-          onPress={() => toggleDay(item.dayKey)}
-          style={[s.groupHeader, item.expanded && s.groupHeaderExpanded]}
-        >
-          <View style={s.groupLeft}>
-            <Text style={s.groupLabel}>{item.label}</Text>
-            <Text style={s.groupCounts} numberOfLines={2}>{categorySummary(item.categoryCounts)}</Text>
-          </View>
-          <View style={s.groupRight}>
-            <Text style={s.groupTotal}>{item.total}</Text>
-            <Chevron size={18} color={colors.onSurfaceSecondary} />
-          </View>
-        </Pressable>
-      );
-    }
-
-    // outcome
-    return <PatrolItem outcome={item.outcome} isLast={item.isLast} />;
-  }, [s, colors, toggleMonth, toggleDay]);
+  const renderCard = useCallback(
+    ({ item }: { item: PatrolOutcome }) => <InvestigationCard outcome={item} />,
+    [],
+  );
 
   return (
-    <View style={s.root}>
-      <View style={{ paddingTop: insets.top + spacing.md }}>
-        <RootScreenHeader title="Threats" testID="patrol-header" info={{ title: "About Threats", body: ["Threats is a plain-English record of what Apollo noticed while it was watching — investigations, checks that completed and anything that needed attention.", "It holds no browsing history or message content. Clear it anytime in Settings → Privacy & data."] }} rightAccessory={
-          <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}>
-            <Pill tone="neutral" label={`${outcomes.length} outcomes`} testID="patrol-count" />
-            <Pressable testID="patrol-saved-reports-button" accessibilityRole="button" accessibilityLabel="Open saved reports" onPress={() => router.push("/saved-reports")} style={s.iconBtn}><Library size={20} color={colors.onSurface} /></Pressable>
-            <Pressable testID="patrol-export-button" accessibilityRole="button" accessibilityLabel="Export Patrol as PDF" onPress={onExport} style={s.iconBtn}><FileDown size={20} color={colors.onSurface} /></Pressable>
+    <View style={s.root} testID="threats-screen">
+      {/* ── Fixed header area ── */}
+      <View style={{ paddingTop: insets.top + spacing.sm, backgroundColor: colors.surface }}>
+        {/* Title + Status */}
+        <View style={s.headerRow}>
+          <Text style={s.headerTitle}>Threats</Text>
+          <View
+            style={[
+              s.statusPill,
+              { borderColor: statusBorder },
+            ]}
+            testID="threats-status-pill"
+          >
+            <View style={[s.statusDot, { backgroundColor: statusColor }]} />
+            <Text style={[s.statusText, { color: statusColor }]}>
+              {statusLabel}
+            </Text>
           </View>
-        } />
+        </View>
+
+        {/* Subtitle */}
+        <Text style={s.headerSubtitle}>
+          Higgins keeps your recent threat investigations, alerts, and handled
+          incidents in one place.
+        </Text>
+
+        {/* Summary cards */}
+        <View style={s.summaryRow}>
+          {/* Open cases */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Open cases: ${openCases}`}
+            testID="threats-open-cases"
+            onPress={() => setActiveChip("needs_action")}
+            style={({ pressed }) => [s.summaryCard, { opacity: pressed ? 0.82 : 1 }]}
+          >
+            <View style={s.summaryIconRow}>
+              <View
+                style={[
+                  s.summaryIconWell,
+                  { backgroundColor: colors.surfaceTertiary },
+                ]}
+              >
+                <Shield size={18} color={colors.onSurfaceSecondary} />
+              </View>
+              <Text style={s.summaryLabel}>Open cases</Text>
+            </View>
+            <Text style={s.summaryCount}>{openCases}</Text>
+            <Text style={s.summarySubtext}>
+              {openCases === 0 ? "No action needed" : `${openCases} ${openCases === 1 ? "needs" : "need"} action`}
+            </Text>
+          </Pressable>
+
+          {/* Handled this week */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Handled this week: ${handledThisWeek}`}
+            testID="threats-handled-week"
+            onPress={() => setActiveChip("handled")}
+            style={({ pressed }) => [s.summaryCard, { opacity: pressed ? 0.82 : 1 }]}
+          >
+            <View style={s.summaryIconRow}>
+              <View
+                style={[
+                  s.summaryIconWell,
+                  { backgroundColor: colors.surfaceTertiary },
+                ]}
+              >
+                <CircleCheck size={18} color={colors.onSurfaceSecondary} />
+              </View>
+              <Text style={s.summaryLabel}>Handled this week</Text>
+            </View>
+            <Text style={s.summaryCount}>{handledThisWeek}</Text>
+            <Text style={s.summarySubtext}>
+              {handledThisWeek === 0 ? "None this week" : "Threats resolved"}
+            </Text>
+          </Pressable>
+        </View>
+
+        {/* Filter chips */}
         <View style={s.filterBar}>
-          <MultiSelectFilter options={FILTER_OPTIONS} selected={filters} onChange={setFilters} title="Filter activity" testID="patrol-filter" />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ alignItems: "center" }}
+          >
+            {FILTER_CHIPS.map((chip) => {
+              const active = chip.id === activeChip;
+              return (
+                <Pressable
+                  key={chip.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={chip.label}
+                  accessibilityState={{ selected: active }}
+                  testID={`threats-filter-${chip.id}`}
+                  onPress={() => setActiveChip(chip.id)}
+                  style={[
+                    s.filterChip,
+                    {
+                      backgroundColor: active ? colors.brand : "transparent",
+                      borderColor: active ? colors.brand : colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      s.filterChipLabel,
+                      {
+                        color: active ? colors.onBrand : colors.onSurfaceSecondary,
+                      },
+                    ]}
+                  >
+                    {chip.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+            {/* Filter/settings icon */}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="More filters"
+              testID="threats-filter-more"
+              onPress={() => {}}
+              style={[
+                s.filterIconBtn,
+                { borderColor: colors.border },
+              ]}
+            >
+              <SlidersHorizontal size={16} color={colors.onSurfaceSecondary} />
+            </Pressable>
+          </ScrollView>
         </View>
       </View>
+
+      {/* ── Scrollable content ── */}
       <FlatList
-        data={rows}
-        keyExtractor={(r) => r.key}
-        contentContainerStyle={s.list}
-        testID="patrol-list"
+        data={filteredOutcomes}
+        keyExtractor={(item) => item.outcomeId}
+        testID="threats-list"
+        contentContainerStyle={{ paddingBottom: insets.bottom + 90 }}
         ListHeaderComponent={
-          <View style={{ gap: spacing.md }}>
-            {/* Daily activity summary — evidence of Apollo's work today */}
-            <DailyActivityCard events={events} testID="patrol-daily-activity" />
-            {/* Actionable items that need user attention */}
-            {(() => {
-              const needsYouItems = outcomes.filter((o) => matchesPatrolFilter(o, "needs_you"));
-              if (needsYouItems.length === 0) {
-                return (
-                  <Card testID="patrol-summary" style={s.summaryCard}>
-                    <Text style={s.summaryText} testID="patrol-summary-text">{patrolConsumerSummary(outcomes)}</Text>
-                  </Card>
-                );
-              }
-              return (
-                <View testID="patrol-needs-you-section">
-                  <Text style={[s.summaryText, { marginBottom: spacing.sm }]}>{needsYouItems.length === 1 ? "1 thing needs your attention" : `${needsYouItems.length} things need your attention`}</Text>
-                  {needsYouItems.map((item) => (
-                    <Pressable
-                      key={item.outcomeId}
-                      testID={`patrol-needs-${item.outcomeId}`}
-                      accessibilityRole="button"
-                      accessibilityLabel={item.title}
-                      onPress={() => router.push(`/patrol/${encodeURIComponent(item.event.event_id)}` as any)}
-                      style={s.needsYouCard}
-                    >
-                      <View style={s.needsYouIcon}>
-                        <AlertTriangle size={16} color={colors.barking} />
-                      </View>
-                      <View style={s.needsYouContent}>
-                        <Text style={s.needsYouTitle} numberOfLines={2}>{item.title}</Text>
-                        <Text style={s.needsYouSummary} numberOfLines={2}>{item.summary}</Text>
-                        {item.primaryAction ? <Text style={s.needsYouAction}>{item.primaryAction.label}</Text> : null}
-                      </View>
-                      <ChevronRight size={16} color={colors.barking} />
-                    </Pressable>
-                  ))}
+          <View>
+            {/* Apollo's patrol summary */}
+            <View
+              style={[
+                s.patrolCard,
+                { backgroundColor: "rgba(79,175,131,0.08)" },
+              ]}
+              testID="threats-patrol-summary"
+            >
+              <View style={s.patrolHeader}>
+                <View
+                  style={[
+                    s.patrolIconWell,
+                    { backgroundColor: "rgba(79,175,131,0.15)" },
+                  ]}
+                >
+                  <Dog size={22} color={colors.resting} />
                 </View>
-              );
-            })()}
+                <Text style={s.patrolTitle}>Apollo&apos;s patrol summary</Text>
+              </View>
+              <Text style={s.patrolBody}>{patrolSummary}</Text>
+              <Text style={s.patrolTime}>Last updated {lastUpdated}</Text>
+            </View>
+
+            {/* Section heading */}
+            <Text style={s.sectionHeading}>Recent Threat Investigations</Text>
           </View>
         }
-        renderItem={renderItem}
+        renderItem={renderCard}
         ListEmptyComponent={
-          <Card testID="patrol-empty" style={{ gap: spacing.sm }}>
-            <Text style={s.emptyTitle}>{filters.length === 0 ? "No threat activity yet." : "Nothing matches the filters you chose."}</Text>
-            {filters.length === 0 ? <Body>Apollo adds items here when it detects threats or completes investigations.</Body> : null}
-          </Card>
+          <View style={s.emptyContainer} testID="threats-empty">
+            <Text style={s.emptyTitle}>{emptyTitle}</Text>
+            <Text style={s.emptyBody}>{emptyBody}</Text>
+          </View>
         }
       />
     </View>
