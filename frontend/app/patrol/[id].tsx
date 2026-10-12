@@ -30,7 +30,7 @@ const useStyles = makeStyles((c) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    paddingBottom: spacing.sm,
+    paddingBottom: spacing.xs,
   },
   backBtn: {
     width: 36,
@@ -59,7 +59,7 @@ const useStyles = makeStyles((c) => ({
     flexWrap: "wrap",
     alignItems: "center",
     gap: spacing.sm,
-    paddingBottom: spacing.sm,
+    paddingBottom: spacing.xs,
   },
   idText: {
     fontFamily: fonts.text,
@@ -70,7 +70,7 @@ const useStyles = makeStyles((c) => ({
   // Date row
   dateRow: {
     paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.sm,
   },
   dateText: {
     fontFamily: fonts.text,
@@ -79,7 +79,7 @@ const useStyles = makeStyles((c) => ({
     lineHeight: 18,
   },
   // Content
-  content: { paddingHorizontal: spacing.md, gap: spacing.lg },
+  content: { paddingHorizontal: spacing.md, gap: spacing.sm },
 }));
 
 function formatDate(iso: string): string {
@@ -152,7 +152,7 @@ export default function EventDetail() {
   return (
     <View style={s.root}>
       {/* Header: back + Threat Investigation + close */}
-      <View style={[s.headerRow, { paddingTop: insets.top + spacing.md }]}>
+      <View style={[s.headerRow, { paddingTop: insets.top + spacing.sm }]}>
         <Pressable
           testID="event-back"
           accessibilityRole="button"
@@ -222,7 +222,7 @@ export default function EventDetail() {
           <ScrollView
             contentContainerStyle={[
               s.content,
-              { paddingTop: spacing.lg, paddingBottom: insets.bottom + spacing.xl },
+              { paddingTop: spacing.sm, paddingBottom: insets.bottom + spacing.md },
             ]}
             testID="event-scroll"
           >
