@@ -61,7 +61,7 @@ export function InvestigationTabBar({
                 s.tab,
                 {
                   backgroundColor: active
-                    ? "#000000"
+                    ? colors.navyDeep
                     : colors.surfaceTertiary,
                 },
               ]}
