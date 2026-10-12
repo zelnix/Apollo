@@ -89,15 +89,14 @@ const useStyles = makeStyles(() => ({
     alignItems: "center",
     gap: 4,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
+    height: 28,
     borderRadius: 6,
     alignSelf: "flex-start",
   },
   label: {
     fontFamily: fonts.textSemibold,
-    fontSize: 11,
+    fontSize: 12,
     letterSpacing: 0.2,
-    lineHeight: 16,
   },
 }));
 
