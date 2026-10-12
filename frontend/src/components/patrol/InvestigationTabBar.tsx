@@ -12,11 +12,15 @@ const TAB_META: { key: TabKey; label: string }[] = [
 ];
 
 const useStyles = makeStyles((c) => ({
-  bar: {
-    flexDirection: "row" as const,
+  wrapper: {
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.sm,
-    gap: spacing.sm,
+  },
+  container: {
+    flexDirection: "row" as const,
+    backgroundColor: c.surfaceTertiary,
+    borderRadius: radius.pill,
+    padding: 3,
   },
   tab: {
     flex: 1,
@@ -43,40 +47,38 @@ export function InvestigationTabBar({
   const { colors } = useTheme();
 
   return (
-    <View style={s.bar}>
-      {TAB_META.map((t) => {
-        const active = t.key === activeTab;
-        return (
-          <Pressable
-            key={t.key}
-            testID={`tab-${t.key}`}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: active }}
-            accessibilityLabel={t.label}
-            onPress={() => onTabChange(t.key)}
-            style={[
-              s.tab,
-              {
-                backgroundColor: active
-                  ? colors.navyDeep
-                  : colors.surfaceTertiary,
-              },
-            ]}
-          >
-            <Text
+    <View style={s.wrapper}>
+      <View style={s.container}>
+        {TAB_META.map((t) => {
+          const active = t.key === activeTab;
+          return (
+            <Pressable
+              key={t.key}
+              testID={`tab-${t.key}`}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={t.label}
+              onPress={() => onTabChange(t.key)}
               style={[
-                s.label,
-                {
-                  color: active ? "#FFFFFF" : colors.onSurfaceSecondary,
-                },
+                s.tab,
+                active ? { backgroundColor: colors.navyDeep } : undefined,
               ]}
-              numberOfLines={1}
             >
-              {t.label}
-            </Text>
-          </Pressable>
-        );
-      })}
+              <Text
+                style={[
+                  s.label,
+                  {
+                    color: active ? "#FFFFFF" : colors.onSurfaceSecondary,
+                  },
+                ]}
+                numberOfLines={1}
+              >
+                {t.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }
