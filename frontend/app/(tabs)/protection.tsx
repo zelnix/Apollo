@@ -16,7 +16,7 @@ import MessageSquare from "lucide-react-native/icons/message-square";
 import ShieldCheck from "lucide-react-native/icons/shield-check";
 import Smartphone from "lucide-react-native/icons/smartphone";
 import React, { useMemo } from "react";
-import { Image, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import { Image, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Pill } from "@/src/components/ui";
@@ -151,27 +151,24 @@ const useStyles = makeStyles((c) => ({
     lineHeight: 16,
   },
 
-  // ── Category grid ──
-  grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
+  // ── Category list (single column, full-width rows) ──
+  categoryList: {
     gap: spacing.sm,
   },
   categoryCard: {
     borderRadius: radius.md,
     borderWidth: 1,
-    padding: spacing.sm,
-    gap: spacing.xs,
-  },
-  categoryHeader: {
     flexDirection: "row",
     alignItems: "center",
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
     gap: spacing.sm,
+    minHeight: 56,
   },
   categoryIconWell: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
@@ -183,18 +180,13 @@ const useStyles = makeStyles((c) => ({
   },
   categoryName: {
     fontFamily: fonts.displayBold,
-    fontSize: 14,
-    lineHeight: 18,
+    fontSize: 15,
+    lineHeight: 20,
   },
   categoryGateCount: {
     fontFamily: fonts.text,
     fontSize: 12,
     lineHeight: 16,
-  },
-  categoryFooter: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
   },
 
   // ── Bottom Higgins guidance card ──
@@ -293,10 +285,8 @@ function buildOverviewText(areas: ProtectionArea[], checking: boolean) {
 
 function CategoryCard({
   area,
-  cardWidth,
 }: {
   area: ProtectionArea;
-  cardWidth: number;
 }) {
   const s = useStyles();
   const { colors } = useTheme();
@@ -318,40 +308,32 @@ function CategoryCard({
         style={[
           s.categoryCard,
           {
-            width: cardWidth,
             backgroundColor: colors.surfaceSecondary,
             borderColor: colors.border,
           },
         ]}
       >
-        <View style={s.categoryHeader}>
-          <View
-            style={[
-              s.categoryIconWell,
-              { backgroundColor: colors.surfaceTertiary },
-            ]}
+        <View
+          style={[
+            s.categoryIconWell,
+            { backgroundColor: colors.surfaceTertiary },
+          ]}
+        >
+          <Icon size={20} color={colors.brand} />
+        </View>
+        <View style={s.categoryNameBlock}>
+          <Text style={[s.categoryName, { color: colors.onSurface }]}>
+            {area.title}
+          </Text>
+          <Text
+            style={[s.categoryGateCount, { color: colors.onSurfaceSecondary }]}
           >
-            <Icon size={18} color={colors.brand} />
-          </View>
-          <View style={s.categoryNameBlock}>
-            <Text
-              style={[s.categoryName, { color: colors.onSurface }]}
-              numberOfLines={1}
-            >
-              {area.title}
-            </Text>
-            <Text
-              style={[s.categoryGateCount, { color: colors.onSurfaceSecondary }]}
-            >
-              {area.capabilities.length}{" "}
-              {area.capabilities.length === 1 ? "Gate" : "Gates"}
-            </Text>
-          </View>
-          <ChevronRight size={16} color={colors.onSurfaceSecondary} />
+            {area.capabilities.length}{" "}
+            {area.capabilities.length === 1 ? "Gate" : "Gates"}
+          </Text>
         </View>
-        <View style={s.categoryFooter}>
-          <Pill tone={tone} label={area.summaryStatus} />
-        </View>
+        <Pill tone={tone} label={area.summaryStatus} />
+        <ChevronRight size={16} color={colors.onSurfaceSecondary} />
       </View>
     </Pressable>
   );
@@ -365,7 +347,6 @@ export default function ProtectionScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const health = useProtectionHealth();
-  const { width: screenWidth } = useWindowDimensions();
 
   const areas = useMemo(
     () => (health.checking ? [] : buildProtectionAreas(health.gates)),
@@ -378,9 +359,6 @@ export default function ProtectionScreen() {
   );
 
   const hasAttention = areas.some((a) => a.attentionCount > 0);
-
-  // Card width: 2-column grid with sm padding each side + sm gap
-  const cardWidth = (screenWidth - spacing.sm * 2 - spacing.sm) / 2;
 
   return (
     <View style={s.root} testID="protection-screen">
@@ -502,14 +480,10 @@ export default function ProtectionScreen() {
           </View>
         </View>
 
-        {/* ── 2-column category grid ── */}
-        <View style={s.grid}>
+        {/* ── Single-column category list ── */}
+        <View style={s.categoryList}>
           {areas.map((area) => (
-            <CategoryCard
-              key={area.id}
-              area={area}
-              cardWidth={cardWidth}
-            />
+            <CategoryCard key={area.id} area={area} />
           ))}
         </View>
 
