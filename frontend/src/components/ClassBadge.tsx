@@ -28,9 +28,9 @@ const CLASS_CONFIG: Record<RecordClass, ClassConfig> = {
   security_threat: {
     label: "Security threat",
     icon: ShieldAlert,
-    bg: (c) => c.barkingTint,
-    fg: (c) => c.barkingText,
-    iconColor: (c) => c.barking,
+    bg: () => "#DBEAFE",
+    fg: () => "#1E3A5F",
+    iconColor: () => "#1E3A5F",
   },
   threat_stopped: {
     label: "Threat stopped",
