@@ -302,7 +302,8 @@ const useStyles = makeStyles((c) => ({
   gateInfo: {
     flex: 1,
     flexShrink: 1,
-    gap: 2,
+    gap: 4,
+    alignItems: "flex-start",
   },
   gateName: {
     fontFamily: fonts.displayBold,
@@ -516,11 +517,11 @@ function GateRow({
         </View>
         <View style={s.gateInfo}>
           <Text style={s.gateName}>{cap.label}</Text>
+          <Pill tone={tone} label={cap.statusLabel} />
           <Text style={s.gatePurpose} numberOfLines={2}>
             {cap.currentHelp}
           </Text>
         </View>
-        <Pill tone={tone} label={cap.statusLabel} />
         {route ? (
           <ChevronRight size={18} color={colors.onSurfaceSecondary} />
         ) : null}
@@ -673,7 +674,7 @@ function GateDetailRow({
   const content = (
     <>
       <View style={{ gap: spacing.sm, paddingVertical: spacing.md }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
           <View
             style={[
               s.gateIconWell,
@@ -684,6 +685,7 @@ function GateDetailRow({
           </View>
           <View style={s.gateInfo}>
             <Text style={s.gateName}>{cap.label}</Text>
+            <Pill tone={tone} label={cap.statusLabel} />
             <Text
               style={{
                 fontFamily: fonts.text,
@@ -694,7 +696,6 @@ function GateDetailRow({
               {modeLabel}
             </Text>
           </View>
-          <Pill tone={tone} label={cap.statusLabel} />
           {route ? (
             <ChevronRight size={18} color={colors.onSurfaceSecondary} />
           ) : null}

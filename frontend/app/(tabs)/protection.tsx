@@ -176,7 +176,8 @@ const useStyles = makeStyles((c) => ({
   categoryNameBlock: {
     flex: 1,
     flexShrink: 1,
-    gap: 1,
+    gap: 3,
+    alignItems: "flex-start",
   },
   categoryName: {
     fontFamily: fonts.displayBold,
@@ -331,8 +332,8 @@ function CategoryCard({
             {area.capabilities.length}{" "}
             {area.capabilities.length === 1 ? "Gate" : "Gates"}
           </Text>
+          <Pill tone={tone} label={area.summaryStatus} />
         </View>
-        <Pill tone={tone} label={area.summaryStatus} />
         <ChevronRight size={16} color={colors.onSurfaceSecondary} />
       </View>
     </Pressable>
