@@ -92,7 +92,7 @@ const useStyles = makeStyles((c) => ({
   halfCardDesc: { fontFamily: fonts.text, fontSize: 12, lineHeight: 17, color: c.onSurfaceSecondary },
   halfCardBtn: {
     borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.md,
-    alignItems: "center", justifyContent: "center", marginTop: spacing.xs,
+    alignItems: "center", justifyContent: "center", marginTop: "auto",
   },
   halfCardBtnText: { fontFamily: fonts.textSemibold, fontSize: 12 },
 
