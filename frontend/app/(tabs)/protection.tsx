@@ -7,6 +7,7 @@
 // eight categories are replaced by the five actual areas defined in the code.
 
 import { useRouter } from "expo-router";
+import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import Globe from "lucide-react-native/icons/globe";
 import Grid2x2 from "lucide-react-native/icons/grid-2x2";
@@ -18,7 +19,6 @@ import React, { useMemo } from "react";
 import { Image, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { RootScreenHeader } from "@/src/components/RootScreenHeader";
 import { Pill } from "@/src/components/ui";
 import {
   buildProtectionAreas,
@@ -27,6 +27,7 @@ import {
 } from "@/src/domain/protectionAreas";
 import { gateTone } from "@/src/domain/gates";
 import { useProtectionHealth } from "@/src/protection/healthStore";
+import { goBackOrHome } from "@/src/utils/navigation";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 const higginsAvatar = require("@/assets/images/higgins-avatar.png");
@@ -46,98 +47,121 @@ const AREA_ICONS: Record<
 // ── Styles ──────────────────────────────────────────────────────────────────
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
+
+  // Header with back button
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingBottom: 2,
+  },
+  backBtn: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerTitle: {
+    flex: 1,
+    fontFamily: fonts.displayBold,
+    fontSize: 24,
+    color: c.onSurface,
+  },
+
   subtitle: {
     fontFamily: fonts.text,
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 14,
+    lineHeight: 20,
     color: c.onSurfaceSecondary,
-    paddingBottom: spacing.xs,
+    marginBottom: 2,
   },
   content: {
-    paddingHorizontal: spacing.xl,
-    gap: spacing.lg,
-    paddingBottom: spacing["3xl"],
+    paddingHorizontal: spacing.sm,
+    gap: spacing.sm,
+    paddingBottom: spacing.lg,
   },
 
   // ── Pale green overview card ──
   overviewCard: {
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     overflow: "hidden",
   },
   overviewTop: {
-    padding: spacing.lg,
-    paddingBottom: spacing.md,
+    padding: spacing.sm,
+    paddingBottom: spacing.xs,
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   overviewShield: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
   },
   overviewTextBlock: {
     flex: 1,
-    gap: 4,
+    gap: 2,
   },
   overviewTitle: {
     fontFamily: fonts.displayBold,
-    fontSize: 20,
-    lineHeight: 26,
+    fontSize: 18,
+    lineHeight: 24,
   },
   overviewStatus: {
     fontFamily: fonts.text,
-    fontSize: 15,
-    lineHeight: 21,
+    fontSize: 14,
+    lineHeight: 19,
   },
   overviewSub: {
     fontFamily: fonts.text,
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 13,
+    lineHeight: 18,
   },
 
   // ── Higgins tip inside overview card ──
   tipArea: {
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.lg,
-    borderRadius: radius.md,
-    padding: spacing.md,
+    marginHorizontal: spacing.sm,
+    marginBottom: spacing.sm,
+    borderRadius: radius.sm,
+    padding: spacing.sm,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   tipAvatarWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     overflow: "hidden",
+    flexShrink: 0,
   },
-  tipAvatar: { width: 44, height: 44 },
-  tipTextBlock: { flex: 1, gap: 2 },
+  tipAvatar: { width: 40, height: 40 },
+  tipTextBlock: { flex: 1, gap: 1 },
   tipTitle: {
     fontFamily: fonts.displayBold,
-    fontSize: 14,
-    lineHeight: 19,
+    fontSize: 13,
+    lineHeight: 17,
   },
   tipBody: {
     fontFamily: fonts.text,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 16,
   },
 
   // ── Category grid ──
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   categoryCard: {
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     borderWidth: 1,
-    padding: spacing.md,
-    gap: spacing.sm,
+    padding: spacing.sm,
+    gap: spacing.xs,
   },
   categoryHeader: {
     flexDirection: "row",
@@ -145,9 +169,9 @@ const useStyles = makeStyles((c) => ({
     gap: spacing.sm,
   },
   categoryIconWell: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
@@ -160,12 +184,12 @@ const useStyles = makeStyles((c) => ({
   categoryName: {
     fontFamily: fonts.displayBold,
     fontSize: 14,
-    lineHeight: 19,
+    lineHeight: 18,
   },
   categoryGateCount: {
     fontFamily: fonts.text,
     fontSize: 12,
-    lineHeight: 17,
+    lineHeight: 16,
   },
   categoryFooter: {
     flexDirection: "row",
@@ -175,41 +199,41 @@ const useStyles = makeStyles((c) => ({
 
   // ── Bottom Higgins guidance card ──
   guidanceCard: {
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    gap: spacing.md,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    gap: spacing.sm,
   },
   guidanceTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.md,
+    gap: spacing.sm,
   },
   guidanceAvatarWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     overflow: "hidden",
     flexShrink: 0,
   },
-  guidanceAvatar: { width: 48, height: 48 },
+  guidanceAvatar: { width: 44, height: 44 },
   guidanceTextBlock: {
     flex: 1,
-    gap: 2,
+    gap: 1,
   },
   guidanceTitle: {
     fontFamily: fonts.displayBold,
-    fontSize: 14,
-    lineHeight: 19,
+    fontSize: 13,
+    lineHeight: 17,
   },
   guidanceBody: {
     fontFamily: fonts.text,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 16,
   },
   learnBtn: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm + 2,
-    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: radius.sm,
     alignItems: "center",
     justifyContent: "center",
     alignSelf: "flex-end",
@@ -307,7 +331,7 @@ function CategoryCard({
               { backgroundColor: colors.surfaceTertiary },
             ]}
           >
-            <Icon size={20} color={colors.brand} />
+            <Icon size={18} color={colors.brand} />
           </View>
           <View style={s.categoryNameBlock}>
             <Text
@@ -355,30 +379,32 @@ export default function ProtectionScreen() {
 
   const hasAttention = areas.some((a) => a.attentionCount > 0);
 
-  // Card width: 2-column grid with xl padding on each side + md gap
-  const cardWidth = (screenWidth - spacing.xl * 2 - spacing.md) / 2;
+  // Card width: 2-column grid with sm padding each side + sm gap
+  const cardWidth = (screenWidth - spacing.sm * 2 - spacing.sm) / 2;
 
   return (
     <View style={s.root} testID="protection-screen">
-      <View style={{ paddingTop: insets.top + spacing.md }}>
-        <RootScreenHeader
-          title="Protection"
-          testID="protection-header"
-          info={{
-            title: "About Protection",
-            body: [
-              "This screen shows your protection categories and the Gates inside each one.",
-              "Each category groups related protections. Tap a category to see details about what Apollo protects, its Gates and their current status.",
-            ],
-          }}
-        />
+      {/* ── Header with back button ── */}
+      <View style={{ paddingTop: insets.top + spacing.xs }}>
+        <View style={s.headerRow}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            testID="protection-back"
+            onPress={() => goBackOrHome(router)}
+            style={s.backBtn}
+          >
+            <ChevronLeft size={24} color={colors.onSurface} />
+          </Pressable>
+          <Text style={s.headerTitle}>Protection</Text>
+        </View>
       </View>
 
       <ScrollView
         testID="protection-scroll"
         contentContainerStyle={[
           s.content,
-          { paddingBottom: insets.bottom + 110 },
+          { paddingBottom: insets.bottom + 90 },
         ]}
       >
         {/* Subtitle */}
@@ -410,7 +436,7 @@ export default function ProtectionScreen() {
               ]}
             >
               <ShieldCheck
-                size={32}
+                size={28}
                 color={hasAttention ? colors.ears_up : colors.resting}
               />
             </View>
