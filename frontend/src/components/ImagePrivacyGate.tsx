@@ -359,8 +359,8 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
       }
 
       if (!hasSensitive) {
-        // No sensitive content — send the metadata-stripped image as-is
-        await emitResult("no_sensitive", screening.strippedImageUri, screening.extractedText);
+        // No sensitive content — send the metadata-stripped image as-is (no text)
+        await emitResult("no_sensitive", screening.strippedImageUri, null);
         return;
       }
 
@@ -370,10 +370,9 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
           format: "jpg",
           quality: 0.85,
         });
-        await emitResult("sanitised_image", uri, screening.extractedText);
+        await emitResult("sanitised_image", uri, null);
       } else {
         // Fail closed: redaction capture is unavailable — withhold the image
-        // and preserve available safe evidence (extracted text).
         await emitResult("withheld", null, screening.extractedText, [
           "Redaction capture unavailable; image withheld to prevent unredacted transmission",
         ]);
@@ -398,9 +397,10 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
     setBusy(true);
     setBusyLabel("Preparing image\u2026");
     try {
-      await emitResult("no_sensitive", screening.strippedImageUri, screening.extractedText);
+      // Image is primary evidence — no OCR text sent alongside
+      await emitResult("no_sensitive", screening.strippedImageUri, null);
     } catch {
-      await emitResult("withheld", null, screening.extractedText, [
+      await emitResult("withheld", null, null, [
         "Image preparation failed; image withheld",
       ]);
     } finally {
@@ -409,20 +409,18 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
   }, [screening, emitResult]);
 
   const handleOcrUnavailableSendImage = useCallback(async () => {
-    // OCR unavailable: cannot screen for sensitive content locally.
-    // Send the metadata-stripped image with clear limitations noted.
-    // The image is the primary investigation evidence.
+    // Send the metadata-stripped image — no OCR text (image is primary evidence)
     setBusy(true);
     setBusyLabel("Preparing image\u2026");
     try {
       if (!screening.strippedImageUri) {
         throw new Error("No image available.");
       }
-      await emitResult("no_sensitive", screening.strippedImageUri, screening.extractedText, [
-        "On-device text recognition unavailable; image could not be screened for sensitive content — review the image carefully before sending",
+      await emitResult("no_sensitive", screening.strippedImageUri, null, [
+        "On-device text recognition unavailable; image could not be screened for sensitive content",
       ]);
     } catch {
-      await emitResult("withheld", null, screening.extractedText, [
+      await emitResult("withheld", null, null, [
         "Image preparation failed; image withheld",
       ]);
     } finally {
@@ -431,9 +429,7 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
   }, [screening, emitResult]);
 
   const handleOcrUnavailableWithhold = useCallback(async () => {
-    // OCR unavailable: image cannot be screened locally.
-    // Withhold the image and explain the limitation.
-    await emitResult("withheld", null, screening.extractedText, [
+    await emitResult("withheld", null, null, [
       "On-device text recognition unavailable; image withheld because it could not be screened for sensitive content",
     ]);
   }, [screening, emitResult]);
