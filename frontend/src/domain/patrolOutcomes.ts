@@ -42,13 +42,19 @@ export function projectPatrolOutcomes(events: PatrolEvent[]): PatrolOutcome[] {
   const sorted = events.filter(isConsumerPatrolEvent).sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at));
   const outcomes: PatrolOutcome[] = [];
   for (const event of sorted) {
-    const state: PatrolState = event.state === "sniffing" ? "ears_up" : event.state === "biting" && !event.verified_block ? "barking" : event.state;
+    // RELIABILITY FIX: When the user has resolved/trusted an event, the display state must
+    // reflect that — not the original threat level. The raw event.state is preserved for history,
+    // but the OUTCOME state must show the event as handled so it leaves "Needs you" and enters "Resolved".
+    const isResolved = event.status === "resolved" || event.status === "trusted" || !!event.resolved_at;
+    const rawState: PatrolState = event.state === "sniffing" ? "ears_up" : event.state === "biting" && !event.verified_block ? "barking" : event.state;
+    const state: PatrolState = isResolved ? "resting" : rawState;
     const key = incidentKey(event, state); const time = Date.parse(event.occurred_at);
     const existing = outcomes.find((outcome) => outcome.outcomeId === key && Math.abs(Date.parse(outcome.occurredAt) - time) <= WINDOW_MS);
     if (!existing) {
       outcomes.push({ outcomeId: key, category: category(event), state, title: title(event, state), summary: event.what_happened, occurredAt: event.occurred_at, source: source(event), repeatCount: 1,
-        result: result(state), resultBasis: humanizeReason(event.patrol_record?.effectiveReason, state),
-        whyThisRating: event.why.slice(0, 4), primaryAction: actionFor(event, state), secondaryActions: [], event });
+        result: isResolved ? (event.status === "trusted" ? "Trusted" : "Handled") : result(state),
+        resultBasis: isResolved ? (event.status === "trusted" ? "You trusted this exact item." : "You marked this event as handled.") : humanizeReason(event.patrol_record?.effectiveReason, state),
+        whyThisRating: event.why.slice(0, 4), primaryAction: isResolved ? undefined : actionFor(event, state), secondaryActions: [], event });
       continue;
     }
     existing.repeatCount += 1;
