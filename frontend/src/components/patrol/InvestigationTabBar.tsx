@@ -1,6 +1,6 @@
 import React from "react";
 import { Pressable, Text, View } from "react-native";
-import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
 export type TabKey = "overview" | "investigation" | "evidence" | "history";
 
@@ -18,20 +18,18 @@ const useStyles = makeStyles((c) => ({
   },
   container: {
     flexDirection: "row" as const,
-    backgroundColor: c.surfaceTertiary,
-    borderRadius: radius.pill,
-    padding: 3,
+    gap: 4,
   },
   tab: {
     flex: 1,
-    paddingVertical: 10,
-    borderRadius: radius.pill,
+    paddingVertical: 8,
+    borderRadius: 8,
     alignItems: "center" as const,
     justifyContent: "center" as const,
   },
   label: {
     fontFamily: fonts.textSemibold,
-    fontSize: 14,
+    fontSize: 12,
     letterSpacing: 0.1,
   },
 }));
@@ -61,7 +59,11 @@ export function InvestigationTabBar({
               onPress={() => onTabChange(t.key)}
               style={[
                 s.tab,
-                active ? { backgroundColor: colors.navyDeep } : undefined,
+                {
+                  backgroundColor: active
+                    ? "#000000"
+                    : colors.surfaceTertiary,
+                },
               ]}
             >
               <Text

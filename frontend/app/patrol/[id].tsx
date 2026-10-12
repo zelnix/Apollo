@@ -40,7 +40,7 @@ const useStyles = makeStyles((c) => ({
   },
   title: {
     fontFamily: fonts.displayBold,
-    fontSize: 22,
+    fontSize: 18,
     color: c.onSurface,
     flex: 1,
   },
@@ -162,7 +162,7 @@ export default function EventDetail() {
         >
           <ChevronLeft size={24} color={colors.onSurface} />
         </Pressable>
-        <Text style={s.title} numberOfLines={1} testID="event-title">
+        <Text style={s.title} numberOfLines={2} testID="event-title">
           Threat Investigation
         </Text>
         <Pressable
