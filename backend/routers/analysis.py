@@ -964,7 +964,8 @@ async def vision_investigate(
         has_urls = len(all_urls) > 0
         has_claims = bool(claimed_brand) or bool(payment_details)
         has_suspicious = len(suspicious_indicators) > 0
-        if has_urls or has_claims or has_suspicious:
+        has_image_evidence = _redacted_image_bytes is not None and len(_redacted_image_bytes) > 0
+        if has_urls or has_claims or has_suspicious or has_image_evidence:
             # Build the investigation question from extracted evidence
             inv_parts = [f"Investigate this {image_type or 'image'}"]
             if claimed_brand:

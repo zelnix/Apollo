@@ -17,6 +17,7 @@
 
 import * as Crypto from "expo-crypto";
 import * as FileSystem from "expo-file-system";
+import { Platform } from "react-native";
 
 export type SanitizationDecision =
   | "text_only"       // Image never transmitted; extracted text used instead
@@ -71,9 +72,32 @@ async function digestImageBytes(
   imageUri: string,
 ): Promise<{ digest: string; base64: string } | null> {
   try {
-    const base64 = await FileSystem.readAsStringAsync(imageUri, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
+    let base64: string;
+    try {
+      // Native path — works on iOS/Android
+      base64 = await FileSystem.readAsStringAsync(imageUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+    } catch {
+      // Web fallback — FileSystem can't read blob: or data: URIs on web
+      if (Platform.OS === "web") {
+        const response = await fetch(imageUri);
+        const blob = await response.blob();
+        base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const result = reader.result as string;
+            // Strip the data URL prefix (e.g., "data:image/jpeg;base64,")
+            const b64 = result.includes(",") ? result.split(",")[1] : result;
+            resolve(b64);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      } else {
+        return null;
+      }
+    }
     if (!base64 || base64.length === 0) {
       return null;
     }

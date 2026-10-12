@@ -408,6 +408,28 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
     }
   }, [screening, emitResult]);
 
+  const handleOcrUnavailableSendImage = useCallback(async () => {
+    // OCR unavailable: cannot screen for sensitive content locally.
+    // Send the metadata-stripped image with clear limitations noted.
+    // The image is the primary investigation evidence.
+    setBusy(true);
+    setBusyLabel("Preparing image\u2026");
+    try {
+      if (!screening.strippedImageUri) {
+        throw new Error("No image available.");
+      }
+      await emitResult("no_sensitive", screening.strippedImageUri, screening.extractedText, [
+        "On-device text recognition unavailable; image could not be screened for sensitive content — review the image carefully before sending",
+      ]);
+    } catch {
+      await emitResult("withheld", null, screening.extractedText, [
+        "Image preparation failed; image withheld",
+      ]);
+    } finally {
+      setBusy(false);
+    }
+  }, [screening, emitResult]);
+
   const handleOcrUnavailableWithhold = useCallback(async () => {
     // OCR unavailable: image cannot be screened locally.
     // Withhold the image and explain the limitation.
@@ -502,11 +524,9 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
               <View style={s.summaryCard}>
                 <Text style={s.summaryTitle}>Text recognition unavailable</Text>
                 <Text style={s.summaryText}>
-                  On-device screening requires a native build. The image cannot be
-                  checked for sensitive content, so it will not be transmitted.
-                  {screening.extractedText.length > 0
-                    ? " You can send the extracted text instead."
-                    : " Type the text manually or withhold it."}
+                  On-device screening requires a native build. Apollo cannot check this
+                  image for sensitive content locally. You can still send the image for
+                  investigation — please review it carefully before sending.
                 </Text>
               </View>
             ) : (
@@ -532,10 +552,18 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
               {/* Different button sets based on screening status */}
               {screening.status === "ocr_unavailable" ? (
                 <>
+                  <Button
+                    label="Send image"
+                    variant="primary"
+                    onPress={handleOcrUnavailableSendImage}
+                    disabled={busy}
+                    testID="gate-send-image-unscreened"
+                    accessibilityHint="Send the image without local screening — it could not be checked for sensitive content"
+                  />
                   {screening.extractedText.length > 0 && (
                     <Button
-                      label="Send text only"
-                      variant="primary"
+                      label="Send text only instead"
+                      variant="secondary"
                       onPress={handleTextOnly}
                       disabled={busy}
                       testID="gate-text-only"

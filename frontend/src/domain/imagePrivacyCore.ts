@@ -29,6 +29,12 @@ export interface TextRegion {
 const CREDENTIAL_PATTERNS: Array<{ pattern: RegExp; type: "credential" }> = [
   { pattern: /(?:password|passcode|p\.?i\.?n\.?)\s*(?:is|was|:|=)\s*\S+/i, type: "credential" },
   { pattern: /\b(?:otp|one[- ]?time[- ]?code|verification[- ]?code|security[- ]?code|recovery[- ]?code)\s*(?:is|was|:|=)\s*\S+/i, type: "credential" },
+  // Number-first verification codes: "123456 is your verification code"
+  { pattern: /\b\d{4,8}\s+is\s+your\s+(?:verification|security|one[- ]?time|login|sign[- ]?in)\s+code\b/i, type: "credential" },
+  // "Your verification code is 123456" / "Your Amazon verification code is 482193"
+  { pattern: /your\s+(?:\w+\s+)?(?:verification|security|one[- ]?time|login|sign[- ]?in)\s+(?:code|otp|pin)\s+(?:is|was|:|=)\s*\d{4,8}\b/i, type: "credential" },
+  // Standalone digit sequences preceded by "code" context within 30 chars  
+  { pattern: /(?:verification|security|one[- ]?time|sign[- ]?in)\s+code[:\s]+\d{4,8}\b/i, type: "credential" },
   { pattern: /\b(?:recovery[- ]?phrase|seed[- ]?phrase|mnemonic)\b/i, type: "credential" },
   { pattern: /\bBearer\s+[A-Za-z0-9._~+/=-]{10,}/i, type: "credential" },
   { pattern: /(?:api[_-]?key|secret[_-]?key|access[_-]?token|refresh[_-]?token)\s*(?::|=)\s*\S+/i, type: "credential" },
