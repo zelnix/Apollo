@@ -77,9 +77,11 @@ export interface CheckResultModel {
   investigationId?: string | null;
 }
 
-/** Short status label for a check item (plain English, same text spoken by Higgins). */
+/** Short status label for a check item (plain English, same text spoken by Higgins).
+ *  "clear" now reads "No threats found" — an evidence-qualified statement that honestly reflects
+ *  "nothing concerning was detected in the checks performed" without implying verified safety. */
 export const STATUS_LABEL: Record<CheckStatus, string> = {
-  clear: "Clear",
+  clear: "No threats found",
   concern: "Concern",
   incomplete: "Incomplete",
   unavailable: "Unavailable",

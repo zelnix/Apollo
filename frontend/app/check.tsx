@@ -213,13 +213,10 @@ export default function CheckLink() {
       <>
         <CheckResultScreen
           result={model}
-          onAskHiggins={() => router.push({
-            pathname: "/(tabs)/ask",
-            params: {
-              context: liveEvent ? JSON.stringify({ ...contextFromEvent(liveEvent, gateForCategory(liveEvent.category)), original_evidence: [...(input.trim() ? [{ kind: "url" as const, value: input.trim(), label: "checked link" }] : [])] }) : "",
-              prompt: askPrompt,
-            },
-          })}
+          investigationContext={liveEvent ? { ...contextFromEvent(liveEvent, gateForCategory(liveEvent.category)), original_evidence: [...(input.trim() ? [{ kind: "url" as const, value: input.trim(), label: "checked link" }] : [])] } : undefined}
+          investigationQuestion={askPrompt}
+          submissionId={outcome.submissionId}
+          eventId={liveEvent?.event_id ?? null}
           actions={actions}
         />
         {/* Recovery flow stays available for non-resting results — rendered via a Sheet below. */}

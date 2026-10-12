@@ -1,8 +1,11 @@
 // Universal Check Result screen component. Apollo investigates. Higgins explains. ONE result,
-// ONE explanation. Every Apollo Gate (Link / Site / Text / Call / Internet / App / Device / Email /
-// File / Account, plus Device First Check and Re-check) renders its manual-check outcome through
-// this single component — no competing verdict cards, no auto-asked follow-up questions, no
-// repetition. Technical evidence stays accessible through progressive disclosure.
+// ONE explanation. Every Apollo Gate renders its manual-check outcome through this single
+// component. When investigation context is provided, a genuine Magnum DI case is auto-created
+// and the Higgins-led interactive investigation becomes the primary result experience.
+// Technical evidence stays accessible through progressive disclosure.
+//
+// Operating principle: Apollo identifies the concern. Magnum DI investigates the evidence.
+// Higgins explains the findings and guides the user.
 
 import { useRouter } from "expo-router";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
@@ -14,8 +17,10 @@ import { Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Body, Button, Card, Pill } from "@/src/components/ui";
+import { GateInvestigation } from "@/src/components/GateInvestigation";
 import type { ActionLink, CheckItem, CheckResultModel } from "@/src/domain/checkResult";
 import { STATUS_LABEL, STATUS_TONE } from "@/src/domain/checkResult";
+import type { HigginsIssueContext } from "@/src/domain/higginsHandoff";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 
@@ -54,27 +59,38 @@ const useStyles = makeStyles((c) => ({
 
 export interface CheckResultScreenProps {
   result: CheckResultModel;
-  /** Optional secondary actions (Ask Higgins / Save / Report / Recover / etc.) — rendered as a
-   *  single row of buttons below the main result. Keep to 3–4 at most. */
+  /** Optional secondary actions (Save / Report / Recover / etc.) — rendered as a
+   *  single row of buttons below the investigation. Keep to 3–4 at most. */
   actions?: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[];
-  /** Optional "Ask Higgins" handler — if provided, renders a prominent single tap-through. */
+  /** @deprecated — replaced by investigationContext. Kept for backward compat (non-scam diagnostics). */
   onAskHiggins?: () => void;
   /** Optional close override — defaults to goBackOrHome. */
   onClose?: () => void;
+  // ── Magnum DI case integration ──
+  /** When provided, a Magnum DI investigation case is auto-created and the Higgins briefing
+   *  becomes the primary result. The static result acts as context while investigating. */
+  investigationContext?: HigginsIssueContext;
+  /** Natural-language question for the investigation turn. */
+  investigationQuestion?: string;
+  /** Stable ID for the check submission (event_id or submission UUID). */
+  submissionId?: string;
+  /** Patrol event ID to link the investigation case to. */
+  eventId?: string | null;
 }
 
-export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose }: CheckResultScreenProps) {
+export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose, investigationContext, investigationQuestion, submissionId, eventId }: CheckResultScreenProps) {
   const s = useStyles();
   const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [itemsOpen, setItemsOpen] = useState<Record<string, boolean>>({});
   const [fullOpen, setFullOpen] = useState(false);
+  const [investigationResolved, setInvestigationResolved] = useState(false);
 
   const toggleItem = (id: string) => setItemsOpen((prev) => ({ ...prev, [id]: !prev[id] }));
   const close = () => (onClose ? onClose() : goBackOrHome(router));
 
-  const spokenText = `${result.headline}. ${result.higginsSays}${result.whatToDo ? ` What to do: ${result.whatToDo}` : ""}`;
+  const hasInvestigation = !!(investigationContext && investigationQuestion && submissionId);
 
   return (
     <View style={s.root} testID="check-result-screen">
@@ -98,7 +114,7 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose 
         contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing["3xl"] }]}
         testID="check-result-scroll"
       >
-        {/* ONE outcome. ONE Higgins paragraph. No duplicate verdict cards. */}
+        {/* ── Quick context: Apollo's immediate finding ── */}
         <Card style={{ gap: spacing.md }} testID="check-result-main">
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" }}>
             <Pill tone={result.tone} label={result.checkType} testID="check-result-tone" />
@@ -106,49 +122,81 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose 
           </View>
           <Text style={s.headline} testID="check-result-headline">{result.headline}</Text>
 
-          <View style={{ gap: spacing.xs }}>
-            <Text style={s.sectionLabel}>WHY ACTION WAS TAKEN</Text>
-            <Text style={s.higginsText} testID="check-result-higgins">{result.higginsSays}</Text>
-          </View>
+          {/* When Magnum DI is investigating, show the headline as brief context. 
+              When no investigation, show the full static explanation. */}
+          {!hasInvestigation || !investigationResolved ? (
+            <>
+              <View style={{ gap: spacing.xs }}>
+                <Text style={s.sectionLabel}>{hasInvestigation ? "APOLLO'S INITIAL ASSESSMENT" : "WHY ACTION WAS TAKEN"}</Text>
+                <Text style={s.higginsText} testID="check-result-higgins">{result.higginsSays}</Text>
+              </View>
 
-          {result.whatToDo || result.whatToDoLinks?.length ? (
-            <View style={{ gap: spacing.xs }}>
-              <Text style={s.sectionLabel}>WHAT TO DO</Text>
-              {result.whatToDo ? (
-                <LinkifiedText style={s.higginsText} text={result.whatToDo} testID="check-result-whattodo" />
-              ) : null}
-              {result.whatToDoLinks?.length ? (
-                <View style={{ gap: 2, marginTop: result.whatToDo ? spacing.xs : 0 }}>
-                  {result.whatToDoLinks.map((link, i) => (
-                    <ActionLinkRow key={i} link={link} testID={`check-result-action-${i}`} />
-                  ))}
+              {result.whatToDo || result.whatToDoLinks?.length ? (
+                <View style={{ gap: spacing.xs }}>
+                  <Text style={s.sectionLabel}>WHAT TO DO</Text>
+                  {result.whatToDo ? (
+                    <LinkifiedText style={s.higginsText} text={result.whatToDo} testID="check-result-whattodo" />
+                  ) : null}
+                  {result.whatToDoLinks?.length ? (
+                    <View style={{ gap: 2, marginTop: result.whatToDo ? spacing.xs : 0 }}>
+                      {result.whatToDoLinks.map((link, i) => (
+                        <ActionLinkRow key={i} link={link} testID={`check-result-action-${i}`} />
+                      ))}
+                    </View>
+                  ) : null}
                 </View>
               ) : null}
-            </View>
+            </>
           ) : null}
         </Card>
 
+        {/* ── Magnum DI Investigation — the primary result experience ── */}
+        {hasInvestigation ? (
+          <GateInvestigation
+            submission={{ submissionId }}
+            context={investigationContext!}
+            question={investigationQuestion!}
+            label="View full investigation"
+            testID="check-result-investigation"
+            autoStart
+            eventId={eventId}
+            onResolved={setInvestigationResolved}
+          />
+        ) : null}
+
         {/* "What Apollo checked" — plain-English list; each item expandable to raw details. */}
         <Card style={{ gap: 0 }} testID="check-result-items">
-          <Text style={[s.sectionLabel, { marginBottom: spacing.xs }]}>WHAT APOLLO CHECKED</Text>
-          {result.items.length === 0 ? (
-            <Body>Apollo did not record any check items.</Body>
-          ) : (
-            result.items.map((item, i) => (
-              <CheckItemRow
-                key={item.id}
-                item={item}
-                open={!!itemsOpen[item.id]}
-                onToggle={() => toggleItem(item.id)}
-                showDivider={i > 0}
-              />
-            ))
-          )}
-          <Text style={[s.checkType, { marginTop: spacing.sm }]}>Completed {new Date(result.completedAt).toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })}</Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setFullOpen((prev) => !prev)}
+            style={s.disclosureBtn}
+            testID="check-result-items-toggle"
+          >
+            <Text style={s.disclosureLabel}>{hasInvestigation ? "What Apollo checked immediately" : "What Apollo checked"}</Text>
+            {fullOpen || !hasInvestigation ? <ChevronUp size={18} color={colors.onSurface} /> : <ChevronDown size={18} color={colors.onSurface} />}
+          </Pressable>
+          {fullOpen || !hasInvestigation ? (
+            <>
+              {result.items.length === 0 ? (
+                <Body>Apollo did not record any check items.</Body>
+              ) : (
+                result.items.map((item, i) => (
+                  <CheckItemRow
+                    key={item.id}
+                    item={item}
+                    open={!!itemsOpen[item.id]}
+                    onToggle={() => toggleItem(item.id)}
+                    showDivider={i > 0}
+                  />
+                ))
+              )}
+              <Text style={[s.checkType, { marginTop: spacing.sm }]}>Completed {new Date(result.completedAt).toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" })}</Text>
+            </>
+          ) : null}
         </Card>
 
-        {/* Progressive disclosure — full investigation / technical evidence lives here, not above. */}
-        {result.evidence.length > 0 ? (
+        {/* Progressive disclosure — full technical evidence. */}
+        {!hasInvestigation && result.evidence.length > 0 ? (
           <Card style={{ gap: spacing.sm }} testID="check-result-full">
             <Pressable
               accessibilityRole="button"
@@ -173,10 +221,10 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose 
           </Card>
         ) : null}
 
-        {/* Secondary row — Ask Higgins + any gate-specific extras (Save, Report, Recover). */}
-        {onAskHiggins || actions.length > 0 ? (
+        {/* Secondary row — Ask Higgins (legacy) + gate-specific extras. */}
+        {(onAskHiggins && !hasInvestigation) || actions.length > 0 ? (
           <View style={s.secondary}>
-            {onAskHiggins ? (
+            {onAskHiggins && !hasInvestigation ? (
               <Button
                 testID="check-result-ask-higgins"
                 variant="secondary"

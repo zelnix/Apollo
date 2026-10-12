@@ -9,10 +9,8 @@ import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import Camera from "lucide-react-native/icons/camera";
 import ImageIcon from "lucide-react-native/icons/image";
-import ShieldCheck from "lucide-react-native/icons/shield-check";
-import TriangleAlert from "lucide-react-native/icons/triangle-alert";
-import CircleCheckBig from "lucide-react-native/icons/circle-check-big";
 import Info from "lucide-react-native/icons/info";
+import TriangleAlert from "lucide-react-native/icons/triangle-alert";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import Eye from "lucide-react-native/icons/eye";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -57,36 +55,6 @@ type VisionStage = "pick" | "screening" | "investigating" | "result" | "error";
 
 // ── Fix 6: Gate-to-plain-English capability name translation ──
 // Uses the approved user-facing capability names from the protection areas.
-const GATE_DISPLAY_NAME: Record<string, string> = {
-  "Link Gate": "Websites & Links",
-  "Site Gate": "Websites & Links",
-  "Text Gate": "Messages & Calls",
-  "Call Gate": "Messages & Calls",
-  "Email Gate": "Email & Accounts",
-  "Account Gate": "Email & Accounts",
-  "App Gate": "Apps & Files",
-  "File Gate": "Apps & Files",
-  "Device Gate": "Device & Internet",
-  "Internet Gate": "Device & Internet",
-  "Vision Gate": "Vision",
-  // Also handle lowercase or code-style names from backend
-  "link_gate": "Websites & Links",
-  "site_gate": "Websites & Links",
-  "text_gate": "Messages & Calls",
-  "call_gate": "Messages & Calls",
-  "email_gate": "Email & Accounts",
-  "account_gate": "Email & Accounts",
-  "app_gate": "Apps & Files",
-  "file_gate": "Apps & Files",
-  "device_gate": "Device & Internet",
-  "internet_gate": "Device & Internet",
-  "vision_gate": "Vision",
-};
-
-function translateGateName(rawGate: string): string {
-  return GATE_DISPLAY_NAME[rawGate] ?? rawGate.replace(/_/g, " ");
-}
-
 // ── Fix 4: Map severity to the correct ApolloState string ──
 function severityToState(severity: string | undefined): ApolloState {
   switch (severity) {
@@ -325,14 +293,11 @@ export default function VisionScreen() {
     setStage("pick");
   }, []);
 
-  // ── Auto-open Magnum DI investigation when available ──
+  // ── Navigate to the Magnum DI investigation immediately when available ──
   useEffect(() => {
     if (stage === "result" && result?.investigation_case_id) {
-      // Short delay so the user sees the initial result before navigating
-      const timer = setTimeout(() => {
-        router.push({ pathname: "/(tabs)/ask", params: { resumeCaseId: result.investigation_case_id! } });
-      }, 1200);
-      return () => clearTimeout(timer);
+      // Navigate immediately — no artificial delay. The investigation is already created.
+      router.replace({ pathname: "/(tabs)/ask", params: { resumeCaseId: result.investigation_case_id! } });
     }
   }, [stage, result, router]);
 
@@ -478,122 +443,55 @@ export default function VisionScreen() {
         {/* ── Result Stage ── */}
         {stage === "result" && result ? (
           <>
-            {/* Higgins' recommendation — always first */}
-            <Card style={[s.higginsCard, { borderColor: severityBorder }]} testID="vision-higgins">
-              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-                {result.higgins?.severity === "high" ? (
-                  <TriangleAlert size={22} color={colors.barking} />
-                ) : result.higgins?.severity === "medium" ? (
-                  <TriangleAlert size={22} color={colors.growlingText} />
-                ) : (
-                  <ShieldCheck size={22} color={colors.resting} />
-                )}
-                <Text style={[s.higginsHeadline, { color: severityColor, flex: 1 }]} testID="vision-higgins-headline">{result.higgins?.headline}</Text>
-              </View>
-              <Text style={s.higginsExplanation} testID="vision-higgins-explanation">{result.higgins?.explanation}</Text>
-              <Text style={s.higginsAction} testID="vision-higgins-action">{result.higgins?.action}</Text>
-            </Card>
-
-            {/* What Apollo recognised */}
-            <View style={s.resultSection} testID="vision-recognised">
-              <Text style={s.sectionTitle}>What Apollo recognised</Text>
-              <Text style={s.sectionBody}>
-                {result.description || "Apollo could not clearly identify the content of this image."}
-              </Text>
-              <View style={s.indicatorPills}>
-                {result.claimed_brand ? <Pill tone="neutral" label={`Claims to be: ${result.claimed_brand}`} /> : null}
-                {result.image_type ? <Pill tone="neutral" label={result.image_type.replace(/_/g, " ")} /> : null}
-              </View>
-            </View>
-
-            {/* What Apollo checked — Fix 6: use plain-English capability names */}
-            {result.checks_performed.length > 0 ? (
-              <View style={s.resultSection} testID="vision-checked">
-                <Text style={s.sectionTitle}>What Apollo checked</Text>
-                {result.checks_performed.map((check, i) => (
-                  <View key={`check-${i}`} style={s.findingRow}>
-                    <CircleCheckBig size={16} color={colors.resting} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.findingLabel}>{translateGateName(check.gate)}: {check.type.replace(/_/g, " ")}</Text>
-                      {check.indicator ? <Text style={s.findingDetail}>{check.indicator}</Text> : null}
-                    </View>
-                  </View>
-                ))}
-              </View>
-            ) : null}
-
-            {/* What Apollo found — Fix 6: use plain-English capability names */}
-            {result.findings.length > 0 ? (
-              <View style={s.resultSection} testID="vision-findings">
-                <Text style={s.sectionTitle}>What Apollo found</Text>
-                {result.findings.map((finding, i) => {
-                  const isThreat = finding.verdict === "malicious" || finding.verdict === "suspicious";
-                  return (
-                    <View key={`finding-${i}`} style={s.findingRow}>
-                      {isThreat ? <TriangleAlert size={16} color={colors.barking} /> : <Info size={16} color={colors.muted} />}
-                      <View style={{ flex: 1 }}>
-                        <Text style={[s.findingLabel, isThreat ? { color: colors.barking } : undefined]}>
-                          {translateGateName(finding.gate)}: {finding.type.replace(/_/g, " ")}
-                        </Text>
-                        {finding.verdict ? <Text style={s.findingDetail}>Verdict: {finding.verdict}</Text> : null}
-                        {finding.detail ? <Text style={s.findingDetail}>{finding.detail}</Text> : null}
-                        {finding.indicator ? <Text style={s.findingDetail}>{finding.indicator}</Text> : null}
-                      </View>
-                    </View>
-                  );
-                })}
-              </View>
-            ) : null}
-
-            {/* Suspicious indicators from visual analysis */}
-            {result.suspicious_indicators.length > 0 ? (
-              <View style={s.resultSection} testID="vision-suspicious">
-                <Text style={s.sectionTitle}>Suspicious indicators</Text>
-                <Text style={[s.sectionBody, { fontStyle: "italic" }]}>
-                  These are visual observations from AI analysis, not verified security evidence.
-                </Text>
-                {result.suspicious_indicators.map((indicator, i) => (
-                  <View key={`susp-${i}`} style={s.findingRow}>
-                    <TriangleAlert size={14} color={colors.growlingText} />
-                    <Text style={[s.findingDetail, { flex: 1 }]}>{indicator}</Text>
-                  </View>
-                ))}
-              </View>
-            ) : null}
-
-            {/* Magnum DI investigation — auto-navigating to coordinator case */}
             {result.investigation_case_id ? (
-              <View style={s.resultSection} testID="vision-investigation">
-                <Text style={s.sectionTitle}>Extended investigation started</Text>
-                <Text style={s.sectionBody}>
-                  Apollo has started a Magnum DI investigation using public sources and security databases. Opening Higgins now...
+              /* Case created — navigating to Higgins. Show brief transition. */
+              <Card style={s.progressCard} testID="vision-transitioning">
+                <ActivityIndicator size="large" color={colors.brand} />
+                <Text style={s.progressText}>Opening investigation</Text>
+                <Text style={s.progressBody}>
+                  Magnum DI has started a genuine investigation. Opening Higgins now...
                 </Text>
-                <Button
-                  testID="vision-view-investigation"
-                  label="Open in Higgins"
-                  variant="primary"
-                  onPress={() => router.push({ pathname: "/(tabs)/ask", params: { resumeCaseId: result.investigation_case_id! } })}
-                />
-              </View>
-            ) : null}
-
-            {/* What Apollo couldn't verify */}
-            {result.limitations.length > 0 ? (
-              <View style={s.resultSection} testID="vision-limitations">
-                <Text style={s.sectionTitle}>What Apollo couldn&apos;t verify</Text>
-                {result.limitations.map((limitation, i) => (
-                  <View key={`limit-${i}`} style={s.limitRow}>
-                    <Info size={14} color={colors.muted} />
-                    <Text style={s.limitText}>{limitation}</Text>
+              </Card>
+            ) : (
+              /* No case created — show honest summary with limitations */
+              <>
+                <Card style={[s.higginsCard, { borderColor: severityBorder }]} testID="vision-higgins">
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                    <Info size={22} color={colors.muted} />
+                    <Text style={[s.higginsHeadline, { color: severityColor, flex: 1 }]} testID="vision-higgins-headline">
+                      {result.higgins?.headline || "Investigation incomplete"}
+                    </Text>
                   </View>
-                ))}
-              </View>
-            ) : null}
+                  <Text style={s.higginsExplanation} testID="vision-higgins-explanation">
+                    {result.higgins?.explanation || "Apollo processed this image but could not create a full investigation case."}
+                  </Text>
+                  {result.higgins?.action ? (
+                    <Text style={s.higginsAction} testID="vision-higgins-action">{result.higgins.action}</Text>
+                  ) : null}
+                  <Pill tone="neutral" label="No persistent case created" />
+                  <Text style={s.sectionBody}>
+                    A persistent investigation case could not be created. The analysis above is based on a quick check only and is not a verified Magnum DI investigation.
+                  </Text>
+                </Card>
 
-            {/* Actions */}
-            <View style={{ gap: spacing.sm }}>
-              <Button testID="vision-check-another" label="Check another image" variant="secondary" onPress={reset} />
-            </View>
+                {result.limitations.length > 0 ? (
+                  <View style={s.resultSection} testID="vision-limitations">
+                    <Text style={s.sectionTitle}>What Apollo couldn&apos;t verify</Text>
+                    {result.limitations.map((limitation, i) => (
+                      <View key={`limit-${i}`} style={s.limitRow}>
+                        <Info size={14} color={colors.muted} />
+                        <Text style={s.limitText}>{limitation}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+
+                {/* Actions */}
+                <View style={{ gap: spacing.sm }}>
+                  <Button testID="vision-check-another" label="Check another image" variant="secondary" onPress={reset} />
+                </View>
+              </>
+            )}
           </>
         ) : null}
 

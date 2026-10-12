@@ -203,13 +203,10 @@ export default function CheckMessage() {
       <>
         <CheckResultScreen
           result={model}
-          onAskHiggins={() => router.push({
-            pathname: "/(tabs)/ask",
-            params: {
-              context: result.event ? JSON.stringify(contextFromEvent(result.event, gateForCategory(result.event.category))) : "",
-              prompt: askPrompt,
-            },
-          })}
+          investigationContext={result.event ? contextFromEvent(result.event, gateForCategory(result.event.category)) : undefined}
+          investigationQuestion={askPrompt}
+          submissionId={result.event?.event_id ?? `msg-${Date.now().toString(36)}`}
+          eventId={result.event?.event_id ?? null}
           actions={msgActions}
         />
         {result.event ? (

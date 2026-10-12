@@ -206,13 +206,10 @@ export default function CheckApp() {
       <>
         <CheckResultScreen
           result={model}
-          onAskHiggins={() => router.push({
-            pathname: "/(tabs)/ask",
-            params: {
-              context: result.event ? JSON.stringify(contextFromEvent(result.event, gateForCategory(result.event.category))) : "",
-              prompt: askPrompt,
-            },
-          })}
+          investigationContext={result.event ? contextFromEvent(result.event, gateForCategory(result.event.category)) : undefined}
+          investigationQuestion={askPrompt}
+          submissionId={result.event?.event_id ?? `app-${Date.now().toString(36)}`}
+          eventId={result.event?.event_id ?? null}
           actions={appActions}
         />
         {a.stayWithMe && result.event ? <RecoveryFlow event={result.event} kinds={["remote", "banking_during_access", "password", "code", "accessibility"]} testID="app-recovery" /> : result.event ? <RecoveryFlow event={result.event} kinds={["remote", "accessibility", "profile", "password", "banking_during_access", "money"]} testID="app-recovery" /> : null}

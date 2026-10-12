@@ -22,6 +22,7 @@ import { InfoButton } from "@/src/components/InfoButton";
 import { Body, Button, Card, Pill, SectionTitle } from "@/src/components/ui";
 import { STATE_LABEL, STATE_MEANING } from "@/src/domain/types";
 import { buildCallRiskCheckResult } from "@/src/domain/callRiskCheckResultAdapter";
+import { issueContext, type HigginsIssueContext } from "@/src/domain/higginsHandoff";
 import { CallSdk, type CallProtectionCapabilities } from "@/src/security/callSdk";
 import { type CallRiskResult, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
@@ -140,10 +141,28 @@ export default function CallGuard() {
     });
     callActions.push({ testID: "callguard-again", variant: "ghost", label: "Check another number", onPress: () => { setResult(null); setNumber(""); setCountry(""); setSaved(false); } });
 
+    const callInvContext: HigginsIssueContext = issueContext({
+      gate: "call",
+      issue_summary: `Phone number check: ${result.number}. ${model.headline}`,
+      assessment_state: result.decision === "avoid" ? "barking" : result.decision === "review" ? "growling" : "resting",
+      findings: [
+        { summary: result.higgins?.found ?? model.headline, provenance: "observed", status: result.decision === "avoid" ? "warning" : "uncertain" },
+        ...(result.fraud_score != null ? [{ summary: `Fraud score: ${result.fraud_score}`, provenance: "observed" as const, status: "uncertain" as const }] : []),
+        ...(result.line_type ? [{ summary: `Line type: ${result.line_type}`, provenance: "observed" as const, status: "confirmed" as const }] : []),
+      ],
+      uncertainty: result.decision === "allow" ? ["No strong risk signal does not confirm the caller is safe. Reputation is supporting evidence only."] : [],
+      confirmed_protective_actions: [],
+      user_reported_actions: [],
+      original_evidence: [{ kind: "text" as const, value: `Phone number: ${result.number}`, label: "checked number" }],
+    });
+
     return (
       <CheckResultScreen
         result={model}
-        onAskHiggins={() => router.push({ pathname: "/(tabs)/ask", params: { prompt: askPrompt } })}
+        investigationContext={callInvContext}
+        investigationQuestion={askPrompt}
+        submissionId={`callguard-${result.number}-${Date.now().toString(36)}`}
+        eventId={null}
         actions={callActions}
       />
     );

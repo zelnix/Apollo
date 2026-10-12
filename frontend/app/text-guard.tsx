@@ -128,7 +128,10 @@ export default function TextGuard() {
       <>
         <CheckResultScreen
           result={model}
-          onAskHiggins={() => router.push({ pathname: "/(tabs)/ask", params: { context: result.event ? JSON.stringify(contextFromEvent(result.event, gateForCategory(result.event.category))) : "", prompt: askPrompt } })}
+          investigationContext={result.event ? contextFromEvent(result.event, gateForCategory(result.event.category)) : undefined}
+          investigationQuestion={askPrompt}
+          submissionId={result.event?.event_id ?? `tg-${Date.now().toString(36)}`}
+          eventId={result.event?.event_id ?? null}
           actions={textActions}
         />
         {result.event ? <RecoveryFlow event={result.event} kinds={["clicked", "password", "code", "money", "info", "app"]} linkToCheck={a.signals.urls[0] ?? null} testID="textguard-recovery" /> : null}
