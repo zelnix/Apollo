@@ -1,5 +1,5 @@
 import React from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 export type TabKey = "overview" | "investigation" | "evidence" | "history";
@@ -44,7 +44,11 @@ export function InvestigationTabBar({
   const { colors } = useTheme();
 
   return (
-    <View style={s.bar}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={s.bar}
+    >
       {TAB_META.map((t) => {
         const active = t.key === activeTab;
         return (
@@ -75,6 +79,6 @@ export function InvestigationTabBar({
           </Pressable>
         );
       })}
-    </View>
+    </ScrollView>
   );
 }
