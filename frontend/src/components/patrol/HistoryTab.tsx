@@ -183,7 +183,7 @@ function buildTimeline(event: PatrolEvent, revisions: { occurredAt: string; effe
   if (event.patrol_record?.recordId) {
     const investigationStart = revisions.length > 0 ? revisions[0].occurredAt : event.occurred_at;
     entries.push({
-      title: "Investigation started",
+      title: "Probe started",
       body: "Magnum DI began reviewing the finding and related context.",
       at: investigationStart,
       icon: "search",
@@ -194,8 +194,8 @@ function buildTimeline(event: PatrolEvent, revisions: { occurredAt: string; effe
   if (event.patrol_record?.summary) {
     const completedAt = event.patrol_record.updatedAt ?? event.patrol_record.occurredAt ?? event.occurred_at;
     entries.push({
-      title: "Investigation completed",
-      body: "The investigation report was added to this record.",
+      title: "Probe completed",
+      body: "The probe report was added to this record.",
       at: completedAt,
       icon: "document",
     });

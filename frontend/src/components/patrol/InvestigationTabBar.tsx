@@ -6,7 +6,7 @@ export type TabKey = "overview" | "investigation" | "evidence" | "history";
 
 const TAB_META: { key: TabKey; label: string }[] = [
   { key: "overview", label: "Overview" },
-  { key: "investigation", label: "Investigation" },
+  { key: "investigation", label: "Probe" },
   { key: "evidence", label: "Evidence" },
   { key: "history", label: "History" },
 ];

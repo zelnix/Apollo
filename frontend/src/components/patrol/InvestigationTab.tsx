@@ -173,7 +173,7 @@ export function InvestigationTab({
             <Search size={22} color="#FFFFFF" />
           </View>
           <View>
-            <Text style={s.tabTitle}>Magnum DI investigation</Text>
+            <Text style={s.tabTitle}>Magnum DI probe</Text>
             <Text style={s.tabSubtitle}>Detailed analysis by Magnum DI</Text>
           </View>
         </View>
@@ -193,7 +193,7 @@ export function InvestigationTab({
             <CircleAlert size={16} color="#FFFFFF" />
           </View>
           <View style={s.alertContent}>
-            <Text style={s.sub}>Investigation result</Text>
+            <Text style={s.sub}>Probe result</Text>
             <Text style={[s.alertTitle, { color: colors.barkingText }]}>
               {headline}
             </Text>

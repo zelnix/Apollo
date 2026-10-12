@@ -1748,9 +1748,9 @@ GTK/pkg-config dependency (container limitation), not a code error.
 
 **Tabs:**
 1. **Overview** — Higgins' conversational briefing + current outcome card + status pills + "what to do" + action buttons + connected incident link
-2. **Investigation** — Magnum DI detailed analysis: risk level assessment, what happened, scenario context, caller info (call events), findings list, conclusion
+2. **Probe** — Magnum DI detailed analysis: risk level assessment, what happened, scenario context, caller info (call events), findings list, conclusion
 3. **Evidence** — Factual foundation: evidence provenance badge, recorded indicator, enforcement evidence, supporting references, domain details, timestamps
-4. **History** — Chronological, deduplicated timeline of significant events (detection, investigation, user action, resolution) + metadata footer
+4. **History** — Chronological, deduplicated timeline of significant events (detection, probe, user action, resolution) + metadata footer
 
 **Constraints:**
 - No new backend endpoints, DB models, or investigation engines

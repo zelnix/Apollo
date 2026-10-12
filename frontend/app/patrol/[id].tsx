@@ -61,22 +61,23 @@ const useStyles = makeStyles((c) => ({
     gap: spacing.sm,
     paddingBottom: spacing.xs,
   },
+  idDateRow: {
+    paddingHorizontal: spacing.md,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingBottom: spacing.xs,
+  },
   idText: {
     fontFamily: fonts.text,
     fontSize: 12,
     color: c.onSurfaceSecondary,
-    marginLeft: "auto",
-  },
-  // Date row
-  dateRow: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
   },
   dateText: {
     fontFamily: fonts.text,
-    fontSize: 13,
+    fontSize: 12,
     color: c.onSurfaceSecondary,
-    lineHeight: 18,
+    flex: 1,
   },
   // Content
   content: { paddingHorizontal: spacing.md, gap: spacing.sm },
@@ -197,19 +198,19 @@ export default function EventDetail() {
             ) : (
               <Pill tone="neutral" label={categoryLabel(event.category)} testID="event-category-badge" />
             )}
-            {refId ? (
-              <Text style={s.idText} testID="event-ref-id">{refId}</Text>
-            ) : null}
           </View>
 
-          {/* Date row */}
-          <View style={s.dateRow}>
+          {/* ID + Date row */}
+          <View style={s.idDateRow}>
             <Text style={s.dateText} testID="event-dates">
               Occurred {formatDate(event.occurred_at)}
               {event.resolved_at
                 ? `  \u2022  Resolved ${formatDate(event.resolved_at)}`
                 : ""}
             </Text>
+            {refId ? (
+              <Text style={s.idText} testID="event-ref-id">{refId}</Text>
+            ) : null}
           </View>
 
           {/* Tab bar */}
