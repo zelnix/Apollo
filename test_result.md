@@ -3155,3 +3155,31 @@ metadata:
   version: "1.0"
   test_sequence: 80
   run_ui: false
+
+
+## Four-Tab Threat Investigation UI Redesign
+
+frontend:
+  - task: "Refactor patrol/[id].tsx into 4-tab interface: Overview, Investigation, Evidence, History"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/patrol/[id].tsx, frontend/src/components/patrol/InvestigationTabBar.tsx, frontend/src/components/patrol/OverviewTab.tsx, frontend/src/components/patrol/InvestigationTab.tsx, frontend/src/components/patrol/EvidenceTab.tsx, frontend/src/components/patrol/HistoryTab.tsx"
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - agent: "main"
+        working: "NA"
+        comment: "Refactored monolithic patrol/[id].tsx into a 4-tab interface. Created InvestigationTabBar (dark navy active, light inactive), OverviewTab (Higgins briefing + outcome card + what to do + actions), InvestigationTab (risk assessment + what happened + scenario context + caller info + findings + conclusion), EvidenceTab (provenance + indicator + enforcement evidence + references + domain + timestamps), HistoryTab (deduplicated timeline + metadata). All files pass ESLint. Metro bundled successfully with no errors. The patrol screen renders correctly but no patrol events exist in the web preview to visually validate the tab content."
+
+test_plan:
+  current_focus:
+    - "Four-Tab Threat Investigation UI: verify tabs render correctly with event data"
+    - "Tab switching: all 4 tabs must show correct content sections"
+    - "History tab deduplication"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "FOUR-TAB UI REDESIGN COMPLETE. Please test the patrol/[id].tsx refactor. WHAT CHANGED: The old monolithic ScrollView in patrol/[id].tsx has been replaced with a local tab system (Overview, Investigation, Evidence, History). The tab state is managed via useState inside the screen component. Files created: InvestigationTabBar.tsx (tab header with dark navy active/light inactive styling), OverviewTab.tsx (Higgins briefing, status pills, what to do, actions, connected incident), InvestigationTab.tsx (risk assessment, what happened, scenario, caller info, findings, conclusion), EvidenceTab.tsx (evidence provenance, indicator, enforcement records, references, timestamps), HistoryTab.tsx (deduplicated chronological timeline, metadata). HOW TO TEST: Complete onboarding (Continue → I understand → Not now → Go to Apollo → Continue to Apollo). Then trigger a link check (Check tab → Check a link → enter a suspicious URL like commbank-secure-verify.xyz → Check with Apollo). Navigate to Threats tab and tap the event. Verify: (1) Tab bar shows 4 tabs: Overview, Investigation, Evidence, History. (2) Active tab has dark navy background with white text. (3) Overview tab shows Higgins briefing card, status pills, what-to-do card, action buttons. (4) Investigation tab shows risk assessment card, what happened, findings. (5) Evidence tab shows evidence source badge, indicator, timestamps. (6) History tab shows chronological timeline with dots and lines. NOTE: The privacy egress error when running a link check (src/domain/privacy.ts:118) is a pre-existing issue. No accounts needed — device auto-registers during onboarding. TestIDs for tabs: tab-overview, tab-investigation, tab-evidence, tab-history."

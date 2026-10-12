@@ -4,30 +4,47 @@ import React, { useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { ClassBadge, classBorderColor } from "@/src/components/ClassBadge";
-import { EventActions } from "@/src/components/EventActions";
-import { eventHistory, looksLikeInternalCode, sourceLabel } from "@/src/domain/messageVoice";
+import { looksLikeInternalCode, sourceLabel } from "@/src/domain/messageVoice";
 import { hasLocalEvidence } from "@/src/domain/higginsNarration";
-import { Body, Button, Card, Pill, toneColor } from "@/src/components/ui";
-import { STATE_LABEL, STATE_MEANING } from "@/src/domain/types";
-import type { HigginsBriefing, PatrolRecord, RecordClass } from "@/src/domain/types";
+import { Body } from "@/src/components/ui";
+import type { PatrolRecord } from "@/src/domain/types";
 import { apiGet } from "@/src/api/client";
 import { projectPatrolOutcomes } from "@/src/domain/patrolOutcomes";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { useApollo } from "@/src/store/ApolloContext";
-import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
+import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
+
+import { InvestigationTabBar, type TabKey } from "@/src/components/patrol/InvestigationTabBar";
+import { OverviewTab } from "@/src/components/patrol/OverviewTab";
+import { InvestigationTab } from "@/src/components/patrol/InvestigationTab";
+import { EvidenceTab } from "@/src/components/patrol/EvidenceTab";
+import { HistoryTab } from "@/src/components/patrol/HistoryTab";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
-  top: { paddingHorizontal: spacing.xl, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: spacing.md },
-  title: { fontFamily: fonts.displayBold, fontSize: 22, color: c.onSurface, flex: 1, marginRight: spacing.md },
-  close: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: c.surfaceTertiary },
+  top: {
+    paddingHorizontal: spacing.xl,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingBottom: spacing.md,
+  },
+  title: {
+    fontFamily: fonts.displayBold,
+    fontSize: 22,
+    color: c.onSurface,
+    flex: 1,
+    marginRight: spacing.md,
+  },
+  close: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 999,
+    backgroundColor: c.surfaceTertiary,
+  },
   content: { paddingHorizontal: spacing.xl, gap: spacing.lg },
-  sub: { fontFamily: fonts.display, fontSize: 13, color: c.onSurfaceSecondary, letterSpacing: 1, textTransform: "uppercase" },
-  big: { fontFamily: fonts.textMedium, fontSize: 16, lineHeight: 24, color: c.onSurface },
-  bullet: { flexDirection: "row", gap: spacing.sm, alignItems: "flex-start" },
-  dot: { width: 6, height: 6, borderRadius: 3, marginTop: 8 },
-  meta: { fontFamily: fonts.text, fontSize: 13, color: c.muted },
 }));
 
 export default function EventDetail() {
@@ -38,119 +55,110 @@ export default function EventDetail() {
   const { id, focus } = useLocalSearchParams<{ id: string; focus?: string }>();
   const { events, isMock, ready, setupDone } = useApollo();
   const event = events.find((e) => e.event_id === id);
+
+  const [activeTab, setActiveTab] = useState<TabKey>("overview");
   const [timeline, setTimeline] = useState<PatrolRecord[]>([]);
-  useEffect(() => { const recordId = event?.patrol_record?.recordId; if (!recordId) { setTimeline([]); return; } void apiGet<{ items: PatrolRecord[] }>(`/patrol/records/${encodeURIComponent(recordId)}/timeline`).then((value) => setTimeline(value.items)).catch(() => setTimeline([])); }, [event?.patrol_record?.recordId]);
+
+  useEffect(() => {
+    const recordId = event?.patrol_record?.recordId;
+    if (!recordId) {
+      setTimeline([]);
+      return;
+    }
+    void apiGet<{ items: PatrolRecord[] }>(
+      `/patrol/records/${encodeURIComponent(recordId)}/timeline`
+    )
+      .then((value) => setTimeline(value.items))
+      .catch(() => setTimeline([]));
+  }, [event?.patrol_record?.recordId]);
+
   const outcome = event ? projectPatrolOutcomes([event])[0] : null;
-  // Show actual event data. Evidence provenance is checked structurally (not by text matching).
-  // If data is from the server or incomplete, say so honestly rather than inventing a narrative.
   const isIncomplete = event && !hasLocalEvidence(event);
-  const shownTitle = !isIncomplete && outcome?.title && !looksLikeInternalCode(outcome.title) ? outcome.title : (!isIncomplete && event?.headline && !looksLikeInternalCode(event.headline) ? event.headline : "Patrol outcome");
+  const shownTitle =
+    !isIncomplete &&
+    outcome?.title &&
+    !looksLikeInternalCode(outcome.title)
+      ? outcome.title
+      : !isIncomplete &&
+        event?.headline &&
+        !looksLikeInternalCode(event.headline)
+      ? event.headline
+      : "Patrol outcome";
   const shownWhatHappened = isIncomplete
     ? "The full evidence for this check is only available on the device where it happened."
     : event?.what_happened;
-  const shownWhatToDo = !isIncomplete && event?.what_to_do && !looksLikeInternalCode(event.what_to_do)
-    ? event.what_to_do
-    : "Open this on the device where it happened for the recommended action.";
+  const shownWhatToDo =
+    !isIncomplete &&
+    event?.what_to_do &&
+    !looksLikeInternalCode(event.what_to_do)
+      ? event.what_to_do
+      : "Open this on the device where it happened for the recommended action.";
+
   if (ready && !setupDone) return <Redirect href="/onboarding" />;
 
   return (
     <View style={s.root}>
+      {/* Header */}
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title} numberOfLines={2} testID="event-title">{shownTitle}</Text>
-        <Pressable testID="event-close" accessibilityRole="button" accessibilityLabel="Close" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        <Text style={s.title} numberOfLines={2} testID="event-title">
+          {shownTitle}
+        </Text>
+        <Pressable
+          testID="event-close"
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+          onPress={() => goBackOrHome(router)}
+          style={s.close}
+        >
+          <X size={20} color={colors.onSurface} />
+        </Pressable>
       </View>
+
       {!event ? (
-        <View style={s.content}><Body>This event is no longer available.</Body></View>
+        <View style={s.content}>
+          <Body>This event is no longer available.</Body>
+        </View>
       ) : (
-        <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="event-scroll">
-          {focus ? <Card testID="event-from-alert" style={{ gap: 4, borderColor: toneColor(colors, event.state) }}><Text style={s.sub}>Opened from your Apollo alert</Text><Body>Here&apos;s exactly what Apollo flagged. The details below are this specific finding.</Body></Card> : null}
-          <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap", alignItems: "center" }}>
-            <Pill tone={outcome?.state ?? event.state} label={outcome?.result ?? STATE_LABEL[event.state]} testID="event-state-pill" />
-            {event.verified_block ? <Pill tone={event.resolved_at ? "resting" : "biting"} label={event.resolved_at ? "Threat contained" : "Block verified"} testID="event-verified-pill" /> : null}
-            {event.patrol_record?.recordClass ? <ClassBadge recordClass={event.patrol_record.recordClass} testID="event-class-badge" /> : null}
-            {isMock ? <Pill tone="unknown" label={event.adapter_label} /> : null}
-          </View>
-          <Body>{outcome?.resultBasis ?? STATE_MEANING[event.state]}</Body>
+        <>
+          {/* Tab bar */}
+          <InvestigationTabBar
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+          />
 
-          {/* ── Higgins Briefing (Retrofit) ── */}
-          {event.patrol_record?.higginsBriefing ? (() => {
-            const b: HigginsBriefing = event.patrol_record.higginsBriefing;
-            const borderColor = classBorderColor(colors, b.record_class) ?? toneColor(colors, event.state);
-            return (
-              <Card style={{ gap: spacing.md, borderLeftWidth: 3, borderLeftColor: borderColor }} testID="event-higgins-briefing">
-                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-                  <Text style={[s.sub, { fontSize: 14, letterSpacing: 0 }]}>Higgins&apos; briefing</Text>
-                  {event.patrol_record?.reassessment ? (
-                    <Text style={[s.meta, { fontSize: 10 }]} testID="event-reassessment-date">
-                      Updated {new Date(event.patrol_record.reassessment.reassessed_at).toLocaleDateString([], { month: "short", year: "numeric" })}
-                    </Text>
-                  ) : null}
-                </View>
-                <Text style={[s.big, { lineHeight: 22 }]}>{b.investigated}</Text>
-                <Text style={[s.big, { fontFamily: fonts.text, lineHeight: 22 }]}>{b.established}</Text>
-                {b.evidence_points.length > 0 ? (
-                  <View style={{ gap: spacing.xs }}>
-                    {b.evidence_points.map((ep, i) => (
-                      <View key={i} style={s.bullet}>
-                        <View style={[s.dot, { backgroundColor: borderColor, marginTop: 6 }]} />
-                        <Body style={{ flex: 1 }}>{ep}</Body>
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
-                <Text style={{ fontFamily: fonts.textSemibold, fontSize: 14, lineHeight: 20, color: colors.onSurface }}>{b.meaning}</Text>
-                {b.action ? (
-                  <View style={{ backgroundColor: colors.surfaceTertiary, borderRadius: radius.sm, padding: spacing.md }}>
-                    <Text style={{ fontFamily: fonts.textSemibold, fontSize: 14, color: colors.onSurface }} testID="event-briefing-action">{b.action}</Text>
-                  </View>
-                ) : null}
-              </Card>
-            );
-          })() : null}
-
-          <Card style={{ gap: spacing.sm }}>
-            <Text style={s.sub}>What happened</Text>
-            <Text style={s.big} testID="event-what-happened">{shownWhatHappened}</Text>
-            {event.local_indicator ? <Text style={s.meta} selectable testID="event-indicator">{event.local_indicator}</Text> : event.indicator_host ? <Text style={s.meta}>{event.indicator_host}</Text> : null}
-          </Card>
-
-          {/* A3: Caller identity and number information for call events */}
-          {event.category === "call" && (event as unknown as Record<string, unknown>).caller_meta ? (() => {
-            const meta = (event as unknown as Record<string, unknown>).caller_meta as { country?: string | null; carrier?: string | null; line_type?: string | null; voip?: boolean | null; fraud_score?: number | null; source?: string; identity_verified?: boolean };
-            return (
-              <Card style={{ gap: spacing.sm }} testID="call-caller-info">
-                <Text style={s.sub}>Number information</Text>
-                {meta.country ? <Text style={s.big} testID="call-info-country">Country: {meta.country}</Text> : null}
-                {meta.carrier ? <Text style={s.big} testID="call-info-carrier">Carrier: {meta.carrier}</Text> : null}
-                {meta.line_type ? <Text style={s.big} testID="call-info-linetype">Line type: {meta.line_type}{meta.voip ? " (VOIP)" : ""}</Text> : null}
-                {meta.fraud_score != null ? <Text style={s.big} testID="call-info-score">Fraud score: {meta.fraud_score}/100</Text> : null}
-                <Text style={s.meta} testID="call-info-identity">{meta.identity_verified ? "Caller identity verified" : "Caller identity unverified — a displayed name does not authenticate the caller."}</Text>
-                {meta.country ? <Text style={s.meta} testID="call-info-location-note">The number's country does not confirm the caller's actual location.</Text> : null}
-                {meta.source === "not_configured" ? <Text style={s.meta}>Number reputation service not configured.</Text> : meta.source ? <Text style={s.meta}>Source: {meta.source}</Text> : null}
-              </Card>
-            );
-          })() : null}
-
-          <Card style={{ gap: spacing.sm }}>
-            <Text style={s.sub}>Why action was taken</Text>
-            {(outcome?.whyThisRating ?? event.why).length === 0 ? <Body>No specific warning signs were recorded.</Body> : (outcome?.whyThisRating ?? event.why).map((w, i) => (
-              <View key={i} style={s.bullet}><View style={[s.dot, { backgroundColor: toneColor(colors, event.state) }]} /><Body style={{ flex: 1 }}>{w}</Body></View>
-            ))}
-          </Card>
-
-          <Card style={{ gap: spacing.sm, borderColor: toneColor(colors, event.state === "biting" && event.resolved_at ? "resting" : event.state) }}>
-            <Text style={s.sub}>What to do</Text>
-            <Text style={s.big} testID="event-what-to-do">{shownWhatToDo}</Text>
-          </Card>
-
-          <Card style={{ gap: spacing.sm }} testID="event-history"><Text style={s.sub}>Status history</Text>{eventHistory(event, timeline.map((r) => ({ occurredAt: r.occurredAt, effectiveState: r.effectiveState, summary: r.summary, revision: r.revision }))).map((entry, i) => (
-            <View key={i} style={s.bullet} testID={`event-history-${i}`}><View style={[s.dot, { backgroundColor: toneColor(colors, event.state) }]} /><View style={{ flex: 1 }}><Body>{entry.text}</Body><Text style={s.meta}>{new Date(entry.at).toLocaleString()}</Text></View></View>
-          ))}</Card>
-          <EventActions event={event} />
-          {event.scent_id && events.filter((e) => e.scent_id === event.scent_id).length > 1 ? <Card style={{ gap: spacing.sm }} testID="event-incident-card"><Body>This event is part of a connected incident ({events.filter((e) => e.scent_id === event.scent_id).length} events).</Body><Button testID="event-incident-open" variant="secondary" label="View incident timeline" onPress={() => router.push({ pathname: "/patrol/scent/[id]", params: { id: event.scent_id! } })} /></Card> : null}
-
-          <Text style={s.meta}>{sourceLabel(outcome?.source ?? "")} · Occurred {new Date(event.occurred_at).toLocaleString()}{event.resolved_at ? ` · Resolved ${new Date(event.resolved_at).toLocaleString()}` : ""}</Text>
-        </ScrollView>
+          {/* Tab content */}
+          <ScrollView
+            contentContainerStyle={[
+              s.content,
+              { paddingTop: spacing.lg, paddingBottom: insets.bottom + spacing.xl },
+            ]}
+            testID="event-scroll"
+          >
+            {activeTab === "overview" ? (
+              <OverviewTab
+                event={event}
+                outcome={outcome ?? null}
+                isMock={isMock}
+                shownWhatToDo={shownWhatToDo}
+                focusFromAlert={!!focus}
+              />
+            ) : activeTab === "investigation" ? (
+              <InvestigationTab
+                event={event}
+                outcome={outcome ?? null}
+                shownWhatHappened={shownWhatHappened ?? ""}
+              />
+            ) : activeTab === "evidence" ? (
+              <EvidenceTab event={event} />
+            ) : (
+              <HistoryTab
+                event={event}
+                timeline={timeline}
+                outcomeSource={outcome?.source ?? ""}
+              />
+            )}
+          </ScrollView>
+        </>
       )}
     </View>
   );

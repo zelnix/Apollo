@@ -1732,3 +1732,34 @@ GTK/pkg-config dependency (container limitation), not a code error.
 4. Live Feed Check (verify/adjust overseas source feed URLs).
 5. Social Media & Messaging Scam Protection (reuse Internet Gate + add "Scam Check" in Check tab + Share to Apollo;
    NO new Gate/infra).
+
+
+## PROJECT RULES — Agent Constraints
+
+### Testing Agent
+- **DO NOT invoke the testing agent without the user's explicit approval.** Always ask before calling `deep_testing_backend_v2` or `expo_frontend_testing_agent`.
+
+## Four-Tab Threat Investigation / Patrol Outcome Screens (2026-10)
+
+**Requirement:** Completely overhaul the patrol event detail screen (`patrol/[id].tsx`) from a monolithic ScrollView into a structured 4-tab interface.
+
+**Tabs:**
+1. **Overview** — Higgins' conversational briefing + current outcome card + status pills + "what to do" + action buttons + connected incident link
+2. **Investigation** — Magnum DI detailed analysis: risk level assessment, what happened, scenario context, caller info (call events), findings list, conclusion
+3. **Evidence** — Factual foundation: evidence provenance badge, recorded indicator, enforcement evidence, supporting references, domain details, timestamps
+4. **History** — Chronological, deduplicated timeline of significant events (detection, investigation, user action, resolution) + metadata footer
+
+**Constraints:**
+- No new backend endpoints, DB models, or investigation engines
+- Tabs managed as local state inside the screen (not Expo Router tabs)
+- All tabs share same data fetched once — no redundant reloads
+- History tab must deduplicate events
+- Visual: dark navy background (#0B1220) for active tab, light grey (#EDF2F7) for inactive, white rounded cards
+
+**Files created:**
+- `src/components/patrol/InvestigationTabBar.tsx`
+- `src/components/patrol/OverviewTab.tsx`
+- `src/components/patrol/InvestigationTab.tsx`
+- `src/components/patrol/EvidenceTab.tsx`
+- `src/components/patrol/HistoryTab.tsx`
+- Refactored `app/patrol/[id].tsx` as the container
