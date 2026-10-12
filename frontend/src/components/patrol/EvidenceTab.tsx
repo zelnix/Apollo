@@ -1,11 +1,16 @@
 import React from "react";
-import { Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
 import CircleAlert from "lucide-react-native/icons/circle-alert";
 import FileText from "lucide-react-native/icons/file-text";
 import Info from "lucide-react-native/icons/info";
+import MessageSquare from "lucide-react-native/icons/message-square";
+import { useRouter } from "expo-router";
 
 import { Body, Card } from "@/src/components/ui";
 import { hasLocalEvidence } from "@/src/domain/higginsNarration";
+import { contextFromEvent, gateForCategory, openHigginsHandoff } from "@/src/domain/higginsHandoff";
+import { caseForEvent } from "@/src/investigation/caseIndex";
 import type { PatrolEvent, PatrolRecord } from "@/src/domain/types";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
@@ -158,6 +163,26 @@ const useStyles = makeStyles((c) => ({
     fontSize: 12,
     color: c.onSurfaceSecondary,
   },
+  // Ask Higgins button
+  askRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    padding: spacing.lg,
+  },
+  askIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  askText: {
+    fontFamily: fonts.textSemibold,
+    fontSize: 14,
+    color: c.onSurface,
+    flex: 1,
+  },
 }));
 
 /** Maps evidence provenance + category to an accurate source label. */
@@ -236,6 +261,7 @@ function EvidenceRow({
 export function EvidenceTab({ event }: { event: PatrolEvent }) {
   const s = useStyles();
   const { colors } = useTheme();
+  const router = useRouter();
   const record: PatrolRecord | undefined = event.patrol_record ?? undefined;
   const briefing = record?.higginsBriefing;
   const scenario = record?.scenarioContext;
@@ -414,6 +440,32 @@ export function EvidenceTab({ event }: { event: PatrolEvent }) {
           </Text>
         </View>
       </View>
+
+      {/* Ask Higgins to explain */}
+      <Pressable
+        testID="evidence-ask-higgins"
+        accessibilityRole="button"
+        accessibilityLabel="Ask Higgins to explain"
+        onPress={() => {
+          void caseForEvent(event.event_id, event.patrol_record?.investigationCaseId ?? null).then((caseId) =>
+            openHigginsHandoff(
+              router,
+              { ...contextFromEvent(event, gateForCategory(event.category)), ...(caseId ? { case_id: caseId } : {}) },
+              caseId ? "" : "Explain the evidence for this finding."
+            )
+          );
+        }}
+      >
+        <Card style={{ padding: 0 }}>
+          <View style={s.askRow}>
+            <View style={[s.askIcon, { backgroundColor: colors.surfaceTertiary }]}>
+              <MessageSquare size={18} color={colors.navyDeep} />
+            </View>
+            <Text style={s.askText}>Ask Higgins to explain</Text>
+            <ChevronRight size={20} color={colors.onSurfaceSecondary} />
+          </View>
+        </Card>
+      </Pressable>
     </View>
   );
 }
