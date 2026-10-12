@@ -61,6 +61,9 @@ const useStyles = makeStyles((c) => ({
     gap: spacing.sm,
     paddingBottom: spacing.xs,
   },
+  pillRect: {
+    borderRadius: 8,
+  },
   idDateRow: {
     paddingHorizontal: spacing.md,
     flexDirection: "row",
@@ -189,14 +192,16 @@ export default function EventDetail() {
               tone={outcome?.state ?? event.state}
               label={outcome?.result ?? (event.resolved_at ? "Resolved" : "Active")}
               testID="event-state-pill"
+              style={s.pillRect}
             />
             {event.patrol_record?.recordClass ? (
               <ClassBadge
                 recordClass={event.patrol_record.recordClass}
                 testID="event-class-badge"
+                style={s.pillRect}
               />
             ) : (
-              <Pill tone="neutral" label={categoryLabel(event.category)} testID="event-category-badge" />
+              <Pill tone="neutral" label={categoryLabel(event.category)} testID="event-category-badge" style={s.pillRect} />
             )}
           </View>
 

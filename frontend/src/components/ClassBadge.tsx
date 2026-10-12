@@ -11,7 +11,7 @@ import ShieldCheck from "lucide-react-native/icons/shield-check";
 import ShieldMinus from "lucide-react-native/icons/shield-minus";
 import Stethoscope from "lucide-react-native/icons/stethoscope";
 import React from "react";
-import { Text, View } from "react-native";
+import { Text, View, type StyleProp, type ViewStyle } from "react-native";
 
 import type { RecordClass } from "@/src/domain/types";
 import { fonts, makeStyles, spacing, useTheme, type ThemeColors } from "@/src/theme";
@@ -106,10 +106,11 @@ const useStyles = makeStyles(() => ({
  * Shows the record's classification with a color-coded icon and label.
  * Use `compact` prop on PatrolItem list view, full label on detail view.
  */
-export function ClassBadge({ recordClass, compact = false, testID }: {
+export function ClassBadge({ recordClass, compact = false, testID, style }: {
   recordClass: RecordClass;
   compact?: boolean;
   testID?: string;
+  style?: StyleProp<ViewStyle>;
 }) {
   const s = useStyles();
   const { colors } = useTheme();
@@ -122,7 +123,7 @@ export function ClassBadge({ recordClass, compact = false, testID }: {
   const ic = config.iconColor(colors);
 
   return (
-    <View testID={testID} accessibilityLabel={config.label} style={[s.badge, { backgroundColor: bg }]}>
+    <View testID={testID} accessibilityLabel={config.label} style={[s.badge, { backgroundColor: bg }, style]}>
       <Icon size={12} color={ic} />
       {!compact ? <Text style={[s.label, { color: fg }]}>{config.label}</Text> : null}
     </View>

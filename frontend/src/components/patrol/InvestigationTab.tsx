@@ -169,8 +169,8 @@ export function InvestigationTab({
       <Card style={{ gap: spacing.md }} testID="investigation-magnum-card">
         {/* Header */}
         <View style={s.tabHeader}>
-          <View style={[s.iconCircle, { backgroundColor: colors.navyDeep }]}>
-            <Search size={22} color="#FFFFFF" />
+          <View style={[s.iconCircle, { backgroundColor: "#DBEAFE" }]}>
+            <Search size={22} color="#1E3A5F" />
           </View>
           <View>
             <Text style={s.tabTitle}>Magnum DI probe</Text>

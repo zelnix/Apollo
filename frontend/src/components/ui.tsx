@@ -86,12 +86,12 @@ export function Card({ children, style, testID }: { children: React.ReactNode; s
   return <View testID={testID} style={[s.card, style]}>{children}</View>;
 }
 
-export function Pill({ label, tone = "neutral", testID }: { label: string; tone?: Tone; testID?: string }) {
+export function Pill({ label, tone = "neutral", testID, style }: { label: string; tone?: Tone; testID?: string; style?: StyleProp<ViewStyle> }) {
   const s = useStyles();
   const { colors } = useTheme();
   const color = toneColor(colors, tone);
   return (
-    <View testID={testID} style={[s.pill, { backgroundColor: toneTint(colors, tone) }]}>
+    <View testID={testID} style={[s.pill, { backgroundColor: toneTint(colors, tone) }, style]}>
       <View style={[s.dot, { backgroundColor: color }]} />
       <Text style={[s.pillText, { color: toneText(colors, tone) }]}>{label}</Text>
     </View>

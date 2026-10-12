@@ -264,8 +264,8 @@ export function HistoryTab({
       {/* History tab card with header */}
       <Card style={{ gap: spacing.md }} testID="history-header-card">
         <View style={s.tabHeader}>
-          <View style={[s.iconCircle, { backgroundColor: colors.navyDeep }]}>
-            <Clock size={22} color="#FFFFFF" />
+          <View style={[s.iconCircle, { backgroundColor: "#DBEAFE" }]}>
+            <Clock size={22} color="#1E3A5F" />
           </View>
           <View>
             <Text style={s.tabTitle}>History</Text>

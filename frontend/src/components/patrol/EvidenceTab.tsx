@@ -182,8 +182,8 @@ export function EvidenceTab({ event }: { event: PatrolEvent }) {
       {/* Evidence tab card with header */}
       <Card style={{ gap: spacing.md }} testID="evidence-header-card">
         <View style={s.tabHeader}>
-          <View style={[s.iconCircle, { backgroundColor: colors.navyDeep }]}>
-            <FileText size={22} color="#FFFFFF" />
+          <View style={[s.iconCircle, { backgroundColor: "#DBEAFE" }]}>
+            <FileText size={22} color="#1E3A5F" />
           </View>
           <View>
             <Text style={s.tabTitle}>Evidence</Text>
