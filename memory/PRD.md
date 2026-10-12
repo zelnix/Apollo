@@ -1739,6 +1739,9 @@ GTK/pkg-config dependency (container limitation), not a code error.
 ### Testing Agent
 - **DO NOT invoke the testing agent without the user's explicit approval.** Always ask before calling `deep_testing_backend_v2` or `expo_frontend_testing_agent`.
 
+### Screenshots
+- **DO NOT take screenshots unless the user explicitly approves or requests them.** No speculative screenshot captures.
+
 ## Four-Tab Threat Investigation / Patrol Outcome Screens (2026-10)
 
 **Requirement:** Completely overhaul the patrol event detail screen (`patrol/[id].tsx`) from a monolithic ScrollView into a structured 4-tab interface.
