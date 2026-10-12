@@ -9,9 +9,12 @@ import Info from "lucide-react-native/icons/info";
 import MessageSquare from "lucide-react-native/icons/message-square";
 import Search from "lucide-react-native/icons/search";
 import User from "lucide-react-native/icons/user";
+import { useRouter } from "expo-router";
 
 import { Body, Card, toneText } from "@/src/components/ui";
 import { eventHistory, sourceLabel } from "@/src/domain/messageVoice";
+import { contextFromEvent, gateForCategory, openHigginsHandoff } from "@/src/domain/higginsHandoff";
+import { caseForEvent } from "@/src/investigation/caseIndex";
 import type { PatrolEvent, PatrolRecord } from "@/src/domain/types";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
@@ -251,6 +254,7 @@ export function HistoryTab({
 }) {
   const s = useStyles();
   const { colors } = useTheme();
+  const router = useRouter();
 
   const revisions = timeline.map((r) => ({
     occurredAt: r.occurredAt,
@@ -371,15 +375,30 @@ export function HistoryTab({
       </View>
 
       {/* Ask Higgins to explain */}
-      <Card style={{ padding: 0 }} testID="history-ask-higgins">
-        <View style={s.askRow}>
-          <View style={[s.askIcon, { backgroundColor: colors.surfaceTertiary }]}>
-            <MessageSquare size={18} color={colors.navyDeep} />
+      <Pressable
+        testID="history-ask-higgins"
+        accessibilityRole="button"
+        accessibilityLabel="Ask Higgins to explain"
+        onPress={() => {
+          void caseForEvent(event.event_id, event.patrol_record?.investigationCaseId ?? null).then((caseId) =>
+            openHigginsHandoff(
+              router,
+              { ...contextFromEvent(event, gateForCategory(event.category)), ...(caseId ? { case_id: caseId } : {}) },
+              caseId ? "" : "Explain this issue and what I should do next."
+            )
+          );
+        }}
+      >
+        <Card style={{ padding: 0 }}>
+          <View style={s.askRow}>
+            <View style={[s.askIcon, { backgroundColor: colors.surfaceTertiary }]}>
+              <MessageSquare size={18} color={colors.navyDeep} />
+            </View>
+            <Text style={s.askText}>Ask Higgins to explain</Text>
+            <ChevronRight size={20} color={colors.onSurfaceSecondary} />
           </View>
-          <Text style={s.askText}>Ask Higgins to explain</Text>
-          <ChevronRight size={20} color={colors.onSurfaceSecondary} />
-        </View>
-      </Card>
+        </Card>
+      </Pressable>
     </View>
   );
 }
