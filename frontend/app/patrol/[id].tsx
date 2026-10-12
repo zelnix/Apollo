@@ -26,7 +26,7 @@ const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   // Header row: back + title + close
   headerRow: {
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: spacing.md,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
@@ -54,7 +54,7 @@ const useStyles = makeStyles((c) => ({
   },
   // Status row
   statusRow: {
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: spacing.md,
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
@@ -69,7 +69,7 @@ const useStyles = makeStyles((c) => ({
   },
   // Date row
   dateRow: {
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
   },
   dateText: {
@@ -79,7 +79,7 @@ const useStyles = makeStyles((c) => ({
     lineHeight: 18,
   },
   // Content
-  content: { paddingHorizontal: spacing.xl, gap: spacing.lg },
+  content: { paddingHorizontal: spacing.md, gap: spacing.lg },
 }));
 
 function formatDate(iso: string): string {

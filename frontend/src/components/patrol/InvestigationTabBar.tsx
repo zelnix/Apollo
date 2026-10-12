@@ -13,7 +13,7 @@ const TAB_META: { key: TabKey; label: string }[] = [
 
 const useStyles = makeStyles((c) => ({
   wrapper: {
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
   container: {
