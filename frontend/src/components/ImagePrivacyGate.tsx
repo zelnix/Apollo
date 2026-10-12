@@ -547,7 +547,7 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
               </View>
             )}
 
-            {/* Action buttons */}
+            {/* Action buttons — redacted image is ALWAYS the primary action */}
             <View style={s.buttonGroup}>
               {/* Different button sets based on screening status */}
               {screening.status === "ocr_unavailable" ? (
@@ -558,12 +558,12 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
                     onPress={handleOcrUnavailableSendImage}
                     disabled={busy}
                     testID="gate-send-image-unscreened"
-                    accessibilityHint="Send the image without local screening — it could not be checked for sensitive content"
+                    accessibilityHint="Send the image for investigation — it could not be screened for sensitive content locally"
                   />
                   {screening.extractedText.length > 0 && (
                     <Button
                       label="Send text only instead"
-                      variant="secondary"
+                      variant="ghost"
                       onPress={handleTextOnly}
                       disabled={busy}
                       testID="gate-text-only"
@@ -571,34 +571,36 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
                     />
                   )}
                   <Button
-                    label="Withhold image"
+                    label="Withhold"
                     variant="ghost"
                     onPress={handleOcrUnavailableWithhold}
                     disabled={busy}
                     testID="gate-withhold"
-                    accessibilityHint="Do not send the image — screening is unavailable"
+                    accessibilityHint="Do not send anything"
                   />
                 </>
               ) : hasSensitive ? (
                 <>
                   <Button
-                    label="Send text only"
-                    variant="primary"
-                    onPress={handleTextOnly}
-                    disabled={busy}
-                    testID="gate-text-only"
-                    accessibilityHint="Send only the extracted text; the image stays on your device"
-                  />
-                  <Button
                     label="Send redacted image"
-                    variant="secondary"
+                    variant="primary"
                     onPress={handleSanitisedImage}
                     disabled={busy}
                     testID="gate-sanitised"
-                    accessibilityHint="Black out sensitive areas and send the redacted image"
+                    accessibilityHint="Black out sensitive areas and send the redacted image for investigation"
                   />
+                  {screening.extractedText.length > 0 && (
+                    <Button
+                      label="Send text only instead"
+                      variant="ghost"
+                      onPress={handleTextOnly}
+                      disabled={busy}
+                      testID="gate-text-only"
+                      accessibilityHint="Send only the extracted text; the image stays on your device"
+                    />
+                  )}
                   <Button
-                    label="Withhold image"
+                    label="Withhold"
                     variant="ghost"
                     onPress={handleWithhold}
                     disabled={busy}
@@ -614,12 +616,12 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
                     onPress={handleNoSensitiveApprove}
                     disabled={busy}
                     testID="gate-approve"
-                    accessibilityHint="Send the metadata-stripped image"
+                    accessibilityHint="Send the metadata-stripped image for investigation"
                   />
                   {screening.extractedText.length > 0 && (
                     <Button
                       label="Send text only instead"
-                      variant="secondary"
+                      variant="ghost"
                       onPress={handleTextOnly}
                       disabled={busy}
                       testID="gate-text-only"
@@ -627,7 +629,7 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
                     />
                   )}
                   <Button
-                    label="Withhold image"
+                    label="Withhold"
                     variant="ghost"
                     onPress={handleWithhold}
                     disabled={busy}
@@ -648,8 +650,8 @@ export function ImagePrivacyGate({ visible, screening, onComplete, onCancel }: P
                 textAlign: "center",
               }}
             >
-              Images are screened entirely on your device. Only the content you
-              approve above is transmitted to Apollo for the requested assessment.
+              Images are screened on your device. The redacted image is the primary
+              investigation evidence. Only content you approve is transmitted.
             </Text>
           </ScrollView>
 
