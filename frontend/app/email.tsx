@@ -151,6 +151,59 @@ const useStyles = makeStyles((c) => ({
   pasteTitle: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface },
   pasteSub: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary },
 
+  // Gmail inbox card (prominent)
+  gmailCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.lg,
+    backgroundColor: c.surfaceSecondary,
+    borderRadius: radius.lg,
+    borderWidth: 1.5,
+    borderColor: c.border,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.lg,
+  },
+  gmailIconWell: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: "#E8F5E9",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  gmailTextWrap: { flex: 1, gap: 4 },
+  gmailTitle: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface },
+  gmailSub: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary },
+  gmailConnectCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.lg,
+    backgroundColor: "#F0F5FA",
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderStyle: "dashed" as const,
+    borderColor: "#B0C4DE",
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.lg,
+  },
+  gmailConnectIconWell: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: "#DBEAFE",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  orDivider: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  orLine: { flex: 1, height: 1, backgroundColor: c.border },
+  orText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.muted },
+
   // Editing card (when paste area tapped)
   editCard: {
     borderWidth: 1.5,
@@ -875,6 +928,67 @@ export default function CheckEmail() {
           </View>
         )}
 
+        {/* ── Gmail Inbox: Select email directly ── */}
+        {gmailConnected ? (
+          <>
+            <View style={s.orDivider}>
+              <View style={s.orLine} />
+              <Text style={s.orText}>or</Text>
+              <View style={s.orLine} />
+            </View>
+            <Pressable
+              testID="email-pick-inbox"
+              accessibilityRole="button"
+              accessibilityLabel="Select an email from your Gmail inbox"
+              onPress={() => void openInboxPicker()}
+              disabled={gmailBusy || scanBusy}
+              style={({ pressed }) => [s.gmailCard, { opacity: pressed ? 0.85 : 1 }]}
+            >
+              <View style={s.gmailIconWell}>
+                <Inbox size={24} color="#2E7D32" />
+              </View>
+              <View style={s.gmailTextWrap}>
+                <Text style={s.gmailTitle}>Select from your Gmail</Text>
+                <Text style={s.gmailSub}>
+                  Choose an email from your connected {gmailAccounts.length > 1 ? "accounts" : "account"} to check.
+                </Text>
+              </View>
+              <ChevronRight size={20} color={colors.muted} />
+            </Pressable>
+          </>
+        ) : gmailConfigured ? (
+          <>
+            <View style={s.orDivider}>
+              <View style={s.orLine} />
+              <Text style={s.orText}>or</Text>
+              <View style={s.orLine} />
+            </View>
+            <Pressable
+              testID="email-connect-gmail"
+              accessibilityRole="button"
+              accessibilityLabel="Connect Gmail to select emails"
+              onPress={() => void connectGmail()}
+              disabled={gmailBusy || !deviceId}
+              style={({ pressed }) => [s.gmailConnectCard, { opacity: pressed ? 0.85 : 1 }]}
+            >
+              <View style={s.gmailConnectIconWell}>
+                <Mail size={24} color="#1D4ED8" />
+              </View>
+              <View style={s.gmailTextWrap}>
+                <Text style={s.gmailTitle}>Connect Gmail</Text>
+                <Text style={s.gmailSub}>
+                  {gmailBusy ? "Opening Google\u2026" : "Read-only access. Select emails directly from your inbox to check."}
+                </Text>
+              </View>
+              {gmailBusy ? (
+                <ActivityIndicator size="small" color={colors.brand} />
+              ) : (
+                <ChevronRight size={20} color={colors.muted} />
+              )}
+            </Pressable>
+          </>
+        ) : null}
+
         {/* ── Button Row: Check email + Choose screenshot ── */}
         <View style={s.buttonRow}>
           <Pressable
@@ -901,18 +1015,6 @@ export default function CheckEmail() {
           </Pressable>
         </View>
 
-        {/* ── Pick from inbox (Gmail connected only) ── */}
-        {gmailConnected ? (
-          <Button
-            testID="email-pick-inbox"
-            variant="secondary"
-            icon={<Inbox size={18} color={colors.onSurface} />}
-            label="Pick an email from your inbox"
-            onPress={() => void openInboxPicker()}
-            disabled={gmailBusy || scanBusy}
-          />
-        ) : null}
-
         {/* ── Privacy Card ── */}
         <View style={s.privacyCard} testID="email-privacy-card">
           <View style={s.privacyIconWell}>
@@ -925,31 +1027,37 @@ export default function CheckEmail() {
 
         {/* ── Account Selector (compact, above recent checks) ── */}
         {allAccounts.length > 0 ? (
-          <Pressable
-            testID="email-account-selector"
-            accessibilityRole="button"
-            accessibilityLabel={selectedAccount ? `Filtered to ${selectedAccount}` : "All email accounts"}
-            onPress={() => setAccountSheetOpen(true)}
-            style={({ pressed }) => [s.accountSelector, { opacity: pressed ? 0.85 : 1 }]}
-          >
-            <View style={s.accountLeft}>
+          <View style={s.accountSelector}>
+            <Pressable
+              testID="email-account-selector"
+              accessibilityRole="button"
+              accessibilityLabel={selectedAccount ? `Filtered to ${selectedAccount}` : "All email accounts"}
+              onPress={() => setAccountSheetOpen(true)}
+              style={s.accountLeft}
+            >
               <Mail size={18} color={colors.onSurface} />
               <Text style={s.accountText} numberOfLines={1}>
                 {selectedAccount ?? "All email accounts"}
               </Text>
-            </View>
+            </Pressable>
             <Pressable
               testID="email-manage-accounts"
               accessibilityRole="button"
               accessibilityLabel="Manage accounts"
-              onPress={(e) => { e.stopPropagation?.(); setManageSheetOpen(true); }}
+              onPress={() => setManageSheetOpen(true)}
               hitSlop={8}
             >
               <Text style={s.accountManage}>Manage</Text>
             </Pressable>
             <View style={s.accountDivider} />
-            <ChevronDown size={18} color={colors.muted} />
-          </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Filter accounts"
+              onPress={() => setAccountSheetOpen(true)}
+            >
+              <ChevronDown size={18} color={colors.muted} />
+            </Pressable>
+          </View>
         ) : null}
 
         {/* ── Your Recent Checks ── */}
