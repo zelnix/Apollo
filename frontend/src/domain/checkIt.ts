@@ -1,6 +1,6 @@
 export type CheckItId = "message" | "link" | "file" | "call" | "scan" | "email" | "app" | "account" | "device" | "network";
 
-export type CheckItRoute = "/message" | "/check" | "/file" | "/call" | "/scan" | "/email" | "/app-check" | "/account" | "/device" | "/network";
+export type CheckItRoute = "/message" | "/check" | "/file" | "/call" | "/call-guard" | "/scan" | "/email" | "/app-check" | "/account" | "/device" | "/network";
 
 export type CheckItIcon = "message" | "link" | "file" | "call" | "scan" | "email" | "app" | "account" | "device" | "network";
 export type AcceptedIntake = "text" | "url" | "file" | "image" | "native_observation" | "user_context";
@@ -18,7 +18,7 @@ export const CHECK_IT_ITEMS = [
   { id: "message", label: "Check a message", purpose: "Paste, share or add a screenshot of a message that worries you.", route: "/message", icon: "message", acceptedIntake: ["text", "image"] },
   { id: "link", label: "Check a link", purpose: "See where a link leads before you open it.", route: "/check", icon: "link", acceptedIntake: ["url"] },
   { id: "file", label: "Check a file", purpose: "Choose or share a download or attachment for Apollo to examine.", route: "/file", icon: "file", acceptedIntake: ["file"] },
-  { id: "call", label: "Check a call or number", purpose: "Check a caller, phone number or something said during a call.", route: "/call", icon: "call", acceptedIntake: ["text", "user_context"] },
+  { id: "call", label: "Check a number", purpose: "Find out who called and whether it could be a scam.", route: "/call-guard", icon: "call", acceptedIntake: ["text", "user_context"] },
   { id: "scan", label: "Scan a code", purpose: "Scan a QR code or barcode and check what it contains.", route: "/scan", icon: "scan", acceptedIntake: ["image", "url", "text"] },
   { id: "email", label: "Check an email", purpose: "Paste or share an email, or use your connected Gmail inbox.", route: "/email", icon: "email", acceptedIntake: ["text", "file", "url"] },
   { id: "app", label: "Check an app", purpose: "Review an installed app or one you are thinking of installing.", route: "/app-check", icon: "app", acceptedIntake: ["native_observation", "user_context"] },
