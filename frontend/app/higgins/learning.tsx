@@ -20,7 +20,6 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
-  ImageBackground,
   Modal,
   Pressable,
   ScrollView,
@@ -101,11 +100,12 @@ const useStyles = makeStyles((c) => ({
     marginHorizontal: spacing.lg,
     borderRadius: radius.lg,
     overflow: "hidden",
+    backgroundColor: "#E4EDF6",
+    height: 180,
   },
-  heroBg: {
+  heroBgImage: {
     width: "100%",
-    aspectRatio: 1.85,
-    justifyContent: "flex-end",
+    height: 180,
   },
   heroAvatarWrap: {
     position: "absolute",
@@ -335,7 +335,7 @@ function ArticleThumb({ category, size, thumbnailPath }: { category: string; siz
   const Icon = TOPIC_TILES.find((t) => t.category === category?.toLowerCase())?.icon ?? MessageSquare;
 
   if (thumbnailPath) {
-    const apiBase = (process.env.EXPO_PUBLIC_API_URL || "").replace(/\/$/, "");
+    const apiBase = (process.env.EXPO_PUBLIC_BACKEND_URL || "").replace(/\/$/, "");
     const uri = `${apiBase}/api/learning/image/${thumbnailPath}`;
     return (
       <View style={{ width: size, height: size, borderRadius: radius.md, overflow: "hidden", backgroundColor: bg }}>
@@ -371,7 +371,7 @@ function FeaturedCard({ article, onPress }: { article: LearningArticleSummary; o
       <View style={s.featuredCard}>
         <View style={s.featuredRow}>
           <View style={[s.featuredThumb, { backgroundColor: thumbnailColor(article.category) }]}>
-            <ArticleThumb category={article.category} size={110} />
+            <ArticleThumb category={article.category} size={110} thumbnailPath={article.thumbnailPath} />
           </View>
           <View style={s.featuredContent}>
             <View style={[s.badge, { backgroundColor: badge.bg, alignSelf: "flex-start" }]}>
@@ -407,7 +407,7 @@ function ArticleRow({ article, onPress }: { article: LearningArticleSummary; onP
       style={({ pressed }) => [{ opacity: pressed ? 0.82 : 1 }]}
     >
       <View style={s.articleRow}>
-        <ArticleThumb category={article.category} size={80} />
+        <ArticleThumb category={article.category} size={80} thumbnailPath={article.thumbnailPath} />
         <View style={s.articleContent}>
           <View style={s.articleBadgeRow}>
             <View style={[s.badge, { backgroundColor: badge.bg }]}>
@@ -607,11 +607,10 @@ export default function HigginsLearningScreen() {
     <View style={{ gap: spacing.sm }}>
       {/* Hero card with background image and Higgins avatar */}
       <View style={s.heroCard}>
-        <ImageBackground source={learningHeroBg} style={s.heroBg} resizeMode="cover">
-          <View style={s.heroAvatarWrap}>
-            <Image source={higginsHeadshot} style={s.heroAvatarImg} resizeMode="cover" />
-          </View>
-        </ImageBackground>
+        <Image source={learningHeroBg} style={s.heroBgImage} resizeMode="cover" />
+        <View style={s.heroAvatarWrap}>
+          <Image source={higginsHeadshot} style={s.heroAvatarImg} resizeMode="cover" />
+        </View>
       </View>
       <Text style={s.heroSub}>
         Practical guidance to help you recognise scams and stay safer online.

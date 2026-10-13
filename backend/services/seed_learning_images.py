@@ -16,11 +16,11 @@ router = APIRouter()
 # Map article slug → Unsplash image URL (small size for thumbnails)
 ARTICLE_IMAGES: dict[str, str] = {
     "recognising-phone-scams": "https://images.unsplash.com/photo-1526045612212-70caf35c14df?w=400&q=80",
-    "protecting-against-phishing": "https://images.unsplash.com/photo-1683117927786-f146451082fb?w=400&q=80",
+    "protecting-yourself-from-phishing": "https://images.unsplash.com/photo-1683117927786-f146451082fb?w=400&q=80",
     "investment-scam-red-flags": "https://images.unsplash.com/photo-1653378972336-103e1ea62721?w=400&q=80",
-    "safe-online-shopping": "https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=400&q=80",
-    "protecting-older-people": "https://images.unsplash.com/photo-1584515933487-779824d29309?w=400&q=80",
-    "securing-devices-accounts": "https://images.unsplash.com/photo-1584433144859-1fc3ab64a957?w=400&q=80",
+    "online-shopping-safety": "https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=400&q=80",
+    "protecting-older-australians-from-scams": "https://images.unsplash.com/photo-1584515933487-779824d29309?w=400&q=80",
+    "securing-your-devices-and-accounts": "https://images.unsplash.com/photo-1584433144859-1fc3ab64a957?w=400&q=80",
 }
 
 
@@ -59,6 +59,6 @@ async def seed_images(db: AsyncIOMotorDatabase) -> dict:
 
 @router.post("/admin/seed-learning-images")
 async def seed_learning_images_endpoint():
-    from db import db
+    from core.db import db
     result = await seed_images(db)
     return {"seeded": result}

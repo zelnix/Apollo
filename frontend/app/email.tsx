@@ -3,9 +3,12 @@
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import * as Crypto from "expo-crypto";
 import Mail from "lucide-react-native/icons/mail";
+import Inbox from "lucide-react-native/icons/inbox";
+import ChevronRight from "lucide-react-native/icons/chevron-right";
+import User from "lucide-react-native/icons/user";
 import X from "lucide-react-native/icons/x";
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, FlatList, Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -45,6 +48,24 @@ const useStyles = makeStyles((c) => ({
   why: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurface },
   label: { fontFamily: fonts.textSemibold, fontSize: 15, color: c.onSurface },
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
+
+  // Inbox Picker
+  pickerOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
+  pickerSheet: { backgroundColor: c.surface, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, maxHeight: "85%" },
+  pickerHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: c.borderStrong, alignSelf: "center", marginTop: spacing.md },
+  pickerHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
+  pickerTitle: { fontFamily: fonts.displayBold, fontSize: 20, color: c.onSurface },
+  pickerAccountTabs: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, gap: spacing.sm },
+  pickerTab: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.pill, borderWidth: 1, borderColor: c.border, minHeight: 40, alignItems: "center", justifyContent: "center" },
+  pickerTabText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.onSurfaceSecondary },
+  pickerCenter: { alignItems: "center", justifyContent: "center", paddingVertical: spacing["2xl"], gap: spacing.sm },
+  pickerRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.md, borderBottomWidth: 1, borderBottomColor: c.border },
+  pickerIconWrap: { width: 40, height: 40, borderRadius: 20, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  pickerMsgContent: { flex: 1, gap: 2 },
+  pickerSender: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.onSurface },
+  pickerSubject: { fontFamily: fonts.text, fontSize: 14, color: c.onSurface },
+  pickerSnippet: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.muted },
+  pickerAccountLabel: { fontFamily: fonts.text, fontSize: 11, color: c.muted, marginTop: 2 },
 }));
 
 export default function CheckEmail() {
@@ -69,6 +90,54 @@ export default function CheckEmail() {
   const [scanBusy, setScanBusy] = useState(false);
   const [gmailStatusError, setGmailStatusError] = useState<string | null>(null);
   const [scanSummary, setScanSummary] = useState<{ text: string; flagged: number } | null>(null);
+
+  // ── Inbox Picker state ──
+  type InboxPreview = { id: string; account: string; from: string; subject: string; date: string; snippet: string };
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [pickerLoading, setPickerLoading] = useState(false);
+  const [pickerMessages, setPickerMessages] = useState<InboxPreview[]>([]);
+  const [pickerAccount, setPickerAccount] = useState<string | null>(null); // null = all accounts
+  const [pickerFetchBusy, setPickerFetchBusy] = useState<string | null>(null); // message id being fetched
+
+  const openInboxPicker = useCallback(async () => {
+    if (!deviceId) return;
+    setPickerVisible(true);
+    setPickerLoading(true);
+    setPickerMessages([]);
+    try {
+      const data = await apiGet<{ messages: InboxPreview[]; next_page_token?: string }>(`/gmail/messages?device_id=${deviceId}&limit=30`);
+      setPickerMessages(data.messages ?? []);
+    } catch {
+      showToast("Couldn't load inbox messages.", "growling");
+    } finally {
+      setPickerLoading(false);
+    }
+  }, [deviceId, showToast]);
+
+  const selectInboxEmail = useCallback(async (msg: InboxPreview) => {
+    if (!deviceId) return;
+    setPickerFetchBusy(msg.id);
+    try {
+      const detail = await apiGet<{ id: string; account: string; from: string; subject: string; date: string; body: string }>(
+        `/gmail/message/${msg.id}?device_id=${deviceId}${msg.account ? `&email=${encodeURIComponent(msg.account)}` : ""}`
+      );
+      setFrom(detail.from || msg.from);
+      setSubject(detail.subject || msg.subject);
+      setRaw(detail.body || msg.snippet);
+      setPickerVisible(false);
+      showToast("Email loaded — tap Check to analyse.", "neutral");
+    } catch {
+      showToast("Couldn't fetch that email.", "growling");
+    } finally {
+      setPickerFetchBusy(null);
+    }
+  }, [deviceId, showToast]);
+
+  const filteredMessages = pickerAccount
+    ? pickerMessages.filter((m) => m.account === pickerAccount)
+    : pickerMessages;
+
+  const uniqueAccounts = [...new Set(pickerMessages.map((m) => m.account).filter(Boolean))];
 
   const refreshGmailStatus = useCallback(async () => {
     if (!deviceId) return;
@@ -273,6 +342,16 @@ export default function CheckEmail() {
                 )}
               </Card>
             ) : null}
+            {gmailConnected ? (
+              <Button
+                testID="email-pick-inbox"
+                variant="secondary"
+                icon={<Inbox size={18} color={colors.onSurface} />}
+                label="Pick an email from your inbox"
+                onPress={() => void openInboxPicker()}
+                disabled={gmailBusy || scanBusy}
+              />
+            ) : null}
             <TextInput testID="email-from" style={s.input} value={from} onChangeText={setFrom} placeholder="From (e.g. CommBank <alerts@cb-secure.top>)" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} />
             <TextInput testID="email-subject" style={s.input} value={subject} onChangeText={setSubject} placeholder="Subject" placeholderTextColor={colors.muted} autoCorrect={false} />
             <TextInput testID="email-body" style={[s.input, { minHeight: 140 }]} value={raw} onChangeText={setRaw} placeholder="Paste the email (or the whole forwarded message with headers)…" placeholderTextColor={colors.muted} multiline textAlignVertical="top" autoCapitalize="none" autoCorrect={false} />
@@ -282,6 +361,89 @@ export default function CheckEmail() {
           </>
         ) : null}
       </KeyboardAwareScrollView>
+
+      {/* ── Inbox Picker Modal ── */}
+      <Modal visible={pickerVisible} transparent animationType="slide" onRequestClose={() => setPickerVisible(false)}>
+        <View style={s.pickerOverlay}>
+          <Pressable style={{ flex: 1 }} onPress={() => setPickerVisible(false)} accessibilityLabel="Close" />
+          <View style={[s.pickerSheet, { paddingBottom: insets.bottom + spacing.md }]}>
+            <View style={s.pickerHandle} />
+            <View style={s.pickerHeader}>
+              <Text style={s.pickerTitle}>Pick an email</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setPickerVisible(false)} style={s.close}>
+                <X size={20} color={colors.onSurface} />
+              </Pressable>
+            </View>
+
+            {/* Account filter tabs (only shown when multiple accounts) */}
+            {uniqueAccounts.length > 1 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.pickerAccountTabs}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => setPickerAccount(null)}
+                  style={[s.pickerTab, !pickerAccount && { backgroundColor: colors.brand }]}
+                >
+                  <Text style={[s.pickerTabText, !pickerAccount && { color: colors.onBrand }]}>All accounts</Text>
+                </Pressable>
+                {uniqueAccounts.map((acct) => (
+                  <Pressable
+                    key={acct}
+                    accessibilityRole="button"
+                    onPress={() => setPickerAccount(acct)}
+                    style={[s.pickerTab, pickerAccount === acct && { backgroundColor: colors.brand }]}
+                  >
+                    <Text style={[s.pickerTabText, pickerAccount === acct && { color: colors.onBrand }]} numberOfLines={1}>{acct}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            ) : null}
+
+            {pickerLoading ? (
+              <View style={s.pickerCenter}>
+                <ActivityIndicator color={colors.brand} />
+                <Body>Loading inbox…</Body>
+              </View>
+            ) : filteredMessages.length === 0 ? (
+              <View style={s.pickerCenter}>
+                <Inbox size={32} color={colors.muted} />
+                <Body>No recent emails found.</Body>
+              </View>
+            ) : (
+              <FlatList
+                data={filteredMessages}
+                keyExtractor={(item) => `${item.account}-${item.id}`}
+                contentContainerStyle={{ paddingHorizontal: spacing.lg }}
+                renderItem={({ item }) => {
+                  const isFetching = pickerFetchBusy === item.id;
+                  const senderName = item.from.replace(/<.*>/, "").trim() || item.from;
+                  return (
+                    <Pressable
+                      accessibilityRole="button"
+                      testID={`inbox-msg-${item.id}`}
+                      onPress={() => void selectInboxEmail(item)}
+                      disabled={!!pickerFetchBusy}
+                      style={({ pressed }) => [s.pickerRow, { opacity: pressed ? 0.7 : 1 }]}
+                    >
+                      <View style={s.pickerIconWrap}>
+                        {isFetching ? <ActivityIndicator size="small" color={colors.brand} /> : <User size={20} color={colors.muted} />}
+                      </View>
+                      <View style={s.pickerMsgContent}>
+                        <Text style={s.pickerSender} numberOfLines={1}>{senderName}</Text>
+                        <Text style={s.pickerSubject} numberOfLines={1}>{item.subject || "(no subject)"}</Text>
+                        <Text style={s.pickerSnippet} numberOfLines={2}>{item.snippet}</Text>
+                        {uniqueAccounts.length > 1 && item.account ? (
+                          <Text style={s.pickerAccountLabel}>{item.account}</Text>
+                        ) : null}
+                      </View>
+                      <ChevronRight size={16} color={colors.muted} />
+                    </Pressable>
+                  );
+                }}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
       
     </View>
   );

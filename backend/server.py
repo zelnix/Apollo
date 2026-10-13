@@ -218,6 +218,8 @@ app.include_router(family_assist_router.ws_router, prefix="/api")
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_admin_key)])
 app.include_router(learning_admin.router, prefix="/api/admin", tags=["learning-admin"], dependencies=[Depends(require_admin_key)])
 app.include_router(seed_images_router, prefix="/api", tags=["learning-seed"])
+# Learning images are public (no auth needed for serving cached images)
+app.include_router(learning_router.public_router, prefix="/api", tags=["learning-public"])
 
 # GuardDog production trust endpoints (unauthenticated — public trust artifacts and controlled verification).
 from routers import guarddog as guarddog_router

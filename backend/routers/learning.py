@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from services import learning
 
 router = APIRouter()
+public_router = APIRouter()
 NO_STORE = {"Cache-Control": "private, no-store", "Pragma": "no-cache"}
 
 
@@ -25,7 +26,7 @@ async def article(slug: str):
     return JSONResponse(jsonable_encoder(value), headers=NO_STORE)
 
 
-@router.get("/learning/image/{path:path}")
+@public_router.get("/learning/image/{path:path}")
 async def learning_image(path: str):
     """Serve a stored learning article image from Emergent Object Storage."""
     from fastapi.responses import Response
