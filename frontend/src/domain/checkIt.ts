@@ -20,7 +20,7 @@ export const CHECK_IT_ITEMS = [
   { id: "file", label: "Check a file", purpose: "Choose or share a download or attachment for Apollo to examine.", route: "/file", icon: "file", acceptedIntake: ["file"] },
   { id: "call", label: "Check a number", purpose: "Find out who called and whether it could be a scam.", route: "/call-guard", icon: "call", acceptedIntake: ["text", "user_context"] },
   { id: "scan", label: "Scan a code", purpose: "Scan a QR code or barcode and check what it contains.", route: "/scan", icon: "scan", acceptedIntake: ["image", "url", "text"] },
-  { id: "email", label: "Check an email", purpose: "Paste or share an email, or use your connected Gmail inbox.", route: "/email", icon: "email", acceptedIntake: ["text", "file", "url"] },
+  { id: "email", label: "Check email", purpose: "See if an email looks safe or suspicious.", route: "/email", icon: "email", acceptedIntake: ["text", "file", "url"] },
   { id: "app", label: "Check an app", purpose: "Review an installed app or one you are thinking of installing.", route: "/app-check", icon: "app", acceptedIntake: ["native_observation", "user_context"] },
   { id: "account", label: "Check an account alert", purpose: "Review a login, breach or recovery warning without sharing passwords or codes.", route: "/account", icon: "account", acceptedIntake: ["text", "image", "user_context"] },
   { id: "device", label: "Check my device", purpose: "Review important protection, permission and device changes.", route: "/device", icon: "device", acceptedIntake: ["native_observation", "user_context"] },

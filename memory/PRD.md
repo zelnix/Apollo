@@ -1766,3 +1766,8 @@ GTK/pkg-config dependency (container limitation), not a code error.
 - `src/components/patrol/EvidenceTab.tsx`
 - `src/components/patrol/HistoryTab.tsx`
 - Refactored `app/patrol/[id].tsx` as the container
+
+
+## Project Rules (Standing Instructions)
+
+- **Do NOT call testing agents or take screenshots without explicit user approval.** Always ask first.

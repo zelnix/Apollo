@@ -154,7 +154,7 @@ export function buildEmailCheckResult(args: {
 
   return {
     id: submissionId,
-    gate: "Email monitoring",
+    gate: "Check email",
     checkType: "Email check",
     subject: displaySubject,
     headline: explanation?.summary ?? a.title,
