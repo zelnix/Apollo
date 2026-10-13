@@ -103,7 +103,7 @@ const useStyles = makeStyles((c) => ({
     gap: spacing.sm,
   },
   heroText: { flex: 1, gap: spacing.xs },
-  heroTitle: { fontFamily: fonts.displayBold, fontSize: 22, lineHeight: 28, color: c.onSurface, flex: 1 },
+  heroTitle: { fontFamily: fonts.displayBold, fontSize: 18, lineHeight: 24, color: c.onSurface, flex: 1 },
   heroSub: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary },
   heroImgWrap: { width: 120, height: 130, overflow: "hidden" },
   heroImg: { width: 120, height: 130 },
@@ -560,8 +560,8 @@ export default function HigginsLearningScreen() {
 
   // ── Header area (back button + title) ──
   const headerArea = (
-    <View style={{ paddingTop: insets.top + spacing.xs }}>
-      <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.sm, paddingBottom: spacing.xs }}>
+    <View style={{ paddingTop: insets.top }}>
+      <View style={{ flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.xs }}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Back"
