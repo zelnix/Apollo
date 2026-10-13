@@ -28,7 +28,7 @@ import { learningArticle, type LearningArticle, type LearningSection } from "@/s
 import { goBackOrHome } from "@/src/utils/navigation";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
-const higginsHeadshot = require("@/assets/images/higgins-headshot.png");
+const higginsHeadshot = require("@/assets/images/higgins-avatar.png");
 
 // ── Type badge colours ──────────────────────────────────────────────────────
 const TYPE_BADGE: Record<string, { bg: string; color: string; label: string }> = {

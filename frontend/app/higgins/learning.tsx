@@ -34,7 +34,7 @@ import { learningArticles, type LearningArticleSummary } from "@/src/higgins/hub
 import { goBackOrHome } from "@/src/utils/navigation";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
-const higginsHeadshot = require("@/assets/images/higgins-headshot.png");
+const higginsHeadshot = require("@/assets/images/higgins-avatar.png");
 
 // ── Topic tile definitions ──────────────────────────────────────────────────
 interface TopicTile {
