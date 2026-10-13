@@ -162,6 +162,11 @@ const useStyles = makeStyles((c) => ({
     lineHeight: 32,
     color: c.onSurface,
   },
+  summaryCountRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: spacing.sm,
+  },
   summarySubtext: {
     fontFamily: fonts.text,
     fontSize: 12,
@@ -588,10 +593,12 @@ export default function Patrol() {
               </View>
               <Text style={s.summaryLabel}>Open cases</Text>
             </View>
-            <Text style={s.summaryCount}>{openCases}</Text>
-            <Text style={s.summarySubtext}>
-              {openCases === 0 ? "No action needed" : `${openCases} ${openCases === 1 ? "needs" : "need"} action`}
-            </Text>
+            <View style={s.summaryCountRow}>
+              <Text style={s.summaryCount}>{openCases}</Text>
+              <Text style={s.summarySubtext}>
+                {openCases === 0 ? "No action needed" : `${openCases === 1 ? "needs" : "need"} action`}
+              </Text>
+            </View>
           </Pressable>
 
           {/* Handled this week */}
@@ -613,10 +620,12 @@ export default function Patrol() {
               </View>
               <Text style={s.summaryLabel}>Handled this week</Text>
             </View>
-            <Text style={s.summaryCount}>{handledThisWeek}</Text>
-            <Text style={s.summarySubtext}>
-              {handledThisWeek === 0 ? "None this week" : "Threats resolved"}
-            </Text>
+            <View style={s.summaryCountRow}>
+              <Text style={s.summaryCount}>{handledThisWeek}</Text>
+              <Text style={s.summarySubtext}>
+                {handledThisWeek === 0 ? "None this week" : "Resolved"}
+              </Text>
+            </View>
           </Pressable>
         </View>
 
