@@ -179,7 +179,7 @@ export default function CheckCall() {
             </Pressable>
           ))}
         </View>
-        <Button testID="call-check" label="Check with Apollo" onPress={() => void run()} disabled={asks.length === 0} />
+        <Button testID="call-check" label="Check with Apollo" onPress={() => void run()} disabled={asks.length === 0 && !number.trim()} />
         <Button testID="call-more-toggle" variant="ghost" label={more ? "Hide extra details" : "Add caller number or description (optional)"} onPress={() => setMore((m) => !m)} />
         {more ? (
           <>
@@ -188,6 +188,7 @@ export default function CheckCall() {
           </>
         ) : null}
         <Text style={s.small}>Apollo does not listen to or record calls. It works from what you select here, any text you paste, and your recent Apollo events.</Text>
+        <Button testID="call-check-number" variant="ghost" label="Just want to check a number? Use Check a Number" onPress={() => router.push("/call-guard")} />
         <CheckHistoryCard gate="call" refreshKey={historyKey} testID="call-history" />
       </KeyboardAwareScrollView>
       <PhonePickerSheet visible={callerPickerOpen} mode="calls" onClose={() => { setCallerPickerOpen(false); reloadTrusted(); }} onPickCall={(c) => { setNumber(c.number); setMore(true); }} />

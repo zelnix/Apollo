@@ -317,3 +317,175 @@ def phone_risk_investigation(result: Any) -> InvestigationResult:
             "temporary_copy_policy": TEMPORARY_COPY_POLICY,
             "model_used": False, "higgins_source": "unavailable", "fallback_used": False,
             "provider_note": "This is a number reputation observation, not a completed Higgins investigation."})
+
+
+PHONE_SYSTEM = HIGGINS_VOICE + """
+Investigate the supplied phone number using every piece of available evidence: reputation data,
+line type, carrier, abuse history. You have real lookup results — use them. This investigation
+was triggered because a person received a call from this number and wants to know whether it is
+safe before calling back or answering again.
+
+Distinguish:
+- CONFIRMED facts (from reputation data: fraud score, line type, carrier, country, abuse reports)
+- SUSPICIOUS indicators (high score, VOIP, recent abuse, unknown carrier)
+- UNVERIFIED (caller identity is NEVER verified by reputation alone)
+- MISSING information (what could not be checked)
+
+NEVER:
+- Claim a number is safe because no reports exist (absence of evidence ≠ evidence of safety)
+- Invent a caller identity
+- Claim you checked sources you did not
+- Fabricate findings
+
+Use specific numbers, scores and facts from the evidence. Explain what each finding means
+practically. Provide jurisdiction-appropriate reporting links where relevant.
+
+Return JSON:
+{"risk":"warning|clear|uncertain",
+"entities":{"claimed_organisations":[],"sender_details":[],"sender_phone_numbers":[],"callback_details":[],"links":[],"requested_actions":[],"transaction_claims":[],"mentioned_names":[],"suspected_deception":[]},
+"findings":[{"status":"corroborated|suspicious|unresolved","evidence_kind":"submitted_content|external_verification|inference","title":"","detail":"","source_ids":[]}],
+"higgins":{"headline":"","next_action":"","exact_response":"comprehensive evidence-based explanation of what was found about this number, what it means, what could not be established, and what the person should do next",
+"what_was_found":[],"why_it_matters":[],"could_not_establish":[],"action_label":"",
+"action_kind":"verify_officially|avoid_and_delete|check_account|call_known_number|review"}}
+"""
+
+
+async def investigate_phone_number(*, number: str, country: Optional[str] = None,
+                                    caller_asks: Optional[list[str]] = None,
+                                    caller_claim: Optional[str] = None,
+                                    transcript: Optional[str] = None) -> InvestigationResult:
+    """Full Higgins-powered investigation for a phone number.
+    
+    Unlike phone_risk_investigation (reputation-only), this runs the actual Gemini model
+    to produce evidence-grounded findings with a proper Higgins assessment.
+    """
+    deadline = time.monotonic() + WORK_SECONDS
+    
+    # Step 1: Get IPQS reputation data
+    risk_result = None
+    risk_error = None
+    try:
+        risk_result = await check_phone_risk(number, country, persist_cache=True)
+    except Exception as exc:
+        risk_error = str(exc)
+    
+    # Build sources from what we actually have
+    sources: list[InvestigationSource] = []
+    
+    if risk_result:
+        risk_data = {
+            "number": risk_result.number,
+            "fraud_score": risk_result.fraud_score,
+            "recent_abuse": risk_result.recent_abuse,
+            "risky": risk_result.risky,
+            "voip": risk_result.voip,
+            "line_type": risk_result.line_type,
+            "carrier": risk_result.carrier,
+            "country": risk_result.country,
+            "valid": risk_result.valid,
+            "active": risk_result.active,
+            "decision": risk_result.decision,
+            "source": risk_result.source,
+            "cached": risk_result.cached,
+        }
+        sources.append(InvestigationSource(
+            source_id="ipqs-1", label="IPQualityScore phone reputation",
+            status="inconclusive" if risk_result.source != "unavailable" else "unavailable",
+            detail=json.dumps(risk_data, ensure_ascii=False, default=str),
+            evidence_kind="external_verification"
+        ))
+    else:
+        sources.append(InvestigationSource(
+            source_id="ipqs-1", label="IPQualityScore phone reputation",
+            status="unavailable",
+            detail=f"Reputation lookup failed: {risk_error or 'unknown error'}",
+            evidence_kind="external_verification"
+        ))
+    
+    # Step 2: Add user-supplied context if available
+    context_parts = []
+    if caller_asks:
+        context_parts.append(f"Caller requested: {', '.join(caller_asks)}")
+        sources.append(InvestigationSource(
+            source_id="user-context-1", label="User-reported caller behaviour",
+            status="inconclusive", detail=f"User reports caller asked them to: {', '.join(caller_asks)}",
+            evidence_kind="submitted_content"
+        ))
+    if caller_claim and caller_claim != "unknown":
+        context_parts.append(f"Caller claimed to be: {caller_claim}")
+        sources.append(InvestigationSource(
+            source_id="user-context-2", label="User-reported caller identity claim",
+            status="inconclusive", detail=f"User reports caller claimed to be: {caller_claim}",
+            evidence_kind="submitted_content"
+        ))
+    if transcript:
+        safe_transcript = redact_investigation_secrets(transcript.strip())
+        context_parts.append(f"User description: {safe_transcript}")
+        sources.append(InvestigationSource(
+            source_id="user-context-3", label="User-provided call description",
+            status="inconclusive", detail=f"User described: {safe_transcript}",
+            evidence_kind="submitted_content"
+        ))
+    
+    entities = InvestigationEntities(sender_phone_numbers=[risk_result.number if risk_result else number])
+    
+    # Step 3: Run Gemini investigation
+    prompt = json.dumps({
+        "number": risk_result.number if risk_result else number,
+        "reputation_data": risk_data if risk_result else {"error": risk_error, "source": "unavailable"},
+        "user_context": context_parts if context_parts else ["No caller context provided — number-only investigation"],
+        "sources": [s.model_dump() for s in sources],
+    }, default=str)
+    
+    failures, metadata = [], {}
+    attempts = 0
+    higgins, findings, risk = incomplete_status(), [], "uncertain"
+    
+    correction = ""
+    for attempt in range(2):
+        try:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ProviderFailure('budget_exhausted')
+            attempts += 1
+            model, metadata = await generate_json(PHONE_SYSTEM, prompt + correction, timeout=min(50, remaining), purpose=Purpose.INVESTIGATION)
+            candidate = HigginsAssessment.model_validate(model["higgins"])
+            checked = [InvestigationFinding.model_validate(f) for f in model["findings"]]
+            ids = {s.source_id for s in sources}
+            if not candidate.exact_response.strip() or any(sid not in ids for f in checked for sid in f.source_ids):
+                raise ValueError("unknown_source_or_missing_explanation")
+            if redact_investigation_secrets(candidate.exact_response) != candidate.exact_response:
+                raise ValueError("secret_in_output")
+            if model.get("risk") not in ("warning", "clear", "uncertain"):
+                raise ValueError("invalid_assessment")
+            model_entities = InvestigationEntities.model_validate(model.get("entities", {}))
+            model_entities.sender_phone_numbers = list(dict.fromkeys([risk_result.number if risk_result else number] + model_entities.sender_phone_numbers))
+            entities, higgins, findings, risk = model_entities, candidate, checked, model["risk"]
+            break
+        except ProviderFailure as exc:
+            failures.append(exc.code)
+            break
+        except (ValueError, TypeError, KeyError):
+            failures.append("response_invalid")
+            correction = "\nRepair schema, unknown source IDs or secret values. Return the complete response."
+    
+    complete = bool(higgins.exact_response)
+    gaps = [s.source_id for s in sources if s.status == "unavailable"]
+    processing = {
+        "raw_retained_by_apollo": False, "temporary_expiry_minutes": 0,
+        "maximum_processing_retention_minutes": 15, "provider": "Gemini",
+        "model_used": complete, "temporary_copy_policy": TEMPORARY_COPY_POLICY,
+        "higgins_source": "gemini" if complete else "unavailable",
+        "fallback_used": False, "model_failures": failures, "model_attempts": attempts,
+        "completion": "partial" if not complete or gaps else "complete_within_supplied_evidence",
+        "coverage": {"numberResults": 1 if risk_result else 0, "unavailableSourceIds": gaps},
+        "capacityPolicy": policy()["version"], "provider_metadata": metadata,
+        "completed_at": checked_now() if complete else None,
+    }
+    
+    return InvestigationResult(
+        assessment_id=str(uuid.uuid4()), risk=risk, entities=entities,
+        findings=findings, sources=sources, higgins=higgins,
+        technical_summary=["Phone number investigation using reputation data and Higgins analysis."],
+        processing=processing,
+    )
