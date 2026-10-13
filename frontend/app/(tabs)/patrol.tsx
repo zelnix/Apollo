@@ -573,6 +573,29 @@ export default function Patrol() {
           incidents in one place.
         </Text>
 
+        {/* Apollo's patrol summary */}
+        <View
+          style={[
+            s.patrolCard,
+            { backgroundColor: "rgba(79,175,131,0.08)" },
+          ]}
+          testID="threats-patrol-summary"
+        >
+          <View style={s.patrolHeader}>
+            <View
+              style={[
+                s.patrolIconWell,
+                { backgroundColor: "rgba(79,175,131,0.15)" },
+              ]}
+            >
+              <Dog size={22} color={colors.resting} />
+            </View>
+            <Text style={s.patrolTitle}>Apollo&apos;s patrol summary</Text>
+          </View>
+          <Text style={s.patrolBody}>{patrolSummary}</Text>
+          <Text style={s.patrolTime}>Last updated {lastUpdated}</Text>
+        </View>
+
         {/* Summary cards */}
         <View style={s.summaryRow}>
           {/* Open cases */}
@@ -693,29 +716,6 @@ export default function Patrol() {
         contentContainerStyle={{ paddingBottom: insets.bottom + 90 }}
         ListHeaderComponent={
           <View>
-            {/* Apollo's patrol summary */}
-            <View
-              style={[
-                s.patrolCard,
-                { backgroundColor: "rgba(79,175,131,0.08)" },
-              ]}
-              testID="threats-patrol-summary"
-            >
-              <View style={s.patrolHeader}>
-                <View
-                  style={[
-                    s.patrolIconWell,
-                    { backgroundColor: "rgba(79,175,131,0.15)" },
-                  ]}
-                >
-                  <Dog size={22} color={colors.resting} />
-                </View>
-                <Text style={s.patrolTitle}>Apollo&apos;s patrol summary</Text>
-              </View>
-              <Text style={s.patrolBody}>{patrolSummary}</Text>
-              <Text style={s.patrolTime}>Last updated {lastUpdated}</Text>
-            </View>
-
             {/* Section heading */}
             <Text style={s.sectionHeading}>Recent Threat Investigations</Text>
           </View>
