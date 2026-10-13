@@ -20,6 +20,7 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  ImageBackground,
   Modal,
   Pressable,
   ScrollView,
@@ -35,6 +36,7 @@ import { goBackOrHome } from "@/src/utils/navigation";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 const higginsHeadshot = require("@/assets/images/higgins-avatar.png");
+const learningHeroBg = require("@/assets/images/learning-hero-bg.png");
 
 // ── Topic tile definitions ──────────────────────────────────────────────────
 interface TopicTile {
@@ -95,27 +97,36 @@ const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
 
   // Hero
-  heroRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    gap: spacing.sm,
+  heroCard: {
+    marginHorizontal: spacing.lg,
+    borderRadius: radius.lg,
+    overflow: "hidden",
   },
-  heroText: { flex: 1, gap: spacing.xs },
-  heroTitle: { fontFamily: fonts.displayBold, fontSize: 18, lineHeight: 24, color: c.onSurface, flex: 1 },
-  heroSub: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary },
-  heroImgWrap: { width: 120, height: 130, overflow: "hidden" },
-  heroImg: { width: 120, height: 130 },
-  heroQuote: {
-    fontFamily: fonts.text,
-    fontSize: 13,
-    fontStyle: "italic",
-    color: c.brand,
-    textAlign: "right",
-    paddingRight: spacing.lg,
-    paddingBottom: spacing.xs,
+  heroBg: {
+    width: "100%",
+    aspectRatio: 1.85,
+    justifyContent: "flex-end",
   },
+  heroAvatarWrap: {
+    position: "absolute",
+    bottom: 0,
+    right: spacing.lg,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "#B8D4F0",
+    borderWidth: 3,
+    borderColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    overflow: "hidden",
+  },
+  heroAvatarImg: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+  },
+  heroSub: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary, paddingHorizontal: spacing.lg, marginTop: spacing.sm },
 
   // Search row
   searchRow: {
@@ -318,10 +329,25 @@ function TopicTileCard({ tile, onPress }: { tile: TopicTile; onPress: () => void
 }
 
 // ── Article Thumbnail Placeholder ───────────────────────────────────────────
-function ArticleThumb({ category, size }: { category: string; size: number }) {
+function ArticleThumb({ category, size, thumbnailPath }: { category: string; size: number; thumbnailPath?: string }) {
   const bg = thumbnailColor(category);
   const iconColor = thumbnailIconColor(category);
   const Icon = TOPIC_TILES.find((t) => t.category === category?.toLowerCase())?.icon ?? MessageSquare;
+
+  if (thumbnailPath) {
+    const apiBase = (process.env.EXPO_PUBLIC_API_URL || "").replace(/\/$/, "");
+    const uri = `${apiBase}/api/learning/image/${thumbnailPath}`;
+    return (
+      <View style={{ width: size, height: size, borderRadius: radius.md, overflow: "hidden", backgroundColor: bg }}>
+        <Image
+          source={{ uri }}
+          style={{ width: size, height: size }}
+          resizeMode="cover"
+        />
+      </View>
+    );
+  }
+
   return (
     <View style={{ width: size, height: size, borderRadius: radius.md, backgroundColor: bg, alignItems: "center", justifyContent: "center" }}>
       <Icon size={size * 0.35} color={iconColor} />
@@ -571,7 +597,7 @@ export default function HigginsLearningScreen() {
         >
           <ChevronLeft size={24} color={colors.onSurface} />
         </Pressable>
-        <Text style={s.heroTitle}>Learn with Higgins</Text>
+        <Text style={{ fontFamily: fonts.displayBold, fontSize: 18, lineHeight: 24, color: colors.onSurface, flex: 1 }}>Learn with Higgins</Text>
       </View>
     </View>
   );
@@ -579,18 +605,17 @@ export default function HigginsLearningScreen() {
   // ── List header (hero + search + topics + featured) ──
   const listHeader = (
     <View style={{ gap: spacing.sm }}>
-      {/* Hero */}
-      <View style={s.heroRow}>
-        <View style={s.heroText}>
-          <Text style={s.heroSub}>
-            Practical guidance to help you recognise scams and stay safer online.
-          </Text>
-        </View>
-        <View style={s.heroImgWrap}>
-          <Image source={higginsHeadshot} style={s.heroImg} resizeMode="contain" />
-        </View>
+      {/* Hero card with background image and Higgins avatar */}
+      <View style={s.heroCard}>
+        <ImageBackground source={learningHeroBg} style={s.heroBg} resizeMode="cover">
+          <View style={s.heroAvatarWrap}>
+            <Image source={higginsHeadshot} style={s.heroAvatarImg} resizeMode="cover" />
+          </View>
+        </ImageBackground>
       </View>
-      <Text style={s.heroQuote}>A little knowledge keeps you{"\n"}one step ahead. — Higgins</Text>
+      <Text style={s.heroSub}>
+        Practical guidance to help you recognise scams and stay safer online.
+      </Text>
 
       {/* Search + Filters */}
       <View style={s.searchRow}>

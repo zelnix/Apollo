@@ -158,3 +158,101 @@ class GmailScanIn(BaseModel):
 @router.post("/gmail/scan")
 async def gmail_scan(body: GmailScanIn):
     return await scan_gmail_through_shared_pipeline(body.device_id, "manual")
+
+
+
+class GmailMessagePreview(BaseModel):
+    id: str
+    account: str = ""
+    sender: str = Field(alias="from", default="")
+    subject: str = ""
+    date: str = ""
+    snippet: str = ""
+
+    class Config:
+        populate_by_name = True
+
+
+class GmailMessagesOut(BaseModel):
+    messages: list[GmailMessagePreview]
+    next_page_token: Optional[str] = None
+
+
+@router.get("/gmail/messages", response_model=GmailMessagesOut)
+async def gmail_messages(device_id: str = Query(min_length=8, max_length=64), limit: int = Query(default=20, ge=1, le=50), page_token: Optional[str] = Query(default=None)):
+    """Return lightweight inbox previews — id, from, subject, date, snippet.
+    Does NOT return full body content (that happens on single-message fetch)."""
+    import httpx
+    connections = await gmail_service.get_connections(device_id)
+    if not connections:
+        raise HTTPException(404, "Gmail is not connected")
+    previews: list[dict] = []
+    next_token: Optional[str] = None
+    for row in connections:
+        account_email = row.get("email", "")
+        try:
+            access_token = await gmail_service._access_token_for(device_id, account_email)
+        except HTTPException:
+            continue
+        auth = {"Authorization": f"Bearer {access_token}"}
+        async with httpx.AsyncClient(timeout=15) as http:
+            params: dict = {"maxResults": limit, "q": "newer_than:30d"}
+            if page_token:
+                params["pageToken"] = page_token
+            listed = await http.get(f"{gmail_service.GMAIL_API}/messages", params=params, headers=auth)
+            if listed.status_code == 401:
+                continue
+            listed.raise_for_status()
+            listing = listed.json()
+            next_token = listing.get("nextPageToken")
+            for item in listing.get("messages", []):
+                got = await http.get(f"{gmail_service.GMAIL_API}/messages/{item['id']}", params={"format": "metadata", "metadataHeaders": "From,Subject,Date"}, headers=auth)
+                if got.status_code != 200:
+                    continue
+                msg = got.json()
+                headers = {h["name"].lower(): h["value"] for h in msg.get("payload", {}).get("headers", [])}
+                previews.append({
+                    "id": msg.get("id", ""),
+                    "account": account_email,
+                    "from": headers.get("from", ""),
+                    "subject": headers.get("subject", "(no subject)"),
+                    "date": headers.get("date", ""),
+                    "snippet": msg.get("snippet", ""),
+                })
+    return GmailMessagesOut(messages=previews, next_page_token=next_token)
+
+
+class GmailMessageDetail(BaseModel):
+    id: str
+    account: str = ""
+    sender: str = Field(alias="from", default="")
+    subject: str = ""
+    date: str = ""
+    body: str = ""
+
+    class Config:
+        populate_by_name = True
+
+
+@router.get("/gmail/message/{message_id}", response_model=GmailMessageDetail)
+async def gmail_message_detail(message_id: str, device_id: str = Query(min_length=8, max_length=64), email: Optional[str] = Query(default=None)):
+    """Fetch a single message's full content for analysis."""
+    import httpx
+    access_token = await gmail_service._access_token_for(device_id, email)
+    auth = {"Authorization": f"Bearer {access_token}"}
+    async with httpx.AsyncClient(timeout=20) as http:
+        got = await http.get(f"{gmail_service.GMAIL_API}/messages/{message_id}", params={"format": "full"}, headers=auth)
+        if got.status_code == 401:
+            raise HTTPException(401, "Gmail access was rejected; reconnect")
+        got.raise_for_status()
+        msg = got.json()
+        h = gmail_service._headers_of(msg)
+        text, _ = gmail_service._extract_content(msg)
+        return GmailMessageDetail(
+            id=msg.get("id", ""),
+            account=email or "",
+            **{"from": h.get("from", "")},
+            subject=h.get("subject", ""),
+            date=h.get("date", ""),
+            body=text,
+        )

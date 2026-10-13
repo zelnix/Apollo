@@ -65,7 +65,7 @@ def _summary(row: dict[str, Any]) -> dict[str, Any]:
             "riskContext": row.get("risk_context"), "tags": row.get("tags", []), "sourceNames": row.get("source_names", []),
             "sourceUrls": row.get("source_urls", []), "sourceType": row.get("source_type"), "evidenceQuality": row.get("evidence_quality"),
             "publishedAt": row.get("published_at"), "updatedAt": row.get("updated_at"), "reviewAfter": row.get("review_after"),
-            "reviewStatus": row.get("review_status")}
+            "reviewStatus": row.get("review_status"), "thumbnailPath": row.get("thumbnail_path", "")}
 
 
 async def list_articles(category: str | None, audience: str | None, tag: str | None, risk_context: str | None,

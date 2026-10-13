@@ -25,6 +25,19 @@ async def article(slug: str):
     return JSONResponse(jsonable_encoder(value), headers=NO_STORE)
 
 
+@router.get("/learning/image/{path:path}")
+async def learning_image(path: str):
+    """Serve a stored learning article image from Emergent Object Storage."""
+    from fastapi.responses import Response
+    try:
+        from services import emergent_storage
+        data, content_type = emergent_storage.get_object(path)
+        return Response(content=data, media_type=content_type, headers={"Cache-Control": "public, max-age=86400"})
+    except Exception:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+
+
 class LearningPreferences(BaseModel):
     model_config = {"populate_by_name": True, "extra": "forbid"}
     topics: list[str] = Field(default_factory=list, max_length=20)

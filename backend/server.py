@@ -42,6 +42,7 @@ from services import family_assist
 from services.threat_revalidation import ensure_indexes as ensure_threat_indexes, migrate_blocklist_entries
 from routers import admin, analysis, ask, call, devices, family, family_assist as family_assist_router, family_weekly, gmail, health, intel, investigations, learning as learning_router, learning_admin, patrol, product, push
 from routers.family_weekly import weekly_checkin_loop
+from services.seed_learning_images import router as seed_images_router
 
 # ── Blocklist disabled (product decision: Apollo does not maintain an independent threat catalogue) ──
 # SEED_BLOCKLIST population stopped. Historical data preserved in db.blocklist.
@@ -216,6 +217,7 @@ for r in (health, devices, intel, patrol, investigations, ask, learning_router, 
 app.include_router(family_assist_router.ws_router, prefix="/api")
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_admin_key)])
 app.include_router(learning_admin.router, prefix="/api/admin", tags=["learning-admin"], dependencies=[Depends(require_admin_key)])
+app.include_router(seed_images_router, prefix="/api", tags=["learning-seed"])
 
 # GuardDog production trust endpoints (unauthenticated — public trust artifacts and controlled verification).
 from routers import guarddog as guarddog_router
