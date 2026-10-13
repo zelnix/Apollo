@@ -5,7 +5,6 @@
 // Reuses existing investigation records, case lifecycle, and navigation.
 
 import ChevronRight from "lucide-react-native/icons/chevron-right";
-import CircleCheck from "lucide-react-native/icons/circle-check";
 import Dog from "lucide-react-native/icons/dog";
 import Globe from "lucide-react-native/icons/globe";
 import Grid2x2 from "lucide-react-native/icons/grid-2x2";
@@ -352,17 +351,6 @@ function formatCaseDate(iso: string): string {
   return `${day} • ${time}`;
 }
 
-/** Check if a date falls within the current local calendar week (Mon–Sun). */
-function isThisWeek(iso: string): boolean {
-  const d = new Date(iso);
-  const now = new Date();
-  const dayOfWeek = now.getDay() === 0 ? 6 : now.getDay() - 1; // Mon=0 .. Sun=6
-  const weekStart = new Date(now);
-  weekStart.setDate(now.getDate() - dayOfWeek);
-  weekStart.setHours(0, 0, 0, 0);
-  return d >= weekStart;
-}
-
 /** Determine which tone/color to use for the case icon circle. */
 function caseIconTone(outcome: PatrolOutcome): string {
   if (outcome.state === "resting" || outcome.state === "biting") return "good";
@@ -501,15 +489,6 @@ export default function Patrol() {
     () => allOutcomes.filter((o) => matchesPatrolFilter(o, "needs_you")).length,
     [allOutcomes],
   );
-  const handledThisWeek = useMemo(
-    () =>
-      allOutcomes.filter(
-        (o) =>
-          (o.state === "resting" || o.event.status === "resolved" || o.event.status === "trusted") &&
-          isThisWeek(o.occurredAt),
-      ).length,
-    [allOutcomes],
-  );
 
   // Status indicator
   const hasUnresolved = openCases > 0;
@@ -594,63 +573,6 @@ export default function Patrol() {
           </View>
           <Text style={s.patrolBody}>{patrolSummary}</Text>
           <Text style={s.patrolTime}>Last updated {lastUpdated}</Text>
-        </View>
-
-        {/* Summary cards */}
-        <View style={s.summaryRow}>
-          {/* Open cases */}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Open cases: ${openCases}`}
-            testID="threats-open-cases"
-            onPress={() => setActiveChip("needs_action")}
-            style={({ pressed }) => [s.summaryCard, { backgroundColor: openCases > 0 ? "#FFF3E0" : "#E8F5E9", opacity: pressed ? 0.82 : 1 }]}
-          >
-            <View style={s.summaryIconRow}>
-              <View
-                style={[
-                  s.summaryIconWell,
-                  { backgroundColor: openCases > 0 ? "#FFE0B2" : "#C8E6C9" },
-                ]}
-              >
-                <Shield size={16} color={openCases > 0 ? "#E65100" : "#2E7D32"} />
-              </View>
-              <Text style={s.summaryLabel}>Open cases</Text>
-            </View>
-            <View style={s.summaryCountRow}>
-              <Text style={s.summaryCount}>{openCases}</Text>
-              <Text style={s.summarySubtext}>
-                {openCases === 0 ? "No action needed" : `${openCases === 1 ? "needs" : "need"} action`}
-              </Text>
-            </View>
-          </Pressable>
-
-          {/* Handled this week */}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Handled this week: ${handledThisWeek}`}
-            testID="threats-handled-week"
-            onPress={() => setActiveChip("handled")}
-            style={({ pressed }) => [s.summaryCard, { backgroundColor: "#E3F2FD", opacity: pressed ? 0.82 : 1 }]}
-          >
-            <View style={s.summaryIconRow}>
-              <View
-                style={[
-                  s.summaryIconWell,
-                  { backgroundColor: "#BBDEFB" },
-                ]}
-              >
-                <CircleCheck size={16} color="#1565C0" />
-              </View>
-              <Text style={s.summaryLabel}>Handled this week</Text>
-            </View>
-            <View style={s.summaryCountRow}>
-              <Text style={s.summaryCount}>{handledThisWeek}</Text>
-              <Text style={s.summarySubtext}>
-                {handledThisWeek === 0 ? "None this week" : "Resolved"}
-              </Text>
-            </View>
-          </Pressable>
         </View>
 
         {/* Filter chips */}
