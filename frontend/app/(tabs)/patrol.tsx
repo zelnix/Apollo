@@ -134,11 +134,9 @@ const useStyles = makeStyles((c) => ({
   summaryCard: {
     flex: 1,
     borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: c.border,
-    backgroundColor: c.surfaceSecondary,
-    padding: spacing.sm,
-    gap: spacing.xs,
+    borderWidth: 0,
+    padding: spacing.md,
+    gap: 4,
   },
   summaryIconRow: {
     flexDirection: "row",
@@ -146,22 +144,22 @@ const useStyles = makeStyles((c) => ({
     gap: spacing.sm,
   },
   summaryIconWell: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
   },
   summaryLabel: {
-    fontFamily: fonts.text,
-    fontSize: 12,
+    fontFamily: fonts.textSemibold,
+    fontSize: 13,
     lineHeight: 16,
-    color: c.onSurfaceSecondary,
+    color: c.onSurface,
   },
   summaryCount: {
     fontFamily: fonts.displayBold,
-    fontSize: 24,
-    lineHeight: 30,
+    fontSize: 28,
+    lineHeight: 32,
     color: c.onSurface,
   },
   summarySubtext: {
@@ -577,16 +575,16 @@ export default function Patrol() {
             accessibilityLabel={`Open cases: ${openCases}`}
             testID="threats-open-cases"
             onPress={() => setActiveChip("needs_action")}
-            style={({ pressed }) => [s.summaryCard, { opacity: pressed ? 0.82 : 1 }]}
+            style={({ pressed }) => [s.summaryCard, { backgroundColor: openCases > 0 ? "#FFF3E0" : "#E8F5E9", opacity: pressed ? 0.82 : 1 }]}
           >
             <View style={s.summaryIconRow}>
               <View
                 style={[
                   s.summaryIconWell,
-                  { backgroundColor: colors.surfaceTertiary },
+                  { backgroundColor: openCases > 0 ? "#FFE0B2" : "#C8E6C9" },
                 ]}
               >
-                <Shield size={18} color={colors.onSurfaceSecondary} />
+                <Shield size={16} color={openCases > 0 ? "#E65100" : "#2E7D32"} />
               </View>
               <Text style={s.summaryLabel}>Open cases</Text>
             </View>
@@ -602,16 +600,16 @@ export default function Patrol() {
             accessibilityLabel={`Handled this week: ${handledThisWeek}`}
             testID="threats-handled-week"
             onPress={() => setActiveChip("handled")}
-            style={({ pressed }) => [s.summaryCard, { opacity: pressed ? 0.82 : 1 }]}
+            style={({ pressed }) => [s.summaryCard, { backgroundColor: "#E3F2FD", opacity: pressed ? 0.82 : 1 }]}
           >
             <View style={s.summaryIconRow}>
               <View
                 style={[
                   s.summaryIconWell,
-                  { backgroundColor: colors.surfaceTertiary },
+                  { backgroundColor: "#BBDEFB" },
                 ]}
               >
-                <CircleCheck size={18} color={colors.onSurfaceSecondary} />
+                <CircleCheck size={16} color="#1565C0" />
               </View>
               <Text style={s.summaryLabel}>Handled this week</Text>
             </View>
