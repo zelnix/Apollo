@@ -16,7 +16,7 @@ export interface CheckItItem {
 
 export const CHECK_IT_ITEMS = [
   { id: "message", label: "Check a message", purpose: "Paste, share or add a screenshot of a message that worries you.", route: "/message", icon: "message", acceptedIntake: ["text", "image"] },
-  { id: "link", label: "Check a link", purpose: "See where a link leads before you open it.", route: "/check", icon: "link", acceptedIntake: ["url"] },
+  { id: "link", label: "Check Website Link", purpose: "See what\u2019s behind the link \u2014 safely and securely.", route: "/check", icon: "link", acceptedIntake: ["url"] },
   { id: "file", label: "Check a file", purpose: "Choose or share a download or attachment for Apollo to examine.", route: "/file", icon: "file", acceptedIntake: ["file"] },
   { id: "call", label: "Check a number", purpose: "Find out who called and whether it could be a scam.", route: "/call-guard", icon: "call", acceptedIntake: ["text", "user_context"] },
   { id: "scan", label: "Scan a code", purpose: "Scan a QR code or barcode and check what it contains.", route: "/scan", icon: "scan", acceptedIntake: ["image", "url", "text"] },
