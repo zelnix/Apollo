@@ -135,8 +135,9 @@ const useStyles = makeStyles((c) => ({
     flex: 1,
     borderRadius: radius.md,
     borderWidth: 0,
-    padding: spacing.md,
-    gap: 4,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    gap: 2,
   },
   summaryIconRow: {
     flexDirection: "row",
@@ -144,9 +145,9 @@ const useStyles = makeStyles((c) => ({
     gap: spacing.sm,
   },
   summaryIconWell: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -158,8 +159,8 @@ const useStyles = makeStyles((c) => ({
   },
   summaryCount: {
     fontFamily: fonts.displayBold,
-    fontSize: 28,
-    lineHeight: 32,
+    fontSize: 22,
+    lineHeight: 26,
     color: c.onSurface,
   },
   summaryCountRow: {
