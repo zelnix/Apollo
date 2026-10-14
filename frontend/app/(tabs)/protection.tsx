@@ -560,7 +560,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   heroTextBlock: {
-    maxWidth: "40%",
+    maxWidth: "50%",
     gap: 2,
   },
   heroDogImage: {
