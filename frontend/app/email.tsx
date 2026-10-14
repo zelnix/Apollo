@@ -1025,7 +1025,7 @@ export default function CheckEmail() {
       <CheckingModal
         visible={busy}
         title="Checking email"
-        subject={subject.trim() ? subject.trim() : fromAddr.trim() ? `From: ${fromAddr.trim()}` : undefined}
+        subject={subject.trim() ? subject.trim() : from.trim() ? `From: ${from.trim()}` : undefined}
         description={"Magnum DI is reviewing headers, sender\nreputation and content for phishing patterns."}
       />
     </View>

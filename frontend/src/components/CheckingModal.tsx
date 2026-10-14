@@ -49,7 +49,7 @@ const useStyles = makeStyles(() => ({
     fontSize: 15,
     color: "#4A5568",
     textAlign: "center",
-    maxWidth: "100%",
+    maxWidth: 280,
   },
   description: {
     fontFamily: fonts.text,
