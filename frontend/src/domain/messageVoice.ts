@@ -163,7 +163,7 @@ export function investigationHistory(args: {
 }): HistoryEntry[] {
   const entries: { text: string }[] = [{ text: "Higgins opened this investigation." }];
   args.turns.forEach((t, i) => { if (i > 0 || args.turns.length > 1) entries.push({ text: `You asked a follow-up — Higgins answered: ${scrubMessage(t.overview).slice(0, 120)}` }); });
-  const current = args.phase === "working" || args.phase === "creating" || args.phase === "reconnecting" ? "Higgins is still investigating."
+  const current = args.phase === "working" || args.phase === "creating" || args.phase === "reconnecting" ? "Magnum DI is still investigating."
     : args.phase === "waiting_user" ? "Higgins is waiting on your answer to continue."
     : args.phase === "waiting_device" ? "Higgins is checking this device for a fresh observation."
     : args.phase === "failed" || args.phase === "expired" ? "This investigation stopped before finishing."

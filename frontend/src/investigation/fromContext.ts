@@ -4,7 +4,7 @@ import * as Crypto from "expo-crypto";
 import type { HigginsIssueContext } from "@/src/domain/higginsHandoff";
 import type { CreateCase, Gate } from "./types";
 
-/** Handoff findings become Apollo's initial (revisable) observations in the shared case. */
+/** Handoff findings become Magnum DI's initial (revisable) observations in the shared case. */
 export function initialFindings(context: HigginsIssueContext): string[] {
   return [
     `Apollo ${context.gate} check summary: ${context.issue_summary} (Apollo state: ${context.assessment_state})`,

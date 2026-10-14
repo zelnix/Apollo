@@ -172,7 +172,7 @@ export function CheckResultScreen({ result, actions = [], onAskHiggins, onClose,
             style={s.disclosureBtn}
             testID="check-result-items-toggle"
           >
-            <Text style={s.disclosureLabel}>{hasInvestigation ? "What Apollo checked immediately" : "What Apollo checked"}</Text>
+            <Text style={s.disclosureLabel}>{hasInvestigation ? "Magnum DI's initial assessment" : "What Apollo checked"}</Text>
             {fullOpen || !hasInvestigation ? <ChevronUp size={18} color={colors.onSurface} /> : <ChevronDown size={18} color={colors.onSurface} />}
           </Pressable>
           {fullOpen || !hasInvestigation ? (

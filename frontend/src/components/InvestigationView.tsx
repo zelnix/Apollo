@@ -170,7 +170,7 @@ export function InvestigationView({ state, onAnswer, onRetry, onCancel, onAction
     {turns.length ? <View style={s.user} testID="inv-current-question"><Text style={s.text}>{turns[turns.length - 1].question}</Text></View> : null}
 
     {/* ── Working / progress state ── */}
-    {working ? <Card style={s.card} testID="inv-progress"><View style={s.row}><ActivityIndicator color={colors.gold} /><Body>{phase === "reconnecting" ? "Connection interrupted — reconnecting to the same investigation…" : phase === "waiting_device" ? "Checking this device for a fresh observation…" : "Higgins is investigating…"}</Body></View>
+    {working ? <Card style={s.card} testID="inv-progress"><View style={s.row}><ActivityIndicator color={colors.gold} /><Body>{phase === "reconnecting" ? "Connection interrupted — reconnecting to the same investigation…" : phase === "waiting_device" ? "Checking this device for a fresh observation…" : "Magnum DI is investigating…"}</Body></View>
       {progress.slice(-3).map((line, i) => <Text key={`${i}-${line}`} style={s.muted}>{line}</Text>)}
       {caseData?.activeJobId ? <Button testID="inv-cancel" variant="ghost" label="Cancel this investigation" onPress={onCancel} /> : null}</Card> : null}
 

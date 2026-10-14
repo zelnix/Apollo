@@ -106,7 +106,7 @@ export function useInvestigation(boundOperationId?: string | null) {
         void refresh(caseId, gen).then((caseData) => { if (live()) update({ phase: caseData.response ? "answered" : "idle", progress: [] }); }).catch(() => undefined);
       } else if (event.type === "expired") {
         if (operationId) expireOperation(operationId, caseId);
-        setState({ ...EMPTY, phase: "expired", operationId, error: "Temporary evidence expired before Higgins finished." });
+        setState({ ...EMPTY, phase: "expired", operationId, error: "Temporary evidence expired before Magnum DI finished." });
       }
     }, (reason) => {
       if (!live() || reason === "terminal") return;
@@ -167,14 +167,14 @@ export function useInvestigation(boundOperationId?: string | null) {
     const turn = pending.current?.message === message ? pending.current : { turnId: safeUUID(), key: safeUUID(), message,
       answerTo: (caseRef.current?.response?.question ?? state.question)?.id ?? null };
     pending.current = turn;
-    update({ phase: "working", error: null, notice: null, failure: null, progress: ["Sending your follow-up to Higgins."] });
+    update({ phase: "working", error: null, notice: null, failure: null, progress: ["Sending your follow-up to Magnum DI."] });
     const gen = generation.current; const live = () => gen === generation.current && caseRef.current?.id === caseData.id;
     try {
       const fresh = await api.getCase(caseData.id); if (!live()) return false;
       const { job } = await api.submitTurn(caseData.id, { expectedRevision: fresh.case.revision, turnId: turn.turnId, message,
         answerToQuestionId: turn.answerTo, evidenceIds: [] }, turn.key);
       if (!live()) return false; update({ caseData: fresh.case }); follow(caseData.id, job); return true;
-    } catch (error: unknown) { if (live()) update({ phase: "failed", error: error instanceof Error ? error.message : "Higgins could not take this follow-up." }); return false; }
+    } catch (error: unknown) { if (live()) update({ phase: "failed", error: error instanceof Error ? error.message : "Magnum DI could not take this follow-up." }); return false; }
   }, [state.caseData, state.question, follow]);
 
   const continueWith = useCallback(async (input: Omit<CreateCase, "deviceProfile">, operationId = boundOperationId ?? safeUUID()) => {
@@ -222,7 +222,7 @@ export function useInvestigation(boundOperationId?: string | null) {
         stream.current?.abort(); pending.current = null;
         if (operationRef.current) settleManagedOperation(operationRef.current, caseData.id, fresh, null);
         update({ phase: fresh.response?.question ? "waiting_user" : "answered", response: fresh.response, question: fresh.response?.question ?? null,
-          progress: [], error: null, notice: "Higgins finished before cancellation took effect, so the completed answer is shown." });
+          progress: [], error: null, notice: "Magnum DI finished before cancellation took effect, so the completed answer is shown." });
         return;
       }
       if (result.outcome === "failed") { stream.current?.abort(); update({ phase: "failed", progress: [], notice: null,

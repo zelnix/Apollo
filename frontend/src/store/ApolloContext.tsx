@@ -1222,7 +1222,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
       });
       assessment = isInvestigationResult(remote) ? remote : null;
       if (!assessment) investigationError = FAILURE_MESSAGE.malformed;
-    } catch (error) { investigationError = error instanceof Error ? error.message : "Higgins could not complete the deeper investigation."; }
+    } catch (error) { investigationError = error instanceof Error ? error.message : "Magnum DI could not complete the deeper investigation."; }
     if (assessment?.risk === "warning" && decision.state === "resting") {
       decision = { ...decision, state: "growling", headline: assessment.higgins.headline,
         what_happened: assessment.higgins.what_was_found[0] ?? decision.what_happened,

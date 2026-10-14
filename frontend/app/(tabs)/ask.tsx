@@ -132,7 +132,7 @@ export default function Ask() {
     void askHiggins(message, conversationId.current, turnId, previousTurnIds).then((reply) => {
       setChatMessages((current) => { const next = [...current, { id: Crypto.randomUUID(), turnId: reply.turnId, role: "higgins" as const, content: `${reply.answer}${reply.clarification ? `\n\n${reply.clarification}` : ""}`, createdAt: new Date().toISOString(), conversationId: reply.conversationId }]; void saveLocalChat(next); return next; });
       setLastAction(reply.suggestedActions[0] ?? null);
-    }).catch(() => setChatError("Higgins could not answer right now. No investigation was started.")).finally(() => setChatBusy(false));
+    }).catch(() => setChatError("Magnum DI could not answer right now. No investigation was started.")).finally(() => setChatBusy(false));
   }, [chatMessages]);
 
   const submit = (message: string) => {
@@ -183,7 +183,7 @@ export default function Ask() {
   const deleteInvestigation = async () => { clearHandoffTransfers(); setActiveContext(null); setRouteError(null); setInvestigationMode(false); await remove(); };
   const clearChat = async () => { if (!deviceId || chatBusy) return; await Promise.all([clearHigginsHistory(deviceId), clearLocalChat(), clearStarterMemory()]); setChatMessages([]); setStarters([]); setLastAction(null); setChatError(null); conversationId.current = Crypto.randomUUID(); };
   const newQuestion = () => { if (busy) return; setActiveContext(null); setInvestigationMode(false); void remove(); };
-  const caseStatus = state.phase === "answered" ? "Higgins has finished this investigation." : state.phase === "waiting_user" ? "Higgins needs one answer from you" : state.phase === "failed" ? "Investigation incomplete — Retry available" : state.phase === "expired" ? "Temporary investigation content expired" : caseBusy ? "Higgins is investigating…" : "Investigation content expires within 15 minutes";
+  const caseStatus = state.phase === "answered" ? "Magnum DI has finished this investigation." : state.phase === "waiting_user" ? "Magnum DI needs one answer from you" : state.phase === "failed" ? "Investigation incomplete — Retry available" : state.phase === "expired" ? "Temporary investigation content expired" : caseBusy ? "Magnum DI is investigating…" : "Investigation content expires within 15 minutes";
   const showWelcome = !investigationMode && chatMessages.length === 0;
   const welcomeStarters = useMemo(() => [...new Set([...starters, ...STARTERS])].slice(0, 4), [starters]);
   const showRepeatRow = !investigationMode && chatMessages.length > 0 && !text.trim() && starters.length > 0;

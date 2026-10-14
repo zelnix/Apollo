@@ -295,7 +295,7 @@ export default function CheckNumber() {
     const callActions: { label: string; onPress: () => void; testID: string; variant?: "primary" | "secondary" | "ghost" }[] = [];
 
     if (investigationBusy) {
-      callActions.push({ testID: "callguard-investigating", variant: "ghost", label: "Higgins is investigating…", onPress: () => {} });
+      callActions.push({ testID: "callguard-investigating", variant: "ghost", label: "Magnum DI is investigating…", onPress: () => {} });
     } else if (!investigationResult || !(higginsData?.exact_response)) {
       callActions.push({ testID: "callguard-retry-investigation", variant: "secondary", label: "Retry Higgins investigation", onPress: () => void retryInvestigation() });
     }
@@ -342,7 +342,7 @@ export default function CheckNumber() {
         result={enhancedModel}
         investigationContext={callInvContext}
         investigationQuestion={askPrompt}
-        submissionId={`callguard-${result.number}-${Date.now().toString(36)}`}
+        submissionId={`callguard-${result.number.replace(/[^A-Za-z0-9._:-]/g, "")}-${Date.now().toString(36)}`}
         eventId={null}
         actions={callActions}
       />
