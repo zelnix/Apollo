@@ -560,7 +560,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   heroTextBlock: {
-    maxWidth: "60%",
+    maxWidth: "48%",
     gap: 1,
     backgroundColor: "rgba(0,0,0,0.35)",
     borderRadius: radius.md,
@@ -569,7 +569,7 @@ const styles = StyleSheet.create({
   },
   heroDogImage: {
     position: "absolute",
-    right: 4,
+    right: "10%",
     bottom: 0,
     width: "30%",
     height: "80%",
