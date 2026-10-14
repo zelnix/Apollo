@@ -362,7 +362,7 @@ export default function ProtectionScreen() {
         <View
           style={[
             styles.heroContainer,
-            { height: Math.round(cardWidth / (1916 / 821)) },
+            { height: Math.round(cardWidth * 0.38) },
           ]}
           testID="protection-hero-card"
         >
@@ -545,7 +545,7 @@ const styles = StyleSheet.create({
   heroContainer: {
     borderRadius: radius.lg,
     overflow: "hidden",
-    backgroundColor: "#E8F5E9",
+    backgroundColor: "#F5FDF6",
   },
   heroBgImage: {
     ...StyleSheet.absoluteFillObject,
@@ -555,16 +555,12 @@ const styles = StyleSheet.create({
   },
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,
-    justifyContent: "flex-end",
+    justifyContent: "center",
     alignItems: "center",
   },
   heroTextBlock: {
     maxWidth: "55%",
     gap: 2,
-    backgroundColor: "rgba(0,0,0,0.35)",
-    borderRadius: radius.md,
-    padding: spacing.sm,
-    marginBottom: spacing.sm,
   },
   heroDogImage: {
     position: "absolute",
@@ -575,12 +571,12 @@ const styles = StyleSheet.create({
   },
   heroTitle: {
     fontFamily: fonts.displayBold,
-    color: "#FFFFFF",
+    color: "#1B6B47",
     letterSpacing: -0.2,
   },
   heroLine: {
     fontFamily: fonts.text,
-    color: "rgba(255,255,255,0.92)",
+    color: "#0B1220",
   },
 
   // ── Section header ──
