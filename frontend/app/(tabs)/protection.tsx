@@ -525,14 +525,17 @@ const styles = StyleSheet.create({
   heroTextBlock: {
     maxWidth: "55%",
     gap: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    borderRadius: radius.md,
+    padding: spacing.sm,
   },
   heroTitle: {
     fontFamily: fonts.displayBold,
-    color: "#1B5E20",
+    color: "#FFFFFF",
   },
   heroLine: {
     fontFamily: fonts.text,
-    color: "#33691E",
+    color: "rgba(255,255,255,0.92)",
   },
 
   // ── Section header ──
