@@ -178,9 +178,11 @@ function buildHeroText(areas: ProtectionArea[], checking: boolean) {
 function GridCategoryCard({
   area,
   fullWidth,
+  scale,
 }: {
   area: ProtectionArea;
   fullWidth?: boolean;
+  scale: number;
 }) {
   const { colors } = useTheme();
   const router = useRouter();
@@ -192,6 +194,14 @@ function GridCategoryCard({
   const isGood = tone === "good" || tone === "neutral";
   const isWarning = tone === "limited" || tone === "unverified";
   const gateCount = area.capabilities.length;
+
+  const iconSize = Math.round(40 * scale);
+  const iconInner = Math.round(22 * scale);
+  const iconRadius = Math.round(12 * scale);
+  const titleSize = Math.round(14 * scale);
+  const descSize = Math.round(11.5 * scale);
+  const badgeSize = Math.round(12 * scale);
+  const cardPad = Math.round(12 * scale);
 
   return (
     <Pressable
@@ -208,32 +218,52 @@ function GridCategoryCard({
           backgroundColor: colors.surfaceSecondary,
           borderColor: colors.border,
           opacity: pressed ? 0.82 : 1,
+          padding: cardPad,
         },
       ]}
     >
-      {/* Icon */}
-      <View
-        style={[styles.gridIconWell, { backgroundColor: iconColors.well }]}
-      >
-        <Icon size={28} color={iconColors.icon} />
+      {/* Top row: Icon + Title */}
+      <View style={styles.gridTopRow}>
+        <View
+          style={[
+            styles.gridIconWell,
+            {
+              width: iconSize,
+              height: iconSize,
+              borderRadius: iconRadius,
+              backgroundColor: iconColors.well,
+            },
+          ]}
+        >
+          <Icon size={iconInner} color={iconColors.icon} />
+        </View>
+        <View style={styles.gridTitleBlock}>
+          <Text
+            style={[
+              styles.gridTitle,
+              { color: colors.onSurface, fontSize: titleSize, lineHeight: titleSize + 5 },
+            ]}
+            numberOfLines={1}
+          >
+            {area.title}
+          </Text>
+          <Text
+            style={[
+              styles.gridGateCount,
+              { color: colors.onSurfaceSecondary, fontSize: descSize },
+            ]}
+          >
+            {gateCount} {gateCount === 1 ? "Gate" : "Gates"}
+          </Text>
+        </View>
       </View>
-
-      {/* Title + Gates */}
-      <Text
-        style={[styles.gridTitle, { color: colors.onSurface }]}
-        numberOfLines={1}
-      >
-        {area.title}
-      </Text>
-      <Text
-        style={[styles.gridGateCount, { color: colors.onSurfaceSecondary }]}
-      >
-        {gateCount} {gateCount === 1 ? "Gate" : "Gates"}
-      </Text>
 
       {/* Description */}
       <Text
-        style={[styles.gridDescription, { color: colors.onSurfaceSecondary }]}
+        style={[
+          styles.gridDescription,
+          { color: colors.onSurfaceSecondary, fontSize: descSize, lineHeight: descSize + 5 },
+        ]}
         numberOfLines={3}
       >
         {area.description}
@@ -243,17 +273,17 @@ function GridCategoryCard({
       <View style={styles.gridBottomRow}>
         <View style={[styles.statusBadge, { backgroundColor: bgColor }]}>
           {isGood ? (
-            <CircleCheck size={16} color={color} />
+            <CircleCheck size={Math.round(14 * scale)} color={color} />
           ) : isWarning ? (
-            <CircleAlert size={16} color={color} />
+            <CircleAlert size={Math.round(14 * scale)} color={color} />
           ) : (
             <View style={[styles.statusDot, { backgroundColor: color }]} />
           )}
-          <Text style={[styles.statusText, { color }]}>
+          <Text style={[styles.statusText, { color, fontSize: badgeSize }]}>
             {displayStatus(tone)}
           </Text>
         </View>
-        <ChevronRight size={22} color={colors.muted} />
+        <ChevronRight size={Math.round(18 * scale)} color={colors.muted} />
       </View>
     </Pressable>
   );
@@ -403,14 +433,14 @@ export default function ProtectionScreen() {
         {/* ── 2-column grid (first 4 categories) ── */}
         <View style={styles.categoryGrid}>
           {gridAreas.map((area) => (
-            <GridCategoryCard key={area.id} area={area} />
+            <GridCategoryCard key={area.id} area={area} scale={scale} />
           ))}
         </View>
 
         {/* ── Last category full-width ── */}
         {lastArea && (
           <View style={styles.lastCardWrap}>
-            <GridCategoryCard area={lastArea} fullWidth />
+            <GridCategoryCard area={lastArea} fullWidth scale={scale} />
           </View>
         )}
 
@@ -579,8 +609,7 @@ const styles = StyleSheet.create({
     width: "48.5%",
     borderRadius: radius.lg,
     borderWidth: 1,
-    padding: spacing.md,
-    gap: 6,
+    gap: 5,
     flexGrow: 0,
     flexShrink: 0,
   },
@@ -590,53 +619,51 @@ const styles = StyleSheet.create({
   lastCardWrap: {
     marginTop: -spacing.sm,
   },
+  gridTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
   gridIconWell: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 4,
+    flexShrink: 0,
+  },
+  gridTitleBlock: {
+    flex: 1,
+    gap: 1,
   },
   gridTitle: {
     fontFamily: fonts.displayBold,
-    fontSize: 16,
-    lineHeight: 21,
   },
   gridGateCount: {
     fontFamily: fonts.text,
-    fontSize: 13,
-    lineHeight: 17,
   },
   gridDescription: {
     fontFamily: fonts.text,
-    fontSize: 12,
-    lineHeight: 17,
     flex: 1,
   },
   gridBottomRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
   },
   statusBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: radius.pill,
   },
   statusDot: {
-    width: 8,
-    height: 8,
+    width: 7,
+    height: 7,
     borderRadius: 4,
   },
   statusText: {
     fontFamily: fonts.textSemibold,
-    fontSize: 13,
-    lineHeight: 17,
   },
 
   // ── Bottom guidance card ──
