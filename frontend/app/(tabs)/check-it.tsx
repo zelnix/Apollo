@@ -142,7 +142,7 @@ const DEVICE_CONNECTION: CheckCard[] = [
 const PROTECTION_ACCOUNTS: CheckCard[] = [
   {
     id: "recheck",
-    label: "Device Re-check",
+    label: "Device Check",
     description: "Check for signs of malware, unsafe changes or compromise.",
     icon: ShieldCheck,
     route: "/recheck",
