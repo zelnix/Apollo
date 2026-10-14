@@ -370,7 +370,7 @@ export default function ProtectionScreen() {
           <Image
             source={heroBackground}
             style={styles.heroBgImage}
-            resizeMode="contain"
+            resizeMode="cover"
           />
           {/* Text overlay at bottom-left */}
           <View style={[styles.heroOverlay, { padding: Math.round(12 * scale) }]}>
@@ -546,13 +546,11 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     overflow: "hidden",
     backgroundColor: "#FBFEFC",
-    borderWidth: 0,
   },
   heroBgImage: {
     ...StyleSheet.absoluteFillObject,
     width: "100%",
     height: "100%",
-    opacity: 0.35,
   },
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -565,7 +563,7 @@ const styles = StyleSheet.create({
   },
   heroDogImage: {
     position: "absolute",
-    right: "25%",
+    right: "30%",
     bottom: 0,
     width: "18%",
     height: "70%",
