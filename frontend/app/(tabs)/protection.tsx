@@ -567,8 +567,8 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: "5%",
     bottom: 0,
-    width: "28%",
-    height: "80%",
+    width: "18%",
+    height: "70%",
   },
   heroTitle: {
     fontFamily: fonts.displayBold,
