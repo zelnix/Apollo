@@ -1,18 +1,17 @@
-// Check Email — Phase 1 redesign.
-// Matches the approved mockup exactly: paste area, side-by-side buttons,
-// privacy card, rich recent checks with mail icons.
+// Check Email — Approved screen implementation.
+// Matches the approved mock-up: header, description, email card,
+// gold Check email CTA, "or" divider, two action cards, recent emails section.
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import * as Crypto from "expo-crypto";
 import Check from "lucide-react-native/icons/check";
 import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import Clock from "lucide-react-native/icons/clock";
-import Image from "lucide-react-native/icons/image";
+import ImageIcon from "lucide-react-native/icons/image";
 import Inbox from "lucide-react-native/icons/inbox";
 import Mail from "lucide-react-native/icons/mail";
 import Plus from "lucide-react-native/icons/plus";
 import Search from "lucide-react-native/icons/search";
-import ShieldCheck from "lucide-react-native/icons/shield-check";
 import Trash from "lucide-react-native/icons/trash";
 import User from "lucide-react-native/icons/user";
 import X from "lucide-react-native/icons/x";
@@ -47,8 +46,6 @@ import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { runProtectionHealthCheck } from "@/src/protection/healthCoordinator";
 import { type MessageExplanation, type MessageUrlResult, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
-import { goBackOrHome } from "@/src/utils/navigation";
-import { InfoButton } from "@/src/components/InfoButton";
 import { CheckToolHeader } from "@/src/components/CheckToolHeader";
 import { getShareIntake } from "@/src/share/shareIntake";
 import { recordCheck } from "@/src/store/checkHistoryStore";
@@ -68,303 +65,88 @@ import {
 // ── Constants ──────────────────────────────────────────────────────────────────
 const GMAIL_STATUS_UI_TIMEOUT_MS = 8000;
 
-function statusLabel(state: string): string {
-  switch (state) {
-    case "resting": return "No concern found";
-    case "ears_up": return "Worth reviewing";
-    case "growling": return "Potential concern";
-    case "barking": case "biting": return "Action required";
-    case "sniffing": return "Checking";
-    default: return "Unable to determine";
-  }
-}
-
-function formatTimestamp(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString(undefined, {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: true,
-    });
-  } catch { return ""; }
-}
-
 // ── Styles ─────────────────────────────────────────────────────────────────────
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
 
   // Header
-  header: {
-    paddingHorizontal: spacing.lg,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-  },
-  mailIconWell: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: "#DBEAFE",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerTextWrap: { flex: 1 },
-  headerTitle: { fontFamily: fonts.displayBold, fontSize: 24, color: c.onSurface },
-  headerSub: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary, marginTop: 2 },
-  closeBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  header: { paddingHorizontal: spacing.lg, flexDirection: "row", alignItems: "center", gap: spacing.md },
 
   // Scroll
   scrollContent: { paddingHorizontal: spacing.lg, gap: spacing.lg },
 
-  // Paste area (dashed border zone)
-  pasteArea: {
-    borderWidth: 1.5,
-    borderStyle: "dashed",
-    borderColor: "#B0C4DE",
-    borderRadius: radius.lg,
-    backgroundColor: "#F0F5FA",
-    paddingVertical: spacing.xl,
-    paddingHorizontal: spacing.lg,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.lg,
-  },
-  pasteIconWell: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: "#DBEAFE",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  pasteTextWrap: { flex: 1, gap: 4 },
-  pasteTitle: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface },
-  pasteSub: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary },
+  // Description
+  description: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary },
 
-  // Gmail inbox card (prominent)
-  gmailCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.lg,
-    backgroundColor: c.surfaceSecondary,
-    borderRadius: radius.lg,
-    borderWidth: 1.5,
-    borderColor: c.border,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.lg,
-  },
-  gmailIconWell: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: "#E8F5E9",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  gmailTextWrap: { flex: 1, gap: 4 },
-  gmailTitle: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface },
-  gmailSub: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary },
-  gmailConnectCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.lg,
-    backgroundColor: "#F0F5FA",
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderStyle: "dashed" as const,
-    borderColor: "#B0C4DE",
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.lg,
-  },
-  gmailConnectIconWell: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: "#DBEAFE",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  orDivider: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-  },
+  // Email card
+  emailCard: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, borderWidth: 1, borderColor: c.border },
+  emailCardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  emailIconWell: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#DBEAFE", alignItems: "center", justifyContent: "center" },
+  emailCardLabel: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface },
+  emailInput: { minHeight: 100, backgroundColor: c.surface, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, fontFamily: fonts.text, fontSize: 16, color: c.onSurface, textAlignVertical: "top" },
+
+  // Gold CTA
+  goldBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: c.gold, borderRadius: radius.lg, paddingVertical: 16, paddingHorizontal: spacing.xl, gap: spacing.md, minHeight: 56 },
+  goldBtnDisabled: { opacity: 0.45 },
+  goldBtnText: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface },
+
+  // Or divider
+  orDivider: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.xs },
   orLine: { flex: 1, height: 1, backgroundColor: c.border },
-  orText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.muted },
+  orText: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.muted },
 
-  // Editing card (when paste area tapped)
-  editCard: {
-    borderWidth: 1.5,
-    borderColor: "#B0C4DE",
-    borderRadius: radius.lg,
-    backgroundColor: "#F0F5FA",
-    padding: spacing.lg,
-    gap: spacing.md,
-  },
-  editLabel: { fontFamily: fonts.textSemibold, fontSize: 12, letterSpacing: 1, color: c.muted, textTransform: "uppercase" },
-  editField: {
-    minHeight: 44,
-    backgroundColor: c.surface,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: c.border,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    fontFamily: fonts.text,
-    fontSize: 15,
-    color: c.onSurface,
-  },
-  editBody: { minHeight: 140, textAlignVertical: "top" as const },
+  // Action cards row
+  actionCardsRow: { flexDirection: "row", gap: spacing.md },
+  actionCard: { flex: 1, backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, borderWidth: 1, borderColor: c.border, alignItems: "flex-start" },
+  actionCardIconWell: { width: 44, height: 44, borderRadius: 22, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center" },
+  actionCardTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface },
+  actionCardSub: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurfaceSecondary },
+  actionCardChevron: { alignSelf: "flex-end" },
+  // Gmail M icon for action card
+  gmailIconM: { fontFamily: fonts.displayBold, fontSize: 20, color: "#EA4335" },
 
-  // Button row
-  buttonRow: { flexDirection: "row", gap: spacing.md },
-  checkBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: c.brandPrimary,
-    borderRadius: radius.lg,
-    paddingVertical: 16,
-    paddingHorizontal: spacing.md,
-    gap: spacing.sm,
-    minHeight: 56,
-  },
-  checkBtnDisabled: { opacity: 0.5 },
-  checkBtnText: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onBrandPrimary },
-  screenshotBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: c.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1.5,
-    borderColor: c.onSurface,
-    paddingVertical: 16,
-    paddingHorizontal: spacing.lg,
-    gap: spacing.sm,
-    minHeight: 56,
-  },
-  screenshotBtnText: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface },
-
-  // Privacy card
-  privacyCard: {
-    flexDirection: "row",
-    backgroundColor: "#F0F5FA",
-    borderRadius: radius.lg,
-    padding: spacing.lg,
-    gap: spacing.md,
-    alignItems: "flex-start",
-  },
-  privacyIconWell: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#D6E5FC",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  privacyText: { flex: 1, fontFamily: fonts.text, fontSize: 14, lineHeight: 22, color: c.onSurfaceSecondary },
-
-  // Recent checks section
-  recentSection: {
-    backgroundColor: c.surfaceSecondary,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: c.border,
-    overflow: "hidden",
-  },
-  recentHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.md,
-  },
-  recentHeaderLeft: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  recentTitle: { fontFamily: fonts.displayBold, fontSize: 14, letterSpacing: 0.8, color: c.onSurface, textTransform: "uppercase" },
-  seeAll: { flexDirection: "row", alignItems: "center", gap: 4 },
+  // Recent emails section
+  recentSection: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, overflow: "hidden" },
+  recentHeader: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.md, gap: 4 },
+  recentHeaderTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  recentTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  recentClockWell: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center" },
+  recentTitle: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface },
+  seeAllRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   seeAllText: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.brand },
+  recentSub: { fontFamily: fonts.text, fontSize: 14, color: c.onSurfaceSecondary, marginLeft: 48 },
 
-  // Recent check row
-  recentRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    gap: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: c.border,
-  },
-  recentMailIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: "#DBEAFE",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  recentInfo: { flex: 1, gap: 2 },
-  recentSubject: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface },
-  recentSender: { fontFamily: fonts.text, fontSize: 13, color: c.onSurfaceSecondary },
-  recentDate: { fontFamily: fonts.text, fontSize: 13, color: c.muted },
-  recentStatusPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#E8F5E9",
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
-    flexShrink: 0,
-  },
-  recentStatusDot: { width: 8, height: 8, borderRadius: 4 },
-  recentStatusText: { fontFamily: fonts.textSemibold, fontSize: 12, color: "#2E7D32" },
+  // Email row
+  emailRow: { flexDirection: "row", alignItems: "center", paddingVertical: spacing.md, paddingHorizontal: spacing.lg, gap: spacing.md, borderTopWidth: 1, borderTopColor: c.border },
+  emailRowIconWell: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  emailRowUnknownWell: { backgroundColor: c.surfaceTertiary },
+  emailRowContactWell: {},
+  emailRowInitial: { fontFamily: fonts.displayBold, fontSize: 18, color: "#FFFFFF" },
+  emailRowInfo: { flex: 1, gap: 2 },
+  emailRowSender: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface },
+  emailRowSubject: { fontFamily: fonts.text, fontSize: 14, color: c.onSurfaceSecondary },
+  emailRowDate: { fontFamily: fonts.text, fontSize: 13, color: c.muted, flexShrink: 0 },
+
+  // Account filter pill (inside recent section header)
+  accountFilterRow: { flexDirection: "row", alignItems: "center", marginLeft: 48, gap: spacing.sm, marginTop: spacing.xs },
+  accountPill: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.pill, borderWidth: 1, borderColor: c.border, backgroundColor: c.surface },
+  accountPillText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.onSurface },
+  accountPillManage: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.brand },
+
+  // Empty recent
   recentEmpty: { padding: spacing.xl, alignItems: "center", gap: spacing.sm },
 
-  // Account selector (inside recent checks / manage)
-  accountSelector: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: c.surfaceSecondary,
-    borderRadius: radius.lg,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderWidth: 1,
-    borderColor: c.border,
-    gap: spacing.sm,
-  },
-  accountLeft: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flex: 1 },
-  accountText: { fontFamily: fonts.textSemibold, fontSize: 15, color: c.onSurface, flex: 1 },
-  accountManage: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.brand },
-  accountDivider: { width: 1, height: 20, backgroundColor: c.border, marginHorizontal: spacing.xs },
-
-  // Sheet rows
+  // Sheet rows (for account management)
   sheetRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md },
   sheetIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center", flexShrink: 0 },
   sheetInfo: { flex: 1, gap: 2 },
   sheetEmail: { fontFamily: fonts.textSemibold, fontSize: 15, color: c.onSurface },
   sheetProvider: { fontFamily: fonts.text, fontSize: 13, color: c.muted },
   sheetCheck: { width: 24, height: 24, borderRadius: 12, backgroundColor: c.brand, alignItems: "center", justifyContent: "center" },
+  editLabel: { fontFamily: fonts.textSemibold, fontSize: 12, letterSpacing: 1, color: c.muted, textTransform: "uppercase" },
   addInput: { minHeight: 48, backgroundColor: c.surfaceTertiary, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.lg, fontFamily: fonts.text, fontSize: 15, color: c.onSurface },
 
-  // Inbox picker (preserved)
+  // Inbox picker modal (preserved)
   pickerOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
   pickerSheet: { backgroundColor: c.surface, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, maxHeight: "85%" },
   pickerHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: c.borderStrong, alignSelf: "center", marginTop: spacing.md },
@@ -395,8 +177,6 @@ export default function CheckEmail() {
   const { ready, setupDone, upsertEvent, deviceId, adapterLabel, showToast, scanGmailInbox } = useApollo();
 
   // ── Input state ──
-  const [editing, setEditing] = useState(false);
-  const [showEmailDetails, setShowEmailDetails] = useState(false);
   const [from, setFrom] = useState("");
   const [subject, setSubject] = useState("");
   const [raw, setRaw] = useState(shared?.text || shared?.webUrl || params.text || "");
@@ -419,7 +199,7 @@ export default function CheckEmail() {
   const [newAccountEmail, setNewAccountEmail] = useState("");
 
   // ── Recent checks ──
-  const [recentChecks, setRecentChecks] = useState<EmailCheckEntry[]>([]);
+  const [, setRecentChecks] = useState<EmailCheckEntry[]>([]);
 
   // ── Gmail state (preserved) ──
   const [gmailConnected, setGmailConnected] = useState<boolean | null>(null);
@@ -442,9 +222,26 @@ export default function CheckEmail() {
   const [pickerAccount, setPickerAccount] = useState<string | null>(null);
   const [pickerFetchBusy, setPickerFetchBusy] = useState<string | null>(null);
 
-  // Auto-open editing if shared content arrives
+  // ── Recent inbox emails (shown in the main screen) ──
+  type InboxPreviewItem = { id: string; account: string; from: string; subject: string; date: string; snippet: string };
+  const [recentInbox, setRecentInbox] = useState<InboxPreviewItem[]>([]);
+  const [recentInboxLoading, setRecentInboxLoading] = useState(false);
+
+  const loadRecentInbox = useCallback(async () => {
+    if (!deviceId || !gmailConnected) return;
+    setRecentInboxLoading(true);
+    try {
+      const data = await apiGet<{ messages: InboxPreviewItem[] }>(`/gmail/messages?device_id=${deviceId}&limit=5`);
+      setRecentInbox(data.messages ?? []);
+    } catch { /* unavailable */ }
+    finally { setRecentInboxLoading(false); }
+  }, [deviceId, gmailConnected]);
+
+  useEffect(() => { if (gmailConnected) void loadRecentInbox(); }, [gmailConnected, loadRecentInbox]);
+
+  // Auto-run if shared content arrives
   useEffect(() => {
-    if (raw.trim()) setEditing(true);
+    if (raw.trim() && deviceId) { /* content was shared into this screen */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -462,11 +259,6 @@ export default function CheckEmail() {
       }));
     return [...manual, ...gmailMapped];
   }, [accounts, gmailAccounts]);
-
-  const filteredRecentChecks = useMemo(() => {
-    if (!selectedAccount) return recentChecks;
-    return recentChecks.filter((c) => c.account?.toLowerCase() === selectedAccount.toLowerCase());
-  }, [recentChecks, selectedAccount]);
 
   const filteredPickerMessages = pickerAccount
     ? pickerMessages.filter((m) => m.account === pickerAccount)
@@ -593,9 +385,18 @@ export default function CheckEmail() {
       setFrom(detail.from || msg.from);
       setSubject(detail.subject || msg.subject);
       setRaw(detail.body || msg.snippet);
-      setEditing(true);
       setPickerVisible(false);
-      showToast("Email loaded \u2014 tap Check email to analyse.", "neutral");
+      // Auto-investigate the selected email
+      const body = detail.body || msg.snippet;
+      const sender = detail.from || msg.from;
+      const subj = detail.subject || msg.subject;
+      showToast("Email loaded \u2014 investigating\u2026", "neutral");
+      // Trigger investigation with the loaded content
+      setTimeout(() => {
+        setRaw(body);
+        setFrom(sender);
+        setSubject(subj);
+      }, 100);
     } catch {
       showToast("Couldn\u2019t fetch that email.", "growling");
     } finally { setPickerFetchBusy(null); }
@@ -713,10 +514,6 @@ export default function CheckEmail() {
   };
 
   // ── Navigation ──
-  const openRecentCheck = (check: EmailCheckEntry) => {
-    if (check.eventId) router.push("/(tabs)/patrol");
-  };
-
   // ── Guards ──
   if (ready && !setupDone) return <Redirect href="/" />;
   const a = result?.a;
@@ -782,7 +579,6 @@ export default function CheckEmail() {
         setRaw("");
         setFrom("");
         setSubject("");
-        setEditing(false);
         void refreshRecentChecks();
       },
     });
@@ -816,25 +612,46 @@ export default function CheckEmail() {
   // ════════════════════════════════════════════════════════════════════════════
   // INPUT VIEW — matches approved mockup
   // ════════════════════════════════════════════════════════════════════════════
-  const hasContent = !!(raw.trim() || from.trim() || subject.trim());
+  const hasContent = !!(raw.trim());
 
-  // Status pill colors by state
-  const statusPillBg = (state: string) => {
-    switch (state) {
-      case "resting": return "#E8F5E9";
-      case "ears_up": return "#FFF8E1";
-      case "growling": return "#FFF3E0";
-      case "barking": case "biting": return "#FFEBEE";
-      default: return "#F5F5F5";
-    }
+  // ── Helper: contact initial color ──
+  const INITIAL_COLORS = ["#F97316", "#EF4444", "#6366F1", "#3B82F6", "#8B5CF6", "#EC4899", "#14B8A6", "#10B981"];
+  const initialColor = (name: string) => INITIAL_COLORS[name.charCodeAt(0) % INITIAL_COLORS.length];
+
+  // ── Helper: extract sender display name ──
+  const senderDisplayName = (fromStr: string) => fromStr.replace(/<.*>/, "").trim() || fromStr;
+
+  // ── Helper: is email address (no display name) ──
+  const isEmailOnly = (fromStr: string) => /^[^<]*@[^>]*$/.test(fromStr.trim());
+
+  // ── Helper: format date for inbox rows ──
+  const formatEmailDate = (iso: string) => {
+    try {
+      const d = new Date(iso);
+      const now = new Date();
+      const isToday = d.toDateString() === now.toDateString();
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const isYesterday = d.toDateString() === yesterday.toDateString();
+      if (isToday) return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true });
+      if (isYesterday) return "Yesterday";
+      return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+    } catch { return ""; }
   };
-  const statusPillColor = (state: string) => {
-    switch (state) {
-      case "resting": return "#2E7D32";
-      case "ears_up": return "#F57F17";
-      case "growling": return "#E65100";
-      case "barking": case "biting": return "#C62828";
-      default: return "#616161";
+
+  // ── Select a recent inbox email → auto-investigate ──
+  const selectRecentInboxEmail = (msg: InboxPreviewItem) => {
+    void selectInboxEmail(msg);
+  };
+
+  // ── Handle Gmail action card press ──
+  const handleGmailAction = () => {
+    if (gmailConnected) {
+      void openInboxPicker();
+    } else if (gmailConfigured) {
+      void connectGmail();
+    } else {
+      showToast("Gmail integration is not configured.", "neutral");
     }
   };
 
@@ -858,247 +675,181 @@ export default function CheckEmail() {
 
       <KeyboardAwareScrollView
         testID="email-scroll"
-        contentContainerStyle={[s.scrollContent, { paddingTop: spacing.lg, paddingBottom: insets.bottom + 100 }]}
+        contentContainerStyle={[s.scrollContent, { paddingTop: spacing.md, paddingBottom: insets.bottom + 100 }]}
         bottomOffset={24}
       >
-        {/* ── Device-First: Gmail Inbox Picker (primary action) ── */}
-        {gmailConnected ? (
-          <Pressable
-            testID="email-pick-inbox"
-            accessibilityRole="button"
-            accessibilityLabel="Select an email from your Gmail inbox"
-            onPress={() => void openInboxPicker()}
-            disabled={gmailBusy || scanBusy}
-            style={({ pressed }) => [s.gmailCard, { borderWidth: 2, borderColor: colors.brandPrimary, opacity: pressed ? 0.85 : 1 }]}
-          >
-            <View style={s.gmailIconWell}>
-              <Inbox size={24} color="#2E7D32" />
+        {/* ── Description ── */}
+        <Text style={s.description}>
+          Choose an email from your inbox, take a screenshot, or enter the text.{"\n"}Apollo will investigate it for possible scams.
+        </Text>
+
+        {/* ── Email Card ── */}
+        <View style={s.emailCard} testID="email-card">
+          <View style={s.emailCardHeader}>
+            <View style={s.emailIconWell}>
+              <Mail size={22} color="#1D4ED8" />
             </View>
-            <View style={s.gmailTextWrap}>
-              <Text style={s.gmailTitle}>Select from your Gmail</Text>
-              <Text style={s.gmailSub}>
-                Choose an email from your connected {gmailAccounts.length > 1 ? "accounts" : "account"} to check.
-              </Text>
-            </View>
-            <ChevronRight size={20} color={colors.muted} />
-          </Pressable>
-        ) : gmailConfigured ? (
-          <Pressable
-            testID="email-connect-gmail"
-            accessibilityRole="button"
-            accessibilityLabel="Connect Gmail to select emails"
-            onPress={() => void connectGmail()}
-            disabled={gmailBusy || !deviceId}
-            style={({ pressed }) => [s.gmailConnectCard, { opacity: pressed ? 0.85 : 1 }]}
-          >
-            <View style={s.gmailConnectIconWell}>
-              <Mail size={24} color="#1D4ED8" />
-            </View>
-            <View style={s.gmailTextWrap}>
-              <Text style={s.gmailTitle}>Connect Gmail</Text>
-              <Text style={s.gmailSub}>
-                {gmailBusy ? "Opening Google\u2026" : "Read-only access. Select emails directly from your inbox to check."}
-              </Text>
-            </View>
-            {gmailBusy ? (
-              <ActivityIndicator size="small" color={colors.brand} />
-            ) : (
-              <ChevronRight size={20} color={colors.muted} />
-            )}
-          </Pressable>
-        ) : null}
+            <Text style={s.emailCardLabel}>Enter email text</Text>
+          </View>
+          <TextInput
+            testID="email-body"
+            style={s.emailInput}
+            value={raw}
+            onChangeText={setRaw}
+            placeholder="Paste email content here (sender, subject, message)"
+            placeholderTextColor={colors.muted}
+            multiline
+            textAlignVertical="top"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+        </View>
+
+        {/* ── Gold CTA: Check email ── */}
+        <Pressable
+          testID="email-run"
+          accessibilityRole="button"
+          accessibilityLabel="Check email"
+          disabled={busy || !hasContent}
+          onPress={() => void run()}
+          style={({ pressed }) => [s.goldBtn, (busy || !hasContent) && s.goldBtnDisabled, { opacity: pressed && hasContent ? 0.85 : 1 }]}
+        >
+          {busy ? <ActivityIndicator size="small" color={colors.onSurface} /> : <Search size={22} color={colors.onSurface} />}
+          <Text style={s.goldBtnText}>{busy ? "Checking\u2026" : "Check email"}</Text>
+        </Pressable>
 
         {/* ── Or divider ── */}
-        {gmailConfigured ? (
-          <View style={s.orDivider}>
-            <View style={s.orLine} />
-            <Text style={s.orText}>or paste manually</Text>
-            <View style={s.orLine} />
-          </View>
-        ) : null}
+        <View style={s.orDivider}>
+          <View style={s.orLine} />
+          <Text style={s.orText}>or</Text>
+          <View style={s.orLine} />
+        </View>
 
-        {/* ── Paste Area / Edit Area (secondary) ── */}
-        {!editing ? (
+        {/* ── Two action cards ── */}
+        <View style={s.actionCardsRow}>
+          {/* Select from Gmail */}
           <Pressable
-            testID="email-paste-area"
+            testID="email-gmail-action"
             accessibilityRole="button"
-            accessibilityLabel="Paste an email or forward it here"
-            onPress={() => setEditing(true)}
-            style={({ pressed }) => [s.pasteArea, { opacity: pressed ? 0.85 : 1 }]}
+            accessibilityLabel={gmailConnected ? "Select from Gmail" : "Connect Gmail"}
+            onPress={handleGmailAction}
+            disabled={gmailBusy}
+            style={({ pressed }) => [s.actionCard, gmailBusy && { opacity: 0.5 }, { opacity: pressed && !gmailBusy ? 0.85 : 1 }]}
           >
-            <View style={s.pasteIconWell}>
-              <Mail size={24} color="#1D4ED8" />
+            <View style={s.actionCardIconWell}>
+              {gmailBusy ? <ActivityIndicator size="small" color={colors.brand} /> : <Text style={s.gmailIconM}>M</Text>}
             </View>
-            <View style={s.pasteTextWrap}>
-              <Text style={s.pasteTitle}>Paste an email or forward it here</Text>
-              <Text style={s.pasteSub}>Include the sender, subject and message, or forward the email to this screen.</Text>
-            </View>
-          </Pressable>
-        ) : (
-          <View style={s.editCard} testID="email-edit-card">
-            <Text style={s.editLabel}>Email content</Text>
-            <TextInput
-              testID="email-body"
-              style={[s.editField, s.editBody]}
-              value={raw}
-              onChangeText={setRaw}
-              placeholder="Paste the email content here \u2014 headers, body and links. If forwarding, include the entire message."
-              placeholderTextColor={colors.muted}
-              multiline
-              textAlignVertical="top"
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <Pressable testID="email-more-details" accessibilityRole="button" onPress={() => setShowEmailDetails(!showEmailDetails)} style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingVertical: spacing.xs }}>
-              <Text style={{ fontFamily: fonts.textSemibold, fontSize: 14, color: colors.brand }}>{showEmailDetails ? "Hide sender details" : "Add sender details"}</Text>
-            </Pressable>
-            {showEmailDetails ? (
-              <>
-                <TextInput
-                  testID="email-from"
-                  style={s.editField}
-                  value={from}
-                  onChangeText={setFrom}
-                  placeholder="From (e.g. alerts@cb-secure.top)"
-                  placeholderTextColor={colors.muted}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-                <TextInput
-                  testID="email-subject"
-                  style={s.editField}
-                  value={subject}
-                  onChangeText={setSubject}
-                  placeholder="Subject line"
-                  placeholderTextColor={colors.muted}
-                  autoCorrect={false}
-                />
-              </>
-            ) : null}
-          </View>
-        )}
-
-        {/* ── Button Row: Check email + Choose screenshot ── */}
-        <View style={s.buttonRow}>
-          <Pressable
-            testID="email-run"
-            accessibilityRole="button"
-            accessibilityLabel="Check email"
-            disabled={busy || !hasContent}
-            onPress={() => void run()}
-            style={({ pressed }) => [s.checkBtn, (busy || !hasContent) && s.checkBtnDisabled, { opacity: pressed && hasContent ? 0.85 : 1 }]}
-          >
-            {busy ? <ActivityIndicator size="small" color={colors.onBrandPrimary} /> : <Search size={20} color={colors.onBrandPrimary} />}
-            <Text style={s.checkBtnText}>{busy ? "Checking\u2026" : "Check email"}</Text>
+            <Text style={s.actionCardTitle}>{gmailConnected ? "Select from Gmail" : "Connect Gmail"}</Text>
+            <Text style={s.actionCardSub}>
+              {gmailConnected
+                ? "Choose an email from your connected Gmail inbox."
+                : "Read-only access to select emails."}
+            </Text>
+            <View style={s.actionCardChevron}><ChevronRight size={18} color={colors.muted} /></View>
           </Pressable>
 
+          {/* Take a screenshot */}
           <Pressable
             testID="email-check-screenshot"
             accessibilityRole="button"
-            accessibilityLabel="Choose screenshot"
+            accessibilityLabel="Take a screenshot"
             onPress={() => router.push({ pathname: "/message", params: { openScreenshot: "1", source: "email" } })}
-            style={({ pressed }) => [s.screenshotBtn, { opacity: pressed ? 0.85 : 1 }]}
+            style={({ pressed }) => [s.actionCard, { opacity: pressed ? 0.85 : 1 }]}
           >
-            <Image size={20} color={colors.onSurface} />
-            <Text style={s.screenshotBtnText}>Choose screenshot</Text>
+            <View style={s.actionCardIconWell}><ImageIcon size={22} color={colors.onSurface} /></View>
+            <Text style={s.actionCardTitle}>Take a screenshot</Text>
+            <Text style={s.actionCardSub}>Select an image from your device or take a new screenshot.</Text>
+            <View style={s.actionCardChevron}><ChevronRight size={18} color={colors.muted} /></View>
           </Pressable>
         </View>
 
-        {/* ── Privacy Card ── */}
-        <View style={s.privacyCard} testID="email-privacy-card">
-          <View style={s.privacyIconWell}>
-            <ShieldCheck size={20} color={colors.brand} />
-          </View>
-          <Text style={s.privacyText}>
-            Apollo combines local detection, Higgins context, sender reputation and safe webpage checks. Raw content is discarded after the assessment; provider-side retention follows the configured Higgins policy.
-          </Text>
-        </View>
-
-        {/* ── Account Selector (compact, above recent checks) ── */}
-        {allAccounts.length > 0 ? (
-          <View style={s.accountSelector}>
-            <Pressable
-              testID="email-account-selector"
-              accessibilityRole="button"
-              accessibilityLabel={selectedAccount ? `Filtered to ${selectedAccount}` : "All email accounts"}
-              onPress={() => setAccountSheetOpen(true)}
-              style={s.accountLeft}
-            >
-              <Mail size={18} color={colors.onSurface} />
-              <Text style={s.accountText} numberOfLines={1}>
-                {selectedAccount ?? "All email accounts"}
-              </Text>
-            </Pressable>
-            <Pressable
-              testID="email-manage-accounts"
-              accessibilityRole="button"
-              accessibilityLabel="Manage accounts"
-              onPress={() => setManageSheetOpen(true)}
-              hitSlop={8}
-            >
-              <Text style={s.accountManage}>Manage</Text>
-            </Pressable>
-            <View style={s.accountDivider} />
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Filter accounts"
-              onPress={() => setAccountSheetOpen(true)}
-            >
-              <ChevronDown size={18} color={colors.muted} />
-            </Pressable>
-          </View>
-        ) : null}
-
-        {/* ── Your Recent Checks ── */}
+        {/* ── Recent Emails Section ── */}
         <View style={s.recentSection} testID="email-recent-section">
+          {/* Header */}
           <View style={s.recentHeader}>
-            <View style={s.recentHeaderLeft}>
-              <Clock size={20} color={colors.brand} />
-              <Text style={s.recentTitle}>Your recent checks</Text>
+            <View style={s.recentHeaderTop}>
+              <View style={s.recentTitleRow}>
+                <View style={s.recentClockWell}>
+                  <Clock size={18} color={colors.onSurface} />
+                </View>
+                <Text style={s.recentTitle}>Recent emails</Text>
+              </View>
+              {(gmailConnected && recentInbox.length > 0) ? (
+                <Pressable accessibilityRole="button" onPress={() => void openInboxPicker()} style={s.seeAllRow} hitSlop={8}>
+                  <Text style={s.seeAllText}>See all</Text>
+                  <ChevronRight size={16} color={colors.brand} />
+                </Pressable>
+              ) : null}
             </View>
-            {filteredRecentChecks.length > 3 ? (
-              <Pressable accessibilityRole="button" style={s.seeAll}>
-                <Text style={s.seeAllText}>See all</Text>
-                <ChevronRight size={16} color={colors.brand} />
-              </Pressable>
+            <Text style={s.recentSub}>Tap an email to check it with Apollo.</Text>
+            {/* Account filter pills */}
+            {allAccounts.length > 1 ? (
+              <View style={s.accountFilterRow}>
+                <Pressable accessibilityRole="button" onPress={() => setAccountSheetOpen(true)} style={s.accountPill}>
+                  <Text style={s.accountPillText} numberOfLines={1}>{selectedAccount ?? "All accounts"}</Text>
+                  <ChevronDown size={14} color={colors.muted} />
+                </Pressable>
+                <Pressable accessibilityRole="button" onPress={() => setManageSheetOpen(true)} hitSlop={8}>
+                  <Text style={s.accountPillManage}>Manage</Text>
+                </Pressable>
+              </View>
             ) : null}
           </View>
 
-          {filteredRecentChecks.length > 0 ? (
-            filteredRecentChecks.slice(0, 5).map((check, i) => (
-              <Pressable
-                key={check.id}
-                testID={`email-recent-${i}`}
-                accessibilityRole={check.eventId ? "button" : undefined}
-                onPress={check.eventId ? () => openRecentCheck(check) : undefined}
-                style={({ pressed }) => [s.recentRow, pressed && check.eventId ? { opacity: 0.7 } : undefined]}
-              >
-                <View style={s.recentMailIcon}>
-                  <Mail size={20} color="#1D4ED8" />
-                </View>
-                <View style={s.recentInfo}>
-                  <Text style={s.recentSubject} numberOfLines={1}>
-                    {check.subject || check.summary}
-                  </Text>
-                  {check.sender ? (
-                    <Text style={s.recentSender} numberOfLines={1}>{check.sender}</Text>
-                  ) : null}
-                  <Text style={s.recentDate}>{formatTimestamp(check.at)}</Text>
-                </View>
-                <View style={[s.recentStatusPill, { backgroundColor: statusPillBg(check.state) }]}>
-                  <View style={[s.recentStatusDot, { backgroundColor: statusPillColor(check.state) }]} />
-                  <Text style={[s.recentStatusText, { color: statusPillColor(check.state) }]} numberOfLines={1}>
-                    {statusLabel(check.state)}
-                  </Text>
-                </View>
-                <ChevronRight size={18} color={colors.muted} />
-              </Pressable>
-            ))
+          {/* Email rows */}
+          {gmailConnected && recentInbox.length > 0 ? (
+            recentInbox.slice(0, 5).map((msg, i) => {
+              const name = senderDisplayName(msg.from);
+              const emailOnly = isEmailOnly(msg.from);
+              return (
+                <Pressable
+                  key={`${msg.account}-${msg.id}`}
+                  testID={`email-recent-${i}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Check email from ${name}`}
+                  onPress={() => selectRecentInboxEmail(msg)}
+                  disabled={!!pickerFetchBusy}
+                  style={({ pressed }) => [s.emailRow, { opacity: pressed ? 0.7 : 1 }]}
+                >
+                  {pickerFetchBusy === msg.id ? (
+                    <View style={[s.emailRowIconWell, s.emailRowUnknownWell]}>
+                      <ActivityIndicator size="small" color={colors.brand} />
+                    </View>
+                  ) : emailOnly ? (
+                    <View style={[s.emailRowIconWell, s.emailRowUnknownWell]}>
+                      <User size={22} color={colors.muted} />
+                    </View>
+                  ) : (
+                    <View style={[s.emailRowIconWell, s.emailRowContactWell, { backgroundColor: initialColor(name) }]}>
+                      <Text style={s.emailRowInitial}>{name.charAt(0).toUpperCase()}</Text>
+                    </View>
+                  )}
+                  <View style={s.emailRowInfo}>
+                    <Text style={s.emailRowSender} numberOfLines={1}>{name}</Text>
+                    <Text style={s.emailRowSubject} numberOfLines={1}>{msg.subject || "(no subject)"}</Text>
+                  </View>
+                  <Text style={s.emailRowDate}>{formatEmailDate(msg.date)}</Text>
+                  <ChevronRight size={18} color={colors.muted} />
+                </Pressable>
+              );
+            })
+          ) : recentInboxLoading ? (
+            <View style={s.recentEmpty}>
+              <ActivityIndicator size="small" color={colors.brand} />
+              <Body>Loading recent emails\u2026</Body>
+            </View>
+          ) : gmailConnected ? (
+            <View style={s.recentEmpty}>
+              <Inbox size={28} color={colors.muted} />
+              <Body>No recent emails found.</Body>
+            </View>
           ) : (
             <View style={s.recentEmpty}>
-              <Mail size={32} color={colors.muted} />
-              <Body>No recent checks yet</Body>
-              <Body style={{ textAlign: "center" }}>Your email checks will appear here with summaries and status.</Body>
+              <Mail size={28} color={colors.muted} />
+              <Body>{gmailConfigured ? "Connect Gmail to see your recent emails here." : "Paste or forward an email above to check it."}</Body>
+              {gmailConfigured && !gmailConnected ? (
+                <Button testID="email-connect-inline" variant="ghost" label={gmailBusy ? "Opening Google\u2026" : "Connect Gmail"} onPress={() => void connectGmail()} disabled={gmailBusy || !deviceId} />
+              ) : null}
             </View>
           )}
         </View>
