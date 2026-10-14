@@ -830,7 +830,7 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
             originalCharacters: typeof item.originalCharacters === "number" ? item.originalCharacters : text.length,
           });
           await MessagingSdk.acknowledgeMessageSecurityEvents([id]);
-          showToast("Apollo is investigating a captured text. The result will appear in Patrol.", "neutral");
+          showToast("Magnum DI is investigating a captured text. The result will appear in Patrol.", "neutral");
         }
       } catch { /* native module unavailable or listener not granted — nothing to drain */ }
     };

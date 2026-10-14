@@ -133,7 +133,7 @@ export function useInvestigation(boundOperationId?: string | null) {
     if (record.caseData) { caseRef.current = record.caseData; armExpiry(record.caseData); }
     const progress = record.phase === "failed" ? ["This exact operation is ready to retry."]
       : record.phase === "submitted" || record.phase === "settled" ? ["The operation is attached to this investigation."]
-      : ["Apollo is continuing this investigation operation."];
+      : ["Magnum DI is continuing this investigation."];
     update({ operationId: record.operationId, caseData: record.caseData, job: record.job, error: record.error, progress,
       phase: record.phase === "failed" ? "failed" : record.phase === "expired" ? "expired" : record.phase === "settled"
         ? record.caseData?.response?.question ? "waiting_user" : record.caseData?.response ? "answered" : "idle" : "working",

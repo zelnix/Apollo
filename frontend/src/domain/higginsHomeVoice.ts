@@ -147,7 +147,7 @@ export function buildHomeVoice(input: {
       const subject = hasLocalEvidence(drivingEvent) ? rawSubject : "";
       const text = state === "ears_up"
         ? `Apollo ${verb} — something in ${gateName}${subject ? ` caught his attention: ${subject}` : " caught his attention"}. He's looking at it. I'll tell you exactly what to do once he's finished.`
-        : `Apollo ${verb} — he's investigating ${gateName}${subject ? `: ${subject}` : ""}. I'll tell you exactly what to do once he's finished.`;
+        : `Apollo ${verb} — Magnum DI is investigating ${gateName}${subject ? `: ${subject}` : ""}. I'll tell you exactly what to do once he's finished.`;
       return {
         text,
         ctaLabel: "View what Apollo is checking",

@@ -225,7 +225,7 @@ export default function VisionScreen() {
     }
 
     setStage("investigating");
-    setProgressMessage("Apollo is investigating...");
+    setProgressMessage("Magnum DI is investigating...");
 
     try {
       // Fix 3: Use the actual device ID, not the bearer token
