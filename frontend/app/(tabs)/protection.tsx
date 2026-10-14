@@ -3,6 +3,7 @@
 // bottom guidance card. Uses 5 protection areas (not 8 individual categories).
 
 import { useRouter } from "expo-router";
+import ChevronLeft from "lucide-react-native/icons/chevron-left";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import CircleAlert from "lucide-react-native/icons/circle-alert";
 import CircleCheck from "lucide-react-native/icons/circle-check";
@@ -10,8 +11,6 @@ import Globe from "lucide-react-native/icons/globe";
 import Grid2x2 from "lucide-react-native/icons/grid-2x2";
 import Mail from "lucide-react-native/icons/mail";
 import MessageSquare from "lucide-react-native/icons/message-square";
-import Settings from "lucide-react-native/icons/settings";
-import ShieldCheck from "lucide-react-native/icons/shield-check";
 import Smartphone from "lucide-react-native/icons/smartphone";
 import React, { useMemo } from "react";
 import {
@@ -21,23 +20,23 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { InfoButton } from "@/src/components/InfoButton";
 import {
   buildProtectionAreas,
   type ProtectionArea,
   type ProtectionAreaId,
 } from "@/src/domain/protectionAreas";
 import { useProtectionHealth } from "@/src/protection/healthStore";
+import { goBackOrHome } from "@/src/utils/navigation";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
 
 // ── Assets ──────────────────────────────────────────────────────────────────
 const heroBackground = require("@/assets/images/hero-bg-protection.jpg");
 const higginsAvatar = require("@/assets/images/higgins-avatar.png");
-const logoImage = require("@/assets/images/logo.png");
 
 // ── Icon map for the 5 protection areas ─────────────────────────────────────
 const AREA_ICONS: Record<
@@ -49,6 +48,15 @@ const AREA_ICONS: Record<
   email_accounts: Mail,
   apps_files: Grid2x2,
   device_internet: Smartphone,
+};
+
+// ── Per-category icon colours (from approved mockup) ────────────────────────
+const AREA_ICON_COLORS: Record<ProtectionAreaId, { icon: string; well: string }> = {
+  websites_links:  { icon: "#004AAD", well: "#EBF5FF" },
+  messages_calls:  { icon: "#2EAD8B", well: "#E0F9F3" },
+  email_accounts:  { icon: "#7F56D9", well: "#EDE7F6" },
+  apps_files:      { icon: "#E88A30", well: "#FEF2E6" },
+  device_internet: { icon: "#7230DB", well: "#EDEAFA" },
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -174,6 +182,7 @@ function CategoryCard({ area }: { area: ProtectionArea }) {
   const { colors } = useTheme();
   const router = useRouter();
   const Icon = AREA_ICONS[area.id];
+  const iconColors = AREA_ICON_COLORS[area.id];
   const tone = area.summaryTone;
   const color = toneColor(tone);
   const bgColor = toneBgColor(tone);
@@ -202,10 +211,10 @@ function CategoryCard({ area }: { area: ProtectionArea }) {
       <View
         style={[
           styles.categoryIconWell,
-          { backgroundColor: colors.surfaceTertiary },
+          { backgroundColor: iconColors.well },
         ]}
       >
-        <Icon size={24} color={colors.brand} />
+        <Icon size={24} color={iconColors.icon} />
       </View>
 
       {/* Text content */}
@@ -267,6 +276,7 @@ export default function ProtectionScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const health = useProtectionHealth();
+  const { width: screenWidth } = useWindowDimensions();
 
   const areas = useMemo(
     () => (health.checking ? [] : buildProtectionAreas(health.gates)),
@@ -278,58 +288,33 @@ export default function ProtectionScreen() {
     [areas, health.checking]
   );
 
-  const hasAttention = areas.some((a) => a.summaryTone === "action");
+  // ── Responsive hero dimensions ──
+  // Use the available card width (screen minus horizontal padding)
+  const cardWidth = screenWidth - spacing.lg * 2;
+  // Aspect ratio ~16:9 for landscape background, clamped between 180–360px
+  const heroHeight = Math.max(180, Math.min(360, cardWidth * 0.56));
+  // Scale text/icon sizes relative to a 360px reference width
+  const scale = Math.max(0.85, Math.min(1.25, cardWidth / 360));
+  const titleFontSize = Math.round(20 * scale);
+  const lineFontSize = Math.round(13 * scale);
+  const heroPadding = Math.round(spacing.lg * scale);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.surface }]} testID="protection-screen">
       {/* ── Header ── */}
       <View style={{ paddingTop: insets.top + spacing.sm }}>
-        {/* Top row: branding + actions */}
         <View style={styles.headerRow}>
-          <View style={styles.brandingRow}>
-            <Image
-              source={logoImage}
-              style={styles.logoImage}
-              resizeMode="contain"
-            />
-            <Text style={[styles.brandText, { color: colors.onSurface }]}>
-              Apollo Scam Guard
-            </Text>
-          </View>
-          <View style={styles.headerActions}>
-            <InfoButton
-              info={{
-                title: "About Protection",
-                body: [
-                  "The Protection dashboard shows what Apollo is protecting and how each category is performing.",
-                  "Tap a category to see its Gates, how they work, and what they cover.",
-                  "Statuses are calculated from real device capabilities and permissions.",
-                ],
-              }}
-              testID="protection-info"
-            />
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Settings"
-              testID="protection-settings"
-              onPress={() => router.push("/settings" as never)}
-              style={({ pressed }) => [
-                styles.headerIconBtn,
-                {
-                  backgroundColor: colors.surfaceSecondary,
-                  borderColor: colors.border,
-                  opacity: pressed ? 0.75 : 1,
-                },
-              ]}
-            >
-              <Settings size={22} color={colors.onSurface} />
-            </Pressable>
-          </View>
-        </View>
-        {/* Title */}
-        <View style={styles.titleRow}>
-          <Text style={[styles.pageTitle, { color: colors.onSurface }]}>
-            Protection.
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            testID="protection-back"
+            onPress={() => goBackOrHome(router)}
+            style={styles.backBtn}
+          >
+            <ChevronLeft size={24} color={colors.onSurface} />
+          </Pressable>
+          <Text style={[styles.headerTitle, { color: colors.onSurface }]}>
+            Protection
           </Text>
         </View>
       </View>
@@ -347,37 +332,43 @@ export default function ProtectionScreen() {
           See your protection categories and the Gates inside each one.
         </Text>
 
-        {/* ── Hero card with background image ── */}
+        {/* ── Hero card with responsive background image ── */}
         <View style={styles.heroContainer} testID="protection-hero-card">
           <ImageBackground
             source={heroBackground}
-            style={styles.heroImageBg}
+            style={[styles.heroImageBg, { height: heroHeight }]}
             imageStyle={styles.heroImageStyle}
             resizeMode="cover"
           >
             {/* Semi-transparent overlay for text readability */}
-            <View style={styles.heroOverlay}>
+            <View
+              style={[
+                styles.heroOverlay,
+                {
+                  padding: heroPadding,
+                  paddingTop: heroPadding + spacing.sm,
+                },
+              ]}
+            >
               <View style={styles.heroContent}>
-                {/* Shield + status text */}
-                <View style={styles.heroLeftBlock}>
-                  <View
+                {/* Status text */}
+                <View style={[styles.heroLeftBlock, { maxWidth: cardWidth * 0.75 }]}>
+                  <Text
                     style={[
-                      styles.heroShieldCircle,
-                      {
-                        backgroundColor: hasAttention
-                          ? "rgba(229,162,26,0.25)"
-                          : "rgba(79,175,131,0.30)",
-                      },
+                      styles.heroTitle,
+                      { fontSize: titleFontSize, lineHeight: titleFontSize + 6 },
                     ]}
                   >
-                    <ShieldCheck
-                      size={32}
-                      color={hasAttention ? "#E5A21A" : "#FFFFFF"}
-                    />
-                  </View>
-                  <Text style={styles.heroTitle}>{heroTitle}</Text>
+                    {heroTitle}
+                  </Text>
                   {heroLines.map((line, i) => (
-                    <Text key={i} style={styles.heroLine}>
+                    <Text
+                      key={i}
+                      style={[
+                        styles.heroLine,
+                        { fontSize: lineFontSize, lineHeight: lineFontSize + 6 },
+                      ]}
+                    >
                       {line}
                     </Text>
                   ))}
@@ -472,46 +463,21 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: spacing.sm,
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xs,
   },
-  brandingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  logoImage: {
-    width: 28,
-    height: 28,
-  },
-  brandText: {
-    fontFamily: fonts.textSemibold,
-    fontSize: 14,
-    lineHeight: 18,
-  },
-  headerActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  headerIconBtn: {
+  backBtn: {
     width: 44,
     height: 44,
-    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
   },
-  titleRow: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
-  },
-  pageTitle: {
+  headerTitle: {
+    flex: 1,
     fontFamily: fonts.displayBold,
-    fontSize: 30,
-    lineHeight: 36,
+    fontSize: 26,
+    lineHeight: 32,
   },
 
   // Scroll content
@@ -532,7 +498,6 @@ const styles = StyleSheet.create({
   },
   heroImageBg: {
     width: "100%",
-    minHeight: 220,
     justifyContent: "flex-end",
   },
   heroImageStyle: {
@@ -542,8 +507,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.25)",
     justifyContent: "flex-end",
-    padding: spacing.lg,
-    paddingTop: spacing.xl,
   },
   heroContent: {
     flexDirection: "row",
@@ -551,26 +514,14 @@ const styles = StyleSheet.create({
   },
   heroLeftBlock: {
     flex: 1,
-    gap: 4,
-  },
-  heroShieldCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: spacing.sm,
+    gap: 3,
   },
   heroTitle: {
     fontFamily: fonts.displayBold,
-    fontSize: 22,
-    lineHeight: 28,
     color: "#FFFFFF",
   },
   heroLine: {
     fontFamily: fonts.text,
-    fontSize: 14,
-    lineHeight: 20,
     color: "rgba(255,255,255,0.88)",
   },
 
