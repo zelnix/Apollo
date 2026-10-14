@@ -11,7 +11,7 @@ import MessageSquare from "lucide-react-native/icons/message-square";
 import Search from "lucide-react-native/icons/search";
 import User from "lucide-react-native/icons/user";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, AppState, Platform, Pressable, Text, TextInput, View } from "react-native";
+import { AppState, Platform, Pressable, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -20,8 +20,8 @@ import { RecoveryFlow } from "@/src/components/RecoveryFlow";
 import { ScreenshotPermissionSheet } from "@/src/components/ScreenshotPermissionSheet";
 import { ImagePrivacyGate, type GateResult } from "@/src/components/ImagePrivacyGate";
 import { Sheet } from "@/src/components/Sheet";
-import { Body, Button, Card } from "@/src/components/ui";
-import { STATE_LABEL, STATE_NAME } from "@/src/domain/types";
+import { Body, Button } from "@/src/components/ui";
+import { STATE_NAME } from "@/src/domain/types";
 import { buildMessageCheckResult } from "@/src/domain/messageCheckResultAdapter";
 import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { screenImage, type ScreeningResult } from "@/src/domain/imagePrivacy";
@@ -33,6 +33,7 @@ import { apiUpload } from "@/src/api/client";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { CheckToolHeader } from "@/src/components/CheckToolHeader";
+import { CheckingModal } from "@/src/components/CheckingModal";
 import { useScreenshotAccess } from "@/src/hooks/useScreenshotAccess";
 import { redactUserSecrets } from "@/src/domain/privacy";
 import { getShareIntake } from "@/src/share/shareIntake";
@@ -376,7 +377,7 @@ export default function CheckMessage() {
           style={({ pressed }) => [s.goldBtn, (!text.trim() || busy !== "idle") && s.goldBtnDisabled, { opacity: pressed && text.trim() && busy === "idle" ? 0.85 : 1 }]}
         >
           <Search size={22} color={colors.onSurface} />
-          <Text style={s.goldBtnText}>{busy === "checking" ? "Sniffing\u2026" : "Check message"}</Text>
+          <Text style={s.goldBtnText}>{"Check message"}</Text>
         </Pressable>
 
         {/* ── Error ── */}
@@ -387,14 +388,7 @@ export default function CheckMessage() {
           </View>
         ) : null}
 
-        {/* ── Progress ── */}
-        {busy !== "idle" ? (
-          <Card style={s.progressWrap} testID="message-sniffing">
-            <View style={s.progressRow}><ActivityIndicator color={colors.sniffing} /><Text style={s.stateLabel}>{STATE_LABEL.sniffing}</Text></View>
-            <Body testID="message-progress-extract">{busy === "reading" ? "Reading the visible text and links\u2026" : "Reviewing wording and scam patterns\u2026"}</Body>
-            <Body testID="message-progress-evidence">Checking links, evidence and reputation signals\u2026</Body>
-          </Card>
-        ) : null}
+        {/* ── Progress handled by CheckingModal ── */}
 
         {/* ── Or divider ── */}
         <View style={s.orDivider}>
@@ -518,6 +512,14 @@ export default function CheckMessage() {
           onCancel={handleGateCancel}
         />
       )}
+
+      {/* ── Checking overlay modal ── */}
+      <CheckingModal
+        visible={busy !== "idle"}
+        title={busy === "reading" ? "Reading message" : "Checking message"}
+        subject={sender.trim() ? `From: ${sender.trim()}` : undefined}
+        description={busy === "reading" ? "Reading the visible text and links…" : "Magnum DI is reviewing wording, scam patterns\nand reputation signals."}
+      />
     </View>
   );
 }

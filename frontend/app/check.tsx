@@ -12,7 +12,7 @@ import Link2 from "lucide-react-native/icons/link-2";
 import Search from "lucide-react-native/icons/search";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
+import { Pressable, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -35,6 +35,7 @@ import { saveCheck } from "@/src/store/savedCheckStore";
 import { useApollo, type CheckOutcome } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { CheckToolHeader } from "@/src/components/CheckToolHeader";
+import { CheckingModal } from "@/src/components/CheckingModal";
 import { useScreenshotAccess } from "@/src/hooks/useScreenshotAccess";
 import { extractUrl } from "@/src/share/classifyShare";
 import { getShareIntake } from "@/src/share/shareIntake";
@@ -392,8 +393,8 @@ export default function CheckLink() {
           onPress={() => void run(input)}
           style={({ pressed }) => [s.goldBtn, (!deviceId || busy || !hasValidUrl) && s.goldBtnDisabled, { opacity: pressed && hasValidUrl ? 0.85 : 1 }]}
         >
-          {busy ? <ActivityIndicator size="small" color={colors.onSurface} /> : <Search size={22} color={colors.onSurface} />}
-          <Text style={s.goldBtnText}>{!deviceId ? "Preparing Apollo\u2026" : busy ? "Checking\u2026" : "Check website link"}</Text>
+          <Search size={22} color={colors.onSurface} />
+          <Text style={s.goldBtnText}>{!deviceId ? "Preparing Apollo\u2026" : "Check website link"}</Text>
         </Pressable>
 
         {/* ── Page analysis results (inline) ── */}
@@ -547,6 +548,14 @@ export default function CheckLink() {
           onCancel={handlePageGateCancel}
         />
       )}
+
+      {/* ── Checking overlay modal ── */}
+      <CheckingModal
+        visible={busy}
+        title="Checking link"
+        subject={input.trim() || undefined}
+        description={"Looking up reputation data and running\nMagnum DI analysis. This usually takes\na few seconds."}
+      />
     </View>
   );
 }

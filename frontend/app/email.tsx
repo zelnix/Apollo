@@ -47,6 +47,7 @@ import { runProtectionHealthCheck } from "@/src/protection/healthCoordinator";
 import { type MessageExplanation, type MessageUrlResult, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { CheckToolHeader } from "@/src/components/CheckToolHeader";
+import { CheckingModal } from "@/src/components/CheckingModal";
 import { getShareIntake } from "@/src/share/shareIntake";
 import { recordCheck } from "@/src/store/checkHistoryStore";
 import {
@@ -714,8 +715,8 @@ export default function CheckEmail() {
           onPress={() => void run()}
           style={({ pressed }) => [s.goldBtn, (busy || !hasContent) && s.goldBtnDisabled, { opacity: pressed && hasContent ? 0.85 : 1 }]}
         >
-          {busy ? <ActivityIndicator size="small" color={colors.onSurface} /> : <Search size={22} color={colors.onSurface} />}
-          <Text style={s.goldBtnText}>{busy ? "Checking\u2026" : "Check email"}</Text>
+          <Search size={22} color={colors.onSurface} />
+          <Text style={s.goldBtnText}>{"Check email"}</Text>
         </Pressable>
 
         {/* ── Or divider ── */}
@@ -1019,6 +1020,14 @@ export default function CheckEmail() {
           </View>
         </View>
       </Modal>
+
+      {/* ── Checking overlay modal ── */}
+      <CheckingModal
+        visible={busy}
+        title="Checking email"
+        subject={subject.trim() ? subject.trim() : fromAddr.trim() ? `From: ${fromAddr.trim()}` : undefined}
+        description={"Magnum DI is reviewing headers, sender\nreputation and content for phishing patterns."}
+      />
     </View>
   );
 }

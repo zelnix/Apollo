@@ -2,7 +2,6 @@
 // Matches the approved mock-up exactly: header, description, phone card,
 // gold Check number CTA, "or" divider, recent calls section.
 import { useRouter } from "expo-router";
-import ArrowLeft from "lucide-react-native/icons/arrow-left";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
 import CircleAlert from "lucide-react-native/icons/circle-alert";
 import CircleX from "lucide-react-native/icons/circle-x";
@@ -12,7 +11,6 @@ import Search from "lucide-react-native/icons/search";
 import User from "lucide-react-native/icons/user";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   AppState,
   Platform,
   Pressable,
@@ -27,6 +25,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiPost } from "@/src/api/client";
 import { CheckResultScreen } from "@/src/components/CheckResultScreen";
 import { CheckToolHeader } from "@/src/components/CheckToolHeader";
+import { CheckingModal } from "@/src/components/CheckingModal";
 import { PhonePickerSheet } from "@/src/components/PhonePickerSheet";
 import { PhonePickers } from "@/src/security/phonePickers";
 import { Body, Button } from "@/src/components/ui";
@@ -350,22 +349,8 @@ export default function CheckNumber() {
     );
   }
 
-  // ── Investigating progress view ──
-  if (busy) {
-    return (
-      <View style={s.root}>
-        <View style={[s.header, { paddingTop: insets.top + spacing.md }]}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => { setBusy(false); setError(null); }} style={s.backBtn}><ArrowLeft size={22} color={colors.onSurface} /></Pressable>
-          <View style={s.headerTextWrap}><Text style={s.headerTitle}>Investigating…</Text></View>
-        </View>
-        <View style={s.progressWrap}>
-          <ActivityIndicator size="large" color={colors.brand} />
-          <Text style={s.progressLabel}>Checking {number}</Text>
-          <Text style={s.progressSub}>Looking up reputation data and running Higgins analysis. This usually takes a few seconds.</Text>
-        </View>
-      </View>
-    );
-  }
+  // ── Investigating progress view → now handled by CheckingModal ──
+  // (removed full-screen view in favour of modal popup)
 
   // ── MAIN INPUT VIEW ──
   const hasValidNumber = number.replace(/[\s\-()]/g, "").length >= 7;
@@ -550,6 +535,14 @@ export default function CheckNumber() {
       </KeyboardAwareScrollView>
 
       <PhonePickerSheet visible={callerPickerOpen} mode="calls" onClose={() => setCallerPickerOpen(false)} onPickCall={(c) => { setNumber(c.number); setCallerPickerOpen(false); }} />
+
+      {/* ── Checking overlay modal ── */}
+      <CheckingModal
+        visible={busy}
+        title="Checking number"
+        subject={number.trim() || undefined}
+        description={"Looking up reputation data and running\nMagnum DI analysis. This usually takes\na few seconds."}
+      />
     </View>
   );
 }

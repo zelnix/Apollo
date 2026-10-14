@@ -149,12 +149,12 @@ export default function TextGuard() {
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
         <Text style={s.title}>Message screening</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <InfoButton info={{ title: "About message screening", body: ["Apollo investigates pasted texts and chosen screenshots using local scam detection, link and public evidence checks, and Higgins's explanation.", "On Android, Apollo can also automatically scan new text-message notifications from your chosen messaging app as they arrive. Apollo never reads your SMS inbox or message history.", "Raw content is discarded after the assessment; provider-side retention follows the configured Higgins policy."] }} testID="textguard-info" />
+          <InfoButton info={{ title: "About message screening", body: ["Apollo investigates pasted texts and chosen screenshots using local scam detection, link and public evidence checks, and Magnum DI's explanation.", "On Android, Apollo can also automatically scan new text-message notifications from your chosen messaging app as they arrive. Apollo never reads your SMS inbox or message history.", "Raw content is discarded after the assessment; provider-side retention follows the configured Magnum DI policy."] }} testID="textguard-info" />
           <Pressable testID="textguard-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
         </View>
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="textguard-scroll">
-        <Body testID="textguard-intro">Apollo investigates pasted texts and chosen screenshots using local scam detection, link and public evidence checks, and Higgins&apos;s explanation. Raw content is not retained by Apollo.</Body>
+        <Body testID="textguard-intro">Apollo investigates pasted texts and chosen screenshots using local scam detection, link and public evidence checks, and Magnum DI&apos;s explanation. Raw content is not retained by Apollo.</Body>
 
         <Card style={{ gap: spacing.sm }} testID="textguard-auto-card">
           <View style={s.rowTop}>
