@@ -546,12 +546,12 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
     overflow: "hidden",
     backgroundColor: "#FBFEFC",
+    borderWidth: 0,
   },
   heroBgImage: {
     ...StyleSheet.absoluteFillObject,
     width: "100%",
     height: "100%",
-    borderRadius: radius.lg,
     opacity: 0.35,
   },
   heroOverlay: {
@@ -565,7 +565,7 @@ const styles = StyleSheet.create({
   },
   heroDogImage: {
     position: "absolute",
-    right: "5%",
+    right: "25%",
     bottom: 0,
     width: "18%",
     height: "70%",
