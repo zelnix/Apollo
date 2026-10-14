@@ -520,14 +520,17 @@ const styles = StyleSheet.create({
   },
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,
-    justifyContent: "flex-end",
+    justifyContent: "flex-start",
+    alignItems: "flex-end",
   },
   heroTextBlock: {
-    maxWidth: "55%",
+    maxWidth: "60%",
     gap: 1,
     backgroundColor: "rgba(0,0,0,0.35)",
     borderRadius: radius.md,
     padding: spacing.sm,
+    marginTop: spacing.sm,
+    marginRight: spacing.xs,
   },
   heroTitle: {
     fontFamily: fonts.displayBold,
