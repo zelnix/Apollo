@@ -551,6 +551,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     width: "100%",
     height: "100%",
+    opacity: 0.7,
   },
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -563,7 +564,7 @@ const styles = StyleSheet.create({
   },
   heroDogImage: {
     position: "absolute",
-    right: "30%",
+    right: "38%",
     bottom: 0,
     width: "18%",
     height: "70%",
