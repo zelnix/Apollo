@@ -332,13 +332,8 @@ export default function ProtectionScreen() {
           >
             <ChevronLeft size={24} color={colors.onSurface} />
           </Pressable>
-          <Image
-            source={apolloLogo}
-            style={styles.headerLogo}
-            resizeMode="contain"
-          />
           <Text style={[styles.headerTitle, { color: colors.onSurface }]}>
-            Protection
+            Protections
           </Text>
         </View>
       </View>
