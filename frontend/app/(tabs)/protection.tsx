@@ -38,7 +38,6 @@ import { fonts, radius, spacing, useTheme } from "@/src/theme";
 // ── Assets ──────────────────────────────────────────────────────────────────
 const heroBackground = require("@/assets/images/hero-bg-protection.png");
 const higginsAvatar = require("@/assets/images/higgins-avatar.png");
-const apolloDog = require("@/assets/images/higgins-apollo-portrait.png");
 
 // ── Icon map ────────────────────────────────────────────────────────────────
 const AREA_ICONS: Record<
@@ -332,17 +331,18 @@ export default function ProtectionScreen() {
             imageStyle={styles.heroImageStyle}
             resizeMode="cover"
           >
-            {/* Text overlay */}
-            <View style={styles.heroOverlay}>
+            {/* Text overlay at bottom-left */}
+            <View style={[styles.heroOverlay, { padding: Math.round(12 * scale) }]}>
               <View style={styles.heroTextBlock}>
                 <Text
                   style={[
                     styles.heroTitle,
                     {
-                      fontSize: Math.round(20 * scale),
-                      lineHeight: Math.round(26 * scale),
+                      fontSize: Math.round(16 * scale),
+                      lineHeight: Math.round(20 * scale),
                     },
                   ]}
+                  numberOfLines={1}
                 >
                   {heroTitle}
                 </Text>
@@ -352,24 +352,17 @@ export default function ProtectionScreen() {
                     style={[
                       styles.heroLine,
                       {
-                        fontSize: Math.round(13 * scale),
-                        lineHeight: Math.round(18 * scale),
+                        fontSize: Math.round(11 * scale),
+                        lineHeight: Math.round(15 * scale),
                       },
                     ]}
-                    numberOfLines={2}
+                    numberOfLines={1}
                   >
                     {line}
                   </Text>
                 ))}
               </View>
             </View>
-
-            {/* Dog overlay on right */}
-            <Image
-              source={apolloDog}
-              style={styles.heroDogImage}
-              resizeMode="contain"
-            />
           </ImageBackground>
         </View>
 
@@ -506,8 +499,7 @@ const styles = StyleSheet.create({
   },
   heroImageBg: {
     width: "100%",
-    aspectRatio: 1.7,
-    justifyContent: "flex-end",
+    aspectRatio: 1916 / 821, // exact image ratio for perfect scaling
   },
   heroImageStyle: {
     borderRadius: radius.lg,
@@ -515,12 +507,10 @@ const styles = StyleSheet.create({
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: "flex-end",
-    padding: spacing.md,
-    paddingBottom: spacing.lg,
   },
   heroTextBlock: {
-    maxWidth: "60%",
-    gap: 2,
+    maxWidth: "55%",
+    gap: 1,
   },
   heroTitle: {
     fontFamily: fonts.displayBold,
@@ -529,13 +519,6 @@ const styles = StyleSheet.create({
   heroLine: {
     fontFamily: fonts.text,
     color: "#33691E",
-  },
-  heroDogImage: {
-    position: "absolute",
-    right: 0,
-    bottom: 0,
-    width: "42%",
-    height: "85%",
   },
 
   // ── Section header ──
