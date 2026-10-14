@@ -488,78 +488,65 @@ function ProtectionTabBar({
   );
 }
 
-// ── Gate Row ────────────────────────────────────────────────────────────────
-
-function GateRow({
-  cap,
-  isLast,
-}: {
-  cap: ProtectionAreaCapability;
-  isLast: boolean;
-}) {
-  const s = useStyles();
-  const { colors } = useTheme();
-  const router = useRouter();
-  const Icon = GATE_ICONS[cap.gateId as GateId] ?? ShieldCheck;
-  const tone = gateTone(cap.tone);
-  const route = GATE_ROUTES[cap.gateId as GateId];
-
-  const content = (
-    <>
-      <View style={s.gateRow}>
-        <View
-          style={[
-            s.gateIconWell,
-            { backgroundColor: colors.surfaceTertiary },
-          ]}
-        >
-          <Icon size={20} color={colors.brand} />
-        </View>
-        <View style={s.gateInfo}>
-          <Text style={s.gateName}>{cap.label}</Text>
-          <Pill tone={tone} label={cap.statusLabel} />
-          <Text style={s.gatePurpose} numberOfLines={2}>
-            {cap.currentHelp}
-          </Text>
-        </View>
-        {route ? (
-          <ChevronRight size={18} color={colors.onSurfaceSecondary} />
-        ) : null}
-      </View>
-      {!isLast ? (
-        <View
-          style={[s.gateDivider, { backgroundColor: colors.divider }]}
-        />
-      ) : null}
-    </>
-  );
-
-  if (route) {
-    return (
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`${cap.label}: ${cap.statusLabel}`}
-        testID={`gate-row-${cap.gateId}`}
-        onPress={() => router.push(route as never)}
-        style={({ pressed }) => [{ opacity: pressed ? 0.82 : 1 }]}
-      >
-        {content}
-      </Pressable>
-    );
-  }
-  return <View testID={`gate-row-${cap.gateId}`}>{content}</View>;
-}
-
 // ── Overview Tab Content ────────────────────────────────────────────────────
 
 function OverviewContent({ area }: { area: ProtectionArea }) {
   const s = useStyles();
   const { colors } = useTheme();
+
+  // Build a dynamic health summary from actual gate statuses
+  const healthSummary = useMemo(() => {
+    const caps = area.capabilities;
+    const good = caps.filter(
+      (c) => c.tone === "good" || c.tone === "neutral" || c.tone === "resting"
+    );
+    const limited = caps.filter(
+      (c) => c.tone === "limited" || c.tone === "unverified" || c.tone === "ears_up"
+    );
+    const attention = caps.filter(
+      (c) => c.tone === "action" || c.tone === "growling" || c.tone === "barking" || c.tone === "biting"
+    );
+    const off = caps.filter(
+      (c) => c.tone === "off" || c.tone === "unavailable"
+    );
+
+    const lines: string[] = [];
+
+    if (good.length === caps.length) {
+      lines.push(
+        `All ${caps.length} Gates in ${area.title} are working correctly. No issues detected.`
+      );
+    } else {
+      if (good.length > 0) {
+        lines.push(
+          `${good.length} of ${caps.length} ${good.length === 1 ? "Gate is" : "Gates are"} working correctly.`
+        );
+      }
+      if (limited.length > 0) {
+        limited.forEach((c) => {
+          lines.push(`${c.label}: ${c.currentHelp}`);
+        });
+      }
+      if (attention.length > 0) {
+        attention.forEach((c) => {
+          lines.push(`${c.label} needs attention: ${c.currentHelp}`);
+        });
+      }
+      if (off.length > 0) {
+        off.forEach((c) => {
+          lines.push(`${c.label}: ${c.statusLabel}${c.limitation ? " — " + c.limitation : ""}`);
+        });
+      }
+    }
+
+    return lines;
+  }, [area]);
+
   const content = CATEGORY_CONTENT[area.id];
 
   return (
     <View style={{ gap: spacing.lg }}>
-      {/* Higgins briefing */}
+      {/* Higgins health summary */}
       <Card style={s.briefingCard} testID="protection-detail-briefing">
         <View style={s.briefingHeader}>
           <View style={s.briefingAvatarWrap}>
@@ -567,15 +554,14 @@ function OverviewContent({ area }: { area: ProtectionArea }) {
           </View>
           <View style={s.briefingTitleBlock}>
             <Text style={s.briefingTitle}>Higgins&apos; briefing</Text>
-            <Text style={s.briefingSub}>In plain English</Text>
+            <Text style={s.briefingSub}>Protection health summary</Text>
           </View>
         </View>
 
-        {/* What is [Category] Protection? */}
-        <Text style={s.sectionTitle}>
-          What is {area.title} Protection?
-        </Text>
-        <Text style={s.sectionBody}>{content.whatIsIt}</Text>
+        {/* Dynamic health status lines */}
+        {healthSummary.map((line, i) => (
+          <Text key={i} style={s.sectionBody}>{line}</Text>
+        ))}
 
         {/* How it works */}
         <View
@@ -605,26 +591,6 @@ function OverviewContent({ area }: { area: ProtectionArea }) {
           ))}
         </View>
       </Card>
-
-      {/* Gate summary section (within Overview) */}
-      <Card style={s.gatesSection} testID="protection-detail-gates-summary">
-        <Text style={s.gatesSectionTitle}>
-          {area.title.split("&")[0].trim()} protection Gates
-        </Text>
-        {area.capabilities.map((cap, idx) => (
-          <GateRow
-            key={cap.gateId}
-            cap={cap}
-            isLast={idx === area.capabilities.length - 1}
-          />
-        ))}
-      </Card>
-
-      {/* Coverage summary (within Overview) */}
-      <CoverageContent area={area} />
-
-      {/* Related threat cases */}
-      <RelatedThreats area={area} />
 
       {/* Bottom Higgins card */}
       <BottomHigginsCard area={area} />
