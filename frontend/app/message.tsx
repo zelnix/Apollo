@@ -1,14 +1,17 @@
-// Gate 2 — Check a message. Paste (or share / screenshot) a suspicious text, get a plain-language
-// verdict, verify the sender safely, hand links to the link check, and enter recovery if needed.
+// Gate 2 — Check a message. Approved screen implementation.
+// Matches the approved mock-up: header, description, message card,
+// gold Check message CTA, "or" divider, two action cards, recent messages.
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { Image as ExpoImage } from "expo-image";
-import ImageIcon from "lucide-react-native/icons/image";
-import X from "lucide-react-native/icons/x";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
+import Clock from "lucide-react-native/icons/clock";
+import ImageIcon from "lucide-react-native/icons/image";
 import MessageSquare from "lucide-react-native/icons/message-square";
-import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
+import Search from "lucide-react-native/icons/search";
+import User from "lucide-react-native/icons/user";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { ActivityIndicator, AppState, Platform, Pressable, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -18,7 +21,7 @@ import { ScreenshotPermissionSheet } from "@/src/components/ScreenshotPermission
 import { ImagePrivacyGate, type GateResult } from "@/src/components/ImagePrivacyGate";
 import { Sheet } from "@/src/components/Sheet";
 import { Body, Button, Card } from "@/src/components/ui";
-import { STATE_LABEL, STATE_MEANING, STATE_NAME } from "@/src/domain/types";
+import { STATE_LABEL, STATE_NAME } from "@/src/domain/types";
 import { buildMessageCheckResult } from "@/src/domain/messageCheckResultAdapter";
 import { contextFromEvent, gateForCategory } from "@/src/domain/higginsHandoff";
 import { screenImage, type ScreeningResult } from "@/src/domain/imagePrivacy";
@@ -29,41 +32,86 @@ import { saveCheck } from "@/src/store/savedCheckStore";
 import { apiUpload } from "@/src/api/client";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
-import { InfoButton } from "@/src/components/InfoButton";
 import { CheckToolHeader } from "@/src/components/CheckToolHeader";
 import { useScreenshotAccess } from "@/src/hooks/useScreenshotAccess";
 import { redactUserSecrets } from "@/src/domain/privacy";
 import { getShareIntake } from "@/src/share/shareIntake";
-import { PhonePickers } from "@/src/security/phonePickers";
+import { PhonePickers, type RecentSms } from "@/src/security/phonePickers";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
   top: { paddingHorizontal: spacing.xl, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: spacing.md },
-  title: { fontFamily: fonts.displayBold, fontSize: 22, color: c.onSurface },
-  close: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: c.surfaceTertiary },
-  subtitle: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary, marginBottom: spacing.xs },
+
+  // ── Scroll content ──
   content: { paddingHorizontal: spacing.xl, gap: spacing.lg },
-  input: { minHeight: 48, backgroundColor: c.surfaceTertiary, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, fontFamily: fonts.text, fontSize: 15, color: c.onSurface },
-  multi: { minHeight: 132, textAlignVertical: "top" },
-  verdict: { fontFamily: fonts.displayBold, fontSize: 20, lineHeight: 26, color: c.onSurface },
-  stateLabel: { fontFamily: fonts.display, fontSize: 15, color: c.onSurface },
-  why: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurface },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  actions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  small: { fontFamily: fonts.text, fontSize: 12, color: c.muted },
-  step: { flexDirection: "row", gap: spacing.sm },
-  stepNum: { fontFamily: fonts.displayBold, fontSize: 15, color: c.brandPrimary, width: 20 },
-  preview: { width: "100%", height: 180, borderRadius: radius.md, backgroundColor: c.surfaceTertiary },
-  progressRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  // ── Device-first picker styles ──
-  devicePickerBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: c.brandPrimary, borderRadius: radius.lg, paddingVertical: 18, paddingHorizontal: spacing.xl, gap: spacing.md, minHeight: 60 },
-  devicePickerText: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onBrandPrimary, flex: 1, textAlign: "center" },
-  devicePickerChevron: { position: "absolute" as const, right: spacing.lg },
-  screenshotPickerBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1.5, borderColor: c.border, paddingVertical: 16, paddingHorizontal: spacing.xl, gap: spacing.md, minHeight: 56 },
-  screenshotPickerText: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface },
-  orDivider: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+
+  // ── Description ──
+  description: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary },
+
+  // ── Message card ──
+  messageCard: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, borderWidth: 1, borderColor: c.border },
+  messageCardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  messageIconWell: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#DBEAFE", alignItems: "center", justifyContent: "center" },
+  messageCardLabel: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface },
+  messageInput: { minHeight: 100, backgroundColor: c.surface, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, fontFamily: fonts.text, fontSize: 16, color: c.onSurface, textAlignVertical: "top" },
+
+  // ── Gold CTA ──
+  goldBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: c.gold, borderRadius: radius.lg, paddingVertical: 16, paddingHorizontal: spacing.xl, gap: spacing.md, minHeight: 56 },
+  goldBtnDisabled: { opacity: 0.45 },
+  goldBtnText: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface },
+
+  // ── Or divider ──
+  orDivider: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.xs },
   orLine: { flex: 1, height: 1, backgroundColor: c.border },
-  orText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.muted },
+  orText: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.muted },
+
+  // ── Action cards row ──
+  actionCardsRow: { flexDirection: "row", gap: spacing.md },
+  actionCard: { flex: 1, backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, borderWidth: 1, borderColor: c.border, alignItems: "flex-start" },
+  actionCardIconWell: { width: 44, height: 44, borderRadius: 22, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center" },
+  actionCardTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface },
+  actionCardSub: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurfaceSecondary },
+  actionCardChevron: { alignSelf: "flex-end" },
+
+  // ── Recent messages section ──
+  recentSection: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, overflow: "hidden" },
+  recentHeader: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.md, gap: 4 },
+  recentHeaderTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  recentTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  recentClockWell: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center" },
+  recentTitle: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface },
+  seeAllRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  seeAllText: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.brand },
+  recentSub: { fontFamily: fonts.text, fontSize: 14, color: c.onSurfaceSecondary, marginLeft: 48 },
+
+  // ── Message row ──
+  msgRow: { flexDirection: "row", alignItems: "center", paddingVertical: spacing.md, paddingHorizontal: spacing.lg, gap: spacing.md, borderTopWidth: 1, borderTopColor: c.border },
+  msgIconWell: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  msgAlertWell: { backgroundColor: "rgba(217,83,79,0.12)" },
+  msgContactWell: { alignItems: "center", justifyContent: "center" },
+  msgUnknownWell: { backgroundColor: c.surfaceTertiary },
+  msgInitial: { fontFamily: fonts.displayBold, fontSize: 18, color: "#FFFFFF" },
+  msgInfo: { flex: 1, gap: 2 },
+  msgSender: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface },
+  msgPreview: { fontFamily: fonts.text, fontSize: 14, color: c.onSurfaceSecondary, numberOfLines: 1 },
+  msgDateCol: { alignItems: "flex-end", gap: 2, flexShrink: 0 },
+  msgDate: { fontFamily: fonts.text, fontSize: 13, color: c.muted },
+  msgTime: { fontFamily: fonts.text, fontSize: 13, color: c.muted },
+
+  // ── Empty recent ──
+  recentEmpty: { padding: spacing.xl, alignItems: "center", gap: spacing.sm },
+
+  // ── Screenshot preview ──
+  preview: { width: "100%", height: 180, borderRadius: radius.md, backgroundColor: c.surfaceTertiary },
+
+  // ── Error card ──
+  errorCard: { backgroundColor: "rgba(217,83,79,0.08)", borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm, borderWidth: 1, borderColor: "rgba(217,83,79,0.2)" },
+  errorText: { fontFamily: fonts.text, fontSize: 14, color: c.onSurface },
+
+  // ── Progress ──
+  progressWrap: { gap: spacing.md, padding: spacing.lg },
+  progressRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  stateLabel: { fontFamily: fonts.display, fontSize: 15, color: c.onSurface },
 }));
 
 export default function CheckMessage() {
@@ -84,12 +132,28 @@ export default function CheckMessage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [screenshotUri, setScreenshotUri] = useState<string | null>(sharedImage ? String(sharedImage) : null);
-  const [showMore, setShowMore] = useState(false);
   const isEmail = params.source === "email";
   const canPickSms = !isEmail && PhonePickers.isSupported();
   const autoRan = useRef(false);
   const autoImage = useRef(false);
   const autoPicker = useRef(false);
+
+  // ── Recent SMS messages ──
+  const [recentSms, setRecentSms] = useState<RecentSms[]>([]);
+  const loadRecentSms = useCallback(async () => {
+    if (!canPickSms) return;
+    try {
+      const hasPerm = await PhonePickers.hasPermission("sms");
+      if (!hasPerm.granted) return;
+      const msgs = await PhonePickers.listRecentSms();
+      setRecentSms(msgs);
+    } catch { /* not available */ }
+  }, [canPickSms]);
+  useEffect(() => { void loadRecentSms(); }, [loadRecentSms]);
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (s) => { if (s === "active") void loadRecentSms(); });
+    return () => sub.remove();
+  }, [loadRecentSms]);
 
   const run = async (t = text, snd = sender) => {
     const safeText = redactUserSecrets(t);
@@ -236,6 +300,33 @@ export default function CheckMessage() {
     );
   }
 
+  // ── Helper: contact initial color ──
+  const INITIAL_COLORS = ["#6366F1", "#8B5CF6", "#EC4899", "#F97316", "#14B8A6", "#3B82F6", "#10B981", "#EF4444"];
+  const initialColor = (name: string) => INITIAL_COLORS[name.charCodeAt(0) % INITIAL_COLORS.length];
+
+  // ── Helper: format date for recent message rows ──
+  const formatMsgDate = (ts: number) => {
+    const d = new Date(ts);
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday = d.toDateString() === yesterday.toDateString();
+    const datePart = isToday ? "Today" : isYesterday ? "Yesterday" : d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+    const timePart = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true });
+    return { datePart, timePart };
+  };
+
+  // ── Helper: determine if address is a phone number ──
+  const isPhoneNumber = (addr: string) => /^\+?\d[\d\s\-()]{5,}$/.test(addr.trim());
+
+  // ── Tap recent message → auto-investigate ──
+  const checkRecentMessage = (msg: RecentSms) => {
+    setSender(msg.address);
+    setText(msg.body);
+    void run(msg.body, msg.address);
+  };
+
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
@@ -245,68 +336,175 @@ export default function CheckMessage() {
           testID="message"
         />
       </View>
-      <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="message-scroll">
-        <Text style={s.subtitle}>{isEmail ? "Paste, share or screenshot the email to check it." : "Select a message from your device, take a screenshot, or paste text."}</Text>
 
-        {/* ── Device-First: Pick from inbox (SMS) ── */}
-        {canPickSms ? (
-          <Pressable
-            testID="message-pick-sms"
-            accessibilityRole="button"
-            accessibilityLabel="Pick a text from your inbox"
-            onPress={() => router.push("/message-picker")}
-            style={({ pressed }) => [s.devicePickerBtn, { opacity: pressed ? 0.85 : 1 }]}
-          >
-            <MessageSquare size={22} color={colors.onBrandPrimary} />
-            <Text style={s.devicePickerText}>Select from your messages</Text>
-            <View style={s.devicePickerChevron}><ChevronRight size={20} color={colors.onBrandPrimary} /></View>
-          </Pressable>
+      <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + 100 }]} bottomOffset={24} testID="message-scroll">
+        {/* ── Description ── */}
+        <Text style={s.description}>
+          Choose a message from your device, take a screenshot, or enter the text.{"\n"}Apollo will investigate it for possible scams.
+        </Text>
+
+        {/* ── Message Card ── */}
+        <View style={s.messageCard} testID="message-card">
+          <View style={s.messageCardHeader}>
+            <View style={s.messageIconWell}>
+              <MessageSquare size={22} color="#1D4ED8" />
+            </View>
+            <Text style={s.messageCardLabel}>Enter message text</Text>
+          </View>
+          <TextInput
+            testID="message-text"
+            style={s.messageInput}
+            value={text}
+            onChangeText={setText}
+            placeholder="Enter or paste message text here"
+            placeholderTextColor={colors.muted}
+            multiline
+            autoCorrect={false}
+          />
+        </View>
+
+        {/* ── Screenshot preview ── */}
+        {screenshotUri ? <ExpoImage testID="message-screenshot-preview" source={{ uri: screenshotUri }} style={s.preview} contentFit="contain" accessibilityLabel="Screenshot selected for investigation" /> : null}
+
+        {/* ── Gold CTA: Check message ── */}
+        <Pressable
+          testID="message-check"
+          accessibilityRole="button"
+          accessibilityLabel="Check message"
+          disabled={!text.trim() || busy !== "idle"}
+          onPress={() => void run()}
+          style={({ pressed }) => [s.goldBtn, (!text.trim() || busy !== "idle") && s.goldBtnDisabled, { opacity: pressed && text.trim() && busy === "idle" ? 0.85 : 1 }]}
+        >
+          <Search size={22} color={colors.onSurface} />
+          <Text style={s.goldBtnText}>{busy === "checking" ? "Sniffing\u2026" : "Check message"}</Text>
+        </Pressable>
+
+        {/* ── Error ── */}
+        {error ? (
+          <View style={s.errorCard} testID="message-error">
+            <Text style={s.errorText}>{error}</Text>
+            <Button testID="message-retry" variant="secondary" label="Try again" onPress={() => void run()} />
+          </View>
         ) : null}
 
-        {/* ── Screenshot picker (prominent secondary) ── */}
-        <Pressable
-          testID="message-screenshot"
-          accessibilityRole="button"
-          accessibilityLabel={busy === "reading" ? "Reading screenshot" : "Check a screenshot"}
-          onPress={() => void photoAccess.start()}
-          disabled={busy !== "idle"}
-          style={({ pressed }) => [s.screenshotPickerBtn, busy !== "idle" && { opacity: 0.5 }, { opacity: pressed && busy === "idle" ? 0.85 : 1 }]}
-        >
-          <ImageIcon size={20} color={colors.onSurface} />
-          <Text style={s.screenshotPickerText}>{busy === "reading" ? "Reading…" : "Check a screenshot"}</Text>
-        </Pressable>
+        {/* ── Progress ── */}
+        {busy !== "idle" ? (
+          <Card style={s.progressWrap} testID="message-sniffing">
+            <View style={s.progressRow}><ActivityIndicator color={colors.sniffing} /><Text style={s.stateLabel}>{STATE_LABEL.sniffing}</Text></View>
+            <Body testID="message-progress-extract">{busy === "reading" ? "Reading the visible text and links\u2026" : "Reviewing wording and scam patterns\u2026"}</Body>
+            <Body testID="message-progress-evidence">Checking links, evidence and reputation signals\u2026</Body>
+          </Card>
+        ) : null}
 
         {/* ── Or divider ── */}
         <View style={s.orDivider}>
           <View style={s.orLine} />
-          <Text style={s.orText}>or paste text</Text>
+          <Text style={s.orText}>or</Text>
           <View style={s.orLine} />
         </View>
 
-        {/* ── Manual text input (secondary) ── */}
-        <TextInput testID="message-text" style={[s.input, s.multi]} value={text} onChangeText={setText} placeholder="Paste the message here" placeholderTextColor={colors.muted} multiline autoCorrect={false} />
-        {screenshotUri ? <ExpoImage testID="message-screenshot-preview" source={{ uri: screenshotUri }} style={s.preview} contentFit="contain" accessibilityLabel="Screenshot selected for investigation" /> : null}
-        <Button testID="message-check" label={busy === "checking" ? "Sniffing…" : "Check with Apollo"} onPress={() => void run()} disabled={!text.trim() || busy !== "idle"} />
-        <Pressable testID="message-more-details" accessibilityRole="button" onPress={() => setShowMore(!showMore)} style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingVertical: spacing.xs }}>
-          <Text style={{ fontFamily: fonts.textSemibold, fontSize: 14, color: colors.brand }}>{showMore ? "Hide details" : "Add sender details"}</Text>
-        </Pressable>
-        {showMore ? (
-          <TextInput testID="message-sender" style={s.input} value={sender} onChangeText={setSender} placeholder="Sender (number, name or handle)" placeholderTextColor={colors.muted} autoCorrect={false} />
-        ) : null}
-        <Text style={s.small} testID="message-processing-scope">Apollo combines local detection, Higgins context, caller reputation and bounded webpage checks. Raw content is discarded after the assessment.</Text>
-        {error ? <Card testID="message-error"><Body>{error}</Body></Card> : null}
-        {busy !== "idle" ? (
-          <Card style={{ gap: spacing.md }} testID="message-sniffing">
-            <View style={s.progressRow}><ActivityIndicator color={colors.sniffing} /><Text style={s.stateLabel}>{STATE_LABEL.sniffing}</Text></View>
-            <Body testID="message-progress-extract">{busy === "reading" ? "Reading the visible text and links in your chosen screenshot…" : "Reviewing the submitted wording and scam patterns…"}</Body>
-            <Body testID="message-progress-evidence">Checking links, public evidence and available reputation signals…</Body>
-            <Body testID="message-progress-higgins">Higgins is preparing a clear explanation, uncertainty and one next action.</Body>
-            <Body testID="message-progress-truth">{STATE_MEANING.sniffing}</Body>
-          </Card>
-        ) : null}
+        {/* ── Two action cards ── */}
+        <View style={s.actionCardsRow}>
+          {/* Select from messages */}
+          <Pressable
+            testID="message-pick-sms"
+            accessibilityRole="button"
+            accessibilityLabel="Select from messages"
+            onPress={() => canPickSms ? router.push("/message-picker") : showToast(Platform.OS === "ios" ? "Direct message access is not available on iOS. Use the share or screenshot options instead." : "Message access requires a native build with SMS permission.", "neutral")}
+            style={({ pressed }) => [s.actionCard, { opacity: pressed ? 0.85 : 1 }]}
+          >
+            <View style={s.actionCardIconWell}><MessageSquare size={22} color={colors.onSurface} /></View>
+            <Text style={s.actionCardTitle}>Select from messages</Text>
+            <Text style={s.actionCardSub}>Choose a message from your messaging app.</Text>
+            <View style={s.actionCardChevron}><ChevronRight size={18} color={colors.muted} /></View>
+          </Pressable>
+
+          {/* Take a screenshot */}
+          <Pressable
+            testID="message-screenshot"
+            accessibilityRole="button"
+            accessibilityLabel="Take a screenshot"
+            onPress={() => void photoAccess.start()}
+            disabled={busy !== "idle"}
+            style={({ pressed }) => [s.actionCard, busy !== "idle" && { opacity: 0.5 }, { opacity: pressed && busy === "idle" ? 0.85 : 1 }]}
+          >
+            <View style={s.actionCardIconWell}><ImageIcon size={22} color={colors.onSurface} /></View>
+            <Text style={s.actionCardTitle}>Take a screenshot</Text>
+            <Text style={s.actionCardSub}>Select an image from your device or take a new screenshot.</Text>
+            <View style={s.actionCardChevron}><ChevronRight size={18} color={colors.muted} /></View>
+          </Pressable>
+        </View>
+
+        {/* ── Recent Messages Section ── */}
+        <View style={s.recentSection} testID="message-recent-section">
+          {/* Header */}
+          <View style={s.recentHeader}>
+            <View style={s.recentHeaderTop}>
+              <View style={s.recentTitleRow}>
+                <View style={s.recentClockWell}>
+                  <Clock size={18} color={colors.onSurface} />
+                </View>
+                <Text style={s.recentTitle}>Recent messages</Text>
+              </View>
+              {recentSms.length > 0 ? (
+                <Pressable accessibilityRole="button" onPress={() => canPickSms ? router.push("/message-picker") : undefined} style={s.seeAllRow} hitSlop={8}>
+                  <Text style={s.seeAllText}>See all</Text>
+                  <ChevronRight size={16} color={colors.brand} />
+                </Pressable>
+              ) : null}
+            </View>
+            <Text style={s.recentSub}>Tap a message to check it with Apollo.</Text>
+          </View>
+
+          {/* Message rows */}
+          {recentSms.length > 0 ? (
+            recentSms.slice(0, 5).map((msg, i) => {
+              const isNumber = isPhoneNumber(msg.address);
+              const { datePart, timePart } = formatMsgDate(msg.date);
+              return (
+                <Pressable
+                  key={`${msg.address}-${msg.date}-${i}`}
+                  testID={`message-recent-${i}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Check message from ${msg.address}`}
+                  onPress={() => checkRecentMessage(msg)}
+                  style={({ pressed }) => [s.msgRow, { opacity: pressed ? 0.7 : 1 }]}
+                >
+                  {isNumber ? (
+                    <View style={[s.msgIconWell, s.msgUnknownWell]}>
+                      <User size={22} color={colors.muted} />
+                    </View>
+                  ) : (
+                    <View style={[s.msgIconWell, s.msgContactWell, { backgroundColor: initialColor(msg.address) }]}>
+                      <Text style={s.msgInitial}>{msg.address.charAt(0).toUpperCase()}</Text>
+                    </View>
+                  )}
+                  <View style={s.msgInfo}>
+                    <Text style={s.msgSender} numberOfLines={1}>{msg.address}</Text>
+                    <Text style={s.msgPreview} numberOfLines={1}>{msg.body}</Text>
+                  </View>
+                  <View style={s.msgDateCol}>
+                    <Text style={s.msgDate}>{datePart}</Text>
+                    <Text style={s.msgTime}>{timePart}</Text>
+                  </View>
+                  <ChevronRight size={18} color={colors.muted} />
+                </Pressable>
+              );
+            })
+          ) : (
+            <View style={s.recentEmpty}>
+              <MessageSquare size={28} color={colors.muted} />
+              <Body>
+                {Platform.OS === "android"
+                  ? "Recent messages will appear here when SMS permission is granted."
+                  : "Recent messages are not available on this platform. Use the options above instead."}
+              </Body>
+            </View>
+          )}
+        </View>
+
         <CheckHistoryCard gate="message" refreshKey={historyKey} testID="message-history" />
       </KeyboardAwareScrollView>
-
 
       <ScreenshotPermissionSheet prefix="message" visible={!!photoAccess.permission} canAskAgain={photoAccess.permission?.canAskAgain ?? true}
         checking={photoAccess.checking} onContinue={() => void photoAccess.continueAccess()} onClose={photoAccess.close} />
@@ -320,7 +518,6 @@ export default function CheckMessage() {
           onCancel={handleGateCancel}
         />
       )}
-
     </View>
   );
 }
