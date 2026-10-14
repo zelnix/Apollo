@@ -2,9 +2,10 @@
 // 8 user-facing categories for the 2-column Protection Dashboard grid.
 // These are PRESENTATION GROUPS matching the approved mockup layout.
 // Each category references the same underlying Gate architecture.
+// Status is calculated by the SAME deriveSummary used on the details screen.
 
 import type { GatePresentation, GateId, GateTone } from "./gates";
-import type { ProtectionAreaCapability } from "./protectionAreas";
+import { deriveSummary, type ProtectionAreaCapability } from "./protectionAreas";
 
 export type DashboardCategoryId =
   | "internet"
@@ -25,7 +26,7 @@ export interface DashboardCategory {
   summaryStatus: string;
   summaryTone: GateTone;
   gateCount: number;
-  /** Parent area id for content lookup */
+  /** Parent area id for content lookup and navigation */
   parentAreaId: string;
 }
 
@@ -45,11 +46,6 @@ const CATEGORY_DEFINITIONS: {
   { id: "identity", title: "Identity", icon: "user", gateIds: ["account"], parentAreaId: "email_accounts" },
   { id: "calls", title: "Calls", icon: "phone", gateIds: ["call"], parentAreaId: "messages_calls" },
 ];
-
-/** Tone severity rank. */
-const TONE_RANK: Record<GateTone, number> = {
-  action: 6, unverified: 5, limited: 4, off: 3, unavailable: 2, neutral: 1, good: 0,
-};
 
 function gateMode(gate: GatePresentation): "automatic" | "manual" {
   const auto = gate.capability.automatic;
@@ -82,27 +78,8 @@ function buildCapability(gate: GatePresentation): ProtectionAreaCapability {
   };
 }
 
-function deriveSummary(capabilities: ProtectionAreaCapability[]): { status: string; tone: GateTone } {
-  const attention = capabilities.filter((c) => c.tone === "action");
-  if (attention.length > 0) return { status: "Needs attention", tone: "action" };
-
-  const automatics = capabilities.filter((c) => c.mode === "automatic");
-  const watching = automatics.filter((c) => c.statusLabel === "Watching");
-  const limited = capabilities.filter((c) => c.tone === "limited" || c.tone === "unverified");
-
-  if (automatics.length === 0) {
-    const allUnavailable = capabilities.every((c) => c.tone === "unavailable");
-    if (allUnavailable) return { status: "Unavailable", tone: "unavailable" };
-    return { status: "Ready to check", tone: "neutral" };
-  }
-  if (watching.length === automatics.length && limited.length === 0) return { status: "All good", tone: "good" };
-  if (limited.length > 0) return { status: "Limited", tone: "limited" };
-  if (watching.length > 0) return { status: "All good", tone: "good" };
-  if (capabilities.some((c) => c.statusLabel === "Check in progress")) return { status: "Checking", tone: "neutral" };
-  return { status: "Ready to check", tone: "neutral" };
-}
-
-/** Build the 8 dashboard categories from current gate health. */
+/** Build the 8 dashboard categories from current gate health.
+ *  Uses the same deriveSummary as protection-details so statuses match exactly. */
 export function buildDashboardCategories(gates: GatePresentation[]): DashboardCategory[] {
   const gateMap = new Map(gates.map((g) => [g.id, g]));
 

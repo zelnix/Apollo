@@ -144,7 +144,7 @@ function buildCapability(gate: GatePresentation): ProtectionAreaCapability {
  *  - If no automatic capabilities (all manual) → "Available to check"
  *  - If everything is off/unavailable → "Setup required" or "Limited"
  */
-function deriveSummary(capabilities: ProtectionAreaCapability[]): { status: string; tone: GateTone } {
+export function deriveSummary(capabilities: ProtectionAreaCapability[]): { status: string; tone: GateTone } {
   const attention = capabilities.filter((c) => c.tone === "action");
   if (attention.length > 0) {
     return { status: "Attention required", tone: "action" };
