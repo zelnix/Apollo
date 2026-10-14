@@ -1,53 +1,41 @@
 // Check a Number — Approved screen implementation.
-// Number-first, standalone phone investigation.
-// Matches the approved mock-up exactly: header, phone card, three quick-entry
-// controls, Investigate Number button, Higgins guidance panel, optional caller
-// details, Recent Calls section.
+// Matches the approved mock-up exactly: header, description, phone card,
+// gold Check number CTA, "or" divider, recent calls section.
 import { useRouter } from "expo-router";
 import ArrowLeft from "lucide-react-native/icons/arrow-left";
-import ChevronDown from "lucide-react-native/icons/chevron-down";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
-import ChevronUp from "lucide-react-native/icons/chevron-up";
-import ClipboardPaste from "lucide-react-native/icons/clipboard-paste";
-import PenLine from "lucide-react-native/icons/pen-line";
-import PhoneIcon from "lucide-react-native/icons/phone";
-import PhoneMissed from "lucide-react-native/icons/phone-missed";
-import Search from "lucide-react-native/icons/search";
-import UserRound from "lucide-react-native/icons/user-round";
+import CircleAlert from "lucide-react-native/icons/circle-alert";
 import CircleX from "lucide-react-native/icons/circle-x";
+import Clock from "lucide-react-native/icons/clock";
+import PhoneIcon from "lucide-react-native/icons/phone";
+import Search from "lucide-react-native/icons/search";
+import User from "lucide-react-native/icons/user";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   AppState,
-  Image,
   Platform,
   Pressable,
-  ScrollView,
   Text,
   TextInput,
   View,
 } from "react-native";
-import * as Clipboard from "expo-clipboard";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { apiPost } from "@/src/api/client";
 import { CheckResultScreen } from "@/src/components/CheckResultScreen";
-import { InfoButton } from "@/src/components/InfoButton";
 import { CheckToolHeader } from "@/src/components/CheckToolHeader";
 import { PhonePickerSheet } from "@/src/components/PhonePickerSheet";
 import { PhonePickers } from "@/src/security/phonePickers";
-import { Body, Button, Card } from "@/src/components/ui";
+import { Body, Button } from "@/src/components/ui";
 import { buildCallRiskCheckResult } from "@/src/domain/callRiskCheckResultAdapter";
 import { issueContext, type HigginsIssueContext } from "@/src/domain/higginsHandoff";
-import { CALL_ASKS, CALL_CLAIMS, type CallAsk, type CallClaim } from "@/src/domain/callAnalysis";
+import { type CallAsk, type CallClaim } from "@/src/domain/callAnalysis";
 import { type CallRiskResult, useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
-import { goBackOrHome } from "@/src/utils/navigation";
 import { recordCheck } from "@/src/store/checkHistoryStore";
 import { saveCheck } from "@/src/store/savedCheckStore";
-
-const higginsAvatar = require("@/assets/images/higgins-avatar.png");
 
 // Reporting links for all jurisdictions
 const REPORT_LINKS = {
@@ -68,77 +56,68 @@ const REPORT_LINKS = {
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
+
   // ── Header ──
   header: { paddingHorizontal: spacing.lg, flexDirection: "row", alignItems: "center", gap: spacing.md },
   backBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   headerTextWrap: { flex: 1 },
   headerTitle: { fontFamily: fonts.displayBold, fontSize: 24, color: c.onSurface },
-  headerSub: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary, marginTop: 2 },
-  infoBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+
   // ── Scroll content ──
   scrollContent: { paddingHorizontal: spacing.lg, gap: spacing.lg },
+
+  // ── Description ──
+  description: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary },
+
   // ── Phone number card ──
   phoneCard: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, borderWidth: 1, borderColor: c.border },
-  phoneLabel: { fontFamily: fonts.textSemibold, fontSize: 12, letterSpacing: 1, color: c.muted, textTransform: "uppercase" },
-  phoneInputRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  phoneIconWell: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center" },
-  phoneInput: { flex: 1, fontFamily: fonts.displayBold, fontSize: 22, color: c.onSurface, padding: 0, minHeight: 44 },
-  clearBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center" },
-  // ── Device-first primary picker ──
-  devicePickerBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: c.brandPrimary, borderRadius: radius.lg, paddingVertical: 18, paddingHorizontal: spacing.xl, gap: spacing.md, minHeight: 60 },
-  devicePickerText: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onBrandPrimary, flex: 1, textAlign: "center" },
-  devicePickerChevron: { position: "absolute" as const, right: spacing.lg },
-  orDivider: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  phoneCardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  phoneIconWell: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#DBEAFE", alignItems: "center", justifyContent: "center" },
+  phoneCardLabel: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface },
+  phoneInput: { minHeight: 48, backgroundColor: c.surface, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.lg, fontFamily: fonts.text, fontSize: 16, color: c.onSurface },
+  clearBtn: { position: "absolute" as const, right: spacing.md, top: 0, bottom: 0, justifyContent: "center", width: 36 },
+
+  // ── Gold CTA ──
+  goldBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: c.gold, borderRadius: radius.lg, paddingVertical: 16, paddingHorizontal: spacing.xl, gap: spacing.md, minHeight: 56 },
+  goldBtnDisabled: { opacity: 0.45 },
+  goldBtnText: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface },
+
+  // ── Or divider ──
+  orDivider: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.xs },
   orLine: { flex: 1, height: 1, backgroundColor: c.border },
-  orText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.muted },
-  // ── Quick entry controls ──
-  quickRow: { flexDirection: "row", gap: spacing.sm },
-  quickBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: c.surfaceTertiary, minHeight: 40 },
-  quickText: { fontFamily: fonts.textMedium, fontSize: 13, color: c.onSurface },
-  // ── Primary CTA ──
-  ctaBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: c.brandPrimary, borderRadius: radius.lg, paddingVertical: 16, paddingHorizontal: spacing.xl, gap: spacing.sm, minHeight: 56 },
-  ctaBtnDisabled: { opacity: 0.5 },
-  ctaText: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onBrandPrimary, flex: 1, textAlign: "center" },
-  ctaChevron: { position: "absolute", right: spacing.lg },
-  guidanceText: { fontFamily: fonts.text, fontSize: 14, color: c.muted, textAlign: "center" },
-  // ── Higgins panel ──
-  higginsCard: { flexDirection: "row", backgroundColor: c.surfaceTertiary, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, alignItems: "flex-start" },
-  higginsAvatarWrap: { width: 64, height: 64, borderRadius: 32, overflow: "hidden", flexShrink: 0 },
-  higginsImg: { width: 64, height: 64 },
-  higginsBubble: { flex: 1, gap: 4 },
-  higginsLabel: { fontFamily: fonts.displayBold, fontSize: 15, color: c.brand },
-  higginsText: { fontFamily: fonts.text, fontSize: 14, lineHeight: 21, color: c.onSurface },
-  // ── Optional details ──
-  spokeToggle: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, padding: spacing.lg, borderWidth: 1, borderColor: c.border },
-  spokeToggleLeft: { flex: 1, gap: 2 },
-  spokeTitle: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface },
-  spokeSub: { fontFamily: fonts.text, fontSize: 13, color: c.muted },
-  detailsCard: { gap: spacing.md },
-  q: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  chip: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.pill, borderWidth: 1, borderColor: c.border, minHeight: 40, backgroundColor: c.surfaceSecondary },
-  chipOn: { borderColor: c.brandPrimary, backgroundColor: c.restingTint },
-  chipText: { fontFamily: fonts.textMedium, fontSize: 14, color: c.onSurface },
-  descInput: { minHeight: 80, backgroundColor: c.surfaceTertiary, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, fontFamily: fonts.text, fontSize: 15, color: c.onSurface, textAlignVertical: "top" },
-  // ── Recent Calls ──
-  recentHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  recentTitle: { fontFamily: fonts.textSemibold, fontSize: 12, letterSpacing: 1, color: c.muted, textTransform: "uppercase" },
-  seeAll: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.brand },
-  recentCard: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, overflow: "hidden", borderWidth: 1, borderColor: c.border },
-  callRow: { flexDirection: "row", alignItems: "center", paddingVertical: spacing.md, paddingHorizontal: spacing.lg, gap: spacing.md, borderBottomWidth: 1, borderBottomColor: c.border },
-  callRowLast: { borderBottomWidth: 0 },
+  orText: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.muted },
+
+  // ── Recent calls section ──
+  recentSection: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, overflow: "hidden" },
+  recentHeader: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.md, gap: 4 },
+  recentHeaderTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  recentTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  recentClockWell: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center" },
+  recentTitle: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface },
+  seeAllRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  seeAllText: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.brand },
+  recentSub: { fontFamily: fonts.text, fontSize: 14, color: c.onSurfaceSecondary, marginLeft: 48 },
+
+  // ── Call row ──
+  callRow: { flexDirection: "row", alignItems: "center", paddingVertical: spacing.md, paddingHorizontal: spacing.lg, gap: spacing.md, borderTopWidth: 1, borderTopColor: c.border },
   callIconWell: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
-  callMissedWell: { backgroundColor: "rgba(217,83,79,0.12)" },
-  callNormalWell: { backgroundColor: c.surfaceTertiary },
+  callAlertWell: { backgroundColor: "rgba(217,83,79,0.12)" },
+  callContactWell: { backgroundColor: "rgba(76,175,80,0.12)" },
+  callUnknownWell: { backgroundColor: c.surfaceTertiary },
   callInfo: { flex: 1, gap: 2 },
-  callNumber: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface },
-  callMeta: { fontFamily: fonts.text, fontSize: 13, color: c.muted },
-  callMissed: { fontFamily: fonts.textSemibold, fontSize: 12, color: c.error },
-  checkBtn: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: c.surfaceTertiary, minHeight: 36 },
-  checkBtnText: { fontFamily: fonts.textSemibold, fontSize: 13, color: c.onSurface },
+  callNumber: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface },
+  callDesc: { fontFamily: fonts.text, fontSize: 14, color: c.onSurfaceSecondary },
+  callDateCol: { alignItems: "flex-end", gap: 2, flexShrink: 0 },
+  callDate: { fontFamily: fonts.text, fontSize: 13, color: c.muted },
+  callTime: { fontFamily: fonts.text, fontSize: 13, color: c.muted },
+
+  // ── Empty recent ──
+  recentEmpty: { padding: spacing.xl, alignItems: "center", gap: spacing.sm },
+
   // ── Error card ──
   errorCard: { backgroundColor: "rgba(217,83,79,0.08)", borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm, borderWidth: 1, borderColor: "rgba(217,83,79,0.2)" },
   errorText: { fontFamily: fonts.text, fontSize: 14, color: c.onSurface },
+
   // ── Progress ──
   progressWrap: { alignItems: "center", gap: spacing.md, paddingVertical: spacing.xl },
   progressLabel: { fontFamily: fonts.textSemibold, fontSize: 16, color: c.onSurface },
@@ -162,11 +141,10 @@ export default function CheckNumber() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  // Optional details (collapsed by default)
-  const [spokeOpen, setSpokeOpen] = useState(false);
-  const [asks, setAsks] = useState<CallAsk[]>([]);
-  const [claim, setClaim] = useState<CallClaim>("unknown");
-  const [transcript, setTranscript] = useState("");
+  // Optional details (kept for investigation API but no input UI in this view)
+  const [asks] = useState<CallAsk[]>([]);
+  const [claim] = useState<CallClaim>("unknown");
+  const [transcript] = useState("");
 
   // Phone picker
   const [callerPickerOpen, setCallerPickerOpen] = useState(false);
@@ -191,38 +169,14 @@ export default function CheckNumber() {
     return () => sub.remove();
   }, [loadRecentCalls]);
 
-  const toggleAsk = (id: CallAsk) => setAsks((cur) => cur.includes(id) ? cur.filter((x) => x !== id) : id === "nothing" ? ["nothing"] : [...cur.filter((x) => x !== "nothing"), id]);
-
-  // ── Quick entry actions ──
-  const handleFromRecentCalls = () => {
+  // ── Open the full recent-calls picker ──
+  const handleSeeAll = () => {
     if (canPickPhone) {
       setCallerPickerOpen(true);
     } else {
       showToast(Platform.OS === "ios"
         ? "Recent call access is not available on iOS. Enter the number manually or paste it."
         : "Recent call access requires a native build with call-log permission.", "neutral");
-    }
-  };
-
-  const handleEnterNumber = () => {
-    inputRef.current?.focus();
-  };
-
-  const handlePasteNumber = async () => {
-    try {
-      const text = (await Clipboard.getStringAsync()).trim();
-      // Extract something that looks like a phone number
-      const match = text.match(/[\d\s()+\-]{7,}/);
-      if (match) {
-        setNumber(match[0].trim());
-        showToast("Number pasted.", "neutral");
-      } else if (text) {
-        showToast("The clipboard doesn't contain a usable phone number.", "neutral");
-      } else {
-        showToast("Nothing on the clipboard.", "neutral");
-      }
-    } catch {
-      showToast("Could not read the clipboard.", "neutral");
     }
   };
 
@@ -289,10 +243,6 @@ export default function CheckNumber() {
     setNumber("");
     setSaved(false);
     setError(null);
-    setAsks([]);
-    setClaim("unknown");
-    setTranscript("");
-    setSpokeOpen(false);
   };
 
   const checkRecentNumber = (num: string) => {
@@ -415,9 +365,41 @@ export default function CheckNumber() {
   // ── MAIN INPUT VIEW ──
   const hasValidNumber = number.replace(/[\s\-()]/g, "").length >= 7;
 
+  // Helper: format date for recent call rows
+  const formatCallDate = (ts: number) => {
+    const d = new Date(ts);
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday = d.toDateString() === yesterday.toDateString();
+    const datePart = isToday ? "Today" : isYesterday ? "Yesterday" : d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+    const timePart = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true });
+    return { datePart, timePart };
+  };
+
+  // Helper: determine icon style for a call entry
+  const callIcon = (call: { name: string | null; type: string }) => {
+    const isMissed = call.type === "missed" || call.type === "MISSED";
+    const isSpam = call.type === "blocked" || call.type === "BLOCKED";
+    if (isMissed || isSpam) return "alert" as const;
+    if (call.name) return "contact" as const;
+    return "unknown" as const;
+  };
+
+  // Helper: description text for a call entry
+  const callDescription = (call: { name: string | null; type: string }) => {
+    const isMissed = call.type === "missed" || call.type === "MISSED";
+    const isSpam = call.type === "blocked" || call.type === "BLOCKED";
+    if (isSpam) return "Possible spam";
+    if (call.name) return "Saved contact";
+    if (isMissed) return "Missed call";
+    return "Unknown number";
+  };
+
   return (
     <View style={s.root}>
-      {/* Header */}
+      {/* ── Header ── */}
       <View style={[s.header, { paddingTop: insets.top + spacing.md }]}>
         <CheckToolHeader
           title="Check a number"
@@ -433,43 +415,30 @@ export default function CheckNumber() {
 
       <KeyboardAwareScrollView
         testID="callguard-scroll"
-        contentContainerStyle={[s.scrollContent, { paddingTop: spacing.lg, paddingBottom: insets.bottom + 100 }]}
+        contentContainerStyle={[s.scrollContent, { paddingTop: spacing.md, paddingBottom: insets.bottom + 100 }]}
         bottomOffset={24}
       >
-        {/* ── Device-First: Select from recent calls ── */}
-        <Pressable
-          testID="callguard-from-recent"
-          accessibilityRole="button"
-          accessibilityLabel="Select from recent calls"
-          onPress={handleFromRecentCalls}
-          style={({ pressed }) => [s.devicePickerBtn, { opacity: pressed ? 0.85 : 1 }]}
-        >
-          <UserRound size={22} color={colors.onBrandPrimary} />
-          <Text style={s.devicePickerText}>Select from recent calls</Text>
-          <View style={s.devicePickerChevron}><ChevronRight size={20} color={colors.onBrandPrimary} /></View>
-        </Pressable>
-
-        {/* ── Or divider ── */}
-        <View style={s.orDivider}>
-          <View style={s.orLine} />
-          <Text style={s.orText}>or enter manually</Text>
-          <View style={s.orLine} />
-        </View>
+        {/* ── Description ── */}
+        <Text style={s.description}>
+          Choose a number from your recent calls or enter one yourself.{"\n"}Apollo will investigate it for possible scams.
+        </Text>
 
         {/* ── Phone Number Card ── */}
         <View style={s.phoneCard} testID="callguard-number-card">
-          <Text style={s.phoneLabel}>Phone Number</Text>
-          <View style={s.phoneInputRow}>
+          <View style={s.phoneCardHeader}>
             <View style={s.phoneIconWell}>
-              <PhoneIcon size={18} color={colors.brand} />
+              <PhoneIcon size={22} color="#1D4ED8" />
             </View>
+            <Text style={s.phoneCardLabel}>Phone number</Text>
+          </View>
+          <View>
             <TextInput
               ref={inputRef}
               testID="callguard-number"
               style={s.phoneInput}
               value={number}
               onChangeText={setNumber}
-              placeholder="0468 133 426"
+              placeholder="Enter or paste a phone number"
               placeholderTextColor={colors.muted}
               keyboardType="phone-pad"
               returnKeyType="done"
@@ -483,33 +452,18 @@ export default function CheckNumber() {
           </View>
         </View>
 
-        {/* ── Quick entry controls ── */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.quickRow}>
-          <Pressable testID="callguard-enter" accessibilityRole="button" onPress={handleEnterNumber} style={({ pressed }) => [s.quickBtn, { opacity: pressed ? 0.7 : 1 }]}>
-            <PenLine size={16} color={colors.onSurface} />
-            <Text style={s.quickText}>Enter number</Text>
-          </Pressable>
-          <Pressable testID="callguard-paste" accessibilityRole="button" onPress={() => void handlePasteNumber()} style={({ pressed }) => [s.quickBtn, { opacity: pressed ? 0.7 : 1 }]}>
-            <ClipboardPaste size={16} color={colors.onSurface} />
-            <Text style={s.quickText}>Paste number</Text>
-          </Pressable>
-        </ScrollView>
-
-        {/* ── Primary CTA: Investigate Number ── */}
+        {/* ── Gold CTA: Check number ── */}
         <Pressable
           testID="callguard-investigate"
           accessibilityRole="button"
-          accessibilityLabel="Investigate Number"
+          accessibilityLabel="Check number"
           disabled={!hasValidNumber}
           onPress={() => void runInvestigation()}
-          style={({ pressed }) => [s.ctaBtn, !hasValidNumber && s.ctaBtnDisabled, { opacity: pressed && hasValidNumber ? 0.85 : 1 }]}
+          style={({ pressed }) => [s.goldBtn, !hasValidNumber && s.goldBtnDisabled, { opacity: pressed && hasValidNumber ? 0.85 : 1 }]}
         >
-          <Search size={20} color={colors.onBrandPrimary} />
-          <Text style={s.ctaText}>Investigate Number</Text>
-          <View style={s.ctaChevron}><ChevronRight size={20} color={colors.onBrandPrimary} /></View>
+          <Search size={22} color={colors.onSurface} />
+          <Text style={s.goldBtnText}>Check number</Text>
         </Pressable>
-
-        <Text style={s.guidanceText}>No need to answer the call or describe the conversation.</Text>
 
         {/* ── Error ── */}
         {error ? (
@@ -519,92 +473,75 @@ export default function CheckNumber() {
           </View>
         ) : null}
 
-        {/* ── Higgins guidance panel ── */}
-        <View style={s.higginsCard} testID="callguard-higgins">
-          <View style={s.higginsAvatarWrap}>
-            <Image source={higginsAvatar} style={s.higginsImg} resizeMode="cover" />
-          </View>
-          <View style={s.higginsBubble}>
-            <Text style={s.higginsLabel}>Higgins says:</Text>
-            <Text style={s.higginsText}>
-              I&apos;ll check what I can find about this number using trusted sources. This usually takes a few seconds.
-            </Text>
-          </View>
+        {/* ── Or divider ── */}
+        <View style={s.orDivider}>
+          <View style={s.orLine} />
+          <Text style={s.orText}>or</Text>
+          <View style={s.orLine} />
         </View>
 
-        {/* ── Spoke to the caller? (optional, collapsed) ── */}
-        <Pressable testID="callguard-spoke-toggle" accessibilityRole="button" onPress={() => setSpokeOpen(!spokeOpen)} style={s.spokeToggle}>
-          <View style={s.spokeToggleLeft}>
-            <Text style={s.spokeTitle}>Spoke to the caller?</Text>
-            <Text style={s.spokeSub}>Optional details may help Apollo investigate further.</Text>
+        {/* ── Recent Calls Section ── */}
+        <View style={s.recentSection} testID="callguard-recent-section">
+          {/* Header */}
+          <View style={s.recentHeader}>
+            <View style={s.recentHeaderTop}>
+              <View style={s.recentTitleRow}>
+                <View style={s.recentClockWell}>
+                  <Clock size={18} color={colors.onSurface} />
+                </View>
+                <Text style={s.recentTitle}>Select from recent calls</Text>
+              </View>
+              {recentCalls.length > 0 ? (
+                <Pressable accessibilityRole="button" onPress={handleSeeAll} style={s.seeAllRow} hitSlop={8}>
+                  <Text style={s.seeAllText}>See all</Text>
+                  <ChevronRight size={16} color={colors.brand} />
+                </Pressable>
+              ) : null}
+            </View>
+            <Text style={s.recentSub}>Tap a number to check it with Apollo.</Text>
           </View>
-          {spokeOpen ? <ChevronUp size={22} color={colors.muted} /> : <ChevronDown size={22} color={colors.muted} />}
-        </Pressable>
 
-        {spokeOpen ? (
-          <Card style={s.detailsCard} testID="callguard-details-card">
-            <Text style={s.q}>What did they ask you to do?</Text>
-            <View style={s.grid}>
-              {CALL_ASKS.map((o) => (
-                <Pressable key={o.id} testID={`callguard-ask-${o.id}`} accessibilityRole="button" accessibilityState={{ selected: asks.includes(o.id) }} onPress={() => toggleAsk(o.id)} style={[s.chip, asks.includes(o.id) && s.chipOn]}>
-                  <Text style={s.chipText}>{o.label}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <Text style={s.q}>Who did they claim to be?</Text>
-            <View style={s.grid}>
-              {CALL_CLAIMS.map((o) => (
-                <Pressable key={o.id} testID={`callguard-claim-${o.id}`} accessibilityRole="button" accessibilityState={{ selected: claim === o.id }} onPress={() => setClaim(o.id)} style={[s.chip, claim === o.id && s.chipOn]}>
-                  <Text style={s.chipText}>{o.label}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <TextInput testID="callguard-transcript" style={s.descInput} value={transcript} onChangeText={setTranscript} placeholder="Describe what the caller said (optional)" placeholderTextColor={colors.muted} multiline />
-          </Card>
-        ) : null}
-
-        {/* ── Recent Calls ── */}
-        <View style={s.recentHeader}>
-          <Text style={s.recentTitle}>Recent Calls</Text>
-          {recentCalls.length > 3 ? (
-            <Pressable accessibilityRole="button" onPress={handleFromRecentCalls}>
-              <Text style={s.seeAll}>See all  ›</Text>
-            </Pressable>
-          ) : null}
-        </View>
-
-        {recentCalls.length > 0 ? (
-          <View style={s.recentCard} testID="callguard-recent-calls">
-            {recentCalls.slice(0, 5).map((call, i) => {
-              const isMissed = call.type === "missed" || call.type === "MISSED";
-              const dateStr = call.date ? new Date(call.date).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+          {/* Call rows */}
+          {recentCalls.length > 0 ? (
+            recentCalls.slice(0, 5).map((call) => {
+              const icon = callIcon(call);
+              const desc = callDescription(call);
+              const { datePart, timePart } = call.date ? formatCallDate(call.date) : { datePart: "", timePart: "" };
               return (
-                <View key={`${call.number}-${call.date}`} style={[s.callRow, i === Math.min(4, recentCalls.length - 1) ? s.callRowLast : undefined]}>
-                  <View style={[s.callIconWell, isMissed ? s.callMissedWell : s.callNormalWell]}>
-                    {isMissed ? <PhoneMissed size={20} color={colors.error} /> : <PhoneIcon size={20} color={colors.muted} />}
+                <Pressable
+                  key={`${call.number}-${call.date}`}
+                  testID={`callguard-recent-${call.number}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Check ${call.name || call.number}`}
+                  onPress={() => checkRecentNumber(call.number)}
+                  style={({ pressed }) => [s.callRow, { opacity: pressed ? 0.7 : 1 }]}
+                >
+                  <View style={[s.callIconWell, icon === "alert" ? s.callAlertWell : icon === "contact" ? s.callContactWell : s.callUnknownWell]}>
+                    {icon === "alert" ? <CircleAlert size={22} color={colors.error} /> : icon === "contact" ? <PhoneIcon size={20} color="#4CAF50" /> : <User size={22} color={colors.muted} />}
                   </View>
                   <View style={s.callInfo}>
-                    <Text style={s.callNumber}>{call.name || call.number}</Text>
-                    <Text style={s.callMeta}>{dateStr}</Text>
-                    {isMissed ? <Text style={s.callMissed}>Missed call</Text> : null}
+                    <Text style={s.callNumber}>{call.number}</Text>
+                    <Text style={s.callDesc}>{call.name || desc}</Text>
                   </View>
-                  <Pressable accessibilityRole="button" testID={`callguard-check-${i}`} onPress={() => checkRecentNumber(call.number)} style={({ pressed }) => [s.checkBtn, { opacity: pressed ? 0.7 : 1 }]}>
-                    <Text style={s.checkBtnText}>Check with Apollo</Text>
-                  </Pressable>
-                </View>
+                  <View style={s.callDateCol}>
+                    <Text style={s.callDate}>{datePart}</Text>
+                    <Text style={s.callTime}>{timePart}</Text>
+                  </View>
+                  <ChevronRight size={18} color={colors.muted} />
+                </Pressable>
               );
-            })}
-          </View>
-        ) : (
-          <View style={[s.recentCard, { padding: spacing.lg, alignItems: "center", gap: spacing.sm }]} testID="callguard-recent-empty">
-            <PhoneIcon size={24} color={colors.muted} />
-            <Body>
-              {Platform.OS === "android"
-                ? "Recent calls will appear here when call-log permission is granted."
-                : "Recent calls are not available on this platform. Enter or paste the number above."}
-            </Body>
-          </View>
-        )}
+            })
+          ) : (
+            <View style={s.recentEmpty}>
+              <PhoneIcon size={28} color={colors.muted} />
+              <Body>
+                {Platform.OS === "android"
+                  ? "Recent calls will appear here when call-log permission is granted."
+                  : "Recent calls are not available on this platform. Enter or paste the number above."}
+              </Body>
+            </View>
+          )}
+        </View>
       </KeyboardAwareScrollView>
 
       <PhonePickerSheet visible={callerPickerOpen} mode="calls" onClose={() => setCallerPickerOpen(false)} onPickCall={(c) => { setNumber(c.number); setCallerPickerOpen(false); }} />
