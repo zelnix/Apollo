@@ -16,7 +16,6 @@ import Smartphone from "lucide-react-native/icons/smartphone";
 import React, { useMemo } from "react";
 import {
   Image,
-  ImageBackground,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -330,46 +329,51 @@ export default function ProtectionScreen() {
         </Text>
 
         {/* ── Hero card ── */}
-        <View style={styles.heroContainer} testID="protection-hero-card">
-          <ImageBackground
+        <View
+          style={[
+            styles.heroContainer,
+            { height: Math.round(cardWidth / (1916 / 821)) },
+          ]}
+          testID="protection-hero-card"
+        >
+          {/* Background image — fills container, always fully visible */}
+          <Image
             source={heroBackground}
-            style={styles.heroImageBg}
-            imageStyle={styles.heroImageStyle}
-            resizeMode="cover"
-          >
-            {/* Text overlay at bottom-left */}
-            <View style={[styles.heroOverlay, { padding: Math.round(12 * scale) }]}>
-              <View style={styles.heroTextBlock}>
+            style={styles.heroBgImage}
+            resizeMode="contain"
+          />
+          {/* Text overlay at bottom-left */}
+          <View style={[styles.heroOverlay, { padding: Math.round(12 * scale) }]}>
+            <View style={styles.heroTextBlock}>
+              <Text
+                style={[
+                  styles.heroTitle,
+                  {
+                    fontSize: Math.round(16 * scale),
+                    lineHeight: Math.round(20 * scale),
+                  },
+                ]}
+                numberOfLines={1}
+              >
+                {heroTitle}
+              </Text>
+              {heroLines.map((line, i) => (
                 <Text
+                  key={i}
                   style={[
-                    styles.heroTitle,
+                    styles.heroLine,
                     {
-                      fontSize: Math.round(16 * scale),
-                      lineHeight: Math.round(20 * scale),
+                      fontSize: Math.round(11 * scale),
+                      lineHeight: Math.round(15 * scale),
                     },
                   ]}
                   numberOfLines={1}
                 >
-                  {heroTitle}
+                  {line}
                 </Text>
-                {heroLines.map((line, i) => (
-                  <Text
-                    key={i}
-                    style={[
-                      styles.heroLine,
-                      {
-                        fontSize: Math.round(11 * scale),
-                        lineHeight: Math.round(15 * scale),
-                      },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {line}
-                  </Text>
-                ))}
-              </View>
+              ))}
             </View>
-          </ImageBackground>
+          </View>
         </View>
 
         {/* ── Section header ── */}
@@ -506,12 +510,12 @@ const styles = StyleSheet.create({
   heroContainer: {
     borderRadius: radius.lg,
     overflow: "hidden",
+    backgroundColor: "#E8F5E9",
   },
-  heroImageBg: {
+  heroBgImage: {
+    ...StyleSheet.absoluteFillObject,
     width: "100%",
-    aspectRatio: 1916 / 821, // exact image ratio for perfect scaling
-  },
-  heroImageStyle: {
+    height: "100%",
     borderRadius: radius.lg,
   },
   heroOverlay: {
