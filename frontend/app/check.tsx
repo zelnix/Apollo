@@ -36,6 +36,7 @@ import { useApollo, type CheckOutcome } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { InfoButton } from "@/src/components/InfoButton";
+import { CheckToolHeader } from "@/src/components/CheckToolHeader";
 import { useScreenshotAccess } from "@/src/hooks/useScreenshotAccess";
 import { extractUrl } from "@/src/share/classifyShare";
 import { getShareIntake } from "@/src/share/shareIntake";
@@ -279,21 +280,15 @@ export default function CheckLink() {
     <View style={s.root}>
       {/* ── Header ── */}
       <View style={[s.header, { paddingTop: insets.top + spacing.md }]}>
-        <Pressable testID="check-back" accessibilityRole="button" accessibilityLabel="Go back" onPress={() => goBackOrHome(router)} style={s.backBtn}>
-          <ArrowLeft size={22} color={colors.onSurface} />
-        </Pressable>
-        <View style={s.linkIconWell}>
-          <Link2 size={20} color={colors.brand} />
-        </View>
-        <View style={s.headerTextWrap}>
-          <Text style={s.headerTitle}>Check Website Link</Text>
-          <Text style={s.headerSub}>See what&apos;s behind the link — safely and securely.</Text>
-        </View>
-        <InfoButton info={{ title: "About website link checking", body: [
-          "Paste or share any URL and Apollo will inspect the destination page, check it against known threat databases, and have Higgins explain the result.",
-          "Apollo checks domain reputation, SSL certificates, redirect chains and page content. The link is visited in a sandboxed environment — your device never loads the page directly.",
-          "A completed check does not guarantee a website is safe. Results reflect what Apollo was able to verify at the time of the check.",
-        ] }} testID="check-info" />
+        <CheckToolHeader
+          title="Check Website Link"
+          info={{ title: "About website link checking", body: [
+            "Paste or share any URL and Apollo will inspect the destination page, check it against known threat databases, and have Higgins explain the result.",
+            "Apollo checks domain reputation, SSL certificates, redirect chains and page content. The link is visited in a sandboxed environment — your device never loads the page directly.",
+            "A completed check does not guarantee a website is safe. Results reflect what Apollo was able to verify at the time of the check.",
+          ] }}
+          testID="check"
+        />
       </View>
 
       <KeyboardAwareScrollView

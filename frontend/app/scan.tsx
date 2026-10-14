@@ -15,6 +15,7 @@ import { STATE_LABEL, STATE_NAME, STATE_RANK_ORDER, type PatrolEvent } from "@/s
 import { useApollo, type CheckOutcome } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { CheckToolHeader } from "@/src/components/CheckToolHeader";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -85,8 +86,11 @@ export default function Scan() {
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>Scan with Apollo</Text>
-        <Pressable testID="scan-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        <CheckToolHeader
+          title="Scan a code"
+          info={{ title: "About code scanning", body: ["Point your camera at a QR code or barcode and Apollo will check what it contains before your phone follows it.", "Nothing opens until you approve it. Apollo checks the destination for scams, phishing and malware."] }}
+          testID="scan"
+        />
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="scan-scroll">
         {!payload ? (

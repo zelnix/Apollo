@@ -49,6 +49,7 @@ import { type MessageExplanation, type MessageUrlResult, useApollo } from "@/src
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { InfoButton } from "@/src/components/InfoButton";
+import { CheckToolHeader } from "@/src/components/CheckToolHeader";
 import { getShareIntake } from "@/src/share/shareIntake";
 import { recordCheck } from "@/src/store/checkHistoryStore";
 import {
@@ -840,14 +841,8 @@ export default function CheckEmail() {
     <View style={s.root}>
       {/* ── Header ── */}
       <View style={[s.header, { paddingTop: insets.top + spacing.md }]}>
-        <View style={s.mailIconWell}>
-          <Mail size={22} color="#1D4ED8" />
-        </View>
-        <View style={s.headerTextWrap}>
-          <Text style={s.headerTitle}>Check email</Text>
-          <Text style={s.headerSub}>See if an email looks safe or suspicious.</Text>
-        </View>
-        <InfoButton
+        <CheckToolHeader
+          title="Check email"
           info={{
             title: "About email checking",
             body: [
@@ -856,17 +851,8 @@ export default function CheckEmail() {
               "A manual check works without connecting any email account. Account selection is for organising your checks across multiple email addresses.",
             ],
           }}
-          testID="email-info"
+          testID="email"
         />
-        <Pressable
-          testID="email-close"
-          accessibilityRole="button"
-          accessibilityLabel="Close"
-          onPress={() => goBackOrHome(router)}
-          style={s.closeBtn}
-        >
-          <X size={22} color={colors.onSurface} />
-        </Pressable>
       </View>
 
       <KeyboardAwareScrollView

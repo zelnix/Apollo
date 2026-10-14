@@ -34,6 +34,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiPost } from "@/src/api/client";
 import { CheckResultScreen } from "@/src/components/CheckResultScreen";
 import { InfoButton } from "@/src/components/InfoButton";
+import { CheckToolHeader } from "@/src/components/CheckToolHeader";
 import { PhonePickerSheet } from "@/src/components/PhonePickerSheet";
 import { PhonePickers } from "@/src/security/phonePickers";
 import { Body, Button, Card } from "@/src/components/ui";
@@ -411,19 +412,16 @@ export default function CheckNumber() {
     <View style={s.root}>
       {/* Header */}
       <View style={[s.header, { paddingTop: insets.top + spacing.md }]}>
-        <Pressable testID="callguard-back" accessibilityRole="button" accessibilityLabel="Go back" onPress={() => goBackOrHome(router)} style={s.backBtn}>
-          <ArrowLeft size={22} color={colors.onSurface} />
-        </Pressable>
-        <View style={s.headerTextWrap}>
-          <Text style={s.headerTitle}>Check a Number</Text>
-          <Text style={s.headerSub}>Find out what Apollo can discover about an unfamiliar caller.</Text>
-        </View>
-        <InfoButton info={{ title: "About number checking", body: [
-          "Apollo investigates phone numbers using reputation data, fraud databases, line-type intelligence and Higgins analysis.",
-          "This works without answering the call — check before you call back.",
-          "Reputation data indicates risk but cannot authenticate who is actually calling. Caller ID can be spoofed.",
-          "On Android, Apollo can access recent calls with your permission. On iOS, call-log access is not available — enter or paste the number instead.",
-        ] }} testID="callguard-info" />
+        <CheckToolHeader
+          title="Check a number"
+          info={{ title: "About number checking", body: [
+            "Apollo investigates phone numbers using reputation data, fraud databases, line-type intelligence and Higgins analysis.",
+            "This works without answering the call — check before you call back.",
+            "Reputation data indicates risk but cannot authenticate who is actually calling. Caller ID can be spoofed.",
+            "On Android, Apollo can access recent calls with your permission. On iOS, call-log access is not available — enter or paste the number instead.",
+          ] }}
+          testID="callguard"
+        />
       </View>
 
       <KeyboardAwareScrollView

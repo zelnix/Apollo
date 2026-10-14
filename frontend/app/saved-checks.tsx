@@ -12,6 +12,7 @@ import { deleteAppReport, listAppReports } from "@/src/store/appReportStore";
 import type { AppReportSnapshot } from "@/src/domain/appReport";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { CheckToolHeader } from "@/src/components/CheckToolHeader";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -44,8 +45,11 @@ export default function SavedChecksScreen() {
 
   return <View style={s.root} testID="saved-checks-screen">
     <View style={[s.header, { paddingTop: insets.top + spacing.md }]}>
-      <Text style={s.title} testID="saved-checks-title">Saved checks</Text>
-      <Pressable testID="saved-checks-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+      <CheckToolHeader
+        title="Saved checks"
+        info={{ title: "About saved checks", body: ["Your saved check results are stored here so you can reopen them later.", "Saved checks include the original analysis, Higgins explanation and any evidence collected at the time of the check."] }}
+        testID="saved-checks"
+      />
     </View>
     <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="saved-checks-scroll">
       {items.length === 0 ? <Card testID="saved-checks-empty"><Body>No checks saved yet. Run an app, link, message or internet check and tap &quot;Save this check&quot; to keep it here.</Body></Card> : items.map((r) => {

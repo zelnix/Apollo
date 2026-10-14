@@ -17,6 +17,7 @@ import { useApollo } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { InfoButton } from "@/src/components/InfoButton";
+import { CheckToolHeader } from "@/src/components/CheckToolHeader";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -88,11 +89,11 @@ export default function CheckMyAccounts() {
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>Check My Accounts</Text>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <InfoButton info={{ title: "About Account Monitoring", body: ["Apollo watches your email addresses for appearances in known data breaches. Checks run weekly when you open the app.", "Apollo never asks for or stores a password. Breach data comes from trusted public disclosure sources."] }} testID="monitor-info" />
-          <Pressable testID="monitor-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
-        </View>
+        <CheckToolHeader
+          title="Check My Accounts"
+          info={{ title: "About Account Monitoring", body: ["Apollo watches your email addresses for appearances in known data breaches. Checks run weekly when you open the app.", "Apollo never asks for or stores a password. Breach data comes from trusted public disclosure sources."] }}
+          testID="monitor"
+        />
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="monitor-scroll">
         <Text style={s.subtitle}>Monitor your email addresses for known data breaches.</Text>

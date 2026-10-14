@@ -19,6 +19,7 @@ import { useApollo } from "@/src/store/ApolloContext";
 import { markCheckDone } from "@/src/store/checkCompletion";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
+import { CheckToolHeader } from "@/src/components/CheckToolHeader";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
@@ -69,8 +70,11 @@ export default function Recheck() {
   return (
     <View style={s.root} testID="recheck-root">
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>Device Re-check</Text>
-        <Pressable testID="recheck-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
+        <CheckToolHeader
+          title="Device Check"
+          info={{ title: "About Device Check", body: ["Re-check this device for signs of malware, unsafe changes or an existing compromise.", "Higgins repeats the checks this device allows and compares them with the last check. Pop-ups, unusual battery drain, new apps you didn't add, or settings that change back after you fix them may indicate a problem."] }}
+          testID="recheck"
+        />
       </View>
       <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} testID="recheck-scroll">
         <GateAbout title="About Device Re-check" testID="recheck-intro"

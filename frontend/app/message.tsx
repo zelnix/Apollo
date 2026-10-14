@@ -28,6 +28,7 @@ import { apiUpload } from "@/src/api/client";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { goBackOrHome } from "@/src/utils/navigation";
 import { InfoButton } from "@/src/components/InfoButton";
+import { CheckToolHeader } from "@/src/components/CheckToolHeader";
 import { useScreenshotAccess } from "@/src/hooks/useScreenshotAccess";
 import { redactUserSecrets } from "@/src/domain/privacy";
 import { getShareIntake } from "@/src/share/shareIntake";
@@ -226,11 +227,11 @@ export default function CheckMessage() {
   return (
     <View style={s.root}>
       <View style={[s.top, { paddingTop: insets.top + spacing.md }]}>
-        <Text style={s.title}>{params.source === "email" ? "Email monitoring" : "Message screening"}</Text>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          <InfoButton info={{ title: params.source === "email" ? "About email monitoring" : "About message screening", body: ["Paste any message and Apollo will investigate it using local scam detection, link and public evidence checks, and Higgins's explanation.", "Apollo checks claimed identity, pressure tactics, embedded links and sender reputation. Raw content is discarded after the assessment."] }} testID="message-info" />
-          <Pressable testID="message-close" accessibilityRole="button" onPress={() => goBackOrHome(router)} style={s.close}><X size={20} color={colors.onSurface} /></Pressable>
-        </View>
+        <CheckToolHeader
+          title={params.source === "email" ? "Email monitoring" : "Check a message"}
+          info={{ title: params.source === "email" ? "About email monitoring" : "About message screening", body: ["Paste any message and Apollo will investigate it using local scam detection, link and public evidence checks, and Higgins's explanation.", "Apollo checks claimed identity, pressure tactics, embedded links and sender reputation. Raw content is discarded after the assessment."] }}
+          testID="message"
+        />
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="message-scroll">
         <Text style={s.subtitle}>{isEmail ? "Analyse sender, body and links for phishing patterns." : "Investigate any message for scam indicators and suspicious links."}</Text>
