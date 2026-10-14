@@ -1,15 +1,15 @@
-import * as Clipboard from "expo-clipboard";
+// Check Website Link — Approved screen implementation.
+// Matches the approved mock-up: header, description, URL card,
+// gold Check website link CTA, "or" divider, two action cards, recent links.
 import * as ImagePicker from "expo-image-picker";
 import { Image as ExpoImage } from "expo-image";
-import ArrowLeft from "lucide-react-native/icons/arrow-left";
 import Camera from "lucide-react-native/icons/camera";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
-import ClipboardPaste from "lucide-react-native/icons/clipboard-paste";
-import Globe from "lucide-react-native/icons/globe";
+import CircleAlert from "lucide-react-native/icons/circle-alert";
+import Clock from "lucide-react-native/icons/clock";
+import ExternalLink from "lucide-react-native/icons/external-link";
 import Link2 from "lucide-react-native/icons/link-2";
 import Search from "lucide-react-native/icons/search";
-import Shield from "lucide-react-native/icons/shield";
-import ShieldCheck from "lucide-react-native/icons/shield-check";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
@@ -34,8 +34,6 @@ import { STATE_NAME, type PatrolEvent } from "@/src/domain/types";
 import { saveCheck } from "@/src/store/savedCheckStore";
 import { useApollo, type CheckOutcome } from "@/src/store/ApolloContext";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
-import { goBackOrHome } from "@/src/utils/navigation";
-import { InfoButton } from "@/src/components/InfoButton";
 import { CheckToolHeader } from "@/src/components/CheckToolHeader";
 import { useScreenshotAccess } from "@/src/hooks/useScreenshotAccess";
 import { extractUrl } from "@/src/share/classifyShare";
@@ -43,46 +41,72 @@ import { getShareIntake } from "@/src/share/shareIntake";
 
 const useStyles = makeStyles((c) => ({
   root: { flex: 1, backgroundColor: c.surface },
-  // ── Header ──
+
+  // Header
   header: { paddingHorizontal: spacing.lg, flexDirection: "row", alignItems: "center", gap: spacing.md },
-  backBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  linkIconWell: { width: 40, height: 40, borderRadius: 20, backgroundColor: c.brandTint ?? "#E0ECFF", alignItems: "center", justifyContent: "center" },
-  headerTextWrap: { flex: 1 },
-  headerTitle: { fontFamily: fonts.displayBold, fontSize: 22, color: c.onSurface },
-  headerSub: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary, marginTop: 2 },
-  // ── Scroll ──
+
+  // Scroll
   scrollContent: { paddingHorizontal: spacing.lg, gap: spacing.lg },
-  // ── Protected environment card ──
-  envCard: { flexDirection: "row", backgroundColor: "#EBF3FF", borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, alignItems: "flex-start" },
-  envIconWell: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#D6E5FC", alignItems: "center", justifyContent: "center", flexShrink: 0 },
-  envTextWrap: { flex: 1, gap: 4 },
-  envTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.brand },
-  envDesc: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary },
-  // ── URL input ──
-  urlCard: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.lg, gap: spacing.sm },
-  urlIconWell: { width: 32, height: 32, borderRadius: 16, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center", flexShrink: 0 },
-  urlInput: { flex: 1, minHeight: 52, fontFamily: fonts.text, fontSize: 15, color: c.onSurface, paddingVertical: spacing.md },
-  pasteBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center", flexShrink: 0 },
-  // ── Primary CTA ──
-  ctaBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: c.brandPrimary, borderRadius: radius.lg, paddingVertical: 16, paddingHorizontal: spacing.xl, gap: spacing.sm, minHeight: 56 },
-  ctaBtnDisabled: { opacity: 0.5 },
-  ctaText: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onBrandPrimary },
-  // ── Action cards ──
-  actionCard: { flexDirection: "row", backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, alignItems: "center", borderWidth: 1, borderColor: c.border },
-  actionIconWell: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", flexShrink: 0 },
+
+  // Description
+  description: { fontFamily: fonts.text, fontSize: 15, lineHeight: 22, color: c.onSurfaceSecondary },
+
+  // Website link card
+  linkCard: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, borderWidth: 1, borderColor: c.border },
+  linkCardHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  linkIconWell: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#DBEAFE", alignItems: "center", justifyContent: "center" },
+  linkCardLabel: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface },
+  linkInput: { minHeight: 48, backgroundColor: c.surface, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, paddingHorizontal: spacing.lg, fontFamily: fonts.text, fontSize: 16, color: c.onSurface },
+
+  // Gold CTA
+  goldBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: c.gold, borderRadius: radius.lg, paddingVertical: 16, paddingHorizontal: spacing.xl, gap: spacing.md, minHeight: 56 },
+  goldBtnDisabled: { opacity: 0.45 },
+  goldBtnText: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface },
+
+  // Or divider
+  orDivider: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.xs },
+  orLine: { flex: 1, height: 1, backgroundColor: c.border },
+  orText: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.muted },
+
+  // Action cards row
+  actionCardsRow: { flexDirection: "row", gap: spacing.md },
+  actionCard: { flex: 1, backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, borderWidth: 1, borderColor: c.border, alignItems: "flex-start" },
+  actionCardIconWell: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
   screenshotIconBg: { backgroundColor: "#E6F4EA" },
-  inspectIconBg: { backgroundColor: "#EDE7F6" },
-  actionContent: { flex: 1, gap: 4 },
-  actionTitle: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface },
-  actionDesc: { fontFamily: fonts.text, fontSize: 13, lineHeight: 19, color: c.onSurfaceSecondary },
-  // ── Privacy card ──
-  privacyCard: { flexDirection: "row", backgroundColor: "#EBF3FF", borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md, alignItems: "flex-start" },
-  privacyIconWell: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#D6E5FC", alignItems: "center", justifyContent: "center", flexShrink: 0 },
-  privacyTextWrap: { flex: 1, gap: 4 },
-  privacyTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.brand },
-  privacyDesc: { fontFamily: fonts.text, fontSize: 14, lineHeight: 20, color: c.onSurfaceSecondary },
-  learnMore: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.brand, marginTop: 4 },
-  // ── Legacy styles kept for result/page-assess views ──
+  inspectIconBg: { backgroundColor: "#DBEAFE" },
+  actionCardTitle: { fontFamily: fonts.displayBold, fontSize: 15, color: c.onSurface },
+  actionCardSub: { fontFamily: fonts.text, fontSize: 13, lineHeight: 18, color: c.onSurfaceSecondary },
+  actionCardChevron: { alignSelf: "flex-end" },
+
+  // Recent links section
+  recentSection: { backgroundColor: c.surfaceSecondary, borderRadius: radius.lg, borderWidth: 1, borderColor: c.border, overflow: "hidden" },
+  recentHeader: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.md, gap: 4 },
+  recentHeaderTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  recentTitleRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  recentClockWell: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.surfaceTertiary, alignItems: "center", justifyContent: "center" },
+  recentTitle: { fontFamily: fonts.displayBold, fontSize: 17, color: c.onSurface },
+  seeAllRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  seeAllText: { fontFamily: fonts.textSemibold, fontSize: 14, color: c.brand },
+  recentSub: { fontFamily: fonts.text, fontSize: 14, color: c.onSurfaceSecondary, marginLeft: 48 },
+
+  // Link row
+  linkRow: { flexDirection: "row", alignItems: "center", paddingVertical: spacing.md, paddingHorizontal: spacing.lg, gap: spacing.md, borderTopWidth: 1, borderTopColor: c.border },
+  linkRowIconWell: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
+  linkRowAlertWell: { backgroundColor: "rgba(217,83,79,0.12)" },
+  linkRowSafeWell: { backgroundColor: "#E6F4EA" },
+  linkRowContactWell: {},
+  linkRowInitial: { fontFamily: fonts.displayBold, fontSize: 18, color: "#FFFFFF" },
+  linkRowInfo: { flex: 1, gap: 2 },
+  linkRowName: { fontFamily: fonts.displayBold, fontSize: 16, color: c.onSurface },
+  linkRowUrl: { fontFamily: fonts.text, fontSize: 14, color: c.onSurfaceSecondary },
+  linkRowDateCol: { alignItems: "flex-end", gap: 2, flexShrink: 0 },
+  linkRowDate: { fontFamily: fonts.text, fontSize: 13, color: c.muted },
+  linkRowTime: { fontFamily: fonts.text, fontSize: 13, color: c.muted },
+
+  // Empty recent
+  recentEmpty: { padding: spacing.xl, alignItems: "center", gap: spacing.sm },
+
+  // Legacy styles kept for result/page-assess views
   headline: { fontFamily: fonts.displayBold, fontSize: 22, color: c.onSurface, letterSpacing: -0.3 },
   sub: { fontFamily: fonts.display, fontSize: 13, color: c.onSurfaceSecondary, letterSpacing: 1, textTransform: "uppercase", marginTop: spacing.sm },
   preview: { width: "100%", height: 180, borderRadius: radius.md, backgroundColor: c.surfaceTertiary },
@@ -107,7 +131,6 @@ export default function CheckLink() {
   const [pageScreenshotUri, setPageScreenshotUri] = useState<string | null>(null);
   const [pageGateScreening, setPageGateScreening] = useState<ScreeningResult | null>(null);
   const [pendingPageScreenshot, setPendingPageScreenshot] = useState<{ uri: string; name: string; type: string } | null>(null);
-  const [privacySheetOpen, setPrivacySheetOpen] = useState(false);
 
   const applyPageSignals = async (signals: PageSignals, note: string | null) => {
     const analysis = analysePage(signals, input);
@@ -191,8 +214,6 @@ export default function CheckLink() {
   }, [sharedUrl, ready, setupDone, run]);
 
   if (ready && !setupDone) return <Redirect href="/onboarding" />;
-  const paste = async () => { const t = await Clipboard.getStringAsync(); if (t) setInput(t.trim()); };
-  const sourceLabel = params.source === "share" ? "Shared into Apollo" : params.source === "clipboard" ? "From your clipboard" : params.source === "link" ? "Opened via link" : null;
 
   // ── RESULT VIEW (preserved exactly) ──
   if (outcome && state) {
@@ -258,7 +279,7 @@ export default function CheckLink() {
               {outcome.intel?.final_url ? <Body>Final destination: {outcome.intel.final_url}</Body> : null}
               <Body>On-device score: {outcome.local.score}/100 ({outcome.local.level}). Signals: {outcome.local.signals.map((x) => x.code).join(", ") || "none"}.</Body>
               <Body>Intelligence: {outcome.intel ? outcome.intel.sources.map((x) => `${x.name} = ${x.status}`).join("; ") : "unavailable"}. Verdict: {outcome.intel?.verdict ?? "n/a"}. Coverage: {outcome.intel?.coverage ?? "none"}.</Body>
-              <Body>Adapter: {liveEvent?.adapter_label}. Verified block: {liveEvent?.verified_block ? "yes" : "no"}. Event: {liveEvent?.event_id.slice(0, 8)}…</Body>
+              <Body>Adapter: {liveEvent?.adapter_label}. Verified block: {liveEvent?.verified_block ? "yes" : "no"}. Event: {liveEvent?.event_id.slice(0, 8)}{"\u2026"}</Body>
             </>
           ) : null}
           <Button testID="tech-details-close" variant="ghost" label="Done" onPress={() => setTech(false)} />
@@ -266,15 +287,53 @@ export default function CheckLink() {
         <Sheet visible={report} onClose={() => setReport(false)} title="Report a mistake" testID="report-sheet">
           <Body>Think Apollo got this wrong? Your report includes the event, Apollo&apos;s decision, the domain and which intelligence sources responded — nothing else. A human reviews it; one report never whitelists a site for everyone.</Body>
           {reportError ? <Body testID="report-error">{reportError}</Body> : null}
-          <Button testID="report-send" label={reportBusy ? "Sending…" : reportError ? "Retry report" : "Send report"} disabled={reportBusy} onPress={() => { if (!liveEvent) return; setReportBusy(true); setReportError(null); void sendFeedback("false_positive", liveEvent, outcome?.intel?.sources.map((x) => x.name) ?? []).then(() => { setReport(false); showToast("Thanks — report sent for review.", "resting"); }).catch(() => setReportError("The report was not sent. Check your connection and retry." )).finally(() => setReportBusy(false)); }} />
+          <Button testID="report-send" label={reportBusy ? "Sending\u2026" : reportError ? "Retry report" : "Send report"} disabled={reportBusy} onPress={() => { if (!liveEvent) return; setReportBusy(true); setReportError(null); void sendFeedback("false_positive", liveEvent, outcome?.intel?.sources.map((x) => x.name) ?? []).then(() => { setReport(false); showToast("Thanks \u2014 report sent for review.", "resting"); }).catch(() => setReportError("The report was not sent. Check your connection and retry." )).finally(() => setReportBusy(false)); }} />
           <Button testID="report-cancel" variant="ghost" label="Cancel" onPress={() => setReport(false)} />
         </Sheet>
       </>
     );
   }
 
-  // ── INPUT VIEW — approved mock-up layout ──
+  // ── INPUT VIEW — matches approved mock-up ──
   const hasValidUrl = input.trim().length > 4;
+
+  // ── Recent links from Patrol events ──
+  const recentLinkEvents = events
+    .filter((e) => e.indicator_host)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 5);
+
+  // ── Helper: contact initial color ──
+  const INITIAL_COLORS = ["#3B82F6", "#F97316", "#EF4444", "#6366F1", "#8B5CF6", "#EC4899", "#14B8A6", "#10B981"];
+  const initialColor = (name: string) => INITIAL_COLORS[name.charCodeAt(0) % INITIAL_COLORS.length];
+
+  // ── Helper: extract domain name from host ──
+  const domainName = (host: string) => {
+    const parts = host.replace(/^www\./, "").split(".");
+    return parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+  };
+
+  // ── Helper: format date for recent link rows ──
+  const formatLinkDate = (iso: string) => {
+    try {
+      const d = new Date(iso);
+      const now = new Date();
+      const isToday = d.toDateString() === now.toDateString();
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const isYesterday = d.toDateString() === yesterday.toDateString();
+      const datePart = isToday ? "Today" : isYesterday ? "Yesterday" : d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+      const timePart = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true });
+      return { datePart, timePart };
+    } catch { return { datePart: "", timePart: "" }; }
+  };
+
+  // ── Tap a recent link → auto-check ──
+  const checkRecentLink = (host: string) => {
+    const url = host.startsWith("http") ? host : `https://${host}`;
+    setInput(url);
+    void run(url);
+  };
 
   return (
     <View style={s.root}>
@@ -293,28 +352,25 @@ export default function CheckLink() {
 
       <KeyboardAwareScrollView
         testID="check-scroll"
-        contentContainerStyle={[s.scrollContent, { paddingTop: spacing.lg, paddingBottom: insets.bottom + 100 }]}
+        contentContainerStyle={[s.scrollContent, { paddingTop: spacing.md, paddingBottom: insets.bottom + 100 }]}
         bottomOffset={24}
       >
-        {/* ── Protected environment card ── */}
-        <View style={s.envCard} testID="check-env-card">
-          <View style={s.envIconWell}>
-            <Shield size={20} color={colors.brand} />
-          </View>
-          <View style={s.envTextWrap}>
-            <Text style={s.envTitle}>Opened in a protected environment</Text>
-            <Text style={s.envDesc}>Apollo checks links in a secure, isolated sandbox to help protect you from harmful websites, scams and tracking.</Text>
-          </View>
-        </View>
+        {/* ── Description ── */}
+        <Text style={s.description}>
+          Enter a website link, choose one from your recent links, or take a screenshot.{"\n"}Apollo will investigate it for possible scams.
+        </Text>
 
-        {/* ── URL input ── */}
-        <View style={s.urlCard}>
-          <View style={s.urlIconWell}>
-            <Link2 size={16} color={colors.muted} />
+        {/* ── Website Link Card ── */}
+        <View style={s.linkCard} testID="check-link-card">
+          <View style={s.linkCardHeader}>
+            <View style={s.linkIconWell}>
+              <Link2 size={22} color="#1D4ED8" />
+            </View>
+            <Text style={s.linkCardLabel}>Website link</Text>
           </View>
           <TextInput
             testID="check-url-input"
-            style={s.urlInput}
+            style={s.linkInput}
             value={input}
             onChangeText={setInput}
             placeholder="Paste a website link, e.g. https://example.com"
@@ -325,53 +381,22 @@ export default function CheckLink() {
             returnKeyType="go"
             onSubmitEditing={() => void run(input)}
           />
-          <Pressable testID="check-paste-button" accessibilityRole="button" accessibilityLabel="Paste from clipboard" onPress={() => void paste()} style={s.pasteBtn}>
-            <ClipboardPaste size={20} color={colors.onSurfaceSecondary} />
-          </Pressable>
         </View>
 
-        {sourceLabel ? <Pill tone="neutral" label={sourceLabel} testID="check-source-pill" /> : null}
-
-        {/* ── Primary CTA ── */}
+        {/* ── Gold CTA: Check website link ── */}
         <Pressable
           testID="check-submit-button"
           accessibilityRole="button"
-          accessibilityLabel="Check with Apollo"
+          accessibilityLabel="Check website link"
           disabled={!deviceId || busy || !hasValidUrl}
           onPress={() => void run(input)}
-          style={({ pressed }) => [s.ctaBtn, (!deviceId || busy || !hasValidUrl) && s.ctaBtnDisabled, { opacity: pressed && hasValidUrl ? 0.85 : 1 }]}
+          style={({ pressed }) => [s.goldBtn, (!deviceId || busy || !hasValidUrl) && s.goldBtnDisabled, { opacity: pressed && hasValidUrl ? 0.85 : 1 }]}
         >
-          {busy ? <ActivityIndicator size="small" color={colors.onBrandPrimary} /> : <Search size={20} color={colors.onBrandPrimary} />}
-          <Text style={s.ctaText}>{!deviceId ? "Preparing Apollo…" : busy ? "Checking…" : "Check with Apollo"}</Text>
+          {busy ? <ActivityIndicator size="small" color={colors.onSurface} /> : <Search size={22} color={colors.onSurface} />}
+          <Text style={s.goldBtnText}>{!deviceId ? "Preparing Apollo\u2026" : busy ? "Checking\u2026" : "Check website link"}</Text>
         </Pressable>
 
-        {!deviceId ? <Body testID="check-device-preparing">Apollo is registering this device before online reputation checks.</Body> : null}
-
-        {/* ── Assess page screenshot card ── */}
-        <Pressable testID="check-page-screenshot" accessibilityRole="button" onPress={() => void photoAccess.start()} style={({ pressed }) => [s.actionCard, { opacity: pressed ? 0.85 : 1 }]}>
-          <View style={[s.actionIconWell, s.screenshotIconBg]}>
-            <Camera size={22} color="#2E7D32" />
-          </View>
-          <View style={s.actionContent}>
-            <Text style={s.actionTitle}>Assess page screenshot</Text>
-            <Text style={s.actionDesc}>Apollo will load the link in a protected environment and capture a screenshot, so you can see what the page looks like without visiting it yourself.</Text>
-          </View>
-          <ChevronRight size={20} color={colors.muted} />
-        </Pressable>
-
-        {/* ── Inspect page safely card ── */}
-        <Pressable testID="check-page-crawl" accessibilityRole="button" onPress={() => void crawlPage()} disabled={!input.trim()} style={({ pressed }) => [s.actionCard, (!input.trim()) && { opacity: 0.5 }, { opacity: pressed && input.trim() ? 0.85 : 1 }]}>
-          <View style={[s.actionIconWell, s.inspectIconBg]}>
-            <Globe size={22} color="#6A1B9A" />
-          </View>
-          <View style={s.actionContent}>
-            <Text style={s.actionTitle}>Inspect page safely</Text>
-            <Text style={s.actionDesc}>Open the website in a protected, isolated environment so Apollo can examine its content and identify potential risks without exposing your normal browser.</Text>
-          </View>
-          <ChevronRight size={20} color={colors.muted} />
-        </Pressable>
-
-        {/* ── Page analysis results ── */}
+        {/* ── Page analysis results (inline) ── */}
         {pageError ? <Card testID="check-page-error"><Body>{pageError}</Body></Card> : null}
         {page ? (
           <Animated.View entering={FadeInDown.duration(350)}>
@@ -380,10 +405,9 @@ export default function CheckLink() {
               <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap", alignItems: "center" }}>
                 <Pill tone={page.state} label={STATE_NAME[page.state]} testID="check-page-state" />
                 <Pill tone="neutral" label={page.title} testID="check-page-scenario" />
-                <Pill tone="neutral" label="Shared with Apollo for analysis" />
               </View>
               <Text style={s.headline} testID="check-page-verdict">{page.verdict}</Text>
-              {page.why.map((w, i) => <Body key={i} testID={`check-page-why-${i}`}>• {w}</Body>)}
+              {page.why.map((w, i) => <Body key={i} testID={`check-page-why-${i}`}>{"\u2022"} {w}</Body>)}
               <Body testID="check-page-recommendation">{page.recommendation}</Body>
               {page.phoneToAvoid ? <Pill tone="barking" label={`Don\u2019t call ${page.phoneToAvoid}`} testID="check-page-phone" /> : null}
               {pageHigginsNote ? (
@@ -397,18 +421,118 @@ export default function CheckLink() {
           </Animated.View>
         ) : null}
 
-        {/* ── Privacy card ── */}
-        <View style={s.privacyCard} testID="check-privacy-card">
-          <View style={s.privacyIconWell}>
-            <ShieldCheck size={20} color={colors.brand} />
+        {/* ── Or divider ── */}
+        <View style={s.orDivider}>
+          <View style={s.orLine} />
+          <Text style={s.orText}>or</Text>
+          <View style={s.orLine} />
+        </View>
+
+        {/* ── Two action cards ── */}
+        <View style={s.actionCardsRow}>
+          {/* Take a screenshot */}
+          <Pressable
+            testID="check-page-screenshot"
+            accessibilityRole="button"
+            accessibilityLabel="Take a screenshot"
+            onPress={() => void photoAccess.start()}
+            style={({ pressed }) => [s.actionCard, { opacity: pressed ? 0.85 : 1 }]}
+          >
+            <View style={[s.actionCardIconWell, s.screenshotIconBg]}>
+              <Camera size={22} color="#2E7D32" />
+            </View>
+            <Text style={s.actionCardTitle}>Take a screenshot</Text>
+            <Text style={s.actionCardSub}>Select an image from your device or take a new screenshot.</Text>
+            <View style={s.actionCardChevron}><ChevronRight size={18} color={colors.muted} /></View>
+          </Pressable>
+
+          {/* Open link safely */}
+          <Pressable
+            testID="check-page-crawl"
+            accessibilityRole="button"
+            accessibilityLabel="Open link safely"
+            onPress={() => void crawlPage()}
+            disabled={!input.trim()}
+            style={({ pressed }) => [s.actionCard, !input.trim() && { opacity: 0.5 }, { opacity: pressed && input.trim() ? 0.85 : 1 }]}
+          >
+            <View style={[s.actionCardIconWell, s.inspectIconBg]}>
+              <ExternalLink size={22} color="#1D4ED8" />
+            </View>
+            <Text style={s.actionCardTitle}>Open link safely</Text>
+            <Text style={s.actionCardSub}>Apollo will open the link in a protected environment.</Text>
+            <View style={s.actionCardChevron}><ChevronRight size={18} color={colors.muted} /></View>
+          </Pressable>
+        </View>
+
+        {/* ── Recent Links Section ── */}
+        <View style={s.recentSection} testID="check-recent-section">
+          {/* Header */}
+          <View style={s.recentHeader}>
+            <View style={s.recentHeaderTop}>
+              <View style={s.recentTitleRow}>
+                <View style={s.recentClockWell}>
+                  <Clock size={18} color={colors.onSurface} />
+                </View>
+                <Text style={s.recentTitle}>Recent links</Text>
+              </View>
+              {recentLinkEvents.length > 0 ? (
+                <Pressable accessibilityRole="button" onPress={() => router.push("/(tabs)/patrol")} style={s.seeAllRow} hitSlop={8}>
+                  <Text style={s.seeAllText}>See all</Text>
+                  <ChevronRight size={16} color={colors.brand} />
+                </Pressable>
+              ) : null}
+            </View>
+            <Text style={s.recentSub}>Tap a link to check it with Apollo.</Text>
           </View>
-          <View style={s.privacyTextWrap}>
-            <Text style={s.privacyTitle}>Your privacy is protected</Text>
-            <Text style={s.privacyDesc}>Website checks use Apollo&apos;s protected environment to reduce exposure to suspicious sites.</Text>
-            <Pressable accessibilityRole="button" onPress={() => setPrivacySheetOpen(true)}>
-              <Text style={s.learnMore}>Learn more</Text>
-            </Pressable>
-          </View>
+
+          {/* Link rows */}
+          {recentLinkEvents.length > 0 ? (
+            recentLinkEvents.map((ev, i) => {
+              const host = ev.indicator_host ?? "";
+              const name = ev.headline?.replace(/\s*—.*$/, "") || domainName(host);
+              const isDangerous = ev.state === "barking" || ev.state === "biting";
+              const isSafe = ev.state === "resting";
+              const { datePart, timePart } = formatLinkDate(ev.created_at);
+              return (
+                <Pressable
+                  key={ev.event_id}
+                  testID={`check-recent-${i}`}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Check ${host}`}
+                  onPress={() => checkRecentLink(host)}
+                  style={({ pressed }) => [s.linkRow, { opacity: pressed ? 0.7 : 1 }]}
+                >
+                  {isDangerous ? (
+                    <View style={[s.linkRowIconWell, s.linkRowAlertWell]}>
+                      <CircleAlert size={22} color={colors.error} />
+                    </View>
+                  ) : isSafe ? (
+                    <View style={[s.linkRowIconWell, s.linkRowSafeWell]}>
+                      <Link2 size={20} color="#2E7D32" />
+                    </View>
+                  ) : (
+                    <View style={[s.linkRowIconWell, s.linkRowContactWell, { backgroundColor: initialColor(host) }]}>
+                      <Text style={s.linkRowInitial}>{domainName(host).charAt(0)}</Text>
+                    </View>
+                  )}
+                  <View style={s.linkRowInfo}>
+                    <Text style={s.linkRowName} numberOfLines={1}>{name}</Text>
+                    <Text style={s.linkRowUrl} numberOfLines={1}>{host.startsWith("http") ? host : `https://${host}`}</Text>
+                  </View>
+                  <View style={s.linkRowDateCol}>
+                    <Text style={s.linkRowDate}>{datePart}</Text>
+                    <Text style={s.linkRowTime}>{timePart}</Text>
+                  </View>
+                  <ChevronRight size={18} color={colors.muted} />
+                </Pressable>
+              );
+            })
+          ) : (
+            <View style={s.recentEmpty}>
+              <Link2 size={28} color={colors.muted} />
+              <Body>Your checked links will appear here.</Body>
+            </View>
+          )}
         </View>
       </KeyboardAwareScrollView>
 
@@ -423,15 +547,7 @@ export default function CheckLink() {
           onCancel={handlePageGateCancel}
         />
       )}
-
-      <Sheet visible={privacySheetOpen} onClose={() => setPrivacySheetOpen(false)} title="How Apollo protects your privacy" testID="privacy-sheet">
-        <Body>When you check a website link, Apollo fetches and analyses the page using a server-side sandboxed environment. Your device does not load the page directly.</Body>
-        <Body>The page content is processed temporarily and discarded after the check. Apollo does not store copies of the websites you check.</Body>
-        <Body>Screenshots captured through &quot;Assess page screenshot&quot; are processed with on-device privacy screening before any data leaves your device.</Body>
-        <Body>Reputation checks are performed against independent threat databases. Apollo never shares your browsing activity, search history, or personal information with these services.</Body>
-        <Body>Remaining risk: No sandbox provides absolute isolation. Apollo reduces exposure but cannot guarantee that a website cannot detect it is being inspected.</Body>
-        <Button testID="privacy-sheet-close" variant="ghost" label="Done" onPress={() => setPrivacySheetOpen(false)} />
-      </Sheet>
     </View>
   );
 }
+
