@@ -78,23 +78,23 @@ const CAPABILITY_LABELS: Record<GateId, string> = {
 const AREA_META: Record<ProtectionAreaId, { title: string; description: string }> = {
   websites_links: {
     title: "Websites & Links",
-    description: "Protection against dangerous websites, phishing links and harmful downloads.",
+    description: "Helps protect you from harmful websites, phishing links and dangerous destinations.",
   },
   messages_calls: {
     title: "Messages & Calls",
-    description: "Screening for scam messages, fake alerts and suspicious callers.",
+    description: "Helps protect you from scam messages, suspicious links and phone-based scams.",
   },
   email_accounts: {
     title: "Email & Accounts",
-    description: "Monitoring for phishing emails, impersonation and account exposure.",
+    description: "Helps protect you from suspicious emails, phishing and account security risks.",
   },
   apps_files: {
     title: "Apps & Files",
-    description: "Checking apps and files for suspicious content and unsafe behaviour.",
+    description: "Helps protect you from potentially harmful apps, suspicious files and related risks.",
   },
   device_internet: {
     title: "Device & Internet",
-    description: "Monitoring device health, permissions and internet connection safety.",
+    description: "Helps protect your device, network connections and internet activity.",
   },
 };
 
