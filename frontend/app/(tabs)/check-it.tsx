@@ -1,7 +1,6 @@
 // Check screen — Apollo's security toolbox.
-// Organised into sections: Quick Checks, Files/Apps/Codes,
-// Device/Connection, Protection/Accounts, and Saved Checks.
-// All existing check workflows, routes and functionality preserved.
+// Matches approved visual mockup exactly: tinted section containers,
+// white cards, 2-column and 3-column grids, section-specific backgrounds.
 
 import Bookmark from "lucide-react-native/icons/bookmark";
 import ChevronRight from "lucide-react-native/icons/chevron-right";
@@ -40,6 +39,22 @@ interface CheckCard {
   route: string;
   accessibilityHint: string;
 }
+
+// ── Section backgrounds & icon tints ────────────────────────────────────────
+
+const SECTION_BG = {
+  quick: "#E8EDF6",       // soft blue/lavender
+  files: "#E4F0E8",       // soft green
+  device: "#E4F0E8",      // soft green/teal
+  protection: "#F5F0DC",  // soft cream/yellow
+} as const;
+
+const ICON_BG = {
+  quick: "#D6DEF0",       // deeper blue tint for icon circles
+  files: "#D4E8DA",       // deeper green tint
+  device: "#D4E8DA",      // deeper green/teal tint
+  protection: "#EDE6C8",  // deeper cream tint
+} as const;
 
 // ── Card Data ───────────────────────────────────────────────────────────────
 
@@ -109,7 +124,7 @@ const DEVICE_CONNECTION: CheckCard[] = [
   {
     id: "device",
     label: "Check my device",
-    description: "Review important protection, permissions and security settings.",
+    description: "Review important protection, permission and security settings.",
     icon: ShieldCheck,
     route: "/device",
     accessibilityHint: "Review device protection and security settings",
@@ -151,42 +166,6 @@ const PROTECTION_ACCOUNTS: CheckCard[] = [
   },
 ];
 
-// ── Section data ────────────────────────────────────────────────────────────
-
-interface Section {
-  title: string;
-  subtitle: string;
-  cards: CheckCard[];
-  columns: 2 | 1;
-}
-
-const SECTIONS: Section[] = [
-  {
-    title: "Quick Checks",
-    subtitle: "The most common checks to help you stay safe every day.",
-    cards: QUICK_CHECKS,
-    columns: 2,
-  },
-  {
-    title: "Files, Apps & Codes",
-    subtitle: "Check what you download, install or scan before you open it.",
-    cards: FILES_APPS_CODES,
-    columns: 2,
-  },
-  {
-    title: "Your Device & Connection",
-    subtitle: "Check your device and internet for a safer, stronger setup.",
-    cards: DEVICE_CONNECTION,
-    columns: 2,
-  },
-  {
-    title: "Protection & Accounts",
-    subtitle: "Keep an eye on your wider security and accounts.",
-    cards: PROTECTION_ACCOUNTS,
-    columns: 2,
-  },
-];
-
 // ── Styles ──────────────────────────────────────────────────────────────────
 
 const useStyles = makeStyles((c) => ({
@@ -195,11 +174,11 @@ const useStyles = makeStyles((c) => ({
   // Header
   headerContainer: {
     paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.lg,
   },
   headerTitle: {
     fontFamily: fonts.displayBold,
-    fontSize: 28,
+    fontSize: 30,
     color: c.onSurface,
     paddingBottom: spacing.sm,
   },
@@ -212,20 +191,22 @@ const useStyles = makeStyles((c) => ({
 
   // Scroll
   scrollContent: {
-    paddingHorizontal: spacing.xl,
-    gap: spacing.xl,
+    paddingHorizontal: spacing.lg,
+    gap: spacing.lg,
   },
 
-  // Section
+  // Section container (tinted background)
   sectionContainer: {
+    borderRadius: radius.lg,
+    padding: spacing.md,
     gap: spacing.md,
   },
   sectionHeader: {
-    gap: 4,
+    gap: 2,
   },
   sectionTitle: {
     fontFamily: fonts.displayBold,
-    fontSize: 18,
+    fontSize: 19,
     color: c.onSurface,
   },
   sectionSubtitle: {
@@ -242,16 +223,11 @@ const useStyles = makeStyles((c) => ({
     gap: spacing.sm,
   },
 
-  // Card
+  // Card (white, inside tinted section)
   card: {
-    backgroundColor: c.surfaceSecondary,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: c.border,
+    backgroundColor: "#FFFFFF",
+    borderRadius: radius.md,
     padding: spacing.md,
-    gap: spacing.sm,
-  },
-  cardInner: {
     flexDirection: "row",
     alignItems: "flex-start",
     gap: spacing.sm,
@@ -260,25 +236,24 @@ const useStyles = makeStyles((c) => ({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: c.navyTint,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
   },
   cardContent: {
     flex: 1,
-    gap: 4,
+    gap: 3,
   },
   cardLabel: {
     fontFamily: fonts.displayBold,
-    fontSize: 15,
-    lineHeight: 20,
+    fontSize: 14,
+    lineHeight: 19,
     color: c.onSurface,
   },
   cardDescription: {
     fontFamily: fonts.text,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 17,
     color: c.onSurfaceSecondary,
   },
   cardChevron: {
@@ -286,16 +261,18 @@ const useStyles = makeStyles((c) => ({
     flexShrink: 0,
   },
 
-  // Full-width card (Saved checks)
-  fullCard: {
-    backgroundColor: c.surfaceTertiary,
+  // Saved checks card (full width, no section bg)
+  savedCard: {
+    backgroundColor: "#FFFFFF",
     borderRadius: radius.lg,
     padding: spacing.lg,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
+    borderWidth: 1,
+    borderColor: c.border,
   },
-  fullCardIcon: {
+  savedIcon: {
     width: 44,
     height: 44,
     borderRadius: 22,
@@ -304,20 +281,20 @@ const useStyles = makeStyles((c) => ({
     justifyContent: "center",
     flexShrink: 0,
   },
-  fullCardContent: {
+  savedContent: {
     flex: 1,
-    gap: 4,
+    gap: 3,
   },
-  fullCardLabel: {
+  savedLabel: {
     fontFamily: fonts.displayBold,
     fontSize: 16,
     lineHeight: 22,
     color: c.onSurface,
   },
-  fullCardDescription: {
+  savedDescription: {
     fontFamily: fonts.text,
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 13,
+    lineHeight: 18,
     color: c.onSurfaceSecondary,
   },
 }));
@@ -327,9 +304,11 @@ const useStyles = makeStyles((c) => ({
 function CheckCardItem({
   card,
   cardWidth,
+  iconBg,
 }: {
   card: CheckCard;
   cardWidth: number | string;
+  iconBg: string;
 }) {
   const s = useStyles();
   const { colors } = useTheme();
@@ -348,45 +327,17 @@ function CheckCardItem({
         { width: cardWidth, opacity: pressed ? 0.78 : 1 },
       ]}
     >
-      <View style={s.cardInner}>
-        <View style={s.cardIcon}>
-          <Icon size={20} color={colors.brand} />
-        </View>
-        <View style={s.cardContent}>
-          <Text style={s.cardLabel}>{card.label}</Text>
-          <Text style={s.cardDescription}>{card.description}</Text>
-        </View>
-        <View style={s.cardChevron}>
-          <ChevronRight size={18} color={colors.onSurfaceSecondary} />
-        </View>
+      <View style={[s.cardIcon, { backgroundColor: iconBg }]}>
+        <Icon size={20} color={colors.onSurface} />
+      </View>
+      <View style={s.cardContent}>
+        <Text style={s.cardLabel}>{card.label}</Text>
+        <Text style={s.cardDescription}>{card.description}</Text>
+      </View>
+      <View style={s.cardChevron}>
+        <ChevronRight size={16} color={colors.onSurfaceSecondary} />
       </View>
     </Pressable>
-  );
-}
-
-// ── Section Component ───────────────────────────────────────────────────────
-
-function CheckSection({
-  section,
-  cardWidth,
-}: {
-  section: Section;
-  cardWidth: number | string;
-}) {
-  const s = useStyles();
-
-  return (
-    <View style={s.sectionContainer}>
-      <View style={s.sectionHeader}>
-        <Text style={s.sectionTitle}>{section.title}</Text>
-        <Text style={s.sectionSubtitle}>{section.subtitle}</Text>
-      </View>
-      <View style={s.grid}>
-        {section.cards.map((card) => (
-          <CheckCardItem key={card.id} card={card} cardWidth={cardWidth} />
-        ))}
-      </View>
-    </View>
   );
 }
 
@@ -399,10 +350,20 @@ export default function CheckItScreen() {
   const router = useRouter();
   const { width, fontScale } = useWindowDimensions();
 
-  const oneColumn = width < 360 || fontScale >= 1.35;
-  const cardWidth = oneColumn
-    ? "100%"
-    : (width - spacing.xl * 2 - spacing.sm) / 2;
+  const padH = spacing.lg * 2;
+  const sectionPad = spacing.md * 2;
+  const innerWidth = width - padH - sectionPad;
+  const gap = spacing.sm;
+
+  // 2-column card width
+  const col2Width = (innerWidth - gap) / 2;
+  // 3-column card width
+  const col3Width = (innerWidth - gap * 2) / 3;
+
+  // Responsive: fall back to fewer columns on narrow screens
+  const useNarrow = width < 360 || fontScale >= 1.35;
+  const card2W = useNarrow ? innerWidth : col2Width;
+  const card3W = useNarrow ? innerWidth : width < 400 ? col2Width : col3Width;
 
   return (
     <View style={s.root} testID="check-it-screen">
@@ -427,16 +388,107 @@ export default function CheckItScreen() {
         ]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Sections A–D */}
-        {SECTIONS.map((section) => (
-          <CheckSection
-            key={section.title}
-            section={section}
-            cardWidth={cardWidth}
-          />
-        ))}
+        {/* ── Section A: Quick Checks ── */}
+        <View
+          style={[
+            s.sectionContainer,
+            { backgroundColor: SECTION_BG.quick },
+          ]}
+        >
+          <View style={s.sectionHeader}>
+            <Text style={s.sectionTitle}>Quick Checks</Text>
+            <Text style={s.sectionSubtitle}>
+              The most common checks to help you stay safe every day.
+            </Text>
+          </View>
+          <View style={s.grid}>
+            {QUICK_CHECKS.map((card) => (
+              <CheckCardItem
+                key={card.id}
+                card={card}
+                cardWidth={card2W}
+                iconBg={ICON_BG.quick}
+              />
+            ))}
+          </View>
+        </View>
 
-        {/* Section E — Saved Checks */}
+        {/* ── Section B: Files, Apps & Codes ── */}
+        <View
+          style={[
+            s.sectionContainer,
+            { backgroundColor: SECTION_BG.files },
+          ]}
+        >
+          <View style={s.sectionHeader}>
+            <Text style={s.sectionTitle}>Files, Apps & Codes</Text>
+            <Text style={s.sectionSubtitle}>
+              Check what you download, install or scan before you open it.
+            </Text>
+          </View>
+          <View style={s.grid}>
+            {FILES_APPS_CODES.map((card) => (
+              <CheckCardItem
+                key={card.id}
+                card={card}
+                cardWidth={card3W}
+                iconBg={ICON_BG.files}
+              />
+            ))}
+          </View>
+        </View>
+
+        {/* ── Section C: Your Device & Connection ── */}
+        <View
+          style={[
+            s.sectionContainer,
+            { backgroundColor: SECTION_BG.device },
+          ]}
+        >
+          <View style={s.sectionHeader}>
+            <Text style={s.sectionTitle}>Your Device & Connection</Text>
+            <Text style={s.sectionSubtitle}>
+              Check your device and internet for a safer, stronger setup.
+            </Text>
+          </View>
+          <View style={s.grid}>
+            {DEVICE_CONNECTION.map((card) => (
+              <CheckCardItem
+                key={card.id}
+                card={card}
+                cardWidth={card2W}
+                iconBg={ICON_BG.device}
+              />
+            ))}
+          </View>
+        </View>
+
+        {/* ── Section D: Protection & accounts ── */}
+        <View
+          style={[
+            s.sectionContainer,
+            { backgroundColor: SECTION_BG.protection },
+          ]}
+        >
+          <View style={s.sectionHeader}>
+            <Text style={s.sectionTitle}>Protection & accounts</Text>
+            <Text style={s.sectionSubtitle}>
+              Keep an eye on your wider security and accounts.
+            </Text>
+          </View>
+          <View style={s.grid}>
+            {PROTECTION_ACCOUNTS.map((card) => (
+              <CheckCardItem
+                key={card.id}
+                card={card}
+                cardWidth={card3W}
+                iconBg={ICON_BG.protection}
+              />
+            ))}
+          </View>
+        </View>
+
+        {/* ── Section E: Saved Checks ── */}
         <Pressable
           testID="check-it-saved"
           accessibilityRole="button"
@@ -444,16 +496,16 @@ export default function CheckItScreen() {
           accessibilityHint="Reopen app, link, message and internet checks you saved earlier"
           onPress={() => router.push("/saved-checks" as never)}
           style={({ pressed }) => [
-            s.fullCard,
+            s.savedCard,
             { opacity: pressed ? 0.78 : 1 },
           ]}
         >
-          <View style={s.fullCardIcon}>
-            <Bookmark size={22} color={colors.brand} />
+          <View style={s.savedIcon}>
+            <Bookmark size={22} color={colors.onSurface} />
           </View>
-          <View style={s.fullCardContent}>
-            <Text style={s.fullCardLabel}>Saved checks</Text>
-            <Text style={s.fullCardDescription}>
+          <View style={s.savedContent}>
+            <Text style={s.savedLabel}>Saved checks</Text>
+            <Text style={s.savedDescription}>
               Reopen app, link, message and internet checks you saved earlier.
             </Text>
           </View>
