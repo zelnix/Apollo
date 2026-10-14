@@ -564,7 +564,7 @@ const styles = StyleSheet.create({
   },
   heroDogImage: {
     position: "absolute",
-    right: "22%",
+    right: "18%",
     bottom: 0,
     width: "18%",
     height: "70%",
