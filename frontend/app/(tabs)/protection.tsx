@@ -397,7 +397,7 @@ export default function ProtectionScreen() {
                       lineHeight: Math.round(15 * scale),
                     },
                   ]}
-                  numberOfLines={1}
+                  numberOfLines={2}
                 >
                   {line}
                 </Text>
@@ -560,13 +560,13 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   heroTextBlock: {
-    maxWidth: "70%",
+    maxWidth: "65%",
     gap: 1,
     backgroundColor: "rgba(0,0,0,0.35)",
     borderRadius: radius.md,
     padding: spacing.sm,
     marginBottom: spacing.xs,
-    marginLeft: spacing.xs,
+    marginLeft: "8%",
   },
   heroDogImage: {
     position: "absolute",
