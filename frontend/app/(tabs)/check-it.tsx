@@ -227,34 +227,44 @@ const useStyles = makeStyles((c) => ({
   card: {
     backgroundColor: "#FFFFFF",
     borderRadius: radius.md,
-    padding: spacing.md,
+    padding: spacing.sm,
+    gap: 4,
+  },
+  cardTopRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.sm,
+    alignItems: "center",
+    gap: spacing.xs,
   },
   cardIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
   },
   cardContent: {
     flex: 1,
-    gap: 3,
   },
   cardLabel: {
     fontFamily: fonts.displayBold,
-    fontSize: 14,
-    lineHeight: 19,
+    fontSize: 13,
+    lineHeight: 18,
     color: c.onSurface,
   },
   cardDescription: {
     fontFamily: fonts.text,
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 11,
+    lineHeight: 16,
     color: c.onSurfaceSecondary,
+  },
+  cardDescRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.xs,
+  },
+  cardDescText: {
+    flex: 1,
   },
   cardChevron: {
     alignSelf: "center",
@@ -327,15 +337,19 @@ function CheckCardItem({
         { width: cardWidth, opacity: pressed ? 0.78 : 1 },
       ]}
     >
-      <View style={[s.cardIcon, { backgroundColor: iconBg }]}>
-        <Icon size={20} color={colors.onSurface} />
+      <View style={s.cardTopRow}>
+        <View style={[s.cardIcon, { backgroundColor: iconBg }]}>
+          <Icon size={14} color={colors.onSurface} />
+        </View>
+        <View style={s.cardContent}>
+          <Text style={s.cardLabel}>{card.label}</Text>
+        </View>
       </View>
-      <View style={s.cardContent}>
-        <Text style={s.cardLabel}>{card.label}</Text>
-        <Text style={s.cardDescription}>{card.description}</Text>
-      </View>
-      <View style={s.cardChevron}>
-        <ChevronRight size={16} color={colors.onSurfaceSecondary} />
+      <View style={s.cardDescRow}>
+        <Text style={[s.cardDescription, s.cardDescText]}>{card.description}</Text>
+        <View style={s.cardChevron}>
+          <ChevronRight size={14} color={colors.onSurfaceSecondary} />
+        </View>
       </View>
     </Pressable>
   );
