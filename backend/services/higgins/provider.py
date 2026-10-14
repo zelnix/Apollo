@@ -147,9 +147,9 @@ async def generate(system: str, contents: Any, *, model: str = TEXT_MODEL,
                 for part in content_item.parts:
                     if part.text:
                         # Full purpose-aware enforcement on every text part, not just credential stripping.
-                        part._raw_part.text = enforce_boundary(purpose, part.text)
+                        part.text = enforce_boundary(purpose, part.text)
             elif isinstance(content_item, types.Part) and content_item.text:
-                content_item._raw_part.text = enforce_boundary(purpose, content_item.text)
+                content_item.text = enforce_boundary(purpose, content_item.text)
 
     config = types.GenerateContentConfig(
         system_instruction=system or None, max_output_tokens=OUTPUT.value,
