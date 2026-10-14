@@ -36,6 +36,7 @@ import { fonts, radius, spacing, useTheme } from "@/src/theme";
 
 // ── Assets ──────────────────────────────────────────────────────────────────
 const heroBackground = require("@/assets/images/hero-bg-protection.png");
+const apolloDog = require("@/assets/images/apollo-dog.png");
 const higginsAvatar = require("@/assets/images/higgins-avatar.png");
 const apolloLogo = require("@/assets/images/logo.png");
 
@@ -374,6 +375,12 @@ export default function ProtectionScreen() {
               ))}
             </View>
           </View>
+          {/* Apollo dog — bottom-right, no background */}
+          <Image
+            source={apolloDog}
+            style={styles.heroDogImage}
+            resizeMode="contain"
+          />
         </View>
 
         {/* ── Section header ── */}
@@ -530,6 +537,13 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     padding: spacing.sm,
     marginTop: spacing.sm,
+  },
+  heroDogImage: {
+    position: "absolute",
+    right: 4,
+    bottom: 0,
+    width: "30%",
+    height: "80%",
   },
   heroTitle: {
     fontFamily: fonts.displayBold,
