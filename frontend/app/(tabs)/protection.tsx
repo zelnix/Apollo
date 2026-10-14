@@ -521,7 +521,7 @@ const styles = StyleSheet.create({
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: "flex-start",
-    alignItems: "flex-end",
+    alignItems: "center",
   },
   heroTextBlock: {
     maxWidth: "60%",
@@ -530,7 +530,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     padding: spacing.sm,
     marginTop: spacing.sm,
-    marginRight: spacing.xs,
   },
   heroTitle: {
     fontFamily: fonts.displayBold,
