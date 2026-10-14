@@ -57,6 +57,7 @@ export default function CheckNetwork() {
   const [expected, setExpected] = useState("");
   const [vpnTrusted, setVpnTrusted] = useState<boolean | null>(null);
   const [captiveUrl, setCaptiveUrl] = useState("");
+  const [showNetworkDetails, setShowNetworkDetails] = useState(false);
   const [result, setResult] = useState<{ submissionId: string; a: NetworkAnalysis; event: PatrolEvent | null } | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -164,16 +165,20 @@ export default function CheckNetwork() {
           <Button testID="network-refresh" variant="ghost" label={refreshing ? "Checking…" : "Refresh"} onPress={verifyNow} disabled={refreshing} />
         </Card>
 
-        <SectionTitle>Check this network</SectionTitle>
-        <Body>Public Wi‑Fi isn&apos;t automatically dangerous, and Apollo won&apos;t say it is. Tell it a little about where you are.</Body>
-        <Text style={s.label}>Where are you?</Text>
-        <View style={s.chips}>{NETWORK_CONTEXTS.map((o) => <Pressable key={o.id} testID={`network-ctx-${o.id}`} accessibilityRole="button" onPress={() => pickContext(o.id)} style={[s.chip, context === o.id && s.chipOn]}><Text style={s.chipText}>{o.label}</Text></Pressable>)}</View>
-
-        <Text style={s.label}>Network name the venue advertised (optional)</Text>
-        <TextInput testID="network-expected" style={s.input} value={expected} onChangeText={setExpected} placeholder="e.g. Hotel_Guest" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} />
-        {vpnOn ? <View style={s.row}><Text style={[s.why, { flex: 1 }]}>I turned this VPN on myself</Text><Switch testID="network-vpn-trusted" value={vpnTrusted === true} onValueChange={(v) => setVpnTrusted(v ? true : false)} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View> : null}
-        {network?.captivePortal ? <><Text style={s.label}>Address of the Wi‑Fi sign-in page (optional)</Text><TextInput testID="network-captive" style={s.input} value={captiveUrl} onChangeText={setCaptiveUrl} placeholder="https://…" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} keyboardType="url" /></> : null}
-        <Button testID="network-run" label="Check this network" onPress={() => void run()} disabled={!network} />
+        <Button testID="network-run" label="Check with Apollo" onPress={() => void run()} disabled={!network} />
+        <Pressable testID="network-more-details" accessibilityRole="button" onPress={() => setShowNetworkDetails(!showNetworkDetails)} style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingVertical: spacing.xs }}>
+          <Text style={{ fontFamily: fonts.textSemibold, fontSize: 14, color: colors.brand }}>{showNetworkDetails ? "Hide details" : "Add more details"}</Text>
+        </Pressable>
+        {showNetworkDetails ? (
+          <>
+            <Text style={s.label}>Where are you?</Text>
+            <View style={s.chips}>{NETWORK_CONTEXTS.map((o) => <Pressable key={o.id} testID={`network-ctx-${o.id}`} accessibilityRole="button" onPress={() => pickContext(o.id)} style={[s.chip, context === o.id && s.chipOn]}><Text style={s.chipText}>{o.label}</Text></Pressable>)}</View>
+            <Text style={s.label}>Network name the venue advertised (optional)</Text>
+            <TextInput testID="network-expected" style={s.input} value={expected} onChangeText={setExpected} placeholder="e.g. Hotel_Guest" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} />
+            {vpnOn ? <View style={s.row}><Text style={[s.why, { flex: 1 }]}>I turned this VPN on myself</Text><Switch testID="network-vpn-trusted" value={vpnTrusted === true} onValueChange={(v) => setVpnTrusted(v ? true : false)} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View> : null}
+            {network?.captivePortal ? <><Text style={s.label}>Address of the Wi‑Fi sign-in page (optional)</Text><TextInput testID="network-captive" style={s.input} value={captiveUrl} onChangeText={setCaptiveUrl} placeholder="https://…" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} keyboardType="url" /></> : null}
+          </>
+        ) : null}
         <CheckHistoryCard gate="network" refreshKey={historyKey} testID="network-history" />
       </KeyboardAwareScrollView>
     </View>

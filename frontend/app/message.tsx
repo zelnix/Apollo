@@ -73,6 +73,7 @@ export default function CheckMessage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [screenshotUri, setScreenshotUri] = useState<string | null>(sharedImage ? String(sharedImage) : null);
+  const [showMore, setShowMore] = useState(false);
   const isEmail = params.source === "email";
   const canPickSms = !isEmail && PhonePickers.isSupported();
   const autoRan = useRef(false);
@@ -234,16 +235,21 @@ export default function CheckMessage() {
         />
       </View>
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="message-scroll">
-        <Text style={s.subtitle}>{isEmail ? "Analyse sender, body and links for phishing patterns." : "Investigate any message for scam indicators and suspicious links."}</Text>
-        <TextInput testID="message-sender" style={s.input} value={sender} onChangeText={setSender} placeholder="Sender (number, name or handle) — optional" placeholderTextColor={colors.muted} autoCorrect={false} />
-        {canPickSms ? <Button testID="message-pick-sms" variant="secondary" label="Pick a text from your inbox" onPress={() => router.push("/message-picker")} /> : null}
+        <Text style={s.subtitle}>{isEmail ? "Paste, share or screenshot the email to check it." : "Paste, share or screenshot any suspicious message."}</Text>
         <TextInput testID="message-text" style={[s.input, s.multi]} value={text} onChangeText={setText} placeholder="Paste the message here" placeholderTextColor={colors.muted} multiline autoCorrect={false} />
         {screenshotUri ? <ExpoImage testID="message-screenshot-preview" source={{ uri: screenshotUri }} style={s.preview} contentFit="contain" accessibilityLabel="Screenshot selected for investigation" /> : null}
         <View style={s.actions}>
-          <Button testID="message-check" label={busy === "checking" ? "Sniffing…" : "Check message"} onPress={() => void run()} disabled={!text.trim() || busy !== "idle"} style={{ flex: 1 }} />
-          <Button testID="message-screenshot" variant="secondary" label={busy === "reading" ? "Reading…" : "Choose screenshot"} icon={<ImageIcon size={18} color={colors.onSurface} />} onPress={() => void photoAccess.start()} disabled={busy !== "idle"} />
+          <Button testID="message-check" label={busy === "checking" ? "Sniffing…" : "Check with Apollo"} onPress={() => void run()} disabled={!text.trim() || busy !== "idle"} style={{ flex: 1 }} />
+          <Button testID="message-screenshot" variant="secondary" label={busy === "reading" ? "Reading…" : "Screenshot"} icon={<ImageIcon size={18} color={colors.onSurface} />} onPress={() => void photoAccess.start()} disabled={busy !== "idle"} />
         </View>
-        <Text style={s.small} testID="message-processing-scope">Apollo combines local detection, Higgins context, caller reputation and bounded webpage checks. Raw content is discarded after the assessment; provider-side retention follows the configured Higgins policy.</Text>
+        {canPickSms ? <Button testID="message-pick-sms" variant="ghost" label="Pick a text from your inbox" onPress={() => router.push("/message-picker")} /> : null}
+        <Pressable testID="message-more-details" accessibilityRole="button" onPress={() => setShowMore(!showMore)} style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingVertical: spacing.xs }}>
+          <Text style={{ fontFamily: fonts.textSemibold, fontSize: 14, color: colors.brand }}>{showMore ? "Hide details" : "Add sender details"}</Text>
+        </Pressable>
+        {showMore ? (
+          <TextInput testID="message-sender" style={s.input} value={sender} onChangeText={setSender} placeholder="Sender (number, name or handle)" placeholderTextColor={colors.muted} autoCorrect={false} />
+        ) : null}
+        <Text style={s.small} testID="message-processing-scope">Apollo combines local detection, Higgins context, caller reputation and bounded webpage checks. Raw content is discarded after the assessment.</Text>
         {error ? <Card testID="message-error"><Body>{error}</Body></Card> : null}
         {busy !== "idle" ? (
           <Card style={{ gap: spacing.md }} testID="message-sniffing">

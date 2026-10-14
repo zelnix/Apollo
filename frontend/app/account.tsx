@@ -85,6 +85,7 @@ export default function CheckAccount() {
   const [identifier, setIdentifier] = useState("");
   const [breach, setBreach] = useState<Breach | null>(null);
   const [tech, setTech] = useState(false);
+  const [showSender, setShowSender] = useState(false);
 
   const openAccount = events.filter((e) => e.category === "account" && e.status === "active" && e.state !== "resting");
   const recentLinked = useMemo(() => { const now = Date.now(); return events.filter((e) => e.state !== "resting" && ["message", "email", "website", "link", "call", "app", "connection"].includes(e.category) && now - Date.parse(e.occurred_at) <= SCENT_WINDOW_MS); }, [events]);
@@ -206,11 +207,16 @@ export default function CheckAccount() {
         {!result ? (
           <>
             <SectionTitle>Start with what you received</SectionTitle>
-            <Body>Choose a screenshot, paste the alert, or describe it briefly. Apollo inspects the available evidence before asking anything else. Never paste a password or security code.</Body>
+            <Body>Choose a screenshot, paste the alert, or describe it briefly. Apollo inspects the evidence before asking anything else.</Body>
             <Button testID="account-screenshot" label={evidenceBusy ? "Reading screenshot…" : "Choose alert screenshot"} icon={<ImageIcon size={18} color={colors.onBrandPrimary} />} onPress={() => void photoAccess.start()} disabled={evidenceBusy || busy} />
             {screenshotUri ? <ExpoImage testID="account-screenshot-preview" source={{ uri: screenshotUri }} style={s.preview} contentFit="contain" accessibilityLabel="Account alert screenshot selected for investigation" /> : null}
-            <TextInput testID="account-text" style={[s.input, { minHeight: 96 }]} value={text} onChangeText={(value) => { setText(value); setEvidenceReviewed(false); }} placeholder="Paste the alert or write a short description" placeholderTextColor={colors.muted} multiline textAlignVertical="top" autoCapitalize="none" autoCorrect={false} />
-            <TextInput testID="account-sender" style={s.input} value={sender} onChangeText={(value) => { setSender(value); setEvidenceReviewed(false); }} placeholder="Visible sender, if shown" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} />
+            <TextInput testID="account-text" style={[s.input, { minHeight: 96 }]} value={text} onChangeText={(value) => { setText(value); setEvidenceReviewed(false); }} placeholder="Paste the alert or describe it briefly" placeholderTextColor={colors.muted} multiline textAlignVertical="top" autoCapitalize="none" autoCorrect={false} />
+            <Pressable testID="account-more-details" accessibilityRole="button" onPress={() => setShowSender(!showSender)} style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingVertical: spacing.xs }}>
+              <Text style={{ fontFamily: fonts.textSemibold, fontSize: 14, color: colors.brand }}>{showSender ? "Hide sender details" : "Add sender details"}</Text>
+            </Pressable>
+            {showSender ? (
+              <TextInput testID="account-sender" style={s.input} value={sender} onChangeText={(value) => { setSender(value); setEvidenceReviewed(false); }} placeholder="Visible sender, if shown" placeholderTextColor={colors.muted} autoCapitalize="none" autoCorrect={false} />
+            ) : null}
             {evidenceError ? <Card testID="account-evidence-error" style={{ gap: spacing.sm }}><Body>{evidenceError}</Body><Button testID="account-evidence-retry" variant="secondary" label="Try screenshot again" onPress={() => void photoAccess.start()} /></Card> : null}
             <Button testID="account-inspect" variant="secondary" label="Inspect submitted evidence" onPress={() => inspectEvidence()} disabled={evidenceBusy || !(text.trim() || sender.trim())} />
             <Button testID="account-no-evidence" variant="ghost" label="I don't have the alert or screenshot" onPress={() => { setEvidence({ kind: "other", provider: "other", claimedService: null, visibleSender: null, urls: [], requestedActions: [] }); setKind("other"); setProvider("other"); setEvidenceReviewed(true); }} />

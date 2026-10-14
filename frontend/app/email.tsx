@@ -396,6 +396,7 @@ export default function CheckEmail() {
 
   // ── Input state ──
   const [editing, setEditing] = useState(false);
+  const [showEmailDetails, setShowEmailDetails] = useState(false);
   const [from, setFrom] = useState("");
   const [subject, setSubject] = useState("");
   const [raw, setRaw] = useState(shared?.text || shared?.webUrl || params.text || "");
@@ -881,25 +882,6 @@ export default function CheckEmail() {
           <View style={s.editCard} testID="email-edit-card">
             <Text style={s.editLabel}>Email content</Text>
             <TextInput
-              testID="email-from"
-              style={s.editField}
-              value={from}
-              onChangeText={setFrom}
-              placeholder="From (optional, e.g. alerts@cb-secure.top)"
-              placeholderTextColor={colors.muted}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <TextInput
-              testID="email-subject"
-              style={s.editField}
-              value={subject}
-              onChangeText={setSubject}
-              placeholder="Subject (optional)"
-              placeholderTextColor={colors.muted}
-              autoCorrect={false}
-            />
-            <TextInput
               testID="email-body"
               style={[s.editField, s.editBody]}
               value={raw}
@@ -911,6 +893,32 @@ export default function CheckEmail() {
               autoCapitalize="none"
               autoCorrect={false}
             />
+            <Pressable testID="email-more-details" accessibilityRole="button" onPress={() => setShowEmailDetails(!showEmailDetails)} style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingVertical: spacing.xs }}>
+              <Text style={{ fontFamily: fonts.textSemibold, fontSize: 14, color: colors.brand }}>{showEmailDetails ? "Hide sender details" : "Add sender details"}</Text>
+            </Pressable>
+            {showEmailDetails ? (
+              <>
+                <TextInput
+                  testID="email-from"
+                  style={s.editField}
+                  value={from}
+                  onChangeText={setFrom}
+                  placeholder="From (e.g. alerts@cb-secure.top)"
+                  placeholderTextColor={colors.muted}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <TextInput
+                  testID="email-subject"
+                  style={s.editField}
+                  value={subject}
+                  onChangeText={setSubject}
+                  placeholder="Subject line"
+                  placeholderTextColor={colors.muted}
+                  autoCorrect={false}
+                />
+              </>
+            ) : null}
           </View>
         )}
 

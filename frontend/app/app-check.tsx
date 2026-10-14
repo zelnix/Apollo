@@ -90,6 +90,7 @@ export default function CheckApp() {
   const [actionGuidance, setActionGuidance] = useState<string | null>(null);
   const [reportState, setReportState] = useState<"idle" | "sending" | "failed" | "sent">("idle");
   const [showFull, setShowFull] = useState(false);
+  const [showMoreFields, setShowMoreFields] = useState(false);
   const [verifyNote, setVerifyNote] = useState<string | null>(null);
   const [savedState, setSavedState] = useState<"idle" | "saved">("idle");
   const awaitingReturn = React.useRef(false);
@@ -240,26 +241,32 @@ export default function CheckApp() {
       <KeyboardAwareScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + spacing.xl }]} bottomOffset={24} testID="app-scroll">
         {!result ? (
           <>
-            <Text style={s.subtitle}>Research any app&apos;s safety, permissions and publisher reputation.</Text>
-            <Text style={s.label}>App name</Text>
-            <TextInput testID="app-name" style={s.input} value={name} onChangeText={(t) => { setName(t); setPickedPackage(null); }} maxLength={120} placeholder="e.g. Bank Security Update" placeholderTextColor={colors.muted} autoCapitalize="words" autoCorrect={false} />
+            <Text style={s.subtitle}>Enter an app name or pick from your installed apps.</Text>
+            <TextInput testID="app-name" style={s.input} value={name} onChangeText={(t) => { setName(t); setPickedPackage(null); }} maxLength={120} placeholder="App name" placeholderTextColor={colors.muted} autoCapitalize="words" autoCorrect={false} />
             {canPickApps ? <Button testID="app-pick-installed" variant="secondary" label="Pick from installed apps" onPress={() => void openPicker()} /> : null}
-            <Text style={s.label}>Developer (if shown)</Text>
-            <TextInput testID="app-developer" style={s.input} value={developer} onChangeText={setDeveloper} maxLength={120} placeholder="Optional" placeholderTextColor={colors.muted} autoCapitalize="words" autoCorrect={false} />
-            <Text style={s.label}>Where did it come from?</Text>
-            <View style={s.chips}>{APP_SOURCES.map((o) => <Pressable key={o.id} testID={`app-source-${o.id}`} accessibilityRole="button" onPress={() => setSource(o.id)} style={[s.chip, source === o.id && s.chipOn]}><Text style={s.chipText}>{o.label}</Text></Pressable>)}</View>
-            <Text style={s.label}>What does it say it does?</Text>
-            <View style={s.chips}>{APP_PURPOSES.map((o) => <Pressable key={o.id} testID={`app-purpose-${o.id}`} accessibilityRole="button" onPress={() => setPurpose(o.id)} style={[s.chip, purpose === o.id && s.chipOn]}><Text style={s.chipText}>{o.label}</Text></Pressable>)}</View>
-            <Text style={s.label}>What can it access? (Settings → Apps → Permissions)</Text>
-            <View style={s.chips}>{APP_PERMISSIONS.map((p) => <Pressable key={p} testID={`app-perm-${p}`} accessibilityRole="button" onPress={() => setPerms((cur) => (cur.includes(p) ? cur.filter((x) => x !== p) : [...cur, p]))} onLongPress={() => setPermSheet(p)} style={[s.chip, perms.includes(p) && s.chipWarn]}><Text style={s.chipText}>{PERMISSION_INFO[p].label}</Text></Pressable>)}</View>
-            <Body>Hold a permission to see what it means.</Body>
-            <Text style={s.label}>What was happening around the install?</Text>
-            <View style={s.row}><Text style={[s.why, { flex: 1 }]}>Someone on a phone call told me to install it</Text><Switch testID="app-ctx-caller" value={ctx.promptedByCaller} onValueChange={(v) => setCtx((c) => ({ ...c, promptedByCaller: v }))} trackColor={{ true: colors.growling, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View>
-            <View style={s.row}><Text style={[s.why, { flex: 1 }]}>A message, website or download led me to it</Text><Switch testID="app-ctx-message" value={ctx.promptedByMessageOrSite} onValueChange={(v) => setCtx((c) => ({ ...c, promptedByMessageOrSite: v }))} trackColor={{ true: colors.growling, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View>
-            <View style={s.row}><Text style={[s.why, { flex: 1 }]}>I sought this app out myself (e.g. I called my own IT provider)</Text><Switch testID="app-ctx-intentional" value={ctx.intentional} onValueChange={(v) => setCtx((c) => ({ ...c, intentional: v }))} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View>
-            <View style={s.row}><Text style={[s.why, { flex: 1 }]}>Someone is connected to / controlling my phone through it</Text><Switch testID="app-ctx-access" value={ctx.accessGrantedNow} onValueChange={(v) => setCtx((c) => ({ ...c, accessGrantedNow: v }))} trackColor={{ true: colors.barking, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View>
+            <Button testID="app-run" label={busy ? "Sniffing…" : "Check with Apollo"} onPress={() => void run()} disabled={!canRun} />
             {recentLinked.length ? <Card style={{ gap: spacing.xs, borderColor: colors.growling }} testID="app-scent-notice"><Text style={s.label}>Threat Scent</Text><Body>Apollo saw {recentLinked.length} suspicious event{recentLinked.length > 1 ? "s" : ""} in the last 30 minutes ({[...new Set(recentLinked.map((e) => e.category))].join(", ")}). An app installed now will be assessed as part of that sequence.</Body></Card> : null}
-            <Button testID="app-run" label={busy ? "Sniffing…" : "Check this app"} onPress={() => void run()} disabled={!canRun} />
+            <Pressable testID="app-more-details" accessibilityRole="button" onPress={() => setShowMoreFields(!showMoreFields)} style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingVertical: spacing.xs }}>
+              <Text style={{ fontFamily: fonts.textSemibold, fontSize: 14, color: colors.brand }}>{showMoreFields ? "Hide details" : "Add more details"}</Text>
+            </Pressable>
+            {showMoreFields ? (
+              <>
+                <Text style={s.label}>Developer (if shown)</Text>
+                <TextInput testID="app-developer" style={s.input} value={developer} onChangeText={setDeveloper} maxLength={120} placeholder="Optional" placeholderTextColor={colors.muted} autoCapitalize="words" autoCorrect={false} />
+                <Text style={s.label}>Where did it come from?</Text>
+                <View style={s.chips}>{APP_SOURCES.map((o) => <Pressable key={o.id} testID={`app-source-${o.id}`} accessibilityRole="button" onPress={() => setSource(o.id)} style={[s.chip, source === o.id && s.chipOn]}><Text style={s.chipText}>{o.label}</Text></Pressable>)}</View>
+                <Text style={s.label}>What does it say it does?</Text>
+                <View style={s.chips}>{APP_PURPOSES.map((o) => <Pressable key={o.id} testID={`app-purpose-${o.id}`} accessibilityRole="button" onPress={() => setPurpose(o.id)} style={[s.chip, purpose === o.id && s.chipOn]}><Text style={s.chipText}>{o.label}</Text></Pressable>)}</View>
+                <Text style={s.label}>What can it access? (Settings → Apps → Permissions)</Text>
+                <View style={s.chips}>{APP_PERMISSIONS.map((p) => <Pressable key={p} testID={`app-perm-${p}`} accessibilityRole="button" onPress={() => setPerms((cur) => (cur.includes(p) ? cur.filter((x) => x !== p) : [...cur, p]))} onLongPress={() => setPermSheet(p)} style={[s.chip, perms.includes(p) && s.chipWarn]}><Text style={s.chipText}>{PERMISSION_INFO[p].label}</Text></Pressable>)}</View>
+                <Body>Hold a permission to see what it means.</Body>
+                <Text style={s.label}>What was happening around the install?</Text>
+                <View style={s.row}><Text style={[s.why, { flex: 1 }]}>Someone on a phone call told me to install it</Text><Switch testID="app-ctx-caller" value={ctx.promptedByCaller} onValueChange={(v) => setCtx((c) => ({ ...c, promptedByCaller: v }))} trackColor={{ true: colors.growling, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View>
+                <View style={s.row}><Text style={[s.why, { flex: 1 }]}>A message, website or download led me to it</Text><Switch testID="app-ctx-message" value={ctx.promptedByMessageOrSite} onValueChange={(v) => setCtx((c) => ({ ...c, promptedByMessageOrSite: v }))} trackColor={{ true: colors.growling, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View>
+                <View style={s.row}><Text style={[s.why, { flex: 1 }]}>I sought this app out myself (e.g. I called my own IT provider)</Text><Switch testID="app-ctx-intentional" value={ctx.intentional} onValueChange={(v) => setCtx((c) => ({ ...c, intentional: v }))} trackColor={{ true: colors.resting, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View>
+                <View style={s.row}><Text style={[s.why, { flex: 1 }]}>Someone is connected to / controlling my phone through it</Text><Switch testID="app-ctx-access" value={ctx.accessGrantedNow} onValueChange={(v) => setCtx((c) => ({ ...c, accessGrantedNow: v }))} trackColor={{ true: colors.barking, false: colors.borderStrong }} thumbColor={colors.onSurface} /></View>
+              </>
+            ) : null}
             <Button testID="app-open-saved" variant="ghost" label="Saved checks" onPress={() => router.push("/saved-checks")} />
           </>
         ) : null}
