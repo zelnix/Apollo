@@ -894,7 +894,9 @@ export function ApolloProvider({ children }: { children: React.ReactNode }) {
   // (`local_indicator`, never synced — see syncEvent's strip above).
   const checkNumberRisk = useCallback(async (number: string, country?: string): Promise<CallRiskResult> => {
     const body: Record<string, unknown> = { device_id: deviceId ?? "local", number };
-    if (country) body.country = country;
+    // Auto-detect device region for local numbers without country code
+    const region = country || Localization.getLocales()[0]?.regionCode;
+    if (region) body.country = region;
     const result = await apiPost<CallRiskResult>("/call/risk-check", "call_risk_check", body);
     if (result.decision !== "allow" && result.decision !== "unknown") {
       // A2 fix: only "avoid" (high-risk, strong fraud signals) should auto-block by adding to the

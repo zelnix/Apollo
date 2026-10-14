@@ -61,15 +61,37 @@ def _higgins(decision: str, data: dict) -> dict:
 
 
 def normalize_phone(raw: str, country: Optional[str]) -> str:
-    """E.164 or raise 422 — mirrors the playbook's normalize_phone(); a local number needs a country."""
-    try:
-        region = None if raw.strip().startswith("+") else (country.upper() if country else None)
-        parsed = phonenumbers.parse(raw, region)
-        if not phonenumbers.is_possible_number(parsed):
-            raise ValueError("impossible number")
-        return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
-    except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=422, detail="Provide a valid phone number (and a 2-letter country code for local numbers).") from exc
+    """E.164 or raise 422 — mirrors the playbook's normalize_phone(); a local number needs a country.
+    When no country hint is provided for a local number, tries common regions (AU, US, GB) before failing."""
+    stripped = raw.strip()
+    if stripped.startswith("+"):
+        # International format — no region hint needed
+        try:
+            parsed = phonenumbers.parse(stripped, None)
+            if not phonenumbers.is_possible_number(parsed):
+                raise ValueError("impossible number")
+            return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=422, detail="Provide a valid phone number.") from exc
+
+    # Local number — try the supplied country first, then common fallbacks
+    regions_to_try: list[str] = []
+    if country:
+        regions_to_try.append(country.upper())
+    # Common regions the app supports — try each until one parses as a possible number
+    for fallback in ("AU", "US", "GB", "NZ", "CA"):
+        if fallback not in regions_to_try:
+            regions_to_try.append(fallback)
+
+    for region in regions_to_try:
+        try:
+            parsed = phonenumbers.parse(stripped, region)
+            if phonenumbers.is_possible_number(parsed):
+                return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
+        except Exception:  # noqa: BLE001
+            continue
+
+    raise HTTPException(status_code=422, detail="Provide a valid phone number (with country code like +61 for AU or +1 for US).")
 
 
 def _decision(data: dict) -> str:

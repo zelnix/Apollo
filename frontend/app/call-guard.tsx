@@ -20,6 +20,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import * as Localization from "expo-localization";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -201,6 +202,8 @@ export default function CheckNumber() {
       setInvestigationBusy(true);
       try {
         const body: Record<string, unknown> = { device_id: deviceId ?? "local", number: number.trim() };
+        const _region = Localization.getLocales()[0]?.regionCode;
+        if (_region) body.country = _region;
         if (asks.length > 0 && !asks.includes("nothing")) body.caller_asks = asks;
         if (claim !== "unknown") body.caller_claim = claim;
         if (transcript.trim()) body.transcript = transcript.trim();
@@ -225,6 +228,8 @@ export default function CheckNumber() {
     setError(null);
     try {
       const body: Record<string, unknown> = { device_id: deviceId, number: number.trim() };
+      const _retryRegion = Localization.getLocales()[0]?.regionCode;
+      if (_retryRegion) body.country = _retryRegion;
       if (asks.length > 0 && !asks.includes("nothing")) body.caller_asks = asks;
       if (claim !== "unknown") body.caller_claim = claim;
       if (transcript.trim()) body.transcript = transcript.trim();
@@ -260,7 +265,7 @@ export default function CheckNumber() {
           void recordCheck("call", { at: new Date().toISOString(), state: riskResult.decision === "avoid" ? "barking" : riskResult.decision === "review" ? "growling" : "resting", summary: riskResult.higgins?.headline ?? riskResult.number });
           setInvestigationBusy(true);
           try {
-            const inv = await apiPost<Record<string, unknown>>("/call/investigate", "call_investigate", { device_id: deviceId ?? "local", number: num.trim() });
+            const inv = await apiPost<Record<string, unknown>>("/call/investigate", "call_investigate", { device_id: deviceId ?? "local", number: num.trim(), country: Localization.getLocales()[0]?.regionCode });
             setInvestigationResult(inv);
           } catch { /* preserved */ }
           finally { setInvestigationBusy(false); }
