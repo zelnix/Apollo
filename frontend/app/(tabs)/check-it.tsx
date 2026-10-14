@@ -361,9 +361,9 @@ export default function CheckItScreen() {
   const col3Width = (innerWidth - gap * 2) / 3;
 
   // Responsive: fall back to fewer columns on narrow screens
-  const useNarrow = width < 360 || fontScale >= 1.35;
+  const useNarrow = width < 320 || fontScale >= 1.5;
   const card2W = useNarrow ? innerWidth : col2Width;
-  const card3W = useNarrow ? innerWidth : width < 400 ? col2Width : col3Width;
+  const card3W = useNarrow ? innerWidth : col3Width;
 
   return (
     <View style={s.root} testID="check-it-screen">
