@@ -369,10 +369,10 @@ export default function CheckItScreen() {
   const innerWidth = width - padH - sectionPad;
   const gap = spacing.sm;
 
-  // 2-column card width
-  const col2Width = (innerWidth - gap) / 2;
-  // 3-column card width
-  const col3Width = (innerWidth - gap * 2) / 3;
+  // 2-column card width (10% narrower)
+  const col2Width = (innerWidth - gap) / 2 * 0.9;
+  // 3-column card width (10% narrower)
+  const col3Width = (innerWidth - gap * 2) / 3 * 0.9;
 
   // Responsive: fall back to fewer columns on narrow screens
   const useNarrow = width < 320 || fontScale >= 1.5;
