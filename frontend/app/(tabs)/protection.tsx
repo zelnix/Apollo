@@ -1,6 +1,7 @@
-// Protection Dashboard — redesigned to match the approved mockup.
-// Hero card with landscape background, 5 category cards in single-column list,
-// bottom guidance card. Uses 5 protection areas (not 8 individual categories).
+// Protection Dashboard — matches the approved visual mockup exactly.
+// Taller hero card with landscape background + dog overlay,
+// 2-column category grid (first 4) + full-width last card,
+// bottom guidance card. Uses 5 protection areas.
 
 import { useRouter } from "expo-router";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
@@ -37,8 +38,9 @@ import { fonts, radius, spacing, useTheme } from "@/src/theme";
 // ── Assets ──────────────────────────────────────────────────────────────────
 const heroBackground = require("@/assets/images/hero-bg-protection.png");
 const higginsAvatar = require("@/assets/images/higgins-avatar.png");
+const apolloDog = require("@/assets/images/higgins-apollo-portrait.png");
 
-// ── Icon map for the 5 protection areas ─────────────────────────────────────
+// ── Icon map ────────────────────────────────────────────────────────────────
 const AREA_ICONS: Record<
   ProtectionAreaId,
   React.ComponentType<{ size?: number; color?: string }>
@@ -51,11 +53,14 @@ const AREA_ICONS: Record<
 };
 
 // ── Per-category icon colours (from approved mockup) ────────────────────────
-const AREA_ICON_COLORS: Record<ProtectionAreaId, { icon: string; well: string }> = {
-  websites_links:  { icon: "#004AAD", well: "#EBF5FF" },
-  messages_calls:  { icon: "#2EAD8B", well: "#E0F9F3" },
-  email_accounts:  { icon: "#7F56D9", well: "#EDE7F6" },
-  apps_files:      { icon: "#E88A30", well: "#FEF2E6" },
+const AREA_ICON_COLORS: Record<
+  ProtectionAreaId,
+  { icon: string; well: string }
+> = {
+  websites_links: { icon: "#004AAD", well: "#EBF5FF" },
+  messages_calls: { icon: "#2EAD8B", well: "#E0F9F3" },
+  email_accounts: { icon: "#7F56D9", well: "#EDE7F6" },
+  apps_files: { icon: "#E88A30", well: "#FEF2E6" },
   device_internet: { icon: "#7230DB", well: "#EDEAFA" },
 };
 
@@ -70,9 +75,6 @@ function toneColor(tone: string): string {
       return "#E68A00";
     case "action":
       return "#D32F2F";
-    case "off":
-    case "unavailable":
-      return "#757575";
     default:
       return "#757575";
   }
@@ -92,15 +94,12 @@ function toneBgColor(tone: string): string {
   }
 }
 
-/** User-friendly status label for the category card badge */
 function displayStatus(tone: string): string {
   switch (tone) {
     case "good":
-      return "All good";
     case "neutral":
       return "All good";
     case "limited":
-      return "Limited";
     case "unverified":
       return "Limited";
     case "action":
@@ -136,12 +135,6 @@ function buildHeroText(areas: ProtectionArea[], checking: boolean) {
 
   const lines: string[] = [];
 
-  if (attention.length > 0) {
-    lines.push(
-      `${attention.length} ${attention.length === 1 ? "category needs" : "categories need"} attention.`
-    );
-  }
-
   if (good.length > 0) {
     lines.push(
       `${good.length} of ${total} ${good.length === 1 ? "category is" : "categories are"} all good.`
@@ -154,9 +147,15 @@ function buildHeroText(areas: ProtectionArea[], checking: boolean) {
     );
   }
 
+  if (attention.length > 0) {
+    lines.push(
+      `${attention.length} ${attention.length === 1 ? "category needs" : "categories need"} attention.`
+    );
+  }
+
   if (unavailable.length > 0) {
     lines.push(
-      `${unavailable.length} ${unavailable.length === 1 ? "category is" : "categories are"} not available on this device.`
+      `${unavailable.length} not available on this device.`
     );
   }
 
@@ -167,8 +166,6 @@ function buildHeroText(areas: ProtectionArea[], checking: boolean) {
     title = "Some protection needs attention";
   } else if (limited.length > 0 && good.length === 0) {
     title = "Protection is limited";
-  } else if (unavailable.length > 0 && good.length > 0) {
-    title = "You're well protected";
   } else if (unavailable.length === total) {
     title = "Protection not available";
   }
@@ -176,9 +173,15 @@ function buildHeroText(areas: ProtectionArea[], checking: boolean) {
   return { title, lines };
 }
 
-// ── Category Card Component ─────────────────────────────────────────────────
+// ── Grid Category Card (vertical layout for 2-col grid) ────────────────────
 
-function CategoryCard({ area }: { area: ProtectionArea }) {
+function GridCategoryCard({
+  area,
+  fullWidth,
+}: {
+  area: ProtectionArea;
+  fullWidth?: boolean;
+}) {
   const { colors } = useTheme();
   const router = useRouter();
   const Icon = AREA_ICONS[area.id];
@@ -199,7 +202,8 @@ function CategoryCard({ area }: { area: ProtectionArea }) {
         router.push(`/protection-details?category=${area.id}` as never)
       }
       style={({ pressed }) => [
-        styles.categoryCard,
+        styles.gridCard,
+        fullWidth && styles.gridCardFull,
         {
           backgroundColor: colors.surfaceSecondary,
           borderColor: colors.border,
@@ -207,60 +211,49 @@ function CategoryCard({ area }: { area: ProtectionArea }) {
         },
       ]}
     >
-      {/* Top row: Icon + Title + Gates + Chevron */}
-      <View style={styles.categoryTopRow}>
-        <View
-          style={[
-            styles.categoryIconWell,
-            { backgroundColor: iconColors.well },
-          ]}
-        >
-          <Icon size={22} color={iconColors.icon} />
-        </View>
-        <Text
-          style={[styles.categoryTitle, { color: colors.onSurface }]}
-          numberOfLines={1}
-        >
-          {area.title}
-        </Text>
-        <Text
-          style={[
-            styles.categoryGateCount,
-            { color: colors.onSurfaceSecondary },
-          ]}
-        >
-          {gateCount} {gateCount === 1 ? "Gate" : "Gates"}
-        </Text>
-        <View style={styles.categoryChevron}>
-          <ChevronRight size={18} color={colors.muted} />
-        </View>
+      {/* Icon */}
+      <View
+        style={[styles.gridIconWell, { backgroundColor: iconColors.well }]}
+      >
+        <Icon size={28} color={iconColors.icon} />
       </View>
 
-      {/* Description — full width, fills the space under the icon */}
+      {/* Title + Gates */}
       <Text
-        style={[
-          styles.categoryDescription,
-          { color: colors.onSurfaceSecondary },
-        ]}
-        numberOfLines={2}
+        style={[styles.gridTitle, { color: colors.onSurface }]}
+        numberOfLines={1}
+      >
+        {area.title}
+      </Text>
+      <Text
+        style={[styles.gridGateCount, { color: colors.onSurfaceSecondary }]}
+      >
+        {gateCount} {gateCount === 1 ? "Gate" : "Gates"}
+      </Text>
+
+      {/* Description */}
+      <Text
+        style={[styles.gridDescription, { color: colors.onSurfaceSecondary }]}
+        numberOfLines={3}
       >
         {area.description}
       </Text>
 
-      {/* Status badge */}
-      <View style={[styles.statusBadge, { backgroundColor: bgColor }]}>
-        {isGood ? (
-          <CircleCheck size={13} color={color} />
-        ) : isWarning ? (
-          <CircleAlert size={13} color={color} />
-        ) : (
-          <View
-            style={[styles.statusDot, { backgroundColor: color }]}
-          />
-        )}
-        <Text style={[styles.statusText, { color }]}>
-          {displayStatus(tone)}
-        </Text>
+      {/* Bottom row: status badge + chevron */}
+      <View style={styles.gridBottomRow}>
+        <View style={[styles.statusBadge, { backgroundColor: bgColor }]}>
+          {isGood ? (
+            <CircleCheck size={16} color={color} />
+          ) : isWarning ? (
+            <CircleAlert size={16} color={color} />
+          ) : (
+            <View style={[styles.statusDot, { backgroundColor: color }]} />
+          )}
+          <Text style={[styles.statusText, { color }]}>
+            {displayStatus(tone)}
+          </Text>
+        </View>
+        <ChevronRight size={22} color={colors.muted} />
       </View>
     </Pressable>
   );
@@ -285,16 +278,19 @@ export default function ProtectionScreen() {
     [areas, health.checking]
   );
 
-  // ── Responsive hero dimensions ──
+  // Split areas: first 4 in grid, last 1 full-width
+  const gridAreas = areas.slice(0, 4);
+  const lastArea = areas.length > 4 ? areas[areas.length - 1] : null;
+
+  // ── Responsive scaling ──
   const cardWidth = screenWidth - spacing.lg * 2;
-  // Scale text relative to a 340px reference card width
-  const scale = Math.max(0.82, Math.min(1.2, cardWidth / 340));
-  const titleFontSize = Math.round(16 * scale);
-  const lineFontSize = Math.round(12 * scale);
-  const heroPadding = Math.round(12 * scale);
+  const scale = Math.max(0.82, Math.min(1.15, cardWidth / 340));
 
   return (
-    <View style={[styles.root, { backgroundColor: colors.surface }]} testID="protection-screen">
+    <View
+      style={[styles.root, { backgroundColor: colors.surface }]}
+      testID="protection-screen"
+    >
       {/* ── Header ── */}
       <View style={{ paddingTop: insets.top + spacing.sm }}>
         <View style={styles.headerRow}>
@@ -322,11 +318,13 @@ export default function ProtectionScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Subtitle */}
-        <Text style={[styles.subtitle, { color: colors.onSurfaceSecondary }]}>
+        <Text
+          style={[styles.subtitle, { color: colors.onSurfaceSecondary }]}
+        >
           See your protection categories and the Gates inside each one.
         </Text>
 
-        {/* ── Hero card with responsive background image ── */}
+        {/* ── Hero card ── */}
         <View style={styles.heroContainer} testID="protection-hero-card">
           <ImageBackground
             source={heroBackground}
@@ -334,17 +332,17 @@ export default function ProtectionScreen() {
             imageStyle={styles.heroImageStyle}
             resizeMode="cover"
           >
-            {/* Light gradient at bottom for text readability */}
-            <View
-              style={[styles.heroOverlay, { padding: heroPadding }]}
-            >
-              <View style={styles.heroLeftBlock}>
+            {/* Text overlay */}
+            <View style={styles.heroOverlay}>
+              <View style={styles.heroTextBlock}>
                 <Text
                   style={[
                     styles.heroTitle,
-                    { fontSize: titleFontSize, lineHeight: titleFontSize + 4 },
+                    {
+                      fontSize: Math.round(20 * scale),
+                      lineHeight: Math.round(26 * scale),
+                    },
                   ]}
-                  numberOfLines={1}
                 >
                   {heroTitle}
                 </Text>
@@ -353,19 +351,29 @@ export default function ProtectionScreen() {
                     key={i}
                     style={[
                       styles.heroLine,
-                      { fontSize: lineFontSize, lineHeight: lineFontSize + 5 },
+                      {
+                        fontSize: Math.round(13 * scale),
+                        lineHeight: Math.round(18 * scale),
+                      },
                     ]}
-                    numberOfLines={1}
+                    numberOfLines={2}
                   >
                     {line}
                   </Text>
                 ))}
               </View>
             </View>
+
+            {/* Dog overlay on right */}
+            <Image
+              source={apolloDog}
+              style={styles.heroDogImage}
+              resizeMode="contain"
+            />
           </ImageBackground>
         </View>
 
-        {/* ── Protection Categories section header ── */}
+        {/* ── Section header ── */}
         <View style={styles.sectionHeader}>
           <Text
             style={[styles.sectionTitle, { color: colors.onSurface }]}
@@ -382,12 +390,19 @@ export default function ProtectionScreen() {
           </Text>
         </View>
 
-        {/* ── Category list ── */}
-        <View style={styles.categoryList}>
-          {areas.map((area) => (
-            <CategoryCard key={area.id} area={area} />
+        {/* ── 2-column grid (first 4 categories) ── */}
+        <View style={styles.categoryGrid}>
+          {gridAreas.map((area) => (
+            <GridCategoryCard key={area.id} area={area} />
           ))}
         </View>
+
+        {/* ── Last category full-width ── */}
+        {lastArea && (
+          <View style={styles.lastCardWrap}>
+            <GridCategoryCard area={lastArea} fullWidth />
+          </View>
+        )}
 
         {/* ── Bottom guidance card ── */}
         <View
@@ -399,11 +414,17 @@ export default function ProtectionScreen() {
         >
           <View style={styles.guidanceTopRow}>
             <View style={styles.guidanceAvatarWrap}>
-              <Image source={higginsAvatar} style={styles.guidanceAvatar} />
+              <Image
+                source={higginsAvatar}
+                style={styles.guidanceAvatar}
+              />
             </View>
             <View style={styles.guidanceTextBlock}>
               <Text
-                style={[styles.guidanceTitle, { color: colors.onSurface }]}
+                style={[
+                  styles.guidanceTitle,
+                  { color: colors.onSurface },
+                ]}
               >
                 Apollo is here to protect.
               </Text>
@@ -478,14 +499,14 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  // Hero card
+  // ── Hero card ──
   heroContainer: {
     borderRadius: radius.lg,
     overflow: "hidden",
   },
   heroImageBg: {
     width: "100%",
-    aspectRatio: 2.33,
+    aspectRatio: 1.7,
     justifyContent: "flex-end",
   },
   heroImageStyle: {
@@ -494,11 +515,12 @@ const styles = StyleSheet.create({
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: "flex-end",
-    backgroundColor: "rgba(255,255,255,0.15)",
+    padding: spacing.md,
+    paddingBottom: spacing.lg,
   },
-  heroLeftBlock: {
-    gap: 1,
-    maxWidth: "65%",
+  heroTextBlock: {
+    maxWidth: "60%",
+    gap: 2,
   },
   heroTitle: {
     fontFamily: fonts.displayBold,
@@ -506,10 +528,17 @@ const styles = StyleSheet.create({
   },
   heroLine: {
     fontFamily: fonts.text,
-    color: "#2E4A30",
+    color: "#33691E",
+  },
+  heroDogImage: {
+    position: "absolute",
+    right: 0,
+    bottom: 0,
+    width: "42%",
+    height: "85%",
   },
 
-  // Section header
+  // ── Section header ──
   sectionHeader: {
     gap: 4,
   },
@@ -524,71 +553,77 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  // Category list
-  categoryList: {
+  // ── 2-column grid ──
+  categoryGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: spacing.sm,
   },
-  categoryCard: {
+  gridCard: {
+    width: "48.5%",
     borderRadius: radius.lg,
     borderWidth: 1,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    padding: spacing.md,
     gap: 6,
+    flexGrow: 0,
+    flexShrink: 0,
   },
-  categoryTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
+  gridCardFull: {
+    width: "100%",
   },
-  categoryIconWell: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
+  lastCardWrap: {
+    marginTop: -spacing.sm,
+  },
+  gridIconWell: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    flexShrink: 0,
+    marginBottom: 4,
   },
-  categoryTitle: {
-    flex: 1,
+  gridTitle: {
     fontFamily: fonts.displayBold,
-    fontSize: 15,
-    lineHeight: 20,
+    fontSize: 16,
+    lineHeight: 21,
   },
-  categoryGateCount: {
-    fontFamily: fonts.text,
-    fontSize: 12,
-    lineHeight: 16,
-    flexShrink: 0,
-  },
-  categoryDescription: {
+  gridGateCount: {
     fontFamily: fonts.text,
     fontSize: 13,
-    lineHeight: 18,
+    lineHeight: 17,
+  },
+  gridDescription: {
+    fontFamily: fonts.text,
+    fontSize: 12,
+    lineHeight: 17,
+    flex: 1,
+  },
+  gridBottomRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: spacing.sm,
   },
   statusBadge: {
     flexDirection: "row",
     alignItems: "center",
-    alignSelf: "flex-start",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: radius.pill,
   },
   statusDot: {
-    width: 7,
-    height: 7,
+    width: 8,
+    height: 8,
     borderRadius: 4,
   },
   statusText: {
     fontFamily: fonts.textSemibold,
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  categoryChevron: {
-    flexShrink: 0,
+    fontSize: 13,
+    lineHeight: 17,
   },
 
-  // Bottom guidance card
+  // ── Bottom guidance card ──
   guidanceCard: {
     borderRadius: radius.lg,
     padding: spacing.lg,
