@@ -5,7 +5,7 @@
 
 import { useLocalSearchParams, useRouter } from "expo-router";
 import ChevronLeft from "lucide-react-native/icons/chevron-left";
-import CheckCircle from "lucide-react-native/icons/check-circle";
+import CircleCheck from "lucide-react-native/icons/circle-check";
 import ExternalLink from "lucide-react-native/icons/external-link";
 import FileText from "lucide-react-native/icons/file-text";
 import Globe from "lucide-react-native/icons/globe";
@@ -576,7 +576,7 @@ function HigginsTroubleshootCard({
           </View>
         </View>
         <View style={s.verifyBanner}>
-          <CheckCircle size={20} color={colors.restingText} />
+          <CircleCheck size={20} color={colors.restingText} />
           <Text style={[s.verifyText, { color: colors.restingText }]}>
             {gate.title} is now working correctly. Your protection has been verified.
           </Text>
